@@ -8,6 +8,7 @@
 
 #include "Moira.h"
 #include "jit/JitEngine.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -21,10 +22,17 @@ constexpr uint32_t kCode = 0x001100;
 constexpr uint32_t kData = 0x004000;
 constexpr uint32_t kStack = 0x008000;
 
+const jit::ResolvedConfig& injectedJitConfig() {
+    static const jit::ResolvedConfig config =
+        testjit::resolveFromEnvironment();
+    return config;
+}
+
 class GuardCpu final : public moira::Moira {
 public:
     GuardCpu()
-        : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68040) {
+        : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68040,
+                                injectedJitConfig()) {
         setModel(moira::Model::M68040);
     }
 

@@ -4,7 +4,6 @@
 #include "Rtc.h"
 #include <cstring>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <vector>
@@ -55,8 +54,7 @@ void Rtc::factoryDefaults() {
     // the deterministic default), 1 = AppleTalk. POM68K_APPLETALK=1 seeds
     // it ACTIVE so headless LLAP tests skip the Chooser toggle. "=0" is the
     // global AppleTalk-off switch, so it must NOT seed active.
-    const char* atalk = std::getenv("POM68K_APPLETALK");
-    pram_[0x13] = (atalk && std::strcmp(atalk, "0") != 0) ? 0x21 : 0x22;
+    pram_[0x13] = appleTalkPram_ ? 0x21 : 0x22;
 }
 
 // The battery file. Short or missing → false, and the caller keeps the
@@ -141,7 +139,7 @@ void Rtc::setLines(bool enable, bool clock, bool dataOut) {
             bitCnt_ = 0;
             if (phase_ == CMD) {
                 cmd_ = shift_; shift_ = 0;
-                if (getenv("RTCDBG")) fprintf(stderr, "[rtc] cmd %02X\n", cmd_);
+                if (trace_) fprintf(stderr, "[rtc] cmd %02X\n", cmd_);
                 if ((cmd_ & 0x78) == 0x38)     // extended XPRAM sequence
                     phase_ = XP_ADDR;
                 else if (cmd_ & 0x80) {
@@ -154,7 +152,7 @@ void Rtc::setLines(bool enable, bool clock, bool dataOut) {
                     phase_ = READ_DATA;
                     outData_ = readReg(cmd_);
                     bitCnt_ = 8;
-                    if (getenv("RTCDBG")) fprintf(stderr, "[rtc] read    reg %2d -> %02X\n", (cmd_ >> 2) & 0x1F, outData_);
+                    if (trace_) fprintf(stderr, "[rtc] read    reg %2d -> %02X\n", (cmd_ >> 2) & 0x1F, outData_);
                 } else
                     phase_ = WRITE_DATA;
             } else if (phase_ == XP_ADDR) {
@@ -165,11 +163,11 @@ void Rtc::setLines(bool enable, bool clock, bool dataOut) {
                     phase_ = READ_DATA;
                     outData_ = pram_[xpAddr_];
                     bitCnt_ = 8;
-                    if (getenv("RTCDBG")) fprintf(stderr, "[rtc] xpread  $%02X -> %02X\n", xpAddr_, outData_);
+                    if (trace_) fprintf(stderr, "[rtc] xpread  $%02X -> %02X\n", xpAddr_, outData_);
                 } else
                     phase_ = XP_WRITE;
             } else if (phase_ == XP_WRITE) {
-                if (getenv("RTCDBG")) fprintf(stderr, "[rtc] xpwrite $%02X <- %02X%s\n", xpAddr_, shift_, writeProtect_ ? " (WP!)" : "");
+                if (trace_) fprintf(stderr, "[rtc] xpwrite $%02X <- %02X%s\n", xpAddr_, shift_, writeProtect_ ? " (WP!)" : "");
                 // RICHER THAN MAME (audit § 2.2): the WP gate covers the
                 // EXTENDED write too. MAME checks m_write_protect only on
                 // the classic register path (macrtc.cpp:279-283) and its

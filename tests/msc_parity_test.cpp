@@ -49,7 +49,8 @@ static void check(bool ok, const char* what) {
 
 // ── A. SOUND_BUSY semantics on the full MscMemory decode ───────────────
 static void testSoundBusy() {
-    MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                  MscMemory::kCpuHz230, MscMemory::kIdDuo230);
     const uint32_t kSndCtrl = 0x50F26022;    // pseudo-VIA MSC block reg 2
     const uint32_t kAsc = 0x50F15000;        // inside the $14000-$15FFF tap
 
@@ -117,7 +118,8 @@ static void testPorteReset() {
                 std::streamsize(fw.size())); }
 
     Via6522 via;
-    PgePmu pmu(via, MscMemory::kCpuHz230);
+    PgePmu pmu(via, MscMemory::kCpuHz230,
+               pom68k::defaultCoreConfig().peripherals);
     check(pmu.loadBootRom(path.string()), "synthetic PG&E boot ROM loads");
     int resets = 0;
     pmu.onCpuReset = [&] { resets++; };
@@ -132,7 +134,8 @@ static void testPorteReset() {
 // ── B2. Machine side: onCpuReset re-arms the overlay + latches the CPU
 // reset for the next run boundary (same action as the port G wake path).
 static void testMachineWiring() {
-    MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                  MscMemory::kCpuHz230, MscMemory::kIdDuo230);
     check(static_cast<bool>(mem.pmu().onCpuReset),
           "MscMemory wires pmu.onCpuReset");
     mem.consumeWakeReset();                  // drain any power-on latch
@@ -171,7 +174,8 @@ static void testPortHLatch() {
                 std::streamsize(fw.size())); }
 
     Via6522 via;
-    PgePmu pmu(via, MscMemory::kCpuHz230);
+    PgePmu pmu(via, MscMemory::kCpuHz230,
+               pom68k::defaultCoreConfig().peripherals);
     check(pmu.loadBootRom(path.string()), "port-H boot ROM loads");
     pmu.reset();
     pmu.tick(200000);
@@ -186,7 +190,8 @@ static void testPortHLatch() {
 
 // ── D. PMU RTC seeded from host time at machine construction ───────────
 static void testRtcSeed() {
-    MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                  MscMemory::kCpuHz230, MscMemory::kIdDuo230);
     const uint32_t s = mem.pmu().mcu().rtc();
     // Mac epoch (1904) + 1970 offset 2 082 844 800; 2020-01-01 local =
     // 3 660 681 600. Any host clock this test runs on is past that, and
@@ -252,7 +257,8 @@ static void testPortDefaultsAndStop() {
                 std::streamsize(fw.size())); }
 
     Via6522 via;
-    PgePmu pmu(via, MscMemory::kCpuHz230);
+    PgePmu pmu(via, MscMemory::kCpuHz230,
+               pom68k::defaultCoreConfig().peripherals);
     check(pmu.loadBootRom(path.string()), "port J/K/L boot ROM loads");
     pmu.reset();
     pmu.tick(200000);
@@ -282,7 +288,8 @@ static void testPortDefaultsAndStop() {
 //   - a missing or short file returns false and leaves the live PG&E
 //     untouched (CentrisMemory::loadPram's `b.size() < N` rule).
 static void testPramRoundTrip() {
-    MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                  MscMemory::kCpuHz230, MscMemory::kIdDuo230);
     M68hc05Pge& mcu = mem.pmu().mcu();
     const int kFlag = M68hc05Pge::kPowerFlagAddr - 0x40;   // $91 → ram_ index
 

@@ -81,26 +81,35 @@ using Blob = std::vector<uint8_t>;
 // One rig per family: machine + CPU wired and reset. The ctor args are the
 // family's profile defaults; the IIci rig exercises the other RBV front end.
 struct SonoraRig {
-    SonoraMemory mem;
+    SonoraMemory mem{pom68k::defaultCoreConfig()};
     SonoraCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Lc3;
-    explicit SonoraRig(const std::vector<uint8_t>& rom) : mem(), cpu(mem) {
+    explicit SonoraRig(const std::vector<uint8_t>& rom)
+        : mem(pom68k::defaultCoreConfig()),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
 struct VaspRig {
-    VaspMemory mem;
+    VaspMemory mem{pom68k::defaultCoreConfig()};
     VaspCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::IIvx;
-    explicit VaspRig(const std::vector<uint8_t>& rom) : mem(), cpu(mem) {
+    explicit VaspRig(const std::vector<uint8_t>& rom)
+        : mem(pom68k::defaultCoreConfig()),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
 struct RbvRig {
-    RbvMemory mem;
+    RbvMemory mem{pom68k::defaultCoreConfig()};
     RbvCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::IIsi;
-    explicit RbvRig(const std::vector<uint8_t>& rom) : mem(), cpu(mem) {
+    explicit RbvRig(const std::vector<uint8_t>& rom)
+        : mem(pom68k::defaultCoreConfig()),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
@@ -109,19 +118,24 @@ struct RbvRig {
 // firmware (host-uploaded, no ROM to reload) — the whole point of the
 // coverage here.
 struct IIfxRig {
-    IIfxMemory mem;
+    IIfxMemory mem{pom68k::defaultCoreConfig()};
     IIfxCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::IIfx;
-    explicit IIfxRig(const std::vector<uint8_t>& rom) : mem(), cpu(mem) {
+    explicit IIfxRig(const std::vector<uint8_t>& rom)
+        : mem(pom68k::defaultCoreConfig()),
+          cpu(mem, jit::defaultResolvedConfig()) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
 struct RbvIiciRig {
-    RbvMemory mem;
+    RbvMemory mem{pom68k::defaultCoreConfig()};
     RbvCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::IIci;
     explicit RbvIiciRig(const std::vector<uint8_t>& rom)
-        : mem(0x800000, RbvMemory::kCpuHzCi, /*iici=*/true), cpu(mem) {
+        : mem(pom68k::defaultCoreConfig(), 0x800000,
+              RbvMemory::kCpuHzCi, /*iici=*/true),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
@@ -220,11 +234,14 @@ uint64_t pgeDigest(M68hc05Pge& mcu, bool sram) {
 }
 
 struct DuoRig {
-    MscMemory mem;
+    MscMemory mem{pom68k::defaultCoreConfig()};
     MscCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Duo230;
     explicit DuoRig(const std::vector<uint8_t>& rom)
-        : mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230), cpu(mem) {
+        : mem(pom68k::defaultCoreConfig(), 8u << 20,
+              MscMemory::kCpuHz230, MscMemory::kIdDuo230),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
     // The PMU boots FIRST; the 68030 may not be stepped while it is held.

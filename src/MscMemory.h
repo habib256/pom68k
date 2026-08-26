@@ -33,6 +33,7 @@
 // tests/msc_parity_test.cpp. Blueprint: docs/DUO_BRINGUP.md.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "PseudoVia.h"
@@ -60,7 +61,8 @@ public:
     static constexpr uint32_t kIdDuo230 = 0xA55A1005;
     static constexpr uint32_t kIdDuo250 = 0xA55A1006;
 
-    explicit MscMemory(uint32_t totalRam = 0x800000,
+    explicit MscMemory(const pom68k::CoreConfig& coreConfig,
+                       uint32_t totalRam = 0x800000,
                        int64_t cpuHz = kCpuHz230,
                        uint32_t machineId = kIdDuo230);
     int64_t cpuHz() const { return cpuHz_; }

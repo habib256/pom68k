@@ -11,6 +11,7 @@
 // Gate: tests/cpu_smoke.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "Via6522.h"
 #include "Rtc.h"
 #include "Iwm.h"
@@ -48,7 +49,8 @@ public:
     //  * no mouse quadrature on PB4/PB5 (the mouse is an ADB device).
     enum class Model { Plus, SE, SEFDHD, Classic };
 
-    explicit MacMemory(Model model = Model::Plus);
+    explicit MacMemory(
+        const pom68k::CoreConfig& coreConfig, Model model = Model::Plus);
     // Re-profile before loadRom(): main() constructs the machine before it has
     // read the ROM, and the compact models are told apart by its checksum.
     void setModel(Model m);
@@ -58,7 +60,21 @@ public:
     AdbVia& adbVia() { return adbVia_; }
     AdbBus& adb() { return adb_; }
     bool adbLleActive() const { return adbVia_.lle(); }
-    void keyEvent(uint8_t code, bool down) { adbVia_.keyEvent(code, down); }
+    // Uniform MachineHost input surface. ADB compacts consume native ADB key
+    // codes; the Plus converts the same code back to its odd M0110 transition
+    // byte. The GUI therefore queues one command format for every platform.
+    void keyEvent(uint8_t code, bool down) {
+        if (isAdb()) adbVia_.keyEvent(code, down);
+        else kbd_.enqueue(uint8_t((code << 1) | 1 | (down ? 0 : 0x80)));
+    }
+    void mouseMove(int dx, int dy) {
+        if (isAdb()) adbVia_.mouseMove(dx, dy);
+        else mouse_.move(dx, dy);
+    }
+    void mouseButton(bool down, int button = 0) {
+        if (isAdb()) adbVia_.mouseButton(down, button);
+        else if (button == 0) mouse_.setButton(down);
+    }
     void adbMouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
     void adbMouseButton(bool down, int button = 0) { adbVia_.mouseButton(down, button); }
 
@@ -186,6 +202,7 @@ public:
     }
 
 private:
+    bool seViaTrace_ = false;
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);
     void refreshPortBInputs();
 

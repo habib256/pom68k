@@ -8,6 +8,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu68k.h"
+#include "JitTestConfig.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
 #include "MacFrame.h"
@@ -30,9 +31,10 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    Cpu68k cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu68k cpu(mem, jitConfig);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.insertDisk(dsk)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

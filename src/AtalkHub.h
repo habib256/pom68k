@@ -38,6 +38,11 @@ class AtalkHub {
 public:
     AtalkHub() : afp_(stack_), pap_(stack_), macip_(stack_) {}
 
+    void configureDiagnostics(bool stackDebug, bool macIpDebug) {
+        stackDebug_ = stackDebug;
+        macip_.setDebug(macIpDebug);
+    }
+
     struct Config {
         bool stack = true;               // the node/router itself
         bool afp = true;
@@ -60,7 +65,7 @@ public:
         cable_ = cable;
         (void)mem.scc(); // synchronize an event-driven device at attachment
         stack_.configure(2, 128, cfg_.serverName.empty() ? "POM68K" : cfg_.serverName,
-                         cpuHz);
+                         cpuHz, stackDebug_);
         // Relay BrRq to the segment only when a real cable carries external
         // peers; solo, the relay + our reply collide in the guest Rx FIFO.
         stack_.setBridgeRelay(cable && cable->active());
@@ -231,4 +236,5 @@ private:
     Config cfg_;
     std::string defaultShareDir_;
     bool attached_ = false;
+    bool stackDebug_ = false;
 };

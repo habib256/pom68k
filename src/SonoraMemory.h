@@ -16,6 +16,7 @@
 // Gate: tests/lc3_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "PseudoVia.h"
@@ -73,7 +74,8 @@ public:
     // cudaAdb: the LC 520/550 AIO family carries a Cuda (MAME maclc3.cpp:379
     // CUDA_V2XX 341s0060), not the LC III's Egret — its ROM's reset handshake
     // ($408D1AE6: ByteAck low, wait /TREQ deassert) only a Cuda answers.
-    explicit SonoraMemory(uint32_t totalRam = 0x800000,
+    explicit SonoraMemory(const pom68k::CoreConfig& coreConfig,
+                          uint32_t totalRam = 0x800000,
                           int64_t cpuHz = kCpuHz,
                           uint32_t machineId = kIdLc3,
                           bool cudaAdb = false);

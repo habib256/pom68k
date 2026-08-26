@@ -13,10 +13,9 @@
 //   1. reporting HLE must still poison product qualification exactly as the
 //      bare activateHle() call it replaced did — the `--lle-aarch64` promise
 //      rests on it;
-//   2. the staged selection must emit an explicit value for EVERY device,
-//      including one whose choice matches what is running, because the
-//      relaunch inherits this process's environment and a stale knob would
-//      otherwise survive and win;
+//   2. the staged selection must emit a complete typed value for every
+//      selected device, including an explicit automatic-path request, so an
+//      inherited legacy variable cannot survive and win;
 //   3. "can this device run LLE?" must be answered on the very paths the
 //      device searched, never on a second copy of that list.
 
@@ -40,9 +39,12 @@ using namespace pom68k::lle;
 Device makeDevice(Module m, const char* name, const char* knob, bool lle,
                   bool wanted, std::string fw,
                   std::vector<std::string> cands,
-                  const char* pathKnob = "", std::string forced = "") {
+                  const char* pathKnob = "", std::string forced = "",
+                  pom68k::FirmwareTarget target =
+                      pom68k::FirmwareTarget::Cuda) {
     Device d;
     d.module = m;
+    d.target = m == HleAdbModem ? pom68k::FirmwareTarget::Adb : target;
     d.name = name;
     d.knob = knob;
     d.mode = lle ? Mode::Lle : Mode::Hle;
@@ -141,7 +143,7 @@ int main() {
         check(dumpAvailable(live), "a device already on LLE is always available");
     }
 
-    // ── The staged selection -> environment mapping ──────────────────────
+    // ── The staged selection -> typed firmware policy ────────────────────
     {
         beginSession();
         const std::vector<Device> live = {
@@ -153,41 +155,40 @@ int main() {
 
         // Nothing staged: nothing to apply, and nothing to emit.
         check(pendingCount(live, {}) == 0, "no staging -> nothing pending");
-        check(envForSelection(live, {}).empty(),
-              "no staging -> no environment written");
+        check(firmwareOverridesForSelection(live, {}).empty(),
+              "no staging -> no firmware policy emitted");
 
-        // Flip the ADB back to LLE, leave the Cuda as it runs.
+        // Flip only ADB back to LLE. The complete live firmware set is still
+        // emitted so normalization can safely replace every stale argument.
         const std::vector<Choice> want = {
-            {HleEgretCuda, Mode::Lle},          // same as live, on purpose
             {HleAdbModem, Mode::Lle},           // a real change
         };
         check(pendingCount(live, want) == 1,
               "only the device whose choice differs counts as pending");
 
-        const auto env = envForSelection(live, want);
-        check(env.size() == 2,
+        const auto policies = firmwareOverridesForSelection(live, want);
+        check(policies.size() == 2,
               "EVERY selected device is emitted, not only the changed one");
         bool cudaOne = false, adbOne = false;
-        for (const EnvAssignment& a : env) {
-            if (a.knob == "POM68K_CUDA_LLE" && a.value == "1" && !a.unset)
+        for (const pom68k::FirmwareOverride& policy : policies) {
+            if (policy.target == pom68k::FirmwareTarget::Cuda && policy.lle &&
+                !policy.path)
                 cudaOne = true;
-            if (a.knob == "POM68K_ADB_LLE" && a.value == "1" && !a.unset)
+            if (policy.target == pom68k::FirmwareTarget::Adb && policy.lle &&
+                !policy.path)
                 adbOne = true;
         }
-        check(adbOne, "the changed device emits its knob=1");
-        // This is the one that would rot silently: the user forced HLE in an
-        // earlier session, so POM68K_ADB_LLE=0 is in this process's
-        // environment and the relaunch inherits it. Re-asserting "1" for the
-        // UNCHANGED device is what makes an undo actually undo.
+        check(adbOne, "the changed device emits typed LLE policy");
         check(cudaOne,
-              "an unchanged device re-asserts its knob (the relaunch inherits "
-              "the env)");
+              "an unchanged selection still emits complete typed policy");
 
-        // And the HLE direction writes 0, not an unset.
-        const auto off = envForSelection(live, {{HleEgretCuda, Mode::Hle}});
-        check(off.size() == 1 && off[0].knob == "POM68K_CUDA_LLE" &&
-                  off[0].value == "0" && !off[0].unset,
-              "choosing HLE writes knob=0");
+        const std::vector<Device> cudaOnly{live[0]};
+        const auto off = firmwareOverridesForSelection(
+            cudaOnly, {{HleEgretCuda, Mode::Hle}});
+        check(off.size() == 1 &&
+                  off[0].target == pom68k::FirmwareTarget::Cuda &&
+                  !off[0].lle && !off[0].path,
+              "choosing HLE emits typed HLE plus automatic path policy");
     }
 
     // ── Per-device dump choice ───────────────────────────────────────────
@@ -214,14 +215,15 @@ int main() {
             {HleEgretCuda, Mode::Lle, "roms/cuda/341s0788.bin"}};
         check(pendingCount(live, pin) == 1,
               "picking another dump is pending even with the mode unchanged");
-        const auto env = envForSelection(live, pin);
-        check(env.size() == 2, "a pinned dump emits both knobs");
+        const auto policies = firmwareOverridesForSelection(live, pin);
+        check(policies.size() == 1,
+              "a pinned dump is one complete firmware override");
         bool pinned = false;
-        for (const EnvAssignment& a : env)
-            if (a.knob == "POM68K_CUDA_FW" &&
-                a.value == "roms/cuda/341s0788.bin" && !a.unset)
+        for (const pom68k::FirmwareOverride& policy : policies)
+            if (policy.target == pom68k::FirmwareTarget::Cuda && policy.lle &&
+                policy.path && *policy.path == "roms/cuda/341s0788.bin")
                 pinned = true;
-        check(pinned, "the pin is written to the path knob");
+        check(pinned, "the pin is carried as a typed path");
 
         // And the undo. A device built under an override, taken back to
         // automatic: the assignment must be an UNSET. Writing "" instead
@@ -235,20 +237,33 @@ int main() {
         };
         check(pendingCount(forced, {{HleEgretCuda, Mode::Lle, "custom.bin"}}) == 0,
               "keeping the override in place is not a change");
-        const auto undo = envForSelection(forced, {{HleEgretCuda, Mode::Lle, ""}});
-        bool unsetSeen = false;
-        for (const EnvAssignment& a : undo)
-            if (a.knob == "POM68K_CUDA_FW" && a.unset) unsetSeen = true;
-        check(unsetSeen, "back to automatic UNSETS the path knob (never \"\")");
+        const auto undo = firmwareOverridesForSelection(
+            forced, {{HleEgretCuda, Mode::Lle, ""}});
+        check(undo.size() == 1 && undo[0].lle && !undo[0].path,
+              "back to automatic is explicit in typed policy");
 
         // A device with no path knob contributes no path assignment.
         const std::vector<Device> noPath = {
             makeDevice(HleAdbModem, "PIC", "POM68K_ADB_LLE", true, true, "p.bin",
                        {"p.bin"}),
         };
-        const auto only = envForSelection(noPath, {{HleAdbModem, Mode::Lle, ""}});
-        check(only.size() == 1 && only[0].knob == "POM68K_ADB_LLE",
-              "a device without a path knob emits only its enable knob");
+        const auto only = firmwareOverridesForSelection(
+            noPath, {{HleAdbModem, Mode::Lle, ""}});
+        check(only.size() == 1 &&
+                  only[0].target == pom68k::FirmwareTarget::Adb &&
+                  only[0].lle && !only[0].path,
+              "automatic ADB selection remains an explicit typed override");
+
+        const std::vector<Device> egret = {
+            makeDevice(HleEgretCuda, "Egret", "POM68K_EGRET_LLE", true,
+                       true, "e.bin", {"e.bin"}, "POM68K_CUDA_FW", "",
+                       pom68k::FirmwareTarget::Egret)};
+        const auto egretOff = firmwareOverridesForSelection(
+            egret, {{HleEgretCuda, Mode::Hle, ""}});
+        check(egretOff.size() == 1 &&
+                  egretOff[0].target == pom68k::FirmwareTarget::Egret &&
+                  !egretOff[0].lle,
+              "Egret and Cuda keep distinct typed activation policy");
     }
 
     // ── Dump discovery: what the picker may offer ────────────────────────

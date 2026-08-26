@@ -24,7 +24,7 @@ int main() {
     std::printf("cuda_lle_test — real Cuda firmware behind the Quadra VIA\n");
     setenv("POM68K_CUDA_LLE", "1", 1);
 
-    Q605Memory mem(1u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 1u << 20);
     if (!mem.cudaLleActive()) {
         std::printf("SKIP: needs roms/cuda/341s0788.bin\n");
         return 0;

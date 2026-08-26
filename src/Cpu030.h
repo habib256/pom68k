@@ -14,6 +14,7 @@
 // Gate: tests/v8_ramsize.cpp (BERR through the map), lcii boot etalon (O6.8).
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -27,7 +28,9 @@ public:
     // as020 = Macintosh LC profile: same V8 bus, Moira Model::M68020
     // (MAME maclc.cpp:342 M68020HMMU — the HMMU 24-bit remap is subsumed
     // by the V8's own A31+A23-A0 decode).
-    explicit Cpu030(V8Memory& mem, bool withFpu = false, bool as020 = false);
+    explicit Cpu030(V8Memory& mem, const jit::ResolvedConfig& jitConfig,
+                    const pom68k::CoreCpuConfig& cpuConfig,
+                    bool withFpu = false, bool as020 = false);
 
     void hardReset();                       // V8 overlay + CPU reset
     // ── JIT engine (src/jit/POM68K_JIT.md, 030 extension 2026-07-28) ───
@@ -154,6 +157,7 @@ public:
     }
 
 private:
+    int cacrFlushPolicy_ = -1;
     moira::u8  read8(moira::u32 addr) const override;
     moira::u16 read16(moira::u32 addr) const override;
     // Moira's disassembler falls back to read16() unless this is overridden,

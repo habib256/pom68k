@@ -17,7 +17,8 @@ class MacMemory;
 
 class Cpu68k : public MoiraSnapshot {
 public:
-    explicit Cpu68k(MacMemory& mem);
+    explicit Cpu68k(MacMemory& mem,
+                    const jit::ResolvedConfig& jitConfig);
 
     void hardReset();                       // memory overlay + CPU reset
 

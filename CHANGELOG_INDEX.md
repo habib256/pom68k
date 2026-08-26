@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 291 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 293 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -19,8 +19,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Machine bring-ups](#machine-bring-ups) | 42 |
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 18 |
-| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 6 |
-| [Cross-cutting](#cross-cutting) | 44 |
+| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 7 |
+| [Cross-cutting](#cross-cutting) | 45 |
 
 ---
 
@@ -306,6 +306,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-23** — [LLE audit: step 9 closed, the quick wins are exhausted](CHANGELOG.md#2026-07-23--lle-audit-step-9-closed-the-quick-wins-are-exhausted)
 - **2026-08-13** — [Four audit closures, and two of them were not what the audit said they were](CHANGELOG.md#2026-08-13-f2-f5-closures)
 - **2026-08-25 (third)** — [Environment-knob audit: 188 exact lifecycle contracts, zero wildcard decisions](CHANGELOG.md#2026-08-25-config-knob-registry)
+- **2026-08-26 (later)** — [An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog](CHANGELOG.md#2026-08-26-review-backlog)
 
 ## Cross-cutting
 
@@ -353,4 +354,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-24** — [The three Sonora-style GUI runners were one descriptor: 5125 → 4641 lines, four autonomous runners remain](CHANGELOG.md#2026-08-24-sonora-runner)
 - **2026-08-24 (fifth)** — [V8/Eagle/Spice/Tinker Bell join the GUI service seam: ten instantiations covered, 3460 → 3105 lines](CHANGELOG.md#2026-08-24-v8-gui-extraction)
 - **2026-08-24 (third)** — [Sonora joined the same GUI service seam: seven wrappers behind one contract, 4243 → 3923 lines](CHANGELOG.md#2026-08-24-sonora-gui-extraction)
+- **2026-08-26** — [The 2,683-line GUI runtime becomes three injected responsibilities: host services, typed composers and shell](CHANGELOG.md#2026-08-26-gui-runtime-split)
 

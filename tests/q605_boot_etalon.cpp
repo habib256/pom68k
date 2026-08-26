@@ -8,6 +8,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
+#include "JitTestConfig.h"
 #include "Q605Memory.h"
 
 #include <cmath>
@@ -129,12 +130,14 @@ int main() {
         return 1;
     }
 
-    Q605Memory mem(32u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
-    Cpu040 cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

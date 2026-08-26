@@ -13,13 +13,21 @@
 #include <fstream>
 #include <iterator>
 
-Q605Memory::Q605Memory(uint32_t totalRam)
+Q605Memory::Q605Memory(const pom68k::CoreConfig& coreConfig,
+                       uint32_t totalRam)
     : totalRam_(totalRam)
 {
-    if (const char* e = std::getenv("POM68K_Q605_EVENT_SCC"))
-        sccEventDriven_ = e[0] != '0';
-    if (const char* e = std::getenv("POM68K_Q605_EVENT_SCSI"))
-        scsiEventDriven_ = e[0] != '0';
+    sccEventDriven_ = coreConfig.bus.q605SccEventDriven;
+    scsiEventDriven_ = coreConfig.bus.q605ScsiEventDriven;
+    via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    cuda_.configure(coreConfig.peripherals.appleTalkPram,
+                    coreConfig.peripherals.egretCommandTrace);
+    cudaLle_.configure(coreConfig.peripherals);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    drive0_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    drive1_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    dafbCell_.configureTrace(coreConfig.peripherals.dafbClockTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     // The ROM's bank prober sizes RAM by ALIASING (write a pattern,
     // find where it reappears): the size must be a power of two and
     // the whole $0-$3FFFFFFF window must mirror modulo the size, like
@@ -56,10 +64,7 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     // byte at the 40 MHz chip clock — Ncr53c96::selectionDelayCpu_/
     // xferDelayCpu_). POM68K_SCSI_LAT=0 forces the historical instant
     // behaviour, =N a flat N-cycle deferral (diagnostics).
-    {
-        const char* e = std::getenv("POM68K_SCSI_LAT");
-        scsi_.setLatency(e ? std::atoi(e) : -1);
-    }
+    scsi_.setLatency(coreConfig.bus.scsiLatency.value_or(-1));
     // DaynaPort SCSI/Link — Ethernet as a SCSI target, opt-in and OFF by
     // default: a new device answering selection changes what the ROM's bus
     // probe finds, and every boot etalon is calibrated against a bus with
@@ -76,29 +81,29 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     // the in-process NAT, which lives in AtalkHub (see AtalkHub::attach).
     // With POM68K_APPLETALK=0 the guest still sees the card and it carries
     // nothing — a cable-unplugged state, not a missing device.
-    if (const char* e = std::getenv("POM68K_DAYNAPORT"); e && e[0] && e[0] != '0') {
-        int id = std::atoi(e);
-        if (id <= 1 || id > 6) id = 3;
+    if (const auto id = coreConfig.bus.daynaPortId) {
         dayna_.attach();
-        scsi_.attach(&dayna_, id);
+        scsi_.attach(&dayna_, *id);
         std::fprintf(stderr, "DaynaPort SCSI/Link at SCSI ID %d "
                      "(guest needs the SCSI/Link driver + a manual MacTCP "
-                     "address in the gateway's subnet)\n", id);
+                     "address in the gateway's subnet)\n", *id);
     }
-    if (const char* id = std::getenv("POM68K_Q605_ID"))
-        machineId_ = uint32_t(std::strtoul(id, nullptr, 16));
+    if (coreConfig.bus.q605MachineId)
+        machineId_ = *coreConfig.bus.q605MachineId;
     // Cuda firmware LLE — the DEFAULT whenever the real dump is present
     // (blueprint step 4, the POM68K_ADB_LLE rollout pattern);
     // POM68K_CUDA_LLE=0 forces the Egret HLE, a missing dump falls back
     // silently. The staged PRAM mirrors the Egret HLE's factory seed so
     // both paths boot from the same battery contents.
     {
-        pom68k::fw::Request req;
-        req.module = pom68k::lle::HleEgretCuda;
+        pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
+                                pom68k::FirmwareTarget::Cuda};
         req.name = "Cuda — MCU ADB / PRAM / horloge";
         req.enableKnob = "POM68K_CUDA_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Q605";
+        req.enabled = coreConfig.firmware.cudaLle;
+        req.forcedPath = coreConfig.firmware.cudaPath.value_or(std::string());
         req.candidates = {
             "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin" };
         cudaLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {

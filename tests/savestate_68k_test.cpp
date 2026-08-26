@@ -97,8 +97,8 @@ Rom makeIIRom() {
 using Blob = std::vector<uint8_t>;
 
 struct PlusRig {
-    MacMemory mem{MacMemory::Model::Plus};
-    Cpu68k cpu{mem};
+    MacMemory mem{pom68k::defaultCoreConfig(), MacMemory::Model::Plus};
+    Cpu68k cpu{mem, jit::defaultResolvedConfig()};
     static constexpr auto kKind = pom68k::SnapMachine::Plus;
     explicit PlusRig(const Rom& rom) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
@@ -108,8 +108,8 @@ struct PlusRig {
     }
 };
 struct SeRig {
-    MacMemory mem{MacMemory::Model::SE};
-    Cpu68k cpu{mem};
+    MacMemory mem{pom68k::defaultCoreConfig(), MacMemory::Model::SE};
+    Cpu68k cpu{mem, jit::defaultResolvedConfig()};
     static constexpr auto kKind = pom68k::SnapMachine::SE;
     explicit SeRig(const Rom& rom) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
@@ -119,8 +119,10 @@ struct SeRig {
     }
 };
 struct MacIIRig {
-    MacIIMemory mem{0x800000, MacIIMemory::Model::MacII};
-    Cpu020 cpu{mem};
+    MacIIMemory mem{pom68k::defaultCoreConfig(), 0x800000,
+                    MacIIMemory::Model::MacII};
+    Cpu020 cpu{mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu};
     static constexpr auto kKind = pom68k::SnapMachine::MacII;
     explicit MacIIRig(const Rom& rom) {
         mem.loadRom(rom);

@@ -15,7 +15,9 @@ struct TraceCpu : Cpu020 {
     long irqLog = 0;
     long a06eLog = 0;
     MacIIMemory& memRef;
-    TraceCpu(MacIIMemory& m, bool fpu) : Cpu020(m, fpu), memRef(m) {}
+    TraceCpu(MacIIMemory& m, bool fpu)
+        : Cpu020(m, jit::defaultResolvedConfig(),
+                 pom68k::defaultCoreConfig().cpu, fpu), memRef(m) {}
     MacIIMemory& mem() { return memRef; }
 
     void willInterrupt(moira::u8 level) override {
@@ -55,7 +57,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    MacIIMemory mem;
+    MacIIMemory mem(pom68k::defaultCoreConfig());
     mem.loadRom(rom);
     mem.installTobyVideo();
     TraceCpu cpu(mem, true);

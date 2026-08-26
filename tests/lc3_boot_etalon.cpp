@@ -12,6 +12,7 @@
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -63,11 +64,13 @@ int main() {
         return 1;
     }
 
-    SonoraMemory mem(0x800000);              // 8 MB
+    SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000); // 8 MB
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(2);                  // 512×384 12" RGB (etalon frame)
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
-    SonoraCpu cpu(mem, /*withFpu=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    SonoraCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+                  /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

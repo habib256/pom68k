@@ -35,9 +35,9 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     mem.loadRom(romData);
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
     cpu.hardReset();
     mem.insertDisk(dsk);

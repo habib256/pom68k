@@ -205,9 +205,7 @@ void CudaLle::i2cWire(bool scl, bool sda) {
                 // MCU for a change no master can observe is not a trade
                 // worth making.
                 i2cDriveLow_ = i2cAddressed_;
-                static const bool trace =
-                    std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
-                if (trace)
+                if (trace_)
                     std::fprintf(stderr, "cudalle: i2c byte %02X %s (slave %02X)\n",
                                  i2cShift_, i2cAddressed_ ? "ACK" : "NACK",
                                  i2cSlave_);
@@ -249,9 +247,7 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
         case 1: {                        // PB (pb_w :123-137)
             const uint8_t newTreq = uint8_t((v >> 1) & 1);
             if (newTreq != treq_ && !newTreq) {
-                static const bool trace =
-                    std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
-                if (trace) std::fprintf(stderr, "cudalle: TREQ fall\n");
+                if (trace_) std::fprintf(stderr, "cudalle: TREQ fall\n");
             }
             treq_ = newTreq;
             const bool clock = (v & 0x10) != 0;
@@ -265,9 +261,7 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                     traceByte_ = uint8_t((traceByte_ << 1) | (data ? 1 : 0));
                     if (++traceBits_ == 8) {
                         traceBits_ = 0;
-                        static const bool trace =
-                            std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
-                        if (trace)
+                        if (trace_)
                             std::fprintf(stderr,
                                          "cudalle: byte = %02X (tip=%d treq=%d)\n",
                                          traceByte_, tip_ ? 1 : 0, treq_);
@@ -321,13 +315,11 @@ void CudaLle::portBChanged(uint8_t pb) {
     // macquadra605.cpp:230-233: VIA1 PB4 → BYTEACK, PB5 → TIP (active low).
     const bool newAck = (pb & 0x10) != 0;
     if (newAck != byteack_) {
-        static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
-        if (trace) std::fprintf(stderr, "cudalle: BYTEACK %d\n", newAck ? 1 : 0);
+        if (trace_) std::fprintf(stderr, "cudalle: BYTEACK %d\n", newAck ? 1 : 0);
     }
     byteack_ = newAck;
     const bool newTip = (pb & 0x20) != 0;
-    static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
-    if (newTip != tip_ && trace) {
+    if (newTip != tip_ && trace_) {
         if (!newTip) {
             traceSessionClocks_ = 0;
             std::fprintf(stderr, "cudalle: TIP fall (session start)\n");

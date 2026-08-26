@@ -81,7 +81,8 @@ public:
     // the model in this constructor reported "68000/68010" for the 68030
     // LC II and quietly cost the Quadra its x86-64 backend. A required
     // parameter makes a new wrapper that forgets it a COMPILE error instead.
-    Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily);
+    Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
+           const ResolvedConfig& config);
     ~Engine();
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
@@ -116,6 +117,7 @@ public:
     // use it to know which defaults are in force (the block cache follows
     // this, see JitConfig.h).
     bool nativeBackend() const;
+    const ResolvedConfig& config() const { return config_; }
 
     // The single entry point the CPU wrappers call instead of
     // Moira::executeUntil() when the engine is on.
@@ -338,7 +340,7 @@ private:
     moira::Moira& cpu_;
     MemoryHooks   mem_;
     uint32_t      guestFamily_ = 0; // fixes model-specific IR memory semantics
-    ResolvedConfig config_;         // environment resolved once per Engine
+    ResolvedConfig config_;         // immutable injected snapshot per Engine
     std::unique_ptr<Backend> ownedBackend_;
     Backend*      backend_ = nullptr;
     Context       ctx_{};

@@ -11,6 +11,7 @@
 
 #include "Moira.h"
 #include "jit/JitEngine.h"
+#include "JitTestConfig.h"
 #include "jit/JitMetrics.h"
 
 #include <chrono>
@@ -120,10 +121,17 @@ constexpr uint32_t kGuardA = kCode;
 constexpr uint32_t kGuardB = kCode + 0x40;
 constexpr uint32_t kGuardCross = kCode + 0xFC;
 
+const jit::ResolvedConfig& injectedJitConfig() {
+    static const jit::ResolvedConfig config =
+        testjit::resolveFromEnvironment();
+    return config;
+}
+
 class SyntheticCpu final : public moira::Moira {
 public:
     SyntheticCpu()
-        : mem(kRamBytes, 0), jit(*this, hooks(this), jit::kGuest68040) {
+        : mem(kRamBytes, 0), jit(*this, hooks(this), jit::kGuest68040,
+                                 injectedJitConfig()) {
         setModel(moira::Model::M68040);
     }
 
@@ -892,7 +900,7 @@ bool runDynamicBitfieldLockstep() {
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
     const bool a64Production = !std::strcmp(native.jit.backendName(), "aarch64") &&
-                               !jit::packedCcrEnabled();
+                               !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
            (!a64Production || s.slowInstrs == 0);
 }
@@ -922,7 +930,7 @@ bool runGuardedDynamicShiftLockstep() {
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
     const bool a64Production = !std::strcmp(native.jit.backendName(), "aarch64") &&
-                               !jit::packedCcrEnabled();
+                               !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
            (!a64Production || s.slowInstrs == 0);
 }
@@ -1065,7 +1073,9 @@ int main() {
         metrics.backend = probe.jit.backendName();
         metrics.engine = "jit";
         metrics.status = "unavailable";
-        if (!jit::emitMetrics(metrics))
+        if (!jit::emitMetrics(metrics,
+                              std::getenv("POM68K_JIT_METRICS_FILE"),
+                              std::getenv("POM68K_PERF_HOST_PROFILE")))
             std::fprintf(stderr, "FAIL: cannot write requested metrics artifact\n");
         return unavailableNative(probe);
     }
@@ -1097,7 +1107,9 @@ int main() {
           "mark/unmark inverse stays exact across 384 one/two-slice evictions");
 
     metrics.status = failures ? "fail" : "pass";
-    check(jit::emitMetrics(metrics), "structured JIT metrics artifact is writable");
+    check(jit::emitMetrics(metrics, std::getenv("POM68K_JIT_METRICS_FILE"),
+                           std::getenv("POM68K_PERF_HOST_PROFILE")),
+          "structured JIT metrics artifact is writable");
     std::printf("%s\n", failures ? "FAILED" : "PASSED");
     return failures ? 1 : 0;
 }

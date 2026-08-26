@@ -39,10 +39,11 @@ static bool loadTemplateHead(const std::string& path, std::vector<uint8_t>& out)
 }
 
 // Same candidate order as tools/wrap_hfs.py (+ env + beside the .dsk).
-static bool findDdmTemplate(const std::string& imagePath, std::vector<uint8_t>& head) {
+static bool findDdmTemplate(const std::string& imagePath,
+                            const std::string& configured,
+                            std::vector<uint8_t>& head) {
     std::vector<std::string> cands;
-    if (const char* env = std::getenv("POM68K_SCSI_DDM_TEMPLATE"))
-        if (env[0]) cands.emplace_back(env);
+    if (!configured.empty()) cands.emplace_back(configured);
 
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -91,7 +92,7 @@ bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
     }
 
     std::vector<uint8_t> head;
-    if (!findDdmTemplate(imagePath, head)) {
+    if (!findDdmTemplate(imagePath, ddmTemplate_, head)) {
         std::fprintf(stderr, "SCSI: %s looks like flat HFS ('LK') but no DDM "
                      "template found (set POM68K_SCSI_DDM_TEMPLATE or place "
                      "HD20SC.vhd / boot.vhd in hdv/) — leaving raw\n",
@@ -779,8 +780,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
     // where "zero writes in ten emulated minutes" was all the evidence
     // there was. Sequence number included so a gate's own printf can be
     // located in the stream.
-    static const bool kTrace = std::getenv("POM68K_SCSI_TRACE") != nullptr;
-    if (kTrace) {
+    if (trace_) {
         static long seq = 0;
         const uint32_t lba = cdb[0] & 0x20
             ? (cdbLen > 5 ? uint32_t(cdb[2]) << 24 | uint32_t(cdb[3]) << 16 |
@@ -791,7 +791,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
         std::fprintf(stderr, "[scsi %ld] op $%02X lba %u n %u\n",
                      seq++, cdb[0], lba, cnt);
     }
-    if (kind_ == Kind::Cdrom && std::getenv("POM68K_CD_TRACE"))
+    if (kind_ == Kind::Cdrom && cdTrace_)
         std::fprintf(stderr, "[cd] cdb %02X %02X %02X %02X %02X %02X"
                      " %02X %02X %02X %02X\n", cdb[0],
                      cdbLen > 1 ? cdb[1] : 0, cdbLen > 2 ? cdb[2] : 0,
@@ -1018,13 +1018,9 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             // POM68K_SCSI_INQUIRY=pom68k answers with the emulator's own
             // identity instead, for anyone who would rather see the truth in
             // SCSIProbe than have HD SC Setup cooperate.
-            static const bool own = [] {
-                const char* e = std::getenv("POM68K_SCSI_INQUIRY");
-                return e && e[0] && std::strcmp(e, "pom68k") == 0;
-            }();
             static const char apple[]  = " SEAGATE          ST225N1.0 ";
             static const char pom68k[] = "POM68K  POM68K HD DISK  1.0 ";
-            const char* id = own ? pom68k : apple;
+            const char* id = ownInquiry_ ? pom68k : apple;
             for (size_t i = 8; i < dataOut.size() && i - 8 < 28; i++)
                 dataOut[i] = uint8_t(id[i - 8]);
             return kGood;

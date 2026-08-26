@@ -54,7 +54,7 @@ void scan(V8Memory& mem, V8Video& video, std::vector<uint32_t>& fb, int lines) {
 int main() {
     std::printf("v8_raster_test — beam-placed decode (LLE_VS_HLE §1.1)\n");
 
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     V8Video video(mem);
     std::vector<uint32_t> fb;
 

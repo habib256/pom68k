@@ -38,6 +38,7 @@
 // boot trace demands Cuda-specific commands.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "ViaEClock.h"
@@ -69,7 +70,8 @@ public:
     // CPU:VIA divider is a property of the machine clock — 42 here, 32 on the
     // 25 MHz Q605 this file was derived from. Rounded, not truncated.
 
-    explicit Q630Memory(uint32_t totalRam = 36u << 20);
+    explicit Q630Memory(
+        const pom68k::CoreConfig& coreConfig, uint32_t totalRam = 36u << 20);
 
     bool loadRom(const std::vector<uint8_t>& data);  // 1 MB flat image
     void reset();

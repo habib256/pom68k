@@ -25,12 +25,22 @@ static std::string find(const char* rel) {
 }
 
 struct Node {
-    MacIIMemory mem;
-    Cpu020 cpu{mem, true};
+    pom68k::CoreConfig core;
+    MacIIMemory mem{pom68k::defaultCoreConfig()};
+    Cpu020 cpu;
     long enqSent = 0;
     long framesSent = 0;
     long framesHeard = 0;             // frames injected from the peer
     int lastEnqId = -1;
+
+    Node()
+        : core([] {
+              pom68k::CoreConfig configured;
+              configured.peripherals.appleTalkPram = true;
+              return configured;
+          }()),
+          mem(core, 0x800000, MacIIMemory::Model::MacII),
+          cpu(mem, jit::defaultResolvedConfig(), core.cpu, true, false) {}
 
     bool init(const std::vector<uint8_t>& rom, const std::string& img) {
         if (!mem.loadRom(rom)) return false;
@@ -51,8 +61,6 @@ int main() {
         return 0;
     }
     testasset::report({ rom, img });
-    setenv("POM68K_APPLETALK", "1", 1);       // SPConfig $21 before reset
-
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
     if (romData.size() != MacIIMemory::kRomSize) {

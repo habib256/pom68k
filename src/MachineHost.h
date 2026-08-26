@@ -54,7 +54,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -64,17 +63,25 @@
 // and APPLY (machine thread). A freeze where pushes continue but applies stop
 // is a machine-thread wedge; both stopping is GUI-side. Lives here because
 // both ends of that comparison are the host contract.
-inline void keyTrace(const char* where, uint8_t adb, bool down) {
-    static const bool on = std::getenv("POM68K_KEY_TRACE") != nullptr;
-    if (on)
+inline void keyTrace(bool enabled, const char* where, uint8_t adb, bool down) {
+    if (enabled)
         std::fprintf(stderr, "[key] %s adb=%02X %s\n", where, adb,
                      down ? "dn" : "up");
 }
 
+// GUI fast-forward (the internal field keeps its historical `turbo` name) is
+// a user action, never a startup policy. When it is
+// armed before the first host input, up to eight guest frames elapse per GUI
+// frame; two host clicks can then land too far apart on the Mac's clock to be
+// recognised as a double-click. This is distinct from the CPU family's
+// cacheBoost timing overlay, which models cached instruction throughput.
+inline constexpr bool kGuiTurboDefault = false;
+
 template <class Derived, class Mem, class Cpu, class AudioHost>
 class MachineHost {
 public:
-    MachineHost(Mem& m, Cpu& c, AudioHost& a) : mem(m), cpu(c), audioHost(a) {
+    MachineHost(Mem& m, Cpu& c, AudioHost& a, bool traceKeys = false)
+        : mem(m), cpu(c), audioHost(a), traceKeys_(traceKeys) {
         // POM68K_CPU_ENGINE may have started us on the JIT; mirror whatever
         // the CPU actually built itself with so the menu tick is honest.
         stEngine_.store(cpu.engine(), std::memory_order_relaxed);
@@ -88,7 +95,7 @@ public:
     Cpu& cpu;
     AudioHost& audioHost;
 
-    std::atomic<bool> running{true}, turbo{true}, quit{false};
+    std::atomic<bool> running{true}, turbo{kGuiTurboDefault}, quit{false};
 
     // The union of what the platforms queue. A platform that has no CD bay
     // simply never pushes InsertBay/EjectBay; an unhandled command reaching
@@ -361,10 +368,14 @@ protected:
                 }
                 break;
             case Cmd::Key:
-                keyTrace("apply", uint8_t(c.a), c.b != 0);
+                keyTrace(traceKeys_, "apply", uint8_t(c.a), c.b != 0);
                 mem.keyEvent(uint8_t(c.a), c.b != 0);
                 break;
-            case Cmd::HardReset:   cpu.hardReset(); break;
+            case Cmd::HardReset:
+                cpu.hardReset();
+                if constexpr (requires { self()->afterHardReset(); })
+                    self()->afterHardReset();
+                break;
             // The Duo 230 has no floppy drive at all, so it has no insertDisk;
             // the GUI simply never offers it the menu entry.
             case Cmd::InsertFloppy:
@@ -418,6 +429,8 @@ protected:
         cmdsApply_.clear();
         const int stateDone = state.apply(mem, cpu); // between two quanta
         if ((stateDone & 2) != 0) {
+            if constexpr (requires { self()->afterRestore(); })
+                self()->afterRestore();
             if constexpr (requires { mem.internalDrive().hasDisk();
                                      mem.internalDrive().backingPath(); }) {
                 const auto& drive = mem.internalDrive();
@@ -438,6 +451,7 @@ protected:
     // platforms read them (see Cmd::MouseButton); the ADB ones report each
     // button on its own address and need no folding.
     bool hostBtn_[2] = { false, false };
+    bool traceKeys_ = false;
     std::atomic<bool> floppyFlag_{false};
     mutable std::mutex mediaMu_;
     std::string floppyPath_;

@@ -33,6 +33,7 @@
 // boot trace demands Cuda-specific commands.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "ViaEClock.h"
@@ -73,7 +74,8 @@ public:
     static constexpr int64_t  kCpuHz = 25000000;     // 25 MHz 68LC040
     int64_t cpuHz() const { return kCpuHz; }         // 60 Hz quantum for the shell
 
-    explicit Q605Memory(uint32_t totalRam = 36u << 20);
+    explicit Q605Memory(
+        const pom68k::CoreConfig& coreConfig, uint32_t totalRam = 36u << 20);
 
     bool loadRom(const std::vector<uint8_t>& data);  // 1 MB flat image
     void reset();

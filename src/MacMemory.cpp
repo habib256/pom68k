@@ -4,14 +4,6 @@
 #include "MacMemory.h"
 #include "Cpu68k.h"
 #include <cstdio>
-#include <cstdlib>
-
-// Compact-Mac ADB bring-up tracer (POM68K_SE_VIA_TRACE=1): every VIA1
-// access on the ADB models, with the PB4/PB5 ST lines decoded.
-static bool seViaTrace() {
-    static const bool t = std::getenv("POM68K_SE_VIA_TRACE") != nullptr;
-    return t;
-}
 
 static uint32_t romSizeFor(MacMemory::Model m) {
     switch (m) {
@@ -22,9 +14,17 @@ static uint32_t romSizeFor(MacMemory::Model m) {
     }
 }
 
-MacMemory::MacMemory(Model model)
+MacMemory::MacMemory(const pom68k::CoreConfig& coreConfig, Model model)
     : ram_(kRamSize, 0), rom_(romSizeFor(model), 0xFF), model_(model),
       romSize_(romSizeFor(model)) {
+    seViaTrace_ = coreConfig.peripherals.seViaTrace;
+    via_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    rtc_.configure(coreConfig.peripherals.appleTalkPram,
+                   coreConfig.peripherals.rtcTrace);
+    adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
+    drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    scsiDisk_.configure(coreConfig.storage);
     if (isAdb()) adbVia_.attach(via_, adb_, kCpuHz);
 }
 
@@ -193,7 +193,7 @@ uint64_t MacMemory::frameCount() const {
 // IPL line is recomputed after every one.
 uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
     int reg = (addr >> 9) & 0xF;
-    if (isAdb() && seViaTrace()) {
+    if (isAdb() && seViaTrace_) {
         static const char* rn[16] = { "ORB","ORA","DDRB","DDRA","T1CL","T1CH","T1LL",
                                       "T1LH","T2CL","T2CH","SR","ACR","PCR","IFR","IER","ORA_NH" };
         std::fprintf(stderr, "via %s %-4s %02X  pb=%02X ddrb=%02X st=%d acr=%02X ifr=%02X pc=%06X\n",

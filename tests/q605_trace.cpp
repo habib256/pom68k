@@ -94,9 +94,11 @@ int main(int argc, char** argv) {
     uint32_t ramMb = 32;
     for (int i = 2; i < argc - 1; i++)
         if (std::string(argv[i]) == "--ram") ramMb = uint32_t(atoi(argv[i+1]));
-    Q605Memory mem(ramMb << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), ramMb << 20);
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "ROM must be 1 MB (got %zu)\n", rom.size()); return 1; }
-    TraceCpu cpu(mem);
+    TraceCpu cpu(mem, jit::defaultResolvedConfig(),
+                 pom68k::defaultCoreConfig().cpu,
+                 pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
 
     // SCSI boot disk at ID 0 (the ROM's boot scan needs the $6A DDM entry;

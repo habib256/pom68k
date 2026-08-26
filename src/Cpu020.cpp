@@ -23,16 +23,19 @@ jit::MemoryHooks macIIJitHooks(MacIIMemory& mem) {
 }
 }  // namespace
 
-Cpu020::Cpu020(MacIIMemory& mem, bool withFpu, bool is030)
+Cpu020::Cpu020(MacIIMemory& mem, const jit::ResolvedConfig& jitConfig,
+               const pom68k::CoreCpuConfig& cpuConfig,
+               bool withFpu, bool is030)
       // The guest family cannot be read off getModel() here — setModel()
       // has not run yet at member-init time, and sampling it is exactly the
       // mistake JitEngine.h documents (it cost the Quadra its x64 backend).
     : mem_(mem), jit_(*this, macIIJitHooks(mem),
-                      is030 ? jit::kGuest68030 : jit::kGuest68020) {
+                      is030 ? jit::kGuest68030 : jit::kGuest68020, jitConfig) {
     setModel(is030 ? moira::Model::M68030 : moira::Model::M68020);
     setFPUModel(withFpu ? (is030 ? moira::FPUModel::M68882
                                  : moira::FPUModel::M68881)
                         : moira::FPUModel::NONE);
+    eventDriven_ = cpuConfig.macIiEventDriven;
     // The JIT is paced by the same batch that caps the deadline below: the
     // cap is the worst case, so telling the engine the batch keeps it
     // conservative whatever the devices ask for on a given quantum.
@@ -130,11 +133,7 @@ void Cpu020::schedulePeriphDeadline() {
     // throughput regression despite seven green gates (TODO § 0·A).
     // → Turn it on by default the day a gate can SEE the difference (a
     //   jitter-sensitive beyond-boot gate), or a guest symptom appears.
-    static const bool kEventDriven = [] {
-        const char* e = std::getenv("POM68K_MACII_EVENT");
-        return e && std::atoi(e) != 0;
-    }();
-    if (!kEventDriven) { periphDeadline_ = clock + kPeriphBatch; return; }
+    if (!eventDriven_) { periphDeadline_ = clock + kPeriphBatch; return; }
 
     moira::i64 d = mem_.cyclesToNextEvent();
     if (d < 1) d = 1;

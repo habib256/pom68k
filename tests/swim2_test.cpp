@@ -69,9 +69,11 @@ int main() {
     check(swim.read(0) == 0xFF && (swim.read(2) & 0x04) != 0,
           "empty-FIFO data read returns $FF and flags underrun");
 
-    Q605Memory mem(1u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 1u << 20);
     mem.reset();
-    Cpu040 cpu(mem);
+    Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu,
+               pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
     constexpr uint32_t kSwim = 0x5001E000;
     auto before = cpu.machineClock();   // wait states are machine cycles

@@ -23,18 +23,15 @@ jit::MemoryHooks mscJitHooks(MscMemory& mem) {
 }
 }  // namespace
 
-MscCpu::MscCpu(MscMemory& mem, bool withFpu)
-    : mem_(mem), jit_(*this, mscJitHooks(mem), jit::kGuest68030) {
+MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
+               const pom68k::CoreCpuConfig& cpuConfig,
+               bool withFpu)
+    : mem_(mem), jit_(*this, mscJitHooks(mem), jit::kGuest68030, jitConfig) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
-    if (const char* b = getenv("POM68K_CACHE_BOOST")) {
-        int v = atoi(b);
-        if (v >= 1 && v <= 64) cacheBoost_ = v;
-    }
-    if (const char* p = getenv("POM68K_ICACHE_MISS")) {
-        int v = atoi(p);
-        if (v >= 0 && v <= 64) icacheMiss_ = v;
-    }
+    if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
+    if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
+    eventDriven_ = cpuConfig.duoEventDriven;
     pomIcache.armed = true;
     pomIcache.missPenalty = icacheMiss_;
     pomIcache.reset();
@@ -103,11 +100,7 @@ void MscCpu::schedulePeriphDeadline() {
     // so this board pays 8× more fan-out entries for exactness no gate can
     // currently see — and the Duo's product contract (§ 0·A) is "usable on
     // a Pi 400", which is the tier least able to afford it.
-    static const bool kEventDriven = [] {
-        const char* e = std::getenv("POM68K_DUO_EVENT");
-        return e && std::atoi(e) != 0;
-    }();
-    if (!kEventDriven) { periphDeadline_ = clock + kPeriphBatch; return; }
+    if (!eventDriven_) { periphDeadline_ = clock + kPeriphBatch; return; }
 
     moira::i64 machine = mem_.cyclesToNextEvent();
     if (machine < 1) machine = 1;

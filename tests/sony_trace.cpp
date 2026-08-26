@@ -24,9 +24,9 @@ int main(int argc, char** argv) {
     }
     std::ifstream in(argv[1], std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "bad rom\n"); return 2; }
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.insertDisk(argv[2])) { std::fprintf(stderr, "bad disk\n"); return 2; }

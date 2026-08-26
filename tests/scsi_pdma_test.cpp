@@ -48,8 +48,9 @@ int main() {
     if (img.empty()) { std::printf("SKIP: hdv/HD20SC.vhd not found\n"); return 0; }
     testasset::report({ img });
 
-    V8Memory mem;
-    Cpu030 cpu(mem);
+    V8Memory mem(pom68k::defaultCoreConfig());
+    Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu);
     mem.setCpu(&cpu);
     check(mem.attachScsi(img), "SCSI disk attached");
 

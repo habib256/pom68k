@@ -17,9 +17,9 @@
     std::printf("ok: %s\n", msg); } while (0)
 
 int main() {
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     mem.installRom(kDemoRom, kDemoRomSize);
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     cpu.hardReset();
 
     CHECK(mem.overlay(), "overlay asserted after reset");

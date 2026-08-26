@@ -8,7 +8,6 @@
 #include "AdbLine.h"
 #include <algorithm>
 #include <cstdio>
-#include <cstdlib>
 
 // Bit-cell / handshake durations, in CPU cycles, calibrated to the PIC1654S
 // firmware's actual ADB line timing under cycle-exact co-stepping (1 PIC
@@ -36,12 +35,7 @@ static constexpr int64_t T_T1T   = 1800;
 void AdbLine::resetDevices() {
     kbdAddr_ = 2; kbdHandler_ = 0x22; modifiers_ = 0xFF; kbdLeds_ = 0x07;
     mouseAddr_ = 3; mouseHandler_ = 0x23;
-    static const uint8_t kbdId = [] {
-        const char* e = std::getenv("POM68K_ADB_KBD_ID");
-        const int id = e ? std::atoi(e) : 1;
-        return uint8_t(id >= 1 && id <= 3 ? id : 1);
-    }();
-    kbdHandlerId_ = kbdId; mouseHandlerId_ = 1;
+    kbdHandlerId_ = configuredKeyboardHandlerId_; mouseHandlerId_ = 1;
 }
 
 void AdbLine::reset() {
@@ -121,8 +115,7 @@ void AdbLine::setHostDrive(bool high) {
     lastEdge_ = now_;
     // Diagnostic tracer: POM68K_ADB_LLE_TRACE=1 dumps every host edge
     // (new level + previous-level duration) — used to calibrate the constants.
-    static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
-    if (trace)
+    if (trace_)
         std::fprintf(stderr, "adbline: %s after %lld (state %d)\n",
                      nw ? "rise" : "fall", (long long)dtime, linestate_);
     receiveEdge(nw, dtime);
@@ -187,7 +180,7 @@ void AdbLine::receiveEdge(bool level, int64_t dtime) {
             srqFlag_ = false;
             adbTalk();
             if (srqFlag_) {
-                if (std::getenv("POM68K_ADB_LLE_TRACE"))
+                if (trace_)
                     std::fprintf(stderr, "adbline: SRQ presented (cmd=%02X)\n",
                                  command_);
                 writeData(false);                 // hold line low for SRQ
@@ -265,8 +258,7 @@ void AdbLine::adbTalk() {
     const uint8_t addr = command_ >> 4;
     const uint8_t op = (command_ >> 2) & 3;   // 0/1 reset-flush, 2 listen, 3 talk
     const uint8_t reg = command_ & 3;
-    static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
-    if (trace)
+    if (trace_)
         std::fprintf(stderr,
                      "adbtalk: %s cmd=%02X (addr=%d op=%d reg=%d) kbd@%d mouse@%d "
                      "buf=%02X %02X now=%lld\n",
@@ -334,7 +326,7 @@ void AdbLine::adbTalk() {
                     mbtnSent_ = mbtn_; mbtn2Sent_ = mbtn2_;
                     if (pending) {
                         datasize_ = 2;
-                        if (trace)
+                        if (trace_)
                             std::fprintf(stderr, "adbline: mouse report %02X %02X\n",
                                          buffer_[0], buffer_[1]);
                     }
@@ -368,7 +360,7 @@ void AdbLine::adbTalk() {
                     }
                     if (pending) {
                         datasize_ = 2;
-                        if (trace)
+                        if (trace_)
                             std::fprintf(stderr,
                                          "adbline: kbd report %02X %02X (queue %zu)\n",
                                          buffer_[0], buffer_[1], keyBuf_.size());
@@ -419,7 +411,7 @@ void AdbLine::adbTalk() {
             // no indicators to light, so the value is stored and exposed
             // through keyboardLeds() for a front end that grows some.
             kbdLeds_ = uint8_t(buffer_[1] & 0x07);
-            if (std::getenv("POM68K_ADB_LLE_TRACE"))
+            if (trace_)
                 std::fprintf(stderr, "adbline: kbd Listen R2 LEDs %02X\n", kbdLeds_);
         }
         return;
@@ -433,7 +425,7 @@ void AdbLine::adbTalk() {
         // (Guide to the Macintosh Family Hardware ch. 8; DingusPPC
         // `adbkeyboard.cpp:118-140`, `adbmouse.cpp:143-160`).
         if (listenAddr_ == mouseAddr_) {
-            if (std::getenv("POM68K_ADB_LLE_TRACE"))
+            if (trace_)
                 std::fprintf(stderr, "adbline: mouse Listen R3 %02X %02X "
                              "(handler %02X id %02X)\n", command_, buffer_[1],
                              mouseHandler_, mouseHandlerId_);

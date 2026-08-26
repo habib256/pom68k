@@ -22,27 +22,29 @@
 //      answer ("this machine has no LLE/HLE choice to make") rather than a
 //      bug.
 //   3. **Changes are staged, then applied by an explicit relaunch.**  The
-//      devices are constructed once, from getenv, before the first
+//      devices are constructed once, from injected RuntimeConfig, before the first
 //      instruction runs — there is no live toggle to offer and pretending
-//      otherwise would be a lie in the UI.  Applying sets the knobs and
-//      re-execs the process, exactly as the Machine menu does for a profile
-//      change (`gSwitchArgs` + `relaunchIfSwitched`).
+//      otherwise would be a lie in the UI. Applying carries typed firmware
+//      policy into a re-exec of the process, just like the Machine menu.
 //
 // Selecting LLE is refused, with the reason shown, when no dump is present:
 // the row then displays the paths the device searched, so "where do I put
 // the file" has an answer in the window instead of in the documentation.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include "FirmwareConfig.h"
+
 #include <functional>
+#include <vector>
 
 namespace pom68k {
 
 // What the window needs from the shell. `relaunch` re-execs the process on
 // its own command line, so the machine comes back identical apart from the
-// environment the window has just set.  Null = the shell cannot relaunch,
+// typed peripheral overrides the window has staged. Null = no relaunch,
 // and the window says so instead of offering a button that does nothing.
 struct PeripheralHost {
-    std::function<void()> relaunch;
+    std::function<void(std::vector<FirmwareOverride>)> relaunch;
 };
 
 // "Périphériques (LLE / HLE)..." — for the Machine menu.

@@ -39,12 +39,15 @@ int main() {
 
     bool iicx = getenv("POM68K_IICX") != nullptr;
     bool force020 = getenv("POM68K_MACII_020") != nullptr;   // isolation knob
-    MacIIMemory mem(0x800000, force020 ? MacIIMemory::Model::MacII
+    MacIIMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                    force020 ? MacIIMemory::Model::MacII
                     : iicx ? MacIIMemory::Model::IIcx
                            : MacIIMemory::Model::IIx);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.installTobyVideo();
-    Cpu020 cpu(mem, /*withFpu=*/true, /*is030=*/!force020);
+    Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/true, /*is030=*/!force020);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

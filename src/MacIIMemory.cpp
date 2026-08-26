@@ -4,19 +4,22 @@
 #include "MacIIMemory.h"
 #include "Cpu020.h"
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
-
-// Diagnostic tracer (POM68K_ADB_PIC_TRACE=1): VIA1 SR/ACR/ORB traffic.
-static bool adbViaTrace() {
-    static const bool t = std::getenv("POM68K_ADB_PIC_TRACE") != nullptr;
-    return t;
-}
 
 MacIIMemory::~MacIIMemory() { delete toby_; delete se30_; }
 
-MacIIMemory::MacIIMemory(uint32_t ramSize, Model model)
+MacIIMemory::MacIIMemory(const pom68k::CoreConfig& coreConfig,
+                         uint32_t ramSize, Model model)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize), model_(model) {
+    adbViaTrace_ = coreConfig.peripherals.adbPicTrace;
+    via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    via2_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    rtc_.configure(coreConfig.peripherals.appleTalkPram,
+                   coreConfig.peripherals.rtcTrace);
+    adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
+    drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     adbVia_.attach(via1_, adb_, kCpuHz);
     // MAME mac_asc_irq: VIA2 CB1 = !asc_irq (active-low into the 6522).
     asc_.onIrq = [this](bool s) {
@@ -276,7 +279,7 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
     // same as Mac Plus / V8). Using >> 8 on byte offsets mis-routed ORA_NH
     // ($1E00) into IER and left ROM overlay stuck on.
     int reg = (addr >> 9) & 0xF;
-    if (isVia1 && adbViaTrace()
+    if (isVia1 && adbViaTrace_
         && (reg == Via6522::ORB || reg == Via6522::SR || reg == Via6522::ACR
             || reg == Via6522::DDRB || reg == Via6522::IFR))
         std::fprintf(stderr, "via1: %s reg=%X v=%02X pc=%08X clk=%lld\n",
@@ -389,7 +392,7 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
     if (isVia1 && reg == Via6522::ORB) refreshVia1PortB();
     if (!isVia1 && reg == Via6522::ORA) refreshVia2PortA();
     uint8_t lo = via.read(reg);
-    if (isVia1 && adbViaTrace() && (reg == Via6522::SR || reg == Via6522::IFR
+    if (isVia1 && adbViaTrace_ && (reg == Via6522::SR || reg == Via6522::IFR
                                     || reg == Via6522::ORB))
         std::fprintf(stderr, "via1: rd reg=%X -> %02X pc=%08X clk=%lld\n",
                      reg, lo, cpu_ ? unsigned(cpu_->getPC()) : 0u,
@@ -828,4 +831,3 @@ void MacIIMemory::tick(int cpuCycles) {
         updateIrq();
     }
 }
-

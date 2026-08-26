@@ -144,7 +144,7 @@ int main() {
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
-    Q605Memory mem(32u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     // Boot volume at ID 6 so it wins the ROM's 6→0 scan against the CD.
     // With POM68K_CD_BOOT there is no hard disk, so the scan reaches the
@@ -162,7 +162,9 @@ int main() {
         std::fprintf(stderr, "FAIL: could not attach the CD\n");
         return 1;
     }
-    Cpu040 cpu(mem);
+    Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu,
+               pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

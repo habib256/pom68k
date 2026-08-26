@@ -74,13 +74,15 @@ int main() {
         return 1;
     }
 
-    RbvMemory mem(0x800000, RbvMemory::kCpuHzCi, /*iici=*/true);
+    RbvMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                  RbvMemory::kCpuHzCi, /*iici=*/true);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     int sense = 6;                           // 13" RGB 640×480
     if (const char* s = getenv("POM68K_SENSE")) sense = atoi(s);
     mem.setMonitorSense(uint8_t(sense));
     std::printf("ADB: %s\n", mem.adbLleActive() ? "PIC1654S modem LLE" : "HLE");
-    RbvCpu cpu(mem, /*withFpu=*/true);
+    RbvCpu cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

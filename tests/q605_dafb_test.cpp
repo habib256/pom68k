@@ -302,7 +302,7 @@ void cosmetics() {
 int main() {
     std::printf("q605_dafb_test — DAFB stride + Antelope depth (Q8)\n");
 
-    Q605Memory mem(1u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 1u << 20);
     mem.reset();
 
     check(mem.dafbStride() == 1024, "reset stride is 1024 bytes");

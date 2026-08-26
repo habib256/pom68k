@@ -82,7 +82,8 @@ private:
 
 }  // namespace
 
-V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
+V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
+                   Model model, int64_t cpuHz)
     : ram_(totalRam, 0), rom_(kRomSize, 0), vram_(kVramSize, 0),
       egret_(via_, model == Model::ColorClassic || model == Model::MacTv,
              int(cpuHz)),
@@ -93,6 +94,15 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
       totalRam_(totalRam), model_(model), cpuHz_(cpuHz),
       viaDiv_(int(cpuHz / kViaHz)),
       mbRam_(model == Model::Lc ? 0x200000 : kMbRamSize) {
+    ioHoleTraceLimit_ = coreConfig.bus.v8IoHoleTraceLimit;
+    ioHoleValue_ = coreConfig.bus.v8IoHoleValue;
+    via_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    egret_.configure(coreConfig.peripherals.appleTalkPram,
+                     coreConfig.peripherals.egretCommandTrace);
+    egretLle_.configure(coreConfig.peripherals);
+    drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     // Pseudo-VIA machine hooks (v8.cpp:328-352): reg 1 = RAM config
     // (reads back config | 0x04), reg $10 read = monitor sense on bits
     // 3-5, port B bit 3 = HMMU enable (68020 LC only, see addrMask_).
@@ -161,14 +171,21 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
                                      : cudaMcu ? kCudaFw : kEgretFw;
         std::vector<std::string> cands;
         for (const char* const* p = fwList; *p; p++) cands.emplace_back(*p);
-        pom68k::fw::Request req;
-        req.module = pom68k::lle::HleEgretCuda;
+        pom68k::fw::Request req{
+            pom68k::lle::HleEgretCuda,
+            cudaMcu ? pom68k::FirmwareTarget::Cuda
+                    : pom68k::FirmwareTarget::Egret};
         req.name = cudaMcu ? "Cuda — MCU ADB / PRAM / horloge"
                            : "Egret — MCU ADB / PRAM / horloge";
         req.enableKnob = cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "V8";
         req.candidates = std::move(cands);
+        req.enabled = cudaMcu ? coreConfig.firmware.cudaLle
+                              : coreConfig.firmware.egretLle;
+        req.forcedPath = (cudaMcu ? coreConfig.firmware.cudaPath
+                                  : coreConfig.firmware.egretPath)
+                             .value_or(std::string());
         egretLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {
             return egretLle_.loadFirmware(fw);
         });
@@ -530,10 +547,8 @@ uint8_t V8Memory::read8(uint32_t addr) {
     // in the map holes? The Classic II's ROM is known to dereference
     // $50F18038; the block behind it has never been identified, and the
     // only way to name it is to watch the access pattern (TODO § 4).
-    if (const char* e = std::getenv("POM68K_V8_IOHOLE")) {
-        static const long cap = std::atol(e) > 1 ? std::atol(e) : 200;
-        static long n = 0;
-        if (n++ < cap)
+    if (ioHoleTraceLimit_ > 0) {
+        if (ioHoleTraceCount_++ < ioHoleTraceLimit_)
             std::fprintf(stderr, "[iohole] rd $%06X pc=$%08X\n", addr,
                          cpu_ ? unsigned(cpu_->getPC()) : 0u);
         holeDump(addr);
@@ -544,11 +559,7 @@ uint8_t V8Memory::read8(uint32_t addr) {
         // address_space DEFAULT, not a modelled decision (the Sonora's 0
         // IS modelled — `iosb.cpp:54-65` says so in a comment). Until an
         // observable separates them, the value is a knob, not a fact.
-        static const int hv = [] {
-            const char* h = std::getenv("POM68K_V8_HOLEVAL");
-            return h ? int(std::strtoul(h, nullptr, 16)) : 0xFF;
-        }();
-        return uint8_t(hv);
+        return ioHoleValue_;
     }
     busError();                              // unmapped I/O: ROM map probe
 }
@@ -735,10 +746,8 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
         return;
     }
 
-    if (const char* e = std::getenv("POM68K_V8_IOHOLE")) {
-        static const long cap = std::atol(e) > 1 ? std::atol(e) : 200;
-        static long n = 0;
-        if (n++ < cap)
+    if (ioHoleTraceLimit_ > 0) {
+        if (ioHoleTraceCount_++ < ioHoleTraceLimit_)
             std::fprintf(stderr, "[iohole] wr $%06X = $%02X pc=$%08X\n", addr, v,
                          cpu_ ? unsigned(cpu_->getPC()) : 0u);
         holeDump(addr);

@@ -13,14 +13,6 @@
 #include <cstdlib>
 #include <cstring>
 
-// Opt-in wire tracer: POM68K_ATALK_DEBUG=1 logs DDP/NBP/ATP traffic to
-// stderr. Off by default (checked once).
-static bool atalkDbg() {
-    static int on = -1;
-    if (on < 0) on = std::getenv("POM68K_ATALK_DEBUG") ? 1 : 0;
-    return on == 1;
-}
-
 namespace {
 constexpr uint8_t kLlapShortDdp = 0x01;
 constexpr uint8_t kLlapLongDdp = 0x02;
@@ -72,11 +64,12 @@ bool nbpMatch(const std::string& pat, const std::string& name) {
 } // namespace
 
 void AtalkStack::configure(uint16_t net, uint8_t node, const std::string& zone,
-                           int64_t cpuHz) {
+                           int64_t cpuHz, bool debug) {
     net_ = net;
     node_ = node;
     zone_ = zone;
     cpuHz_ = cpuHz > 0 ? cpuHz : 15667200;
+    debug_ = debug;
     nextRtmp_ = 0;                        // first tick broadcasts immediately
     bindAtp(kSockZip, [this](std::shared_ptr<AtpTxn> t) { zipAtpHandler(std::move(t)); });
 }
@@ -144,7 +137,7 @@ void AtalkStack::onGuestFrame(const uint8_t* d, size_t n) {
         plen = len - 13;
     }
     stats_.ddpIn++;
-    if (atalkDbg())
+    if (debug_)
         std::fprintf(stderr, "[atalk] IN  %s ddp %u.%u:%u->:%u type=%u len=%zu\n",
                      type == kLlapShortDdp ? "short" : "long",
                      from.net, from.node, from.sock, dstSock, ddpType, plen);
@@ -368,7 +361,7 @@ void AtalkStack::handleNbp(const Addr& src, const uint8_t* p, size_t n) {
     std::string obj, type, zone;
     if (!rdStr(obj) || !rdStr(type) || !rdStr(zone)) return;
 
-    if (atalkDbg())
+    if (debug_)
         std::fprintf(stderr, "[atalk] NBP op=%u id=%u from %u.%u:%u  \"%s:%s@%s\"\n",
                      op, id, requester.net, requester.node, requester.sock,
                      obj.c_str(), type.c_str(), zone.c_str());
@@ -392,7 +385,7 @@ void AtalkStack::handleNbp(const Addr& src, const uint8_t* p, size_t n) {
     for (const NbpEntry& e : nbp_)
         if (nbpMatch(obj, e.obj) && nbpMatch(type, e.type))
             matches.push_back(&e);
-    if (atalkDbg())
+    if (debug_)
         std::fprintf(stderr, "[atalk] NBP registry has %zu entr%s, %zu match(es)\n",
                      nbp_.size(), nbp_.size() == 1 ? "y" : "ies", matches.size());
     if (!matches.empty()) {
@@ -416,7 +409,7 @@ void AtalkStack::nbpReply(const Addr& to, uint8_t id,
         pstr(r, matches[i]->type);
         pstr(r, zone_);
     }
-    if (atalkDbg())
+    if (debug_)
         std::fprintf(stderr, "[atalk] OUT LkUpReply %zu tuple(s) to %u.%u:%u "
                      "(first \"%s:%s@%s\" @ 2.%u:%u)\n",
                      cnt, to.net, to.node, to.sock,
@@ -479,7 +472,7 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
             const long lagMs = cpuHz_ ? long(lag * 1000 / cpuHz_) : 0;
             stats_.atpDupLagLastMs = lagMs;
             if (lagMs > stats_.atpDupLagMaxMs) stats_.atpDupLagMaxMs = lagMs;
-            if (atalkDbg())
+            if (debug_)
                 std::fprintf(stderr, "[atalk] ATP RETRANS tid=%u sock=%u from "
                              "%u.%u:%u  %ld ms after our reply  (bitmap asked "
                              "$%02X, %zu pkt cached)\n", tid, dstSock,
@@ -490,7 +483,7 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
         }
         if (pendingTxns_.count(key)) {          // reply in flight (deferred)
             stats_.atpDupPending++;             // = we are the slow one
-            if (atalkDbg())
+            if (debug_)
                 std::fprintf(stderr, "[atalk] ATP RETRANS tid=%u sock=%u while "
                              "still serving the original (server too slow)\n",
                              tid, dstSock);

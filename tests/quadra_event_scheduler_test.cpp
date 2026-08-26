@@ -31,9 +31,9 @@ static int exercise(const char* name, Memory& mem) {
 }
 
 int main() {
-    CentrisMemory centris(1u << 20);
-    Q630Memory q630(1u << 20);
-    Q700Memory q700(1u << 20);
+    CentrisMemory centris(pom68k::defaultCoreConfig(), 1u << 20);
+    Q630Memory q630(pom68k::defaultCoreConfig(), 1u << 20);
+    Q700Memory q700(pom68k::defaultCoreConfig(), 1u << 20);
     int failures = exercise("Centris", centris)
                  + exercise("Q630", q630)
                  + exercise("Q700", q700);

@@ -13,6 +13,7 @@
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -63,10 +64,12 @@ int main() {
         return 1;
     }
 
-    V8Memory mem(0xA00000, V8Memory::Model::Lc);
+    V8Memory mem(pom68k::defaultCoreConfig(), 0xA00000, V8Memory::Model::Lc);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
-    Cpu030 cpu(mem, /*withFpu=*/true, /*as020=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/true, /*as020=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

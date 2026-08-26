@@ -38,10 +38,11 @@ int main() {
         return 1;
     }
 
-    MacIIMemory mem;
+    MacIIMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.installTobyVideo();
-    Cpu020 cpu(mem, true);
+    Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
 

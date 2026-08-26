@@ -66,12 +66,14 @@ int main() {
         return 1;
     }
 
-    SonoraMemory mem(0x800000, SonoraMemory::kCpuHzPlus,
+    SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                     SonoraMemory::kCpuHzPlus,
                      SonoraMemory::kIdLc550, /*cudaAdb=*/true);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(2);                  // built-in 512×384 Trinitron
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Cuda firmware LLE" : "HLE");
-    SonoraCpu cpu(mem, /*withFpu=*/true);
+    SonoraCpu cpu(mem, jit::defaultResolvedConfig(),
+                  pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

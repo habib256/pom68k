@@ -1,11 +1,10 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// The GUI ↔ machine-thread save/restore slot, lifted out of `main.cpp`
-// unchanged (2026-08-09) so it can be reached by a gate: `main.cpp` is the
-// only translation unit outside `pom68k_core`, so nothing that lives there
-// can be tested. This carries no GUI dependency and never did — the ImGui
-// row that drives it (`saveStateUi`) stays in `main.cpp`.
+// The GUI ↔ machine-thread save/restore slot, lifted out of the former
+// monolithic GUI entry point unchanged (2026-08-09) so it can be reached by
+// a gate. This carries no GUI dependency and never did — the ImGui row that
+// drives it now lives in `GuiShell.cpp`.
 
 #pragma once
 

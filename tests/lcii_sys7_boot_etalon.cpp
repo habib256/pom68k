@@ -51,9 +51,10 @@ int main() {
         return 1;
     }
 
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    Cpu030 cpu(mem, /*withFpu=*/true);
+    Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

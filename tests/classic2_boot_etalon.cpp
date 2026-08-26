@@ -63,10 +63,12 @@ int main() {
         return 1;
     }
 
-    V8Memory mem(0xA00000, V8Memory::Model::ClassicII);
+    V8Memory mem(pom68k::defaultCoreConfig(), 0xA00000,
+                 V8Memory::Model::ClassicII);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
-    Cpu030 cpu(mem, /*withFpu=*/true);
+    Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

@@ -277,8 +277,7 @@ void Dafb::clockgenWrite8(uint32_t off, uint8_t v) {
     // cadence (tick()) hangs off pixelClock_, so a machine whose ROM never
     // reaches its own decoder shows nothing here and silently keeps the
     // legacy 60 Hz/525-line shape.
-    static const bool trace = std::getenv("POM68K_DAFB_CLOCK_TRACE") != nullptr;
-    if (trace && pixelClock_ != before) {
+    if (trace_ && pixelClock_ != before) {
         static const char* kName[] = { "Gazelle", "DP8534", "DP8531" };
         std::fprintf(stderr, "dafb: %s latched pclk %u Hz (was %u)\n",
                      kName[int(clockgen_)], pixelClock_, before);

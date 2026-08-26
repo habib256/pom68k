@@ -11,10 +11,21 @@
 #include <fstream>
 #include <iterator>
 
-CentrisMemory::CentrisMemory(uint32_t totalRam, int64_t cpuHz, uint8_t modelPins)
+CentrisMemory::CentrisMemory(const pom68k::CoreConfig& coreConfig,
+                             uint32_t totalRam, int64_t cpuHz,
+                             uint8_t modelPins)
     : totalRam_(totalRam), cpuHz_(cpuHz), modelPins_(modelPins),
       // djMEMC = dafb_memc_device: DP8534 clock chip (djmemc.cpp, dafb.cpp:1197)
       dafbCell_(cpuHz, Dafb::Clockgen::Dp8534) {
+    via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    rtc_.configure(coreConfig.peripherals.appleTalkPram,
+                   coreConfig.peripherals.rtcTrace);
+    adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    drive0_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    drive1_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    dafbCell_.configureTrace(coreConfig.peripherals.dafbClockTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;   // pow2
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
@@ -30,10 +41,7 @@ CentrisMemory::CentrisMemory(uint32_t totalRam, int64_t cpuHz, uint8_t modelPins
     rtc_.factoryDefaults();
     // 32-bit clean OS (Mac OS 7.x/8) — XPRAM $8A |= $05 (the Q605 seed).
     rtc_.setXpram(0x8A, uint8_t(rtc_.xpram(0x8A) | 0x05));
-    {
-        const char* e = std::getenv("POM68K_SCSI_LAT");
-        scsi_.setLatency(e ? std::atoi(e) : -1);
-    }
+    scsi_.setLatency(coreConfig.bus.scsiLatency.value_or(-1));
 }
 
 bool CentrisMemory::loadRom(const std::vector<uint8_t>& data) {

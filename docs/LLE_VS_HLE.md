@@ -95,8 +95,8 @@ placed. `decode()` (whole frame, state as of now) stays for stills and tests.
 **Converted — all nine**: `V8Video`, `SonoraVideo`, `VaspVideo`, `RbvVideo`,
 `TobyVideo` (its own CRTC clock), `Se30Video` (no CRTC of its own — it rides
 `MacIIMemory`'s 60 Hz accumulator), `Dafb` and `Valkyrie` (both through the
-one `DafbMachine` template and GUI lifecycle — `GuiRunner.h:229-538`,
-four wrapper instantiations at `main.cpp:2081-2262`
+one `DafbMachine` template and GUI lifecycle — `GuiRunnerDafb.h:25-289`,
+four wrapper instantiations at `PlatformDafb.cpp:367-566`
 covering **thirteen** profiles: Q605×3, Centris×5, Q700×3, Q630×2), and
 `MacVideo`.
 
@@ -160,7 +160,7 @@ caught it.
   from the sense (`RbvMemory::recalcFrame`, `RbvMemory.h:230-262`). A
   *different* choice from MAME's, not a lesser one — neither is
   sense-driven. → **Reopen when** the V8 monitor sense becomes selectable
-  at runtime (today the V8 runner sets it once, `GuiRunner.h:1125-1131`, and
+  at runtime (today the V8 runner sets it once, `GuiRunnerV8.h:29-33`, and
   skips Classic II / Color Classic / Mac TV, whose panels are built in).
 - ~~Valkyrie's pixel clock over I2C~~ — **closed 2026-08-02**. The Cuda's
   I2C bus is modelled end to end now: `CudaLle::i2cWire` carries the full
@@ -554,9 +554,9 @@ eject and at exit via temp+rename, regenerating the DiskCopy 4.2 header and
 data checksum. It is **on by default in every floppy-capable GUI path** —
 the two autonomous runners call
 `setWriteBack(getenv("POM68K_FLOPPY_RO") == nullptr)` (the compact path at
-`main.cpp:2678`); the four DAFB profiles share `GuiRunner.h:348-349`, the
-three Sonora-style platforms share `GuiRunner.h:642`, and the Mac II/IIfx
-pair shares `GuiRunner.h:938-939`; V8 shares `GuiRunner.h:1214-1215`. It is
+`PlatformCompact.cpp`); the four DAFB profiles share `GuiRunnerDafb.h:106-107`, the
+three Sonora-style platforms share `GuiRunnerSonora.h:97-98`, and the Mac II/IIfx
+pair shares `GuiRunnerToby.h:93-94`; V8 shares `GuiRunnerV8.h:96-97`. It is
 deliberately off in tests. Note the knob is
 **presence-only**: `POM68K_FLOPPY_RO=0` still disables write-back. Gate
 `floppy_persist_test`.
@@ -927,7 +927,7 @@ the guest side is fully LLE: real LLAP frames, real DDP/RTMP/ZIP/NBP/ATP. The
 stack is the network's *other end*, not a shortcut in the Mac.
 
 *Gap*: **RTS/CTS never cross the wire.** A directed `lapRTS` is answered by a
-locally synthesized `lapCTS` (`main.cpp:202-214`), threaded through the
+locally synthesized `lapCTS` (`GuiHostServices.h:78-90`), threaded through the
 sender's half-duplex Rx-off window as an `express` injection; broadcast RTS
 gets no CTS. Real LLAP arbitrates the line.
 → Closing it means modelling collision/deferral between two real endpoints —
@@ -1020,8 +1020,11 @@ it replaced), and the **"Périphériques (LLE / HLE)" window**
 (`src/PeripheralWindow.*`, `DEV.md` § 6) renders it — opening itself the
 first frame a machine reports a substitute. The same window is the manual
 per-device override this file's knobs used to be the only way to reach:
-staged, then applied by a relaunch, because devices are built once from
-`getenv`.
+staged, then applied by a typed relaunch, because devices are built once from
+injected `CoreFirmwareConfig`. `PeripheralWindow` never changes the process
+environment: it emits `FirmwareOverride` values and `GuiHostServices`
+serializes `--firmware-override=<target>:<mode>:<path>`. An empty path is an
+explicit return to automatic discovery and wins over inherited legacy input.
 
 **And which dump, not only which side.** All eight firmware devices now run
 one search — `pom68k::fw::select` (`src/FirmwareChoice.h`): the per-device
@@ -1034,9 +1037,9 @@ the DFAC2 ACK, the AIO ROM livelocks on 2.37's pseudo-command `$0E`). The
 window lists every dump found beside the candidates, marks the factory parts
 and the loaded one, and accepts an arbitrary path.
 
-Gate: `peripheral_lle_test` (the model — 37 checks, including that a dump
-pick is a pending change on its own and that returning to automatic *unsets*
-the knob rather than writing an empty path; the window itself is
+Gate: `peripheral_lle_test` (the model — 38 checks, including that a dump
+pick is a pending change on its own, that returning to automatic is explicit,
+and that Egret/Cuda remain distinct typed targets; the window itself is
 compile-verified only, like every GUI surface here).
 
 **One HLE-only hack survives inside the byte-model fallback.**
@@ -1146,13 +1149,13 @@ trace tools, PRAM file persistence, LToUDP peer bridging, `FloppySound.*`.
 old "absent on the compacts, Mac II, IIfx and Duo" claim, which also reached
 `MAME_PARITY_AUDIT.md` § 2.2 and `SIMPLIFICATIONS_REVIEW.md` F1, was false).
 Every `*Memory` declares `loadPram`/`savePram` and every GUI lifecycle wires
-both (the Mac II/IIfx pair at `GuiRunner.h:873` / `GuiRunner.h:1089`; the
-four DAFB profiles at `GuiRunner.h:314` / `GuiRunner.h:522`, and the three
-Sonora-style platforms at `GuiRunner.h:612` / `GuiRunner.h:815`; V8 at
-`GuiRunner.h:1177-1179` / `GuiRunner.h:1404`, and Duo at
-`GuiRunner.h:1477` / `GuiRunner.h:1652`); the file is
+both (the Mac II/IIfx pair at `GuiRunnerToby.h:49` / `GuiRunnerToby.h:250`; the
+four DAFB profiles at `GuiRunnerDafb.h:96` / `GuiRunnerDafb.h:285`, and the three
+Sonora-style platforms at `GuiRunnerSonora.h:85` / `GuiRunnerSonora.h:279`; V8 at
+`GuiRunnerV8.h:85` / `GuiRunnerV8.h:292`, and Duo at
+`GuiRunnerDuo.h:68` / `GuiRunnerDuo.h:224`); the file is
 `<image>.<profile-tag>.pram`, profile-tagged so two profiles sharing a boot
-image do not share a battery (`GuiRunner.h:870-872`). What varies is the
+image do not share a battery (`GuiRunnerToby.h:46-50`). What varies is the
 **store**, not the persistence: a discrete `Rtc` (compacts, Mac II family,
 IIfx, IIci), the Egret/Cuda XPRAM (V8, Sonora, VASP, RBV/IIsi, Q605, Q630,
 Centris, Q700), or the PG&E's own internal RAM + 32 KB SRAM on the Duo
@@ -1297,7 +1300,7 @@ session-wide registry of the HLE modules a machine actually fell back to
 once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
 wrappers — `Cpu040.cpp:209`, `CentrisCpu.cpp:128`, `Q630Cpu.cpp:128`,
 `Q700Cpu.cpp:129`; the GUI's CPU menu greys itself on the same condition,
-`main.cpp:800-805`), verifies firmware by size +
+`GuiHostServices.h:143-186`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save
 state (`SaveStateMachines.cpp:163`). Restoring a snapshot that carries an
 HLE module is **refused** in strict mode (`:207-210`). Build with

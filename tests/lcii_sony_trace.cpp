@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     TraceCpu cpu(mem, /*withFpu=*/true);
     mem.setCpu(&cpu);

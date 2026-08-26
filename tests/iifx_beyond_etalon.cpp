@@ -44,13 +44,13 @@ int main() {
         std::fprintf(stderr, "FAIL: ROM size\n");
         return 1;
     }
-    IIfxMemory mem;
+    IIfxMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.installTobyVideo(toby)) {
         std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
         return 1;
     }
-    IIfxCpu cpu(mem, /*withFpu=*/true);
+    IIfxCpu cpu(mem, jit::defaultResolvedConfig(), /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

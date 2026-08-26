@@ -25,7 +25,7 @@ void check(bool ok, const char* what) {
 int main() {
     std::printf("v8_video_test — V8 video + Ariel + VBL (O6.4)\n");
 
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     V8Video video(mem);
     std::vector<uint32_t> fb;
 

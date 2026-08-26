@@ -56,9 +56,10 @@ int main() {
 
     // ── Overlay + boot through the real CPU reset path ──────────────────
     {
-        V8Memory mem(0xA00000);              // 10 MB: 4 soldered + 8 SIMM
+        V8Memory mem(pom68k::defaultCoreConfig(), 0xA00000);
         check(mem.loadRom(rom), "loadRom accepts a 512 KB image");
-        Cpu030 cpu(mem);
+        Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu);
         mem.setCpu(&cpu);
 
         check(mem.peek8(0) == rom[0], "overlay: ROM visible at $000000");
@@ -72,7 +73,7 @@ int main() {
 
     // ── RAM config table (10 MB machine, no CPU needed) ────────────────
     {
-        V8Memory mem(0xA00000);
+        V8Memory mem(pom68k::defaultCoreConfig(), 0xA00000);
         mem.loadRom(rom);
         (void)mem.read8(0xA00000);           // clear overlay → config $C0
 
@@ -114,7 +115,7 @@ int main() {
 
         // MB truncation needs a machine without a SIMM bank: 4 MB total,
         // config $20 forces 2 MB of motherboard → hole at $200000
-        V8Memory mem4(0x400000);
+        V8Memory mem4(pom68k::defaultCoreConfig(), 0x400000);
         mem4.loadRom(rom);
         (void)mem4.read8(0xA00000);
         mem4.write8(0xF26001, 0x20);
@@ -128,7 +129,8 @@ int main() {
     // image — the $C0 config ("8 MB SIMM, alias only" on V8) means
     // 4 MB motherboard + 4 MB SIMM here. Pure address decode, no CPU.
     {
-        V8Memory mem(0x800000, V8Memory::Model::MacTv, V8Memory::kCpuHzTv);
+        V8Memory mem(pom68k::defaultCoreConfig(), 0x800000,
+                     V8Memory::Model::MacTv, V8Memory::kCpuHzTv);
         mem.loadRom(rom);
         (void)mem.read8(0xA00000);           // clear overlay → config $C0
 
@@ -152,7 +154,7 @@ int main() {
 
     // ── ROM window ───────────────────────────────────────────────────
     {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         mem.loadRom(rom);
         check(mem.read8(0xA00011) == rom[0x11], "ROM readable at $A00000");
         check(mem.read8(0xA80011) == rom[0x11], "ROM mirrored ×2 at $A80000");
@@ -163,9 +165,10 @@ int main() {
 
     // ── VIA1 access + E-clock sync ──────────────────────────────────────
     {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         mem.loadRom(rom);
-        Cpu030 cpu(mem);
+        Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu);
         mem.setCpu(&cpu);
 
         mem.write8(0xF00600, 0xFF);          // DDRA (reg 3, $200 stride)
@@ -175,9 +178,10 @@ int main() {
         check(w == 0xA5A5, "VIA1: word read mirrors the byte on both lanes");
 
         // via_sync: first access from clock 0 stalls to (0*2+3)*10+1 = 31
-        V8Memory mem2(0x400000);
+        V8Memory mem2(pom68k::defaultCoreConfig(), 0x400000);
         mem2.loadRom(rom);
-        Cpu030 cpu2(mem2);
+        Cpu030 cpu2(mem2, jit::defaultResolvedConfig(),
+                    pom68k::defaultCoreConfig().cpu);
         mem2.setCpu(&cpu2);
         mem2.read8(0xF00200);
         // In MACHINE cycles: the core clock runs cacheBoost_× fast, and bus
@@ -187,9 +191,10 @@ int main() {
 
     // ── Bus errors: unmapped I/O + PDS space; VRAM/devices don't ───────
     {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         mem.loadRom(rom);
-        Cpu030 cpu(mem);
+        Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu);
         mem.setCpu(&cpu);
 
         bool berr = false;
@@ -215,7 +220,7 @@ int main() {
 
     // ── Ariel palette through the bus ───────────────────────────────────
     {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         mem.loadRom(rom);
         mem.write8(0xF24000, 1);             // address = 1
         mem.write8(0xF24001, 0x10);          // R
@@ -239,13 +244,14 @@ int main() {
     // The Color Classic reads a plain $82 — no diag-bit OR, spice has no
     // config input port at all (MAME v8.cpp:703-704, 755-758).
     {
-        V8Memory cc(0xA00000, V8Memory::Model::ColorClassic);
+        V8Memory cc(pom68k::defaultCoreConfig(), 0xA00000,
+                    V8Memory::Model::ColorClassic);
         check(cc.via1().portA() == 0x82, "Spice: VIA1 PA reads plain $82");
     }
 
     // ── Interrupt priority resolver ─────────────────────────────────────
     {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         mem.loadRom(rom);
         check(mem.iplLevel() == 0, "resolver: idle = 0");
 
@@ -267,7 +273,7 @@ int main() {
 
     // ── 60.15 Hz tick timer → VIA1 CA1 ──────────────────────────────────
     {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         mem.loadRom(rom);
         mem.via1().write(Via6522::IER, 0x82);  // enable CA1
         int ticks = 0;
@@ -288,7 +294,7 @@ int main() {
     // riche". The V8 maps the RAMDAC at $F24000 over an 8 KB window
     // (v8.cpp:93, map(0x524000,0x525fff)).
     {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         mem.loadRom(rom);
 
         // 1. The key-color register at +3 is REAL here. MAME declares

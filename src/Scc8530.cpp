@@ -5,13 +5,6 @@
 #include <cstdio>
 #include <cstdlib>
 
-// SCCDBG=1: trace every register access (wire-level debugging aid; the
-// flag is resolved once).
-static bool sccDbg() {
-    static const bool on = std::getenv("SCCDBG") != nullptr;
-    return on;
-}
-
 void Scc8530::reset() {
     ch_[0] = Chan{};
     ch_[1] = Chan{};
@@ -190,7 +183,7 @@ void Scc8530::rxStartFrame(Chan& c, int chIdx) {
             c.extPending = true;
         }
     }
-    if (sccDbg())
+    if (trace_)
         fprintf(stderr, "[scc] %c rx frame start (%zu bytes)\n",
                 chIdx ? 'A' : 'B', c.rxCur.size());
 }
@@ -382,7 +375,7 @@ uint8_t Scc8530::readCtl(int channel) {
     int reg = ptr_;
     ptr_ = 0;                                   // pointer auto-resets
     uint8_t rv = readCtl_(channel, c, reg);
-    if (sccDbg()) fprintf(stderr, "[scc] %c rr%d -> %02X\n", channel ? 'A' : 'B', reg, rv);
+    if (trace_) fprintf(stderr, "[scc] %c rr%d -> %02X\n", channel ? 'A' : 'B', reg, rv);
     return rv;
 }
 
@@ -503,7 +496,7 @@ bool Scc8530::txLoad(Chan& c, int rem) {
 // to the shifter — but the wire now carries one character per character
 // time instead of accepting bytes instantly (SCC Tx-engine LLE).
 void Scc8530::writeData(int channel, uint8_t d) {
-    if (sccDbg()) fprintf(stderr, "[scc] %c data <- %02X\n", channel ? 'A' : 'B', d);
+    if (trace_) fprintf(stderr, "[scc] %c data <- %02X\n", channel ? 'A' : 'B', d);
     Chan& c = ch_[channel & 1];
     // Writing the next character IS the acknowledgment: the single-slot
     // buffer going full clears a pending TxIP and consumes the became-
@@ -540,7 +533,7 @@ uint8_t Scc8530::readData(int channel) {
     // bit 2 makes it one. Error Reset clears (specialIp + rr1Rd bits).
     if (b.rr1 & uint8_t(0x40 | ((c.wr[1] & 0x04) ? 0x10 : 0)))
         raiseRxInt(c, true);
-    if (sccDbg()) fprintf(stderr, "[scc] %c data -> %02X rr1=%02X\n",
+    if (trace_) fprintf(stderr, "[scc] %c data -> %02X rr1=%02X\n",
                           channel ? 'A' : 'B', b.d, b.rr1);
     return b.d;
 }
@@ -548,7 +541,7 @@ uint8_t Scc8530::readData(int channel) {
 void Scc8530::writeCtl(int channel, uint8_t v) {
     ctlWrites++;
     Chan& c = ch_[channel & 1];
-    if (sccDbg()) fprintf(stderr, "[scc] %c ctl%s wr%d <- %02X\n", channel ? 'A' : 'B', ptr_ ? "" : "0", ptr_, v);
+    if (trace_) fprintf(stderr, "[scc] %c ctl%s wr%d <- %02X\n", channel ? 'A' : 'B', ptr_ ? "" : "0", ptr_, v);
     if (ptr_ == 0) {
         ptr_ = v & 0x07;
         if ((v & 0x38) == 0x08) ptr_ |= 8;      // point-high command

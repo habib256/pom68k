@@ -29,12 +29,14 @@ jit::MemoryHooks v8JitHooks(V8Memory& mem) {
 }
 }  // namespace
 
-Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
+Cpu030::Cpu030(V8Memory& mem, const jit::ResolvedConfig& jitConfig,
+               const pom68k::CoreCpuConfig& cpuConfig,
+               bool withFpu, bool as020)
       // The LC profile is a plain 68020 on the same V8 bus; every other V8
       // model is a 68030. Declared here rather than read from getModel(),
       // which is not set yet at member-init time (JitEngine.h).
     : mem_(mem), jit_(*this, v8JitHooks(mem),
-                      as020 ? jit::kGuest68020 : jit::kGuest68030) {
+                      as020 ? jit::kGuest68020 : jit::kGuest68030, jitConfig) {
     // Generated code can charge ordinary instruction cycles inline and call
     // sync() only when the event-driven machine actually becomes due.
     jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
@@ -46,17 +48,13 @@ Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
     // default on both (maclc.cpp:325-330 config port).
     setModel(as020 ? moira::Model::M68020 : moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
-    if (const char* b = getenv("POM68K_CACHE_BOOST")) {
-        int v = atoi(b);
-        if (v >= 1 && v <= 64) cacheBoost_ = v;   // resident-code ceiling ratio
-    }
-    if (const char* p = getenv("POM68K_ICACHE_MISS")) {
-        int v = atoi(p);
-        if (v >= 0 && v <= 64) icacheMiss_ = v;   // boosted cycles charged per miss
-    }
+    if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
+    if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     boost_ = cacheBoost_;
-    if (const char* g = getenv("POM68K_FLOPPY_BOOST_GATE"))
-        floppyGate_ = atoi(g) != 0;
+    if (cpuConfig.floppyBoostGate)
+        floppyGate_ = *cpuConfig.floppyBoostGate;
+    if (cpuConfig.cacr030Flush)
+        cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
     // Arm the i-cache timing overlay folded into Moira's fetch path
     // (Moira.h § PomIcache; model rationale in Cpu030.h).
     pomIcache.armed = true;
@@ -110,12 +108,8 @@ void Cpu030::didChangeCACR(moira::u32 value) {
     // CI/CEI strobes, precisely because their store inventories are NOT
     // proven (see their didChangeCACR). A fingerprint taken under a forced
     // value MUST be compared against one taken without.
-    static const int cacrFlushKnob = [] {
-        const char* v = getenv("POM68K_JIT_030_CACR_FLUSH");
-        return v ? (atoi(v) != 0 ? 1 : 0) : -1;
-    }();
-    const bool flush = cacrFlushKnob < 0 ? !V8Memory::kJitStoreInventoryComplete
-                                         : cacrFlushKnob != 0;
+    const bool flush = cacrFlushPolicy_ < 0
+        ? !V8Memory::kJitStoreInventoryComplete : cacrFlushPolicy_ != 0;
     if ((value & 0x0C) && flush) jit_.flushAll();
 }
 

@@ -13,6 +13,7 @@
 
 #include "Moira.h"
 #include "jit/JitEngine.h"
+#include "JitTestConfig.h"
 
 #include <chrono>
 #include <cstdint>
@@ -30,10 +31,17 @@ constexpr uint32_t kAbs = 0x004000;
 constexpr uint32_t kData = 0x40004000;
 constexpr uint32_t kHole = 0x00F00000;
 
+const jit::ResolvedConfig& injectedJitConfig() {
+    static const jit::ResolvedConfig config =
+        testjit::resolveFromEnvironment();
+    return config;
+}
+
 class GateCpu final : public moira::Moira {
 public:
     GateCpu()
-        : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68040) {
+        : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68040,
+                                injectedJitConfig()) {
         setModel(moira::Model::M68040);
     }
 

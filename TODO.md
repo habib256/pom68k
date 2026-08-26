@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 254 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 293 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -10,17 +10,18 @@ in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-25): **229 gates** — 110
-  `unit`, 84 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 54 `m030`, 119
+  somewhere.** The documented registry (2026-08-26): **230 gates** — 110
+  `unit`, 85 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 54 `m030`, 119
   `etalon`, 12 `etalon-core`. Five are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
   `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
   the x86-64-only `jit_lockstep_030_x64_experimental_test` +
   `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
-  **226** (107 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 227 (108
+  **227** (107 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 228 (108
   `unit`, 38 `jit`). Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
-  (default OFF, `CMakeLists.txt:425`, and it FATAL_ERRORs off AArch64).
+  (default OFF, `CMakeLists.txt:466`, and it FATAL_ERRORs off AArch64 in
+  `cmake/Pom68kJitGates.cmake:458-464`).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
 - **Last FULL suite: 227/227 on AArch64, 2026-08-25.** Fresh full build;
@@ -49,6 +50,31 @@ House rule for this file: an item earns its place by saying **what to do next**,
 concretely. When it lands, it moves to `CHANGELOG.md` and leaves at most one
 line here.
 
+Second house rule, adopted with the reorganisation of 2026-08-26: **open items
+come before closed ones inside a section**, and a closed one is a single line
+plus its date in `CHANGELOG.md`. A section that reads like a story has stopped
+being a backlog.
+
+**Section numbers are stable on purpose** — ten other documents cite them
+(`CLAUDE.md` § 7, `DEV.md` § 8, `docs/HLE_OVERLAY.md` § 8, `docs/APPLETALK.md`
+§ 6…). Reorganising means moving items *inside* the numbering, never renumbering
+it.
+
+| § | What it holds | The next concrete action |
+|---|---|---|
+| **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
+| **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur le matériel cible |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Item 1 : `-Wall -Wextra` sur les cibles POM68K seules, corrigé par lots, `-Werror` en CI |
+| **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
+| **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
+| **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
+| **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
+| **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
+| **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
+| **7** | Nouveaux profils machine | Les majeurs indépendants : ligne PowerBook, NuBus + vidéo sur slot |
+| **8** | Architecture transverse | Passe GUI à la main sur ROM réelle pour les save states ; le reste est § 0·B |
+| **9** | La leçon gardée hors de la liste des clos | — (elle est *sur* ce fichier : un item clos laisse une ligne, et cette ligne doit être vraie) |
+
 ---
 
 ## 0. Séquencement de la consolidation architecturale — ACTIVE
@@ -67,38 +93,44 @@ tests asset-free, budgets de performance, portabilité A64/x64, documentation
 et suppression de code mort. Un nouveau modèle reste légitime dès qu'il ne
 dilue pas ces sorties prioritaires et qu'il apporte ses contrats et gates.
 
-**Chantier prioritaire nommé, 2026-08-23 — la décomposition des `run*()`**
-(§ 8, premier item `[AR]`). C'est « consolidation d'une abstraction
-existante » au sens le plus strict : `MachineHost` avait unifié la moitié
-thread en 2026-08-09, la moitié runner ne l'était pas, et le coût s'est
-mesuré en bugs, pas en lignes — trois plateformes dessinaient dans une
-fenêtre nommée « Quadra 605 », trois affichaient un CPU faux, et tout
-lancement par défaut imprimait `680040`. Les quatre runners DAFB sont
-tombés le 2026-08-23 (1433 l. → 568), puis le trio
-`SonoraStyleMachine` le 2026-08-24 : un `runSonoraGui` piloté par
-`SonoraRunnerSpec`, trois wrappers, et `main.cpp` 5125 → 4641 lignes. Plus
-tard le même jour, le cycle DAFB partagé est sorti dans `GuiRunner.h` :
-`GuiServices` rend explicites ses douze dépendances de processus, le test de
-contrat empêche son retour, et `main.cpp` tombe à 4243 lignes. Au troisième
-passage, `runSonoraGui` rejoint le même header et le même adaptateur — sept
-wrappers sont verrouillés par un seul contrat, et `main.cpp` tombe à 3923
-lignes. Au quatrième passage, Mac II/IIx/IIcx/SE/30 et IIfx rejoignent un
-`runTobyGui` commun; le panneau snapshot rend la treizième dépendance du même
-adaptateur explicite, neuf wrappers sont couverts, et `main.cpp` tombe à 3460
-lignes. Au cinquième passage, les cinq profils V8/Eagle/Spice/Tinker Bell
-passent par `runV8Gui`; dix instanciations sont couvertes, le panneau Mac TV
-affiche enfin 31,3344 MHz, et `main.cpp` tombe à 3105 lignes. Au sixième
-passage, `runDuoGui` conserve explicitement l'absence de floppy et de baie CD
-à chaud ainsi que le contrat PG&E; l'initialisation audio seule devient la
-quatorzième opération du même adaptateur, onze instanciations sont couvertes,
-et `main.cpp` tombe à **2873 lignes**. **Le chantier est clos : aucun corps
-`run*()` autonome ne reste.**
+**Chantier `run*()` + injection de configuration — CLOS le 2026-08-26.**
+Nommé le 2026-08-23 comme « consolidation d'une abstraction existante » au sens
+le plus strict : `MachineHost` avait unifié la moitié thread en 2026-08-09, la
+moitié runner ne l'était pas, et le coût se mesurait en bugs, pas en lignes —
+trois plateformes dessinaient dans une fenêtre nommée « Quadra 605 », trois
+affichaient un CPU faux, tout lancement par défaut imprimait `680040`. Le
+détail daté des onze passes est dans `CHANGELOG.md` (2026-08-23 → 2026-08-26) ;
+ce qui en est sorti :
 
-Le garde-fou est posé : `file_size_budget_test` interdit à `main.cpp` de
-remonter au-dessus de 2873. Un nouveau runner copié ne compile plus sans
-que quelqu'un édite le budget et dise pourquoi.
+- **aucun corps `run*()` autonome** : six `GuiRunner*.h` portent les boucles de
+  rendu des douze familles, six unités `Platform*` les constructions typées,
+  `GuiHostServices` les services de processus, `GuiShellCommon` fenêtre, menus
+  et entrées ; `main.cpp` passe de 2 860 à **33 lignes**, `GuiMachineRuntime.cpp`
+  à **47** ;
+- **une seule lecture d'environnement dans le produit** : `ProcessEnvironment`
+  capture, `StartupOptions.h` est la source de vérité des 128 options avec leur
+  domaine typé, et `RuntimeConfig` → `MachineFactory` → `MachineSession`
+  transporte la politique. Les 111 lectures dispersées dans les CPU, mémoires,
+  stockage et firmwares sont devenues `CoreConfig` / `CoreCpuConfig` /
+  `ResolvedConfig`, exigés **dans le type** : oublier la configuration ne
+  compile plus, et il ne reste aucun `setenv()` dans `src` ;
+- **relance et overrides typés** : `--machine-profile=<slug>` et
+  `--firmware-override=<cible>:<mode>:<chemin>` remplacent les sélecteurs
+  d'environnement hérités ; le catalogue n'a plus ni `variantKey` ni
+  `defaultVariant` ;
+- **le graphe de build suit la même règle** : le `CMakeLists.txt` racine ne
+  compose plus que cinq modules `cmake/`, et cet ordre est testé.
 
-La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
+Ce qui tient l'ensemble : `file_size_budget_test` borne chaque unité issue du
+découpage (`main.cpp` 33, `GuiMachineRuntime.cpp` 47, `RuntimeConfig` et ses
+six unités internes 31 à 200, chaque `GuiRunner*.h` 192 à 308) — un fichier ne
+regrossit que si quelqu'un édite le budget et dit pourquoi ; `docs_test`
+interdit le retour d'une lecture de processus, d'un `CoreConfig` complet dans
+un composant feuille et d'une surcharge implicite. **Ce que ces gardes ne
+prouvent pas, c'est la cohésion : § 0·B.**
+
+La fenêtre se ferme seulement quand les sorties suivantes sont vraies (six
+cochées, une ouverte) :
 
 - [x] toutes les formes réellement émises par A64/x64 consomment les contrats
   `Instr::semantics` et `Instr::memory` : famille, ALU, taille, direction,
@@ -246,7 +278,7 @@ de l'armer.
 - [x] **Où passe l'écart ×1,98 (mesuré, thread machine) → ×1,3 (rapporté,
   GUI) ?** **Attribué le 2026-08-25 au chemin AppleTalk par tranche.**
   Innocentés : le cœur CPU, le raster, et le découpage en tranches du
-  quantum GUI (`runQuantumWithWire`, `main.cpp:238`, 64 tranches quand
+  quantum GUI (`GuiHostServices::runNetworkQuantum`, `GuiHostServices.h:108`, 64 tranches quand
   AppleTalk est actif — `POM68K_BENCH_SLICES` le chiffre à **2,2 %**, et 64
   tranches ne coûtent pas plus qu'une). Sur deux clones APFS et deux PRAM
   identiques, vingt échantillons après quarante secondes donnent LC II/A64
@@ -391,145 +423,192 @@ ciblés verts, tier `etalon` complet vert.
 
 ---
 
+## 0·B. Revue externe du 2026-08-26 — les six réserves, converties en travail
+
+Une revue extérieure a compilé l'arbre de travail et exécuté le palier
+`asset-none` (85/85) avant de juger. Son verdict retenu ici : la démarche
+d'émulation, la stratégie de validation et la refonte en cours tiennent ; six
+réserves portent sur ce que l'arbre **ne** prouve pas encore. Elles sont
+recopiées comme travail, pas comme compliment ni comme grief. Ordre d'exécution
+conseillé — **1 → 2 → 4 → 3 → 5 → 6** : chaque étape rend la suivante lisible,
+et les deux premières sont les moins chères de tout ce fichier.
+
+- [ ] **1. Aucune politique d'avertissements.** Le seul `-W*` de l'arbre est le
+  `-Wno-unused-*` posé sur `moira` (`CMakeLists.txt:259`) : POM68K compile son
+  propre code **sans** `-Wall -Wextra`. À faire : poser
+  `-Wall -Wextra -Wno-unused-parameter` sur les cibles POM68K uniquement —
+  jamais sur `extern/`, dont le bruit n'est pas le nôtre — mesurer le volume
+  produit, corriger par lots et par sous-système (un lot = un commit nommé),
+  puis passer `-Werror` **en CI seulement** : un mur d'avertissements local
+  arrête le développement, un mur en CI ferme la porte. C'est la garde la moins
+  chère sur du code qui manipule de la mémoire brute, du code généré et de la
+  sérialisation.
+- [ ] **2. `POM68K_SANITIZE` existe et aucun job ne l'utilise**
+  (`CMakeLists.txt:238`). À faire, dans `nightly.yml`, à côté du job LTO :
+  une jambe `-DPOM68K_SANITIZE=address,undefined` exécutant `-L asset-none`
+  (85 gates, 3,08 s sans sanitizer sur x86-64 — le facteur ASan reste
+  supportable), et une jambe `thread` limitée à `machinehost_test` +
+  `gui_smoke_test`, parce que la frontière GUI ↔ thread machine (file de
+  commandes, double tampon d'image, atomiques de statut) est la seule vraie
+  concurrence de l'arbre. **Passer la première jambe en
+  `POM68K_CPU_ENGINE=interp`** : le JIT écrit et exécute son propre code, et ce
+  qu'ASan dira de `JitCodeBuffer` et de ses pages de garde est une seconde
+  expérience, pas la même. Le premier rapport rouge est un résultat, pas un
+  échec de la jambe.
+- [ ] **3. Aucune mesure de couverture.** À faire : une configuration
+  `--coverage` + `gcovr`, exécutée sur le palier asset-free, publiée en artefact
+  CI comme le sont déjà les métriques JIT. **Le nombre à regarder n'est pas un
+  pourcentage global** mais la liste des fichiers de `src/` dont *aucune* ligne
+  n'est exécutée par ce palier : c'est exactement l'inventaire de ce que seuls
+  les assets privés prouvent — aujourd'hui affirmé en prose (§ 2, § 0) au lieu
+  d'être produit par la machine.
+- [ ] **4. Le vert ne dit pas combien de gates se sont vraiment exécutés.** Le
+  fait est déjà écrit — 20 des 21 gates `unit` hors `asset-none` sont des
+  soft-skips faute d'assets privés (§ 0, dernière case) — mais il n'est pas
+  *comptable* : `ctest` rend `104/104` dans les deux cas, et c'est ce nombre-là
+  qui se cite tout seul. À faire : un motif de skip lisible par machine, émis
+  par tout gate qui s'abstient, agrégé après `ctest`, pour que la CI publie
+  « 85 exécutés / 0 abstenus » et « 104 verts dont 20 abstenus ». Tant que ce
+  compteur n'existe pas, aucun document du dépôt ne cite un total de gates sans
+  sa phrase de nuance — la règle vaut déjà, elle n'est simplement pas outillée.
+- [ ] **5. États globaux résiduels — deux, nommés.** `src/LleSession.h:37`
+  et `src/LleSession.h:114` gardent des atomiques et un registre de
+  périphériques partagés par le processus ; `src/jit/JitConfig.h:241` garde un
+  `thread_local` de configuration active, et
+  `src/jit/backends/JitBackendA64.cpp:172` ouvre un cache d'options par thread.
+  C'est correct sous l'hypothèse « un processus = une machine » — et c'est
+  précisément l'hypothèse que la suite casse : sessions multiples, gates
+  parallèles en processus, bibliothèque embarquable. À faire, dans cet ordre :
+  donner à `LleSession` une instance possédée par `MachineSession` et injectée
+  aux périphériques (le mouvement déjà fait pour `CoreConfig`, avec le même
+  verrou `docs_test`), la fenêtre Périphériques lisant l'instance de sa session.
+  Le `thread_local` JIT reste légitime tant qu'un thread = une machine ; il
+  devient une dette le jour où ce n'est plus vrai, et cette ligne est sa
+  condition de réouverture. *(Cet item remplace l'ancien « refactor the
+  remaining GUI globals » du § 8 : `demoMode` est devenu un champ de spec de
+  runner, plus un état d'unité de compilation.)*
+- [ ] **6. Le fan-in de composition.** `src/PlatformCompositionSupport.h` inclut
+  pratiquement toutes les mémoires, CPU et vidéos des douze familles : ajouter
+  une famille demande encore une connaissance transversale considérable.
+  **Ne pas répondre par une abstraction virtuelle du bus** — le chemin chaud la
+  paierait, et la revue le déconseille explicitement. À faire : (a) écrire dans
+  `DEV.md` la *check-list d'une nouvelle plateforme* — ligne de catalogue, tag
+  `SnapMachine`, compositeur `Platform*`, spec de runner, paire save-state,
+  gates boot puis soak/persist, ligne `assets.lock` — pour que ce coût soit
+  énuméré au lieu d'être appris ; (b) scinder l'en-tête parapluie par famille,
+  chaque compositeur n'incluant que ses propres têtes. **La mesure de succès est
+  le diff d'ajout de la prochaine machine, pas un compte d'`#include`.**
+
+**Réserve transverse, sans case à cocher : `docs_test` teste la forme.** Ses
+1 918 lignes vérifient des noms, des chaînes et des ordres de construction, et
+le ratchet de taille empêche surtout le retour d'un très gros fichier. Ces
+gardes sont utiles — chacune est née d'un bug réel, et le § 8 en garde la
+trace — mais elles ne prouvent pas la cohésion et elles cassent au renommage.
+Règle adoptée le 2026-08-26 : un nouveau contrôle structurel n'entre dans
+`docs_test` que s'il **nomme le bug qu'il aurait attrapé** ; sinon la réponse
+est un gate comportemental — `gui_smoke_test` est le modèle : vraie fenêtre,
+trois frames, bascule moteur, sauvegarde, fermeture RAII.
+
+---
+
 ## 1. Red now
 
-*(The `sst68030` 3068/3082 that stood here for a few hours on 2026-08-18 —
-14 FPU vectors red under a day-old STALE binary, bisected to `90f5f56` —
-is closed the same day by **ruling D23** (`oracle/fuzz/disputes/NOTES.md`):
-the oracle replay (`oracle/fuzz/replay030.py`, 2042/2042 pinned finals
-reproduced bit-for-bit) proved the 2026-08-17 merge had overruled the
-oracle on spec alone, twice — the 030 post-instruction frame is format $3
-with EA on the 030 too, and FRESTORE's version-$41 hack is FPU-model-
-independent. Both reverted, `fpu_sanity` check 14 re-pinned; 3082/3082,
-`sst68040` 7200/7200 untouched.)*
+**Nothing is red today.** Last whole-registry run: 227/227 on AArch64,
+2026-08-25 (header of this file). That sentence is only worth the freshness of
+the binaries behind it — run `tools/check_binaries_fresh.py` before quoting any
+tier, and its `--self-test` the first time on a new machine.
 
-*(The dirty-volume refusal that stood here — "on `GISTPERSO-boot.vhd`,
-clearing the volume's clean-unmount bit is enough to stop the IIfx booting
-it" — is closed, 2026-08-13 (seventh): `iifx_persist_etalon` is green. It
-was never the mount path: 7.6-FR's not-cleanly-unmounted path tears the
-video driver down and reinstalls it mid-boot, and `TobyVideo` swallowed the
-teardown's VBL disable (a synthetic-decl-ROM-era guard), so the ROM's
-level-2 dispatcher recursed on an unserviceable slot 9 until the stack had
-eaten 6 MB of heap. "Stopped at pc=$40843B22" was the serial-monitor
-tombstone, and "jumps to address 1" was open bus with a wrapped PC. The
-controls, the dead leads and the storm anatomy: `CHANGELOG.md` 2026-08-13
-(seventh).)*
+### Open here, and not red
 
-*(The two beyond-boot reds that stood here — the Duo's frozen System clock
-and "Cmd-N never reaches the Finder on the three non-Egret/Cuda input
-paths" — are closed, 2026-08-13 (sixth). Neither was what it said it was:
-the Duo was not missing a one-second source, it was DEAD (a `power_cycle_w`
-stub left the ROM spinning at `bra.b *` with the interrupt mask at 7, 58 s
-after boot), and Cmd-N always worked — screen dumps at the gesture's peak
-show the folder on the desktop of every one of the three. The KeyMap
-evidence in that entry was correct; the conclusion drawn from it was not.
-Full account: `CHANGELOG.md` 2026-08-13 (sixth).)*
-- *(CLOSED 2026-08-15 — `macii_boot_etalon`, and `iix_`/`se30_` with it,
-  which were red for the same reason and were not noticed. Not a
-  regression: `hdv/HD20SC.vhd` had its `drVolAtrb` bit 8 SET on
-  2026-08-14, and the System skips the scavenge on a volume it finds
-  clean — 295 SCSI commands dirty, 178 clean, identical desktop and
-  identical `vramWrites`. The floor of 200 sat between them. Lead (a) in
-  the old entry — "the image is not the one the floor was calibrated on"
-  — was **right**, and had been closed on the wrong argument: it was
-  checked for probe-chain membership, never for content. The three gates
-  now assert `CurApName == "Finder"` + a menu-bar light run instead of a
-  command count — `tests/FinderSignature.h`, `CHANGELOG.md` 2026-08-15.)*
-- *(CLOSED 2026-08-15 (third) — `lcii_floppy_etalon`, red since 2026-08-14
-  and **found from a GUI field report**, not from the suite: "les disquettes
-  ne se montent plus", the System offering to initialize a perfectly good
-  800K disk. The IWM's cell window was being counted in a C7M-sized unit on
-  boards whose chip is clocked at C15M, so the window was 2.3× the cell and
-  nothing framed — `.Sony` gave up with -67 noAdrMkErr, on **nine
-  platforms**; the compacts were the only machines that could still read a
-  floppy, which is why `disk_boot_etalon` stayed green and hid it.
-  `Iwm::clockTick()`, and `iwm_read_test` now carries the C15M + mode-`$17`
-  combination that had no coverage. `CHANGELOG.md` 2026-08-15 (third).)*
-- *(CLOSED 2026-08-16 — the three CD gates, `q605_cdrom_`/`cdboot_`/
-  `cdhot_etalon`. Not the dirty 8.1 volume the old entry pointed at, and not
-  a CD-ROM defect at all: `git bisect run` over 136 commits named `a355561`
-  (2026-08-08), and what it exposed was **`Ncr53c96` dropping bytes a driver
-  had already put in the FIFO** — twice, on the two MODE SELECTs Mac OS 8.1's
-  CD driver issues while adopting a disc. A preload before the Transfer Info
-  went into `fifo_` and stayed there; and a POLLED Transfer Info sized itself
-  from `tcount_`, a DMA register still holding an earlier command's 16. Both
-  ended with the driver and the chip waiting on each other — R_STATUS polled
-  ~600 times a frame, no further CDB, forever. `CHANGELOG.md` 2026-08-16.)*
-- *(CLOSED 2026-08-16 — `se_`/`sefdhd_`/`classic_`/`jit_classic_boot_etalon`,
-  `FAIL: ejected`. The Mac SE's IWM is clocked at **C15M**
-  (`mac128.cpp:1317`, `IWM(config.replace(), m_iwm, C7M*2)`, inherited by
-  macsefd/macclasc) while its CPU stays at C7M, so `Iwm` needed the two
-  clocks split — `setTickHz` vs `setChipHz`. Same defect as 2026-08-15
-  (third) on the Mac II family, on the three machines nobody re-ran because
-  `disk_boot_etalon` is a Plus. Also closed the same day:
-  `q605_savestate_etalon` (one byte in 33 MB — Moira's `cp`, a per-instruction
-  cycle counter the JIT does not maintain; save-state **v9** drops it),
-  `iisi_persist_etalon` (the leg now runs the shared `BeyondBoot.h` engine,
-  with Cmd-Shift-3 as the flush stir) and `cclassic2_boot_etalon` (its
-  desktop-weave criterion was measuring a window the volume's saved layout
-  opens; `FinderSignature.h` terms instead). `CHANGELOG.md` 2026-08-16.)*
-- **A hot-inserted disc mounts nothing on a guest with no CD stack** — not a
-  defect, and written here so it is not re-investigated: nothing binds a
-  driver to that SCSI id at boot. The reporter's System 7.5 volume has
-  `Apple CD-ROM` and `ISO 9660` but **no `Foreign File Access`**, and Mac OS
-  mounts no disc without the dispatcher. Mac OS 8.1 has it and
-  `q605_cdrom_etalon` gates that path. Same for `ER`/512 discs whose driver
-  partition is a CD driver (`The_Yukon_Trail.cdr`): they do not mount even
-  attached as a plain SCSI disk. `CHANGELOG.md` 2026-08-15 (fifth).
-- **`tests/finder_boot_matrix.cpp` still carries the same trap**: its Mac II
-  leg asserts `scsi().commands > 500` (`:207`) over whatever image the sweep
-  passes it. Not a registered CTest, so nothing is red today, and it was
-  left alone rather than fixed blind — the sweep needs every OS image to
-  re-calibrate. Next: run the sweep, then give it `FinderSignature.h` too.
-- *(CLOSED 2026-08-15 (later) — `duo_persist_etalon`. The gate was typing
-  at **Stickies**: System 7.5 launches it from Startup Items and it ends the
-  boot in front of the Finder, so Cmd-N opened a New Note and the `stir`
-  click landed on empty menu bar right of its four titles. Every term of
-  the signature was satisfied by the desktop underneath. Accumulated image
-  state — the lead recorded here — was not it. The fix is two opt-in
-  `BeyondBoot.h` hooks: `focusFinder` (click the desktop) and `frontApp`
-  (`$910 CurApName`, the guest's own answer), with `persist()` refusing to
-  gesture at anyone but the Finder; plus a steering loop that measures
-  pixels-per-trackball-unit instead of halving in units, which used to pin
-  the pointer at y=0 against the screen edge. `CHANGELOG.md` 2026-08-15
-  (later).)*
-- **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
-  — reported in the GUI, and **NOT reproduced headless**: judged on the
-  desktop (the mounted volume's icon, screen-diff) rather than on
-  `nibblesRead` (an IWM-only counter that reads 0 on SWIM2 and produced
-  a night of false negatives — `CHANGELOG.md` § 2026-08-04 (soir),
-  retraction), the plain tree mounts the disk under 7.5.5 on the Quadra.
-  So the difference lives in the GUI path, not the SWIM2 model: a
-  machine-thread insert against a running emulation, the live PRAM/Finder
-  state, the actual image on the actual profile. Next: reproduce IN THE
-  GUI with `POM68K_FLOPPY` unset, insert from the Disques window, and
-  compare that Swim2 dialogue against the headless one. Only then a gate
-  — "Q605 + 7.5.5 boot volume + hot GCR insert mounts" — which must fail
-  on today's tree before it is worth anything.
+- [ ] **`tests/finder_boot_matrix.cpp` still carries the calibration trap**:
+  its Mac II leg asserts `scsi().commands > 500`
+  (`tests/finder_boot_matrix.cpp:207`) over whatever image the sweep passes
+  it. Not a registered CTest, so nothing is red today, and it was left alone
+  rather than fixed blind — the sweep needs every OS image to re-calibrate.
+  Next: run the sweep, then give it `FinderSignature.h` too.
+- [ ] **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines** —
+  reported in the GUI, **not reproduced headless**. Judged on the desktop (the
+  mounted volume's icon, screen-diff) rather than on `nibblesRead` — an
+  IWM-only counter that reads 0 on SWIM2 and produced a night of false
+  negatives (`CHANGELOG.md` 2026-08-04 (soir), retraction) — the plain tree
+  mounts the disk under 7.5.5 on the Quadra. So the difference lives in the GUI
+  path, not the SWIM2 model: a machine-thread insert against a running
+  emulation, live PRAM/Finder state, the actual image on the actual profile.
+  Next: reproduce IN THE GUI with `POM68K_FLOPPY` unset, insert from the
+  Disques window, and compare that `Swim2` dialogue against the headless one.
+  Only then a gate — "Q605 + 7.5.5 boot volume + hot GCR insert mounts" —
+  which must fail on today's tree before it is worth anything.
 - [ ] **"Beeps sound wrong / differ per letter"** (field report): the beep
   itself was the Slow Keys rejection beep — expected, and it stopped when the
   8.1 image was cleaned (2026-08-02). What remains is the unrelated half:
   whether ASC renders audible output *correctly* is still untested
-  (`q605_asc_test` covers registers/IRQ, not sound). Low-priority ASC item.
+  (`q605_asc_test` covers registers and IRQ, not sound). Low-priority ASC item.
+- **Not a defect, written here so it is not re-investigated**: a hot-inserted
+  disc mounts nothing on a guest with no CD stack — nothing binds a driver to
+  that SCSI id at boot. The reporter's System 7.5 volume has `Apple CD-ROM` and
+  `ISO 9660` but no `Foreign File Access`, and Mac OS mounts no disc without
+  the dispatcher; Mac OS 8.1 has it, and `q605_cdrom_etalon` gates that path.
+  Same for `ER`/512 discs whose driver partition is a CD driver
+  (`The_Yukon_Trail.cdr`). `CHANGELOG.md` 2026-08-15 (fifth).
 
-*(Nothing else is red — the items above.
-Resolved and worth one line each: `savestate_040_test` (2026-08-12 (later) —
-not Valkyrie and not one platform: all five 040 families diverged at CPU-chunk
-offset 256, `writeBuffer`, a 68010-frame field the interpreter maintained on
-every core and the JIT does not, exposed when `jit/auto` became the 68040
-default on 2026-08-10; the buffers are 68010-only in the fork since patch
-group 24, both engines now agree by neither touching them); the IIfx etalons
-(2026-08-06 — a corrupted `hdv/MacOS-7.6-boot.vhd`, `drVolAtrb = $0000`, not a
-code regression; deleted, the gates fall back to `GISTPERSO-boot.vhd`; the
-dirty-bit refusal underneath closed 2026-08-13 (seventh) — Toby VBL disable); the
-800K-GCR-on-boosted-030 refusal (2026-08-05 — the floppy boost gate);
-`jit_q605_boot_etalon` (2026-08-04 — `leaveToDynamic` now reloads the target
-from `at(L_.pc)`); `q605_cudalle_key_etalon` (2026-07-31 — Easy Access Slow
-Keys inside the image); the Cuda↔VIA phase robustness chantier (2026-08-03 —
-`M68hc05::serviceInterrupts` charges the hardware's 11 cycles, gated by
-`cuda_lle_test`). Each has its date in `CHANGELOG.md`.)*
+### Closed — one line each, full account in `CHANGELOG.md` at its date
 
-### Three method rules those hunts paid for, in full
+- **`sst68030` 3068/3082** (2026-08-18) — first a day-old STALE binary, then
+  ruling **D23**: the 2026-08-17 merge had overruled the oracle on spec alone,
+  twice (the 030 post-instruction frame is format $3 with EA on the 030 too;
+  FRESTORE's version-$41 hack is FPU-model-independent). Both reverted,
+  3082/3082, `sst68040` 7200/7200 untouched.
+- **The IIfx dirty-volume refusal** (2026-08-13 (seventh)) — never the mount
+  path: 7.6-FR's not-cleanly-unmounted path tears the video driver down
+  mid-boot, `TobyVideo` swallowed the teardown's VBL disable, and the ROM's
+  level-2 dispatcher recursed on an unserviceable slot 9 until the stack had
+  eaten 6 MB of heap. `iifx_persist_etalon` green.
+- **The Duo's frozen System clock, and "Cmd-N never reaches the Finder on the
+  three non-Egret/Cuda input paths"** (2026-08-13 (sixth)) — neither was what
+  it said it was. The Duo was not missing a one-second source, it was DEAD (a
+  `power_cycle_w` stub left the ROM at `bra.b *` with the mask at 7, 58 s in);
+  Cmd-N always worked, and screen dumps show the folder on all three desktops.
+  The KeyMap evidence was correct, the conclusion drawn from it was not.
+- **`macii_`/`iix_`/`se30_boot_etalon`** (2026-08-15) — not a regression:
+  `hdv/HD20SC.vhd` came back with `drVolAtrb` bit 8 SET, so the System skipped
+  the scavenge — 295 SCSI commands dirty, 178 clean, and the floor sat at 200.
+  The lead "the image is not the one the floor was calibrated on" had been
+  closed on the wrong argument: checked for probe-chain membership, never for
+  content. The three now assert `CurApName == "Finder"` plus a menu-bar light
+  run (`tests/FinderSignature.h`).
+- **`lcii_floppy_etalon`** (2026-08-15 (third)) — found from a GUI field report,
+  not from the suite ("les disquettes ne se montent plus"). The IWM's cell
+  window was counted in a C7M-sized unit on boards clocked at C15M, so the
+  window was 2.3× the cell and nothing framed: `.Sony` gave up with −67 on
+  **nine** platforms. The compacts were the only machines that could still read
+  a floppy, which is why `disk_boot_etalon` stayed green and hid it.
+- **The three CD gates** `q605_cdrom_`/`cdboot_`/`cdhot_etalon` (2026-08-16) —
+  `git bisect run` over 136 commits named `a355561`, and the defect was
+  `Ncr53c96` dropping bytes a driver had already put in the FIFO, twice, on the
+  two MODE SELECTs Mac OS 8.1's CD driver issues while adopting a disc.
+- **`se_`/`sefdhd_`/`classic_`/`jit_classic_boot_etalon`, `FAIL: ejected`**
+  (2026-08-16) — the same clock split one day later, on the three machines
+  nobody re-ran because `disk_boot_etalon` is a Plus: the SE's IWM is clocked at
+  C15M while its CPU stays at C7M, so `Iwm` needed `setTickHz` split from
+  `setChipHz`. Closed the same day: `q605_savestate_etalon` (one byte in 33 MB —
+  Moira's `cp`, which the JIT does not maintain; save-state **v9** drops it),
+  `iisi_persist_etalon` and `cclassic2_boot_etalon`.
+- **`duo_persist_etalon`** (2026-08-15 (later)) — the gate was typing at
+  **Stickies**, which System 7.5 launches from Startup Items; every term of the
+  signature was satisfied by the desktop underneath. `persist()` now focuses the
+  Finder and asks the guest who is in front (`$910 CurApName`) before
+  gesturing, and steering measures pixels-per-trackball-unit.
+- **One line apiece**: `savestate_040_test` (2026-08-12 (later) — all five 040
+  families diverged on a 68010-frame field the interpreter maintains and the JIT
+  does not; both engines now agree by not touching it), the IIfx etalons
+  (2026-08-06 — a corrupted `MacOS-7.6-boot.vhd`, not code), the
+  800K-GCR-on-boosted-030 refusal (2026-08-05 — the floppy boost gate),
+  `jit_q605_boot_etalon` (2026-08-04 — `leaveToDynamic` reloads from `at(L_.pc)`),
+  `q605_cudalle_key_etalon` (2026-07-31 — Slow Keys inside the image), and the
+  Cuda↔VIA phase chantier (2026-08-03 — `M68hc05::serviceInterrupts` charges the
+  hardware's 11 cycles).
+
+### Four method rules those hunts paid for, in full
 
 - **Read `drVolAtrb` bit 8 on a gate's image before theorising about its
   code.** Every gate prints a SHA-256 and `drVolAtrb` in its preamble since
@@ -606,19 +685,6 @@ physical-vs-logical trap now has a standing regression test.
 
 Highest-ROI closers, in order:
 
-- [x] **The Eclipse pair** — **done 2026-08-14**: `q900_soak/persist_etalon`,
-  the same `q700_beyond_etalon` binary on `POM68K_Q700_MODEL=q900`, both
-  green first run. The first second-profile pair in the roster, and it earns
-  its place because past the boot screen the tower is a different machine:
-  two Apple PIC IOPs, an Egret firmware LLE and a second 53C96 that the
-  Spike's legs never keep alive, plus the only Toolbox-level exercise of the
-  tower's IOP-bit-banged ADB. Thirteen pairs, 26 legs.
-- [x] **IIci soak — done 2026-08-25**: the other RBV now runs 180 emulated
-  seconds past the Finder through the PMMU-safe Time probe. Its first run
-  found the discrete 343-0042 counter advancing without the CKO→VIA1 CA2
-  edge, so System 7's Time global stayed frozen. `RbvMemory` now delivers the
-  edge, `rtc_pram_test` pins the one-second boundary, and
-  `iici_soak_etalon` proves Time +180 s, CPU alive and Finder still present.
 - [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605,
   or the AIO family.
 - [ ] **Floppy: a guest-INITIATED write — BLOCKED on the § 1 SWIM1-IWM mount
@@ -641,6 +707,14 @@ Highest-ROI closers, in order:
 - [ ] **Plus floppy System 4.1 cell.** `bootPlus`
   (`tests/finder_boot_matrix.cpp:136-155`) only does `attachScsi`; the 4.1 cell
   needs an `insertDisk` path. All HD cells PASS.
+- [x] **The Eclipse pair — done 2026-08-14**: `q900_soak/persist_etalon`,
+  the `q700_beyond_etalon` binary on `POM68K_Q700_MODEL=q900`, green first
+  run. It earns a pair of its own because past the boot screen the tower is
+  a different machine: two IOPs, an Egret firmware LLE, a second 53C96.
+- [x] **IIci soak — done 2026-08-25**, and it found the discrete 343-0042
+  counter advancing without the CKO→VIA1 CA2 edge, so System 7's Time global
+  stayed frozen. `RbvMemory` delivers the edge, `rtc_pram_test` pins the
+  one-second boundary, `iici_soak_etalon` proves Time +180 s.
 
 **The shared beyond-boot criterion is settled and centralised** — do not
 re-invent it per gate. `tests/FolderProbe.h` (gate `folderprobe_test`,
@@ -1099,26 +1173,6 @@ NON-CONFORMANT notice at every HLE ADB entry) because MCU dumps are
 non-distributable; deletion would be a deliberate "POM68K requires MCU dumps"
 product decision, not a cleanup.
 
-- [x] **The Egret LLE on the Eclipse towers** — **done 2026-08-14**. The
-  Quadra 900/950 were the last board running the command-level `Egret`
-  model, and the only HLE registration no dump could retire. They now run
-  the real `341s0851` on a real 68HC05 (`CudaLle`, `Flavor::Egret` — the
-  part MAME names, `macquadra700.cpp:887`), which brings them the wire, the
-  MCU RAM, the autopoll, the PC3 restart seam and product-mode
-  qualification. `q900_/q950_boot_etalon` green, new `q900_input_etalon`
-  (the tower's ADB now runs through the firmware, not `AdbBus`),
-  `lle_a64_q900_preflight` replaces `lle_a64_q900_refused`.
-- [x] **The Finder's "Restart"** — **done 2026-08-13** on the six platforms
-  that carried an Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630; the old
-  "eight" counted Centris, which has no Egret, and the Eclipse, which ran
-  the HLE one — it took the seam on 2026-08-14 with its own LLE, so the
-  count is now seven). Deferred latch + per-platform binding +
-  `cuda_restart_test` (30 checks, both flavours). Detail:
-  `docs/LLE_VS_HLE.md` § 1.9.
-  *Still open here*: a **guest-level** etalon that boots a System, picks
-  Finder → Redémarrer and asserts the machine comes back up. The gate that
-  landed proves the seam end to end from the firmware's own action; it does
-  not prove the Toolbox path that leads to it.
 - [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver
   traces. The on-chip FPU/FPSP and M0-M3 cache work are closed: opt-in
   I/D contents, copyback, snooping and bus-transaction timing. What remains
@@ -1165,48 +1219,33 @@ product decision, not a cleanup.
   (Send Abort / CRC resets `:1602/:1635` "not implemented", no EOM latch, no
   hunt/sync) — for LLAP behaviours **we are the more complete model**. Use MAME
   as oracle for the ASYNC side only; do not regress LLAP chasing parity.
-- [x] **Floppy flux + PLL layer — the plan is FINISHED, 2026-08-14.**
-  Steps **5 and 6** landed the same day as 2-4b. Step 5: `flux_` is the
-  medium (transition times, one revolution) and `cells_` is what a
-  `FluxPll` recovers from it; both SWIMs hand `commitFlux()` their TSS
-  half-cycle times directly, so a controller writing at its own rate —
-  SWIM2 setup bit 3 doubles the spacing, the SWIM1 ISM takes it from
-  P_TIME0/1 — writes that rate onto the disk. A successful commit no
-  longer re-lays the track canonically and a failed one no longer heals
-  itself. The write-back decode is clocked by the controller that wrote,
-  which is the honest stand-in for a drive that has no reader of its own.
-  Step 6: the `Iwm` READ path is MAME's `sync()` MODE_READ window machine
-  (`src/devices/machine/iwm.cpp:398-455`) over the store, plus the `:249-250` shifter clear —
-  paid for exactly as this list said it would be, `disk_boot_etalon` +
-  `lcii_floppy_etalon` both green. The gap4 became written self-sync,
-  which is the `encodeTrackGcr` geometry note's reopening condition coming
-  due (the filler is MAME's kind now; the pregap LENGTHS stay put).
-  Snapshot format **v8**; new gate `iwm_read_test`. Also closed that day:
-  the **two-revolution READY spin-up** counter with the gate that was its
-  reopening condition. Left in § 1.3, none symptom-backed: the store holds
-  the LIVE track (a seek re-lays canonically — a whole-image flux store is
-  what MAME has and what MAME pays for), committed tracks re-encode, tach
-  is a sampled bit.
-- [x] ~~**Floppy flux + PLL layer, steps 2-4b**~~ — **done 2026-08-14**
-  (`docs/LLE_VS_HLE.md` § 1.3 owns the full state). `SonyDrive` exposes the
-  track as a flux view (`nextFluxAfter` = MAME's `get_next_transition`,
-  opt-in deterministic jitter `POM68K_FLUX_JITTER`); `Swim2` reads through
-  a real `FluxPll` separator (snapshot **v6**); `Swim1`-ISM runs **MAME's
-  real LS-pair/CSM/TSM engine** (`src/devices/machine/swim1.cpp:885-1233` verbatim, snapshot
-  **v7**) — the 64-min-cell calibration and its per-pair-side correction
-  factors are live, the parameter RAM became load-bearing, and the bite
-  test is IN the suite: a +20 % off-rate track reads only because the CSM
-  recalibrates, `P_MULT=0` starves the calibration and the same track
-  fails with error `$08`. `nextCell()` retired. Gates: `swim2_media_test`
-  +9 checks, `swim1_test` +7; every pre-existing floppy gate re-proves the
-  ideal-edge bit stream unchanged; the 2026-08-02 test-first note held on
-  both engines (jitter alone never leaves its own fixed window — off-rate
-  is what bites). **Still open, neither symptom-backed**: a first-class
-  flux track *store* (the view derives from the canonical cell ring, so
-  off-rate written flux does not survive a commit — same change that would
-  let `encodeTrackGcr` adopt MAME's zone arithmetic), and the `Iwm` READ
-  path (hand-timed denibble stream — off limits without
-  `disk_boot_etalon` + the LC II floppy gates in the loop).
+- [ ] **A guest-level "Redémarrer" etalon** — the residual of the closed
+  Restart work below: boot a System, pick Finder → Redémarrer, assert the
+  machine comes back up. `cuda_restart_test` proves the seam from the
+  firmware's own action; nothing proves the Toolbox path that leads to it.
+- [ ] **A first-class flux track *store*** — the residual of the closed flux
+  plan below. The view still derives from the canonical cell ring, so
+  off-rate written flux does not survive a commit; the same change would let
+  `encodeTrackGcr` adopt MAME's zone arithmetic. Neither is symptom-backed
+  today — `docs/LLE_VS_HLE.md` § 1.3 owns the live state and the reopening
+  conditions (committed tracks re-encode, tach is a sampled bit).
+- [x] **Egret LLE on the Eclipse towers — done 2026-08-14.** The Quadra
+  900/950 were the last board on the command-level model and the only HLE
+  registration no dump could retire; they now run the real `341s0851` on a
+  real 68HC05. `q900_input_etalon`, `lle_a64_q900_preflight`.
+- [x] **The Finder's "Restart" — done 2026-08-13** on the six platforms then
+  carrying an Egret/Cuda LLE (seven since the Eclipse took the seam):
+  deferred latch, per-platform binding, `cuda_restart_test` (30 checks, both
+  flavours). `docs/LLE_VS_HLE.md` § 1.9.
+- [x] **Floppy flux + PLL layer — the six-step plan is FINISHED, 2026-08-14.**
+  `flux_` is the medium and `cells_` is what a `FluxPll` recovers from it, so
+  a controller writing at its own rate writes that rate onto the disk; the
+  `Iwm` READ path became MAME's own window machine
+  (`src/devices/machine/iwm.cpp:398-455`), paid for with `disk_boot_etalon` +
+  `lcii_floppy_etalon` in the loop. Snapshot **v6/v7/v8**, `iwm_read_test`,
+  `swim1_test`/`swim2_media_test`. The bite pair is IN the suite: a +20 %
+  off-rate track reads only because the CSM recalibrates, and `P_MULT=0`
+  starves it into error `$08`.
 
 ### Peripheral event deadlines — eight of twelve platforms, and why the other four are not
 
@@ -1350,7 +1389,8 @@ Two findings from that batch that are still load-bearing:
   solved: _FP68K binds the integer PACK 4"; gate `q605_barefpu_boot_etalon`
   reaches the Finder under a true `FPUModel::NONE`). **Unverified whether the
   030/LC II path still needs the same UniversalInfo / defaultRSRCs selection**
-  (`POM68K_NOFPU` at `main.cpp:1383` and `main.cpp:1390`; the FPU model itself is set in
+  (`POM68K_NOFPU` captured by `ProcessEnvironment`, parsed by `RuntimeConfig`
+  and consumed by `PlatformV8.cpp`; the FPU model itself is set in
   `Cpu030.cpp:46`) — re-test before spending effort here; the original O6.13
   diagnosis may already be obsolete.
 
@@ -1372,8 +1412,8 @@ ascending operand longs, raw FP image matched to WinUAE, `:403-447`).
   E-clock access alignment and IACK E-cycles; seed the GUI RTC from the host
   while keeping tests deterministic. *(PRAM file persistence is NOT a gap here
   any more: `MacMemory::loadPram`/`savePram` exist — `MacMemory.h:123-124` —
-  and `runXxx` wires them on all twelve platforms, `main.cpp` 12 `loadPram` /
-  12 `savePram` call sites. What differs per platform is only the STORE:
+  and the six family lifecycles in `GuiRunner*.h` wire them on all twelve
+  platforms. What differs per platform is only the STORE:
   discrete `Rtc` on the compacts, Mac II family, IIfx and IIci; Egret/Cuda
   XPRAM on V8/Sonora/VASP/Q605/Q630/Centris/Q700/IIsi; PG&E internal RAM +
   SRAM on the Duo.)*
@@ -1447,7 +1487,7 @@ default (`POM68K_APPLETALK=0` disables it). Gates `atalk_stack_test`,
   (`AtalkHub.h:80-90`) and the flush at `AtalkHub.h:69` calls
   `injectRxFrame(0, d, n, /*express=*/false)` — one tick later, then further
   delayed by LLAP's 400 µs inter-dialog gap. `express=true` exists but is used
-  only for the CTS synth (`main.cpp:210`). Consequence: a guest probing node 128
+  only for the CTS synth (`GuiHostServices.h:77-91`). Consequence: a guest probing node 128
   can time out and take the internal node's address, after which `onGuestFrame`'s
   `src != node_` guard stops recording it and every DDP the stack sends to 128 is
   also the guest's own address. Fix: either a `sendControlFrame` hook bound to
@@ -1538,7 +1578,7 @@ Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
   /PMU_INT level, `MscMemory::decodeScreen` (fixed 640×400 LCD, grayscale by
   GSC reg 4 bits 0-1), gate `duo230_boot_etalon` (System 7.5.5, SCSI 3448
   cmds), and since 2026-08-06 **the Duo 230 is the 37th GUI profile** —
-  `runDuo` (`main.cpp:2343`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
+  `runDuo` (`PlatformDuo.cpp:88`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
   PRAM through the PG&E's own RAM + 32 KB SRAM, save states in
   `savestate_030_test`. `docs/DUO_BRINGUP.md` § 3b lists what is deliberately
   NOT wired (floppy, drive sounds, live CD-bay swap, right mouse button — all
@@ -1598,7 +1638,7 @@ Local, never committed (`hdv/` is gitignored): Infinite Mac copies of System 4.1
 `HD20SC.vhd`, `boot.vhd` / `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`.
 (`MacOS-7.6-boot.vhd` was deleted as corrupt — the refusal it triggered is
 closed, `CHANGELOG.md` 2026-08-13 (seventh); `runIIfx` still probes for it
-first and falls through to `GISTPERSO-boot.vhd`, `main.cpp:1504-1505`.)
+first and falls through to `GISTPERSO-boot.vhd`, `GuiRunnerToby.h:36-42`.)
 Full tree also at `../refs/infinite-mac/Images`. Missing files: fetch with
 **Scrapling** (not raw `curl` through the sandbox proxy) — `Fetcher.get` /
 `scrapling extract get` on
@@ -1617,110 +1657,29 @@ asset preamble, the Moira fork decision (`extern/moira/POM68K_VENDOR.md`
 § *Status*), the `MachineHost` CRTP extraction (six `*Machine` structs, 1 671 l.
 → `src/MachineHost.h` + 681 l. of genuinely per-platform code; `machinehost_test`
 gates the queue ordering, framebuffer double buffer, both pacing branches and
-the thread teardown that no test could link before, because `main.cpp` is the
-only TU outside `pom68k_core`), the `etalon-core` tier (12 gates, one profile
+the thread teardown that no test could link before, because the concrete GUI
+runtime is outside `pom68k_core`), the `etalon-core` tier (12 gates, one profile
 per platform, 12/12 in 31 min 41 s; a name in `POM68K_ETALON_CORE` that stops
 being a registered gate is a configure-time `FATAL_ERROR`), `docs_test`, and
 `CHANGELOG_INDEX.md` (`tools/changelog_index.py`, 13 subsystem groups;
 `docs_test` fails when it stops covering every dated entry — a generated index
 that silently falls behind is worse than none, because it looks complete).
 
-- [x] **[AR] [CLOS — § 0] The `run*()` bodies: all eleven instantiations
-  extracted.** The hosting was unified in 2026-08-09; the `run*()` functions that
-  wire it up were not, and the diff between any two was almost entirely a
-  *descriptor*. **The four `DafbMachine` runners collapsed on 2026-08-23**
-  (`CHANGELOG.md`): one
-  `runDafbGui<MachineT>` (`GuiRunner.h:244-538`) driven by a six-field
-  `DafbRunnerSpec` (`GuiRunner.h:229-236`), plus a wrapper per platform that decodes
-  its own model and constructs `mem`/`cpu` — 1433 lines → 568, and the three
-  drift bugs the copies had accumulated (two window titles, one banner) died
-  with them. On 2026-08-24 that shared lifecycle itself left `main.cpp`:
-  `GuiServices` (`main.cpp:1242-1342`) exposes asset lookup, LLE preflight,
-  AppleTalk, drive sounds, menus, input tracing and relaunch explicitly, and
-  `docs_test` locks the boundary. **The `SonoraStyleMachine` trio also
-  collapsed on 2026-08-24**:
-  `runSonoraGui<MachineT>` (`GuiRunner.h:562-832`) consumes
-  `SonoraRunnerSpec` (`GuiRunner.h:540-555`), while `runLc3`
-  (`main.cpp:1527`), `runVasp` (`main.cpp:1591`) and
-  `runIIsi` (`main.cpp:1630`) only decode their profile and construct
-  `mem`/`cpu`/`video` — 5125 → 4641 lines for the file, and the LC III+
-  CPU panel no longer says 25 MHz. Its lifecycle joined `GuiRunner.h` behind
-  the same service object later that day, taking `main.cpp` 4243 → 3923
-  without a second adapter. **The Mac II family and IIfx joined next**:
-  `runTobyGui<MachineT>` (`GuiRunner.h:850-1100`) retains their different
-  boot search, PRAM/snapshot
-  tags, key tracing and CPU status rows while sharing media, window, input
-  and teardown. Two wrappers consume it, the same adapter now exposes the
-  snapshot widget explicitly; `runMacII` (`main.cpp:1412`) and `runIIfx`
-  (`main.cpp:1481`) are now composition wrappers, and `main.cpp` falls
-  3923 → 3460. **The V8 family followed**: `V8RunnerSpec`
-  (`GuiRunner.h:1107-1117`) and `runV8Gui<MachineT>`
-  (`GuiRunner.h:1121-1416`) carry the five profiles' monitor policies,
-  media, input and CPU panel; `runLcII` (`main.cpp:1345`) is now only the
-  profile decoder and hardware construction. The descriptor removes the
-  Mac TV panel's stale 15.6672 MHz constant, and `main.cpp` falls 3460 →
-  3105. **The Duo closes the sequence**: `DuoRunnerSpec`
-  (`GuiRunner.h:1423-1431`) and `runDuoGui<MachineT>`
-  (`GuiRunner.h:1434-1663`) preserve PG&E-owned RTC/PRAM/input and negative
-  floppy/live-CD capabilities; `runDuo` (`main.cpp:2343`) is a composition
-  wrapper. The audio-only hook becomes the fourteenth explicit service,
-  `main.cpp` falls 3105 → 2873, and **no autonomous `run*()` body remains**.
-  The ratchet (`tools/check_file_sizes.sh`) keeps it that way.
-- [x] **[AR] Separate fixture roles, then version them.** The gates never write
-  their images (`ScsiDisk::open()` defaults `writeBack = false` at
-  `ScsiDisk.h:67`, and **no test anywhere passes `true`**; `q605_persist_etalon`
-  replays its reboot against the in-memory image) — but the GUI attaches the
-  *same* `hdv/*.vhd` with `attachScsi(path, true)`, **twelve boot-volume sites**
-  plus eleven secondary-disk loops. A mutable, unversioned file is not a
-  fixture: that is how `MacOS-7.6-boot.vhd` was corrupted and the IIfx gates
-  went red. **And it happened again, cheaper and quieter, on 2026-08-14**:
-  `HD20SC.vhd` came back from something with `drVolAtrb` bit 8 SET, the System
-  stopped scavenging it, its boot went from 295 SCSI commands to 178, and three
-  boot gates that asserted on that count went red for two days
-  (`CHANGELOG.md` 2026-08-15). Nothing was corrupted — a fixture merely
-  *changed*, which is enough. **Role separation landed 2026-08-24**: a normal
-  `hdv/<name>` lookup prefers `hdv/ref/<name>` in both the GUI and every gate;
-  the GUI's writable open is cloned once to persistent `hdv/work/<name>`, while
-  an absent reference keeps the legacy path compatible. `fixture_store_test`
-  locks preference, fallback and byte isolation. **Versioning landed
-  2026-08-25**: `assets.lock` now names 37 qualified identities (5 MCU
-  firmwares, 24 machine ROMs, 2 declaration ROMs, 6 reference disks), with a
-  role and exact `MachineCatalog` profile slugs in addition to size, SHA-256
-  and path. `tools/verify_assets.py` rejects a reference disk outside
-  `hdv/ref/` and requires every catalogue profile exactly once among the
-  `machine-rom` rows; default mode remains useful in a clean clone and
-  `--strict` requires all private bytes. The manifest distributes no
-  copyrighted content and makes drift *nameable*.
-- [x] **[AR] Env knobs classified — CLOSED 2026-08-25.** Exact 181-row `config_knobs.tsv` registry after seven disproved levers were retired; executable lifecycle contracts recorded in the changelog.
-- [x] **`quadra_event_scheduler_test` silently drops out of `ctest -L m040`
-  — FIXED 2026-08-12.** The derivation loop now MERGES explicit labels
-  instead of overwriting (`CMakeLists.txt:2174-2188`), and the registry
-  confirms the gate carries `unit,m040`. Residual to verify once with
-  `POM68K_PRODUCT_LLE_GATES=ON`: that the inline `a64` label on the LLE
-  preflight gates survives too (the merge fix should cover it). While
-  there: the etalon-count comment now at `CMakeLists.txt:2106-2119` says
-  91; the registry says **118** — update it on the next pass through that
-  file.
-- [x] **The Machine menu makes "Macintosh II" unclickable once IIx is picked
-  — FIXED 2026-08-12** (`src/main.cpp:725-752` matches EXACT
-  case-insensitive, not `strstr`). Secondary observations that still hold:
-  the `ii` token is dead — the runtime dispatch (`main.cpp:2570-2577`) only
-  recognises `iicx`/`se30`/`fdhd` and reaches the plain Mac II by ROM
-  checksum (`$9779D2C4`) — and `fdhd` is a runtime-only token with no
-  catalogue row.
 - [ ] **Save states — one residual.** The feature ships across all **12**
   machine families and **37** profiles (archive core `src/SaveState.h/.cpp`,
-  container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI/CLI wiring in
-  `main.cpp` `SaveStateSlot`). Gates: `savestate_test`, `savestate_v8_test`,
+  container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI wiring in
+  `GuiRunner*.h` and `GuiMachineRuntime.cpp`). Gates: `savestate_test`, `savestate_v8_test`,
   `savestate_030/040/68k_test` (all `unit`), plus the real-OS
   `lcii_savestate_etalon` and `q605_savestate_etalon`.
-  **Remaining: a hands-on GUI pass** — click « Sauver l'état » / « Restaurer
-  l'état » on a booted machine. The machine-level save/load is gated; the GUI
-  layer is compile-verified only. (More generally: **there is no automated GUI
-  gate at all.** The 2026-08-09 pass under a dedicated Xvfb proved a screenshot
+  **Remaining: a hands-on real-ROM GUI pass** — click « Sauver l'état » /
+  « Restaurer l'état » on a booted machine. `gui_smoke_test` now opens a real
+  hidden GLFW/ImGui window, renders three frames, switches engine, writes a
+  compact-demo state, closes through RAII and reaches the relaunch boundary.
+  It deliberately does not claim that every family-specific panel is covered.
+  The 2026-08-09 pass under a dedicated Xvfb proved a screenshot
   harness is possible — and found a bug no gate could see, the 040 loops
   auto-inserting `disks35/Disk605.dsk` so the Quadra booted System 6.0.5 off
-  it — but it created no gate.)
+  it; the new gate turns that one-off technique into a maintained contract.
   Conventions the chunks follow, worth keeping: callbacks and cross-device
   pointers are **re-bound, never serialized** (a pointer becomes an index —
   `Ncr5380::disk_`); pure caches are **flushed** on restore (ATC via the one
@@ -1759,12 +1718,35 @@ that silently falls behind is worse than none, because it looks complete).
   compare. Known friction: no `Lists.h`/`AppleTalk.h` shims in multiversal
   (hardcoded list in `cincludes.rb`); the prober's `compat/` carries the
   PBControl glue; a 0-byte `.APPL` is normal.
-- [ ] **Refactor the remaining GUI globals**: move compile-unit state such as
-  `demoMode` into a machine/UI status object; keep machine threads, command
-  queues and Emscripten's single-thread path behaviourally aligned. *This is
-  the visible tip of the `run*()` item above — "keep the paths behaviourally
-  aligned" is exactly the obligation a single descriptor-driven runner would
-  discharge structurally instead of by hand.*
+- [ ] **Residual process-wide state — moved to § 0·B item 5.** `demoMode` and
+  the other compile-unit statics are gone (they are runner-spec fields now);
+  what is left is `LleSession`'s process-wide registry and the JIT's
+  `thread_local` policy, which only matter the day one process hosts two
+  machines. The behavioural obligation this item used to carry — machine
+  threads, command queues and the Emscripten single-thread path staying
+  aligned — is discharged structurally by `MachineHost` + `machinehost_test`.
+- [x] **[AR] [CLOS — § 0] The `run*()` bodies: eleven instantiations
+  extracted, then the whole runtime split into services / composers /
+  shell.** Six `GuiRunner*.h`, six `Platform*` units, `main.cpp` 2 860 → 33.
+  Story and per-pass numbers: `CHANGELOG.md` 2026-08-23 → 2026-08-26; the
+  ratchet that keeps it that way: `tools/check_file_sizes.sh`.
+- [x] **[AR] Fixture roles separated (2026-08-24) and versioned
+  (2026-08-25).** Gates read `hdv/ref/<name>`, GUI sessions clone into
+  `hdv/work/<name>` (`fixture_store_test`); `assets.lock` names 37 qualified
+  identities and `tools/verify_assets.py` requires every catalogue profile
+  exactly once. **The lesson stays quotable**: a mutable, unversioned file is
+  not a fixture — `MacOS-7.6-boot.vhd` corrupted, then `HD20SC.vhd` merely
+  *changed* `drVolAtrb` bit 8 and put three boot gates red for two days
+  without corrupting anything (`CHANGELOG.md` 2026-08-15).
+- [x] **[AR] Env knobs classified — CLOSED 2026-08-25.** Exact 181-row `config_knobs.tsv` registry after seven disproved levers were retired; executable lifecycle contracts recorded in the changelog.
+- [x] **Label derivation MERGES instead of overwriting — FIXED 2026-08-12**
+  (`cmake/Pom68kGatePolicy.cmake:96-110`), so `quadra_event_scheduler_test`
+  is back in `ctest -L m040`. Residual, one day under
+  `-DPOM68K_PRODUCT_LLE_GATES=ON`: confirm the inline `a64` label on the LLE
+  preflight gates survives the same merge.
+- [x] **The Machine menu no longer infers identity from an environment
+  string — FIXED 2026-08-12, closed 2026-08-26** by comparing the session's
+  actual `SnapMachine` and relaunching with `--machine-profile=<slug>`.
 
 ---
 

@@ -44,6 +44,7 @@ public:
     // Host byte order. Defaults mirror tools/macip/macip.sh:
     // 192.168.151.1/24, DNS 8.8.8.8.
     void configure(uint32_t gwIp, uint32_t mask, uint32_t dns);
+    void setDebug(bool on) { debug_ = on; }
     void setEnabled(bool on);
     bool enabled() const { return enabled_; }
     void tick(int64_t now);
@@ -139,6 +140,7 @@ private:
 
     AtalkStack& st_;
     bool enabled_ = false;
+    bool debug_ = false;
     uint32_t gw_ = 0xC0A89701;           // 192.168.151.1
     uint32_t mask_ = 0xFFFFFF00;
     uint32_t dns_ = 0x08080808;

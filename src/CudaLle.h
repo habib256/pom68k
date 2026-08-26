@@ -23,6 +23,7 @@
 // staged PRAM lands in MCU RAM).
 
 #pragma once
+#include "CoreConfig.h"
 #include "M68hc05.h"
 #include "AdbLine.h"
 #include <cstdint>
@@ -42,6 +43,10 @@ public:
     enum class Flavor { Cuda, Egret };
     explicit CudaLle(Via6522& via, int64_t cpuHz = 25000000,
                      Flavor flavor = Flavor::Cuda);
+    void configure(const pom68k::CorePeripheralConfig& peripherals) {
+        trace_ = peripherals.adbLleTrace;
+        adb_.configure(peripherals.adbKeyboardHandlerId, trace_);
+    }
 
     bool loadFirmware(const std::vector<uint8_t>& rom);  // 0x1100 E1 image
     bool firmwareLoaded() const { return fwLoaded_; }
@@ -151,6 +156,7 @@ public:
     std::function<void(int, uint8_t)> onMcuPortWrite;
 
 private:
+    bool trace_ = false;
     uint8_t mcuPortRead(int p);
     void mcuPortWrite(int p, uint8_t v);
     void i2cWire(bool scl, bool sda);    // DFAC2 slave bus tracking

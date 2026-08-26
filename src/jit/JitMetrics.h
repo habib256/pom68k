@@ -9,7 +9,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 
 namespace jit {
 
@@ -23,8 +22,8 @@ inline const char* metricsHostArchitecture() {
 #endif
 }
 
-inline const char* metricsHostProfile() {
-    const char* profile = std::getenv("POM68K_PERF_HOST_PROFILE");
+inline const char* metricsHostProfile(const char* configured = nullptr) {
+    const char* profile = configured;
     return profile && *profile ? profile : metricsHostArchitecture();
 }
 
@@ -50,7 +49,8 @@ struct MetricsRecord {
     uint64_t realtimePermille = 0;
 };
 
-inline void writeMetricsJson(FILE* out, const MetricsRecord& r) {
+inline void writeMetricsJson(FILE* out, const MetricsRecord& r,
+                             const char* hostProfile = nullptr) {
     // All string values are identifiers selected by the program, not user
     // text. Keeping this writer closed over that vocabulary avoids pulling a
     // JSON dependency into the emulator core and its smallest gates.
@@ -69,7 +69,7 @@ inline void writeMetricsJson(FILE* out, const MetricsRecord& r) {
         "\"window_instrs\":%llu,\"native_share_permille\":%llu,"
         "\"realtime_permille\":%llu}",
         r.gate, r.workload, r.cpuFamily, metricsHostArchitecture(),
-        metricsHostProfile(),
+        metricsHostProfile(hostProfile),
         r.backend, r.engine, r.status,
         (unsigned long long)r.machineCycles,
         (unsigned long long)r.coreCycles,
@@ -86,19 +86,19 @@ inline void writeMetricsJson(FILE* out, const MetricsRecord& r) {
         (unsigned long long)r.realtimePermille);
 }
 
-// Always publish one machine-readable line in the test log. If CI supplies
-// POM68K_JIT_METRICS_FILE, also write a standalone artifact and report a
-// failure if that requested artifact cannot be created.
-inline bool emitMetrics(const MetricsRecord& r) {
+// Always publish one machine-readable line in the test log. The caller may
+// inject an artifact path and host profile captured at its process boundary;
+// failure to create a requested artifact is reported.
+inline bool emitMetrics(const MetricsRecord& r, const char* path = nullptr,
+                        const char* hostProfile = nullptr) {
     std::fputs("POM68K_JIT_METRICS ", stdout);
-    writeMetricsJson(stdout, r);
+    writeMetricsJson(stdout, r, hostProfile);
     std::fputc('\n', stdout);
 
-    const char* path = std::getenv("POM68K_JIT_METRICS_FILE");
     if (!path || !*path) return true;
     FILE* out = std::fopen(path, "wb");
     if (!out) return false;
-    writeMetricsJson(out, r);
+    writeMetricsJson(out, r, hostProfile);
     std::fputc('\n', out);
     return std::fclose(out) == 0;
 }

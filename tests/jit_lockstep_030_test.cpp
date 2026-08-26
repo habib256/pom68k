@@ -36,6 +36,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu030.h"
+#include "JitTestConfig.h"
 #include "V8Memory.h"
 #include "jit/JitConfig.h"
 
@@ -288,8 +289,14 @@ int main(int argc, char** argv) {
 
     // The engine is chosen per CPU object, so both machines live in one
     // process. Neither reads POM68K_CPU_ENGINE afterwards.
-    static V8Memory memRef, memJit;
-    static Cpu030 cpuRef(memRef, /*withFpu=*/true), cpuJit(memJit, /*withFpu=*/true);
+    static const jit::ResolvedConfig jitConfig =
+        testjit::resolveFromEnvironment();
+    static V8Memory memRef(pom68k::defaultCoreConfig());
+    static V8Memory memJit(pom68k::defaultCoreConfig());
+    static Cpu030 cpuRef(memRef, jitConfig, pom68k::defaultCoreConfig().cpu,
+                         /*withFpu=*/true, false);
+    static Cpu030 cpuJit(memJit, jitConfig, pom68k::defaultCoreConfig().cpu,
+                         /*withFpu=*/true, false);
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
@@ -653,7 +660,7 @@ int main(int argc, char** argv) {
                     "counted a fetch — the i-cache half proved nothing\n");
         return 1;
     }
-    if (jit::blockCacheEnabled(cpuJit.jit().nativeBackend()) && s.blocksRun == 0) {
+    if (cpuJit.jit().config().blockCache && s.blocksRun == 0) {
         std::printf("[jit_lockstep_030] FAIL: POM68K_JIT_BLOCKS is on but no block "
                     "was ever replayed — the block path proved nothing\n");
         return 1;

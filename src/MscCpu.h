@@ -11,6 +11,7 @@
 // tests/duo230_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -19,7 +20,9 @@ class MscMemory;
 
 class MscCpu : public MoiraSnapshot {
 public:
-    explicit MscCpu(MscMemory& mem, bool withFpu = false);
+    explicit MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
+                    const pom68k::CoreCpuConfig& cpuConfig,
+                    bool withFpu = false);
 
     void hardReset();
     jit::Engine& jit() { return jit_; }
@@ -42,6 +45,7 @@ public:
     }
 
 private:
+    bool eventDriven_ = false;
     moira::u8  read8(moira::u32 addr) const override;
     moira::u16 read16(moira::u32 addr) const override;
     moira::u16 read16Dasm(moira::u32 addr) const override;   // peek8 path

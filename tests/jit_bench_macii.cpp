@@ -6,6 +6,7 @@
 
 #include "BenchHarness.h"
 #include "Cpu020.h"
+#include "JitTestConfig.h"
 #include "MacIIMemory.h"
 
 #include <cstdio>
@@ -34,10 +35,11 @@ template <class Report>
 bench::Result runMacII(const std::vector<uint8_t>& rom,
                        const std::string& disk, int frames, int engine,
                        Report&& report) {
-    MacIIMemory mem(0x400000);
+    MacIIMemory mem(pom68k::defaultCoreConfig(), 0x400000);
     mem.loadRom(rom);
     mem.installTobyVideo();
-    Cpu020 cpu(mem, true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu020 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, true, false);
     mem.setCpu(&cpu);
     cpu.setEngine(engine);
     cpu.hardReset();

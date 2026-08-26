@@ -27,8 +27,9 @@ jit::MemoryHooks jitHooksFor(Q700Memory& mem) {
 }
 }  // namespace
 
-Q700Cpu::Q700Cpu(Q700Memory& mem)
-    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
+Q700Cpu::Q700Cpu(Q700Memory& mem, const jit::ResolvedConfig& jitConfig,
+                 const pom68k::CoreCpuConfig& cpuConfig)
+    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040, jitConfig) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
     jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
@@ -38,19 +39,17 @@ Q700Cpu::Q700Cpu(Q700Memory& mem)
     // The Quadra 700 ships a full 68040 (macquadra700.cpp M68040 @ 50/2 MHz),
     // so unlike the Centris the default is the 040 identity + integrated FPU.
     // POM68K_Q700_LC040 forces the LC040 (no hardware FPU) for experiments.
-    if (getenv("POM68K_Q700_LC040")) {
+    if (cpuConfig.q700Lc040) {
         setModel(moira::Model::M68LC040);
-        setFPUModel(getenv("POM68K_Q700_BAREFPU") ? moira::FPUModel::NONE
-                                                  : moira::FPUModel::M68882);
+        setFPUModel(cpuConfig.q700BareFpu ? moira::FPUModel::NONE
+                                          : moira::FPUModel::M68882);
     } else {
         setModel(moira::Model::M68040);
         setFPUModel(moira::FPUModel::M68040);
     }
-    if (getenv("POM68K_MMU040_WALK")) setMmu040AtcArmed(false);
-    if (const char* b = getenv("POM68K_Q700_CACHE_BOOST")) {
-        int v = atoi(b);
-        if (v >= 1 && v <= 64) cacheBoost_ = v;
-    }
+    if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
+    if (cpuConfig.q700CacheBoost)
+        cacheBoost_ = *cpuConfig.q700CacheBoost;
     pomIcache.armed = true;
     pomIcache.missPenalty = icacheMiss_;
     pomIcache.reset();

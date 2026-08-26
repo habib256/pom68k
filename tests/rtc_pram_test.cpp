@@ -114,9 +114,9 @@ int main() {
     // the path per machine so they do not actually trade XPRAM through a
     // shared boot volume — that is a naming policy, not a format split.)
     {
-        MacMemory compact;                       // Plus / SE / SE FDHD / Classic
-        MacIIMemory macii;                       // II / IIx / IIcx / SE30
-        IIfxMemory iifx;
+        MacMemory compact{pom68k::defaultCoreConfig()}; // Plus / SE / SE FDHD / Classic
+        MacIIMemory macii{pom68k::defaultCoreConfig()}; // II / IIx / IIcx / SE30
+        IIfxMemory iifx{pom68k::defaultCoreConfig()};
         compact.rtc().reset(); fill(compact.rtc());
         compact.savePram(path);
 
@@ -139,7 +139,8 @@ int main() {
     // Use a deliberately tiny CPU clock so this is a fast unit test of the
     // divider boundary.  The real 25 MHz value exercises the same arithmetic.
     {
-        RbvMemory iici(0x800000, 1000, /*iici=*/true);
+        RbvMemory iici(pom68k::defaultCoreConfig(), 0x800000, 1000,
+                       /*iici=*/true);
         const uint32_t s0 = iici.rtc().seconds();
         iici.tick(999);
         check(iici.rtc().seconds() == s0,

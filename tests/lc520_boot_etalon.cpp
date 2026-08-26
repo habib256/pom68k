@@ -73,7 +73,8 @@ int main() {
     // Egret — the ROM's reset handshake only a Cuda answers (MAME
     // maclc3.cpp:379 CUDA_V2XX). POM68K_AIO_EGRET=1 probes the Egret wiring
     // instead (the $2000-$2003 machine-table entries carry MCU type 0).
-    SonoraMemory mem(0x800000, SonoraMemory::kCpuHz, boxId,
+    SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                     SonoraMemory::kCpuHz, boxId,
                      /*cudaAdb=*/getenv("POM68K_AIO_EGRET") == nullptr);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     int sense = 6;                           // built-in 640×480 RGB
@@ -84,7 +85,8 @@ int main() {
                 uint32_t(mem.peek8(0x5FFFFFFD)) << 16 |
                 uint32_t(mem.peek8(0x5FFFFFFE)) << 8 | mem.peek8(0x5FFFFFFF));
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
-    SonoraCpu cpu(mem, /*withFpu=*/true);
+    SonoraCpu cpu(mem, jit::defaultResolvedConfig(),
+                  pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

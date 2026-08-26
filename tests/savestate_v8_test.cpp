@@ -86,8 +86,9 @@ bool corruptMachPayload(Blob& b) {
 // A machine brought up to a non-trivial state: booted past the overlay, with
 // input queued on the ADB path and the counter loop already spinning.
 struct Machine {
-    V8Memory mem{0xA00000};             // 10 MB: 4 soldered + 8 SIMM
-    Cpu030   cpu{mem};
+    V8Memory mem{pom68k::defaultCoreConfig(), 0xA00000}; // 10 MB
+    Cpu030   cpu{mem, jit::defaultResolvedConfig(),
+                 pom68k::defaultCoreConfig().cpu};
 
     explicit Machine(const std::vector<uint8_t>& rom) {
         mem.loadRom(rom);

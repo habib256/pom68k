@@ -63,16 +63,10 @@ bool seqLt(uint32_t a, uint32_t b) { return int32_t(a - b) < 0; }
 // MacTCP/OT bombs, the LAST line before the bomb is the datagram that did
 // it — which is the only way to tell "we sent something malformed" from
 // "the era stack fell over on its own".
-bool macipDbg() {
-    static int on = -1;
-    if (on < 0) on = std::getenv("POM68K_MACIP_DEBUG") ? 1 : 0;
-    return on == 1;
-}
-
 // One line per datagram: direction, proto, endpoints, length, and — for
 // TCP — the flags/seq/ack that let a capture be replayed by eye.
-void traceIp(const char* dir, const uint8_t* p, size_t n) {
-    if (!macipDbg() || n < 20) return;
+void traceIp(bool debug, const char* dir, const uint8_t* p, size_t n) {
+    if (!debug || n < 20) return;
     const size_t ihl = size_t(p[0] & 0x0F) * 4;
     const uint16_t frag = (n >= 8) ? rd16(p + 6) : 0;
     char tail[96] = "";
@@ -214,7 +208,7 @@ void MacIpGateway::sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt
     auto it = leases_.find(dstIp);
     if (it == leases_.end()) return;
     stat_.ipToGuest++;
-    traceIp("->guest", pkt.data(), pkt.size());
+    traceIp(debug_, "->guest", pkt.data(), pkt.size());
     // An Ethernet link carries a 1500-byte MTU and frames its own datagrams:
     // none of the DDP fragmentation below applies to it.
     if (it->second.ether) {
@@ -261,7 +255,7 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, bool ether,
     uint8_t proto = p[9];
     stat_.ipFromGuest++;
     stat_.lastActivity = st_.now();
-    traceIp("guest->", p, n);
+    traceIp(debug_, "guest->", p, n);
 
     // Learn/refresh the mapping from traffic too (macipgw does the same).
     if ((sip & mask_) == (gw_ & mask_) && sip != gw_) {

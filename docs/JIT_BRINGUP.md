@@ -1090,7 +1090,7 @@ exist (`ctest -N` lists them; `jit_lockstep_030*`, `jit_restart_write_030_test`,
 
 * **Never iterate on a full `ctest` or a full `make`.** The loop is
   `make -j4 jitdev && ctest -L smoke` (~2.5 min). Labels are derived from
-  test names at the end of `CMakeLists.txt`.
+  test names in `cmake/Pom68kGatePolicy.cmake`.
 * **No concurrent `ctest` and `make`, and no edits during a background
   build.** Etalons are contention-sensitive and a mixed tree produces
   phantom failures.

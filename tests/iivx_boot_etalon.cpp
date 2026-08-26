@@ -15,6 +15,7 @@
 #include "VaspMemory.h"
 #include "VaspVideo.h"
 #include "VaspCpu.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -71,7 +72,7 @@ int main() {
     if (const char* b = getenv("POM68K_BOXID"))
         boxId = uint32_t(strtoul(b, nullptr, 16));
     const int64_t cpuHz = vi ? VaspMemory::kCpuHzVi : VaspMemory::kCpuHzVx;
-    VaspMemory mem(0x800000, cpuHz, boxId);
+    VaspMemory mem(pom68k::defaultCoreConfig(), 0x800000, cpuHz, boxId);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     int sense = 6;                           // 13" 640×480 RGB
     if (const char* s = getenv("POM68K_SENSE")) sense = atoi(s);
@@ -82,7 +83,9 @@ int main() {
                 uint32_t(mem.peek8(0x5FFFFFFE)) << 8 | mem.peek8(0x5FFFFFFF),
                 boxId);
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
-    VaspCpu cpu(mem, /*withFpu=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    VaspCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+                /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

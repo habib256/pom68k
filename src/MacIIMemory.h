@@ -5,6 +5,7 @@
 // I/O @$50xxxxxx, NuBus. Source: MAME macii.cpp / m68kmmu.h (2026-07-20).
 
 #pragma once
+#include "CoreConfig.h"
 #include "Via6522.h"
 #include "Rtc.h"
 #include "NuBus.h"
@@ -42,7 +43,9 @@ public:
     // NuBus slots, internal 512×342 video on pseudo-slot $E (Se30Video).
     enum class Model { MacII, IIx, IIcx, SE30 };
 
-    explicit MacIIMemory(uint32_t ramSize = 0x800000, Model model = Model::MacII);
+    explicit MacIIMemory(
+        const pom68k::CoreConfig& coreConfig, uint32_t ramSize = 0x800000,
+        Model model = Model::MacII);
     Model model() const { return model_; }
     bool is030() const { return model_ != Model::MacII; }
     ~MacIIMemory();
@@ -235,6 +238,7 @@ public:
     }
 
 private:
+    bool adbViaTrace_ = false;
     bool isIo(uint32_t addr, uint32_t& off) const;
     void viaSync();
     uint16_t viaAccess(Via6522& via, uint32_t addr, bool write, uint16_t v,

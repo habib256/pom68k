@@ -12,6 +12,7 @@
 // Q605Memory::stall().
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -39,7 +40,11 @@ public:
         moira::u8 iplPrev = 0;
     };
 
-    explicit Cpu040(Q605Memory& mem);
+    explicit Cpu040(Q605Memory& mem,
+                    const jit::ResolvedConfig& jitConfig,
+                    const pom68k::CoreCpuConfig& cpuConfig,
+                    const pom68k::CoreDiagnosticConfig& diagnostics);
+    ~Cpu040();
 
     void hardReset();                       // overlay + CPU reset
     void runCycles(moira::i64 n);
@@ -73,6 +78,11 @@ public:
     }
 
 private:
+    bool periphStatsOn_ = false;
+    long long periphCatchUps_ = 0;
+    long long periphFlushes_ = 0;
+    long long periphTicks_ = 0;
+    long long periphCycles_ = 0;
     moira::u8  read8(moira::u32 addr) const override;
     moira::u16 read16(moira::u32 addr) const override;
     // Moira's disassembler falls back to read16() unless this is overridden,

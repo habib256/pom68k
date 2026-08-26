@@ -140,10 +140,12 @@ int main() {
     }
 
     const int64_t cpuHz = VaspMemory::kCpuHzVx;
-    VaspMemory mem(0x800000, cpuHz, VaspMemory::kIdIIvx);
+    VaspMemory mem(pom68k::defaultCoreConfig(), 0x800000, cpuHz,
+                   VaspMemory::kIdIIvx);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(6);                  // 13" 640×480 RGB
-    VaspCpu cpu(mem, /*withFpu=*/true);
+    VaspCpu cpu(mem, jit::defaultResolvedConfig(),
+                pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

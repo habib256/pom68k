@@ -32,6 +32,7 @@
 
 class Scc8530 {
 public:
+    void configureTrace(bool trace) { trace_ = trace; }
     // Q5: the Quadra POST reads CTS as "serial debugger attached" — the
     // LC 475 machine pulls it low; the LC II keeps the historic high.
     void setCtsHigh(bool v) { ctsHigh_ = v; }
@@ -187,6 +188,7 @@ public:
     }
 
 private:
+    bool trace_ = false;
     struct Chan {
         uint8_t wr[16] = {};
         bool dcd = false;            // current line level

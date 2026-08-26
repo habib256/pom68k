@@ -134,9 +134,9 @@ static Stats luminance(const QScreen& s, int x0, int x1, int y0, int y1) {
 }
 
 static int bootPlus(const std::vector<uint8_t>& rom, const char* disk) {
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) return 1;
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(disk)) return 1;
@@ -155,10 +155,11 @@ static int bootPlus(const std::vector<uint8_t>& rom, const char* disk) {
 }
 
 static int bootMacII(const std::vector<uint8_t>& rom, const char* disk, long frames = 20000) {
-    MacIIMemory mem;
+    MacIIMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) return 1;
     mem.installTobyVideo();
-    Cpu020 cpu(mem, true);
+    Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(disk)) return 1;
@@ -210,9 +211,10 @@ static int bootMacII(const std::vector<uint8_t>& rom, const char* disk, long fra
 }
 
 static int bootLcII(const std::vector<uint8_t>& rom, const char* disk, long frames = 16000) {
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) return 1;
-    Cpu030 cpu(mem, true);
+    Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(disk)) return 1;
@@ -235,9 +237,11 @@ static int bootLcII(const std::vector<uint8_t>& rom, const char* disk, long fram
 }
 
 static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
-    Q605Memory mem(32u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(disk)) return 1;
-    Cpu040 cpu(mem);
+    Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu,
+               pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

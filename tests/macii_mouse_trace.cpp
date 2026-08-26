@@ -37,13 +37,14 @@ int main() {
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
-    MacIIMemory mem;
+    MacIIMemory mem(pom68k::defaultCoreConfig());
     mem.loadRom(romData);
     if (!mem.installTobyVideo(toby)) {
         std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
         return 1;
     }
-    Cpu020 cpu(mem, true);
+    Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     mem.attachScsi(img);

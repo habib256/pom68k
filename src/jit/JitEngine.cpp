@@ -52,8 +52,10 @@ void formatEa(char* out, size_t size, int mode, int reg) {
 }
 }  // namespace
 
-Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
-    : cpu_(cpu), mem_(mem), guestFamily_(guestFamily), config_(resolveConfig()) {
+Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
+               const ResolvedConfig& config)
+    : cpu_(cpu), mem_(mem), guestFamily_(guestFamily),
+      config_(config) {
     // The family comes from the wrapper, not from cpu.getModel(): see the
     // ordering note on the declaration in JitEngine.h.
     backend_ = selectBackend(config_.backend.c_str(), guestFamily,
@@ -67,8 +69,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     // right product behaviour, but it made several `jit_*` gates report green
     // without executing a single generated instruction. Native proof must
     // fail loudly instead of validating the portable floor a second time.
-    if (std::getenv("POM68K_JIT_REQUIRE_NATIVE") &&
-        !backend_->caps().nativeCode) {
+    if (config_.requireNative && !backend_->caps().nativeCode) {
         std::fprintf(stderr,
                      "[jit] FAIL: a native backend is required, but selection "
                      "resolved to '%s'\n", backend_->name());
@@ -97,10 +98,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     // established this on the first flush; the lazy clear never sweeps the
     // full table, so establish it once here.
     for (LinkSlot& sl : linkTable_) { sl.tag = kNoLink; sl.entry = nullptr; }
-    dispatchRingOn_ = [] {
-        const char* v = getenv("POM68K_JIT_DISPATCH_RING");
-        return v && atoi(v) != 0;
-    }();
+    dispatchRingOn_ = config_.dispatchRing;
     if (dispatchRingOn_) dispatchEv_.resize(kDispatchRing);
     ctx_.cpu = &cpu_;
     ctx_.stats = &stats_;
@@ -1416,16 +1414,8 @@ void Engine::executeUntil(int64_t clockTarget) {
                 // divergence could only be pinned to one block by halving
                 // the pc space, because every pacing/knob perturbation
                 // moved the trajectory and healed the symptom.
-                static const uint32_t denyFrom = [] {
-                    const char* v = getenv("POM68K_JIT_DENY_FROM");
-                    return v ? uint32_t(strtoul(v, nullptr, 16)) : 0u;
-                }();
-                static const uint32_t denyTo = [] {
-                    const char* v = getenv("POM68K_JIT_DENY_TO");
-                    return v ? uint32_t(strtoul(v, nullptr, 16)) : 0u;
-                }();
-                const bool denied = denyFrom != denyTo &&
-                    pc >= denyFrom && pc < denyTo;
+                const bool denied = config_.denyFrom != config_.denyTo &&
+                    pc >= config_.denyFrom && pc < config_.denyTo;
                 if (cacheReady && !denied) {
                     ScopedResolvedConfig activeConfig(ctx_.config);
                     recordIndexForms(b.ir);

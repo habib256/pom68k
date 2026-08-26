@@ -12,6 +12,7 @@
 // Gate: tests/centris650_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -20,7 +21,9 @@ class CentrisMemory;
 
 class CentrisCpu : public MoiraSnapshot {
 public:
-    explicit CentrisCpu(CentrisMemory& mem);
+    explicit CentrisCpu(CentrisMemory& mem,
+                        const jit::ResolvedConfig& jitConfig,
+                        const pom68k::CoreCpuConfig& cpuConfig);
 
     void hardReset();
     void runCycles(moira::i64 n);

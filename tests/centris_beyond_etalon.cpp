@@ -93,10 +93,11 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    CentrisMemory mem(36u << 20, CentrisMemory::kCpuHz650,
-                      CentrisMemory::kIdCentris650);
+    CentrisMemory mem(pom68k::defaultCoreConfig(), 36u << 20,
+                      CentrisMemory::kCpuHz650, CentrisMemory::kIdCentris650);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    CentrisCpu cpu(mem);
+    CentrisCpu cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

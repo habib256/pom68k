@@ -217,13 +217,15 @@ int main(int argc, char** argv) {
         if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM + Sys 7.5 image\n"); return 0; }
         testasset::report({ rom, img });
         std::vector<uint8_t> romData = loadRomFile(rom);
-        SonoraMemory mem(0x800000, SonoraMemory::kCpuHz,
+        SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                         SonoraMemory::kCpuHz,
                          aio ? SonoraMemory::kIdLc520 : SonoraMemory::kIdLc3,
                          /*cudaAdb=*/aio);
         if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
         mem.setMonitorSense(aio ? 6 : 2);
         if (!mem.egretLleActive() && !getenv("POM68K_INPUT_ANYPATH")) { std::printf("SKIP: needs the MCU dump (firmware path)\n"); return 0; }
-        SonoraCpu cpu(mem, /*withFpu=*/true);
+        SonoraCpu cpu(mem, jit::defaultResolvedConfig(),
+                      pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
         mem.setCpu(&cpu);
         cpu.hardReset();
         if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
@@ -237,11 +239,12 @@ int main(int argc, char** argv) {
         std::string img = sys75Image("hdv/lc3-boot.vhd");
         if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM + Sys 7.5 image\n"); return 0; }
         std::vector<uint8_t> romData = loadRomFile(rom);
-        VaspMemory mem(0x800000);
+        VaspMemory mem(pom68k::defaultCoreConfig(), 0x800000);
         if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
         mem.setMonitorSense(6);
         if (!mem.egretLleActive() && !getenv("POM68K_INPUT_ANYPATH")) { std::printf("SKIP: needs the MCU dump (firmware path)\n"); return 0; }
-        VaspCpu cpu(mem, /*withFpu=*/true);
+        VaspCpu cpu(mem, jit::defaultResolvedConfig(),
+                    pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
         mem.setCpu(&cpu);
         cpu.hardReset();
         if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
@@ -255,10 +258,11 @@ int main(int argc, char** argv) {
         std::string img = sys75Image("hdv/iisi-boot.vhd");
         if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM + Sys 7.5 image\n"); return 0; }
         std::vector<uint8_t> romData = loadRomFile(rom);
-        RbvMemory mem(0x800000);
+        RbvMemory mem(pom68k::defaultCoreConfig(), 0x800000);
         if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
         if (!mem.egretLleActive() && !getenv("POM68K_INPUT_ANYPATH")) { std::printf("SKIP: needs the MCU dump (firmware path)\n"); return 0; }
-        RbvCpu cpu(mem, /*withFpu=*/true);
+        RbvCpu cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
         mem.setCpu(&cpu);
         cpu.hardReset();
         if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
@@ -292,11 +296,12 @@ int main(int argc, char** argv) {
         testasset::report({ rom, img });
         std::vector<uint8_t> romData = loadRomFile(rom);
         const int64_t hz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
-        Q700Memory mem(32u << 20, hz,
+        Q700Memory mem(pom68k::defaultCoreConfig(), 32u << 20, hz,
                        q950 ? Q700Memory::Model::Q950 : Q700Memory::Model::Q900);
         if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
         if (!mem.egretLleActive() && !getenv("POM68K_INPUT_ANYPATH")) { std::printf("SKIP: needs roms/egret/341s0851.bin (firmware path)\n"); return 0; }
-        Q700Cpu cpu(mem);
+        Q700Cpu cpu(mem, jit::defaultResolvedConfig(),
+                    pom68k::defaultCoreConfig().cpu);
         mem.setCpu(&cpu);
         cpu.hardReset();
         if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

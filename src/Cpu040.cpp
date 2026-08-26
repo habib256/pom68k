@@ -29,8 +29,11 @@ jit::MemoryHooks jitHooksFor(Q605Memory& mem) {
 }
 }  // namespace
 
-Cpu040::Cpu040(Q605Memory& mem)
-    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
+Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
+               const pom68k::CoreCpuConfig& cpuConfig,
+               const pom68k::CoreDiagnosticConfig& diagnostics)
+    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040, jitConfig) {
+    periphStatsOn_ = diagnostics.peripheralStats;
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
     jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
@@ -52,9 +55,9 @@ Cpu040::Cpu040(Q605Memory& mem)
     // reaches SysError 90 (dsNoFPU): Mac OS installs PACK 4's F-line glue,
     // which does not replace FPSP for raw 040 FPU opcodes. True NONE + FPSP
     // remains a follow-up; the soft-FPU path is what makes LC040 Finder-usable.
-    if (const char* nofpu = getenv("POM68K_Q605_NOFPU")) {
+    if (cpuConfig.q605Fpu != pom68k::Q605FpuMode::Integrated) {
         setModel(moira::Model::M68LC040);
-        if (nofpu[0] == '2' || nofpu[0] == 'b') {
+        if (cpuConfig.q605Fpu == pom68k::Q605FpuMode::None) {
             // LLE step 5: BARE 68LC040 — no FPU at all. F2xx opcodes take
             // the architectural vector-11 format-$4 frame; the ROM's own
             // FPU probe must conclude "absent" and select the no-FPU
@@ -69,16 +72,12 @@ Cpu040::Cpu040(Q605Memory& mem)
     }
 
     // Q8: walk-per-access comparison mode (disables the I/D ATC overlay).
-    if (getenv("POM68K_MMU040_WALK")) setMmu040AtcArmed(false);
+    if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
 
-    if (const char* b = getenv("POM68K_Q605_CACHE_BOOST")) {
-        int v = atoi(b);
-        if (v >= 1 && v <= 64) cacheBoost_ = v;
-    }
-    if (const char* p = getenv("POM68K_Q605_ICACHE_MISS")) {
-        int v = atoi(p);
-        if (v >= 0 && v <= 64) icacheMiss_ = v;
-    }
+    if (cpuConfig.q605CacheBoost)
+        cacheBoost_ = *cpuConfig.q605CacheBoost;
+    if (cpuConfig.q605IcacheMiss)
+        icacheMiss_ = *cpuConfig.q605IcacheMiss;
     // This remains only the legacy throughput scaler. Moira's distinct
     // PomCache040 model owns architectural I/D contents and coherency.
     pomIcache.armed = true;
@@ -157,27 +156,17 @@ moira::u16 Cpu040::read16(moira::u32 addr) const { return mem_.read16(addr); }
 void Cpu040::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v); }
 void Cpu040::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
-// POM68K_PERIPH_STATS=1: how many times does the peripheral path actually
-// run? The batching cost is either CALL COUNT or per-device WORK, and only
-// counting separates them. Printed once at exit.
-namespace {
-struct PeriphStats {
-    long long catchUps = 0, flushes = 0, ticks = 0, cycles = 0;
-    bool on = std::getenv("POM68K_PERIPH_STATS") != nullptr;
-    ~PeriphStats() {
-        if (!on) return;
-        std::fprintf(stderr,
-            "[periph] catchUp=%lld flushTicks=%lld mem.tick=%lld "
-            "machine-cycles=%lld (%.2f cycles per tick call)\n",
-            catchUps, flushes, ticks, cycles,
-            ticks ? double(cycles) / double(ticks) : 0.0);
-    }
-};
-PeriphStats gPeriphStats;
-}  // namespace
+Cpu040::~Cpu040() {
+    if (!periphStatsOn_) return;
+    std::fprintf(stderr,
+        "[periph] catchUp=%lld flushTicks=%lld mem.tick=%lld "
+        "machine-cycles=%lld (%.2f cycles per tick call)\n",
+        periphCatchUps_, periphFlushes_, periphTicks_, periphCycles_,
+        periphTicks_ ? double(periphCycles_) / double(periphTicks_) : 0.0);
+}
 
 void Cpu040::catchUp() {
-    if (gPeriphStats.on) gPeriphStats.catchUps++;
+    if (periphStatsOn_) periphCatchUps_++;
     if (clock < periphDeadline_) return;
     flushTicks();
 }
@@ -197,9 +186,9 @@ void Cpu040::flushTicks() {
         periphAccum_ += d;
         int m = int(periphAccum_ / cacheBoost_);
         periphAccum_ -= moira::i64(m) * cacheBoost_;
-        if (gPeriphStats.on) {
-            gPeriphStats.flushes++;
-            if (m) { gPeriphStats.ticks++; gPeriphStats.cycles += m; }
+        if (periphStatsOn_) {
+            periphFlushes_++;
+            if (m) { periphTicks_++; periphCycles_ += m; }
         }
         if (m) mem_.tick(m);
         schedulePeriphDeadline();

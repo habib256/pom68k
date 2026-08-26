@@ -67,13 +67,13 @@ int main(int argc, char** argv) {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.internalDrive().insertImage(makeBootDisk())) {
         std::fprintf(stderr, "FAIL: insertImage\n"); return 1;
     }
 
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
     cpu.hardReset();
     MacFrameClock fc;

@@ -153,14 +153,16 @@ void report(const char* machine, const char* workload, const char* cpuFamily,
         ? uint64_t(guestSecs / r.secs * 1000.0) : 0;
 
     if (!cpu.engine()) {
-        jit::emitMetrics(metrics);
+        jit::emitMetrics(metrics, std::getenv("POM68K_JIT_METRICS_FILE"),
+                         std::getenv("POM68K_PERF_HOST_PROFILE"));
         return;
     }
 
     const jit::Stats::Snapshot s = cpu.jit().stats().snapshot();
     const uint64_t retired = s.instrs + s.interpInstrs;
     if (!retired) {
-        jit::emitMetrics(metrics);
+        jit::emitMetrics(metrics, std::getenv("POM68K_JIT_METRICS_FILE"),
+                         std::getenv("POM68K_PERF_HOST_PROFILE"));
         return;
     }
 
@@ -306,7 +308,8 @@ void report(const char* machine, const char* workload, const char* cpuFamily,
     if (exits)
         std::printf("  exits total    %12llu  (1 per %.1f instr)\n",
                     (unsigned long long)exits, double(retired) / double(exits));
-    jit::emitMetrics(metrics);
+    jit::emitMetrics(metrics, std::getenv("POM68K_JIT_METRICS_FILE"),
+                     std::getenv("POM68K_PERF_HOST_PROFILE"));
 }
 
 // ── The interleaved A/B (docs/MEASURING.md § 1) ───────────────────────────

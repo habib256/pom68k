@@ -7,19 +7,19 @@
 
 #include "Q605Memory.h"
 
-#include <cstdlib>
 #include <cstdio>
 
 int main() {
-    setenv("POM68K_Q605_EVENT_SCC", "1", 1);
-    setenv("POM68K_Q605_EVENT_SCSI", "1", 1);
+    pom68k::CoreConfig core;
+    core.bus.q605SccEventDriven = true;
+    core.bus.q605ScsiEventDriven = true;
     int failures = 0;
     const auto check = [&](bool ok, const char* what) {
         std::printf("  %-62s %s\n", what, ok ? "ok" : "FAIL");
         if (!ok) failures++;
     };
 
-    Q605Memory mem(1u << 20);
+    Q605Memory mem(core, 1u << 20);
     mem.reset();
     check(mem.deferredSccCycles() == 0, "reset clears serialized SCC debt");
     check(mem.deferredScsiCycles() == 0, "reset clears serialized SCSI debt");

@@ -11,6 +11,7 @@
 // Gate: tests/iisi_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -19,7 +20,9 @@ class RbvMemory;
 
 class RbvCpu : public MoiraSnapshot {
 public:
-    explicit RbvCpu(RbvMemory& mem, bool withFpu = false);
+    explicit RbvCpu(RbvMemory& mem, const jit::ResolvedConfig& jitConfig,
+                    const pom68k::CoreCpuConfig& cpuConfig,
+                    bool withFpu = false);
 
     void hardReset();
     // ── JIT engine (030 extension 2026-07-28, the Cpu030 pattern) ──────

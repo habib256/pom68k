@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (rom.empty() || !mem.loadRom(rom)) {
         std::fprintf(stderr, "cannot load ROM: %s\n", romPath.c_str());
         return 2;
@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
                 romPath.c_str(), rom.size() / 1024, checksum);
     // Known Plus ROMs: v1 $4D1EEEE1, v2 $4D1EEAE1, v3 $4D1F8172 (DEV.md § ROM)
 
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!diskPath.empty()) {

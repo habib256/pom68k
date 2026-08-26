@@ -44,7 +44,7 @@ constexpr uint8_t kRgb12    = 0x02;          // 512×384, colour
 int main() {
     std::printf("sonora_video_test — CLUT blue gun + modeline geometry\n");
 
-    SonoraMemory mem(0x800000);
+    SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000);
     SonoraVideo video(mem);
 
     auto selectModeline = [&](uint8_t id) { mem.write8(kVctrl, id); };

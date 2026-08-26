@@ -32,6 +32,7 @@
 // blueprint docs/DUO_BRINGUP.md.
 
 #pragma once
+#include "CoreConfig.h"
 #include "M68hc05Pge.h"
 #include "SaveState.h"
 #include <cstdint>
@@ -44,7 +45,8 @@ class Via6522;
 class PgePmu {
 public:
     // cpuHz = the host machine clock feeding tick().
-    PgePmu(Via6522& via1, int64_t cpuHz);
+    PgePmu(Via6522& via1, int64_t cpuHz,
+           const pom68k::CorePeripheralConfig& peripherals);
 
     bool loadBootRom(const std::string& path);       // roms/pge/pge_boot.bin
     bool loadBatteryId(const std::string& path);     // roms/pge/duobatid.bin
@@ -121,6 +123,9 @@ public:
     }
 
 private:
+    bool trace_ = false;
+    bool handshakeTrace_ = false;
+    int spinUs_ = 80;
     void wirePorts();
     // Selected matrix row, or -1 when the port C latch selects none — which
     // is the POWER-KEY pseudo-row, not "nothing" (pmu_porta_r). MAME picks
