@@ -751,12 +751,18 @@ int main() {
         ir.entryPc = ir.codeBase = 0x1000;
         ir.super = true;
         ir.code = {0x70FF, 0x40C1, 0x4E71, 0, 0}; // MOVEQ; MOVE SR,D1; NOP
-        ir.instrs.push_back({0x1000, 0x70FF, 1, jit::Kind::Move,
-                             jit::FlagSetsCcr, 2});
-        ir.instrs.push_back({0x1002, 0x40C1, 1, jit::Kind::Alu,
-                             jit::FlagNone, 8, 8});
-        ir.instrs.push_back({0x1004, 0x4E71, 1, jit::Kind::AddrCalc,
-                             jit::FlagNone, 2});
+        // Named jit::Instr{...} on purpose: g++ 13 rejects binding a
+        // const Instr& parameter from a bare braced list because
+        // MemoryContract carries `MemoryAccess access[2] = {}` (a C array
+        // with a default member initializer); direct-list-initialization
+        // of the temporary is accepted. Only AArch64 compiles this block,
+        // so an x86-64 build never sees the difference.
+        ir.instrs.push_back(jit::Instr{0x1000, 0x70FF, 1, jit::Kind::Move,
+                                       jit::FlagSetsCcr, 2});
+        ir.instrs.push_back(jit::Instr{0x1002, 0x40C1, 1, jit::Kind::Alu,
+                                       jit::FlagNone, 8, 8});
+        ir.instrs.push_back(jit::Instr{0x1004, 0x4E71, 1, jit::Kind::AddrCalc,
+                                       jit::FlagNone, 2});
         for (jit::Instr& in : ir.instrs) {
             in.memory = jit::describeMemory(in.opcode, false);
             in.semantics = jit::describeInstruction(in.opcode);
