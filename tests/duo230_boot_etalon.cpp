@@ -8,6 +8,7 @@
 
 #include "AssetFingerprint.h"
 #include "MscCpu.h"
+#include "JitTestConfig.h"
 #include "MscMemory.h"
 #include <cstdio>
 #include <cstdlib>
@@ -38,10 +39,12 @@ int main() {
         return 1;
     }
 
-    MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                  MscMemory::kCpuHz230, MscMemory::kIdDuo230);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.pgeActive()) { std::fprintf(stderr, "FAIL: PG&E inactive\n"); return 1; }
-    MscCpu cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    MscCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, false);
     mem.setCpu(&cpu);
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
     cpu.hardReset();

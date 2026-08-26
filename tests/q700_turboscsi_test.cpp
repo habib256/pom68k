@@ -39,7 +39,7 @@ void writeScsiCtrl(Q700Memory& mem, uint32_t v) { writeDafb(mem, 0x24, v); }
 int main() {
     std::printf("q700_turboscsi_test — PDMA DRQ gating (dafb.cpp:996-1082)\n");
 
-    Q700Memory mem(8u << 20);
+    Q700Memory mem(pom68k::defaultCoreConfig(), 8u << 20);
     mem.reset();
     int berrs = 0;
     uint32_t berrAddr = 0;
@@ -109,7 +109,8 @@ int main() {
 
     // ── Q950: DAFB II — version 3, AC842a with PCBR1 ID $01 ─────────────
     {
-        Q700Memory q950(8u << 20, Q700Memory::kCpuHzQ950,
+        Q700Memory q950(pom68k::defaultCoreConfig(), 8u << 20,
+                        Q700Memory::kCpuHzQ950,
                         Q700Memory::Model::Q950);
         q950.reset();
         check(((readDafb(q950, 0x2C) >> 9) & 7) == 3,

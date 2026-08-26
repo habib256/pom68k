@@ -23,6 +23,7 @@
 
 #include "BenchHarness.h"
 #include "Cpu040.h"
+#include "JitTestConfig.h"
 #include "Q605Memory.h"
 
 #include <cstdint>
@@ -108,6 +109,7 @@ int main() {
     // contract (ABBA order, warm-up pair, floor, provenance stamps) lives in
     // BenchHarness.h and docs/MEASURING.md § 1 owns the why.
     if (bench::compareRepeats() > 0) {
+        const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
         constexpr int64_t kCmpFrameCycles = 416667;    // 25 MHz / ~60 Hz
         const int cmpFrames = bench::frames(3000);
         std::printf("q605 %s, %d repeats x 2 arms ABBA, %d frames per run, "
@@ -116,10 +118,11 @@ int main() {
                                             : "interleaved A/B",
                     bench::compareRepeats(), cmpFrames, bench::buildStamp());
         return bench::compare("q605", "interp", "jit", [&](int arm) {
-            Q605Memory m(32u << 20);
+            Q605Memory m(pom68k::defaultCoreConfig(), 32u << 20);
             m.loadRom(rom);
             m.attachScsi(diskPath);
-            Cpu040 c(m);
+            Cpu040 c(m, jitConfig, pom68k::defaultCoreConfig().cpu,
+                     pom68k::defaultCoreConfig().diagnostics);
             m.setCpu(&c);
             c.setEngine(arm);                          // 0 interp, 1 jit
             c.hardReset();
@@ -129,12 +132,14 @@ int main() {
         });
     }
 
-    Q605Memory mem(32u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
-    Cpu040 cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

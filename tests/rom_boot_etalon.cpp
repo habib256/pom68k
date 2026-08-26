@@ -33,10 +33,10 @@ int main(int argc, char** argv) {
     std::ifstream in(path, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
 
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
     cpu.hardReset();
     MacFrameClock fc;

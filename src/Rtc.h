@@ -35,6 +35,10 @@
 
 class Rtc {
 public:
+    void configure(bool appleTalkPram, bool trace) {
+        appleTalkPram_ = appleTalkPram;
+        trace_ = trace;
+    }
     void reset();
     // Called whenever VIA port B outputs change.
     void setLines(bool enable, bool clock, bool dataOut);
@@ -91,4 +95,6 @@ private:
     uint8_t shift_ = 0, cmd_ = 0, outData_ = 0, out_ = 1;
     uint8_t xpAddr_ = 0;
     bool enabled_ = false, lastClk_ = false;
+    bool appleTalkPram_ = false;
+    bool trace_ = false;
 };

@@ -206,11 +206,13 @@ int main(int argc, char** argv) {
     // NOT apply here: it is what fixed the Duo and the Mac II, whose
     // System sizes its disk cache from RAM, and on this machine the guest
     // issues no write command at either size.
-    RbvMemory mem(0x800000, iici ? RbvMemory::kCpuHzCi : RbvMemory::kCpuHz,
+    RbvMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                  iici ? RbvMemory::kCpuHzCi : RbvMemory::kCpuHz,
                   iici);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(6);                  // 13" RGB 640×480
-    RbvCpu cpu(mem, /*withFpu=*/true);
+    RbvCpu cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

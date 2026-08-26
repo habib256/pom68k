@@ -9,6 +9,7 @@
 // Gate: tests/q630_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -17,7 +18,9 @@ class Q630Memory;
 
 class Q630Cpu : public MoiraSnapshot {
 public:
-    explicit Q630Cpu(Q630Memory& mem);
+    explicit Q630Cpu(Q630Memory& mem,
+                     const jit::ResolvedConfig& jitConfig,
+                     const pom68k::CoreCpuConfig& cpuConfig);
 
     void hardReset();
     void runCycles(moira::i64 n);

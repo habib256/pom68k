@@ -31,11 +31,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    IIfxMemory mem;
+    IIfxMemory mem(pom68k::defaultCoreConfig());
     mem.loadRom(rom);
     mem.installTobyVideo();
     if (!disk.empty()) mem.attachScsi(disk);
-    IIfxCpu cpu(mem, true);
+    IIfxCpu cpu(mem, jit::defaultResolvedConfig(), true);
     mem.setCpu(&cpu);
     cpu.hardReset();
 

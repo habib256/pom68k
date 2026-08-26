@@ -17,6 +17,7 @@
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -73,10 +74,13 @@ int main() {
 
     // Tinker Bell RAM cap is 8 MB (v8.cpp:1066-1071): 4 MB motherboard +
     // 4 MB SIMM.
-    V8Memory mem(0x800000, V8Memory::Model::MacTv, V8Memory::kCpuHzTv);
+    V8Memory mem(pom68k::defaultCoreConfig(), 0x800000,
+                 V8Memory::Model::MacTv, V8Memory::kCpuHzTv);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Cuda firmware LLE" : "HLE");
-    Cpu030 cpu(mem, /*withFpu=*/false);      // no FPU, no socket (maclc.cpp:524)
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/false, false); // no FPU/socket
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

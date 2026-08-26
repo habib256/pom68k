@@ -7,9 +7,10 @@
 int main(int argc, char** argv) {
   std::ifstream rin(argv[1], std::ios::binary);
   std::vector<uint8_t> rom((std::istreambuf_iterator<char>(rin)), {});
-  MacIIMemory mem;
+  MacIIMemory mem(pom68k::defaultCoreConfig());
   mem.loadRom(rom); mem.installTobyVideo();
-  Cpu020 cpu(mem, true); mem.setCpu(&cpu); cpu.hardReset();
+  Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+             pom68k::defaultCoreConfig().cpu, true); mem.setCpu(&cpu); cpu.hardReset();
   mem.attachScsi(argv[2]);
   const int64_t kFrame = 800*525;
   for (long f=0; f<12000 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);

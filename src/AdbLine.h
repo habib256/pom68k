@@ -21,6 +21,12 @@
 
 class AdbLine {
 public:
+    void configure(uint8_t keyboardHandlerId, bool trace) {
+        configuredKeyboardHandlerId_ =
+            keyboardHandlerId >= 1 && keyboardHandlerId <= 3
+                ? keyboardHandlerId : 1;
+        trace_ = trace;
+    }
     void reset();
 
     // Host input events (UI thread → machine, MacInput conventions).
@@ -153,4 +159,6 @@ private:
     int      mdx_ = 0, mdy_ = 0;
     bool     mbtn_ = false, mbtnSent_ = false;
     bool     mbtn2_ = false, mbtn2Sent_ = false;
+    uint8_t  configuredKeyboardHandlerId_ = 1;
+    bool     trace_ = false;
 };

@@ -10,6 +10,7 @@
 #include "MacIIMemory.h"
 #include "Se30Video.h"
 #include "Cpu020.h"
+#include "JitTestConfig.h"
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -40,13 +41,16 @@ int main() {
         return 1;
     }
 
-    MacIIMemory mem(0x800000, MacIIMemory::Model::SE30);
+    MacIIMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                    MacIIMemory::Model::SE30);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.installSe30Video(vrom)) {
         std::fprintf(stderr, "FAIL: se30vrom install\n");
         return 1;
     }
-    Cpu020 cpu(mem, /*withFpu=*/true, /*is030=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu020 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/true, /*is030=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

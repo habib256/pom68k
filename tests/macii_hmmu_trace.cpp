@@ -15,10 +15,11 @@ int main() {
   auto rom = find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
   std::ifstream rin(rom, std::ios::binary);
   std::vector<uint8_t> rd((std::istreambuf_iterator<char>(rin)), {});
-  MacIIMemory mem;
+  MacIIMemory mem(pom68k::defaultCoreConfig());
   mem.loadRom(rd);
   mem.installTobyVideo();
-  Cpu020 cpu(mem, true);
+  Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+             pom68k::defaultCoreConfig().cpu, true);
   mem.setCpu(&cpu);
   cpu.hardReset();
   std::printf("reset PC=$%08X\n", cpu.getPC());

@@ -69,8 +69,10 @@ int main() {
         out.write(z.data(), std::streamsize(z.size()));
     }
 
-    Q605Memory mem(1u << 20);
-    Cpu040 cpu(mem);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 1u << 20);
+    Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu,
+               pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
     mem.reset();
     check(mem.attachScsi(img, false, 0), "synthetic target attached at ID 0");

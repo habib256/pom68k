@@ -14,7 +14,8 @@ class IIfxMemory;
 
 class IIfxCpu : public MoiraSnapshot {
 public:
-    explicit IIfxCpu(IIfxMemory& mem, bool withFpu = true);
+    explicit IIfxCpu(IIfxMemory& mem, const jit::ResolvedConfig& jitConfig,
+                     bool withFpu = true);
 
     void hardReset();
 

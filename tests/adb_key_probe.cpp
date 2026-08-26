@@ -274,12 +274,14 @@ int runQ605(const std::string& img, long bootFrames) {
     if (rom.empty() || img.empty()) { std::printf("SKIP: no ROM/image\n"); return 0; }
     std::printf("machine=Quadra605 rom=%s img=%s\n", rom.c_str(), img.c_str());
 
-    static Q605Memory mem(32u << 20);
+    static Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
     if (!mem.loadRom(readAll(rom)) || !mem.attachScsi(img)) {
         std::fprintf(stderr, "FAIL: bad ROM/image\n");
         return 2;
     }
-    static Cpu040 cpu(mem);
+    static Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+                      pom68k::defaultCoreConfig().cpu,
+                      pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
 
     // POM68K_PROBE_WWATCH=<hex>: catch every guest write covering that RAM
@@ -324,9 +326,10 @@ int runLcII(const std::string& img, long bootFrames) {
     if (rom.empty() || img.empty()) { std::printf("SKIP: no ROM/image\n"); return 0; }
     std::printf("machine=LCII rom=%s img=%s\n", rom.c_str(), img.c_str());
 
-    static V8Memory mem;
+    static V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 2; }
-    static Cpu030 cpu(mem, /*withFpu=*/true);
+    static Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+                      pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad image\n"); return 2; }

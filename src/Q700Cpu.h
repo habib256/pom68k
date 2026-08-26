@@ -10,6 +10,7 @@
 // Gate: tests/q700_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -18,7 +19,9 @@ class Q700Memory;
 
 class Q700Cpu : public MoiraSnapshot {
 public:
-    explicit Q700Cpu(Q700Memory& mem);
+    explicit Q700Cpu(Q700Memory& mem,
+                     const jit::ResolvedConfig& jitConfig,
+                     const pom68k::CoreCpuConfig& cpuConfig);
 
     void hardReset();
     void runCycles(moira::i64 n);

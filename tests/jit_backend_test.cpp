@@ -16,6 +16,7 @@
 #include "jit/JitCodeBuffer.h"
 #include "jit/JitConfig.h"
 #include "jit/JitIr.h"
+#include "JitTestConfig.h"
 
 #if defined(POM68K_JIT_BACKEND_A64)
 #include "Cpu040.h"
@@ -418,21 +419,37 @@ int main() {
               "measured dynamic register bitfields stay on by default");
 
         setEnv("POM68K_JIT_PROFILE", "production");
-        check(jit::accessThunkMode() == 2 && jit::linksEnabled() &&
-              !jit::paranoidEnabled() && !jit::histogramEnabled(),
-              "production profile is the current fast conformant policy");
+        {
+            const auto config = testjit::resolveFromEnvironment();
+            jit::ScopedResolvedConfig active(&config);
+            check(jit::accessThunkMode() == 2 && jit::linksEnabled() &&
+                  !jit::paranoidEnabled() && !jit::histogramEnabled(),
+                  "production profile is the current fast conformant policy");
+        }
         setEnv("POM68K_JIT_PROFILE", "conservative");
-        check(jit::accessThunkMode() == 0 && !jit::linksEnabled() &&
-              jit::paranoidEnabled() && !jit::cache040LinePairsEnabled(),
-              "conservative profile keeps replay and revalidation boundaries");
+        {
+            const auto config = testjit::resolveFromEnvironment();
+            jit::ScopedResolvedConfig active(&config);
+            check(jit::accessThunkMode() == 0 && !jit::linksEnabled() &&
+                  jit::paranoidEnabled() && !jit::cache040LinePairsEnabled(),
+                  "conservative profile keeps replay and revalidation boundaries");
+        }
         setEnv("POM68K_JIT_PROFILE", "instrumented");
-        check(jit::accessThunkMode() == 2 && !jit::linksEnabled() &&
-              jit::paranoidEnabled() && jit::histogramEnabled() &&
-              jit::cache040LineReadStatsEnabled(),
-              "instrumented profile enables census and proof counters");
+        {
+            const auto config = testjit::resolveFromEnvironment();
+            jit::ScopedResolvedConfig active(&config);
+            check(jit::accessThunkMode() == 2 && !jit::linksEnabled() &&
+                  jit::paranoidEnabled() && jit::histogramEnabled() &&
+                  jit::cache040LineReadStatsEnabled(),
+                  "instrumented profile enables census and proof counters");
+        }
         setEnv("POM68K_JIT_ACCESS_THUNK", "1");
-        check(jit::accessThunkMode() == 1,
-              "a leaf knob explicitly overrides its selected profile");
+        {
+            const auto config = testjit::resolveFromEnvironment();
+            jit::ScopedResolvedConfig active(&config);
+            check(jit::accessThunkMode() == 1,
+                  "a leaf knob explicitly overrides its selected profile");
+        }
 
         // An Engine publishes this resolved snapshot while compiling. Later
         // process-wide changes are inputs for a future Engine only.
@@ -443,7 +460,7 @@ int main() {
         setEnv("POM68K_JIT_REG_CACHE", "1");
         setEnv("POM68K_JIT_EDGE_CELLS", "1");
         setEnv("POM68K_JIT_DYNAMIC_BITFIELD", "1");
-        jit::ResolvedConfig resolved = jit::resolveConfig();
+        jit::ResolvedConfig resolved = testjit::resolveFromEnvironment();
         resolved.applyBackendDefaults(true, /*accessClockBias=*/true);
         setEnv("POM68K_JIT_PROFILE", "conservative");
         setEnv("POM68K_JIT_PACKED_CCR", "0");
@@ -465,13 +482,17 @@ int main() {
             check(resolved.profitScoreExplicit,
                   "an explicit profitability score is distinguished from a backend default");
         }
-        check(jit::accessThunkMode() == 0,
-              "legacy accessors remain live outside an Engine compile scope");
-        check(!jit::packedCcrEnabled() && !jit::registerCacheEnabled() &&
-              !jit::edgeLinkCellsEnabled(),
-              "live experiment accessors observe later process overrides");
-        check(!jit::dynamicRegisterBitfieldEnabled(),
-              "live dynamic-bitfield accessor observes a later override");
+        {
+            const auto future = testjit::resolveFromEnvironment();
+            jit::ScopedResolvedConfig active(&future);
+            check(jit::accessThunkMode() == 0,
+                  "a later injected snapshot observes the profile change");
+            check(!jit::packedCcrEnabled() && !jit::registerCacheEnabled() &&
+                  !jit::edgeLinkCellsEnabled(),
+                  "a later injected snapshot observes experiment overrides");
+            check(!jit::dynamicRegisterBitfieldEnabled(),
+                  "a later injected snapshot observes the bitfield override");
+        }
 
         // The § C.4nonies admissions follow the backend's accessClockBias
         // declaration — ON where the access thunks carry the peripheral-
@@ -482,23 +503,23 @@ int main() {
         // declaration exists to prevent.
         setEnv("POM68K_JIT_RESTART_BASE", nullptr);
         setEnv("POM68K_JIT_BSRW", nullptr);
-        jit::ResolvedConfig aligned = jit::resolveConfig();
+        jit::ResolvedConfig aligned = testjit::resolveFromEnvironment();
         aligned.applyBackendDefaults(true, /*accessClockBias=*/true);
         check(aligned.restartBaseAdmission && aligned.bsrWideAdmission,
               "a bias-declaring backend turns both admissions on by default");
-        jit::ResolvedConfig unaligned = jit::resolveConfig();
+        jit::ResolvedConfig unaligned = testjit::resolveFromEnvironment();
         unaligned.applyBackendDefaults(true, /*accessClockBias=*/false);
         check(!unaligned.restartBaseAdmission && !unaligned.bsrWideAdmission,
               "a backend without the alignment keeps both admissions off");
         setEnv("POM68K_JIT_RESTART_BASE", "0");
         setEnv("POM68K_JIT_BSRW", "0");
-        jit::ResolvedConfig vetoed = jit::resolveConfig();
+        jit::ResolvedConfig vetoed = testjit::resolveFromEnvironment();
         vetoed.applyBackendDefaults(true, /*accessClockBias=*/true);
         check(!vetoed.restartBaseAdmission && !vetoed.bsrWideAdmission,
               "an explicit 0 beats the bias-declaring backend's admission default");
         setEnv("POM68K_JIT_RESTART_BASE", "1");
         setEnv("POM68K_JIT_BSRW", "1");
-        jit::ResolvedConfig forced = jit::resolveConfig();
+        jit::ResolvedConfig forced = testjit::resolveFromEnvironment();
         forced.applyBackendDefaults(true, /*accessClockBias=*/false);
         check(forced.restartBaseAdmission && forced.bsrWideAdmission,
               "an explicit 1 beats the unaligned backend's admission default");
@@ -515,15 +536,18 @@ int main() {
     const bool hadOldEngine = oldEngine != nullptr;
     const std::string savedEngine = oldEngine ? oldEngine : "";
     setCpuEngineEnv(nullptr);
-    check(jit::defaultEngine(false) == jit::EngineKind::Interp,
+    const auto defaults = testjit::resolveFromEnvironment();
+    check(defaults.engineForGuest(false) == jit::EngineKind::Interp,
           "non-68040 guests default to the interpreter");
-    check(jit::defaultEngine(true) == jit::EngineKind::Jit,
+    check(defaults.engineForGuest(true) == jit::EngineKind::Jit,
           "validated 68040 guests default to the accelerated engine");
     setCpuEngineEnv("interp");
-    check(jit::defaultEngine(true) == jit::EngineKind::Interp,
+    check(testjit::resolveFromEnvironment().engineForGuest(true) ==
+              jit::EngineKind::Interp,
           "POM68K_CPU_ENGINE=interp explicitly restores the reference");
     setCpuEngineEnv("jit");
-    check(jit::defaultEngine(false) == jit::EngineKind::Jit,
+    check(testjit::resolveFromEnvironment().engineForGuest(false) ==
+              jit::EngineKind::Jit,
           "POM68K_CPU_ENGINE=jit explicitly enables the engine on another family");
     setCpuEngineEnv(hadOldEngine ? savedEngine.c_str() : nullptr);
 
@@ -709,8 +733,10 @@ int main() {
                   "since 2026-08-22 (pom68kA64Read/Write, JIT_BRINGUP "
                   "§ C.4nonies) — the admission defaults ride it");
         }
-        static Q605Memory mem;
-        static Cpu040 cpu(mem);
+        static Q605Memory mem(pom68k::defaultCoreConfig());
+        static Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+                          pom68k::defaultCoreConfig().cpu,
+                          pom68k::defaultCoreConfig().diagnostics);
         mem.setCpu(&cpu);
         cpu.setClock(0);
         cpu.setPC(0x1000);

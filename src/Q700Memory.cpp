@@ -13,7 +13,8 @@
 #include <iterator>
 #include <string>
 
-Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
+Q700Memory::Q700Memory(const pom68k::CoreConfig& coreConfig,
+                       uint32_t totalRam, int64_t cpuHz, Model model)
     // Discrete DAFB (macquadra700.cpp:729 instantiates plain dafb_device):
     // the DP8531 clock chip, not the MEMCjr's Gazelle (dafb.cpp:884).
     // Q700/Q900 carry the original chip — version 1 in register $2C
@@ -27,6 +28,22 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
                 model == Model::Q950 ? 3 : 1,
                 model == Model::Q950 ? Dafb::Ramdac::Ac842a
                                      : Dafb::Ramdac::Ac842) {
+    iopTraceLimit_ = coreConfig.bus.q900IopTraceLimit;
+    via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    via2_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    rtc_.configure(coreConfig.peripherals.appleTalkPram,
+                   coreConfig.peripherals.rtcTrace);
+    adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
+    adbLine_.configure(coreConfig.peripherals.adbKeyboardHandlerId,
+                       coreConfig.peripherals.adbLleTrace);
+    egret_.configure(coreConfig.peripherals.appleTalkPram,
+                     coreConfig.peripherals.egretCommandTrace);
+    egretLle_.configure(coreConfig.peripherals);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    drive0_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    drive1_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    dafbCell_.configureTrace(coreConfig.peripherals.dafbClockTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;   // pow2
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
@@ -43,12 +60,15 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         // forces the HLE, a missing dump falls back to it, and neither is
         // silent.
         {
-            pom68k::fw::Request req;
-            req.module = pom68k::lle::HleEgretCuda;
+            pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
+                                    pom68k::FirmwareTarget::Egret};
             req.name = "Egret — MCU ADB / PRAM / horloge";
             req.enableKnob = "POM68K_EGRET_LLE";
             req.pathKnob = "POM68K_CUDA_FW";
             req.logTag = "Q700";
+            req.enabled = coreConfig.firmware.egretLle;
+            req.forcedPath =
+                coreConfig.firmware.egretPath.value_or(std::string());
             req.candidates = {
                 "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
                 "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
@@ -138,7 +158,7 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         // handler when they lose their way, and the only useful evidence
         // is where they came FROM — dump the 65C02 PC trail on the first
         // `$00` executed (docs/IOP_BRINGUP.md § M7).
-        if (std::getenv("POM68K_Q900_IOPBRK")) {
+        if (coreConfig.bus.q900IopBreak) {
             sccPic_.cpu().setTrace(true);
             swimPic_.cpu().setTrace(true);
             auto trap = [this](const char* who2, R65c02& c) {
@@ -168,8 +188,8 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         // POM68K_Q900_IOPWATCH=<hex>: name every writer of one IOP RAM byte
         // (65C02 / host window / DMA). The SWIM IOP returned through a
         // corrupted stack frame, and only three things can corrupt it.
-        if (const char* w = std::getenv("POM68K_Q900_IOPWATCH"))
-            swimPic_.watch = int(strtoul(w, nullptr, 16));
+        if (coreConfig.bus.q900IopWatch)
+            swimPic_.watch = *coreConfig.bus.q900IopWatch;
     }
     dafbCell_.onIrq = [this](bool s) { vblIrq(s); };
     asc_.onIrq = [this](bool s) { ascIrq(s); };
@@ -196,10 +216,7 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         if (egretLleOn_)
             for (int i = 0; i < 256; i++) egretLle_.setPram(i, egret_.pram(i));
     }
-    {
-        const char* e = std::getenv("POM68K_SCSI_LAT");
-        scsi_.setLatency(e ? std::atoi(e) : -1);
-    }
+    scsi_.setLatency(coreConfig.bus.scsiLatency.value_or(-1));
 }
 
 bool Q700Memory::loadRom(const std::vector<uint8_t>& data) {
@@ -364,12 +381,6 @@ void Q700Memory::iopTrace(bool write, char which, uint32_t base, uint8_t v) {
     // POM68K_Q900_IOP_TRACE=<max lines> (1 = the default 600). The data
     // port floods, so a bare `=1` is useless past the first upload —
     // raise it, or grep the control writes (off=02) that gate /RSTPIC.
-    static const long cap = [] {
-        const char* e = std::getenv("POM68K_Q900_IOP_TRACE");
-        if (!e) return 0L;
-        long n = std::atol(e);
-        return n > 1 ? n : 600L;
-    }();
     // Ring first (always armed on the Eclipse — it is what a panic dump
     // reads), then the streaming form if the env asked for it.
     ApplePic& pic = (which == 'w') ? swimPic_ : sccPic_;
@@ -378,9 +389,8 @@ void Q700Memory::iopTrace(bool write, char which, uint32_t base, uint8_t v) {
                               uint8_t((base >> 1) & 0x1F), v, which,
                               char(write ? 'W' : 'R') };
     iopRingIdx_ = (iopRingIdx_ + 1) % kIopRing;
-    if (!cap) return;
-    static long n = 0;
-    if (n++ >= cap) return;
+    if (!iopTraceLimit_) return;
+    if (iopTraceCount_++ >= iopTraceLimit_) return;
     std::fprintf(stderr, "iop-%c: %s base=%05X off=%02X v=%02X pc=%08X\n",
                  which, write ? "wr" : "rd", base, (base >> 1) & 0x1F, v,
                  cpu_ ? unsigned(cpu_->getPC()) : 0u);

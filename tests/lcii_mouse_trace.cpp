@@ -26,9 +26,10 @@ int main() {
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     mem.loadRom(romData);
-    Cpu030 cpu(mem, true);
+    Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     mem.attachScsi(img);

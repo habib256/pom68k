@@ -294,7 +294,7 @@ emulators just mirror via a mask and let the ROM discover it.
   XPRAM on every platform, and the compact ROMs only touch the low end.
   **PRAM persists on all twelve platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
-  runner in `main.cpp` (`MacMemory.h:117-124`).
+  runner in `GuiMachineRuntime.cpp` (`MacMemory.h:117-124`).
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256`),
   unlike MAME's constant.
 
@@ -528,7 +528,7 @@ the fixed IOSB `$A55A2BAD` for all of them:
 | Quadra 800 | `$12` | 68040 @ 33.33 MHz (SONIC + NuBus on the real board — see below) |
 
 (Clocks are `CentrisMemory.h:56-59`, straps `:61-67`, the runner table
-`main.cpp:2147-2151`. The Q650 and Q800 share one constant — the "33 MHz"
+`PlatformDafb.cpp:409-460`. The Q650 and Q800 share one constant — the "33 MHz"
 on the Q800's GUI label is a rounding, not a second rate.)
 
 `POM68K_CENTRIS_FPU` / `_BAREFPU` pick the FPU; `POM68K_CENTRIS_MODEL`
@@ -694,7 +694,7 @@ KeyMap through the IOP firmware), save states in `savestate_030_test`.
 ### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230
 
 `MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptop, the 37th
-profile (`MachineCatalog.h:48`, `runDuo` at `main.cpp:2343`, `SnapMachine::Duo230`), a
+profile (`MachineCatalog.h:48`, `runDuo` at `PlatformDuo.cpp:88`, `SnapMachine::Duo230`), a
 68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 `MscMemory.h:1-31` — the LC-family `$50Fxxxxx` shape with three deltas: a
@@ -859,7 +859,7 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   COMMAND→DATA(IN/OUT)→STATUS→MSG IN with REQ/ACK per byte; pseudo-DMA
   auto-handshakes one byte per A9 access. Seven target slots by ID
   (`targets_[7]`, ID 7 = the initiator, never used): the boot volume at 0,
-  extra `argv` volumes at 1-6, a CD bay wherever the machine puts it. Bit
+  additional typed media at 1-6, a CD bay wherever the machine puts it. Bit
   layouts from MAME `ncr5380.cpp`; sequence from pce `macplus/scsi.c` and a
   bit-exact ROM disassembly (`SCSI_DO_SELECT`).
 - **Target** (`ScsiDisk`, one implementation of `ScsiTarget` —
@@ -1273,11 +1273,19 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   queue, so the swap lands between two instructions), and
   `POM68K_CPU_ENGINE=interp|jit` overrides the family default. The
   interpreter remains an explicit etalon tier and the accuracy oracle.
-- **Configuration is per engine, not live process state.** `resolveConfig()`
-  reads every JIT knob once; after backend selection it resolves the native
-  defaults for blocks/hot and publishes a const `ResolvedConfig` through
-  `Context`. A64/x64 compilation contains no `getenv`, so changing an
-  experiment variable cannot mutate an already-running machine.
+- **Configuration is per engine, not live process state.**
+  `ProcessEnvironment` captures one startup map and the product decoder behind
+  `RuntimeConfig` resolves
+  every JIT knob from it; after backend selection the engine resolves
+  the native defaults for blocks/hot and publishes a const `ResolvedConfig`
+  through `Context`. All twelve CPU wrappers and `Engine` require that
+  snapshot by const reference: omission is a compile error, and unit fixtures
+  which want deterministic policy must name `defaultResolvedConfig()`.
+  Product code contains a single process read site, in
+  `ProcessEnvironment.cpp`;
+  autonomous gates capture their environment in `tests/JitTestConfig.h` and
+  inject the resulting snapshot. Changing an experiment variable cannot
+  mutate an already-running machine.
 - **The IR owns meaning, memory, extensions and control.** `Instr::semantics`,
   `Instr::memory`, its copied extension words and its
   `DecodedEffectiveAddress` plans are filled together by `JitEngine::record`.
@@ -1367,7 +1375,8 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   **fifteen** `jit_*_boot_etalon` twins (q605, centris650, q630, q700, lcii,
   mactv, lc3, iivx, iisi, lc, macii, se30, system, classic, iifx) — the same
   etalon executables re-run with `POM68K_CPU_ENGINE=jit`
-  (`CMakeLists.txt:1841-1887`, plus `jit_classic_boot_etalon` at `:2001`).
+  (`cmake/Pom68kJitGates.cmake:159-454`, plus
+  `jit_classic_boot_etalon` at `cmake/Pom68kJitGates.cmake:548-551`).
 
 ---
 
@@ -1382,8 +1391,9 @@ grep -rhoP '"\KPOM68K_[A-Z0-9_]+(?=")' \
 ```
 
 185 distinct names as of 2026-08-25. Match on the literal, not on `getenv`:
-the JIT knobs go through `jit::detail::env()` (`src/jit/JitConfig.h:29`) and
-a `getenv`-anchored pattern misses every one of them. **Re-derive rather
+the complete startup surface is declared by `StartupOptions.h` and resolved
+into typed immutable snapshots, including `JitConfig`; a `getenv`-anchored
+pattern misses most of it. **Re-derive rather
 than extend by hand** — the two cross-checks that built this list found 22
 and then 12 knobs the code read that no document mentioned.
 
@@ -1409,9 +1419,26 @@ alias), `POM68K_Q700_MODEL` (`q700` / `q900` / `q950` on the discrete-040
 board — the GUI menu sets it before relaunching, and a `$3DC27823` ROM
 overrides it: that dump IS a Quadra 950 whatever the environment
 inherited), `POM68K_Q630_ID`, `POM68K_MONITOR`.
+At startup these spellings are normalized into the eight `SnapMachine` fields
+of `MachineSelectionConfig`; neither `MachineFactory` nor `GuiShell` receives
+the raw map. The menu's current marker uses the session snapshot itself and a
+selection is relaunched as `--machine-profile=<slug>`, which overrides the
+legacy environment spelling without modifying the current process.
 
-**CPU configuration** — one family per line. Only the Q605 pair was
-documented before 2026-07-31:
+**CPU configuration** — one family per line. `ProcessEnvironment` captures
+these values once; `RuntimeConfigCore` parses them into `CoreConfig`, then the
+result passes through the `RuntimeConfig` composition root and the platform
+composer to the CPU and memory objects; the components do not read the process
+environment. Board-memory constructors are the local fan-out roots for the
+complete aggregate. Leaf contracts stay narrower: CPU wrappers consume
+`CoreCpuConfig` (`Cpu040` also receives `CoreDiagnosticConfig`), ADB/Cuda
+consume firmware/peripheral views, and PG&E consumes `CorePeripheralConfig`.
+Every one of those constructor contracts is mandatory: board roots accept
+`CoreConfig` first, configured CPU leaves require their view, and PG&E requires
+its peripheral view. Unit fixtures which want deterministic empty policy name
+the sole `defaultCoreConfig()` explicitly; there are no section fallbacks.
+`docs_test` rejects both a whole-`CoreConfig` reference in leaves and any
+defaulted policy parameter. Only the Q605 pair was documented before 2026-07-31:
 
 | knob | effect |
 |---|---|
@@ -1432,8 +1459,8 @@ documented before 2026-07-31:
 | `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*) |
 | `POM68K_MACII_EVENT` | `=1` arms the peripheral event deadline on the Mac II family (`Cpu020`: Mac II, IIx, IIcx, SE/30) instead of the fixed 64-cycle batch. **Opt-in on purpose**: measured 2026-08-13 at **+14.2 %/+17.5 %** on `macii_boot_etalon` over two pairs, with the etalon's observables identical either way — strictly more correct (IRQ jitter → 0), invisible to every gate we have. `docs/LLE_VS_HLE.md` § 1.2 |
 | `POM68K_DUO_EVENT` | `=1` arms the same on the PowerBook Duo (`MscCpu`, batch 128). **+9.0 %** on `duo230_boot_etalon`, same Finder; the PG&E's 68HC05 binds at ~16 machine cycles, so this board pays 8× the fan-out entries. Opt-in for the same reason |
-| `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1091`), IIfx (`:1465`), V8 (`:1887`), Sonora (`:2728`), VASP (`:2764`), RBV (`:2803`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
-| `POM68K_Q605_EVENT_SCC` / `_SCSI` | per-device event-deadline splits on the MEMCjr board (`Q605Memory.cpp:19,21`, presence-parsed `!= '0'`) — same family as the `*_EVENT` pair above |
+| `POM68K_NOFPU` | no 68881/68882. Captured by `ProcessEnvironment`, parsed by `RuntimeConfig` and injected into the V8, Toby and Sonora-family composition units (`PlatformV8.cpp`, `PlatformToby.cpp`, `PlatformSonora.cpp`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
+| `POM68K_Q605_EVENT_SCC` / `_SCSI` | per-device event-deadline splits on the MEMCjr board (`RuntimeConfig`, parsed `!= '0'`, then injected into `Q605Memory`) — same family as the `*_EVENT` pair above |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
 `POM68K_CUDA_FW` (`<path>` = load THIS dump for the Egret/Cuda MCU, ahead of
@@ -1453,8 +1480,8 @@ moves the reset value), `POM68K_APPLETALK`,
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_FLUX_JITTER`
 (`<pct>` = displace every flux edge the SWIM separators read by a
 deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in
-jitter model of the § 1.3 flux plan; 0/unset = ideal edges, the default —
-`SonyDrive::fluxJitterEnv`), `POM68K_DRIVE_SFX`
+jitter model of the § 1.3 flux plan; 0/unset = ideal edges, the default,
+injected into each `SonyDrive`), `POM68K_DRIVE_SFX`
 (`0` = silence the drive FX), `POM68K_NO_CDBAY` (`=1` = do **not** give the
 machine the default empty CD drive the Disques window's CD row needs; every
 platform with an `attachCdromEmpty` boots with one since 2026-08-15, which is
@@ -1473,8 +1500,8 @@ unset = no card (`Q605Memory.cpp:79-87`) —
 `FirmwareManifest.h:89-93`; a path that does not hold `roms/…` makes every
 MCU fall back to HLE, which is the point when qualifying a packaged build).
 
-**Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, set by the
-flag rather than by hand (`main.cpp:2387-2398`):
+**Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, captured by
+`RuntimeConfig` and passed directly to `lle::beginSession` and the JIT policy:
 `POM68K_LLE_AARCH64_FULL` (`LleSession.h:39-42`; the run must be on the
 AArch64 code generator with every MCU on real firmware, and any HLE
 fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`
@@ -1624,7 +1651,7 @@ hide a lifecycle decision because the registry side accepts exact names only.
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`.** A full run is
-229 documented gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
+230 documented gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
 contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
 LTO.
 
@@ -1643,7 +1670,7 @@ The same lockstep binary writes `pom68k.jit.metrics.v1`; the Linux x86-64 and
 macOS AArch64 jobs validate and archive identical fields (backend, guest/host,
 cycles, wall time, block/native/fallback counters and native share).
 
-`jitdev` (`CMakeLists.txt:2382`) builds exactly the **three** binaries
+`jitdev` (`cmake/Pom68kGatePolicy.cmake:304-306`) builds exactly the **three** binaries
 `-L smoke` needs — `jit_backend_test`, `jit_lockstep_test`,
 `q605_boot_etalon`; the remaining smoke registrations re-run those same
 three under different environments.
@@ -1653,34 +1680,34 @@ three under different environments.
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
 | `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
 | `ctest -L unit` | 110 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
-| `ctest -L asset-none` | 84 | manifest-declared asset-free daily tier |
+| `ctest -L asset-none` | 85 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
 | `ctest -L jit` | 40 | before proposing a JIT change (`jit-fast` matches this regex too) |
 | `ctest -L m040` | 51 | the 68040 family on the default engine plus explicit interpreter references |
 | `ctest -L m030` | 54 | the 68030 family, same shape (since 2026-08-18) |
 | `ctest -L etalon` | 119 (~3 h 45) | every profile — the release gate, not a pre-commit check |
-| `ctest` | 229 (~4h30) | documented host-union; use `ctest -N` for this host |
+| `ctest` | 230 (~4h30) | documented host-union; use `ctest -N` for this host |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
 is the authority. Five gates are host-conditional: the AArch64 trio
 `jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
 + `jit_lockstep_030_a64_alignment_test` and the x86-64-only
 `jit_lockstep_030_x64_experimental_test` + `jit_lockstep_030_x64_alignment_test`
-— so an x86-64 tree reads **226** total, 107 `unit`, 8 `smoke`, 37 `jit`,
-and an AArch64 one 227 (`m040` and `etalon` are host-independent). Eight more
+— so an x86-64 tree reads **227** total, 107 `unit`, 8 `smoke`, 37 `jit`,
+and an AArch64 one 228 (`m040` and `etalon` are host-independent). Eight more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of
 skipping.
 
-Labels are **derived from the test name** in one loop at the end of
-`CMakeLists.txt` (`:2139-2188`): name ends in `etalon` → `etalon` (+
+Labels are **derived from the test name** in one final policy module
+(`cmake/Pom68kGatePolicy.cmake:58-110`): name ends in `etalon` → `etalon` (+
 `etalon-core` if it is in the twelve-name `POM68K_ETALON_CORE` list, whose
 membership is a configure-time `FATAL_ERROR` if a name stops resolving);
 anything else → `unit`; `^jit_` → `jit`; a substring match on the 68040
-machine names → `m040`, and on the 68030 ones → `m030` (`:2164-2165`,
+machine names → `m040`, and on the 68030 ones → `m030` (`:74-87`,
 since 2026-08-18). A gate added tomorrow is classified the moment it
 exists. **The loop MERGES with explicit labels since 2026-08-12**
-(`:2174-2187` — `get_test_property` + append + de-dup): an inline
+(`:96-109` — `get_test_property` + append + de-dup): an inline
 `LABELS` at `add_test` time survives; it used to be silently overwritten,
 which is how `quadra_event_scheduler_test` lost `m040` for two weeks.
 
@@ -1696,15 +1723,15 @@ side of this loop.
 
 ### The GUI ↔ machine-thread contract (`src/MachineHost.h`)
 
-Eleven of the twelve platforms run on one CRTP host:
+All twelve platform families run on one CRTP host:
 `MachineHost<Derived, Mem, Cpu, Audio>`. It owns the thread, the command
 queue, the framebuffer double buffer, the status atomics, the `SaveStateSlot`
-and the JIT gauge snapshot. Six `*Machine` structs instantiate it
-(`main.cpp` `MacIiMachine`, `IIfxMachine`, `LcMachine`,
-`SonoraStyleMachine<>`, `DafbMachine<>`, `MscMachine`). The **68000 compacts
-are the exception**: they never gained a machine thread, and still run their
-`MacMemory`/`Cpu68k`/`MacVideo` inline on the GUI thread at the tail of
-`main()`. A platform on the host supplies only its own half:
+and the JIT gauge snapshot. Seven host types instantiate it: `CompactMachine`,
+`MacIiMachine`, `IIfxMachine`, `LcMachine`, `SonoraStyleMachine<>`,
+`DafbMachine<>` and `MscMachine`, each in its corresponding
+`PlatformCompact.cpp`, `PlatformToby.cpp`, `PlatformV8.cpp`,
+`PlatformSonora.cpp`, `PlatformDafb.cpp` or `PlatformDuo.cpp` unit. A platform
+on the host supplies only its own half:
 
 | hook | what it does |
 |---|---|
@@ -1721,6 +1748,14 @@ frames and only the scanned rows are repainted, so `renderFrame()` fills a
 separate `out` and publication is a swap; the host never takes `fb_`.
 And **`cpuEngine()` follows the machine, not the click**: the menu tick reports
 the engine actually running, and a swap lands one queue round-trip later.
+
+The GUI scheduler's **Avance rapide starts off** on the CRTP host and compact
+inline runner. At ×8, two physical host clicks can be separated by too many
+guest VBLs for the Mac's double-click threshold; turbo therefore remains a
+manual CPU-window action. Normal mode targets the profile's nominal machine
+clock. This is independent of each CPU's `cacheBoost`
+timing overlay, whose family defaults are part of the emulated throughput
+model rather than GUI pacing. `machinehost_test` pins the startup default.
 
 Per-platform variations that are not worth a hook go to
 `if constexpr (requires { … })` in `applyCmds()` — the CD bay
@@ -1743,11 +1778,63 @@ CRTP and not a base class **on purpose**: every `self()->` resolves at compile
 time, so the no-virtual-in-the-bus-path rule stays mechanical.
 
 Gated by `machinehost_test` (`unit`, asset-free) — queue ordering, the double
-buffer, both pacing branches, the thread teardown. That gate exists because
-`main.cpp` is the only translation unit outside `pom68k_core`: nothing that
-stays in it can be tested, which is why the contract was moved out before it
-was unified (`CHANGELOG.md` 2026-08-09 (third)). **The GUI layer above it is
-still compile-verified only.**
+buffer, both pacing branches, the thread teardown. Startup configuration and
+ROM/profile routing now live in the headless `pom68k_app` layer
+(`ProcessEnvironment` → `RuntimeConfig` → `MachineFactory` →
+`MachineSession`) and are exercised by `docs_test`. `RuntimeConfig` sépare ROM
+et médias au lieu de propager
+`argc`/`argv`; `MachineSession` possède le runtime concret, et
+`GuiMachineRuntime` possède à son tour `GuiSessionState` et les objets core,
+hôte et UI dans leur ordre de dépendance. Les runners ne conservent donc plus
+de machines ou de contextes statiques, et l'arène garantit des adresses
+stables aux callbacks
+natifs comme Emscripten. `gui_smoke_test` couvre maintenant le cycle GUI
+commun avec une vraie fenêtre cachée : rendu, changement de moteur, sauvegarde,
+fermeture RAII et relance interceptée. Les panneaux propres à chaque famille
+restent seulement compile-vérifiés.
+Le parsing derrière cette façade est lui-même séparé :
+`StartupSnapshot` possède et valide les valeurs capturées, tandis que
+`StartupDomainView` n'en fournit que les lectures typées autorisées,
+`StartupValueDecoding` conserve les sémantiques historiques des valeurs, les
+unités `Product`, `Core` et `Machine` décodent leurs agrégats, et
+`RuntimeConfig.cpp` ne connaît plus aucun nom `POM68K_*`. L'unique lecture
+`getenv()` reste dans `ProcessEnvironment.cpp`; tous les décodeurs reçoivent
+le même `const StartupSnapshot&`, jamais une map publique. Les 128 clés, dont
+les 37 du JIT, sont déclarées une seule
+fois dans le catalogue neutre `StartupOptions.h`, avec leur domaine typé. La
+capture itère cette collection unique ; les décodeurs et `JitConfig` manipulent
+des `StartupOption`, jamais une chaîne de clé libre. Le tableau
+`jit::kConfigurationKeys` n'existe plus. Le paramètre `Domains` du type est vérifié par
+les vues `ProductStartupView`, `CoreStartupView` et
+`MachineStartupView`; employer une option hors domaine est une erreur de
+compilation, tandis qu'une option partagée porte explicitement les deux
+capacités.
+La représentation chaîne-vers-chaîne est privée dans `StartupSnapshot`; son
+constructeur rejette une clé inconnue et constitue l'unique frontière brute
+utilisée par la capture de processus et les fixtures. L'ancien
+`EnvironmentLookup` et le point d'entrée JIT générique `resolveConfigFrom`
+n'existent plus.
+Chaque ligne porte aussi un `StartupValuePolicy`. Les compatibilités de zéro,
+de chaîne vide et de premier caractère restent volontairement séparées ; les
+politiques numériques fixent leur base et, lorsqu'elles sont bornées, leur
+intervalle. `StartupValueDecoding.h` est le seul moteur de ces conversions et
+les vues de domaine n'exposent `boolean`, `integer`, `text` ou `hexadecimal`
+qu'à une option du bon type. Cinq syntaxes composées seulement utilisent
+l'échappatoire `Custom`.
+Chaque machine reçoit maintenant `GuiHostServices&` explicitement pour ses
+quanta réseau; `GuiSessionState` est scindé en sous-états réseau, audio,
+relance, panneau CPU, diagnostics et périphériques. Il n'existe donc ni
+pointeur global vers la session active, ni pointeur inverse de l'état vers les
+services. `GuiWindowSession` ferme sous RAII la fenêtre GLFW, le contexte
+ImGui, ses backends et la texture OpenGL; les runners ne dupliquent plus ce
+protocole de destruction.
+
+Le `CMakeLists.txt` racine applique désormais la même séparation : il inclut,
+dans un ordre vérifié, les gates de composants, les gates machine, les gates
+JIT, les outils `EXCLUDE_FROM_ALL`, puis la politique de labels et de
+manifestes depuis cinq fichiers `cmake/Pom68k*.cmake`. Le registre reste
+produit dans le scope du répertoire racine, sans déclaration de test dans la
+racine elle-même.
 
 ### The "Périphériques (LLE / HLE)" window (`src/PeripheralWindow.*`)
 
@@ -1775,19 +1862,20 @@ Three design points, each of which is a rule rather than a preference:
   `fw::discoverDumps()` scans their directories — marks the factory parts
   and the one currently loaded, and takes an arbitrary path for anything
   else. Two subtleties both gated: a dump pick is a pending change *on its
-  own* (same mode, different machine), and going back to automatic must
-  **unset** the knob, since writing `""` would leave the re-exec with an
-  empty path the device dutifully fails to open.
+  own* (same mode, different machine), and going back to automatic is an
+  explicit typed state rather than an empty inherited path.
 - **It lists what THIS machine built.** A Centris has no Egret; the Mac Plus
   has neither an Egret nor an ADB transceiver. An empty list is a real
   answer ("no LLE/HLE choice exists here"), not a failure to populate.
 - **Changes are staged and applied by a relaunch**, because the devices are
-  built once from `getenv` before the first instruction — there is no live
-  toggle to offer. Apply calls `setenv` for **every** selected device (not
-  only the changed ones: the re-exec inherits this environment, so a knob
-  left from an earlier session would otherwise survive and win) and re-execs
-  on the process's own `argv`, captured into `gLaunchArgs` at the top of
-  `main()` before the `--lle-aarch64` scrubbing rewrites it.
+  built once from injected `CoreFirmwareConfig` before the first instruction
+  — there is no live toggle to offer. Apply emits the complete live set as
+  typed `FirmwareOverride` values (`Adb`, `Egret`, `Cuda`); `GuiHostServices`
+  normalizes them into `--firmware-override=<target>:<mode>:<path>` arguments
+  on the process's exact launch arguments. Empty path means automatic and
+  explicitly defeats an inherited legacy `POM68K_*_FW` value. Egret and Cuda
+  now keep distinct injected paths, while `POM68K_CUDA_FW` seeds both only at
+  the compatibility boundary.
 
 It sits at **menu-bar level**, beside `Disques...`, and not inside the
 Machine menu: that menu is 37 profiles plus separators, taller than a 900 px
@@ -1798,10 +1886,10 @@ reports a substitute, which is what makes the stderr policy hold for a
 GUI-only user; it never re-opens after being closed, and never appears on a
 fully-LLE machine.
 
-Gate: `peripheral_lle_test` (`unit`, 37 checks) covers the model —
+Gate: `peripheral_lle_test` (`unit`, 38 checks) covers the model —
 registration, the product-mode contract, the reason on all three paths,
-`dumpAvailable` against a real file, and the env mapping including the
-re-assert that makes an undo undo. The **window itself is compile-verified
+`dumpAvailable` against a real file, and the typed mapping including distinct
+Egret/Cuda identities and explicit automatic-path restoration. The **window itself is compile-verified
 only**, like every other GUI surface in this tree.
 
 ### What a gate prints about its own assets
@@ -1839,7 +1927,7 @@ is immutable by construction. The verifier also cross-checks profile slugs
 against `MachineCatalog.h` and requires its 37 profiles to be covered exactly
 once by `machine-rom` rows. Every normal
 `hdv/<name>` lookup now prefers that twin (`FixtureStore.h:23-39`) in both the
-GUI (`main.cpp:309-315`) and gate search (`AssetFingerprint.h:129-138`). A
+GUI (`GuiHostServices.h:48-51`) and gate search (`AssetFingerprint.h:129-138`). A
 writable GUI open maps it to `hdv/work/<name>`, creates the directory and
 clones once; later sessions reopen the persistent work copy. An explicit path
 outside `ref/` keeps the historical direct-write behaviour. The Disques

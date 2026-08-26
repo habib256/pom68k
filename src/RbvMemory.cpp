@@ -9,11 +9,22 @@
 #include <fstream>
 #include <iterator>
 
-RbvMemory::RbvMemory(uint32_t totalRam, int64_t cpuHz, bool iici)
+RbvMemory::RbvMemory(const pom68k::CoreConfig& coreConfig,
+                     uint32_t totalRam, int64_t cpuHz, bool iici)
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF),
       egret_(via_, false, int(cpuHz)),
       egretLle_(via_, cpuHz, CudaLle::Flavor::Egret),
       totalRam_(totalRam), cpuHz_(cpuHz), iici_(iici) {
+    via_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    egret_.configure(coreConfig.peripherals.appleTalkPram,
+                     coreConfig.peripherals.egretCommandTrace);
+    egretLle_.configure(coreConfig.peripherals);
+    adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
+    rtc_.configure(coreConfig.peripherals.appleTalkPram,
+                   coreConfig.peripherals.rtcTrace);
+    drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     egret_.setAdbBus(&adb_);
     // RBV pseudo-VIA video hooks (rbv.cpp:181-189): the config read
     // returns the monitor type on bits 3-5, the write latches
@@ -32,12 +43,14 @@ RbvMemory::RbvMemory(uint32_t totalRam, int64_t cpuHz, bool iici)
     } else {
         // IIsi: Egret firmware LLE — the 344S0100 (maciici.cpp:666
         // set_default_bios_tag), the LC III's 341S0851/0850 as fallbacks.
-        pom68k::fw::Request req;
-        req.module = pom68k::lle::HleEgretCuda;
+        pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
+                                pom68k::FirmwareTarget::Egret};
         req.name = "Egret — MCU ADB / PRAM / horloge";
         req.enableKnob = "POM68K_EGRET_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Rbv";
+        req.enabled = coreConfig.firmware.egretLle;
+        req.forcedPath = coreConfig.firmware.egretPath.value_or(std::string());
         req.candidates = {
             "roms/egret/344s0100.bin", "../roms/egret/344s0100.bin",
             "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",

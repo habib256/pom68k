@@ -34,6 +34,7 @@
 
 class Dafb {
 public:
+    void configureTrace(bool trace) { trace_ = trace; }
     // Which clock generator sits behind the +$300 window. MAME wires a
     // different chip per DAFB flavour and each has its own serial protocol
     // (dafb.cpp: dafb_base = DP8531, dafb_memc = DP8534, dafb_memcjr =
@@ -129,6 +130,7 @@ public:
     }
 
 private:
+    bool trace_ = false;
     // Visible lines the beam spends on active display: the Swatch vres once
     // the CRTC is programmed, else the 480 of the legacy 60 Hz / 525-line
     // shape tick() falls back to.

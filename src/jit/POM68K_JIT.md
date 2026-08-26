@@ -20,8 +20,8 @@ JITs in the strict sense; `auto` selects one of them for the default 68040
 path when the host supports it. Their exactness is why the wins are bounded
 (§ 7). The GUI
 says "Moteur accéléré", distinguishes "JIT `<backend>`" from
-"fenêtres (threaded)" and names the backend (`main.cpp:807-823`, gauge
-window `jitWindow()` at `:717-794`);
+"fenêtres (threaded)" and names the backend (`GuiShell.cpp:322-357`, gauge
+window `drawJitWindow()` at `GuiShell.cpp:204-268`);
 the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode
 (`docs/HLE_OVERLAY.md`) would build on. The five relaxations a classic 68k
@@ -898,7 +898,7 @@ covers something the others cannot:
 | `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
 | `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
-| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`CMakeLists.txt:1751-1763`), which is also why it is the one smoke gate an x86-64 developer never sees |
+| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:255-265`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
 Two things this gate learned the hard way, both worth keeping in mind when
 extending it:
@@ -918,35 +918,38 @@ Widen only when the smoke tier is green:
 | command | gates | when |
 |---|---|---|
 | `ctest -L jit-fast` | 7 | native A64/x64 lockstep/IR/protocol + docs/config, asset-free |
-| `ctest -L unit` | 106 | legacy non-etalon tier (not synonymous with asset-free) |
-| `ctest -L jit` | 37 | before proposing a JIT change (`jit-fast` matches the regex too) |
+| `ctest -L unit` | 108 | legacy non-etalon tier on AArch64 (not synonymous with asset-free) |
+| `ctest -L jit` | 40 | before proposing a JIT change (`jit-fast` matches the regex too) |
 | `ctest -L m040` | 51 | the 68040 family — the JIT's blast radius |
 | `ctest -L etalon-core` | 12 | one profile per platform, ~32 min — the pre-commit tier |
-| `ctest` | 218 | the release gate, once |
+| `ctest` | 228 | this AArch64 host; 230 in the cross-host union |
 
-(Counts from `ctest -N` on 2026-08-17, on an **AArch64** host with
-`POM68K_JIT_BACKENDS=auto`. Three gates are host-conditional since
-2026-08-18 — the AArch64 pair (`jit_lockstep_a64_coarse_test`,
-`jit_lockstep_030_a64_experimental_test`) and the x86-64-only
-`jit_lockstep_030_x64_experimental_test` — so the two hosts differ by one
-gate net; re-derive with `ctest -N` rather than arithmetic. `m040` and
-`etalon` are host-independent. `CMakeLists.txt`'s own inline comment near the label
-block carries older numbers. All of them drift every time a gate lands —
-re-derive rather than trust either.)
+(Counts from `ctest -N` on 2026-08-26, on an **AArch64** host with
+`POM68K_JIT_BACKENDS=auto`. Five gates are host-conditional: the AArch64
+coarse/030-experimental/030-alignment trio and the x86-64 030 experimental +
+alignment pair. Re-derive with `ctest -N` rather than arithmetic; `m040` and
+`etalon` are host-independent.)
 
-Labels are derived from test names at the end of `CMakeLists.txt`, so a new
-gate is classified the moment it is registered — and the derivation
-OVERWRITES any `LABELS` a registration set inline.
+Labels are derived from test names in `cmake/Pom68kGatePolicy.cmake`, so a
+new gate is classified the moment it is registered. The derivation merges and
+de-duplicates any explicit `LABELS` a registration already set.
 
 ---
 
 ## 6. Environment surface
 
-Everything in `JitConfig.h` unless noted. `resolveConfig()` snapshots the
-whole surface once when an `Engine` is constructed; the selected backend then
-resolves its two dependent defaults (blocks/hot). `Context::config` publishes
-that immutable policy during compilation, so neither A64 nor x64 reads a live
-process environment. Later environment changes affect only future engines.
+Everything in `JitConfig.h` unless noted. Product startup captures the whole
+surface once in `RuntimeConfig::jit()` and injects that immutable snapshot
+through every CPU wrapper into its `Engine`. Standalone gates capture the same
+keys at their test boundary (`tests/JitTestConfig.h`) and inject the snapshot;
+all twelve wrappers and `Engine` require it by const reference. Unit fixtures
+which deliberately want deterministic policy must name
+`defaultResolvedConfig()`; there is no nullable constructor parameter or
+implicit fallback. The selected backend then resolves its dependent defaults
+(blocks/hot).
+`Context::config` publishes the same policy during compilation, so neither the
+engine nor A64/x64 reads a live process environment. Later environment changes
+do not affect an injected session.
 
 | Variable | Default | Meaning |
 |---|---|---|

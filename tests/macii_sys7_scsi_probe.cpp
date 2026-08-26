@@ -20,9 +20,10 @@ int main(int argc, char** argv) {
     }
     std::ifstream rin(argv[1], std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(rin)), {});
-    MacIIMemory mem;
+    MacIIMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom) || !mem.installTobyVideo()) return 1;
-    Cpu020 cpu(mem, true);
+    Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(argv[2])) return 1;

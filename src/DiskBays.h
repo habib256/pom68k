@@ -67,7 +67,7 @@ struct DiskBay {
 // rather than hiding the control.
 struct DiskBaysHost {
     // --- Current configuration (owned by the runner) ---
-    std::string  romName;                       // argv[1] for a relaunch
+    std::string  romName;                       // ROM path for a relaunch
     std::string  bootPath;                      // SCSI 0
     std::vector<std::string>* extras = nullptr; // SCSI 1..N, live view
     std::string  floppyPath;                    // "" when no drive / no disk
@@ -111,7 +111,7 @@ void diskBaysInstallDrop(GLFWwindow* window);
 std::vector<std::string> diskBaysKnownImages(const std::string& nearPath);
 
 // CD image by extension (.iso/.cdr/.toast/.cue/.bin) — the ONE list, shared
-// by the window and every runner's argv loop. Name-based on purpose: a .dsk
+// by the window and every runner's typed-media loop. Name-based on purpose: a .dsk
 // that happens to be 2048-aligned is still a hard disk.
 bool diskBaysPathIsCd(const std::string& path);
 
@@ -120,7 +120,7 @@ bool diskBaysPathIsCd(const std::string& path);
 inline const char* kCdBayToken = "cdbay";
 
 // ── Every machine that can have a CD drive boots with one ──────────────────
-// Call once per runner, straight after the argv extras loop.
+// Call once per runner, straight after the additional-media loop.
 //
 // This is the whole reason the window's CD row can behave like its floppy
 // row. The hot-swap contract above is not negotiable — Classic Mac OS probes
@@ -141,8 +141,9 @@ inline const char* kCdBayToken = "cdbay";
 // `POM68K_NO_CDBAY=1` opts out for a session — for anyone comparing a bus
 // against a pre-2026-08-15 capture.
 template <class Mem>
-inline void ensureCdDrive(Mem& mem, std::vector<std::string>& extras) {
-    if (std::getenv("POM68K_NO_CDBAY")) return;
+inline void ensureCdDrive(Mem& mem, std::vector<std::string>& extras,
+                          bool enabled = true) {
+    if (!enabled) return;
     if (extras.size() >= 6) return;
     for (const std::string& e : extras)
         if (e == kCdBayToken || diskBaysPathIsCd(e)) return;   // already one

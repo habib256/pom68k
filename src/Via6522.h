@@ -17,6 +17,7 @@
 
 class Via6522 {
 public:
+    void configureTrace(bool trace) { trace_ = trace; }
     // 6522 register indices (addr bits 12..9 on the Mac)
     enum Reg { ORB = 0, ORA = 1, DDRB = 2, DDRA = 3,
                T1CL = 4, T1CH = 5, T1LL = 6, T1LH = 7,
@@ -194,6 +195,7 @@ private:
     uint16_t t1latch_ = 0;
     uint8_t t2ll_ = 0;                          // T2 low-latch (staged by T2CL)
     bool t1armed_ = false, t2armed_ = false;   // one-shot IFR arming
+    bool trace_ = false;
 public:
     long ca1Cleared = 0;                        // diagnostic
 };

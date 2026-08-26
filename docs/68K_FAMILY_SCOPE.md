@@ -271,8 +271,8 @@ platforms.
 | Item | Why cheap | Note |
 |---|---|---|
 | **128K / 512K / 512Ke** | A subset of the Plus: 64K ROM, no SCSI, less RAM. Memory/ROM config on `MacMemory`. | 128K `28BA61CE` and 512K `28BA4E50` are on hand |
-| **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + a variant value |
-| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:53-61`; `runDuo` hard-codes the 230's pair today (`main.cpp:2351-2352`) |
+| **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + typed `SnapMachine` selection |
+| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:53-61`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:88-123`) |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |
 | **ATA/IDE target on the Quadra 630 / LC 580** | The port is mapped (`Q630Memory.h:27`), it just has no drive | The remaining gap on that board; boot currently goes over SCSI |
 
@@ -294,7 +294,7 @@ the memory callbacks. See `docs/CACHE_040.md`.
 ## 5. The caveat on "done" — depth, not breadth
 
 Booting to the Finder is the *entry* criterion, not the finish line.
-Re-derived from `CMakeLists.txt` on 2026-08-12:
+Re-derived from the CMake gate modules on 2026-08-12:
 
 - **37 of 37** profiles have a Finder boot gate.
 - **9 of 37** have any gate *past* the boot signature: Plus (`input_etalon`),
@@ -305,9 +305,10 @@ Re-derived from `CMakeLists.txt` on 2026-08-12:
   point where the Finder appears** — including every 2026-08 arrival.
 - **15 of 37** are additionally gated on the **second execution engine**
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
-  iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` at
-  `CMakeLists.txt:1513-1554`, plus `jit_classic_boot_etalon` registered on its
-  own at `:1657` because it shares the compact binary); four of those also
+  iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` in
+  `cmake/Pom68kJitGates.cmake:371-454`, plus `jit_classic_boot_etalon`
+  registered on its own at `cmake/Pom68kJitGates.cmake:548-551` because it
+  shares the compact binary); four of those also
   carry an explicit `interp_*_boot_etalon` interpreter reference (q605,
   centris650, q630, q700).
 

@@ -35,6 +35,7 @@
 // Gates: tests/iisi_boot_etalon.cpp, tests/iici_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "PseudoVia.h"
@@ -66,8 +67,9 @@ public:
 
     // iici: the ADB-modem + discrete-RTC front end (no Egret, no reset hold);
     // otherwise the IIsi's Egret 344S0100.
-    explicit RbvMemory(uint32_t totalRam = 0x800000, int64_t cpuHz = kCpuHz,
-                       bool iici = false);
+    explicit RbvMemory(const pom68k::CoreConfig& coreConfig,
+                       uint32_t totalRam = 0x800000,
+                       int64_t cpuHz = kCpuHz, bool iici = false);
     int64_t cpuHz() const { return cpuHz_; }
     bool isIIci() const { return iici_; }
 

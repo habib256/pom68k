@@ -31,8 +31,9 @@ int main() {
   auto img=find("hdv/GISTPERSO-boot.vhd");
   std::ifstream rin(rom,std::ios::binary);
   std::vector<uint8_t> rd((std::istreambuf_iterator<char>(rin)),{});
-  MacIIMemory mem; mem.loadRom(rd); mem.installTobyVideo();
-  Cpu020 cpu(mem,true); mem.setCpu(&cpu); cpu.hardReset();
+  MacIIMemory mem(pom68k::defaultCoreConfig()); mem.loadRom(rd); mem.installTobyVideo();
+  Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+             pom68k::defaultCoreConfig().cpu, true); mem.setCpu(&cpu); cpu.hardReset();
   mem.attachScsi(img); ensureBootDriverType(mem.scsiDisk().image());
   const int64_t kFrame=800*525;
   bool logged=false;

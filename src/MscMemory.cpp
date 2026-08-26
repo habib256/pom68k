@@ -26,10 +26,14 @@ static uint32_t hostMacSecondsMsc() {
     return uint32_t(uint64_t(int64_t(timegm(&lt))) + 2082844800ULL);
 }
 
-MscMemory::MscMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
+MscMemory::MscMemory(const pom68k::CoreConfig& coreConfig,
+                     uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF), vram_(kVramSize, 0),
-      pmu_(via_, cpuHz),
+      pmu_(via_, cpuHz, coreConfig.peripherals),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
+    via_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     asc_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };
     via_.setMscShiftQuirk(true);     // mscvia: SR mode 000 = ext shift-in
     // msc_config rides the pseudo-VIA video hook (msc.cpp:63-64) — the

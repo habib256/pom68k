@@ -23,13 +23,16 @@
 //   8. A64/x64 dispatch, extensions, EAs and control come from Instr
 //   9. performance policy is keyed by workload, guest family and host
 //  10. every `file:line` citation that resolves in-tree lands inside the file
-//  11. shared GUI lifecycles stay outside main.cpp behind one service seam
+//  11. startup follows ProcessEnvironment -> RuntimeConfig -> Factory ->
+//      Session -> GUI runtime, whose shared lifecycles stay outside main.cpp
 //  12. GUI and gate media lookup share immutable-reference preference
 //  13. TODO.md's active-work gate-registry headline matches CTest
+//  14. CMake registrations, dev tools and registry policy stay modular
+//  15. leaf devices consume subsystem config views, never the whole core bag
 //
 // Check 4 is here because it caught a live one the day it was written: four
 // gates — the three IIfx ones and `duo230_boot_etalon` — were registered
-// AFTER the label-derivation block in `CMakeLists.txt` and so carried no
+// AFTER the old inline label-derivation block and so carried no
 // label at all. Two whole platforms were invisible to every `ctest -L` tier
 // while the docs advertised the tiers as complete.
 //
@@ -38,19 +41,32 @@
 // docs against themselves.
 
 #include "AssetFingerprint.h"          // testasset::find — shared asset search
+#include "MachineFactory.h"
 #include "MachineCatalog.h"
+#include "MachineSession.h"
+#include "ProcessEnvironment.h"
+#include "RuntimeConfig.h"
+#include "StartupOptions.h"
+#include "StartupSnapshot.h"
+#include "StartupValueDecoding.h"
+#include "GuiSessionObjects.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 static int gFails = 0;
@@ -98,12 +114,137 @@ static std::vector<int> numbersBefore(const std::string& text,
 
 int main() {
     const std::string mainCpp = testasset::find("src/main.cpp");
-    const std::string guiRunner = testasset::find("src/GuiRunner.h");
+    const std::string guiRuntimeCpp =
+        testasset::find("src/GuiMachineRuntime.cpp");
+    const std::string guiShell = testasset::find("src/GuiShell.h");
+    const std::string guiShellCommon =
+        testasset::find("src/GuiShellCommon.h");
+    const std::array<std::string, 6> guiRunners = {
+        testasset::find("src/GuiRunnerCompact.h"),
+        testasset::find("src/GuiRunnerDafb.h"),
+        testasset::find("src/GuiRunnerSonora.h"),
+        testasset::find("src/GuiRunnerToby.h"),
+        testasset::find("src/GuiRunnerV8.h"),
+        testasset::find("src/GuiRunnerDuo.h")};
+    const std::string guiShellCpp = testasset::find("src/GuiShell.cpp");
+    const std::string guiHostServices =
+        testasset::find("src/GuiHostServices.h");
+    const std::string guiHostServicesCpp =
+        testasset::find("src/GuiHostServices.cpp");
+    const std::string platformComposers =
+        testasset::find("src/PlatformComposers.cpp");
+    const std::array<std::string, 6> platformFamilies = {
+        testasset::find("src/PlatformCompact.cpp"),
+        testasset::find("src/PlatformToby.cpp"),
+        testasset::find("src/PlatformV8.cpp"),
+        testasset::find("src/PlatformSonora.cpp"),
+        testasset::find("src/PlatformDafb.cpp"),
+        testasset::find("src/PlatformDuo.cpp")};
+    const std::string platformSupport =
+        testasset::find("src/PlatformCompositionSupport.h");
+    const std::string guiSessionState =
+        testasset::find("src/GuiSessionState.h");
+    const std::string peripheralWindowHeader =
+        testasset::find("src/PeripheralWindow.h");
+    const std::string peripheralWindowCpp =
+        testasset::find("src/PeripheralWindow.cpp");
+    const std::string lleSessionHeader =
+        testasset::find("src/LleSession.h");
+    const std::string guiWindowSession =
+        testasset::find("src/GuiWindowSession.h");
+    const std::string runtimeConfig = testasset::find("src/RuntimeConfig.h");
+    const std::string runtimeConfigSource =
+        testasset::find("src/RuntimeConfig.cpp");
+    const std::string runtimeConfigParsers =
+        testasset::find("src/RuntimeConfigParsers.h");
+    const std::string startupOptions =
+        testasset::find("src/StartupOptions.h");
+    const std::string startupSnapshot =
+        testasset::find("src/StartupSnapshot.h");
+    const std::string startupValuePolicy =
+        testasset::find("src/StartupValuePolicy.h");
+    const std::string startupValueDecoding =
+        testasset::find("src/StartupValueDecoding.h");
+    const std::string startupDomainView =
+        testasset::find("src/StartupDomainView.h");
+    const std::string runtimeConfigProduct =
+        testasset::find("src/RuntimeConfigProduct.cpp");
+    const std::string runtimeConfigCore =
+        testasset::find("src/RuntimeConfigCore.cpp");
+    const std::string runtimeConfigMachine =
+        testasset::find("src/RuntimeConfigMachine.cpp");
+    const std::string processEnvironment =
+        testasset::find("src/ProcessEnvironment.cpp");
+    const std::string jitConfigHeader =
+        testasset::find("src/jit/JitConfig.h");
+    const std::string jitTestConfig = testasset::find("tests/JitTestConfig.h");
+    const std::array<std::string, 12> jitConfigConsumers = {
+        testasset::find("src/Cpu68k.h"),
+        testasset::find("src/IIfxCpu.h"),
+        testasset::find("src/Cpu020.h"),
+        testasset::find("src/Cpu030.h"),
+        testasset::find("src/Cpu040.h"),
+        testasset::find("src/MscCpu.h"),
+        testasset::find("src/CentrisCpu.h"),
+        testasset::find("src/Q630Cpu.h"),
+        testasset::find("src/Q700Cpu.h"),
+        testasset::find("src/SonoraCpu.h"),
+        testasset::find("src/VaspCpu.h"),
+        testasset::find("src/RbvCpu.h")};
+    const std::array<std::string, 13> coreConfigLeaves = {
+        testasset::find("src/AdbVia.h"),
+        testasset::find("src/CudaLle.h"),
+        testasset::find("src/PgePmu.h"),
+        testasset::find("src/Cpu020.h"),
+        testasset::find("src/Cpu030.h"),
+        testasset::find("src/Cpu040.h"),
+        testasset::find("src/MscCpu.h"),
+        testasset::find("src/CentrisCpu.h"),
+        testasset::find("src/Q630Cpu.h"),
+        testasset::find("src/Q700Cpu.h"),
+        testasset::find("src/SonoraCpu.h"),
+        testasset::find("src/VaspCpu.h"),
+        testasset::find("src/RbvCpu.h")};
+    const std::array<std::string, 12> coreConfigRoots = {
+        testasset::find("src/MacMemory.h"),
+        testasset::find("src/MacIIMemory.h"),
+        testasset::find("src/IIfxMemory.h"),
+        testasset::find("src/V8Memory.h"),
+        testasset::find("src/SonoraMemory.h"),
+        testasset::find("src/VaspMemory.h"),
+        testasset::find("src/RbvMemory.h"),
+        testasset::find("src/MscMemory.h"),
+        testasset::find("src/CentrisMemory.h"),
+        testasset::find("src/Q605Memory.h"),
+        testasset::find("src/Q630Memory.h"),
+        testasset::find("src/Q700Memory.h")};
+    const std::array<std::string, 10> coreCpuConsumers = {
+        testasset::find("src/Cpu020.h"),
+        testasset::find("src/Cpu030.h"),
+        testasset::find("src/Cpu040.h"),
+        testasset::find("src/MscCpu.h"),
+        testasset::find("src/CentrisCpu.h"),
+        testasset::find("src/Q630Cpu.h"),
+        testasset::find("src/Q700Cpu.h"),
+        testasset::find("src/SonoraCpu.h"),
+        testasset::find("src/VaspCpu.h"),
+        testasset::find("src/RbvCpu.h")};
+    const std::string coreConfigHeader =
+        testasset::find("src/CoreConfig.h");
+    const std::string machineFactory = testasset::find("src/MachineFactory.cpp");
+    const std::string machineSession = testasset::find("src/MachineSession.h");
     const std::string fixtureStore = testasset::find("src/FixtureStore.h");
     const std::string assetFingerprint =
         testasset::find("tests/AssetFingerprint.h");
     const std::string catalog = testasset::find("src/MachineCatalog.h");
     const std::string claude  = testasset::find("CLAUDE.md");
+    const std::string cmakeRoot = testasset::find("CMakeLists.txt");
+    const std::array<std::string, 5> cmakeModules = {
+        testasset::find("cmake/Pom68kComponentGates.cmake"),
+        testasset::find("cmake/Pom68kMachineGates.cmake"),
+        testasset::find("cmake/Pom68kJitGates.cmake"),
+        testasset::find("cmake/Pom68kDevTools.cmake"),
+        testasset::find("cmake/Pom68kGatePolicy.cmake")};
     // The roster path is baked in at configure time. It used to be searched
     // for relative to the working directory, and run from the source tree the
     // search failed and the gate returned 0 after only the first two checks —
@@ -133,7 +274,36 @@ int main() {
     // ── 1. One compiled catalogue drives menu and snapshot identity ───────
     const int rows = int(pom68k::kMachineProfileCount);
     const std::string mainSource = slurp(mainCpp);
-    check(mainSource.find("pom68k::kMachineProfiles") != std::string::npos,
+    const std::string guiRuntimeSource = slurp(guiRuntimeCpp);
+    std::string shellHeaderSource = slurp(guiShellCommon);
+    bool guiRunnersPresent = !guiShellCommon.empty();
+    for (const std::string& runner : guiRunners) {
+        guiRunnersPresent = guiRunnersPresent && !runner.empty();
+        shellHeaderSource += slurp(runner);
+    }
+    const std::string shellSource = slurp(guiShellCpp);
+    const std::string hostServicesSource =
+        slurp(guiHostServices) + slurp(guiHostServicesCpp);
+    const std::string peripheralWindowSource =
+        slurp(peripheralWindowHeader) + slurp(peripheralWindowCpp);
+    const std::string compactComposerSource = slurp(platformFamilies[0]);
+    const std::string platformSupportSource = slurp(platformSupport);
+    std::string composersSource = slurp(platformComposers) +
+                                  platformSupportSource;
+    bool platformFamiliesPresent = !platformSupport.empty();
+    for (const std::string& path : platformFamilies) {
+        platformFamiliesPresent = platformFamiliesPresent && !path.empty();
+        composersSource += slurp(path);
+    }
+    const std::string cmakeRootSource = slurp(cmakeRoot);
+    std::array<std::string, 5> cmakeModuleSources;
+    bool cmakeModulesPresent = !cmakeRoot.empty();
+    for (std::size_t i = 0; i < cmakeModules.size(); i++) {
+        cmakeModulesPresent = cmakeModulesPresent && !cmakeModules[i].empty();
+        cmakeModuleSources[i] = slurp(cmakeModules[i]);
+    }
+    check(shellSource.find("kMachineProfiles") !=
+              std::string::npos,
           "Machine menu consumes the compiled profile catalogue");
     check(slurp(catalog).find("enum class SnapMachine") != std::string::npos,
           "snapshot ids live beside the profile catalogue");
@@ -157,156 +327,878 @@ int main() {
               "CLAUDE.md profile count " + std::to_string(n) + " == " +
               std::to_string(rows) + " in the code");
 
-    // ── 11. Shared GUI extraction contract ───────────────────────────────
-    // main.cpp is deliberately the composition root: board wrappers and the
-    // one process-global adapter remain there, while reusable lifecycles,
-    // screen input and ADB transitions belong to GuiRunner.h.
-    check(!guiRunner.empty(), "src/GuiRunner.h located");
-    const std::string runnerSource = slurp(guiRunner);
-    check(mainSource.find("#include \"GuiRunner.h\"") != std::string::npos,
-          "main.cpp includes the shared GUI runner");
-    check(mainSource.find("struct GuiServices") != std::string::npos,
-          "main.cpp supplies the explicit GUI services adapter");
-    check(countOccurrences(mainSource, "struct GuiServices") == 1,
-          "all extracted GUI runners share one services adapter");
-    check(mainSource.find("struct DafbRunnerSpec") == std::string::npos &&
-          mainSource.find("int runDafbGui") == std::string::npos,
-          "main.cpp does not own the DAFB runner implementation");
-    check(mainSource.find("struct SonoraRunnerSpec") == std::string::npos &&
-          mainSource.find("int runSonoraGui") == std::string::npos,
-          "main.cpp does not own the Sonora runner implementation");
-    check(mainSource.find("struct TobyRunnerSpec") == std::string::npos &&
-          mainSource.find("int runTobyGui") == std::string::npos,
-          "main.cpp does not own the Toby runner implementation");
-    check(mainSource.find("struct V8RunnerSpec") == std::string::npos &&
-          mainSource.find("int runV8Gui") == std::string::npos,
-          "main.cpp does not own the V8 runner implementation");
-    check(mainSource.find("struct DuoRunnerSpec") == std::string::npos &&
-          mainSource.find("int runDuoGui") == std::string::npos,
-          "main.cpp does not own the Duo runner implementation");
-    check(runnerSource.find("struct DafbRunnerSpec") != std::string::npos &&
-          runnerSource.find("int runDafbGui") != std::string::npos,
-          "GuiRunner.h owns the DAFB specification and lifecycle");
-    check(runnerSource.find("struct SonoraRunnerSpec") != std::string::npos &&
-          runnerSource.find("int runSonoraGui") != std::string::npos,
-          "GuiRunner.h owns the Sonora specification and lifecycle");
-    check(runnerSource.find("struct TobyRunnerSpec") != std::string::npos &&
-          runnerSource.find("int runTobyGui") != std::string::npos,
-          "GuiRunner.h owns the Toby specification and lifecycle");
-    check(runnerSource.find("struct V8RunnerSpec") != std::string::npos &&
-          runnerSource.find("int runV8Gui") != std::string::npos,
-          "GuiRunner.h owns the V8 specification and lifecycle");
-    check(runnerSource.find("struct DuoRunnerSpec") != std::string::npos &&
-          runnerSource.find("int runDuoGui") != std::string::npos,
-          "GuiRunner.h owns the Duo specification and lifecycle");
-    check(runnerSource.find("struct ScreenInput") != std::string::npos &&
-          runnerSource.find("class AdbKeyboard") != std::string::npos &&
-          mainSource.find("struct ScreenInput") == std::string::npos,
-          "GuiRunner.h owns shared screen and ADB input");
-    check(countOccurrences(mainSource, "runDafbGui<") == 4,
-          "the four DAFB platform wrappers consume the shared runner");
-    check(countOccurrences(mainSource, "runSonoraGui<") == 3,
-          "the three Sonora platform wrappers consume the shared runner");
-    check(countOccurrences(mainSource, "runTobyGui<") == 2,
-          "the Mac II family and IIfx wrappers consume the shared runner");
-    check(countOccurrences(mainSource, "runV8Gui<") == 1,
-          "the five V8 profiles consume one shared runner instantiation");
-    check(countOccurrences(mainSource, "runDuoGui<") == 1,
-          "the Duo wrapper consumes its shared runner instantiation");
-    const size_t dafbBegin = runnerSource.find("int runDafbGui");
-    const size_t sonoraBegin = runnerSource.find("int runSonoraGui");
-    const size_t tobyBegin = runnerSource.find("int runTobyGui");
-    const size_t v8Begin = runnerSource.find("int runV8Gui");
-    const size_t duoBegin = runnerSource.find("int runDuoGui");
-    const std::string dafbSource =
-        dafbBegin != std::string::npos && sonoraBegin != std::string::npos
-        ? runnerSource.substr(dafbBegin, sonoraBegin - dafbBegin)
-        : std::string();
-    const std::string sonoraSource =
-        sonoraBegin != std::string::npos && tobyBegin != std::string::npos
-        ? runnerSource.substr(sonoraBegin, tobyBegin - sonoraBegin)
-        : std::string();
-    const std::string tobySource =
-        tobyBegin != std::string::npos && v8Begin != std::string::npos
-        ? runnerSource.substr(tobyBegin, v8Begin - tobyBegin)
-        : std::string();
-    const std::string v8Source =
-        v8Begin != std::string::npos && duoBegin != std::string::npos
-        ? runnerSource.substr(v8Begin, duoBegin - v8Begin)
-        : std::string();
-    const std::string duoSource =
-        duoBegin == std::string::npos
-        ? std::string() : runnerSource.substr(duoBegin);
-    for (const char* service : {
-             "qualify(", "checkOnly(", "wireNetwork(", "locate(",
-             "installGlfwErrorCallback(", "configureOpenGl(",
-             "prepareDriveSounds(", "bindCpuMenu(", "drawMachineMenu(",
-             "requestRelaunch(", "traceKey(", "processRelaunch(" }) {
-        check(dafbSource.find(std::string("services.") + service) !=
-                  std::string::npos,
-              std::string("DAFB runner uses explicit service: ") + service);
+    // ── 11. Application composition + shared GUI extraction contract ─────
+    // main.cpp is the composition root, not the configuration/ROM dispatcher:
+    // ProcessEnvironment -> RuntimeConfig -> MachineFactory ->
+    // MachineSession -> concrete runtime.
+    check(!processEnvironment.empty() && !runtimeConfig.empty() &&
+              !runtimeConfigSource.empty() && !runtimeConfigParsers.empty() &&
+              !startupOptions.empty() && !startupSnapshot.empty() &&
+              !jitConfigHeader.empty() &&
+              !startupDomainView.empty() &&
+              !runtimeConfigProduct.empty() && !runtimeConfigCore.empty() &&
+              !runtimeConfigMachine.empty() && !machineFactory.empty() &&
+              !machineSession.empty(),
+          "headless application architecture files are present");
+    bool narrowCoreConfigLeaves = true;
+    for (const std::string& leaf : coreConfigLeaves) {
+        narrowCoreConfigLeaves = narrowCoreConfigLeaves && !leaf.empty() &&
+            slurp(leaf).find("const pom68k::CoreConfig&") == std::string::npos &&
+            slurp(leaf).find("defaultCoreConfig()") == std::string::npos;
     }
-    for (const char* service : {
-             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
-             "configureOpenGl(", "prepareDriveSounds(", "bindCpuMenu(",
-             "drawMachineMenu(", "requestRelaunch(", "processRelaunch(" }) {
-        check(sonoraSource.find(std::string("services.") + service) !=
-                  std::string::npos ||
-              sonoraSource.find(std::string("c.services.") + service) !=
-                  std::string::npos,
-              std::string("Sonora runner uses shared service: ") + service);
+    check(narrowCoreConfigLeaves,
+          "leaf devices consume subsystem views instead of the CoreConfig bag");
+    bool requiredCoreConfigRoots = !coreConfigHeader.empty();
+    for (const std::string& rootPath : coreConfigRoots) {
+        const std::string source = slurp(rootPath);
+        requiredCoreConfigRoots = requiredCoreConfigRoots && !rootPath.empty() &&
+            source.find("const pom68k::CoreConfig& coreConfig") !=
+                std::string::npos &&
+            source.find("coreConfig =") == std::string::npos;
     }
-    for (const char* service : {
-             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
-             "configureOpenGl(", "prepareDriveSounds(", "bindCpuMenu(",
-             "drawMachineMenu(", "requestRelaunch(", "traceKey(",
-             "drawSaveState(", "processRelaunch(" }) {
-        check(tobySource.find(std::string("services.") + service) !=
-                  std::string::npos ||
-              tobySource.find(std::string("c.services.") + service) !=
-                  std::string::npos,
-              std::string("Toby runner uses shared service: ") + service);
+    check(requiredCoreConfigRoots,
+          "board composition roots require explicit CoreConfig injection");
+    bool requiredCoreCpuViews = true;
+    for (const std::string& cpuPath : coreCpuConsumers) {
+        const std::string source = slurp(cpuPath);
+        requiredCoreCpuViews = requiredCoreCpuViews && !cpuPath.empty() &&
+            source.find("const pom68k::CoreCpuConfig& cpuConfig") !=
+                std::string::npos &&
+            source.find("cpuConfig =") == std::string::npos;
     }
-    check(tobySource.find("frameLegacy(") != std::string::npos,
-          "Toby runner preserves its original ADB host-key surface");
-    for (const char* service : {
-             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
-             "configureOpenGl(", "prepareDriveSounds(", "bindCpuMenu(",
-             "drawMachineMenu(", "requestRelaunch(", "traceKey(",
-             "processRelaunch(" }) {
-        check(v8Source.find(std::string("services.") + service) !=
-                  std::string::npos ||
-              v8Source.find(std::string("c.services.") + service) !=
-                  std::string::npos,
-              std::string("V8 runner uses shared service: ") + service);
-    }
-    check(v8Source.find("c.spec.cpuMhz") != std::string::npos &&
-          v8Source.find("15.6672 MHz") == std::string::npos,
-          "V8 CPU panel frequency comes from the profile descriptor");
-    for (const char* service : {
-             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
-             "configureOpenGl(", "prepareAudioHost(", "bindCpuMenu(",
-             "drawMachineMenu(", "requestRelaunch(", "traceKey(",
-             "drawSaveState(", "processRelaunch(" }) {
-        check(duoSource.find(std::string("services.") + service) !=
-                  std::string::npos ||
-              duoSource.find(std::string("c.services.") + service) !=
-                  std::string::npos,
-              std::string("Duo runner uses shared service: ") + service);
-    }
-    check(duoSource.find("h.hasFloppyDrive = false") != std::string::npos &&
-          duoSource.find("h.supportsEmptyCdDrive = false") !=
+    check(requiredCoreCpuViews,
+          "configured CPU leaves require explicit CoreCpuConfig injection");
+    const std::string cpu040Header = slurp(testasset::find("src/Cpu040.h"));
+    const std::string pgeHeader = slurp(testasset::find("src/PgePmu.h"));
+    const std::string coreHeaderSource = slurp(coreConfigHeader);
+    check(cpu040Header.find("const pom68k::CoreDiagnosticConfig& diagnostics") !=
               std::string::npos &&
-          duoSource.find("requestInsertFloppy") == std::string::npos &&
-          duoSource.find("requestInsertBay") == std::string::npos,
-          "Duo runner preserves no-floppy and staged-CD capabilities");
-    check(duoSource.find("frameLegacy(") != std::string::npos,
-          "Duo runner preserves its original ADB host-key surface");
+              cpu040Header.find("diagnostics =") == std::string::npos &&
+              pgeHeader.find("const pom68k::CorePeripheralConfig& peripherals") !=
+                  std::string::npos &&
+              pgeHeader.find("peripherals =") == std::string::npos &&
+              countOccurrences(coreHeaderSource,
+                  "inline const CoreConfig& defaultCoreConfig()") == 1 &&
+              coreHeaderSource.find("defaultCoreCpuConfig") == std::string::npos &&
+              coreHeaderSource.find("defaultCorePeripheralConfig") ==
+                  std::string::npos &&
+              coreHeaderSource.find("defaultCoreDiagnosticConfig") ==
+                  std::string::npos,
+          "core policy has one explicit fixture default and no section fallbacks");
+    const std::string factorySource = slurp(machineFactory);
+    const std::size_t environmentStep =
+        mainSource.find("captureRuntimeEnvironment");
+    const std::size_t configStep = mainSource.find("RuntimeConfig::parse");
+    const std::size_t factoryStep = mainSource.find("MachineFactory::create");
+    const std::size_t sessionStep = mainSource.find("session.run()");
+    check(environmentStep != std::string::npos &&
+              configStep > environmentStep && factoryStep > configStep &&
+              sessionStep > factoryStep,
+          "main injects ProcessEnvironment into RuntimeConfig before composition");
+    const std::string runtimeComposition = slurp(runtimeConfigSource);
+    const std::string snapshotSource = slurp(startupSnapshot);
+    const std::string startupViewHeader = slurp(startupDomainView);
+    const std::string productDecoder = slurp(runtimeConfigProduct);
+    const std::string coreDecoder = slurp(runtimeConfigCore);
+    const std::string machineDecoder = slurp(runtimeConfigMachine);
+    const std::string startupOptionSchema = slurp(startupOptions);
+    const std::string startupPolicySchema = slurp(startupValuePolicy);
+    const std::string startupValueDecoder = slurp(startupValueDecoding);
+    const std::string jitDecoder = slurp(jitConfigHeader);
+    check(runtimeComposition.find("parseProductStartup") !=
+                  std::string::npos &&
+              runtimeComposition.find("parseCoreStartup") !=
+                  std::string::npos &&
+              runtimeComposition.find("parseMachineSelectionStartup") !=
+                  std::string::npos &&
+              runtimeComposition.find("POM68K_") == std::string::npos,
+          "RuntimeConfig composes typed domains without legacy knob spellings");
+    check(snapshotSource.find("class StartupSnapshot") !=
+                  std::string::npos &&
+              snapshotSource.find("std::map<std::string, std::string") !=
+                  std::string::npos &&
+              startupViewHeader.find("const StartupSnapshot& values_") !=
+                  std::string::npos &&
+              productDecoder.find("parseProductStartup") !=
+                  std::string::npos &&
+              coreDecoder.find("parseCoreStartup") != std::string::npos &&
+              machineDecoder.find("parseMachineSelectionStartup") !=
+                  std::string::npos &&
+              machineDecoder.find("applyMachineProfile") != std::string::npos,
+          "startup decoding has separate compatibility, product, core and machine owners");
+    check(startupOptionSchema.find("struct StartupOption") !=
+                  std::string::npos &&
+              startupOptionSchema.find("STARTUP_OPTION_SCHEMA") !=
+                  std::string::npos &&
+              startupOptionSchema.find("static_assert(validSchema()") !=
+                  std::string::npos &&
+              startupOptionSchema.find("concept StartupOptionFor") !=
+                  std::string::npos &&
+              startupPolicySchema.find("struct StartupValuePolicy") !=
+                  std::string::npos &&
+              startupValueDecoder.find("BooleanStartupOption") !=
+                  std::string::npos &&
+              startupValueDecoder.find("IntegerStartupOption") !=
+                  std::string::npos &&
+              startupViewHeader.find(
+                  "requires StartupOptionFor<Option, Domain>") !=
+                  std::string::npos &&
+              startupOptionSchema.find("!StartupOptionFor<") !=
+                  std::string::npos,
+          "startup options have one unique typed schema consumed by decoders");
+    std::array<std::size_t, 17> valuePolicyCounts{};
+    for (const pom68k::StartupOptionSpec option :
+         pom68k::startup_option::kAll)
+        ++valuePolicyCounts[std::size_t(option.value.kind)];
+    check(std::all_of(valuePolicyCounts.begin(), valuePolicyCounts.end(),
+                      [](std::size_t count) { return count != 0; }) &&
+              valuePolicyCounts[std::size_t(
+                  pom68k::StartupValueKind::Custom)] == 5,
+          "all startup options declare a value policy; only five stay custom");
+    check(pom68k::startup_value::boolean(
+              pom68k::startup_option::AppleTalk, std::string_view{}, false) &&
+              !pom68k::startup_value::boolean(
+                  pom68k::startup_option::SpeedLog, std::string_view{}, true) &&
+              pom68k::startup_value::boolean(
+                  pom68k::startup_option::DriveSounds,
+                  std::string_view{}, true) &&
+              !pom68k::startup_value::boolean(
+                  pom68k::startup_option::JitFetch,
+                  std::string_view("false"), true),
+          "typed boolean policies preserve all legacy empty and false forms");
+    check(pom68k::startup_value::integer(
+              pom68k::startup_option::CacheBoost,
+              std::string_view("0x10")) == std::optional<int>(16) &&
+              !pom68k::startup_value::integer(
+                  pom68k::startup_option::CacheBoost,
+                  std::string_view("65")) &&
+              pom68k::startup_value::integer(
+                  pom68k::startup_option::JitBlockMax,
+                  std::string_view("256")) == std::optional<int>(256) &&
+              !pom68k::startup_value::integer(
+                  pom68k::startup_option::JitBlockMax,
+                  std::string_view("257")) &&
+              pom68k::startup_value::integer(
+                  pom68k::startup_option::ICacheMiss,
+                  std::string_view{}) == std::optional<int>(0) &&
+              !pom68k::startup_value::integer(
+                  pom68k::startup_option::JitWindowKill,
+                  std::string_view{}),
+          "typed integer policies own radix and bounds");
+    bool unknownStartupRejected = false;
+    try {
+        const pom68k::StartupSnapshot invalid{{"UNKNOWN_STARTUP_OPTION", "1"}};
+        (void)invalid;
+    } catch (const std::invalid_argument&) {
+        unknownStartupRejected = true;
+    }
+    const pom68k::StartupSnapshot duplicateStartup{
+        {"POM68K_AUDIO", "0"}, {"POM68K_AUDIO", "1"}};
+    check(unknownStartupRejected && duplicateStartup.size() == 1 &&
+              duplicateStartup.boolean(
+                  pom68k::startup_option::Audio, false),
+          "StartupSnapshot rejects unknown names and publishes immutable typed values");
+    std::size_t jitOptionCount = 0;
+    for (const pom68k::StartupOptionSpec option :
+         pom68k::startup_option::kAll)
+        if (pom68k::startupDomainIncludes(option.domains,
+                                          pom68k::StartupDomain::Jit))
+            ++jitOptionCount;
+    check(sizeof(pom68k::startup_option::kAll) /
+                  sizeof(pom68k::startup_option::kAll[0]) == 128 &&
+              jitOptionCount == 37 &&
+              jitDecoder.find("option::JitProfile") != std::string::npos &&
+              jitDecoder.find("kConfigurationKeys") == std::string::npos &&
+              jitDecoder.find("\"POM68K_") == std::string::npos,
+          "the unified startup schema owns all 37 typed JIT options");
+    check(productDecoder.find("ProductStartupView values") !=
+                  std::string::npos &&
+              coreDecoder.find("CoreStartupView values") !=
+                  std::string::npos &&
+              machineDecoder.find("MachineStartupView values") !=
+                  std::string::npos &&
+              (productDecoder + coreDecoder + machineDecoder).find(
+                  ".numericSwitch(") == std::string::npos &&
+              (productDecoder + coreDecoder + machineDecoder).find(
+                  ".bounded(") == std::string::npos &&
+              jitDecoder.find("values.integer") !=
+                  std::string::npos &&
+              jitDecoder.find("values.boolean") !=
+                  std::string::npos &&
+              jitDecoder.find("const pom68k::StartupSnapshot& values") !=
+                  std::string::npos,
+          "each startup decoder is compile-time restricted to its option domain");
+    check(mainSource.find("makeGuiMachineRuntime()") != std::string::npos &&
+              mainSource.find("GuiShell.h") == std::string::npos &&
+              mainSource.find("MachineHost.h") == std::string::npos &&
+              mainSource.find("GLFW") == std::string::npos &&
+              mainSource.find("ImGui") == std::string::npos,
+          "main is a cold composition root with no concrete GUI dependency");
+    check(guiRuntimeSource.find("class GuiMachineRuntime") !=
+              std::string::npos &&
+              guiRuntimeSource.find("MachineSessionRuntime") !=
+                  std::string::npos,
+          "MachineSession type-erases the concrete core/host/UI runtime");
+    const std::string sessionHeader = slurp(machineSession);
+    check(sessionHeader.find(
+              "std::unique_ptr<MachineSessionRuntime> runtime_") !=
+              std::string::npos &&
+              mainSource.find("makeGuiMachineRuntime()") !=
+              std::string::npos,
+          "MachineSession owns the concrete runtime with RAII");
+    const std::string guiStateHeader = slurp(guiSessionState);
+    check(guiRuntimeSource.find("GuiSessionState state_") !=
+              std::string::npos &&
+              guiStateHeader.find("AtalkHub atalk") != std::string::npos &&
+              guiStateHeader.find("FloppySound floppySfx") !=
+                  std::string::npos &&
+              guiStateHeader.find("PeripheralHost peripherals") !=
+                  std::string::npos &&
+              guiStateHeader.find("struct GuiNetworkState") !=
+                  std::string::npos &&
+              guiStateHeader.find("struct GuiAudioState") !=
+                  std::string::npos &&
+              guiStateHeader.find("struct GuiRelaunchState") !=
+                  std::string::npos &&
+              guiStateHeader.find("struct GuiCpuPanelState") !=
+                  std::string::npos &&
+              guiStateHeader.find("struct GuiDiagnosticState") !=
+                  std::string::npos &&
+              guiRuntimeSource.find("static AtalkHub") == std::string::npos &&
+              guiRuntimeSource.find("static FloppySound") ==
+                  std::string::npos,
+          "GUI runtime owns decomposed host/UI process state with RAII");
+    const std::string guiWindowHeader = slurp(guiWindowSession);
+    check(guiRuntimeSource.find("gGuiSessionState") == std::string::npos &&
+              composersSource.find("runQuantumWithWire(GuiHostServices&") !=
+                  std::string::npos &&
+              composersSource.find("GuiSessionState& gui") ==
+                  std::string::npos &&
+              composersSource.find("hostServices->") == std::string::npos &&
+              shellHeaderSource.find("services.sessionState()") ==
+                  std::string::npos,
+          "machines receive host services directly without a reverse pointer");
+    check(guiWindowHeader.find("~GuiWindowSession() { close(); }") !=
+              std::string::npos &&
+              guiWindowHeader.find("void close() noexcept") !=
+                  std::string::npos &&
+              shellHeaderSource.find("glfwCreateWindow") == std::string::npos &&
+              shellSource.find("glfwCreateWindow") == std::string::npos,
+          "GUI window, ImGui backend and texture handles have one RAII owner");
+    check(factorySource.find("MachineFactory::selectProfile") !=
+              std::string::npos &&
+              mainSource.find("0xECD99DC0") == std::string::npos &&
+              composersSource.find("0xECD99DC0") == std::string::npos,
+          "ROM identity dispatch belongs to MachineFactory, not main.cpp");
+    const std::string runtimeConfigHeaderSource = slurp(runtimeConfig);
+    check(runtimeConfigHeaderSource.find("struct MachineSelectionConfig") !=
+              std::string::npos &&
+              runtimeConfigHeaderSource.find("VariantMap") ==
+                  std::string::npos &&
+              runtimeConfigHeaderSource.find("EnvironmentMap") ==
+                  std::string::npos &&
+              runtimeConfigHeaderSource.find("const StartupSnapshot& startup") !=
+                  std::string::npos &&
+              runtimeConfigHeaderSource.find("variant(std::string_view") ==
+                  std::string::npos &&
+              factorySource.find("config.machineSelection()") !=
+                  std::string::npos &&
+              factorySource.find("config.variant") == std::string::npos,
+          "profile routing consumes typed selections and retains no raw map");
+    check(shellSource.find("profile.snapshot == current") !=
+              std::string::npos &&
+              shellSource.find("config_.variant") == std::string::npos,
+          "Machine menu marks the actual typed snapshot as current");
+    check(slurp(catalog).find("variantKey") == std::string::npos &&
+              slurp(catalog).find("variantValue") == std::string::npos &&
+              shellSource.find("setenv(") == std::string::npos &&
+              shellSource.find("unsetenv(") == std::string::npos &&
+              shellSource.find("relaunch.targetProfile = profile.snapshot") !=
+                  std::string::npos &&
+              hostServicesSource.find("machineProfileArguments(") !=
+                  std::string::npos,
+          "Machine menu relaunch is typed and never mutates process policy");
+    check(peripheralWindowSource.find("setenv(") == std::string::npos &&
+              peripheralWindowSource.find("unsetenv(") == std::string::npos &&
+              peripheralWindowSource.find("firmwareOverridesForSelection") !=
+                  std::string::npos &&
+              hostServicesSource.find("firmwareOverrideArguments(") !=
+                  std::string::npos &&
+              guiStateHeader.find("FirmwareOverride> firmwareOverrides") !=
+                  std::string::npos &&
+              slurp(lleSessionHeader).find("EnvAssignment") ==
+                  std::string::npos,
+          "Peripheral relaunch carries typed firmware policy without env mutation");
+
+    // RuntimeConfig strips application options, exposes typed ROM/media
+    // inputs and preserves the exact relaunch argument list.
+    {
+        char a0[] = "POM68K";
+        char a1[] = "--lle-aarch64-check";
+        char a2[] = "machine.rom";
+        char a3[] = "boot.vhd";
+        char* av[] = {a0, a1, a2, a3};
+        auto parsed = pom68k::app::RuntimeConfig::parse(4, av, {});
+        check(parsed.fullLleAarch64() && parsed.fullLleCheckOnly() &&
+                  parsed.romPath() && *parsed.romPath() == "machine.rom" &&
+                  parsed.mediaArguments().size() == 1 &&
+                  parsed.mediaArguments()[0] == "boot.vhd" &&
+                  parsed.launchArguments().size() == 3,
+              "RuntimeConfig parses typed ROM/media and exact relaunch inputs");
+
+        pom68k::StartupSnapshot guiValues{
+            {"POM68K_APPLETALK", "0"},
+            {"POM68K_LTOUDP", "0"},
+            {"POM68K_ATALK_WIRE_BOOST", "3"},
+            {"POM68K_AUDIO", "0"},
+            {"POM68K_DRIVE_SFX", "0"},
+            {"POM68K_FLOPPY_RO", "1"},
+            {"POM68K_FLOPPY", "boot.dsk"},
+            {"POM68K_MONITOR", "512"},
+            {"POM68K_NOFPU", "0"},
+            {"POM68K_Q605_NOFPU", "1"},
+            {"POM68K_FPU_LOG", "fpu.log"},
+            {"POM68K_KEY_TRACE", ""},
+            {"POM68K_FREEZE_PROBE", "1"},
+            {"POM68K_SPEED_LOG", "1"},
+            {"POM68K_SPEED_LOG_SKIP", "-2"},
+            {"POM68K_SPEED_LOG_COUNT", "7"},
+            {"POM68K_CPU_ENGINE", "interp"},
+            {"POM68K_JIT_BACKEND", "threaded"},
+            {"POM68K_JIT_HOT", "7"},
+            {"POM68K_JIT_REQUIRE_NATIVE", ""},
+            {"POM68K_CACHE_BOOST", "8"},
+            {"POM68K_Q605_ID", "A55A222E"},
+            {"POM68K_FLUX_JITTER", "12"},
+            {"POM68K_ADB_LLE", "0"},
+            {"POM68K_ATALK_DEBUG", "1"},
+            {"POM68K_PGE_PCCOUNT", "12A,34B"},
+        };
+        auto injected = pom68k::app::RuntimeConfig::parse(
+            1, av, guiValues);
+        const auto& network = injected.network();
+        const auto& devices = injected.devices();
+        const auto& cpu = injected.cpu();
+        const auto& diagnostics = injected.diagnostics();
+        const auto& jitConfig = injected.jit().resolved;
+        const auto& core = injected.core();
+        check(!network.appleTalk && network.appleTalkWasSpecified &&
+                  network.ltoUdp && network.appleTalkWireBoost == 3 &&
+                  !devices.audio && !devices.driveSounds &&
+                  !devices.floppyWriteBack && devices.startupFloppy &&
+                  *devices.startupFloppy == "boot.dsk" &&
+                  devices.monitorWidth && *devices.monitorWidth == 512 &&
+                  !cpu.fpu && !cpu.q605Fpu && diagnostics.fpuLog &&
+                  *diagnostics.fpuLog == "fpu.log" && diagnostics.keyTrace &&
+                  diagnostics.freezeProbe && diagnostics.speedLog &&
+                  diagnostics.speedLogSkip == 0 &&
+                  diagnostics.speedLogCount == 7 && jitConfig.engineExplicit &&
+                  jitConfig.engine == jit::EngineKind::Interp &&
+                  jitConfig.backend == "threaded" && jitConfig.hotExplicit &&
+                  jitConfig.hot == 7 && jitConfig.requireNative &&
+                  core.cpu.cacheBoost && *core.cpu.cacheBoost == 8 &&
+                  core.bus.q605MachineId &&
+                  *core.bus.q605MachineId == 0xA55A222Eu &&
+                  core.storage.fluxJitterPercent == 12 &&
+                  !core.firmware.adbLle &&
+                  core.diagnostics.appleTalkTrace &&
+                  core.peripherals.pgePcCount.size() == 2 &&
+                  core.peripherals.pgePcCount[0] == 0x12A &&
+                  injected.machineSelection().memcJr ==
+                      pom68k::SnapMachine::Lc575,
+              "RuntimeConfig injects product, JIT and core policy aggregates");
+
+        pom68k::StartupSnapshot emptyValues{
+            {"POM68K_APPLETALK", ""}, {"POM68K_AUDIO", ""},
+            {"POM68K_DRIVE_SFX", ""}};
+        auto emptySpelling = pom68k::app::RuntimeConfig::parse(
+            1, av, emptyValues);
+        check(emptySpelling.network().appleTalk &&
+                  emptySpelling.devices().audio &&
+                  emptySpelling.devices().driveSounds,
+              "typed configuration preserves empty-value default-on semantics");
+
+        const auto savedEnvironment = [](const char* key) {
+            const char* value = std::getenv(key);
+            return value ? std::optional<std::string>(value) : std::nullopt;
+        };
+        const auto setEnvironment = [](const char* key, const char* value) {
+#ifdef _WIN32
+            _putenv_s(key, value ? value : "");
+#else
+            if (value) setenv(key, value, 1);
+            else unsetenv(key);
+#endif
+        };
+        const auto savedFull = savedEnvironment("POM68K_LLE_AARCH64_FULL");
+        const auto savedCheck =
+            savedEnvironment("POM68K_LLE_AARCH64_CHECK_ONLY");
+        setEnvironment("POM68K_LLE_AARCH64_FULL", "0");
+        setEnvironment("POM68K_LLE_AARCH64_CHECK_ONLY", "0");
+        auto disabledEnv = pom68k::app::RuntimeConfig::parse(
+            1, av, pom68k::app::captureRuntimeEnvironment());
+        setEnvironment("POM68K_LLE_AARCH64_FULL", "1");
+        auto enabledEnv = pom68k::app::RuntimeConfig::parse(
+            1, av, pom68k::app::captureRuntimeEnvironment());
+        setEnvironment("POM68K_LLE_AARCH64_FULL",
+                       savedFull ? savedFull->c_str() : nullptr);
+        setEnvironment("POM68K_LLE_AARCH64_CHECK_ONLY",
+                       savedCheck ? savedCheck->c_str() : nullptr);
+        check(!disabledEnv.fullLleAarch64() &&
+                  !disabledEnv.fullLleCheckOnly() &&
+                  enabledEnv.fullLleAarch64() &&
+                  !enabledEnv.fullLleCheckOnly(),
+              "RuntimeConfig preserves 0/1 environment semantics for strict mode");
+
+        char profileArg[] = "--machine-profile=lc575";
+        char profileRom[] = "quadra605.rom";
+        char* profileArgv[] = {a0, profileArg, profileRom};
+        pom68k::StartupSnapshot inheritedProfile{
+            {"POM68K_Q605_ID", "A55A2225"},
+            {"POM68K_Q605_NOFPU", "2"}};
+        auto commandLineProfile = pom68k::app::RuntimeConfig::parse(
+            3, profileArgv, inheritedProfile);
+        check(commandLineProfile.machineSelection().memcJr ==
+                  pom68k::SnapMachine::Lc575 &&
+                  !commandLineProfile.cpu().q605Fpu &&
+                  commandLineProfile.core().cpu.q605Fpu ==
+                      pom68k::Q605FpuMode::Soft68882 &&
+                  commandLineProfile.romPath() &&
+                  *commandLineProfile.romPath() == "quadra605.rom",
+              "typed profile option overrides inherited identity and FPU policy");
+
+        char q605Arg[] = "--machine-profile=q605";
+        char* q605Argv[] = {a0, q605Arg};
+        pom68k::StartupSnapshot inheritedLc040{
+            {"POM68K_Q605_NOFPU", "2"}};
+        auto q605Profile = pom68k::app::RuntimeConfig::parse(
+            2, q605Argv, inheritedLc040);
+        check(q605Profile.machineSelection().memcJr ==
+                  pom68k::SnapMachine::Q605 &&
+                  q605Profile.cpu().q605Fpu &&
+                  q605Profile.core().cpu.q605Fpu ==
+                      pom68k::Q605FpuMode::Integrated,
+              "typed Q605 relaunch restores integrated 68040 FPU policy");
+
+        auto normalizedRelaunch = pom68k::app::machineProfileArguments(
+            {"--machine-profile=iix", "machine.rom", "boot.vhd"},
+            pom68k::SnapMachine::Lc3Plus);
+        check(normalizedRelaunch.size() == 3 &&
+                  normalizedRelaunch[0] == "--machine-profile=lc3plus" &&
+                  normalizedRelaunch[1] == "machine.rom" &&
+                  normalizedRelaunch[2] == "boot.vhd",
+              "typed relaunch replaces stale profile arguments without moving media");
+
+        char adbPolicyArg[] = "--firmware-override=adb:lle:";
+        char firmwareRom[] = "machine.rom";
+        char* adbPolicyArgv[] = {a0, adbPolicyArg, firmwareRom};
+        pom68k::StartupSnapshot inheritedAdbPolicy{
+            {"POM68K_ADB_LLE", "0"},
+            {"POM68K_ADB_FW", "legacy-adb.bin"}};
+        auto adbPolicy = pom68k::app::RuntimeConfig::parse(
+            3, adbPolicyArgv, inheritedAdbPolicy);
+        check(adbPolicy.core().firmware.adbLle &&
+                  !adbPolicy.core().firmware.adbPath &&
+                  adbPolicy.romPath() && *adbPolicy.romPath() == "machine.rom",
+              "typed ADB policy overrides inherited mode and clears its path");
+
+        char egretPolicyArg[] =
+            "--firmware-override=egret:hle:custom:egret.bin";
+        char* egretPolicyArgv[] = {a0, egretPolicyArg};
+        pom68k::StartupSnapshot inheritedEgretPolicy{
+            {"POM68K_EGRET_LLE", "1"},
+            {"POM68K_CUDA_LLE", "0"},
+            {"POM68K_CUDA_FW", "legacy-cuda.bin"}};
+        auto egretPolicy = pom68k::app::RuntimeConfig::parse(
+            2, egretPolicyArgv, inheritedEgretPolicy);
+        check(!egretPolicy.core().firmware.egretLle &&
+                  !egretPolicy.core().firmware.cudaLle &&
+                  egretPolicy.core().firmware.egretPath &&
+                  *egretPolicy.core().firmware.egretPath ==
+                      "custom:egret.bin" &&
+                  egretPolicy.core().firmware.cudaPath &&
+                  *egretPolicy.core().firmware.cudaPath == "legacy-cuda.bin",
+              "typed Egret mode stays distinct and preserves colons in paths");
+
+        char cudaPolicyArg[] = "--firmware-override=cuda:lle:";
+        char* cudaPolicyArgv[] = {a0, cudaPolicyArg};
+        pom68k::StartupSnapshot inheritedCudaPolicy{
+            {"POM68K_CUDA_LLE", "0"},
+            {"POM68K_CUDA_FW", "legacy-cuda.bin"}};
+        auto cudaPolicy = pom68k::app::RuntimeConfig::parse(
+            2, cudaPolicyArgv, inheritedCudaPolicy);
+        check(cudaPolicy.core().firmware.cudaLle &&
+                  !cudaPolicy.core().firmware.cudaPath,
+              "typed Cuda policy overrides inherited HLE and path independently");
+
+        auto normalizedFirmware = pom68k::app::firmwareOverrideArguments(
+            {"--firmware-override=adb:hle:old.bin",
+             "--machine-profile=lc3plus",
+             "--firmware-override=cuda:lle:old.bin",
+             "machine.rom", "boot.vhd"},
+            {{pom68k::FirmwareTarget::Adb, true, std::nullopt},
+             {pom68k::FirmwareTarget::Cuda, false,
+              std::string("C:\\dump:2.bin")}});
+        check(normalizedFirmware.size() == 5 &&
+                  normalizedFirmware[0] == "--firmware-override=adb:lle:" &&
+                  normalizedFirmware[1] ==
+                      "--firmware-override=cuda:hle:C:\\dump:2.bin" &&
+                  normalizedFirmware[2] == "--machine-profile=lc3plus" &&
+                  normalizedFirmware[3] == "machine.rom" &&
+                  normalizedFirmware[4] == "boot.vhd",
+              "typed firmware relaunch replaces stale policy without moving media");
+
+        const std::vector<std::string> retainedFirmware{
+            "--firmware-override=egret:lle:current.bin", "machine.rom"};
+        check(pom68k::app::firmwareOverrideArguments(
+                  retainedFirmware, {}) == retainedFirmware,
+              "unrelated relaunch retains the current typed firmware policy");
+
+        auto syntheticRom = [](std::size_t size, std::uint32_t checksum) {
+            std::vector<std::uint8_t> rom(size);
+            rom[0] = std::uint8_t(checksum >> 24);
+            rom[1] = std::uint8_t(checksum >> 16);
+            rom[2] = std::uint8_t(checksum >> 8);
+            rom[3] = std::uint8_t(checksum);
+            return rom;
+        };
+        struct RouteCase {
+            std::size_t size;
+            std::uint32_t checksum;
+            pom68k::SnapMachine expected;
+        };
+        const RouteCase routes[] = {
+            {128u << 10, 0,          pom68k::SnapMachine::Plus},
+            {256u << 10, 0xB2E362A8, pom68k::SnapMachine::SE},
+            {256u << 10, 0xB306E171, pom68k::SnapMachine::SEFDHD},
+            {512u << 10, 0xA49F9914, pom68k::SnapMachine::Classic},
+            {256u << 10, 0x9779D2C4, pom68k::SnapMachine::MacII},
+            {256u << 10, 0x97221136, pom68k::SnapMachine::IIx},
+            {512u << 10, 0x4147DD77, pom68k::SnapMachine::IIfx},
+            {512u << 10, 0x368CADFE, pom68k::SnapMachine::IIci},
+            {512u << 10, 0x36B7FB6C, pom68k::SnapMachine::IIsi},
+            {512u << 10, 0x350EACF0, pom68k::SnapMachine::Lc},
+            {512u << 10, 0x35C28F5F, pom68k::SnapMachine::LcII},
+            {512u << 10, 0x3193670E, pom68k::SnapMachine::ClassicII},
+            {1u << 20,   0xECD99DC0, pom68k::SnapMachine::ColorClassic},
+            {1u << 20,   0xEAF1678D, pom68k::SnapMachine::MacTv},
+            {1u << 20,   0xECBBC41C, pom68k::SnapMachine::Lc3},
+            {1u << 20,   0xEDE66CBD, pom68k::SnapMachine::Lc520},
+            {1u << 20,   0x4957EB49, pom68k::SnapMachine::IIvx},
+            {1u << 20,   0xFF7439EE, pom68k::SnapMachine::Lc475},
+            {1u << 20,   0xF1A6F343, pom68k::SnapMachine::Centris650},
+            {1u << 20,   0x420DBFF3, pom68k::SnapMachine::Q700},
+            {1u << 20,   0x3DC27823, pom68k::SnapMachine::Quadra950},
+            {1u << 20,   0x06684214, pom68k::SnapMachine::Q630},
+            {1u << 20,   0xECFA989B, pom68k::SnapMachine::Duo230},
+        };
+        bool allRoutes = true;
+        std::set<pom68k::SnapMachine> routedProfiles;
+        for (const RouteCase& route : routes) {
+            const auto actual = pom68k::app::MachineFactory::selectProfile(
+                parsed, syntheticRom(route.size, route.checksum)).snapshot;
+            allRoutes = allRoutes &&
+                actual == route.expected;
+            routedProfiles.insert(actual);
+        }
+        check(allRoutes,
+              "MachineFactory maps every platform's default ROM identity");
+
+        struct ProfileRoute {
+            const char* key;
+            const char* value;
+            std::size_t size;
+            std::uint32_t checksum;
+            pom68k::SnapMachine expected;
+        };
+        const ProfileRoute profileRoutes[] = {
+            {"POM68K_MACII_MODEL", "iicx", 256u << 10, 0x97221136,
+             pom68k::SnapMachine::IIcx},
+            {"POM68K_MACII_MODEL", "se30", 256u << 10, 0x97221136,
+             pom68k::SnapMachine::SE30},
+            {"POM68K_MACII_MODEL", "fdhd", 256u << 10, 0x97221136,
+             pom68k::SnapMachine::MacII},
+            {"POM68K_LC3_PLUS", "1", 1u << 20, 0xECBBC41C,
+             pom68k::SnapMachine::Lc3Plus},
+            {"POM68K_AIO_ID", "A55A0101", 1u << 20, 0xEDE66CBD,
+             pom68k::SnapMachine::Lc550},
+            {"POM68K_AIO_ID", "CC2", 1u << 20, 0xEDE66CBD,
+             pom68k::SnapMachine::CClassic2},
+            {"POM68K_IIVI", "1", 1u << 20, 0x4957EB49,
+             pom68k::SnapMachine::IIvi},
+            {"POM68K_Q605_ID", "A55A2225", 1u << 20, 0xFF7439EE,
+             pom68k::SnapMachine::Q605},
+            {"POM68K_Q605_ID", "A55A222E", 1u << 20, 0xFF7439EE,
+             pom68k::SnapMachine::Lc575},
+            {"POM68K_CENTRIS_MODEL", "c610", 1u << 20, 0xF1A6F343,
+             pom68k::SnapMachine::Centris610},
+            {"POM68K_CENTRIS610", "1", 1u << 20, 0xF1A6F343,
+             pom68k::SnapMachine::Centris610},
+            {"POM68K_CENTRIS_MODEL", "q610", 1u << 20, 0xF1A6F343,
+             pom68k::SnapMachine::Quadra610},
+            {"POM68K_CENTRIS_MODEL", "q650", 1u << 20, 0xF1A6F343,
+             pom68k::SnapMachine::Quadra650},
+            {"POM68K_CENTRIS_MODEL", "q800", 1u << 20, 0xF1A6F343,
+             pom68k::SnapMachine::Quadra800},
+            {"POM68K_Q700_MODEL", "q900", 1u << 20, 0x420DBFF3,
+             pom68k::SnapMachine::Quadra900},
+            {"POM68K_Q630_ID", "A55A225A", 1u << 20, 0x06684214,
+             pom68k::SnapMachine::Lc580},
+        };
+        char* baseArgv[] = {a0};
+        for (const ProfileRoute& route : profileRoutes) {
+            pom68k::StartupSnapshot one{
+                {route.key, route.value}};
+            auto selectionConfig =
+                pom68k::app::RuntimeConfig::parse(
+                    1, baseArgv, one);
+            const auto actual = pom68k::app::MachineFactory::selectProfile(
+                selectionConfig,
+                syntheticRom(route.size, route.checksum)).snapshot;
+            allRoutes = allRoutes && actual == route.expected;
+            routedProfiles.insert(actual);
+        }
+        bool typedRelaunchRoutes = true;
+        for (const ProfileRoute& route : profileRoutes) {
+            std::string option = pom68k::app::machineProfileArgument(
+                route.expected);
+            char* typedArgv[] = {a0, option.data()};
+            auto selectionConfig = pom68k::app::RuntimeConfig::parse(
+                2, typedArgv, {});
+            typedRelaunchRoutes = typedRelaunchRoutes &&
+                pom68k::app::MachineFactory::selectProfile(
+                    selectionConfig,
+                    syntheticRom(route.size, route.checksum)).snapshot ==
+                    route.expected;
+        }
+        check(allRoutes &&
+                  routedProfiles.size() == pom68k::kMachineProfileCount,
+              "MachineFactory routes every catalogue profile, including variants");
+        check(typedRelaunchRoutes,
+              "typed relaunch option round-trips every shared-ROM profile");
+
+        bool strictRomSet = true;
+        for (const std::uint32_t checksum : {
+                 0xFF7439EEu, 0xF1A6F343u, 0xF1ACAD13u, 0x420DBFF3u,
+                 0x3DC27823u, 0x06684214u, 0x064DC91Du}) {
+            strictRomSet = strictRomSet &&
+                pom68k::app::MachineFactory::qualifiesFullLleAarch64(
+                    syntheticRom(1u << 20, checksum));
+        }
+        check(strictRomSet &&
+                  !pom68k::app::MachineFactory::qualifiesFullLleAarch64(
+                      syntheticRom(1u << 20, 0xDEADBEEF)) &&
+                  !pom68k::app::MachineFactory::qualifiesFullLleAarch64(
+                      syntheticRom(512u << 10, 0xFF7439EE)),
+              "strict AArch64 mode accepts only qualified 1 MB 68040 ROMs");
+
+        pom68k::SnapMachine observed = pom68k::SnapMachine::Plus;
+        bool runtimeDestroyed = false;
+        struct ProbeRuntime final : pom68k::app::MachineSessionRuntime {
+            ProbeRuntime(pom68k::SnapMachine& value, bool& destroyedFlag)
+                : observed(value), destroyed(destroyedFlag) {}
+            ~ProbeRuntime() override { destroyed = true; }
+            int run(pom68k::app::MachineSession& session) override {
+                observed = session.profile().snapshot;
+                return 73;
+            }
+            pom68k::SnapMachine& observed;
+            bool& destroyed;
+        };
+        const auto& iifx = pom68k::app::MachineFactory::selectProfile(
+            parsed, syntheticRom(512u << 10, 0x4147DD77));
+        {
+            pom68k::app::MachineSession selectedSession(
+                std::move(parsed), iifx,
+                syntheticRom(512u << 10, 0x4147DD77), "iifx.rom",
+                std::make_unique<ProbeRuntime>(observed, runtimeDestroyed));
+            check(selectedSession.run() == 73 &&
+                      observed == pom68k::SnapMachine::IIfx &&
+                      !runtimeDestroyed,
+                  "MachineSession retains and delegates once to its runtime");
+        }
+        check(runtimeDestroyed,
+              "MachineSession destroys its owned runtime at session teardown");
+
+        std::vector<int> destructionOrder;
+        struct OwnedProbe {
+            OwnedProbe(std::vector<int>& order, int identity)
+                : order(order), identity(identity) {}
+            ~OwnedProbe() { order.push_back(identity); }
+            std::vector<int>& order;
+            int identity;
+        };
+        {
+            GuiSessionObjects objects;
+            objects.make<OwnedProbe>(destructionOrder, 1);
+            objects.make<OwnedProbe>(destructionOrder, 2);
+        }
+        check(destructionOrder == std::vector<int>({2, 1}),
+              "GUI session objects are destroyed in reverse dependency order");
+    }
+
+    // GUI architecture responsibilities are physically separated and wired
+    // through the session-owned runtime.
+    check(!guiShell.empty() && !guiShellCpp.empty() && guiRunnersPresent &&
+              !guiHostServices.empty() && !platformComposers.empty() &&
+              platformFamiliesPresent,
+          "GuiShell, GuiHostServices and PlatformComposers are present");
+    check(guiRuntimeSource.find("PlatformComposers::run") !=
+              std::string::npos &&
+              guiRuntimeSource.find("std::make_unique<GuiShell>") !=
+                  std::string::npos &&
+              guiRuntimeSource.find("std::make_unique<GuiHostServices>") !=
+                  std::string::npos &&
+              guiRuntimeSource.find("runDafbGui<") == std::string::npos &&
+              guiRuntimeSource.find("glfw") == std::string::npos,
+          "GUI runtime only owns and connects the three responsibilities");
+    check(hostServicesSource.find("class GuiHostServices") !=
+              std::string::npos &&
+              hostServicesSource.find("wireNetwork(") != std::string::npos &&
+              hostServicesSource.find("prepareDriveSounds(") !=
+                  std::string::npos &&
+              hostServicesSource.find("requestRelaunch(") !=
+                  std::string::npos &&
+              hostServicesSource.find("qualify(") != std::string::npos &&
+              hostServicesSource.find("openWindow(") == std::string::npos &&
+              hostServicesSource.find("drawMachineMenu(") ==
+                  std::string::npos,
+          "GuiHostServices owns network, audio, relaunch and diagnostics only");
+    check(shellHeaderSource.find("class GuiShell") != std::string::npos &&
+              shellHeaderSource.find("int runCompactGui") !=
+                  std::string::npos &&
+              shellHeaderSource.find("int runDafbGui") != std::string::npos &&
+              shellHeaderSource.find("int runSonoraGui") !=
+                  std::string::npos &&
+              shellHeaderSource.find("int runTobyGui") != std::string::npos &&
+              shellHeaderSource.find("int runV8Gui") != std::string::npos &&
+              shellHeaderSource.find("int runDuoGui") != std::string::npos &&
+              shellSource.find("GuiShell::openWindow") != std::string::npos &&
+              shellSource.find("GuiShell::drawMachineMenuImpl") !=
+                  std::string::npos,
+          "GuiShell owns windows, menus and six family render-loop units");
+    check(composersSource.find("PlatformComposers::run") !=
+              std::string::npos &&
+              countOccurrences(composersSource, "runCompactGui(") == 1 &&
+              countOccurrences(composersSource, "runDafbGui<") == 4 &&
+              countOccurrences(composersSource, "runSonoraGui<") == 3 &&
+              countOccurrences(composersSource, "runTobyGui<") == 2 &&
+              countOccurrences(composersSource, "runV8Gui<") == 1 &&
+              countOccurrences(composersSource, "runDuoGui<") == 1 &&
+              composersSource.find("glfwCreateWindow") == std::string::npos &&
+              composersSource.find("glfwPollEvents") == std::string::npos &&
+              composersSource.find("ImGui::") == std::string::npos &&
+              platformSupportSource.find("GuiShell") == std::string::npos &&
+              platformSupportSource.find("imgui") == std::string::npos &&
+              compactComposerSource.find("runCompactGui(") !=
+                  std::string::npos,
+          "PlatformComposers performs typed family construction without rendering");
+    check(shellHeaderSource.find("int argc, char** argv") ==
+              std::string::npos &&
+              shellHeaderSource.find("static MachineT") ==
+                  std::string::npos &&
+              shellHeaderSource.find("static Ctx") == std::string::npos &&
+              composersSource.find("legacyArgv") == std::string::npos,
+          "GUI shell loops use typed media and session-owned mutable state");
+    check(shellHeaderSource.find("struct ScreenInput") != std::string::npos &&
+              shellHeaderSource.find("class AdbKeyboard") !=
+                  std::string::npos,
+          "GuiShell owns shared screen and ADB input mechanics");
+    check(hostServicesSource.find("getenv(") == std::string::npos &&
+              shellHeaderSource.find("getenv(") == std::string::npos &&
+              shellSource.find("getenv(") == std::string::npos &&
+              composersSource.find("getenv(") == std::string::npos &&
+              guiRuntimeSource.find("getenv(") == std::string::npos,
+          "the GUI runtime consumes injected configuration without getenv");
+    {
+        std::vector<std::string> policyLeaks;
+        const std::filesystem::path sourceRoot =
+            std::filesystem::path(runtimeConfig).parent_path();
+        for (const auto& entry :
+             std::filesystem::recursive_directory_iterator(sourceRoot)) {
+            if (!entry.is_regular_file()) continue;
+            const auto extension = entry.path().extension().string();
+            if (extension != ".cpp" && extension != ".h") continue;
+            const std::string relative =
+                std::filesystem::relative(entry.path(), sourceRoot).string();
+            if (relative == "ProcessEnvironment.cpp") continue;
+            if (slurp(entry.path().string()).find("getenv(") !=
+                std::string::npos)
+                policyLeaks.push_back(relative);
+        }
+        check(policyLeaks.empty(),
+              "only ProcessEnvironment may read process-global configuration in src");
+        for (const std::string& relative : policyLeaks)
+            check(false, relative + " contains process-global configuration");
+        const std::string processCapture =
+            slurp((sourceRoot / "ProcessEnvironment.cpp").string());
+        check(countOccurrences(processCapture, "std::getenv(") == 1 &&
+                  processCapture.find("startup_option::kAll") !=
+                      std::string::npos &&
+                  processCapture.find("StartupSnapshot(std::move(entries))") !=
+                      std::string::npos &&
+                  processCapture.find("kConfigurationKeys") ==
+                      std::string::npos &&
+                  processCapture.find("\"POM68K_") == std::string::npos,
+              "ProcessEnvironment derives the sole process capture from option schemas");
+        const std::string domainDecoders =
+            productDecoder + coreDecoder + machineDecoder;
+        check(domainDecoders.find("\"POM68K_") == std::string::npos,
+              "domain decoders use typed options instead of raw key strings");
+        const std::string typedParsers = runtimeComposition + snapshotSource +
+            productDecoder + coreDecoder + machineDecoder;
+        check(typedParsers.find("getenv(") == std::string::npos &&
+                  runtimeComposition.find("config.environment_") ==
+                      std::string::npos &&
+                  slurp(runtimeConfig).find(
+                      "static RuntimeConfig parse(int argc, char* const argv[]);") ==
+                      std::string::npos,
+              "RuntimeConfig decoders have explicit inputs and no process-reading API");
+        const std::string testCapture = slurp(jitTestConfig);
+        check(!jitTestConfig.empty() &&
+                  countOccurrences(testCapture, "std::getenv(") == 1 &&
+                  testCapture.find("StartupSnapshot") != std::string::npos &&
+                  testCapture.find("resolveConfigFrom") == std::string::npos,
+              "standalone JIT gates inject their own test-boundary snapshot");
+    }
+    check(shellHeaderSource.find("h.hasFloppyDrive = false") !=
+              std::string::npos &&
+              shellHeaderSource.find("h.supportsEmptyCdDrive = false") !=
+                  std::string::npos,
+          "Duo shell preserves no-floppy and staged-CD capabilities");
+
+    // The build graph follows the same one-responsibility rule as the GUI.
+    const std::size_t componentInclude =
+        cmakeRootSource.find("include(cmake/Pom68kComponentGates.cmake)");
+    const std::size_t machineInclude =
+        cmakeRootSource.find("include(cmake/Pom68kMachineGates.cmake)");
+    const std::size_t jitInclude =
+        cmakeRootSource.find("include(cmake/Pom68kJitGates.cmake)");
+    const std::size_t devInclude =
+        cmakeRootSource.find("include(cmake/Pom68kDevTools.cmake)");
+    const std::size_t policyInclude =
+        cmakeRootSource.find("include(cmake/Pom68kGatePolicy.cmake)");
+    check(cmakeModulesPresent && componentInclude < machineInclude &&
+              machineInclude < jitInclude && jitInclude < devInclude &&
+              devInclude < policyInclude &&
+              cmakeRootSource.find("add_test(") == std::string::npos,
+          "CMake root composes five ordered test responsibilities");
+    check(cmakeModuleSources[0].find("gui_smoke_test") != std::string::npos &&
+              cmakeModuleSources[1].find("duo230_boot_etalon") !=
+                  std::string::npos &&
+              cmakeModuleSources[2].find("jit_asset_free_lockstep_test") !=
+                  std::string::npos &&
+              cmakeModuleSources[3].find("EXCLUDE_FROM_ALL") !=
+                  std::string::npos &&
+              cmakeModuleSources[3].find("add_test(") == std::string::npos &&
+              cmakeModuleSources[4].find("pom68k_gate_manifest") !=
+                  std::string::npos,
+          "CMake gates, dev tools and registry policy stay separated");
 
     // ── 12. One reference-fixture locator for GUI and gates ─────────────
     const std::string fixtureSource = slurp(fixtureStore);
     const std::string assetSource = slurp(assetFingerprint);
-    check(mainSource.find("preferReferenceFixture(base + rel)") !=
+    check(factorySource.find("preferReferenceFixture(base + relative)") !=
               std::string::npos &&
           assetSource.find("preferReferenceFixture(base + rel)") !=
               std::string::npos,
@@ -527,7 +1419,7 @@ int main() {
 
     // The registry has MORE THAN ONE size: the AArch64 lockstep pair is
     // registered only on an AArch64 host, and since 2026-08-18 the x64 030
-    // experimental lockstep only on x86-64 (CMakeLists.txt, the guards that
+    // experimental lockstep only on x86-64 (Pom68kJitGates.cmake guards
     // write this file) — so a document cannot state one total and be true
     // everywhere. The docs state the UNION numbers; CMake tells us here
     // which of them this host is missing, and checks 5 and 6 add them back
@@ -990,10 +1882,36 @@ int main() {
               "in-tree file:line citations judged (" + std::to_string(cited) + ")");
     }
 
+    const std::string engineHeaderPath =
+        testasset::find("src/jit/JitEngine.h");
+    const std::string engineHeader = slurp(engineHeaderPath);
+    const std::string jitConfigPath = testasset::find("src/jit/JitConfig.h");
+    const std::string jitConfigSource = slurp(jitConfigPath);
     const std::string enginePath = testasset::find("src/jit/JitEngine.cpp");
-    check(!enginePath.empty() &&
-          slurp(enginePath).find("config_(resolveConfig())") != std::string::npos,
-          "each JIT Engine resolves its configuration exactly at construction");
+    const std::string engineSource = slurp(enginePath);
+    check(!engineHeaderPath.empty() && !jitConfigPath.empty() &&
+              !enginePath.empty() &&
+              engineHeader.find("const ResolvedConfig& config);") !=
+                  std::string::npos &&
+              engineHeader.find("ResolvedConfig* config") == std::string::npos &&
+              engineSource.find("config_(config)") != std::string::npos &&
+              engineSource.find("resolveConfig()") == std::string::npos &&
+              engineSource.find("getenv(") == std::string::npos &&
+              jitConfigSource.find("defaultResolvedConfig()") !=
+                  std::string::npos &&
+              jitConfigSource.find("ResolvedConfig resolveConfig()") ==
+                  std::string::npos,
+          "each JIT Engine requires one explicitly injected snapshot");
+    for (const std::string& path : jitConfigConsumers) {
+        const std::string source = slurp(path);
+        check(!path.empty() &&
+                  source.find("const jit::ResolvedConfig& jitConfig") !=
+                      std::string::npos &&
+                  source.find("ResolvedConfig* jitConfig") ==
+                      std::string::npos &&
+                  source.find("jitConfig =") == std::string::npos,
+              path + " requires non-null JIT configuration injection");
+    }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASS");
     return gFails ? 1 : 0;

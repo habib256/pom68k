@@ -21,6 +21,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
+#include "JitTestConfig.h"
 #include "Q605Memory.h"
 #include "jit/JitConfig.h"
 
@@ -172,8 +173,14 @@ int main(int argc, char** argv) {
 
     // The engine is chosen per CPU object, so both machines can live in one
     // process. Neither reads POM68K_CPU_ENGINE afterwards.
-    static Q605Memory memRef, memJit;
-    static Cpu040 cpuRef(memRef), cpuJit(memJit);
+    static const jit::ResolvedConfig jitConfig =
+        testjit::resolveFromEnvironment();
+    static Q605Memory memRef(pom68k::defaultCoreConfig());
+    static Q605Memory memJit(pom68k::defaultCoreConfig());
+    static Cpu040 cpuRef(memRef, jitConfig, pom68k::defaultCoreConfig().cpu,
+                         pom68k::defaultCoreConfig().diagnostics);
+    static Cpu040 cpuJit(memJit, jitConfig, pom68k::defaultCoreConfig().cpu,
+                         pom68k::defaultCoreConfig().diagnostics);
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
@@ -345,7 +352,7 @@ int main(int argc, char** argv) {
                 (unsigned long long)s.windowFailed,
                 (unsigned long long)s.dtlbFills);
     if (cpuJit.pomCache040Active() && cpuJit.jit().nativeBackend() &&
-        jit::cache040LineReadStatsEnabled()) {
+        cpuJit.jit().config().cache040LineReadStats) {
         const auto hits = cpuJit.pomJitCache040NativeReads();
         const auto writes = cpuJit.pomJitCache040NativeWrites();
         std::printf("  native 040 D-cache line reads %llu\n",
@@ -357,7 +364,7 @@ int main(int argc, char** argv) {
                         "was requested but no hit executed\n");
             return 1;
         }
-        if (jit::cache040LineWritesEnabled() && writes == 0) {
+        if (cpuJit.jit().config().cache040LineWrites && writes == 0) {
             std::printf("[jit_lockstep] FAIL: native 040 copyback-write gate "
                         "was requested but no hit executed\n");
             return 1;
@@ -372,7 +379,7 @@ int main(int argc, char** argv) {
     // and even on `threaded` the gate registers a variant that forces it on
     // — either way, if it is on it must have been exercised, or the block
     // path went untested behind a green light.
-    if (jit::blockCacheEnabled(cpuJit.jit().nativeBackend()) && s.blocksRun == 0) {
+    if (cpuJit.jit().config().blockCache && s.blocksRun == 0) {
         std::printf("[jit_lockstep] FAIL: POM68K_JIT_BLOCKS is on but no block "
                     "was ever replayed — the block path proved nothing\n");
         return 1;

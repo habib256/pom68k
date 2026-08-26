@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
     V8Memory::Model model = ck == 0xECD99DC0 ? V8Memory::Model::ColorClassic
                                              : V8Memory::Model::LcII;
 
-    V8Memory mem{0xA00000, model};           // 10 MB
+    V8Memory mem{pom68k::defaultCoreConfig(), 0xA00000, model};
     mem.loadRom(rom);
     if (!scsiPath.empty())
         std::printf("SCSI disk: %s %s\n", scsiPath.c_str(),
@@ -136,7 +136,9 @@ int main(int argc, char** argv) {
     // Same baseline as the GUI: Basilisk II factory XPRAM defaults when
     // no valid battery file ('NuMc' signature, LocalTalk off, DynWait)
     mem.egret().factoryDefaults();
-    TraceCpu cpu(mem, getenv("LCII_FPU") != nullptr);
+    TraceCpu cpu(mem, jit::defaultResolvedConfig(),
+                 pom68k::defaultCoreConfig().cpu,
+                 getenv("LCII_FPU") != nullptr);
     mem.setCpu(&cpu);
     cpu.hardReset();
 

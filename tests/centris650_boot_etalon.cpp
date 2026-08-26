@@ -14,6 +14,7 @@
 #include "AssetFingerprint.h"
 #include "CentrisMemory.h"
 #include "CentrisCpu.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -96,7 +97,8 @@ int main() {
     const bool q610 = model == "q610";
     const bool q800 = model == "q800";
     const bool isQuadra = q650 || q610 || q800;
-    if (isQuadra) setenv("POM68K_CENTRIS_FPU", "1", 1);   // full 68040
+    pom68k::CoreConfig core;
+    core.cpu.centrisFull040 = isQuadra;
     std::string rom = find("roms/centris650.rom");
     if (rom.empty())
         rom = find("roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM");
@@ -129,7 +131,7 @@ int main() {
                         : q610 ? CentrisMemory::kIdQuadra610
                         : c610 ? CentrisMemory::kIdCentris610
                                : CentrisMemory::kIdCentris650;
-    CentrisMemory mem(36u << 20, cpuHz, pins);
+    CentrisMemory mem(core, 36u << 20, cpuHz, pins);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     std::printf("ADB: %s\n", mem.adbLleActive() ? "PIC1654S firmware LLE" : "HLE");
     if (getenv("POM68K_BERR")) {
@@ -139,7 +141,8 @@ int main() {
                 std::fprintf(stderr, "[BERR] %s $%08X\n", w ? "write" : "read", a);
         };
     }
-    CentrisCpu cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    CentrisCpu cpu(mem, jitConfig, core.cpu);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

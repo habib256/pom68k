@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 291 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 293 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -306,6 +306,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **where do GUI host I/O, typed machine construction and rendering live, and where are their environment options captured?** → [2026-08-26 — The 2,683-line GUI runtime becomes three injected responsibilities…](#2026-08-26-gui-runtime-split)
 - **did the Duo really need a synthetic command-level ADB bus to boot, or were its built-in matrix and trackball already the whole product path?** → [2026-08-25 (sixth) — The Duo's synthetic ADB bus was not load-bearing…](#2026-08-25-pge-adb-retired)
 - **does one CB1 interrupt per completed PG&E SPI byte fix the Duo transport, or is it the same dead branch at a different cadence?** → [2026-08-25 (fifth) — The last SPI/CB1 alternative gets its verdict…](#2026-08-25-pge-cb1byte-retired)
 - **which temporary environment levers were already disproved strongly enough to delete, rather than merely classify?** → [2026-08-25 (fourth) — Knob audit retires five measured-dead routes…](#2026-08-25-five-knobs-retired)
@@ -339,6 +340,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-26 (later)** — [An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog](#2026-08-26-review-backlog)
+- **2026-08-26** — [The 2,683-line GUI runtime becomes three injected responsibilities: host services, typed composers and shell](#2026-08-26-gui-runtime-split)
 - **2026-08-25 (sixth)** — [The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot](#2026-08-25-pge-adb-retired)
 - **2026-08-25 (fifth)** — [The last SPI/CB1 alternative gets its verdict: one interrupt per byte still yields zero SCSI selections](#2026-08-25-pge-cb1byte-retired)
 - **2026-08-25 (fourth)** — [Knob audit retires five measured-dead routes: 188 → 183 controls, 21 → 16 chantiers](#2026-08-25-five-knobs-retired)
@@ -633,6 +636,230 @@ Newest first.
 
 ---
 
+<a id="2026-08-26-review-backlog"></a>
+## 2026-08-26 (later) — An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog
+
+An external review compiled the uncommitted tree, ran the manifest's asset-free
+tier (85/85) and judged the repository rather than its documentation. Its
+praise is not recorded here; its six reservations are, because each one names
+something the tree does **not** prove, and three of them were verifiable in
+minutes:
+
+- **no warning policy at all.** The only `-W*` in the tree is the
+  `-Wno-unused-*` applied to `moira` (`CMakeLists.txt:259`) — POM68K's own
+  ~112 000 lines compile without `-Wall -Wextra`, on a codebase full of raw
+  memory, generated code, threads and serialization;
+- **`POM68K_SANITIZE` exists and no workflow uses it** (`CMakeLists.txt:238`);
+  `ci.yml`, `nightly.yml`, `macos.yml`, `pi400.yml` and `release.yml` between
+  them run no sanitizer, no clang-tidy and no coverage;
+- **two named process-wide states survive** the environment-injection work:
+  `LleSession`'s atomics and device registry (`src/LleSession.h:37`,
+  `src/LleSession.h:114`) and the JIT's `thread_local` active policy
+  (`src/jit/JitConfig.h:241`). Both are correct under "one process, one
+  machine" — which is exactly the assumption multiple sessions, in-process
+  parallel gates or an embeddable library would break.
+
+The remaining three are honest restatements of what this project already
+writes down but does not measure: a green tier does not say how many of its
+gates *executed* (20 of the 21 `unit` gates outside `asset-none` soft-skip
+without private assets, and `ctest` prints `104/104` either way), no coverage
+number exists to name the files only private assets reach, and
+`src/PlatformCompositionSupport.h` still pulls in nearly every memory, CPU and
+video header, so a new family costs cross-cutting knowledge. The review
+explicitly advises **against** answering that last one with a virtual bus
+abstraction; the recorded answer is a written new-platform checklist plus a
+per-family split of the umbrella header, measured by the next machine's diff.
+
+`TODO.md` § 0·B now carries the six as checkboxes with a suggested order
+(1 → 2 → 4 → 3 → 5 → 6). Two rules were adopted with them. First: a new
+structural check enters `docs_test` only if it **names the bug it would have
+caught** — its 1 918 lines test names, strings and construction order, which
+catch drift but do not prove cohesion and break on renames, and the
+behavioural answer (`gui_smoke_test`: real hidden window, three frames, engine
+swap, save, RAII close) is the model to reach for instead. Second: no document
+quotes a gate total without its skip sentence until that count is produced by
+the machine rather than by prose.
+
+The same pass applied this file's own house rule to `TODO.md`, which had been
+carrying its own history. § 0 had grown into a 155-line retelling of the eleven
+`run*()`/injection passes already recorded here between 2026-08-23 and
+2026-08-26; § 1 *Red now* held four open items under a hundred lines of
+*closed* ones, written as italic parentheticals; the longest closed entries in
+§ 2, § 4 and § 8 were still full accounts. All of them are one line and a date
+now, and the lessons that were load-bearing stayed: the fixture rule
+(`HD20SC.vhd` merely *changed* and put three gates red for two days), the four
+method rules § 1 paid for, and the two live residuals that were buried inside
+closed items — a guest-level Finder → Redémarrer etalon, and a first-class flux
+track store — which are now open items where a reader can see them.
+
+Two structural rules came with it. **Open items come before closed ones inside
+a section**, and a section that reads like a story has stopped being a backlog.
+And **section numbers are stable on purpose**: ten documents cite them
+(`CLAUDE.md` § 7, `DEV.md` § 8, `docs/HLE_OVERLAY.md` § 8, `docs/APPLETALK.md`
+§ 6…), so reorganising moves items inside the numbering and never renumbers it —
+which is why the file now opens with a map giving, per section, what it holds
+and the single next concrete action. Two stale counts died on the way:
+`TODO.md` said 254 dated entries and `CLAUDE.md` said 272, while the generated
+`CHANGELOG_INDEX.md` said 292 — the one count no gate compares against prose.
+`TODO.md` 1 914 → 1 765 lines, two new sections in it.
+
+<a id="2026-08-26-gui-runtime-split"></a>
+## 2026-08-26 — The 2,683-line GUI runtime becomes three injected responsibilities: host services, typed composers and shell
+
+`GuiMachineRuntime.cpp` had become a second `main.cpp`: selection had already
+moved into `MachineFactory`, but network wiring, audio mechanics, relaunch,
+diagnostics, twelve typed machine constructions, GLFW/ImGui setup, menus and
+render loops still shared one 2,683-line translation unit.
+
+The runtime is now a 47-line lifetime root. `GuiHostServices` owns LocalTalk /
+AppleTalk wiring, mechanical audio, process relaunch and strict-LLE/key/freeze
+diagnostics. `PlatformComposers` owns the six typed `MachineHost` facades and
+the constructor for every platform family. `GuiShell` owns the window RAII
+entrypoint, common menus, input adapters and all six shared rendering loops.
+The compact family now uses the same `MachineHost` command/publish contract;
+its GLFW/ImGui loop therefore lives in `GuiRunnerCompact.h`, not in typed
+composition.
+
+This is also the first product slice of environment injection. `RuntimeConfig`
+parses CPU, JIT, network, device and diagnostic policy once into five typed
+aggregates; all three responsibilities consume the immutable object and
+contain no `getenv()`. Presence-only and exact-`0` historical
+semantics are pinned in `docs_test`, alongside source-ownership checks for the
+three boundaries. The six family render loops and six typed construction
+units are physically separate, while `GuiSessionState` has no reverse service
+pointer. A hidden-window smoke gate exercises rendering, engine swap, save,
+RAII close and relaunch.
+
+The injection boundary now reaches the emulation core as well. The 111 direct
+environment reads previously spread across CPU wrappers, memory controllers,
+SCSI/floppy devices, RTC/ADB/Cuda/Egret/PG&E firmware glue and network
+diagnostics are represented by `CoreConfig` and passed by every platform
+composer. Only the startup boundary may inspect the process environment;
+`JitMetrics` now receives its artifact path and host profile
+explicitly. The obsolete strict-LLE `setenv` bridge is gone. Component and
+boot-test fixtures that select a machine policy now construct the same typed
+value instead of mutating global process state, and `docs_test` rejects any
+new process read anywhere else in `src`.
+
+The standalone JIT compatibility path is injected too. `JitConfig.h` has no
+process reader. Gates and benchmarks that deliberately expose environment
+knobs capture them in `tests/JitTestConfig.h`, then pass the resulting
+`ResolvedConfig` to each CPU or synthetic engine. All twelve CPU wrappers and
+`jit::Engine` now require that snapshot by const reference: there is no
+nullable parameter and no constructor fallback. Unit fixtures which
+deliberately want stable defaults name `defaultResolvedConfig()` explicitly,
+and `docs_test` prevents the optional contract from returning. The
+threaded/native block variants therefore keep their existing command-line
+contract without restoring hidden global policy inside the core.
+
+Injection is also capability-sized now rather than merely typed. The ten CPU
+wrappers receive `CoreCpuConfig` instead of the whole aggregate (`Cpu040`
+adds the one diagnostic view it uses); ADB/Cuda receive only firmware and
+peripheral policy, and PG&E receives only peripheral policy. Board memory
+objects remain the local composition roots that fan out the complete
+`CoreConfig`. `docs_test` pins that direction so a leaf cannot silently grow
+back into a process-policy bag. Configuration is now mandatory at those seams
+as well: all twelve board-memory roots require `CoreConfig`, the ten configured
+CPU wrappers require `CoreCpuConfig`, `Cpu040` additionally requires its
+diagnostic view, and PG&E requires its peripheral view. The three section
+fallback singletons are gone; unit fixtures deliberately request the sole
+deterministic `defaultCoreConfig()`. Omitting core policy is therefore a
+compile error, and `docs_test` prevents default parameters from returning.
+
+The provenance boundary is physical now too. `ProcessEnvironment.cpp` owns
+the sole production `getenv()` site and returns one map to the composition
+root. `main()` injects that snapshot into `RuntimeConfig::parse`; the latter
+has no process-reading overload and can therefore be reproduced from explicit
+inputs alone. The architecture gate rejects environment reads outside the new
+boundary, rejects any read inside `RuntimeConfig`, and exercises both direct
+maps and two successive process snapshots.
+
+The raw snapshot is now parsing input, not retained application state.
+`RuntimeConfig` normalizes the eight ROM-sharing families into a
+`MachineSelectionConfig` of stable `SnapMachine` values, then discards the
+map. `MachineFactory` contains no environment-key spelling and consumes only
+that typed view. `GuiShell` likewise stops reconstructing identity from a
+variant string: its current marker compares the actual session snapshot,
+which also fixes explicit-ROM launches whose inherited selector was absent or
+stale. The obsolete `variant()`, `variantEnabled()`, `VariantMap` and
+`parseWithVariants()` APIs are gone; `docs_test` pins all four absences.
+
+Profile relaunch no longer round-trips through global process mutation.
+`GuiShell` stages a `SnapMachine`; `GuiHostServices` serializes it as the
+stable internal argument `--machine-profile=<slug>`; `RuntimeConfig` resolves
+that argument after the inherited compatibility environment, so the typed
+request wins deterministically. LC 475/575 requests also select the soft
+68882 LC040 policy, while Quadra 605 restores the integrated 68040 FPU. The
+catalogue has consequently lost `variantKey`, `variantValue` and
+`defaultVariant`, and `ProcessEnvironment` owns the legacy selector list
+without contaminating product metadata. All shared-ROM profiles are exercised
+through both their historical environment spelling and the new typed
+round-trip. `GuiShell` falls from 411 to 383 lines without raising either GUI
+architecture budget.
+
+Peripheral firmware relaunch now crosses the same typed boundary. The
+Périphériques window produces `FirmwareOverride` values for `Adb`, `Egret`
+and `Cuda`; `GuiHostServices` serializes the complete live set as
+`--firmware-override=<target>:<lle|hle>:<path>`, and `RuntimeConfig` applies it
+after the inherited compatibility environment. An empty path explicitly
+restores automatic discovery, so no `unsetenv()` side effect is required and
+an inherited path cannot silently win. The refactor also exposed a real
+identity bug: Cuda-equipped Sonora profiles labelled/staged the Egret switch.
+Their request now carries `Cuda`, and Egret/Cuda have distinct injected paths;
+the legacy `POM68K_CUDA_FW` spelling still seeds both at process capture.
+There is no `setenv()` or `unsetenv()` left in production `src`.
+
+Startup decoding is physically separated now as well. The former 577-line
+`RuntimeConfig.cpp` is a 200-line CLI/relaunch composition root containing no
+`POM68K_*` spelling. `StartupSnapshot` owns and validates captured values,
+`StartupDomainView` exposes only typed domain reads, and
+`StartupValueDecoding` owns legacy scalar semantics, while
+`RuntimeConfigProduct`, `RuntimeConfigCore` and `RuntimeConfigMachine` own
+their typed domains. The public model remains unchanged, `config_knobs.tsv`
+tracks the new source owners, and `docs_test` prevents process reads or legacy
+spellings from moving back into the orchestrator.
+
+The remaining capture-list duplication is gone. `StartupOptions.h` is the
+single neutral schema for all 128 startup options: each row owns the legacy
+spelling, a typed symbol and its Product/Core/Machine/Jit domain. The schema
+emits both decoder constants and the complete capture range and verifies
+uniqueness at compile time. Domain decoders can no longer pass arbitrary key
+strings.
+
+Domains are enforced by the C++ type system now. Each schema symbol is a
+`StartupOption<Domains, ValuePolicy>`, and Product/Core/Machine receive distinct constrained
+startup domain views. An option shared by two decoders declares both capabilities;
+using a product-only option from the core decoder fails constraint resolution at
+compile time. Static positive and negative assertions pin that contract.
+
+The JIT now uses the same contract for its 37 options. `JitConfig` resolves
+typed JIT symbols, contains no raw option literals and no longer publishes
+`kConfigurationKeys`; `ProcessEnvironment` iterates the unified catalogue once.
+The schema itself is independent of RuntimeConfig, so the JIT does not acquire
+a dependency on the application layer.
+
+The schema now owns value semantics as well as names. Every option declares a
+`StartupValuePolicy`; bounded integers carry their range in the catalogue, and
+the deliberately different historical boolean forms remain distinct.
+`StartupValueDecoding` is the neutral implementation shared by RuntimeConfig
+and JIT, while the snapshot's string map remains private.
+Domain views expose only decoders compatible with an option's policy, so both
+a cross-domain read and a boolean/integer category mistake fail at compile
+time. Only five composite legacy formats remain explicitly `Custom`.
+
+The raw `RuntimeConfig::EnvironmentMap` interface is gone as well. Both
+RuntimeConfig and JIT receive the same immutable-by-interface
+`StartupSnapshot`; construction rejects unknown names, and typed accessors are
+the only public lookup surface. The obsolete `EnvironmentLookup`, dedicated
+environment translation unit and generic JIT `resolveConfigFrom` hook have
+been removed. Tests still inject snapshots explicitly without reopening a
+free-form production API.
+
+The same pass split the 2,537-line root CMake test block into component,
+machine, JIT, development-tool and registry-policy modules. The 481-line root
+only composes them in dependency order; `docs_test` and the file-size ratchet
+pin that boundary.
+
 <a id="2026-08-25-pge-adb-retired"></a>
 ## 2026-08-25 (sixth) — The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot
 
@@ -869,7 +1096,7 @@ complete asset-free tier: **84/84 in 5.21 s**.
 ## 2026-08-24 (sixth) — Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines
 
 The last autonomous `run*()` body is gone. `DuoRunnerSpec` and
-`runDuoGui<MachineT>` now live in `src/GuiRunner.h`; `runDuo` constructs the
+`runDuoGui<MachineT>` now live in `src/GuiShell.h`; `runDuo` constructs the
 MSC memory/CPU/audio objects, rejects a bad ROM, reports missing PG&E
 firmware, and passes the board to the same `gGuiServices` object used by all
 other extracted lifecycles.
@@ -889,7 +1116,7 @@ the Duo lifecycle stays outside `main.cpp`, its wrapper instantiates it once,
 all eleven consumed services cross the adapter, and its negative media
 capabilities cannot silently regrow.
 
-`main.cpp` loses exactly **232 lines, 3105 → 2873**; `GuiRunner.h` grows
+`main.cpp` loses exactly **232 lines, 3105 → 2873**; `GuiShell.h` grows
 1419 → **1666**. The ratchet falls again. Across the completed sequence,
 eleven wrapper instantiations now consume five family lifecycles through one
 services adapter, and no autonomous `run*()` body remains.
@@ -903,7 +1130,7 @@ A fresh GUI build and version smoke pass, then the complete asset-free tier:
 ## 2026-08-24 (fifth) — V8/Eagle/Spice/Tinker Bell join the GUI service seam: ten instantiations covered, 3460 → 3105 lines
 
 The five-profile V8 body is no longer autonomous. `V8RunnerSpec` and
-`runV8Gui<MachineT>` now live in `src/GuiRunner.h`; `runLcII` only decodes
+`runV8Gui<MachineT>` now live in `src/GuiShell.h`; `runLcII` only decodes
 LC, LC II, Classic II, Color Classic or Mac TV, constructs the matching
 memory/CPU/video objects, and supplies the diagnostic and RTC seed callbacks.
 It consumes the existing `gGuiServices` object, so DAFB, Sonora, Toby/NuBus
@@ -923,7 +1150,7 @@ clock used to construct the CPU. The repository contract also proves that
 the V8 specification/lifecycle stay outside `main.cpp`, exactly one wrapper
 instantiates them, and all ten process-service calls remain explicit.
 
-`main.cpp` loses exactly **355 lines, 3460 → 3105**; `GuiRunner.h` grows
+`main.cpp` loses exactly **355 lines, 3460 → 3105**; `GuiShell.h` grows
 1103 → **1419**, and the ratchet falls with the composition root. Only
 `runDuo` remains autonomous.
 
@@ -936,7 +1163,7 @@ A fresh GUI build and version smoke pass, then the complete asset-free tier:
 ## 2026-08-24 (fourth) — Mac II and IIfx share the Toby/NuBus lifecycle: nine wrappers behind one seam, 3923 → 3460 lines
 
 The next bounded pair is complete. `TobyRunnerSpec` and
-`runTobyGui<MachineT>` now live in `src/GuiRunner.h`; the Mac II-family
+`runTobyGui<MachineT>` now live in `src/GuiShell.h`; the Mac II-family
 wrapper (II, IIx, IIcx and SE/30) and the IIfx wrapper construct their own
 memory/CPU/video contract, then pass it to the same `gGuiServices` object as
 the four DAFB and three Sonora wrappers. There is still one executable
@@ -958,7 +1185,7 @@ snapshot widget — is now the explicit thirteenth `GuiServices` operation.
 The repository contract proves that `main.cpp` owns neither the Toby
 specification nor lifecycle, exactly two wrappers instantiate it, and every
 service call remains visible. `main.cpp` loses exactly **463 lines, 3923 →
-3460**; `GuiRunner.h` grows 808 → **1103**, and the file-size ratchet falls
+3460**; `GuiShell.h` grows 808 → **1103**, and the file-size ratchet falls
 with the composition root. Only the V8/`runLcII` and Duo runners remain
 autonomous.
 
@@ -973,7 +1200,7 @@ file-size ratchet also pass independently.
 
 The next bounded step named by the DAFB extraction is complete without a
 second architecture. `SonoraRunnerSpec` and `runSonoraGui` now live beside
-their DAFB counterparts in `src/GuiRunner.h`, and the LC III/AIO, VASP and
+their DAFB counterparts in `src/GuiShell.h`, and the LC III/AIO, VASP and
 RBV wrappers pass the same `gGuiServices` object as the four 040 wrappers.
 `GuiServices` moved ahead of both wrapper groups; only its strict-LLE
 qualification methods are defined later, once the DAFB preflight helpers
@@ -1011,7 +1238,7 @@ hidden an include-order dependency, because asset lookup, strict-LLE
 qualification, AppleTalk wiring, drive sounds, the global Machine/CPU menus
 and process relaunch all belong to the executable.
 
-`src/GuiRunner.h` now owns `DafbRunnerSpec`, `runDafbGui`, the emulated
+`src/GuiShell.h` now owns `DafbRunnerSpec`, `runDafbGui`, the emulated
 screen's capture/zoom helper, and the DAFB ADB transition table. The template
 accepts a service object and reaches the executable through twelve named
 operations: qualify/check-only, network wiring, asset lookup, GLFW/OpenGL
@@ -1035,7 +1262,7 @@ and that every one of the twelve service calls remains explicit. A fresh
 `POM68K` GUI build passed, followed by `docs_test`,
 `file_size_budget_test` and the complete asset-free tier: **84/84 in
 0.81 s**. The next bounded move is to migrate `runSonoraGui` onto this same
-service seam before moving it into `GuiRunner.h`; a second parallel adapter
+service seam before moving it into `GuiShell.h`; a second parallel adapter
 would defeat the point.
 
 ---
@@ -1076,7 +1303,7 @@ translation unit, then the fresh `asset-none` tier passed **84/84 in
 `file_size_budget_test` gates cover the structural contracts; the latter
 pins the new 4641-line ceiling. Four autonomous runner bodies remain: Mac II,
 IIfx, V8 and Duo. The next named palier is no longer this trio: it is lifting
-the already-shared `runDafbGui` concern out of `main.cpp` into `GuiRunner.h`.
+the already-shared `runDafbGui` concern out of `main.cpp` into `GuiShell.h`.
 
 ---
 
@@ -1357,9 +1584,9 @@ Quadra and Centris runners had been printing **`680040 @ 25 MHz`** — visible
 on stdout at every start, for as long as those runners have existed, and
 noticed only when the eight identities were run side by side.
 
-Now: `DafbRunnerSpec` (`main.cpp:3731`) — six fields, name / pramTag /
+Now: `DafbRunnerSpec` (`GuiMachineRuntime.cpp:3731`) — six fields, name / pramTag /
 cpuLine / lleFirmware / MachineKind / SnapMachine — and one
-`runDafbGui<MachineT>` (`main.cpp:3756`) holding the ~300 shared lines. Each
+`runDafbGui<MachineT>` (`GuiMachineRuntime.cpp:3756`) holding the ~300 shared lines. Each
 platform keeps a wrapper that decodes its own model (the Eclipse still needs
 the ROM checksum before it can name `mem`'s type) and constructs `mem`/`cpu`;
 everything after `loadRom` is the generic. **1433 lines → 568**, `main.cpp`
@@ -1404,7 +1631,7 @@ was counting. Adapted from POM2, which hit the same wall with
 — `runLc3`/`runVasp`/`runIIsi` already share a machine template the same way.
 And `runDafbGui` still lives in `main.cpp` because it reads ~18 of its
 statics (`ScreenInput`, the key table, `machineMenu`, the `g*` engine hooks,
-`findPath`, `initDriveSfx`…); lifting those into a `GuiRunner.h` is what
+`findPath`, `initDriveSfx`…); lifting those into a `GuiShell.h` is what
 actually removes the concern from the file.
 
 ---
@@ -5654,7 +5881,7 @@ and over 32 000 frames (boot, then idle Finder): ×1.87 → ×2.18. The engine i
 worth **×1.21** on this machine, and **the machine thread alone never descends
 to ×1.3**. So the observed figure is not a CPU ceiling, and the question
 moves: the GUI's quantum is not `runCycles` but `runQuantumWithWire`
-(`main.cpp:232`), which cuts each frame into **64 slices** when AppleTalk is
+(`GuiMachineRuntime.cpp:232`), which cuts each frame into **64 slices** when AppleTalk is
 on — the default — with a raster catch-up at every boundary.
 `POM68K_BENCH_SLICES` prices exactly that shape instead of guessing at it.
 
@@ -6258,7 +6485,7 @@ the rest from the directory it sits in*. It could not, and the reason is one
 line of `packaging/linux/AppRun`.
 
 POM68K resolves assets against the current working directory, the executable
-directory and its parent (`findPath`, `src/main.cpp:298`). Inside an AppImage
+directory and its parent (`findPath`, `src/GuiMachineRuntime.cpp:298`). Inside an AppImage
 the executable directory is a read-only squashfs mount under `/tmp`, so it can
 never hold user data — something has to choose a directory and chdir to it.
 `AppRun` chose `$XDG_DATA_HOME/POM68K`, **unconditionally**. By the time the

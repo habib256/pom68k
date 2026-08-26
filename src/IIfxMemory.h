@@ -37,6 +37,7 @@
 // carried — `pom68k-mcu-lle-clock-drift`).
 
 #pragma once
+#include "CoreConfig.h"
 #include "AdbLine.h"
 #include "ApplePic.h"
 #include "Asc.h"
@@ -65,7 +66,8 @@ public:
     static constexpr int64_t  kC15MHz  = 15667200;
     int64_t cpuHz() const { return kCpuHz; }
 
-    explicit IIfxMemory(uint32_t ramSize = 0x800000);
+    explicit IIfxMemory(
+        const pom68k::CoreConfig& coreConfig, uint32_t ramSize = 0x800000);
     ~IIfxMemory();
 
     bool loadRom(const std::vector<uint8_t>& data);
@@ -207,6 +209,9 @@ public:
     }
 
 private:
+    bool ioTrace_ = false;
+    bool adbTrace_ = false;
+    bool scsiTrace_ = false;
     bool isIo(uint32_t addr, uint32_t& off) const;
     void viaSync();
     uint16_t viaAccess(uint32_t addr, bool write, uint16_t v);

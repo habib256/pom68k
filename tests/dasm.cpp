@@ -27,9 +27,10 @@ int main(int argc, char** argv) {
     char line[128];
 
     if (rom.size() == V8Memory::kRomSize) {
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         if (!mem.loadRom(rom)) { std::fprintf(stderr, "bad ROM\n"); return 2; }
-        Cpu030 cpu(mem);
+        Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu);
         for (int i = 0; i < count; i++) {
             int bytes = cpu.disassemble(line, addr);
             std::printf("$%06X  %s\n", addr, line);
@@ -39,9 +40,11 @@ int main(int argc, char** argv) {
     }
 
     if (rom.size() == Q605Memory::kRomSize) {       // Q5: 1 MB LC475 ROM
-        Q605Memory mem;
+        Q605Memory mem(pom68k::defaultCoreConfig());
         if (!mem.loadRom(rom)) { std::fprintf(stderr, "bad ROM\n"); return 2; }
-        Cpu040 cpu(mem);
+        Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu,
+                   pom68k::defaultCoreConfig().diagnostics);
         for (int i = 0; i < count; i++) {
             int bytes = cpu.disassemble(line, addr);
             std::printf("$%08X  %s\n", addr, line);
@@ -50,9 +53,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (rom.empty() || !mem.loadRom(rom)) { std::fprintf(stderr, "bad ROM\n"); return 2; }
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     for (int i = 0; i < count; i++) {
         int bytes = cpu.disassemble(line, addr);
         std::printf("$%06X  %s\n", addr, line);

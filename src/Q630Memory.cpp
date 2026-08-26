@@ -12,9 +12,18 @@
 #include <fstream>
 #include <iterator>
 
-Q630Memory::Q630Memory(uint32_t totalRam)
+Q630Memory::Q630Memory(const pom68k::CoreConfig& coreConfig,
+                       uint32_t totalRam)
     : totalRam_(totalRam)
 {
+    via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    cuda_.configure(coreConfig.peripherals.appleTalkPram,
+                    coreConfig.peripherals.egretCommandTrace);
+    cudaLle_.configure(coreConfig.peripherals);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    drive0_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    drive1_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     // The ROM's bank prober sizes RAM by ALIASING (write a pattern,
     // find where it reappears): the size must be a power of two and
     // the whole $0-$3FFFFFFF window must mirror modulo the size, like
@@ -52,12 +61,9 @@ Q630Memory::Q630Memory(uint32_t totalRam)
     // byte at the 40 MHz chip clock — Ncr53c96::selectionDelayCpu_/
     // xferDelayCpu_). POM68K_SCSI_LAT=0 forces the historical instant
     // behaviour, =N a flat N-cycle deferral (diagnostics).
-    {
-        const char* e = std::getenv("POM68K_SCSI_LAT");
-        scsi_.setLatency(e ? std::atoi(e) : -1);
-    }
-    if (const char* id = std::getenv("POM68K_Q630_ID"))
-        machineId_ = uint32_t(std::strtoul(id, nullptr, 16));
+    scsi_.setLatency(coreConfig.bus.scsiLatency.value_or(-1));
+    if (coreConfig.bus.q630MachineId)
+        machineId_ = *coreConfig.bus.q630MachineId;
     // Cuda firmware LLE — the DEFAULT whenever the real dump is present
     // (blueprint step 4, the POM68K_ADB_LLE rollout pattern);
     // POM68K_CUDA_LLE=0 forces the Egret HLE, a missing dump falls back
@@ -75,12 +81,14 @@ Q630Memory::Q630Memory(uint32_t totalRam)
     {
         // macquadra630.cpp:175 set_default_bios_tag("341s0060") — the same
         // Cuda 2.40 the LC 520 family runs.
-        pom68k::fw::Request req;
-        req.module = pom68k::lle::HleEgretCuda;
+        pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
+                                pom68k::FirmwareTarget::Cuda};
         req.name = "Cuda — MCU ADB / PRAM / horloge";
         req.enableKnob = "POM68K_CUDA_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Q630";
+        req.enabled = coreConfig.firmware.cudaLle;
+        req.forcedPath = coreConfig.firmware.cudaPath.value_or(std::string());
         req.candidates = {
             "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin" };
         cudaLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {

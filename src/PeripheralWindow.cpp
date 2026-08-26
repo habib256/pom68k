@@ -6,11 +6,11 @@
 #include "imgui.h"
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace pom68k {
@@ -263,15 +263,10 @@ void peripheralWindow(const PeripheralHost& host) {
                             "redémarre l'émulateur sur la même machine.");
         ImGui::BeginDisabled(!host.relaunch);
         if (ImGui::Button("Appliquer et redémarrer")) {
-            // `unset` is not "set to empty": see EnvAssignment in
-            // LleSession.h — going back to automatic must REMOVE the
-            // override, or the re-exec inherits it and nothing changes.
-            for (const lle::EnvAssignment& a : lle::envForSelection(devs, gStaged)) {
-                if (a.unset) unsetenv(a.knob.c_str());
-                else setenv(a.knob.c_str(), a.value.c_str(), 1);
-            }
+            auto overrides =
+                lle::firmwareOverridesForSelection(devs, gStaged);
             gStaged.clear();
-            host.relaunch();
+            host.relaunch(std::move(overrides));
         }
         ImGui::EndDisabled();
         if (!host.relaunch && ImGui::IsItemHovered())

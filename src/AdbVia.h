@@ -19,6 +19,7 @@
 //     drops fast ADBReInit traffic (mouse at phantom address, frozen).
 
 #pragma once
+#include "CoreConfig.h"
 #include "Via6522.h"
 #include "AdbBus.h"
 #include "Pic1654s.h"
@@ -30,6 +31,14 @@ class AdbVia {
 public:
     enum State : uint8_t { NEW = 0, EVEN = 1, ODD = 2, IDLE = 3 };
 
+    void configure(const pom68k::CoreFirmwareConfig& firmware,
+                   const pom68k::CorePeripheralConfig& peripherals) {
+        trace_ = peripherals.adbPicTrace;
+        firmwareEnabled_ = firmware.adbLle;
+        firmwarePath_ = firmware.adbPath.value_or(std::string());
+        line_.configure(peripherals.adbKeyboardHandlerId,
+                        peripherals.adbLleTrace);
+    }
     void reset();
     // cpuHz = the owning machine's clock; the PIC's own rate is fixed.
     void attach(Via6522& via, AdbBus& adb, int64_t cpuHz = 15667200);
@@ -113,4 +122,7 @@ private:
     // kPicTick); it is a property of the PIC domain, not of the host clock.
     static constexpr int kPicTick = 34;
     int64_t  cpuHz_ = 15667200;                 // set by attach()
+    bool trace_ = false;
+    bool firmwareEnabled_ = true;
+    std::string firmwarePath_;
 };

@@ -75,14 +75,15 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
 
-    MscMemory mem(8u << 20,
+    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
                   duo210 ? MscMemory::kCpuHz210 : MscMemory::kCpuHz230,
                   duo210 ? MscMemory::kIdDuo210 : MscMemory::kIdDuo230);
     if (!mem.loadRom(rom)) {
         std::fprintf(stderr, "ROM must be 1 MB (got %zu)\n", rom.size());
         return 1;
     }
-    TraceCpu cpu(mem);
+    TraceCpu cpu(mem, jit::defaultResolvedConfig(),
+                 pom68k::defaultCoreConfig().cpu);
     mem.setCpu(&cpu);
     if (!diskPath.empty())
         std::printf("SCSI disk: %s %s\n", diskPath.c_str(),

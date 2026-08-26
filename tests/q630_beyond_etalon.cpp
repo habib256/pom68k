@@ -117,9 +117,10 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    Q630Memory mem(32u << 20);
+    Q630Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    Q630Cpu cpu(mem);
+    Q630Cpu cpu(mem, jit::defaultResolvedConfig(),
+                pom68k::defaultCoreConfig().cpu);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

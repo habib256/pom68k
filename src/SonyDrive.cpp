@@ -528,13 +528,6 @@ int64_t SonyDrive::startWriteFlux(bool side1) {
 // loop expects them. The revolution is fluxRev_ ticks; the tail gap4 is
 // simply edge-free time.
 
-int SonyDrive::fluxJitterEnv() {
-    const char* e = std::getenv("POM68K_FLUX_JITTER");
-    if (!e || !*e) return 0;
-    int pct = std::atoi(e);
-    return std::clamp(pct, 0, 45);
-}
-
 void SonyDrive::setFluxJitterPercent(int pct) {
     fluxJitterPct_ = std::clamp(pct, 0, 45);
     fluxJitterTicks_ = int64_t(fluxJitterPct_) * fluxCellTicks() / 100;

@@ -75,29 +75,36 @@ size_t cpuPayloadStart(const Blob& b) {
 }
 
 struct Q605Rig {
-    Q605Memory mem;
+    Q605Memory mem{pom68k::defaultCoreConfig()};
     Cpu040 cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Q605;
     explicit Q605Rig(const std::vector<uint8_t>& rom)
-        : mem(8u << 20), cpu(mem) {
+        : mem(pom68k::defaultCoreConfig(), 8u << 20),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu,
+              pom68k::defaultCoreConfig().diagnostics) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
 struct CentrisRig {
-    CentrisMemory mem;
+    CentrisMemory mem{pom68k::defaultCoreConfig()};
     CentrisCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Centris650;
     explicit CentrisRig(const std::vector<uint8_t>& rom)
-        : mem(8u << 20), cpu(mem) {
+        : mem(pom68k::defaultCoreConfig(), 8u << 20),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
 struct Q700Rig {
-    Q700Memory mem;
+    Q700Memory mem{pom68k::defaultCoreConfig()};
     Q700Cpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Q700;
     explicit Q700Rig(const std::vector<uint8_t>& rom)
-        : mem(8u << 20), cpu(mem) {
+        : mem(pom68k::defaultCoreConfig(), 8u << 20),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
@@ -110,20 +117,25 @@ struct Q700Rig {
 // and the second 53C96. A Spike rig exercises none of it, which is exactly
 // how a dropped chunk would ship unnoticed.
 struct Q900Rig {
-    Q700Memory mem;
+    Q700Memory mem{pom68k::defaultCoreConfig()};
     Q700Cpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Quadra900;
     explicit Q900Rig(const std::vector<uint8_t>& rom)
-        : mem(8u << 20, Q700Memory::kCpuHz, Q700Memory::Model::Q900), cpu(mem) {
+        : mem(pom68k::defaultCoreConfig(), 8u << 20,
+              Q700Memory::kCpuHz, Q700Memory::Model::Q900),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
 struct Q630Rig {
-    Q630Memory mem;
+    Q630Memory mem{pom68k::defaultCoreConfig()};
     Q630Cpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Q630;
     explicit Q630Rig(const std::vector<uint8_t>& rom)
-        : mem(8u << 20), cpu(mem) {
+        : mem(pom68k::defaultCoreConfig(), 8u << 20),
+          cpu(mem, jit::defaultResolvedConfig(),
+              pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
@@ -209,8 +221,7 @@ int main() {
     // state is explicitly refused, and the CPU engine cannot be switched
     // back to the interpreter after qualification.
     Q605Rig strict(rom);
-    setenv("POM68K_LLE_AARCH64_FULL", "1", 1);
-    pom68k::lle::beginSession();
+    pom68k::lle::beginSession(true);
     pom68k::lle::setQualified(true);
     strict.cpu.setEngine(1);
     strict.cpu.setEngine(0);
@@ -223,7 +234,7 @@ int main() {
 
     pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     const Blob hleState = saveOf(strict);
-    pom68k::lle::beginSession();
+    pom68k::lle::beginSession(true);
     pom68k::lle::setQualified(true);
     strictErr.clear();
     check(!pom68k::load(strict.mem, strict.cpu, Q605Rig::kKind,
@@ -231,8 +242,6 @@ int main() {
           "lle", "strict session refuses an HLE-stamped snapshot");
     check(strictErr.find("not from a qualified LLE AArch64") != std::string::npos,
           "lle", "HLE snapshot refusal is explicit");
-    unsetenv("POM68K_LLE_AARCH64_FULL");
-
     if (gFails) {
         std::printf("savestate_040_test: %d failure(s)\n", gFails);
         return 1;

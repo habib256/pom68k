@@ -24,21 +24,17 @@ jit::MemoryHooks vaspJitHooks(VaspMemory& mem) {
 }
 }  // namespace
 
-VaspCpu::VaspCpu(VaspMemory& mem, bool withFpu)
-    : mem_(mem), jit_(*this, vaspJitHooks(mem), jit::kGuest68030) {
+VaspCpu::VaspCpu(VaspMemory& mem, const jit::ResolvedConfig& jitConfig,
+                 const pom68k::CoreCpuConfig& cpuConfig,
+                 bool withFpu)
+    : mem_(mem), jit_(*this, vaspJitHooks(mem), jit::kGuest68030, jitConfig) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
-    if (const char* b = getenv("POM68K_CACHE_BOOST")) {
-        int v = atoi(b);
-        if (v >= 1 && v <= 64) cacheBoost_ = v;
-    }
-    if (const char* p = getenv("POM68K_ICACHE_MISS")) {
-        int v = atoi(p);
-        if (v >= 0 && v <= 64) icacheMiss_ = v;
-    }
+    if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
+    if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     boost_ = cacheBoost_;
-    if (const char* g = getenv("POM68K_FLOPPY_BOOST_GATE"))
-        floppyGate_ = atoi(g) != 0;
+    if (cpuConfig.floppyBoostGate)
+        floppyGate_ = *cpuConfig.floppyBoostGate;
     pomIcache.armed = true;
     pomIcache.missPenalty = icacheMiss_;
     pomIcache.reset();

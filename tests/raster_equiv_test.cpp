@@ -91,7 +91,7 @@ int main() {
     std::printf("raster_equiv_test — decodeRows(y0,y1) ≡ decode() (§1.1)\n");
 
     {   // ── V8 (LC II): fixed 1024-byte row pitch at every depth ──
-        V8Memory mem;
+        V8Memory mem(pom68k::defaultCoreConfig());
         V8Video video(mem);
         for (size_t i = 0; i < V8Memory::kVramSize; i += 7)
             mem.write8(uint32_t(0xF40000 + i), noise(i));
@@ -118,7 +118,7 @@ int main() {
     }
 
     {   // ── VASP (IIvx): the same model at a 2048-byte pitch ──
-        VaspMemory mem;
+        VaspMemory mem(pom68k::defaultCoreConfig());
         VaspVideo video(mem);
         for (size_t i = 0; i < VaspMemory::kVramSize; i += 7)
             mem.write8(uint32_t(0x60000000 + i), noise(i));
@@ -137,7 +137,7 @@ int main() {
     }
 
     {   // ── RBV (IIsi): packed pitch, HIGH-padded pens, framebuffer in RAM ──
-        RbvMemory mem;
+        RbvMemory mem(pom68k::defaultCoreConfig());
         RbvVideo video(mem);
         // The framebuffer IS the start of system RAM, and low writes are
         // ignored while the boot overlay is up. The overlay drops on a read
@@ -185,7 +185,7 @@ int main() {
     }
 
     {   // ── Sonora (LC III): pitch derived from the modeline, not fixed ──
-        SonoraMemory mem;
+        SonoraMemory mem(pom68k::defaultCoreConfig());
         SonoraVideo video(mem);
         // Sonora at reset has no modeline, so it decodes to a uniform black
         // frame BY DESIGN — the one place the content guard has to be off,

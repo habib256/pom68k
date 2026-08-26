@@ -42,8 +42,8 @@ int main() {
     testasset::report({ rom });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    MacMemory mem; mem.loadRom(romData);
-    Cpu68k cpu(mem); mem.setCpu(&cpu); cpu.hardReset();
+    MacMemory mem(pom68k::defaultCoreConfig()); mem.loadRom(romData);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig()); mem.setCpu(&cpu); cpu.hardReset();
     MacFrameClock fc; fc.resync(cpu);
     MacAudio audio;
 

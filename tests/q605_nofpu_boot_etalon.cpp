@@ -107,8 +107,8 @@ Stats luminanceStats(const Screen& s, int x0, int x1, int y0, int y1) {
 } // namespace
 
 int main() {
-    // Cpu040 and Q605Memory::loadRom both read this at construction/load.
-    setenv("POM68K_Q605_NOFPU", "1", 1);
+    pom68k::CoreConfig core;
+    core.cpu.q605Fpu = pom68k::Q605FpuMode::Soft68882;
 
     std::string romPath = findAsset({
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",
@@ -144,12 +144,12 @@ int main() {
         return 1;
     }
 
-    Q605Memory mem(32u << 20);
+    Q605Memory mem(core, 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
-    Cpu040 cpu(mem);
+    Cpu040 cpu(mem, jit::defaultResolvedConfig(), core.cpu, core.diagnostics);
     mem.setCpu(&cpu);
     if (cpu.getModel() != moira::Model::M68LC040 ||
         cpu.getFPUModel() != moira::FPUModel::M68882) {

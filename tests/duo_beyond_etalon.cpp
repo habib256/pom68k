@@ -60,13 +60,15 @@ int main() {
     // issues no write command at all in the two emulated minutes that
     // follow). The Mac II showed the identical split at the identical
     // sizes on its own volume.
-    MscMemory mem(4u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    MscMemory mem(pom68k::defaultCoreConfig(), 4u << 20,
+                  MscMemory::kCpuHz230, MscMemory::kIdDuo230);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.pgeActive()) {
         std::printf("SKIP: no roms/pge/pge_boot.bin — the PMU cannot boot\n");
         return 0;
     }
-    MscCpu cpu(mem);
+    MscCpu cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu);
     mem.setCpu(&cpu);
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
     cpu.hardReset();

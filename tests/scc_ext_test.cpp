@@ -177,7 +177,7 @@ int main() {
 
     // ── 6. V8 word access must not double-advance the register pointer ─
     {
-        V8Memory mem(4u << 20);
+        V8Memory mem(pom68k::defaultCoreConfig(), 4u << 20);
         std::vector<uint8_t> rom(V8Memory::kRomSize, 0xFF);
         rom[0] = 0x35; rom[1] = 0xC2; rom[2] = 0x8F; rom[3] = 0x5F;
         mem.loadRom(rom);

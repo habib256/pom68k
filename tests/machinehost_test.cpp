@@ -106,13 +106,17 @@ int main() {
               "a machine-clock reset re-arms the GUI speed gauge");
     }
 
-    static Q605Memory mem(32u << 20);
-    static Cpu040 cpu(mem);
+    static Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    static Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+                      pom68k::defaultCoreConfig().cpu,
+                      pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
     FakeAudio audio;
 
     {
         MonoMachine m(mem, cpu, audio);
+        check(!m.turbo.load(std::memory_order_relaxed),
+              "GUI fast-forward starts disabled so double-click timing is preserved");
 
         // ── The framebuffer is not visible before the first publish ────────
         std::vector<uint32_t> out;
@@ -254,9 +258,14 @@ int main() {
 
         // ── The time-budgeted branch runs quanta ─────────────────────────
         const int q1 = m.quanta;
+        const int pacedSleep = m.stepTick();
+        check(m.quanta == q1 + 1 && pacedSleep > 0,
+              "default pacing runs one guest frame and requests a real-time sleep");
+
+        const int q2 = m.quanta;
         m.turbo.store(true);
         m.stepTick();
-        check(m.quanta > q1, "the turbo branch emulates at least one quantum");
+        check(m.quanta > q2, "the fast-forward branch emulates at least one quantum");
         check(audio.frame == 0 && audio.raw == 0,
               "a silent machine pushes no audio");
 

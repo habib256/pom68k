@@ -22,11 +22,12 @@ jit::MemoryHooks iifxJitHooks(IIfxMemory& mem) {
 }
 }  // namespace
 
-IIfxCpu::IIfxCpu(IIfxMemory& mem, bool withFpu)
+IIfxCpu::IIfxCpu(IIfxMemory& mem, const jit::ResolvedConfig& jitConfig,
+                 bool withFpu)
       // Declared, never sampled from getModel(): setModel() has not run at
       // member-init time, and reading it there is the mistake JitEngine.h
       // documents (it cost the Quadra its x64 backend).
-    : mem_(mem), jit_(*this, iifxJitHooks(mem), jit::kGuest68030) {
+    : mem_(mem), jit_(*this, iifxJitHooks(mem), jit::kGuest68030, jitConfig) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     // Fixed batch, like the Mac II family: the IIfx is one of the four

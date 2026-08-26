@@ -7,6 +7,7 @@
 
 #include "BenchHarness.h"
 #include "Cpu68k.h"
+#include "JitTestConfig.h"
 #include "MacFrame.h"
 #include "MacMemory.h"
 
@@ -36,9 +37,10 @@ template <class Report>
 bench::Result runPlus(const std::vector<uint8_t>& rom,
                       const std::string& disk, int frames, int engine,
                       Report&& report) {
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     mem.loadRom(rom);
-    Cpu68k cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu68k cpu(mem, jitConfig);
     mem.setCpu(&cpu);
     cpu.setEngine(engine);
     cpu.hardReset();

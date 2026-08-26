@@ -17,15 +17,14 @@
 #include "third_party/miniaudio.h"
 #include <algorithm>
 #include <atomic>
-#include <cstdlib>
-#include <cstring>
 #include <vector>
 
 class MacAudioHost {
 public:
+    explicit MacAudioHost(bool enabled = true) : enabled_(enabled) {}
+
     bool start() {
-        if (const char* enabled = std::getenv("POM68K_AUDIO");
-            enabled && std::strcmp(enabled, "0") == 0) return false;
+        if (!enabled_) return false;
         ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
         cfg.playback.format   = ma_format_f32;
         cfg.playback.channels = 2;
@@ -43,10 +42,9 @@ public:
         started_ = true;
         return true;
     }
-    // The realtime callback dereferences fx_ unconditionally and the
-    // FloppySound globals are namespace-scope (destroyed AFTER this object),
-    // so an exit() that skips stop() — Xlib's error handler does exactly that —
-    // left miniaudio's thread mixing from freed sample buffers.
+    // The realtime callback dereferences fx_ unconditionally. Session teardown
+    // destroys this host before its FloppySound sources, while stop() also
+    // protects abnormal paths that still execute C++ destructors.
     ~MacAudioHost() { stop(); }
     void stop() {
         if (started_) ma_device_uninit(&device_);
@@ -124,6 +122,7 @@ public:
     }
 
 private:
+    bool enabled_ = true;
     struct Frame { float left, right; };
     bool push(float left, float right) {
         size_t w = write_.load(std::memory_order_relaxed);

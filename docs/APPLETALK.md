@@ -38,11 +38,11 @@ change AppleTalk behaviour are repeated here.
 
 | Knob | Default | Effect |
 |---|---|---|
-| `POM68K_APPLETALK=0` | (unset = on) | kills the in-process stack (`atalkEnabled`, `src/main.cpp:126-129`); the **Réseau → AppleTalk** menu item greys out (`src/main.cpp:831-836`) |
+| `POM68K_APPLETALK=0` | (unset = on) | is captured once by `ProcessEnvironment`, parsed by `RuntimeConfig`, and kills the in-process stack; the **Réseau → AppleTalk** menu item greys out (`src/GuiShell.cpp:359-365`) |
 | `POM68K_APPLETALK=1` | — | *different job*: seeds PRAM SPConfig `$21` = LocalTalk **active at boot** (`src/Egret.cpp:77-78`, `src/Rtc.cpp:58-59`). Unset seeds `$22` (async) — a fresh PRAM then needs the Chooser's AppleTalk radio button, or an image whose prefs already have it on |
-| `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/main.cpp:179-190`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:93-97`) |
-| `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/main.cpp:160-169`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s *and* no `setLosslessRx`, so the wire can drop again. See §0.4 |
-| `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — the boost block runs only with the hub up and **no** cable (`src/main.cpp:160`) |
+| `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/GuiHostServices.cpp:77-101`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:93-97`) |
+| `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/GuiHostServices.h:57-72`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s and no `setLosslessRx`, so the wire can drop again. See §0.4 |
+| `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — the boost block runs only with the hub up and **no** cable (`src/GuiHostServices.h:60-68`) |
 | `POM68K_ATALK_DEBUG=1` | off | DDP/NBP/ATP tracer + one line per client retransmit with its lag (`src/AtalkStack.cpp:16-20`) |
 | `POM68K_MACIP_DEBUG=1` | off | every IP datagram both ways, with TCP flags/seq/ack (`src/MacIpGateway.cpp:61-68`) |
 | `POM68K_DAYNAPORT=<id>` | off | put a DaynaPort SCSI/Link (Ethernet as a SCSI target) at that SCSI ID on the Quadra 605. **`<id>` must be 1-6; anything outside that range lands on ID 3** — so `=1` means ID 1, not "the default" (`src/Q605Memory.cpp:73-81`; the code comment there still claims otherwise). Its uplink is the same NAT the MacIP gateway uses — §6.4bis |
@@ -63,7 +63,7 @@ server name): it defends its own address against the
 guest's lapENQ probes, so the guest settles on a different ID exactly as
 it would against hardware.
 
-### 0.3 The GUI window (`Réseau → AppleTalk`, `appleTalkWindow`, `src/main.cpp:513-615`)
+### 0.3 The GUI window (`Réseau → AppleTalk`, `drawAppleTalkWindow`, `src/GuiShell.cpp:80-217`)
 
 Four blocks, each with a live enable checkbox and a green/red bullet:
 
@@ -82,7 +82,7 @@ Four blocks, each with a live enable checkbox and a green/red bullet:
 ### 0.4 When it misbehaves
 
 The in-process wire is **lossless by design** — `setLosslessRx(true)`
-makes a full Rx FIFO *pause* the wire instead of dropping (`src/main.cpp:168`).
+makes a full Rx FIFO *pause* the wire instead of dropping (`src/GuiHostServices.h:68-72`).
 So it never loses a reply; it can only **delay** one. That turns the
 window's counters into a diagnosis rather than a score:
 
@@ -91,7 +91,7 @@ window's counters into a diagnosis rather than a score:
 | retransmissions 0 | clean |
 | retransmit lag ~1-2 s | the guest's own ATP timer fired — the reply played late |
 | retransmit lag tens of ms | the guest gave up early / the reply was mangled |
-| "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/main.cpp:545-559`) |
+| "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/GuiShell.cpp:119-139`) |
 | "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:373`; counter `rxOverflowDrops`, `Scc8530.h:156`) |
 
 Lowering `POM68K_ATALK_WIRE_BOOST` is the wrong reflex for a backlog: the
@@ -177,14 +177,14 @@ most detail. `AtalkStack` sits directly on it as a second node.
   self-terminating. No hub, ~32 nodes, ~300 m.
 - **Bit rate 230.4 kbit/s** → one byte ≈ 34.7 µs. In POM68K the pace is
   **derived, never hardcoded**: `byteCycles = cpuHz / 28800`
-  (`src/main.cpp:136`) — 272 cycles/byte at 7.8336 MHz (Plus), 544 at
+  (`src/GuiHostServices.h:58`) — 272 cycles/byte at 7.8336 MHz (Plus), 544 at
   15.6672 (LC II), 868 at 25 MHz (Q605). Hardcoded 868s once fed a
   25 MHz clock to 15.67 and 33.33 MHz machines and skewed every
   second-scale AppleTalk timer by up to 2×.
 - **The in-process wire is boosted.** A real 230 kbit/s cable makes a
   multi-MB Finder copy take minutes. With the hub up and no external
   cable, `setWirePace(byteCycles / 8)` (floor 64) plus `setLosslessRx`
-  give a fast lossless virtual wire (`src/main.cpp:160-169`). What stays
+  give a fast lossless virtual wire (`src/GuiHostServices.h:68-72`). What stays
   at **real** pace: the express-CTS gap, the LLAP IDG and the Tx-underrun
   grace — those are guest-code turnaround windows, not wire properties.
   Async serial is untouched (the override applies in SDLC mode only).
@@ -225,7 +225,7 @@ most detail. `AtalkStack` sits directly on it as a second node.
 
 Control frames `0x81`-`0x85` are exactly 3 bytes — header only, the
 "high bit of the type byte set" rule; POM68K dispatches on exactly that
-(`src/main.cpp:207-214`, `src/AtalkStack.cpp:100`). Data frames carry
+(`src/GuiHostServices.h:78-90`, `src/AtalkStack.cpp:100`). Data frames carry
 their length in the DDP header.
 
 ### 2.3 Dynamic node-ID acquisition (the ENQ dance)
@@ -287,7 +287,7 @@ still lives by:**
   after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:79-91`, flush at
   `AtalkHub.h:145-150`). This is why finer quantum slicing matters:
   64 slices/frame ≈ 260 µs of latency per AFP round-trip
-  (`kSlices`, `src/main.cpp:251-255`; 16 slices without the hub).
+  (`slices`, `src/GuiHostServices.h:116-122`; 16 slices without the hub).
 
 ### 2.5 Where POM68K is faithful and where it isn't
 
@@ -810,7 +810,7 @@ guest Mac OS                                   POM68K process
 | ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.{h,cpp}` |
 | MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
-| SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/main.cpp:111-266`, `src/main.cpp:513-615` |
+| SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/GuiHostServices.h:57-127`, `src/GuiShell.cpp:80-217` |
 
 **Threading contract** (`src/AtalkHub.h:17-21`): the hub's mutex guards the
 hub's own state, never the machine's. The SCC's Rx meters are unlocked
@@ -850,14 +850,14 @@ Backlog: `TODO.md` §6. Migration notes and the HLE/LLE gap list:
 | Layer | Component | File |
 |---|---|---|
 | LocalTalk physical + SDLC framing | `Scc8530` SDLC engine, CRC-16, hunt/RTS/CTS/ENQ, IDG/IFG pacing, lossless wire | `src/Scc8530.{h,cpp}` |
-| LLAP dialogue glue (RTS→CTS synth, per-frame poll, quantum slicing) | `wireLocalTalk`, `pollLocalTalk`, `runQuantumWithWire` | `src/main.cpp:111-266` |
+| LLAP dialogue glue (RTS→CTS synth, per-frame poll, quantum slicing) | `GuiHostServices::wireNetwork`, `pollNetwork`, `runNetworkQuantum` | `src/GuiHostServices.h:57-127` |
 | LocalTalk "cable" | LToUDP multicast + 4-byte tag | `src/LtoUdp.{h,cpp}` (`239.192.76.84:1954`, `src/LtoUdp.cpp:24-25`), `POM68K_LTOUDP=1` |
 | PRAM AppleTalk-active seed (SPConfig `$21`) | `POM68K_APPLETALK=1` | `src/Egret.cpp:77-78`, `src/Rtc.cpp:58-59` |
 | **In-process** DDP/RTMP/ZIP/NBP/AEP/ATP | `AtalkStack` | `src/AtalkStack.{h,cpp}` |
 | **In-process** ASP + AFP 2.1 | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | **In-process** PAP → `lp`/CUPS or `.ps` | `PapServer` | `src/PapServer.{h,cpp}` |
 | **In-process** MacIP + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
-| Wiring + GUI window + toggles | `AtalkHub`, `appleTalkWindow` | `src/AtalkHub.h`, `src/main.cpp:513-615` |
+| Wiring + GUI window + toggles | `AtalkHub`, `drawAppleTalkWindow` | `src/AtalkHub.h`, `src/GuiShell.cpp:80-217` |
 | External DDP/RTMP/ZIP/NBP routing | TashRouter | `extern/tashrouter` |
 | External ATP/ASP/AFP | netatalk `afpd` | `extern/netatalk2` |
 | External PAP → CUPS | netatalk `papd` (`cupsautoadd`) | `extern/netatalk2/etc/papd` |

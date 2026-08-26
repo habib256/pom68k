@@ -59,7 +59,7 @@ public:
     // like a host running atalkd/afpd/papd/macipgw on one machine).
     // Node 128 = first server-range ID (LLAP: 128-254 are servers).
     void configure(uint16_t net, uint8_t node, const std::string& zone,
-                   int64_t cpuHz);
+                   int64_t cpuHz, bool debug = false);
     uint16_t net() const { return net_; }
     uint8_t node() const { return node_; }
     const std::string& zone() const { return zone_; }
@@ -201,6 +201,7 @@ private:
     int64_t nextRtmp_ = 0;
     uint16_t nextTid_ = 1;
     bool bridgeRelay_ = false;
+    bool debug_ = false;
 
     std::map<uint8_t, DdpHandler> ddpHandlers_;
     std::map<uint8_t, AtpHandler> atpHandlers_;

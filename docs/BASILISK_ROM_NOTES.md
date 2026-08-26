@@ -52,7 +52,8 @@ relative to `BasiliskII/src/`; line numbers refer to that checkout.
 ### 8.1 How to re-derive any of this in one command
 
 The parsers of §1-§4 are implemented in **`tools/rominfo.cpp`** (standalone, no
-emulator core). The target is `EXCLUDE_FROM_ALL` (`CMakeLists.txt:1753`), so
+emulator core). The target is `EXCLUDE_FROM_ALL`
+(`cmake/Pom68kDevTools.cmake:107`), so
 build it explicitly:
 
 ```
@@ -296,7 +297,8 @@ checksum complaint is even patched out (`rom_patches.cpp:859-861`).
 
 Sub-version is the word at offset **18** (`rom_patches.cpp:303`).
 
-CPU configuration derived from the family (`main.cpp:72-100`): `$067C` →
+CPU configuration derived from the family (lines 72–100 of Basilisk II's
+`main.cpp`): `$067C` →
 CPUType 2-4 (68020/030/040), `TwentyFourBitAddressing = false`; UAE memory
 map puts the ROM at Mac address **`$40800000`** for `$067C` ROMs
 (`uae_cpu/basilisk_glue.cpp:81-95`) — the canonical 32-bit-clean "$40-prefixed"
@@ -614,7 +616,7 @@ Notable byte semantics Basilisk forces:
 - `$E0-$E3` rewritten to "disable LocalTalk" — **this does not do what Basilisk
   thinks; POM68K rejected it** (§8.8) (`emul_op.cpp:129-144`).
 - XPRAM signature `'NuMc'` at `$0C-$0F`, default PRAM values
-  (`main.cpp:106-133`); boot volume/driver at `$78-$7B`.
+  (lines 106–133 of Basilisk II's `main.cpp`); boot volume/driver at `$78-$7B`.
 - Not modelled by Basilisk but read by the ROM: **XPRAM `$AE`** = the
   ROM-resource combo (§8.5).
 
@@ -666,7 +668,7 @@ shift-register/handshake transport that InitADB exercises.
 ## § 6. 24/32-bit addressing & MMU handling in the UAE core
 
 - `$067C` config: ROM at **`$40800000`**, `TwentyFourBitAddressing = false`
-  (`main.cpp:90-97`, `basilisk_glue.cpp:90-92`). Basilisk never emulates dynamic
+  (lines 90–97 of Basilisk II's `main.cpp`, `basilisk_glue.cpp:90-92`). Basilisk never emulates dynamic
   mode switching (`_SwapMMUMode`): it **forces XPRAM `$8A` to `$05`** so the
   system commits to 32-bit mode from the start (`emul_op.cpp:127,149-150`), and
   **guts InitMMU** (three patches, §3.3) so no PMMU setup is attempted; the
@@ -742,7 +744,8 @@ Standing conclusions from the Basilisk sources that survived the hunt:
    addressing mode; Basilisk hard-wires it to `$05` precisely because the 24-bit
    + `_SwapMMUMode` path is the one it cannot survive. The real failure was one
    step earlier — the `$8A` *read* never completed — which is why seeding a
-   known-good XPRAM (`'NuMc'` at `$0C-$0F` and the `main.cpp:106-133` block)
+   known-good XPRAM (`'NuMc'` at `$0C-$0F` and lines 106–133 of Basilisk II's
+   `main.cpp`)
    remains the right baseline. What POM68K actually seeds, and the two
    divergences from Basilisk: **§8.8**.
 6. **Interrupts cannot be the trigger before `$226`/`$230`/`$2EE`.** Those

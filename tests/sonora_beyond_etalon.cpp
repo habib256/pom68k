@@ -46,10 +46,11 @@ int main() {
         return 1;
     }
 
-    SonoraMemory mem(0x800000);
+    SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(2);                  // 512×384 12" RGB — the etalon frame
-    SonoraCpu cpu(mem, /*withFpu=*/true);
+    SonoraCpu cpu(mem, jit::defaultResolvedConfig(),
+                  pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

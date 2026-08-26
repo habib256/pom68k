@@ -23,7 +23,7 @@ int main() {
     std::printf("egret_lle_test — real Egret firmware behind the V8 VIA\n");
     setenv("POM68K_EGRET_LLE", "1", 1);
 
-    V8Memory mem(4u << 20);
+    V8Memory mem(pom68k::defaultCoreConfig(), 4u << 20);
     if (!mem.egretLleActive()) {
         std::printf("SKIP: needs roms/egret/341s0850.bin\n");
         return 0;

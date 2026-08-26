@@ -6,6 +6,7 @@
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
+#include "JitTestConfig.h"
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -38,10 +39,11 @@ int main() {
         return 1;
     }
 
-    MacIIMemory mem;
+    MacIIMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.installTobyVideo();
-    Cpu020 cpu(mem, true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu020 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, true, false);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

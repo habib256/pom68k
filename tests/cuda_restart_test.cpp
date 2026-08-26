@@ -116,12 +116,14 @@ int main() {
 
     // ── Quadra 605: Cuda, rising-edge release, Cpu040 ───────────────────
     {
-        Q605Memory mem(8u << 20);
+        Q605Memory mem(pom68k::defaultCoreConfig(), 8u << 20);
         if (!mem.cudaLleActive()) {
             std::printf("SKIP: needs roms/cuda/341s0788.bin\n");
             return 0;
         }
-        Cpu040 cpu(mem);
+        Cpu040 cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu,
+                   pom68k::defaultCoreConfig().diagnostics);
         mem.loadRom(makeRom(Q605Memory::kRomSize, 0x40000000));
         mem.setCpu(&cpu);
         cpu.hardReset();
@@ -133,12 +135,14 @@ int main() {
     // in reset until its firmware releases it, so give the MCU the cycles to
     // do that before the shared body starts asserting.
     {
-        Q700Memory mem(32u << 20, Q700Memory::kCpuHz, Q700Memory::Model::Q900);
+        Q700Memory mem(pom68k::defaultCoreConfig(), 32u << 20,
+                       Q700Memory::kCpuHz, Q700Memory::Model::Q900);
         if (!mem.egretLleActive()) {
             std::printf("SKIP: needs roms/egret/341s0851.bin\n");
             return gFails ? 1 : 0;
         }
-        Q700Cpu cpu(mem);
+        Q700Cpu cpu(mem, jit::defaultResolvedConfig(),
+                    pom68k::defaultCoreConfig().cpu);
         mem.loadRom(makeRom(Q700Memory::kRomSize, 0x40000000));
         mem.setCpu(&cpu);
         cpu.hardReset();
@@ -149,12 +153,13 @@ int main() {
 
     // ── LC II: Egret, falling-edge release, Cpu030 ──────────────────────
     {
-        V8Memory mem(0xA00000);
+        V8Memory mem(pom68k::defaultCoreConfig(), 0xA00000);
         if (!mem.egretLleActive()) {
             std::printf("SKIP: needs roms/egret/341s0850.bin or 341s0851.bin\n");
             return gFails ? 1 : 0;
         }
-        Cpu030 cpu(mem);
+        Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu);
         // The V8 ROM answers at $00A00000 in the 24-bit map (the reset PC
         // savestate_v8_test's rig uses), not at the 040 machines' $40000000.
         mem.loadRom(makeRom(V8Memory::kRomSize, 0x00A00000));

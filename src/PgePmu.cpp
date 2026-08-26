@@ -10,8 +10,13 @@
 
 static constexpr int64_t kMcuHz = 2097152;           // 4.194304 MHz / 2
 
-PgePmu::PgePmu(Via6522& via1, int64_t cpuHz)
+PgePmu::PgePmu(Via6522& via1, int64_t cpuHz,
+               const pom68k::CorePeripheralConfig& peripherals)
     : mcu_(std::make_unique<M68hc05Pge>()), via_(via1), cpuHz_(cpuHz) {
+    trace_ = peripherals.pgeTrace;
+    handshakeTrace_ = peripherals.pgeHandshakeTrace;
+    spinUs_ = peripherals.pgeSpinUs;
+    mcu_->configure(peripherals);
     wirePorts();
 }
 
@@ -241,9 +246,7 @@ void PgePmu::reset() {
 // each edge as transport pacing — deliberately not modelled; the SPI
 // completion IRQ is what the protocol really waits on.
 void PgePmu::setPmuReq(bool level) {
-    static const bool trace = std::getenv("POM68K_PGE_TRACE") != nullptr;
-    static const bool hshake = std::getenv("POM68K_PGE_HSHAKE") != nullptr;
-    if ((trace || hshake) && level != reqLevel_) {
+    if ((trace_ || handshakeTrace_) && level != reqLevel_) {
         static long n = 0;
         if (n++ < 100000)
             std::fprintf(stderr, "hs: REQ -> %d (ack=%d mcuPc=$%04X cyc=%lld)\n",
@@ -260,10 +263,8 @@ void PgePmu::setPmuReq(bool level) {
     // load-bearing, exactly as the Cuda transport experience predicts.
     // POM68K_PGE_SPINUS overrides the length for phase experiments; 0
     // disables it.
-    static const int spinUs = std::getenv("POM68K_PGE_SPINUS")
-                            ? atoi(std::getenv("POM68K_PGE_SPINUS")) : 80;
-    if (level != reqLevel_ && spinUs > 0)
-        hostSpin_ = int(cpuHz_ * spinUs / 1000000);
+    if (level != reqLevel_ && spinUs_ > 0)
+        hostSpin_ = int(cpuHz_ * spinUs_ / 1000000);
     reqLevel_ = level;
 }
 
@@ -325,11 +326,9 @@ void PgePmu::wirePorts() {
 
     // POM68K_PGE_TRACE=1: dump every port access with the stub's PC —
     // the tool that shows what the boot ROM actually polls.
-    static const bool trace = std::getenv("POM68K_PGE_TRACE") != nullptr;
-
     m.readPort = [this](int p) -> uint8_t {
         M68hc05Pge& mc = *mcu_;
-        if (trace && p != M68hc05Pge::A && p != M68hc05Pge::B) {
+        if (trace_ && p != M68hc05Pge::A && p != M68hc05Pge::B) {
             static long n = 0;
             static const char* names = "ABCDEFGHJKL";
             if (n++ < 2000)
@@ -437,7 +436,7 @@ void PgePmu::wirePorts() {
     };
 
     m.writePort = [this](int p, uint8_t v) {
-        if (trace && p != M68hc05Pge::C) {
+        if (trace_ && p != M68hc05Pge::C) {
             static long n = 0;
             static const char* names = "ABCDEFGHJKL";
             if (n++ < 2000)
@@ -480,9 +479,7 @@ void PgePmu::wirePorts() {
                 via_.pmuIntLevel(!(v & 0x04));
             }
             {
-                static const bool ht =
-                    std::getenv("POM68K_PGE_HSHAKE") != nullptr;
-                if (ht && ((lastPortF_ ^ v) & 0x04)) {
+                if (handshakeTrace_ && ((lastPortF_ ^ v) & 0x04)) {
                     static long n = 0;
                     if (n++ < 100000)
                         std::fprintf(stderr, "hs: INT line -> %d cyc=%lld "
@@ -505,8 +502,7 @@ void PgePmu::wirePorts() {
             if (((v >> 6) & 1) != (ackLevel_ ? 1 : 0)) {
                 pmuAckEdges++;
                 mcu_->spinCycles(20 * 2097152 / 1000000);   // 20 µs (MAME)
-                static const bool ht = std::getenv("POM68K_PGE_HSHAKE") != nullptr;
-                if (ht) {
+                if (handshakeTrace_) {
                     static long n = 0;
                     if (n++ < 100000)
                         std::fprintf(stderr, "hs: ACK -> %d (req=%d mcuPc=$%04X "

@@ -4,7 +4,7 @@
 // were.
 //
 // Eight devices used to answer that question with the same twenty lines of
-// copy-paste: read the enable knob, walk a list of candidate paths, load the
+// copy-paste: resolve the enable policy, walk candidate paths, load the
 // first one that opens, print a NON-CONFORMANT notice on failure, register
 // the outcome.  They had already drifted -- only `V8Memory` honoured a
 // per-device path override (`POM68K_CUDA_FW`), so on the other six Egret/Cuda
@@ -14,7 +14,7 @@
 // `select()` is that sequence, once.  Every firmware device now gets the same
 // three-step search, the same wording, the same report, and the same override:
 //
-//   1. the per-device path knob, when set -- an arbitrary file, anywhere;
+//   1. the injected per-device path, when set -- an arbitrary file, anywhere;
 //   2. the device's own ordered candidate list (factory part first);
 //   3. failing both, the documented HLE substitute (LLE_VS_HLE § 2).
 //
@@ -37,7 +37,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -51,12 +50,18 @@ namespace pom68k::fw {
 // What one device is asking for. `logTag` prefixes the stderr notices so a
 // terminal user still sees which board spoke, exactly as before.
 struct Request {
-    lle::Module module = lle::HleEgretCuda;
+    Request(lle::Module moduleValue, FirmwareTarget targetValue)
+        : module(moduleValue), target(targetValue) {}
+
+    lle::Module module;
+    FirmwareTarget target;
     std::string name;                        // window row title
-    std::string enableKnob;                  // POM68K_EGRET_LLE / _CUDA_LLE
-    std::string pathKnob;                    // POM68K_CUDA_FW / POM68K_ADB_FW
+    std::string enableKnob;                  // diagnostic label for the source knob
+    std::string pathKnob;                    // diagnostic label for the path knob
     std::string logTag;                      // "V8", "Q605", "AdbVia"
     std::vector<std::string> candidates;     // factory part first
+    bool enabled = true;                     // resolved startup policy
+    std::string forcedPath;                  // resolved per-module override
 };
 
 // The device's own loader: it alone knows what a valid image is for its MCU
@@ -76,13 +81,8 @@ inline bool readFile(const std::string& path, std::vector<std::uint8_t>& out) {
 // Runs the search, reports the outcome to the registry, and returns whether
 // firmware is running. Reporting HLE is still what poisons product mode.
 inline bool select(const Request& req, const Loader& load) {
-    const char* enable = req.enableKnob.empty()
-                             ? nullptr : std::getenv(req.enableKnob.c_str());
-    const bool wanted = !enable || std::atoi(enable) != 0;
-
-    const char* forced = req.pathKnob.empty()
-                             ? nullptr : std::getenv(req.pathKnob.c_str());
-    const std::string forcedPath = forced ? forced : "";
+    const bool wanted = req.enabled;
+    const std::string& forcedPath = req.forcedPath;
 
     std::string loaded;
     if (wanted) {
@@ -113,6 +113,7 @@ inline bool select(const Request& req, const Loader& load) {
 
     lle::Device d;
     d.module = req.module;
+    d.target = req.target;
     d.name = req.name;
     d.knob = req.enableKnob;
     d.mode = loaded.empty() ? lle::Mode::Hle : lle::Mode::Lle;

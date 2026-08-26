@@ -6,7 +6,6 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -79,7 +78,8 @@ struct Sha256 {
 };
 } // namespace detail
 
-inline bool verify(const char* label, std::string& error) {
+inline bool verify(const char* label, const std::string& firmwareRoot,
+                   std::string& error) {
     const Entry* wanted = nullptr;
     for (const Entry& e : kManifest)
         if (std::strcmp(e.label, label) == 0) { wanted = &e; break; }
@@ -87,8 +87,8 @@ inline bool verify(const char* label, std::string& error) {
 
     std::string found;
     std::vector<std::string> bases;
-    if (const char* root = std::getenv("POM68K_FIRMWARE_ROOT"))
-        bases.emplace_back(std::string(root) + "/");
+    if (!firmwareRoot.empty())
+        bases.emplace_back(firmwareRoot + "/");
     else
         bases = {std::string(), std::string("../")};
     for (const std::string& base : bases) {
@@ -115,6 +115,10 @@ inline bool verify(const char* label, std::string& error) {
         return false;
     }
     return true;
+}
+
+inline bool verify(const char* label, std::string& error) {
+    return verify(label, {}, error);
 }
 
 } // namespace pom68k::firmware

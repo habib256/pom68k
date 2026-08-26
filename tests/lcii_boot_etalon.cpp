@@ -24,6 +24,7 @@
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -80,9 +81,11 @@ int main() {
         return 1;
     }
 
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    Cpu030 cpu(mem, /*withFpu=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/true, false);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

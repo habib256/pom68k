@@ -12,6 +12,7 @@
 #include "AssetFingerprint.h"
 #include "Q700Memory.h"
 #include "Q700Cpu.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -142,7 +143,7 @@ int main(int argc, char** argv) {
     }
 
     const int64_t cpuHz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
-    Q700Memory mem(32u << 20, cpuHz, model);
+    Q700Memory mem(pom68k::defaultCoreConfig(), 32u << 20, cpuHz, model);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     std::printf("Machine: %s (%lld MHz), ADB: %s\n", name, (long long)(cpuHz / 1000000),
                 mem.eclipse()
@@ -156,7 +157,8 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "[BERR] %s $%08X\n", w ? "write" : "read", a);
         };
     }
-    Q700Cpu cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Q700Cpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

@@ -46,6 +46,7 @@
 
 #include "BenchHarness.h"
 #include "Cpu030.h"
+#include "JitTestConfig.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 
@@ -244,9 +245,12 @@ int main() {
             const bool engineOn = spec.backend != "interp";
             if (engineOn && spec.backend != "jit")   // "jit" = whatever the
                 setenv("POM68K_JIT_BACKEND", spec.backend.c_str(), 1); // env says
-            V8Memory m;
+            V8Memory m(pom68k::defaultCoreConfig());
             m.loadRom(rom);
-            Cpu030 c(m, /*withFpu=*/true);
+            const jit::ResolvedConfig jitConfig =
+                testjit::resolveFromEnvironment();
+            Cpu030 c(m, jitConfig, pom68k::defaultCoreConfig().cpu,
+                     /*withFpu=*/true, false);
             m.setCpu(&c);
             c.setEngine(engineOn ? 1 : 0);
             c.hardReset();
@@ -258,9 +262,11 @@ int main() {
         });
     }
 
-    V8Memory mem;
+    V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    Cpu030 cpu(mem, /*withFpu=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/true, false);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(diskPath)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

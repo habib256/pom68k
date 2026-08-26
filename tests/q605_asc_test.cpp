@@ -72,7 +72,7 @@ int main() {
 
     // Integration: pseudo-VIA2 IFR acknowledgement must re-latch a live ASC
     // level, matching PrimeTime's asc_irq_w wiring.
-    Q605Memory mem(1u << 20);
+    Q605Memory mem(pom68k::defaultCoreConfig(), 1u << 20);
     mem.reset();
     mem.asc().write(0xF29, 0);
     mem.asc().tick(704);

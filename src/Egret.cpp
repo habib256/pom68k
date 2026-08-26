@@ -4,7 +4,6 @@
 #include "Egret.h"
 #include "AdbBus.h"
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -74,8 +73,7 @@ void Egret::factoryDefaults() {
     // "=0" is the global AppleTalk-off switch (also disables the in-process
     // stack in main.cpp), so it must NOT seed active.
     pram_[0x12] = 0x00;
-    const char* atalk = std::getenv("POM68K_APPLETALK");
-    pram_[0x13] = (atalk && std::strcmp(atalk, "0") != 0) ? 0x21 : 0x22;
+    pram_[0x13] = appleTalkPram_ ? 0x21 : 0x22;
     pram_[0x14] = 0xCC; pram_[0x15] = 0x0A;
     pram_[0x16] = 0xCC; pram_[0x17] = 0x0A;
     pram_[0x1C] = 0x00; pram_[0x1D] = 0x02;
@@ -291,7 +289,7 @@ void Egret::queueError(uint8_t err, uint8_t pktType, uint8_t cmd) {
 
 void Egret::queueResponse(std::vector<uint8_t> resp, StreamSrc stream,
                           uint16_t addr) {
-    if (std::getenv("EGRET_CMD_LOG")) {
+    if (commandTrace_) {
         std::fprintf(stderr, "[egret] cmd:");
         for (uint8_t b : cmd_) std::fprintf(stderr, " %02X", b);
         std::fprintf(stderr, "  reply:");

@@ -51,6 +51,10 @@ class AdbBus;
 
 class Egret {
 public:
+    void configure(bool appleTalkPram, bool commandTrace) {
+        appleTalkPram_ = appleTalkPram;
+        commandTrace_ = commandTrace;
+    }
     // cudaPolarity: the Cuda's TIP (PB5) and BYTEACK (PB4) are ACTIVE
     // LOW (Linux via-cuda.c) where the Egret's SYS_SESSION/VIA_FULL are
     // active high — the wire protocol is otherwise identical, so the
@@ -112,6 +116,8 @@ public:
     }
 
 private:
+    bool appleTalkPram_ = false;
+    bool commandTrace_ = false;
     enum StreamSrc { NO_STREAM, STREAM_PRAM, STREAM_MCU, STREAM_ZERO };
 
     void hostByte(uint8_t b);            // latched on VIA_FULL rise

@@ -29,18 +29,18 @@ are present coverage, never a ceiling on the project mission.
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 229 gates, ~4 h (asset-dependent ones soft-skip)
+ctest                             # 230 gates, ~4 h (asset-dependent ones soft-skip)
 ctest -L unit                     # 110 legacy non-etalon gates
-ctest -L asset-none               # 84 manifest-declared asset-free gates
+ctest -L asset-none               # 85 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
 ctest -L jit-fast                 # asset-free native A64/x64 proof + doc/config checks
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
 
-The counts are the documented registry's (229 total); five lockstep gates
+The counts are the documented registry's (230 total); five lockstep gates
 are host-conditional — three AArch64-only, two x86-64-only
 (`jit_lockstep_030_x64_experimental_test` + `_alignment_test`) — so an
-x86-64 configure sees 226 / 107 unit / 8 smoke and an AArch64 one 227
+x86-64 configure sees 227 / 107 unit / 8 smoke and an AArch64 one 228
 (`CMakeLists.txt`;
 `docs_test` asserts the numbers against the configured registry). `unit` means "name does
 not end in `_etalon`", not "needs no assets" — several unit gates want a ROM or
@@ -211,20 +211,37 @@ animates the 512×342 framebuffer.
 **Without a ROM argument** the app looks for, in order: `roms/maclcii.rom`,
 a `35C28F5F` scan of `roms/`, `roms/macplus.rom`, `roms/macii.rom`,
 `roms/quadra605.rom`, then the `9779D2C4` and `FF7439EE` scans
-(`src/main.cpp:2429-2447`). The default machine is therefore the **Mac LC II**.
+(`src/MachineFactory.cpp:194-206`). The default machine is therefore the **Mac LC II**.
 Each path is tried against the working directory, the executable's directory
-and its parent (`findPath`, `src/main.cpp:309-316`); the signature scan walks
+and its parent (`findPath`, `src/MachineFactory.cpp:84-92`); the signature scan walks
 `roms/` recursively and matches the CRC32 hex **in the file name**
-(`findRomBySignature`, `src/main.cpp:318-348`), which is how Apple dumps are
+(`findRomBySignature`, `src/MachineFactory.cpp:95-120`), which is how Apple dumps are
 normally named — rename yours to something else and only the exact short name
-or an explicit `argv[1]` will find it.
+or an explicit ROM argument will find it.
 
 ### ROM → machine
 
 Dispatch is by ROM **size**, then by the header checksum (the first four
-bytes, big-endian), then by an environment variable for models that share a
-ROM and differ only by clock / CPU / model ID. `src/main.cpp:2449-2578` is the
-code; the **Machine** menu sets the same variables and relaunches.
+bytes, big-endian), then by a typed `MachineSelectionConfig` for models that
+share a ROM and differ only by clock / CPU / model ID. `RuntimeConfig` creates
+that value once from the documented environment selectors. Its internal
+machine decoder is separate from the product and core-policy decoders; the
+public composition root contains no environment-key spelling and never reads
+the live process. A single typed startup-option schema, including the JIT,
+supplies both these decoders and the process-capture boundary. Every row also
+declares its value policy and numeric bounds; domain- and value-constrained
+views make a cross-domain read or an incompatible decode a compile-time error.
+`ProcessEnvironment` seals the captured strings into a `StartupSnapshot` whose
+map is private and whose raw names are validated. `RuntimeConfig` and the JIT
+receive only a const reference to that snapshot and can read it solely through
+typed `StartupOption` symbols.
+`src/MachineFactory.cpp:123-167` owns this selection; the **Machine** menu
+relaunches with the typed `--machine-profile=<slug>` option and never mutates
+the process environment.
+The **Périphériques (LLE / HLE)** window follows the same rule: it relaunches
+with typed `--firmware-override=<adb|egret|cuda>:<lle|hle>:<path>` arguments.
+An empty path explicitly restores automatic firmware discovery. The historic
+`POM68K_*_LLE` and `POM68K_*_FW` variables remain accepted startup syntax.
 
 | Size | Checksum | Machine(s) | Selector |
 |---|---|---|---|
@@ -271,11 +288,11 @@ stalls on the handshake.
 
 ### Command line
 
-`argv[1]` = ROM. `argv[2]` = the boot volume; `argv[3..]` attach as secondary
-SCSI volumes at IDs 1–6 (six entries max, a repeat of the boot volume
-skipped). On the **four compact 68000 machines** — Plus, SE, SE FDHD,
-Classic — the layout is `[ROM] [floppy] [SCSI]` instead, and there is no
-extras loop: anything past `argv[3]` is ignored.
+The typed positional contract is `[ROM] [boot volume] [additional media…]`;
+additional SCSI volumes attach at IDs 1–6 (six entries max, a repeat of the
+boot volume skipped). On the **four compact 68000 machines** — Plus, SE,
+SE FDHD, Classic — the layout is `[ROM] [floppy] [SCSI]` instead, and there
+is no additional-media loop: later values are ignored.
 
 There are only three flags, all consumed before the positional parsing:
 `--version`, `--lle-aarch64`, `--lle-aarch64-check`. Everything else is
@@ -304,12 +321,12 @@ needs a **template**: `HD20SC.vhd` or `boot.vhd` beside the image or under
 `hdv/`, else `POM68K_SCSI_DDM_TEMPLATE=<path>`; without one the image is left
 raw and a line says so on stderr. Otherwise wrap them with
 `tools/wrap_hfs.py`. `.iso`/`.cdr`/`.toast`/`.cue`/`.bin` attach as a SCSI CD
-on all eleven non-compact platforms, and the literal token `cdbay` in
-`argv[3..]` puts an **empty** CD drive on the bus (hot-swappable from the
-**Disques** window forever after). On the four 68040 machines an `argv[3..]`
-`.dsk`/`.image` is **inserted as a floppy** instead of going on the bus
-(SWIM2: 800K GCR and 1.44 MB MFM), as is `POM68K_FLOPPY=<path>`; there
-`argv[2]` stays the SCSI boot volume.
+on all eleven non-compact platforms, and the literal token `cdbay` among the
+additional media puts an **empty** CD drive on the bus (hot-swappable from
+the **Disques** window forever after). On the four 68040 machines an
+additional `.dsk`/`.image` is **inserted as a floppy** instead of going on
+the bus (SWIM2: 800K GCR and 1.44 MB MFM), as is
+`POM68K_FLOPPY=<path>`; the first media argument stays the SCSI boot volume.
 
 ```bash
 ./build/POM68K roms/macplus.rom disks35/Disk605.dsk hdv/HD20SC.vhd
@@ -355,9 +372,9 @@ wheel), **Ctrl+Alt+G**, or **Delete**, toggles full capture (cursor grabbed,
 raw motion); any of the three releases it again. Hovering the screen is
 needed to capture, never to release. The host keyboard maps to M0110 codes on the
 Plus and to raw ADB codes (= M0110 code >> 1) elsewhere (M0110 table:
-`src/main.cpp:2806-2833`; the shared DAFB/Sonora/V8/Toby/Duo ADB table is in
-`GuiRunner.h:182-212`, with the Toby pair and Duo's Escape/no-keypad variant
-at `GuiRunner.h:150-159` — notes in
+`src/GuiShellCommon.h:323-341`; the shared DAFB/Sonora/V8/Toby/Duo ADB table is in
+`src/GuiShellCommon.h:241-270`, with the Toby pair and Duo's Escape/no-keypad variant
+at `GuiShellCommon.h:209-218` — notes in
 `DEV.md` § *Input: M0110 keyboard + quadrature mouse*).
 
 Menus:
@@ -378,7 +395,11 @@ Menus:
   `POM68K_CPU_ENGINE=interp|jit`
   overrides the family default explicitly; design, gates and measurements in
   `src/jit/POM68K_JIT.md`. The CPU menu also reports **× real time**, measured
-  from the machine clock without changing emulated timing.
+  from the machine clock without changing emulated timing. The separate GUI
+  **Avance rapide** scheduler starts **disabled**: accelerating up to eight guest
+  frames per host frame makes two physical clicks too far apart on the Mac's
+  clock for reliable double-clicks. Normal mode targets the model's nominal
+  speed; enable fast-forward manually only when desired.
 - **Disques** — pick the boot volume and toggle secondary SCSI images next
   to the current one (relaunches: the ROM only scans the bus at boot).
   All twelve platforms have it, the compacts included

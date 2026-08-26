@@ -29,6 +29,7 @@
 //       tests/scsi_hfs_facade_test.cpp, tests/scsi_cdrom_test.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "FloppySoundSink.h"
 #include "SaveState.h"
 #include "ScsiTarget.h"
@@ -39,6 +40,12 @@
 
 class ScsiDisk : public ScsiTarget {
 public:
+    void configure(const pom68k::CoreStorageConfig& config) {
+        ddmTemplate_ = config.ddmTemplate.value_or(std::string());
+        trace_ = config.scsiTrace;
+        cdTrace_ = config.cdTrace;
+        ownInquiry_ = config.ownScsiInquiry;
+    }
     // Two personalities on one target, because both SCSI controllers
     // (`Ncr5380`, `Ncr53c96`) and all 32 machines route to `ScsiDisk*`:
     // a CD-ROM differs from a hard disk in its INQUIRY type, its 2048-byte
@@ -188,6 +195,10 @@ public:
     std::size_t dirtyBlocks() const { return dirtyList_.size(); }
 
 private:
+    std::string ddmTemplate_;
+    bool trace_ = false;
+    bool cdTrace_ = false;
+    bool ownInquiry_ = false;
     // Copy-on-first-write log (see visit()).
     void resetWriteLog();
     void markDirty(uint32_t lba, uint32_t count);

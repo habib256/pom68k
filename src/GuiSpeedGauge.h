@@ -10,8 +10,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 
 namespace pom68k {
 
@@ -50,10 +48,10 @@ private:
 
 class GuiSpeedGauge {
 public:
-    GuiSpeedGauge()
-        : logging_(enabled("POM68K_SPEED_LOG")),
-          skip_(nonnegative("POM68K_SPEED_LOG_SKIP")),
-          remaining_(nonnegative("POM68K_SPEED_LOG_COUNT")) {}
+    GuiSpeedGauge() = default;
+    GuiSpeedGauge(bool logging, int skip, int count)
+        : logging_(logging), skip_(std::max(0, skip)),
+          remaining_(std::max(0, count)) {}
 
     double observe(long long machineClock, long long machineHz) {
         const double wall = std::chrono::duration<double>(
@@ -75,16 +73,6 @@ public:
     bool done() const { return done_; }
 
 private:
-    static bool enabled(const char* name) {
-        const char* value = std::getenv(name);
-        return value && std::strcmp(value, "0") != 0;
-    }
-
-    static int nonnegative(const char* name) {
-        const char* value = std::getenv(name);
-        return value ? std::max(0, std::atoi(value)) : 0;
-    }
-
     RealtimeGauge gauge_;
     bool logging_ = false;
     int skip_ = 0;

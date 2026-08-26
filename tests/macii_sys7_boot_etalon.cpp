@@ -37,13 +37,14 @@ int main() {
         return 1;
     }
 
-    MacIIMemory mem;
+    MacIIMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.installTobyVideo(toby)) {
         std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
         return 1;
     }
-    Cpu020 cpu(mem, true);
+    Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

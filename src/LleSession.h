@@ -11,15 +11,15 @@
 // **the GUI displays what the device reported, it never re-derives the
 // decision** — a second copy of the "is there a dump / is the knob set"
 // logic is exactly the drift this tree has paid for before (CLAUDE.md's
-// per-file notes are full of it).  Devices are built once, from getenv, so a
-// changed selection is applied by relaunching the process with a new
-// environment — the Machine menu's mechanism, reused verbatim.
+// per-file notes are full of it). Devices are built once from injected
+// configuration, so a changed selection is applied by a typed relaunch.
 
 #pragma once
 
+#include "FirmwareConfig.h"
+
 #include <atomic>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -35,17 +35,18 @@ enum Module : std::uint32_t {
 
 inline std::atomic<std::uint32_t> gHleModules{0};
 inline std::atomic<bool> gQualified{false};
+inline std::atomic<bool> gRequested{false};
 
 inline bool requested() noexcept {
-    const char* e = std::getenv("POM68K_LLE_AARCH64_FULL");
-    return e && e[0] && e[0] != '0';
+    return gRequested.load(std::memory_order_acquire);
 }
 
 inline void clearDevices();          // defined with the registry below
 
-inline void beginSession() noexcept {
+inline void beginSession(bool strict = false) noexcept {
     gHleModules.store(0, std::memory_order_release);
     gQualified.store(false, std::memory_order_release);
+    gRequested.store(strict, std::memory_order_release);
     clearDevices();
 }
 
@@ -92,8 +93,9 @@ enum class Why {
 
 struct Device {
     Module      module = HleEgretCuda;
+    FirmwareTarget target = FirmwareTarget::Cuda;
     std::string name;                       // shown as the row title
-    std::string knob;                       // "POM68K_EGRET_LLE"
+    std::string knob;                       // legacy source label for diagnostics
     Mode        mode = Mode::Hle;
     Why         why  = Why::HleNoDump;
     std::string firmware;                   // dump loaded (LLE), else empty
@@ -153,40 +155,23 @@ struct Choice {
     std::string firmware;                   // "" = automatic (first found)
 };
 
-// One environment variable the relaunch must carry. `unset` is not a
-// decoration: "back to automatic" has to REMOVE the override, because the
-// re-exec inherits this process's environment and an empty string is a
-// perfectly good path as far as the device is concerned (it would fail to
-// open and warn). The two operations are therefore distinct in the type,
-// rather than encoded as an empty value the caller might setenv() verbatim.
-struct EnvAssignment {
-    std::string knob;
-    std::string value;
-    bool        unset = false;
-};
-
-// The environment a staged selection implies, ready for the relaunch.
-//
-// Every selected device is emitted, INCLUDING one whose choice matches what
-// is running: the relaunch inherits this process's environment, so a knob
-// left over from an earlier relaunch would otherwise survive and silently
-// win. "Undo my earlier HLE forcing" is precisely an explicit `=1`, and
-// "undo my earlier dump pick" is precisely an unset.
-inline std::vector<EnvAssignment>
-envForSelection(const std::vector<Device>& live,
-                const std::vector<Choice>& want) {
-    std::vector<EnvAssignment> out;
+// Typed policy implied by a staged selection, ready for serialization at the
+// process boundary. Every selected device emits a complete override. In
+// particular, a missing path means "automatic" and explicitly defeats an
+// inherited legacy path variable.
+inline std::vector<FirmwareOverride>
+firmwareOverridesForSelection(const std::vector<Device>& live,
+                              const std::vector<Choice>& want) {
+    std::vector<FirmwareOverride> out;
+    if (want.empty()) return out;
     for (const Device& d : live) {
-        for (const Choice& c : want) {
-            if (c.module != d.module) continue;
-            if (!d.knob.empty())
-                out.push_back({d.knob, c.mode == Mode::Lle ? "1" : "0", false});
-            if (!d.pathKnob.empty()) {
-                if (c.firmware.empty()) out.push_back({d.pathKnob, "", true});
-                else out.push_back({d.pathKnob, c.firmware, false});
-            }
-            break;
-        }
+        Choice selected{d.module, d.mode, d.firmwareForced};
+        for (const Choice& staged : want)
+            if (staged.module == d.module) { selected = staged; break; }
+        out.push_back({d.target, selected.mode == Mode::Lle,
+                       selected.firmware.empty()
+                           ? std::optional<std::string>()
+                           : std::optional<std::string>(selected.firmware)});
     }
     return out;
 }

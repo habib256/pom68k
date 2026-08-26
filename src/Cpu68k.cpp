@@ -22,8 +22,8 @@ jit::MemoryHooks macJitHooks(MacMemory& mem) {
 }
 }  // namespace
 
-Cpu68k::Cpu68k(MacMemory& mem)
-    : mem_(mem), jit_(*this, macJitHooks(mem), jit::kGuest68000) {
+Cpu68k::Cpu68k(MacMemory& mem, const jit::ResolvedConfig& jitConfig)
+    : mem_(mem), jit_(*this, macJitHooks(mem), jit::kGuest68000, jitConfig) {
     setModel(moira::Model::M68000);
     // Hand the window this machine's bus model. Without it a windowed fetch
     // would skip the video/RAM contention read16() carries, and the Mac

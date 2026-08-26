@@ -7,8 +7,9 @@
 # platform at a time until the file reached 5990 lines. Nothing objected,
 # because nothing was watching. This script watches.
 #
-# It is a ratchet, not a limit. Every first-party file at or above WATCH lines
-# is listed in tools/file_size_budget.txt with the size it had when recorded.
+# It is a ratchet, not a limit. Every first-party source at or above WATCH
+# lines, plus the CMake and application responsibility modules, is listed in
+# tools/file_size_budget.txt with the size it had when recorded.
 # That number may go DOWN freely — record the win; it may not go up. A file
 # not in the list that crosses LIMIT is a new god-object and also fails.
 #
@@ -39,7 +40,28 @@ is_exempt() {
 }
 
 list_sources() {
-    find src -type f \( -name '*.cpp' -o -name '*.h' \) | sort
+    {
+        find src -type f \( -name '*.cpp' -o -name '*.h' \)
+        find cmake -maxdepth 1 -type f -name 'Pom68k*.cmake'
+        printf '%s\n' CMakeLists.txt
+    } | sort
+}
+
+is_always_budgeted() {
+    case "$1" in
+        CMakeLists.txt|cmake/Pom68k*.cmake|src/main.cpp|\
+        src/GuiMachineRuntime.cpp|src/GuiHostServices.cpp|\
+        src/GuiShell.cpp|src/GuiShellCommon.h|src/GuiRunner*.h|\
+        src/GuiTobyStatus.h|\
+        src/RuntimeConfig.cpp|src/StartupDomainView.h|\
+        src/RuntimeConfigProduct.cpp|src/RuntimeConfigCore.cpp|\
+        src/RuntimeConfigMachine.cpp|src/StartupOptions.h|src/StartupSnapshot.h|\
+        src/StartupValuePolicy.h|src/StartupValueDecoding.h|\
+        src/RuntimeConfigParsers.h|\
+        src/jit/JitConfig.h|\
+        src/Platform*.cpp) return 0 ;;
+    esac
+    return 1
 }
 
 # ── --update: rewrite the budget from what is on disk ─────────────────────
@@ -57,7 +79,9 @@ if [ "${1:-}" = "--update" ]; then
     while read -r f; do
         is_exempt "$f" && continue
         n=$(wc -l < "$f")
-        [ "$n" -ge "$WATCH" ] && printf "%-40s %d\n" "$f" "$n" >> "$BUDGET"
+        if [ "$n" -ge "$WATCH" ] || is_always_budgeted "$f"; then
+            printf "%-40s %d\n" "$f" "$n" >> "$BUDGET"
+        fi
     done < <(list_sources)
     echo "Wrote $BUDGET:"
     grep -v '^#' "$BUDGET" | grep -v '^$' | sed 's/^/  /'

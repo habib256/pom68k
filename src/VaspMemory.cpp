@@ -9,11 +9,19 @@
 #include <fstream>
 #include <iterator>
 
-VaspMemory::VaspMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
+VaspMemory::VaspMemory(const pom68k::CoreConfig& coreConfig,
+                       uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF), vram_(kVramSize, 0),
       egret_(via_, false, int(cpuHz)),
       egretLle_(via_, cpuHz, CudaLle::Flavor::Egret),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
+    via_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    egret_.configure(coreConfig.peripherals.appleTalkPram,
+                     coreConfig.peripherals.egretCommandTrace);
+    egretLle_.configure(coreConfig.peripherals);
+    drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     egret_.setAdbBus(&adb_);
     // V8-style pseudo-VIA video hooks (vasp.cpp:308-315): the config read
     // returns the monitor sense on bits 3-5, the write latches depth.
@@ -23,12 +31,14 @@ VaspMemory::VaspMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
     // Egret firmware LLE — the IIvx/IIvi carry the LC III's 341S0851
     // (maciivx.cpp:407 set_default_bios_tag), 341S0850 as fallback.
     {
-        pom68k::fw::Request req;
-        req.module = pom68k::lle::HleEgretCuda;
+        pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
+                                pom68k::FirmwareTarget::Egret};
         req.name = "Egret — MCU ADB / PRAM / horloge";
         req.enableKnob = "POM68K_EGRET_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Vasp";
+        req.enabled = coreConfig.firmware.egretLle;
+        req.forcedPath = coreConfig.firmware.egretPath.value_or(std::string());
         req.candidates = {
             "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
             "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };

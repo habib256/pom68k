@@ -25,6 +25,7 @@
 // PRAM round trip), tests/duo230_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "SaveState.h"
 #include <cstdint>
 #include <cstdlib>
@@ -33,6 +34,19 @@
 
 class M68hc05Pge {
 public:
+    ~M68hc05Pge();
+    void configure(const pom68k::CorePeripheralConfig& config) {
+        trace_ = config.pgeTrace;
+        adbTrace_ = config.pgeAdbTrace;
+        spiBytesTrace_ = config.pgeSpiBytes;
+        tbTrace_ = config.pgeTrackballTrace;
+        trapByte_ = config.pgeTrapByte;
+        pcWatch_.clear();
+        for (std::uint16_t pc : config.pgePcCount)
+            pcWatch_.emplace_back(pc, 0);
+        pcWindows_ = config.pgePcWindows;
+        pcHistogram_ = config.pgePcHistogram;
+    }
     enum Port { A = 0, B, C, D, E, F, G, H, J, K, L, kPorts };
 
     // The two non-volatile ranges (MAME m68hc05pge.cpp:966-974: the NVRAM
@@ -192,7 +206,7 @@ private:
     // POM68K_PGE_TBTRACE: what the firmware actually reads out of the
     // quadrature counters, and how often — the only way to tell "the host
     // ignored the motion" from "the firmware never collected it".
-    const bool tbTrace_ = std::getenv("POM68K_PGE_TBTRACE") != nullptr;
+    bool tbTrace_ = false;
     uint8_t spcr_ = 0, spsr_ = 0;
     uint8_t spiIn_ = 0, spiOut_ = 0;
     int spiBit_ = 0;                                 // edges remaining (16..0)
@@ -218,6 +232,14 @@ private:
     bool irqLine_ = false;
     bool waiting_ = false;
     bool illegal_ = false;
+    bool trace_ = false;
+    bool adbTrace_ = false;
+    bool spiBytesTrace_ = false;
+    std::optional<std::uint8_t> trapByte_;
+    std::vector<std::pair<std::uint16_t, long>> pcWatch_;
+    std::vector<std::pair<std::int64_t, std::int64_t>> pcWindows_;
+    std::optional<std::pair<std::int64_t, std::int64_t>> pcHistogram_;
+    std::vector<long> pcHistogramBuckets_ = std::vector<long>(256, 0);
     uint16_t illegalPc_ = 0;
     uint8_t illegalOp_ = 0;
     int spin_ = 0;                                   // pending idle cycles

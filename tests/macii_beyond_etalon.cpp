@@ -55,10 +55,11 @@ int main() {
     // that is never flushed is never flushed on real hardware either, and
     // this gate is about persistence, so it configures a machine that
     // persists rather than waiting on a cache that will not drain.
-    MacIIMemory mem(0x400000);
+    MacIIMemory mem(pom68k::defaultCoreConfig(), 0x400000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.installTobyVideo();
-    Cpu020 cpu(mem, true);
+    Cpu020 cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }

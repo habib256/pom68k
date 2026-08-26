@@ -27,6 +27,7 @@
 // Unmapped I/O reads back 0 (MAME iosb has no catch-all /BERR).
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "ViaEClock.h"
@@ -69,7 +70,8 @@ public:
     // Apple OUI 08:00:07 + a fixed host part; the checksum byte is derived.
     static constexpr uint8_t kMacAddr[6] = { 0x08, 0x00, 0x07, 0x50, 0x6D, 0x68 };
 
-    explicit CentrisMemory(uint32_t totalRam = 36u << 20,
+    explicit CentrisMemory(const pom68k::CoreConfig& coreConfig,
+                           uint32_t totalRam = 36u << 20,
                            int64_t cpuHz = kCpuHz650,
                            uint8_t modelPins = kIdCentris650);
 

@@ -1,17 +1,53 @@
 # POM68K file-size budget — see tools/check_file_sizes.sh
 #
-# Ceilings for every first-party file at or above 1000 lines.
+# Ceilings for every first-party source at or above 1000 lines, plus the
+# CMake/application composition roots and their responsibility modules.
 # A number here may go DOWN (record the win); it may not go up.
 # Growing one of these means editing this file in the same commit.
 #
 # Regenerate with: tools/check_file_sizes.sh --update
 
+CMakeLists.txt                              481
+cmake/Pom68kComponentGates.cmake            408
+cmake/Pom68kDevTools.cmake                  108
+cmake/Pom68kGatePolicy.cmake                313
+cmake/Pom68kJitGates.cmake                  554
+cmake/Pom68kMachineGates.cmake              689
 src/AfpServer.cpp                        1129
 src/jit/backends/JitBackendA64.cpp       4349
 src/jit/backends/JitBackendX64.cpp       3919
 src/jit/JitEngine.cpp                    1544
 src/jit/JitIr.h                          1733
-src/main.cpp                             2860
+src/GuiMachineRuntime.cpp                  47
+src/GuiHostServices.cpp                   173
+src/GuiShell.cpp                          383
+src/GuiShellCommon.h                      347
+src/GuiRunnerCompact.h                    192
+src/GuiRunnerDafb.h                       300
+src/GuiRunnerSonora.h                     295
+src/GuiRunnerToby.h                       262
+src/GuiRunnerV8.h                         308
+src/GuiRunnerDuo.h                        235
+src/GuiTobyStatus.h                        41
+src/PlatformComposers.cpp                  46
+src/PlatformCompact.cpp                   161
+src/PlatformToby.cpp                      302
+src/PlatformV8.cpp                        198
+src/PlatformSonora.cpp                    277
+src/PlatformDafb.cpp                      585
+src/PlatformDuo.cpp                       136
+src/RuntimeConfig.cpp                     200
+src/RuntimeConfigProduct.cpp               51
+src/RuntimeConfigCore.cpp                 175
+src/RuntimeConfigMachine.cpp              110
+src/RuntimeConfigParsers.h                 31
+src/StartupOptions.h                      372
+src/StartupDomainView.h                    73
+src/StartupSnapshot.h                      93
+src/StartupValuePolicy.h                   88
+src/StartupValueDecoding.h                107
+src/jit/JitConfig.h                       512
+src/main.cpp                               33
 src/Q700Memory.cpp                       1087
 src/R65c02.cpp                           1420
 src/Scc8530.cpp                          1078

@@ -129,13 +129,14 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    Q700Memory mem(8u << 20, cpuHz, model);
+    Q700Memory mem(pom68k::defaultCoreConfig(), 8u << 20, cpuHz, model);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (mem.eclipse())
         std::printf("Machine: %s, ADB: SWIM IOP wire, Egret: %s\n", name,
                     mem.egretLleActive() ? "341S0851 firmware LLE"
                                          : "HLE (NON-CONFORMANT)");
-    Q700Cpu cpu(mem);
+    Q700Cpu cpu(mem, jit::defaultResolvedConfig(),
+                pom68k::defaultCoreConfig().cpu);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

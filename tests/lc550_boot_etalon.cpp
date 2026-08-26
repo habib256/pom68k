@@ -66,7 +66,8 @@ int main() {
     uint32_t boxId = SonoraMemory::kIdLc550;
     if (const char* b = getenv("POM68K_BOXID"))
         boxId = uint32_t(strtoul(b, nullptr, 16));
-    SonoraMemory mem(0x800000, SonoraMemory::kCpuHzPlus, boxId,
+    SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+                     SonoraMemory::kCpuHzPlus, boxId,
                      /*cudaAdb=*/true);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     int sense = 6;                           // built-in 640×480 RGB
@@ -77,7 +78,8 @@ int main() {
                 uint32_t(mem.peek8(0x5FFFFFFD)) << 16 |
                 uint32_t(mem.peek8(0x5FFFFFFE)) << 8 | mem.peek8(0x5FFFFFFF));
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Cuda firmware LLE" : "HLE");
-    SonoraCpu cpu(mem, /*withFpu=*/true);
+    SonoraCpu cpu(mem, jit::defaultResolvedConfig(),
+                  pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

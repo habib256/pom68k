@@ -132,11 +132,8 @@ void M68hc05Pge::spiEdge() {
         // exists for: does a host command land while the firmware has
         // interrupts masked or is busy inside another handler, and get
         // dropped?
-        static const char* trapEnv = std::getenv("POM68K_PGE_TRAP");
-        if (trapEnv) {
-            static const unsigned trapByte =
-                unsigned(strtoul(trapEnv, nullptr, 16)) & 0xFF;
-            if (spiIn_ == trapByte) {
+        if (trapByte_) {
+            if (spiIn_ == *trapByte_) {
                 static long tn = 0;
                 if (tn++ < 4000) {
                     std::fprintf(stderr,
@@ -155,8 +152,7 @@ void M68hc05Pge::spiEdge() {
         // POM68K_PGE_SPIBYTES=1: every completed exchange. The question it
         // exists to answer is whether a host PmgrOp actually reaches the
         // PMU over the wire, or dies in the transport.
-        static const bool sb = std::getenv("POM68K_PGE_SPIBYTES") != nullptr;
-        if (sb) {
+        if (spiBytesTrace_) {
             static long n = 0;
             if (n++ < 400000)
                 std::fprintf(stderr, "spi: out=$%02X in=$%02X cyc=%lld\n",
@@ -186,8 +182,7 @@ uint8_t M68hc05Pge::read8(uint16_t addr) {
     case 0x0A: return spcr_;
     case 0x0B: return spsr_;
     case 0x0C: {                                     // SPDR
-        static const bool spiTrace = std::getenv("POM68K_PGE_TRACE") != nullptr;
-        if (spiTrace) {
+        if (trace_) {
             static long n = 0;
             if (n++ < 2000)
                 std::fprintf(stderr, "pge: SPI recv $%02X pc=$%04X\n",
@@ -309,8 +304,7 @@ void M68hc05Pge::write8(uint16_t addr, uint8_t v) {
         if (spiClock) spiClock(spiClk_);
         return;
     case 0x0C: {                                     // SPDR: start transfer
-        static const bool spiTrace = std::getenv("POM68K_PGE_TRACE") != nullptr;
-        if (spiTrace) {
+        if (trace_) {
             static long n = 0;
             if (n++ < 2000)
                 std::fprintf(stderr, "pge: SPI send $%02X (spcr $%02X) pc=$%04X\n",
@@ -356,8 +350,7 @@ void M68hc05Pge::write8(uint16_t addr, uint8_t v) {
         return;
     case 0x19: adbsr_ = v; updateAdbIrq(); return;
     case 0x1A: {                                     // ADBDR: send byte
-        static const bool t = std::getenv("POM68K_PGE_ADBTRACE") != nullptr;
-        if (t) {
+        if (adbTrace_) {
             static long n = 0;
             if (n++ < 20000)
                 std::fprintf(stderr, "adbcell: TX $%02X (cr=$%02X sr=$%02X) "
@@ -371,8 +364,7 @@ void M68hc05Pge::write8(uint16_t addr, uint8_t v) {
         return;
     }
     case 0x1C: {                                     // OPTION (banks boot ROM)
-        static const bool t = std::getenv("POM68K_PGE_TRACE") != nullptr;
-        if (t && ((v ^ option_) & 0x80))
+        if (trace_ && ((v ^ option_) & 0x80))
             std::fprintf(stderr, "pge: OPTION $%02X -> $%02X (boot ROM %s) "
                          "pc=$%04X sp=$%02X\n", option_, v,
                          (v & 0x80) ? "IN" : "OUT", pc_, sp_);
@@ -559,68 +551,36 @@ void M68hc05Pge::aluOp(int op, uint16_t ea, bool imm) {
     }
 }
 
+M68hc05Pge::~M68hc05Pge() {
+    if (!pcHistogram_) return;
+    std::fprintf(stderr, "-- PGE pc histogram [%lld,%lld] --\n",
+                 (long long)pcHistogram_->first,
+                 (long long)pcHistogram_->second);
+    for (int i = 0; i < 256; ++i)
+        if (pcHistogramBuckets_[std::size_t(i)])
+            std::fprintf(stderr, "  $%02XXX: %ld\n", i,
+                         pcHistogramBuckets_[std::size_t(i)]);
+}
+
 int M68hc05Pge::execOne() {
     pcRing_[pcRingPos_] = pc_;
     pcRingPos_ = (pcRingPos_ + 1) & 63;
     // POM68K_PGE_PCCOUNT="hex,hex,…": execution counts + first hits for
     // firmware PCs — the DUO_PCCOUNT idea, MCU side. Diagnostic only.
     {
-        static std::vector<std::pair<uint16_t, long>>* watch = [] {
-            auto* v = new std::vector<std::pair<uint16_t, long>>;
-            if (const char* e = std::getenv("POM68K_PGE_PCCOUNT"))
-                while (*e) {
-                    v->push_back({uint16_t(strtoul(e, nullptr, 16)), 0});
-                    const char* c = strchr(e, ',');
-                    if (!c) break;
-                    e = c + 1;
-                }
-            return v;
-        }();
         // POM68K_PGE_PCWIN="lo,hi[;lo,hi…]": inside those MCU-cycle
         // windows, print EVERY hit — the interleave is the point there,
         // not the count.
-        static const auto wins = [] {
-            auto* v = new std::vector<std::pair<long long, long long>>;
-            if (const char* e = std::getenv("POM68K_PGE_PCWIN"))
-                while (*e) {
-                    long long lo = atoll(e), hi = -1;
-                    if (const char* c = strchr(e, ',')) hi = atoll(c + 1);
-                    v->push_back({lo, hi});
-                    if (!(e = strchr(e, ';'))) break;
-                    e++;
-                }
-            return v;
-        }();
         bool inWin = false;
-        for (auto& [lo, hi] : *wins)
+        for (auto& [lo, hi] : pcWindows_)
             if (cycles_ >= lo && cycles_ <= hi) { inWin = true; break; }
         // POM68K_PGE_PCHIST="lo,hi": 256-byte-bucket histogram of executed
         // PCs inside that MCU-cycle window, dumped at destruction — where
         // does a starved stretch actually spend its cycles?
-        static const auto hist = [] {
-            struct H {
-                long long lo = -1, hi = -1;
-                std::vector<long> buckets = std::vector<long>(256, 0);
-                ~H() {
-                    if (lo < 0) return;
-                    std::fprintf(stderr, "-- PGE pc histogram [%lld,%lld] --\n",
-                                 lo, hi);
-                    for (int i = 0; i < 256; i++)
-                        if (buckets[size_t(i)])
-                            std::fprintf(stderr, "  $%02XXX: %ld\n", i,
-                                         buckets[size_t(i)]);
-                }
-            };
-            static H h;
-            if (const char* e = std::getenv("POM68K_PGE_PCHIST")) {
-                h.lo = atoll(e);
-                if (const char* c = strchr(e, ',')) h.hi = atoll(c + 1);
-            }
-            return &h;
-        }();
-        if (hist->lo >= 0 && cycles_ >= hist->lo && cycles_ <= hist->hi)
-            hist->buckets[pc_ >> 8]++;
-        for (auto& [wpc, n] : *watch)
+        if (pcHistogram_ && cycles_ >= pcHistogram_->first &&
+            cycles_ <= pcHistogram_->second)
+            pcHistogramBuckets_[pc_ >> 8]++;
+        for (auto& [wpc, n] : pcWatch_)
             if (pc_ == wpc) {
                 n++;
                 if (inWin || n <= 12 || (n & (n - 1)) == 0)

@@ -21,6 +21,7 @@
 #include "RbvMemory.h"
 #include "RbvVideo.h"
 #include "RbvCpu.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -73,13 +74,15 @@ int main() {
         return 1;
     }
 
-    RbvMemory mem(0x800000);
+    RbvMemory mem(pom68k::defaultCoreConfig(), 0x800000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     int sense = 6;                           // 13" RGB 640×480
     if (const char* s = getenv("POM68K_SENSE")) sense = atoi(s);
     mem.setMonitorSense(uint8_t(sense));
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
-    RbvCpu cpu(mem, /*withFpu=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    RbvCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

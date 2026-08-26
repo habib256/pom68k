@@ -5,17 +5,9 @@
 #include "FirmwareChoice.h"
 #include <algorithm>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <vector>
-
-// Diagnostic tracer (POM68K_ADB_PIC_TRACE=1): logs every ST value the PIC
-// samples (with its PC) and every PIC port-B write that changes CB1/CB2/IRQ.
-static bool picTrace() {
-    static const bool t = std::getenv("POM68K_ADB_PIC_TRACE") != nullptr;
-    return t;
-}
 
 void AdbVia::reset() {
     state_ = IDLE;
@@ -48,12 +40,14 @@ void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
     // distributable) but never silently: the byte-model is a documented
     // NON-CONFORMANT substitute (LLE_VS_HLE §2) and §1.9's ORB→SHIFT
     // re-arm lives only on this path.
-    pom68k::fw::Request req;
-    req.module = pom68k::lle::HleAdbModem;
+    pom68k::fw::Request req{pom68k::lle::HleAdbModem,
+                            pom68k::FirmwareTarget::Adb};
     req.name = "Transcepteur ADB PIC1654S (342S0440-B)";
     req.enableKnob = "POM68K_ADB_LLE";
     req.pathKnob = "POM68K_ADB_FW";
     req.logTag = "AdbVia";
+    req.enabled = firmwareEnabled_;
+    req.forcedPath = firmwarePath_;
     req.candidates = { "roms/adbmodem/342s0440-b.bin",
                        "../roms/adbmodem/342s0440-b.bin" };
     lle_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& rom) {
@@ -74,7 +68,7 @@ void AdbVia::setupPicPorts() {
         // input ST bits to 1.
         uint8_t pb = uint8_t(via_->portB() | ~via_->ddrb());
         uint8_t st = uint8_t((pb >> 4) & 3);
-        if (picTrace()) {
+        if (trace_) {
             static uint8_t lastSt = 0xFF;
             if (st != lastSt) {
                 lastSt = st;
@@ -116,7 +110,7 @@ void AdbVia::setupPicPorts() {
         return uint8_t(0xF7 | (via_->extShiftCB2Out() ? 0x08 : 0));   // RB3 = CB2 in
     };
     pic_.writeB = [this](uint8_t v) {
-        if (picTrace()) {
+        if (trace_) {
             static uint8_t lastB = 0xFF;
             if ((v ^ lastB) & 0x1C) {
                 std::fprintf(stderr, "pic: portB=%02X (CB1=%d CB2=%d IRQ=%d) @pc=%03X clk=%lld\n",

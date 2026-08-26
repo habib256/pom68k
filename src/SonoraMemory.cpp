@@ -28,14 +28,22 @@ const SonoraMemory::Modeline* SonoraMemory::modeline(uint8_t id) {
     return nullptr;
 }
 
-SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
-                           bool cudaAdb)
+SonoraMemory::SonoraMemory(const pom68k::CoreConfig& coreConfig,
+                           uint32_t totalRam, int64_t cpuHz,
+                           uint32_t machineId, bool cudaAdb)
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF), vram_(kVramSize, 0),
       egret_(via_, cudaAdb, int(cpuHz)),
       egretLle_(via_, cpuHz, cudaAdb ? CudaLle::Flavor::Cuda
                                      : CudaLle::Flavor::Egret),
       asc_(cpuHz),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
+    via_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    egret_.configure(coreConfig.peripherals.appleTalkPram,
+                     coreConfig.peripherals.egretCommandTrace);
+    egretLle_.configure(coreConfig.peripherals);
+    drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     egret_.setAdbBus(&adb_);
     // The Cuda AIOs (LC 520/550/CC II) carry a DFAC2 on the Cuda's I2C
     // (maclc3.cpp:403) — the slave ACK lives in CudaLle (setI2cDfac).
@@ -48,13 +56,21 @@ SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
     // AIO family: Cuda 341S0060 (Cuda 2.40, maclc3.cpp:380), the Q605's
     // proven 341S0788 as fallback. Same POM68K_EGRET_LLE rollout as V8Memory.
     {
-        pom68k::fw::Request req;
-        req.module = pom68k::lle::HleEgretCuda;
+        pom68k::fw::Request req{
+            pom68k::lle::HleEgretCuda,
+            cudaAdb ? pom68k::FirmwareTarget::Cuda
+                    : pom68k::FirmwareTarget::Egret};
         req.name = cudaAdb ? "Cuda — MCU ADB / PRAM / horloge"
                            : "Egret — MCU ADB / PRAM / horloge";
-        req.enableKnob = "POM68K_EGRET_LLE";     // one knob here, both MCUs
+        req.enableKnob = cudaAdb ? "POM68K_CUDA_LLE"
+                                 : "POM68K_EGRET_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Sonora";
+        req.enabled = cudaAdb ? coreConfig.firmware.cudaLle
+                              : coreConfig.firmware.egretLle;
+        req.forcedPath = (cudaAdb ? coreConfig.firmware.cudaPath
+                                  : coreConfig.firmware.egretPath)
+                             .value_or(std::string());
         req.candidates = cudaAdb
             ? std::vector<std::string>{
                   "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin",

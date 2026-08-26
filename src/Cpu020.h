@@ -4,6 +4,7 @@
 // Moira M68020 @ 15.6672 MHz on the Mac II GLUE map (functional accuracy).
 
 #pragma once
+#include "CoreConfig.h"
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
@@ -17,7 +18,9 @@ public:
     // the same Mac II GLUE board, sharing the mac2fdhd ROM. The GLUE still
     // does the 24-bit remap (MacIIMemory::physAddr via VIA2 PB3); the 030's
     // own PMMU stays transparent until the ROM enables it.
-    explicit Cpu020(MacIIMemory& mem, bool withFpu = true, bool is030 = false);
+    explicit Cpu020(MacIIMemory& mem, const jit::ResolvedConfig& jitConfig,
+                    const pom68k::CoreCpuConfig& cpuConfig,
+                    bool withFpu = true, bool is030 = false);
 
     void hardReset();
 
@@ -58,6 +61,7 @@ public:
     }
 
 private:
+    bool eventDriven_ = false;
     moira::u8  read8(moira::u32 addr) const override;
     moira::u16 read16(moira::u32 addr) const override;
     // Moira's disassembler falls back to read16() unless this is overridden,

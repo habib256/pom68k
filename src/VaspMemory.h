@@ -18,6 +18,7 @@
 // Gate: tests/iivx_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "PseudoVia.h"
@@ -48,7 +49,8 @@ public:
     static constexpr uint32_t kIdIIvx = 0xA55A2015;  // maciivx.cpp:171
     static constexpr uint32_t kIdIIvi = 0xA55A2016;  // maciivx.cpp:177
 
-    explicit VaspMemory(uint32_t totalRam = 0x800000,
+    explicit VaspMemory(const pom68k::CoreConfig& coreConfig,
+                        uint32_t totalRam = 0x800000,
                         int64_t cpuHz = kCpuHzVx,
                         uint32_t machineId = kIdIIvx);
     int64_t cpuHz() const { return cpuHz_; }

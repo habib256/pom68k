@@ -5,19 +5,23 @@
 #include "IIfxCpu.h"
 #include <algorithm>
 #include <cstdio>
-#include <cstdlib>
-
-// Diagnostic tracer (POM68K_IIFX_IO_TRACE=1): unknown I/O touches, PIC
-// /RSTPIC edges, OSS writes — the bring-up eyes (docs/IOP_BRINGUP.md M3).
-static bool iifxIoTrace() {
-    static const bool t = std::getenv("POM68K_IIFX_IO_TRACE") != nullptr;
-    return t;
-}
 
 IIfxMemory::~IIfxMemory() { delete toby_; }
 
-IIfxMemory::IIfxMemory(uint32_t ramSize)
+IIfxMemory::IIfxMemory(const pom68k::CoreConfig& coreConfig,
+                       uint32_t ramSize)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize) {
+    ioTrace_ = coreConfig.peripherals.iifxIoTrace;
+    adbTrace_ = coreConfig.peripherals.iifxAdbTrace;
+    scsiTrace_ = coreConfig.peripherals.iifxScsiTrace;
+    via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
+    rtc_.configure(coreConfig.peripherals.appleTalkPram,
+                   coreConfig.peripherals.rtcTrace);
+    adbLine_.configure(coreConfig.peripherals.adbKeyboardHandlerId,
+                       coreConfig.peripherals.adbLleTrace);
+    scc_.configureTrace(coreConfig.peripherals.sccTrace);
+    drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     // ASC IRQ → OSS input 8 (`maciifx.cpp:458`).
     asc_.onIrq = [this](bool s) { ossSetInput(8, s); };
     // The two IOPs' host interrupts → OSS inputs 7 (SCC) and 6 (SWIM)
@@ -52,10 +56,9 @@ IIfxMemory::IIfxMemory(uint32_t ramSize)
     swimPic_.gpOut = [this](int pin, bool level) {
         if (pin != 0) return;
         adbHostEdges_++;
-        static const bool trace = std::getenv("POM68K_IIFX_ADB_TRACE") != nullptr;
         const int stBefore = adbLine_.dbgLinestate();
         adbLine_.setHostDrive(!level);
-        if (trace) {
+        if (adbTrace_) {
             static int n = 0;
             const int stAfter = adbLine_.dbgLinestate();
             if (stAfter != stBefore && stAfter >= 10 && n++ < 300)
@@ -179,7 +182,7 @@ void IIfxMemory::ossWrite(uint32_t off, uint8_t v) {
         return;
     }
     if (off < 0x400) {
-        if (iifxIoTrace() && off < 0x10)
+        if (ioTrace_ && off < 0x10)
             std::fprintf(stderr, "iifx: OSS pri[%u]=%d pc=%08X\n",
                          off, v, cpu_ ? unsigned(cpu_->getPC()) : 0u);
         ossRegs_[off] = v;
@@ -236,15 +239,8 @@ uint16_t IIfxMemory::viaAccess(uint32_t addr, bool write, uint16_t v) {
 
 // ── SCSIDMA (M3 subset: bare 53C80 + soft handshake; `scsidma.cpp`) ──────
 
-// Diagnostic (POM68K_IIFX_SCSI_TRACE=1): every 5380/SCSIDMA register
-// touch with PC — the POST self-test sequence decoder.
-static bool iifxScsiTrace() {
-    static const bool t = std::getenv("POM68K_IIFX_SCSI_TRACE") != nullptr;
-    return t;
-}
-
 uint8_t IIfxMemory::scsiDmaRead(uint32_t off) {
-    if (iifxScsiTrace()) {
+    if (scsiTrace_) {
         static int n = 0;
         const unsigned pc = cpu_ ? unsigned(cpu_->getPC()) : 0u;
         const bool inTest = pc >= 0x40807000u && pc < 0x40808000u;
@@ -273,7 +269,7 @@ uint8_t IIfxMemory::scsiDmaRead(uint32_t off) {
 }
 
 void IIfxMemory::scsiDmaWrite(uint32_t off, uint8_t v) {
-    if (iifxScsiTrace()) {
+    if (scsiTrace_) {
         static int n = 0;
         const unsigned pc = cpu_ ? unsigned(cpu_->getPC()) : 0u;
         if (n++ < 300 && pc >= 0x40807000u && pc < 0x40808000u)
@@ -390,7 +386,7 @@ uint8_t IIfxMemory::read8Decoded(uint32_t addr) {
             return ossRead(off - 0x1A000);
         if (off >= 0x24000 && off < 0x28000)
             busError();                          // the FMC probe (`:204`)
-        if (iifxIoTrace()) {
+        if (ioTrace_) {
             static int n = 0;
             if (n++ < 200)
                 std::fprintf(stderr, "iifx: rd unknown io off=%05X pc=%08X\n",
@@ -460,7 +456,7 @@ void IIfxMemory::write8Decoded(uint32_t addr, uint8_t v) {
         }
         if (off >= 0x24000 && off < 0x28000)
             busError();
-        if (iifxIoTrace()) {
+        if (ioTrace_) {
             static int n = 0;
             if (n++ < 200)
                 std::fprintf(stderr, "iifx: wr unknown io off=%05X v=%02X pc=%08X\n",

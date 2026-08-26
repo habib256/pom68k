@@ -26,6 +26,9 @@
 
 class SonyDrive {
 public:
+    void configureFluxJitter(int percent) {
+        fluxJitterPct_ = percent >= 0 && percent <= 45 ? percent : 0;
+    }
     static constexpr size_t kSize800K = 819200;
     static constexpr size_t kSize400K = 409600;
     static constexpr size_t kSize1440K = 1474560;
@@ -208,7 +211,6 @@ private:
     void rebuildCellsFromFlux();                 // store -> separator -> cells
     const std::vector<uint8_t>& cellsView();     // rebuilds if dirty
     int64_t fluxJitter(size_t idx, int64_t revNo) const;
-    static int fluxJitterEnv();
     void decodeMfmCells();
     void decodeGcrCells();
     // Scan a decoded GCR nibble sequence for D5 AA AD data fields and
@@ -250,7 +252,7 @@ private:
     // legacy nibble stream only, instead of re-laying the whole track
     // canonically over the flux the controller just wrote.
     bool inFluxCommit_ = false;
-    int fluxJitterPct_ = fluxJitterEnv();        // POM68K_FLUX_JITTER
+    int fluxJitterPct_ = 0;
     int64_t fluxJitterTicks_ = 0;
     int fluxStretchPermille_ = 1000;             // test seam, gates only
     int64_t spinClockHz_ = 7833600;

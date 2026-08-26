@@ -62,6 +62,7 @@
 // Gate: tests/q700_boot_etalon.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "ViaEClock.h"
@@ -101,8 +102,9 @@ public:
     // header note). `eclipse()` is the one predicate the code branches on.
     enum class Model { Spike, Q900, Q950 };
 
-    explicit Q700Memory(uint32_t totalRam = 32u << 20, int64_t cpuHz = kCpuHz,
-                        Model model = Model::Spike);
+    explicit Q700Memory(const pom68k::CoreConfig& coreConfig,
+                        uint32_t totalRam = 32u << 20,
+                        int64_t cpuHz = kCpuHz, Model model = Model::Spike);
     Model model() const { return model_; }
     bool eclipse() const { return model_ != Model::Spike; }
 
@@ -326,6 +328,8 @@ public:
     }
 
 private:
+    long iopTraceLimit_ = 0;
+    long iopTraceCount_ = 0;
     void iopTrace(bool write, char which, uint32_t base, uint8_t v);
     // Bring-up: the last host-window touches, dumped when an IOP panics.
     // A 65C02 that returned through a smashed stack frame was smashed by

@@ -9,6 +9,7 @@
 
 #include "AssetFingerprint.h"
 #include "Q630Cpu.h"
+#include "JitTestConfig.h"
 #include "Q630Memory.h"
 
 #include <cmath>
@@ -139,12 +140,16 @@ int main() {
         return 1;
     }
 
-    Q630Memory mem(32u << 20);
+    pom68k::CoreConfig core;
+    if (const char* id = getenv("POM68K_Q630_ID"))
+        core.bus.q630MachineId = uint32_t(std::strtoul(id, nullptr, 16));
+    Q630Memory mem(core, 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
-    Q630Cpu cpu(mem);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Q630Cpu cpu(mem, jitConfig, core.cpu);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

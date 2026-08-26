@@ -33,6 +33,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu68k.h"
+#include "JitTestConfig.h"
 #include "MacMemory.h"
 #include "MacFrame.h"
 #include "jit/JitConfig.h"
@@ -162,8 +163,11 @@ int main(int argc, char** argv) {
     }
     const std::vector<uint8_t> rom = readFile(romPath);
 
-    static MacMemory memRef, memJit;
-    static Cpu68k cpuRef(memRef), cpuJit(memJit);
+    static const jit::ResolvedConfig jitConfig =
+        testjit::resolveFromEnvironment();
+    static MacMemory memRef(pom68k::defaultCoreConfig());
+    static MacMemory memJit(pom68k::defaultCoreConfig());
+    static Cpu68k cpuRef(memRef, jitConfig), cpuJit(memJit, jitConfig);
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
@@ -355,7 +359,7 @@ int main(int argc, char** argv) {
                     (unsigned long long)s.blocksRun);
         return 1;
     }
-    if (jit::blockCacheEnabled(cpuJit.jit().nativeBackend()) && s.blocksRun == 0) {
+    if (cpuJit.jit().config().blockCache && s.blocksRun == 0) {
         std::printf("[jit_lockstep_68000] FAIL: POM68K_JIT_BLOCKS is on but no "
                     "block was ever replayed — the block path proved nothing\n");
         return 1;

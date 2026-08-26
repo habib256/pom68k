@@ -15,6 +15,7 @@
 // Gates: tests/v8_ramsize.cpp, tests/pseudovia_test.cpp.
 
 #pragma once
+#include "CoreConfig.h"
 #include "jit/JitGuard.h" 
 #include "Via6522.h"
 #include "PseudoVia.h"
@@ -79,8 +80,9 @@ public:
     // 10 MB is the V8 hard limit (12 MB installed, 2 MB wasted).
     // cpuHz: C15M for everything but the Mac TV's C32M — the gate array
     // stays in the C15M domain, ticks are rescaled (the VASP pattern).
-    explicit V8Memory(uint32_t totalRam = 0xA00000, Model model = Model::LcII,
-                      int64_t cpuHz = kCpuHz);
+    explicit V8Memory(const pom68k::CoreConfig& coreConfig,
+                      uint32_t totalRam = 0xA00000,
+                      Model model = Model::LcII, int64_t cpuHz = kCpuHz);
     Model model() const { return model_; }
     int64_t cpuHz() const { return cpuHz_; }
     // Spice-class gate arrays (Color Classic Spice + Mac TV Tinker Bell):
@@ -387,6 +389,9 @@ public:
     std::function<void(uint32_t, bool, uint8_t)> onSccAccess;
 
 private:
+    long ioHoleTraceLimit_ = 0;
+    long ioHoleTraceCount_ = 0;
+    uint8_t ioHoleValue_ = 0xFF;
     void applyRamConfig(uint8_t config);
     // Byte index into ram_ for a RAM-space address, or $FFFFFFFF when
     // the address falls in a hole (open bus). Priority mirrors MAME's

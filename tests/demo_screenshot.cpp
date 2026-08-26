@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
         else romPath = argv[i];
     }
 
-    MacMemory mem;
+    MacMemory mem(pom68k::defaultCoreConfig());
     if (!romPath.empty()) {
         std::ifstream in(romPath, std::ios::binary);
         std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
         std::printf("ROM: built-in demo\n");
     }
 
-    Cpu68k cpu(mem);
+    Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
     cpu.hardReset();
     MacFrameClock fc;

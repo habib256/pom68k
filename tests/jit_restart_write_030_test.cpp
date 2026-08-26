@@ -11,6 +11,7 @@
 
 #include "Moira.h"
 #include "jit/JitEngine.h"
+#include "JitTestConfig.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -26,6 +27,12 @@ constexpr uint32_t kCode = 0x001100;
 constexpr uint32_t kHandler = 0x003100;
 constexpr uint32_t kStack = 0x008000;
 constexpr uint32_t kSubroutine = 0x006000;
+
+const jit::ResolvedConfig& injectedJitConfig() {
+    static const jit::ResolvedConfig config =
+        testjit::resolveFromEnvironment();
+    return config;
+}
 
 class FaultCpu final : public moira::Moira {
 public:
@@ -44,7 +51,8 @@ public:
     };
 
     FaultCpu()
-        : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68030) {
+        : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68030,
+                                injectedJitConfig()) {
         setModel(moira::Model::M68030);
     }
 

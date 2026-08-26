@@ -11,6 +11,7 @@
 #include "AssetFingerprint.h"
 #include "IIfxMemory.h"
 #include "IIfxCpu.h"
+#include "JitTestConfig.h"
 #include "TobyVideo.h"
 #include <cstdio>
 #include <cstdlib>
@@ -47,13 +48,14 @@ int main() {
         return 1;
     }
 
-    IIfxMemory mem;
+    IIfxMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.installTobyVideo(toby)) {
         std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
         return 1;
     }
-    IIfxCpu cpu(mem, /*withFpu=*/true);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    IIfxCpu cpu(mem, jitConfig, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
