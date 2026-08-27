@@ -8,8 +8,14 @@
 # What a gate COSTS to run, so `ctest -j` can schedule the suite instead of
 # the suite being run sequentially because nobody knows what it costs.
 #
-# Why this file exists. A full run is 4 h 30 SEQUENTIALLY, which is why it
-# happens rarely -- the 2026-08-16 pass found ten red gates in five unrelated
+# Why this file exists. A full run is 4 h 46 SEQUENTIALLY -- measured on
+# aarch64 2026-08-27 by summing the 228 gates' own durations; it is
+# 20 minutes at -j64 on the same host, with the rows below in force.
+# Size -j to the RAM you will spend, NOT to cores: -j is this file's
+# budget in 256 MiB slots, and at -j16 (4 GiB) the widest gate alone
+# takes 12 of the 16, which costs 30 min instead of 20.
+# Sequential is why a full run used to happen
+# rarely -- the 2026-08-16 pass found ten red gates in five unrelated
 # causes after nine days without one, and one of those causes (the IWM cell
 # window, nine platforms silent) was found by a GUI field report rather than
 # by the suite. Nothing actually REQUIRES sequential execution: there is no
@@ -47,7 +53,7 @@
 #           90 gates measured, 14 soft-skipped, max 113 728 kB (111 MiB).
 #           FINDING: the entire runnable registry on this host fits in ONE
 #           slot. The non-etalon tiers are parallel-safe on RAM by a wide
-#           margin; whatever makes the full suite 4 h 30 is in the etalons.
+#           margin; whatever makes the full suite hours long is in the etalons.
 #
 #   x86_64  2026-08-18  label `etalon`, on the host that has the images,
 #           after a scratch rebuild (make -j12, exit 0, no 0-byte binaries).

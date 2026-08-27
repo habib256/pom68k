@@ -29,7 +29,9 @@ are present coverage, never a ceiling on the project mission.
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 230 gates, ~4 h (asset-dependent ones soft-skip)
+ctest -j64                        # 230 gates, 20 min here (4 h 46 sequential).
+                                  # `-j` is a RAM budget in 256 MiB slots, not a
+                                  # core count. 4 of 228 soft-skip without assets
 ctest -L unit                     # 110 legacy non-etalon gates
 ctest -L asset-none               # 85 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines

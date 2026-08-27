@@ -3,7 +3,9 @@
 
 Why this exists
 ---------------
-A full `ctest` run costs 4 h 30 SEQUENTIALLY, and that is why it is run
+A full `ctest` run costs 4 h 46 SEQUENTIALLY (measured, aarch64 2026-08-27,
+summing the 228 gates' own durations) and 18 minutes at `-j16`. That is why it
+used to be run
 rarely — the 2026-08-16 pass found ten red gates in five unrelated causes
 after nine days without one.  Nothing in `CMakeLists.txt` actually *requires*
 sequential execution: there is no `RUN_SERIAL`, no `RESOURCE_LOCK`, and

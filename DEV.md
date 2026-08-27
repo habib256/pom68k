@@ -1650,10 +1650,19 @@ hide a lifecycle decision because the registry side accepts exact names only.
 
 ## 6. Test tiers and gates
 
-**Never iterate against a bare `ctest` or a bare `make`.** A full run is
-230 documented gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
-contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
-LTO.
+**Never iterate against a bare `ctest` or a bare `make`** — because of what
+they cost you per edit, not because they are unsafe. `ctest -j` was called
+unsafe here until 2026-08-27 ("the boot etalons are contention-sensitive");
+three whole-registry runs at `-j16` that day returned 228/228 — 18 min 02 s
+and 18 min 10 s under the assumed one-slot budgets, then **30 min 04 s** once
+this host's measured RAM rows landed, because CTest reserves a gate's peak for
+its whole life and the widest gate is 12 of the 16 slots `-j16` offers. The
+binding resource is RAM, which `gate_resource_budgets.tsv` now describes per
+host, and `-j` is that budget in 256 MiB units rather than a CPU count — give
+it the machine's RAM and the calibrated run costs 2 minutes over the
+uncalibrated one instead of 12: **`-j64` runs the same 228 in 20 min 12 s**. A bare `make` still relinks ~90 binaries under tree-wide LTO, and a
+full `ctest` still costs 18 minutes you do not need to spend on a one-line
+change.
 
 ```bash
 cmake --build build -j4 --target jitfast
@@ -1685,8 +1694,8 @@ three under different environments.
 | `ctest -L jit` | 40 | before proposing a JIT change (`jit-fast` matches this regex too) |
 | `ctest -L m040` | 51 | the 68040 family on the default engine plus explicit interpreter references |
 | `ctest -L m030` | 54 | the 68030 family, same shape (since 2026-08-18) |
-| `ctest -L etalon` | 119 (~3 h 45) | every profile — the release gate, not a pre-commit check |
-| `ctest` | 230 (~4h30) | documented host-union; use `ctest -N` for this host |
+| `ctest -L etalon` | 119 (4 h 33 serial-equivalent) | every profile — the release gate, not a pre-commit check |
+| `ctest -j64` | 230 (**20 min** with this host's RAM rows; 30 min at `-j16`, 18 min uncalibrated, 4 h 46 serial) | documented host-union; use `ctest -N` for this host |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
 is the authority. Five gates are host-conditional: the AArch64 trio

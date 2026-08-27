@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 298 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 299 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -26,7 +26,13 @@ re-verify before quoting them anywhere:
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
 - **Last FULL suite: 228/228 on AArch64, 2026-08-27 — and 224 of them
   actually EXECUTED.** Every registered gate in ONE `ctest -j16`, **1 089.79 s
-  wall (18 min 10 s)**, exit 0, zero red; the census
+  wall (18 min 10 s)** under the assumed one-slot budgets — exit 0, zero red.
+  **Four runs of the same registry that day price the schedule**: `-j16`
+  18 min 02 s and 18 min 10 s while budgets were `assumed`; `-j16`
+  **30 min 04 s** once this host's measured rows landed (CTest reserves a
+  gate's peak for its whole life, and `lcii_persist_etalon` alone is 12 of
+  those 16 slots); **`-j64` 20 min 12 s** with the same rows. `-j` is a RAM
+  budget in 256 MiB units, not a core count. The census
   (`tools/gate_execution_census.py`, same run's `LastTest.log`) says **224
   executed, 4 soft-skipped**: the three Q605 CD gates want `cd/MacOS_86.iso`
   and `dir2hfs_selftest` wants the `machfs` module. **Quote the pair, never
@@ -549,10 +555,13 @@ trois frames, bascule moteur, sauvegarde, fermeture RAII.
 
 ## 1. Red now
 
-**Nothing is red today.** Last whole-registry run: 227/227 on AArch64,
-2026-08-25 (header of this file). That sentence is only worth the freshness of
-the binaries behind it — run `tools/check_binaries_fresh.py` before quoting any
-tier, and its `--self-test` the first time on a new machine.
+**Nothing is red today.** Last whole-registry run: 228/228 on AArch64,
+2026-08-27, of which **224 actually executed** (header of this file). That
+sentence is only worth two things: the freshness of the binaries behind it —
+run `tools/check_binaries_fresh.py` before quoting any tier, and its
+`--self-test` the first time on a new machine — and the execution census
+behind it, `tools/gate_execution_census.py`, because a gate that soft-skips
+exits 0 and is counted green by `ctest`.
 
 ### Open here, and not red
 
