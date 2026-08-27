@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 300 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 301 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -88,7 +88,7 @@ it.
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur le matériel cible |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Items 1, 2 et 4 posés le 2026-08-27 → item 3 : la couverture, en artefact CI |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Items 1, 2, 3 et 4 posés le 2026-08-27 → item 5 : sortir `LleSession` du processus |
 | **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
 | **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
@@ -458,8 +458,9 @@ conseillé — **1 → 2 → 4 → 3 → 5 → 6** : chaque étape rend la suiva
 et les deux premières sont les moins chères de tout ce fichier. **Les items 1, 2 et 4 sont
 posés depuis le 2026-08-27** — et chacun a payé son écriture le jour même :
 six défauts pour les avertissements, une course de données pour les
-sanitizers, deux gates qui n'avaient jamais tourné pour le recensement. La
-prochaine ligne à attaquer est l'item 3.
+sanitizers, deux gates qui n'avaient jamais tourné pour le recensement, et
+cinq enveloppes CPU jamais exécutées sans assets pour la couverture. La
+prochaine ligne à attaquer est l'item 5.
 
 - [x] **1. Politique d'avertissements — POSÉE le 2026-08-27.**
   `POM68K_WARNINGS` (ON) met `-Wall -Wextra` sur les cibles POM68K et sur
@@ -499,13 +500,28 @@ prochaine ligne à attaquer est l'item 3.
   *Reste, deux lignes* : lire la première exécution CI (Linux + g++, ni l'un ni
   l'autre testé ici) ; puis ouvrir la chasse aux fuites avec son propre triage,
   `detect_leaks=1`.
-- [ ] **3. Aucune mesure de couverture.** À faire : une configuration
-  `--coverage` + `gcovr`, exécutée sur le palier asset-free, publiée en artefact
-  CI comme le sont déjà les métriques JIT. **Le nombre à regarder n'est pas un
-  pourcentage global** mais la liste des fichiers de `src/` dont *aucune* ligne
-  n'est exécutée par ce palier : c'est exactement l'inventaire de ce que seuls
-  les assets privés prouvent — aujourd'hui affirmé en prose (§ 2, § 0) au lieu
-  d'être produit par la machine.
+- [x] **3. La couverture est mesurée — `POM68K_COVERAGE` + `tools/coverage_report.sh`,
+  2026-08-27.** Clang instrumente et se relit avec `llvm-cov`, GCC avec
+  `gcovr` ; les deux formats se normalisent en une table
+  `coverage-files.tsv`, et le reste du script ignore quel outil a tourné. La
+  jambe `coverage` de `nightly.yml` publie les trois tables en artefact.
+  **Le livrable n'est pas le pourcentage** (28,93 % des lignes produit pour le
+  palier `asset-none`) mais `coverage-zero.txt` : **48 fichiers de `src/` dont
+  aucune ligne n'est exécutée**. Ce que la liste dit, et qu'aucun document ne
+  disait : **cinq des dix enveloppes CPU ne tournent jamais sans assets** —
+  `Cpu020`, `IIfxCpu`, `MscCpu`, `RbvCpu`, `SonoraCpu`, `VaspCpu` — quand
+  `Cpu68k` est à 94,87 % et `Cpu040` à 72,55 %. Quatre unités `Platform*.cpp`
+  et cinq `GuiRunner*.h` sont dans le même cas ; le backend JIT x64 aussi,
+  mais celui-là parce que l'hôte est AArch64, ce qui est attendu.
+  *Piège payé en route, écrit dans le script* : la première table accusait
+  toute la couche GUI d'être morte. `gui_smoke_test` est un script qui lance
+  `POM68K`, binaire que le registre CTest ne nomme pas, donc il manquait à la
+  liste d'objets — 66 fichiers « jamais atteints » sont tombés à 48 dès que le
+  binaire produit a rejoint la mesure. Une couverture qui accuse le code d'un
+  trou de l'outillage est pire qu'aucune couverture.
+  *Reste, une ligne* : un gate sans assets qui construise et fasse tourner un
+  quantum sur les six enveloppes CPU jamais exécutées — c'est la moitié la
+  moins chère des 48.
 - [x] **4. Le compteur existe — `tools/gate_execution_census.py`, 2026-08-27.**
   Il lit le `Testing/Temporary/LastTest.log` que `ctest` écrit déjà, repère
   l'abstention par la chaîne `SKIP` (le marqueur que `measure_gate_ram.py`
