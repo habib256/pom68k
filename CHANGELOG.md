@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 308 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 309 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (sixteenth)** — ["7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed](#2026-08-27-hotfloppy)
 - **2026-08-27 (fifteenth)** — [SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so](#2026-08-27-simcity-census)
 - **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](#2026-08-27-q605-launch)
 - **2026-08-27 (thirteenth)** — [The leak hunt, run with the platform's tool because LeakSanitizer does not exist here: 0 leaks in 78 binaries](#2026-08-27-leaks)
@@ -650,6 +651,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-hotfloppy"></a>
+## 2026-08-27 (sixteenth) — "7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed
+
+The § 1 item said the tree mounts a hot-inserted 800K disk headless and the GUI
+does not, so the difference had to live in the GUI path. The headless runs that
+established that were on the gates' Mac OS 8.1 volume; the report names 7.5.5.
+The combination in the report had never been run at all.
+
+Run now, as a Quadra 605 on `System 7.5.5 HD.dsk` with `disks35/Rogue.dsk`
+inserted mid-run: **0.00 % of the desktop moved** — a perfect confirmation of
+the report, for about a minute. Then the screenshot got read. The desktop was
+carrying a modal alert from boot: *"The alias 'Infinite HD' could not be
+opened, because the disk 'Infinite HD' could not be found."* **A machine
+sitting in a modal dialog polls nothing.**
+
+Four Return taps to dismiss it, same insert: the head steps **track 0 → 4**,
+and the desktop gains a **Rogue** floppy icon. System 7.5.5 mounts a
+hot-inserted GCR disk on SWIM2 exactly as it should.
+
+This is the third time this project has been fooled by the same shape — the LC
+II "volume mounts, Cmd-N dropped" evidence that was the System 7.5 INIT dialog
+end to end (retracted 2026-08-05), and the Duo persist gate that was typing at
+Stickies (2026-08-15). The rule those paid for is the same one that solved this:
+**a gesture belongs to whoever is in front, and a dialog eats everything** —
+look at the picture before believing the counter.
+
+It is a gate now, `q605_hotfloppy_etalon`, and it is two-sided on purpose:
+a desktop can change because a dialog appeared, and a head can step with
+nothing appearing, so the gate requires both — the guest drove the drive AND
+the picture changed. Three traps were paid building it and are written into the
+source: the Cuda holds the CPU at power-on (release it or the machine runs
+forever issuing no SCSI at all), the ROM and the disk must be attached before
+the CPU exists, and the alert has to go first.
+
+What this does NOT prove is that the user's GUI session had that alert. If the
+report comes back on a volume that opens none, the item reopens with this
+measurement as its starting point rather than its answer.
 
 <a id="2026-08-27-simcity-census"></a>
 ## 2026-08-27 (fifteenth) — SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so

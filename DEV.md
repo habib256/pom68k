@@ -1755,9 +1755,9 @@ three under different environments.
 | `ctest -L asset-none` | 85 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
 | `ctest -L jit` | 40 | before proposing a JIT change (`jit-fast` matches this regex too) |
-| `ctest -L m040` | 52 | the 68040 family on the default engine plus explicit interpreter references |
+| `ctest -L m040` | 53 | the 68040 family on the default engine plus explicit interpreter references |
 | `ctest -L m030` | 54 | the 68030 family, same shape (since 2026-08-18) |
-| `ctest -L etalon` | 120 (4 h 33 serial-equivalent) | every profile — the release gate, not a pre-commit check |
+| `ctest -L etalon` | 121 (4 h 33 serial-equivalent) | every profile — the release gate, not a pre-commit check |
 | `ctest -j64` | 230 (**20 min** with this host's RAM rows; 30 min at `-j16`, 18 min uncalibrated, 4 h 46 serial) | documented host-union; use `ctest -N` for this host |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
