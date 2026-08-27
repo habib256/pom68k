@@ -54,6 +54,13 @@ endforeach()
 add_executable(q605_rogue_census EXCLUDE_FROM_ALL tests/q605_rogue_census.cpp)
 target_link_libraries(q605_rogue_census PRIVATE pom68k_core)
 
+# The same instrument on a REAL application load (TODO section 3, 2026-08-27):
+# SimCity 2000 off hdv/GISTPERSO-boot.vhd on the LC II. Rogue draws tiles;
+# SC2K runs a sustained integer simulation over large structures and redraws
+# dense QuickDraw scenes for minutes. Measurement, never a gate.
+add_executable(lcii_simcity_census EXCLUDE_FROM_ALL tests/lcii_simcity_census.cpp)
+target_link_libraries(lcii_simcity_census PRIVATE pom68k_core)
+
 # All dev tools below are EXCLUDE_FROM_ALL — not built by `make`/`ctest`
 # (each relinks the core with LTO = slow); build on demand by name,
 # e.g. `make q605_trace`.
