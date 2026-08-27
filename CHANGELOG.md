@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 297 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 298 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (fifth)** — [This host's gates cost 17 MiB to 2.81 GiB, the sweep that said so was 1024x wrong, and the widest rows are all one disk image](#2026-08-27-ram-calibration)
 - **2026-08-27 (fourth)** — [Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename](#2026-08-27-execution-census)
 - **2026-08-27 (third)** — [The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it](#2026-08-27-gui-smoke-flake)
 - **2026-08-27 (later)** — [The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them](#2026-08-27-full-registry-run)
@@ -639,6 +640,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-ram-calibration"></a>
+## 2026-08-27 (fifth) — This host's gates cost 17 MiB to 2.81 GiB, the sweep that said so was 1024x wrong, and the widest rows are all one disk image
+
+`gate_resource_budgets.tsv` had rows for x86-64 only; every other host
+scheduled its parallel runs on the assumption "one 256 MiB slot per gate",
+recorded honestly as `assumed` in the gate manifest. This is that sweep for
+aarch64/macOS: `tools/measure_gate_ram.py -L etalon`, 1 h 42 sequential,
+**116 measured, 3 soft-skipped (not measurements), 0 failed**. Median 0.35 GiB,
+narrowest `rom_boot_etalon` 17 MiB, widest `lcii_persist_etalon` **2.81 GiB**
+— 12 slots where the assumption said one.
+
+**The instrument was wrong first.** The raw table read `lcii_boot_etalon` at
+1 531 838 464 "kB". `getrusage` reports `ru_maxrss` in kilobytes on Linux and
+in BYTES on the BSDs, macOS included, and the column is named `peak_rss_kb`.
+Cross-checked with `/usr/bin/time -l` (1 531 969 536 bytes — the same number),
+the sweep was exactly 1024x high, and a budget written from it would have asked
+CTest for 5 844 slots per gate and scheduled nothing at all. The tool now
+converts on the BSDs and says why in the code.
+
+**Then the numbers explained themselves, and the explanation is a finding.**
+1.43 GiB for booting an LC II with 10 MB of guest RAM is not a rounding error.
+Sampling showed a single step at ~5 s and a flat line after, so not a leak;
+`vmmap` showed ten 128 MiB regions; `malloc_history` attributed
+**1 468 088 320 bytes to one `ScsiDisk::open()`**. That is the size of
+`hdv/boot.vhd` — the image the gate actually attached, and its `drVolAtrb` bit
+8 is CLEAR, never cleanly unmounted. The versioned reference for that job is
+`hdv/ref/GISTPERSO-boot.vhd`, 250 MiB and clean.
+
+**38 gates list `hdv/boot.vhd` among their candidates ahead of the GISTPERSO
+one**, so on a host that holds both, the mutable dirty 1.37 GiB image wins.
+The fixture-role separation of 2026-08-24 cannot help: it prefers
+`hdv/ref/<name>` for the same NAME, and this name has no counterpart in
+`ref/`. Nothing was reordered blind — a boot floor or a SCSI command count is
+calibrated against the volume it was measured on, which is exactly how three
+gates went red for two days in August when a fixture merely *changed*. The
+work is staged in `TODO.md` § 1: classify the gates that are tolerant of the
+volume, point those at the reference, and version a cleaned copy for the rest.
+The prize is 5.5x less RAM per gate and a fixture that cannot drift under the
+suite.
 
 <a id="2026-08-27-execution-census"></a>
 ## 2026-08-27 (fourth) — Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename

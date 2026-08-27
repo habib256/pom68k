@@ -174,3 +174,132 @@ se30_boot_etalon	x86_64	41616	measured
 jit_se30_boot_etalon	x86_64	41584	measured
 macii_mouse_etalon	x86_64	41384	measured
 scsi_boot_etalon	x86_64	36344	measured
+
+# ---- aarch64 (Apple Silicon, macOS 26, 10 cores / 24 GiB), measured
+# 2026-08-27 with tools/measure_gate_ram.py -L etalon: 116 gates ran,
+# 3 soft-skipped and are therefore NOT rows here. Every number is that
+# host's own peak RSS in KILOBYTES; the sweep itself had to be fixed
+# first, because getrusage reports ru_maxrss in BYTES on macOS and the
+# raw table read 1024x high.
+#
+# What these numbers actually measure is the IMAGE a gate attaches. The
+# widest rows are the gates that reach hdv/boot.vhd -- 1.37 GiB, and
+# not cleanly unmounted -- rather than the 250 MiB versioned reference
+# hdv/ref/GISTPERSO-boot.vhd. 38 gates list boot.vhd among their
+# candidates; on a host that has it, it wins. See TODO.md section 1.
+lcii_persist_etalon	aarch64	2943680	measured
+lcii_floppy_etalon	aarch64	2940704	measured
+sonora_persist_etalon	aarch64	2897920	measured
+lcii_savestate_etalon	aarch64	1548304	measured
+lcii_soak_etalon	aarch64	1508720	measured
+cclassic_boot_etalon	aarch64	1498640	measured
+lcii_launch_etalon	aarch64	1498608	measured
+jit_lcii_boot_etalon	aarch64	1495984	measured
+lcii_boot_etalon	aarch64	1495936	measured
+classic2_boot_etalon	aarch64	1494352	measured
+mactv_boot_etalon	aarch64	1484016	measured
+jit_mactv_boot_etalon	aarch64	1484016	measured
+sonora_soak_etalon	aarch64	1463248	measured
+jit_lc3_boot_etalon	aarch64	1462752	measured
+lc3_boot_etalon	aarch64	1462736	measured
+lc3plus_boot_etalon	aarch64	1462528	measured
+interp_lcii_boot_etalon	aarch64	1459968	measured
+jit_lc_boot_etalon	aarch64	1459888	measured
+lc_boot_etalon	aarch64	1459872	measured
+interp_lc3_boot_etalon	aarch64	1459376	measured
+q630_persist_etalon	aarch64	884368	measured
+centris_persist_etalon	aarch64	879056	measured
+q605_persist_etalon	aarch64	877024	measured
+q900_persist_etalon	aarch64	843296	measured
+q700_persist_etalon	aarch64	842240	measured
+q605_savestate_etalon	aarch64	702272	measured
+q630_soak_etalon	aarch64	573744	measured
+q950_boot_etalon	aarch64	573616	measured
+lc580_boot_etalon	aarch64	572736	measured
+q630_boot_etalon	aarch64	572448	measured
+jit_q630_boot_etalon	aarch64	572288	measured
+q900_boot_etalon	aarch64	570256	measured
+centris_soak_etalon	aarch64	569664	measured
+q900_input_etalon	aarch64	569440	measured
+q700_boot_etalon	aarch64	569376	measured
+jit_q700_boot_etalon	aarch64	569248	measured
+centris650_boot_etalon	aarch64	569008	measured
+jit_centris650_boot_etalon	aarch64	568864	measured
+quadra650_boot_etalon	aarch64	568816	measured
+centris610_boot_etalon	aarch64	568528	measured
+quadra800_boot_etalon	aarch64	567552	measured
+quadra610_boot_etalon	aarch64	567248	measured
+q605_soak_etalon	aarch64	566272	measured
+q605_cudalle_key_etalon	aarch64	565472	measured
+q605_cudalle_mouse_etalon	aarch64	565120	measured
+iivx_persist_etalon	aarch64	541744	measured
+iifx_persist_etalon	aarch64	540176	measured
+iisi_persist_etalon	aarch64	539872	measured
+jit_q605_boot_etalon	aarch64	531872	measured
+q605_boot_etalon	aarch64	531856	measured
+q605_cudalle_boot_etalon	aarch64	531840	measured
+q605_nofpu_boot_etalon	aarch64	531520	measured
+lc475_boot_etalon	aarch64	531408	measured
+q605_barefpu_boot_etalon	aarch64	530912	measured
+lc575_boot_etalon	aarch64	529840	measured
+q900_soak_etalon	aarch64	526688	measured
+q700_soak_etalon	aarch64	525536	measured
+q605_ot_bind_etalon	aarch64	458176	measured
+interp_q700_boot_etalon	aarch64	362240	measured
+interp_q605_boot_etalon	aarch64	361680	measured
+interp_q630_boot_etalon	aarch64	360432	measured
+interp_centris650_boot_etalon	aarch64	360384	measured
+iifx_input_etalon	aarch64	287520	measured
+iivx_soak_etalon	aarch64	286048	measured
+iisi_input_etalon	aarch64	285360	measured
+lc520_boot_etalon	aarch64	285024	measured
+iivx_boot_etalon	aarch64	284944	measured
+jit_iivx_boot_etalon	aarch64	284928	measured
+lc550_boot_etalon	aarch64	284912	measured
+iivi_boot_etalon	aarch64	284912	measured
+iici_soak_etalon	aarch64	284480	measured
+cclassic2_boot_etalon	aarch64	284480	measured
+iisi_soak_etalon	aarch64	284336	measured
+lc3_input_etalon	aarch64	284144	measured
+iivx_input_etalon	aarch64	284016	measured
+lc520_input_etalon	aarch64	283952	measured
+iifx_soak_etalon	aarch64	283792	measured
+iici_boot_etalon	aarch64	283440	measured
+iisi_boot_etalon	aarch64	282944	measured
+jit_iisi_boot_etalon	aarch64	282944	measured
+jit_iifx_boot_etalon	aarch64	282528	measured
+interp_iivx_boot_etalon	aarch64	282528	measured
+iifx_boot_etalon	aarch64	282496	measured
+iifx_post_etalon	aarch64	280592	measured
+interp_iifx_boot_etalon	aarch64	280432	measured
+interp_iisi_boot_etalon	aarch64	279728	measured
+macii_persist_etalon	aarch64	265440	measured
+duo230_boot_etalon	aarch64	191792	measured
+duo_persist_etalon	aarch64	191600	measured
+interp_duo230_boot_etalon	aarch64	188672	measured
+duo_soak_etalon	aarch64	187664	measured
+macii_soak_etalon	aarch64	183440	measured
+llap_two_system_etalon	aarch64	162464	measured
+lcii_sys7_boot_etalon	aarch64	151072	measured
+compact_persist_etalon	aarch64	141360	measured
+macii_sys7_boot_etalon	aarch64	105328	measured
+compact_soak_etalon	aarch64	100320	measured
+q605_floppy_boot_etalon	aarch64	64960	measured
+iix_boot_etalon	aarch64	48688	measured
+iicx_boot_etalon	aarch64	48656	measured
+jit_se30_boot_etalon	aarch64	47616	measured
+se30_boot_etalon	aarch64	47536	measured
+macii_boot_etalon	aarch64	43696	measured
+jit_macii_boot_etalon	aarch64	43696	measured
+macii_mouse_etalon	aarch64	42496	measured
+scsi_boot_etalon	aarch64	38160	measured
+macii_post_etalon	aarch64	22912	measured
+jit_classic_boot_etalon	aarch64	20688	measured
+classic_boot_etalon	aarch64	20608	measured
+se_boot_etalon	aarch64	19840	measured
+sefdhd_boot_etalon	aarch64	19840	measured
+jit_system_boot_etalon	aarch64	19248	measured
+disk_boot_etalon	aarch64	19184	measured
+system_boot_etalon	aarch64	19168	measured
+input_etalon	aarch64	19168	measured
+rom_boot_etalon	aarch64	17456	measured

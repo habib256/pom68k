@@ -108,7 +108,17 @@ def run_one(test, build_dir, timeout_cap):
         state = "failed"
     else:
         state = "ran"
-    return state, usage.ru_maxrss, wall, code
+    # UNITS: getrusage returns ru_maxrss in KILOBYTES on Linux and in
+    # BYTES on the BSDs, macOS included. Measured 2026-08-27: this
+    # script's first AArch64/macOS sweep reported `lcii_boot_etalon` at
+    # 1 531 838 464 "kB", cross-checked against `/usr/bin/time -l`
+    # (1 531 969 536 bytes) — the same number, mislabelled by 1024x. A
+    # budget written from that would have asked ctest for 5 844 slots
+    # of 256 MiB and scheduled nothing.
+    peak_kb = usage.ru_maxrss
+    if sys.platform == "darwin" or sys.platform.startswith(("freebsd", "openbsd", "netbsd")):
+        peak_kb //= 1024
+    return state, peak_kb, wall, code
 
 
 def main():

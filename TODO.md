@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 297 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 298 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -555,6 +555,23 @@ the binaries behind it — run `tools/check_binaries_fresh.py` before quoting an
 tier, and its `--self-test` the first time on a new machine.
 
 ### Open here, and not red
+
+- [ ] **38 gates prefer a 1.37 GiB unversioned image over the 250 MiB
+  versioned one — and it is not cleanly unmounted.** The RAM sweep of
+  2026-08-27 found it: `lcii_boot_etalon` peaks at 1.43 GiB, and
+  `malloc_history` attributes 1 468 088 320 bytes of it to a single
+  `ScsiDisk::open()` — the size of `hdv/boot.vhd`, whose `drVolAtrb` bit 8 is
+  CLEAR. The gates list `hdv/boot.vhd` among their candidates ahead of
+  `hdv/GISTPERSO-boot.vhd`, so on a host that has both, the mutable dirty one
+  wins and the fixture-role work of 2026-08-24 never gets a chance: the
+  preference for `hdv/ref/` applies per NAME, and this name is not in `ref/`.
+  Next, in this order: (a) decide per gate whether its signature is calibrated
+  on `boot.vhd`'s "MacPack" volume or merely tolerant of it — the boot floors
+  and SCSI counts are image-specific, which is why this was not simply
+  reordered; (b) for the tolerant ones, put the versioned reference first;
+  (c) for the rest, clean a copy of `boot.vhd` into `hdv/ref/` and version it
+  in `assets.lock`. The prize is not tidiness: it is 5.5x less RAM per gate
+  and a fixture that cannot drift under the suite.
 
 - [ ] **Deux assets manquent sur cet hôte, et le recensement les nomme** :
   `cd/MacOS_86.iso` (trois gates CD du Q605) et le module Python `machfs`
