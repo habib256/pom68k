@@ -234,6 +234,29 @@ if(NOT POM68K_PGO STREQUAL "off" AND NOT MSVC)
     message(STATUS "POM68K PGO: ${POM68K_PGO} (${CMAKE_CXX_COMPILER_ID})")
 endif()
 
+# ─── Optional coverage build ──────────────────────────────────────────────
+# Third item of the 2026-08-26 review (TODO.md § 0·B): nothing in this tree
+# measured which code the gates actually reach. The number worth having is NOT
+# a global percentage -- it is the list of src/ files that the asset-free tier
+# never executes at all, because that list IS the inventory of what only the
+# private ROM/disk assets prove. `tools/coverage_report.sh` produces it.
+#
+# Toolchain-split on purpose: Clang wants instrumented profiles plus a coverage
+# map and is read back with llvm-cov; GCC's --coverage drops .gcno/.gcda next
+# to the objects and is read with gcovr. The CI leg is GCC, the dev host is
+# Clang, and neither can read the other's data.
+set(POM68K_COVERAGE OFF CACHE BOOL "Instrument for coverage (see tools/coverage_report.sh)")
+if(POM68K_COVERAGE AND NOT MSVC)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang)$")
+        add_compile_options(-fprofile-instr-generate -fcoverage-mapping -g -O1)
+        add_link_options(-fprofile-instr-generate)
+    else()
+        add_compile_options(--coverage -g -O1)
+        add_link_options(--coverage)
+    endif()
+    message(STATUS "POM68K coverage: ON (${CMAKE_CXX_COMPILER_ID})")
+endif()
+
 # ─── Optional sanitizer build (POM2/POMIIGS convention) ───────────────────
 set(POM68K_SANITIZE "" CACHE STRING "Build with -fsanitize=<value>. Empty = off.")
 if(POM68K_SANITIZE AND NOT MSVC)

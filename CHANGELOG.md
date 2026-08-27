@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 300 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 301 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (eighth)** — [28.93 % of product lines, and the list that matters: five of the ten CPU wrappers never run without assets](#2026-08-27-coverage)
 - **2026-08-27 (seventh)** — [The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run](#2026-08-27-sanitizers)
 - **2026-08-27 (sixth)** — [`-j` is a RAM budget, not a core count: four runs of the same registry price the schedule at 18, 30 and 20 minutes](#2026-08-27-schedule-pricing)
 - **2026-08-27 (fifth)** — [This host's gates cost 17 MiB to 2.81 GiB, the sweep that said so was 1024x wrong, and the widest rows are all one disk image](#2026-08-27-ram-calibration)
@@ -642,6 +643,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-coverage"></a>
+## 2026-08-27 (eighth) — 28.93 % of product lines, and the list that matters: five of the ten CPU wrappers never run without assets
+
+Third item of the 2026-08-26 review, and the one whose useful output is not
+the number everybody quotes. `POM68K_COVERAGE=ON` instruments the tree —
+`-fprofile-instr-generate -fcoverage-mapping` under Clang, `--coverage` under
+GCC — and `tools/coverage_report.sh` runs a tier under it, normalises whichever
+of `llvm-cov` or `gcovr` produced the data into one `path <TAB> line-%` table,
+and answers one question: **which `src/` files does this tier never execute?**
+
+Measured on the dev host over `-L asset-none`: **28.93 % of product lines**
+(28.23 % regions, 35.83 % functions, 28.11 % branches) and **48 files with no
+executed line at all**. That list is the inventory the review asked for — what
+only the private ROM and disk assets prove — and its sharpest entry is this:
+**five of the ten CPU wrappers never run at all in the asset-free tier**.
+`Cpu020` (the whole Mac II family), `IIfxCpu`, `MscCpu`, `RbvCpu`, `SonoraCpu`
+and `VaspCpu` read 0.00 %, while `Cpu68k` reads 94.87 %, `Cpu040` 72.55 % and
+`Cpu030` 42.64 %. Four `Platform*.cpp` composition units and five
+`GuiRunner*.h` are in the same position. The x64 JIT backend is there too, but
+that one is expected on an AArch64 host.
+
+**A trap paid for on the way, and now a comment in the script.** The first
+table said 66 files, and blamed the entire GUI layer. `gui_smoke_test` is a
+shell wrapper that runs the `POM68K` binary, which the CTest registry never
+names, so it was missing from `llvm-cov`'s object list — the code ran and the
+report could not see it. Adding the product binary dropped 66 to 48. A
+coverage report that blames the code for a hole in its own tooling is worse
+than no coverage report, because it gets believed.
+
+The nightly gains a `coverage` job publishing all three tables as an artifact.
+Nothing is gated on a percentage: a percentage moves when a test file grows,
+while the zero list moves only when the product's reachable surface changes.
+The cheapest half of those 48 files is now an item of its own — an asset-free
+gate that constructs and steps the six unexercised CPU wrappers.
 
 <a id="2026-08-27-sanitizers"></a>
 ## 2026-08-27 (seventh) — The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run

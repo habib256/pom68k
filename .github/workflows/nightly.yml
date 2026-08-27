@@ -193,3 +193,53 @@ jobs:
         # cannot say whether the sanitizer exercised anything.
         if: always()
         run: python3 tools/gate_execution_census.py --build-dir build
+
+  # ── Coverage ──────────────────────────────────────────────────────────
+  # Third item of the 2026-08-26 review. The artifact is not a badge: the
+  # number that matters is `coverage-zero.txt`, the src/ files the asset-free
+  # tier never executes, because that list IS the inventory of what only the
+  # private ROM/disk assets prove. Measured on the dev host 2026-08-27 (clang,
+  # llvm-cov): 28.93 % of product lines, 48 files never reached — among them
+  # five of the ten CPU wrappers (Cpu020, IIfxCpu, MscCpu, RbvCpu, SonoraCpu,
+  # VaspCpu) while Cpu68k reads 94.87 % and Cpu040 72.55 %.
+  #
+  # A percentage moves when a test file grows. The zero list moves only when
+  # the product's reachable surface changes, which is the thing worth watching
+  # from one night to the next.
+  coverage:
+    name: Coverage (asset-free tier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev xvfb
+          pip install --user gcovr
+
+      - name: Fetch Dear ImGui (pinned to the tested docking release)
+        run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-cov -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF -DPOM68K_COVERAGE=ON
+
+      - name: Build
+        run: cmake --build build-cov -j"$(nproc)"
+
+      - name: Report
+        run: tools/coverage_report.sh build-cov asset-none
+
+      - name: Archive the coverage tables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pom68k-coverage-asset-none
+          path: |
+            build-cov/coverage.txt
+            build-cov/coverage-files.tsv
+            build-cov/coverage-zero.txt
+          if-no-files-found: error
