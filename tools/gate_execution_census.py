@@ -91,6 +91,10 @@ def main():
     if skipped:
         print("A soft-skipped gate exited 0 and was counted green. It proved "
               "nothing about the behaviour it names.")
+    # A census that reports a failure and exits 0 is the same shape of lie as
+    # a green tier full of skips: report it, and say so in the exit code.
+    if failed:
+        return 1
     if skipped and args.fail_on_skip:
         return 1
     return 0

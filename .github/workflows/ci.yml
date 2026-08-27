@@ -19,6 +19,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev
+          # The repo's tools venv: without machfs, dir2hfs_selftest soft-skips,
+          # exits 0 and counts green -- and the census step below is strict.
+          python3 -m venv .venv-tools
+          .venv-tools/bin/pip install --quiet machfs
 
       - name: Fetch Dear ImGui (pinned to the tested docking release)
         run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
@@ -87,6 +91,14 @@ jobs:
 
       - name: Run the manifest-declared asset-free tier
         run: ctest --test-dir build -L asset-none --output-on-failure
+
+      - name: Every gate in that tier actually RAN
+        # `--fail-on-skip` because this tier's whole claim is that it needs no
+        # private asset: a soft-skip in it is either a missing tool the job
+        # should install, or a gate that does not belong in the tier. Measured
+        # on the dev host 2026-08-27: 86 executed, 0 skipped.
+        if: always()
+        run: python3 tools/gate_execution_census.py --build-dir build --fail-on-skip
 
   # Does the tree still LINK in the configurations it ships in, and in the
   # one a developer gets by typing `cmake ..`? The job above answers neither:

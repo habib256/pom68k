@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 304 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 305 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -542,8 +542,17 @@ sont posées** ; chaque item garde sa ligne de suite, plus petite et chiffrée.
   `LastTest.log` est écrasé par *toute* invocation `ctest`, y compris un
   `ctest -R docs_test` — copier le log à la fin d'une passe complète, sinon le
   recensement porte sur la dernière petite passe.
-  *Reste, une ligne* : brancher le recensement sur la CI et le faire échouer
-  avec `--fail-on-skip` sur les paliers qui prétendent prouver une couverture.
+  *Suite faite le même jour* : le recensement est branché sur la CI et
+  **bloquant** (`--fail-on-skip`) là où un palier prétend ne dépendre d'aucun
+  asset — job `linux` de `ci.yml` et jambe ASan de la nightly, qui créent
+  maintenant le venv `machfs` dont `dir2hfs_selftest` a besoin. Ce durcissement
+  a immédiatement payé deux fois : `dir2hfs_selftest` s'abstenait parce que son
+  interpréteur était figé **au moment du configure** (créer le venv après ne
+  changeait rien tant qu'on ne reconfigurait pas — un wrapper le choisit à
+  l'exécution maintenant), et la variable partagée que ce correctif a
+  supprimée a fait tomber `asset_lock_test` en « permission denied », attrapé
+  par la passe suivante. Le palier sans assets est désormais **86 exécutés, 0
+  abstenu, 0 rouge** — la première fois que ce chiffre est vrai.
 - [x] **5. `LleSession` appartient à la session — 2026-08-27.** L'état n'est
   plus cinq globales de portée namespace mais un **type**, `lle::Registry` ;
   `MachineSession` en possède une (`std::unique_ptr`, parce qu'elle porte un
