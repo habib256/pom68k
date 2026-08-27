@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 295 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 296 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (third)** — [The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it](#2026-08-27-gui-smoke-flake)
 - **2026-08-27 (later)** — [The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them](#2026-08-27-full-registry-run)
 - **2026-08-27** — [The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects](#2026-08-27-warning-policy)
 - **2026-08-26 (later)** — [An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog](#2026-08-26-review-backlog)
@@ -637,6 +638,35 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-gui-smoke-flake"></a>
+## 2026-08-27 (third) — The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it
+
+Re-running the whole registry a second time (to keep `LastTest.log` this time —
+the first run's had been overwritten by the small `ctest -R` invocations that
+followed it) produced **227/228 in 1 060.79 s**: `gui_smoke_test` failed in
+0.20 s with
+
+    SaveState: État NON sauvé: rename impossible (…/gui_smoke_report.txt.pomss)
+
+after rendering its frames normally. The same gate had passed twenty minutes
+earlier in the 228/228 run, and did not fail again in **50 attempts** — 25 on
+an idle machine, 25 against a loaded one — nor in the isolated re-run right
+after the failure.
+
+`atomicReplaceFile` is `std::rename` on POSIX, which replaces an existing
+destination, so the failure carries exactly one piece of information: `errno`.
+The message threw it away. Both save-state refusals — write and rename — now
+print `strerror(errno)`, which is the difference between a flake that can be
+diagnosed on its next appearance and one that can only be shrugged at. It is
+the same rule the freshness guard's self-test exists for: an instrument that
+cannot say why it refused is not an instrument.
+
+No retry was added. A retry here would consume the single observation the next
+occurrence is worth, and there is no evidence yet that retrying would even be
+correct — the failure may be a real filesystem refusal that a user's own save
+would hit too. The open item is in `TODO.md` § 1 with the reproduction
+attempts recorded, so nobody re-derives the 50 negative runs.
 
 <a id="2026-08-27-full-registry-run"></a>
 ## 2026-08-27 (later) — The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them

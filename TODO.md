@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 295 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 296 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -541,6 +541,17 @@ the binaries behind it — run `tools/check_binaries_fresh.py` before quoting an
 tier, and its `--self-test` the first time on a new machine.
 
 ### Open here, and not red
+
+- [ ] **`gui_smoke_test` flaked once, and only once** (2026-08-27): it failed
+  inside a 228-gate `-j16` run with `État NON sauvé: rename impossible` on
+  `gui_smoke_report.txt.pomss`, having rendered its frames normally, and the
+  whole run before it was 228/228 green. **Not reproduced in 50 further runs**
+  — 25 idle, 25 against a loaded machine. `std::rename` replaces an existing
+  destination on POSIX, so the interesting value was `errno`, which the
+  message threw away; `SaveStateSlot.h` now prints `strerror(errno)` with both
+  refusals. Next occurrence is therefore evidence instead of a shrug. Do NOT
+  add a retry before that value has been read once: a retry would hide the
+  only observation left.
 
 - [ ] **`tests/finder_boot_matrix.cpp` still carries the calibration trap**:
   its Mac II leg asserts `scsi().commands > 500`
