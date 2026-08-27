@@ -358,6 +358,26 @@ int main() {
     }
     check(requiredCoreConfigRoots,
           "board composition roots require explicit CoreConfig injection");
+
+    // ── LLE qualification state is owned, not global (2026-08-27) ────────
+    // The bug this would have caught: it was five loose namespace-scope
+    // globals, so a second machine in one process shared one verdict and one
+    // device list. Three lines pin the direction it now runs in — the state
+    // is a TYPE, a session OWNS one, and devices are HANDED one through the
+    // core policy. Losing any of the three puts it back in the process.
+    {
+        const std::string lleHeader = slurp(testasset::find("src/LleSession.h"));
+        const std::string sessionHeader =
+            slurp(testasset::find("src/MachineSession.h"));
+        const std::string coreHeader = slurp(testasset::find("src/CoreConfig.h"));
+        check(lleHeader.find("class Registry") != std::string::npos,
+              "LLE qualification state is a type, not loose globals");
+        check(sessionHeader.find("std::unique_ptr<lle::Registry>") !=
+                  std::string::npos,
+              "a MachineSession owns its LLE registry");
+        check(coreHeader.find("lle::Registry* registry") != std::string::npos,
+              "devices receive their LLE registry through the core policy");
+    }
     bool requiredCoreCpuViews = true;
     for (const std::string& cpuPath : coreCpuConsumers) {
         const std::string source = slurp(cpuPath);

@@ -94,6 +94,7 @@ V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
       totalRam_(totalRam), model_(model), cpuHz_(cpuHz),
       viaDiv_(int(cpuHz / kViaHz)),
       mbRam_(model == Model::Lc ? 0x200000 : kMbRamSize) {
+    lle_ = coreConfig.firmware.registry;
     ioHoleTraceLimit_ = coreConfig.bus.v8IoHoleTraceLimit;
     ioHoleValue_ = coreConfig.bus.v8IoHoleValue;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
@@ -183,6 +184,7 @@ V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
         req.candidates = std::move(cands);
         req.enabled = cudaMcu ? coreConfig.firmware.cudaLle
                               : coreConfig.firmware.egretLle;
+        req.registry = coreConfig.firmware.registry;
         req.forcedPath = (cudaMcu ? coreConfig.firmware.cudaPath
                                   : coreConfig.firmware.egretPath)
                              .value_or(std::string());

@@ -17,6 +17,7 @@ Q605Memory::Q605Memory(const pom68k::CoreConfig& coreConfig,
                        uint32_t totalRam)
     : totalRam_(totalRam)
 {
+    lle_ = coreConfig.firmware.registry;
     sccEventDriven_ = coreConfig.bus.q605SccEventDriven;
     scsiEventDriven_ = coreConfig.bus.q605ScsiEventDriven;
     via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
@@ -103,6 +104,7 @@ Q605Memory::Q605Memory(const pom68k::CoreConfig& coreConfig,
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Q605";
         req.enabled = coreConfig.firmware.cudaLle;
+        req.registry = coreConfig.firmware.registry;
         req.forcedPath = coreConfig.firmware.cudaPath.value_or(std::string());
         req.candidates = {
             "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin" };

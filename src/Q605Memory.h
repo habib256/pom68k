@@ -58,6 +58,12 @@ class Cpu040;
 
 class Q605Memory {
 public:
+    // The registry this machine reports its LLE/HLE outcomes into.
+    // Injected with CoreConfig so a session owns it instead of the
+    // process (2026-08-27); save states and the Périphériques window
+    // read it back from the machine rather than from a global.
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+
     struct LockstepDebug {
         uint64_t via1 = 0, cuda = 0, cudaLle = 0, adb = 0;
         uint64_t scc = 0, asc = 0, swim = 0, scsi = 0, dafb = 0;
@@ -310,6 +316,8 @@ public:
     }
 
 private:
+    pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     uint8_t via2Access8(uint32_t addr, bool write, uint8_t v);
     void via2Recalc();

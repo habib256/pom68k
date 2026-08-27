@@ -62,6 +62,9 @@ struct Request {
     std::vector<std::string> candidates;     // factory part first
     bool enabled = true;                     // resolved startup policy
     std::string forcedPath;                  // resolved per-module override
+    // Where the outcome is reported. Null means the process registry,
+    // which is what a fixture that never composed a machine gets.
+    lle::Registry* registry = nullptr;
 };
 
 // The device's own loader: it alone knows what a valid image is for its MCU
@@ -124,7 +127,10 @@ inline bool select(const Request& req, const Loader& load) {
     d.candidates = req.candidates;
     d.pathKnob = req.pathKnob;
     d.firmwareForced = forcedPath;
-    lle::report(d);
+    // Into the registry the caller named, not into a process-wide one:
+    // `Request::registry` comes from CoreConfig, which the composition
+    // root points at the session's instance.
+    (req.registry ? *req.registry : lle::processRegistry()).report(d);
     return !loaded.empty();
 }
 

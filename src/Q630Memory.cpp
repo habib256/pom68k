@@ -16,6 +16,7 @@ Q630Memory::Q630Memory(const pom68k::CoreConfig& coreConfig,
                        uint32_t totalRam)
     : totalRam_(totalRam)
 {
+    lle_ = coreConfig.firmware.registry;
     via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
     cuda_.configure(coreConfig.peripherals.appleTalkPram,
                     coreConfig.peripherals.egretCommandTrace);
@@ -88,6 +89,7 @@ Q630Memory::Q630Memory(const pom68k::CoreConfig& coreConfig,
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Q630";
         req.enabled = coreConfig.firmware.cudaLle;
+        req.registry = coreConfig.firmware.registry;
         req.forcedPath = coreConfig.firmware.cudaPath.value_or(std::string());
         req.candidates = {
             "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin" };

@@ -31,6 +31,7 @@ MscMemory::MscMemory(const pom68k::CoreConfig& coreConfig,
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF), vram_(kVramSize, 0),
       pmu_(via_, cpuHz, coreConfig.peripherals),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
+    lle_ = coreConfig.firmware.registry;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);

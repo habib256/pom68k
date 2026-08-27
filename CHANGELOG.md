@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 301 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 302 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (ninth)** — [The LLE verdict stops being a process global: a session owns its registry, and every consumer reads that one](#2026-08-27-lle-registry-owned)
 - **2026-08-27 (eighth)** — [28.93 % of product lines, and the list that matters: five of the ten CPU wrappers never run without assets](#2026-08-27-coverage)
 - **2026-08-27 (seventh)** — [The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run](#2026-08-27-sanitizers)
 - **2026-08-27 (sixth)** — [`-j` is a RAM budget, not a core count: four runs of the same registry price the schedule at 18, 30 and 20 minutes](#2026-08-27-schedule-pricing)
@@ -643,6 +644,55 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-lle-registry-owned"></a>
+## 2026-08-27 (ninth) — The LLE verdict stops being a process global: a session owns its registry, and every consumer reads that one
+
+Fifth item of the 2026-08-26 review. `LleSession.h` held five loose
+namespace-scope globals — two atomics for "strict mode requested" and
+"qualified", a module mask, a mutex and the device list — so a second machine
+in one process, an in-process parallel gate or an embeddable library would
+have shared one verdict and one device list between machines that have nothing
+to do with each other.
+
+The state is a **type** now, `lle::Registry`, and the ownership runs one way:
+`MachineSession` holds one (`std::unique_ptr`, because the registry carries a
+mutex and atomics while the session is movable), binds it into
+`CoreConfig::firmware.registry` in its constructor and starts its session
+there — so `main.cpp` no longer opens an LLE session at all, and is two lines
+shorter for it.
+
+Everything downstream is handed that instance rather than reaching for a
+global:
+
+- the single reporting funnel, `fw::select()`, reports into `Request::registry`
+  — the eight device sites (seven board memories plus `AdbVia`) pass the one
+  from the policy they were configured with;
+- the twelve board memories expose `mem.lleRegistry()`, which is how the save
+  states get their conformance word: a snapshot now records the machine it came
+  from rather than the process it ran in;
+- the engine lock in the four 040 CPU wrappers asks **their own** machine's
+  registry whether a strict session has promised the accelerated engine;
+- the Périphériques window, the menu-bar verdict and the `--lle-aarch64`
+  qualification all read the same instance through `PeripheralHost::registry`,
+  which `GuiHostServices` binds once from the core policy. One binding, not
+  three copies of the same lookup.
+
+`docs_test` pins the direction in three lines — the state is a type, a session
+owns one, devices receive one — and says in its comment which bug that would
+have caught, per the rule adopted with the backlog reorganisation. A
+process-wide instance still exists behind `lle::processRegistry()` for
+fixtures that never compose a machine; it is one named line instead of five
+anonymous ones.
+
+Verified across the whole surface it touches: `asset-none` 85/85, `unit`
+108/108 and `etalon-core` 12/12 — one real profile per platform, so all twelve
+board memories built and reported through the injected path.
+
+What deliberately stays: the JIT's `thread_local` active configuration and the
+AArch64 backend's per-thread option cache. One thread is one machine there,
+which is still true; the TODO line is their reopening condition rather than an
+open debt.
 
 <a id="2026-08-27-coverage"></a>
 ## 2026-08-27 (eighth) — 28.93 % of product lines, and the list that matters: five of the ten CPU wrappers never run without assets

@@ -281,8 +281,12 @@ void GuiShell::drawMachineMenuImpl(
     if (state_.cpu.speedMeasurementDone)
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     if (!ImGui::BeginMainMenuBar()) return;
-    if (lle::requested()) {
-        const bool qualified = lle::qualified();
+    // The session's registry, carried by the same struct the Périphériques
+    // window renders — one binding, not two.
+    lle::Registry& lleReg = state_.peripherals.registry
+        ? *state_.peripherals.registry : lle::processRegistry();
+    if (lleReg.requested()) {
+        const bool qualified = lleReg.qualified();
         ImGui::TextColored(qualified ? ImVec4(0.3f, 0.85f, 0.35f, 1)
                                      : ImVec4(0.95f, 0.35f, 0.3f, 1),
                            qualified ? "LLE AArch64 : QUALIFIÉ"
@@ -331,7 +335,9 @@ void GuiShell::drawMachineMenuImpl(
                 "mesurée sur l'horloge machine, sans modifier son rythme");
             ImGui::Separator();
         }
-        const bool engineLocked = lle::requested() && lle::qualified();
+        lle::Registry& reg = state_.peripherals.registry
+            ? *state_.peripherals.registry : lle::processRegistry();
+        const bool engineLocked = reg.requested() && reg.qualified();
         if (ImGui::MenuItem("Interpréteur (Moira)", nullptr, engine == 0,
                             hasAcceleratedEngine && !engineLocked) &&
             engine != 0)

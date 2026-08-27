@@ -33,6 +33,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "FirmwareConfig.h"
+#include "LleSession.h"
 
 #include <functional>
 #include <vector>
@@ -45,6 +46,11 @@ namespace pom68k {
 // and the window says so instead of offering a button that does nothing.
 struct PeripheralHost {
     std::function<void(std::vector<FirmwareOverride>)> relaunch;
+    // The registry to render: the SESSION's since 2026-08-27, not a process
+    // global. The window still only displays what the devices reported --
+    // that rule is why this is a pointer to their registry and not a second
+    // copy of the "is there a dump" logic.
+    lle::Registry* registry = &lle::processRegistry();
 };
 
 // "Périphériques (LLE / HLE)..." — for the Machine menu.

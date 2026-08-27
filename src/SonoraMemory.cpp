@@ -37,6 +37,7 @@ SonoraMemory::SonoraMemory(const pom68k::CoreConfig& coreConfig,
                                      : CudaLle::Flavor::Egret),
       asc_(cpuHz),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
+    lle_ = coreConfig.firmware.registry;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     egret_.configure(coreConfig.peripherals.appleTalkPram,
                      coreConfig.peripherals.egretCommandTrace);
@@ -68,6 +69,7 @@ SonoraMemory::SonoraMemory(const pom68k::CoreConfig& coreConfig,
         req.logTag = "Sonora";
         req.enabled = cudaAdb ? coreConfig.firmware.cudaLle
                               : coreConfig.firmware.egretLle;
+        req.registry = coreConfig.firmware.registry;
         req.forcedPath = (cudaAdb ? coreConfig.firmware.cudaPath
                                   : coreConfig.firmware.egretPath)
                              .value_or(std::string());

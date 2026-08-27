@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 301 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 302 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -88,7 +88,7 @@ it.
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur le matériel cible |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Items 1, 2, 3 et 4 posés le 2026-08-27 → item 5 : sortir `LleSession` du processus |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Cinq des six posés le 2026-08-27 → item 6 : la check-list « nouvelle plateforme » et la découpe de l'en-tête parapluie |
 | **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
 | **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
@@ -459,8 +459,8 @@ et les deux premières sont les moins chères de tout ce fichier. **Les items 1,
 posés depuis le 2026-08-27** — et chacun a payé son écriture le jour même :
 six défauts pour les avertissements, une course de données pour les
 sanitizers, deux gates qui n'avaient jamais tourné pour le recensement, et
-cinq enveloppes CPU jamais exécutées sans assets pour la couverture. La
-prochaine ligne à attaquer est l'item 5.
+cinq enveloppes CPU jamais exécutées sans assets pour la couverture. Il ne
+reste que l'item 6.
 
 - [x] **1. Politique d'avertissements — POSÉE le 2026-08-27.**
   `POM68K_WARNINGS` (ON) met `-Wall -Wextra` sur les cibles POM68K et sur
@@ -536,22 +536,26 @@ prochaine ligne à attaquer est l'item 5.
   recensement porte sur la dernière petite passe.
   *Reste, une ligne* : brancher le recensement sur la CI et le faire échouer
   avec `--fail-on-skip` sur les paliers qui prétendent prouver une couverture.
-- [ ] **5. États globaux résiduels — deux, nommés.** `src/LleSession.h:37`
-  et `src/LleSession.h:114` gardent des atomiques et un registre de
-  périphériques partagés par le processus ; `src/jit/JitConfig.h:241` garde un
-  `thread_local` de configuration active, et
-  `src/jit/backends/JitBackendA64.cpp:172` ouvre un cache d'options par thread.
-  C'est correct sous l'hypothèse « un processus = une machine » — et c'est
-  précisément l'hypothèse que la suite casse : sessions multiples, gates
-  parallèles en processus, bibliothèque embarquable. À faire, dans cet ordre :
-  donner à `LleSession` une instance possédée par `MachineSession` et injectée
-  aux périphériques (le mouvement déjà fait pour `CoreConfig`, avec le même
-  verrou `docs_test`), la fenêtre Périphériques lisant l'instance de sa session.
-  Le `thread_local` JIT reste légitime tant qu'un thread = une machine ; il
-  devient une dette le jour où ce n'est plus vrai, et cette ligne est sa
-  condition de réouverture. *(Cet item remplace l'ancien « refactor the
-  remaining GUI globals » du § 8 : `demoMode` est devenu un champ de spec de
-  runner, plus un état d'unité de compilation.)*
+- [x] **5. `LleSession` appartient à la session — 2026-08-27.** L'état n'est
+  plus cinq globales de portée namespace mais un **type**, `lle::Registry` ;
+  `MachineSession` en possède une (`std::unique_ptr`, parce qu'elle porte un
+  mutex et des atomiques et que la session est déplaçable) et la lie dans
+  `CoreConfig::firmware.registry` avant que le moindre périphérique soit
+  construit. À partir de là tout le chemin est injecté : l'entonnoir unique
+  `fw::select()` rapporte dans le registre qu'on lui a nommé, les douze
+  mémoires de carte l'exposent (`mem.lleRegistry()`), les save states y lisent
+  leur mot de conformité, le verrou de moteur des quatre enveloppes CPU 040
+  interroge celui de *leur* machine, et la fenêtre Périphériques, la barre de
+  menus et le verdict de qualification lisent la même instance via
+  `PeripheralHost::registry`. `docs_test` épingle les trois lignes qui tiennent
+  la direction — l'état est un type, une session en possède une, les
+  périphériques la reçoivent — parce que le bug qu'elles auraient attrapé est
+  précisément le retour au global. Vérifié : `asset-none` 85/85, `unit`
+  108/108, `etalon-core` 12/12 (une plateforme par famille).
+  *Ce qui reste, et qui est légitime* : le `thread_local` du JIT
+  (`src/jit/JitConfig.h:241`) et le cache d'options par thread de
+  `JitBackendA64.cpp`. Un thread = une machine reste vrai ; cette ligne est
+  leur condition de réouverture, pas une dette ouverte.
 - [ ] **6. Le fan-in de composition.** `src/PlatformCompositionSupport.h` inclut
   pratiquement toutes les mémoires, CPU et vidéos des douze familles : ajouter
   une famille demande encore une connaissance transversale considérable.

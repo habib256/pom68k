@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "LleSession.h"
 #include "MachineCatalog.h"
 #include "RuntimeConfig.h"
 
@@ -46,10 +47,16 @@ public:
     const MachineProfile& profile() const noexcept { return *profile_; }
     const std::string& romName() const noexcept { return romName_; }
     std::vector<std::uint8_t> takeRom() { return std::move(rom_); }
+    // The session's OWN peripheral-qualification registry. Devices report
+    // into it through CoreConfig; the Périphériques window and the save
+    // states read it back. unique_ptr because the registry holds a mutex
+    // and atomics and the session is movable.
+    lle::Registry& lleRegistry() noexcept { return *lle_; }
 
 private:
     explicit MachineSession(RuntimeConfig config);
 
+    std::unique_ptr<lle::Registry> lle_ = std::make_unique<lle::Registry>();
     RuntimeConfig config_;
     const MachineProfile* profile_ = nullptr;
     std::vector<std::uint8_t> rom_;

@@ -35,6 +35,7 @@ public:
                    const pom68k::CorePeripheralConfig& peripherals) {
         trace_ = peripherals.adbPicTrace;
         firmwareEnabled_ = firmware.adbLle;
+        firmwareRegistry_ = firmware.registry;
         firmwarePath_ = firmware.adbPath.value_or(std::string());
         line_.configure(peripherals.adbKeyboardHandlerId,
                         peripherals.adbLleTrace);
@@ -124,5 +125,6 @@ private:
     int64_t  cpuHz_ = 15667200;                 // set by attach()
     bool trace_ = false;
     bool firmwareEnabled_ = true;
+    pom68k::lle::Registry* firmwareRegistry_ = nullptr;
     std::string firmwarePath_;
 };

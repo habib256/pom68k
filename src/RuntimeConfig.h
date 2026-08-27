@@ -105,6 +105,10 @@ public:
         return diagnostics_;
     }
     const pom68k::CoreConfig& core() const noexcept { return core_; }
+    // Mutable ONLY for the composition root, which binds the session's
+    // LLE registry into the policy the devices will receive. Everything
+    // downstream takes the const view above.
+    pom68k::CoreConfig& mutableCore() noexcept { return core_; }
     const MachineSelectionConfig& machineSelection() const noexcept {
         return machineSelection_;
     }

@@ -17,6 +17,7 @@ static uint32_t romSizeFor(MacMemory::Model m) {
 MacMemory::MacMemory(const pom68k::CoreConfig& coreConfig, Model model)
     : ram_(kRamSize, 0), rom_(romSizeFor(model), 0xFF), model_(model),
       romSize_(romSizeFor(model)) {
+    lle_ = coreConfig.firmware.registry;
     seViaTrace_ = coreConfig.peripherals.seViaTrace;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     rtc_.configure(coreConfig.peripherals.appleTalkPram,

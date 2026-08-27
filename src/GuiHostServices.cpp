@@ -40,6 +40,10 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     state_.diagnostics.keyTraceEnabled = diagnostics.keyTrace;
     state_.diagnostics.freezeProbeEnabled = diagnostics.freezeProbe;
     state_.cpu.speedGauge = GuiSpeedGauge(diagnostics.speedLog, diagnostics.speedLogSkip, diagnostics.speedLogCount);
+    // One binding for the whole UI: the registry the composition root put
+    // in the core policy IS the session's, and the window, the menu bar
+    // and the qualification verdict all read that one.
+    state_.peripherals.registry = config_.core().firmware.registry;
     state_.relaunch.launchArguments = config_.launchArguments();
     state_.peripherals.relaunch = [this](std::vector<FirmwareOverride> overrides) {
         state_.relaunch.firmwareOverrides = std::move(overrides);

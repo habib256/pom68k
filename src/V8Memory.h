@@ -41,6 +41,12 @@ namespace moira { class Moira; }
 
 class V8Memory {
 public:
+    // The registry this machine reports its LLE/HLE outcomes into.
+    // Injected with CoreConfig so a session owns it instead of the
+    // process (2026-08-27); save states and the Périphériques window
+    // read it back from the machine rather than from a global.
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+
     static constexpr uint32_t kRomSize = 0x80000;    // 512 KB
     static constexpr uint32_t kVramSize = 0x80000;   // 512 KB window, fully populated
     static constexpr uint32_t kMbRamSize = 0x400000; // 4 MB soldered (baseIs4M)
@@ -389,6 +395,8 @@ public:
     std::function<void(uint32_t, bool, uint8_t)> onSccAccess;
 
 private:
+    pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+
     long ioHoleTraceLimit_ = 0;
     long ioHoleTraceCount_ = 0;
     uint8_t ioHoleValue_ = 0xFF;

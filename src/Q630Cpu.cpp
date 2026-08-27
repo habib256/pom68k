@@ -134,7 +134,10 @@ moira::u16 Q630Cpu::read16Dasm(moira::u32 addr) const {
 }
 
 void Q630Cpu::setEngine(int e) {
-    if (!pom68k::lle::engineChangeAllowed(e)) return;
+    // This machine's registry, not the process's: the engine lock is
+    // part of the promise made by THIS session (2026-08-27).
+    if (!pom68k::lle::engineChangeAllowed(mem_.lleRegistry(), e))
+        return;
     // setEnabled() already flushes everything; the explicit disarm is belt
     // and braces — a code window left armed while the INTERPRETER runs would
     // have it fetching from a host pointer nobody maintains any more.

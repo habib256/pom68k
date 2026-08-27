@@ -89,6 +89,12 @@ class Q700Cpu;
 
 class Q700Memory {
 public:
+    // The registry this machine reports its LLE/HLE outcomes into.
+    // Injected with CoreConfig so a session owns it instead of the
+    // process (2026-08-27); save states and the Périphériques window
+    // read it back from the machine rather than from a global.
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+
     static constexpr uint32_t kRomSize = 0x100000;    // 1 MB
     static constexpr uint32_t kVramSize = 0x200000;   // 2 MB (macqd700)
     int64_t cpuHz() const { return cpuHz_; }          // 60 Hz quantum for the shell
@@ -328,6 +334,8 @@ public:
     }
 
 private:
+    pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+
     long iopTraceLimit_ = 0;
     long iopTraceCount_ = 0;
     void iopTrace(bool write, char which, uint32_t base, uint8_t v);

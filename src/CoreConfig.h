@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "LleSession.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -68,6 +70,13 @@ struct CoreStorageConfig {
 };
 
 struct CoreFirmwareConfig {
+    // Where a device REPORTS what it built (LLE or HLE, which dump, which
+    // paths it searched). Injected rather than global since 2026-08-27: a
+    // second machine in one process, an in-process parallel gate or an
+    // embeddable library needs a registry it OWNS. Never null — the
+    // composition root supplies the session's, fixtures get the process one
+    // through defaultCoreConfig().
+    lle::Registry* registry = &lle::processRegistry();
     bool adbLle = true;
     bool egretLle = true;
     bool cudaLle = true;
