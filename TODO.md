@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 305 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 306 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -498,9 +498,18 @@ sont posées** ; chaque item garde sa ligne de suite, plus petite et chiffrée.
   été compilé ; et `detect_leaks=0` pour l'instant, parce que LeakSanitizer est
   actif par défaut avec ASan sur Linux, absent sur macOS, donc les passes
   locales ne l'ont jamais vu.
+  *Chasse aux fuites, mesurée le 2026-08-27 avec l'outil de la plateforme*,
+  parce que LeakSanitizer est actif par défaut avec ASan sur Linux et **absent
+  sur macOS/arm64** — cet hôte ne pouvait donc pas exécuter cette jambe.
+  `leaks --atExit` sur les **78 binaires** du palier sans assets : **0 fuite,
+  0 octet**. Le binaire GUI en rapporte 288 (18,8 Ko), **toutes chez Apple** —
+  des cycles racine `NSXPCConnection` d'`AppIntents`/`LinkServices`, et pas une
+  seule trame POM68K dans une pile. La nightly a maintenant une étape
+  `detect_leaks=1` **non bloquante**, parce qu'elle interroge un *autre*
+  runtime, pas parce que notre code est suspect.
   *Reste, deux lignes* : lire la première exécution CI (Linux + g++, ni l'un ni
-  l'autre testé ici) ; puis ouvrir la chasse aux fuites avec son propre triage,
-  `detect_leaks=1`.
+  l'autre testé ici) pour basculer `-Werror` ; et lire le premier rapport de
+  fuites Linux pour rendre cette étape bloquante — un mot dans les deux cas.
 - [x] **3. La couverture est mesurée — `POM68K_COVERAGE` + `tools/coverage_report.sh`,
   2026-08-27.** Clang instrumente et se relit avec `llvm-cov`, GCC avec
   `gcovr` ; les deux formats se normalisent en une table
