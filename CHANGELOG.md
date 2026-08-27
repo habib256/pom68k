@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 303 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 304 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (eleventh)** — [The six CPU wrappers coverage caught at 0.00 % now run on every host: 48 unreached files down to 36](#2026-08-27-cpu-wrapper-smoke)
 - **2026-08-27 (tenth)** — [The composition umbrella stops naming twelve families, and the cost of a new platform gets enumerated instead of remembered](#2026-08-27-composition-fanin)
 - **2026-08-27 (ninth)** — [The LLE verdict stops being a process global: a session owns its registry, and every consumer reads that one](#2026-08-27-lle-registry-owned)
 - **2026-08-27 (eighth)** — [28.93 % of product lines, and the list that matters: five of the ten CPU wrappers never run without assets](#2026-08-27-coverage)
@@ -645,6 +646,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-cpu-wrapper-smoke"></a>
+## 2026-08-27 (eleventh) — The six CPU wrappers coverage caught at 0.00 % now run on every host: 48 unreached files down to 36
+
+The coverage list from earlier today named five of the ten CPU wrappers as
+never executed by the asset-free tier — `Cpu020`, `IIfxCpu`, `MscCpu`,
+`RbvCpu`, `SonoraCpu` and `VaspCpu` at 0.00 %, against `Cpu68k` at 94.87 %.
+Only the machine etalons ran them, and those need a private ROM, so on every CI
+runner this project has they were compiled and never executed once.
+
+`cpu_wrapper_smoke` runs them with no assets at all. Each wrapper is built on
+its real board memory and handed a **synthetic ROM**: a reset vector pointing
+eight bytes in and `BRA.S *` there. The boot overlay maps ROM at zero on all
+six boards, so the core fetches a real instruction through the real memory map,
+decodes it and spins; the gate then asserts the machine clock advanced and the
+core did not halt. `$60FE` is the same two bytes on every member of the family,
+which is why one program serves an 020, four 030 boards and the Duo.
+
+Effect, measured the same way the gap was: the six go from 0.00 % to **70-77 %**
+of their lines, the never-executed list falls from **48 files to 36**, and the
+tier's total from 28.93 % to **30.15 %**.
+
+What it is not: a conformance check. It does not know a Sonora from a VASP, and
+the etalons remain the only proof that a platform boots. What it buys is that a
+wrapper which stops constructing, resetting, fetching or advancing its clock
+now fails on every host instead of only on one with ROMs — which is the
+difference between finding that in a pull request and finding it in a
+four-hour etalon run.
+
+Registry: 231 documented gates, 229 on this AArch64 host.
 
 <a id="2026-08-27-composition-fanin"></a>
 ## 2026-08-27 (tenth) — The composition umbrella stops naming twelve families, and the cost of a new platform gets enumerated instead of remembered

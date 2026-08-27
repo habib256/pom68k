@@ -8,7 +8,7 @@
 # Regenerate with: tools/check_file_sizes.sh --update
 
 CMakeLists.txt                              550
-cmake/Pom68kComponentGates.cmake            408
+cmake/Pom68kComponentGates.cmake            418
 cmake/Pom68kDevTools.cmake                  108
 cmake/Pom68kGatePolicy.cmake                313
 cmake/Pom68kJitGates.cmake                  554
