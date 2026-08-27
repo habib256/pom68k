@@ -160,7 +160,9 @@ void saveT(Mem& mem, Cpu& cpu, SnapMachine kind,
     h.romChecksum = mem.romChecksum();
     h.ramSize     = mem.ramBytes();
     h.emuCycles   = static_cast<std::uint64_t>(cpu.machineClock());
-    h.conformance = lle::snapshotFlags();
+    // From THIS machine's registry: a session owns its LLE outcome, and a
+    // save state records the machine it came from, not the process.
+    h.conformance = mem.lleRegistry().snapshotFlags();
     { sav::Chunk c(out, kHead); sav::Writer w(out); w(h); }
     { sav::Chunk c(out, kCpu);  sav::Writer w(out); w(cpu); }
     { sav::Chunk c(out, kMach); sav::Writer w(out); w(mem); }
@@ -204,7 +206,7 @@ bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
                 err = "save state was taken with a different ROM";
                 return false;
             }
-            if (lle::requested() &&
+            if (mem.lleRegistry().requested() &&
                 (!(h.conformance & lle::SnapshotQualified) ||
                  lle::snapshotHleModules(h.conformance) != 0)) {
                 err = "save state is not from a qualified LLE AArch64 session";

@@ -28,6 +28,7 @@ Q700Memory::Q700Memory(const pom68k::CoreConfig& coreConfig,
                 model == Model::Q950 ? 3 : 1,
                 model == Model::Q950 ? Dafb::Ramdac::Ac842a
                                      : Dafb::Ramdac::Ac842) {
+    lle_ = coreConfig.firmware.registry;
     iopTraceLimit_ = coreConfig.bus.q900IopTraceLimit;
     via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
     via2_.configureTrace(coreConfig.peripherals.adbLleTrace);
@@ -67,6 +68,7 @@ Q700Memory::Q700Memory(const pom68k::CoreConfig& coreConfig,
             req.pathKnob = "POM68K_CUDA_FW";
             req.logTag = "Q700";
             req.enabled = coreConfig.firmware.egretLle;
+            req.registry = coreConfig.firmware.registry;
             req.forcedPath =
                 coreConfig.firmware.egretPath.value_or(std::string());
             req.candidates = {

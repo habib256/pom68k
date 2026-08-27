@@ -17,6 +17,7 @@ CentrisMemory::CentrisMemory(const pom68k::CoreConfig& coreConfig,
     : totalRam_(totalRam), cpuHz_(cpuHz), modelPins_(modelPins),
       // djMEMC = dafb_memc_device: DP8534 clock chip (djmemc.cpp, dafb.cpp:1197)
       dafbCell_(cpuHz, Dafb::Clockgen::Dp8534) {
+    lle_ = coreConfig.firmware.registry;
     via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
     rtc_.configure(coreConfig.peripherals.appleTalkPram,
                    coreConfig.peripherals.rtcTrace);

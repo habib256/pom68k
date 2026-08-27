@@ -15,6 +15,7 @@ RbvMemory::RbvMemory(const pom68k::CoreConfig& coreConfig,
       egret_(via_, false, int(cpuHz)),
       egretLle_(via_, cpuHz, CudaLle::Flavor::Egret),
       iici_(iici), totalRam_(totalRam), cpuHz_(cpuHz) {
+    lle_ = coreConfig.firmware.registry;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     egret_.configure(coreConfig.peripherals.appleTalkPram,
                      coreConfig.peripherals.egretCommandTrace);
@@ -50,6 +51,7 @@ RbvMemory::RbvMemory(const pom68k::CoreConfig& coreConfig,
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Rbv";
         req.enabled = coreConfig.firmware.egretLle;
+        req.registry = coreConfig.firmware.registry;
         req.forcedPath = coreConfig.firmware.egretPath.value_or(std::string());
         req.candidates = {
             "roms/egret/344s0100.bin", "../roms/egret/344s0100.bin",

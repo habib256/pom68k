@@ -11,6 +11,7 @@ IIfxMemory::~IIfxMemory() { delete toby_; }
 IIfxMemory::IIfxMemory(const pom68k::CoreConfig& coreConfig,
                        uint32_t ramSize)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize) {
+    lle_ = coreConfig.firmware.registry;
     ioTrace_ = coreConfig.peripherals.iifxIoTrace;
     adbTrace_ = coreConfig.peripherals.iifxAdbTrace;
     scsiTrace_ = coreConfig.peripherals.iifxScsiTrace;

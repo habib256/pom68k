@@ -32,6 +32,12 @@ class Cpu68k;
 
 class MacMemory {
 public:
+    // The registry this machine reports its LLE/HLE outcomes into.
+    // Injected with CoreConfig so a session owns it instead of the
+    // process (2026-08-27); save states and the Périphériques window
+    // read it back from the machine rather than from a global.
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+
     static constexpr uint32_t kRamSize = 0x400000;   // 4 MB (Mac Plus max)
     static constexpr uint32_t kRomSize = 0x20000;    // 128 KB (Plus)
     static constexpr int64_t  kCpuHz   = 7833600;    // 7.8336 MHz
@@ -202,6 +208,8 @@ public:
     }
 
 private:
+    pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+
     bool seViaTrace_ = false;
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);
     void refreshPortBInputs();

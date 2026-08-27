@@ -11,6 +11,7 @@ MacIIMemory::~MacIIMemory() { delete toby_; delete se30_; }
 MacIIMemory::MacIIMemory(const pom68k::CoreConfig& coreConfig,
                          uint32_t ramSize, Model model)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize), model_(model) {
+    lle_ = coreConfig.firmware.registry;
     adbViaTrace_ = coreConfig.peripherals.adbPicTrace;
     via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
     via2_.configureTrace(coreConfig.peripherals.adbLleTrace);

@@ -15,6 +15,7 @@ VaspMemory::VaspMemory(const pom68k::CoreConfig& coreConfig,
       egret_(via_, false, int(cpuHz)),
       egretLle_(via_, cpuHz, CudaLle::Flavor::Egret),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
+    lle_ = coreConfig.firmware.registry;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     egret_.configure(coreConfig.peripherals.appleTalkPram,
                      coreConfig.peripherals.egretCommandTrace);
@@ -38,6 +39,7 @@ VaspMemory::VaspMemory(const pom68k::CoreConfig& coreConfig,
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Vasp";
         req.enabled = coreConfig.firmware.egretLle;
+        req.registry = coreConfig.firmware.registry;
         req.forcedPath = coreConfig.firmware.egretPath.value_or(std::string());
         req.candidates = {
             "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",

@@ -60,6 +60,12 @@ class RbvCpu;
 
 class RbvMemory {
 public:
+    // The registry this machine reports its LLE/HLE outcomes into.
+    // Injected with CoreConfig so a session owns it instead of the
+    // process (2026-08-27); save states and the Périphériques window
+    // read it back from the machine rather than from a global.
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+
     static constexpr uint32_t kRomSize = 0x80000;    // 512 KB
     static constexpr int64_t  kCpuHz = 20000000;     // IIsi (maciici.cpp:654)
     static constexpr int64_t  kCpuHzCi = 25000000;   // IIci (maciici.cpp:528)
@@ -270,6 +276,8 @@ public:
     }
 
 private:
+    pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     void viaSync();                  // E-clock stall (maciici.cpp via_sync)
     void recalcFrame();              // VBL geometry from the monitor type

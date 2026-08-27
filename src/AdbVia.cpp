@@ -47,6 +47,7 @@ void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
     req.pathKnob = "POM68K_ADB_FW";
     req.logTag = "AdbVia";
     req.enabled = firmwareEnabled_;
+    req.registry = firmwareRegistry_;
     req.forcedPath = firmwarePath_;
     req.candidates = { "roms/adbmodem/342s0440-b.bin",
                        "../roms/adbmodem/342s0440-b.bin" };

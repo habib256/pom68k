@@ -41,6 +41,12 @@ class VaspCpu;
 
 class VaspMemory {
 public:
+    // The registry this machine reports its LLE/HLE outcomes into.
+    // Injected with CoreConfig so a session owns it instead of the
+    // process (2026-08-27); save states and the Périphériques window
+    // read it back from the machine rather than from a global.
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+
     static constexpr uint32_t kRomSize = 0x100000;   // 1 MB
     static constexpr uint32_t kVramSize = 0x100000;  // 1 MB
     static constexpr int64_t  kCpuHzVx = 31334400;   // C32M (IIvx)
@@ -246,6 +252,8 @@ public:
     }
 
 private:
+    pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     void viaSync();                  // E-clock stall (vasp.cpp via_sync)
     uint8_t scsiDma_();

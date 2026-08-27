@@ -14,7 +14,13 @@ MachineSession::MachineSession(RuntimeConfig config,
                                std::string romName,
                                std::unique_ptr<MachineSessionRuntime> runtime)
     : config_(std::move(config)), profile_(&profile), rom_(std::move(rom)),
-      romName_(std::move(romName)), runtime_(std::move(runtime)) {}
+      romName_(std::move(romName)), runtime_(std::move(runtime)) {
+    // Bind the session's registry into the policy every device receives, and
+    // start its session: from here on, "which devices did this machine build,
+    // LLE or HLE" is a property of THIS session, not of the process.
+    config_.mutableCore().firmware.registry = lle_.get();
+    lle_->beginSession(config_.fullLleAarch64());
+}
 
 MachineSession::MachineSession(RuntimeConfig config)
     : config_(std::move(config)) {}

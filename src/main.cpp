@@ -2,7 +2,6 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "GuiMachineRuntime.h"
-#include "LleSession.h"
 #include "MachineFactory.h"
 #include "MachineSession.h"
 #include "ProcessEnvironment.h"
@@ -25,7 +24,6 @@ int main(int argc, char** argv) {
     }
 
     std::printf("POM68K — Macintosh 68k emulator\n");
-    pom68k::lle::beginSession(config.fullLleAarch64());
     pom68k::app::MachineSession session =
         pom68k::app::MachineFactory::create(
             std::move(config), pom68k::gui::makeGuiMachineRuntime());

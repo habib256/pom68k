@@ -31,6 +31,12 @@ class Cpu020;
 
 class MacIIMemory {
 public:
+    // The registry this machine reports its LLE/HLE outcomes into.
+    // Injected with CoreConfig so a session owns it instead of the
+    // process (2026-08-27); save states and the Périphériques window
+    // read it back from the machine rather than from a global.
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+
     static constexpr uint32_t kRomSize = 0x40000;    // 256 KB
     static constexpr int64_t  kCpuHz   = 15667200;
     int64_t cpuHz() const { return kCpuHz; }         // LocalTalk pace / 60 Hz quantum
@@ -238,6 +244,8 @@ public:
     }
 
 private:
+    pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+
     bool adbViaTrace_ = false;
     bool isIo(uint32_t addr, uint32_t& off) const;
     void viaSync();

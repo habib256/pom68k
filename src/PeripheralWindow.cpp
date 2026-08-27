@@ -114,7 +114,9 @@ void peripheralMenuItem() {
 }
 
 void peripheralWindow(const PeripheralHost& host) {
-    const std::vector<lle::Device> devs = lle::devices();
+    lle::Registry& registry = host.registry ? *host.registry
+                                            : lle::processRegistry();
+    const std::vector<lle::Device> devs = registry.devices();
     openIfFallback(devs);
     if (!gOpen) return;
 
@@ -143,9 +145,9 @@ void peripheralWindow(const PeripheralHost& host) {
     }
 
     // Product mode's own verdict, when it is the promise being made.
-    if (lle::requested()) {
+    if (registry.requested()) {
         ImGui::SameLine();
-        const bool ok = lle::qualified();
+        const bool ok = registry.qualified();
         ImGui::TextColored(ok ? kGreen : kRed, ok ? "  [--lle-aarch64 : OK]"
                                                   : "  [--lle-aarch64 : REFUSÉ]");
     }

@@ -157,7 +157,9 @@ public:
         const bool assetValid = firmware::verify(
             firmware,
             config_.core().firmware.root.value_or(std::string()), assetError);
-        const std::uint32_t hle = lle::activeHleModules();
+        lle::Registry& registry = config_.core().firmware.registry
+            ? *config_.core().firmware.registry : lle::processRegistry();
+        const std::uint32_t hle = registry.activeHleModules();
         if (!firmwareActive || !assetValid || !native || hle != 0) {
             std::string why;
             if (!firmwareActive)
@@ -180,10 +182,10 @@ public:
                 "Mode LLE AArch64 complet: REFUSÉ pour %s — %s. "
                 "La session n'est pas qualifiée LLE et ne sera pas démarrée.\n",
                 machine, why.c_str());
-            lle::setQualified(false);
+            registry.setQualified(false);
             return false;
         }
-        lle::setQualified(true);
+        registry.setQualified(true);
         std::printf(
             "Mode LLE AArch64 complet: QUALIFIÉ — %s, %s, backend aarch64\n",
             machine, firmware);

@@ -33,49 +33,6 @@ enum Module : std::uint32_t {
     HleAdbModem  = 1u << 1,
 };
 
-inline std::atomic<std::uint32_t> gHleModules{0};
-inline std::atomic<bool> gQualified{false};
-inline std::atomic<bool> gRequested{false};
-
-inline bool requested() noexcept {
-    return gRequested.load(std::memory_order_acquire);
-}
-
-inline void clearDevices();          // defined with the registry below
-
-inline void beginSession(bool strict = false) noexcept {
-    gHleModules.store(0, std::memory_order_release);
-    gQualified.store(false, std::memory_order_release);
-    gRequested.store(strict, std::memory_order_release);
-    clearDevices();
-}
-
-inline void activateHle(Module module) noexcept {
-    gHleModules.fetch_or(static_cast<std::uint32_t>(module),
-                         std::memory_order_acq_rel);
-    gQualified.store(false, std::memory_order_release);
-}
-
-inline std::uint32_t activeHleModules() noexcept {
-    return gHleModules.load(std::memory_order_acquire);
-}
-
-inline void setQualified(bool on) noexcept {
-    gQualified.store(on && activeHleModules() == 0,
-                     std::memory_order_release);
-}
-
-inline bool qualified() noexcept {
-    return gQualified.load(std::memory_order_acquire) &&
-           activeHleModules() == 0;
-}
-
-// Once a strict session is qualified its execution engine is part of the
-// product promise.  Direct callers and the GUI command queue share this gate.
-inline bool engineChangeAllowed(int engine) noexcept {
-    return !requested() || !qualified() || engine == 1;
-}
-
 // ── Peripheral registry — what the "Périphériques" window renders ───────
 //
 // One entry per LLE-CAPABLE device the running machine actually built. A
@@ -111,33 +68,124 @@ struct Device {
     std::string firmwareForced{};
 };
 
-inline std::mutex gDeviceMutex;
-inline std::vector<Device> gDevices;
+// ── The state itself, as a TYPE ─────────────────────────────────────────
+//
+// It used to be five loose namespace-scope globals. They are grouped here so
+// that (a) a second machine in one process, an in-process parallel gate or an
+// embeddable library has something to OWN rather than something to share, and
+// (b) `docs_test` can point at the single line that names the process-wide
+// instance instead of policing five. The 2026-08-26 review's item 5.
+//
+// The atomics stay: the GUI thread reads this while the machine thread
+// reports into it, which is the same contract as before, per instance now.
+class Registry {
+public:
+    void beginSession(bool strict = false) noexcept {
+        hleModules_.store(0, std::memory_order_release);
+        qualified_.store(false, std::memory_order_release);
+        requested_.store(strict, std::memory_order_release);
+        clearDevices();
+    }
+
+    bool requested() const noexcept {
+        return requested_.load(std::memory_order_acquire);
+    }
+
+    void activateHle(Module module) noexcept {
+        hleModules_.fetch_or(static_cast<std::uint32_t>(module),
+                             std::memory_order_acq_rel);
+        qualified_.store(false, std::memory_order_release);
+    }
+
+    std::uint32_t activeHleModules() const noexcept {
+        return hleModules_.load(std::memory_order_acquire);
+    }
+
+    void setQualified(bool on) noexcept {
+        qualified_.store(on && activeHleModules() == 0,
+                         std::memory_order_release);
+    }
+
+    bool qualified() const noexcept {
+        return qualified_.load(std::memory_order_acquire) &&
+               activeHleModules() == 0;
+    }
+
+    void report(const Device& d);           // defined with the device list
+    std::vector<Device> devices() const;
+    void clearDevices();
+
+    // The conformance word a save state carries. Defined below, with the
+    // SnapshotFlag values it packs.
+    std::uint32_t snapshotFlags() const noexcept;
+
+private:
+    std::atomic<std::uint32_t> hleModules_{0};
+    std::atomic<bool> qualified_{false};
+    std::atomic<bool> requested_{false};
+    mutable std::mutex deviceMutex_;
+    std::vector<Device> devices_;
+};
+
+// THE process-wide instance. One line, one place: a session that wants its own
+// state constructs a `Registry`, and `docs_test` refuses any second definition
+// of a process-scope one.
+inline Registry& processRegistry() {
+    static Registry instance;
+    return instance;
+}
+
+inline bool requested() noexcept { return processRegistry().requested(); }
+inline void beginSession(bool strict = false) noexcept {
+    processRegistry().beginSession(strict);
+}
+inline void activateHle(Module module) noexcept {
+    processRegistry().activateHle(module);
+}
+inline std::uint32_t activeHleModules() noexcept {
+    return processRegistry().activeHleModules();
+}
+inline void setQualified(bool on) noexcept { processRegistry().setQualified(on); }
+inline bool qualified() noexcept { return processRegistry().qualified(); }
+
+// Once a strict session is qualified its execution engine is part of the
+// product promise.  Direct callers and the GUI command queue share this gate.
+inline bool engineChangeAllowed(const Registry& registry, int engine) noexcept {
+    return !registry.requested() || !registry.qualified() || engine == 1;
+}
+
+inline bool engineChangeAllowed(int engine) noexcept {
+    return engineChangeAllowed(processRegistry(), engine);
+}
 
 // A device reports its outcome exactly once, at construction. Reporting an
 // HLE outcome IS the old activateHle() call — product mode keeps behaving
 // identically, and no device can now mark itself HLE without also saying
 // which knob and which dumps were in play.
-inline void report(const Device& d) {
+inline void Registry::report(const Device& d) {
     {
-        std::lock_guard<std::mutex> lock(gDeviceMutex);
+        std::lock_guard<std::mutex> lock(deviceMutex_);
         bool replaced = false;
-        for (Device& e : gDevices)
+        for (Device& e : devices_)
             if (e.module == d.module) { e = d; replaced = true; break; }
-        if (!replaced) gDevices.push_back(d);
+        if (!replaced) devices_.push_back(d);
     }
     if (d.mode == Mode::Hle) activateHle(d.module);
 }
 
-inline std::vector<Device> devices() {
-    std::lock_guard<std::mutex> lock(gDeviceMutex);
-    return gDevices;
+inline std::vector<Device> Registry::devices() const {
+    std::lock_guard<std::mutex> lock(deviceMutex_);
+    return devices_;
 }
 
-inline void clearDevices() {
-    std::lock_guard<std::mutex> lock(gDeviceMutex);
-    gDevices.clear();
+inline void Registry::clearDevices() {
+    std::lock_guard<std::mutex> lock(deviceMutex_);
+    devices_.clear();
 }
+
+inline void report(const Device& d) { processRegistry().report(d); }
+inline std::vector<Device> devices() { return processRegistry().devices(); }
+inline void clearDevices() { processRegistry().clearDevices(); }
 
 // Could this device run LLE at all? Tested on the very paths the device
 // itself searched, so the answer cannot disagree with what a relaunch would
@@ -198,10 +246,14 @@ enum SnapshotFlag : std::uint32_t {
     SnapshotHleShift  = 8,
 };
 
-inline std::uint32_t snapshotFlags() noexcept {
+inline std::uint32_t Registry::snapshotFlags() const noexcept {
     return (requested() ? SnapshotStrict : 0u) |
            (qualified() ? SnapshotQualified : 0u) |
            (activeHleModules() << SnapshotHleShift);
+}
+
+inline std::uint32_t snapshotFlags() noexcept {
+    return processRegistry().snapshotFlags();
 }
 
 inline std::uint32_t snapshotHleModules(std::uint32_t flags) noexcept {
