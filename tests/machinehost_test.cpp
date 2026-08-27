@@ -64,7 +64,12 @@ struct TestMachine
 
     static constexpr bool kStereo = Stereo;
 
-    int quanta = 0, renders = 0, statusPublishes = 0;
+    // Atomic because the machine THREAD bumps these while the test reads
+    // them: the lifecycle section starts the thread and spins on
+    // `quanta`. Plain ints made that a data race — a real one by the
+    // memory model, found by the first ThreadSanitizer run on this gate
+    // (2026-08-27), in the harness rather than in MachineHost itself.
+    std::atomic<int> quanta{0}, renders{0}, statusPublishes{0};
     bool audible = false;
     int frameW = 64, frameH = 32;
 

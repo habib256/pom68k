@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 299 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 300 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (seventh)** — [The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run](#2026-08-27-sanitizers)
 - **2026-08-27 (sixth)** — [`-j` is a RAM budget, not a core count: four runs of the same registry price the schedule at 18, 30 and 20 minutes](#2026-08-27-schedule-pricing)
 - **2026-08-27 (fifth)** — [This host's gates cost 17 MiB to 2.81 GiB, the sweep that said so was 1024x wrong, and the widest rows are all one disk image](#2026-08-27-ram-calibration)
 - **2026-08-27 (fourth)** — [Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename](#2026-08-27-execution-census)
@@ -641,6 +642,42 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-sanitizers"></a>
+## 2026-08-27 (seventh) — The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run
+
+`POM68K_SANITIZE` has been in `CMakeLists.txt` since the POM2 days and not one
+workflow had ever passed it — second item of the 2026-08-26 review. Both
+configurations were run on the dev host first, because a CI leg nobody has
+watched pass is not a guard, it is a decoration.
+
+**`address,undefined` over `-L asset-none`: 85/85, zero reports**, with the
+native AArch64 JIT compiling and executing its own code throughout. That last
+part was supposed to be a separate experiment: the first local attempt forced
+`POM68K_CPU_ENGINE=interp`, reasoning that generated code deserved its own
+run, and it turned `jit_store_guard_a64_test` red — a gate whose entire
+subject is that native code got compiled. The override was the defect, not the
+gate, and the leg now runs the default engines. Worth keeping in mind
+generally: a global engine override silently changes what a JIT gate is
+testing.
+
+**`thread`, on the two gates that own the only real concurrency in the tree,
+found a data race on its first execution.** `MachineHost::stepTick()` on the
+machine thread was incrementing the test harness's plain `int quanta` while
+the main thread spun on it in the lifecycle section — a real race by the
+memory model, in `machinehost_test` rather than in `MachineHost`, whose own
+members TSan left alone. The three harness counters are `std::atomic<int>`
+now; TSan is clean, and so is the ordinary build.
+
+The nightly gains a `sanitizers` matrix (the workflow is just "Nightly" now,
+not "Nightly LTO"): ASan+UBSan builds the whole tree and runs the asset-free
+tier, TSan builds the two gates it needs. `detect_leaks=0` for now and the
+comment says why — LeakSanitizer is on by default with ASan on Linux and
+absent on macOS, so no local run ever saw it, and turning it on blind would
+make the leg's first appearance a wall of noise nobody reads. Leaks are their
+own hunt, with their own triage, and they are the item left open. Each leg
+ends by printing `tools/gate_execution_census.py`, because a soft-skipped gate
+exits 0 and would otherwise let an empty run pass for a sanitized one.
 
 <a id="2026-08-27-schedule-pricing"></a>
 ## 2026-08-27 (sixth) — `-j` is a RAM budget, not a core count: four runs of the same registry price the schedule at 18, 30 and 20 minutes
