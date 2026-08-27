@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 295 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 296 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 18 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 7 |
-| [Cross-cutting](#cross-cutting) | 47 |
+| [Cross-cutting](#cross-cutting) | 48 |
 
 ---
 
@@ -357,4 +357,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-26** — [The 2,683-line GUI runtime becomes three injected responsibilities: host services, typed composers and shell](CHANGELOG.md#2026-08-26-gui-runtime-split)
 - **2026-08-27** — [The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects](CHANGELOG.md#2026-08-27-warning-policy)
 - **2026-08-27 (later)** — [The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them](CHANGELOG.md#2026-08-27-full-registry-run)
+- **2026-08-27 (third)** — [The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it](CHANGELOG.md#2026-08-27-gui-smoke-flake)
 

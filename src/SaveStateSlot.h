@@ -8,6 +8,9 @@
 
 #pragma once
 
+#include <cerrno>
+#include <cstring>
+
 #include "AtomicReplace.h"
 #include "SaveStateMachines.h"
 
@@ -57,16 +60,30 @@ struct SaveStateSlot {
             // Atomic temp+rename, the floppy write-back convention: a crash
             // mid-write must never leave a truncated state file behind.
             const std::string tmp = path + ".tmp";
+            // Report errno with the refusal. `gui_smoke_test` failed exactly
+            // once in a 228-gate parallel run on 2026-08-27 with "rename
+            // impossible" and nothing else — 50 further runs, loaded and
+            // idle, never reproduced it. A guard that cannot say WHY it
+            // refused makes its own flake un-diagnosable (method rule R5).
+            const auto why = [] {
+                const char* e = std::strerror(errno);
+                return std::string(e ? e : "?");
+            };
+            errno = 0;
             std::FILE* f = std::fopen(tmp.c_str(), "wb");
             if (!f || std::fwrite(blob.data(), 1, blob.size(), f) != blob.size()) {
+                const std::string reason = why();
                 if (f) std::fclose(f);
                 std::remove(tmp.c_str());
-                post("État NON sauvé: écriture impossible (" + tmp + ")");
+                post("État NON sauvé: écriture impossible (" + tmp + ") — " + reason);
             } else {
+                errno = 0;
                 std::fclose(f);
                 if (!atomicReplaceFile(tmp, path)) {
+                    const std::string reason = why();
                     std::remove(tmp.c_str());
-                    post("État NON sauvé: rename impossible (" + path + ")");
+                    post("État NON sauvé: rename impossible (" + path + ") — "
+                         + reason);
                 } else {
                     post("État sauvé → " + path + " ("
                          + std::to_string((blob.size() + 512) / 1024) + " Ko)");
