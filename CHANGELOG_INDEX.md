@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 306 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 307 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 11 |
 | [Save states](#save-states) | 6 |
-| [Machine bring-ups](#machine-bring-ups) | 42 |
+| [Machine bring-ups](#machine-bring-ups) | 43 |
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 22 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 7 |
@@ -266,6 +266,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-15 (later)** — [The Duo's persist leg had been gesturing at Stickies, and the guest said so all along](CHANGELOG.md#2026-08-15-duo-stickies-front)
 - **2026-08-19 (third)** — [The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran](CHANGELOG.md#2026-08-19-c5-blocked-iisi)
 - **2026-08-24 (sixth)** — [Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines](CHANGELOG.md#2026-08-24-duo-gui-extraction)
+- **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](CHANGELOG.md#2026-08-27-q605-launch)
 
 ## Build, packaging and release
 

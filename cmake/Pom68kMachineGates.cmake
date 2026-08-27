@@ -274,7 +274,11 @@ add_test(NAME q605_savestate_etalon COMMAND q605_savestate_etalon
 # (soft-skips without assets).
 add_executable(q605_beyond_etalon tests/q605_beyond_etalon.cpp)
 target_link_libraries(q605_beyond_etalon PRIVATE pom68k_core)
-foreach(scenario soak persist)
+# `launch` (2026-08-27) is the third leg TODO section 2 asked for: create a
+# folder, then OPEN it -- the Finder reading its own new catalog entry back
+# and putting a window on screen. Keyboard-only, so unlike the LC II's
+# mouse-steered launch it is not calibrated to one volume's icon layout.
+foreach(scenario soak persist launch)
     add_test(NAME q605_${scenario}_etalon COMMAND q605_beyond_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(q605_${scenario}_etalon PROPERTIES
