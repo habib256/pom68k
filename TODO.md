@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 309 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 310 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -986,9 +986,32 @@ applicatif n'a rien à voir — un générateur optimisé sur le Finder au repos
 travaille sur le mauvais opcode. C'est exactement ce que ce chantier
 soupçonnait, maintenant chiffré.
 
-*Suite, dans cet ordre* : (1) `D1F0` — une seule forme vaut la moitié des
-replis sous charge réelle ; (2) les champs de bits, jamais émis par aucun
-backend ; (3) la division, encore interprétée. Chaque promotion garde les
+**`D1F0` DIAGNOSTIQUÉ le 2026-08-27, et ce n'est pas ce qu'on croyait.** La
+première hypothèse — « `LEA` a été autorisé au format complet direct, `ADDA`
+non » — a été **testée et réfutée** : ouvrir l'opt-in ne change pas un seul
+repli. En instrumentant le vrai point de refus, les sites fautifs sont tous la
+même forme, `ADDA.L (bd.L, ZAn, Xn), An` — **format 68020 complet, direct,
+base supprimée, déplacement de base sur deux mots** (l'adressage tableau que
+sort un compilateur). Ils passent `decodeEa` dès l'opt-in, puis se font
+refuser **au contrôle de temps** :
+
+    traced=15  computed=9  readCycles=9  eaIdx=6  words=4  ext=3
+
+`kEaReadA64[E_IX][2]` facture **9 cycles**, le coût de la forme *brève*
+`(d8,An,Xn)` ; le 030 en trace **15** pour la forme complète à base supprimée.
+L'émetteur refuse donc à raison — il se tromperait de 6 cycles, et la trace
+fait autorité.
+
+*Le correctif a donc une forme précise*, la même que la découverte `CMPA +2`
+de 2026-08-09 dont le commentaire est juste au-dessus de ce code : **donner
+son propre coût à l'EA de format complet** (fonction de `fullFormat`,
+`baseSuppressed`, `baseDisplacementWords`, `indexSuppressed`) au lieu d'un
+tableau plat indexé par classe d'EA, *puis* ouvrir l'opt-in direct pour
+`AddressAlu`. Sans le coût, l'opt-in ne sert à rien ; avec, il devient
+admissible. Preuves exigées inchangées.
+
+*Ensuite, dans cet ordre* : (2) les champs de bits (`E9D0`/`EFD1`), jamais émis
+par aucun backend ; (3) la division, encore interprétée. Chaque promotion garde les
 quatre preuves habituelles (empreinte identique, gain répété, gates ciblés,
 tier `etalon` complet).
 
