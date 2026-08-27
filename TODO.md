@@ -73,7 +73,7 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 | **0·B** | Les six réserves de la revue externe du 2026-08-26 | Les six sont posées ; restent deux lectures de CI — recensement g++ pour `-Werror`, premier rapport de fuites Linux |
 | **1** | Rouge maintenant — **le JIT natif du binaire Windows** ; ouverts non rouges ; règles de méthode | Neutraliser le générateur x64 sous MSVC (§ 10 vague 0) |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | Donner son coût propre à l'EA de format complet, puis ouvrir l'opt-in direct pour `AddressAlu` (`D1F0` = 53 % des replis) |
+| **3** | JIT, second moteur d'exécution | Extraire `JitCost.h` (§ 10 vague 2) **avant** de finir `D1F0` — le coût de l'EA de format complet est du 68k, l'écrire dans un backend le fait écrire deux fois |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -520,9 +520,39 @@ Open, in ROI order:
   `fullFormat`, `baseSuppressed`, `baseDisplacementWords`, `indexSuppressed`)
   au lieu d'un tableau plat indexé par classe d'EA, *puis* ouvrir l'opt-in
   direct pour `AddressAlu`. Sans le coût, l'opt-in ne sert à rien ; avec, il
-  devient admissible. **Et le coût est du 68k, pas de l'hôte : il appartient à
-  la table partagée que § 10 vague 2 demande d'extraire**, sinon il sera écrit
-  deux fois.
+  devient admissible.
+
+  > **SÉQUENCE IMPOSÉE, décidée le 2026-08-28 : cet item est BLOQUÉ derrière
+  > l'extraction de `JitCost.h` (§ 10 vague 2), et ce blocage est le point.**
+  > Le coût d'une EA de format complet est une propriété **du 68k**, pas de
+  > l'hôte. L'écrire d'abord dans `JitBackendA64.cpp` — c'est ce que fait le
+  > prototype ci-dessous — oblige à l'écrire une seconde fois dans
+  > `JitBackendX64.cpp`, à la main, avec sa propre table et son propre
+  > décodeur. C'est **exactement le mécanisme qui alimente l'item « porter les
+  > deltas 030 de a64 vers x86-64 »** depuis des semaines : chaque forme admise
+  > d'un côté devient une dette de l'autre. Faire l'extraction d'abord coûte
+  > une passe ; ne pas la faire coûte cette passe **plus** un portage, à chaque
+  > forme, indéfiniment.
+
+  **Un prototype existe dans l'arbre de travail, non commité** (l'ouverture de
+  l'opt-in dans le chemin `AddressAlu`/`CMPA` de `JitBackendA64.cpp`, plus
+  25 lignes). Ce qu'il vaut, et ce qu'il ne faut pas perdre :
+  - il **prouve la forme du correctif** — un seul sous-forme admise (direct,
+    base supprimée, index vivant, déplacement de base sur deux mots), tout le
+    reste refusé plutôt que deviné, `fullFormatExtra = 6` mesuré contre la
+    trace, et la garde de temps existante qui refuse encore l'instruction si la
+    constante est fausse au lieu de la mal facturer ;
+  - il **confirme la réfutation** dans son propre commentaire : ouvrir l'opt-in
+    seul ne change aucun des 42,8 M replis, le refus est le COÛT et non le
+    décodage ;
+  - il **ne doit pas être commité tel quel** : les 6 cycles et le prédicat de
+    sous-forme sont écrits dans le fichier a64. C'est la ligne qui doit
+    déménager dans `JitCost.h`, où x64 la lira sans que personne ne la
+    retranscrive.
+
+  Reprise après l'extraction : porter le prédicat et la constante dans
+  `JitCost.h`, faire consommer les deux backends, puis mesurer — les quatre
+  preuves habituelles, et le gain se lit sur les deux ISA au lieu d'une.
 - [ ] **Ensuite, dans cet ordre** : (2) les champs de bits (`E9D0`/`EFD1`),
   jamais émis par aucun backend ; (3) la division, encore interprétée. Chaque
   promotion garde les quatre preuves habituelles : empreinte identique, gain
@@ -1243,14 +1273,31 @@ tout ce fichier après la vague 0.
 **Vague 2 — dissoudre la dette JIT.** C'est § 3 vu par l'architecture plutôt
 que par le ROI d'opcode ; les deux listes se rejoignent sur `D1F0`.
 
+> **Cette vague n'est plus un nettoyage, c'est le chemin critique de § 3.**
+> Décidé le 2026-08-28 : l'item `D1F0` — 53 % des replis sous charge
+> applicative, le meilleur ROI du fichier — est **bloqué derrière l'extraction
+> ci-dessous**, et un prototype non commité dans l'arbre de travail montre
+> pourquoi. Il écrit un prédicat de sous-forme et une constante de 6 cycles
+> dans `JitBackendA64.cpp` ; ces deux objets sont du 68k, donc les livrer là
+> crée immédiatement leur jumeau à écrire dans `JitBackendX64.cpp`. **Le
+> backlog appelle ça « porter les deltas » et le paie depuis des semaines** —
+> ce n'est pas une tâche récurrente, c'est le symptôme d'une table écrite au
+> mauvais endroit. Faire l'extraction avant `D1F0` la fait disparaître ; la
+> faire après, c'est payer le portage une fois de plus et rouvrir l'item.
+
 - [ ] **Extraire la moitié invariante d'hôte des deux backends** : un
   `src/jit/JitEaPlan.h` (décodage EA, formes admises, refus) et un
   `src/jit/JitCost.h` (colonnes de cycles 68020/030/040, la pénalité CMPA, le
-  coût du format complet que § 3 est en train d'ajouter). Les backends ne
-  gardent que l'émission. **La règle « un concern par fichier » de `CLAUDE.md`
-  n'a simplement jamais été appliquée à l'intérieur du JIT** ; le budget de
+  coût du format complet). Les backends ne gardent que l'émission.
+  **La règle « un concern par fichier » de `CLAUDE.md` n'a simplement jamais
+  été appliquée à l'intérieur du JIT** ; le budget de
   `tools/file_size_budget.txt` a plafonné ces deux fichiers sans jamais poser
   la question de ce qu'ils contiennent.
+  *Premier consommateur, et critère d'acceptation* : le prédicat de sous-forme
+  et les 6 cycles du prototype `D1F0` entrent dans `JitCost.h`, les deux
+  backends les lisent, et **aucune des deux valeurs n'apparaît dans un fichier
+  `backends/`**. Si l'extraction laisse `D1F0` à réécrire côté x64, elle n'a
+  pas été faite.
 - [ ] **Un gate de parité de backends, asset-free.** Balayer l'espace des
   opcodes, comparer `canEmit(a64)` et `canEmit(x64)`, échouer sur toute
   divergence qui n'est pas inscrite dans une liste d'exceptions datées et
