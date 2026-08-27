@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 294 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 295 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (later)** — [The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them](#2026-08-27-full-registry-run)
 - **2026-08-27** — [The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects](#2026-08-27-warning-policy)
 - **2026-08-26 (later)** — [An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog](#2026-08-26-review-backlog)
 - **2026-08-26** — [The 2,683-line GUI runtime becomes three injected responsibilities: host services, typed composers and shell](#2026-08-26-gui-runtime-split)
@@ -636,6 +637,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-full-registry-run"></a>
+## 2026-08-27 (later) — The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them
+
+First whole-registry run on macOS/AArch64 (Apple Silicon, 10 cores, 24 GiB),
+and the first anywhere that used a single `ctest` invocation instead of the
+`unit`-then-`etalon` pair: **228/228, 1 081.79 s wall at `-j16`, exit 0**.
+Preceded, because the claim is worth exactly the freshness of its binaries, by
+a full build, `check_binaries_fresh.py --self-test` (the guard demonstrated
+both answers on this tree) and **152/152 gate executables current**.
+
+**The parallel dividend is now measured on a second host.** Summing the 228
+gates' own durations gives **17 162 s — 4 h 46** of serial-equivalent work, so
+the schedule is worth **×15.9**. The "a full run costs 4 h 30" line this
+project quoted for weeks was never a property of the suite: there is no
+`RUN_SERIAL` and no `RESOURCE_LOCK` in the tree, and `ScsiDisk::open()` keeps
+write-back off, so the gates are readers of the shared assets. It was the cost
+of an invocation habit, and two hosts now say so.
+
+Where the time actually is (sec*proc): `etalon` 16 381 of 17 003, `m030` 8 944,
+`m040` 6 571, `jit` 1 931, `etalon-core` 1 182, `unit` 877, `asset-none` 364.
+The four widest gates are the interpreter references and the beyond-boot legs:
+`interp_q700_boot_etalon` 508 s, `interp_centris650_boot_etalon` 500 s,
+`iivx_persist_etalon` 498 s, `sonora_soak_etalon` 483 s. Nothing there is a
+surprise; it is the first time it has been written down for this host.
+
+**And the run corrected a sentence.** `unit` (108) + `etalon` (119) is **227**,
+not 228: `gui_smoke_test` carries the `gui` label and neither of the other two,
+by explicit branch (`cmake/Pom68kGatePolicy.cmake:61`). It was never invisible
+— `asset-none` runs it, which is why the daily tier is 85 and not 84 — but
+"the registry's exact disjoint partition" was one gate short of exact from the
+moment that gate was registered, and the 2026-08-25 headline read 227/227 on a
+registry that had just become 228. The docs now say partition **plus** the one
+`gui` gate. This is the same shape as the 2026-08-12 `quadra_event_scheduler`
+finding: a label nobody counts is a gate nobody runs.
+
+No red, no skip investigated away: the assets are on this host, and the run
+that produced these numbers is the one that says 228/228.
 
 <a id="2026-08-27-warning-policy"></a>
 ## 2026-08-27 — The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects

@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 294 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 295 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -24,22 +24,33 @@ re-verify before quoting them anywhere:
   `cmake/Pom68kJitGates.cmake:458-464`).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
-- **Last FULL suite: 227/227 on AArch64, 2026-08-25.** Fresh full build;
-  freshness guard self-test green, then 152/152 gate executables current.
-  The registry's exact disjoint partition passed `unit` **108/108 in
-  271.17 s**, then `etalon` **119/119 in 1 088.20 s** at `-j16`: 22 min 39 s
-  wall in total, including the new IIci soak and the RTC/CA2 correction.
-  Before it: 222/222 on 2026-08-18 in 2 h 11, the project's first quoted
-  parallel whole-registry run (`CHANGELOG.md` 2026-08-18 (fourth)); before
-  that, 206/206 on 2026-08-16, 4 h 30 sequential. The same tiers earlier on
-  2026-08-16 found **ten** reds in five unrelated causes — which is what a
-  suite that has not been run whole for nine days looks like.
+- **Last FULL suite: 228/228 on AArch64, 2026-08-27** — every registered gate
+  in ONE `ctest -j16`, **1 081.79 s wall (18 min 02 s)**, exit 0, zero red.
+  Preceded by a full build, `check_binaries_fresh.py --self-test` green (the
+  guard said yes AND no on this tree) and **152/152 gate executables current**.
+  Host: Apple Silicon, 10 cores, 24 GiB — the first whole-registry run on
+  macOS/AArch64. The serial equivalent of the same run is **17 162 s (4 h 46)**
+  summed over the 228 gates, so the parallel schedule is worth **×15.9**: the
+  "4 h 30" this file used to quote is the cost of an invocation habit, now
+  measured on two hosts rather than argued. Slowest gates:
+  `interp_q700_boot_etalon` 508 s, `interp_centris650_boot_etalon` 500 s,
+  `iivx_persist_etalon` 498 s, `sonora_soak_etalon` 483 s. Tier totals
+  (sec*proc): `etalon` 16 381, `unit` 877, `m030` 8 944, `m040` 6 571,
+  `jit` 1 931, `etalon-core` 1 182, `asset-none` 364.
+  **A precision this run produced**: `unit` (108) + `etalon` (119) = **227**,
+  not 228 — `gui_smoke_test` carries `gui`, deliberately, and belongs to
+  neither tier (`cmake/Pom68kGatePolicy.cmake:61`). It is covered by
+  `asset-none`, so nothing was invisible; but "the registry's exact disjoint
+  partition" is `unit` + `etalon` + that one gate, and a two-tier run is 227
+  of 228. Before it: 227/227 on 2026-08-25 in 22 min 39 s over the two tiers,
+  222/222 on 2026-08-18 in 2 h 11, 206/206 on 2026-08-16 in 4 h 30 sequential.
+  The same tiers earlier on 2026-08-16 found **ten** reds in five unrelated
+  causes — which is what a suite that has not been run whole for nine days
+  looks like.
   **The `make` is part of the claim, not the decor**: an earlier 143/143 in
   August ran over binaries linked at different times and proved nothing —
   `ctest` does not compile. A phantom failure gets investigated; a phantom pass
-  gets quoted. The same freshened tree's first tier run then found a red the
-  stale one had hidden for a day (`sst68030` 3068/3082, closed by ruling
-  D23).
+  gets quoted.
 - **37 machine profiles** = 37 `kMachineProfiles` rows in
   `src/MachineCatalog.h`, each carrying its stable `SnapMachine` id = 21
   `MachineKind` values over **12** platform implementations. `docs_test`
