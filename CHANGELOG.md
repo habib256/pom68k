@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 309 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 310 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (seventeenth)** — [D1F0 diagnosed: the full-format opt-in was the wrong suspect, the EA cost table is the right one](#2026-08-27-d1f0)
 - **2026-08-27 (sixteenth)** — ["7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed](#2026-08-27-hotfloppy)
 - **2026-08-27 (fifteenth)** — [SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so](#2026-08-27-simcity-census)
 - **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](#2026-08-27-q605-launch)
@@ -651,6 +652,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-d1f0"></a>
+## 2026-08-27 (seventeenth) — D1F0 diagnosed: the full-format opt-in was the wrong suspect, the EA cost table is the right one
+
+The SimCity census put `D1F0` at 53 % of all fallbacks under application load.
+The obvious explanation was at hand: `decodeEa` refuses 68020 full-format
+extensions unless a caller opts in, and only `LEA` opts in — a comment in the
+source says so. Enabling that opt-in for `AddressAlu` changed **not one
+fallback**: 42 824 790 before, 42 824 790 after. Hypothesis refuted, cheaply,
+before anything was built on it.
+
+Instrumenting the actual refusal path names the form and the reason. Every
+offending site is the same shape — `ADDA.L (bd.L, ZAn, Xn), An`: full 68020
+format, **direct** (no memory indirection), **base register suppressed**, a
+**two-word base displacement**. That is what a compiler emits for indexing into
+a fixed array, which is exactly what a city simulation does all day. With the
+opt-in on they clear `decodeEa` and then die at the timing gate:
+
+    traced=15  computed=9  readCycles=9  eaIdx=6  words=4  ext=3
+
+`kEaReadA64[E_IX][2]` charges **9 cycles** — the cost of the BRIEF
+`(d8,An,Xn)` form — while the 68030 traces **15** for the suppressed-base
+long-displacement one. The emitter is right to refuse: it would mischarge the
+instruction by six cycles, and in this engine the trace is the authority.
+
+So the fix has a shape, and it is the same shape as the `CMPA +2` discovery of
+2026-08-09 whose comment sits ten lines above this code: **give the
+full-format EA its own cost** — a function of `fullFormat`, `baseSuppressed`,
+`baseDisplacementWords` and `indexSuppressed` rather than a flat table indexed
+by EA class — and only then open the direct opt-in for `AddressAlu`. Without
+the cost the opt-in is inert; with it, the instruction becomes admissible.
+Required proofs unchanged: identical fingerprint, repeated gain, targeted
+gates, a full `etalon` tier.
+
+Two things worth keeping from how this was found. The census's own
+extension-form breakdown could not settle it — it reports "brief 0.2 %, full
+5.4 %, and a mixed remainder apportioned by slot ratio (ESTIMATE)", and says
+so — but a five-line probe at the refusal site answered in one run. And the
+first hypothesis was tested rather than believed, which cost one build and
+saved a backend change that would have done nothing.
 
 <a id="2026-08-27-hotfloppy"></a>
 ## 2026-08-27 (sixteenth) — "7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed
