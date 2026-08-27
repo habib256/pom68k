@@ -332,6 +332,16 @@ set(POM68K_SST040_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040"
 add_test(NAME sst68040 COMMAND sst68040 "${POM68K_SST040_DIR}")
 
 # O6.2 gates: LC II pseudo-VIA semantics + V8 memory controller.
+# The six CPU wrappers that coverage measured at 0.00 % in the asset-free tier
+# (2026-08-27): only the machine etalons ran them, so a clone with no private
+# ROM compiled them and never executed one. A synthetic ROM and 160k cycles is
+# not a conformance check -- the etalons stay that -- but it means a wrapper
+# that stops constructing, resetting, fetching or advancing its clock fails on
+# every host instead of only on one with assets.
+add_executable(cpu_wrapper_smoke tests/cpu_wrapper_smoke.cpp)
+target_link_libraries(cpu_wrapper_smoke PRIVATE pom68k_core)
+add_test(NAME cpu_wrapper_smoke COMMAND cpu_wrapper_smoke)
+
 add_executable(pseudovia_test tests/pseudovia_test.cpp)
 target_link_libraries(pseudovia_test PRIVATE pom68k_core)
 add_test(NAME pseudovia_test COMMAND pseudovia_test)

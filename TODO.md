@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 303 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 304 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -10,15 +10,15 @@ in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-26): **230 gates** — 110
-  `unit`, 85 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 54 `m030`, 119
+  somewhere.** The documented registry (2026-08-27): **231 gates** — 111
+  `unit`, 86 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 54 `m030`, 119
   `etalon`, 12 `etalon-core`. Five are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
   `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
   the x86-64-only `jit_lockstep_030_x64_experimental_test` +
   `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
-  **227** (107 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 228 (108
+  **228** (108 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 229 (109
   `unit`, 38 `jit`). Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:466`, and it FATAL_ERRORs off AArch64 in
   `cmake/Pom68kJitGates.cmake:458-464`).
@@ -520,9 +520,16 @@ sont posées** ; chaque item garde sa ligne de suite, plus petite et chiffrée.
   liste d'objets — 66 fichiers « jamais atteints » sont tombés à 48 dès que le
   binaire produit a rejoint la mesure. Une couverture qui accuse le code d'un
   trou de l'outillage est pire qu'aucune couverture.
-  *Reste, une ligne* : un gate sans assets qui construise et fasse tourner un
-  quantum sur les six enveloppes CPU jamais exécutées — c'est la moitié la
-  moins chère des 48.
+  *Suite faite le jour même* : `cpu_wrapper_smoke` construit les six enveloppes
+  sur leur vraie mémoire de carte avec une **ROM synthétique** (vecteur de reset
+  vers +8, `BRA.S *` à cet endroit — l'overlay de boot mappe la ROM en 0 sur
+  les six, donc le CPU va vraiment chercher, décoder et tourner), puis vérifie
+  que l'horloge machine avance et que le cœur n'est pas halté. Les six passent
+  de **0,00 % à 70-77 %** de lignes couvertes, la liste zéro tombe de **48 à
+  36** et le total de 28,93 % à **30,15 %**. Ce n'est pas une preuve de
+  conformité — les étalons restent la seule — mais une enveloppe qui cesse de
+  se construire, de se réinitialiser ou d'avancer son horloge échoue désormais
+  sur *tous* les hôtes, pas seulement sur celui qui a les ROMs.
 - [x] **4. Le compteur existe — `tools/gate_execution_census.py`, 2026-08-27.**
   Il lit le `Testing/Temporary/LastTest.log` que `ctest` écrit déjà, repère
   l'abstention par la chaîne `SKIP` (le marqueur que `measure_gate_ram.py`

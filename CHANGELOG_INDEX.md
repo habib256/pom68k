@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 303 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 304 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 21 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 7 |
-| [Cross-cutting](#cross-cutting) | 52 |
+| [Cross-cutting](#cross-cutting) | 53 |
 
 ---
 
@@ -360,6 +360,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-26** — [The 2,683-line GUI runtime becomes three injected responsibilities: host services, typed composers and shell](CHANGELOG.md#2026-08-26-gui-runtime-split)
 - **2026-08-27** — [The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects](CHANGELOG.md#2026-08-27-warning-policy)
 - **2026-08-27 (eighth)** — [28.93 % of product lines, and the list that matters: five of the ten CPU wrappers never run without assets](CHANGELOG.md#2026-08-27-coverage)
+- **2026-08-27 (eleventh)** — [The six CPU wrappers coverage caught at 0.00 % now run on every host: 48 unreached files down to 36](CHANGELOG.md#2026-08-27-cpu-wrapper-smoke)
 - **2026-08-27 (later)** — [The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them](CHANGELOG.md#2026-08-27-full-registry-run)
 - **2026-08-27 (ninth)** — [The LLE verdict stops being a process global: a session owns its registry, and every consumer reads that one](CHANGELOG.md#2026-08-27-lle-registry-owned)
 - **2026-08-27 (sixth)** — [`-j` is a RAM budget, not a core count: four runs of the same registry price the schedule at 18, 30 and 20 minutes](CHANGELOG.md#2026-08-27-schedule-pricing)
