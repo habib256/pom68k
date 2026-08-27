@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 310 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 313 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **the Windows release ships a JIT that cannot work: the x86-64 generator is compiled in on `AMD64` and follows the System V ABI, and the job that builds it runs no test** → [2026-08-28 — An architecture pass reads the repository…](#2026-08-28-architecture-review)
+- **why the two JIT backends may not stay independent: they share no function, each carries its own EA decoder and cycle-cost table, and both model the 68k rather than the host** → [2026-08-28 — An architecture pass reads the repository…](#2026-08-28-architecture-review)
 - **why could the IIvx show Command+N live in `KeyMap` while the Finder received an ordinary N — and why did the obvious global timing fix break IIfx?** → [2026-08-25 — The IIvx persist gate exposed a two-transition ADB poll…](#2026-08-25-iivx-command-settle)
 - **"Rogue is still 29 % indexed" and "full-index memory indirection stays slow" — the re-census found 6.37 %, then the measured lowering cut indexed fallbacks another 98.36 %** → [2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed…](#2026-08-23-rogue-re-census)
 - **Why is there one `runDafbGui` and not four runners — and what did the four copies get wrong?** → [2026-08-23 (fifth) — The four DAFB GUI runners were one function copied four times…](#2026-08-23-dafb-runner)
@@ -340,6 +342,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-28** — [An architecture pass reads the repository instead of its documentation, and finds a shipped Windows binary that cannot work](#2026-08-28-architecture-review)
 - **2026-08-27 (seventeenth)** — [D1F0 diagnosed: the full-format opt-in was the wrong suspect, the EA cost table is the right one](#2026-08-27-d1f0)
 - **2026-08-27 (sixteenth)** — ["7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed](#2026-08-27-hotfloppy)
 - **2026-08-27 (fifteenth)** — [SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so](#2026-08-27-simcity-census)
@@ -433,8 +436,10 @@ Newest first.
 - **2026-08-13 (third)** — [writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly](#2026-08-13-chunk-asymmetry-audit)
 - **2026-08-13 (later)** — [The peripheral deadline reaches the last two wrappers, measures worse than the batch, and ships off](#2026-08-13-periph-deadline-optin)
 - **2026-08-13** — [Four audit closures, and two of them were not what the audit said they were](#2026-08-13-f2-f5-closures)
+- **2026-08-12 (third)** — [Four 68030 fault-frame gaps close against the oracle, recorded here retroactively](#2026-08-12-berr030-oracle-closures)
 - **2026-08-12 (later)** — [The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer](#2026-08-12-savestate-writebuffer)
 - **2026-08-12** — [One opcode clears the conservative AArch64 store guard](#2026-08-12-a64-b592-store)
+- **2026-08-11** — [The performance pass whose only record was the backlog: three promotions, six refusals, one fixture trap](#2026-08-11-perf-pass)
 - **2026-08-10 (eighth)** — [The fastest conformant engine becomes the 68040 default](#2026-08-10-jit-040-default)
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](#2026-08-10-jit-030-pi-success)
 - **2026-08-10 (sixth)** — [Restartable destinations split: predecrement and brief index land; postincrement stays closed](#2026-08-10-jit-030-restart-ea)
@@ -652,6 +657,85 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-28-architecture-review"></a>
+## 2026-08-28 — An architecture pass reads the repository instead of its documentation, and finds a shipped Windows binary that cannot work
+
+Four dimensions were audited against the tree itself — 231 rows of
+`build/pom68k_gate_manifest.tsv`, the two JIT backends compared symbol by
+symbol, all five CI workflows read end to end. Three of the four findings were
+new to every document in the repository.
+
+**The Windows release ships a System V code generator.**
+`CMakeLists.txt:311-317` compiles `JitBackendX64.cpp` and defines
+`POM68K_JIT_BACKEND_X64` whenever `CMAKE_SYSTEM_PROCESSOR` matches
+`^(x86_64|AMD64|amd64)$` — and `AMD64` is exactly what MSVC reports. Nothing in
+`src/jit/` mentions `_MSC_VER`. The block prologue reads its two arguments from
+`RDI`/`RSI` (`src/jit/backends/JitBackendX64.cpp:3384-3385`), which Win64
+passes in `RCX`/`RDX`; the register-role comment (`:211`) declares `RSI`/`RDI`
+scratch while Win64 makes them callee-saved; the thunk calls use the same two
+registers; and the prologue reserves 8 bytes of alignment where Win64 requires
+32 bytes of shadow space. Four independently fatal defects.
+`X64Backend::usable()` (`:3673`) probes only for W^X memory, never for the ABI.
+Since `jit/auto` is the conformant default on 68040 **and** 68030, every
+Windows user of a Quadra, Centris, LC II or IIvx takes that path. The file
+contains no GNU-isms, so MSVC compiles it without complaint: the failure is at
+run time.
+
+**What let it live is a process fact, not a code fact.** The `windows` job of
+`release.yml` configures `-DPOM68K_TESTS=OFF` (`.github/workflows/release.yml:289`)
+and runs no gate at all — the only published artifact the suite never touches.
+`TODO.md` § 1 gains a fifth method rule from it: *a configuration nobody
+executes is not supported, it is only compiled.*
+
+**The two JIT backends share no function.** `JitBackendA64.cpp` (4 374 l.) and
+`JitBackendX64.cpp` (3 919 l.) each carry their own EA decoder and their own
+cycle-cost table — `kEaReadA64[E_COUNT][3]` against `kEaRead[kM_COUNT][3]` —
+and both objects model **the 68k, not the host**. The divergence is already
+observable in the acceptance set: `Op::Bitfield`, `Op::MoveSrToReg` and
+`Op::ShiftRegister` are emitted by a64 and absent from x64, and no gate
+compares the two `canEmit`. This is the direct cause of the standing "port the
+a64 030 deltas to x86-64" item, and the `D1F0` full-format cost that § 3 is
+about to write is the next thing that would be written twice.
+
+**133 of 231 gates require private assets**, against 86 that require none and
+12 optional. CI proves the 86; the boot etalons — the whole "37 profiles reach
+the Finder" claim — live on one machine with ~9.5 GiB of undistributable
+images. Three consequences follow and are now written where they belong: ASan
+and TSan never see the emulation core under a real ROM, the published coverage
+figure measures the CI tier rather than the product, and the bus factor on the
+proof is one.
+
+**Fourth, smaller finding**: `-Wall -Wextra` arrived on 2026-08-27 on a
+165 000-line C++20 tree and `-Werror` is still unarmed, while the documentation
+set is 31 800 lines of Markdown — including a `CLAUDE.md` of 5 592 words that
+opens by promising to be scannable in under a minute. `docs_test` compares
+hand-written prose to the manifest; generating the prose from the manifest
+would be cheaper and could not drift.
+
+None of these is a symptom of slackness — the measurement discipline in this
+repository is better than most. Two of them sit exactly where that discipline
+was not applied to itself: the JIT never got the "one concern per file" rule,
+and the release jobs never got the "every milestone is gated" rule.
+
+**The plan is `TODO.md` § 10**, in four waves: neutralise the native generator
+under MSVC and make the release jobs run the asset-free tier (wave 0, before
+the next release); a self-hosted runner on the asset machine plus ASan over
+three boot etalons (wave 1); extract `JitEaPlan.h` + `JitCost.h` from the two
+backends and add an asset-free backend-parity gate (wave 2); `-Werror`, a
+generated `STATUS.md` and a size budget on `CLAUDE.md` (wave 3).
+
+**The same pass applied this file's house rule to `TODO.md`, 2 036 → 1 278
+lines.** Closed items left one line and a date; § 0's `run*()` retelling, § 1's
+hundred lines of closed hunts, § 3's history of the x64/a64 port and § 4's
+closed LLE work are all here already. Section numbers were preserved because
+ten documents cite them, so § 10 was appended rather than inserted. Three
+blocks announced themselves as the only record of something, and all three were
+verified into this file at their own dates before being shortened: the
+2026-08-11 performance pass, the synthetic-Toby fixture trap that cost a wrong
+diagnosis the same day, and the four 68030 fault-frame closures of
+[2026-08-12 (third)](#2026-08-12-berr030-oracle-closures). That check is now a
+third house rule at the top of `TODO.md`.
 
 <a id="2026-08-27-d1f0"></a>
 ## 2026-08-27 (seventeenth) — D1F0 diagnosed: the full-format opt-in was the wrong suspect, the EA cost table is the right one
@@ -6030,6 +6114,38 @@ deliberately behind the test-depth pass). The honest remainder on F4 itself
 is a **guest-level** etalon — this gate proves the seam from the firmware's
 own action outward, not the Toolbox path that leads a user to it.
 
+<a id="2026-08-12-berr030-oracle-closures"></a>
+## 2026-08-12 (third) — Four 68030 fault-frame gaps close against the oracle, recorded here retroactively
+
+**Recorded on 2026-08-28, not on the day.** This work was gated the day it
+landed and `TODO.md` § 5 was its *only* record — a heading that read
+"68030 / MMU / FPU oracle gaps — CLOSED 2026-08-12" with four lines under it
+and the parenthetical "(no CHANGELOG entry)". The 2026-08-28 architecture pass
+verified that claim before shortening the section, found it true, and verified
+it into this file instead of deleting it. The house rule that produced this
+entry is now written at the top of `TODO.md`: a block that says it is the only
+record of something gets checked against this file before it is touched.
+
+All four closed the same day, all four gated in `berr030_test`, all four
+arbitrated against the vendored WinUAE oracle rather than the manual:
+
+- **RTE format `$A`/`$B` instruction restart.** Format `$A` replays the pending
+  data output; format `$B` applies the `(An)±` inverse fixups. Both are proved
+  with transient faults, so the restart path is exercised rather than merely
+  decoded.
+- **PMOVE-through-translation fault frames.** WinUAE-interpreted read and write
+  frames, SSW `$0345` / `$0305`, the logical fault address and the PMOVE PC
+  (`tests/berr030_test.cpp:366-401`).
+- **Instruction-stream fetches across page boundaries.** A non-contiguous
+  translated page, plus an invalid-page format-`$B` oracle.
+- **FMOVEM indirect-EA read order.** The full-extension pointer word is read
+  before the three ascending operand longs; the raw FP image is matched to
+  WinUAE's (`tests/berr030_test.cpp:403-447`).
+
+Nothing here was contested by the manual — these are the cases where the manual
+is silent on ordering and the oracle is the only authority, which is the
+standing rule for the 030/040 extensions.
+
 <a id="2026-08-12-savestate-writebuffer"></a>
 ## 2026-08-12 (later) — The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer
 
@@ -6103,6 +6219,102 @@ Both variants retained fingerprint `f8e91527781ede67`, 1,410,142,343 retired
 instructions and SCSI=6,173. After a full rebuild, the sequential reference
 tier passed 91/91 in 5,240.40 seconds, including four explicit interpreted
 68040 oracles and fifteen JIT etalons.
+
+<a id="2026-08-11-perf-pass"></a>
+## 2026-08-11 — The performance pass whose only record was the backlog: three promotions, six refusals, one fixture trap
+
+**Recorded on 2026-08-28, not on the day.** `TODO.md` § 0·A carried this whole
+day as a block that opened with its own warning — "ce bloc est le seul
+enregistrement de cette journée : `CHANGELOG.md` n'a aucune entrée datée du
+2026-08-11, ne pas le supprimer sans l'y verser d'abord". The architecture pass
+of 2026-08-28 took that instruction literally. Everything below is verified
+into this file at its own date; the backlog now keeps a pointer instead of the
+record.
+
+All measurements: Q605 / AArch64, 6 000 fixed frames unless stated, fingerprint
+`f8e91527781ede67` and 1 410 142 343 retired instructions held as the
+non-regression invariant.
+
+**Promoted.**
+
+- **Link table 4 096 → 65 536 destinations** (1 MiB per CPU). It was colliding
+  well below the 65 536-resident-block ceiling: `block end` 149 265 073 →
+  72 507 478, 22.62/22.39 s → **21.27/21.41 s** (≈5.2 %, repeated).
+- **Event deadline, Q605 / SCC.** `Q605Memory` accumulates an explicit debt in
+  machine cycles, subtracts it from `cyclesToNextEvent()` and drains it exactly
+  at the deadline, before any MMIO access or external LocalTalk injection. The
+  debt is part of `visit()` and of the lockstep hash; the snapshot format went
+  to **version 2** so an older Q605 without that phase can never be accepted as
+  complete. **21.40-21.49 s** against 21.94-22.06 s (≈2.5-3 %), every counter
+  identical. Override: `POM68K_Q605_EVENT_SCC=0`.
+- **Event deadline, Q605 / 53C96.** Same contract, a clean 25 MHz debt consumed
+  before each MMIO register, pseudo-DMA window, VIA2 read of the IRQ/DRQ lines
+  and external access. The scheduler gate proves the SCSI MMIO flush does not
+  consume the SCC debt. Two A/B pairs of 18 000 frames: **91.43 s** against
+  92.14 s (**−0.77 %**), fingerprint `7817661fd1097608`. Override:
+  `POM68K_Q605_EVENT_SCSI=0`.
+
+**Refused — do not re-open without new data.** These cost real time to measure,
+and the numbers are the value, not the conclusions:
+
+- **Event deadline on the ASC**: seven green gates, but a **throughput
+  regression** (21.80/22.35 s against 21.72/21.86 s) — withdrawn entirely,
+  under the promotion criterion. This is the first candidate anyone reaches for
+  on reading "extend it to a third peripheral": it has already been done.
+- **Secondary ATC index** (22.66 s, regression); **forced inlining of the
+  lookup** (below noise); **direct MCU→ADB hook** (22.00/21.91 s); **early
+  scheduler returns** (21.81/21.95 s); **128-byte code guard** (21.89/21.93 s,
+  more churn).
+- **`codeMask` threshold at 128 bytes**: gates green, fingerprint unchanged,
+  but 21.71/21.72 s and **exactly 162 738** writes into translated code — the
+  same as the 256-byte mask. *No observable collision removed.* Going below 128
+  would require growing the DTLB entry or adding a live bitmap to the store
+  path, with no yield signal.
+- **Serialised DAFB debt**: bit-exact, gates green, but two 18 000-frame pairs
+  contradict each other (91.35 vs 91.21 s, then 91.26 vs 91.64 s). Mean gain
+  0.13 %, under the noise. **Do not carry it to Centris/Q700 without a new
+  profile showing a significantly higher DAFB cost there.**
+- **SCC deadline cache** (the deadline memoised as strictly derived state,
+  invalidated by reset/load/MMIO/mutable external access, with an oracle mode
+  recomputing `Scc8530::cyclesToNextEvent()` on every hit): short runs neutral
+  (21.96 vs 21.93 s), long runs not reproducible and contaminated by the
+  thermal regime (91.30 vs 94.36 s, then 94.24 vs 93.39 s in reversed order).
+
+**Attribution, done and not to be redone.**
+
+- Exact fallback census (`POM68K_JIT_HISTO=1`, which separates static from
+  runtime per opcode): **219 277 316** fallbacks = 46 167 498 static +
+  173 109 818 runtime. `MOVEM -(A7)` is **already native** and accounts for
+  17.31 M runtime refusals — it is not a missing opcode.
+- Complete runtime attribution, cause + opcode + logical address + R/W + width
+  + mask carried to the final fallback: **140 982 525 / 140 982 525**
+  attributed — conservative store guard **128 824 006 (91.38 %)**, true
+  `codeMask` **9 044 353 (6.42 %)**, non-plain/MMIO **2 972 353 (2.11 %)**,
+  fill/tag **96 953 (0.07 %)**, 4 KiB crossing **44 860 (0.03 %)**. The earlier
+  "68.84 % codeMask" was the artefact of the `CBZ/CBNZ` fixup that
+  [2026-08-12](#2026-08-12-a64-b592-store) opened.
+- The real collisions are highly concentrated: logical page `$01F56`, slice 1,
+  mask `$FFFE`, the stack around `$01F56100-$01F5618E` — the store really does
+  touch a slice holding translated code, **it is not a false neighbour to
+  relax**.
+- Host profile after the SCC + 53C96 deadlines (11 243 samples):
+  `mmu040Translate` 1 683, `Q605Memory::tick` 393, `M68hc05::run` 319,
+  `Dafb::tick` 77, `Via6522::tick` 27, `AscIosb::tick` 23.
+- The inline AArch64 peripheral deadline is the right default: 3.05 s against
+  3.66 s with `sync` on every instruction over 2 000 frames (**≈20 %**).
+  **Do not grow the mean peripheral step past 19.11 machine cycles: it is
+  observable.**
+
+**The fixture trap this day also cost, and which had no record either.** A
+zero-SCSI IIfx run was blamed on the CPU engine. It was the **synthetic Toby
+declaration ROM**. All three IIfx gates require the real card ROM `342-0008-a`
+and SKIP without it (`tests/iifx_boot_etalon.cpp:31-42`), while
+`IIfxMemory::installTobyVideo` falls back to `DeclRom::buildSynthetic` with
+nothing but a stderr line (`src/IIfxMemory.cpp:102-104`). Interpreter,
+`threaded` and experimental AArch64 then all produce the *same* etalon —
+`f=539`, Finder `0.06/0.69`, 512 SCSI commands — which is exactly what makes it
+convincing and wrong. Same family as the `drVolAtrb` rule: read what the gate
+actually loaded before theorising about the engine.
 
 <a id="2026-08-10-jit-040-default"></a>
 ## 2026-08-10 (eighth) — The fastest conformant engine becomes the 68040 default
