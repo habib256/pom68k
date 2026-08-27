@@ -2,6 +2,16 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "PlatformCompositionSupport.h"
+
+// This composer's own family — see the header's note on the fan-in.
+#include "Cpu68k.h"
+#include "MacMemory.h"
+#include "MacVideo.h"
+#include "MacFrame.h"
+#include "MacAudio.h"
+#include "MacAudioHost.h"
+#include "DemoRom.h"
+
 #include "GuiRunnerCompact.h"
 
 // ── 68000 compact host ──────────────────────────────────────────────────

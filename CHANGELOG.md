@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 302 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 303 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (tenth)** — [The composition umbrella stops naming twelve families, and the cost of a new platform gets enumerated instead of remembered](#2026-08-27-composition-fanin)
 - **2026-08-27 (ninth)** — [The LLE verdict stops being a process global: a session owns its registry, and every consumer reads that one](#2026-08-27-lle-registry-owned)
 - **2026-08-27 (eighth)** — [28.93 % of product lines, and the list that matters: five of the ten CPU wrappers never run without assets](#2026-08-27-coverage)
 - **2026-08-27 (seventh)** — [The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run](#2026-08-27-sanitizers)
@@ -644,6 +645,50 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-composition-fanin"></a>
+## 2026-08-27 (tenth) — The composition umbrella stops naming twelve families, and the cost of a new platform gets enumerated instead of remembered
+
+Last item of the 2026-08-26 review, and the one whose recommendation included a
+refusal: the fan-in is real, and a virtual bus abstraction is NOT the answer,
+because the hot path would pay for it. So the answer is locality and a written
+cost.
+
+**`PlatformCompositionSupport.h` no longer names any hardware.** It carried
+every family's memory, CPU and video header — one umbrella that all six
+composers read, so adding a family edited a file that every other family
+depends on. It is 68 lines down to 41 now, holding the host contract, the
+catalogue, the typed facades, the process services and the network-quantum
+seam; each `Platform*.cpp` includes its own family. The compiler settled the
+lists, not a guess: `PlatformDafb.cpp` also wanted `VideoBeam.h` and
+`MacAudioHost.h`, which the umbrella had been supplying invisibly. The size
+ratchet records the shift — six composers up by 5 to 13 lines each, the
+umbrella down 27.
+
+**`DEV.md` § 2.12 is the check-list**, and it is derived rather than
+remembered: what the PowerBook Duo actually touched (`5c6e3f6` for the board,
+`b407929` for the profile), re-expressed in today's structure and verified line
+by line by grepping the tree for `Duo230`. Four groups — the board (memory,
+CPU wrapper, any new part), the profile (catalogue row, `SnapMachine` tag,
+factory branch, save/load pair, composer + runner), the proof (boot etalon,
+gate registration, the `m030`/`m040` label regexes, a beyond-boot pair,
+`assets.lock`) and the record (CLAUDE.md's table, DEV.md § 2.x, a bring-up note,
+a dated entry).
+
+It also carries the three traps this project has each paid for once: a ROM
+filename no archive uses makes a gate SKIP, exit 0 and count green (Quadra 630
+in August, the Mac II beyond pair this morning); a NuBus board on the synthetic
+declaration ROM boots System 6 and draws no System 7 Finder; and `drVolAtrb`
+bit 8 gets read before anyone theorises about the code.
+
+The success measure stays what it was when the item was written: the diff that
+adds the next machine, not a count of `#include` lines.
+
+With this the six reservations of the 2026-08-26 review are all discharged in
+one day. What each leaves behind is smaller and named: read the first GCC
+warning census then flip `-Werror`; turn `detect_leaks` on with its own triage;
+wire the execution census into CI; and an asset-free gate for the six CPU
+wrappers coverage says never run.
 
 <a id="2026-08-27-lle-registry-owned"></a>
 ## 2026-08-27 (ninth) — The LLE verdict stops being a process global: a session owns its registry, and every consumer reads that one

@@ -759,6 +759,69 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
 
 ---
 
+### 2.12 Adding a platform — the check-list, derived rather than remembered
+
+Written 2026-08-27 for the sixth item of the 2026-08-26 review, which measured
+the cost of a new family as "considerable cross-cutting knowledge". The cost is
+real; what was missing is that it was never *enumerated*. This list is derived
+from what the last platform actually touched — the PowerBook Duo, `5c6e3f6`
+(the board) then `b407929` (the profile) — re-expressed in today's structure,
+and every line was checked against the tree by grepping for `Duo230`.
+
+**The board** — new code, one concern per file:
+
+1. `src/<Family>Memory.{h,cpp}`: the address map, the I/O decode, `cpuHz`, the
+   PRAM store (`loadPram`/`savePram` — all twelve have one, but the *store*
+   differs: discrete RTC, Egret/Cuda XPRAM, or the PMU's own RAM).
+2. `src/<Family>Cpu.{h,cpp}`: the CPU wrapper — bus seam, interrupts, the JIT
+   engine, `sync()`/`catchUp()` discipline.
+3. Any genuinely new part (`M68hc05Pge.*` + `PgePmu.*` were the Duo's).
+
+**The profile** — one row and one tag each, and `docs_test` compares several of
+them with the code:
+
+4. `src/MachineCatalog.h`: one `kMachineProfiles` row (label, slug, runner kind,
+   platform/CPU family, `SnapMachine` id, ROM path and checksum) **and** the
+   `SnapMachine` enumerator itself.
+5. `src/MachineFactory.cpp`: the ROM-checksum branch that selects it.
+6. `src/SaveStateMachines.{h,cpp}`: a `save`/`load` pair for the new memory+CPU.
+7. `src/Platform<Family>.cpp` and `src/GuiRunner<Family>.h`: typed construction
+   and the render loop — or, if it is a sibling of an existing board, one more
+   descriptor row in the family's existing runner spec.
+
+**The proof** — a platform without gates is a claim, not coverage:
+
+8. `tests/<slug>_boot_etalon.cpp` + its registration in
+   `cmake/Pom68kMachineGates.cmake`.
+9. `cmake/Pom68kGatePolicy.cmake`: add the slug to `POM68K_ETALON_CORE` if it is
+   a new *platform* (one profile per platform, enforced at configure time), and
+   **check the `m030`/`m040` label regexes** — they match name fragments, and a
+   name they do not match drops the gate out of its family tier silently
+   (that is the 2026-08-12 `quadra_event_scheduler` bug).
+10. A beyond-boot pair (`*_soak_etalon` / `*_persist_etalon`) through
+    `tests/BeyondBoot.h`. Boot proves the machine starts; the pair proves it
+    keeps running and writes.
+11. `assets.lock`: the ROM identity with this profile's slug —
+    `tools/verify_assets.py` requires every catalogue profile exactly once
+    among the `machine-rom` rows, so a profile with no asset row fails.
+
+**The record**: `CLAUDE.md`'s machine table and profile count (compiled and
+compared by `docs_test`), `DEV.md` § 2.x, a `docs/*_BRINGUP.md` if the board
+needed research, and a dated `CHANGELOG.md` entry.
+
+**Three traps this list exists to stop repeating**, each paid for once:
+
+- **the ROM filename**: a gate that names a ROM under a spelling no archive uses
+  SKIPs, exits 0 and counts green — the Quadra 630 (2026-08-06) and the Mac II
+  beyond pair (2026-08-27). Use the same lookup its sibling gates use, and check
+  with `tools/gate_execution_census.py` that the gate actually RAN.
+- **the declaration ROM**: a NuBus board on the synthetic decl ROM boots System
+  6 and draws no System 7 Finder (2026-08-27).
+- **the volume**: read `drVolAtrb` bit 8 on the image before theorising about
+  the code. Every gate prints it.
+
+---
+
 ## 3. Devices shared across platforms
 
 ### 3.1 Storage: IWM + Sony 800K GCR

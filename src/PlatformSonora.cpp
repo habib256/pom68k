@@ -2,6 +2,18 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "PlatformCompositionSupport.h"
+
+// This composer's own family — see the header's note on the fan-in.
+#include "SonoraMemory.h"
+#include "SonoraCpu.h"
+#include "SonoraVideo.h"
+#include "VaspMemory.h"
+#include "VaspCpu.h"
+#include "VaspVideo.h"
+#include "RbvMemory.h"
+#include "RbvCpu.h"
+#include "RbvVideo.h"
+
 #include "GuiRunnerSonora.h"
 
 using pom68k::gui::SonoraRunnerSpec;
