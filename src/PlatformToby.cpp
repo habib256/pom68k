@@ -2,6 +2,14 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "PlatformCompositionSupport.h"
+
+// This composer's own family — see the header's note on the fan-in.
+#include "Cpu020.h"
+#include "MacIIMemory.h"
+#include "TobyVideo.h"
+#include "IIfxCpu.h"
+#include "IIfxMemory.h"
+
 #include "GuiRunnerToby.h"
 
 using pom68k::gui::TobyRunnerSpec;

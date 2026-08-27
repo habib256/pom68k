@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 302 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 303 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -88,7 +88,7 @@ it.
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur le matériel cible |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Cinq des six posés le 2026-08-27 → item 6 : la check-list « nouvelle plateforme » et la découpe de l'en-tête parapluie |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | **Les six posées le 2026-08-27** ; ce qui reste sont les suites nommées sous chaque item (fuites ASan, recensement en CI, gate CPU sans assets) |
 | **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
 | **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
@@ -459,8 +459,9 @@ et les deux premières sont les moins chères de tout ce fichier. **Les items 1,
 posés depuis le 2026-08-27** — et chacun a payé son écriture le jour même :
 six défauts pour les avertissements, une course de données pour les
 sanitizers, deux gates qui n'avaient jamais tourné pour le recensement, et
-cinq enveloppes CPU jamais exécutées sans assets pour la couverture. Il ne
-reste que l'item 6.
+cinq enveloppes CPU jamais exécutées sans assets pour la couverture, et un
+en-tête parapluie qui nommait les douze familles pour le fan-in. **Les six
+sont posées** ; chaque item garde sa ligne de suite, plus petite et chiffrée.
 
 - [x] **1. Politique d'avertissements — POSÉE le 2026-08-27.**
   `POM68K_WARNINGS` (ON) met `-Wall -Wextra` sur les cibles POM68K et sur
@@ -556,17 +557,24 @@ reste que l'item 6.
   (`src/jit/JitConfig.h:241`) et le cache d'options par thread de
   `JitBackendA64.cpp`. Un thread = une machine reste vrai ; cette ligne est
   leur condition de réouverture, pas une dette ouverte.
-- [ ] **6. Le fan-in de composition.** `src/PlatformCompositionSupport.h` inclut
-  pratiquement toutes les mémoires, CPU et vidéos des douze familles : ajouter
-  une famille demande encore une connaissance transversale considérable.
-  **Ne pas répondre par une abstraction virtuelle du bus** — le chemin chaud la
-  paierait, et la revue le déconseille explicitement. À faire : (a) écrire dans
-  `DEV.md` la *check-list d'une nouvelle plateforme* — ligne de catalogue, tag
-  `SnapMachine`, compositeur `Platform*`, spec de runner, paire save-state,
-  gates boot puis soak/persist, ligne `assets.lock` — pour que ce coût soit
-  énuméré au lieu d'être appris ; (b) scinder l'en-tête parapluie par famille,
-  chaque compositeur n'incluant que ses propres têtes. **La mesure de succès est
-  le diff d'ajout de la prochaine machine, pas un compte d'`#include`.**
+- [x] **6. Le fan-in de composition — traité le 2026-08-27, dans les deux sens
+  que la revue demandait.** (a) `DEV.md` § 2.12 énumère le coût d'une nouvelle
+  plateforme — la carte, le profil, la preuve, la trace — **dérivé de ce que le
+  Duo a réellement touché** (`5c6e3f6` puis `b407929`), ré-exprimé dans la
+  structure actuelle et vérifié ligne par ligne en cherchant `Duo230` dans
+  l'arbre ; avec les trois pièges qui ont chacun été payés une fois (le nom de
+  fichier ROM qui fait skipper en silence, la ROM de déclaration sans laquelle
+  System 7 ne dessine aucun Finder, le `drVolAtrb` bit 8). (b)
+  `PlatformCompositionSupport.h` **ne nomme plus aucun matériel** : il passe de
+  68 à 41 lignes et ne porte que le contrat d'hôte, le catalogue, les façades
+  typées et les services de processus ; chaque `Platform*.cpp` inclut sa propre
+  famille. Ajouter une famille touche désormais son composeur, pas un en-tête
+  que les six composeurs relisent.
+  **Ce qui n'a pas été fait, et volontairement** : aucune abstraction virtuelle
+  du bus. La revue le déconseillait, le chemin chaud la paierait, et rien dans
+  la mesure ne la réclame.
+  *La mesure de succès reste celle qui a été annoncée* : le diff d'ajout de la
+  prochaine machine, pas un compte d'`#include`.
 
 **Réserve transverse, sans case à cocher : `docs_test` teste la forme.** Ses
 1 918 lignes vérifient des noms, des chaînes et des ordres de construction, et

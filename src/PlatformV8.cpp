@@ -2,6 +2,12 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "PlatformCompositionSupport.h"
+
+// This composer's own family — see the header's note on the fan-in.
+#include "Cpu030.h"
+#include "V8Memory.h"
+#include "V8Video.h"
+
 #include "GuiRunnerV8.h"
 
 using pom68k::gui::V8RunnerSpec;

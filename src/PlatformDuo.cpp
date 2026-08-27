@@ -2,6 +2,11 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "PlatformCompositionSupport.h"
+
+// This composer's own family — see the header's note on the fan-in.
+#include "MscCpu.h"
+#include "MscMemory.h"
+
 #include "GuiRunnerDuo.h"
 
 using pom68k::gui::DuoRunnerSpec;

@@ -2,6 +2,19 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "PlatformCompositionSupport.h"
+
+// This composer's own family — see the header's note on the fan-in.
+#include "Cpu040.h"
+#include "Q605Memory.h"
+#include "CentrisMemory.h"
+#include "CentrisCpu.h"
+#include "Q700Memory.h"
+#include "Q700Cpu.h"
+#include "Q630Memory.h"
+#include "Q630Cpu.h"
+#include "VideoBeam.h"
+#include "MacAudioHost.h"
+
 #include "GuiRunnerDafb.h"
 
 using pom68k::gui::DafbRunnerSpec;

@@ -3,44 +3,17 @@
 
 #pragma once
 
+// Shared by every composer, and nothing else: the host contract, the catalogue,
+// the typed facades and the process services. The HARDWARE headers used to live
+// here too -- all twelve families' memories, CPUs and video decoders in one
+// umbrella, which is what the 2026-08-26 review called the composition fan-in
+// (TODO.md 0.B item 6). Each Platform*.cpp now includes its own family, so
+// adding a family touches its own composer instead of a header every composer
+// reads.
 #include "MachineHost.h"
 #include "MachineCatalog.h"
 #include "PlatformFamilyComposers.h"
 #include "GuiHostServices.h"
-#include "Cpu68k.h"
-#include "MacMemory.h"
-#include "MacVideo.h"
-#include "MacFrame.h"
-#include "MacAudio.h"
-#include "MacAudioHost.h"
-#include "DemoRom.h"
-#include "Cpu030.h"
-#include "V8Memory.h"
-#include "V8Video.h"
-#include "SonoraMemory.h"
-#include "SonoraVideo.h"
-#include "SonoraCpu.h"
-#include "VaspMemory.h"
-#include "VaspVideo.h"
-#include "VaspCpu.h"
-#include "RbvMemory.h"
-#include "RbvVideo.h"
-#include "RbvCpu.h"
-#include "Cpu040.h"
-#include "Q605Memory.h"
-#include "CentrisMemory.h"
-#include "CentrisCpu.h"
-#include "Q700Memory.h"
-#include "Q700Cpu.h"
-#include "Q630Memory.h"
-#include "Q630Cpu.h"
-#include "Cpu020.h"
-#include "IIfxCpu.h"
-#include "IIfxMemory.h"
-#include "MscCpu.h"
-#include "MscMemory.h"
-#include "MacIIMemory.h"
-#include "TobyVideo.h"
 
 #include <algorithm>
 #include <atomic>
