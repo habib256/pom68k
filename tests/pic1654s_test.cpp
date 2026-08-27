@@ -30,7 +30,7 @@ static uint16_t MOVLW(uint8_t k){ return uint16_t(0xC00 | k); }
 static uint16_t MOVWF(uint8_t f){ return uint16_t(0x020 | (f & 0x1F)); }
 static uint16_t ADDWF(uint8_t f,int d){ return uint16_t(0x1C0 | (d?0x20:0) | (f&0x1F)); }
 static uint16_t SUBWF(uint8_t f,int d){ return uint16_t(0x080 | (d?0x20:0) | (f&0x1F)); }
-static uint16_t INCF (uint8_t f,int d){ return uint16_t(0x280 | (d?0x20:0) | (f&0x1F)); }
+[[maybe_unused]] static uint16_t INCF (uint8_t f,int d){ return uint16_t(0x280 | (d?0x20:0) | (f&0x1F)); }
 static uint16_t BSF  (uint8_t f,int b){ return uint16_t(0x500 | (b<<5) | (f&0x1F)); }
 static uint16_t BTFSS(uint8_t f,int b){ return uint16_t(0x700 | (b<<5) | (f&0x1F)); }
 static uint16_t SWAPF(uint8_t f,int d){ return uint16_t(0x380 | (d?0x20:0) | (f&0x1F)); }

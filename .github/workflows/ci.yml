@@ -59,7 +59,25 @@ jobs:
           if-no-files-found: error
 
       - name: Build POM68K + all tests
-        run: cmake --build build -j"$(nproc)"
+        # POM68K_WARNINGS is ON by default since 2026-08-27, so this build is
+        # also the GCC half of the warning inventory: clang reported zero on
+        # the whole tree, and g++ 13 does not warn about the same things.
+        # Census, never a gate — the -Werror flip waits on a clean run here
+        # (TODO.md § 0·B item 1).
+        run: |
+          set -o pipefail
+          cmake --build build -j"$(nproc)" 2>&1 | tee "${{ runner.temp }}/build.log"
+
+      - name: GCC warning census (non-blocking)
+        if: always()
+        run: |
+          LOG="${{ runner.temp }}/build.log"
+          # Paths come out absolute or ../-relative depending on the
+          # generator, so select by what is NOT ours instead.
+          OURS=$(grep "warning:" "$LOG" | grep -v "extern/\|/imgui/" || true)
+          echo "warnings in POM68K's own sources: $(printf '%s' "$OURS" | grep -c warning: || true)"
+          printf '%s\n' "$OURS" | grep -o "\[-W[a-z0-9-]*\]" | sort | uniq -c | sort -rn || true
+          printf '%s\n' "$OURS" | head -50
 
       - name: Smoke-launch (--version exits before any window)
         run: |

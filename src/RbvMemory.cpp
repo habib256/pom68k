@@ -14,7 +14,7 @@ RbvMemory::RbvMemory(const pom68k::CoreConfig& coreConfig,
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF),
       egret_(via_, false, int(cpuHz)),
       egretLle_(via_, cpuHz, CudaLle::Flavor::Egret),
-      totalRam_(totalRam), cpuHz_(cpuHz), iici_(iici) {
+      iici_(iici), totalRam_(totalRam), cpuHz_(cpuHz) {
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     egret_.configure(coreConfig.peripherals.appleTalkPram,
                      coreConfig.peripherals.egretCommandTrace);

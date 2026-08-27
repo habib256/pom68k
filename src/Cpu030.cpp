@@ -185,7 +185,7 @@ void Cpu030::enableFpuLog(const std::string& path, size_t ringSize) {
 
 // willExecute fires just before the exception is taken: reg.pc0 is still
 // the faulting instruction, the register file is untouched.
-void Cpu030::willExecute(moira::M68kException exc, moira::u16 vector) {
+void Cpu030::willExecute(moira::M68kException /*exc*/, moira::u16 vector) {
     if (fpuLog_ && vector == 11) {          // Line-F / F-line emulator vector
         // A crashed app re-triggers the Line-F handler thousands of times a
         // frame; writing the file per hit would freeze the GUI (the "souris

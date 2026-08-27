@@ -170,14 +170,6 @@ void dump(const char* name, const Screen& s) {
     fclose(fp);
 }
 
-long countNeedle(const std::vector<uint8_t>& hay, const char* needle) {
-    size_t n = std::strlen(needle);
-    long c = 0;
-    for (size_t i = 0; i + n <= hay.size(); i++)
-        if (std::memcmp(&hay[i], needle, n) == 0) c++;
-    return c;
-}
-
 // Boot (or reboot) to a settled Finder: the boot etalon's sparse-sampling
 // loop, stopping only on the full signature. The persist reboot mounts a
 // volume the hard reset left dirty (drVolAtrb bit 8 clear), and 8.1's

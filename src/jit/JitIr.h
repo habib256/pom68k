@@ -1026,8 +1026,8 @@ struct Instr {
     uint16_t terminalIrd = 0;    // queue at that same boundary
     uint16_t terminalIrc = 0;
     bool terminalQueueValid = false;
-    MemoryContract memory;
-    InstructionSemantics semantics;
+    MemoryContract memory{};          // `{}`: filled after the aggregate
+    InstructionSemantics semantics{}; // init, and -Wextra flags Instr{...}
 
     // The architectural instruction payload. Ten extension words cover the
     // maximum 68020-family instruction length (22 bytes including opcode).
@@ -1038,7 +1038,7 @@ struct Instr {
     uint8_t extensionCount = 0;
     std::array<DecodedEffectiveAddress, 2> effectiveAddresses{};
     uint8_t effectiveAddressCount = 0;
-    ControlFlowPlan control;
+    ControlFlowPlan control{};   // filled after the aggregate init, like memory
 
     uint16_t extensionWord(unsigned index) const {
         return index < extensionCount ? extensions[index] : 0;

@@ -49,7 +49,7 @@ class GuiShell {
 public:
     GuiShell(GuiSessionState& state, GuiSessionObjects& objects,
              const app::RuntimeConfig& config)
-        : state_(state), objects_(objects), config_(config),
+        : state_(state), objects_(objects),
           smoke_(config.diagnostics().smokeReport) {}
 
     GuiWindowSession* openWindow(int width, int height,
@@ -95,7 +95,6 @@ private:
 
     GuiSessionState& state_;
     GuiSessionObjects& objects_;
-    const app::RuntimeConfig& config_;
     GuiSmokeScenario smoke_;
 };
 

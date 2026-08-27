@@ -137,14 +137,6 @@ static void dump(const char* name, const std::vector<uint32_t>& fb) {
     fclose(fp);
 }
 
-static long countNeedle(const std::vector<uint8_t>& hay, const char* needle) {
-    size_t n = std::strlen(needle);
-    long c = 0;
-    for (size_t i = 0; i + n <= hay.size(); i++)
-        if (std::memcmp(&hay[i], needle, n) == 0) c++;
-    return c;
-}
-
 // The menu bar stays visible whatever windows are open — so this is the
 // liveness check to use once the guest has been made to open something.
 // `finderUp()` also samples the DESKTOP, which a new window covers: that
@@ -506,14 +498,14 @@ int main() {
         // Locate what appeared: the newly mounted volume's icon IS the
         // region that changed, so the gate does not have to hard-code a
         // desktop position that differs per image and per screen size.
-        long cx = 0, cy = 0, n = 0;
+        long n = 0;
         int x0 = 512, x1 = -1, y0 = 384, y1 = -1;
         for (int y = 0; y < 384; y++)
             for (int x = 0; x < 512; x++) {
                 size_t i = size_t(y) * 512 + x;
                 if (i < beforeIns.size() && i < afterIns.size() &&
                     beforeIns[i] != afterIns[i]) {
-                    cx += x; cy += y; n++;
+                    n++;
                     x0 = std::min(x0, x); x1 = std::max(x1, x);
                     y0 = std::min(y0, y); y1 = std::max(y1, y);
                 }
@@ -599,13 +591,13 @@ int main() {
         {
             std::vector<uint32_t> postGesture;
             screen(postGesture);
-            long cgx = 0, cgy = 0, ng = 0;
+            long ng = 0;
             int gx0 = 512, gx1 = -1, gy0 = 384, gy1 = -1;
             for (int y = 0; y < 384; y++)
                 for (int x = 0; x < 512; x++) {
                     size_t i = size_t(y) * 512 + x;
                     if (preGesture[i] != postGesture[i]) {
-                        cgx += x; cgy += y; ng++;
+                        ng++;
                         gx0 = std::min(gx0, x); gx1 = std::max(gx1, x);
                         gy0 = std::min(gy0, y); gy1 = std::max(gy1, y);
                     }

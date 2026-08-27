@@ -253,7 +253,11 @@ if(NOT EXISTS "${MOIRA_DIR}/Moira.cpp")
     message(FATAL_ERROR "Moira not found in ${MOIRA_DIR} — restore extern/moira from git.")
 endif()
 add_library(moira STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
-target_include_directories(moira PUBLIC ${MOIRA_DIR})
+# SYSTEM: our own TUs include Moira.h, and 756 of the 798 warnings the first
+# -Wall -Wextra pass produced came from its inlines. The fork is edited
+# deliberately, patch group by patch group (extern/moira/POM68K_VENDOR.md);
+# rewriting upstream's unused-parameter style is not one of those edits.
+target_include_directories(moira SYSTEM PUBLIC ${MOIRA_DIR})
 target_link_libraries(moira PUBLIC softfloat68k)
 if(NOT MSVC)
     target_compile_options(moira PRIVATE -Wno-unused-parameter -Wno-unused-variable)
@@ -478,4 +482,46 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     include(cmake/Pom68kJitGates.cmake)
     include(cmake/Pom68kDevTools.cmake)
     include(cmake/Pom68kGatePolicy.cmake)
+endif()
+
+# ─── Warning policy — POM68K's own targets, and nothing else ──────────────
+# Until 2026-08-27 this tree compiled with NO -Wall/-Wextra anywhere: the only
+# -W* flag in it was the -Wno-unused-* silencing Moira. That is a strange gap
+# in a codebase full of raw memory, generated code, threads and serialization,
+# and it was the first item of the 2026-08-26 review (TODO.md § 0·B).
+#
+# The flags go on POM68K's targets only. `extern/` noise is not ours to fix,
+# and Dear ImGui's sources compile INSIDE our GUI target, so they are silenced
+# per source file rather than by dropping the policy for the whole target.
+#
+# POM68K_WERROR is CI's switch, not a developer's: a wall of warnings in a
+# local build stops the work, the same wall in CI closes the door. It stays
+# OFF here until a GCC 13 run has been read — this host has clang only, and
+# the two compilers do not warn about the same things.
+option(POM68K_WARNINGS "Compile POM68K's own targets with -Wall -Wextra" ON)
+option(POM68K_WERROR   "Treat those warnings as errors (CI only)" OFF)
+if(POM68K_WARNINGS AND NOT MSVC)
+    set(pom68k_warning_flags -Wall -Wextra)
+    if(POM68K_WERROR)
+        list(APPEND pom68k_warning_flags -Werror)
+    endif()
+    # Every target defined in THIS directory scope is ours: the five cmake/
+    # modules are include()d, not add_subdirectory()d, so their gates are here
+    # too. softfloat lives in its own scope and never sees these flags; moira
+    # is ours by name and excluded on purpose (see its SYSTEM include above).
+    get_property(pom68k_targets DIRECTORY . PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(pom68k_target IN LISTS pom68k_targets)
+        get_target_property(pom68k_target_type ${pom68k_target} TYPE)
+        if(pom68k_target STREQUAL "moira"
+           OR pom68k_target_type STREQUAL "INTERFACE_LIBRARY"
+           OR pom68k_target_type STREQUAL "UTILITY")
+            continue()
+        endif()
+        target_compile_options(${pom68k_target} PRIVATE ${pom68k_warning_flags})
+    endforeach()
+    if(IMGUI_SOURCES)
+        set_source_files_properties(${IMGUI_SOURCES}
+                                    PROPERTIES COMPILE_OPTIONS -w)
+    endif()
+    message(STATUS "POM68K warnings: -Wall -Wextra (-Werror: ${POM68K_WERROR})")
 endif()

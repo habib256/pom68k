@@ -20,7 +20,7 @@ public:
     virtual void write8(uint32_t slotOff, uint8_t v) = 0;
     virtual void write16(uint32_t slotOff, uint16_t v) = 0;
     virtual void write32(uint32_t slotOff, uint32_t v) = 0;
-    virtual void tick(int cpuCycles) {}
+    virtual void tick(int /*cpuCycles*/) {}
 };
 
 class NuBus {
