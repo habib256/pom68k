@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 308 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 309 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 34 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 38 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 39 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 11 |
@@ -171,6 +171,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](CHANGELOG.md#2026-08-14-flux-separator)
 - **2026-08-15 (third)** — [The IWM's cell window was counted in the wrong clock, and no floppy had mounted anywhere but the compacts since](CHANGELOG.md#2026-08-15-iwm-window-clock)
 - **2026-08-25 (fifth)** — [The last SPI/CB1 alternative gets its verdict: one interrupt per byte still yields zero SCSI selections](CHANGELOG.md#2026-08-25-pge-cb1byte-retired)
+- **2026-08-27 (sixteenth)** — ["7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed](CHANGELOG.md#2026-08-27-hotfloppy)
 
 ## Video — decoders, the raster beam, DAFB
 

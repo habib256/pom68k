@@ -9,10 +9,10 @@
 
 CMakeLists.txt                              550
 cmake/Pom68kComponentGates.cmake            422
-cmake/Pom68kDevTools.cmake                  115
+cmake/Pom68kDevTools.cmake                  116
 cmake/Pom68kGatePolicy.cmake                313
 cmake/Pom68kJitGates.cmake                  554
-cmake/Pom68kMachineGates.cmake              693
+cmake/Pom68kMachineGates.cmake              707
 src/AfpServer.cpp                        1129
 src/jit/backends/JitBackendA64.cpp       4349
 src/jit/backends/JitBackendX64.cpp       3919

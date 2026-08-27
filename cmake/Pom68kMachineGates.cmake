@@ -286,6 +286,20 @@ foreach(scenario soak persist launch)
                          TIMEOUT 1800)
 endforeach()
 
+# The section 1 report "System 7.5.5 refuses a hot-inserted GCR floppy on
+# SWIM2", run as the experiment it always needed (2026-08-27): Quadra 605,
+# the 7.5.5 volume the report names rather than the gates' 8.1 one, and an
+# 800K GCR image inserted MID-RUN. It mounts. What the report saw was the
+# modal alert this volume opens at every boot -- a machine sitting in a
+# dialog polls nothing -- so the gate dismisses the alert first, then proves
+# the mount from BOTH sides: the guest stepped the head off track 0, and the
+# desktop gained an icon. Either half alone lies.
+add_executable(q605_hotfloppy_etalon tests/q605_hotfloppy_probe.cpp)
+target_link_libraries(q605_hotfloppy_etalon PRIVATE pom68k_core)
+add_test(NAME q605_hotfloppy_etalon COMMAND q605_hotfloppy_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_hotfloppy_etalon PROPERTIES TIMEOUT 1800)
+
 # Beyond-boot on the THIRD machine (TODO §2, the freshness tail): the
 # Macintosh IIvx — VASP + Egret 341S0851 + 68030, 640×480×8. Same two
 # scenarios. Chosen over the RBV siblings because physical low RAM IS

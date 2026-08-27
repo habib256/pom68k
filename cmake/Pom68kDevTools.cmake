@@ -61,6 +61,7 @@ target_link_libraries(q605_rogue_census PRIVATE pom68k_core)
 add_executable(lcii_simcity_census EXCLUDE_FROM_ALL tests/lcii_simcity_census.cpp)
 target_link_libraries(lcii_simcity_census PRIVATE pom68k_core)
 
+
 # All dev tools below are EXCLUDE_FROM_ALL — not built by `make`/`ctest`
 # (each relinks the core with LTO = slow); build on demand by name,
 # e.g. `make q605_trace`.

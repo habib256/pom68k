@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 308 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 309 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -10,8 +10,8 @@ in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-27): **232 gates** — 111
-  `unit`, 86 `asset-none`, 9 `smoke`, 40 `jit`, 52 `m040`, 54 `m030`, 120
+  somewhere.** The documented registry (2026-08-27): **233 gates** — 111
+  `unit`, 86 `asset-none`, 9 `smoke`, 40 `jit`, 53 `m040`, 54 `m030`, 121
   `etalon`, 12 `etalon-core`. Five are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
@@ -665,18 +665,23 @@ exits 0 and is counted green by `ctest`.
   it. Not a registered CTest, so nothing is red today, and it was left alone
   rather than fixed blind — the sweep needs every OS image to re-calibrate.
   Next: run the sweep, then give it `FinderSignature.h` too.
-- [ ] **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines** —
-  reported in the GUI, **not reproduced headless**. Judged on the desktop (the
-  mounted volume's icon, screen-diff) rather than on `nibblesRead` — an
-  IWM-only counter that reads 0 on SWIM2 and produced a night of false
-  negatives (`CHANGELOG.md` 2026-08-04 (soir), retraction) — the plain tree
-  mounts the disk under 7.5.5 on the Quadra. So the difference lives in the GUI
-  path, not the SWIM2 model: a machine-thread insert against a running
-  emulation, live PRAM/Finder state, the actual image on the actual profile.
-  Next: reproduce IN THE GUI with `POM68K_FLOPPY` unset, insert from the
-  Disques window, and compare that `Swim2` dialogue against the headless one.
-  Only then a gate — "Q605 + 7.5.5 boot volume + hot GCR insert mounts" —
-  which must fail on today's tree before it is worth anything.
+- [x] **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 — CLOSED
+  2026-08-27, and it was never the floppy path.** Run at last as the
+  experiment the item asked for: the Quadra 605 on the **7.5.5 volume the
+  report names** (not the gates' Mac OS 8.1 one), an 800K GCR image inserted
+  **mid-run**, judged on the desktop. First result looked like a confirmation
+  — 0.00 % of the screen moved — until the screenshot was read: this volume
+  opens a **modal alert at every boot** ("the alias 'Infinite HD' could not be
+  opened"), and a machine sitting in a dialog polls nothing. Four Return taps
+  later the same insert mounts: the head steps 0 → 4 and the desktop gains a
+  "Rogue" icon. Same family as the LC II INIT-DIALOG retraction and the Duo's
+  Stickies: **the gesture belongs to whoever is in front, and a dialog eats
+  everything.**
+  Now a gate — `q605_hotfloppy_etalon`, two-sided because either half lies: a
+  desktop can change for a dialog, and a head can step with nothing appearing.
+  *Ce que ça ne prouve pas* : que la session GUI de l'utilisateur avait bien
+  cette alerte. Si le rapport revient sur un volume qui n'en ouvre aucune,
+  l'item se rouvre avec cette mesure comme point de départ, pas comme réponse.
 - [ ] **"Beeps sound wrong / differ per letter"** (field report): the beep
   itself was the Slow Keys rejection beep — expected, and it stopped when the
   8.1 image was cleaned (2026-08-02). What remains is the unrelated half:
