@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 305 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 306 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (thirteenth)** — [The leak hunt, run with the platform's tool because LeakSanitizer does not exist here: 0 leaks in 78 binaries](#2026-08-27-leaks)
 - **2026-08-27 (twelfth)** — [Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way](#2026-08-27-census-strict)
 - **2026-08-27 (eleventh)** — [The six CPU wrappers coverage caught at 0.00 % now run on every host: 48 unreached files down to 36](#2026-08-27-cpu-wrapper-smoke)
 - **2026-08-27 (tenth)** — [The composition umbrella stops naming twelve families, and the cost of a new platform gets enumerated instead of remembered](#2026-08-27-composition-fanin)
@@ -647,6 +648,31 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-leaks"></a>
+## 2026-08-27 (thirteenth) — The leak hunt, run with the platform's tool because LeakSanitizer does not exist here: 0 leaks in 78 binaries
+
+The sanitizer item left "turn `detect_leaks` on with its own triage" open, and
+it could not be done the obvious way: LeakSanitizer ships enabled with ASan on
+Linux and is **absent on macOS/arm64**, so the host that does the measuring
+cannot run that leg at all. Skipping the item on that basis would have been the
+easy answer; the platform has its own tool.
+
+`leaks --atExit` over **all 78 gate binaries of the asset-free tier**:
+**0 leaks for 0 total leaked bytes**, every one of them. The GUI binary,
+driven through its smoke scenario, reports 288 leaks for 18.8 KB — and every
+one belongs to Apple: `NSXPCConnection` root cycles created by
+`AppIntents`/`LinkServices` when a GUI process registers itself, with dispatch
+mach ports and blocks hanging off them. Grepping the leak stacks for a POM68K
+frame returns nothing.
+
+So the tree's own allocation discipline is clean on this runtime, and the
+nightly gains a `detect_leaks=1` step that is **non-blocking on purpose**: it
+exists to learn what a different runtime (glibc, X11 under Xvfb, GLFW, GCC's
+own allocations) says, not because the code is suspected. It is flipped to
+blocking after its first report has been read — the same sequencing as
+`-Werror`, and for the same reason: a gate that goes red on a runtime nobody
+has read yet gets disabled rather than fixed.
 
 <a id="2026-08-27-census-strict"></a>
 ## 2026-08-27 (twelfth) — Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way
