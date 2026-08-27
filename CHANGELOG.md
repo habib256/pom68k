@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 307 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 308 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (fifteenth)** — [SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so](#2026-08-27-simcity-census)
 - **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](#2026-08-27-q605-launch)
 - **2026-08-27 (thirteenth)** — [The leak hunt, run with the platform's tool because LeakSanitizer does not exist here: 0 leaks in 78 binaries](#2026-08-27-leaks)
 - **2026-08-27 (twelfth)** — [Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way](#2026-08-27-census-strict)
@@ -649,6 +650,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-simcity-census"></a>
+## 2026-08-27 (fifteenth) — SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so
+
+The chantier named this morning has its first measurement.
+`tests/lcii_simcity_census.cpp` boots an LC II on `hdv/GISTPERSO-boot.vhd`,
+navigates the Finder by keyboard in three hops — the `SimCity2000` folder, its
+`SIM VILLES` folder of saved cities, then a city DOCUMENT, because opening a
+document launches the application and loads the save in one gesture — and then
+plays for two emulated minutes. Evidence it really ran: **93.8 % of the screen
+changed, +460 SCSI commands**, and the phase screenshot shows the city
+simulating.
+
+**The application phase: 55.4 M instructions, 98.2 % native** on the AArch64
+backend. Family profile: `move` 38.5 %, `alu` 29.1 %, `branch` 22.6 %,
+`muldiv` 1.0 %, UNSAFE 0.5 %.
+
+**The fallback histogram is the result**, 80.5 M fallbacks in that phase:
+
+| opcode | share | what it is |
+|---|---|---|
+| `D1F0` | **53.2 %** | `ADDA.L` with an indexed effective address |
+| `E9D0`, `EFD1` | 14.8 % | 68020 bitfield instructions |
+| `81FC`, `8DFC`, `8FFC`, `4C40` | 11.5 % | word and long division |
+| `6000`, `4EB0` | 6.8 % | branches |
+| `24D8`, `28C0`, `2499` | 5.1 % | `(An)+ -> (An)+`, runtime access fallbacks |
+
+**And the contrast with the idle Finder is the point, not a decoration.** In
+the idle phase of the same run, `4EB0` — JSR — is **95.1 %** of fallbacks by
+itself, and `D1F0` does not appear. A generator tuned on the idle-Finder
+census is tuned on the wrong opcode. This project has said for weeks that the
+idle Finder is not a workload; it now has the number that shows it.
+
+Work order for the engine, in the order the histogram gives: `D1F0` first —
+one form is half the fallbacks under real load; then bitfields, which no
+backend emits at all; then division, still interpreted. The four proofs each
+promotion needs are unchanged (identical fingerprint, repeated gain, targeted
+gates, a full `etalon` tier).
+
+**Three traps were paid for building the instrument**, written down so they
+are not paid twice: the Egret **holds the CPU at power-on**, and without
+`while (mem.cpuHeld()) mem.tick(1000);` the machine runs for ever without
+issuing one SCSI command; `jit::defaultResolvedConfig()` ignores
+`POM68K_JIT_HISTO` now that JIT configuration is injected, so the first
+complete run produced a perfect census and printed nothing
+(`testjit::resolveFromEnvironment()` is the fix); and the Finder's type-select
+window is about a second, so holding each key for 30 frames selects the first
+item three times instead of accumulating a prefix — the phase dumps showed it
+landing in the wrong folder.
+
+It is a measurement, not a gate: `EXCLUDE_FROM_ALL`, no CTest entry, no
+threshold. It exits 1 only when the screen barely moved, because an idle
+census reported as an application census would be worse than no number.
 
 <a id="2026-08-27-q605-launch"></a>
 ## 2026-08-27 (fourteenth) — The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose

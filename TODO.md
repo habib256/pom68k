@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 307 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 308 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -955,10 +955,47 @@ lance le jeu **traverse forcément ce chemin** : soit la mesure ferme la dette
 en passant, soit elle la reproduit de façon déterministe, ce qu'aucune passe
 n'a encore fait. C'est un argument de plus pour ce chantier, pas contre.
 
-**Le bon premier pas** : reprendre `tests/q605_rogue_census.cpp` comme
-squelette (il possède déjà les phases, l'histogramme des replis et les dumps
-par phase) et le pointer sur une LC II qui lance SimCity 2000 depuis
-GISTPERSO — 030 d'abord parce que l'asset y est, 040 ensuite.
+**PREMIÈRE MESURE FAITE le 2026-08-27** — `tests/lcii_simcity_census.cpp`
+(outil de dev, `EXCLUDE_FROM_ALL`, aucun seuil) : LC II, GISTPERSO, navigation
+au clavier en trois sauts (dossier `SimCity2000` → `SIM VILLES` → un document
+ville, parce qu'**ouvrir un document lance l'application ET charge la
+sauvegarde d'un seul geste**), puis deux minutes de jeu. 93,8 % de l'écran
+change au lancement, +460 commandes SCSI, capture d'écran à l'appui : la ville
+tourne.
+
+Ce que le recensement dit de la phase applicative — **55,4 M instructions,
+98,2 % natives** (backend aarch64), profil `move` 38,5 %, `alu` 29,1 %,
+`branch` 22,6 %, `muldiv` 1,0 %, UNSAFE 0,5 % :
+
+| repli (80,5 M au total) | part | famille |
+|---|---|---|
+| `D1F0` | **53,2 %** | `ADDA.L` en EA indexée |
+| `E9D0` + `EFD1` | 14,8 % | champs de bits 68020 |
+| `81FC`, `8DFC`, `8FFC`, `4C40` | 11,5 % | divisions mot et long |
+| `6000`, `4EB0` | 6,8 % | branchements |
+| `24D8`, `28C0`, `2499` | 5,1 % | `(An)+` → `(An)+`, replis d'accès runtime |
+
+**Et le contraste avec le repos est le résultat, pas une décoration** : au
+Finder inactif, `4EB0` (JSR) fait **95,1 %** des replis à lui seul. Le profil
+applicatif n'a rien à voir — un générateur optimisé sur le Finder au repos
+travaille sur le mauvais opcode. C'est exactement ce que ce chantier
+soupçonnait, maintenant chiffré.
+
+*Suite, dans cet ordre* : (1) `D1F0` — une seule forme vaut la moitié des
+replis sous charge réelle ; (2) les champs de bits, jamais émis par aucun
+backend ; (3) la division, encore interprétée. Chaque promotion garde les
+quatre preuves habituelles (empreinte identique, gain répété, gates ciblés,
+tier `etalon` complet).
+
+**Trois pièges payés en montant l'instrument**, écrits pour ne pas l'être deux
+fois : l'Egret **tient le CPU au démarrage** (`while (mem.cpuHeld())
+mem.tick(1000);`) — sans ça la machine tourne indéfiniment sans émettre une
+seule commande SCSI ; `jit::defaultResolvedConfig()` **ignore
+`POM68K_JIT_HISTO`** depuis que la configuration JIT est injectée, donc le
+recensement tournait parfaitement et n'imprimait rien (`testjit::
+resolveFromEnvironment()`) ; et le type-select du Finder a une fenêtre d'une
+seconde, donc taper une lettre toutes les 30 frames sélectionne trois fois de
+suite le premier item au lieu d'accumuler le préfixe.
 
 Landed and documented: J0/J1 (engine seam, backends, fetch window, block cache),
 J2 (x86-64 code generator), J3 (inline DTLB), block linking, 030 + 020 seams,

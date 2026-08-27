@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 307 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 308 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 33 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 34 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 38 |
@@ -59,6 +59,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-23 (fourth)** — [A streak-growing arm backoff: +2.6 points of native share on the 030, and a 68040 lockstep divergence — REFUTED and reverted; the idle-Finder profile is flat](CHANGELOG.md#2026-08-23-arm-backoff)
 - **2026-08-23 (seventh)** — [Brief indexed EAs reach x64 host code: the shared decoder closes the address-lowering gap, with zero slow instructions on both native oracles](CHANGELOG.md#2026-08-23-x64-brief-index)
 - **2026-08-23 (tenth)** — [Four classic JIT levers implemented and priced: all exact, none faster yet; the production defaults do not regress](CHANGELOG.md#2026-08-23-four-jit-levers)
+- **2026-08-27 (fifteenth)** — [SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so](CHANGELOG.md#2026-08-27-simcity-census)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
