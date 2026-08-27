@@ -155,35 +155,6 @@ bool looksLikeFloppy(const std::string& p) {
     return !ec && n > 0 && n <= kMaxFloppyBytes;
 }
 
-// ── What block size does this disc image declare? ──────────────────────────
-// A CD target hands the guest 2048-byte blocks, because that is what a CD is.
-// Plenty of Mac "CD images" in circulation are not: they are dumps taken at
-// 512, and they say so — the Apple driver descriptor (`ER` at offset 0)
-// carries `sbBlkSize` at +2, and an image with no descriptor at all but an
-// HFS `BD` at 1024 is a bare volume in 512-byte blocks. Mac OS reads such a
-// disc through a CD drive and mounts nothing, because every partition offset
-// it computes is four times too far in.
-//
-// Measured 2026-08-15, and it is the cause the 2026-07-29 note in
-// `q605_cdrom_etalon` left open: `Apeiron_1_0_3.toast` (no DDM, `BD` at 1024)
-// does not appear on the desktop through the CD bay and mounts INSTANTLY when
-// the same bytes are attached as a 512-byte SCSI target. The fix belongs in
-// `ScsiDisk` (TODO § 1); until it lands, the window says which is which
-// instead of letting the user wonder why the disc never shows up.
-// Returns 2048, 512, or 0 when the file cannot be read.
-unsigned cdBlockSize(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return 0;
-    unsigned char h[1026] = {};
-    f.read(reinterpret_cast<char*>(h), sizeof h);
-    if (h[0] == 'E' && h[1] == 'R') {
-        const unsigned sb = unsigned(h[2]) << 8 | h[3];
-        return (sb == 512 || sb == 2048) ? sb : 2048;
-    }
-    if (h[1024] == 'B' && h[1025] == 'D') return 512;   // bare HFS at 512
-    return 2048;                                         // ISO 9660 and the rest
-}
-
 // ── Image picker ───────────────────────────────────────────────────────────
 // Returns true and fills `chosen` when the user picked something this frame.
 // The filter is what each row can actually accept: a SuperDrive takes no

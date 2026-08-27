@@ -26,7 +26,9 @@ void check(bool ok, const char* what) {
 }
 
 // IWM personality register lines (reg = line*2 + set)
-constexpr int kQ6On = 13, kQ7On = 15, kQ7Off = 14, kEnableOn = 9;
+constexpr int kQ6On = 13, kQ7On = 15;
+// Named for the map's sake; the ISM switch below drives the other two.
+[[maybe_unused]] constexpr int kQ7Off = 14, kEnableOn = 9;
 
 // Perform the ISM switch exactly like the .Sony driver: four mode-register
 // writes (q7-set odd address while idle) with bit 6 = 1,0,1,1. Two 0-bit

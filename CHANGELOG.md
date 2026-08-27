@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 293 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 294 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27** — [The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects](#2026-08-27-warning-policy)
 - **2026-08-26 (later)** — [An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog](#2026-08-26-review-backlog)
 - **2026-08-26** — [The 2,683-line GUI runtime becomes three injected responsibilities: host services, typed composers and shell](#2026-08-26-gui-runtime-split)
 - **2026-08-25 (sixth)** — [The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot](#2026-08-25-pge-adb-retired)
@@ -635,6 +636,66 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-warning-policy"></a>
+## 2026-08-27 — The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects
+
+First item of the 2026-08-26 review (`TODO.md` § 0·B). The only `-W*` flag in
+the tree was the `-Wno-unused-*` that silences Moira, so POM68K's own ~112 000
+lines had never been through the two flags every C++ project turns on first.
+
+**Measurement before policy.** A scratch configure with `-Wall -Wextra` applied
+globally produced 798 warnings on `pom68k_core` alone — and 784 of them came
+from `extern/moira/Moira/Moira.h` and `MoiraDebugger.h`, whose inlines are
+compiled inside OUR translation units, where the moira target's own
+`-Wno-unused-parameter` does not reach. That is the number that would have
+justified `-Wno-unused-parameter` project-wide and thrown away the flag's value
+for `src/`. The fork's include directory is marked `SYSTEM` instead: its
+warnings go quiet for consumers, `src/` keeps `-Wunused-parameter`, and the
+fork stays edited deliberately, patch group by patch group.
+
+Whole tree after that, product plus all ~150 gate binaries: **61 unique sites,
+187 warnings**, of which 152 were one shape — `-Wmissing-field-initializers` on
+three aggregates (`jit::Instr`, `MachineHost::Cmd`, `lle::Device`) whose
+trailing members are filled *after* the aggregate initialisation. Fixed with a
+default member initializer on each, not with 37 edited call sites: the same
+defect the AArch64 brace-init fix merged that morning had already paid for once
+(`c2f7b84`).
+
+**What the flags found that no gate could see**, all of it invisible to a green
+227/227:
+
+- `RbvMemory`'s constructor initialised `totalRam_`/`cpuHz_`/`iici_` in an
+  order the declarations did not match (`-Wreorder-ctor`) — the class of defect
+  that bites the day one member's initialiser reads another;
+- three dead functions: `byte4XorBe` (`DeclRom.cpp`), `inRange` (`NuBus.cpp`)
+  and `cdBlockSize` (`DiskBays.cpp`). The last one is the interesting one: it
+  was written on 2026-08-15 with a comment saying "the window says which is
+  which" for 512-vs-2048-byte disc images, and `git log -S` shows it never had
+  a caller in any commit. The comment described a feature that was never wired;
+  the helper is gone and the open question stays in § 1 with the CD note;
+- a private `config_` member in `GuiShell` stored and never read, from the
+  runtime split of the day before;
+- four centroid accumulators in `lcii_beyond_etalon` computed inside the
+  pixel-diff loop and never printed — the bounding box is what the gate
+  reports.
+
+**The policy.** `POM68K_WARNINGS` (ON) applies `-Wall -Wextra` to every target
+defined in the root directory scope — which is all of ours, because the five
+`cmake/` modules are `include()`d rather than added as subdirectories — minus
+`moira` by name; softfloat lives in its own scope and never sees them. Dear
+ImGui compiles inside the GUI target, so its sources are silenced per file
+rather than by dropping the policy for the whole target. `POM68K_WERROR` (OFF)
+is CI's switch, not a developer's: a wall of warnings in a local build stops
+the work, the same wall in CI closes the door.
+
+The tree now compiles **0 warnings** under clang, `-Werror` included, and
+`asset-none` 85/85 plus `unit` 108/108 are green after the edits. `-Werror` is
+NOT yet on in CI: this host has clang only, g++ 13 does not warn about the same
+things, and turning a gate red on a compiler nobody has read yet is how a guard
+gets disabled. `ci.yml` therefore publishes a non-blocking GCC census from the
+build log it already produces; the flip is one line once that census is clean,
+and it is the single line left on § 0·B item 1.
 
 <a id="2026-08-26-review-backlog"></a>
 ## 2026-08-26 (later) — An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog

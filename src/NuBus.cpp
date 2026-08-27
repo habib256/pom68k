@@ -4,12 +4,6 @@
 #include "NuBus.h"
 #include <cstring>
 
-namespace {
-inline bool inRange(uint32_t a, uint32_t base, uint32_t size) {
-    return a >= base && a < base + size;
-}
-} // namespace
-
 uint32_t NuBus::slotBase(int slot) const {
     return 0xF9000000u + uint32_t(slot - kFirstSlot) * kSlotSize;
 }

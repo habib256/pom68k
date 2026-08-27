@@ -10,9 +10,6 @@ namespace {
 
 constexpr size_t kMaxRom = 8192;
 
-// MAME BYTE4_XOR_BE — swap byte lane within each 32-bit word.
-inline size_t byte4XorBe(size_t i) { return i ^ 3; }
-
 class Builder {
 public:
     explicit Builder(size_t cap = kMaxRom) : buf_(cap, 0xFF) {}

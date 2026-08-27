@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 293 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 294 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -64,7 +64,7 @@ it.
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur le matériel cible |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Item 1 : `-Wall -Wextra` sur les cibles POM68K seules, corrigé par lots, `-Werror` en CI |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Item 1 posé (2026-08-27, 0 avertissement clang) → item 2 : la jambe sanitizer dans `nightly.yml` |
 | **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
 | **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
@@ -431,18 +431,29 @@ d'émulation, la stratégie de validation et la refonte en cours tiennent ; six
 réserves portent sur ce que l'arbre **ne** prouve pas encore. Elles sont
 recopiées comme travail, pas comme compliment ni comme grief. Ordre d'exécution
 conseillé — **1 → 2 → 4 → 3 → 5 → 6** : chaque étape rend la suivante lisible,
-et les deux premières sont les moins chères de tout ce fichier.
+et les deux premières sont les moins chères de tout ce fichier. **L'item 1 est
+posé depuis le 2026-08-27** ; la prochaine ligne à attaquer est l'item 2.
 
-- [ ] **1. Aucune politique d'avertissements.** Le seul `-W*` de l'arbre est le
-  `-Wno-unused-*` posé sur `moira` (`CMakeLists.txt:259`) : POM68K compile son
-  propre code **sans** `-Wall -Wextra`. À faire : poser
-  `-Wall -Wextra -Wno-unused-parameter` sur les cibles POM68K uniquement —
-  jamais sur `extern/`, dont le bruit n'est pas le nôtre — mesurer le volume
-  produit, corriger par lots et par sous-système (un lot = un commit nommé),
-  puis passer `-Werror` **en CI seulement** : un mur d'avertissements local
-  arrête le développement, un mur en CI ferme la porte. C'est la garde la moins
-  chère sur du code qui manipule de la mémoire brute, du code généré et de la
-  sérialisation.
+- [x] **1. Politique d'avertissements — POSÉE le 2026-08-27.**
+  `POM68K_WARNINGS` (ON) met `-Wall -Wextra` sur les cibles POM68K et sur
+  elles seules ; `extern/moira` passe en include `SYSTEM` (756 des 798
+  avertissements de la première passe venaient de ses inlines dans NOS unités
+  de compilation, pas de notre code), les sources Dear ImGui sont muettes
+  fichier par fichier à l'intérieur de la cible GUI, et `POM68K_WERROR` (OFF)
+  est l'interrupteur de la CI, pas celui du développeur. **Le tronc était
+  presque propre** : 61 sites uniques, 152 d'entre eux le même
+  `-Wmissing-field-initializers` sur trois agrégats (`jit::Instr`,
+  `MachineHost::Cmd`, `lle::Device`), réglés par un initialiseur de membre par
+  défaut au lieu de 37 modifications d'appelants. Ce que le drapeau a trouvé
+  et qu'aucun gate ne voyait : un `-Wreorder-ctor` dans `RbvMemory`, trois
+  fonctions mortes (`byte4XorBe`, `inRange`, `cdBlockSize`), un champ privé
+  jamais lu dans `GuiShell` et quatre accumulateurs de centroïde calculés puis
+  jetés dans `lcii_beyond_etalon`. **Tout l'arbre compile 0 avertissement**
+  sous clang, `-Werror` compris.
+  *Reste à faire, une ligne* : lire le premier recensement g++ 13 que `ci.yml`
+  publie maintenant (étape non bloquante), corriger ce que GCC ajoute, puis
+  basculer `-DPOM68K_WERROR=ON` dans ce job. Les deux compilateurs n'avertissent
+  pas des mêmes choses et cet hôte n'a que clang.
 - [ ] **2. `POM68K_SANITIZE` existe et aucun job ne l'utilise**
   (`CMakeLists.txt:238`). À faire, dans `nightly.yml`, à côté du job LTO :
   une jambe `-DPOM68K_SANITIZE=address,undefined` exécutant `-L asset-none`

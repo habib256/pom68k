@@ -98,8 +98,8 @@ struct Device {
     std::string knob;                       // legacy source label for diagnostics
     Mode        mode = Mode::Hle;
     Why         why  = Why::HleNoDump;
-    std::string firmware;                   // dump loaded (LLE), else empty
-    std::vector<std::string> candidates;    // paths the device searched
+    std::string firmware{};                 // dump loaded (LLE), else empty
+    std::vector<std::string> candidates{};  // paths the device searched
     // Per-device dump override. `pathKnob` names the env variable
     // ("POM68K_CUDA_FW"); `firmwareForced` is the value that was in force
     // when this device was built — empty means "automatic, first candidate
@@ -107,8 +107,8 @@ struct Device {
     // says what LOADED, `firmwareForced` says what was ASKED FOR, and a
     // window comparing a staged choice against the loaded path would report
     // a pending change every time automatic mode picked a file.
-    std::string pathKnob;
-    std::string firmwareForced;
+    std::string pathKnob{};
+    std::string firmwareForced{};
 };
 
 inline std::mutex gDeviceMutex;
@@ -152,7 +152,7 @@ inline bool dumpAvailable(const Device& d) {
 struct Choice {
     Module      module = HleEgretCuda;
     Mode        mode   = Mode::Lle;
-    std::string firmware;                   // "" = automatic (first found)
+    std::string firmware{};                 // "" = automatic (first found)
 };
 
 // Typed policy implied by a staged selection, ready for serialization at the

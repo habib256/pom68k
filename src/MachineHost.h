@@ -104,7 +104,7 @@ public:
         enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
                  InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense } t;
         int a = 0, b = 0;
-        std::string path;
+        std::string path{};   // media commands only; {} keeps -Wextra quiet
     };
 
     void push(Cmd c) {
