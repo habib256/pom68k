@@ -22,15 +22,29 @@
 #include <vector>
 
 int main() {
-    std::string rom = testasset::find("roms/macii.rom");
+    // Same candidate list as macii_boot_etalon, in the same order. This
+    // gate used to name `roms/macii.rom` first and a 512KB spelling of
+    // the IIx ROM second — neither exists in the archive layout every
+    // other Mac II gate reads, so both legs SKIPped on a host that has
+    // the ROM, silently, while the docs counted them green. Exactly the
+    // Quadra 630 trap of 2026-08-06 (TODO § 2), found by counting which
+    // gates actually EXECUTE in a full run (2026-08-27).
+    std::string rom = testasset::find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
     if (rom.empty())
-        rom = testasset::find("roms/512KB ROMs/1988-09 - 97221136 - Mac IIx & IIcx & SE30.ROM");
+        rom = testasset::find("roms/256KB ROMs/1987-03 - 97851DB6 - MacII (800k v1).ROM");
+    if (rom.empty())
+        rom = testasset::find("roms/macii.rom");
     // System 7.1 first. The HD20SC fallback boots a System 6 Finder, whose
     // Cmd-N needs an open window; System 7.0 creates the folder and then
     // never flushes the volume (measured on the Plus, same image: one write
     // command per session and none after the gesture — see
     // compact_beyond_etalon.cpp). 7.1 is the first version that persists.
-    std::string img = testasset::find("hdv/System 7.1 HD.dsk");
+    // 7.5.5 first, and its `drVolAtrb` is why: the 7.1 reference image in
+    // this tree carries bit 8 CLEAR (never cleanly unmounted) and the
+    // Mac II reaches no Finder on it — read the bit before the code
+    // (CLAUDE.md's method rule). 7.5.5 and 7.0 are both $0100.
+    std::string img = testasset::find("hdv/System 7.5.5 HD.dsk");
+    if (img.empty()) img = testasset::find("hdv/System 7.1 HD.dsk");
     if (img.empty()) img = testasset::find("hdv/System 7.0 HD.dsk");
     if (img.empty()) img = testasset::find("hdv/HD20SC.vhd");
     if (rom.empty() || img.empty()) {
@@ -57,7 +71,20 @@ int main() {
     // persists rather than waiting on a cache that will not drain.
     MacIIMemory mem(pom68k::defaultCoreConfig(), 0x400000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    mem.installTobyVideo();
+    // WITH the real 342-0008-a declaration ROM, like macii_sys7_boot_etalon.
+    // The synthetic card boots System 6 fine, but System 7 draws no Finder
+    // on it: this gate sat at the gray startup screen — menu 0.50 desk 0.62,
+    // identical on three different volumes and both RAM sizes, which is what
+    // a machine that never boots looks like (2026-08-27).
+    std::string toby = testasset::find("roms/342-0008-a.bin");
+    if (toby.empty())
+        toby = testasset::find("roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin");
+    if (toby.empty())
+        toby = testasset::find("roms/archive/macroms/68k/256k/Macintosh II/342-0008-a.bin");
+    if (!mem.installTobyVideo(toby)) {
+        std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
+        return 1;
+    }
     Cpu020 cpu(mem, jit::defaultResolvedConfig(),
                pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);

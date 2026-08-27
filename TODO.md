@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 296 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 297 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -24,8 +24,15 @@ re-verify before quoting them anywhere:
   `cmake/Pom68kJitGates.cmake:458-464`).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
-- **Last FULL suite: 228/228 on AArch64, 2026-08-27** — every registered gate
-  in ONE `ctest -j16`, **1 081.79 s wall (18 min 02 s)**, exit 0, zero red.
+- **Last FULL suite: 228/228 on AArch64, 2026-08-27 — and 224 of them
+  actually EXECUTED.** Every registered gate in ONE `ctest -j16`, **1 089.79 s
+  wall (18 min 10 s)**, exit 0, zero red; the census
+  (`tools/gate_execution_census.py`, same run's `LastTest.log`) says **224
+  executed, 4 soft-skipped**: the three Q605 CD gates want `cd/MacOS_86.iso`
+  and `dir2hfs_selftest` wants the `machfs` module. **Quote the pair, never
+  the first number alone** — the earlier run that morning read 222 executed,
+  and the two missing were the Mac II soak/persist looking for a ROM filename
+  no archive uses (`CHANGELOG.md` 2026-08-27 (fourth)).
   Preceded by a full build, `check_binaries_fresh.py --self-test` green (the
   guard said yes AND no on this tree) and **152/152 gate executables current**.
   Host: Apple Silicon, 10 cores, 24 GiB — the first whole-registry run on
@@ -75,7 +82,7 @@ it.
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur le matériel cible |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Item 1 posé (2026-08-27, 0 avertissement clang) → item 2 : la jambe sanitizer dans `nightly.yml` |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Items 1 et 4 posés le 2026-08-27 → item 2 : la jambe sanitizer dans `nightly.yml` |
 | **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
 | **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
@@ -442,8 +449,10 @@ d'émulation, la stratégie de validation et la refonte en cours tiennent ; six
 réserves portent sur ce que l'arbre **ne** prouve pas encore. Elles sont
 recopiées comme travail, pas comme compliment ni comme grief. Ordre d'exécution
 conseillé — **1 → 2 → 4 → 3 → 5 → 6** : chaque étape rend la suivante lisible,
-et les deux premières sont les moins chères de tout ce fichier. **L'item 1 est
-posé depuis le 2026-08-27** ; la prochaine ligne à attaquer est l'item 2.
+et les deux premières sont les moins chères de tout ce fichier. **Les items 1 et 4 sont
+posés depuis le 2026-08-27** — et l'item 4 a payé son écriture le jour même en
+trouvant deux gates qui n'avaient jamais tourné. La prochaine ligne à attaquer
+est l'item 2.
 
 - [x] **1. Politique d'avertissements — POSÉE le 2026-08-27.**
   `POM68K_WARNINGS` (ON) met `-Wall -Wextra` sur les cibles POM68K et sur
@@ -484,15 +493,20 @@ posé depuis le 2026-08-27** ; la prochaine ligne à attaquer est l'item 2.
   n'est exécutée par ce palier : c'est exactement l'inventaire de ce que seuls
   les assets privés prouvent — aujourd'hui affirmé en prose (§ 2, § 0) au lieu
   d'être produit par la machine.
-- [ ] **4. Le vert ne dit pas combien de gates se sont vraiment exécutés.** Le
-  fait est déjà écrit — 20 des 21 gates `unit` hors `asset-none` sont des
-  soft-skips faute d'assets privés (§ 0, dernière case) — mais il n'est pas
-  *comptable* : `ctest` rend `104/104` dans les deux cas, et c'est ce nombre-là
-  qui se cite tout seul. À faire : un motif de skip lisible par machine, émis
-  par tout gate qui s'abstient, agrégé après `ctest`, pour que la CI publie
-  « 85 exécutés / 0 abstenus » et « 104 verts dont 20 abstenus ». Tant que ce
-  compteur n'existe pas, aucun document du dépôt ne cite un total de gates sans
-  sa phrase de nuance — la règle vaut déjà, elle n'est simplement pas outillée.
+- [x] **4. Le compteur existe — `tools/gate_execution_census.py`, 2026-08-27.**
+  Il lit le `Testing/Temporary/LastTest.log` que `ctest` écrit déjà, repère
+  l'abstention par la chaîne `SKIP` (le marqueur que `measure_gate_ram.py`
+  utilisait depuis toujours) et publie « N exécutés / M abstenus / K rouges ».
+  Aucune relance, aucun protocole nouveau. Première mesure, sur cet hôte qui
+  porte les assets : **222 exécutés, 6 abstenus sur 228 verts**. Les six :
+  trois gates CD (`cd/MacOS_86.iso` absent), `dir2hfs_selftest` (module
+  `machfs` non installé) et **`macii_soak/persist_etalon`, qui n'étaient pas
+  une histoire d'asset du tout** (voir ci-dessous). Piège à connaître :
+  `LastTest.log` est écrasé par *toute* invocation `ctest`, y compris un
+  `ctest -R docs_test` — copier le log à la fin d'une passe complète, sinon le
+  recensement porte sur la dernière petite passe.
+  *Reste, une ligne* : brancher le recensement sur la CI et le faire échouer
+  avec `--fail-on-skip` sur les paliers qui prétendent prouver une couverture.
 - [ ] **5. États globaux résiduels — deux, nommés.** `src/LleSession.h:37`
   et `src/LleSession.h:114` gardent des atomiques et un registre de
   périphériques partagés par le processus ; `src/jit/JitConfig.h:241` garde un
@@ -541,6 +555,12 @@ the binaries behind it — run `tools/check_binaries_fresh.py` before quoting an
 tier, and its `--self-test` the first time on a new machine.
 
 ### Open here, and not red
+
+- [ ] **Deux assets manquent sur cet hôte, et le recensement les nomme** :
+  `cd/MacOS_86.iso` (trois gates CD du Q605) et le module Python `machfs`
+  dans `.venv-tools` (`dir2hfs_selftest`). Ni l'un ni l'autre n'est un défaut
+  du code ; ils sont écrits ici pour que « 228 verts » ne se relise pas comme
+  « 228 comportements prouvés ».
 
 - [ ] **`gui_smoke_test` flaked once, and only once** (2026-08-27): it failed
   inside a 228-gate `-j16` run with `État NON sauvé: rename impossible` on
@@ -690,9 +710,13 @@ work.
 
 **Depth is a second axis.** **All twelve** platforms now carry the
 soak+persist pair that proves a machine *keeps* working and *writes*, and as
-of 2026-08-25 **fourteen soaks and thirteen persists are registered, all green**
-(twelve platforms, thirteen complete profile pairs plus the IIci sibling soak)
-— no SKIP left on the board. The last complete pair was the Duo's, and it took
+of 2026-08-27 **fourteen soaks and thirteen persists are registered, all green
+AND all executing** (twelve platforms, thirteen complete profile pairs plus the
+IIci sibling soak). The second half of that claim is new and it was not free:
+until 2026-08-27 the Mac II pair SKIPped on a ROM filename no archive uses,
+exited 0 and counted green — `tools/gate_execution_census.py` is what saw it,
+and re-checking the roster now means running that census, not reading this
+line. The last complete pair was the Duo's, and it took
 three findings to close:
 a `$91` power flag that stopped the PG&E ever cold-booting a second time, a
 trackball that had never been wired to the PMU's own quadrature counters, and

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 296 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 297 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (fourth)** — [Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename](#2026-08-27-execution-census)
 - **2026-08-27 (third)** — [The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it](#2026-08-27-gui-smoke-flake)
 - **2026-08-27 (later)** — [The whole registry in one 18-minute run: 228/228, and the two-tier "exact partition" is 227 of them](#2026-08-27-full-registry-run)
 - **2026-08-27** — [The tree had never been compiled with `-Wall -Wextra`; turning it on cost 61 sites and found six real defects](#2026-08-27-warning-policy)
@@ -638,6 +639,57 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-execution-census"></a>
+## 2026-08-27 (fourth) — Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename
+
+`ctest` prints `228/228 tests passed`, and this project has been quoting that
+number as if it meant 228 behaviours were exercised. It does not: most gates
+soft-skip without their private ROM, image, firmware or corpus — they print
+`SKIP: …` and exit 0, so a host with no assets reports the same green as the
+host that owns every byte. The 2026-08-26 review named it (`TODO.md` § 0·B
+item 4) and the honesty was in prose, not in a counter.
+
+`tools/gate_execution_census.py` is the counter. It reads the per-gate output
+`ctest` already writes to `Testing/Temporary/LastTest.log`, uses the marker
+`tools/measure_gate_ram.py` has always used — the literal `SKIP` in a gate's
+own output — and prints `N executed, M soft-skipped, K failed`. No rerun, no
+new gate protocol. (Trap it documents: `LastTest.log` is overwritten by EVERY
+`ctest` invocation, including a one-gate `-R` run. The full run's log has to be
+copied the moment it ends; this was learned by losing the first one.)
+
+**First measurement, on the host that has the assets: 222 executed, 6
+abstained.** Three CD gates want `cd/MacOS_86.iso`, `dir2hfs_selftest` wants
+the `machfs` module — and then two that were not an asset story at all.
+
+**`macii_soak_etalon` and `macii_persist_etalon` had never run here.** Their
+ROM lookup named `roms/macii.rom` and a 512KB spelling of the IIx ROM; every
+other Mac II gate reads `roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k
+v2).ROM`, which is on this disk. So the pair SKIPped, exited 0, and counted
+green while `TODO.md` § 2 listed "fourteen soaks and thirteen persists, all
+green — no SKIP left on the board". Exactly the Quadra 630 trap of 2026-08-06,
+a second time, and only a census could see it: a gate that skips is
+indistinguishable from a gate that passes at the exit-code level.
+
+Pointed at the right ROM, the gate then FAILED — "no Finder after boot", with
+`menu 0.50 desk 0.62` unchanged across three different volumes and both RAM
+sizes, which is what a machine that never boots looks like rather than a
+signature that disagrees. Two suspects were eliminated on the way, both by
+reading the asset before the code: the 7.1 reference image carries
+`drVolAtrb` bit 8 CLEAR (never cleanly unmounted) — the gate now prefers the
+clean 7.5.5 — and 4 MB vs 8 MB changed nothing. The cause was the third: the
+gate called `installTobyVideo()` with **no declaration ROM**, so it ran on the
+synthetic card. System 6 boots on that; System 7 draws no Finder. With
+`342-0008-a` — the same lookup `macii_sys7_boot_etalon` has always used —
+both legs pass: soak 39.1 s, persist 57.1 s, `Finder up, ADB PIC LLE, SCSI
+3514`.
+
+The Mac II platform therefore has a real beyond-boot pair for the first time,
+and the roster's "all green" now means what it says on this host: the
+confirming whole-registry run is **228/228 in 1 089.79 s, 224 executed, 4
+soft-skipped, 0 failed** — where the morning's run had been 222 executed. The two
+asset gaps that remain are named in `TODO.md` § 1 rather than left to be
+rediscovered.
 
 <a id="2026-08-27-gui-smoke-flake"></a>
 ## 2026-08-27 (third) — The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it
