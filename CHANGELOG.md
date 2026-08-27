@@ -725,6 +725,24 @@ three boot etalons (wave 1); extract `JitEaPlan.h` + `JitCost.h` from the two
 backends and add an asset-free backend-parity gate (wave 2); `-Werror`, a
 generated `STATUS.md` and a size budget on `CLAUDE.md` (wave 3).
 
+**One sequencing decision came out of it the same day, and it inverts an
+order the backlog had implied.** `D1F0` is the best ROI item in § 3 — 53 % of
+all fallbacks under application load — and an uncommitted prototype in the
+working tree already proves the shape of its fix: one admitted sub-form
+(direct, base suppressed, index live, two-word base displacement), everything
+else refused rather than guessed, `fullFormatExtra = 6` measured against the
+trace. But it writes that predicate and that constant into
+`JitBackendA64.cpp`, and both are properties of the **68k**, not of AArch64.
+Landing it there creates its own twin to be hand-written into
+`JitBackendX64.cpp` — which is precisely what the standing "port the a64 030
+deltas to x86-64" item has been paying for weeks. That item is not recurring
+work; it is the symptom of a table living in the wrong file. So `D1F0` is now
+**blocked behind wave 2** rather than ahead of it, and the extraction's
+acceptance criterion is stated in those terms: the sub-form predicate and the
+six cycles live in `JitCost.h`, both backends read them, and neither value
+appears anywhere under `backends/`. Doing the extraction first costs one pass;
+doing it second costs that pass *plus* a port, per admitted form, indefinitely.
+
 **The same pass applied this file's house rule to `TODO.md`, 2 036 → 1 278
 lines.** Closed items left one line and a date; § 0's `run*()` retelling, § 1's
 hundred lines of closed hunts, § 3's history of the x64/a64 port and § 4's
