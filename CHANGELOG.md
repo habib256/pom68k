@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 298 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 299 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (sixth)** — [`-j` is a RAM budget, not a core count: four runs of the same registry price the schedule at 18, 30 and 20 minutes](#2026-08-27-schedule-pricing)
 - **2026-08-27 (fifth)** — [This host's gates cost 17 MiB to 2.81 GiB, the sweep that said so was 1024x wrong, and the widest rows are all one disk image](#2026-08-27-ram-calibration)
 - **2026-08-27 (fourth)** — [Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename](#2026-08-27-execution-census)
 - **2026-08-27 (third)** — [The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it](#2026-08-27-gui-smoke-flake)
@@ -640,6 +641,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-schedule-pricing"></a>
+## 2026-08-27 (sixth) — `-j` is a RAM budget, not a core count: four runs of the same registry price the schedule at 18, 30 and 20 minutes
+
+The RAM calibration landed and the next full run got **slower**: 228/228 in
+**1 803.75 s (30 min 04 s)** at `-j16`, against **1 089.79 s (18 min 10 s)**
+for the same registry an hour earlier. A calibration that costs 12 minutes
+looks like a bad trade, so it was measured rather than argued about.
+
+CTest reserves a gate's `PROCESSORS` for its whole life, and this host's widest
+gate — `lcii_persist_etalon`, 2.81 GiB — is **12 of the 16 slots `-j16`
+offers**. While it runs, four slots remain for everything else. The
+uncalibrated 18 minutes were not a better schedule; they were the same
+schedule with the question unasked, and they fit only because the machine has
+24 GiB to absorb sixteen concurrent disk images.
+
+`-j` is this file's budget in 256 MiB units. `-j16` asks for 4 GiB on a 24 GiB
+machine. Sized to the RAM actually available, **`-j64` runs the same 228 in
+1 211.74 s — 20 min 12 s**, 224 executed, 0 red. So the honest price of
+knowing what the gates cost is **two minutes, not twelve**, and the four
+numbers together are the recommendation: calibrate the host, then size `-j` to
+the RAM you are willing to spend.
+
+Recorded where an invocation is chosen — `CLAUDE.md`'s build block and status,
+`README.md`'s quick start, `DEV.md` § 6 and its tier table, and the header of
+`gate_resource_budgets.tsv` itself. `DEV.md` § 6 also loses the claim that
+`ctest -j` is unsafe because the boot etalons are contention-sensitive: four
+whole-registry runs at three different widths returned 228/228 on the same day,
+and the reason not to iterate against a bare `ctest` is the twenty minutes, not
+a risk.
 
 <a id="2026-08-27-ram-calibration"></a>
 ## 2026-08-27 (fifth) — This host's gates cost 17 MiB to 2.81 GiB, the sweep that said so was 1024x wrong, and the widest rows are all one disk image
