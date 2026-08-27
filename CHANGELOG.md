@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 304 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 305 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (twelfth)** — [Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way](#2026-08-27-census-strict)
 - **2026-08-27 (eleventh)** — [The six CPU wrappers coverage caught at 0.00 % now run on every host: 48 unreached files down to 36](#2026-08-27-cpu-wrapper-smoke)
 - **2026-08-27 (tenth)** — [The composition umbrella stops naming twelve families, and the cost of a new platform gets enumerated instead of remembered](#2026-08-27-composition-fanin)
 - **2026-08-27 (ninth)** — [The LLE verdict stops being a process global: a session owns its registry, and every consumer reads that one](#2026-08-27-lle-registry-owned)
@@ -646,6 +647,38 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-census-strict"></a>
+## 2026-08-27 (twelfth) — Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way
+
+The execution census printed a number; CI ignored it. It is `--fail-on-skip` in
+two places now — `ci.yml`'s `linux` job and the nightly's ASan leg — chosen
+because both run `-L asset-none`, whose entire claim is that it needs no
+private asset. A soft-skip there is either a tool the job should install or a
+gate that does not belong in the tier.
+
+**The first strict run was red, and correctly so.** `dir2hfs_selftest` had been
+soft-skipping on "machfs not installed" — and installing machfs did not fix it.
+The gate's interpreter was chosen at CONFIGURE time
+(`if(EXISTS .venv-tools/bin/python)`), so a tree configured before the venv
+existed kept calling the system python3 for ever, and nothing told anyone to
+reconfigure. `tools/run_dir2hfs_selftest.sh` chooses at run time; the gate then
+ran for the first time here, and printed what it had never printed: MacBinary
+decode, data-only bake, machfs round trip, PASS.
+
+**Removing the shared CMake variable that fix obsoleted broke a second gate**,
+which the next tier run caught within the minute: `asset_lock_test` still
+referenced `${POM68K_TOOLS_PYTHON}`, so its COMMAND became a non-executable
+`.py` path — "Process not started ... permission denied". It hashes files and
+needs no third-party module, so it names `python3` explicitly now. Two gates
+sharing one interpreter variable for unrelated reasons is exactly the coupling
+that makes a one-line change land somewhere else.
+
+The asset-free tier is **86 executed, 0 soft-skipped, 0 failed** — the first
+time that sentence has been true rather than assumed. Both CI jobs create the
+`machfs` venv so the strict census has what it needs, and the census itself now
+exits non-zero when a gate FAILED as well: reporting a failure and exiting 0 is
+the same shape of lie as a green tier full of skips.
 
 <a id="2026-08-27-cpu-wrapper-smoke"></a>
 ## 2026-08-27 (eleventh) — The six CPU wrappers coverage caught at 0.00 % now run on every host: 48 unreached files down to 36

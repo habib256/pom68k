@@ -166,15 +166,13 @@ add_test(NAME scsi_hfs_facade_test COMMAND scsi_hfs_facade_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Gate: tools/dir2hfs.py fixture bake (MacBinary decode, data-only bare
-# volume for the flat-HFS façade, machfs round-trip). Soft-skips if machfs
-# is missing — prefers the repo venv (.venv-tools), else system python3.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.venv-tools/bin/python")
-    set(POM68K_TOOLS_PYTHON "${CMAKE_CURRENT_SOURCE_DIR}/.venv-tools/bin/python")
-else()
-    set(POM68K_TOOLS_PYTHON "python3")
-endif()
+# volume for the flat-HFS façade, machfs round-trip). Soft-skips if machfs is
+# missing. The interpreter is chosen by the wrapper at RUN time: binding it
+# here with if(EXISTS .venv-tools/...) meant a tree configured before the venv
+# existed kept calling the system python3, so the gate skipped and counted
+# green until somebody happened to reconfigure (2026-08-27).
 add_test(NAME dir2hfs_selftest
-         COMMAND ${POM68K_TOOLS_PYTHON} tools/dir2hfs.py --selftest
+         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_dir2hfs_selftest.sh"
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 # M5.5 gate: keyboard/mouse against the System 6 drivers (soft-skips).
@@ -243,8 +241,14 @@ add_test(NAME fixture_store_test COMMAND fixture_store_test)
 # schema and every present user-provided file. In particular, a declared
 # reference disk must live below hdv/ref/. Private runners add --strict to
 # require the complete qualified set.
+# `python3` explicitly: this script hashes files and needs no third-party
+# module, so it has no business following the dir2hfs venv. It used to share
+# that gate's ${POM68K_TOOLS_PYTHON} variable, and removing the variable when
+# dir2hfs moved to a wrapper left this COMMAND starting with a non-executable
+# .py path — "Process not started ... permission denied", caught the same
+# minute by the tier run (2026-08-27).
 add_test(NAME asset_lock_test
-         COMMAND ${POM68K_TOOLS_PYTHON} tools/verify_assets.py
+         COMMAND python3 tools/verify_assets.py
                  --manifest assets.lock --root .
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

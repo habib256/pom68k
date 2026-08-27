@@ -154,6 +154,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev xvfb
+          python3 -m venv .venv-tools
+          .venv-tools/bin/pip install --quiet machfs
 
       - name: Fetch Dear ImGui (pinned to the tested docking release)
         run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
@@ -192,7 +194,12 @@ jobs:
         # A soft-skipped gate exits 0 and is counted green, so the tally alone
         # cannot say whether the sanitizer exercised anything.
         if: always()
-        run: python3 tools/gate_execution_census.py --build-dir build
+        run: |
+          if [ "${{ matrix.name }}" = "tsan" ]; then
+            python3 tools/gate_execution_census.py --build-dir build
+          else
+            python3 tools/gate_execution_census.py --build-dir build --fail-on-skip
+          fi
 
   # ── Coverage ──────────────────────────────────────────────────────────
   # Third item of the 2026-08-26 review. The artifact is not a badge: the
@@ -218,6 +225,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev xvfb
           pip install --user gcovr
+          python3 -m venv .venv-tools
+          .venv-tools/bin/pip install --quiet machfs
 
       - name: Fetch Dear ImGui (pinned to the tested docking release)
         run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
