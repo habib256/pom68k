@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 306 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 307 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -340,6 +340,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](#2026-08-27-q605-launch)
 - **2026-08-27 (thirteenth)** — [The leak hunt, run with the platform's tool because LeakSanitizer does not exist here: 0 leaks in 78 binaries](#2026-08-27-leaks)
 - **2026-08-27 (twelfth)** — [Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way](#2026-08-27-census-strict)
 - **2026-08-27 (eleventh)** — [The six CPU wrappers coverage caught at 0.00 % now run on every host: 48 unreached files down to 36](#2026-08-27-cpu-wrapper-smoke)
@@ -648,6 +649,49 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-27-q605-launch"></a>
+## 2026-08-27 (fourteenth) — The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose
+
+`TODO.md` § 2 named "a `launch`/`floppy` pair on the Q605" as the next
+beyond-boot work. The `launch` half landed; the `floppy` half deliberately did
+not, and the reason is written down rather than left as silence.
+
+**`q605_launch_etalon`**: Cmd-N, Return, Cmd-O. Creating a folder proves the
+Finder writes; opening it proves the Finder reads its own new catalog entry
+back and puts a window on screen. First run, on Mac OS 8.1: **33.6 % of the
+screen changed, SCSI +45 on the create and +17 on the open**, menu bar still
+up, CPU alive. The gate asserts a change above 2 % — far below the smallest
+window Mac OS 8 opens, far above icon-level redraw noise — that the menu bar
+survived, and that the open touched the disk at all. A window that appeared
+without a single SCSI command would be a redraw, not an open.
+
+**Keyboard only, and that is the design.** The LC II's launch leg steers the
+mouse closed-loop to an icon at (42, 78), a position that belongs to its own
+reference volume's window layout; it works, and it is calibrated to one image.
+This project has twice paid for a gate calibrated on one volume — the SCSI
+command floor of the Mac II trio in August, and the Mac II beyond pair this
+morning. `Cmd-O` on a freshly created folder needs no coordinates, no
+localization and no particular screen size.
+
+**And the section gained a chantier the user named the same day**: measure the
+JIT under a REAL application load — SimCity 2000, not a synthetic bench. Every
+JIT number this project quotes today comes from a fixed-cycle bench, a boot
+etalon, or the Rogue census; none of them looks like what a person does with
+the machine. Two things the repository already knows and should not
+rediscover: the game is **already on `hdv/GISTPERSO-boot.vhd`**, the LC II's
+reference volume, so the asset is a qualification job rather than a hunt; and
+it carries an open debt, the GISTPERSO / SimCity 2000 startup race of
+2026-07-18 (the CPU spinning in the ROM Memory Manager heap-walk at
+`$40A0E148`). A bench that launches the game necessarily walks that path, so
+the measurement either closes the debt by passing or reproduces it
+deterministically — which no run has managed yet. `TODO.md` § 3 carries the
+plan, § 2 the cross-reference.
+
+The `floppy` leg stays unwritten because it would have to fail: hot-inserting a
+GCR disk under System 7.5.5 on SWIM2 is an open item in § 1, reported in the
+GUI and not reproduced headless. A gate that must fail proves nothing about the
+machine; the open question keeps its place in § 1 instead.
 
 <a id="2026-08-27-leaks"></a>
 ## 2026-08-27 (thirteenth) — The leak hunt, run with the platform's tool because LeakSanitizer does not exist here: 0 leaks in 78 binaries

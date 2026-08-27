@@ -289,6 +289,72 @@ int main() {
                     "halted=%d, Finder %s\n", dt, cpu.isHalted(),
                     finderUp(s) ? "up" : "GONE");
         ok = !cpu.isHalted() && dt >= 135 && dt <= 225 && finderUp(s);
+    } else if (mode == "launch") {
+        // A Finder that CREATES a folder is not yet a Finder that OPENS one:
+        // the second gesture makes it read the new catalog entry back and put
+        // a window on screen. Keyboard only, on purpose — the LC II's launch
+        // leg steers the mouse to an icon at a pixel position that belongs to
+        // ITS reference volume, and that calibration is the trap this project
+        // has already paid for twice. Cmd-N, Return, Cmd-O works on any
+        // volume, in any language, at any screen size.
+        const Screen beforeScreen = decodeScreen(mem);
+        const std::vector<uint32_t>& before = beforeScreen.pixels;
+        const long scsi0 = mem.scsi().commands;
+
+        mem.keyEvent(0x37, true);            // Cmd down
+        runFrames(6);
+        keyHold(0x2D, 150);                  // 'n' — New Folder
+        mem.keyEvent(0x37, false);
+        runFrames(120);
+        keyHold(0x24, 150);                  // Return — commit the name
+        runFrames(240);
+
+        const long scsiCreated = mem.scsi().commands;
+        mem.keyEvent(0x37, true);            // Cmd down
+        runFrames(6);
+        keyHold(0x1F, 150);                  // 'o' — Open
+        mem.keyEvent(0x37, false);
+        runFrames(600);                      // window draw + catalog read
+
+        Screen s = decodeScreen(mem);
+        const std::vector<uint32_t>& after = s.pixels;
+        long changed = 0;
+        for (size_t i = 0; i < after.size() && i < before.size(); i++)
+            if (before[i] != after[i]) changed++;
+        const double ratio = double(changed) / double(after.size());
+        const long scsiOpen = mem.scsi().commands - scsiCreated;
+        dump("q605_beyond_launch.ppm", s);
+        std::printf("launch: %.1f%% of the screen changed, SCSI +%ld on create "
+                    "+%ld on open, Finder %s\n",
+                    ratio * 100.0, scsiCreated - scsi0, scsiOpen,
+                    menuBarUp(s) ? "up" : "GONE (dialog?)");
+        // A new window is a large, contiguous change; a Finder that merely
+        // redrew an icon moves a fraction of a percent. 2 % is far below the
+        // smallest window Mac OS 8 opens and far above icon-level noise.
+        if (ratio < 0.02) {
+            std::fprintf(stderr, "FAIL: no window appeared after Cmd-O\n");
+            return 1;
+        }
+        if (!menuBarUp(s)) {
+            std::fprintf(stderr, "FAIL: menu bar gone — a dialog ate the "
+                                 "gesture\n");
+            return 1;
+        }
+        // Opening a folder READS it: a window that appeared without the disk
+        // being touched would be a redraw, not an open. Count only, never a
+        // floor calibrated on this volume -- that is the trap that put three
+        // boot gates red for two days in August.
+        if (scsiOpen <= 0) {
+            std::fprintf(stderr, "FAIL: window appeared but the Finder read "
+                                 "nothing from SCSI\n");
+            return 1;
+        }
+        if (cpu.isHalted()) {
+            std::fprintf(stderr, "FAIL: CPU halted during the gesture\n");
+            return 1;
+        }
+        std::printf("PASSED — Quadra 605 launch\n");
+        return 0;
     } else if (mode == "persist") {
         std::vector<uint8_t>& disk = mem.scsiDisk().image();
         // Mac OS 8.1 (US image) names a new folder "untitled folder"; the

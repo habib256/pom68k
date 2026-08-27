@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 306 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 307 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -10,8 +10,8 @@ in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-27): **231 gates** — 111
-  `unit`, 86 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 54 `m030`, 119
+  somewhere.** The documented registry (2026-08-27): **232 gates** — 111
+  `unit`, 86 `asset-none`, 9 `smoke`, 40 `jit`, 52 `m040`, 54 `m030`, 120
   `etalon`, 12 `etalon-core`. Five are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
@@ -91,7 +91,7 @@ it.
 | **0·B** | Les six réserves de la revue externe du 2026-08-26 | **Les six posées le 2026-08-27** ; ce qui reste sont les suites nommées sous chaque item (fuites ASan, recensement en CI, gate CPU sans assets) |
 | **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
-| **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
+| **3** | JIT, second moteur d'exécution | **Mesurer le JIT sous charge applicative réelle (SimCity 2000)** — le chantier nommé le 2026-08-27 ; puis porter les deltas 030 de a64 vers x86-64 |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -828,8 +828,22 @@ physical-vs-logical trap now has a standing regression test.
 
 Highest-ROI closers, in order:
 
-- [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605,
-  or the AIO family.
+- [x] **Q605 `launch` — done 2026-08-27**, keyboard-only: Cmd-N, Return, Cmd-O.
+  The Finder creates a folder, then reads its own new catalog entry back and
+  puts a window on screen — 33.6 % of the screen changed, SCSI +45 on the
+  create and +17 on the open, menu bar still up. Deliberately NOT the LC II's
+  mouse-steered version: that one walks the pointer to an icon at a pixel
+  position belonging to its own reference volume, and a gesture calibrated on
+  one image is the trap this project has paid for twice. Cmd-O works on any
+  volume, in any language, at any screen size.
+- [ ] **A beyond-boot leg that RUNS AN APPLICATION under load** — SimCity 2000,
+  named 2026-08-27. It belongs to both sections and the plan lives in § 3:
+  the point is not one more machine proved, it is the only workload that
+  would show what the JIT costs and misses under sustained real use.
+- [ ] **Next beyond-boot machines**: the Q605 `floppy` leg is BLOCKED behind the
+  § 1 hot-insert item (7.5.5 refuses a GCR disk on SWIM2 in the GUI, not
+  reproduced headless) — writing a gate that must fail proves nothing. The
+  open target is the **AIO family**.
 - [ ] **Floppy: a guest-INITIATED write — BLOCKED on the § 1 SWIM1-IWM mount
   bug.** The 2026-07-29 "volume mounts, window auto-opens, Cmd-N dropped"
   evidence is RETRACTED (2026-08-05): it was the System 7.5 INIT DIALOG end to
@@ -896,6 +910,55 @@ Plus, and the beyond-boot gap above. Lowest scores are **freshness**
 > **Chemin critique du projet depuis le 2026-08-09** (§ 0·A). L'ordre décidé
 > est : épuiser d'abord tout le conformant listé ici, **puis** seulement le
 > HLE / JIT non conformant (§ 8).
+
+**Chantier nommé par l'utilisateur, 2026-08-27 — mesurer le JIT sous une VRAIE
+charge applicative.** Tous les chiffres JIT du projet viennent aujourd'hui de
+trois sources : des bancs à budget de cycles fixe, un boot d'étalon, et le
+recensement Rogue (`tests/q605_rogue_census.cpp`, 2026-08-18 — « recense
+l'invité que tu optimises »). Aucune ne ressemble à ce qu'un utilisateur fait
+réellement de la machine. **Il faut un jeu lourd — SimCity 2000 est la cible
+nommée** — parce que son profil n'a rien de commun avec Rogue : simulation
+entière soutenue sur de grandes structures, QuickDraw dense, pagination
+disque, et des minutes d'exécution au lieu de secondes. C'est là que se voit ce
+qu'il faut améliorer dans le JIT, pas dans un banc synthétique.
+
+Ce que ça doit produire, et pourquoi chaque terme compte :
+
+- **part native et histogramme des replis** par phase (chargement, ville qui
+  tourne, défilement) : le recensement Rogue a montré que la part native est
+  un *symptôme*, pas la serrure — il faut savoir QUELLES formes retombent sous
+  charge réelle, pas seulement combien ;
+- **interp vs JIT sur le même budget de cycles**, protocole `docs/MEASURING.md`
+  (A/B entrelacé, empreinte identique, deux budgets) — sinon le chiffre n'est
+  pas citable ;
+- **entrées/sorties de blocs et table de liens** : le JIT idle-Finder sort sur
+  `JSR`/`RTS` ; un jeu qui appelle QuickDraw en boucle serrée les exerce
+  autrement ;
+- **le coût de l'exactitude ATC** sous une charge qui pagine vraiment, à
+  comparer aux 794 M sorties « window lost » mesurées sur le Finder au repos.
+
+Contraintes connues avant de commencer : le jeu est un **asset privé** (image
+disque, jamais commité — `assets.lock` avec un rôle dédié) ; le pilotage doit
+être déterministe (lancer, charger une ville sauvegardée, N frames fixes) ;
+et un gate qui mesure ne doit pas devenir un gate qui juge une performance sur
+une machine hôte quelconque — les seuils vivent dans `performance_budgets.tsv`,
+par hôte, ou nulle part.
+
+**Deux choses que le dépôt sait déjà et qu'il ne faut pas redécouvrir** :
+SimCity 2000 est **déjà sur `hdv/GISTPERSO-boot.vhd`**, l'image de référence de
+la LC II — l'asset n'est donc pas à trouver, il est à qualifier dans
+`assets.lock`. Et il porte une dette ouverte : la **course au démarrage
+GISTPERSO / SimCity 2000** (§ 5, CHANGELOG 2026-07-18 — le CPU tourne dans le
+heap-walk du Memory Manager de la ROM à `$40A0E148`, corruption de tas côté
+invité pendant le démarrage du Finder, contournement Shift/Option). Un banc qui
+lance le jeu **traverse forcément ce chemin** : soit la mesure ferme la dette
+en passant, soit elle la reproduit de façon déterministe, ce qu'aucune passe
+n'a encore fait. C'est un argument de plus pour ce chantier, pas contre.
+
+**Le bon premier pas** : reprendre `tests/q605_rogue_census.cpp` comme
+squelette (il possède déjà les phases, l'histogramme des replis et les dumps
+par phase) et le pointer sur une LC II qui lance SimCity 2000 depuis
+GISTPERSO — 030 d'abord parce que l'asset y est, 040 ensuite.
 
 Landed and documented: J0/J1 (engine seam, backends, fetch window, block cache),
 J2 (x86-64 code generator), J3 (inline DTLB), block linking, 030 + 020 seams,
