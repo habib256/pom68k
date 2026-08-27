@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 299 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 300 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -88,7 +88,7 @@ it.
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur le matériel cible |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Items 1 et 4 posés le 2026-08-27 → item 2 : la jambe sanitizer dans `nightly.yml` |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Items 1, 2 et 4 posés le 2026-08-27 → item 3 : la couverture, en artefact CI |
 | **1** | Rouge maintenant — **rien** ; ouverts non rouges ; règles de méthode | Reproduire l'insertion GCR à chaud **dans le GUI**, avant d'écrire le gate |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : `launch`/`floppy` sur Q605, ou la famille AIO |
 | **3** | JIT, second moteur d'exécution | Porter les deltas 030 de a64 vers x86-64, puis élargir les générateurs à la famille 68030 |
@@ -455,10 +455,11 @@ d'émulation, la stratégie de validation et la refonte en cours tiennent ; six
 réserves portent sur ce que l'arbre **ne** prouve pas encore. Elles sont
 recopiées comme travail, pas comme compliment ni comme grief. Ordre d'exécution
 conseillé — **1 → 2 → 4 → 3 → 5 → 6** : chaque étape rend la suivante lisible,
-et les deux premières sont les moins chères de tout ce fichier. **Les items 1 et 4 sont
-posés depuis le 2026-08-27** — et l'item 4 a payé son écriture le jour même en
-trouvant deux gates qui n'avaient jamais tourné. La prochaine ligne à attaquer
-est l'item 2.
+et les deux premières sont les moins chères de tout ce fichier. **Les items 1, 2 et 4 sont
+posés depuis le 2026-08-27** — et chacun a payé son écriture le jour même :
+six défauts pour les avertissements, une course de données pour les
+sanitizers, deux gates qui n'avaient jamais tourné pour le recensement. La
+prochaine ligne à attaquer est l'item 3.
 
 - [x] **1. Politique d'avertissements — POSÉE le 2026-08-27.**
   `POM68K_WARNINGS` (ON) met `-Wall -Wextra` sur les cibles POM68K et sur
@@ -480,18 +481,24 @@ est l'item 2.
   publie maintenant (étape non bloquante), corriger ce que GCC ajoute, puis
   basculer `-DPOM68K_WERROR=ON` dans ce job. Les deux compilateurs n'avertissent
   pas des mêmes choses et cet hôte n'a que clang.
-- [ ] **2. `POM68K_SANITIZE` existe et aucun job ne l'utilise**
-  (`CMakeLists.txt:238`). À faire, dans `nightly.yml`, à côté du job LTO :
-  une jambe `-DPOM68K_SANITIZE=address,undefined` exécutant `-L asset-none`
-  (85 gates, 3,08 s sans sanitizer sur x86-64 — le facteur ASan reste
-  supportable), et une jambe `thread` limitée à `machinehost_test` +
-  `gui_smoke_test`, parce que la frontière GUI ↔ thread machine (file de
-  commandes, double tampon d'image, atomiques de statut) est la seule vraie
-  concurrence de l'arbre. **Passer la première jambe en
-  `POM68K_CPU_ENGINE=interp`** : le JIT écrit et exécute son propre code, et ce
-  qu'ASan dira de `JitCodeBuffer` et de ses pages de garde est une seconde
-  expérience, pas la même. Le premier rapport rouge est un résultat, pas un
-  échec de la jambe.
+- [x] **2. Les sanitizers tournent — jambe `nightly.yml`, 2026-08-27.** Deux
+  configurations, mesurées ici avant d'être écrites dans la CI (un job que
+  personne n'a vu passer n'est pas un garde-fou) : `address,undefined` sur le
+  palier `-L asset-none` → **85/85, zéro rapport**, JIT natif compris ; et
+  `thread` sur les deux seuls gates qui portent de la vraie concurrence, qui a
+  **trouvé une course de données à la première exécution** — le thread machine
+  incrémentait le `int quanta` ordinaire du harnais pendant que le thread
+  principal l'attendait en boucle (`machinehost_test`, compteurs passés en
+  `std::atomic`). `MachineHost` lui-même était propre.
+  Deux choix explicites, sinon ils passeraient pour des oublis : la jambe ASan
+  **ne force pas** `POM68K_CPU_ENGINE` — le premier essai le faisait et cassait
+  `jit_store_guard_a64_test`, dont le sujet est précisément que du code natif a
+  été compilé ; et `detect_leaks=0` pour l'instant, parce que LeakSanitizer est
+  actif par défaut avec ASan sur Linux, absent sur macOS, donc les passes
+  locales ne l'ont jamais vu.
+  *Reste, deux lignes* : lire la première exécution CI (Linux + g++, ni l'un ni
+  l'autre testé ici) ; puis ouvrir la chasse aux fuites avec son propre triage,
+  `detect_leaks=1`.
 - [ ] **3. Aucune mesure de couverture.** À faire : une configuration
   `--coverage` + `gcovr`, exécutée sur le palier asset-free, publiée en artefact
   CI comme le sont déjà les métriques JIT. **Le nombre à regarder n'est pas un

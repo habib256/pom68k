@@ -1,4 +1,5 @@
-# Nightly: does libpom68k_core.a survive LTO, on both host architectures?
+# Nightly: does libpom68k_core.a survive LTO on both host architectures,
+# and what do the sanitizers say about the tree?
 #
 # The gap this closes. `ci.yml` has two jobs and neither answers it:
 #   - `linux` asks for -DPOM68K_LTO=OFF on purpose, because LTO roughly
@@ -26,7 +27,7 @@
 # and a timeout on a nightly costs a whole night. `-flto=auto` spawns its own
 # LTRANS jobs per link on top of the make parallelism; if a runner ever does
 # OOM here, lower --parallel before suspecting the code.
-name: Nightly LTO
+name: Nightly
 
 on:
   schedule:
@@ -34,7 +35,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: nightly-lto-${{ github.ref }}
+  group: nightly-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -109,3 +110,86 @@ jobs:
             build/CMakeCache.txt
             build/CMakeFiles/CMakeConfigureLog.yaml
           if-no-files-found: warn
+
+  # ── Sanitizers ────────────────────────────────────────────────────────
+  # POM68K_SANITIZE existed since the POM2 days and NO job had ever used it
+  # (TODO.md section 0.B item 2, from the 2026-08-26 review). This is that job.
+  #
+  # Measured on the dev host (aarch64/macOS, clang) before being written here,
+  # because a CI leg nobody has seen pass is not a guard:
+  #   - address,undefined over `-L asset-none`: 85/85, zero sanitizer reports.
+  #   - thread over the two gates that own the only real concurrency in the
+  #     tree: it found a genuine data race on the first run -- the machine
+  #     THREAD bumping the test harness's plain `int quanta` while the main
+  #     thread spun on it (machinehost_test, fixed by making the counters
+  #     atomic). MachineHost itself was clean.
+  #
+  # Two deliberate choices, both of which would otherwise look like an
+  # oversight:
+  #   - the ASan leg does NOT force POM68K_CPU_ENGINE. The first local attempt
+  #     did, reasoning that generated code deserves its own experiment, and it
+  #     broke `jit_store_guard_a64_test`, whose whole subject is that native
+  #     code got compiled. The JIT under ASan is what this leg should exercise,
+  #     and it is clean.
+  #   - detect_leaks=0 for now. LeakSanitizer is on by default with ASan on
+  #     Linux and off on macOS, so the local runs never saw it; leaks are a
+  #     separate hunt with its own triage, and turning it on blind would make
+  #     the leg's first CI appearance a wall of noise nobody reads.
+  sanitizers:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - san: address,undefined
+            name: asan-ubsan
+          - san: thread
+            name: tsan
+    name: Sanitizer (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev xvfb
+
+      - name: Fetch Dear ImGui (pinned to the tested docking release)
+        run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
+
+      - name: Configure
+        # RelWithDebInfo, not Release: a sanitizer report without line numbers
+        # costs more time than the leg saves. No LTO, no native ISA.
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF
+          -DPOM68K_SANITIZE=${{ matrix.san }}
+
+      - name: Build (whole tree for ASan, the two concurrency gates for TSan)
+        run: |
+          if [ "${{ matrix.name }}" = "tsan" ]; then
+            cmake --build build -j"$(nproc)" --target machinehost_test POM68K
+          else
+            cmake --build build -j"$(nproc)"
+          fi
+
+      - name: Run
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: |
+          if [ "${{ matrix.name }}" = "tsan" ]; then
+            ctest --test-dir build -R "machinehost_test|gui_smoke_test" \
+                  --output-on-failure
+          else
+            ctest --test-dir build -L asset-none -j "$(nproc)" \
+                  --output-on-failure
+          fi
+
+      - name: Which gates actually ran
+        # A soft-skipped gate exits 0 and is counted green, so the tally alone
+        # cannot say whether the sanitizer exercised anything.
+        if: always()
+        run: python3 tools/gate_execution_census.py --build-dir build
