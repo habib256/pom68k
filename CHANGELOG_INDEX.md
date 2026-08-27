@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 310 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 313 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,15 +9,15 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 34 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 35 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 39 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 11 |
 | [Save states](#save-states) | 6 |
-| [Machine bring-ups](#machine-bring-ups) | 43 |
-| [Build, packaging and release](#build-packaging-and-release) | 7 |
+| [Machine bring-ups](#machine-bring-ups) | 44 |
+| [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 22 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 7 |
 | [Cross-cutting](#cross-cutting) | 55 |
@@ -94,6 +94,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-10 (fourth)** — [The 68030 trace cost stops being a guess: base, i-cache and post-exception are separate](CHANGELOG.md#2026-08-10-jit-030-trace-cost)
 - **2026-08-10 (second)** — [the 68030 blocker was two bugs, and the first one was never 68030-specific](CHANGELOG.md#2026-08-10-jit-030-blocker-two-bugs)
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](CHANGELOG.md#2026-08-10-jit-030-pi-success)
+- **2026-08-12 (third)** — [Four 68030 fault-frame gaps close against the oracle, recorded here retroactively](CHANGELOG.md#2026-08-12-berr030-oracle-closures)
 - **2026-08-16 (later)** — [020/030/040 closure: integrated FPU, module calls, caches and interruptible 6888x](CHANGELOG.md#2026-08-16-020-030-040-closure)
 - **2026-08-19** — [The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run](CHANGELOG.md#2026-08-19-030-codegen-parity)
 - **2026-08-22 (fourth)** — [The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever](CHANGELOG.md#2026-08-22-slice-index-leak)
@@ -261,6 +262,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-06 (later)** — [The PRAM finally survives the session on all eleven boards, and the Duo becomes the 37th profile — the first laptop](CHANGELOG.md#2026-08-06-duo-profile)
 - **2026-08-09 (ninth)** — [The LC II never was at ×1.3, and the window exit nobody had priced costs 43 ns](CHANGELOG.md#2026-08-09-speed-baseline)
 - **2026-08-09 (third)** — [Six copies of the GUI ↔ machine-thread contract became one, and the thing that had never been testable got a gate](CHANGELOG.md#2026-08-09-machinehost)
+- **2026-08-11** — [The performance pass whose only record was the backlog: three promotions, six refusals, one fixture trap](CHANGELOG.md#2026-08-11-perf-pass)
 - **2026-08-13 (fifth)** — [Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green](CHANGELOG.md#2026-08-13-beyond-boot-roster)
 - **2026-08-13 (fourth)** — [The first RBV machine past boot: the missing piece was an instrument, and its first run validated itself](CHANGELOG.md#2026-08-13-iisi-beyond-boot)
 - **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](CHANGELOG.md#2026-08-13-beyond-boot-reds)
@@ -279,6 +281,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-17 (fifth)** — [Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes](CHANGELOG.md#2026-08-17-nightly-lto-core)
 - **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's *default* still followed NATIVE](CHANGELOG.md#2026-08-17-lto-default-on)
 - **2026-08-19 (second)** — [A full-parallel LTO make froze the host: with LTO the memory spike is the LINK, and an interrupted make leaves binaries that lie](CHANGELOG.md#2026-08-19-make-lto-freeze)
+- **2026-08-28** — [An architecture pass reads the repository instead of its documentation, and finds a shipped Windows binary that cannot work](CHANGELOG.md#2026-08-28-architecture-review)
 
 ## Tests, gates and measurement
 
