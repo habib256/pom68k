@@ -280,9 +280,14 @@ add_test(NAME docs_test COMMAND docs_test
 # The env-knob surface against DEV.md § 5 and config_knobs.tsv. The exact
 # registry classifies every name and checks product evidence against the
 # configured gate roster. Links nothing; walks the source tree.
+# The absent roster too: a product knob's evidence may be a host-conditional
+# gate, and elsewhere that citation is not stale, only unregistered.
+# POM68K_JIT_030_MEMBF cites the a64 alignment lockstep and turned this gate
+# red on every x86-64 tree until this line existed (CHANGELOG 2026-08-28).
 add_executable(config_test tests/config_test.cpp)
 target_compile_definitions(config_test PRIVATE
-    POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv")
+    POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv"
+    POM68K_GATE_ROSTER_ABSENT="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv")
 add_test(NAME config_test COMMAND config_test)
 
 # tests/FolderProbe.h — "did the guest create a folder?", the observable

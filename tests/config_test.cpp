@@ -46,6 +46,17 @@
 #ifndef POM68K_GATE_ROSTER
 #define POM68K_GATE_ROSTER ""
 #endif
+// The registry has more than one size (`cmake/Pom68kJitGates.cmake` writes
+// this file with what THIS host cannot register), and a product knob is
+// allowed to cite a host-conditional gate as its evidence: on the other
+// host that citation is not stale, it is simply absent. Reading only the
+// registered roster made POM68K_JIT_030_MEMBF -- whose evidence is the
+// AArch64 alignment lockstep -- a red on every x86-64 tree from the day it
+// landed. Same division of labour as docs_test: the union is what a
+// document may name, the host says which half it can run.
+#ifndef POM68K_GATE_ROSTER_ABSENT
+#define POM68K_GATE_ROSTER_ABSENT ""
+#endif
 
 static int gFails = 0;
 static void check(bool ok, const std::string& what) {
@@ -226,8 +237,14 @@ int main() {
     for (const auto& [k, entry] : registry)
         require(code.count(k), "classified knob `" + k + "` does not exist in the tree");
 
-    const std::set<std::string> gates = loadGates(POM68K_GATE_ROSTER);
+    std::set<std::string> gates = loadGates(POM68K_GATE_ROSTER);
     check(!gates.empty(), "configured gate roster is available to config_test");
+    const std::set<std::string> elsewhere = loadGates(POM68K_GATE_ROSTER_ABSENT);
+    if (!elsewhere.empty()) {
+        std::printf("note: %zu gate(s) exist only on the other host; a knob "
+                    "may cite them\n", elsewhere.size());
+        gates.insert(elsewhere.begin(), elsewhere.end());
+    }
     std::map<std::string, int> classCounts;
     for (const auto& [k, entry] : registry) {
         classCounts[entry.kind]++;

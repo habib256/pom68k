@@ -112,6 +112,26 @@ static std::vector<int> numbersBefore(const std::string& text,
     return out;
 }
 
+// Every integer that immediately FOLLOWS `needle`, past the same markdown
+// emphasis. The registry's two DERIVED per-architecture totals are written
+// that way ("configure sees **234**"), so the backward scan above cannot
+// see them -- and for four months neither could anything else.
+static std::vector<int> numbersAfter(const std::string& text,
+                                     const std::string& needle) {
+    std::vector<int> out;
+    for (size_t i = text.find(needle); i != std::string::npos;
+         i = text.find(needle, i + 1)) {
+        size_t k = i + needle.size();
+        while (k < text.size() && (text[k] == ' ' || text[k] == '*' ||
+                                   text[k] == '`' || text[k] == '\n')) k++;
+        const size_t begin = k;
+        while (k < text.size() && std::isdigit(uint8_t(text[k]))) k++;
+        if (k == begin || k - begin > 5) continue;
+        out.push_back(std::stoi(text.substr(begin, k - begin)));
+    }
+    return out;
+}
+
 int main() {
     const std::string mainCpp = testasset::find("src/main.cpp");
     const std::string guiRuntimeCpp =
@@ -1574,42 +1594,127 @@ int main() {
                       label + "` gates; ctest has " + std::to_string(have));
     }
 
-    // ── 6. …including the ones inside a fenced code block ────────────────
+    // ── 5bis. …and the two totals the docs DERIVE from that union ────────
+    // The union is checked on every host by check 5. The two
+    // per-architecture numbers the SAME sentence derives from it were plain
+    // prose arithmetic, checked by nothing, and on 2026-08-28 all four
+    // documents carried a wrong one: CLAUDE.md said 232/233, TODO.md
+    // 231/232, README.md and DEV.md 227/228 — where an x86-64 configure
+    // registers 234 and an AArch64 one 235. The per-label figures printed
+    // in the same breath were right, which is exactly why nobody re-derived
+    // the totals.
+    //
+    // A host can only prove its own half, and that is enough: `gates` is
+    // what CTest registered HERE, so hold the number written for THIS
+    // architecture to it and let the other host hold the other. Same
+    // division of labour as the absent roster above — and the same rule if
+    // a third architecture ever appears: give it its phrase here, or it
+    // goes unchecked and says so.
+    {
+#if defined(__aarch64__) || defined(_M_ARM64)
+        const char* hostPhrase = "AArch64 one";
+        const char* hostName   = "AArch64";
+#elif defined(__x86_64__) || defined(_M_X64)
+        const char* hostPhrase = "x86-64 configure sees";
+        const char* hostName   = "x86-64";
+#else
+        const char* hostPhrase = nullptr;
+        const char* hostName   = "this architecture";
+#endif
+        check(hostPhrase != nullptr,
+              std::string("the docs state a registry total for ") + hostName);
+        if (hostPhrase) {
+            const int here = int(gates.size());
+            for (const char* file : { "CLAUDE.md", "TODO.md", "README.md",
+                                      "DEV.md" }) {
+                const std::string path = testasset::find(file);
+                if (path.empty()) continue;
+                const std::string text = slurp(path);
+                // DEV.md words it "an x86-64 tree reads"; accept either, but
+                // demand that the file which mentions the OTHER host's total
+                // also states this one — a document cannot answer half.
+                std::vector<int> stated = numbersAfter(text, hostPhrase);
+                if (stated.empty())
+                    stated = numbersAfter(text, "x86-64 tree reads");
+                const bool mentionsSplit =
+                    text.find("host-conditional") != std::string::npos ||
+                    text.find("AArch64 one") != std::string::npos;
+                check(!mentionsSplit || !stated.empty(),
+                      std::string(file) +
+                          " splits the registry by host and states the " +
+                          hostName + " total");
+                for (int n : stated)
+                    check(n == here,
+                          std::string(file) + " says a " + hostName +
+                              " configure registers " + std::to_string(n) +
+                              "; ctest registered " + std::to_string(here));
+            }
+        }
+    }
+
+    // ── 6. …including the ones inside a fenced code block or a table ─────
     // `ctest -L unit   # 79 gates` is the same claim as the prose, and it is
     // where the count was stalest: no backticks, so check 5 walked straight
-    // past it. Matched in CLAUDE.md and README.md alike.
-    for (const char* file : { "CLAUDE.md", "README.md" }) {
+    // past it.
+    //
+    // TWO forms escaped this check until 2026-08-28, and both were found
+    // carrying a stale registry:
+    //   * `# 112 legacy non-etalon gates` — the digits are not adjacent to
+    //     " gates", so the backward scan gave up and the line passed. That
+    //     is how README.md kept saying 111 while CTest registered 112.
+    //   * DEV.md § 6's tier TABLE — ``| `ctest -L etalon` | 124 | …`` — which
+    //     has no '#' at all and so was read by nothing. It was the stalest
+    //     document of the four: 230 total, 121 `etalon`, 40 `jit`.
+    // So: the count is now the FIRST integer of whatever trails the command,
+    // and the trailer is either a '#' comment mentioning " gates" or the
+    // second cell of a markdown row that BEGINS with the command. The row
+    // must begin with it — `| Which `ctest` tier to run | §6 … |` is prose
+    // about ctest, not a claim about a count.
+    for (const char* file : { "CLAUDE.md", "README.md", "DEV.md" }) {
         const std::string p = testasset::find(file);
         if (p.empty()) continue;
         const std::string text = slurp(p);
-        const std::string cmd = "ctest";
-        for (size_t i = text.find(cmd); i != std::string::npos;
-             i = text.find(cmd, i + 1)) {
-            const size_t eol = text.find('\n', i);
-            const std::string line = text.substr(i, eol - i);
-            const size_t hash = line.find('#');
-            if (hash == std::string::npos) continue;
-            // "<n> gates" in the trailing comment
-            const size_t g = line.find(" gates", hash);
-            if (g == std::string::npos) continue;
-            size_t k = g, end;
-            while (k > hash && line[k - 1] == ' ') k--;
-            end = k;
-            while (k > hash && std::isdigit(uint8_t(line[k - 1]))) k--;
-            if (k == end) continue;
-            const int stated_n = std::stoi(line.substr(k, end - k));
-            // Which label? `-L <label>` on the same line, else the total.
-            const size_t lpos = line.find("-L ");
+        size_t bol = 0;
+        while (bol < text.size()) {
+            const size_t eol = std::min(text.find('\n', bol), text.size());
+            const std::string line = text.substr(bol, eol - bol);
+            bol = eol + 1;
+            const size_t i = line.find("ctest");
+            if (i == std::string::npos) continue;
+
+            size_t tail = std::string::npos;          // where the count lives
+            const size_t hash = line.find('#', i);
+            if (hash != std::string::npos) {
+                if (line.find(" gates", hash) == std::string::npos) continue;
+                tail = hash + 1;
+            } else if (line.compare(0, 8, "| `ctest") == 0) {
+                const size_t cell = line.find('|', 1);
+                if (cell == std::string::npos) continue;
+                tail = cell + 1;
+            }
+            if (tail == std::string::npos) continue;
+
+            size_t k = tail;
+            while (k < line.size() && !std::isdigit(uint8_t(line[k]))) k++;
+            const size_t begin = k;
+            while (k < line.size() && std::isdigit(uint8_t(line[k]))) k++;
+            if (k == begin) continue;
+            const int stated_n = std::stoi(line.substr(begin, k - begin));
+
+            // Which label? `-L <label>` before the trailer, else the total.
+            const size_t lpos = line.find("-L ", i);
             int want = totalGates;
             std::string which = "total";
-            if (lpos != std::string::npos && lpos < hash) {
+            if (lpos != std::string::npos && lpos < tail) {
                 which.clear();
-                for (size_t c = lpos + 3; c < hash && !std::isspace(uint8_t(line[c])); c++)
+                for (size_t c = lpos + 3;
+                     c < tail && !std::isspace(uint8_t(line[c])) &&
+                     line[c] != '`' && line[c] != '|'; c++)
                     which += line[c];
                 want = countLabel(which);
             }
             check(stated_n == want,
-                  std::string(file) + ": `" + line.substr(0, hash - 1) +
+                  std::string(file) + ": `" + line.substr(0, tail - 1) +
                       "` says " + std::to_string(stated_n) + " gates; " + which +
                       " has " + std::to_string(want));
         }

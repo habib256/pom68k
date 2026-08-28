@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 322 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 325 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -344,6 +344,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-28 (thirteenth)** — [The 68030 lockstep segfaults on every x86-64 tree, and the overflowing counter was the thermometer, not the disease](#2026-08-28-x64-030-retry-storm)
+- **2026-08-28 (twelfth)** — [The tree did not compile on g++, one gate cited evidence that cannot exist on this host, and the first real GCC census is 17 warnings](#2026-08-28-x64-host-first-run)
+- **2026-08-28 (eleventh)** — [Four documents carried a wrong per-host gate total, and the per-label figures beside them were right](#2026-08-28-registry-derived-totals)
 - **2026-08-28 (tenth)** — [The live AppleShare exchange gets its gate, registered before it has ever been seen green](#2026-08-28-afp-live-gate)
 - **2026-08-28 (ninth)** — [Nominal mode never held ×1: the pacer slept relative to emulation cost alone, and AppleTalk had been taking the blame](#2026-08-28-pacing-absolute-deadline)
 - **2026-08-28 (eighth)** — ["Bitfields are emitted by no backend" was half wrong: a64 had a complete read-only memory-bitfield path, excluded wholesale from the 030](#2026-08-28-030-membf)
@@ -668,6 +671,193 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-28-x64-030-retry-storm"></a>
+## 2026-08-28 (thirteenth) — The 68030 lockstep segfaults on every x86-64 tree, and the overflowing counter was the thermometer, not the disease
+
+**Three gates, one deterministic SIGSEGV.** The first `ctest -L unit` ever run
+on an x86-64 host *carrying the assets* returned 104 executed / 1 soft-skipped
+/ **4 failed** (287.56 s at `-j16`, 157 binaries fresh, self-test green).
+Three of the four are the 68030 locksteps —
+`jit_lockstep_030_test`, `jit_lockstep_030_x64_experimental_test`,
+`jit_lockstep_030_x64_alignment_test` — dying at 285.51 / 286.53 / 287.55 s.
+The simultaneity looked like an external kill; it is not. They are three
+instances of the same deterministic workload started together, and the fourth
+030 gate, `jit_lockstep_030_blocks_test`, **passes in 81.91 s** with the only
+difference being `POM68K_JIT_BACKEND=threaded`. Reproduced standalone, outside
+any cgroup and with no parallelism: exit 139, core dumped.
+
+**The proximate cause, read off the registers.** Under `gdb`:
+
+```
+#0  moira::Moira::mmuWrite<C68020, Long, 0>+362
+        mov  %ecx,0x11ed0(%rbx,%rdx,4)      ; mmuAd[mmuIdxDone] = v
+    rdx 0xffffffff80000000                  ; the index is INT_MIN
+#1  pomJitWriteData  #2  pom68kJitWrite  #3 <generated code>
+#11 X64Backend::run  #12 Engine::executeUntil  #13 Cpu030::runCycles
+```
+
+`mmuAd` is `u32[10]`, `mmuIdx`/`mmuIdxDone` are `int`, and the store guard is
+`if (mmuIdxDone < 10)` — a **signed** comparison. The pair is per-INSTRUCTION
+state, cleared by `mmuExecuteStart()` at the head of the interpreter's mode-5
+loop; generated 68030 code enters through `pomJitWriteData`/`pomJitReadData`
+and never passes that loop head, so under the code generator the counters only
+ever grow. At INT_MAX the increment wraps (signed overflow, UB) to INT_MIN,
+the guard passes again, and the next logged access stores into
+`mmuAd[-2147483648]`. The only value a monotonically incremented `int` can
+hold that both exceeds 10 and satisfies `< 10` is exactly the one in `rdx`.
+
+Fixed as Moira patch group 30: `pomMmuBumpIdx`/`pomMmuBumpIdxDone` saturate at
+`1 << 20` — orders of magnitude above what a single instruction can log (the
+array holds 10 entries, the fault frame stacks four bits), so every
+interpreted run stays bit-identical and only the unbounded JIT path changes.
+Ten call sites, no raw `++` left.
+
+**But a counter does not overflow by accident, and this is where the entry
+turns.** Reaching 2^31 increments before step 8000 means **2.147 × 10⁹ logged
+MMU accesses in 8000 × 8192 = 65.5 × 10⁶ guest cycles — 32.8 accesses per
+68030 cycle.** A 68030 makes well under one. The counter did not overflow
+because it was too small; it overflowed because **the x64 030 path repeats the
+same access about a hundred times**. Three independent measurements agree:
+
+| workload, same binary, same host | wall |
+|---|---|
+| 8 000 steps, `POM68K_JIT_BACKEND=threaded` | **10.00 s** |
+| 20 000 steps, `threaded` | **15.91 s** |
+| 8 000 steps, `x64` | **still unfinished after 1 h 01**, and pre-fix it died at 289 s |
+| 20 000 steps, `x64` | **> 600 s** |
+
+and the engine counters say why: at 4 000 steps the x64 arm reports
+`jit instrs 0 · blocks 0 compiled · window 630766 armed (630766 refused)` —
+**100 % of code windows refused, not one native instruction retired** — where
+`threaded` retires 8 368 116 in the same place. The generator never starts; it
+arms and refuses in a loop. The overflow is the thermometer, the ×29 wall
+clock is the other symptom, and the disease is the refusal loop.
+
+**And it is the 68030 path specifically, not the x64 generator.** In the same
+tier and the same run, `jit_lockstep_x64_test` (26.30 s) and
+`jit_lockstep_x64_fine_test` (3.95 s) — the 68040 locksteps against the same
+generator — pass. So does every other lockstep, and so do `sst68000`
+(1 000 058 vectors), `sst68030` and `sst68040`, which is also the evidence
+that patch group 30 leaves the interpreter bit-identical. Whatever refuses
+the window is a 68030 condition, on a backend that retires native 68040 code
+in the next gate along.
+
+**Neither symptom is new, and the 2026-08-28 batch is innocent.** A worktree
+built at `715efca` — the merge *before* that day's eight landings, no LTO, no
+`-march=native` — crashes the same way at the same place: **exit 139 after
+289.43 s on 8000 steps**. The D1F0 / `JitCost.h` work did not cause this.
+
+**Why it was never seen** is `TODO.md` § 10 constat 3 in the flesh. These
+three gates are registered on x86-64 **only**; the development host is
+AArch64, where they do not exist. `TODO.md` § 1 read "no red open" because it
+was written where half the registry cannot run. The x86-64 half had been red
+for at least a day, and the crash arrives at ~285 s — *before* the gate's own
+1800 s TIMEOUT — so it reports SEGFAULT rather than a timeout every time.
+
+**Closing number on this host, same tier, after the fix**: `ctest -L unit
+-j16` → **106/109, 105 executed, 1 soft-skipped, 3 failed — and the three are
+now `Timeout`, not `SEGFAULT`.** They burn their full 1800 s without dying.
+That is exactly the expected shape: patch group 30 closes the crash, and the
+refusal loop underneath it is untouched.
+
+Open, and it is now the named x86-64 item: **why the x64 030 window is
+refused 100 % of the time.** The crash is fixed and the arithmetic above is
+the measurement to start from. A caution that follows from it: the D.1
+evidence that promoted x64 to the conformant 68030 default on 2026-08-21
+was taken on this path, and wants re-reading.
+
+<a id="2026-08-28-x64-host-first-run"></a>
+## 2026-08-28 (twelfth) — The tree did not compile on g++, one gate cited evidence that cannot exist on this host, and the first real GCC census is 17 warnings
+
+Three findings from bringing an x86-64 Linux host (g++ 13.3.0) up to a full
+build and the `unit` tier. None of them is subtle; all of them survived
+because nothing on that host had run.
+
+**1. `all` did not build.** `tests/q605_hotfloppy_probe.cpp` calls
+`std::sqrt` with no `<cmath>`: clang pulls it in transitively, g++ 13 does
+not. One missing include stopped the entire tree, twice, in two independent
+build directories. The file's own header still called itself a
+"Dev harness: EXCLUDE\_FROM\_ALL, no CTest entry" — it has been the
+registered gate `q605_hotfloppy_etalon`, built by `all`, since
+`cmake/Pom68kMachineGates.cmake:297-301`. Both corrected.
+
+**2. `config_test` is red on every x86-64 tree.** Its message is exact:
+`product knob POM68K_JIT_030_MEMBF cites missing gate
+jit_lockstep_030_a64_alignment_test`. The knob's evidence is the AArch64
+alignment lockstep, which is host-conditional; `docs_test` has read
+`pom68k_gates_absent.tsv` since 2026-08-12 for precisely this reason, and
+`config_test` had never been given it. It is now, with the same division of
+labour: the union is what a document may cite, the host says which half it can
+run. Red from the moment `POM68K_JIT_030_MEMBF` landed that morning.
+
+**3. The first REAL g++ 13 census** (`TODO.md` § 0·B item 1, whose previous
+reading was empty because the CI job died before the build). Built with the
+CI's exact configuration — `POM68K_NATIVE=OFF`, `POM68K_LTO=OFF` — and
+counted with the CI's exact recipe: **17 warning lines in POM68K's own
+sources, 16 distinct sites** (one is the same `macTime` warning seen twice
+across a resumed build), and **zero** from `extern/` or `imgui/`, which the
+2026-08-27 policy silences by design.
+
+| option | n | where |
+|---|---|---|
+| `-Wmisleading-indentation` | 8 | `sst68000/030/040.cpp` (6, the same `if (*p=='"') ++p; eat(p,':');` line), `JitBackendA64.cpp:837,840` |
+| `-Wrange-loop-construct` | 4 | `docs_test.cpp:1402,1403,1408`, `JitBackendA64.cpp:4178` |
+| `-Wunused-function` | 2→1 | `q605_hotfloppy_probe.cpp` `macTime()` |
+| `-Wtype-limits` | 1 | `Ncr53c96.cpp:593` — `busId_ >= 0` on a `uint8_t` |
+| `-Wdangling-reference` | 1 | `docs_test.cpp:1048` |
+| `-Warray-bounds=` | 1 | `EtherLink.cpp:43` `memcpy` into a just-sized `std::vector` |
+
+Note the census recipe's own blind spot, found while using it: the CI greps
+`\[-W[a-z0-9-]*\]`, which does not match `[-Warray-bounds=]`. The total line
+and the per-option table therefore disagree by one, and the one they lose is
+the only warning that might not be cosmetic.
+
+Also here: `tools/check_volume_state.py`. `CLAUDE.md` carries "read
+`drVolAtrb` bit 8 before theorising about a gate's code" as a method rule in
+capitals, learnt from two days of misdiagnosing the IIfx; the measurement
+itself stayed manual, which means it was taken *after* the theorising. As one
+command over this host: **17 HFS volumes, 9 clean, 8 dirty**, and of the six
+`assets.lock` reference identities, **three are not cleanly unmounted**
+(`GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`, `System 7.1 HD.dsk`) and **four
+no longer match their recorded digest** (`GISTPERSO-boot.vhd`, `HD20SC.vhd`,
+`MacOS-8.1-boot.vhd`, `System 7.5.5 HD.dsk`). All six sit flat in `hdv/`
+instead of `hdv/ref/`, which is exactly the path the schema protects from a
+writable GUI open. Dirty is not broken — the qualified `System 7.1 HD.dsk` is
+dirty and green — but it is the first line to read when one goes red.
+
+<a id="2026-08-28-registry-derived-totals"></a>
+## 2026-08-28 (eleventh) — Four documents carried a wrong per-host gate total, and the per-label figures beside them were right
+
+`ctest -N` on an x86-64 configure: **234**, plus the 3 AArch64-only gates
+`pom68k_gates_absent.tsv` names = the documented union of 237. What the
+documents said: `CLAUDE.md` 232, `TODO.md` 231, and `README.md` + `DEV.md`
+**227** — the last two around an entire registry a week stale (230 total, 121
+`etalon`, 40 `jit`, 111 `unit`, 85 `asset-none`).
+
+The instructive part is *which* numbers were wrong. Every per-label figure
+printed in the same breath was correct — `TODO.md`'s "109 `unit`, 8 `smoke`,
+38 `jit`" is exactly what this host registers. Only the two totals the same
+sentence **derives** from the union were wrong, because `docs_test` checked
+the union and the labels and never the derivation. A number nobody computes is
+a number that drifts.
+
+Three checks close the gap, each named for the bug it would have caught:
+
+* **the per-host total**, matched against `gates.size()` for the architecture
+  this run is on — the other half is proved when the gate runs on the other
+  host, the same division of labour the absent roster already uses;
+* **`# 112 legacy non-etalon gates`**, whose digits are not adjacent to
+  " gates" so the old backward scan gave up and let README.md keep saying 111;
+* **`DEV.md` § 6's whole tier table** — ``| `ctest -L etalon` | 124 | …`` — which
+  has no `#` at all and was therefore read by nothing. It was the stalest of
+  the four.
+
+Verified by perturbation, not by inspection: reverting each of the three to
+its stale value fails the gate, and only the AArch64 half stays unproved here,
+by design. `CLAUDE.md`'s claim that "there is no `RUN_SERIAL` … in the tree"
+is corrected in the same pass — there is exactly one, on `gui_smoke_test`,
+which wants the only window.
 
 <a id="2026-08-28-afp-live-gate"></a>
 ## 2026-08-28 (tenth) — The live AppleShare exchange gets its gate, registered before it has ever been seen green

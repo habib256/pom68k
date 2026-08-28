@@ -4276,7 +4276,7 @@ Moira::execMoves(u16 opcode)
 
                 bool logSave = mmuLogging;
                 if (logSave) {                  // ACCESS_CHECK_PUT
-                    mmuIdx++;
+                    pomMmuBumpIdx();
                     mmuDataBuffer = readR(src);
                     mmuLogging = false;
                 }
@@ -4284,7 +4284,7 @@ Moira::execMoves(u16 opcode)
                 if (logSave) {                  // ACCESS_EXIT_PUT
                     mmuLogging = true;
                     if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuDataBuffer;
-                    mmuIdxDone++;
+                    pomMmuBumpIdxDone();
                 }
 
                 fcSource = 0;

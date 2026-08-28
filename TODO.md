@@ -19,8 +19,11 @@ re-verify before quoting them anywhere:
   `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
   the x86-64-only `jit_lockstep_030_x64_experimental_test` +
   `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
-  **231** (109 `unit`, 8 `smoke`, 38 `jit`) and an AArch64 one 232 (110
-  `unit`, 39 `jit`). Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
+  **234** (109 `unit`, 8 `smoke`, 38 `jit`) and an AArch64 one 235 (110
+  `unit`, 39 `jit`) — union minus the three, resp. the two, that host
+  cannot register; the per-label figures were right and only the two
+  totals were wrong (measured `ctest -N` 2026-08-28, x86-64). Eight more
+  exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:466`, and it FATAL_ERRORs off AArch64 in
   `cmake/Pom68kJitGates.cmake:458-464`).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
@@ -71,10 +74,10 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Le mode nominal tient enfin ×1 (paceur à échéance absolue, 2026-08-28 — il plafonnait à ~×0,75 partout) ; reste : `POM68K_TURBO` scriptable pour re-mesurer AppleTalk à bras égaux, et la ligne de base Pi 400 |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Restent les deux lectures de CI, maintenant débloquées (rouge amont fermé le 2026-08-28) : premier recensement g++ RÉEL, premier rapport de fuites Linux |
-| **1** | Rouge maintenant — aucun au 2026-08-28 soir ; ouverts non rouges ; règles de méthode | Lire la première exécution Windows du palier `asset-none` (release job) |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Recensement g++ FAIT le 2026-08-28 (17 lignes, 16 sites) : reste à corriger les 16 puis armer `-Werror` ; et le premier rapport de fuites Linux |
+| **1** | Rouge maintenant — **un, x86-64 seulement** : le lockstep 030 sous le générateur x64 ; ouverts non rouges ; règles de méthode | Trouver pourquoi la fenêtre 030 x64 est refusée à 100 % (0 instruction native retirée) |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | `D1F0` clos (ABBA : nul — l'histogramme de replis n'est pas un profil temporel) ; BFEXTU 030 fait derrière `POM68K_JIT_030_MEMBF` ; suite : contrat IR de BFINS (couverture) et un PROFIL TEMPOREL pour le prochain levier mural |
+| **3** | JIT, second moteur d'exécution | **D'abord le rouge de § 1 : le générateur 030 x64 refuse 100 % de ses fenêtres** ; ensuite `D1F0` clos (ABBA nul), BFEXTU 030 derrière `POM68K_JIT_030_MEMBF`, contrat IR de BFINS, et un PROFIL TEMPOREL pour le prochain levier mural |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -271,8 +274,19 @@ rien d'autre :
   recensement lisait un `build.log` inexistant — en imprimant « 0 warnings »,
   la forme exacte du phantom pass. Deux correctifs le même jour : le rouge
   amont est fermé, et le recensement dit désormais « NO CENSUS » sur log
-  manquant au lieu de compter zéro. La première lecture RÉELLE reste à faire
-  sur le prochain run vert.
+  manquant au lieu de compter zéro.
+  **La première lecture RÉELLE est faite le 2026-08-28**, pas depuis la CI
+  mais avec son instrument exact (g++ 13.3.0, `POM68K_NATIVE=OFF`,
+  `POM68K_LTO=OFF`, la recette de comptage de `ci.yml`) sur l'hôte x86-64 :
+  **17 lignes d'avertissement dans nos sources, 16 sites distincts**, zéro
+  hors `extern/`/`imgui/`. Répartition et sites : `CHANGELOG.md` 2026-08-28
+  (twelfth). Aucun n'est un bug avéré, un seul mérite lecture
+  (`-Warray-bounds=` sur le `memcpy` d'`EtherLink`). **Le comptage de la CI
+  a lui-même un angle mort trouvé en s'en servant** : son
+  `grep -o "\[-W[a-z0-9-]*\]"` ne matche pas `[-Warray-bounds=]`, donc son
+  tableau par option perd exactement le seul avertissement non cosmétique.
+  Reste à faire pour cocher : corriger les 16 sites, corriger le motif du
+  recensement, puis basculer `-DPOM68K_WERROR=ON` dans ce job.
 - [ ] **Lire le premier rapport de fuites Linux** de la nightly pour rendre
   son étape `detect_leaks=1` bloquante. Elle est non bloquante parce qu'elle
   interroge un *autre* runtime, pas parce que notre code est suspect :
@@ -290,7 +304,7 @@ thread de `JitBackendA64.cpp`. Un thread = une machine reste vrai ; cette ligne
 est leur condition de réouverture.
 
 **Réserve transverse, sans case à cocher : `docs_test` teste la forme.** Ses
-1 918 lignes vérifient des noms, des chaînes et des ordres de construction, et
+2 075 lignes vérifient des noms, des chaînes et des ordres de construction, et
 le ratchet de taille empêche surtout le retour d'un très gros fichier. Ces
 gardes sont utiles — chacune est née d'un bug réel — mais elles ne prouvent pas
 la cohésion et elles cassent au renommage. **Règle adoptée le 2026-08-26** :
@@ -303,8 +317,52 @@ sauvegarde, fermeture RAII.
 
 ## 1. Red now
 
-**Aucun rouge ouvert au 2026-08-28 (soir).** Les deux du jour sont fermés,
-chacun avec son entrée `CHANGELOG.md` :
+**ROUGE OUVERT — x86-64 seulement, 2026-08-28 (nuit) : le lockstep 68030
+sous le générateur x64.** Découvert au premier `ctest -L unit` jamais lancé
+sur un hôte x86-64 *portant les assets* : 104 exécutés / 1 soft-skip /
+**4 échecs**. Trois sont `jit_lockstep_030_test`,
+`jit_lockstep_030_x64_experimental_test` et
+`jit_lockstep_030_x64_alignment_test`, en SIGSEGV déterministe ; le
+quatrième gate 030, `jit_lockstep_030_blocks_test`, passe en 81,91 s et sa
+seule différence est `POM68K_JIT_BACKEND=threaded`.
+
+- **Le crash est corrigé** (Moira patch 30 : compteurs de journal MMU
+  saturants ; `mmuIdx`/`mmuIdxDone` sont un état par instruction que seul
+  `mmuExecuteStart()` remet à zéro, et `pomJitWriteData` ne passe jamais
+  par là — au débordement signé la garde `mmuIdxDone < 10` redevient vraie
+  et l'écriture part en `mmuAd[-2147483648]`).
+- **Le défaut de fond ne l'est pas.** Il faut 2,147 × 10⁹ accès MMU avant le
+  pas 8 000 pour déborder, soit **32,8 accès par cycle 68030** ; et à 4 000
+  pas le bras x64 affiche `jit instrs 0 · blocks 0 compiled · window 630766
+  armed (630766 refused)` — **100 % de refus, zéro instruction native
+  retirée**, là où `threaded` en retire 8 368 116. Le générateur n'arme et
+  ne refuse qu'en boucle. Prochaine action : **pourquoi la fenêtre 030 x64
+  est-elle refusée à 100 %**. Après le correctif, le même palier donne
+  **106/109 — 105 exécutés, 1 soft-skip, 3 échecs — et les trois sont
+  désormais `Timeout` (1800 s pleines), plus `SEGFAULT`** : la forme
+  attendue, le crash fermé et la boucle de refus intacte.
+- **C'est le chemin 030, pas le générateur x64.** Dans le même run,
+  `jit_lockstep_x64_test` (26,30 s) et `jit_lockstep_x64_fine_test` (3,95 s)
+  — les locksteps 68040 contre ce même générateur — passent, ainsi que
+  `sst68000` (1 000 058 vecteurs), `sst68030` et `sst68040`, ce qui prouve
+  au passage que le patch Moira 30 laisse l'interpréteur bit-identique.
+- **Ni le crash ni la lenteur ne datent du lot du 2026-08-28** : un worktree
+  bâti sur `715efca` meurt à l'identique (exit 139, 289,43 s sur 8 000 pas).
+- **Ces trois gates n'existent que sur x86-64**, et l'hôte de développement
+  est AArch64 : c'est § 10 constat 3 en acte, et la raison pour laquelle la
+  ligne ci-dessous a pu s'écrire. `CHANGELOG.md` 2026-08-28 (thirteenth).
+
+**Deux autres rouges du même run, fermés le soir même** — l'arbre **ne
+compilait pas** sous g++ 13 (`std::sqrt` sans `<cmath>` dans
+`tests/q605_hotfloppy_probe.cpp`, qui est le gate `q605_hotfloppy_etalon` et
+non le « dev harness » que son en-tête décrivait), et `config_test` était
+rouge sur **tout** arbre x86-64 depuis le matin (le knob
+`POM68K_JIT_030_MEMBF` cite comme preuve un gate AArch64-only ; `config_test`
+lit désormais `pom68k_gates_absent.tsv` comme `docs_test`).
+`CHANGELOG.md` 2026-08-28 (twelfth).
+
+**Les deux rouges du 2026-08-28 (jour) sont fermés**, chacun avec son entrée
+`CHANGELOG.md` :
 
 - **Le rouge Windows de la revue § 10 est FERMÉ le jour même** (vague 0
   posée) : la branche `auto` x64 exclut `WIN32`, `X64Backend::usable()`
@@ -545,6 +603,19 @@ fois le premier item au lieu d'accumuler le préfixe.
 
 Open, in ROI order:
 
+- [ ] **AVANT tout le reste sur 030 : le générateur x64 ne démarre pas.**
+  Rouge de § 1, mesuré le 2026-08-28 sur l'hôte x86-64. À 4 000 pas du
+  lockstep 030, le bras x64 affiche `jit instrs 0 · blocks 0 compiled ·
+  window 630766 armed (630766 refused)` — **100 % de refus, zéro
+  instruction native retirée** — pendant que `threaded` en retire 8 368 116
+  au même endroit, et le mur suit : 8 000 pas en 10,00 s (`threaded`) contre
+  **plus d'une heure sans finir** (x64 ; avant correctif il mourait à 289 s). Le débordement de compteur MMU qui faisait segfauter
+  les trois gates (corrigé, Moira patch 30) n'était que le thermomètre :
+  il faut **32,8 accès MMU par cycle 68030** pour l'atteindre là où le
+  boîtier en fait moins d'un. Tant que la fenêtre est refusée, **aucune
+  mesure 030 prise sur x86-64 ne veut dire quoi que ce soit**, et les
+  chiffres D.1 du 2026-08-21 qui ont promu x64 en défaut 030 sont à
+  relire à cette lumière. `CHANGELOG.md` 2026-08-28 (thirteenth).
 - **`D1F0` — CLOS le 2026-08-28**, extraction d'abord puis opt-in sur les
   deux backends, replis de jeu 46,5 % → 0, lockstep/`m030` verts — et
   l'ABBA murale a rendu **+0,02 % sur un plancher de 0,6 % : aucun gain de

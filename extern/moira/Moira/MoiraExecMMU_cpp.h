@@ -485,9 +485,9 @@ Moira::mmuLogExtWord(u32 value)
 {
     if (mmuLogging) {
 
-        mmuIdx++;
+        pomMmuBumpIdx();
         if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = value;
-        mmuIdxDone++;
+        pomMmuBumpIdxDone();
     }
 }
 
@@ -1002,7 +1002,7 @@ Moira::mmuRead(u32 addr)
     }
 
     const bool log = mmuLogging;
-    if (log) mmuIdx++;
+    if (log) pomMmuBumpIdx();
 
     // POM68K O6.9: the RTE of a DF-cleared fault frame marked this very
     // access as software-completed — deliver the frame's data input
@@ -1013,7 +1013,7 @@ Moira::mmuRead(u32 addr)
         const u32 v = CLIP<S>(mmuRteSubstData);
         if (log) {
             if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = v;
-            mmuIdxDone++;
+            pomMmuBumpIdxDone();
         }
         return v;
     }
@@ -1089,7 +1089,7 @@ Moira::mmuRead(u32 addr)
 
     if (log) {
         if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = v;
-        mmuIdxDone++;
+        pomMmuBumpIdxDone();
     }
     return v;
 }
@@ -1108,7 +1108,7 @@ Moira::mmuWrite(u32 addr, u32 val)
 
     const bool log = mmuLogging;
     if (log) {
-        mmuIdx++;
+        pomMmuBumpIdx();
         // gencpu passes byte/word operands through signed variables, so
         // the pending-write buffer (wb3_data in fault frames) holds the
         // sign-extended value
@@ -1122,7 +1122,7 @@ Moira::mmuWrite(u32 addr, u32 val)
         mmuRteSubstArmed = false;
         if (log) {
             if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuDataBuffer;
-            mmuIdxDone++;
+            pomMmuBumpIdxDone();
         }
         return;
     }
@@ -1194,7 +1194,7 @@ Moira::mmuWrite(u32 addr, u32 val)
 
     if (log) {
         if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuDataBuffer;
-        mmuIdxDone++;
+        pomMmuBumpIdxDone();
     }
 }
 

@@ -32,17 +32,17 @@ cd build && cmake .. && make -j
 ctest -j64                        # 237 gates, 20 min here (4 h 46 sequential).
                                   # `-j` is a RAM budget in 256 MiB slots, not a
                                   # core count. 4 of 228 soft-skip without assets
-ctest -L unit                     # 111 legacy non-etalon gates
-ctest -L asset-none               # 85 manifest-declared asset-free gates
+ctest -L unit                     # 112 legacy non-etalon gates
+ctest -L asset-none               # 87 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
 ctest -L jit-fast                 # asset-free native A64/x64 proof + doc/config checks
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
 
-The counts are the documented registry's (230 total); five lockstep gates
+The counts are the documented registry's (237 total); five lockstep gates
 are host-conditional — three AArch64-only, two x86-64-only
 (`jit_lockstep_030_x64_experimental_test` + `_alignment_test`) — so an
-x86-64 configure sees 227 / 107 unit / 8 smoke and an AArch64 one 228
+x86-64 configure sees 234 / 109 unit / 8 smoke and an AArch64 one 235
 (`CMakeLists.txt`;
 `docs_test` asserts the numbers against the configured registry). `unit` means "name does
 not end in `_etalon`", not "needs no assets" — several unit gates want a ROM or
