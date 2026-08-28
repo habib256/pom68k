@@ -19,9 +19,10 @@
 // CHANGELOG 2026-08-04 (soir)). A mounted volume paints an icon; a refusal
 // paints a dialog; nothing at all paints nothing.
 //
-// Dev harness: EXCLUDE_FROM_ALL, no CTest entry. It is a question, not a
-// verdict — if it reproduces, it becomes the gate the item asks for, and the
-// "GUI path" hypothesis dies.
+// It began as a question, not a verdict — and the answer promoted it: it is
+// the registered gate `q605_hotfloppy_etalon`
+// (`cmake/Pom68kMachineGates.cmake:297-301`), built by `all`, which is why
+// the missing <cmath> above stopped the whole tree on g++ and not one target.
 //
 // POM68K_DUMP=1 writes q605_hotfloppy_*.ppm at each step.
 
@@ -30,6 +31,7 @@
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>

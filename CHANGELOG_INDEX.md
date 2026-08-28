@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 322 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 325 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 38 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 39 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 35 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 40 |
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 45 |
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 23 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 25 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
 | [Cross-cutting](#cross-cutting) | 55 |
 
@@ -64,6 +64,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-28 (fifth)** — [Reading the CI found it red since 2026-08-24: the shared lockstep held x64 to a64's residency, and the g++ census counted zero warnings in a log that did not exist](CHANGELOG.md#2026-08-28-ci-red-four-days)
 - **2026-08-28 (fourth)** — [D1F0 lands on both backends through the shared cost model: 42.8 M fallbacks to zero, run total −53 %](CHANGELOG.md#2026-08-28-d1f0-closed)
 - **2026-08-28 (later)** — [Wave 0 lands: Windows falls back to the threaded JIT, and both non-Linux release jobs now run the asset-free tier](CHANGELOG.md#2026-08-28-windows-jit-neutralized)
+- **2026-08-28 (thirteenth)** — [The 68030 lockstep segfaults on every x86-64 tree, and the overflowing counter was the thermometer, not the disease](CHANGELOG.md#2026-08-28-x64-030-retry-storm)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -314,7 +315,9 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-27 (fourth)** — [Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename](CHANGELOG.md#2026-08-27-execution-census)
 - **2026-08-27 (seventh)** — [The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run](CHANGELOG.md#2026-08-27-sanitizers)
 - **2026-08-27 (twelfth)** — [Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way](CHANGELOG.md#2026-08-27-census-strict)
+- **2026-08-28 (eleventh)** — [Four documents carried a wrong per-host gate total, and the per-label figures beside them were right](CHANGELOG.md#2026-08-28-registry-derived-totals)
 - **2026-08-28 (tenth)** — [The live AppleShare exchange gets its gate, registered before it has ever been seen green](CHANGELOG.md#2026-08-28-afp-live-gate)
+- **2026-08-28 (twelfth)** — [The tree did not compile on g++, one gate cited evidence that cannot exist on this host, and the first real GCC census is 17 warnings](CHANGELOG.md#2026-08-28-x64-host-first-run)
 
 ## Documentation, audits and reviews
 

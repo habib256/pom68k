@@ -2117,6 +2117,26 @@ private:
     // exactly what WinUAE's get_iword/get_long_mmu030_state logged
     void mmuLogReset() { mmuIdx = mmuIdxDone = 0; for (auto &v : mmuAd) v = 0; }
 
+    // POM68K: the access log above is per-INSTRUCTION state.
+    // mmuExecuteStart() clears it at the head of every interpreted
+    // instruction, but generated 68030 code reaches mmuRead/mmuWrite
+    // through pomJitReadData/pomJitWriteData, which never pass through
+    // that loop head -- so under the code generator these two counters
+    // only ever grow. Both consequences are real: signed overflow is UB,
+    // and the store guard `mmuIdxDone < 10` is a SIGNED comparison, so at
+    // INT_MAX the counter wrapped to INT_MIN, the guard passed again and
+    // the next logged access stored into mmuAd[-2147483648]. That is a
+    // deterministic SIGSEGV ~285 s into jit_lockstep_030_test, found on
+    // x86-64 2026-08-28 and invisible on the AArch64 development host
+    // because those three gates are registered on x86-64 only.
+    // The ceiling is orders of magnitude above what a single instruction
+    // can log (the array holds 10 entries and the fault frame stacks four
+    // bits), so every interpreted run stays bit-identical and only the
+    // unbounded JIT path changes.
+    static constexpr int pomMmuIdxCeiling = 1 << 20;
+    void pomMmuBumpIdx()     { if (mmuIdx     < pomMmuIdxCeiling) mmuIdx++; }
+    void pomMmuBumpIdxDone() { if (mmuIdxDone < pomMmuIdxCeiling) mmuIdxDone++; }
+
 
     //
     // Disassembler Support
