@@ -214,6 +214,7 @@ public:
         applyCmds();
         if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
         int sleepUs = 0;
+        bool paceWallClock = false;
         if (activeHold_ > 0 && audioHost.started()) {
             // Audio-clocked: the sound buffer is the pacer, so emulate until
             // it is topped up rather than against the wall clock.
@@ -249,13 +250,34 @@ public:
                 activeHold_ = 90;                  // sound starts: switch to
                 pushAudioFrame();                  // audio-clocked pacing
             }
-            if (!turbo.load(std::memory_order_relaxed)) {
-                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - t0).count();
-                sleepUs = int(std::max<long long>(0, 16625 - spent));
-            }
+            paceWallClock = !turbo.load(std::memory_order_relaxed);
         }
         publish();
+        if (paceWallClock) {
+            // Pace against an ABSOLUTE 60.15 Hz deadline, computed AFTER
+            // publish(). The old `16625 − spent` slept relative to the
+            // emulation cost alone, so publish(), drainAudio() and
+            // nanosleep's own wake-up grain (1-2 ms on this host) were all
+            // paid ON TOP of the frame budget: the loop period was ~21 ms
+            // and "nominal speed" delivered ×0.73-0.78 on the LC II —
+            // measured 2026-08-28 with POM68K_SPEED_LOG, AppleTalk on and
+            // off alike (the 86 %-asleep machine thread in the `sample`
+            // profile was the tell). An absolute deadline lets every
+            // non-emulation cost eat slack instead of schedule. When the
+            // machine genuinely cannot keep 60.15 Hz the deadline resyncs
+            // instead of accumulating debt it would later sprint through.
+            const auto period = std::chrono::microseconds(16625);
+            const auto now = std::chrono::steady_clock::now();
+            if (nextFrameDue_ == std::chrono::steady_clock::time_point{} ||
+                now - nextFrameDue_ > 3 * period)
+                nextFrameDue_ = now;               // (re)sync, no debt sprint
+            nextFrameDue_ += period;
+            sleepUs = int(std::max<long long>(
+                0, std::chrono::duration_cast<std::chrono::microseconds>(
+                       nextFrameDue_ - now).count()));
+        } else {
+            nextFrameDue_ = {};                    // turbo/audio own the pace
+        }
         return sleepUs;
     }
 
@@ -474,6 +496,8 @@ protected:
 
     int activeHold_ = 0;
     int starve_ = 0;
+    // Absolute 60 Hz pacing deadline (wall-clock path of stepTick only).
+    std::chrono::steady_clock::time_point nextFrameDue_{};
     int framesRun_ = 0;
     std::chrono::steady_clock::time_point lastPub_{};
     std::vector<float> samp_;

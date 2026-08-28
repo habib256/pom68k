@@ -525,12 +525,12 @@ int main() {
                                           pom68k::StartupDomain::Jit))
             ++jitOptionCount;
     check(sizeof(pom68k::startup_option::kAll) /
-                  sizeof(pom68k::startup_option::kAll[0]) == 128 &&
-              jitOptionCount == 37 &&
+                  sizeof(pom68k::startup_option::kAll[0]) == 129 &&
+              jitOptionCount == 38 &&
               jitDecoder.find("option::JitProfile") != std::string::npos &&
               jitDecoder.find("kConfigurationKeys") == std::string::npos &&
               jitDecoder.find("\"POM68K_") == std::string::npos,
-          "the unified startup schema owns all 37 typed JIT options");
+          "the unified startup schema owns all 38 typed JIT options");
     check(productDecoder.find("ProductStartupView values") !=
                   std::string::npos &&
               coreDecoder.find("CoreStartupView values") !=
@@ -1752,14 +1752,26 @@ int main() {
               std::string(relative) + " has no opcode-local exact-access exception");
         check(source.find(".semantics") != std::string::npos,
               std::string(relative) + " consumes Instr::semantics");
-        check(source.find("findEffectiveAddress(") != std::string::npos,
-              std::string(relative) + " consumes Instr effective-address plans");
+        // Since the 2026-08-28 extraction (TODO.md § 10 wave 2) the EA
+        // admission wrapper and the 68k cycle-cost model live in
+        // JitEaPlan.h / JitCost.h. A backend consumes them; the bug these
+        // lines would catch is the one the D1F0 prototype nearly shipped —
+        // a 68k predicate or cost constant re-transcribed into one backend,
+        // creating its hand-ported twin in the other.
+        check(source.find("decodeEaPlan(") != std::string::npos,
+              std::string(relative) + " consumes the shared EA plan");
+        check(source.find("findEffectiveAddress(") == std::string::npos,
+              std::string(relative) + " does not re-decode effective addresses");
         check(source.find(".control") != std::string::npos,
               std::string(relative) + " consumes Instr control-flow plans");
         check(source.find("branchDisplacement(") == std::string::npos,
               std::string(relative) + " does not decode branch extensions");
-        check(source.find("decoded->fullFormat") != std::string::npos,
-              std::string(relative) + " rejects unproved full-index lowering safely");
+        check(source.find("kEaRead[") != std::string::npos &&
+              source.find("int8_t kEaRead") == std::string::npos,
+              std::string(relative) + " reads the shared cost columns and defines none");
+        check(source.find("fullFormatReadExtra(") != std::string::npos &&
+              source.find("baseDisplacementWords != 2") == std::string::npos,
+              std::string(relative) + " reads the shared full-format cost, not a local twin");
         check(source.find(".word(") == std::string::npos,
               std::string(relative) + " never re-decodes BlockIr extension words");
         check(source.find("describeInstruction(op)") != std::string::npos,
@@ -1773,6 +1785,26 @@ int main() {
         check(source.find("detail::env") == std::string::npos &&
               source.find("getenv(") == std::string::npos,
               std::string(relative) + " has no private live environment policy");
+    }
+
+    // The host-invariant halves the backends consume (2026-08-28
+    // extraction). The bug these catch: the shared decode or the D1F0
+    // sub-form predicate quietly moving back into one backend, which is
+    // exactly how the two generators drifted into two projects the first
+    // time (TODO.md § 10, finding 2).
+    {
+        const std::string plan = slurp(testasset::find("src/jit/JitEaPlan.h"));
+        check(plan.find("findEffectiveAddress(") != std::string::npos,
+              "JitEaPlan.h owns the shared EA admission wrapper");
+        check(plan.find("decoded->fullFormat") != std::string::npos,
+              "JitEaPlan.h keeps full-format admission opt-in per caller");
+        const std::string cost = slurp(testasset::find("src/jit/JitCost.h"));
+        check(cost.find("int8_t kEaRead") != std::string::npos,
+              "JitCost.h owns the 68020 cycle columns");
+        check(cost.find("baseDisplacementWords != 2") != std::string::npos,
+              "JitCost.h owns the D1F0 full-format sub-form predicate");
+        check(cost.find("kCmpaExtraCycles") != std::string::npos,
+              "JitCost.h owns the CMPA surcharge");
     }
 
     // ── 10. Every `file:line` citation the docs make lands inside the file ─

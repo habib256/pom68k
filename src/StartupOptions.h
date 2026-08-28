@@ -306,6 +306,8 @@ concept IntegerStartupOption =
       startup_policy::JitBoolean)                                            \
     X(JitBsrWide, "POM68K_JIT_BSRW", StartupDomain::Jit,                   \
       startup_policy::JitBoolean)                                            \
+    X(JitMemBitfield030, "POM68K_JIT_030_MEMBF", StartupDomain::Jit,       \
+      startup_policy::JitBoolean)                                            \
     X(JitA64Pacing, "POM68K_JIT_A64_PACING", StartupDomain::Jit,           \
       startup_policy::JitBoolean)                                            \
     X(JitRequireNative, "POM68K_JIT_REQUIRE_NATIVE", StartupDomain::Jit,   \

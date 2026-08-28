@@ -76,6 +76,14 @@ jobs:
         if: always()
         run: |
           LOG="${{ runner.temp }}/build.log"
+          # A missing log means the build step never ran (the job failed
+          # earlier); saying "0 warnings" then is the phantom-pass shape
+          # this project keeps killing (docs/MEASURING.md R5). Say NO
+          # CENSUS loudly instead — still non-blocking, never misleading.
+          if [ ! -f "$LOG" ]; then
+            echo "NO CENSUS: $LOG does not exist — the build step did not run"
+            exit 0
+          fi
           # Paths come out absolute or ../-relative depending on the
           # generator, so select by what is NOT ours instead.
           OURS=$(grep "warning:" "$LOG" | grep -v "extern/\|/imgui/" || true)

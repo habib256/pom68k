@@ -163,6 +163,24 @@ add_executable(jit_backend_test tests/jit_backend_test.cpp)
 target_link_libraries(jit_backend_test PRIVATE pom68k_core)
 add_test(NAME jit_backend_test COMMAND jit_backend_test)
 
+# Backend acceptance parity over the whole opcode space (TODO.md § 10
+# wave 2). Both generators compile on ANY host ISA — they only emit bytes
+# into buffers, and this gate never executes them — so the sweep runs
+# everywhere. The core library already holds this host's native backend;
+# only the missing translation unit(s) are added here, or the factories
+# would be defined twice.
+set(POM68K_PARITY_EXTRA "")
+if(NOT POM68K_JIT_NATIVE_BACKEND STREQUAL "x64")
+    list(APPEND POM68K_PARITY_EXTRA src/jit/backends/JitBackendX64.cpp)
+endif()
+if(NOT POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
+    list(APPEND POM68K_PARITY_EXTRA src/jit/backends/JitBackendA64.cpp)
+endif()
+add_executable(jit_backend_parity_test tests/jit_backend_parity_test.cpp
+               ${POM68K_PARITY_EXTRA})
+target_link_libraries(jit_backend_parity_test PRIVATE pom68k_core)
+add_test(NAME jit_backend_parity_test COMMAND jit_backend_parity_test)
+
 # The decisive one: two Quadra 605 machines from the same ROM, one
 # interpreted and one JIT-driven, compared register by register at every
 # instruction boundary. Fails if the JIT never actually ran a block, so
@@ -282,10 +300,15 @@ if(POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
     # guardIcacheHits replay) and the backend declares it, so the
     # experimental gate above runs these admissions by DEFAULT; this one
     # pins the explicit-knob road beside it, as on x86-64.
+    # POM68K_JIT_030_MEMBF joined the pinned explicit knobs on 2026-08-28:
+    # 030 read-only memory bitfields through the 040 emission path, first
+    # proved on this very gate's configuration (120k identical, i-cache
+    # counters identical on both engines). Opt-in in the product until its
+    # own promotion evidence; this registration is its standing oracle.
     add_test(NAME jit_lockstep_030_a64_alignment_test COMMAND jit_lockstep_030_test 120000
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(jit_lockstep_030_a64_alignment_test PROPERTIES
-                         ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000;POM68K_JIT_RESTART_BASE=1;POM68K_JIT_BSRW=1"
+                         ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000;POM68K_JIT_RESTART_BASE=1;POM68K_JIT_BSRW=1;POM68K_JIT_030_MEMBF=1"
                          TIMEOUT 1800)
 else()
     # The a64 pair are host-conditional gates: the registry has more

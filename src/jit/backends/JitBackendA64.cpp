@@ -9,6 +9,8 @@
 
 #include "../JitCodeBuffer.h"
 #include "../JitConfig.h"
+#include "../JitCost.h"
+#include "../JitEaPlan.h"
 #include "Moira.h"
 
 #include <algorithm>
@@ -1020,95 +1022,27 @@ void emitAddSubFlags(Asm& a, const Layout& L, bool sub, bool setX) {
     if (setX) a.strB(12, 0, L.srX);
 }
 
-enum EaIndex { E_DN, E_AN, E_AI, E_PI, E_PD, E_DI, E_IX,
-               E_AW, E_AL, E_DIPC, E_IXPC, E_IM, E_COUNT };
-
-int eaIndexA64(int mode, int reg) {
-    if (mode < 7) return mode;
-    switch (reg) {
-        case 0: return E_AW;
-        case 1: return E_AL;
-        case 2: return E_DIPC;
-        case 3: return E_IXPC;
-        case 4: return E_IM;
-        default: return -1;
-    }
-}
-
-const int8_t kEaReadA64[E_COUNT][3] = {
-    {2,2,2}, {2,2,2}, {6,6,6}, {6,6,6}, {7,7,7}, {7,7,7},
-    {9,9,9}, {6,6,6}, {6,6,6}, {7,7,7}, {9,9,9}, {4,4,6}
-};
-// E_AW (index 7) reads 2, not 3 — the same correction the x86-64 twin took on
-// 2026-08-09 after a fallback census (JitBackendX64.cpp:208-221): on the 020 an
-// absolute-short destination costs what a register-indirect one does, its
-// extension word being already in the prefetch queue. The cost table is
-// cross-checked against the tracer's own Instr::cycles, so a wrong cell does
-// not mis-time anything — it makes the backend REFUSE the form outright. On
-// x86-64 that single cell was 47.4 % of all block fallbacks; this backend has
-// been paying the same toll silently because the census was never run here.
-// Coverage, not correctness. (2026-08-12)
-const int8_t kMoveDstA64[E_COUNT] = {0,0,2,2,3,3,-1,2,4,-1,-1,-1};
-
-struct Ea {
-    int idx = -1, reg = 0, ext = 0;
-    int32_t value = 0;
-    int32_t baseDisplacement = 0;
-    uint32_t base = 0;
-    int ixReg = 0, ixShift = 0;
-    uint8_t baseDisplacementWords = 0;
-    bool ixLong = false;
-    bool fullFormat = false;
-    bool baseSuppressed = false;
-    bool indexSuppressed = false;
-    bool memory = false;
-    IndexIndirect indirect = IndexIndirect::None;
-    int32_t outerDisplacement = 0;
-    uint8_t outerDisplacementWords = 0;
-};
+// The EA cost index, the 68020 cycle columns and the EaPlan struct live in
+// JitCost.h / JitEaPlan.h — they model the 68k, not this host, and the x64
+// backend reads the SAME tables (TODO.md § 10 wave 2, 2026-08-28). This
+// file keeps only a bits-flavoured wrapper: its call sites speak 8/16/32.
+using Ea = EaPlan;
 
 bool decodeEa(const Instr& in, int mode, int reg,
               int bits, int extAt, Ea& ea, bool allowFullDirect = false,
               bool allowFullIndirect = false) {
-    ea.idx = eaIndexA64(mode, reg); ea.reg = reg;
-    if (ea.idx < 0) return false;
-    const uint8_t size = bits == 8 ? 0 : bits == 16 ? 1 : 2;
-    const DecodedEffectiveAddress* decoded = findEffectiveAddress(
-        in, uint8_t(mode), uint8_t(reg), size, uint8_t(extAt));
-    // Full 68020 index plans are decoded by the common IR. Only the direct
-    // (non-memory-indirect) LEA path opts in below; every other user keeps the
-    // default refusal, and pre/post-indexed indirection remains replay-only.
-    if (!decoded || !decoded->valid) return false;
-    if (decoded->fullFormat) {
-        const bool direct = decoded->indirect == IndexIndirect::None;
-        if ((direct && !allowFullDirect) || (!direct && !allowFullIndirect))
-            return false;
-    }
-    ea.memory = decoded->memory();
-    ea.value = decoded->value;
-    ea.baseDisplacement = decoded->baseDisplacement;
-    ea.base = decoded->extensionAddress;
-    ea.ixReg = decoded->indexRegister;
-    ea.ixLong = decoded->indexLong;
-    ea.ixShift = decoded->indexShift;
-    ea.baseDisplacementWords = decoded->baseDisplacementWords;
-    ea.fullFormat = decoded->fullFormat;
-    ea.baseSuppressed = decoded->baseSuppressed;
-    ea.indexSuppressed = decoded->indexSuppressed;
-    ea.indirect = decoded->indirect;
-    ea.outerDisplacement = decoded->outerDisplacement;
-    ea.outerDisplacementWords = decoded->outerDisplacementWords;
-    ea.ext = decoded->extensionWords;
-    return true;
+    const int szIdx = bits == 8 ? 0 : bits == 16 ? 1 : 2;
+    return decodeEaPlan(in, mode, reg, szIdx, extAt, ea,
+                        allowFullDirect, allowFullIndirect);
 }
 
 bool canEmitReg(uint16_t op) {
     const InstructionSemantics sem = describeInstruction(op);
     const int mode = sem.eaMode;
-    const int ei = eaIndexA64(mode, sem.eaReg);
+    const int ei = eaCostIndex(mode, sem.eaReg);
     const auto controlEa = [](int index) {
-        return index == E_AI || index == E_DI || index == E_AW ||
-               index == E_AL || index == E_DIPC;
+        return index == EA_AI || index == EA_DI || index == EA_AW ||
+               index == EA_AL || index == EA_DIPC;
     };
     switch (sem.operation) {
         case SemanticOp::Nop:
@@ -1130,14 +1064,14 @@ bool canEmitReg(uint16_t op) {
             // the independent-EA subset.
             return sem.eaReg != sem.destinationReg;
         case SemanticOp::Bit:
-            return mode != 1 && ei >= 0 && ei != E_AN && ei != E_IM &&
-                   (sem.action == 0 || ei != E_DIPC);
+            return mode != 1 && ei >= 0 && ei != EA_AN && ei != EA_IM &&
+                   (sem.action == 0 || ei != EA_DIPC);
         case SemanticOp::ImmediateAlu:
-            return ei >= 0 && ei != E_AN && ei != E_IM && ei != E_DIPC;
+            return ei >= 0 && ei != EA_AN && ei != EA_IM && ei != EA_DIPC;
         case SemanticOp::Move: {
             const int dm = sem.destinationMode, dr = sem.destinationReg;
-            const int si = ei, di = eaIndexA64(dm, dr);
-            if (si < 0 || di < 0 || di == E_IM || di == E_DIPC) return false;
+            const int si = ei, di = eaCostIndex(dm, dr);
+            if (si < 0 || di < 0 || di == EA_IM || di == EA_DIPC) return false;
             if (sem.sizeIndex == 0 && (mode == 1 || dm == 1)) return false;
             return true;
         }
@@ -1145,21 +1079,21 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::Jump:
             return controlEa(ei);
         case SemanticOp::Lea:
-            return controlEa(ei) || ei == E_IX || ei == E_IXPC;
+            return controlEa(ei) || ei == EA_IX || ei == EA_IXPC;
         case SemanticOp::Pea:
-            return controlEa(ei) || ei == E_IX || ei == E_IXPC;
+            return controlEa(ei) || ei == EA_IX || ei == EA_IXPC;
         case SemanticOp::Movem:
             return true;
         case SemanticOp::SetCondition:
-            return ei >= 0 && ei != E_AN && ei != E_DIPC && ei != E_IM;
+            return ei >= 0 && ei != EA_AN && ei != EA_DIPC && ei != EA_IM;
         case SemanticOp::Test:
         case SemanticOp::Clear:
         case SemanticOp::Negate:
         case SemanticOp::Complement:
         case SemanticOp::AluRegToEa:
-            return ei >= 0 && ei != E_IM;
+            return ei >= 0 && ei != EA_IM;
         case SemanticOp::AddSubQuick:
-            return ei >= 0 && ei != E_IM && ei != E_DIPC;
+            return ei >= 0 && ei != EA_IM && ei != EA_DIPC;
         case SemanticOp::AluEaToReg:
         case SemanticOp::AddressAlu:
             return ei >= 0; // immediate is a legal source EA
@@ -1236,17 +1170,17 @@ bool emitAluResult(Asm& a, const Layout& L, AluOperation kind, int bits,
 void addrOf(Asm& a, const Layout& L, const Ea& ea, int bits) {
     const unsigned step = ea.reg == 7 && bits == 8 ? 2u : unsigned(bits / 8);
     switch (ea.idx) {
-        case E_AI: case E_PI:
+        case EA_AI: case EA_PI:
             loadGuestRegister(a, L, 9, true, unsigned(ea.reg)); break;
-        case E_PD:
+        case EA_PD:
             loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
             a.subImmW(9, 9, step); break;
-        case E_DI:
+        case EA_DI:
             loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
             a.movW(10, uint32_t(ea.value)); a.addW(9, 9, 10); break;
-        case E_IX: case E_IXPC: {
+        case EA_IX: case EA_IXPC: {
             if (ea.fullFormat && ea.baseSuppressed) a.movW(9, 0);
-            else if (ea.idx == E_IX)
+            else if (ea.idx == EA_IX)
                 loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
             else a.movW(9, ea.base);
             if (!ea.fullFormat || !ea.indexSuppressed) {
@@ -1263,7 +1197,7 @@ void addrOf(Asm& a, const Layout& L, const Ea& ea, int bits) {
             }
             break;
         }
-        case E_AW: case E_AL: case E_DIPC:
+        case EA_AW: case EA_AL: case EA_DIPC:
             a.movW(9, uint32_t(ea.value)); break;
         default: break;
     }
@@ -1282,7 +1216,7 @@ void addEaIndex(Asm& a, const Layout& L, const Ea& ea) {
 // afterwards in finishFullIndirect().
 void addrOfFullIndirectPointer(Asm& a, const Layout& L, const Ea& ea) {
     if (ea.baseSuppressed) a.movW(9, 0);
-    else if (ea.idx == E_IX)
+    else if (ea.idx == EA_IX)
         loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
     else
         a.movW(9, ea.base);
@@ -1303,22 +1237,15 @@ void finishFullIndirect(Asm& a, const Layout& L, const Ea& ea,
     }
 }
 
-int fullIndexPenalty(const Ea& ea) {
-    const int base = ea.baseDisplacementWords == 1 ? 2
-                   : ea.baseDisplacementWords == 2 ? 6 : 0;
-    if (ea.indirect == IndexIndirect::None) return base;
-    return base + (ea.outerDisplacementWords ? 7 : 5);
-}
-
 void commitEa(Asm& a, const Layout& L, const Ea& ea, int bits) {
     const unsigned step = ea.reg == 7 && bits == 8 ? 2u : unsigned(bits / 8);
-    if (ea.idx != E_PI && ea.idx != E_PD) return;
+    if (ea.idx != EA_PI && ea.idx != EA_PD) return;
     // w10 commonly still holds the source operand (ADDA/SUBA/CMPA and
     // register-destination ALU).  Clobbering it here made (An)+/-(An)
     // consume the updated address as data.  w13 is dead at every commit
     // point; bit operations that use it have already stored their result.
     loadGuestRegister(a, L, 13, true, unsigned(ea.reg));
-    if (ea.idx == E_PI) a.addImmW(13, 13, step);
+    if (ea.idx == EA_PI) a.addImmW(13, 13, step);
     else a.subImmW(13, 13, step);
     a.strW(13, 0, L.a + unsigned(ea.reg) * 4);
 }
@@ -1345,7 +1272,7 @@ void rollbackEaBeforeAccess(Asm& a, const Layout& L, const Ea& ea, int bits,
     if (access.eaCommit != EaCommit::BeforeAccess) return;
     const unsigned step = ea.reg == 7 && bits == 8 ? 2u : unsigned(bits / 8);
     loadGuestRegister(a, L, 13, true, unsigned(ea.reg));
-    if (ea.idx == E_PI) a.subImmW(13, 13, step);
+    if (ea.idx == EA_PI) a.subImmW(13, 13, step);
     else a.addImmW(13, 13, step);
     a.strW(13, 0, L.a + unsigned(ea.reg) * 4);
 }
@@ -1933,12 +1860,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         Ea src, dst;
         if (!decodeEa(in, sm, sr, bits, 0, src, true, true) ||
             !decodeEa(in, dm, dr, bits, src.ext, dst)) return false;
-        if (bits == 8 && (src.idx == E_AN || dst.idx == E_AN)) return false;
-        const bool dependentPostincAi = src.idx == E_PI && dst.idx == E_AI &&
+        if (bits == 8 && (src.idx == EA_AN || dst.idx == EA_AN)) return false;
+        const bool dependentPostincAi = src.idx == EA_PI && dst.idx == EA_AI &&
                                         src.reg == dst.reg;
-        if ((src.idx == E_PI || src.idx == E_PD) && src.reg == dst.reg &&
-            (dst.idx == E_AN || dst.idx == E_AI || dst.idx == E_PI ||
-             dst.idx == E_PD || dst.idx == E_DI) &&
+        if ((src.idx == EA_PI || src.idx == EA_PD) && src.reg == dst.reg &&
+            (dst.idx == EA_AN || dst.idx == EA_AI || dst.idx == EA_PI ||
+             dst.idx == EA_PD || dst.idx == EA_DI) &&
             !dependentPostincAi)
             return false;
         const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
@@ -1974,10 +1901,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (!memory.complete()) return false;
         const bool restartWrite = L.is030 &&
                                   memory.proof.restartableLastWrite();
-        const int dstCycles = restartWrite && dst.idx == E_IX
-            ? 5 : kMoveDstA64[dst.idx];
+        const int dstCycles = restartWrite && dst.idx == EA_IX
+            ? 5 : kMoveDst[dst.idx];
         const int sourcePenalty = src.fullFormat ? fullIndexPenalty(src) : 0;
-        const int cycles = kEaReadA64[src.idx][sz] + sourcePenalty + dstCycles;
+        const int cycles = kEaRead[src.idx][sz] + sourcePenalty + dstCycles;
         // The emitted i-cache model owns miss penalties. The restartable-
         // write family kept the historical total-cost admission while its
         // coarse-budget divergence was open; that was the peripheral-phase
@@ -2149,7 +2076,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             memLoadGuest(a, L, ir.super, bits, 11, slow, srcAccess, &src);
             if (!dst.memory)
                 commitEaAfterAccess(a, L, src, bits, srcAccess);
-        } else if (src.idx == E_IM) {
+        } else if (src.idx == EA_IM) {
             a.movW(11, uint32_t(src.value));
             // Brief immediates are decoded through int8_t/int16_t so MOVEA.W
             // can sign-extend them.  Plain MOVE.B/W must materialise flags
@@ -2157,7 +2084,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // emitNz store 0xFF into the C++ bool backing N.
             maskResult(a, 11, bits);
         } else {
-            loadSized(a, L, 11, src.idx == E_AN, unsigned(src.reg), bits);
+            loadSized(a, L, 11, src.idx == EA_AN, unsigned(src.reg), bits);
         }
 
         if (dst.memory) {
@@ -2167,10 +2094,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // LASTWRITE access. Exact MMIO callbacks therefore observe the
             // final CCR already, just like a fault frame does. Keep w11 live
             // for the store and suppress the ordinary tail update below.
-            if (restartWrite && dst.idx != E_PI)
+            if (restartWrite && dst.idx != EA_PI)
                 emitLogicFlags(a, L, 11, bits);
             addrOf(a, L, dst, bits);
-            if (restartWrite && dst.idx != E_PI) {
+            if (restartWrite && dst.idx != EA_PI) {
                 // At Moira's last-write point reg.pc has consumed every
                 // extension, while pc0 still names this instruction. An
                 // exact MMIO thunk can expose both before the ordinary block
@@ -2184,7 +2111,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                     ? in.terminalIrc : ir.prefetchWord(nextPc);
                 commitQueue(a, L, heldIrd, heldIrc, 12);
             }
-            if (restartWrite && dst.idx == E_PI) {
+            if (restartWrite && dst.idx == EA_PI) {
                 // PI is native only for a direct, faultless RAM mapping.
                 // Probe before publishing CCR, PC/queue or the An update so
                 // MMIO and /BERR reach Moira with a pristine entry boundary.
@@ -2202,11 +2129,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 commitEaAfterAccess(a, L, src, bits, srcAccess);
             commitEaAfterAccess(a, L, dst, bits, dstAccess);
         } else {
-            if (dst.idx == E_AN && bits == 16) a.sxtH(11, 11);
-            storeSized(a, L, 11, dst.idx == E_AN, unsigned(dst.reg),
-                       dst.idx == E_AN ? 32 : bits);
+            if (dst.idx == EA_AN && bits == 16) a.sxtH(11, 11);
+            storeSized(a, L, 11, dst.idx == EA_AN, unsigned(dst.reg),
+                       dst.idx == EA_AN ? 32 : bits);
         }
-        if (dst.idx != E_AN && !(dst.memory && restartWrite))
+        if (dst.idx != EA_AN && !(dst.memory && restartWrite))
             emitLogicFlags(a, L, 11, bits);
         return true;
     }
@@ -2223,11 +2150,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             const int extUsed = dynamicBit ? 0 : 1;
             Ea dst;
             if (!decodeEa(in, mode, sem.eaReg, bits, extUsed, dst) ||
-                dst.idx == E_AN || dst.idx == E_IM ||
-                (action != 0 && dst.idx == E_DIPC) ||
+                dst.idx == EA_AN || dst.idx == EA_IM ||
+                (action != 0 && dst.idx == EA_DIPC) ||
                 in.words != unsigned(1 + extUsed + dst.ext)) return false;
             const int sz = toReg ? 2 : 0;
-            const int base = kEaReadA64[dst.idx][sz];
+            const int base = kEaRead[dst.idx][sz];
             const int cycles = toReg ? 4 : base + 2;
             MemoryAccessPlan read, write;
             if (dst.memory) {
@@ -2311,11 +2238,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int immExt = bits == 32 ? 2 : 1;
         Ea dst;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, bits, immExt, dst) ||
-            dst.idx == E_AN || dst.idx == E_IM || dst.idx == E_DIPC ||
+            dst.idx == EA_AN || dst.idx == EA_IM || dst.idx == EA_DIPC ||
             in.words != unsigned(1 + immExt + dst.ext)) return false;
-        const int base = kEaReadA64[dst.idx][sz];
+        const int base = kEaRead[dst.idx][sz];
         const int cycles = kind == AluOperation::Cmp ? base
-                           : (dst.idx == E_DN ? 2 : base + 2);
+                           : (dst.idx == EA_DN ? 2 : base + 2);
         MemoryAccessPlan read, write;
         if (dst.memory) {
             read = memory.access(MemoryDirection::Read,
@@ -2384,13 +2311,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
 
         Ea dst;
         if (!decodeEa(in, mode, reg, 8, 0, dst) || !dst.memory ||
-            dst.idx == E_DIPC || dst.idx == E_IM ||
+            dst.idx == EA_DIPC || dst.idx == EA_IM ||
             in.words != unsigned(1 + dst.ext) || slow < 0) return false;
         // execSccEa, 68020 cycle column. The brief-indexed form is native on
         // AArch64 and costs 13; full-format indexed plans remain rejected by
         // decodeEa().
-        static const int8_t kScc[E_COUNT] =
-            {-1,-1,10,10,11,11,13,10,10,-1,-1,-1};
         const int cycles = kScc[dst.idx];
         if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
         const MemoryAccessPlan write = memory.access(
@@ -2420,10 +2345,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // Asking decodeEa() for 32 bits made every word-sized An form miss its
         // already-decoded plan and fall back despite a complete lowering.
         if (!decodeEa(in, mode, sem.eaReg, encodedBits, 0, dst) ||
-            dst.idx == E_IM || dst.idx == E_DIPC ||
+            dst.idx == EA_IM || dst.idx == EA_DIPC ||
             in.words != unsigned(1 + dst.ext)) return false;
-        const int base = kEaReadA64[dst.idx][bits == 8 ? 0 : bits == 16 ? 1 : 2];
-        const int cycles = dst.idx <= E_AN ? 2 : base + 2;
+        const int base = kEaRead[dst.idx][bits == 8 ? 0 : bits == 16 ? 1 : 2];
+        const int cycles = dst.idx <= EA_AN ? 2 : base + 2;
         // The 030 tracer used to expose only the total clock delta. A cache
         // miss therefore made this register-only form look more expensive
         // than its architectural two cycles and forced a fallback. This is
@@ -2453,10 +2378,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             commitEaBeforeAccess(a, L, dst, bits, read);
             loadGuest(a, bits, 9);
         } else {
-            loadSized(a, L, 9, dst.idx == E_AN, unsigned(dst.reg), bits);
+            loadSized(a, L, 9, dst.idx == EA_AN, unsigned(dst.reg), bits);
         }
         a.movW(10, unsigned(imm));
-        if (dst.idx == E_AN) {
+        if (dst.idx == EA_AN) {
             if (sub) a.subW(11, 9, 10); else a.addW(11, 9, 10);
             a.strW(11, 0, L.a + unsigned(dst.reg) * 4);
             return true;                            // address form: no flags
@@ -2480,9 +2405,24 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             const int srcBits = bitsForSizeIndex(sem.sizeIndex);
             const int sz = srcBits == 16 ? 1 : 2;
             Ea src;
-            if (!decodeEa(in, mode, sem.eaReg, srcBits, 0, src) ||
+            // Full-format DIRECT source opts in here, like LEA — but the
+            // opt-in alone is inert, and that was measured rather than
+            // assumed: enabling it changed exactly zero of D1F0's 42.8 M
+            // fallbacks under SimCity 2000 (CHANGELOG 2026-08-27). The refusal
+            // is the COST, not the decode. `kEaRead` holds the brief
+            // `(d8,An,Xn)` price; the admitted sub-form and its surcharge are
+            // the 68k's, so both live in JitCost.h (`fullFormatReadExtra`)
+            // where the x64 backend reads the same two values.
+            if (!decodeEa(in, mode, sem.eaReg, srcBits, 0, src, true, false) ||
                 in.words != unsigned(1 + src.ext)) return false;
-            const int readCycles = kEaReadA64[src.idx][sz];
+            int fullFormatExtra = 0;
+            if (src.fullFormat) {
+                fullFormatExtra = fullFormatReadExtra(src);
+                if (fullFormatExtra < 0) return false;
+            }
+            const int readCycles = kEaRead[src.idx][sz] < 0
+                                 ? kEaRead[src.idx][sz]
+                                 : kEaRead[src.idx][sz] + fullFormatExtra;
             // Moira's 68020 timing table charges CMPA two cycles beyond
             // ADDA/SUBA for every EA. The x64 emitter has enforced that
             // distinction since 2026-08-09; omitting it here made A64 reject
@@ -2491,7 +2431,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // authority, so a future core timing change still refuses code
             // instead of silently mischarging it.
             const int cycles = readCycles +
-                (sem.alu == AluOperation::Cmp ? 2 : 0);
+                (sem.alu == AluOperation::Cmp ? kCmpaExtraCycles : 0);
             MemoryAccessPlan read;
             if (src.memory) {
                 read = memory.access(MemoryDirection::Read,
@@ -2511,8 +2451,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 addrOf(a, L, src, srcBits);
                 memLoadGuest(a, L, ir.super, srcBits, 10, slow, read, &src);
                 commitEaAfterAccess(a, L, src, srcBits, read);
-            } else if (src.idx == E_IM) a.movW(10, uint32_t(src.value));
-            else loadSized(a, L, 10, src.idx == E_AN, unsigned(src.reg), srcBits);
+            } else if (src.idx == EA_IM) a.movW(10, uint32_t(src.value));
+            else loadSized(a, L, 10, src.idx == EA_AN, unsigned(src.reg), srcBits);
             if (srcBits == 16) a.sxtH(10, 10);
             a.ldrW(9, 0, L.a + sem.registerIndex * 4);
             const AluOperation kind = sem.alu;
@@ -2540,7 +2480,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                                         src.indirect != IndexIndirect::None;
             if (indirectSource && L.is030) return false;
             const int penalty = src.fullFormat ? fullIndexPenalty(src) : 0;
-            const int cycles = kEaReadA64[src.idx][sz] + penalty;
+            const int cycles = kEaRead[src.idx][sz] + penalty;
             MemoryAccessPlan pointerRead, read;
             if (src.memory) {
                 if (indirectSource)
@@ -2576,8 +2516,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 addrOf(a, L, src, bits);
                 memLoadGuest(a, L, ir.super, bits, 10, slow, read, &src);
                 commitEaAfterAccess(a, L, src, bits, read);
-            } else if (src.idx == E_IM) a.movW(10, uint32_t(src.value));
-            else loadSized(a, L, 10, src.idx == E_AN, unsigned(src.reg), bits);
+            } else if (src.idx == EA_IM) a.movW(10, uint32_t(src.value));
+            else loadSized(a, L, 10, src.idx == EA_AN, unsigned(src.reg), bits);
             loadSized(a, L, 9, false, dn, bits);       // destination
             return emitAluResult(a, L, kind, bits, kind != AluOperation::Cmp,
                                  false, dn, kind != AluOperation::Cmp);
@@ -2596,8 +2536,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
         Ea dst;
         if (!decodeEa(in, mode, sem.eaReg, bits, 0, dst) || !dst.memory ||
-            dst.idx == E_DIPC || in.words != unsigned(1 + dst.ext)) return false;
-        const int cycles = kEaReadA64[dst.idx][sz] + 2;
+            dst.idx == EA_DIPC || in.words != unsigned(1 + dst.ext)) return false;
+        const int cycles = kEaRead[dst.idx][sz] + 2;
         if (traced030(L, in) != unsigned(cycles) || slow < 0) return false;
         const MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Destination,
@@ -2673,12 +2613,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             Ea src;
             if (!decodeEa(in, mode, sem.eaReg, 32, 0, src, true, true) ||
                 !src.memory ||
-                src.idx == E_PI || src.idx == E_PD ||
+                src.idx == EA_PI || src.idx == EA_PD ||
                 in.words != unsigned(1 + src.ext)) return false;
-            static const int8_t cost[E_COUNT] =
-                {-1,-1,6,-1,-1,7,9,6,6,7,9,-1};
             const int penalty = src.fullFormat ? fullIndexPenalty(src) : 0;
-            const unsigned fixedCycles = unsigned(cost[src.idx] + penalty);
+            const unsigned fixedCycles = unsigned(kLea[src.idx] + penalty);
             MemoryAccessPlan pointerRead;
             if (src.indirect != IndexIndirect::None)
                 pointerRead = memory.access(
@@ -2705,12 +2643,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // PEA d16(A7) use the old stack pointer as their source base.
             Ea src;
             if (!decodeEa(in, mode, sem.eaReg, 32, 0, src) || !src.memory ||
-                src.idx == E_PI || src.idx == E_PD ||
+                src.idx == EA_PI || src.idx == EA_PD ||
                 in.words != unsigned(1 + src.ext) || slow < 0) return false;
-            static const int8_t cost[E_COUNT] =
-                {-1,-1,9,-1,-1,10,12,9,9,10,12,-1};
-            if (cost[src.idx] < 0 ||
-                traced030(L, in) != unsigned(cost[src.idx])) return false;
+            if (kPea[src.idx] < 0 ||
+                traced030(L, in) != unsigned(kPea[src.idx])) return false;
             const MemoryAccessPlan write = memory.access(
                 MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
             if (!write.valid() || !memory.complete()) return false;
@@ -2741,21 +2677,18 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             Ea ea;
             if (!decodeEa(in, mode, sem.eaReg, bits, 1, ea) || !ea.memory ||
                 in.words != unsigned(2 + ea.ext)) { watchRefusal(L, ir, in, "movem:ea"); return false; }
-            if ((toRegs && ea.idx == E_PD) ||
-                (!toRegs && (ea.idx == E_PI || ea.idx == E_DIPC))) { watchRefusal(L, ir, in, "movem:mode"); return false; }
+            if ((toRegs && ea.idx == EA_PD) ||
+                (!toRegs && (ea.idx == EA_PI || ea.idx == EA_DIPC))) { watchRefusal(L, ir, in, "movem:mode"); return false; }
             int n = 0; for (int b = 0; b < 16; b++) n += (mask >> b) & 1;
-            static const int8_t toRegBase[E_COUNT] =
-                {-1,-1,12,8,-1,13,-1,12,12,9,-1,-1};
-            static const int8_t toMemBase[E_COUNT] =
-                {-1,-1,8,-1,4,9,-1,8,8,-1,-1,-1};
-            const int baseCost = toRegs ? toRegBase[ea.idx] : toMemBase[ea.idx];
+            const int baseCost = toRegs ? kMovemToRegs[ea.idx]
+                                        : kMovemToMem[ea.idx];
             if (baseCost < 0 ||
                 traced030(L, in) != unsigned(baseCost + 4 * n)) { watchRefusal(L, ir, in, "movem:cost"); return false; }
             const MemoryAccessPlan span = memory.access(
                 toRegs ? MemoryDirection::Read : MemoryDirection::Write,
                 MemoryOperand::RegisterList, uint8_t(bytes), uint8_t(mode),
                 sem.eaReg);
-            const MemoryOrder emittedOrder = ea.idx == E_PD
+            const MemoryOrder emittedOrder = ea.idx == EA_PD
                 ? MemoryOrder::RegisterDescending
                 : MemoryOrder::RegisterAscending;
             if (!span.valid() || !span.preflight || !memory.complete() ||
@@ -2779,7 +2712,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                                      : L.a + unsigned(b - 8) * 4);
             };
 
-            if (ea.idx == E_PD) {
+            if (ea.idx == EA_PD) {
                 a.ldrW(9, 0, L.a + unsigned(ea.reg) * 4);
                 a.movW(10, unsigned(n * bytes)); a.subW(9, 9, 10);
                 a.strW(9, 1, 44);
@@ -2811,7 +2744,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 }
                 j++;
             }
-            if (ea.idx == E_PI) {
+            if (ea.idx == EA_PI) {
                 a.ldrW(9, 1, 44); a.addImmW(9, 9, unsigned(n * bytes));
                 a.strW(9, 0, L.a + unsigned(ea.reg) * 4);
             }
@@ -2845,12 +2778,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             sem.operation != SemanticOp::Negate) return false;
         Ea ea;
         if (!decodeEa(in, mode, sem.eaReg, bits, 0, ea) ||
-            in.words != unsigned(1 + ea.ext) || ea.idx == E_IM ||
-            (bits == 8 && ea.idx == E_AN)) return false;
+            in.words != unsigned(1 + ea.ext) || ea.idx == EA_IM ||
+            (bits == 8 && ea.idx == EA_AN)) return false;
         const bool tst = sem.operation == SemanticOp::Test;
-        if (!tst && ea.idx == E_AN) return false;
-        const int base = kEaReadA64[ea.idx][sz];
-        const int cycles = tst ? base : (ea.idx <= E_AN ? 2 : base + 2);
+        if (!tst && ea.idx == EA_AN) return false;
+        const int base = kEaRead[ea.idx][sz];
+        const int cycles = tst ? base : (ea.idx <= EA_AN ? 2 : base + 2);
         // TST (An) is read-only. Ordinarily its measured base component must
         // match the inline access cost. The hot LC II 4A11 exception below
         // uses the exact MMU/device thunk, so the device reproduces the
@@ -2899,7 +2832,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 loadGuest(a, bits, 9);
             }
         } else {
-            loadSized(a, L, 9, ea.idx == E_AN, unsigned(ea.reg), bits);
+            loadSized(a, L, 9, ea.idx == EA_AN, unsigned(ea.reg), bits);
             maskResult(a, 9, bits);
         }
         switch (sem.operation) {
@@ -2950,8 +2883,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // floor(offset/8), while its low three bits select within one long.
         // Possible five-byte forms preflight both plain-memory mappings before
         // the first read and branch around the tail byte when it is not used.
-        // Keep this 040-only until the 030 format-A/B restart state has its
-        // own memory-bitfield oracle.
+        // 040 by default; the 030 opts in via POM68K_JIT_030_MEMBF
+        // (2026-08-28): both mappings are proved before either load escapes,
+        // so no fault frame is ever built by generated code — the format-A/B
+        // worry that kept this 040-only reduces to timing, which the
+        // sole-read contract prices and the 120k lockstep oracles.
         if (sem.eaMode != 0) {
             // 68040 timings by EA class. Rogue's second-largest residual is
             // BFEXTU d16(A1){D0:D2},D1 (E9E9), hence the DI column; keeping
@@ -2963,7 +2899,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             };
             const int eaColumn = sem.eaMode == 2 ? 0
                                : sem.eaMode == 5 ? 1 : -1;
-            if (L.is030 || eaColumn < 0 ||
+            // The 030 was excluded wholesale until 2026-08-28; the opt-in
+            // admits it through the SAME emission path, priced by the
+            // sole-read exact-thunk contract below (admitSoleReadTiming's
+            // 030 arm) rather than by this 040 cycle table — a mispriced
+            // form refuses, it does not mischarge. The tail (five-byte)
+            // path keeps its strict trace equality and therefore stays
+            // effectively 040-only until the 030 column is measured.
+            // Oracle: the 120k lockstep with POM68K_JIT_030_MEMBF=1.
+            if ((L.is030 && !memBitfield030Admission()) || eaColumn < 0 ||
                 memoryCycles[kind][eaColumn] < 0) {
                 watchRefusal(L, ir, in, "bitfield-memory:shape");
                 return false;
@@ -3597,7 +3541,7 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         if (!control.valid || control.pushesReturnAddress != jsr) { watchRefusal(L, ir, in, "jsr:control"); return false; }
         Ea ea;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea, true, true) ||
-            !ea.memory || ea.idx == E_PI || ea.idx == E_PD ||
+            !ea.memory || ea.idx == EA_PI || ea.idx == EA_PD ||
             in.words != unsigned(1 + ea.ext)) {
             watchRefusal(L, ir, in, "jsr:ea"); return false;
         }
@@ -3619,12 +3563,10 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
             watchRefusal(L, ir, in, "jsr:pointer"); return false;
         }
         if (!memory.complete()) { watchRefusal(L, ir, in, "jsr:complete"); return false; }
-        static const int8_t cost[E_COUNT] =
-            {-1,-1,4,-1,-1,5,7,4,4,5,7,-1};
         const int penalty = ea.fullFormat ? fullIndexPenalty(ea) : 0;
-        const unsigned opCost = cost[ea.idx] < 0 ? 0
-            : unsigned(cost[ea.idx] + penalty);
-        if (cost[ea.idx] < 0 || traced030(L, in) != opCost ||
+        const unsigned opCost = kJsrJmp[ea.idx] < 0 ? 0
+            : unsigned(kJsrJmp[ea.idx] + penalty);
+        if (kJsrJmp[ea.idx] < 0 || traced030(L, in) != opCost ||
             (fullIndirect && L.is030)) {
             watchRefusal(L, ir, in, "jsr:cost"); return false;
         }

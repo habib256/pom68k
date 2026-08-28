@@ -113,6 +113,14 @@ struct ResolvedConfig {
     bool bsrWideAdmission = false;
     bool bsrwExplicit = false;
 
+    // 68030 read-only memory bitfields (BFTST/BFEXTU/BFEXTS/BFFFO through a
+    // memory EA). OFF by default: the emission path is the 040's, admitted
+    // on the 030 through the sole-read exact-thunk contract, and the 120k
+    // lockstep is its oracle. SimCity 2000 names the stake: BFEXTU (A0) is
+    // 15.8 % of all gameplay fallbacks (CHANGELOG 2026-08-28). Flip the
+    // default only on its own D.1 evidence, like every admission before it.
+    bool memBitfield030 = false;
+
     // A64 pacing control is captured here too: a backend must never retain
     // a private getenv-based policy surface.
     bool a64Pacing = true;
@@ -220,6 +228,7 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     c.restartBaseAdmission = envBool(option::JitRestartBase, false);
     c.bsrwExplicit = present(option::JitBsrWide);
     c.bsrWideAdmission = envBool(option::JitBsrWide, false);
+    c.memBitfield030 = envBool(option::JitMemBitfield030, false);
     c.a64Pacing = envBool(option::JitA64Pacing, true);
     c.requireNative = present(option::JitRequireNative);
     c.dispatchRing = envBool(option::JitDispatchRing, false);
@@ -359,6 +368,13 @@ inline bool restartBaseAdmission() {
 // Same § and same resolution: BSR.W into the armed-charge exemption.
 inline bool bsrWideAdmission() {
     return detail::activeConfig ? detail::activeConfig->bsrWideAdmission : false;
+}
+
+// POM68K_JIT_030_MEMBF — 68030 read-only memory bitfields through the
+// existing 040 emission path (see the field comment above). Opt-in until
+// its own D.1 evidence.
+inline bool memBitfield030Admission() {
+    return detail::activeConfig ? detail::activeConfig->memBitfield030 : false;
 }
 
 // J4 — resident 68040 D-cache line reads. Kept independently switchable so

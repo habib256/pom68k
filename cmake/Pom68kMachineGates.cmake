@@ -354,6 +354,34 @@ foreach(machine sonora centris q700 q630 duo macii iifx compact)
     endforeach()
 endforeach()
 
+# The LIVE AppleShare exchange (2026-08-28, TODO § 6's named missing gate,
+# ordered by the user): a real 8.1 guest drives the Chooser, mounts the
+# in-process AFP share and creates a folder — the pass criterion is the
+# directory appearing in the HOST filesystem. The whole wire, no protocol
+# shortcut. Mouse-calibrated to the pinned MacOS-8.1 image; soft-skips
+# without the assets.
+add_executable(q605_afp_live_etalon tests/q605_afp_live_etalon.cpp)
+target_link_libraries(q605_afp_live_etalon PRIVATE pom68k_core)
+add_test(NAME q605_afp_live_etalon COMMAND q605_afp_live_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_afp_live_etalon PROPERTIES TIMEOUT 1800)
+
+# The AIO pair (2026-08-28, TODO § 2's named next beyond-boot target):
+# the LC 520 — the Sonora roster's OTHER half, which the LC III legs never
+# touch: the $EDE66CBD universal ROM, a Cuda transport instead of the
+# Egret, and the built-in 640×480 8-bpp color display, so the signature is
+# lc520_boot_etalon's luminance one. Soak is what would notice the Cuda
+# MCU drifting three minutes in; persist drives the Toolbox through it.
+add_executable(aio_beyond_etalon tests/aio_beyond_etalon.cpp)
+target_link_libraries(aio_beyond_etalon PRIVATE pom68k_core)
+foreach(scenario soak persist)
+    add_test(NAME lc520_${scenario}_etalon COMMAND aio_beyond_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(lc520_${scenario}_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_BEYOND=${scenario}"
+                         TIMEOUT 1800)
+endforeach()
+
 # The Eclipse pair (2026-08-14): the same binary on the tower profile,
 # which is a different MACHINE past the boot screen — two Apple PIC IOPs,
 # an Egret firmware LLE and a second 53C96, none of which the Spike's

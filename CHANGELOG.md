@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 313 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 322 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the GUI speed gap is the per-slice AppleTalk path" (×9.235 off vs ×0.845 on, 2026-08-25) — its two arms match turbo-vs-paced, and the real thief was the pacer sleeping relative to emulation cost alone: every paced machine ran at ~×0.75 nominal** → [2026-08-28 (ninth) — Nominal mode never held ×1…](#2026-08-28-pacing-absolute-deadline)
+- **"eliminating the biggest fallback family will buy wall time" — the D1F0 ABBA read +0.02 % on a 0.6 % floor; the fallback histogram is not a time profile** → [2026-08-28 (seventh) — The D1F0 ABBA…](#2026-08-28-d1f0-abba-null)
 - **the Windows release ships a JIT that cannot work: the x86-64 generator is compiled in on `AMD64` and follows the System V ABI, and the job that builds it runs no test** → [2026-08-28 — An architecture pass reads the repository…](#2026-08-28-architecture-review)
 - **why the two JIT backends may not stay independent: they share no function, each carries its own EA decoder and cycle-cost table, and both model the 68k rather than the host** → [2026-08-28 — An architecture pass reads the repository…](#2026-08-28-architecture-review)
 - **why could the IIvx show Command+N live in `KeyMap` while the Finder received an ordinary N — and why did the obvious global timing fix break IIfx?** → [2026-08-25 — The IIvx persist gate exposed a two-transition ADB poll…](#2026-08-25-iivx-command-settle)
@@ -342,6 +344,15 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-28 (tenth)** — [The live AppleShare exchange gets its gate, registered before it has ever been seen green](#2026-08-28-afp-live-gate)
+- **2026-08-28 (ninth)** — [Nominal mode never held ×1: the pacer slept relative to emulation cost alone, and AppleTalk had been taking the blame](#2026-08-28-pacing-absolute-deadline)
+- **2026-08-28 (eighth)** — ["Bitfields are emitted by no backend" was half wrong: a64 had a complete read-only memory-bitfield path, excluded wholesale from the 030](#2026-08-28-030-membf)
+- **2026-08-28 (seventh)** — [The D1F0 ABBA reads +0.02 % on a 0.6 % floor: the fallback histogram is not a time profile](#2026-08-28-d1f0-abba-null)
+- **2026-08-28 (sixth)** — [The AIO family gets its beyond-boot pair, and the reference volume's French layout ate the first close-all](#2026-08-28-aio-beyond-boot)
+- **2026-08-28 (fifth)** — [Reading the CI found it red since 2026-08-24: the shared lockstep held x64 to a64's residency, and the g++ census counted zero warnings in a log that did not exist](#2026-08-28-ci-red-four-days)
+- **2026-08-28 (fourth)** — [D1F0 lands on both backends through the shared cost model: 42.8 M fallbacks to zero, run total −53 %](#2026-08-28-d1f0-closed)
+- **2026-08-28 (third)** — [Wave 2 lands: the 68k cost/EA model is written once, and the first parity sweep found 15 divergence groups where the review saw 3](#2026-08-28-wave2-extraction)
+- **2026-08-28 (later)** — [Wave 0 lands: Windows falls back to the threaded JIT, and both non-Linux release jobs now run the asset-free tier](#2026-08-28-windows-jit-neutralized)
 - **2026-08-28** — [An architecture pass reads the repository instead of its documentation, and finds a shipped Windows binary that cannot work](#2026-08-28-architecture-review)
 - **2026-08-27 (seventeenth)** — [D1F0 diagnosed: the full-format opt-in was the wrong suspect, the EA cost table is the right one](#2026-08-27-d1f0)
 - **2026-08-27 (sixteenth)** — ["7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed](#2026-08-27-hotfloppy)
@@ -657,6 +668,319 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-28-afp-live-gate"></a>
+## 2026-08-28 (tenth) — The live AppleShare exchange gets its gate, registered before it has ever been seen green
+
+`TODO.md` § 6 named the missing proof precisely: `q605_ot_bind_etalon` shows
+the Open Transport `.MPP` bind under 8.1, but nothing in the tree drives the
+Chooser. `q605_afp_live_etalon` is that gate — a real Mac OS 8.1 guest on the
+Quadra 605, mouse-calibrated to the pinned image, walking Apple menu →
+Chooser → AppleShare → server list → guest login → volume list → mount, then
+Cmd-N inside the mounted window. The whole wire, no protocol shortcut: LLAP,
+DDP, ASP, AFP 2.1, the in-process `AfpServer` serving `run/afp-live/Echange`
+(the folder's NAME is the volume name), with a host-written `BONJOUR.txt`
+travelling the other way inside the enumerate reply.
+
+**The pass criterion is deliberately not a screen.** The run fails unless a
+DIRECTORY the guest created appears in the HOST filesystem, with
+`AtalkHub`'s AFP session count ≥ 1 and the CPU not halted — a mounted-looking
+desktop proves nothing a redraw could not fake. `POM68K_AFP_PHASE=<n>` stops
+after any phase, which is how a mouse calibration gets fixed without paying
+for the mount again; the gate soft-skips without the FF7439EE ROM and
+`hdv/MacOS-8.1-boot.vhd`.
+
+**It enters the registry unproven, and that is written down rather than
+hidden.** The last observed run stopped after phase 3 — the server list is on
+screen; the mount, the Cmd-N and the host-side directory have never been
+seen. It is registered on the same terms as wave 0's Windows test leg
+earlier today: a red here is a finding to read, not noise to silence. § 6's
+item stays OPEN until a green run closes it, and the first failure is
+expected to name a mouse coordinate, not a protocol. Registry: **237 gates**,
+124 `etalon`, 54 `m040`.
+
+<a id="2026-08-28-pacing-absolute-deadline"></a>
+## 2026-08-28 (ninth) — Nominal mode never held ×1: the pacer slept relative to emulation cost alone, and AppleTalk had been taking the blame
+
+The time profile the (seventh) entry demanded, pointed at § 0·A's GUI speed
+gap — and it dismantled the standing story in three steps.
+
+**Step 1 — the slice hypothesis died on its own screen.** The reading-first
+guess (64-slice quanta breaking JIT block chains) was priced by the
+instrument built for it: `jit_bench_lcii` at `POM68K_BENCH_SLICES=1` vs
+`64`, both engines. JIT ×9.63 → ×9.44 (−2 %), interpreter ×4.29 → ×4.26.
+Slicing costs the 2 % the 2026-08-25 innocenting already said. Refuted.
+
+**Step 2 — the profile said the machine was asleep.** The scripted GUI
+protocol (`POM68K_SPEED_LOG`, LC II, GISTPERSO) reproduced the gap at
+nominal pacing: **×0.76-0.80 with AppleTalk on — and ×0.70-0.73 with it
+OFF**, already the wrong sign for the AppleTalk story. `sample` on the live
+process: the machine thread spent **3 189 of 3 685 samples (86 %) in
+`sleep_for`** while missing its target. Not compute-bound — mis-paced.
+
+**Step 3 — the mechanism.** `MachineHost::stepTick`'s wall-clock path slept
+`16 625 µs − emulation cost`: `publish()` (renderFrame + swap + status),
+`drainAudio()` and nanosleep's 1-2 ms wake-up grain were all paid ON TOP of
+the frame budget, so the loop period was ~21 ms and every paced machine ran
+at ~×0.75 nominal. The fix is the classic one: an ABSOLUTE 60.15 Hz
+deadline (`nextFrameDue_ += period`), computed after `publish()`, so every
+non-emulation cost eats slack instead of schedule, with a 3-frame resync
+guard so a machine that genuinely cannot keep up never sprints through
+accumulated debt. **After: ×0.997-1.03 on both arms** — hub on and off —
+`machinehost_test` and `gui_smoke_test` green. One shared CRTP host, so all
+twelve families inherit the fix.
+
+**Retraction.** The 2026-08-25 attribution "the GUI gap is the per-slice
+AppleTalk path" (×9.235 AppleTalk off vs ×0.845 product default; it lived
+in `TODO.md` § 0·A, no CHANGELOG entry) does not survive this: its two arms
+match TURBO vs PACED almost exactly (today's paced hub-on reads 0.78 ≈ its
+0.845), and today's same-regime comparison puts hub-on and hub-off within
+noise of each other in both regimes measured. The arms were almost
+certainly taken in different pacing modes — turbo is a manual menu click
+with no env knob, so one relaunch forgetting it is all it takes. **What
+remains open and honestly labeled**: the turbo-regime AppleTalk cost has
+never been measured in matched arms, and doing it scriptably needs a
+`POM68K_TURBO` startup option through the injected-config chain — the
+scriptable protocol's missing arm.
+
+<a id="2026-08-28-030-membf"></a>
+## 2026-08-28 (eighth) — "Bitfields are emitted by no backend" was half wrong: a64 had a complete read-only memory-bitfield path, excluded wholesale from the 030
+
+§ 3's item (2) said `E9D0`/`EFD1` were "never emitted by any backend". The
+diagnosis: a64 carries a full read-only memory-bitfield emitter —
+BFTST/BFEXTU/BFEXTS/BFFFO through `(An)`/`d16(An)`, the possible five-byte
+form probing BOTH mappings before either load escapes — and refused it on
+the 68030 with a blanket `L.is030`, "until the 030 format-A/B restart state
+has its own memory-bitfield oracle". But the probes-first design means
+generated code never builds a fault frame at all: a refused probe bails out
+cleanly before any observable read, and Moira replays the instruction from
+scratch. The 040-only worry reduces to timing, which `admitSoleReadTiming`'s
+030 arm already prices through the exact-thunk contract — a mispriced form
+refuses, it does not mischarge.
+
+**`POM68K_JIT_030_MEMBF=1`** (StartupOptions → JitConfig, the RESTART_BASE
+plumbing pattern) opts the 030 into the same emission path. Oracle: the
+120k lockstep in the alignment gate's exact configuration — **120 000 steps
+identical, i-cache fetch/hit/miss counters identical on both engines** —
+and the knob is now pinned in `jit_lockstep_030_a64_alignment_test`'s
+environment beside RESTART_BASE and BSRW. Census with the knob: `E9D0`'s
+5.95 M gameplay fallbacks collapse to 3 455 legitimate cross-page runtime
+falls; the phase total drops 37.7 M → 31.2 M. `EFD1` (BFINS, 19 % of what
+remains) is a true absence — a WRITE bitfield with no IR contract; its
+no-tail form fits the two-slot `MemoryContract` as read4+write4 and is the
+named next slice (TODO § 3).
+
+Per the (seventh) entry's lesson, **no wall-clock claim is attached** —
+this is coverage and residency, lockstep-proven, opt-in until promotion
+evidence of its own. One tooling trap re-paid: the census tool is
+`EXCLUDE_FROM_ALL`, so the first "knob run" executed a stale binary and
+reproduced the knob-off numbers exactly — rebuild dev tools by name before
+reading them.
+
+<a id="2026-08-28-d1f0-abba-null"></a>
+## 2026-08-28 (seventh) — The D1F0 ABBA reads +0.02 % on a 0.6 % floor: the fallback histogram is not a time profile
+
+The wall-clock half of the D1F0 promotion, run to the book
+(`docs/MEASURING.md`): two frozen binaries — HEAD and the working tree — on
+the fixed-frame SimCity census as the guest-work budget, a null pair first,
+then counterbalanced ABBA ×3 on an otherwise idle host (load 1.7 → 2.2 on
+10 threads), architectural footprint identical on all 14 runs (SCSI 2526,
+halted=0). **A (base) 63.11 ± 0.20 s; B (D1F0) 63.12 ± 0.49 s; Δ +0.02 %
+against a 0.60 % null spread. Below the floor — no claim, either
+direction (R2).** The lever was verifiably armed: arm A's gameplay census
+shows `D1F0` at 46.5 % of fallbacks, arm B's shows it absent.
+
+One measurement trap caught on the way: the first campaign's timestamps all
+read 0.00 because **Python's `time.monotonic()` is per-process on this
+macOS** — two invocations minutes apart both return ~0.004. Cross-process
+deltas need `time.time()`. And one census-reading correction: the `*` in
+the opcode census marks `canEmit`, NOT native execution — the baseline
+starred `D1F0` while refusing it 31 M times.
+
+**What this means, separated from the measurement (R4).** D1F0 stays: it is
+conformant, lockstep-proven, reads on both ISAs from `JitCost.h`, and
+eliminates 46.5 % of application-load fallbacks — a *coverage and
+residency* win. What dies is the assumption underneath § 3's next-lever
+ordering: eliminating the single largest fallback family moved wall time by
+**nothing**, so the fallback path a window dispatch pays is too cheap for
+the histogram to predict time. The idle-Finder profile had already said
+"the next end-to-end lever is outside the JIT"; this says it under
+sustained application load too. **Bitfields and division remain legitimate
+coverage/parity work — the exception rows the parity gate carries — but the
+next WALL-CLOCK lever must come from a time profile, not from the fallback
+census.** § 0·A's per-slice AppleTalk hypothesis (64-slice quanta breaking
+JIT chains) is exactly such a candidate.
+
+<a id="2026-08-28-aio-beyond-boot"></a>
+## 2026-08-28 (sixth) — The AIO family gets its beyond-boot pair, and the reference volume's French layout ate the first close-all
+
+`lc520_soak_etalon` + `lc520_persist_etalon` (§ 2's named next target), on
+the shared engine, one thin gate (`tests/aio_beyond_etalon.cpp`) with the
+LC 520 rig: the $EDE66CBD universal ROM, the Cuda transport, the built-in
+640×480 8-bpp color display — so the signature is `lc520_boot_etalon`'s
+luminance one, not the siblings' blue-channel ratio. Soak green: 180 s on
+the Mac clock, Finder up after the wake. Persist green: folder created,
+flushed (first write 600 frames after the commit), survives the reboot.
+The registry is **236 gates** (123 `etalon`, 56 `m030`).
+
+Three findings the pair paid for, each now in the gate's own comments:
+
+- **The GIST PERSO reference volume auto-opens two Finder windows at
+  boot**, and the ~400-px white body of "JEUX" is indistinguishable from an
+  alert to `lightRun` (402 measured against the alert's 306-406 — no gap).
+  The gate closes all windows first and only arms the no-dialog rule on
+  what survives.
+- **ADB codes are physical keys and this volume runs a FRENCH System**: on
+  its AZERTY layout the letter W sits on code $06, and the first
+  close-all sent $0D — Cmd-Option-Z, an undo, zero visible effect, two
+  screenshot rounds to see it. The gate now sends both layout candidates;
+  the wrong one lands on Z and is harmless. Cmd-N was never affected — N
+  does not move — which is why eleven persist legs never met the trap.
+- **GIST PERSO holds its catalog in the File Manager cache** like the RBV
+  and Duo volumes: the first persist run created the folder and saw NO
+  write for the whole 7 200-frame cap. Applying § 2's own rule — bind
+  `frontApp`/`focusFinder` before suspecting anything, then the roster's
+  keyboard-only `stir` (Cmd-Shift-3, Shift held so the digit survives
+  AZERTY) — turned that into a flush within 600 frames.
+
+**§ 0's AArch64 half was replayed the same evening on this asset-carrying
+host**: full `make` with 0 warnings, 156/156 gate executables fresh, then
+`ctest -L unit -j16` **110/110 in 52 s** with the census reading
+**110 executed, 0 soft-skipped, 0 failed** — the whole tier actually runs
+here, where the green x86-64 half of 2026-08-17 hid 20 soft-skips. What
+remains of that § 0 box is an x86-64 host that carries the assets, which
+does not exist yet.
+
+<a id="2026-08-28-ci-red-four-days"></a>
+## 2026-08-28 (fifth) — Reading the CI found it red since 2026-08-24: the shared lockstep held x64 to a64's residency, and the g++ census counted zero warnings in a log that did not exist
+
+§ 0·B's two open items were "read the first g++ census" and "read the first
+Linux leak report". Actually reading the CI found something else first:
+**every `ci.yml` run since 2026-08-24 had failed — 26 consecutive reds over
+four days, unread.** The morning's fifth method rule (*a configuration nobody
+executes is not supported, it is only compiled*) has a sibling: **a CI nobody
+reads is not a guard, it is a ritual.** `TODO.md` § 1's "the rest of the suite
+is green" was true only of the AArch64 host that wrote it.
+
+**The mechanism.** The 2026-08-24 "conformant Rogue JIT improvements" merge
+added a64-only lowerings — direct and memory-indirect full-index LEA, the
+indirect JSR, the `(An)+` pre-access commit order — and taught
+`jit_asset_free_lockstep_test` to assert `slowInstrs == 0` on them
+UNCONDITIONALLY. True on a64; false on x64, which has no such lowerings —
+exactly the backend drift finding 2 of the same morning's review names. The
+test already had the right pattern in its own file: its bitfield and
+dynamic-shift legs guard the residency claim with `a64Production`
+(backend == "aarch64" && !packedCcr). The four failing legs now use the same
+predicate; the lockstep EQUALITY halves still bind every backend. The a64 run
+stays green with `slow=0` everywhere, so nothing was relaxed where it held.
+
+**The census that counted nothing.** Because the job died before its build
+step, the "GCC warning census (non-blocking)" step — merged 2026-08-27, never
+once run against a real log — grepped a `build.log` that did not exist and
+printed **"warnings in POM68K's own sources: 0"**. A phantom pass, the exact
+shape `docs/MEASURING.md` R5 exists to kill, in the very step § 0·B was
+waiting to read. It now prints "NO CENSUS" loudly when the log is missing.
+Both § 0·B readings remain open — and are now actually possible: the first
+real census and the first leak report come from the next green runs (the
+2026-08-27 nightly predates the leak step's merge entirely).
+
+<a id="2026-08-28-d1f0-closed"></a>
+## 2026-08-28 (fourth) — D1F0 lands on both backends through the shared cost model: 42.8 M fallbacks to zero, run total −53 %
+
+The best-ROI item in § 3, implemented in the order the morning imposed —
+extraction first. The admitted sub-form (direct, base suppressed, index
+live, two-word base displacement) and its six-cycle surcharge live in
+`JitCost.h::fullFormatReadExtra`; the `AddressAlu` full-format opt-in is
+open in BOTH backends, each still holding the emitted cost to its own
+traced cycles, so a wrong constant refuses instead of mischarging.
+
+**Measured on the SimCity census** (`lcii_simcity_census`, same protocol as
+the 2026-08-27 baseline): the gameplay phase is 56.3 M instructions, 98.2 %
+native, and `D1F0` — 53.2 % of all fallbacks at baseline, 42.8 M of them —
+**no longer appears in the fallback table at all** (the `*` beside it in the
+opcode census means `canEmit`, not "executed natively" — the baseline
+starred it too while falling back 31 M times; the fallback table is the
+evidence). The phase's
+fallback total fell 80.5 M → 37.7 M — exactly the D1F0 share. What remains
+on top confirms § 3's stated order: the 68020 bitfields `E9D0`/`EFD1`
+(31.5 %), the divisions (~28 %), `6000` (12.7 %).
+
+Correctness: the whole `jit` tier — 37/37 on this host, the two 120k 030
+locksteps and the boot etalons under JIT included. **Not yet done,
+deliberately: the wall-clock ABBA.**
+A fallback census is not a timing instrument; the promotion's repeated-gain
+proof needs the interleaved A/B on a quiet host (`docs/MEASURING.md`), and
+it now reads on both ISAs at once, which was the point of the sequencing.
+
+<a id="2026-08-28-wave2-extraction"></a>
+## 2026-08-28 (third) — Wave 2 lands: the 68k cost/EA model is written once, and the first parity sweep found 15 divergence groups where the review saw 3
+
+`src/jit/JitCost.h` now owns what both code generators used to transcribe by
+hand: the 68020 cycle columns (`kEaRead`, `kMoveDst`, `eaRmwCost` — the
+`(xxx).W` cell that cost 47.4 % of x64's fallbacks in 2026-08 is finally
+written once), the CMPA surcharge (`kCmpaExtraCycles`), the full-format
+prices (`fullIndexPenalty`, `fullFormatReadExtra`), and the per-operation
+columns both files had duplicated cell for cell (`kScc`, `kLea`, `kPea`,
+`kMovemToRegs`/`kMovemToMem`, plus `kJsrJmp` carrying the TRUE indexed
+cells — a64 emits them, x64's local narrowing is admission policy and
+stays in its file rather than blanking a shared cost fact).
+`src/jit/JitEaPlan.h` owns the flattened EA view (`EaPlan`) and the
+admission wrapper (`decodeEaPlan`), full-format refusal staying opt-in per
+caller. The backends keep emission only; `docs_test` § 9 pins the boundary
+in both directions (no `int8_t kEaRead`, no `findEffectiveAddress(`, no
+D1F0 predicate under `backends/`; the shared headers must carry them).
+JIT invariant 10 states the rule.
+
+**`jit_backend_parity_test`** sweeps both `canEmit` over all 65 536 opcodes
+on ANY host — both backend translation units compile on any ISA, since the
+gate never executes generated code; the target adds whichever TU the core
+library lacks. Its first run found **15 divergence groups, not the 3 the
+review named**: five real a64-only lowerings (bitfields, MOVE SR, register
+shifts, the modifying bit ops, MOVE's indexed destinations) and ten x64
+`canEmit` over-claims on mostly-illegal encodings its emitter then refuses
+(plus `TST #imm` and `BTST Dn,#imm`, legal 020 forms only x64 claims).
+Every group is a dated exception row; an exception that stops diverging
+fails the gate too, so a stale row cannot outlive the port it waited for.
+The registry grows to 234 gates (112 `unit`, 41 `jit`, 87 `asset-none`).
+Compiling `JitBackendX64.cpp` under this host's clang for the first time
+also surfaced three warnings (two ctor-order, one dead field/variable) —
+fixed, keeping the tree's 0-warning claim true where it had simply never
+been tested.
+
+<a id="2026-08-28-windows-jit-neutralized"></a>
+## 2026-08-28 (later) — Wave 0 lands: Windows falls back to the threaded JIT, and both non-Linux release jobs now run the asset-free tier
+
+The morning's finding 1 (below) is closed on the same day, in the four moves
+§ 10 wave 0 named:
+
+- **The `auto` branch excludes Windows targets, not MSVC.** The System V /
+  Win64 disagreement (args in `RDI`/`RSI` vs `RCX`/`RDX`, `RSI`/`RDI` scratch
+  vs callee-saved, no shadow space vs 32 mandatory bytes) is a property of the
+  **target OS** — MinGW-targeted GCC follows the Microsoft calling convention
+  too — so the CMake guard is `NOT WIN32`, deliberately wider than the
+  `_MSC_VER` the review's wording implied. A Windows configure with
+  `POM68K_JIT_BACKENDS=auto` now composes the `threaded` floor, which
+  generates no host code and is valid for every guest.
+- **`X64Backend::usable()` returns `false` under `_WIN32`**, with the ABI
+  comment saying why. An explicit `-DPOM68K_JIT_BACKENDS=x64` still
+  *compiles* on Windows — that is how a Win64 ABI port would iterate — but
+  the backend refuses to serve at run time, so the build-time guard cannot be
+  bypassed into a crash.
+- **The release jobs run something.** The `windows` job configures
+  `-DPOM68K_TESTS=ON`, builds the whole tree and runs
+  `ctest -C Release -L asset-none`; the `macos` job gets a native-arch test
+  build with the packaged binary's exact knobs (`NATIVE=OFF`, `LTO=OFF`) and
+  the same tier. **Neither leg has ever executed before** — the first Windows
+  run in particular is the actual test of this entry, and a red there is a
+  finding to read, not noise to silence. Nothing on this host can compile
+  MSVC; the claim "the tier passes on Windows" is deliberately NOT being made
+  here.
+- **The open question is written, not decided**: does Windows keep `threaded`
+  permanently and documented, or does the x64 backend learn the Win64 ABI
+  behind a gate? Per § 10 wave 0 this is not decidable without a Windows host
+  to measure on — the asset-free `jit-fast` tier is the instrument. Both
+  guards carry "remove both together, behind a gate" in their comments so the
+  port cannot land half-guarded.
 
 <a id="2026-08-28-architecture-review"></a>
 ## 2026-08-28 — An architecture pass reads the repository instead of its documentation, and finds a shipped Windows binary that cannot work
