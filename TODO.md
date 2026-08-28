@@ -10,16 +10,17 @@ in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-27): **233 gates** — 111
-  `unit`, 86 `asset-none`, 9 `smoke`, 40 `jit`, 53 `m040`, 54 `m030`, 121
-  `etalon`, 12 `etalon-core`. Five are host-conditional — the
+  somewhere.** The documented registry (2026-08-28): **237 gates** — 112
+  `unit`, 87 `asset-none`, 9 `smoke`, 41 `jit`, 54 `m040`, 56 `m030`, 124
+  `etalon`, 12 `etalon-core` (`jit_backend_parity_test` and the LC 520
+  beyond-boot pair joined on 2026-08-28). Five are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
   `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
   the x86-64-only `jit_lockstep_030_x64_experimental_test` +
   `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
-  **228** (108 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 229 (109
-  `unit`, 38 `jit`). Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
+  **231** (109 `unit`, 8 `smoke`, 38 `jit`) and an AArch64 one 232 (110
+  `unit`, 39 `jit`). Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:466`, and it FATAL_ERRORs off AArch64 in
   `cmake/Pom68kJitGates.cmake:458-464`).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
@@ -69,11 +70,11 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 | § | What it holds | The next concrete action |
 |---|---|---|
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
-| **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Ne trancher la bascule non conforme qu'après § 3 ; d'ici là, une ligne de base mesurée sur un vrai Pi 400 |
-| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Les six sont posées ; restent deux lectures de CI — recensement g++ pour `-Werror`, premier rapport de fuites Linux |
-| **1** | Rouge maintenant — **le JIT natif du binaire Windows** ; ouverts non rouges ; règles de méthode | Neutraliser le générateur x64 sous MSVC (§ 10 vague 0) |
+| **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Le mode nominal tient enfin ×1 (paceur à échéance absolue, 2026-08-28 — il plafonnait à ~×0,75 partout) ; reste : `POM68K_TURBO` scriptable pour re-mesurer AppleTalk à bras égaux, et la ligne de base Pi 400 |
+| **0·B** | Les six réserves de la revue externe du 2026-08-26 | Restent les deux lectures de CI, maintenant débloquées (rouge amont fermé le 2026-08-28) : premier recensement g++ RÉEL, premier rapport de fuites Linux |
+| **1** | Rouge maintenant — aucun au 2026-08-28 soir ; ouverts non rouges ; règles de méthode | Lire la première exécution Windows du palier `asset-none` (release job) |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | Extraire `JitCost.h` (§ 10 vague 2) **avant** de finir `D1F0` — le coût de l'EA de format complet est du 68k, l'écrire dans un backend le fait écrire deux fois |
+| **3** | JIT, second moteur d'exécution | `D1F0` clos (ABBA : nul — l'histogramme de replis n'est pas un profil temporel) ; BFEXTU 030 fait derrière `POM68K_JIT_030_MEMBF` ; suite : contrat IR de BFINS (couverture) et un PROFIL TEMPOREL pour le prochain levier mural |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -122,10 +123,14 @@ sont depuis le 2026-08-25 (`CHANGELOG.md` à leurs dates) :
   palier « vert » de 104 dont 84 s'exécutaient. `sst68000` a depuis rejoint
   les exécutants (1 000 058 / 1 000 058 sur 124 fichiers, 6,67 s), ses
   vecteurs étant le seul asset manquant qui soit public.
+  **La moitié AArch64 est mesurée le 2026-08-28** — sur CET hôte, qui porte
+  les assets : `make` complet 0 avertissement, `check_binaries_fresh.py`
+  156/156, puis `ctest -L unit -j16` **110/110 en 52 s** et le recensement
+  dit **110 exécutés, 0 soft-skip, 0 échec** — le palier entier s'exécute
+  ici, là où le vert x86-64 du 2026-08-17 cachait 20 soft-skips.
   **Reste à faire pour cocher** : rejouer le palier sur un hôte x86-64
-  *portant les assets*, puis la moitié AArch64. Le recensement
-  (`tools/gate_execution_census.py`) fait maintenant partie de la mesure, pas
-  du commentaire.
+  *portant les assets* — le seul hôte de ce type n'existe pas encore ; c'est
+  la même machine-unique que § 10 constat 3 veut doubler d'un runner.
 
 `docs_test` vérifie la cohérence dynamique du catalogue compilé, des gates,
 des budgets et de la documentation ; il ne doit contenir aucun nombre plafond
@@ -204,14 +209,25 @@ s'applique tel quel : tous les gates d'accuracy forcent le profil conforme,
   qui est « ×1 ou mieux », pas « n secondes ».
 - [ ] **Rejouer l'A/B sur un vrai Pi 400** : même instrument que la case
   ci-dessus.
-- [ ] **Profiler et accélérer `AtalkHub::tick`** sans changer ses échéances
-  LLAP/ATP. L'écart ×1,98 mesuré contre ×1,3 rapporté a été **attribué au
-  chemin AppleTalk par tranche le 2026-08-25** : LC II/A64 donne **×9,235**
-  AppleTalk coupé contre **×0,845** avec le défaut produit, le bras
-  `POM68K_AUDIO=0` restant à ×0,845. Innocentés et à ne pas re-suspecter : le
-  cœur CPU, le raster, le découpage en tranches du quantum GUI (2,2 %), le
-  thread GUI et OpenGL. Ce diagnostic n'était pas une promotion perf (pas
-  d'ABBA) ; le prochain changement doit l'être.
+- **L'écart GUI est CLOS le 2026-08-28, et l'attribution AppleTalk du
+  2026-08-25 est RÉTRACTÉE** (`CHANGELOG.md` 2026-08-28 (ninth)). Le voleur
+  était le paceur : `stepTick` dormait `16 625 µs − coût d'émulation`, en
+  laissant `publish()`, `drainAudio()` et le grain de réveil de `nanosleep`
+  hors budget — période ~21 ms, **tout mode nominal plafonné à ~×0,75 sur
+  les douze familles**, AppleTalk on OU off (×0,76-0,80 contre ×0,70-0,73,
+  déjà le mauvais signe pour l'histoire AppleTalk ; profil `sample` : 86 %
+  du thread machine dans `sleep_for`). Échéance ABSOLUE 60,15 Hz calculée
+  après `publish()` + resync à 3 frames : **×0,997-1,03 sur les deux
+  bras**. Les ×9,235/×0,845 de l'attribution correspondent à turbo-vs-pacé,
+  pas à AppleTalk-vs-rien. L'hypothèse « 64 tranches cassent les chaînes
+  JIT » a été chiffrée et réfutée en chemin (`POM68K_BENCH_SLICES` : −2 %
+  JIT, −0,7 % interp).
+- [ ] **Le coût AppleTalk en régime TURBO reste non mesuré à bras égaux** —
+  la seule question qui survit à la rétractation. Il faut d'abord un
+  `POM68K_TURBO` scriptable à travers la chaîne de configuration injectée
+  (le turbo est un clic de menu sans bouton d'environnement, ce qui est
+  précisément comment les deux bras du 2026-08-25 ont divergé) ; puis les
+  deux bras SPEED_LOG en turbo, hub on/off, même lancement.
 
 **La jauge de vitesse du GUI a atterri** : le menu CPU affiche le ratio temps
 réel sur les douze familles, calculé à partir de `machineClock()` publié
@@ -250,12 +266,23 @@ rien d'autre :
   que GCC ajoute, puis basculer `-DPOM68K_WERROR=ON` dans ce job. Les deux
   compilateurs n'avertissent pas des mêmes choses et cet hôte n'a que clang,
   qui compile **0 avertissement** sur tout l'arbre.
+  **Lu le 2026-08-28, et la lecture était vide** : la CI x86-64 était rouge
+  depuis le 2026-08-24 (voir § 1), donc le job échouait AVANT le build et le
+  recensement lisait un `build.log` inexistant — en imprimant « 0 warnings »,
+  la forme exacte du phantom pass. Deux correctifs le même jour : le rouge
+  amont est fermé, et le recensement dit désormais « NO CENSUS » sur log
+  manquant au lieu de compter zéro. La première lecture RÉELLE reste à faire
+  sur le prochain run vert.
 - [ ] **Lire le premier rapport de fuites Linux** de la nightly pour rendre
   son étape `detect_leaks=1` bloquante. Elle est non bloquante parce qu'elle
   interroge un *autre* runtime, pas parce que notre code est suspect :
   `leaks --atExit` sur les **78 binaires** du palier sans assets donne **0
   fuite, 0 octet** ici, et les 288 du binaire GUI sont toutes des cycles
   `NSXPCConnection` d'Apple, sans une seule trame POM68K dans une pile.
+  **Vérifié le 2026-08-28 : aucun rapport n'existe encore** — la dernière
+  nightly planifiée (2026-08-27 13:58) précède la fusion du step, et sa
+  jambe x86-64 échouait de toute façon sur le rouge de § 1, maintenant
+  fermé. La prochaine nightly est la première qui peut en produire un.
 
 **Résidu légitime, écrit pour ne pas être reclassé en dette** : le
 `thread_local` du JIT (`src/jit/JitConfig.h:241`) et le cache d'options par
@@ -276,25 +303,40 @@ sauvegarde, fermeture RAII.
 
 ## 1. Red now
 
-**Un rouge, ouvert le 2026-08-28 par la revue d'architecture (§ 10) :
-le binaire Windows publié embarque un générateur de code x86-64 écrit pour
-l'ABI System V.** Ce n'est pas un gate rouge — c'est plus grave, c'est une
-plateforme livrée qu'aucun gate ne regarde. Détail, preuves et correctif :
-**§ 10, constat 1 et vague 0**. Résumé exécutable :
-`CMakeLists.txt:311-317` active `POM68K_JIT_BACKEND_X64` dès que
-`CMAKE_SYSTEM_PROCESSOR` vaut `AMD64` — ce que MSVC rapporte — et le prologue
-lit ses deux arguments dans `RDI`/`RSI` (`JitBackendX64.cpp:3384-3385`) là où
-Win64 les passe dans `RCX`/`RDX`. `jit/auto` étant le défaut conformant sur
-68040 et 68030, tout utilisateur Windows d'une Quadra ou d'une LC II exécute ce
-chemin.
+**Aucun rouge ouvert au 2026-08-28 (soir).** Les deux du jour sont fermés,
+chacun avec son entrée `CHANGELOG.md` :
 
-**Le reste de la suite est vert.** Dernière passe registre complet : 228/228
-sur AArch64, 2026-08-27, dont **224 réellement exécutés** (en-tête de ce
-fichier). Cette phrase ne vaut que deux choses : la fraîcheur des binaires
-derrière elle — `tools/check_binaries_fresh.py` avant de citer un palier, et
-son `--self-test` la première fois sur une machine neuve — et le recensement
+- **Le rouge Windows de la revue § 10 est FERMÉ le jour même** (vague 0
+  posée) : la branche `auto` x64 exclut `WIN32`, `X64Backend::usable()`
+  refuse sous `_WIN32` avec le commentaire d'ABI, et les jobs de release
+  Windows **et** macOS construisent les tests et lancent `ctest -L
+  asset-none` — la première exécution Windows de ce palier est le vrai test,
+  à lire, pas à faire taire. La question ouverte (Windows garde `threaded`
+  ou le backend apprend l'ABI Win64 derrière un gate) reste § 10 vague 0,
+  indécidable sans hôte Windows. `CHANGELOG.md` 2026-08-28 (later).
+- **Un second rouge, découvert en LISANT la CI (§ 0·B) : la jambe x86-64 de
+  `ci.yml` était rouge depuis le 2026-08-24** — 26 runs consécutifs en
+  échec, jamais lus. Cause : le commit Rogue du 2026-08-24 a ajouté des
+  abaissements a64-only (LEA full-index direct/indirect, JSR indirect,
+  l'ordre `(An)+`) et `jit_asset_free_lockstep_test` affirmait `slow == 0`
+  sans condition — vrai sur a64, faux sur x64, exactement l'écart que le
+  constat 2 de § 10 nomme. Fermé le 2026-08-28 : les quatre affirmations de
+  résidence portent le prédicat `a64Production` que le test avait déjà pour
+  ses jambes bitfield/shift ; l'égalité lockstep reste exigée des deux
+  backends. Pendant ces quatre jours le recensement g++ de § 0·B imprimait
+  « 0 warnings » depuis un log inexistant — corrigé en « NO CENSUS » loud.
+  La phrase « le reste de la suite est vert » d'ici était donc fausse d'une
+  jambe : elle ne couvrait que l'hôte AArch64 qui l'écrivait.
+
+**Dernière passe registre complet : 228/228 sur AArch64, 2026-08-27, dont
+224 réellement exécutés** (en-tête de ce fichier). Cette phrase ne vaut que
+deux choses : la fraîcheur des binaires derrière elle —
+`tools/check_binaries_fresh.py` avant de citer un palier, et son
+`--self-test` la première fois sur une machine neuve — et le recensement
 derrière elle, `tools/gate_execution_census.py`, parce qu'un gate qui
-soft-skippe sort 0 et est compté vert par `ctest`.
+soft-skippe sort 0 et est compté vert par `ctest`. Et depuis le 2026-08-28,
+une troisième : **elle ne parle que de l'hôte qui l'a produite** — l'autre
+jambe se lit dans la CI, pas dans ce fichier.
 
 ### Open here, and not red
 
@@ -415,7 +457,10 @@ Highest-ROI closers, in order:
   would show what the JIT costs and misses under sustained real use.
 - [ ] **Next beyond-boot machines**: the Q605 `floppy` leg is unblocked since
   the hot-insert report closed as a modal alert (2026-08-27), so it is
-  writable now. The other open target is the **AIO family**.
+  writable now. **The AIO family landed 2026-08-28**
+  (`lc520_soak/persist_etalon`, `CHANGELOG.md` 2026-08-28 (sixth) — the
+  French-layout ADB trap and the auto-opened-windows trap are in the gate's
+  comments); next open target after the floppy leg: `duo230_input_etalon`.
 - [ ] **Floppy: a guest-INITIATED write.** The 2026-07-29 "volume mounts,
   window auto-opens, Cmd-N dropped" evidence is RETRACTED (2026-08-05): it was
   the System 7.5 INIT DIALOG end to end — the modal dialog ate Cmd-N and the
@@ -500,63 +545,42 @@ fois le premier item au lieu d'accumuler le préfixe.
 
 Open, in ROI order:
 
-- [ ] **`D1F0` — donner son coût propre à l'EA de format complet.**
-  **Diagnostiqué le 2026-08-27, et ce n'est pas ce qu'on croyait.** La première
-  hypothèse — « `LEA` a été autorisé au format complet direct, `ADDA` non » — a
-  été **testée et réfutée** : ouvrir l'opt-in ne change pas un seul repli. Les
-  sites fautifs sont tous la même forme, `ADDA.L (bd.L, ZAn, Xn), An` — format
-  68020 complet, direct, base supprimée, déplacement de base sur deux mots
-  (l'adressage tableau que sort un compilateur). Ils passent `decodeEa` dès
-  l'opt-in, puis se font refuser **au contrôle de temps** :
+- **`D1F0` — CLOS le 2026-08-28**, extraction d'abord puis opt-in sur les
+  deux backends, replis de jeu 46,5 % → 0, lockstep/`m030` verts — et
+  l'ABBA murale a rendu **+0,02 % sur un plancher de 0,6 % : aucun gain de
+  temps, dans aucun sens**. `CHANGELOG.md` 2026-08-28 (fourth) et (seventh).
 
-      traced=15  computed=9  readCycles=9  eaIdx=6  words=4  ext=3
-
-  `kEaReadA64[E_IX][2]` facture **9** cycles, le coût de la forme *brève*
-  `(d8,An,Xn)` ; le 030 en trace **15** pour la forme complète à base
-  supprimée. L'émetteur refuse donc à raison — il se tromperait de 6 cycles, et
-  la trace fait autorité.
-  *Le correctif a une forme précise*, la même que la découverte `CMPA +2` de
-  2026-08-09 : **donner son propre coût à l'EA de format complet** (fonction de
-  `fullFormat`, `baseSuppressed`, `baseDisplacementWords`, `indexSuppressed`)
-  au lieu d'un tableau plat indexé par classe d'EA, *puis* ouvrir l'opt-in
-  direct pour `AddressAlu`. Sans le coût, l'opt-in ne sert à rien ; avec, il
-  devient admissible.
-
-  > **SÉQUENCE IMPOSÉE, décidée le 2026-08-28 : cet item est BLOQUÉ derrière
-  > l'extraction de `JitCost.h` (§ 10 vague 2), et ce blocage est le point.**
-  > Le coût d'une EA de format complet est une propriété **du 68k**, pas de
-  > l'hôte. L'écrire d'abord dans `JitBackendA64.cpp` — c'est ce que fait le
-  > prototype ci-dessous — oblige à l'écrire une seconde fois dans
-  > `JitBackendX64.cpp`, à la main, avec sa propre table et son propre
-  > décodeur. C'est **exactement le mécanisme qui alimente l'item « porter les
-  > deltas 030 de a64 vers x86-64 »** depuis des semaines : chaque forme admise
-  > d'un côté devient une dette de l'autre. Faire l'extraction d'abord coûte
-  > une passe ; ne pas la faire coûte cette passe **plus** un portage, à chaque
-  > forme, indéfiniment.
-
-  **Un prototype existe dans l'arbre de travail, non commité** (l'ouverture de
-  l'opt-in dans le chemin `AddressAlu`/`CMPA` de `JitBackendA64.cpp`, plus
-  25 lignes). Ce qu'il vaut, et ce qu'il ne faut pas perdre :
-  - il **prouve la forme du correctif** — un seul sous-forme admise (direct,
-    base supprimée, index vivant, déplacement de base sur deux mots), tout le
-    reste refusé plutôt que deviné, `fullFormatExtra = 6` mesuré contre la
-    trace, et la garde de temps existante qui refuse encore l'instruction si la
-    constante est fausse au lieu de la mal facturer ;
-  - il **confirme la réfutation** dans son propre commentaire : ouvrir l'opt-in
-    seul ne change aucun des 42,8 M replis, le refus est le COÛT et non le
-    décodage ;
-  - il **ne doit pas être commité tel quel** : les 6 cycles et le prédicat de
-    sous-forme sont écrits dans le fichier a64. C'est la ligne qui doit
-    déménager dans `JitCost.h`, où x64 la lira sans que personne ne la
-    retranscrive.
-
-  Reprise après l'extraction : porter le prédicat et la constante dans
-  `JitCost.h`, faire consommer les deux backends, puis mesurer — les quatre
-  preuves habituelles, et le gain se lit sur les deux ISA au lieu d'une.
-- [ ] **Ensuite, dans cet ordre** : (2) les champs de bits (`E9D0`/`EFD1`),
-  jamais émis par aucun backend ; (3) la division, encore interprétée. Chaque
-  promotion garde les quatre preuves habituelles : empreinte identique, gain
-  répété, gates ciblés verts, tier `etalon` complet vert.
+  > **Leçon qui restructure cette liste : l'histogramme de replis n'est pas
+  > un profil temporel.** Éliminer la plus grosse famille de replis de la
+  > charge applicative n'a pas bougé l'horloge murale — le repli-fenêtre
+  > est trop bon marché pour que sa part prédise du temps. Les items
+  > ci-dessous restent du travail de COUVERTURE/parité légitime (les lignes
+  > d'exception du gate de parité) ; **le prochain levier mural exige un
+  > profil temporel** — l'hypothèse des 64 tranches AppleTalk de § 0·A est
+  > le premier candidat nommé.
+- [ ] **Ensuite, dans cet ordre** : (2) les champs de bits (`E9D0`/`EFD1`) ;
+  (3) la division, encore interprétée. Chaque promotion garde les quatre
+  preuves habituelles : empreinte identique, gain répété, gates ciblés
+  verts, tier `etalon` complet vert.
+  **Le diagnostic (2) est fait, 2026-08-28, et « jamais émis » était faux
+  d'une moitié** : a64 possède un émetteur de bitfields MÉMOIRE complet
+  (lecture seule, chemin cinq-octets sondé-avant-lecture compris) — il était
+  simplement **exclu en bloc du 030** (`L.is030`), la LC II de SimCity. Donc :
+  - `E9D0` (BFEXTU `(A0)`, 15,8 % des replis de jeu) : **FAIT derrière
+    `POM68K_JIT_030_MEMBF=1`** (`CHANGELOG.md` 2026-08-28 (eighth)) — même
+    chemin d'émission, prix par le contrat sole-read/exact-thunk, lockstep
+    120k identique compteurs i-cache compris, le bouton épinglé dans
+    `jit_lockstep_030_a64_alignment_test`. Census : 5,95 M → 3 455
+    replis cross-page légitimes, total de phase 37,7 M → 31,2 M. Travail de
+    couverture, pas de temps (leçon ABBA ci-dessus) ; le défaut reste
+    opt-in en attendant sa propre preuve de promotion.
+  - `EFD1` (BFINS `(A1)`, 15,75 %) : vraie absence — bitfield mémoire en
+    ÉCRITURE, aucun contrat IR (`refineMemoryFromExtensions` ne décrit que
+    les formes lecture seule) et rangée `-1` dans la table 040. La forme
+    sans-queue tient dans les 2 slots du `MemoryContract`
+    (read4 + write4, `lastWrite=1`, RestartInstruction) ; la forme à queue
+    en demanderait 4 — hors contrat, à refuser. C'est le prochain morceau,
+    IR d'abord, émetteur ensuite.
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur
@@ -1234,25 +1258,22 @@ au manifeste ; l'inverse serait moins cher et ne pourrait pas dériver.
 
 ### Le plan, par vagues
 
-**Vague 0 — avant la prochaine release.** Le seul travail de cette section qui
-ne peut pas attendre : une plateforme annoncée est livrée cassée.
+**Vague 0 — avant la prochaine release.** **POSÉE le 2026-08-28**
+(`CHANGELOG.md` 2026-08-28 (later)) : branche `auto` x64 exclue de `WIN32`
+(propriété de l'OS cible, MinGW compris — plus large que le `MSVC` du
+constat), `X64Backend::usable()` refuse sous `_WIN32` avec le commentaire
+d'ABI, jobs de release Windows et macOS construisent les tests et lancent
+`ctest -L asset-none`, incident écrit.
 
-- [ ] **Neutraliser le générateur natif sous MSVC dans `CMakeLists.txt`.**
-  Exclure MSVC de la branche x64 du bloc `POM68K_JIT_BACKENDS` : la
-  configuration retombe sur `threaded`, qui est valide pour tout invité et
-  n'émet pas de code. Une ligne, et Windows redevient correct.
-- [ ] **Doubler la garde à l'exécution dans `X64Backend::usable()`**, avec le
-  commentaire d'ABI qui dit *pourquoi*. Une garde de build seule se contourne
-  par un `-DPOM68K_JIT_BACKENDS=x64` explicite.
-- [ ] **Faire tourner quelque chose sur les jobs de release.**
-  `POM68K_TESTS=ON` + `ctest -L asset-none` sur Windows et macOS : c'est le
-  palier qui ne demande aucun asset, et l'exclure du chemin qui produit les
-  binaires est le seul endroit où la discipline du projet se relâche.
-- [ ] **Écrire l'incident dans `CHANGELOG.md`** et ouvrir la question qui suit :
-  Windows garde-t-il `threaded` de façon permanente et documentée, ou le
-  backend x64 apprend-il l'ABI Win64 derrière un gate ? **Ne pas trancher sans
-  un hôte Windows pour mesurer** — le tier `jit-fast` est exactement
-  l'instrument, et il est déjà asset-free.
+- [ ] **La question de suite reste ouverte et indécidable ici** : Windows
+  garde-t-il `threaded` de façon permanente et documentée, ou le backend x64
+  apprend-il l'ABI Win64 derrière un gate ? **Ne pas trancher sans un hôte
+  Windows pour mesurer** — le tier `jit-fast` est exactement l'instrument,
+  et il est déjà asset-free. Les deux gardes portent « remove both
+  together, behind a gate » pour qu'un port ne puisse pas atterrir à moitié.
+- [ ] **Lire la première exécution du palier `asset-none` sous MSVC** : ce
+  palier n'a jamais compilé ni tourné sous MSVC, un rouge y est une
+  découverte, pas du bruit.
 
 **Vague 1 — rendre la preuve reproductible.** Meilleur rapport valeur/effort de
 tout ce fichier après la vague 0.
@@ -1285,28 +1306,28 @@ que par le ROI d'opcode ; les deux listes se rejoignent sur `D1F0`.
 > mauvais endroit. Faire l'extraction avant `D1F0` la fait disparaître ; la
 > faire après, c'est payer le portage une fois de plus et rouvrir l'item.
 
-- [ ] **Extraire la moitié invariante d'hôte des deux backends** : un
-  `src/jit/JitEaPlan.h` (décodage EA, formes admises, refus) et un
-  `src/jit/JitCost.h` (colonnes de cycles 68020/030/040, la pénalité CMPA, le
-  coût du format complet). Les backends ne gardent que l'émission.
-  **La règle « un concern par fichier » de `CLAUDE.md` n'a simplement jamais
-  été appliquée à l'intérieur du JIT** ; le budget de
-  `tools/file_size_budget.txt` a plafonné ces deux fichiers sans jamais poser
-  la question de ce qu'ils contiennent.
-  *Premier consommateur, et critère d'acceptation* : le prédicat de sous-forme
-  et les 6 cycles du prototype `D1F0` entrent dans `JitCost.h`, les deux
-  backends les lisent, et **aucune des deux valeurs n'apparaît dans un fichier
-  `backends/`**. Si l'extraction laisse `D1F0` à réécrire côté x64, elle n'a
-  pas été faite.
-- [ ] **Un gate de parité de backends, asset-free.** Balayer l'espace des
-  opcodes, comparer `canEmit(a64)` et `canEmit(x64)`, échouer sur toute
-  divergence qui n'est pas inscrite dans une liste d'exceptions datées et
-  justifiées. Il transforme le glissement silencieux d'aujourd'hui en rouge
-  immédiat. **Il satisfait la règle de § 0·B** — il nomme le bug qu'il aurait
-  attrapé : les trois `Op::` que a64 émet et que x64 ignore, découverts par une
-  revue et par aucun gate.
-- [ ] Une fois les deux ci-dessus posés, **l'item « porter les deltas » de § 3
-  disparaît définitivement du backlog** au lieu d'être payé une fois de plus.
+**FAITE le 2026-08-28**, critère d'acceptation tenu :
+
+- **`src/jit/JitCost.h` + `src/jit/JitEaPlan.h` extraits.** Colonnes de
+  cycles 68020 (`kEaRead`, `kMoveDst`, `eaRmwCost`), pénalité CMPA
+  (`kCmpaExtraCycles`), pénalités de format complet (`fullIndexPenalty`,
+  `fullFormatReadExtra` — le prédicat de sous-forme et les 6 cycles du
+  prototype `D1F0`), `EaPlan` + `decodeEaPlan` (l'admission opt-in par
+  appelant). Les deux backends les LISENT — l'opt-in `AddressAlu` est ouvert
+  des deux côtés — et `docs_test` § 9 verrouille la frontière : pas de
+  `int8_t kEaRead`, pas de `findEffectiveAddress(`, pas de
+  `baseDisplacementWords != 2` dans un fichier `backends/`.
+- **`jit_backend_parity_test` posé, asset-free, 65 536 opcodes** — les deux
+  TU backends compilent sur tout hôte ISA (ils n'exécutent rien). Premier
+  balayage : **15 groupes de divergence**, pas 3 — la table d'exceptions
+  datées les nomme tous (5 couvertures a64-only réelles, 10 sur-déclarations
+  `canEmit` x64 sur des encodages pour la plupart illégaux, que son émetteur
+  refuse ensuite). Une ligne périmée fait AUSSI échouer le gate, pour qu'une
+  exception ne survive pas à la correction qu'elle attendait.
+- [ ] **Ce qui reste de « porter les deltas »** : les lignes a64-only de la
+  table d'exceptions du gate (bitfields, MOVE SR, shifts, destinations
+  indexées de MOVE, full-index/`(An)+`) sont maintenant le backlog exact du
+  portage x64, en rouge-immédiat si l'une bouge sans son jumeau.
 
 **Vague 3 — hygiène et coût documentaire.** Continu, aucun de ces items ne
 bloque un autre.

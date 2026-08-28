@@ -1645,7 +1645,15 @@ other System" control needs it), `POM68K_HALT`, `POM68K_DUMP`,
 `POM68K_CD_HOT` (`q605_cdrom_etalon`: insert the disc AFTER the Finder is
 up instead of at power-on), `POM68K_FLOPPY_IMG` / `POM68K_FLOPPY_SETTLE`
 (`lcii_beyond_etalon`'s floppy scenario: which 800K image, and how long to
-settle before judging the mount)) are documented in their own file headers.
+settle before judging the mount), `POM68K_AFP_PHASE` +
+`POM68K_AFP_CHOOSER_Y`, `POM68K_AFP_AS_X`, `POM68K_AFP_AS_Y`,
+`POM68K_AFP_SV_X`, `POM68K_AFP_SV_Y`, `POM68K_AFP_GUEST_X`,
+`POM68K_AFP_GUEST_Y`, `POM68K_AFP_CLOSE_X`, `POM68K_AFP_CLOSE_Y`
+(`q605_afp_live_etalon`: stop after phase N, and the nine mouse coordinates
+its Chooser walk clicks — a scripted GUI drive fails at a pixel far more
+often than at a protocol, so each click is a knob and the phase stop is how
+one gets re-measured without paying for the mount again)) are documented in
+their own file headers.
 
 **Bring-up probes** — added to this list 2026-08-09, when `config_test`
 first ran and found twelve knobs the code reads that no document mentioned.

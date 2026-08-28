@@ -29,7 +29,7 @@ are present coverage, never a ceiling on the project mission.
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest -j64                        # 233 gates, 20 min here (4 h 46 sequential).
+ctest -j64                        # 237 gates, 20 min here (4 h 46 sequential).
                                   # `-j` is a RAM budget in 256 MiB slots, not a
                                   # core count. 4 of 228 soft-skip without assets
 ctest -L unit                     # 111 legacy non-etalon gates

@@ -308,8 +308,17 @@ set(POM68K_JIT_SOURCES
 set(POM68K_JIT_DEFS "")
 set(POM68K_JIT_NATIVE_BACKEND "")
 if(NOT EMSCRIPTEN)
+    # NOT on Windows via `auto`: the x64 generator emits and follows the
+    # System V AMD64 ABI (args in RDI/RSI, RSI/RDI scratch, no shadow space),
+    # and Win64 disagrees on all three — a property of the TARGET OS shared
+    # by MSVC and MinGW, so the guard is WIN32, not MSVC. The first compiled
+    # block would dereference an arbitrary pointer; nothing fails at build
+    # time because the file contains no GNU-ism. Windows falls back to the
+    # `threaded` floor, valid for every guest. An explicit `x64` request
+    # still compiles (that is how a Win64 ABI port would iterate), but
+    # `X64Backend::usable()` refuses it at runtime for the same reason.
     if(POM68K_JIT_BACKENDS STREQUAL "x64" OR
-       (POM68K_JIT_BACKENDS STREQUAL "auto" AND
+       (POM68K_JIT_BACKENDS STREQUAL "auto" AND NOT WIN32 AND
         CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"))
         list(APPEND POM68K_JIT_SOURCES src/jit/backends/JitBackendX64.cpp)
         list(APPEND POM68K_JIT_DEFS POM68K_JIT_BACKEND_X64)

@@ -28,6 +28,12 @@ roms/
 tests/data/
 # User-provided game/CD images (never committed — GitHub 100MB limit)
 input/
+
+# Gate scratch: `q605_afp_live_etalon` serves run/afp-live as the AFP share
+# and wipes it at every start, so what is left there is the last run's
+# state, never an input.
+run/
+
 # CD images, the floppies' opposite number: `cd/` is scanned by the Disques
 # window exactly like `disks35/`, so this is where a user's .iso lives.
 # `.bin` is NOT listed even though a .cue points at one: two 6502 test vectors

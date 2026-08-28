@@ -235,6 +235,19 @@ jobs:
           CMAKE_PREFIX_PATH: ${{ github.workspace }}/build-universal-deps/glfw
         run: ./package_macos_release.sh
 
+      - name: Run the asset-free tier in the release configuration
+        # TODO.md § 10 wave 0: nothing beyond --version ran on the release
+        # path before 2026-08-28. Same knobs as the packaged binary
+        # (NATIVE=OFF, LTO=OFF), native arch only — the x86_64 slice stays
+        # covered by the packager's lipo gate. Runs after packaging so the
+        # imgui/ clone the packager makes is already there.
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-tests -DCMAKE_BUILD_TYPE=Release \
+              -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF -DPOM68K_TESTS=ON
+          cmake --build build-tests -j"$(sysctl -n hw.ncpu)"
+          ctest --test-dir build-tests -L asset-none -j 4 --output-on-failure
+
       - name: Smoke-launch the packaged .app binary (--version)
         # Exercises the arm64 slice (the runner's arch); the x86_64 slice is
         # verified structurally by the packager's lipo gate — GitHub's arm64
@@ -286,11 +299,33 @@ jobs:
                    "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
                    '-DVCPKG_TARGET_TRIPLET=x64-windows-static',
                    '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-                   '-DPOM68K_NATIVE=OFF', '-DPOM68K_TESTS=OFF')
+                   '-DPOM68K_NATIVE=OFF', '-DPOM68K_TESTS=ON')
           if ($env:POM68K_VERSION) { $cfg += "-DPOM68K_VERSION=$env:POM68K_VERSION" }
           cmake @cfg
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          # The shipped artifact first, the gate executables second: the
+          # test tree has never been compiled by MSVC, and a test-side
+          # compile failure must read as its own step, not bury the
+          # packaged binary it was added to vouch for.
           cmake --build build --config Release -j --target POM68K
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Build the gate executables (first MSVC compile of the test tree)
+        shell: pwsh
+        run: |
+          cmake --build build --config Release -j
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Run the asset-free tier in the release configuration
+        # TODO.md § 10 wave 0: the Windows zip was the one published artifact
+        # the suite never touched — which is where the System V x64-JIT red
+        # lived. `asset-none` needs no ROM or image; `-C Release` because the
+        # MSVC generator is multi-config. This tier has never run under MSVC
+        # before: a red here is a finding, not noise — read it, do not
+        # silence it.
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release -L asset-none -j 4 --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Package ZIP

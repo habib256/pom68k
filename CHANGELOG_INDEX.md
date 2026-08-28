@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 313 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 322 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,18 +8,18 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 34 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 38 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 35 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 39 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 40 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 11 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
 | [Save states](#save-states) | 6 |
-| [Machine bring-ups](#machine-bring-ups) | 44 |
+| [Machine bring-ups](#machine-bring-ups) | 45 |
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 22 |
-| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 7 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 23 |
+| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
 | [Cross-cutting](#cross-cutting) | 55 |
 
 ---
@@ -60,6 +60,10 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-23 (seventh)** — [Brief indexed EAs reach x64 host code: the shared decoder closes the address-lowering gap, with zero slow instructions on both native oracles](CHANGELOG.md#2026-08-23-x64-brief-index)
 - **2026-08-23 (tenth)** — [Four classic JIT levers implemented and priced: all exact, none faster yet; the production defaults do not regress](CHANGELOG.md#2026-08-23-four-jit-levers)
 - **2026-08-27 (fifteenth)** — [SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so](CHANGELOG.md#2026-08-27-simcity-census)
+- **2026-08-28 (eighth)** — ["Bitfields are emitted by no backend" was half wrong: a64 had a complete read-only memory-bitfield path, excluded wholesale from the 030](CHANGELOG.md#2026-08-28-030-membf)
+- **2026-08-28 (fifth)** — [Reading the CI found it red since 2026-08-24: the shared lockstep held x64 to a64's residency, and the g++ census counted zero warnings in a log that did not exist](CHANGELOG.md#2026-08-28-ci-red-four-days)
+- **2026-08-28 (fourth)** — [D1F0 lands on both backends through the shared cost model: 42.8 M fallbacks to zero, run total −53 %](CHANGELOG.md#2026-08-28-d1f0-closed)
+- **2026-08-28 (later)** — [Wave 0 lands: Windows falls back to the threaded JIT, and both non-Linux release jobs now run the asset-free tier](CHANGELOG.md#2026-08-28-windows-jit-neutralized)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -173,6 +177,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-15 (third)** — [The IWM's cell window was counted in the wrong clock, and no floppy had mounted anywhere but the compacts since](CHANGELOG.md#2026-08-15-iwm-window-clock)
 - **2026-08-25 (fifth)** — [The last SPI/CB1 alternative gets its verdict: one interrupt per byte still yields zero SCSI selections](CHANGELOG.md#2026-08-25-pge-cb1byte-retired)
 - **2026-08-27 (sixteenth)** — ["7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed](CHANGELOG.md#2026-08-27-hotfloppy)
+- **2026-08-28 (sixth)** — [The AIO family gets its beyond-boot pair, and the reference volume's French layout ate the first close-all](CHANGELOG.md#2026-08-28-aio-beyond-boot)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -215,6 +220,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-23** — [SCC async-baud machinery: the guest programs the wire pace now](CHANGELOG.md#2026-07-23--scc-async-baud-machinery-the-guest-programs-the-wire-pace-now)
 - **2026-07-24** — [AppleTalk moves in-process: node/router + AppleShare + LaserWriter + MacIP, one GUI window](CHANGELOG.md#2026-07-24--appletalk-moves-in-process-noderouter--appleshare--laserwriter--macip-one-gui-window)
 - **2026-08-23 (eleventh)** — [Rogue's old 29 % indexed lead collapsed to 6.37 %; measured bitfields and full indirection cut all gameplay fallbacks 99.48 %](CHANGELOG.md#2026-08-23-rogue-re-census)
+- **2026-08-28 (ninth)** — [Nominal mode never held ×1: the pacer slept relative to emulation cost alone, and AppleTalk had been taking the blame](CHANGELOG.md#2026-08-28-pacing-absolute-deadline)
 
 ## Save states
 
@@ -271,6 +277,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-19 (third)** — [The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran](CHANGELOG.md#2026-08-19-c5-blocked-iisi)
 - **2026-08-24 (sixth)** — [Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines](CHANGELOG.md#2026-08-24-duo-gui-extraction)
 - **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](CHANGELOG.md#2026-08-27-q605-launch)
+- **2026-08-28 (seventh)** — [The D1F0 ABBA reads +0.02 % on a 0.6 % floor: the fallback histogram is not a time profile](CHANGELOG.md#2026-08-28-d1f0-abba-null)
 
 ## Build, packaging and release
 
@@ -307,6 +314,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-27 (fourth)** — [Counting which gates actually RUN: 222 of 228, and the Mac II pair had been skipping on a wrong ROM filename](CHANGELOG.md#2026-08-27-execution-census)
 - **2026-08-27 (seventh)** — [The sanitizer knob nobody had ever used: ASan/UBSan clean over 85 gates, and TSan found a real race on its first run](CHANGELOG.md#2026-08-27-sanitizers)
 - **2026-08-27 (twelfth)** — [Making the census blocking found a gate that had been skipping since its interpreter was chosen, and broke another one on the way](CHANGELOG.md#2026-08-27-census-strict)
+- **2026-08-28 (tenth)** — [The live AppleShare exchange gets its gate, registered before it has ever been seen green](CHANGELOG.md#2026-08-28-afp-live-gate)
 
 ## Documentation, audits and reviews
 
@@ -317,6 +325,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-13** — [Four audit closures, and two of them were not what the audit said they were](CHANGELOG.md#2026-08-13-f2-f5-closures)
 - **2026-08-25 (third)** — [Environment-knob audit: 188 exact lifecycle contracts, zero wildcard decisions](CHANGELOG.md#2026-08-25-config-knob-registry)
 - **2026-08-26 (later)** — [An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog](CHANGELOG.md#2026-08-26-review-backlog)
+- **2026-08-28 (third)** — [Wave 2 lands: the 68k cost/EA model is written once, and the first parity sweep found 15 divergence groups where the review saw 3](CHANGELOG.md#2026-08-28-wave2-extraction)
 
 ## Cross-cutting
 
