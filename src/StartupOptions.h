@@ -91,6 +91,8 @@ concept IntegerStartupOption =
       startup_policy::Text)                                                  \
     X(KeyTrace, "POM68K_KEY_TRACE", StartupDomain::Product,                \
       startup_policy::Presence)                                              \
+    X(InputRecord, "POM68K_INPUT_RECORD", StartupDomain::Product,          \
+      startup_policy::Text)                                                  \
     X(FreezeProbe, "POM68K_FREEZE_PROBE", StartupDomain::Product,          \
       startup_policy::Presence)                                              \
     X(SpeedLog, "POM68K_SPEED_LOG", StartupDomain::Product,                \

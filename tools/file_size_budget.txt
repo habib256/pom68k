@@ -7,21 +7,21 @@
 # Regenerate with: tools/check_file_sizes.sh --update
 
 CMakeLists.txt                           559
-cmake/Pom68kComponentGates.cmake         427
-cmake/Pom68kDevTools.cmake               116
+cmake/Pom68kComponentGates.cmake         437
+cmake/Pom68kDevTools.cmake               125
 cmake/Pom68kGatePolicy.cmake             363
 cmake/Pom68kJitGates.cmake               589
 cmake/Pom68kMachineGates.cmake           735
 src/AfpServer.cpp                        1129
 src/GuiHostServices.cpp                  177
 src/GuiMachineRuntime.cpp                47
-src/GuiRunnerCompact.h                   192
-src/GuiRunnerDafb.h                      300
-src/GuiRunnerDuo.h                       235
-src/GuiRunnerSonora.h                    295
-src/GuiRunnerToby.h                      262
-src/GuiRunnerV8.h                        308
-src/GuiShellCommon.h                     345
+src/GuiRunnerCompact.h                   193
+src/GuiRunnerDafb.h                      302
+src/GuiRunnerDuo.h                       237
+src/GuiRunnerSonora.h                    297
+src/GuiRunnerToby.h                      264
+src/GuiRunnerV8.h                        310
+src/GuiShellCommon.h                     366
 src/GuiShell.cpp                         389
 src/GuiTobyStatus.h                      41
 src/jit/backends/JitBackendA64.cpp       4291
@@ -30,7 +30,7 @@ src/jit/JitConfig.h                      536
 src/jit/JitEngine.cpp                    1627
 src/jit/JitIr.h                          1733
 src/main.cpp                             31
-src/PlatformCompact.cpp                  171
+src/PlatformCompact.cpp                  172
 src/PlatformComposers.cpp                46
 src/PlatformDafb.cpp                     598
 src/PlatformDuo.cpp                      141
@@ -43,12 +43,12 @@ src/RuntimeConfigCore.cpp                175
 src/RuntimeConfig.cpp                    200
 src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               31
-src/RuntimeConfigProduct.cpp             51
+src/RuntimeConfigProduct.cpp             52
 src/Scc8530.cpp                          1071
 src/ScsiDisk.cpp                         1221
 src/SonyDrive.cpp                        1292
 src/StartupDomainView.h                  73
-src/StartupOptions.h                     376
+src/StartupOptions.h                     378
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88

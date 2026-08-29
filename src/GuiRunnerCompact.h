@@ -110,6 +110,7 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
             const std::string message = c.machine.state.message();
             if (!message.empty())
                 ImGui::TextDisabled("%s", message.c_str());
+            recordingMenuItems(c.machine);
         });
         {
             pom68k::DiskBaysHost& host = c.diskHost;

@@ -87,6 +87,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     machine.state.kind = spec.snap;
     machine.state.path =
         pramPath.substr(0, pramPath.size() - 5) + ".pomss";
+    services.armInputRecording(machine, spec.pramTag, romName, media);
     services.shell().bindCpuMenu(machine, cpu);
     machine.publish(true);
 
@@ -145,6 +146,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             const std::string message = c.machine.state.message();
             if (!message.empty())
                 ImGui::TextDisabled("%s", message.c_str());
+            recordingMenuItems(c.machine);
         });
 
         // No floppy hooks and no live bay hooks: the Disques window stages

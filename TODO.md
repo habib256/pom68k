@@ -13,19 +13,19 @@ configure-time roster + manifest; `docs_test` re-derives the artifact and
 fails on drift) — read them there instead of re-deriving them here:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-28): **237 gates** — 112
-  `unit`, 87 `asset-none`, 9 `smoke`, 41 `jit`, 54 `m040`, 56 `m030`, 124
-  `etalon`, 12 `etalon-core` (`jit_backend_parity_test` and the LC 520
-  beyond-boot pair joined on 2026-08-28). Five are host-conditional — the
+  somewhere.** The documented registry (2026-08-29): **238 gates** — 113
+  `unit`, 88 `asset-none`, 9 `smoke`, 41 `jit`, 54 `m040`, 56 `m030`, 124
+  `etalon`, 12 `etalon-core` (`input_journal_test` joined on 2026-08-29;
+  `jit_backend_parity_test` and the LC 520
+  beyond-boot pair on 2026-08-28). Five are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
   `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
   the x86-64-only `jit_lockstep_030_x64_experimental_test` +
   `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
-  **234** (109 `unit`, 8 `smoke`, 38 `jit`) and an AArch64 one 235 (110
+  **235** (110 `unit`, 8 `smoke`, 38 `jit`) and an AArch64 one 236 (111
   `unit`, 39 `jit`) — union minus the three, resp. the two, that host
-  cannot register; the per-label figures were right and only the two
-  totals were wrong (measured `ctest -N` 2026-08-28, x86-64). Eight more
+  cannot register (previous totals measured `ctest -N` 2026-08-28, x86-64). Eight more
   exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:466`, and it FATAL_ERRORs off AArch64 in
   `cmake/Pom68kJitGates.cmake:458-464`).

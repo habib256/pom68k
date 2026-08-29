@@ -49,6 +49,11 @@ struct DeviceConfig {
 
 struct DiagnosticConfig {
     std::optional<std::string> fpuLog;
+    // Input-journal recording: a non-empty path arms the session recorder
+    // (src/InputJournal.h) — the machine thread snapshots the machine to
+    // `<path>.pomss` and stamps every applied input with its machine clock,
+    // so the session can be replayed bit-deterministically and timed.
+    std::optional<std::string> inputRecord;
     bool keyTrace = false;
     bool freezeProbe = false;
     bool speedLog = false;
