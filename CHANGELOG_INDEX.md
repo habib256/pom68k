@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 336 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 337 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 45 |
+| [Machine bring-ups](#machine-bring-ups) | 46 |
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 26 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
@@ -286,6 +286,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-24 (sixth)** — [Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines](CHANGELOG.md#2026-08-24-duo-gui-extraction)
 - **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](CHANGELOG.md#2026-08-27-q605-launch)
 - **2026-08-28 (seventh)** — [The D1F0 ABBA reads +0.02 % on a 0.6 % floor: the fallback histogram is not a time profile](CHANGELOG.md#2026-08-28-d1f0-abba-null)
+- **2026-08-29 (eleventh)** — [Recording moves onto the Machine menu: start/stop are queued like a save-state request, performed between two quanta, and the tick follows the machine](CHANGELOG.md#2026-08-29-recording-menu)
 
 ## Build, packaging and release
 

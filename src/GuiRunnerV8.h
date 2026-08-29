@@ -204,6 +204,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
             const std::string message = c.machine.state.message();
             if (!message.empty())
                 ImGui::TextDisabled("%s", message.c_str());
+            recordingMenuItems(c.machine);
         });
 
         {

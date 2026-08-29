@@ -191,6 +191,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
             if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
             const std::string ssMsg = c.m.state.message();
             if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            recordingMenuItems(c.m);
         });
 
         // Hooks are owned by the runner context and cross mutations through

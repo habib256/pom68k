@@ -98,6 +98,27 @@ private:
     GuiSmokeScenario smoke_;
 };
 
+// Machine-menu block for the input journal (src/InputJournal.h): start or
+// stop a recording of the running session. One block shared by every
+// family's menu lambda, so the labels and the discipline live once. The
+// item shown follows the machine's OWN state (recordingActive(), set by
+// the machine thread when the snapshot + journal are actually armed), not
+// the click — the engine-swap precedent — and the line under it is the
+// recorder's last outcome, the save-state row's convention.
+template <class Machine>
+inline void recordingMenuItems(Machine& machine) {
+    ImGui::Separator();
+    if (!machine.recordingActive()) {
+        if (ImGui::MenuItem("Démarrer l'enregistrement"))
+            machine.requestRecordingStart();
+    } else if (ImGui::MenuItem("Arrêter l'enregistrement")) {
+        machine.requestRecordingStop();
+    }
+    const std::string recMessage = machine.recordingMessage();
+    if (!recMessage.empty())
+        ImGui::TextDisabled("%s", recMessage.c_str());
+}
+
 // An emulated screen is an InvisibleButton with the image drawn over it.
 // A drag started on the Mac screen owns the mouse until release.  The middle
 // mouse button, Ctrl+Alt+G, or Delete toggles hard GLFW cursor capture.

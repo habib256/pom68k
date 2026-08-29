@@ -1631,9 +1631,14 @@ machine to `<path>.pomss` and stamps every applied mouse/key/media command
 with its machine clock, so the session replays bit-deterministically from
 the snapshot (`tests/InputReplay.h`; format + determinism gated by
 `input_journal_test`, the applyCmds tap and the start/stop slot by
-`machinehost_test`). Sessions recorded with the AppleTalk hub or the
-LToUDP cable active carry a `network 1` note — outside traffic does not
-replay.
+`machinehost_test`). The same recorder is on the **Machine menu** —
+« Démarrer / Arrêter l'enregistrement » (`recordingMenuItems` in
+`GuiShellCommon.h`, all twelve families): start/stop are queued like a
+save-state request and performed by the machine thread between two quanta,
+and the menu form derives `<state base>-YYYYMMDD-HHMMSS.journal` beside the
+boot volume so successive recordings never overwrite one another. Sessions
+recorded with the AppleTalk hub or the LToUDP cable active carry a
+`network 1` note — outside traffic does not replay.
 `POM68K_AUDIO` = 0 disables the host device and its audio-clocked pacing as an
 attribution arm; it is not a product-speed result. The reproducible Pi/GUI
 protocol is in `docs/RASPBERRY_PI.md` § 3.

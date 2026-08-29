@@ -181,8 +181,9 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        c.services.shell().drawMachineMenu(c.spec.snap, c.window, [] {
+        c.services.shell().drawMachineMenu(c.spec.snap, c.window, [&c] {
             diskBaysMenuItem();
+            recordingMenuItems(c.machine);
         });
         {
             DiskBaysHost& host = c.diskHost;

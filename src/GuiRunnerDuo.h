@@ -146,6 +146,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             const std::string message = c.machine.state.message();
             if (!message.empty())
                 ImGui::TextDisabled("%s", message.c_str());
+            recordingMenuItems(c.machine);
         });
 
         // No floppy hooks and no live bay hooks: the Disques window stages

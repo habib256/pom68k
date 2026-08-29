@@ -211,6 +211,7 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             const std::string message = machine.state.message();
             if (!message.empty())
                 ImGui::TextDisabled("%s", message.c_str());
+            recordingMenuItems(machine);
         });
 
         {
