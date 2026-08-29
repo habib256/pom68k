@@ -2,32 +2,9 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Cpu030.h"
-#include "V8Memory.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-
-namespace {
-jit::MemoryHooks v8JitHooks(V8Memory& mem) {
-    jit::MemoryHooks h;
-    h.self = &mem;
-    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
-        return static_cast<V8Memory*>(s)->codeSpan(phys, len);
-    };
-    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
-        return static_cast<V8Memory*>(s)->dataSpan(phys, len, write != 0);
-    };
-    h.aliasCodeMask = [](void* s, uint32_t phys, const uint8_t* map,
-                         uint32_t pages) {
-        return static_cast<V8Memory*>(s)->jitAliasCodeMask(phys, map, pages);
-    };
-    h.setGuard = [](void* s, jit::CodeGuard* g) {
-        static_cast<V8Memory*>(s)->setJitGuard(g);
-    };
-    h.ramBytes = [](void* s) { return static_cast<V8Memory*>(s)->ramBytes(); };
-    return h;
-}
-}  // namespace
 
 Cpu030::Cpu030(V8Memory& mem, const jit::ResolvedConfig& jitConfig,
                const pom68k::CoreCpuConfig& cpuConfig,
@@ -35,8 +12,7 @@ Cpu030::Cpu030(V8Memory& mem, const jit::ResolvedConfig& jitConfig,
       // The LC profile is a plain 68020 on the same V8 bus; every other V8
       // model is a 68030. Declared here rather than read from getModel(),
       // which is not set yet at member-init time (JitEngine.h).
-    : mem_(mem), jit_(*this, v8JitHooks(mem),
-                      as020 ? jit::kGuest68020 : jit::kGuest68030, jitConfig) {
+    : MoiraCpu(mem, as020 ? jit::kGuest68020 : jit::kGuest68030, jitConfig) {
     // Generated code can charge ordinary instruction cycles inline and call
     // sync() only when the event-driven machine actually becomes due.
     jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
@@ -57,9 +33,7 @@ Cpu030::Cpu030(V8Memory& mem, const jit::ResolvedConfig& jitConfig,
         cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
     // Arm the i-cache timing overlay folded into Moira's fetch path
     // (Moira.h § PomIcache; model rationale in Cpu030.h).
-    pomIcache.armed = true;
-    pomIcache.missPenalty = icacheMiss_;
-    pomIcache.reset();
+    armIcacheOverlay(icacheMiss_);
 }
 
 void Cpu030::hardReset() {
@@ -117,8 +91,8 @@ void Cpu030::runCycles(moira::i64 n) {
     // The Egret/Cuda firmware asked for a host reset (RESET_SYSTEM $11, the
     // Finder's "Restart"). Apply it HERE, at a run boundary, never from
     // inside the memory callback that raised it — same contract as the
-    // Duo's PMU wake (MscCpu.cpp:59). The machine has already re-armed its
-    // ROM overlay, so this fetch takes the reset vectors out of ROM.
+    // Duo's PMU wake (MscCpu::runCycles). The machine has already re-armed
+    // its ROM overlay, so this fetch takes the reset vectors out of ROM.
     if (mem_.consumeRestart()) reset();
     if (fpuLog_) {                 // single-step so the PC ring stays current
         // runCycles(n) is a budget of n MACHINE cycles — the normal path below
@@ -248,11 +222,6 @@ void Cpu030::dumpFpuLog(moira::u16 vector) {
     std::fclose(f);
 }
 
-void Cpu030::runUntil(moira::i64 clockTarget) {
-    if (getClock() < clockTarget) executeUntil(clockTarget);
-    flushTicks();
-}
-
 void Cpu030::updateIpl() {
     const moira::u8 level = moira::u8(mem_.iplLevel());
     if (irqTraceFn_ && level != getIPL()) {
@@ -279,10 +248,11 @@ void Cpu030::stall(int cycles) {
     catchUp();
 }
 
-moira::u8  Cpu030::read8(moira::u32 addr)  const { return mem_.read8(addr); }
-moira::u16 Cpu030::read16(moira::u32 addr) const { return mem_.read16(addr); }
-void Cpu030::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v); }
-void Cpu030::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
+// The per-charge tap MoiraCpu::sync() dispatches through, fired before
+// catchUp() exactly as the pre-CRTP sync() did.
+void Cpu030::onSyncCharge(int cycles) {
+    if (periphTraceFn_) { traceSrc_ = 0; traceSyncCycles_ = cycles; }
+}
 
 void Cpu030::catchUp() {
     if (clock < periphDeadline_) return;
@@ -355,14 +325,4 @@ void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
     p.icHits = pomIcache.hits;
     p.icMisses = pomIcache.misses;
     periphTraceFn_(periphTraceOpaque_, p);
-}
-
-void Cpu030::sync(int cycles) {
-    clock += cycles;
-    if (periphTraceFn_) { traceSrc_ = 0; traceSyncCycles_ = cycles; }
-    catchUp();
-}
-
-moira::u16 Cpu030::read16Dasm(moira::u32 addr) const {
-    return moira::u16(moira::u16(mem_.peek8(addr)) << 8 | mem_.peek8(addr + 1));
 }

@@ -6,12 +6,12 @@
 #
 # Regenerate with: tools/check_file_sizes.sh --update
 
+CMakeLists.txt                           559
 cmake/Pom68kComponentGates.cmake         427
 cmake/Pom68kDevTools.cmake               116
-cmake/Pom68kGatePolicy.cmake             313
-cmake/Pom68kJitGates.cmake               577
+cmake/Pom68kGatePolicy.cmake             363
+cmake/Pom68kJitGates.cmake               589
 cmake/Pom68kMachineGates.cmake           735
-CMakeLists.txt                           559
 src/AfpServer.cpp                        1129
 src/GuiHostServices.cpp                  177
 src/GuiMachineRuntime.cpp                47
@@ -21,13 +21,13 @@ src/GuiRunnerDuo.h                       235
 src/GuiRunnerSonora.h                    295
 src/GuiRunnerToby.h                      262
 src/GuiRunnerV8.h                        308
-src/GuiShell.cpp                         389
 src/GuiShellCommon.h                     345
+src/GuiShell.cpp                         389
 src/GuiTobyStatus.h                      41
 src/jit/backends/JitBackendA64.cpp       4291
-src/jit/backends/JitBackendX64.cpp       3841
-src/jit/JitConfig.h                      528
-src/jit/JitEngine.cpp                    1534
+src/jit/backends/JitBackendX64.cpp       3972
+src/jit/JitConfig.h                      536
+src/jit/JitEngine.cpp                    1627
 src/jit/JitIr.h                          1733
 src/main.cpp                             31
 src/PlatformCompact.cpp                  171
@@ -39,8 +39,8 @@ src/PlatformToby.cpp                     309
 src/PlatformV8.cpp                       204
 src/Q700Memory.cpp                       1087
 src/R65c02.cpp                           1420
-src/RuntimeConfig.cpp                    200
 src/RuntimeConfigCore.cpp                175
+src/RuntimeConfig.cpp                    200
 src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               31
 src/RuntimeConfigProduct.cpp             51
@@ -48,7 +48,7 @@ src/Scc8530.cpp                          1071
 src/ScsiDisk.cpp                         1221
 src/SonyDrive.cpp                        1292
 src/StartupDomainView.h                  73
-src/StartupOptions.h                     374
+src/StartupOptions.h                     376
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88

@@ -6,8 +6,9 @@
 // VaspCpu, RbvCpu, CentrisCpu, Q630Cpu, Q700Cpu) derives from Moira, and
 // all of Moira's execution state is `protected`. A free function therefore
 // cannot reach it — so this thin class sits between the wrappers and Moira
-// and carries the shared visit() body once. The wrappers change one word
-// (`: public moira::Moira` → `: public MoiraSnapshot`) and inherit it.
+// and carries the shared visit() body once. The wrappers inherit it through
+// the CRTP plumbing base (`MoiraCpu.h`), which derives from this class;
+// Cpu68k, outside that base, derives from it directly.
 //
 // The alternative would have been to add serialization inside
 // extern/moira/, which is VENDORED (POM68K_VENDOR.md tracks every local

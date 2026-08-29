@@ -11,19 +11,18 @@
 // timeout) raises through Moira::extBusError (O6 slice 1).
 // The 68882 FPU socket is empty by default, like a stock LC II
 // (maclc.cpp:325-330); pass withFpu to populate it.
+// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
 // Gate: tests/v8_ramsize.cpp (BERR through the map), lcii boot etalon (O6.8).
 
 #pragma once
 #include "CoreConfig.h"
-#include "MoiraSnapshot.h"
-#include "jit/JitEngine.h"
+#include "MoiraCpu.h"
+#include "V8Memory.h"
 #include <cstdint>
 #include <string>
 #include <vector>
 
-class V8Memory;
-
-class Cpu030 : public MoiraSnapshot {
+class Cpu030 : public pom68k::MoiraCpu<Cpu030, V8Memory> {
 public:
     // as020 = Macintosh LC profile: same V8 bus, Moira Model::M68020
     // (MAME maclc.cpp:342 M68020HMMU — the HMMU 24-bit remap is subsumed
@@ -43,12 +42,8 @@ public:
     // used to say the probe refused a 68020; it was stale from the day it
     // was written, and jit_lc_boot_etalon had been proving it stale.
     // Corrected 2026-08-06, when the same seam was wired to the Mac II.)
-    jit::Engine& jit() { return jit_; }
-    const jit::Engine& jit() const { return jit_; }
-    int  engine() const { return jit_.enabled() ? 1 : 0; }
     void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
     void runCycles(moira::i64 n);
-    void runUntil(moira::i64 clockTarget);
     void updateIpl();                       // from the V8 priority resolver
     void stall(int cycles);                 // E-clock sync / SWIM wait states
                                             // — in REAL machine cycles
@@ -157,26 +152,14 @@ public:
     }
 
 private:
+    friend pom68k::MoiraCpu<Cpu030, V8Memory>;
     int cacrFlushPolicy_ = -1;
-    moira::u8  read8(moira::u32 addr) const override;
-    moira::u16 read16(moira::u32 addr) const override;
-    // Moira's disassembler falls back to read16() unless this is overridden,
-    // which sent every disassembly read through the LIVE bus: device registers
-    // with read side effects (SCC status latches, IWM state lines) and, on
-    // unmapped I/O, a busError() that mutates An/MMU fault state and throws.
-    // peek8() is the side-effect-free path the tracers already use.
-    moira::u16 read16Dasm(moira::u32 addr) const override;
-    void write8(moira::u32 addr, moira::u8 v) const override;
-    void write16(moira::u32 addr, moira::u16 v) const override;
-    void sync(int cycles) override;
     void willExecute(moira::M68kException exc, moira::u16 vector) override;
     void willInterrupt(moira::u8 level) override;
     void didChangeCACR(moira::u32 value) override;              // cache clear/enable
+    void onSyncCharge(int cycles);          // trace tap (MoiraCpu::sync)
     void catchUp();
     void dumpFpuLog(moira::u16 vector);
-
-    V8Memory& mem_;
-    moira::i64 lastPeriphClock_ = 0;
 
     // Instruction-throughput model. Moira emulates the 68030 on its
     // Core::C68020 cycle model: 68020 per-instruction cycle counts (advisory
@@ -202,7 +185,6 @@ private:
     // fit both), itself retired from an ADAPTIVE 2→24 spike (wobbled the sound
     // tempo). Both knobs tunable live: POM68K_CACHE_BOOST (ceiling),
     // POM68K_ICACHE_MISS (penalty). Long-term: a fuller Moira cache model.
-    jit::Engine jit_;
     int cacheBoost_ = 4;           // resident-code ceiling ratio
     int icacheMiss_ = 4;           // boosted cycles charged per i-cache miss
     moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling

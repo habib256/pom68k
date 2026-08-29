@@ -88,7 +88,7 @@ bit-bang (`bclr`/`bset` of VIA1 PB4 / `via_full` back to back), and until
 2026-07-25 `viaSync` aligned in the boosted domain, so every pulse came out
 `cacheBoost_`× too short and the firmware missed it. Same root cause as the
 LC III / IIvx black screens. Fixed on every 030 wrapper (five today —
-`MscCpu` was built boost-invariant from the start, `MscCpu.h:35`); the whole
+`MscCpu` was built boost-invariant from the start, `MscCpu.h:32`); the whole
 040 family is likewise boost-invariant, which is what let the default rise
 from 1 to 4 (CHANGELOG 2026-07-25).
 
@@ -1515,7 +1515,7 @@ defaulted policy parameter. Only the Q605 pair was documented before 2026-07-31:
 | `POM68K_CENTRIS_FPU` / `_BAREFPU` / `_CACHE_BOOST` | the same three for `CentrisCpu` |
 | `POM68K_Q700_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q700Cpu` |
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
-| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:176-177` and siblings) |
+| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:188-189` and siblings) |
 | `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu` — **not** `SonoraCpu` or `MscCpu`, which never read it) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
 | `POM68K_040_DCACHE` | `1` enables the architectural 040 I/D-cache model; line data, WT/CB/NC, copyback, CPUSH/CINV, snooping and timing are complete, but the product default stays cacheless until the cache-aware JIT recovers the real-ROM speed budget (`docs/CACHE_040.md`) |
