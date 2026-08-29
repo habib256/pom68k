@@ -317,6 +317,8 @@ concept IntegerStartupOption =
     X(JitDenyFrom, "POM68K_JIT_DENY_FROM", StartupDomain::Jit,             \
       startup_policy::NonemptyHexInteger)                                    \
     X(JitDenyTo, "POM68K_JIT_DENY_TO", StartupDomain::Jit,                 \
+      startup_policy::NonemptyHexInteger)                                    \
+    X(JitTraceBlock, "POM68K_JIT_TRACE_BLOCK", StartupDomain::Jit,         \
       startup_policy::NonemptyHexInteger)
 
 namespace startup_option {

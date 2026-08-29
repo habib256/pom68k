@@ -282,7 +282,38 @@ int main() {
     std::vector<uint32_t> fb;
 
     bench::Result r;
-    if (slices <= 0) {
+    // POM68K_BENCH_JIT_PROGRESS=<N frames>: print the engine's gauges every
+    // N frames, on stderr, unbuffered. The instrument that separates the
+    // three shapes a wall-clock sink can take — an eviction storm, a
+    // compile storm, or one call that never returns — on a run that will
+    // never reach the end-of-run report (the 2026-08-29 mode-2 wedge).
+    int jitProgress = 0;
+    if (const char* jp = std::getenv("POM68K_BENCH_JIT_PROGRESS"))
+        jitProgress = std::atoi(jp);
+    if (jitProgress > 0 && cpu.engine()) {
+        int frame = 0;
+        r = bench::runWith(cpu, frames, kFrameCycles, [&] {
+            cpu.runCycles(kFrameCycles);
+            if (++frame % jitProgress) return;
+            const jit::Stats::Snapshot sn = cpu.jit().stats().snapshot();
+            std::fprintf(stderr,
+                "[jitprog] f=%d clk=%lld pc=$%08X instrs=%llu trace=%llu "
+                "interp=%llu compiled=%llu run=%llu evict=%llu trips=%llu "
+                "flush=%llu(guard %llu) armed=%llu failed=%llu\n",
+                frame, (long long)cpu.getClock(), cpu.getPC(),
+                (unsigned long long)sn.instrs,
+                (unsigned long long)sn.traceInstrs,
+                (unsigned long long)sn.interpInstrs,
+                (unsigned long long)sn.blocksCompiled,
+                (unsigned long long)sn.blocksRun,
+                (unsigned long long)sn.evictions,
+                (unsigned long long)sn.invalidations,
+                (unsigned long long)sn.flushes,
+                (unsigned long long)sn.flushCauses[int(jit::Flush::Guard)],
+                (unsigned long long)sn.windowArmed,
+                (unsigned long long)sn.windowFailed);
+        });
+    } else if (slices <= 0) {
         r = bench::run(cpu, frames, kFrameCycles);
     } else {
         const int64_t per = kFrameCycles / slices;

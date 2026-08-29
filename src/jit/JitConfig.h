@@ -64,6 +64,7 @@ struct ResolvedConfig {
     int hot = 512;
     bool hotExplicit = false;
     int accessThunk = 2;
+    bool accessThunkExplicit = false;
     bool cache040LineReads = true;
     bool cache040LineWrites = true;
     bool cache040LinePairs = true;
@@ -132,6 +133,10 @@ struct ResolvedConfig {
     bool dispatchRing = false;
     uint32_t denyFrom = 0;
     uint32_t denyTo = 0;
+    // POM68K_JIT_TRACE_BLOCK (hex pc): print a block's recorded IR — the
+    // instrument that settled the 2026-08-29 ±2 (a traced field, not an
+    // emitter, carried the answer). 0 = off.
+    uint32_t traceBlockPc = 0;
 
     void applyBackendDefaults(bool nativeCode, bool accessClockBias) {
         if (!blockCacheExplicit) blockCache = nativeCode;
@@ -201,6 +206,7 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     const bool instrumented = c.profile == OperatingProfile::Instrumented;
     const bool production = c.profile == OperatingProfile::Production;
     c.accessThunk = envInt(option::JitAccessThunk, conservative ? 0 : 2);
+    c.accessThunkExplicit = present(option::JitAccessThunk);
     c.cache040LineReads = envBool(option::Jit040LineRead, !conservative);
     c.cache040LineWrites = envBool(option::Jit040LineWrite, !conservative);
     c.cache040LinePairs = envBool(option::Jit040LinePair, !conservative);
@@ -234,6 +240,8 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     c.dispatchRing = envBool(option::JitDispatchRing, false);
     if (const auto value = envHex(option::JitDenyFrom)) c.denyFrom = *value;
     if (const auto value = envHex(option::JitDenyTo)) c.denyTo = *value;
+    if (const auto value = envHex(option::JitTraceBlock))
+        c.traceBlockPc = *value;
     return c;
 }
 

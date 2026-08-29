@@ -255,8 +255,20 @@ add_executable(jit_lockstep_030_test tests/jit_lockstep_030_test.cpp)
 target_link_libraries(jit_lockstep_030_test PRIVATE pom68k_core)
 add_test(NAME jit_lockstep_030_test COMMAND jit_lockstep_030_test 120000
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# The backend is PINNED to the host's native generator (2026-08-29): the
+# harness used to reach it through `auto`, and the day the x64 030
+# promotion was withdrawn this gate silently became a second threaded
+# lockstep — green, and proving nothing blocks_test does not. The IIsi
+# lesson verbatim: an auto gate that quietly runs `threaded` is how a
+# generator defect stays invisible.
+if(POM68K_JIT_NATIVE_BACKEND)
+    set(pom68k_lockstep_030_backend
+        "POM68K_JIT_BACKEND=${POM68K_JIT_NATIVE_BACKEND};")
+else()
+    set(pom68k_lockstep_030_backend "")
+endif()
 set_tests_properties(jit_lockstep_030_test PROPERTIES
-                     ENVIRONMENT "POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                     ENVIRONMENT "${pom68k_lockstep_030_backend}POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                      TIMEOUT 1800)
 
 # …and with the block path forced on, same argument as the 68000 pair

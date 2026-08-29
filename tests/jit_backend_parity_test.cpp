@@ -89,9 +89,6 @@ const AllowedDivergence kAllowed[] = {
       "2026-08-28: a64 lowers the 68020 bitfield family; x64 has no emitter" },
     { SemanticOp::MoveSrToReg, true,
       "2026-08-28: a64 lowers MOVE SR,Dn; x64 has no emitter" },
-    { SemanticOp::ShiftRegister, true,
-      "2026-08-28: a64 lowers register shifts/rotates; x64 decodes nothing "
-      "of the $E line (TODO.md § 3 coverage tail)" },
     { SemanticOp::Bit, true,
       "2026-08-28: a64 lowers the modifying bit ops (BCHG/BCLR/BSET, "
       "action != 0); x64's rule admits BTST only" },

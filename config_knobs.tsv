@@ -30,6 +30,7 @@ POM68K_BENCH_COMPARE	test	owner:tests/BenchHarness.h
 POM68K_BENCH_DISK	test	owner:tests/jit_bench.cpp
 POM68K_BENCH_FLOOR	test	owner:tests/BenchHarness.h
 POM68K_BENCH_FRAMES	test	owner:tests/BenchHarness.h
+POM68K_BENCH_JIT_PROGRESS	test	owner:tests/jit_bench_lcii.cpp
 POM68K_BENCH_NULL	test	owner:tests/BenchHarness.h
 POM68K_BENCH_PPM	test	owner:tests/jit_bench.cpp
 POM68K_BENCH_ROM	test	owner:tests/jit_bench.cpp
@@ -96,6 +97,7 @@ POM68K_JIT_BSRW	product	gate:jit_backend_test
 POM68K_JIT_DENY_FROM	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_DENY_TO	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_DISPATCH_RING	diagnostic	owner:src/StartupOptions.h
+POM68K_JIT_TRACE_BLOCK	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_DYNAMIC_BITFIELD	product	gate:jit_backend_test
 POM68K_JIT_EDGE_CELLS	chantier	expiry:src/jit/POM68K_JIT.md#measured-edge-cell-prototype
 POM68K_JIT_FETCH	product	gate:jit_backend_test
@@ -105,6 +107,7 @@ POM68K_JIT_ICACHE_EMIT	chantier	expiry:docs/JIT_BRINGUP.md#68030-icache-attribut
 POM68K_JIT_LINKS	product	gate:jit_backend_test
 POM68K_JIT_LOCKSTEP_BUDGET	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FINE_AT	test	owner:tests/jit_lockstep_030_test.cpp
+POM68K_JIT_LOCKSTEP_ICTRACE	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FINE_BUDGET	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FULL_RAM_AT	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_HIDDEN	test	owner:tests/jit_lockstep_test.cpp

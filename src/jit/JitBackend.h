@@ -142,6 +142,14 @@ struct BackendCaps {
     // keep immediate native compilation until they independently earn a
     // different value. An explicit POM68K_JIT_PROFIT_SCORE always wins.
     uint32_t profitScore68030 = 0;
+    // Highest access-thunk mode (JitConfig accessThunk: 0 none, 1 exact
+    // reads, 2 exact reads+writes) this backend supports as a DEFAULT on a
+    // 68030 guest. An explicit POM68K_JIT_ACCESS_THUNK still wins. Added
+    // 2026-08-29: under exact writes (mode 2) the x64 generator wedges the
+    // LC II boot right after MMU enable — 250 bench frames take >600 s
+    // against 1.27 s at mode 1, the abort core is inside serviceGuard(),
+    // and modes 0/1 print threaded's exact fingerprint. 2 = no cap.
+    int maxAccessThunk030 = 2;
 };
 
 // A backend's compiled artefact. Opaque above this header: the threaded

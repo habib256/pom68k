@@ -478,6 +478,18 @@ public:
     bool pomJitProbeCode(u32 logical, bool super,
                          u32 &phys, u32 &pageBase, u32 &pageLen) const;
 
+    // POM68K patch 32 (2026-08-29): true while the pre-switch fetch pipe
+    // is serving linear fetches after a PMOVE to TC/CRP/SRP. A fetch served
+    // from the pipe RETURNS BEFORE the i-cache overlay counters
+    // (mmuFetchWord's first branch), so the interpreter counts NOTHING in a
+    // PMOVE's shadow — while a native block's folded charge counts its
+    // traced fetchWords unconditionally. The engine therefore refuses to
+    // arm while the pipe is live and lets the interpreter run the (at most
+    // three-word) shadow: symmetry by construction, including the
+    // not-counting. Found as a +2-fetches/+2-hits/0-miss/0-cycle lockstep
+    // divergence in the System's self-patched MMU-init loop.
+    bool pomMmuPipeLive() const { return mmuPipeCnt > 0; }
+
     // ── J2: the data-side twin of the code window ────────────────────────
     // Generated host code cannot call mmu040Read: that path throws on a
     // fault, and a C++ exception may not cross a JIT frame (there is no
@@ -1871,6 +1883,25 @@ private:
 
     // Page masks derived from TC.PS (§ 9.7.2.2)
     u32 mmuPageMask() const { return (u32(1) << (reg.tc >> 20 & 0xf)) - 1; }
+
+    // POM68K patch 31 (2026-08-28): an IDENTITY probe answer needs an
+    // identity-sized bound. The two 68030 probes take their page bound from
+    // mmuPageMask(), i.e. from TC.PS — and TC.PS is 0 until the OS programs
+    // TC, while the legal field values are 8..15 (256 B…32 KB). Both probes
+    // have branches that answer "identity" and return BEFORE consulting the
+    // ATC (a TT match, and TC.E off), so on an unprogrammed TC they handed
+    // the JIT a ONE-BYTE page, and no window fits in one byte: 965 013 arm
+    // refusals per LC II boot, 95.6 % of them all, every one of them before
+    // the OS enables the MMU (CHANGELOG.md 2026-08-28 (fourteenth)).
+    // Where translation is identity the honest bound is the machine's, not
+    // TC's, and 4 KB is what the plain-020 branch of the same probe already
+    // uses. The ATC paths are untouched: they are only reached with TC.E
+    // set, where the field is programmed by construction.
+    void pomIdentityProbeBound(u32 logical, u32 &pageBase, u32 &pageLen) const {
+        if ((reg.tc >> 20 & 0xf) >= 8) return;   // TC.PS programmed: keep it
+        pageBase = logical & ~4095u;
+        pageLen  = 4096;
+    }
 
     // Per-instruction state reset + mode-5-style opcode fetch; returns
     // false when the fetch faulted (exception already processed)

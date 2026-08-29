@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 325 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 333 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 39 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 45 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 35 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 40 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 25 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
-| [Cross-cutting](#cross-cutting) | 55 |
+| [Cross-cutting](#cross-cutting) | 57 |
 
 ---
 
@@ -62,9 +62,15 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-27 (fifteenth)** — [SimCity 2000 under the JIT: one opcode is 53 % of the fallbacks, and the idle Finder was never going to say so](CHANGELOG.md#2026-08-27-simcity-census)
 - **2026-08-28 (eighth)** — ["Bitfields are emitted by no backend" was half wrong: a64 had a complete read-only memory-bitfield path, excluded wholesale from the 030](CHANGELOG.md#2026-08-28-030-membf)
 - **2026-08-28 (fifth)** — [Reading the CI found it red since 2026-08-24: the shared lockstep held x64 to a64's residency, and the g++ census counted zero warnings in a log that did not exist](CHANGELOG.md#2026-08-28-ci-red-four-days)
+- **2026-08-28 (fourteenth)** — [The 100 % window refusal is not the x64 generator: an unprogrammed TC gives the 68030 a one-byte page, and both backends refuse identically](CHANGELOG.md#2026-08-28-030-degenerate-page)
 - **2026-08-28 (fourth)** — [D1F0 lands on both backends through the shared cost model: 42.8 M fallbacks to zero, run total −53 %](CHANGELOG.md#2026-08-28-d1f0-closed)
 - **2026-08-28 (later)** — [Wave 0 lands: Windows falls back to the threaded JIT, and both non-Linux release jobs now run the asset-free tier](CHANGELOG.md#2026-08-28-windows-jit-neutralized)
 - **2026-08-28 (thirteenth)** — [The 68030 lockstep segfaults on every x86-64 tree, and the overflowing counter was the thermometer, not the disease](CHANGELOG.md#2026-08-28-x64-030-retry-storm)
+- **2026-08-29** — [Moira patch 31 gives the 68030 its page back, and the tier it unblocked finds an x86-64 default that stopped booting eight days ago](CHANGELOG.md#2026-08-29-patch31-and-the-withdrawal)
+- **2026-08-29 (evening)** — [m030 56/56 under the clamp; the base 030 lockstep had silently become a threaded gate; the ±2 is localised to one block in patched code and parked](CHANGELOG.md#2026-08-29-m030-green-and-the-pin)
+- **2026-08-29 (later)** — [The x86-64 030 wedge is isolated to one switch: exact-write thunks; mode 1 boots the Finder pinned in 53 s with threaded's exact fingerprint](CHANGELOG.md#2026-08-29-mode2-wedge-isolated)
+- **2026-08-29 (night)** — [The ±2 was the post-PMOVE fetch pipe: the interpreter counts nothing in its shadow, a native block counted everything — all three locksteps green, host all-green](CHANGELOG.md#2026-08-29-pmove-pipe-plus2)
+- **2026-08-29 (sixth)** — [The x64 generator learns the register shifts: a64's step-exact lowering translated, one parity-table row retired, 82.0 % → 88.1 % native](CHANGELOG.md#2026-08-29-x64-shift-port)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -387,4 +393,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-27 (tenth)** — [The composition umbrella stops naming twelve families, and the cost of a new platform gets enumerated instead of remembered](CHANGELOG.md#2026-08-27-composition-fanin)
 - **2026-08-27 (third)** — [The second whole-registry run flaked once, and the refusal could not say why: `errno` now travels with it](CHANGELOG.md#2026-08-27-gui-smoke-flake)
 - **2026-08-27 (thirteenth)** — [The leak hunt, run with the platform's tool because LeakSanitizer does not exist here: 0 leaks in 78 binaries](CHANGELOG.md#2026-08-27-leaks)
+- **2026-08-29 (late night)** — [The mode-2 storm was an engine loop retiring nothing: coarse trip, exact eviction, and a guard exit that re-runs the store forever — fixed by one interpreted step](CHANGELOG.md#2026-08-29-mode2-storm-mechanized)
+- **2026-08-29 (seventh)** — ["Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes](CHANGELOG.md#2026-08-29-anpi-refuted)
 

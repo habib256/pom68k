@@ -512,6 +512,27 @@ int main(int argc, char** argv) {
             : ramDiff(memRef, memJit);
         const Cpu030::ICacheStats icr = cpuRef.icacheStats();
         const Cpu030::ICacheStats icj = cpuJit.icacheStats();
+        // POM68K_JIT_LOCKSTEP_ICTRACE=1 — an INSTRUMENT, not a relaxation:
+        // print the counter delta at every boundary where it changes and
+        // keep running, so a rare per-event skew (the 2026-08-29 ±2, two
+        // events inside one compare window) gets a STEP NUMBER for the
+        // dispatch ring instead of one aggregate at first detection. The
+        // default gate behaviour is untouched.
+        static const bool icTrace = std::getenv("POM68K_JIT_LOCKSTEP_ICTRACE");
+        if (icTrace) {
+            static long long lastFd = 0, lastHd = 0, lastMd = 0;
+            const long long fd = (long long)icj.fetches - (long long)icr.fetches;
+            const long long hd = (long long)icj.hits - (long long)icr.hits;
+            const long long md = (long long)icj.misses - (long long)icr.misses;
+            if (fd != lastFd || hd != lastHd || md != lastMd) {
+                std::printf("[ictrace] step %ld clk=%lld  d(fetches)=%+lld"
+                            " d(hits)=%+lld d(misses)=%+lld  jit pc=$%08X\n",
+                            i, (long long)cpuJit.getClock(), fd, hd, md,
+                            cpuJit.getPC());
+                lastFd = fd; lastHd = hd; lastMd = md;
+            }
+            if (same(r, j)) continue;   // state still compared, counters traced
+        }
         // The counters alone can agree while the CACHE CONTENT has already
         // parted (same totals, different lines): the state skew then shows
         // up thousands of steps later as a timing drift with equal counters
@@ -624,6 +645,18 @@ int main(int argc, char** argv) {
                 (unsigned long long)s.windowArmed,
                 (unsigned long long)s.windowFailed,
                 (unsigned long long)s.dtlbFills);
+    // Which of armWindow()'s four exits took the refusals. The aggregate
+    // above says the engine was idle; only this line says whose fault it
+    // was — the MMU probe, the memory map, the window geometry or the
+    // post-arm coverage check (TODO § 1, the 100 % x64 030 refusal).
+    std::printf("  arm refusals: probe %llu · notram %llu · degenerate %llu"
+                " · pc-at-end %llu · uncovered %llu · pipe %llu\n",
+                (unsigned long long)s.armFails[int(jit::ArmFail::Probe)],
+                (unsigned long long)s.armFails[int(jit::ArmFail::NotRam)],
+                (unsigned long long)s.armFails[int(jit::ArmFail::TooShort)],
+                (unsigned long long)s.armFails[int(jit::ArmFail::PcAtEnd)],
+                (unsigned long long)s.armFails[int(jit::ArmFail::Uncovered)],
+                (unsigned long long)s.armFails[int(jit::ArmFail::Pipe)]);
     std::printf("  icache %lld fetches / %lld hits / %lld misses (identical on both)\n",
                 (long long)ic.fetches, (long long)ic.hits, (long long)ic.misses);
     if (s.instrs == 0) {
@@ -647,9 +680,15 @@ int main(int argc, char** argv) {
     }
     if (s.windowArmed && s.windowFailed * 2 > s.windowArmed) {
         std::printf("[jit_lockstep_030] FAIL: %llu of %llu code-window arms refused "
-                    "— the engine was never usable here\n",
+                    "— the engine was never usable here (probe %llu, notram %llu, "
+                    "degenerate %llu, pc-at-end %llu, uncovered %llu)\n",
                     (unsigned long long)s.windowFailed,
-                    (unsigned long long)s.windowArmed);
+                    (unsigned long long)s.windowArmed,
+                    (unsigned long long)s.armFails[int(jit::ArmFail::Probe)],
+                    (unsigned long long)s.armFails[int(jit::ArmFail::NotRam)],
+                    (unsigned long long)s.armFails[int(jit::ArmFail::TooShort)],
+                    (unsigned long long)s.armFails[int(jit::ArmFail::PcAtEnd)],
+                    (unsigned long long)s.armFails[int(jit::ArmFail::Uncovered)]);
         return 1;
     }
     // The i-cache comparison is only worth something if the cache was ON.

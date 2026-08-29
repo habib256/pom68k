@@ -2005,8 +2005,16 @@ Moira::pomJitProbeCode(u32 logical, bool super,
         pageBase = logical & ~mask;
         pageLen  = mask + 1;
 
-        if (mmuMatchTTAccess(logical, fc, false)) { phys = logical; return true; }
-        if (!(reg.tc & 0x80000000)) { phys = logical; return true; }
+        // POM68K patch 31: both answers below are identity, so they carry
+        // an identity bound rather than TC's unprogrammed page size.
+        if (mmuMatchTTAccess(logical, fc, false)) {
+            pomIdentityProbeBound(logical, pageBase, pageLen);
+            phys = logical; return true;
+        }
+        if (!(reg.tc & 0x80000000)) {
+            pomIdentityProbeBound(logical, pageBase, pageLen);
+            phys = logical; return true;
+        }
 
         // O(1) first: the interpreter's own last-hit memo. mmuAtcFill sets
         // it to the slot it just filled, so the page whose eviction killed
@@ -2103,8 +2111,16 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
         // mmuMatchTTAccess already honours the direction (a read-transparent
         // TT register returns false for a write), so unlike the 040's TTR
         // there is no separate write-protect answer to decode here.
-        if (mmuMatchTTAccess(logical, fc, write)) { phys = logical; return true; }
-        if (!(reg.tc & 0x80000000)) { phys = logical; return true; }
+        // POM68K patch 31: identity answers, identity bound (see the code
+        // probe above and Moira.h pomIdentityProbeBound).
+        if (mmuMatchTTAccess(logical, fc, write)) {
+            pomIdentityProbeBound(logical, pageBase, pageLen);
+            phys = logical; return true;
+        }
+        if (!(reg.tc & 0x80000000)) {
+            pomIdentityProbeBound(logical, pageBase, pageLen);
+            phys = logical; return true;
+        }
 
         // Read-only scan, O(1) first through the interpreter's own last-hit
         // memo — same argument as the code probe: eviction churn re-probes

@@ -627,7 +627,18 @@ int main() {
     // under the flip found the IIsi in SIGSEGV under the generator
     // (§ C.4septies). 2026-08-21 cleared it: the same host boots the IIsi
     // generator green under the hardened native gate, and the C.5 flip
-    // fired — `auto` on an 030 now serves the generator on x86-64 too.
+    // fired — `auto` on an 030 served the generator on x86-64 too.
+    //
+    // WITHDRAWN 2026-08-29, and the withdrawal is the same story a third
+    // time. Every 030 promotion above was decided on a bench, a lockstep
+    // and ONE machine's boot; the first `ctest -L m030` ever run on this
+    // host — possible only once Moira patch 31 let generated code into the
+    // pre-MMU boot — hung EVERY 68030 gate that reaches the generator,
+    // while the six `interp_*` references and the two 68020 Mac LC gates
+    // passed. So SPEED scope is the 68040 again and `auto` on an 030
+    // resolves to `threaded`. CORRECTNESS scope is untouched: the explicit
+    // request below is still honoured, which is what keeps the pinned
+    // `jit_*_boot_etalon` gates pointed at the defect.
     if (hasX64) {
         jit::Backend* on030 = jit::selectBackend("x64", jit::kGuest68030);
         check(!std::strcmp(on030->name(), "x86-64"),
@@ -637,9 +648,9 @@ int main() {
         check(!std::strcmp(on040->name(), "x86-64"),
               "…and still served for the 68040 it was written for");
         jit::Backend* auto030 = jit::selectBackend("auto", jit::kGuest68030);
-        check(!std::strcmp(auto030->name(), "x86-64"),
-              "auto on a 68030 serves the generator — the C.5 flip "
-              "(2026-08-21, JIT_BRINGUP § C.5)");
+        check(!std::strcmp(auto030->name(), "threaded"),
+              "auto on a 68030 resolves to 'threaded' — the C.5 flip was "
+              "withdrawn on 2026-08-29 by the m030 tier");
         jit::Backend* auto040 = jit::selectBackend("auto", jit::kGuest68040);
         check(!std::strcmp(auto040->name(), "x86-64"),
               "auto on a 68040 still picks the native generator");
