@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 335 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 336 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -15,7 +15,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
-| [Save states](#save-states) | 6 |
+| [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 45 |
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 26 |
@@ -237,6 +237,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-30** — [Save states: the archive core + the whole LC II tree](CHANGELOG.md#2026-07-30--save-states-the-archive-core--the-whole-lc-ii-tree)
 - **2026-08-01 (late night)** — [The IIfx is the 34th profile: GUI, save states, and an input gate whose thresholds were measured, not invented](CHANGELOG.md#2026-08-01-iifx-profile)
 - **2026-08-12 (later)** — [The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer](CHANGELOG.md#2026-08-12-savestate-writebuffer)
+- **2026-08-29 (tenth)** — [Real sessions become replayable benchmarks: the input journal records every GUI input at its machine clock, and a recorded session replays bit-identically from its snapshot](CHANGELOG.md#2026-08-29-input-journal)
 
 ## Machine bring-ups
 

@@ -104,6 +104,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
     machine.state.kind = spec.snap;
     machine.state.path =
         pramPath.substr(0, pramPath.size() - 5) + ".pomss";
+    services.armInputRecording(machine, spec.pramTag, romName, media);
     machine.publish(true);
 
     struct Ctx {

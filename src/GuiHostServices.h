@@ -136,6 +136,36 @@ public:
             state_.network.atalk.tick(machineClock);
     }
 
+    // ── Input recording (src/InputJournal.h) ───────────────────────────
+    // Give the machine host the session identity its journals will carry —
+    // profile, clocks, media, and whether an external wire (LToUDP /
+    // AppleTalk hub) makes a session non-replayable — then auto-start a
+    // recording when the configuration asks for one. Call after state.kind
+    // is wired. The menu's start/stop reaches the same host slot
+    // (recordingMenuItems in GuiShellCommon.h).
+    template <class Machine>
+    void armInputRecording(Machine& machine, const std::string& profileTag,
+                           const std::string& romName,
+                           const std::vector<std::string>& media) {
+        std::vector<std::pair<std::string, std::string>> notes;
+        notes.emplace_back("profile", profileTag);
+        notes.emplace_back("snap",
+                           std::to_string(std::uint32_t(machine.state.kind)));
+        notes.emplace_back("cpuhz",
+                           std::to_string((long long) machine.mem.cpuHz()));
+        notes.emplace_back("framecycles",
+                           std::to_string((long long) machine.frameCycles()));
+        notes.emplace_back("rom", romName);
+        for (const auto& m : media)
+            if (!m.empty()) notes.emplace_back("media", m);
+        notes.emplace_back("network",
+                           (state_.network.appleTalkEnabled ||
+                            state_.network.ltoUdpEnabled) ? "1" : "0");
+        machine.setRecordingIdentity(std::move(notes));
+        const auto& rec = config_.diagnostics().inputRecord;
+        if (rec && !rec->empty()) machine.requestRecordingStart(*rec);
+    }
+
     template <class AudioHost>
     void prepareAudioHost(AudioHost& audioHost) {
         initializeDriveSounds(audioHost);

@@ -156,6 +156,7 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     machine.state.path = (hddPath.empty() ? std::string(compactTag)
                                            : hddPath + "." + compactTag) +
                          ".pomss";
+    services.armInputRecording(machine, compactTag, matched, media);
     machine.setFloppyInserted(diskOk, diskOk ? diskPath : std::string());
     return pom68k::gui::runCompactGui(
         machine, mem, cpu, audioHost, services,

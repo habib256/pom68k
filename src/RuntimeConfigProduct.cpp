@@ -34,6 +34,7 @@ ProductStartupConfig parseProductStartup(
         config.devices.monitorWidth = *value;
 
     config.diagnostics.fpuLog = values.text(startup_option::FpuLog);
+    config.diagnostics.inputRecord = values.text(startup_option::InputRecord);
     config.diagnostics.keyTrace = values.present(startup_option::KeyTrace);
     config.diagnostics.freezeProbe = values.present(startup_option::FreezeProbe);
     config.diagnostics.speedLog = values.boolean(startup_option::SpeedLog);

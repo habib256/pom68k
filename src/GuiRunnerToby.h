@@ -104,6 +104,7 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     machine.state.path =
         (hddPath.empty() ? spec.snapshotTag
                          : hddPath + "." + spec.snapshotTag) + ".pomss";
+    services.armInputRecording(machine, spec.snapshotTag, romName, media);
     machine.publish(true);
 
     std::string floppyPath = services.config().devices().startupFloppy

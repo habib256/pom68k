@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 334 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 336 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -346,6 +346,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-29 (tenth)** — [Real sessions become replayable benchmarks: the input journal records every GUI input at its machine clock, and a recorded session replays bit-identically from its snapshot](#2026-08-29-input-journal)
 - **2026-08-29 (ninth)** — [The registry's numbers stop being typed: `STATUS.md` is generated from the configure-time roster, and `docs_test` verifies the artifact instead of only chasing prose](#2026-08-29-status-md-generated)
 - **2026-08-29 (eighth)** — [Eleven CPU wrappers carried the same plumbing, tested in one copy; a CRTP base now carries it once — net −527 lines, and two phantom reds surfaced on the way](#2026-08-29-cpu-wrapper-crtp-base)
 - **2026-08-29 (seventh)** — ["Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes](#2026-08-29-anpi-refuted)
@@ -681,6 +682,80 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-29-input-journal"></a>
+## 2026-08-29 (tenth) — Real sessions become replayable benchmarks: the input journal records every GUI input at its machine clock, and a recorded session replays bit-identically from its snapshot
+
+The D1F0 lesson (2026-08-28 (seventh)) left § 3 without an instrument: the
+fallback histogram is not a temporal profile, and every wall-clock number in
+the tree comes from a fixed-cycle bench, a boot etalon or a scripted census —
+none of them what a person does with the machine. The user named the missing
+instrument directly: record HIS sessions — mouse, keys, what he opens — and
+measure improvements against those. This lot builds it, conformant end to
+end.
+
+**The seam was already single.** Every GUI input crosses
+`MachineHost::push()` and is applied by `applyCmds()` between two quanta —
+one lock, one POD-ish `Cmd`, and no timestamp. The recorder
+(`src/InputJournal.h`) stamps each command at APPLY time with
+`cpu.machineClock()`: that clock is a quantum boundary, and
+`lcii_savestate_etalon` had already proved that frame-boundary injection at
+identical machine times reproduces a run bit for bit. On its first pass the
+machine thread snapshots the whole machine beside the journal
+(`<path>.pomss`, atomic temp+rename, `statehash` noted in the header), so
+replay is restore-then-inject — the RTC seed the GUI took from the host
+wall clock rides INSIDE the snapshot and the journal needs no host time
+anywhere. `stop()` writes `end <clk>` after the join, so a replay runs the
+session's exact guest duration, not just to its last input.
+
+**Replay applies each event at the first quantum boundary whose clock has
+reached its stamp** (`tests/InputReplay.h`, the application arms mirroring
+`applyCmds()` one for one, single-button fold included) — by induction the
+same boundary the recording used, because the boundary clocks themselves
+replay. `input_journal_test` (unit/asset-none, the 238th gate) holds the
+format round-trip and the property that matters: from one snapshot, two
+replays of one journal produce byte-identical machines, and replaying at
+all produces a DIFFERENT machine than not replaying — the non-vacuity trap
+`savestate_v8_test` documents. `machinehost_test` pins the applyCmds tap:
+all ten command types recorded in enum order (a re-order of `Cmd::T` or
+`InputEventType` fails a gate instead of silently breaking every journal),
+monotone clocks, snapshot hash matching the note.
+
+**Arming is one knob through the injected chain**: `POM68K_INPUT_RECORD=
+<path>` (StartupOptions → DiagnosticConfig → `GuiHostServices::
+armInputRecording`, called by all six runner families after `state.kind` is
+wired). The header notes carry what a replay harness needs — profile, snap
+id, cpuhz, frameCycles, ROM, media, and `network 0|1`, because a session
+recorded with the AppleTalk hub or LToUDP cable active carries outside
+traffic that does not replay: the bench refuses it loudly instead of
+diverging silently. A failure to open or snapshot disables recording with
+its reason on stderr and never takes the session down. Proven in the real
+GUI: `gui_smoke_test` run with the knob set records the smoke session —
+snapshot, the scenario's engine swap at its clock, `end` — and still
+passes.
+
+**The measuring end is `replay_bench_lcii`** (dev tool, EXCLUDE_FROM_ALL,
+like `lcii_simcity_census`): rebuild the LC II the way the GUI builds it,
+verify the snapshot against the journal's `statehash` (the drVolAtrb
+fixture-drift lesson, applied before it can cost a diagnosis), restore,
+replay at full speed, and print the `docs/MEASURING.md` § R3 form — wall,
+guest seconds, **× real time** — plus `bench::fingerprint`, so an
+engine A/B on a recorded session can refuse itself when the arms did not do
+the same work. The work is fixed by construction: same guest cycles, same
+inputs — a better stopwatch than any boot etalon, and the protocol note in
+its header says to record against a throwaway copy of the boot image,
+because a GUI session flushes guest writes back to the `.vhd`.
+
+Registry: 237 → **238** (113 `unit`, 88 `asset-none`); `STATUS.md`
+regenerated, the four documents' totals bumped, the file-size ratchet
+re-recorded for the nine one-line growths. What a recorded session cannot
+yet do, written here so it is not discovered as a surprise: a mid-session
+GUI restore marks the journal and replay refuses to cross it; sessions are
+per-profile (the bench builds the LC II; other families want their own
+bench or a spec-driven one); and a hub-on session records but does not
+replay.
 
 ---
 

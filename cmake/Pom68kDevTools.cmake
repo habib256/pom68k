@@ -61,6 +61,15 @@ target_link_libraries(q605_rogue_census PRIVATE pom68k_core)
 add_executable(lcii_simcity_census EXCLUDE_FROM_ALL tests/lcii_simcity_census.cpp)
 target_link_libraries(lcii_simcity_census PRIVATE pom68k_core)
 
+# Replay a RECORDED GUI session (POM68K_INPUT_RECORD → src/InputJournal.h)
+# on the LC II at full speed and print the × real-time ratio — the workload
+# instrument TODO.md § 3 asks for after the D1F0 lesson: the unit of
+# measurement is the user's own session, not a synthetic gesture.
+# Measurement, never a gate; determinism itself is gated by
+# input_journal_test.
+add_executable(replay_bench_lcii EXCLUDE_FROM_ALL tests/replay_bench_lcii.cpp)
+target_link_libraries(replay_bench_lcii PRIVATE pom68k_core)
+
 
 # All dev tools below are EXCLUDE_FROM_ALL — not built by `make`/`ctest`
 # (each relinks the core with LTO = slow); build on demand by name,

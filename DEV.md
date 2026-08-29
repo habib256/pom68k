@@ -1625,6 +1625,15 @@ I/O touches), `POM68K_IIFX_SCSI_TRACE` (5380/SCSIDMA registers with PC),
 `POM68K_SPEED_LOG` = 1 prints the GUI menu's half-second real-time ratio;
 `POM68K_SPEED_LOG_SKIP` = N discards N updates and
 `POM68K_SPEED_LOG_COUNT` = N closes the GUI after N printed samples.
+`POM68K_INPUT_RECORD` = `<path>` starts the session with its input journal
+already recording (`src/InputJournal.h`): the machine thread snapshots the
+machine to `<path>.pomss` and stamps every applied mouse/key/media command
+with its machine clock, so the session replays bit-deterministically from
+the snapshot (`tests/InputReplay.h`; format + determinism gated by
+`input_journal_test`, the applyCmds tap and the start/stop slot by
+`machinehost_test`). Sessions recorded with the AppleTalk hub or the
+LToUDP cable active carry a `network 1` note — outside traffic does not
+replay.
 `POM68K_AUDIO` = 0 disables the host device and its audio-clocked pacing as an
 attribution arm; it is not a product-speed result. The reproducible Pi/GUI
 protocol is in `docs/RASPBERRY_PI.md` § 3.
@@ -1763,21 +1772,21 @@ three under different environments.
 |---|---|---|
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
 | `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
-| `ctest -L unit` | 112 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
-| `ctest -L asset-none` | 87 | manifest-declared asset-free daily tier |
+| `ctest -L unit` | 113 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
+| `ctest -L asset-none` | 88 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
 | `ctest -L jit` | 41 | before proposing a JIT change (`jit-fast` matches this regex too) |
 | `ctest -L m040` | 54 | the 68040 family on the default engine plus explicit interpreter references |
 | `ctest -L m030` | 56 | the 68030 family, same shape (since 2026-08-18) |
 | `ctest -L etalon` | 124 (4 h 33 serial-equivalent) | every profile — the release gate, not a pre-commit check |
-| `ctest -j64` | 237 (**20 min** with this host's RAM rows; 30 min at `-j16`, 18 min uncalibrated, 4 h 46 serial) | documented host-union; use `ctest -N` for this host |
+| `ctest -j64` | 238 (**20 min** with this host's RAM rows; 30 min at `-j16`, 18 min uncalibrated, 4 h 46 serial) | documented host-union; use `ctest -N` for this host |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
 is the authority. Five gates are host-conditional: the AArch64 trio
 `jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
 + `jit_lockstep_030_a64_alignment_test` and the x86-64-only
 `jit_lockstep_030_x64_experimental_test` + `jit_lockstep_030_x64_alignment_test`
-— so an x86-64 tree reads **234** total, 109 `unit`, 8 `smoke`, 38 `jit`,
+— so an x86-64 tree reads **235** total, 110 `unit`, 8 `smoke`, 38 `jit`,
 and an AArch64 one 235 (`m040` and `etalon` are host-independent). Eight more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of

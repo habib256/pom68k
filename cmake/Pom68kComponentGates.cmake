@@ -261,6 +261,16 @@ add_executable(machinehost_test tests/machinehost_test.cpp)
 target_link_libraries(machinehost_test PRIVATE pom68k_core)
 add_test(NAME machinehost_test COMMAND machinehost_test)
 
+# The input journal end to end (src/InputJournal.h + tests/InputReplay.h):
+# format round-trip through a real file, then REPLAY DETERMINISM on a live
+# synthetic-ROM LC II — restore one snapshot, replay one journal twice,
+# byte-identical machines; replaying at all visibly changes the machine so
+# the identity is not vacuous. The recording tap itself (applyCmds side,
+# enum pairing, initial snapshot) is pinned in machinehost_test.
+add_executable(input_journal_test tests/input_journal_test.cpp)
+target_link_libraries(input_journal_test PRIVATE pom68k_core)
+add_test(NAME input_journal_test COMMAND input_journal_test)
+
 # The docs' citable invariants, checked against the code: compiled profile
 # catalogue == what CLAUDE.md says, every gate CLAUDE.md
 # names is registered, every registered gate carries a label, and the gate

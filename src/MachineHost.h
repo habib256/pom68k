@@ -45,6 +45,7 @@
 
 #pragma once
 
+#include "InputJournal.h"
 #include "SaveStateSlot.h"
 #include "jit/JitStats.h"
 
@@ -54,9 +55,11 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 // POM68K_KEY_TRACE=1 — stderr log of every GUI key event at PUSH (UI thread)
@@ -116,6 +119,43 @@ public:
     // them between two quanta: a restore replaces the whole tree, so it must
     // land on an instruction boundary, never mid-quantum from the GUI thread.
     SaveStateSlot state;
+
+    // ── Input recording (src/InputJournal.h) ──────────────────────────────
+    // Same discipline as the save-state slot: the GUI queues a request, the
+    // MACHINE thread performs it between two quanta — a recording must
+    // begin and end on a quantum boundary, at a machine clock a replay can
+    // hit again. The runner supplies the identity notes once, before
+    // start(); the startup knob passes an explicit journal path, and the
+    // menu's no-argument form derives
+    // "<state base>-YYYYMMDD-HHMMSS.journal" so successive recordings never
+    // overwrite one another. When a recording starts, the machine thread
+    // snapshots the whole machine beside the journal (`<path>.pomss`) —
+    // replay is restore-then-inject, the RTC seed rides inside the
+    // snapshot. Requires state.kind; a refusal posts its reason and never
+    // takes the session down.
+    void setRecordingIdentity(
+        std::vector<std::pair<std::string, std::string>> notes) {
+        recNotes_ = std::move(notes);
+    }
+    void requestRecordingStart(std::string path = {}) {
+        std::lock_guard<std::mutex> l(recMu_);
+        recPending_ |= 1;
+        recPendingPath_ = std::move(path);
+    }
+    void requestRecordingStop() {
+        std::lock_guard<std::mutex> l(recMu_);
+        recPending_ |= 2;
+    }
+    // For the menu tick: follows the MACHINE, not the click — the
+    // engine-swap precedent (a tick that led the arm would lie during the
+    // one-queue-round-trip gap).
+    bool recordingActive() const {
+        return stRecording_.load(std::memory_order_relaxed);
+    }
+    std::string recordingMessage() {
+        std::lock_guard<std::mutex> l(recMu_);
+        return recMessage_;
+    }
 
     // ── Floppy hot-swap (GUI → machine thread) ─────────────────────────────
     // The path travels under cmdMu_ with the command, so the machine thread
@@ -205,6 +245,10 @@ public:
         quit.store(true);
         if (th_.joinable()) th_.join();
 #endif
+        // After the join the machine thread is gone, so reading the CPU's
+        // clock here is safe; the recorded `end` lets a replay run the exact
+        // guest duration of the session, not just to its last input.
+        if (journalOn_) finishRecording();
     }
 
     // One scheduling slice. Returns how long the caller should sleep, in µs.
@@ -369,7 +413,16 @@ protected:
             std::lock_guard<std::mutex> l(cmdMu_);
             cmdsApply_.swap(cmds_);
         }
-        for (const Cmd& c : cmdsApply_) switch (c.t) {
+        processRecordingRequests();
+        for (const Cmd& c : cmdsApply_) {
+            // Stamp at APPLY, not at push: this clock is a quantum boundary,
+            // the machine time replay can hit again exactly.
+            if (journalOn_) {
+                journalW_.event(cpu.machineClock(), int(c.t), c.a, c.b,
+                                c.path);
+                ++recEvents_;
+            }
+            switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             // The Duo's PMU takes the button alone; every other platform also
             // takes the ADB address it should be reported on.
@@ -448,8 +501,18 @@ protected:
                 stEngine_.store(c.a, std::memory_order_relaxed);
                 break;
         }
+        }
         cmdsApply_.clear();
         const int stateDone = state.apply(mem, cpu); // between two quanta
+        // A mid-session restore invalidates everything recorded so far —
+        // the journal marks it so a replay refuses loudly at that point
+        // instead of diverging silently.
+        if (journalOn_ && (stateDone & 2) != 0) {
+            journalW_.event(cpu.machineClock(),
+                            int(pom68k::InputEventType::StateRestore),
+                            0, 0, {});
+            ++recEvents_;
+        }
         if ((stateDone & 2) != 0) {
             if constexpr (requires { self()->afterRestore(); })
                 self()->afterRestore();
@@ -466,9 +529,113 @@ protected:
         }
     }
 
+    // Machine-thread side of the recording slot, run between two quanta as
+    // the first act of applyCmds(). A same-tick stop+start is a stop of the
+    // OLD recording followed by a new one, in that order.
+    void processRecordingRequests() {
+        int p;
+        std::string path;
+        {
+            std::lock_guard<std::mutex> l(recMu_);
+            p = recPending_;
+            recPending_ = 0;
+            path.swap(recPendingPath_);
+        }
+        if (!p) return;
+        if ((p & 2) && journalOn_) finishRecording();
+        if (p & 1) startRecording(std::move(path));
+    }
+
+    // Snapshot beside the journal (atomic temp+rename, the save-state
+    // convention), then open the event stream. Any refusal posts its
+    // reason — a broken recorder must never take the session down.
+    void startRecording(std::string path) {
+        if (journalOn_) {
+            postRecording("Enregistrement déjà en cours: " + journalW_.path());
+            return;
+        }
+        if (state.kind == pom68k::SnapMachine{}) {
+            postRecording("Enregistrement refusé: profil non câblé");
+            return;
+        }
+        if (path.empty()) {
+            // Menu path: derive from the state file so recordings sit beside
+            // their boot volume, stamped so none overwrites another.
+            std::string base = state.path;
+            const std::string ext = ".pomss";
+            if (base.size() > ext.size() &&
+                base.compare(base.size() - ext.size(), ext.size(), ext) == 0)
+                base.erase(base.size() - ext.size());
+            if (base.empty()) base = "session";
+            char stamp[32] = "";
+            const std::time_t now = std::time(nullptr);
+            if (const std::tm* tmv = std::localtime(&now))
+                std::strftime(stamp, sizeof stamp, "-%Y%m%d-%H%M%S", tmv);
+            path = base + stamp + ".journal";
+        }
+        if (!journalW_.open(path)) {
+            postRecording("Enregistrement refusé: ouverture impossible (" +
+                          path + ")");
+            return;
+        }
+        for (const auto& kv : recNotes_) journalW_.note(kv.first, kv.second);
+        std::vector<uint8_t> blob;
+        pom68k::save(mem, cpu, state.kind, blob);
+        const std::string statePath = path + ".pomss";
+        const std::string tmp = statePath + ".tmp";
+        std::FILE* f = std::fopen(tmp.c_str(), "wb");
+        const bool wrote = f &&
+            std::fwrite(blob.data(), 1, blob.size(), f) == blob.size();
+        if (f) std::fclose(f);
+        if (!wrote || !atomicReplaceFile(tmp, statePath)) {
+            std::remove(tmp.c_str());
+            journalW_.abort();
+            postRecording("Enregistrement refusé: snapshot impossible (" +
+                          statePath + ")");
+            return;
+        }
+        char hex[17];
+        std::snprintf(hex, sizeof hex, "%016llx",
+                      (unsigned long long) sav::hash(blob));
+        journalW_.note("snapshot", statePath);
+        journalW_.note("statehash", hex);
+        journalW_.begin(cpu.machineClock());
+        journalOn_ = true;
+        recEvents_ = 0;
+        stRecording_.store(true, std::memory_order_relaxed);
+        postRecording("Enregistrement → " + path);
+    }
+
+    void finishRecording() {
+        journalW_.finish(cpu.machineClock());
+        journalOn_ = false;
+        stRecording_.store(false, std::memory_order_relaxed);
+        postRecording("Enregistré: " + journalW_.path() + " (" +
+                      std::to_string(recEvents_) + " évènements)");
+    }
+
+    void postRecording(std::string m) {
+        std::printf("InputJournal: %s\n", m.c_str());
+        std::lock_guard<std::mutex> l(recMu_);
+        recMessage_ = std::move(m);
+    }
+
     std::thread th_;
     std::mutex cmdMu_;
     std::vector<Cmd> cmds_, cmdsApply_;
+    // Recording state. journalW_/journalOn_/recEvents_ belong to the
+    // machine thread (stop() only touches them after the join); recNotes_
+    // is written by the runner before start(); the pending slot and the
+    // message cross under recMu_; the active flag crosses as an atomic.
+    pom68k::InputJournalWriter journalW_;
+    bool journalOn_ = false;
+    long long recEvents_ = 0;
+    std::vector<std::pair<std::string, std::string>> recNotes_;
+    std::atomic<bool> stRecording_{false};
+    mutable std::mutex recMu_;
+    int recPending_ = 0;               // bit 0 = start, bit 1 = stop
+    std::string recPendingPath_;
+    std::string recMessage_;
     // Host button states, machine-thread side. Only the single-button
     // platforms read them (see Cmd::MouseButton); the ADB ones report each
     // button on its own address and need no folding.
