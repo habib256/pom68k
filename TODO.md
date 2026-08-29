@@ -7,7 +7,10 @@ subsystem), implementation detail in `DEV.md`, vendor notes in
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 
 **Counts re-verified against `CMakeLists.txt` and the code on 2026-08-25** —
-re-verify before quoting them anywhere:
+re-verify before quoting them anywhere. **Since 2026-08-29 the registry's
+numbers are GENERATED into `STATUS.md`** (`tools/status_md.py`, from the
+configure-time roster + manifest; `docs_test` re-derives the artifact and
+fails on drift) — read them there instead of re-deriving them here:
 
 - **The gate registry is host-conditional, so a single number is always wrong
   somewhere.** The documented registry (2026-08-28): **237 gates** — 112
@@ -1521,12 +1524,21 @@ bloque un autre.
 
 - [ ] **Basculer `-Werror`** une fois le recensement g++ propre — c'est déjà
   l'item nommé en § 0·B, il ne demande qu'à être fini.
-- [ ] **Générer les chiffres au lieu de les vérifier.** Produire un `STATUS.md`
-  depuis `build/pom68k_gate_manifest.tsv` + `LastTest.log` — le tableau des
-  paliers, les totaux par label, la paire exécutés/skippés — et faire pointer
-  `CLAUDE.md` et l'en-tête de ce fichier dessus. Rien de tout cela ne devrait
-  être tapé à la main, et `docs_test` passerait de comparer une prose à vérifier
-  un artefact.
+- [x] **Générer les chiffres au lieu de les vérifier — FAIT le 2026-08-29.**
+  `tools/status_md.py` écrit `STATUS.md` depuis les trois fichiers que CMake
+  produit à la configuration (`pom68k_gates.tsv`, `pom68k_gates_absent.tsv`,
+  `pom68k_gate_manifest.tsv`) : l'union et ses totaux par label — dérivables à
+  l'identique sur chaque hôte, le roster absent réajouté — une section
+  *Registered on \<hôte\>* possédée par l'hôte qui la régénère (même partage
+  que `gate_resource_budgets.tsv` : l'autre section est préservée telle
+  quelle), et une table de runs enregistrés portant la paire
+  exécutés/soft-skippés du census (`--record-run`, jamais dérivée). `docs_test`
+  § 16 re-dérive l'artefact entier depuis le même roster/manifeste et échoue
+  sur toute dérive ; une section hôte jamais générée est une *absence*
+  signalée par une note, pas un rouge — l'hôte AArch64 lancera l'outil une
+  fois. La prose chiffrée de `CLAUDE.md`/`DEV.md` reste en place, tenue par
+  les checks existants : la faire maigrir vers `STATUS.md` est l'item plafond
+  ci-dessous.
 - [ ] **Appliquer à `CLAUDE.md` sa propre règle** : le plafonner dans
   `tools/file_size_budget.txt` comme n'importe quelle unité de code, et pousser
   ce qui déborde vers `STATUS.md` et `DEV.md`. Il est chargé à chaque session ;

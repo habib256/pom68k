@@ -346,6 +346,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-29 (ninth)** — [The registry's numbers stop being typed: `STATUS.md` is generated from the configure-time roster, and `docs_test` verifies the artifact instead of only chasing prose](#2026-08-29-status-md-generated)
 - **2026-08-29 (eighth)** — [Eleven CPU wrappers carried the same plumbing, tested in one copy; a CRTP base now carries it once — net −527 lines, and two phantom reds surfaced on the way](#2026-08-29-cpu-wrapper-crtp-base)
 - **2026-08-29 (seventh)** — ["Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes](#2026-08-29-anpi-refuted)
 - **2026-08-29 (sixth)** — [The x64 generator learns the register shifts: a64's step-exact lowering translated, one parity-table row retired, 82.0 % → 88.1 % native](#2026-08-29-x64-shift-port)
@@ -682,6 +683,52 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-29-status-md-generated"></a>
+## 2026-08-29 (ninth) — The registry's numbers stop being typed: `STATUS.md` is generated from the configure-time roster, and `docs_test` verifies the artifact instead of only chasing prose
+
+TODO.md § 10 wave 3, chosen as the next factoring for the same reason the
+CRTP base was: a fact proven in one place and pasted into four. The gate
+totals were hand-typed into `CLAUDE.md`, `TODO.md`, `README.md` and `DEV.md`,
+and on 2026-08-28 (eleventh) all four carried a wrong per-host total while
+the per-label figures beside them were right — the incident is the argument.
+`docs_test` could hold the prose to the roster; holding is not writing.
+
+`tools/status_md.py` now writes `STATUS.md` at the repository root from the
+three files CMake already produces at configure time — `pom68k_gates.tsv`,
+`pom68k_gates_absent.tsv`, `pom68k_gate_manifest.tsv` — and nothing else:
+
+- **the union section** (total + one `-L` count per base label, policy-dim
+  labels excluded) is derivable identically on every host because the absent
+  roster is added back — the same rule checks 5/5bis have used since
+  2026-08-12;
+- **one `Registered on <host>` section per host** — registered/absent counts
+  and the manifest's assets/host/scope/tier/slots_src tables — owned by the
+  host that regenerates it and preserved verbatim by the other, the division
+  of labour `gate_resource_budgets.tsv` already established;
+- **a recorded-runs table**: `--record-run` appends one row from a preserved
+  `LastTest.log` with the census's executed/soft-skipped pair — recorded,
+  never derived, because a run is a dated fact, not a property of the tree.
+
+`docs_test` § 16 re-derives the whole artifact from the same roster/manifest
+it already reads and fails on any drift, in both directions — a stale row
+and a missing label both red. A host section that was never generated is an
+*absence*, reported by a printed note, not a failure: making the AArch64
+host red on its first pull for not having run a new tool would be a booby
+trap, and the same division of labour that lets each host prove its own
+half lets it owe only its own section. Verified by mutation before trusting
+the green: a wrong union label count and a wrong per-host total each turn
+the gate red; the tool is idempotent (two runs, identical bytes); a `|` in
+a run note is escaped rather than silently splitting the table.
+
+What deliberately did NOT move: the numbered prose in `CLAUDE.md`, `TODO.md`,
+`README.md` and `DEV.md` stays, still held by checks 5/5bis/6/13 — both
+files now point at `STATUS.md` as the generated source, and slimming the
+prose down to those pointers is the `CLAUDE.md` size-cap item, kept
+separate. Proof on this x86-64 host: `docs_test` green with the nine new
+`STATUS.md` checks executing (output read, not inferred), union 237 / 234
+registered here re-derived, `file_size_budget_test` untouched (the ratchet
+scopes `src/` + CMake; `tests/` and `tools/` are outside it).
 
 <a id="2026-08-29-cpu-wrapper-crtp-base"></a>
 ## 2026-08-29 (eighth) — Eleven CPU wrappers carried the same plumbing, tested in one copy; a CRTP base now carries it once — net −527 lines, and two phantom reds surfaced on the way
