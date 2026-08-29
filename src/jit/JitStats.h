@@ -111,6 +111,9 @@ enum class Miss : int {
     NotProfitable,    // below visits × potentially-native instruction score
     Rejected,         // the backend declined to generate code for it
     CacheLine,        // 68040 architectural i-cache: block bytes not resident
+    GuardReplay,      // retired interpreted after a guard-tripped block exit,
+                      // so a store that trips WITHOUT evicting (32-byte mask,
+                      // byte-exact eviction) cannot re-run natively forever
     Count
 };
 
@@ -124,7 +127,47 @@ inline const char* missName(Miss m) {
         case Miss::NotProfitable: return "profit score";
         case Miss::Rejected:   return "backend declined";
         case Miss::CacheLine:  return "040 line absent";
+        case Miss::GuardReplay: return "guard replay";
         default:               return "?";
+    }
+}
+
+// Why `armWindow()` refused a pc. `Miss::ArmFailed` counts the refusals in
+// INSTRUCTIONS; this says which exit took them, which is the
+// difference between "the JIT is off here" and a mechanism. It exists
+// because the 68030 lockstep under the x86-64 generator refuses 100 % of
+// its arms (TODO § 1, 2026-08-28) and the aggregate cannot say why.
+// `windowArmed` = accepted + the sum of these.
+enum class ArmFail : int {
+    Probe = 0,        // pomJitProbeCode(): no ATC entry yet, a supervisor
+                      // page seen from user mode, or walk-per-access mode
+    NotRam,           // codeSpan() has no host pointer, or a span shorter
+                      // than one window: I/O, VRAM, a hole, the boot overlay
+    TooShort,         // the page ∩ host span bound is itself shorter than
+                      // one window — a DEGENERATE page, not a geometry
+                      // accident: on the 68030 `pageLen` comes from TC's
+                      // page-size field, which is 0 until the OS programs
+                      // it, so an unprogrammed TC yields a 1-byte page
+    PcAtEnd,          // the bound is usable but pc sits in its last bytes
+    Pipe,             // the post-PMOVE fetch pipe is live: its fetches
+                      // bypass the i-cache counters, which only the
+                      // interpreter reproduces (Moira pomMmuPipeLive)
+    Uncovered,        // armed, and pomJitCovers() STILL says no — the 040
+                      // architectural i-cache knowing a translation before
+                      // the line exists. Uncounted before 2026-08-28, which
+                      // is why `armed` and `failed` could not be reconciled.
+    Count
+};
+
+inline const char* armFailName(ArmFail a) {
+    switch (a) {
+        case ArmFail::Probe:     return "probe";
+        case ArmFail::NotRam:    return "not plain memory";
+        case ArmFail::TooShort:  return "degenerate page";
+        case ArmFail::PcAtEnd:   return "pc at page end";
+        case ArmFail::Pipe:      return "pmove pipe live";
+        case ArmFail::Uncovered: return "uncovered after arm";
+        default:                 return "?";
     }
 }
 
@@ -143,6 +186,7 @@ struct Stats {
     std::atomic<uint64_t> invalidations{0}; // writes that hit a live code window
     std::atomic<uint64_t> windowArmed{0};   // code-window arm attempts
     std::atomic<uint64_t> windowFailed{0};  // …that could not be validated
+    std::atomic<uint64_t> armFails[int(ArmFail::Count)] = {};  // …by exit
     std::atomic<uint64_t> dtlbFills{0};     // data-TLB entries created
     std::atomic<uint64_t> dtlbRefused{0};   // …refused: not plain memory
     std::atomic<uint64_t> slowInstrs{0};    // ran through a block's fallback
@@ -161,6 +205,7 @@ struct Stats {
 
     void bump(Exit e) { exits[int(e)].fetch_add(1, std::memory_order_relaxed); }
     void bump(Flush f) { flushCauses[int(f)].fetch_add(1, std::memory_order_relaxed); }
+    void bump(ArmFail a) { armFails[int(a)].fetch_add(1, std::memory_order_relaxed); }
     void miss(Miss m, uint64_t n = 1) {
         misses[int(m)].fetch_add(n, std::memory_order_relaxed);
     }
@@ -179,6 +224,7 @@ struct Stats {
         for (auto& e : exits) e = 0;
         for (auto& f : flushCauses) f = 0;
         for (auto& m : misses) m = 0;
+        for (auto& a : armFails) a = 0;
         for (auto& r : compileRejects) r = 0;
         for (auto& r : compileRejectNanos) r = 0;
     }
@@ -195,6 +241,7 @@ struct Stats {
         uint64_t exits[int(Exit::Count)];
         uint64_t flushCauses[int(Flush::Count)];
         uint64_t misses[int(Miss::Count)];
+        uint64_t armFails[int(ArmFail::Count)];
     };
     Snapshot snapshot() const {
         Snapshot s{};
@@ -228,6 +275,8 @@ struct Stats {
             s.flushCauses[i] = flushCauses[i].load(std::memory_order_relaxed);
         for (int i = 0; i < int(Miss::Count); i++)
             s.misses[i] = misses[i].load(std::memory_order_relaxed);
+        for (int i = 0; i < int(ArmFail::Count); i++)
+            s.armFails[i] = armFails[i].load(std::memory_order_relaxed);
         return s;
     }
 };

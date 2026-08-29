@@ -75,9 +75,9 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 | **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Le mode nominal tient enfin ×1 (paceur à échéance absolue, 2026-08-28 — il plafonnait à ~×0,75 partout) ; reste : `POM68K_TURBO` scriptable pour re-mesurer AppleTalk à bras égaux, et la ligne de base Pi 400 |
 | **0·B** | Les six réserves de la revue externe du 2026-08-26 | Recensement g++ FAIT le 2026-08-28 (17 lignes, 16 sites) : reste à corriger les 16 puis armer `-Werror` ; et le premier rapport de fuites Linux |
-| **1** | Rouge maintenant — **un, x86-64 seulement** : le lockstep 030 sous le générateur x64 ; ouverts non rouges ; règles de méthode | Trouver pourquoi la fenêtre 030 x64 est refusée à 100 % (0 instruction native retirée) |
+| **1** | Rouge maintenant — **un, x86-64 seulement** : le lockstep 030 sous le générateur x64 ; ouverts non rouges ; règles de méthode | Le refus de fenêtre est écarté (page dégénérée, les deux backends) : chercher entre 4 000 et 8 000 pas, en aval de l'armement |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | **D'abord le rouge de § 1 : le générateur 030 x64 refuse 100 % de ses fenêtres** ; ensuite `D1F0` clos (ABBA nul), BFEXTU 030 derrière `POM68K_JIT_030_MEMBF`, contrat IR de BFINS, et un PROFIL TEMPOREL pour le prochain levier mural |
+| **3** | JIT, second moteur d'exécution | **D'abord le rouge de § 1**, dont le refus de fenêtre est écarté ; et la page dégénérée du 030 pré-MMU (patch Moira 31 proposé) ; ensuite `D1F0` clos (ABBA nul), BFEXTU 030 derrière `POM68K_JIT_030_MEMBF`, contrat IR de BFINS, et un PROFIL TEMPOREL pour le prochain levier mural |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -331,16 +331,100 @@ seule différence est `POM68K_JIT_BACKEND=threaded`.
   `mmuExecuteStart()` remet à zéro, et `pomJitWriteData` ne passe jamais
   par là — au débordement signé la garde `mmuIdxDone < 10` redevient vraie
   et l'écriture part en `mmuAd[-2147483648]`).
-- **Le défaut de fond ne l'est pas.** Il faut 2,147 × 10⁹ accès MMU avant le
-  pas 8 000 pour déborder, soit **32,8 accès par cycle 68030** ; et à 4 000
-  pas le bras x64 affiche `jit instrs 0 · blocks 0 compiled · window 630766
-  armed (630766 refused)` — **100 % de refus, zéro instruction native
-  retirée**, là où `threaded` en retire 8 368 116. Le générateur n'arme et
-  ne refuse qu'en boucle. Prochaine action : **pourquoi la fenêtre 030 x64
-  est-elle refusée à 100 %**. Après le correctif, le même palier donne
-  **106/109 — 105 exécutés, 1 soft-skip, 3 échecs — et les trois sont
+- **Le défaut de fond ne l'est pas**, et après le correctif le même palier
+  donne **106/109 — 105 exécutés, 1 soft-skip, 3 échecs — et les trois sont
   désormais `Timeout` (1800 s pleines), plus `SEGFAULT`** : la forme
-  attendue, le crash fermé et la boucle de refus intacte.
+  attendue.
+- **Le refus de fenêtre n'était PAS le générateur x64** — mesuré le
+  2026-08-28 (fourteenth) avec les compteurs `jit::ArmFail` posés aux quatre
+  sorties de `armWindow()`. À 4 000 pas, `x64` et `threaded` sont identiques
+  au compteur près (630 766 armements, 630 766 refus, 0 instruction native,
+  8,36 s contre 8,29 s), et la sortie qui les prend est
+  `degenerate 630 755` : `pageLen` vaut 1, parce que la branche 030 de
+  `pomJitProbeCode` dérive la taille de page du champ PS de TC, **nul tant
+  que l'OS n'a pas programmé TC**. Borné à la phase pré-MMU : les 965 013
+  refus dégénérés d'un boot complet sont tous là avant ~8 000 pas et ne
+  reviennent jamais — 95,6 % des refus du boot, et 32 pas de backoff chacun,
+  soit ~31 M des 31,9 M d'instructions interprétées de cette phase.
+  Concerne **tous les 030 et les deux ISA hôtes**, pas x86-64. Correctif
+  proposé et NON appliqué (il bouge la résidence native des sept
+  plateformes 030, donc il veut ses preuves, ses gates et son entrée
+  `POM68K_VENDOR.md`) : n'utiliser `mmuPageMask()` que si le champ PS est
+  légal (≥ 8), sinon la borne identité 4 Kio que la branche 020 emploie
+  déjà — patch Moira 31.
+- **Le tier m030 du 2026-08-29 est le fait neuf.** Build vert (157 binaires
+  frais), puis `ctest -L m030` : **10 verts sur 33 rendus, 23 `Timeout`, et
+  20 gates encore en vol après 11 h** — arrêtés à la main. Les 10 verts sont
+  les six `interp_*_boot_etalon`, deux tests unitaires sans CPU et les deux
+  gates du Mac LC, **un 68020** : aucune machine 68030 sous le générateur
+  natif n'est passée.
+- **Et le blocage NE VIENT PAS du patch 31 — mesuré, pas déduit.** Deux bras
+  bâtis sur `d4a18b6` (HEAD, sans le patch) sur `lcii_boot_etalon` : x64
+  épinglé **900,08 s exit 124**, et sans aucune variable — le défaut `auto`
+  de HEAD — **900,06 s exit 124**. C'est donc une **régression produit** des
+  huit jours écoulés depuis le 2026-08-21 : sur un hôte x86-64, au sommet de
+  `main`, **aucune machine 68030 ne boote sous le moteur par défaut**, parce
+  qu'`auto` sert le générateur x64 sur 030 depuis cette date et qu'aucun
+  étalon 030 n'a tourné sur x86-64 depuis. Le code qui fige est du
+  post-MMU ordinaire : à HEAD la fenêtre ne s'arme pas avant la MMU.
+  Mitigation appliquée : `autoFamilies` x64 repasse à `kGuest68040` (§ 3) —
+  elle répare la régression, elle ne compense pas le patch. **Le bisect a rendu son nom le
+  2026-08-29 : `661a784` (2026-08-22), le garde de code par sous-tranches de
+  32 octets.** Six marches testables, aucun saut : `015bea7` GOOD 104 s,
+  `ac0f963` GOOD 101 s, `661a784` **BAD SIGSEGV 251 s**, puis tout BAD
+  jusqu'à `d4a18b6` (qui fige 900 s au lieu de crasher, depuis que le patch
+  Moira 30 a saturé le compteur qui débordait). Ce commit a bien fait
+  tourner `-L jit|m030|m040` 131/131 — **sur l'hôte AArch64**, où `auto`
+  sert le générateur a64 : la moitié x64 du changement n'a jamais tourné.
+  Suite le 2026-08-29 (later) : le déclencheur est cerné aux thunks
+  d'écriture exacte (mode 2) et un défaut par-(famille, backend) le
+  plafonne à 1 — voir le bullet d'isolation ci-dessus.** Reste dû aussi : le même tier sur
+  l'hôte AArch64, où `auto` sert toujours le générateur a64 sur 030.
+- **Vingt gates de ce tier ne portent AUCUN `TIMEOUT`** — `lc3plus_`,
+  `lc550_`, `cclassic2_`, `lc520_`, `iici_`, `duo230_`, `iisi_`, `iivx_`,
+  `lc3_`, `mactv_`, `classic2_`, `cclassic_`, `lcii_sys7_`, `lcii_savestate_`,
+  `iifx_post_`… — donc un blocage y mange l'hôte indéfiniment (11 h ici, load
+  20 sur 16 cœurs). Un gate sans borne n'est pas un gate, c'est un pari :
+  leur en donner une, alignée sur les 1800 s des autres etalons.
+- **Le wedge est ISOLÉ à un interrupteur, 2026-08-29 (later) : les thunks
+  d'écriture exacte** (`POM68K_JIT_ACCESS_THUNK=2`, le défaut). Au banc
+  250 frames : mode 2 **>600 s coupé**, mode 1 **1,27 s** avec l'empreinte
+  exacte de `threaded`, et `lcii_boot_etalon` épinglé x64 mode 1 atteint le
+  Finder en **53 s** (chemin produit `threaded` : 119 s). Le core SIGABRT
+  pris en plein wedge est dans `serviceGuard()` — le moteur, pas le code
+  généré ; le lockstep x64 est identique pas à pas jusqu'à 5 500. Mitigation
+  livrée : `BackendCaps::maxAccessThunk030 = 1` déclaré par x64, consommé
+  dans le ctor de l'Engine (motif `profitScore68030`), l'override env
+  explicite gagne — le mode 2 reste atteignable pour la chasse, le 040 garde
+  son mode 2 (gates verts). **Le tier m030 est repassé sous le clamp le
+  soir même : 56/56 en 29 min 35 s** — et le gate de base
+  `jit_lockstep_030_test`, dont le harnais passait par `auto`, tournait
+  `threaded` en silence depuis le retrait du flip ; il épingle désormais
+  `${POM68K_JIT_NATIVE_BACKEND}`. Les trois locksteps, rouges sur le ±2 à
+  cet instant-là, sont verts depuis la fermeture du (night).
+  `CHANGELOG.md` 2026-08-29 (later) et (evening).
+- **Le ±2 est CLOS le soir même** (`CHANGELOG.md` 2026-08-29 (night)) :
+  c'était le pipe de fetch post-PMOVE (patch 11), servi AVANT les compteurs
+  i-cache — l'interpréteur ne compte rien dans l'ombre d'un PMOVE, un bloc
+  natif y chargeait tout. Fix structurel : `pomMmuPipeLive()` (patch Moira
+  32) + refus d'armement dans l'ombre (`ArmFail::Pipe`). **Les trois
+  locksteps épinglés x64 : 120 000 pas identiques chacun — plus aucun gate
+  030 rouge sur cet hôte.** Boot épinglé inchangé (52,84 s), banc à
+  l'empreinte de `threaded` à ×5,03 temps réel.
+- **Le storm mode 2 est MÉCANISÉ et CASSÉ dans la nuit** (`CHANGELOG.md`
+  2026-08-29 (late night)) : une boucle moteur sans retirement — trip sur
+  masque 32 octets, éviction exacte à l'octet (rien ne tombe : le flag
+  `$4FC4` du handshake Egret vit à 4 octets du code traduit à `$4FC8`), et
+  la porte guard qui re-exécute l'écriture pour toujours. Née dans
+  `661a784` (avant lui, un trip évinçait sa tranche entière). Fix : après
+  un `WindowLost` trippé, UNE instruction retirée par l'interpréteur
+  (`Miss::GuardReplay`). Banc mode 2 : >600 s → **1,25 s**, empreinte de
+  `threaded`, ×7,34 ; lockstep 120k mode 2 + admissions : identique.
+  **Le plafond `maxAccessThunk030=1` RESTE** — la re-promotion du mode 2
+  est un item D.1 nommé (un ABBA mode 1 vs 2 + tier), pas un réflexe.
+- [ ] Reste dû, inchangé : **le tier 030 sur l'hôte AArch64** avant tout
+  retour du flip `auto` — et l'ABBA de re-promotion du mode 2 ci-dessus
+  si ses +3 % (un run) survivent au protocole.
 - **C'est le chemin 030, pas le générateur x64.** Dans le même run,
   `jit_lockstep_x64_test` (26,30 s) et `jit_lockstep_x64_fine_test` (3,95 s)
   — les locksteps 68040 contre ce même générateur — passent, ainsi que
@@ -558,10 +642,16 @@ Plus, and the beyond-boot gap above. Lowest scores are **freshness**
 
 **État courant.** Le moteur atteint **les douze enveloppes CPU de l'arbre**.
 `jit/auto` est le défaut conformant **sur 68040 depuis le 2026-08-10 et sur
-68030 depuis le 2026-08-18**, et un 030 résout vers le générateur NATIF sur les
-deux ISA hôtes depuis le 2026-08-21 — chaque paire (famille, backend) promue
-sur ses propres preuves D.1 : AArch64 le 2026-08-20 (score 64, −5,3 %),
-x86-64 le 2026-08-21 (score 0, **−12,6 %** face à `threaded`). 68000 et 68020
+68030 depuis le 2026-08-18**. Un 030 résout vers le générateur NATIF sur
+**AArch64 seulement** : la promotion x86-64 du 2026-08-21 (score 0, −12,6 %
+face à `threaded`) est **RETIRÉE le 2026-08-29** — le premier `ctest -L m030`
+lancé sur cet hôte a figé **tous** les gates 030 qui atteignent le
+générateur (23 `Timeout`, 20 encore en vol après 11 h), pendant que les six
+`interp_*`, les deux gates Mac LC (68020) et les tests unitaires passaient —
+et l'A/B sur `d4a18b6` prouve que le blocage **précède** le patch 31 : c'est
+une régression produit des huit jours écoulés depuis le flip. `caps().autoFamilies` x64 = `kGuest68040`, `guestFamilies`
+inchangé. **La promotion a64 du 2026-08-20 n'a jamais tourné sous le patch
+31** : à revérifier sur l'hôte AArch64 avant de s'y fier. 68000 et 68020
 restent à l'interpréteur, qui demeure l'oracle d'exactitude, avec un
 `interp_*_boot_etalon` par plateforme 040 et 030.
 Meilleurs chiffres mesurés — budget fixe, empreinte identique sur chaque moteur
@@ -1292,8 +1382,11 @@ Conséquences mesurables, pas théoriques : deux hôtes, deux taux de repli, don
 une mesure faite sur l'un qui ne transfère pas à l'autre ; et aucun gate ne
 compare les deux `canEmit`. C'est la cause directe de l'item permanent « porter
 les deltas 030 de a64 vers x86-64 » (§ 3) — chaque correction se paie deux
-fois, à la main. **L'item `D1F0` de § 3 est le prochain à la payer** : le coût
-de l'EA de format complet est du 68k pur.
+fois, à la main. **`D1F0` l'a payé le dernier, et il est clos** (2026-08-28,
+`CHANGELOG.md` (fourth)) : le coût de l'EA de format complet est du 68k pur, et
+il vit désormais dans `JitCost.h`. Ce qui reste à payer est nommé ligne par
+ligne par la table d'exceptions de `jit_backend_parity_test` — c'est le backlog
+exact du portage x64, dernière case de la vague 2.
 
 ### Constat 3 — 58 % de la preuve n'existe que sur un hôte
 
@@ -1363,19 +1456,30 @@ tout ce fichier après la vague 0.
   `coverage-zero.txt`. La liste actuelle décrit le palier CI, pas le produit.
 
 **Vague 2 — dissoudre la dette JIT.** C'est § 3 vu par l'architecture plutôt
-que par le ROI d'opcode ; les deux listes se rejoignent sur `D1F0`.
+que par le ROI d'opcode ; les deux listes se sont rejointes sur `D1F0`, clos
+depuis (ABBA nul).
 
 > **Cette vague n'est plus un nettoyage, c'est le chemin critique de § 3.**
 > Décidé le 2026-08-28 : l'item `D1F0` — 53 % des replis sous charge
-> applicative, le meilleur ROI du fichier — est **bloqué derrière l'extraction
-> ci-dessous**, et un prototype non commité dans l'arbre de travail montre
-> pourquoi. Il écrit un prédicat de sous-forme et une constante de 6 cycles
-> dans `JitBackendA64.cpp` ; ces deux objets sont du 68k, donc les livrer là
-> crée immédiatement leur jumeau à écrire dans `JitBackendX64.cpp`. **Le
+> applicative, **tenu ce jour-là pour le meilleur ROI du fichier** — est
+> **bloqué derrière l'extraction ci-dessous**, et un prototype non commité dans
+> l'arbre de travail montre pourquoi. Il écrit un prédicat de sous-forme et une
+> constante de 6 cycles dans `JitBackendA64.cpp` ; ces deux objets sont du 68k,
+> donc les livrer là crée immédiatement leur jumeau à écrire dans
+> `JitBackendX64.cpp`. **Le
 > backlog appelle ça « porter les deltas » et le paie depuis des semaines** —
 > ce n'est pas une tâche récurrente, c'est le symptôme d'une table écrite au
 > mauvais endroit. Faire l'extraction avant `D1F0` la fait disparaître ; la
 > faire après, c'est payer le portage une fois de plus et rouvrir l'item.
+>
+> **L'ordre a tenu, le gain non — et la phrase « meilleur ROI du fichier » est
+> périmée depuis le soir même.** L'ABBA murale de `D1F0` a rendu **+0,02 % sur
+> un plancher de 0,6 %** (`CHANGELOG.md` 2026-08-28 (seventh)) : l'extraction
+> se défend par son seul argument d'architecture — une table du 68k écrite une
+> fois, et un gate qui compare les deux `canEmit` — et jamais par le temps
+> qu'elle devait débloquer. Aucun item ci-dessous n'hérite du titre : **le
+> prochain levier mural exige un profil temporel** (§ 3), pas un rang dans un
+> histogramme de replis.
 
 **FAITE le 2026-08-28**, critère d'acceptation tenu :
 
@@ -1396,9 +1500,21 @@ que par le ROI d'opcode ; les deux listes se rejoignent sur `D1F0`.
   refuse ensuite). Une ligne périmée fait AUSSI échouer le gate, pour qu'une
   exception ne survive pas à la correction qu'elle attendait.
 - [ ] **Ce qui reste de « porter les deltas »** : les lignes a64-only de la
-  table d'exceptions du gate (bitfields, MOVE SR, shifts, destinations
-  indexées de MOVE, full-index/`(An)+`) sont maintenant le backlog exact du
-  portage x64, en rouge-immédiat si l'une bouge sans son jumeau.
+  table d'exceptions du gate sont le backlog exact du portage x64, en
+  rouge-immédiat si l'une bouge sans son jumeau. **Les shifts registre sont
+  PORTÉS le 2026-08-29 (sixth)** — le déroulé pas-à-pas d'a64 traduit, la
+  ligne d'exception retirée, 82,0 → 88,1 % natif au boot LC II, mur plat
+  (la leçon D1F0 tient une 2e fois). Restent, par taille MESURÉE sur ce
+  boot : JSR `$4EB0` (711 k — `pom68kJitReadProg` existe déjà côté x64),
+  TST mémoire `$4A11` (552 k), destinations indexées de MOVE (`$2F70`,
+  391 k), bit ops mémoire (`$08A9`, 332 k), MOVE from SR (105 k),
+  bitfields. **L'« ordre `(An)+` » (`$24D0`, 1,64 M) est SORTI de cette
+  liste le 2026-08-29 (seventh)** : mesuré identique dans les deux modes
+  thunk, ce sont des refus de sonde mémorisés (probe 66 k / codepage 25 k /
+  notram 25 k) — un port d'émetteur n'y changerait rien, et a64 porte les
+  mêmes familles en tête de ses propres replis runtime. Le vrai levier
+  serait un chemin d'écriture directe observée par le guard — une question
+  de design, nommée, pas un portage.
 
 **Vague 3 — hygiène et coût documentaire.** Continu, aucun de ces items ne
 bloque un autre.

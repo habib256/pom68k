@@ -23,7 +23,7 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 
 | Fact | Where |
 |---|---|
-| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask, and **both carry 68040+68030**: a64 since its independent 2026-08-20 promotion, x64 since 2026-08-21 (the IIsi blocker cleared, § C.4septies); `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
+| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask, and the two **no longer agree**: a64 carries 68040+68030 since its independent 2026-08-20 promotion, x64 carries 68040 alone since its 030 promotion was **withdrawn on 2026-08-29** (§ C.5 box); `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
 | `threaded` declares `kGuestAny`; `auto` uses it for 000/020, while an 030 reaches the native generator on both ISAs | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
 | `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:1997-2033` |
@@ -35,7 +35,7 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitBackendX64.cpp:190-250`, `Cpu030.h:152-177` |
 | `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` asserted before the split is exposed | `JitIr.h:949-957`, `JitEngine.cpp:891` |
 | `jit_lockstep_030_test` exists: two LC IIs, register + clock + low-RAM + **three i-cache counters** per checkpoint | `tests/jit_lockstep_030_test.cpp` |
-| The 030 emitters are reachable by explicit `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override). `auto` reaches a64 on an AArch64 030 since 2026-08-20 and x64 on an x86-64 one since 2026-08-21. A shipping default reaches only a generator that earned the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
+| The 030 emitters are reachable by explicit `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override). `auto` reaches a64 on an AArch64 030 since 2026-08-20; it reached x64 on an x86-64 one from 2026-08-21 until the withdrawal of 2026-08-29, and now resolves such a guest to `threaded`. A shipping default reaches only a generator that earned the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
 
 Two consequences worth naming up front, because they cut work out of the
 plan:
@@ -851,6 +851,24 @@ correctness has a standing guard, so the two halves were separated:
   cases), the x64 120k gate, the a64 6,000-frame production-cadence gate,
   and an LC II Finder boot under
   explicit x64 (the gate that timed out at an hour on 2026-07-30).
+> **WITHDRAWN on x86-64, 2026-08-29 — and condition 4 below is exactly how
+> long the blind spot lasted.** That tier (118/118, 2 h 02) is the LAST time
+> anything ran a 68030 etalon on an x86-64 host. Eight days later
+> `ctest -L m030` hung EVERY 68030 gate that reaches the generator — 23
+> `Timeout`, 20 more still running after 11 h — while the six `interp_*`
+> references and the two 68020 Mac LC gates passed. **Measured, not
+> inferred:** two arms built from `d4a18b6` *without* that day's Moira patch
+> 31 wedge identically (x64 pinned 900.08 s, HEAD's own `auto` default
+> 900.06 s), so this is a REGRESSION of the eight days since the flip, in
+> ordinary post-MMU generated code, and the product consequence is that no
+> 68030 machine boots under the shipping default on x86-64.
+> `caps().autoFamilies` on x64 drops back to `kGuest68040`; `guestFamilies`
+> is untouched, so the pinned gates below keep pointing at the defect, and
+> the bisect between the flip commit and `d4a18b6` is the open work.
+> **The a64 flip has no fresher evidence than this one had** — the AArch64
+> host must re-run its own 030 tier before that promotion is trusted.
+> `CHANGELOG.md` 2026-08-29.
+
 * **Default: decided independently per backend — and BOTH have now fired.**
   The mechanism: `BackendCaps::autoFamilies` is the SPEED mask `auto`
   consults, separate from the `guestFamilies` correctness mask an explicit

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 325 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 333 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"patch 31 caused the 68030 wedge, because the `-L etalon` tier had run 118/118 green eight days earlier" — a dated green tier is not a control; both arms built from HEAD *without* the patch wedge identically, and the real finding is that no 68030 boots under the shipping default on x86-64** → [2026-08-29 — Moira patch 31…](#2026-08-29-patch31-and-the-withdrawal)
+- **"the x64 030 generator refuses 100 % of its code windows" — both backends refuse identically at the same step, and the cause is a one-byte page from an unprogrammed TC, bounded to the pre-MMU boot** → [2026-08-28 (fourteenth) — The 100 % window refusal…](#2026-08-28-030-degenerate-page)
 - **"the GUI speed gap is the per-slice AppleTalk path" (×9.235 off vs ×0.845 on, 2026-08-25) — its two arms match turbo-vs-paced, and the real thief was the pacer sleeping relative to emulation cost alone: every paced machine ran at ~×0.75 nominal** → [2026-08-28 (ninth) — Nominal mode never held ×1…](#2026-08-28-pacing-absolute-deadline)
 - **"eliminating the biggest fallback family will buy wall time" — the D1F0 ABBA read +0.02 % on a 0.6 % floor; the fallback histogram is not a time profile** → [2026-08-28 (seventh) — The D1F0 ABBA…](#2026-08-28-d1f0-abba-null)
 - **the Windows release ships a JIT that cannot work: the x86-64 generator is compiled in on `AMD64` and follows the System V ABI, and the job that builds it runs no test** → [2026-08-28 — An architecture pass reads the repository…](#2026-08-28-architecture-review)
@@ -344,6 +346,14 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-29 (seventh)** — ["Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes](#2026-08-29-anpi-refuted)
+- **2026-08-29 (sixth)** — [The x64 generator learns the register shifts: a64's step-exact lowering translated, one parity-table row retired, 82.0 % → 88.1 % native](#2026-08-29-x64-shift-port)
+- **2026-08-29 (late night)** — [The mode-2 storm was an engine loop retiring nothing: coarse trip, exact eviction, and a guard exit that re-runs the store forever — fixed by one interpreted step](#2026-08-29-mode2-storm-mechanized)
+- **2026-08-29 (night)** — [The ±2 was the post-PMOVE fetch pipe: the interpreter counts nothing in its shadow, a native block counted everything — all three locksteps green, host all-green](#2026-08-29-pmove-pipe-plus2)
+- **2026-08-29 (evening)** — [m030 56/56 under the clamp; the base 030 lockstep had silently become a threaded gate; the ±2 is localised to one block in patched code and parked](#2026-08-29-m030-green-and-the-pin)
+- **2026-08-29 (later)** — [The x86-64 030 wedge is isolated to one switch: exact-write thunks; mode 1 boots the Finder pinned in 53 s with threaded's exact fingerprint](#2026-08-29-mode2-wedge-isolated)
+- **2026-08-29** — [Moira patch 31 gives the 68030 its page back, and the tier it unblocked finds an x86-64 default that stopped booting eight days ago](#2026-08-29-patch31-and-the-withdrawal)
+- **2026-08-28 (fourteenth)** — [The 100 % window refusal is not the x64 generator: an unprogrammed TC gives the 68030 a one-byte page, and both backends refuse identically](#2026-08-28-030-degenerate-page)
 - **2026-08-28 (thirteenth)** — [The 68030 lockstep segfaults on every x86-64 tree, and the overflowing counter was the thermometer, not the disease](#2026-08-28-x64-030-retry-storm)
 - **2026-08-28 (twelfth)** — [The tree did not compile on g++, one gate cited evidence that cannot exist on this host, and the first real GCC census is 17 warnings](#2026-08-28-x64-host-first-run)
 - **2026-08-28 (eleventh)** — [Four documents carried a wrong per-host gate total, and the per-label figures beside them were right](#2026-08-28-registry-derived-totals)
@@ -672,8 +682,542 @@ Newest first.
 
 ---
 
+<a id="2026-08-29-anpi-refuted"></a>
+## 2026-08-29 (seventh) — "Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes
+
+The backlog line said the biggest remaining fallback — MOVE.L `(A0),(A2)+`,
+1.64 M RUNTIME replays per 2 000-frame boot — was the a64-only "(An)+ order"
+lowering waiting for its x64 port. Measured before coding, twice:
+
+- under thunk mode 2 the form is **already emitted** (0 unsupported) and
+  replays **1 644 272** times — against 1 644 266 at mode 1. The thunk
+  path is not in the story at all;
+- the engine's fill attribution says why: **probe=65 772,
+  codepage=24 795, notram=24 807** remembered refusals, each filled once
+  and then serving every later access through the runtime stub.
+
+So the replays are write-probe refusals — destinations the data TLB may
+never map inline (pages holding translated code, non-RAM apertures, ATC
+misses) — and a64's own SimCity census lists the SAME `(An)+` families at
+the top of ITS runtime fallbacks: the port would have moved nothing. The
+backlog line is rewritten to what the measurement says; the a64 EA_PI
+probe-first ordering stays un-ported on x64 alongside the standing `-(An)`
+warning (two such ports diverged the lockstep on 2026-08-18). What WOULD
+move this family is a direct-write path for refused-but-plain destinations
+with the guard observed inline — a design question, not an emitter port,
+and it is left as one.
+
+<a id="2026-08-29-x64-shift-port"></a>
+## 2026-08-29 (sixth) — The x64 generator learns the register shifts: a64's step-exact lowering translated, one parity-table row retired, 82.0 % → 88.1 % native
+
+**Chosen by census, not by list order.** A 2 000-frame boot census on the
+x64 backend put the register shift/rotate family (`Op::ShiftRegister`,
+a64-only since the parity sweep first named it) at **~1.18 M static
+fallbacks — 14.9 % of all of them** — the largest single a64-only gap under
+this workload, ahead of JSR `$4EB0` (711 k) and MOVE-from-SR (105 k).
+
+**The lowering is a64's, deliberately not x86's.** x86 has native shifts,
+but OF is undefined past count 1 and CF at count ≥ width differs from the
+68k — exactly the edge-case space where emulators bleed. The port keeps
+a64's unrolled single-bit steps (`JitBackendA64.cpp:3125`), which its own
+120k lockstep proved, so the two backends agree by construction: ASd/LSd/ROd
+at byte/word/long, immediate counts (0→8) and the dynamic Dn form
+specialized to the traced count and guarded on `Dn & 63` BEFORE any state
+changes (bail to the interpreter door when it moved), ROXd interpreted on
+both, `packedCcr` refused like a64. CCR in a64's store order: N/Z from the
+masked result, C = last outgoing bit, X follows C except ROd and a zero
+dynamic count, V sticky-set by ASL alone.
+
+**The parity gate did its job in both directions.** `canEmit` gains a64's
+rule verbatim (`action != 2`), the ShiftRegister exception row is REMOVED
+from `jit_backend_parity_test`'s dated table — a row that outlives its fix
+fails the gate — and the 65 536-opcode sweep is green with one predicate
+where there were two.
+
+**Judged.** The 120k lockstep against the new emitter: **identical**
+(46.8 s); all four 030 lockstep gates + both 68040 + `jit_backend_test` +
+`jit_asset_free_lockstep_test` green; the pinned LC II boot 50.77 s; the
+2 000-frame bench prints `threaded`'s exact fingerprint
+`3de5c5ab62b4eca8`. Native share **82.0 % → 88.1 %**, fallbacks
+7.93 M → 6.17 M (−22 %), every `$E`-line row gone from the fallback top
+list. Wall: **×5.02, flat** — stated, not hidden: the D1F0 lesson holds a
+second time, a fallback's share does not price its time, and this entry's
+worth is COVERAGE and one predicate instead of two, not a stopwatch.
+
+**The remaining a64-only rows, by measured size on this workload:** the
+`(An)+` runtime order (`$24D0`, 1.64 M runtime — the largest of ALL
+remaining fallbacks), JSR `$4EB0` (711 k — `pom68kJitReadProg` already
+exists on x64), TST memory `$4A11` (552 k), indexed MOVE destinations
+(`$2F70`, 391 k), memory bit ops (`$08A9`, 332 k), MOVE from SR (105 k),
+bitfields. Each retires its own dated parity row when it lands.
+
+<a id="2026-08-29-mode2-storm-mechanized"></a>
+## 2026-08-29 (late night) — The mode-2 storm was an engine loop retiring nothing: coarse trip, exact eviction, and a guard exit that re-runs the store forever — fixed by one interpreted step
+
+**The instruments, in the order they overturned each other.** A per-frame
+gauge line in `jit_bench_lcii` (`POM68K_BENCH_JIT_PROGRESS`) killed all
+three storm theories at once — walking into the wedge there is NO eviction
+storm, NO compile storm, NO trip storm: every counter is calm and the guest
+advances at full speed until **frame 229 never arrives** (f=228's boundary
+pc is `$40A1490A`, the ROM's Egret handshake — the 2026-07-30 wedge address
+to the digit). Valgrind over 205 frames: zero errors — no wild host write,
+the corruption theory dead. A fresh SIGABRT core inside the frozen frame:
+`mmuWrite<Long, RMW>` under `pom68kJitWrite` under generated code, target
+`$4FC4`. And ten poor-man's-profiler samples (the bench as gdb's child,
+SIGINT rain — `perf_event_paranoid=4` forbids better) split 5×
+`serviceGuard`, 4× `mmuWrite`-under-thunk, 1× `blocks_.find`: the loop
+photographed.
+
+**The mechanism, and every observation clicks into it.** The handshake spins
+on a flag at `$4FC4` that lives 4 bytes from translated code at `$4FC8` —
+data beside code, classic 68k. Under exact writes (thunk mode 2):
+
+1. the store thunk writes `$4FC4` → `guard.note()` trips, because the trip
+   tests a **32-byte sub-slice mask** and flag and code share sub-slice 6;
+2. the guard door (`JitBackendX64.cpp:1730`) exits at the store's OWN
+   boundary, WITHOUT retiring — its comment says the instruction "is about
+   to be run a second time";
+3. `serviceGuard` evicts on **exact byte ranges**: `$4FC7 < $4FC8` — nothing
+   falls, the mask stands;
+4. re-dispatch, same block, same store, same trip. One thunk write per turn,
+   zero cycles charged, zero instructions retired. Forever.
+
+Before `661a784` a trip evicted its WHOLE slice, so someone always fell and
+the loop broke on the first turn — which is why the bisect lands exactly
+there. Mode ≤1 stores retire through `pom68kJitStep`, so progress is
+guaranteed — which is why the clamp works. And 2³¹ uncounted MMU accesses at
+~10⁷ turns/s is ~200-250 s — which is the thirteenth entry's SIGSEGV clock,
+to the minute. The gap the loop lives in is exactly the space between a
+coarse test and an exact eviction.
+
+**The fix: one interpreted step, not a smaller mask.** After a
+guard-tripped `WindowLost` block exit, once `serviceGuard` has run, the
+engine retires ONE instruction through the interpreter
+(`Miss::GuardReplay` counts them). Progress is guaranteed by the
+interpreter's own correctness; the cost is what modes 0/1 already pay for
+exactly this store; and the re-run it replaces was already the door's
+documented contract, so no new memory-visibility case is introduced. (The
+pre-existing contract does re-run a store whose first attempt already
+landed — idempotent for RAM stores of the same value, and I/O never
+reaches this path since the guard maps only RAM. An RMW re-run reads its
+own first attempt's value; that hazard predates this fix, is unchanged by
+it, and the 120k lockstep has never met it.)
+
+**Judged.** The bench at explicit mode 2: **>600 s wedge → 1.25 s**,
+fingerprint `8b4045727f565816` — `threaded`'s exact print — at **×7.34 real
+time**, the fastest of the three modes. The 120k lockstep at explicit
+mode 2 with both § C.4nonies admissions: **120 000 steps identical**,
+47.5 s, and its refusal line shows `pipe 1` — the (night) fix at work once.
+
+**What deliberately does NOT change: the clamp stays.** Mode 2 is repaired
+and conformant as far as one lockstep and one bench can say, but
+`maxAccessThunk030` stays at 1: mode 2's +3 % over mode 1 is one unpaired
+run, not an ABBA, and a default moves on D.1 evidence and a green tier —
+the same rule that would have caught the last three defaults this week.
+The re-promotion is now a named, cheap, measurable item instead of a
+mystery.
+
+<a id="2026-08-29-pmove-pipe-plus2"></a>
+## 2026-08-29 (night) — The ±2 was the post-PMOVE fetch pipe: the interpreter counts nothing in its shadow, a native block counted everything — all three locksteps green, host all-green
+
+**The instrument chain that closed it, because the hypotheses kept dying.**
+The gate gained `POM68K_JIT_LOCKSTEP_ICTRACE=1` — print the i-cache counter
+delta at every boundary where it changes, keep running; the default gate is
+untouched. It overturned the localisation first: the coarse delta jumps
+0 → +4 in ONE compare window whose dispatch ring holds a single entry (the
+ROM Egret poll at `$40A00488`, 4 095 instructions), so the earlier deny
+result on `$00A416AE` was healing by upstream dominoes, not naming a
+culprit. Under fine budgets the event lands at clk 195201882, the deny pair
+then splits the two native runs in that 64-cycle window, and
+`POM68K_JIT_TRACE_BLOCK=<pc>` — a new engine instrument, routed through
+`ResolvedConfig` like every knob — prints the culprit block's recorded IR:
+clean, `fetchWords=2/2`, every hand-pairing of charges against real fetches
+balancing. Which is the point where the assumption itself has to be wrong,
+and the first branch of `mmuFetchWord` says which one:
+
+```c
+if (mmuPipeCnt > 0) { … return mmuPipe[off / 2]; }   // BEFORE the counters
+```
+
+**The mechanism.** Patch group 11's pre-switch pipe serves up to three
+linear fetch words after a PMOVE to TC/CRP/SRP — real 68030 behaviour the
+LC II boot depends on — and it returns before the i-cache overlay, so the
+interpreter counts NOTHING in a PMOVE's shadow. A native block's folded
+charge counts its traced `fetchWords` unconditionally. The System's MMU-init
+loop is self-patched code (the ring caught `$B0` holding `BNE.S` at one
+boundary and `NOP` at the next; the culprit block's terminal IRC is `F013`,
+a PMOVE opcode): a block traced before the patch, run natively after it, in
+the pipe's shadow — +2 fetches, +2 hits, 0 misses, 0 cycles. Both budget
+shapes, both events, one cause.
+
+**The fix is structural, not a compensation.** Line F is `Kind::Unsafe`, so
+a PMOVE always ENDS a block before itself and can never execute from inside
+one; the only hole was the engine arming in the shadow. Moira exposes
+`pomMmuPipeLive()` (patch group 32, one accessor), and `armWindow()` refuses
+while it is true — before the covers fast path, because a PMOVE to CRP with
+translation off arms the pipe without moving the map. The shadow is at most
+three words, killed by the first fetch outside them; both engines run it
+interpreted, not-counting included. `ArmFail::Pipe` counts the refusals.
+
+**Judged**: the three red locksteps are green — `jit_lockstep_030_test`,
+`_x64_experimental_`, `_x64_alignment_` each **120 000 steps identical** in
+~48 s. Non-regression: `blocks_test` (threaded), both 68040 x64 locksteps,
+`jit_backend_test`, `jit_asset_free_lockstep_test` green; the pinned LC II
+boot unchanged at 52.84 s; the 2 000-frame bench prints `threaded`'s exact
+fingerprint `3de5c5ab62b4eca8` at **×5.03 real time** against threaded's
+×1.91. **The x86-64 host has no red 030 gate left.**
+
+**The day's arc, for the record.** One counter divergence, four instruments
+built or extended to read it (`ArmFail` split, `ICTRACE`, `TRACE_BLOCK`, the
+ring windows), five hypotheses killed by source or measurement before the
+sixth survived contact with `mmuFetchWord`'s first branch. The `auto` flip
+stays withdrawn — mode 2's serviceGuard storm is still capped, not repaired,
+and the tier rule stands — but every named blocker of the lockstep is gone.
+
+<a id="2026-08-29-m030-green-and-the-pin"></a>
+## 2026-08-29 (evening) — m030 56/56 under the clamp; the base 030 lockstep had silently become a threaded gate; the ±2 is localised to one block in patched code and parked
+
+**The tier.** Full build (exit 0, 157 gate executables fresh, 0 zero-byte
+artifacts), then `ctest -L m030 -j64`: **56/56 green in 29 min 35 s** — every
+boot/soak/persist etalon that wedged for eleven hours the night before, the
+six `interp_*` references, and the pinned `jit_*` boot etalons now crossing
+the boot at thunk mode 1. The three 030 locksteps are NOT in this tier — the
+`m030` label regex matches machine names, and `lockstep_030` is none of them;
+they live in `unit`+`jit`, which is where the night's reds actually were.
+
+**A gate degraded by the withdrawal, caught by its own green.** The base
+`jit_lockstep_030_test` PASSED its first post-withdrawal run — because its
+harness reaches the backend through `auto`, and `auto` on an x86-64 030 now
+resolves to `threaded`: the gate had silently become a second
+`jit_lockstep_030_blocks_test`, green and proving nothing the sibling does
+not. The IIsi lesson verbatim, one week later. The registration now pins
+`POM68K_JIT_BACKEND=${POM68K_JIT_NATIVE_BACKEND}`, and the gate fails in
+8.9 s at step 5956 like its two explicit siblings. Three reds, one cause.
+
+**The ±2, hunted to a standstill and parked with its instruments.** The
+divergence is fetch/hit counters only — +4/+4 at the coarse budget shape,
++2/+2 at fine, misses and clock and guest state identical — and the deny
+bisect lands on the SAME single block at both budget shapes:
+**`$00A416AE`**, denying exactly it heals 8 000 coarse steps and 15 000 fine
+steps. Two hypotheses were killed at the source rather than shipped: the
+Bcc taken/not-taken fetch asymmetry (dead — `execBcc`'s `prefetch` and
+`fullPrefetch` are both mode-5 no-ops, and `mmuExecuteStart` refetches
+ird+irc unconditionally, so a Bcc.S fetches 2 on either path and the
+emitter's both-paths charge is exact), and the access-thunk bias (dead —
+`pom68kJitRead/Write` restore the bias symmetrically). What the fine-budget
+dispatch ring DOES show: the block sits in a NOP field ending in `BNE.S`
+with a two-word instruction at `$00A416AA` — patched code — in the same
+`$A41xxx` neighbourhood where one-instruction blocks at `$00A41AEA` and
+`$00A41B52` are evicted and re-traced EVERY guest loop iteration, i.e. a
+write lands beside them each pass. Reproducers, ring windows and the deny
+coordinates are in TODO § 1; the two red gates stay red pointing at exactly
+this.
+
+**The mode-2 storm, seen in miniature at mode 1.** That per-iteration
+evict→re-trace cycle is cheap at mode 1 (a one-instruction trace) and is the
+first direct observation of a candidate mechanism for the mode-2 wedge: under
+exact writes the writer runs native and fast, every pass writes beside live
+blocks, and each write pays a serviceGuard walk — the SIGABRT core's exact
+resting place. Still marked candidate, not conclusion: no measurement yet
+ties the wedge's wall to these specific slices.
+
+<a id="2026-08-29-mode2-wedge-isolated"></a>
+## 2026-08-29 (later) — The x86-64 030 wedge is isolated to one switch: exact-write thunks; mode 1 boots the Finder pinned in 53 s with threaded's exact fingerprint
+
+**The instrument chain, each step paid by the previous one's answer.** The
+bisect named `661a784` but not a mechanism. `jit_bench_lcii` reproduced the
+wedge under a fixed cycle budget — 250 frames: `threaded` 2.70 s, `x64`
+**cut at 600 s** — and located it in guest time: mode-2 runs are clean and
+fast through 200 frames (1.19 s) and `translation moved` first appears there,
+so the wedge begins right at MMU enable, in the first post-MMU 030 code. A
+SIGABRT core taken 90 s into the wedge (the bench pinned at 100 % of one
+core) lands in **`jit::Engine::serviceGuard()`**, in the slice-index hash
+walk — the engine, not generated code. The lockstep contributed the negative
+result that matters: x64 is **step-identical to the interpreter through
+5 500 steps** at 8 s of wall, so the generator's semantics were never the
+story.
+
+**Then one existing knob cut the space in half twice.** `POM68K_JIT_ACCESS_THUNK`
+(0 = no exact thunks, 1 = exact reads, 2 = exact reads+writes, the default):
+
+| 250 frames, product defaults otherwise | wall | fingerprint |
+|---|---|---|
+| `threaded` | 2.70 s | `8b4045727f565816` |
+| `x64`, thunk mode 2 (default) | **>600 s, cut** | — |
+| `x64`, mode 1 | **1.27 s** | `8b4045727f565816` — identical |
+| `x64`, mode 0 | 1.34 s | `8b4045727f565816` — identical |
+
+**Exact WRITES are the trigger.** Modes 0/1 print threaded's exact
+architectural fingerprint at every budget tried, and the full gate passes
+pinned: `lcii_boot_etalon` under `POM68K_JIT_BACKEND=x64` + mode 1 reaches
+the Finder in **53.12 s** — against 119 s for the shipping `auto → threaded`
+path and never for mode 2. The 120k lockstep with both § C.4nonies
+admissions ON at mode 1 diverges only at the known step-5956 ±2 i-cache
+counter artefact, guest state identical — the same place mode 2 diverges, so
+mode 1 gives up no proven conformance.
+
+**The default that ships: a per-(family, backend) cap, not a fix.**
+`BackendCaps::maxAccessThunk030` (default 2 = no cap), declared 1 by the x64
+backend, consumed in the Engine ctor beside the `profitScore68030` pattern;
+an explicit `POM68K_JIT_ACCESS_THUNK` still wins, which keeps the mode-2
+wedge reachable for the hunt (re-verified after the change: bare defaults
+boot in 1.28 s, explicit mode 2 still wedges). The 68040 keeps mode 2 — its
+gates never wavered.
+
+**What stays open, named.** (1) The mode-2 MECHANISM: the core says the wall
+goes to serviceGuard around block eviction under exact-write traffic, and the
+pre-patch-30 arithmetic (32.8 logged MMU accesses per 68030 cycle) says the
+same accesses repeat ~100×, but the exact loop — eviction↔recompile of a
+neighbour block, hit-overflow flushAll storms, or something else — is not run
+to ground. (2) The ±2 i-cache counter at step 5956 (block `$00A416AE`), now
+the ONLY thing stopping the lockstep from walking the whole boot. (3) The
+`auto` flip stays withdrawn: it returns behind a green m030 tier, not behind
+this entry's numbers.
+
+**Corrected en route:** the morning's reading "the pathology begins where the
+window starts arming, in recording/compilation" was half right — it is
+downstream of arming, but in the ENGINE's guard service under exact-write
+traffic, not in the recorder or the code generator, and the generator's
+output is fingerprint-exact wherever it can be compared.
+
+<a id="2026-08-29-patch31-and-the-withdrawal"></a>
+## 2026-08-29 — Moira patch 31 gives the 68030 its page back, and the tier it unblocked finds an x86-64 default that stopped booting eight days ago
+
+**The patch.** `pomIdentityProbeBound()` (`Moira.h`, private, beside
+`mmuPageMask()`) substitutes a 4 KB identity bound whenever TC's page-size
+field is illegal (`< 8`; legal is 8..15 = 256 B…32 KB), and the two 68030
+probes call it in their four identity branches — the TT match and the
+`TC.E`-off identity of `pomJitProbeCode` and `pomJitProbeData`. The ATC paths
+are untouched: they are only reached with `TC.E` set, where the field is
+programmed by construction. Inventory row 31 of `POM68K_VENDOR.md`; the
+mechanism it fixes is yesterday's fourteenth entry.
+
+**What it buys, and the lockstep is identical at every step of it:**
+
+| LC II lockstep, `threaded` | before | after |
+|---|---|---|
+| 4 000 steps — interpreted | 20 815 340 | **435** |
+| 4 000 steps — native | 0 | **20 814 905** |
+| 8 000 steps — native / interpreted | 8 368 116 / 31 888 052 | **40 213 512 / 42 656** |
+| 120 000 steps — interpreted | 46 834 827 | **14 991 200** (−68 %) |
+| 120 000 steps — arm refusals | 1 009 036 | **44 024**, `degenerate` **0** |
+| 120 000 steps — i-cache | 948 544 659 fetches | identical, both engines |
+
+Native share over the whole boot 88.1 % → **96.2 %**. `sst68030` 3 082/3 082 —
+the interpreter never calls a probe and does not move.
+
+**What it UNCOVERED, which is the entry.** `ctest -L m030` on this host, on a
+clean build (exit 0, 157 gate executables fresh): **10 green of 33 reported,
+23 `Timeout`, and 20 more still running after ELEVEN HOURS**, load 20 on
+sixteen cores, stopped by hand. The ten green name the cause without help:
+the six `interp_*_boot_etalon` (the interpreter — the patch is JIT-only),
+`sonora_video_test` and `msc_parity_test` (no CPU engine at all), and
+`lc_boot_etalon` + `jit_lc_boot_etalon` — **the Mac LC, a 68020**, the one
+family the patch does not touch. Not a single 68030 machine on the native
+generator survived.
+
+**Attribution — inferred wrong, then measured.** The reading held for two
+hours was that the patch CAUSED the wedge by handing the generator the
+pre-MMU boot it had never compiled, and it had an argument: § C.5's own
+condition 4 ran the full `-L etalon` tier **118/118 green with the x64 030
+flip in force** on 2026-08-21, on this host, so the generator demonstrably
+booted every 030 machine eight days ago. That argument is not a measurement,
+and the measurement says the opposite. Two arms, both built from `d4a18b6` —
+the tip of `main`, **without** patch 31 — running `lcii_boot_etalon`:
+
+| arm | engine | result |
+|---|---|---|
+| A | `POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=x64 POM68K_JIT_REQUIRE_NATIVE=1` | **900.08 s, exit 124** |
+| control | no environment at all — HEAD's own `auto` default | **900.06 s, exit 124** |
+
+**The wedge predates the patch.** It is a REGRESSION somewhere in the eight
+days since 2026-08-21, and its blast radius is the product, not the gates: on
+an x86-64 host, at the tip of `main`, **no 68030 machine boots under the
+shipping default engine**, because `auto` has resolved an 030 to the x64
+generator since that date and nothing has run an 030 etalon on an x86-64 host
+since. Patch 31 is innocent of it; so are the twenty wedged gates of the m030
+run, which would have wedged at `d4a18b6` too. And the withdrawal below is
+therefore not damage control for this entry's own patch — **it repairs a
+shipped regression.** The wedge is also not in the pre-MMU boot at all: at
+HEAD the window cannot arm there, so the code that hangs is ordinary
+post-MMU generated code. An ancestor of the symptom is named in the backend's
+own caps comment — the LC II wedged in the ROM's Egret handshake poll loop
+around `$40A148xx-$40A149xx`, `jit_lcii_boot_etalon` timing out at an hour on
+2026-07-30 — but whether this is that wall returning is for the bisect to
+say, not for a resemblance.
+
+**The mitigation, chosen over reverting.** `caps().autoFamilies` on x64 drops
+back to `kGuest68040`: `auto` resolves an x86-64 68030 to `threaded`, proven
+identical over 120 000 lockstep steps and now carrying the patch's gain.
+`guestFamilies` is untouched, so `POM68K_JIT_BACKEND=x64` still reaches the
+generator and the pinned `jit_*_boot_etalon` gates keep pointing at the
+defect instead of hiding it. Verified: `docs_test`, `config_test`,
+`jit_backend_parity_test`, `sst68030` green, then the four 030 etalons that
+had hung — `iisi` 148.59 s, `duo230` 82.48 s, `lc3` 231.16 s, `lcii`
+118.99 s, 4/4. `jit_backend_test`'s pinned selection case flips with it.
+
+**A second defect, found by the first.** Twenty of those gates carry **no
+`TIMEOUT`**, which is why eleven hours passed instead of thirty minutes: this
+tree calls `enable_testing()` without `include(CTest)`, so there is no
+`DartConfiguration.tcl` and CTest applies no ceiling of its own. In the same
+run every gate that DID declare one reported `***Timeout` and freed its slot.
+`cmake/Pom68kGatePolicy.cmake` now derives a ceiling for any gate that
+declares none — 1800 s for an etalon, 600 s otherwise, never overriding a
+declared one — and then FATAL_ERRORs at configure time if any registered gate
+is still unbounded. 234/234 bounded on this host. **A gate with no timeout is
+not a gate, it is a bet.**
+
+**The bisect names it: `661a784`, 2026-08-22** — *"JIT: the code guard marks
+32-byte sub-slices of each block's own bytes"*. Six testable steps between
+`015bea7` (the C.5 flip, which boots the LC II in **104 s**) and `d4a18b6`, no
+skips, `lcii_boot_etalon` on the default engine as the test:
+
+| revision | verdict |
+|---|---|
+| `015bea7` the C.5 flip | GOOD, 104 s |
+| `ac0f963` slice-index leak fix | GOOD, 101 s |
+| **`661a784` the sub-slice code guard** | **BAD, SIGSEGV at 251 s** |
+| `c4cae49`, `def4a18`, `32fa736`, `ece536c` | BAD, SIGSEGV at 250-258 s |
+| `d4a18b6` HEAD | BAD, 900 s hang |
+
+That commit rebuilt `CodeGuard`'s page map into a mask of eight 32-byte
+sub-slices per 256-byte slice, so a data write beside code stops evicting a
+whole slice — 21 M guard trips on the idle Finder down to 227 k, and the a64
+generator from 609 s to 118.85 s over 30 000 frames. Its own message records
+`-L jit|m030|m040` **131/131 green**, which is true and is the whole lesson:
+that tier ran on the AArch64 host, where `auto` serves the **a64** generator.
+The x64 half of the same change was never run, here or in CI, for eight days.
+
+**The crash became a hang on 2026-08-28, which is why it read as new.** The
+SIGSEGV at ~250 s is the signature of the thirteenth entry's unbounded MMU
+access-log counter — 32.8 logged accesses per 68030 cycle, exactly what a
+re-tracing storm produces — and Moira patch group 30 saturated that counter
+six days later. The crash it removed was never the disease; it was this
+regression's thermometer, and with the thermometer gone the same defect
+presents as a 900 s spin. (Circumstantial, not yet run to ground: the
+conversion is consistent with both symptoms and with the fix's date, but no
+core from `661a784` has been read.)
+
+**Owed, and named so it cannot be forgotten:** the a64 030 promotion of
+2026-08-20 has never run under patch 31. It is the same generator class
+meeting the same new code, on the AArch64 host where `auto` still serves it.
+Repeat this tier there before trusting that flip.
+
+**The method line, and it is about this entry.** The first version of this
+paragraph blamed the patch, on an argument built from a tier green eight days
+earlier. A dated green tier is evidence about the day it ran, and eight days
+of landings sit between it and now — using it as a control is inference
+wearing a measurement's clothes. The A/B that refuted it cost one worktree,
+one targeted build and two 900-second runs. **When the question is "did my
+change cause this", the old tier is not the control; the old tree is.**
+
+**The second method line, which the first was hiding.** `auto` has served the
+x64 generator to every 68030 guest since 2026-08-21, and the only tier that
+ever checked it ran that same day, on the one host that can. Eight days of
+030 work then landed against gates that could not see the shipping default.
+A default nobody re-runs is a default nobody supports — `TODO.md` § 10
+constat 3, in the product this time rather than in the proof.
+
+<a id="2026-08-28-030-degenerate-page"></a>
+## 2026-08-28 (fourteenth) — The 100 % window refusal is not the x64 generator: an unprogrammed TC gives the 68030 a one-byte page, and both backends refuse identically
+
+**`armWindow()` has four `return false` and only one aggregate counter.** The
+thirteenth entry left one question open — why the x64 030 window is refused
+100 % of the time — and reached for the generator to answer it. The exits were
+already there in the code (`src/jit/JitEngine.cpp:814`): the MMU probe, the
+memory map, the window geometry, and the post-arm coverage check. Three of them
+incremented the same `windowFailed`; the fourth incremented **nothing**, so
+`armed` and `failed` could not be reconciled. `jit::ArmFail` now names them,
+`Miss::ArmFailed` still counts refusals in instructions, and `armed` = accepted
++ refusals exactly.
+
+**The A/B the previous entry never ran.** Same binary, same host, same budget,
+the only difference `POM68K_JIT_BACKEND`:
+
+| 4 000 steps | jit instrs | interp | armed (refused) | wall |
+|---|---|---|---|---|
+| `x64` | 0 | 20 815 340 | 630 766 (630 766) | **8.36 s** |
+| `threaded` | 0 | 20 815 340 | 630 766 (630 766) | **8.29 s** |
+
+Identical to the counter. The refusal is **not a property of the code
+generator**; at this point in the boot no backend arms a window. And the split
+says which exit takes them: `probe 0 · notram 11 · degenerate 630 755 ·
+pc-at-end 0 · uncovered 0`.
+
+**The mechanism, and the arithmetic that leaves one door.** The refusal is
+`len < kMinWindow` with `len = min(pageLen, span)`. The `notram` exit above it
+has already refused `span < kMinWindow`, so `span >= 4` and therefore
+`pageLen <= 3`. `pomJitProbeCode`'s 030 branch takes `pageLen` from
+`mmuPageMask() + 1 = 1 << ((tc >> 20) & 0xF)`
+(`extern/moira/Moira/MoiraExecMMU_cpp.h:2004-2008`,
+`Moira.h:1873`), and the legal 68030 TC page-size field is 8..15 (256 B…32 KB).
+`pageLen <= 3` therefore means the field is **0** — TC as the ROM leaves it,
+before the OS programs it. Both branches that return before consulting the ATC,
+the TT match and the `TC.E`-off identity, carry that value out with them. An
+unprogrammed TC gives the engine a **one-byte page**, and a one-byte page can
+never hold a window.
+
+**It is bounded, and the boot proves it by repeating a number.** Over the whole
+120 000-step lockstep the degenerate refusals are **965 013** — *exactly* the
+figure already reached at 8 000 steps. Not one after: they all happen before
+the OS programs TC, and never recur.
+
+| threaded, `POM68K_JIT_BLOCKS=1` | armed | refused | probe | notram | degenerate | pc-at-end |
+|---|---|---|---|---|---|---|
+| 8 000 steps | 981 454 | 965 837 | 813 | 11 | **965 013** | 0 |
+| 120 000 steps | 20 195 081 | 1 009 036 | 43 767 | 11 | **965 013** | 245 |
+
+So the degenerate page is 95.6 % of every arm refusal in a 68030 boot, and it
+buys what it costs: each refusal is followed by the 32-instruction arm backoff,
+and 965 013 × 32 = 30.9 M against the 31.9 M instructions the interpreter
+retires in that phase. **Essentially the entire pre-MMU boot of a 68030 is
+interpreted because of a page-size field nobody had programmed yet.** It is
+`TODO.md` § 3's "68030 ×1.21" — the weakest family — with a candidate reason.
+
+**Scope: every 68030, both host ISAs.** V8, Sonora, VASP, RBV, IIfx, Duo,
+IIx/IIcx/SE30. Nothing about it is x86-64, which is why an AArch64 development
+host could not have found it either — the gates that exposed it are
+x86-64-only, but the defect is not.
+
+**What this retracts from the thirteenth entry.** Its "the x64 arm reports
+`window 630766 armed (630766 refused)` … where `threaded` retires 8 368 116 in
+the same place" compared **two different places**: the x64 figure is at 4 000
+steps, the threaded one at 8 000. At equal step counts the two arms are equal,
+above. The crash fix (Moira patch group 30), the ×29 wall clock and the
+"it is the 68030 path, not the x64 generator" reading all stand.
+
+**Where the x64 red actually is, restated.** At 4 000 steps the two backends
+are indistinguishable; at 8 000 `threaded` finishes in 9.94 s and `x64` does
+not finish in 180 s. The knee sits exactly where the window **starts** arming,
+so the pathology is downstream of the arm — recording, compilation,
+invalidation — and the refusal loop was never it. That is the item to reopen,
+and it now starts from a knee with a step number rather than from a symptom.
+
+**Not applied, deliberately.** The fix is one predicate — use `mmuPageMask()`
+only when the page-size field is legal (`>= 8`), otherwise the 4 KB identity
+bound the plain-020 branch already uses — but it is a Moira change (patch group
+31) that moves native residency on all seven 030 platforms, so it wants its own
+evidence, its own gates and its `POM68K_VENDOR.md` entry, not a ride on a
+counter commit.
+
+**Guarded meanwhile**: `jit_lockstep_x64_test` + `jit_lockstep_x64_fine_test`
+green (21.68 s, the new `Uncovered` accounting does not move the 68040 pair),
+`jit_lockstep_030_blocks_test` green (66.85 s).
+
+**The method line.** An aggregate that cannot name its exit is a symptom, not
+a mechanism. Four refusals lived behind one counter for as long as the window
+has existed, and the day the counter mattered it could only say *how many*.
+Naming them cost one run; guessing at them had already cost an entry.
+
 <a id="2026-08-28-x64-030-retry-storm"></a>
 ## 2026-08-28 (thirteenth) — The 68030 lockstep segfaults on every x86-64 tree, and the overflowing counter was the thermometer, not the disease
+
+> **Superseded in one reading:** "100 % of code windows refused … where
+> `threaded` retires 8 368 116 in the same place" compares 4 000 steps against
+> 8 000. At equal step counts both backends refuse identically, and the cause
+> is an unprogrammed TC, not the generator —
+> [the fourteenth entry](#2026-08-28-030-degenerate-page). The crash fix and
+> the rest of this entry stand.
 
 **Three gates, one deterministic SIGSEGV.** The first `ctest -L unit` ever run
 on an x86-64 host *carrying the assets* returned 104 executed / 1 soft-skipped

@@ -91,6 +91,14 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
     if (caps.nativeCode && !config_.profitScoreExplicit &&
         guestFamily_ == kGuest68030)
         profitScore_ = int(caps.profitScore68030);
+    // Same shape as the 68030 profit score: a per-(family, backend) default
+    // the backend declares and an explicit env value overrides. See the
+    // maxAccessThunk030 comment in JitBackend.h for the 2026-08-29 wedge
+    // this caps.
+    if (caps.nativeCode && !config_.accessThunkExplicit &&
+        guestFamily_ == kGuest68030 &&
+        config_.accessThunk > caps.maxAccessThunk030)
+        config_.accessThunk = caps.maxAccessThunk030;
     windowKill_ = killCountdown_ = config_.windowKill;
     armBackoff_steps_ = config_.armBackoff;
     // The virgin table must read as EMPTY (kNoLink), not as value-zero:
@@ -239,6 +247,20 @@ Engine::~Engine() {
                      (unsigned long long)dtlbWhy_[kWhyCodePage],
                      (unsigned long long)dtlbWhy_[kWhyNotRam],
                      (unsigned long long)dtlbWhy_[kWhyCache040]);
+        // Arm refusals BY EXIT. `arms` above is accepted + these four, so a
+        // family whose window never arms is localised here rather than
+        // guessed at: `probe` is the MMU's answer, `notram` the memory
+        // map's, `degenerate`/`pcatend` the geometry, `uncovered` the
+        // 040 i-cache.
+        std::fprintf(stderr,
+                     "[jit] arm refusals: probe=%llu notram=%llu degenerate=%llu "
+                     "pcatend=%llu uncovered=%llu pipe=%llu\n",
+                     (unsigned long long)s.armFails[int(ArmFail::Probe)],
+                     (unsigned long long)s.armFails[int(ArmFail::NotRam)],
+                     (unsigned long long)s.armFails[int(ArmFail::TooShort)],
+                     (unsigned long long)s.armFails[int(ArmFail::PcAtEnd)],
+                     (unsigned long long)s.armFails[int(ArmFail::Uncovered)],
+                     (unsigned long long)s.armFails[int(ArmFail::Pipe)]);
     }
     cpu_.pomJitCache040Consumer = false;
     cpu_.pomJitDtlbFillFn = nullptr;
@@ -814,6 +836,21 @@ void Engine::markPages(uint64_t blockKey, uint32_t lo, uint32_t len) {
 bool Engine::armWindow(uint32_t pc, bool super) {
     if (!useWindow_) return false;
 
+    // The post-PMOVE fetch pipe serves linear fetches WITHOUT touching the
+    // i-cache counters (mmuFetchWord returns before them), and only the
+    // interpreter's real fetches reproduce that not-counting. Refuse to arm
+    // for the pipe's lifetime — at most three words, killed by the first
+    // fetch outside them — and the shadow runs interpreted on both engines
+    // identically. Checked before the covers fast path: a PMOVE to CRP with
+    // translation off arms the pipe without moving the map, so coverage
+    // alone cannot see it. (2026-08-29; the +2/+2 lockstep class.)
+    if (cpu_.pomMmuPipeLive()) [[unlikely]] {
+        stats_.add(stats_.windowFailed);
+        stats_.bump(ArmFail::Pipe);
+        disarmWindow();
+        return false;
+    }
+
     // Already covered, nothing invalidated: the common case, and the whole
     // reason the window is worth having. pomJitCovers() also re-checks the
     // MMU generation and the privilege level, which an address range alone
@@ -843,6 +880,7 @@ bool Engine::armWindow(uint32_t pc, bool super) {
         // walk-per-access mode. The interpreter fetches it — and in doing so
         // fills the ATC, so the next attempt usually succeeds.
         stats_.add(stats_.windowFailed);
+        stats_.bump(ArmFail::Probe);
         disarmWindow();
         return false;
     }
@@ -863,6 +901,7 @@ bool Engine::armWindow(uint32_t pc, bool super) {
         // whole map while the boot overlay is still up (clearing it is a
         // READ side effect the window would skip).
         stats_.add(stats_.windowFailed);
+        stats_.bump(ArmFail::NotRam);
         disarmWindow();
         return false;
     }
@@ -873,6 +912,7 @@ bool Engine::armWindow(uint32_t pc, bool super) {
     uint32_t len = pageLen < span ? pageLen : span;
     if (len < kMinWindow || pc - pageBase > len - kMinWindow) {
         stats_.add(stats_.windowFailed);
+        stats_.bump(len < kMinWindow ? ArmFail::TooShort : ArmFail::PcAtEnd);
         disarmWindow();
         return false;
     }
@@ -883,7 +923,12 @@ bool Engine::armWindow(uint32_t pc, bool super) {
     // With an architectural 040 I-cache the translation can be known before
     // the line exists. Let one interpreter instruction perform the real
     // fill; the following arm can then expose byte-identical cached data.
-    if (!cpu_.pomJitCovers(pc)) { disarmWindow(); return false; }
+    if (!cpu_.pomJitCovers(pc)) {
+        stats_.add(stats_.windowFailed);
+        stats_.bump(ArmFail::Uncovered);
+        disarmWindow();
+        return false;
+    }
     return true;
 }
 
@@ -1118,6 +1163,25 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     }
     auto [it, inserted] = blocks_.emplace(key(pc, super), std::move(b));
     if (!inserted) return &it->second;
+
+    // POM68K_JIT_TRACE_BLOCK=<hex pc> — print a block's IR the moment it is
+    // recorded. The instrument that settled the 2026-08-29 ±2: a counter
+    // divergence blamed on an emitter turned out to be a TRACED FIELD, and
+    // nothing else could show what the tracer had captured for one pc.
+    if (config_.traceBlockPc && pc == config_.traceBlockPc) [[unlikely]] {
+        const BlockIr& ir2 = it->second.ir;
+        std::fprintf(stderr,
+                     "[jit] block $%08X recorded: %zu instr(s), end=%d\n",
+                     pc, ir2.instrs.size(), int(ir2.endReason));
+        for (const Instr& in : ir2.instrs)
+            std::fprintf(stderr,
+                         "  pc=$%08X op=%04X words=%u fetchWords=%u cycles=%u "
+                         "base=%u icache=%u nextPc=$%08X ird=%04X irc=%04X\n",
+                         in.pc, in.opcode, unsigned(in.words),
+                         unsigned(in.fetchWords), unsigned(in.cycles),
+                         unsigned(in.baseCycles), unsigned(in.icacheCycles),
+                         in.observedNextPc, in.terminalIrd, in.terminalIrc);
+    }
 
     {
         uint32_t lo = 0, len = 0;
@@ -1527,7 +1591,36 @@ void Engine::executeUntil(int64_t clockTarget) {
         // Any flush the block itself asked for was deferred; honour it now,
         // with nothing of the cache in flight.
         if (pendingFlush_) flushAll(Flush::Deferred);
-        else if (guard_.tripped()) serviceGuard();
+        else if (guard_.tripped()) {
+            // A guard-tripped exit leaves WITHOUT retiring: the store has
+            // already landed, the boundary is the store's OWN pc, and the
+            // next dispatch re-enters the same block and re-runs the same
+            // store (the JitBackendX64.cpp:1730 door says so in as many
+            // words). When the write hit a block's bytes, the eviction
+            // below breaks that cycle. But note() trips on a 32-BYTE
+            // sub-slice mask while serviceGuard evicts on exact byte
+            // ranges, so a store BESIDE code — same sub-slice, no overlap
+            // — evicts nothing, leaves the mask standing, and the re-run
+            // trips again: an engine loop retiring nothing and charging no
+            // cycles, one thunk write per turn. That is the 2026-08-29
+            // mode-2 wedge (the ROM's Egret handshake spinning on a flag
+            // at $4FC4 beside translated code at $4FC8), and it is also
+            // the loop whose 2^31 uncounted MMU accesses overflowed the
+            // access log six days earlier. Before the sub-slice guard
+            // (661a784) every trip evicted its whole slice, so SOMEONE
+            // always fell and the loop could not form.
+            const bool guardExit = r.exit == Exit::WindowLost;
+            serviceGuard();
+            if (guardExit && cpu_.pomJitIdle() &&
+                cpu_.getClock() < clockTarget) {
+                // Retire the re-run INTERPRETED: progress is guaranteed,
+                // exactness is the interpreter's own, and the cost is what
+                // the non-exact-write modes pay for every such store.
+                cpu_.execute();
+                stats_.add(stats_.interpInstrs);
+                stats_.miss(Miss::GuardReplay);
+            }
+        }
     }
 }
 

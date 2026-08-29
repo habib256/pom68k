@@ -22,10 +22,10 @@ memory-contract work and the peripheral-phase alignment pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **86** (56 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **394** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **88** (56 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **398** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **30** | this file |
+| patch groups in the inventory below | **32** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
 Twenty-nine patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -133,8 +133,10 @@ gate in the last column of each row.
 | 28 | **MC68040 data-bearing caches** — I/D line contents, WT/CB/NC policy, writeback, CPUSH/CINV, snooping and hit/fill/push timing | `MoiraCache040.h`, `MoiraExecMMU_cpp.h`, `Moira.h` | tags alone could not expose stale copyback data or alternate-master coherency | `cache040_test`, `sst68040` |
 | 29 | **MC68881/2 mid-instruction interrupts** — protocol checkpoints, format $9, BUSY FSAVE/FRESTORE resume | `MoiraExecFPU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraExec_cpp.h`, `Moira.h`, `MoiraTypes.h` | long coprocessor commands are interruptible between null/come-again responses | `fpu_sanity` |
 | 30 | **Saturating 68030 access-log counters** — `pomMmuBumpIdx`/`pomMmuBumpIdxDone` replace the raw `++` at all ten log sites | `Moira.h`, `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h` | `mmuIdx`/`mmuIdxDone` are per-INSTRUCTION state reset by `mmuExecuteStart()`; generated 68030 code enters through `pomJitWriteData`/`pomJitReadData` and never passes that loop head, so they grew without bound. Signed overflow is UB, and the store guard `mmuIdxDone < 10` is signed: at INT_MAX the counter wrapped to INT_MIN, the guard passed again and the next logged access wrote `mmuAd[-2147483648]` | `jit_lockstep_030_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_alignment_test` |
+| 31 | **Identity-sized probe bound on the 68030** — `pomIdentityProbeBound()`, applied in the TT-match and TC.E-off branches of `pomJitProbeCode` and `pomJitProbeData` | `Moira.h`, `MoiraExecMMU_cpp.h` | both branches answer *identity* and return before the ATC, but carried `pageLen` from TC.PS — 0 until the OS programs TC, and the legal values are 8..15. The engine was handed a **one-byte page** and refused every window arm: 965 013 refusals per LC II boot, 95.6 % of all of them, every one before the MMU is enabled. Interpreter untouched (it never calls a probe), ATC paths untouched (only reached with TC.E set). Measured on the 120 000-step lockstep: interpreter fallback 46.8 M → 15.0 M, refusals 1 009 036 → 44 024, degenerate → 0 | `jit_lockstep_030_blocks_test`, `sst68030`, `lcii_boot_etalon` |
+| 32 | **Post-PMOVE pipe visibility** — `pomMmuPipeLive()` accessor; the engine refuses to arm the code window while the pre-switch fetch pipe is live | `Moira.h` | mmuFetchWord serves pipe fetches BEFORE the i-cache overlay counters, so the interpreter counts nothing in a PMOVE's three-word shadow while a native block's folded charge counts its traced fetchWords — a +2 fetches/+2 hits/0 miss/0 cycle lockstep divergence in the System's self-patched MMU-init loop. The engine-side refusal (`ArmFail::Pipe`) makes both engines run the shadow interpreted, not-counting included | `jit_lockstep_030_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_alignment_test` |
 
-Rows 2-21 and 25-30 are the accuracy work; rows 22-24 are pure seams (inert
+Rows 2-21 and 25-32 are the accuracy work; rows 22-24 are pure seams (inert
 when nothing arms them). The twelve files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.*` (2), `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can

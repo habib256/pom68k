@@ -305,6 +305,7 @@ private:
     bool emitMove(size_t i, int szIdx);
     bool emitScc(size_t i);
     bool emitExg(size_t i);
+    bool emitShiftRegister(size_t i);
     bool emitCmpm(size_t i);
     // `exactFetchWords` overrides the words+1 rule for the forms whose
     // mmuFetchWord count is NOT linear (DBcc: 2 on every path — see the
@@ -2759,6 +2760,99 @@ bool Emitter::emitExg(size_t i) {
     return true;
 }
 
+// ASd/LSd/ROd #q,Dn and Dn,Dn — the register shift/rotate family, a64's
+// step-exact lowering translated (JitBackendA64.cpp:3125) rather than
+// mapped onto x86's native shifts: x86 leaves OF undefined past count 1
+// and its CF at count >= width differs from the 68k's, so the unrolled
+// single-bit steps that a64's 120k lockstep proved are kept as-is and the
+// two backends agree by construction. ROXd stays interpreted on both.
+// The dynamic form is specialized for the traced count, guarded on Dn
+// BEFORE any state changes, and replays through Moira when Dn moved —
+// a64's rule verbatim, including the cycle arithmetic that recovers the
+// count from the traced base cycles.
+bool Emitter::emitShiftRegister(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::ShiftRegister) return false;
+    if (packedCcr_) return false;
+    const int sz = sem.sizeIndex, type = sem.action;
+    if (sz > 2 || type == 2 || in.words != 1) return false;
+    const int bits = sz == 0 ? 8 : sz == 1 ? 16 : 32;
+    const uint32_t mask = bits == 32 ? 0xFFFFFFFFu : (1u << bits) - 1u;
+    const bool left = sem.left;
+    int count = sem.registerIndex;
+    if (sem.dynamic) {
+        const unsigned dynamicBase =
+            type == 3 || (type == 0 && left) ? 8u : 6u;
+        const unsigned traced = traced030(i);
+        if (traced < dynamicBase || traced > dynamicBase + 8) return false;
+        count = int(traced - dynamicBase);
+        a_.movRM(Sz::L, RCX, D(sem.registerIndex));
+        a_.aluRI(Asm::Op::AND, Sz::L, RCX, 63);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RCX, count);
+        a_.jcc(Cc::NE, *slow_[i]);
+    } else if (!count) {
+        count = 8;
+    }
+    const int dn = sem.eaReg;
+    // Value in EDI, masked to width. RSI = last outgoing bit (0/1),
+    // RDX = sticky ASL overflow, RCX scratch.
+    a_.movRM(Sz::L, RDI, D(dn));
+    if (bits != 32) a_.aluRI(Asm::Op::AND, Sz::L, RDI, int32_t(mask));
+    if (type == 0 && left) a_.aluRR(Asm::Op::XOR, Sz::L, RDX, RDX);
+    if (!count) a_.aluRR(Asm::Op::XOR, Sz::L, RSI, RSI);   // zero count: C=0
+    for (int k = 0; k < count; k++) {
+        if (left) {
+            a_.movRR(Sz::L, RSI, RDI);
+            a_.shiftRI(Sz::L, RSI, 5, uint8_t(bits - 1));  // outgoing bit
+            a_.shiftRI(Sz::L, RDI, 4, 1);                  // << 1
+            if (bits != 32) a_.aluRI(Asm::Op::AND, Sz::L, RDI, int32_t(mask));
+            if (type == 3) a_.aluRR(Asm::Op::OR, Sz::L, RDI, RSI);  // ROL
+            if (type == 0) {                               // ASL: sign flip?
+                a_.movRR(Sz::L, RCX, RDI);
+                a_.shiftRI(Sz::L, RCX, 5, uint8_t(bits - 1));
+                a_.aluRR(Asm::Op::XOR, Sz::L, RCX, RSI);
+                a_.aluRR(Asm::Op::OR, Sz::L, RDX, RCX);
+            }
+        } else {
+            a_.movRR(Sz::L, RSI, RDI);
+            a_.aluRI(Asm::Op::AND, Sz::L, RSI, 1);         // outgoing bit
+            if (type == 0) {                               // ASR at width
+                if (bits == 8) a_.movsxRR(Sz::B, RCX, RDI);
+                else if (bits == 16) a_.movsxRR(Sz::W, RCX, RDI);
+                else a_.movRR(Sz::L, RCX, RDI);
+                a_.shiftRI(Sz::L, RCX, 7, 1);              // SAR 1
+                if (bits != 32) a_.aluRI(Asm::Op::AND, Sz::L, RCX, int32_t(mask));
+                a_.movRR(Sz::L, RDI, RCX);
+            } else {
+                a_.shiftRI(Sz::L, RDI, 5, 1);              // >> 1
+                if (type == 3) {                           // ROR wrap to top
+                    a_.movRR(Sz::L, RCX, RSI);
+                    a_.shiftRI(Sz::L, RCX, 4, uint8_t(bits - 1));
+                    a_.aluRR(Asm::Op::OR, Sz::L, RDI, RCX);
+                }
+            }
+        }
+    }
+    // Only the sized part of Dn is written, like every 68k Dn operation.
+    if (bits == 32)      a_.movMR(Sz::L, D(dn), RDI);
+    else if (bits == 16) a_.movMR(Sz::W, D(dn), RDI);
+    else                 a_.movMR(Sz::B, D(dn), RDI);
+    // CCR, in a64's store order: N/Z from the masked result, C from the
+    // last outgoing bit, X follows C except for ROd and a zero dynamic
+    // count, V sticky-set by ASL alone.
+    a_.movRR(Sz::L, RCX, RDI);
+    a_.shiftRI(Sz::L, RCX, 5, uint8_t(bits - 1));
+    a_.movMR(Sz::B, at(L_.srN), RCX);
+    a_.aluRI(Asm::Op::CMP, Sz::L, RDI, 0);
+    a_.setccM(Cc::E, at(L_.srZ));
+    a_.movMR(Sz::B, at(L_.srC), RSI);
+    if (type != 3 && count) a_.movMR(Sz::B, at(L_.srX), RSI);
+    if (type == 0 && left) a_.movMR(Sz::B, at(L_.srV), RDX);
+    else a_.movMI(Sz::B, at(L_.srV), 0);
+    return true;
+}
+
 // CMPM.<s> (Ay)+,(Ax)+ — two postincremented reads, no write. Distinct
 // address registers let both DTLB mappings be proved while the entry state
 // is pristine (the x64 expansion of PreflightAll, exactly as the
@@ -3225,6 +3319,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::DecrementBranch: return emitDbcc(i);
         case SemanticOp::SetCondition: return emitScc(i);
         case SemanticOp::Exchange: return emitExg(i);
+        case SemanticOp::ShiftRegister: return emitShiftRegister(i);
         case SemanticOp::CompareMemory: return emitCmpm(i);
         case SemanticOp::AddSubQuick: return emitAddSubQ(i);
         case SemanticOp::BranchSubroutine: return emitSubroutine(i);
@@ -3636,7 +3731,30 @@ public:
         // on `threaded`. The crash did not survive the 2026-08-19/21
         // engine hardening; § C.4septies keeps the reproducer and the
         // triage order in case it returns.
-        c.autoFamilies = kGuest68040 | kGuest68030;
+        //
+        // **68030 WITHDRAWN 2026-08-29.** The line above is kept because
+        // its reasoning is still the record of how the pair entered; what
+        // it did not survive is the first 68030 tier to run since the day
+        // it entered. `ctest -L m030` hung EVERY 68030 gate that reaches
+        // this backend — 23 `Timeout`, 20 more still running after 11 h —
+        // while the six `interp_*` references, the two 68020 Mac LC gates
+        // and the unit tests passed. Measured, not attributed: two arms
+        // built from `d4a18b6` WITHOUT that day's Moira patch 31 wedge
+        // `lcii_boot_etalon` identically (x64 pinned 900.08 s, HEAD's own
+        // `auto` default 900.06 s), so this is a REGRESSION of the eight
+        // days since 2026-08-21, in ordinary post-MMU generated code, and
+        // its product consequence is that no 68030 machine boots under the
+        // shipping default on an x86-64 host. So SPEED scope drops back to
+        // the 68040 and `auto` resolves an 030 to `threaded` — proven
+        // identical over 120 000 lockstep steps. CORRECTNESS scope above
+        // is untouched, so the pinned `jit_*_boot_etalon` and lockstep
+        // gates keep exercising this generator and keep saying what it is
+        // worth; the lockstep also carries a deterministic
+        // i-cache-accounting divergence at step 5 956, localised to the
+        // block at $00A416AE. Restore the 030 here only with a green m030
+        // tier behind it, not with a bench number (CHANGELOG.md
+        // 2026-08-29).
+        c.autoFamilies = kGuest68040;
         // The access thunks bias the clock by the not-yet-charged i-cache
         // fetch penalty for the access alone (pom68kJitRead/Write, JIT_BRINGUP
         // § C.4nonies) — the declaration that turns the restart-base and
@@ -3647,6 +3765,17 @@ public:
         // declares it too since the same afternoon (its thunks carry the
         // same bias, replacing the guardIcacheHits replay).
         c.accessClockBias = true;
+        // Exact WRITES (thunk mode 2) are withdrawn as a 68030 default,
+        // 2026-08-29: the first x86-64 boot to reach post-MMU-enable 030
+        // code under them never finishes — the guest advances, but the
+        // engine burns its wall in serviceGuard() (SIGABRT core taken at
+        // 90 s into a 2.7 s workload sits in the slice-index hash walk).
+        // Mode 1 boots the LC II to the Finder in 53 s pinned (threaded:
+        // 119 s) and prints fingerprints identical to threaded at every
+        // budget tried. The mechanism of the mode-2 storm is NOT yet run
+        // to ground — this cap is a default, not a fix, and the explicit
+        // env override still selects mode 2 for the hunt.
+        c.maxAccessThunk030 = 1;
         return c;
     }
 
@@ -3706,6 +3835,8 @@ bool X64Backend::canEmit(uint16_t op) const {
         case SemanticOp::JumpSubroutine:
         case SemanticOp::Jump:
             return controlEa(eaCostIndex(mode, reg));
+        case SemanticOp::ShiftRegister:
+            return sem.action != 2;  // a64's rule verbatim: no ROXd
         case SemanticOp::Lea:
             return controlEa(eaCostIndex(mode, reg)) ||
                    eaCostIndex(mode, reg) == EA_IX ||

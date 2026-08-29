@@ -68,8 +68,10 @@ passes its `GuestFamily` bit to the `jit::Engine` constructor — grep
 `jit::kGuest` in `src/*.cpp` for the roster. The last four wrappers landed
 on 2026-08-06. Both code generators declare 040+030 correctness through
 `guestFamilies`. Their narrower `autoFamilies` speed policy is per backend
-and both now carry 040+030: AArch64 since 2026-08-20 with the measured
-68030 profitability score of 64, x86-64 since 2026-08-21 at score 0 (its
+and they no longer agree: AArch64 carries 040+030 since 2026-08-20 with the
+measured 68030 profitability score of 64; x86-64 carried 030 from
+2026-08-21 at score 0 until the promotion was **withdrawn on 2026-08-29**
+by the first whole-tier 030 run on that host (its
 −12.6 % was measured without an admission score, and a score is adopted
 per backend on measurement only — measured on x64 the same day:
 `x64@score=0,x64@score=64` ABBA at 6000 frames gave −0.8 %, inside this

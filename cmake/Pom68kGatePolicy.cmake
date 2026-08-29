@@ -159,6 +159,56 @@ set_tests_properties(jit_backend_test
                      docs_test config_test
                      PROPERTIES TIMEOUT 45)
 
+# ── Every gate is BOUNDED, declared or derived ───────────────────────
+# A gate with no TIMEOUT is not a gate, it is a bet — and CTest takes no
+# side of it here: this tree calls `enable_testing()` without
+# `include(CTest)`, so there is no `DartConfiguration.tcl` and no default
+# ceiling. An undeclared gate that wedges runs until a human notices.
+#
+# The cost of learning that, 2026-08-29: `ctest -L m030`, under a Moira
+# change that let generated code into the pre-MMU 68030 boot for the first
+# time, wedged twenty gates — `lc3plus_`, `lc550_`, `cclassic2_`, `lc520_`,
+# `iici_`, `duo230_`, `iisi_`, `iivx_`, `lc3_`, `mactv_`, `classic2_`,
+# `cclassic_`, `lcii_sys7_`, `lcii_savestate_`, `iifx_post_`… — and because
+# not one of them declared a TIMEOUT they held sixteen cores at load 20 for
+# ELEVEN HOURS. In the same run the gates that DID declare one reported
+# `***Timeout` and freed their slot: the difference between a red and a
+# hostage was one property.
+#
+# Derived, never overriding: a gate that declares its own ceiling keeps it
+# (`jit-fast` at 45 s just above, the locksteps at 1800, the `jit_*` boot
+# etalons at 3600). The derived values are deliberately generous — this is
+# a STOP, not a performance budget; budgets live in
+# `performance_budgets.tsv` and inside the gates.
+set(POM68K_GATE_TIMEOUT_ETALON 1800)   # the value the etalons that declare
+set(POM68K_GATE_TIMEOUT_OTHER   600)   # one already use; ~2× the slowest
+                                       # non-etalon gate measured here
+foreach(t IN LISTS pom68k_tests)
+    get_test_property(${t} TIMEOUT pom68k_declared_timeout)
+    if(NOT pom68k_declared_timeout)
+        if(t MATCHES "etalon$")
+            set_tests_properties(${t} PROPERTIES
+                                 TIMEOUT ${POM68K_GATE_TIMEOUT_ETALON})
+        else()
+            set_tests_properties(${t} PROPERTIES
+                                 TIMEOUT ${POM68K_GATE_TIMEOUT_OTHER})
+        endif()
+    endif()
+endforeach()
+# …and the invariant, checked rather than trusted: after the loop above no
+# registered gate may be unbounded. This cannot fail today by construction,
+# which is the point — it fails the day someone registers a gate outside
+# this file's reach.
+foreach(t IN LISTS pom68k_tests)
+    get_test_property(${t} TIMEOUT pom68k_final_timeout)
+    if(NOT pom68k_final_timeout)
+        message(FATAL_ERROR
+            "gate '${t}' carries no TIMEOUT. Every gate must be bounded — "
+            "see the eleven-hour m030 wedge of 2026-08-29 in "
+            "cmake/Pom68kGatePolicy.cmake.")
+    endif()
+endforeach()
+
 # Gate contract manifest. `unit` predates the asset model and only means
 # "not named *_etalon"; it is intentionally retained for compatibility,
 # but CI and tooling now consume these orthogonal, exhaustive dimensions.
