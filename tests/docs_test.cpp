@@ -29,6 +29,8 @@
 //  13. TODO.md's active-work gate-registry headline matches CTest
 //  14. CMake registrations, dev tools and registry policy stay modular
 //  15. leaf devices consume subsystem config views, never the whole core bag
+//  16. STATUS.md — the registry as a GENERATED artifact (tools/status_md.py)
+//      — re-derives against the same roster/manifest this gate reads
 //
 // Check 4 is here because it caught a live one the day it was written: four
 // gates — the three IIfx ones and `duo230_boot_etalon` — were registered
@@ -1717,6 +1719,160 @@ int main() {
                   std::string(file) + ": `" + line.substr(0, tail - 1) +
                       "` says " + std::to_string(stated_n) + " gates; " + which +
                       " has " + std::to_string(want));
+        }
+    }
+
+    // ── 16. STATUS.md is the registry's generated artifact ───────────────
+    // TODO.md § 10 wave 3: the totals above exist in prose because the prose
+    // came first; STATUS.md is written by `tools/status_md.py` from the same
+    // configure-time files this gate reads, so here the whole artifact is
+    // re-derived and compared. Division of labour as in check 5bis: the
+    // union section must be right on EVERY host, the `## Registered on`
+    // section only on the host that owns it — a placeholder section for a
+    // host that never ran the tool is absence, not drift, and passes with a
+    // printed note.
+    {
+        const std::string statusPath = testasset::find("STATUS.md");
+        check(!statusPath.empty(), "STATUS.md generated registry located");
+        const std::string status = statusPath.empty() ? "" : slurp(statusPath);
+        check(status.find("GENERATED FILE") != std::string::npos,
+              "STATUS.md declares itself generated");
+
+        // Union heading: "## Union across hosts — N gates".
+        const char* unionHead = "## Union across hosts — ";
+        size_t u = status.find(unionHead);
+        check(u != std::string::npos, "STATUS.md carries the union section");
+        if (u != std::string::npos) {
+            size_t k = u + std::strlen(unionHead);
+            std::string digits;
+            while (k < status.size() && std::isdigit(uint8_t(status[k])))
+                digits += status[k++];
+            check(!digits.empty() && std::stoi(digits) == totalGates,
+                  "STATUS.md union total " + digits + " == configured union " +
+                      std::to_string(totalGates));
+        }
+
+        // The union table: every non-policy label of the union roster, one
+        // row each, counted with `-L` regex semantics. Parsed and expected
+        // sets must match EXACTLY — a stale row is drift, a missing row is a
+        // tier the artifact hides.
+        std::map<std::string, int> expectedUnion;
+        auto collectBase = [&](const std::string& labels) {
+            std::stringstream ss(labels);
+            std::string one;
+            while (std::getline(ss, one, ',')) {
+                if (one.empty() || one.rfind("asset-", 0) == 0 ||
+                    one.rfind("host-", 0) == 0 || one.rfind("scope-", 0) == 0 ||
+                    one.rfind("tier-", 0) == 0)
+                    continue;
+                expectedUnion[one] = 0;
+            }
+        };
+        for (const auto& [name, labels] : gates) { (void)name; collectBase(labels); }
+        for (const auto& [name, labels] : absent) { (void)name; collectBase(labels); }
+        for (auto& [label, n] : expectedUnion) n = countLabel(label);
+
+        std::map<std::string, int> statedUnion;
+        const size_t unionEnd = status.find("\n## ", u == std::string::npos ? 0 : u);
+        const std::string unionSec = u == std::string::npos ? "" :
+            status.substr(u, unionEnd == std::string::npos
+                                 ? std::string::npos : unionEnd - u);
+        {
+            std::stringstream ss(unionSec);
+            std::string line;
+            while (std::getline(ss, line)) {
+                // "| `label` | N |"
+                if (line.rfind("| `", 0) != 0) continue;
+                const size_t e = line.find('`', 3);
+                if (e == std::string::npos) continue;
+                const std::string label = line.substr(3, e - 3);
+                if (label == "ctest -L") continue;
+                size_t d = line.find_first_of("0123456789", e);
+                if (d == std::string::npos) continue;
+                statedUnion[label] = std::atoi(line.c_str() + d);
+            }
+        }
+        check(statedUnion == expectedUnion, [&] {
+            if (statedUnion == expectedUnion)
+                return std::string("STATUS.md union label table matches the roster");
+            std::string s = "STATUS.md union label table drifted:";
+            for (const auto& [label, n] : expectedUnion)
+                if (!statedUnion.count(label) || statedUnion[label] != n)
+                    s += " " + label + "=" + std::to_string(n) + " expected";
+            for (const auto& [label, n] : statedUnion)
+                if (!expectedUnion.count(label))
+                    s += " " + label + "=" + std::to_string(n) + " stale";
+            return s;
+        }());
+
+        // This host's own section. Same host vocabulary as status_md.py
+        // (which mirrors Pom68kJitGates.cmake): aarch64 / x86_64 / other.
+#if defined(__aarch64__) || defined(_M_ARM64)
+        const char* statusHost = "aarch64";
+#elif defined(__x86_64__) || defined(_M_X64)
+        const char* statusHost = "x86_64";
+#else
+        const char* statusHost = "other";
+#endif
+        const std::string head = std::string("## Registered on ") + statusHost;
+        const size_t h = status.find(head);
+        check(h != std::string::npos,
+              "STATUS.md carries a section for " + std::string(statusHost));
+        const size_t hEnd = status.find("\n## ", h == std::string::npos ? 0 : h);
+        const std::string hostSec = h == std::string::npos ? "" :
+            status.substr(h, hEnd == std::string::npos ? std::string::npos
+                                                       : hEnd - h);
+        if (hostSec.find("_Not yet generated") != std::string::npos) {
+            std::printf("note: STATUS.md has no %s section yet — run "
+                        "tools/status_md.py on this host\n", statusHost);
+        } else if (h != std::string::npos) {
+            const auto registered = numbersBefore(hostSec, " gates registered");
+            check(registered.size() == 1 &&
+                      registered.front() == int(gates.size()),
+                  "STATUS.md says " +
+                      (registered.empty() ? std::string("?")
+                                          : std::to_string(registered.front())) +
+                      " gates registered on " + statusHost + "; ctest has " +
+                      std::to_string(gates.size()));
+            const auto missing = numbersBefore(hostSec, " union gates");
+            check(missing.size() == 1 && missing.front() == int(absent.size()),
+                  "STATUS.md absent-here count matches the absent roster");
+
+            // Dimension rows, "| dim | value | N |", against the manifest.
+            std::map<std::string, int> expectedDims, statedDims;
+            for (const auto& [name, cells] : gateManifest) {
+                (void)name;
+                expectedDims["assets|" + cells[0]]++;
+                expectedDims["host|" + cells[1]]++;
+                expectedDims["scope|" + cells[2]]++;
+                expectedDims["tier|" + cells[3]]++;
+                expectedDims["slots_src|" + cells[5]]++;
+            }
+            std::stringstream ss(hostSec);
+            std::string line;
+            while (std::getline(ss, line)) {
+                if (line.rfind("| ", 0) != 0 || line.find("| dimension") == 0)
+                    continue;
+                std::vector<std::string> cells;
+                std::stringstream row(line);
+                std::string cell;
+                while (std::getline(row, cell, '|')) {
+                    while (!cell.empty() && cell.front() == ' ') cell.erase(0, 1);
+                    while (!cell.empty() && cell.back() == ' ') cell.pop_back();
+                    if (!cell.empty()) cells.push_back(cell);
+                }
+                if (cells.size() != 3 || cells[0] == "dimension" ||
+                    cells[0].find_first_not_of("- ") == std::string::npos)
+                    continue;
+                statedDims[cells[0] + "|" + cells[1]] = std::atoi(cells[2].c_str());
+            }
+            check(statedDims == expectedDims,
+                  statedDims == expectedDims
+                      ? "STATUS.md " + std::string(statusHost) +
+                            " dimension table matches the manifest"
+                      : "STATUS.md " + std::string(statusHost) +
+                            " dimension table drifted from the manifest — "
+                            "rerun tools/status_md.py");
         }
     }
 

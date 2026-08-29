@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 334 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 335 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 45 |
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 25 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 26 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
 | [Cross-cutting](#cross-cutting) | 58 |
 
@@ -324,6 +324,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-28 (eleventh)** — [Four documents carried a wrong per-host gate total, and the per-label figures beside them were right](CHANGELOG.md#2026-08-28-registry-derived-totals)
 - **2026-08-28 (tenth)** — [The live AppleShare exchange gets its gate, registered before it has ever been seen green](CHANGELOG.md#2026-08-28-afp-live-gate)
 - **2026-08-28 (twelfth)** — [The tree did not compile on g++, one gate cited evidence that cannot exist on this host, and the first real GCC census is 17 warnings](CHANGELOG.md#2026-08-28-x64-host-first-run)
+- **2026-08-29 (ninth)** — [The registry's numbers stop being typed: `STATUS.md` is generated from the configure-time roster, and `docs_test` verifies the artifact instead of only chasing prose](CHANGELOG.md#2026-08-29-status-md-generated)
 
 ## Documentation, audits and reviews
 
