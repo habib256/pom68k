@@ -3,33 +3,11 @@
 
 #include "Q700Cpu.h"
 #include "LleSession.h"
-#include "Q700Memory.h"
 #include <cstdlib>
-
-namespace {
-// Bound once, with captureless lambdas: they convert to plain function
-// pointers, so the engine reaches the memory map with no virtual dispatch
-// and without being templated on the machine type.
-jit::MemoryHooks jitHooksFor(Q700Memory& mem) {
-    jit::MemoryHooks h;
-    h.self = &mem;
-    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
-        return static_cast<Q700Memory*>(s)->codeSpan(phys, len);
-    };
-    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
-        return static_cast<Q700Memory*>(s)->dataSpan(phys, len, write != 0);
-    };
-    h.setGuard = [](void* s, jit::CodeGuard* g) {
-        static_cast<Q700Memory*>(s)->setJitGuard(g);
-    };
-    h.ramBytes = [](void* s) { return static_cast<Q700Memory*>(s)->ramBytes(); };
-    return h;
-}
-}  // namespace
 
 Q700Cpu::Q700Cpu(Q700Memory& mem, const jit::ResolvedConfig& jitConfig,
                  const pom68k::CoreCpuConfig& cpuConfig)
-    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040, jitConfig) {
+    : MoiraCpu(mem, jit::kGuest68040, jitConfig) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
     jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
@@ -50,9 +28,7 @@ Q700Cpu::Q700Cpu(Q700Memory& mem, const jit::ResolvedConfig& jitConfig,
     if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
     if (cpuConfig.q700CacheBoost)
         cacheBoost_ = *cpuConfig.q700CacheBoost;
-    pomIcache.armed = true;
-    pomIcache.missPenalty = icacheMiss_;
-    pomIcache.reset();
+    armIcacheOverlay(icacheMiss_);
 }
 
 void Q700Cpu::hardReset() {
@@ -68,8 +44,8 @@ void Q700Cpu::runCycles(moira::i64 n) {
     // The Eclipse's Egret firmware asked for a host reset (RESET_SYSTEM $11,
     // the Finder's "Restart"). Apply it HERE, at a run boundary, never from
     // inside the memory callback that raised it — the Cpu040 contract
-    // (Cpu040.cpp:100). The machine has already re-armed its ROM overlay, so
-    // this fetch takes the reset vectors out of ROM. The Spike has no such
+    // (Cpu040::runCycles). The machine has already re-armed its ROM overlay,
+    // so this fetch takes the reset vectors out of ROM. The Spike has no such
     // MCU, and its `restartPending_` is never set.
     if (mem_.consumeRestart()) reset();
 
@@ -77,10 +53,6 @@ void Q700Cpu::runCycles(moira::i64 n) {
     const moira::i64 target = getClock() + n * cacheBoost_;
     if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
-}
-
-void Q700Cpu::updateIpl() {
-    setIPL(moira::u8(mem_.iplLevel()));
 }
 
 void Q700Cpu::stall(int cycles) {
@@ -94,11 +66,6 @@ void Q700Cpu::didChangeCACR(moira::u32 value) {
     // CINV/CPUSH is the guest announcing that it just wrote code.
     jit_.flushAll();
 }
-
-moira::u8  Q700Cpu::read8(moira::u32 addr)  const { return mem_.read8(addr); }
-moira::u16 Q700Cpu::read16(moira::u32 addr) const { return mem_.read16(addr); }
-void Q700Cpu::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v); }
-void Q700Cpu::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void Q700Cpu::catchUp() {
     if (clock < periphDeadline_) return;
@@ -116,22 +83,13 @@ void Q700Cpu::flushTicks() {
         schedulePeriphDeadline();
     }
 }
+
 void Q700Cpu::schedulePeriphDeadline() {
     moira::i64 machine = mem_.cyclesToNextEvent();
     if (machine < 1) machine = 1;
     moira::i64 d = machine * cacheBoost_ - periphAccum_;
     if (d < 1) d = 1;
     periphDeadline_ = clock + d;
-}
-
-
-void Q700Cpu::sync(int cycles) {
-    clock += cycles;
-    catchUp();
-}
-
-moira::u16 Q700Cpu::read16Dasm(moira::u32 addr) const {
-    return moira::u16(moira::u16(mem_.peek8(addr)) << 8 | mem_.peek8(addr + 1));
 }
 
 void Q700Cpu::setEngine(int e) {

@@ -3,27 +3,15 @@
 
 #include "Cpu68k.h"
 #include "MacMemory.h"
-
-namespace {
-jit::MemoryHooks macJitHooks(MacMemory& mem) {
-    jit::MemoryHooks h;
-    h.self = &mem;
-    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
-        return static_cast<MacMemory*>(s)->codeSpan(phys, len);
-    };
-    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
-        return static_cast<MacMemory*>(s)->dataSpan(phys, len, write != 0);
-    };
-    h.setGuard = [](void* s, jit::CodeGuard* g) {
-        static_cast<MacMemory*>(s)->setJitGuard(g);
-    };
-    h.ramBytes = [](void* s) { return static_cast<MacMemory*>(s)->ramBytes(); };
-    return h;
-}
-}  // namespace
+#include "MoiraCpu.h"          // pom68k::makeJitMemoryHooks only — the
+                               // wrapper base is NOT used here: this
+                               // family is cycle-exact and its bus
+                               // forwarders charge the contention model
+                               // on every access.
 
 Cpu68k::Cpu68k(MacMemory& mem, const jit::ResolvedConfig& jitConfig)
-    : mem_(mem), jit_(*this, macJitHooks(mem), jit::kGuest68000, jitConfig) {
+    : mem_(mem), jit_(*this, pom68k::makeJitMemoryHooks(mem),
+           jit::kGuest68000, jitConfig) {
     setModel(moira::Model::M68000);
     // Hand the window this machine's bus model. Without it a windowed fetch
     // would skip the video/RAM contention read16() carries, and the Mac

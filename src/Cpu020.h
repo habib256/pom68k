@@ -2,17 +2,15 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // Moira M68020 @ 15.6672 MHz on the Mac II GLUE map (functional accuracy).
+// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
 
 #pragma once
 #include "CoreConfig.h"
-#include "MoiraSnapshot.h"
-#include "jit/JitEngine.h"
+#include "MacIIMemory.h"
+#include "MoiraCpu.h"
 #include <cstdint>
-#include <string>
 
-class MacIIMemory;
-
-class Cpu020 : public MoiraSnapshot {
+class Cpu020 : public pom68k::MoiraCpu<Cpu020, MacIIMemory> {
 public:
     // is030 = the IIx/IIcx/SE-30 variant: a 68030 (built-in PMMU + 68882) on
     // the same Mac II GLUE board, sharing the mac2fdhd ROM. The GLUE still
@@ -35,13 +33,9 @@ public:
     // Both models of this wrapper are served: the plain 68020 takes the
     // identity probe, the IIx/IIcx/SE-30 68030 takes the ATC probe and
     // mmuFetchWord — the same two paths the LC/LC II pair already uses.
-    jit::Engine& jit() { return jit_; }
-    const jit::Engine& jit() const { return jit_; }
-    int  engine() const { return jit_.enabled() ? 1 : 0; }
     void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
 
     void runCycles(moira::i64 n);
-    void runUntil(moira::i64 clockTarget);
     void updateIpl();
     void stall(int cycles);
     void flushTicks();
@@ -61,25 +55,12 @@ public:
     }
 
 private:
+    friend pom68k::MoiraCpu<Cpu020, MacIIMemory>;
     bool eventDriven_ = false;
-    moira::u8  read8(moira::u32 addr) const override;
-    moira::u16 read16(moira::u32 addr) const override;
-    // Moira's disassembler falls back to read16() unless this is overridden,
-    // which sent every disassembly read through the LIVE bus: device registers
-    // with read side effects (SCC status latches, IWM state lines) and, on
-    // unmapped I/O, a busError() that mutates An/MMU fault state and throws.
-    // peek8() is the side-effect-free path the tracers already use.
-    moira::u16 read16Dasm(moira::u32 addr) const override;
     moira::u16 read16OnReset(moira::u32 addr) const override;
-    void write8(moira::u32 addr, moira::u8 v) const override;
-    void write16(moira::u32 addr, moira::u16 v) const override;
-    void sync(int cycles) override;
     void didChangeCACR(moira::u32 value) override;
     void catchUp();
 
-    MacIIMemory& mem_;
-    jit::Engine jit_;
-    moira::i64 lastPeriphClock_ = 0;
     moira::i64 periphDeadline_ = 0;
     void schedulePeriphDeadline();
     // Upper bound on the computed deadline, and the cadence the JIT is

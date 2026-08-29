@@ -2,39 +2,18 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "MscCpu.h"
-#include "MscMemory.h"
 #include <cstdlib>
-
-namespace {
-jit::MemoryHooks mscJitHooks(MscMemory& mem) {
-    jit::MemoryHooks h;
-    h.self = &mem;
-    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
-        return static_cast<MscMemory*>(s)->codeSpan(phys, len);
-    };
-    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
-        return static_cast<MscMemory*>(s)->dataSpan(phys, len, write != 0);
-    };
-    h.setGuard = [](void* s, jit::CodeGuard* g) {
-        static_cast<MscMemory*>(s)->setJitGuard(g);
-    };
-    h.ramBytes = [](void* s) { return static_cast<MscMemory*>(s)->ramBytes(); };
-    return h;
-}
-}  // namespace
 
 MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
                const pom68k::CoreCpuConfig& cpuConfig,
                bool withFpu)
-    : mem_(mem), jit_(*this, mscJitHooks(mem), jit::kGuest68030, jitConfig) {
+    : MoiraCpu(mem, jit::kGuest68030, jitConfig) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
     if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     eventDriven_ = cpuConfig.duoEventDriven;
-    pomIcache.armed = true;
-    pomIcache.missPenalty = icacheMiss_;
-    pomIcache.reset();
+    armIcacheOverlay(icacheMiss_);
 }
 
 void MscCpu::hardReset() {
@@ -61,25 +40,11 @@ void MscCpu::runCycles(moira::i64 n) {
     flushTicks();
 }
 
-void MscCpu::runUntil(moira::i64 clockTarget) {
-    if (getClock() < clockTarget) executeUntil(clockTarget);
-    flushTicks();
-}
-
-void MscCpu::updateIpl() {
-    setIPL(moira::u8(mem_.iplLevel()));
-}
-
 void MscCpu::stall(int cycles) {
     if (cycles <= 0) return;
     clock += moira::i64(cycles) * cacheBoost_;
     catchUp();
 }
-
-moira::u8  MscCpu::read8(moira::u32 addr)  const { return mem_.read8(addr); }
-moira::u16 MscCpu::read16(moira::u32 addr) const { return mem_.read16(addr); }
-void MscCpu::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v); }
-void MscCpu::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void MscCpu::catchUp() {
     if (clock < periphDeadline_) return;
@@ -119,13 +84,4 @@ void MscCpu::flushTicks() {
     periphAccum_ -= moira::i64(m) * cacheBoost_;
     if (m) mem_.tick(m);
     schedulePeriphDeadline();
-}
-
-void MscCpu::sync(int cycles) {
-    clock += cycles;
-    catchUp();
-}
-
-moira::u16 MscCpu::read16Dasm(moira::u32 addr) const {
-    return moira::u16(moira::u16(mem_.peek8(addr)) << 8 | mem_.peek8(addr + 1));
 }

@@ -2,26 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Cpu020.h"
-#include "MacIIMemory.h"
 #include <cstdlib>
-
-namespace {
-jit::MemoryHooks macIIJitHooks(MacIIMemory& mem) {
-    jit::MemoryHooks h;
-    h.self = &mem;
-    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
-        return static_cast<MacIIMemory*>(s)->codeSpan(phys, len);
-    };
-    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
-        return static_cast<MacIIMemory*>(s)->dataSpan(phys, len, write != 0);
-    };
-    h.setGuard = [](void* s, jit::CodeGuard* g) {
-        static_cast<MacIIMemory*>(s)->setJitGuard(g);
-    };
-    h.ramBytes = [](void* s) { return static_cast<MacIIMemory*>(s)->ramBytes(); };
-    return h;
-}
-}  // namespace
 
 Cpu020::Cpu020(MacIIMemory& mem, const jit::ResolvedConfig& jitConfig,
                const pom68k::CoreCpuConfig& cpuConfig,
@@ -29,8 +10,7 @@ Cpu020::Cpu020(MacIIMemory& mem, const jit::ResolvedConfig& jitConfig,
       // The guest family cannot be read off getModel() here — setModel()
       // has not run yet at member-init time, and sampling it is exactly the
       // mistake JitEngine.h documents (it cost the Quadra its x64 backend).
-    : mem_(mem), jit_(*this, macIIJitHooks(mem),
-                      is030 ? jit::kGuest68030 : jit::kGuest68020, jitConfig) {
+    : MoiraCpu(mem, is030 ? jit::kGuest68030 : jit::kGuest68020, jitConfig) {
     setModel(is030 ? moira::Model::M68030 : moira::Model::M68020);
     setFPUModel(withFpu ? (is030 ? moira::FPUModel::M68882
                                  : moira::FPUModel::M68881)
@@ -66,11 +46,6 @@ void Cpu020::runCycles(moira::i64 n) {
     flushTicks();
 }
 
-void Cpu020::runUntil(moira::i64 clockTarget) {
-    if (getClock() < clockTarget) executeUntil(clockTarget);
-    flushTicks();
-}
-
 void Cpu020::updateIpl() {
     setIPL(moira::u8(mem_.iplLevel()));
     // Moira checkForIrq() samples reg.ipl (last POLL_IPL), not the pin.
@@ -86,9 +61,6 @@ void Cpu020::stall(int cycles) {
     catchUp();
 }
 
-moira::u8  Cpu020::read8(moira::u32 addr)  const { return mem_.read8(addr); }
-moira::u16 Cpu020::read16(moira::u32 addr) const { return mem_.read16(addr); }
-
 // Mac II 256 KB ROM: header at $0 is checksum, not vectors — Basilisk
 // hardcodes SSP=$2000 and PC=ROMBase+$2A (newcpu.cpp m68k_reset).
 // ROMBase is $40800000 (HMMU maps $8xxxxx → ROM); $4000002A would fetch
@@ -102,8 +74,6 @@ moira::u16 Cpu020::read16OnReset(moira::u32 addr) const {
     default: return mem_.read16(addr);
     }
 }
-void Cpu020::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v); }
-void Cpu020::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void Cpu020::catchUp() {
     if (clock < periphDeadline_) return;
@@ -147,13 +117,4 @@ void Cpu020::flushTicks() {
     lastPeriphClock_ = clock;
     mem_.tick(int(d));
     schedulePeriphDeadline();
-}
-
-void Cpu020::sync(int cycles) {
-    clock += cycles;
-    catchUp();
-}
-
-moira::u16 Cpu020::read16Dasm(moira::u32 addr) const {
-    return moira::u16(moira::u16(mem_.peek8(addr)) << 8 | mem_.peek8(addr + 1));
 }

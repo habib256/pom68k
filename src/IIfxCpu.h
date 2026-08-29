@@ -4,15 +4,14 @@
 // Moira M68030 @ 40 MHz on the Mac IIfx map (functional accuracy) — the
 // Cpu020 wrapper pattern on platform #12 (docs/IOP_BRINGUP.md M3). No
 // i-cache throughput overlay: the core clock IS machine time.
+// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
 
 #pragma once
-#include "MoiraSnapshot.h"
-#include "jit/JitEngine.h"
+#include "IIfxMemory.h"
+#include "MoiraCpu.h"
 #include <cstdint>
 
-class IIfxMemory;
-
-class IIfxCpu : public MoiraSnapshot {
+class IIfxCpu : public pom68k::MoiraCpu<IIfxCpu, IIfxMemory> {
 public:
     explicit IIfxCpu(IIfxMemory& mem, const jit::ResolvedConfig& jitConfig,
                      bool withFpu = true);
@@ -25,13 +24,9 @@ public:
     // point the five other 030 families already use — no Moira work at all.
     // Its map is also the easiest the engine has met: 32-bit clean, no HMMU
     // and no GLUE remap, so the probe's address IS the bus address.
-    jit::Engine& jit() { return jit_; }
-    const jit::Engine& jit() const { return jit_; }
-    int  engine() const { return jit_.enabled() ? 1 : 0; }
     void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
 
     void runCycles(moira::i64 n);
-    void runUntil(moira::i64 clockTarget);
     void updateIpl();
     void stall(int cycles);
     void flushTicks();
@@ -44,20 +39,12 @@ public:
     }
 
 private:
-    moira::u8  read8(moira::u32 addr) const override;
-    moira::u16 read16(moira::u32 addr) const override;
-    // Side-effect-free disassembly reads (the Cpu020 lesson: the live bus
-    // mutates SCC/SWIM latches and bus-errors on unmapped I/O).
-    moira::u16 read16Dasm(moira::u32 addr) const override;
+    friend pom68k::MoiraCpu<IIfxCpu, IIfxMemory>;
     moira::u16 read16OnReset(moira::u32 addr) const override;
-    void write8(moira::u32 addr, moira::u8 v) const override;
-    void write16(moira::u32 addr, moira::u16 v) const override;
-    void sync(int cycles) override;
     void didChangeCACR(moira::u32 value) override;
+    // Fixed-batch pacing, not a device-derived deadline (TODO.md § 4) —
+    // shadows the base's deadline-flavoured dispatch.
     void catchUp();
 
-    IIfxMemory& mem_;
-    jit::Engine jit_;
-    moira::i64 lastPeriphClock_ = 0;
     static constexpr int kPeriphBatch = 64;
 };

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 333 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 334 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -346,6 +346,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-29 (eighth)** — [Eleven CPU wrappers carried the same plumbing, tested in one copy; a CRTP base now carries it once — net −527 lines, and two phantom reds surfaced on the way](#2026-08-29-cpu-wrapper-crtp-base)
 - **2026-08-29 (seventh)** — ["Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes](#2026-08-29-anpi-refuted)
 - **2026-08-29 (sixth)** — [The x64 generator learns the register shifts: a64's step-exact lowering translated, one parity-table row retired, 82.0 % → 88.1 % native](#2026-08-29-x64-shift-port)
 - **2026-08-29 (late night)** — [The mode-2 storm was an engine loop retiring nothing: coarse trip, exact eviction, and a guard exit that re-runs the store forever — fixed by one interpreted step](#2026-08-29-mode2-storm-mechanized)
@@ -681,6 +682,60 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-29-cpu-wrapper-crtp-base"></a>
+## 2026-08-29 (eighth) — Eleven CPU wrappers carried the same plumbing, tested in one copy; a CRTP base now carries it once — net −527 lines, and two phantom reds surfaced on the way
+
+The coverage report had already said it (2026-08-27): the asset-free tier
+executes `Cpu68k` at 94.87 % and **five of its ten siblings at 0 %** —
+near-identical text, proven in one copy, pasted into ten others. Measured
+before touching anything: after renaming platform tokens, `CentrisCpu.cpp` vs
+`Q700Cpu.cpp` diverge by **32 lines out of ~145**, `VaspCpu.cpp` vs
+`SonoraCpu.cpp` by 52. The pasted part was the `jit::MemoryHooks` factory
+(11 anonymous-namespace copies), the four bus forwarders, `read16Dasm`'s
+side-effect-free peek pair, `sync()`/`catchUp()` dispatch, `runUntil`, the
+default `updateIpl` and the engine accessors.
+
+`src/MoiraCpu.h` (133 lines) now carries that plumbing once — the
+`MachineHost.h` CRTP precedent applied to the CPU side. `MoiraCpu<Derived,
+Memory>` sits between `MoiraSnapshot` and the eleven functional wrappers;
+`pom68k::makeJitMemoryHooks<Memory>()` wires `aliasCodeMask` by a `requires`
+probe, so V8's alias mask stays the only one wired without the base knowing
+V8 exists. Per-charge taps stay exact: `sync()` calls
+`self().onSyncCharge(cycles)` (Cpu030's trace door, Cpu040's lockstep event,
+a no-op that inlines away everywhere else) before `self().catchUp()`, both
+statically dispatched — same codegen as the pasted originals.
+
+What deliberately did NOT move: every timing policy with a measurement or an
+incident behind it — `runCycles` pacing, `flushTicks` scaling, the floppy
+boost gate, capped/uncapped/opt-in deadlines, per-board CACR semantics,
+model/FPU selection, `visit()` layouts — each stays in its platform file.
+One near-trap recorded: `lleRegistry()` exists on all 12 memory classes, so
+detecting the 68040 `setEngine` engine lock by trait would have silently
+armed it on the 030 family too; the locked and unlocked variants stay
+spelled out per wrapper. One structural cost: the wrapper headers now
+include their platform memory header (a class template's virtual members
+need the complete type), where a forward declaration used to do.
+
+`Cpu68k` stays outside the base — its forwarders charge the contention model
+on every access and its catch-up has no deadline — but shares the hooks
+factory. Net: wrappers 2 946 → 2 297 lines, +133 for the base, tracked diff
+−786/+126. Eighteen `file:line` citations across five documents repointed
+(`docs_test` § 10 caught the nine a `.cpp:`-only grep had missed).
+
+Two phantom reds surfaced, both pre-existing at `ba8c2dc` and invisible
+because yesterday's session ran only the `jit`/`m030` tiers: the file-size
+ratchet FAILING on six files (largest `JitBackendX64.cpp` +131 over its
+ceiling — re-recorded via `--update`, ceilings are the shift port's real
+cost), and `docs_test` pinning **38** typed JIT options where
+`POM68K_JIT_030_MEMBF` had made it **39** of 130 (pins bumped). The 08-16
+lesson again, in miniature: a tier nobody runs is a red nobody sees.
+
+Proof, on this x86-64 host: `unit` 109/109 in 77 s, `smoke` 8/8 (both Q605
+engines to the Finder, all four x64 locksteps through the refactored
+`sync`/`catchUp`), `etalon-core` **12/12 in 6 min 20 s** at the calibrated
+`-j16` — one Finder per platform through the new base. Zero warnings from
+the touched files on g++ under `POM68K_WARNINGS`.
 
 <a id="2026-08-29-anpi-refuted"></a>
 ## 2026-08-29 (seventh) — "Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes

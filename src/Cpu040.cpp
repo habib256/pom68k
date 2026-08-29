@@ -3,36 +3,14 @@
 
 #include "Cpu040.h"
 #include "LleSession.h"
-#include "Q605Memory.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 
-namespace {
-// Bound once, with captureless lambdas: they convert to plain function
-// pointers, so the engine reaches the memory map with no virtual dispatch
-// and without being templated on the machine type.
-jit::MemoryHooks jitHooksFor(Q605Memory& mem) {
-    jit::MemoryHooks h;
-    h.self = &mem;
-    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
-        return static_cast<Q605Memory*>(s)->codeSpan(phys, len);
-    };
-    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
-        return static_cast<Q605Memory*>(s)->dataSpan(phys, len, write != 0);
-    };
-    h.setGuard = [](void* s, jit::CodeGuard* g) {
-        static_cast<Q605Memory*>(s)->setJitGuard(g);
-    };
-    h.ramBytes = [](void* s) { return static_cast<Q605Memory*>(s)->ramBytes(); };
-    return h;
-}
-}  // namespace
-
 Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
                const pom68k::CoreCpuConfig& cpuConfig,
                const pom68k::CoreDiagnosticConfig& diagnostics)
-    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040, jitConfig) {
+    : MoiraCpu(mem, jit::kGuest68040, jitConfig) {
     periphStatsOn_ = diagnostics.peripheralStats;
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
@@ -80,9 +58,7 @@ Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
         icacheMiss_ = *cpuConfig.q605IcacheMiss;
     // This remains only the legacy throughput scaler. Moira's distinct
     // PomCache040 model owns architectural I/D contents and coherency.
-    pomIcache.armed = true;
-    pomIcache.missPenalty = icacheMiss_;
-    pomIcache.reset();
+    armIcacheOverlay(icacheMiss_);
 }
 
 void Cpu040::hardReset() {
@@ -99,8 +75,8 @@ void Cpu040::runCycles(moira::i64 n) {
     // The Egret/Cuda firmware asked for a host reset (RESET_SYSTEM $11, the
     // Finder's "Restart"). Apply it HERE, at a run boundary, never from
     // inside the memory callback that raised it — same contract as the
-    // Duo's PMU wake (MscCpu.cpp:59). The machine has already re-armed its
-    // ROM overlay, so this fetch takes the reset vectors out of ROM.
+    // Duo's PMU wake (MscCpu::runCycles). The machine has already re-armed
+    // its ROM overlay, so this fetch takes the reset vectors out of ROM.
     if (mem_.consumeRestart()) reset();
 
     // n is a peripheral (machine) cycle budget; run cacheBoost_× more Moira
@@ -151,11 +127,6 @@ void Cpu040::didChangeCACR(moira::u32 value) {
     jit_.flushAll();
 }
 
-moira::u8  Cpu040::read8(moira::u32 addr)  const { return mem_.read8(addr); }
-moira::u16 Cpu040::read16(moira::u32 addr) const { return mem_.read16(addr); }
-void Cpu040::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v); }
-void Cpu040::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
-
 Cpu040::~Cpu040() {
     if (!periphStatsOn_) return;
     std::fprintf(stderr,
@@ -163,6 +134,12 @@ Cpu040::~Cpu040() {
         "machine-cycles=%lld (%.2f cycles per tick call)\n",
         periphCatchUps_, periphFlushes_, periphTicks_, periphCycles_,
         periphTicks_ ? double(periphCycles_) / double(periphTicks_) : 0.0);
+}
+
+// The per-charge tap MoiraCpu::sync() dispatches through, fired before
+// catchUp() exactly as the pre-CRTP sync() did.
+void Cpu040::onSyncCharge(int /*cycles*/) {
+    if (onLockstepEvent) onLockstepEvent("sync", lockstepDebug());
 }
 
 void Cpu040::catchUp() {
@@ -194,16 +171,6 @@ void Cpu040::flushTicks() {
         schedulePeriphDeadline();
         if (onLockstepEvent) onLockstepEvent("flush", lockstepDebug());
     }
-}
-
-void Cpu040::sync(int cycles) {
-    clock += cycles;
-    if (onLockstepEvent) onLockstepEvent("sync", lockstepDebug());
-    catchUp();
-}
-
-moira::u16 Cpu040::read16Dasm(moira::u32 addr) const {
-    return moira::u16(moira::u16(mem_.peek8(addr)) << 8 | mem_.peek8(addr + 1));
 }
 
 void Cpu040::setEngine(int e) {

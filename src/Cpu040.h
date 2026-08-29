@@ -10,17 +10,16 @@
 // data-bearing 4 KB I/D caches, copyback, snooping and bus-beat timing.
 // Timing adjustments: VIA E-clock sync and TurboSCSI wait states via
 // Q605Memory::stall().
+// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
 
 #pragma once
 #include "CoreConfig.h"
-#include "MoiraSnapshot.h"
-#include "jit/JitEngine.h"
+#include "MoiraCpu.h"
+#include "Q605Memory.h"
 #include <cstdint>
 #include <functional>
 
-class Q605Memory;
-
-class Cpu040 : public MoiraSnapshot {
+class Cpu040 : public pom68k::MoiraCpu<Cpu040, Q605Memory> {
 public:
     // Diagnostic state deliberately kept separate from save states.  The
     // lockstep gate uses it to catch an IRQ/pacing divergence before it is
@@ -53,9 +52,6 @@ public:
     // setEngine() is the only
     // switch; the GUI routes it through the machine thread's command queue
     // so it always lands between two instructions.
-    jit::Engine& jit() { return jit_; }
-    const jit::Engine& jit() const { return jit_; }
-    int  engine() const { return jit_.enabled() ? 1 : 0; }
     void setEngine(int e);
 
     void updateIpl();                       // from the PrimeTime resolver
@@ -78,28 +74,16 @@ public:
     }
 
 private:
+    friend pom68k::MoiraCpu<Cpu040, Q605Memory>;
     bool periphStatsOn_ = false;
     long long periphCatchUps_ = 0;
     long long periphFlushes_ = 0;
     long long periphTicks_ = 0;
     long long periphCycles_ = 0;
-    moira::u8  read8(moira::u32 addr) const override;
-    moira::u16 read16(moira::u32 addr) const override;
-    // Moira's disassembler falls back to read16() unless this is overridden,
-    // which sent every disassembly read through the LIVE bus: device registers
-    // with read side effects (SCC status latches, IWM state lines) and, on
-    // unmapped I/O, a busError() that mutates An/MMU fault state and throws.
-    // peek8() is the side-effect-free path the tracers already use.
-    moira::u16 read16Dasm(moira::u32 addr) const override;
-    void write8(moira::u32 addr, moira::u8 v) const override;
-    void write16(moira::u32 addr, moira::u16 v) const override;
-    void sync(int cycles) override;
     void didChangeCACR(moira::u32 value) override;
+    void onSyncCharge(int cycles);          // lockstep tap (MoiraCpu::sync)
     void catchUp();
-
-    Q605Memory& mem_;
-    jit::Engine jit_;
-    moira::i64 lastPeriphClock_ = 0;
+    void schedulePeriphDeadline();
 
     // Throughput ceiling (Cpu030 pattern). Was pinned at 1 for a long time
     // because "boost 2+ → SCSI=0" on q605_boot_etalon; re-measured
@@ -112,5 +96,4 @@ private:
     int icacheMiss_ = 0;                    // POM68K_Q605_ICACHE_MISS
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;
-    void schedulePeriphDeadline();
 };

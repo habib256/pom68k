@@ -225,7 +225,7 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   each `catchUp()` is `if (clock < periphDeadline_) return;`). Their
   `kPeriphBatch` constant survives only as the **upper bound** on a
   computed deadline, and on `Cpu030` also as the explicit non-conformant
-  cadence of the Egret/Cuda HLE fallback (`Cpu030.h:216-219`).
+  cadence of the Egret/Cuda HLE fallback (`Cpu030.h:242-244`).
 
   Still on a batch by default, three wrappers — but the story changed on
   **2026-08-13**: two of them now HAVE the deadline, measured, and it is
@@ -233,9 +233,9 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
 
   | wrapper | platform | default | jitter at its clock | deadline available |
   |---|---|---|---|---|
-  | `Cpu020` (`Cpu020.h:75`) | Mac II / IIx / IIcx / SE/30 | batch 64 | ≤ 4.1 µs @ 15.67 MHz | `POM68K_MACII_EVENT=1` |
-  | `IIfxCpu` (`IIfxCpu.h:61`) | Mac IIfx | batch 64 | ≤ 1.6 µs @ 40 MHz | **no — refused, see below** |
-  | `MscCpu` (`MscCpu.h:59`) | PowerBook Duo 230 | batch 128 | ≤ 3.9 µs @ 33 MHz | `POM68K_DUO_EVENT=1` |
+  | `Cpu020` (`Cpu020.h:68`) | Mac II / IIx / IIcx / SE/30 | batch 64 | ≤ 4.1 µs @ 15.67 MHz | `POM68K_MACII_EVENT=1` |
+  | `IIfxCpu` (`IIfxCpu.h:49`) | Mac IIfx | batch 64 | ≤ 1.6 µs @ 40 MHz | **no — refused, see below** |
+  | `MscCpu` (`MscCpu.h:52`) | PowerBook Duo 230 | batch 128 | ≤ 3.9 µs @ 33 MHz | `POM68K_DUO_EVENT=1` |
 
   **The measurement, which is the whole finding** (one binary, the knob
   flipped between runs, same image):
@@ -277,7 +277,7 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
 
   The 68000 compacts are **not** on a batch at all: `Cpu68k::sync()` runs
   before every bus access and calls `catchUp()` unconditionally
-  (`Cpu68k.cpp:95-106`), so their peripheral time is exact.
+  (`Cpu68k.cpp:83-94`), so their peripheral time is exact.
 
   **Why the deadline exists — keep these numbers, they are the argument.**
   Measured 2026-08-02 on Q605, back when `POM68K_PERIPH_BATCH` still
@@ -332,7 +332,7 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   Verified: all four 040 boards boot (`q605_`, `centris650_`,
   `quadra800_`, `q700_`, `q630_boot_etalon`) and the `unit` tier was green.
 - **the legacy i-cache boost is a throughput overlay**:
-  `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h:101`, default
+  `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h:95`, default
   **4**; `POM68K_Q605_CACHE_BOOST` overrides 1–64). Separately, the 040 has
   an opt-in architectural I/D cache behind `POM68K_040_DCACHE=1`: line data,
   WT/CB/NC policy, dirty writeback, CPUSH/CINV, snooping and transaction
@@ -897,7 +897,7 @@ autopoll are the 68HC05's own. Two things it does not close:
   re-arms the ROM overlay and latches `restartPending_`; the CPU wrapper
   consumes the latch at its next run boundary and resets there — never
   inside the memory callback, which would reset the MCU mid-instruction.
-  Exactly the Duo's contract (`MscCpu.cpp:59`). **Only the address map comes
+  Exactly the Duo's contract (`MscCpu.cpp:37`). **Only the address map comes
   back**: the MCU, its PRAM and the devices keep running, because the
   /RESET line takes the CPU and the gate array, not the part pulling it.
   The latch is serialized (snapshot format **v5**) — a snapshot taken inside
@@ -1298,8 +1298,8 @@ correctness it buys:
 session-wide registry of the HLE modules a machine actually fell back to
 (`src/LleSession.h`: `activateHle` / `qualified()`), locks the native engine
 once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
-wrappers — `Cpu040.cpp:209`, `CentrisCpu.cpp:128`, `Q630Cpu.cpp:128`,
-`Q700Cpu.cpp:129`; the GUI's CPU menu greys itself on the same condition,
+wrappers — `Cpu040.cpp:176`, `CentrisCpu.cpp:87`, `Q630Cpu.cpp:94`,
+`Q700Cpu.cpp:95`; the GUI's CPU menu greys itself on the same condition,
 `GuiHostServices.h:143-186`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save
 state (`SaveStateMachines.cpp:163`). Restoring a snapshot that carries an

@@ -30,9 +30,9 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2088-2139` |
 | **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2287` and `:2312` |
 | The 030 i-cache overlay is charged **inside `mmuFetchWord`, before the JIT window hook** — so the fetch window and the `threaded` backend are conformant on it by construction | `MoiraExecMMU_cpp.h:408-461` |
-| `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1050-1082`, rationale in `Cpu030.h:152-177` + `:203-208` |
+| `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1050-1082`, rationale in `Cpu030.h:164-189` + `:203-208` |
 | The cold fallback stub re-enters Moira through `pomJitExecOne()`, whose **030 branch runs `mmuExecuteStart<C68020>()`** — i.e. it fetches through `mmuFetchWord` and charges the i-cache itself | `Moira.cpp:318-348` |
-| Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitBackendX64.cpp:190-250`, `Cpu030.h:152-177` |
+| Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitBackendX64.cpp:190-250`, `Cpu030.h:164-189` |
 | `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` asserted before the split is exposed | `JitIr.h:949-957`, `JitEngine.cpp:891` |
 | `jit_lockstep_030_test` exists: two LC IIs, register + clock + low-RAM + **three i-cache counters** per checkpoint | `tests/jit_lockstep_030_test.cpp` |
 | The 030 emitters are reachable by explicit `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override). `auto` reaches a64 on an AArch64 030 since 2026-08-20; it reached x64 on an x86-64 one from 2026-08-21 until the withdrawal of 2026-08-29, and now resolves such a guest to `threaded`. A shipping default reaches only a generator that earned the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
@@ -220,7 +220,7 @@ shape of a systematic off-by-one rather than a lost event.
 
 `cacheBoost_` (default 4) runs the 030 core at 4× machine rate and charges
 `icacheMiss_` per miss. That is an explicitly *non-conformant* throughput
-overlay, documented as such (`Cpu030.h:144-168`). Whether to replace it with
+overlay, documented as such (`Cpu030.h:164-189`). Whether to replace it with
 real 68030 cycle counts plus a real cache model is a separate, larger
 chantier with its own oracle problem — see § *The i-cache reading* at the
 end. Phase B makes the JIT agree with whatever the interpreter does; it does
@@ -1130,7 +1130,7 @@ exist (`ctest -N` lists them; `jit_lockstep_030*`, `jit_restart_write_030_test`,
 
 `PomIcache` today is a **timing overlay** paired with `cacheBoost_ = 4`:
 the core runs at 4× machine rate and pays `icacheMiss_` per miss. It is
-honest about being a fudge (`Cpu030.h:144-168`) and it is *not* an
+honest about being a fudge (`Cpu030.h:164-189`) and it is *not* an
 architectural cache model.
 
 Two readings of "the i-cache for the 68030" follow, and they are different
