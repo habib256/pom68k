@@ -375,6 +375,10 @@ public:
     void subX(unsigned rd, unsigned rn, unsigned rm) {
         emit(0xCB000000u | (rm << 16) | (rn << 5) | rd);
     }
+    void mulW(unsigned rd, unsigned rn, unsigned rm) {
+        // MUL Wd,Wn,Wm is MADD Wd,Wn,Wm,WZR.
+        emit(0x1B007C00u | (rm << 16) | (rn << 5) | rd);
+    }
     void addImmW(unsigned rd, unsigned rn, unsigned imm) {
         emit(0x11000000u | ((imm & 0xFFFu) << 10) | (rn << 5) | rd);
     }
@@ -822,6 +826,7 @@ uint16_t guestRegisterWriteMask(const Instr& in) {
         case SemanticOp::Bitfield:
             mask |= 0x00FFu; break;
         case SemanticOp::DivideWord:
+        case SemanticOp::MultiplyWord:
             reg(false, s.registerIndex); break;
         case SemanticOp::DivideLong: {
             if (in.extensionCount < 1 ||
@@ -1136,6 +1141,8 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::ShiftRegister:
             return sem.action != 2; // no ROX
         case SemanticOp::DivideWord:
+            return ei >= 0 && ei != EA_AN;
+        case SemanticOp::MultiplyWord:
             return ei >= 0 && ei != EA_AN;
         case SemanticOp::DivideLong:
             return ei >= 0 && ei != EA_AN;
@@ -2939,6 +2946,47 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                                 tst ? read : write);
         if (sem.operation == SemanticOp::Clear)
             emitLogicFlags(a, L, 11, bits);
+        return true;
+    }
+
+    if (sem.operation == SemanticOp::MultiplyWord) {
+        // 68020/030 MULU/MULS have a fixed per-EA cost. Their 68000/010
+        // operand-dependent cyclesMul path is not part of this backend's
+        // guest families. A sole memory source can therefore use the exact
+        // read path: after it succeeds, multiplication has no trap/overflow
+        // guard that could require replaying the observable access.
+        Ea src;
+        if (!decodeEa(in, sem.eaMode, sem.eaReg, 16, 0, src) ||
+            src.idx == EA_AN || in.words != unsigned(1 + src.ext))
+            return false;
+        MemoryAccessPlan read;
+        if (src.memory)
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Source, 2,
+                                 uint8_t(sem.eaMode), sem.eaReg);
+        if (!memory.complete()) return false;
+        const int cycles = kMulWord[src.idx];
+        if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
+
+        const bool sign = sem.action != 0;
+        if (src.idx == EA_DN) {
+            loadGuestRegister(a, L, 9, false, unsigned(src.reg), 16);
+        } else if (src.idx == EA_IM) {
+            a.movW(9, uint16_t(src.value));
+        } else {
+            if (slow < 0) return false;
+            addrOf(a, L, src, 16);
+            memLoadGuest(a, L, ir.super, 16, 9, slow, read, &src);
+            commitEaAfterAccess(a, L, src, 16, read);
+        }
+        loadGuestRegister(a, L, 10, false, sem.registerIndex, 16);
+        if (sign) {
+            a.sxtH(9, 9);
+            a.sxtH(10, 10);
+        }
+        a.mulW(11, 9, 10);
+        a.strW(11, 0, L.d + sem.registerIndex * 4);
+        emitLogicFlags(a, L, 11, 32);               // X survives
         return true;
     }
 

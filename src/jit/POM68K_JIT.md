@@ -688,12 +688,24 @@ instrumented wall pair moves 1.117377 → 1.095146 s (−1.99 %), which is recor
 as a signal only, not a speed claim without a repeated same-binary control.
 
 On the exact 270-frame post-change phase, 2,284,402 / 2,298,679 instructions
-are native (**99.4 %**). The next honest coverage target is multiplication:
+are native (**99.4 %**). The next honest coverage target was multiplication:
 `C7FC` 7,965 + `C9C0` 3,988 + `C2FC` 3,161 = **15,114**, 13.3 % of all
-113,652 fallbacks and 21.0 % of the unsupported subset. Unlike the count-16
-shift, a multiply cannot simply trust its traced cost: 68030 multiplication
-timing depends on operand data. A conformant lowering must compute that live
-cost or guard a specialization before any guest effect.
+113,652 fallbacks and 21.0 % of the unsupported subset.
+
+The subsequent audit corrected an important timing premise. Moira's
+operand-dependent `cyclesMul()` applies only to the 68000/68010; the
+68020/68030 use a fixed per-EA word-multiply table. Shared IR and cost policy
+now expose `MULU.W`/`MULS.W` to both generators. They produce the 32-bit
+product, N/Z, cleared V/C and preserved X; memory forms use the exact sole-read
+contract, including a one-read MMIO witness. The directed 68030 lockstep runs
+1,536 native multiplications with zero slow instructions and identical state.
+
+The recensus reports 55,174 unsupported + 41,782 runtime fallbacks = 96,956,
+down 16,696 (**14.69 %**) from 113,652; all three named multiply opcodes are
+gone and the CPU/screen fingerprints remain exact. An eight-run same-binary
+ABBA measures medians 0.307857 s OFF and 0.306770 s ON (**−0.35 % signal**),
+below the control arm's 2.18 % span. This is a coverage result, not a promoted
+speed claim. The temporary attribution switch was removed before landing.
 
 ### 3.6 What one window exit actually costs (2026-08-09)
 

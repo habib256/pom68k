@@ -110,6 +110,11 @@ inline constexpr int8_t kMovemToRegs[EA_MODE_COUNT] =
     { -1, -1, 12, 8, -1, 13, -1, 12, 12, 9, -1, -1 };
 inline constexpr int8_t kMovemToMem[EA_MODE_COUNT] =
     { -1, -1, 8, -1, 4, 9, -1, 8, 8, -1, -1, -1 };
+// execMulu/execMuls, 68020/68030 word-to-long column. Unlike the 68000 and
+// 68010 implementations, these cores do not add an operand-dependent
+// cyclesMul term; signed and unsigned forms share the same fixed column.
+inline constexpr int8_t kMulWord[EA_MODE_COUNT] =
+    { 27, -1, 31, 31, 32, 32, 34, 31, 31, 32, 34, 29 };
 // execDivu/execDivs, 68020 word columns. Address-register direct is not a
 // legal source; all other cells are guest timing facts, independent of the
 // transactional proof a backend requires for a particular memory mapping.

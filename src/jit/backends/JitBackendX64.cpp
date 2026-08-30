@@ -307,6 +307,7 @@ private:
     bool emitExg(size_t i);
     bool emitShiftRegister(size_t i);
     bool emitBitfield(size_t i);
+    bool emitMultiplyWord(size_t i);
     bool emitDivideWord(size_t i);
     bool emitDivideLong(size_t i);
     bool emitCmpm(size_t i);
@@ -2900,6 +2901,48 @@ bool Emitter::emitShiftRegister(size_t i) {
     return true;
 }
 
+// MULU.W / MULS.W. The 68020/030 timing is fixed by EA (cyclesMul is a
+// 68000/010 concern), and there is no arithmetic trap. A successful sole
+// exact read can therefore commit its EA immediately and always retire.
+bool Emitter::emitMultiplyWord(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::MultiplyWord) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    Ea src;
+    if (!decode(i, sem.eaMode, sem.eaReg, 1, 0, src) ||
+        src.idx == EA_AN || !lengthOk(i, src.ext))
+        return false;
+    MemoryAccessPlan read;
+    if (src.memory)
+        read = memory.access(MemoryDirection::Read, MemoryOperand::Source,
+                             2, uint8_t(sem.eaMode), sem.eaReg);
+    if (!memory.complete()) return false;
+    const int cycles = kMulWord[src.idx];
+    if (cycles < 0 || traced030(i) != unsigned(cycles)) return false;
+
+    const bool sign = sem.action != 0;
+    if (src.idx == EA_DN) {
+        a_.movzx(Sz::W, RCX, D(src.reg));
+    } else if (src.idx == EA_IM) {
+        a_.movRI(RCX, uint16_t(src.value));
+    } else {
+        addrOf(src, RAX, 1);
+        memLoad(RAX, 1, RCX, read);
+        commitEa(src, 1, read);
+    }
+    a_.movzx(Sz::W, RDI, D(sem.registerIndex));
+    if (sign) {
+        a_.movsxRR(Sz::W, RCX, RCX);
+        a_.movsxRR(Sz::W, RDI, RDI);
+    }
+    a_.imulRR(RDI, RCX);
+    a_.movMR(Sz::L, D(sem.registerIndex), RDI);
+    a_.testRR(Sz::L, RDI, RDI);
+    flagsLogic(Sz::L);                              // V=C=0, X preserved
+    return true;
+}
+
 // DIVU.W / DIVS.W. Memory operands use a side-effect-free speculative probe,
 // so trap and overflow paths still reach Moira with pristine guest state.
 bool Emitter::emitDivideWord(size_t i) {
@@ -3928,6 +3971,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::Exchange: return emitExg(i);
         case SemanticOp::ShiftRegister: return emitShiftRegister(i);
         case SemanticOp::Bitfield: return emitBitfield(i);
+        case SemanticOp::MultiplyWord: return emitMultiplyWord(i);
         case SemanticOp::DivideWord: return emitDivideWord(i);
         case SemanticOp::DivideLong: return emitDivideLong(i);
         case SemanticOp::CompareMemory: return emitCmpm(i);
@@ -4468,6 +4512,9 @@ bool X64Backend::canEmit(uint16_t op) const {
             // two backends' admission stays comparable at this level.
             return mode == 0 || mode == 2 || mode == 5;
         case SemanticOp::DivideWord:
+            return eaCostIndex(mode, reg) >= 0 &&
+                   eaCostIndex(mode, reg) != EA_AN;
+        case SemanticOp::MultiplyWord:
             return eaCostIndex(mode, reg) >= 0 &&
                    eaCostIndex(mode, reg) != EA_AN;
         case SemanticOp::DivideLong:

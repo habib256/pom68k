@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's hot word multiplies became exact native code, why their 68030 cost is fixed, and what the ABBA did not prove** → [2026-08-31 — Speedometer's three hot word multiplies…](#2026-08-31-speedometer-word-multiply)
 - **how Speedometer 4 isolated the count-16 logical shifts, what their guarded promotion buys, and why multiplication is now next** → [2026-08-30 (tenth) — Speedometer 4 turns…](#2026-08-30-speedometer-shift16)
 - **how a trap-capable divide can inspect RAM, reject zero/overflow, and still replay without duplicating MMIO, cache or EA effects** → [2026-08-30 (eighth) — Memory division…](#2026-08-30-memory-division)
 - **how the last SimCity division witness became native without letting `IDIV` escape on `INT_MIN/-1`** → [2026-08-30 (seventh) — Long division…](#2026-08-30-long-division)
@@ -354,6 +355,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31** — [Speedometer's three hot word multiplies become native on both generators, with fixed 68030 timing and exact MMIO](#2026-08-31-speedometer-word-multiply)
 - **2026-08-30 (tenth)** — [Speedometer 4 turns three count-16 logical shifts native on both generators and names multiplication as the next honest coverage target](#2026-08-30-speedometer-shift16)
 - **2026-08-30 (ninth)** — [The SimCity division promotion survives: two inter-binary regressions were code-layout noise, while same-binary ABBA measures native division 1.453 % faster](#2026-08-30-division-promotion)
 - **2026-08-30 (eighth)** — [Memory division becomes transactional on both generators: speculative RAM, deferred 040 cache/EA effects, and exactly one MMIO read](#2026-08-30-memory-division)
@@ -704,6 +706,56 @@ Newest first.
 
 ---
 
+<a id="2026-08-31-speedometer-word-multiply"></a>
+## 2026-08-31 — Speedometer's three hot word multiplies become native on both generators, with fixed 68030 timing and exact MMIO
+
+The post-shift Speedometer CPU census had named its next gap precisely:
+`C7FC` (`MULS.W #imm,D3`) 7,965 times, `C9C0` (`MULS.W D0,D4`) 3,988
+times and `C2FC` (`MULU.W #imm,D1`) 3,161 times. The premise recorded in the
+previous entry was wrong, however: Moira's operand-dependent `cyclesMul()` is
+used only for the 68000 and 68010. On the 68020/68030, word multiplication has
+the same fixed per-EA cost table as the other decoded instructions. The new
+shared `kMulWord` column therefore reproduces the 68030 trace cost directly;
+there is no live operand-cost guard to guess or maintain.
+
+`JitIr.h` now describes `MULU.W`/`MULS.W` as one host-neutral
+`MultiplyWord` operation, publishes its sole word source read, and correctly
+omits `FlagMayTrap`: multiplication writes a 32-bit result, derives N/Z from
+that result, clears V/C and preserves X, but cannot divide by zero or overflow
+into an exception. A64 and x64 consume that same meaning for register,
+immediate and ordinary memory EAs. Memory forms go through the exact
+single-read path, with EA commits in architectural order, so a successful
+MMIO read remains native instead of being replayed and duplicated.
+
+The asset-free 68030 lockstep exercises signed/unsigned register, immediate,
+predecrement and postincrement forms at 256 checkpoints: 1,536 native word
+multiplications, zero slow instructions, identical CPU/cycle/RAM state. Its
+MMIO witness observes exactly one device read, `D0=21`, `A0+2`, and no slow
+fallback. The 120,000-step LC II JIT/interpreter lockstep remains identical.
+Backend acceptance and 13-group A64/x64 parity gates pass; on this A64 host,
+a byte-level gate also pins x64's new `IMUL r32,r32` encoding, while native x64
+execution remains the x64 CI gate's job.
+
+The exact Speedometer CPU recensus retires 2,299,471 instructions, of which
+2,285,803 are native (**99.4 %**), and reports 55,174 unsupported + 41,782
+runtime fallbacks. Against the post-shift baseline, unsupported falls 71,863
+→ 55,174 (**−16,689 / −23.22 %**) and all fallbacks 113,652 → 96,956
+(**−16,696 / −14.69 %**); the three named opcodes disappear. The total differs
+by 792 instructions because the guest clock/system activity is live, but the
+fixed 270-frame finish, CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final fingerprint `5640a493258f74c7`, final screen
+`0289cf442344cc81`, SCSI total 2,577 and halted=0 remain exact.
+
+An eight-run same-binary ABBA used a temporary negative admission switch,
+removed before landing. OFF measured 0.304103/0.307378/0.308336/0.310804 s;
+ON measured 0.304676/0.306459/0.307109/0.307081 s. The medians are 0.307857
+and 0.306770 s, a **−0.35 % signal**, while the OFF span alone is 2.18 % of
+its median. This is therefore promoted as a conformant coverage reduction,
+not as a speed claim. The next measured gaps are `24D0`'s 25,849 runtime
+guards and indexed `JSR` `4EB0`'s 13,823 unsupported fallbacks.
+
+---
+
 <a id="2026-08-30-speedometer-shift16"></a>
 ## 2026-08-30 (tenth) — Speedometer 4 turns three count-16 logical shifts native on both generators and names multiplication as the next honest coverage target
 
@@ -747,9 +799,10 @@ The tighter post-change phase retires 2,298,679 instructions, 2,284,402 native
 (**99.4 %**), and records 71,863 unsupported + 41,789 runtime fallbacks. Its
 next target is not guessed: `C7FC` 7,965 + `C9C0` 3,988 + `C2FC` 3,161 =
 **15,114**, 13.3 % of all fallbacks and 21.0 % of the unsupported subset.
-Those are `MULU`/`MULS`, whose 68030 cycles depend on operand data. The next
-conformant lowering must calculate a live cost or guard an operand
-specialization; copying the trace-time number would be fast and wrong.
+Those are `MULU`/`MULS`. The following audit corrected this entry's original
+timing premise: operand-dependent multiplication timing belongs to the
+68000/68010, while the 68020/68030 use a fixed per-EA table. The 2026-08-31
+entry records the resulting conformant lowering and measurement.
 
 ---
 

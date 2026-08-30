@@ -807,14 +807,21 @@ Open, in ROI order:
   fenêtre historique de 600 frames, 330 241 → 317 894 replis unsupported,
   empreintes inchangées. Le couple mural −1,99 % reste un signal non promu,
   faute de répétitions au-dessus du plancher. `CHANGELOG.md` (tenth).
-- [ ] **Queue de couverture, maintenant mesurée par Speedometer** : sur la
-  phase CPU exacte (2 298 679 instructions, 99,4 % natives), `C7FC`, `C9C0`,
-  `C2FC` totalisent **15 114 replis**, 13,3 % de tous les replis et 21,0 % des
-  unsupported. `MULU`/`MULS` sont donc la prochaine famille de couverture,
-  mais leurs cycles dépendent des données : le prochain lowering doit calculer
-  le coût à l'exécution ou spécialiser+garder l'opérande, pas réutiliser le
-  coût d'une trace. Suivent `JSR idx(An)` `4EB0` (13 823), ROX/décalages hors
-  tranche mesurée, MOVEM indexé complet et destinations mémoire-indirectes.
+- **Multiplications mot Speedometer — CLOS le 2026-08-31** : l'audit a
+  corrigé le diagnostic précédent : `cyclesMul()` est variable seulement sur
+  68000/010 ; le 68020/030 a une table fixe par EA. L'IR et le coût partagés,
+  puis les lowerings A64/x64, couvrent `MULU.W`/`MULS.W`, avec X préservé et
+  lecture MMIO exactement unique. Le recensement exact passe de 113 652 à
+  96 956 replis (**−14,69 %**) ; les trois opcodes chauds disparaissent, les
+  empreintes restent exactes. L'ABBA même binaire donne un signal médian de
+  −0,35 %, sous l'étendue contrôle de 2,18 % : couverture promue, pas de gain
+  de vitesse revendiqué. `CHANGELOG.md` (2026-08-31).
+- [ ] **Queue de couverture Speedometer après multiplication** : diagnostiquer
+  d'abord le repli runtime `24D0` (25 849 occurrences, dont 25 800 classées
+  non-plain/MMIO), puis `JSR idx(An)` `4EB0` (13 823 unsupported). Suivent
+  `4EB9` (4 315), ROX/décalages hors tranche mesurée, MOVEM indexé complet et
+  destinations mémoire-indirectes. Le long multiply `4C00` n'apparaît que 534
+  fois et reste donc derrière ces témoins mesurés.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

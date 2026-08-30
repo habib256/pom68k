@@ -48,7 +48,7 @@ enum class Kind : uint8_t {
     Alu,         // ADD/SUB/AND/OR/EOR/CMP/NEG/NOT/CLR/TST/…
     Shift,       // ASL/LSR/ROL/ROXR/bitfield
     BitOp,       // BTST/BCHG/BCLR/BSET
-    Muldiv,      // MULU/MULS/DIVU/DIVS (may trap)
+    Muldiv,      // MULU/MULS/DIVU/DIVS/CHK; only division/CHK may trap
     AddrCalc,    // LEA / PEA / EXT / SWAP / LINK / UNLK
     Multi,       // MOVEM / MOVEP
     Cond,        // Scc (sets a byte, does not branch)
@@ -97,6 +97,7 @@ enum class SemanticOp : uint8_t {
     ReturnSubroutine,
     ShiftRegister,
     Bitfield,
+    MultiplyWord,
     DivideWord,
     DivideLong,
 };
@@ -547,6 +548,15 @@ inline InstructionSemantics describeInstruction(uint16_t op) {
         }
     }
 
+    if (line == 0xC000) {
+        const uint8_t opmode = uint8_t((op >> 6) & 7);
+        if (opmode == 3 || opmode == 7) {
+            set(SemanticOp::MultiplyWord, 1);
+            s.action = opmode == 7 ? 1 : 0; // MULS / MULU
+            return s;
+        }
+    }
+
     // CMPM has the same $Bxxx opcode space as CMP/EOR, but both operands
     // are independently postincremented memory reads. Describe it before
     // the generic ALU-family decoder so a backend cannot mistake its fixed
@@ -787,6 +797,18 @@ inline MemoryContract describeMemory(uint16_t op, bool is030) {
     // arithmetic. A native backend may inspect a proved replayable mapping,
     // but must defer EA/cache effects until its zero/overflow guards pass.
     if (line == 0x8000 &&
+        (((op >> 6) & 7) == 3 || ((op >> 6) & 7) == 7)) {
+        if (memoryEa(mode, reg))
+            setSingle(memoryAccess(MemoryDirection::Read,
+                                   MemoryOperand::Source, 2, mode, reg,
+                                   is030, FaultPhase::RestartInstruction));
+        return c;
+    }
+
+    // Word multiplication has the same sole word source shape, but no
+    // arithmetic trap or overflow exit: after a successful exact read the
+    // native tail can commit its EA and always retire.
+    if (line == 0xC000 &&
         (((op >> 6) & 7) == 3 || ((op >> 6) & 7) == 7)) {
         if (memoryEa(mode, reg))
             setSingle(memoryAccess(MemoryDirection::Read,
@@ -1269,6 +1291,7 @@ inline void describeEffectiveAddresses(Instr& in) {
             add(OperandRole::Operand, s.eaMode, s.eaReg, 2, 1);
             break;
         case SemanticOp::DivideWord:
+        case SemanticOp::MultiplyWord:
             add(OperandRole::Source, s.eaMode, s.eaReg, 1, 0);
             break;
         case SemanticOp::DivideLong:
@@ -1791,13 +1814,14 @@ inline uint32_t branchWords(uint16_t op, uint16_t indexExtension = 0) {
     return 2;                                      // DBcc: opcode + disp16
 }
 
-// The only flag the tracer can honestly know without a decoder. Kind::Muldiv
-// collects everything that can take an exception while looking like ordinary
-// straight-line code (MULU/MULS/DIVU/DIVS, MULL/DIVL, CHK); the replay's
-// pc-continuity check turns such a trap into a clean block exit, and a code
-// generator must treat it as a bail-out point.
-inline uint8_t instrFlags(uint16_t /*op*/, Kind k) {
-    return k == Kind::Muldiv ? uint8_t(FlagMayTrap) : uint8_t(FlagNone);
+// Kind::Muldiv also contains non-trapping multiplication because the opcode
+// classifier is deliberately coarse. The shared semantic decoder is precise
+// enough to keep MULU/MULS off the expensive post-fallback PC check while
+// DIV/CHK retain it; unknown members stay conservative.
+inline uint8_t instrFlags(uint16_t op, Kind k) {
+    if (k != Kind::Muldiv) return uint8_t(FlagNone);
+    return describeInstruction(op).operation == SemanticOp::MultiplyWord
+        ? uint8_t(FlagNone) : uint8_t(FlagMayTrap);
 }
 
 inline const char* endReasonName(EndReason r) {

@@ -16,6 +16,7 @@
 #include "jit/JitCodeBuffer.h"
 #include "jit/JitConfig.h"
 #include "jit/JitIr.h"
+#include "jit/backends/X64Asm.h"
 #include "JitTestConfig.h"
 
 #if defined(POM68K_JIT_BACKEND_A64)
@@ -76,6 +77,19 @@ struct SavedEnv {
 }  // namespace
 
 int main() {
+    // The x64 translation unit compiles on every host, but an A64 machine
+    // cannot execute its generated code. Keep the new IMUL encoder pinned at
+    // the byte level here; x64 CI exercises the complete lowering.
+    {
+        uint8_t code[16] = {};
+        jit::x64::Asm a(code, sizeof(code));
+        a.imulRR(jit::x64::RDI, jit::x64::RCX);
+        a.imulRR(jit::x64::R9, jit::x64::R10);
+        check(a.size() == 7 &&
+              !std::memcmp(code, "\x0F\xAF\xF9\x45\x0F\xAF\xCA", 7),
+              "x64 IMUL r32,r32 encoding including extended registers");
+    }
+
     // ── One IR memory contract, one proof planner, every backend ─────────
     // These are encoding-level and asset-free. The copyback gates exercise
     // the generated A64/x64 implementations of the same plans below.
@@ -283,6 +297,22 @@ int main() {
               divs.eaMode == 7 && divs.eaReg == 4 &&
               divs.registerIndex == 6,
               "IR describes signed word division without treating it as OR");
+        const auto muls = jit::describeInstruction(0xC7FC); // MULS.W #imm,D3
+        check(muls.operation == jit::SemanticOp::MultiplyWord &&
+              muls.action == 1 && muls.bytes() == 2 &&
+              muls.eaMode == 7 && muls.eaReg == 4 &&
+              muls.registerIndex == 3,
+              "IR describes Speedometer signed word multiplication once");
+        const auto mulu = jit::describeInstruction(0xC2FC); // MULU.W #imm,D1
+        check(mulu.operation == jit::SemanticOp::MultiplyWord &&
+              mulu.action == 0 && mulu.registerIndex == 1,
+              "IR distinguishes unsigned word multiplication");
+        const auto mulsMemory = jit::describeMemory(0xC1D0, true);
+        check(mulsMemory.count == 1 &&
+              mulsMemory.access[0].direction == jit::MemoryDirection::Read &&
+              mulsMemory.access[0].operand == jit::MemoryOperand::Source &&
+              mulsMemory.access[0].bytes == 2,
+              "word multiplication publishes its sole source-memory read");
         const auto divuMemory = jit::describeMemory(0x80D0, false);
         check(divuMemory.count == 1 &&
               divuMemory.access[0].direction == jit::MemoryDirection::Read &&
@@ -971,7 +1001,13 @@ int main() {
               "DIVL (A0),Dr:Dq follows active generator coverage");
         check(b->canEmit(0x4C7C) == gen,
               "DIVL #imm,Dr:Dq follows active generator coverage");
-        check(!b->canEmit(0xC1C0), "MULS is not an ALU direction");
+        check(b->canEmit(0xC1C0) == gen,
+              "MULS.W D0,D0 follows active generator coverage");
+        check(b->canEmit(0xC2FC) == gen,
+              "MULU.W #imm,D1 follows active generator coverage");
+        check(b->canEmit(0xC1D0) == gen,
+              "MULS.W (A0),D0 follows active generator coverage");
+        check(!b->canEmit(0xC1C8), "MULS.W An source is illegal");
         check(!b->canEmit(0xC101), "ABCD is not OR-to-ea");
         check(b->canEmit(0xB308),
               "distinct-register CMPM is native on both generators "
@@ -1049,10 +1085,13 @@ int main() {
     // Trap-capable but straight-line: allowed in a block, flagged for a
     // future code generator, and caught at replay by the pc check.
     check(jit::classify(0x80C0) == jit::Kind::Muldiv, "DIVU is Muldiv");
+    check(jit::classify(0xC1C0) == jit::Kind::Muldiv, "MULS is Muldiv");
     check(jit::classify(0x4C40) == jit::Kind::Muldiv, "DIVL (020+) is Muldiv");
     check(jit::classify(0x4180) == jit::Kind::Muldiv, "CHK is trap-capable");
     check(jit::instrFlags(0x80C0, jit::Kind::Muldiv) & jit::FlagMayTrap,
-          "Muldiv carries FlagMayTrap");
+          "word division carries FlagMayTrap");
+    check(!(jit::instrFlags(0xC1C0, jit::Kind::Muldiv) & jit::FlagMayTrap),
+          "word multiplication has no internal trap continuation");
 
     if (failures) {
         std::printf("[jit_backend] FAIL: %d check(s)\n", failures);

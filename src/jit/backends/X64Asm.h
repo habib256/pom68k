@@ -321,6 +321,10 @@ public:
         rex(Sz::Q, 0, divisor, true);
         db(0xF7); modrm(sign ? 7 : 6, divisor);
     }
+    void imulRR(Reg dst, Reg src) {                 // dst = low32(dst * src)
+        rex(Sz::L, dst, src, true);
+        db(0x0F); db(0xAF); modrm(dst, src);
+    }
     void incM(Sz sz, const Mem& m) {
         opsize(sz); rex(sz, 0, m.base); db(sz == Sz::B ? 0xFE : 0xFF); modrm(0, m);
     }

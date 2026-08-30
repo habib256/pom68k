@@ -568,6 +568,39 @@ void installMemoryBitfieldWriteLoop(SyntheticCpu& c) {
     put32(c, kData + 0x08, 0x89AB'CDEFu);
 }
 
+// Speedometer's exact three hot forms plus predecrement/postincrement memory
+// sources. ADD establishes X=1 before every lap; every multiply must preserve
+// it while publishing its own 32-bit N/Z and clearing V/C.
+void installWordMultiplyLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x7EFF);    // MOVEQ #-1,D7
+    put16(c, kCode + 0x02, 0xDE87);    // ADD.L D7,D7 (set X)
+    put16(c, kCode + 0x04, 0x70FD);    // MOVEQ #-3,D0
+    put16(c, kCode + 0x06, 0x7807);    // MOVEQ #7,D4
+    put16(c, kCode + 0x08, 0xC9C0);    // MULS.W D0,D4 (Speedometer)
+    put16(c, kCode + 0x0A, 0x7202);    // MOVEQ #2,D1
+    put16(c, kCode + 0x0C, 0xC2FC);    // MULU.W #$FFFF,D1 (Speedometer)
+    put16(c, kCode + 0x0E, 0xFFFF);
+    put16(c, kCode + 0x10, 0x769C);    // MOVEQ #-100,D3
+    put16(c, kCode + 0x12, 0xC7FC);    // MULS.W #300,D3 (Speedometer)
+    put16(c, kCode + 0x14, 300);
+    put16(c, kCode + 0x16, 0x207C);    // MOVEA.L #kData+2,A0
+    put32(c, kCode + 0x18, kData + 2);
+    put16(c, kCode + 0x1C, 0x74FD);    // MOVEQ #-3,D2
+    put16(c, kCode + 0x1E, 0xC5E0);    // MULS.W -(A0),D2
+    put16(c, kCode + 0x20, 0x7A02);    // MOVEQ #2,D5
+    put16(c, kCode + 0x22, 0xCAD8);    // MULU.W (A0)+,D5
+    put16(c, kCode + 0x24, 0x60DA);    // BRA.S kCode
+    put16(c, kData, 0xFFF9);           // -7 signed / 65529 unsigned
+}
+
+void installMemoryMultiplyDeviceLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0xC0D8);    // MULU.W (A0)+,D0
+    put16(c, kCode + 0x02, 0x60FC);    // BRA.S kCode
+    put16(c, kData, 7);
+}
+
 // Successful word divisions cover the three immediate opcodes observed in
 // SimCity plus both signed/unsigned register sources. The preceding ADD sets
 // X, which every division must preserve while replacing N/Z/V/C.
@@ -1392,6 +1425,81 @@ bool runMemoryBitfieldWriteLockstep() {
            (!nativeProduction || s.slowInstrs == 0);
 }
 
+bool runWordMultiplyLockstep() {
+    SyntheticCpu ref, native;
+    installWordMultiplyLoop(ref);
+    installWordMultiplyLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 67;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    word-multiply divergence checkpoint=%d\n", step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    word-multiply compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || s.slowInstrs == 0);
+}
+
+bool runMemoryMultiplyDeviceOnce() {
+    SyntheticCpu ref, native;
+    installMemoryMultiplyDeviceLoop(ref);
+    installMemoryMultiplyDeviceLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.setA(0, kData);
+    native.setD(0, 3);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 1024);
+    if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+    ref.mem = native.mem;
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setA(0, kDevice);
+        c->setA(7, kStack);
+        c->setD(0, 3);
+        c->setPC(kCode);
+        c->setPC0(kCode);
+        c->setIRD(0xC0D8);
+        c->setIRC(0x60FC);
+        c->setSR(0x2710);
+        c->setClock(0);
+        c->deviceReads = 0;
+        clearRunFlags(*c);
+    }
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+    const bool same = sameCpu(ref, native, true) &&
+        sameMemory(ref, native, 0, kRamBytes, true);
+    std::printf("    word-multiply device reads=%u/%u d0=%u/%u "
+                "runs=%llu/%llu slow=%llu/%llu\n",
+                ref.deviceReads, native.deviceReads,
+                ref.getD(0), native.getD(0),
+                (unsigned long long)before.blocksRun,
+                (unsigned long long)after.blocksRun,
+                (unsigned long long)before.slowInstrs,
+                (unsigned long long)after.slowInstrs);
+    return same && ref.deviceReads == 1 && native.deviceReads == 1 &&
+           ref.getD(0) == 21 && ref.getA(0) == kDevice + 2 &&
+           after.blocksRun > before.blocksRun &&
+           after.slowInstrs == before.slowInstrs;
+}
+
 enum class DivisionProgram { Success, Overflow, Zero };
 
 bool runWordDivisionLockstep(DivisionProgram program) {
@@ -2053,6 +2161,10 @@ int main() {
           "tailless memory bitfield reads stay native and exact on BOTH generators");
     check(runMemoryBitfieldWriteLockstep(),
           "tailless memory bitfield writes stay native and exact on BOTH generators");
+    check(runWordMultiplyLockstep(),
+          "Speedometer MULU.W/MULS.W register, immediate and RAM forms stay native");
+    check(runMemoryMultiplyDeviceOnce(),
+          "word multiplication consumes one exact MMIO read and stays native");
     check(runWordDivisionLockstep(DivisionProgram::Success),
           "DIVU.W/DIVS.W register and hot immediate forms stay native and exact");
     check(runWordDivisionLockstep(DivisionProgram::Overflow),
