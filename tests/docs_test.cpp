@@ -1489,7 +1489,7 @@ int main() {
     }
     if (!absent.empty())
         std::printf("note: %zu host-conditional gate(s) not registered here; "
-                    "the documented AArch64 totals are held to account\n",
+                    "the documented union totals are held to account\n",
                     absent.size());
 
     // How many gates `ctest -L <label>` selects, counting the ones this host
@@ -1578,9 +1578,12 @@ int main() {
         if (endsWith("_test") || endsWith("_etalon")) named.insert(tok);
     }
     check(!named.empty(), "CLAUDE.md names gates by their full name");
-    for (const std::string& g : named)
-        check(gates.count(g) > 0,
-              "CLAUDE.md names `" + g + "` — registered in CTest");
+    for (const std::string& g : named) {
+        const bool known = gates.count(g) > 0 || absent.count(g) > 0;
+        check(known,
+              "CLAUDE.md names `" + g +
+                  "` — registered here or declared host-conditional");
+    }
 
     // ── 5. The totals CLAUDE.md quotes ───────────────────────────────────
     for (int n : numbersBefore(doc, " CTest gates"))
@@ -1601,8 +1604,8 @@ int main() {
     // per-architecture numbers the SAME sentence derives from it were plain
     // prose arithmetic, checked by nothing, and on 2026-08-28 all four
     // documents carried a wrong one: CLAUDE.md said 232/233, TODO.md
-    // 231/232, README.md and DEV.md 227/228 — where an x86-64 configure
-    // registers 234 and an AArch64 one 235. The per-label figures printed
+    // 231/232, README.md and DEV.md 227/228 — where that registry revision
+    // registered 234 on x86-64 and 235 on AArch64. The per-label figures printed
     // in the same breath were right, which is exactly why nobody re-derived
     // the totals.
     //

@@ -1279,13 +1279,13 @@ inline void refineMemoryFromExtensions(Instr& in, bool is030) {
             // read-modify-write of ONE longword. The TAILLESS form fits the
             // two-slot contract exactly — read4 then write4 at the same
             // address, the write the only access allowed to fault late —
-            // and is published so an emitter can lower it (TODO § 3's named
-            // next slice; no backend consumes it yet). The five-byte tail
+            // and is published for the A64 emitter to lower (2026-08-30;
+            // x64 still refuses it). The five-byte tail
             // form would need four slots, and there is no write analogue of
             // the probed-before-read tail protocol — a first store that
             // committed could not replay — so it stays undescribed and the
             // instruction falls back whole.
-            if (!memoryBitfieldFitsLongword(ext)) return;
+            if (!memoryBitfieldFitsLongword(ext)) { in.memory = {}; return; }
             MemoryContract c;
             c.described = true;
             c.count = 2;

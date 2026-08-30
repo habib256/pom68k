@@ -514,6 +514,40 @@ void installMemoryBitfieldLoop(SyntheticCpu& c) {
     put32(c, kData + 4, 0x5AA5'C33Cu);
 }
 
+// TAILLESS memory bitfield writes — the shared IR RMW contract consumed by
+// A64 since 2026-08-30. All four actions run, including SimCity's EFD1
+// BFINS shape, a signed dynamic offset and both admitted EA columns. Read
+// witnesses keep the x64 block useful while that backend still replays the
+// writes; only A64 carries the zero-slow residency claim for now.
+void installMemoryBitfieldWriteLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x72FD);    // MOVEQ #-3,D1
+    put16(c, kCode + 0x02, 0x203C);    // MOVE.L #$13579BDF,D0
+    put32(c, kCode + 0x04, 0x1357'9BDFu);
+    put16(c, kCode + 0x08, 0xEAD0);    // BFCHG (A0){4:12}
+    put16(c, kCode + 0x0A, 0x010C);
+    put16(c, kCode + 0x0C, 0xE8D0);    // BFTST (A0){4:12}
+    put16(c, kCode + 0x0E, 0x010C);
+    put16(c, kCode + 0x10, 0xECE9);    // BFCLR 4(A1){2:15}
+    put16(c, kCode + 0x12, 0x008F);
+    put16(c, kCode + 0x14, 0x0004);
+    put16(c, kCode + 0x16, 0xE8E9);    // BFTST 4(A1){2:15}
+    put16(c, kCode + 0x18, 0x008F);
+    put16(c, kCode + 0x1A, 0x0004);
+    put16(c, kCode + 0x1C, 0xEED0);    // BFSET (A0){D1:8}
+    put16(c, kCode + 0x1E, 0x0848);
+    put16(c, kCode + 0x20, 0xE8D0);    // BFTST (A0){D1:8}
+    put16(c, kCode + 0x22, 0x0848);
+    put16(c, kCode + 0x24, 0xEFD1);    // BFINS D0,(A1){7:9} (SimCity)
+    put16(c, kCode + 0x26, 0x01C9);
+    put16(c, kCode + 0x28, 0xE8D1);    // BFTST (A1){7:9}
+    put16(c, kCode + 0x2A, 0x01C9);
+    put16(c, kCode + 0x2C, 0x60DA);    // BRA.S kCode+$08
+    put32(c, kData + 0x00, 0xA55A'3CC3u);
+    put32(c, kData + 0x04, 0x5AA5'C33Cu);
+    put32(c, kData + 0x08, 0x89AB'CDEFu);
+}
+
 void installGuardedDynamicShiftLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x7404);    // MOVEQ #4,D2
@@ -1068,6 +1102,42 @@ bool runMemoryBitfieldLockstep() {
            (!nativeProduction || s.slowInstrs == 0);
 }
 
+bool runMemoryBitfieldWriteLockstep() {
+    SyntheticCpu ref, native;
+    installMemoryBitfieldWriteLoop(ref);
+    installMemoryBitfieldWriteLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    ref.setA(0, kData + 4);
+    native.setA(0, kData + 4);
+    ref.setA(1, kData + 4);
+    native.setA(1, kData + 4);
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 43;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    memory-bitfield-write divergence at checkpoint %d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    memory-bitfield-write compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool a64Production =
+        !std::strcmp(native.jit.backendName(), "aarch64") &&
+        !native.jit.config().packedCcr;
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!a64Production || s.slowInstrs == 0);
+}
+
 bool runGuardedDynamicShiftLockstep() {
     SyntheticCpu ref, native;
     installGuardedDynamicShiftLoop(ref);
@@ -1268,6 +1338,8 @@ int main() {
           "static register bitfields stay native and exact on BOTH generators");
     check(runMemoryBitfieldLockstep(),
           "tailless memory bitfield reads stay native and exact on BOTH generators");
+    check(runMemoryBitfieldWriteLockstep(),
+          "tailless memory bitfield writes stay native and exact on A64");
     check(runGuardedDynamicShiftLockstep(),
           "guarded dynamic LSL remains exact and is native with production CCR");
     check(runGuardIndexInvariant(),

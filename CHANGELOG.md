@@ -108,6 +108,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how the tailless memory-bitfield write contract became native on A64/040 and A64/030, and what the M4 handover actually proved** → [2026-08-30 (third) — The M4 closes the handover…](#2026-08-30-a64-bitfield-writes)
 - **what the Rogue re-census really found after indexed MOVEM, and why VRAM/QuickDraw HLE was not the answer** → [2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed…](#2026-08-23-rogue-re-census)
 - **what WinUAE-style CCR caching, register residency, exact edge dependencies and tiering actually buy under Moira's exact boundaries** → [2026-08-23 (tenth) — Four classic JIT levers implemented and priced…](#2026-08-23-four-jit-levers)
 - **how one full 68020 index subset became native without opening memory indirection or a second decoder** → [2026-08-23 (ninth) — Direct full-index `LEA` consumes the complete IR plan…](#2026-08-23-full-direct-lea)
@@ -346,6 +347,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (third)** — [The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host](#2026-08-30-a64-bitfield-writes)
 - **2026-08-30 (second)** — [The x64 generator learns the bitfield family's static register forms, the parity table loses its Bitfield row, and the write bitfields get their IR contract — "IR d'abord" delivered](#2026-08-30-x64-static-bitfields)
 - **2026-08-30** — [The x86-64 host with the assets runs the WHOLE registry for the first time, twice: the unit tier is green here at last, the only reds are the fixtures this host was already known to carry, and one gate is sitting on its own timeout](#2026-08-30-x86-full-run-night)
 - **2026-08-29 (eleventh)** — [Recording moves onto the Machine menu: start/stop are queued like a save-state request, performed between two quanta, and the tick follows the machine](#2026-08-29-recording-menu)
@@ -685,6 +687,53 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-a64-bitfield-writes"></a>
+## 2026-08-30 (third) — The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host
+
+**First, the handover was measured before the source moved.** On 158/158
+fresh AArch64 binaries, the union `ctest -L 'jit|m030|m040' -j16` ran all
+138 selected gates in 1 834.30 s wall: **136/138 green**. Every one of the
+37 `jit`, 56 `m030` and 54 `m040` gates passed. The two reds were outside
+the JIT result: `q605_afp_live_etalon` reproduced the already documented
+fixture failure (the Finder mounted the volume but no guest-created object
+reached the host share), and `docs_test` exposed an AArch64-only asymmetry
+in the registry audit.
+
+**That audit failure was real.** Its union arithmetic already added
+`pom68k_gates_absent.tsv`, but its full-name check still demanded that every
+gate named by `CLAUDE.md` be registered on THIS host. The first AArch64 run
+therefore rejected the two x64-only 030 locksteps even though both were
+correctly present in the absent roster; x86-64 never saw the bug because
+`CLAUDE.md` happens to spell out those x64 names. The check now accepts a
+name registered here OR declared host-conditional, its diagnostic says so,
+and `DEV.md`'s stale AArch64 total moves 235 → 236. `docs_test` is green in
+the rebuilt tree.
+
+**Then the next bitfield slice landed.** `JitBackendA64.cpp` fills the four
+write rows that were `-1`: BFCHG/BFCLR/BFSET use the traced 24/25-cycle
+AI/DI rows and BFINS 21/22, directly matching Moira's tables. Only the
+TAILLESS form is admitted. The shared IR must supply its read4/write4
+`ReadModifyWrite` pair; one writable translation is proved before the read,
+the original longword and host pointer survive flag construction, and the
+store happens only after the old-field flags (or BFINS source flags) are
+materialised. A possible fifth byte still has no contract and replays whole.
+The same body serves 68040 by default and 68030 only behind
+`POM68K_JIT_030_MEMBF=1`.
+
+**The proof is directed on both guest families.** The shared 040 synthetic
+oracle and the native 030 restart oracle each loop all four memory-write
+actions, including SimCity's `EFD1`, a negative dynamic offset and both
+admitted EA columns: 256 checkpoints, CPU/queue/clock/CCR/RAM identical,
+`compiled=4 runs=252 native=767 slow=0` on each. The three registered native
+030 locksteps plus those two oracles are **5/5 green**; the alignment gate is
+the one with `POM68K_JIT_030_MEMBF=1`. After a complete relink, the broader
+`jit|m040` integration selection is **88/88 green in 761.66 s**, explicitly
+excluding only the already reproduced `q605_afp_live_etalon` fixture red.
+This is coverage work, not a performance promotion: the 030 knob remains
+opt-in until its D.1 measurement.
 
 ---
 

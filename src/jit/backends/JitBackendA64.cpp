@@ -2876,6 +2876,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if ((ext & 0x0820) && !dynamicRegisterBitfieldEnabled()) return false;
         const int kind = sem.action;
         const unsigned dst = sem.eaReg, out = (ext >> 12) & 7;
+        const bool readOnly = kind == 0 || kind == 1 || kind == 3 || kind == 5;
 
         // The drawing census's leading residual is the exact subset whose
         // offset/width can never touch the fifth byte. This includes Rogue's
@@ -2894,8 +2895,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // the table explicit prevents a traced wait state from being
             // mistaken for an opcode cost.
             static const int8_t memoryCycles[8][2] = {
-                {17,18}, {19,20}, {-1,-1}, {19,20},
-                {-1,-1}, {32,33}, {-1,-1}, {-1,-1}
+                {17,18}, {19,20}, {24,25}, {19,20},
+                {24,25}, {32,33}, {24,25}, {21,22}
             };
             const int eaColumn = sem.eaMode == 2 ? 0
                                : sem.eaMode == 5 ? 1 : -1;
@@ -2924,17 +2925,25 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             MemoryAccessPlan read = memory.access(
                 MemoryDirection::Read, MemoryOperand::Operand, 4,
                 sem.eaMode, sem.eaReg);
+            MemoryAccessPlan write;
+            if (!readOnly)
+                write = memory.access(MemoryDirection::Write,
+                                      MemoryOperand::Operand, 4,
+                                      sem.eaMode, sem.eaReg);
             MemoryAccessPlan tail;
-            if (possibleTail)
+            if (readOnly && possibleTail)
                 tail = memory.access(MemoryDirection::Read,
                                      MemoryOperand::Operand, 1,
                                      sem.eaMode, sem.eaReg);
-            if (!read.valid() || (possibleTail && !tail.valid()) ||
+            if (!read.valid() || (!readOnly &&
+                                  (!memoryRmwAccessPair(read, write) ||
+                                   possibleTail)) ||
+                (readOnly && possibleTail && !tail.valid()) ||
                 !memory.complete()) {
                 watchRefusal(L, ir, in, "bitfield-memory:contract");
                 return false;
             }
-            if (!possibleTail) {
+            if (readOnly && !possibleTail) {
                 MemoryAccessPlan timedRead = read;
                 if (!admitSoleReadTiming(L, in, timedRead,
                                          opcodeCycles,
@@ -2955,7 +2964,17 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.movW(16, (ext >> 6) & 31);
             a.asrW(12, 16, 3);                    // floor(rawOffset / 8)
             a.addW(9, 9, 12);                     // 32-bit guest wraparound
-            if (!possibleTail) {
+            if (!readOnly) {
+                // One writable proof serves the tailless read-modify-write.
+                // Save both the host pointer and the original longword:
+                // flag construction uses w14 for the bit offset and the
+                // insertion path needs the pristine destination afterwards.
+                memProbe(a, L, ir.super, 4, true, slow);
+                commitEaBeforeAccess(a, L, src, 32, read);
+                loadGuest(a, 32, 11);
+                a.strX(14, 1, 120);
+                a.strW(11, 1, 72);
+            } else if (!possibleTail) {
                 memLoadGuest(a, L, ir.super, 32, 11, slow, read, &src);
             } else {
                 // Save all values that a DTLB fill helper may clobber. The
@@ -3020,20 +3039,51 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
             a.lsrVarW(11, 11, 13);                 // selected field
 
-            emitNz(a, L, 11, 32);
-            a.subImmW(12, 17, 1);
-            a.lsrVarW(12, 11, 12); a.strB(12, 0, L.srN);
-            a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
-            if (kind == 0) return true;             // BFTST
-            if (kind == 3) {                       // BFEXTS
-                a.lslVarW(11, 11, 13);
-                a.asrVarW(11, 11, 13);
-            } else if (kind == 5) {                // BFFFO
-                a.clzW(12, 11);
-                a.subW(11, 12, 13);
-                a.addW(11, 11, 16);                // + uncropped raw offset
+            if (kind != 7) {                       // BFINS uses source flags
+                emitNz(a, L, 11, 32);
+                a.subImmW(12, 17, 1);
+                a.lsrVarW(12, 11, 12); a.strB(12, 0, L.srN);
+                a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
             }
-            a.strW(11, 0, L.d + out * 4);
+            if (readOnly) {
+                if (kind == 0) return true;         // BFTST
+                if (kind == 3) {                   // BFEXTS
+                    a.lslVarW(11, 11, 13);
+                    a.asrVarW(11, 11, 13);
+                } else if (kind == 5) {            // BFFFO
+                    a.clzW(12, 11);
+                    a.subW(11, 12, 13);
+                    a.addW(11, 11, 16);            // + uncropped raw offset
+                }
+                a.strW(11, 0, L.d + out * 4);
+                return true;
+            }
+
+            // A memory field never wraps inside its adjusted longword: its
+            // top-width mask is shifted right by the residual 0..7 offset.
+            // BFCHG/BFCLR/BFSET already published flags from the old field;
+            // BFINS replaces them with the cropped, top-aligned source.
+            a.ldrW(9, 1, 72);                      // original destination
+            if (kind == 7) {
+                a.ldrW(11, 0, L.d + out * 4);
+                a.lslVarW(11, 11, 13);             // crop + top-align source
+                emitNz(a, L, 11, 32);
+                a.lsrW(12, 11, 31); a.strB(12, 0, L.srN);
+                a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+                a.lsrVarW(11, 11, 14);             // align inside longword
+            }
+            a.movW(12, 0xFFFFFFFFu);
+            a.lslVarW(12, 12, 13);
+            a.lsrVarW(12, 12, 14);                 // destination field mask
+            if (kind == 2) a.eorW(9, 9, 12);       // BFCHG
+            else if (kind == 4) { a.mvnW(12, 12); a.andW(9, 9, 12); } // BFCLR
+            else if (kind == 6) a.orrW(9, 9, 12);  // BFSET
+            else {                                  // BFINS
+                a.mvnW(12, 12); a.andW(9, 9, 12); a.orrW(9, 9, 11);
+            }
+            a.ldrX(14, 1, 120);
+            storeGuest(a, 32, 9);
+            commitEaAfterAccess(a, L, src, 32, write);
             return true;
         }
 

@@ -27,6 +27,7 @@ constexpr uint32_t kCode = 0x001100;
 constexpr uint32_t kHandler = 0x003100;
 constexpr uint32_t kStack = 0x008000;
 constexpr uint32_t kSubroutine = 0x006000;
+constexpr uint32_t kBitfieldData = 0x007000;
 
 const jit::ResolvedConfig& injectedJitConfig() {
     static const jit::ResolvedConfig config =
@@ -264,6 +265,38 @@ void installIndexedReadLoop(FaultCpu& c) {
     put32(c, 0x006022, 0x01234567);
 }
 
+void installBitfieldWriteLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x72FD);    // MOVEQ #-3,D1
+    put16(c, kCode + 0x02, 0x203C);    // MOVE.L #$13579BDF,D0
+    put32(c, kCode + 0x04, 0x13579BDF);
+    put16(c, kCode + 0x08, 0xEAD0);    // BFCHG (A0){4:12}
+    put16(c, kCode + 0x0A, 0x010C);
+    put16(c, kCode + 0x0C, 0xE8D0);    // BFTST (A0){4:12}
+    put16(c, kCode + 0x0E, 0x010C);
+    put16(c, kCode + 0x10, 0xECE9);    // BFCLR 4(A1){2:15}
+    put16(c, kCode + 0x12, 0x008F);
+    put16(c, kCode + 0x14, 0x0004);
+    put16(c, kCode + 0x16, 0xE8E9);    // BFTST 4(A1){2:15}
+    put16(c, kCode + 0x18, 0x008F);
+    put16(c, kCode + 0x1A, 0x0004);
+    put16(c, kCode + 0x1C, 0xEED0);    // BFSET (A0){D1:8}
+    put16(c, kCode + 0x1E, 0x0848);
+    put16(c, kCode + 0x20, 0xE8D0);    // BFTST (A0){D1:8}
+    put16(c, kCode + 0x22, 0x0848);
+    put16(c, kCode + 0x24, 0xEFD1);    // BFINS D0,(A1){7:9} (SimCity)
+    put16(c, kCode + 0x26, 0x01C9);
+    put16(c, kCode + 0x28, 0xE8D1);    // BFTST (A1){7:9}
+    put16(c, kCode + 0x2A, 0x01C9);
+    put16(c, kCode + 0x2C, 0x60DA);    // BRA.S kCode+$08
+    put16(c, kHandler, 0x4E71);
+    put32(c, kBitfieldData + 0x00, 0xA55A3CC3);
+    put32(c, kBitfieldData + 0x04, 0x5AA5C33C);
+    put32(c, kBitfieldData + 0x08, 0x89ABCDEF);
+}
+
 void installJsrLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -333,6 +366,7 @@ int main() {
     // restart oracle needs immediate compilation to exercise every thunk.
     setenv("POM68K_JIT_PROFIT_SCORE", "0", 1);
     setenv("POM68K_JIT_ACCESS_THUNK", "2", 1);
+    setenv("POM68K_JIT_030_MEMBF", "1", 1);
     // The queue cases deliberately exercise multiword control flow. Its
     // variable 030 fetch count is conservatively replayed while emitted
     // i-cache accounting is enabled; disabling that attribution layer lets
@@ -396,6 +430,55 @@ int main() {
               readStats.blocksCompiled != 0 && readStats.blocksRun != 0 &&
               readStats.slowInstrs == 0,
               "brief/direct-full indexed LEA stay native and exact on the 030");
+    }
+
+    // The 030 admission is a separate policy switch from the 040 emitter.
+    // Exercise the four tailless memory-write actions directly so the hot
+    // EFD1 path cannot be declared from a 040-only synthetic proof.
+    {
+        FaultCpu bfRef, bfNative;
+        installBitfieldWriteLoop(bfRef); installBitfieldWriteLoop(bfNative);
+        bfRef.reset(); bfNative.reset();
+        bfRef.setTC(12u << 20); bfNative.setTC(12u << 20);
+        for (FaultCpu* c : {&bfRef, &bfNative}) {
+            c->setA(0, kBitfieldData + 4);
+            c->setA(1, kBitfieldData + 4);
+        }
+        bfNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = bfRef.getClock() + 43;
+            bfRef.executeUntil(target);
+            bfNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && bfRef.getD(r) == bfNative.getD(r) &&
+                       bfRef.getA(r) == bfNative.getA(r);
+            same = same && bfRef.getPC() == bfNative.getPC() &&
+                   bfRef.getPC0() == bfNative.getPC0() &&
+                   bfRef.getIRD() == bfNative.getIRD() &&
+                   bfRef.getIRC() == bfNative.getIRC() &&
+                   bfRef.getSR() == bfNative.getSR() &&
+                   bfRef.getClock() == bfNative.getClock() &&
+                   std::memcmp(bfRef.mem.data() + kBitfieldData - 4,
+                               bfNative.mem.data() + kBitfieldData - 4,
+                               24) == 0;
+            if (!same)
+                std::printf("    030 bitfield-write divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto bfStats = bfNative.jit.stats().snapshot();
+        const bool a64Production = !std::strcmp(bfNative.jit.backendName(),
+                                                "aarch64") &&
+                                   !bfNative.jit.config().packedCcr;
+        std::printf("    030 bitfield-write compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                    (unsigned long long)bfStats.blocksCompiled,
+                    (unsigned long long)bfStats.blocksRun,
+                    (unsigned long long)bfStats.instrs,
+                    (unsigned long long)bfStats.slowInstrs);
+        check(same && bfStats.blocksCompiled != 0 && bfStats.blocksRun != 0 &&
+              (!a64Production || bfStats.slowInstrs == 0),
+              "tailless memory bitfield writes stay native and exact on A64/030");
     }
 
     // Train and compile the exact write while its destination is direct RAM.

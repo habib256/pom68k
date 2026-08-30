@@ -213,6 +213,33 @@ int main() {
               crossingLong.protocol == jit::MemoryProofProtocol::PreflightAll,
               "possible five-byte BFEXTU publishes ordered long+tail reads");
 
+        jit::Instr bfinsMemory;
+        bfinsMemory.opcode = 0xEFD1;       // BFINS D0,(A1){7:9}
+        bfinsMemory.words = 2;
+        bfinsMemory.semantics = jit::describeInstruction(bfinsMemory.opcode);
+        bfinsMemory.memory = jit::describeMemory(bfinsMemory.opcode, true);
+        bfinsMemory.extensionCount = 1;
+        bfinsMemory.extensions[0] = 0x01C9;
+        jit::describeEffectiveAddresses(bfinsMemory);
+        jit::refineMemoryFromExtensions(bfinsMemory, true);
+        auto bfinsUse = jit::instructionMemoryPlan(bfinsMemory.memory, cache);
+        const auto bfinsRead = bfinsUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            4, 2, 1);
+        const auto bfinsWrite = bfinsUse.access(
+            jit::MemoryDirection::Write, jit::MemoryOperand::Operand,
+            4, 2, 1);
+        check(bfinsMemory.memory.count == 2 &&
+              bfinsMemory.memory.lastWrite == 1 &&
+              jit::memoryRmwAccessPair(bfinsRead, bfinsWrite) &&
+              bfinsUse.complete(),
+              "tailless BFINS publishes one proved read4/write4 RMW pair");
+        bfinsMemory.extensions[0] = 0x01C0; // offset 7, width 32: fifth byte
+        bfinsMemory.memory = jit::describeMemory(bfinsMemory.opcode, true);
+        jit::refineMemoryFromExtensions(bfinsMemory, true);
+        check(!bfinsMemory.memory.described,
+              "five-byte BFINS stays undescribed so a partial store cannot replay");
+
         const auto write030 = jit::describeMemory(0x2140, true); // MOVE.L D0,d16(A0)
         jit::MemoryProofOptions proof030;
         proof030.exactWrites = true;

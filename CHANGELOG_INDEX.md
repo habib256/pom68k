@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 339 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 340 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 47 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 48 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 35 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 40 |
@@ -73,6 +73,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-29 (sixth)** — [The x64 generator learns the register shifts: a64's step-exact lowering translated, one parity-table row retired, 82.0 % → 88.1 % native](CHANGELOG.md#2026-08-29-x64-shift-port)
 - **2026-08-30** — [The x86-64 host with the assets runs the WHOLE registry for the first time, twice: the unit tier is green here at last, the only reds are the fixtures this host was already known to carry, and one gate is sitting on its own timeout](CHANGELOG.md#2026-08-30-x86-full-run-night)
 - **2026-08-30 (second)** — [The x64 generator learns the bitfield family's static register forms, the parity table loses its Bitfield row, and the write bitfields get their IR contract — "IR d'abord" delivered](CHANGELOG.md#2026-08-30-x64-static-bitfields)
+- **2026-08-30 (third)** — [The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host](CHANGELOG.md#2026-08-30-a64-bitfield-writes)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

@@ -1792,7 +1792,7 @@ is the authority. Five gates are host-conditional: the AArch64 trio
 + `jit_lockstep_030_a64_alignment_test` and the x86-64-only
 `jit_lockstep_030_x64_experimental_test` + `jit_lockstep_030_x64_alignment_test`
 — so an x86-64 tree reads **235** total, 110 `unit`, 8 `smoke`, 38 `jit`,
-and an AArch64 one 235 (`m040` and `etalon` are host-independent). Eight more
+and an AArch64 one 236 (`m040` and `etalon` are host-independent). Eight more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of
 skipping.

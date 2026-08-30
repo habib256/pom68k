@@ -75,12 +75,12 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 
 | § | What it holds | The next concrete action |
 |---|---|---|
-| **0** | Cap produit, séquencement, fenêtre de consolidation | Rejouer le palier `unit` sur un hôte x86-64 *portant les assets*, puis la moitié AArch64 — la dernière case ouverte |
+| **0** | Cap produit, séquencement, fenêtre de consolidation | Les deux moitiés `unit` sont mesurées et exécutées ; décider la fermeture de la fenêtre — la dernière case n'attend plus de run |
 | **0·A** | Direction produit : la vitesse et l'ordre dans lequel on la paie | Le mode nominal tient enfin ×1 (paceur à échéance absolue, 2026-08-28 — il plafonnait à ~×0,75 partout) ; reste : `POM68K_TURBO` scriptable pour re-mesurer AppleTalk à bras égaux, et la ligne de base Pi 400 |
 | **0·B** | Les six réserves de la revue externe du 2026-08-26 | Recensement g++ FAIT le 2026-08-28 (17 lignes, 16 sites) : reste à corriger les 16 puis armer `-Werror` ; et le premier rapport de fuites Linux |
-| **1** | Rouge maintenant — **un, x86-64 seulement** : le lockstep 030 sous le générateur x64 ; ouverts non rouges ; règles de méthode | Le refus de fenêtre est écarté (page dégénérée, les deux backends) : chercher entre 4 000 et 8 000 pas, en aval de l'armement |
+| **1** | Aucun rouge JIT ouvert ; rouges de fixture/timeout, ouverts non rouges, règles de méthode | Réparer les fixtures `macii_persist` / `q605_afp_live`, puis la marge IIvx ; le mode-2 x64 reste une ABBA séparée |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | **D'abord le rouge de § 1**, dont le refus de fenêtre est écarté ; et la page dégénérée du 030 pré-MMU (patch Moira 31 proposé) ; ensuite `D1F0` clos (ABBA nul), BFEXTU 030 derrière `POM68K_JIT_030_MEMBF`, contrat IR de BFINS, et un PROFIL TEMPOREL pour le prochain levier mural |
+| **3** | JIT, second moteur d'exécution | Bitfields mémoire A64 écriture clos ; restent le port x64 des écritures et des formes registre dynamiques, la division, puis un PROFIL TEMPOREL pour le prochain levier mural |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -326,8 +326,10 @@ sauvegarde, fermeture RAII.
 
 ## 1. Red now
 
-**ROUGE OUVERT — x86-64 seulement, 2026-08-28 (nuit) : le lockstep 68030
-sous le générateur x64.** Découvert au premier `ctest -L unit` jamais lancé
+**AUCUN ROUGE JIT OUVERT au 2026-08-30.** Le lockstep 68030 x64 ci-dessous
+est le dossier historique qui a mené aux correctifs du 2026-08-29 ; les
+trois locksteps x64 sont verts et la moitié AArch64 vient d'être rejouée.
+Découvert au premier `ctest -L unit` jamais lancé
 sur un hôte x86-64 *portant les assets* : 104 exécutés / 1 soft-skip /
 **4 échecs**. Trois sont `jit_lockstep_030_test`,
 `jit_lockstep_030_x64_experimental_test` et
@@ -431,9 +433,10 @@ seule différence est `POM68K_JIT_BACKEND=threaded`.
   `threaded`, ×7,34 ; lockstep 120k mode 2 + admissions : identique.
   **Le plafond `maxAccessThunk030=1` RESTE** — la re-promotion du mode 2
   est un item D.1 nommé (un ABBA mode 1 vs 2 + tier), pas un réflexe.
-- [ ] Reste dû, inchangé : **le tier 030 sur l'hôte AArch64** avant tout
-  retour du flip `auto` — et l'ABBA de re-promotion du mode 2 ci-dessus
-  si ses +3 % (un run) survivent au protocole.
+- **Le tier 030 AArch64 est REJOUÉ le 2026-08-30** : les 56 gates `m030`
+  sont tous verts dans la sélection fraîche `jit|m030|m040`; les deux
+  locksteps natifs et celui d'alignement sont verts. Reste l'ABBA de
+  re-promotion du mode 2 si ses +3 % (un run) survivent au protocole.
 - **C'est le chemin 030, pas le générateur x64.** Dans le même run,
   `jit_lockstep_x64_test` (26,30 s) et `jit_lockstep_x64_fine_test` (3,95 s)
   — les locksteps 68040 contre ce même générateur — passent, ainsi que
@@ -722,19 +725,11 @@ fois le premier item au lieu d'accumuler le préfixe.
 
 Open, in ROI order:
 
-- [ ] **AVANT tout le reste sur 030 : le générateur x64 ne démarre pas.**
-  Rouge de § 1, mesuré le 2026-08-28 sur l'hôte x86-64. À 4 000 pas du
-  lockstep 030, le bras x64 affiche `jit instrs 0 · blocks 0 compiled ·
-  window 630766 armed (630766 refused)` — **100 % de refus, zéro
-  instruction native retirée** — pendant que `threaded` en retire 8 368 116
-  au même endroit, et le mur suit : 8 000 pas en 10,00 s (`threaded`) contre
-  **plus d'une heure sans finir** (x64 ; avant correctif il mourait à 289 s). Le débordement de compteur MMU qui faisait segfauter
-  les trois gates (corrigé, Moira patch 30) n'était que le thermomètre :
-  il faut **32,8 accès MMU par cycle 68030** pour l'atteindre là où le
-  boîtier en fait moins d'un. Tant que la fenêtre est refusée, **aucune
-  mesure 030 prise sur x86-64 ne veut dire quoi que ce soit**, et les
-  chiffres D.1 du 2026-08-21 qui ont promu x64 en défaut 030 sont à
-  relire à cette lumière. `CHANGELOG.md` 2026-08-28 (thirteenth).
+- **Le rouge x64 030 est CLOS le 2026-08-29** : page pré-MMU, pipe
+  post-PMOVE et boucle de replay du store-guard sont mécanisés et corrigés ;
+  les trois locksteps épinglés passent. `auto` reste volontairement retiré
+  sur x64/030 et le mode 2 plafonné à 1 jusqu'à son ABBA de re-promotion.
+  `CHANGELOG.md` 2026-08-29 (later/evening/night/late night).
 - **`D1F0` — CLOS le 2026-08-28**, extraction d'abord puis opt-in sur les
   deux backends, replis de jeu 46,5 % → 0, lockstep/`m030` verts — et
   l'ABBA murale a rendu **+0,02 % sur un plancher de 0,6 % : aucun gain de
@@ -764,7 +759,7 @@ Open, in ROI order:
     replis cross-page légitimes, total de phase 37,7 M → 31,2 M. Travail de
     couverture, pas de temps (leçon ABBA ci-dessus) ; le défaut reste
     opt-in en attendant sa propre preuve de promotion.
-  - `EFD1` (BFINS `(A1)`, 15,75 %) : **la moitié IR est FAITE le
+  - `EFD1` (BFINS `(A1)`, 15,75 %) : **IR + émetteur A64 FAITS le
     2026-08-30** — `refineMemoryFromExtensions` publie le contrat RMW
     deux-slots de la forme sans-queue (read4 + write4, `lastWrite=1`) pour
     les quatre actions d'écriture, la forme à queue reste hors contrat et
@@ -774,11 +769,11 @@ Open, in ROI order:
     et décalages pliés en constantes, `BSR`-de-zéro contourné pour BFFFO)
     — scénario dirigé `static-bitfield` dans
     `jit_asset_free_lockstep_test`, résidence exigée des DEUX générateurs,
-    row de parité Bitfield retiré. Restent les ÉMETTEURS mémoire : la
-    rangée `-1` de BFINS dans la table a64 (consommer le contrat publié),
-    le portage x64 des lectures mémoire derrière `POM68K_JIT_030_MEMBF`,
-    et les formes registre dynamiques sur x64 (`shiftRCl` existe, il faut
-    leur preuve).
+    row de parité Bitfield retiré. A64 consomme désormais le contrat des
+    quatre écritures TAILLESS : oracles dirigés 040 et 030 à 256 checkpoints,
+    `native=767 slow=0`, puis `jit|m040` 88/88 hors fixture AFP connue.
+    Restent le portage x64 des écritures mémoire et les formes registre
+    dynamiques sur x64 (`shiftRCl` existe, il faut leur preuve).
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur
