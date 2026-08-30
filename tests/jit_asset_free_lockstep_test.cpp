@@ -615,6 +615,66 @@ void installWordDivisionZeroLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x02, 0x60FC);    // BRA.S kCode
 }
 
+// The $4C40 witness spans all four legal extension actions: unsigned/signed
+// with a 32-/64-bit dividend, plus the architecturally observable Dh==Dl
+// write-order alias. Each operand is rebuilt on every lap so all five DIVL
+// instructions remain successful and must stay native.
+void installLongDivisionLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x7EFF);    // MOVEQ #-1,D7
+    put16(c, kCode + 0x02, 0xDE87);    // ADD.L D7,D7 (set X)
+    put16(c, kCode + 0x04, 0x7007);    // MOVEQ #7,D0
+    put16(c, kCode + 0x06, 0x223C);    // MOVE.L #100,D1
+    put32(c, kCode + 0x08, 100);
+    put16(c, kCode + 0x0C, 0x7437);    // MOVEQ #55,D2
+    put16(c, kCode + 0x0E, 0x4C40);    // DIVUL.L D0,D2:D1
+    put16(c, kCode + 0x10, 0x1002);
+    put16(c, kCode + 0x12, 0x700A);    // MOVEQ #10,D0
+    put16(c, kCode + 0x14, 0x263C);    // MOVE.L #5,D3
+    put32(c, kCode + 0x16, 5);
+    put16(c, kCode + 0x1A, 0x7801);    // MOVEQ #1,D4
+    put16(c, kCode + 0x1C, 0x4C40);    // DIVU.L D0,D4:D3
+    put16(c, kCode + 0x1E, 0x3404);
+    put16(c, kCode + 0x20, 0x70F9);    // MOVEQ #-7,D0
+    put16(c, kCode + 0x22, 0x2A3C);    // MOVE.L #-100,D5
+    put32(c, kCode + 0x24, uint32_t(-100));
+    put16(c, kCode + 0x28, 0x7C01);    // MOVEQ #1,D6
+    put16(c, kCode + 0x2A, 0x4C40);    // DIVSL.L D0,D6:D5
+    put16(c, kCode + 0x2C, 0x5806);
+    put16(c, kCode + 0x2E, 0x700A);    // MOVEQ #10,D0
+    put16(c, kCode + 0x30, 0x74FF);    // MOVEQ #-1,D2
+    put16(c, kCode + 0x32, 0x2E3C);    // MOVE.L #-123,D7
+    put32(c, kCode + 0x34, uint32_t(-123));
+    put16(c, kCode + 0x38, 0x4C40);    // DIVS.L D0,D2:D7
+    put16(c, kCode + 0x3A, 0x7C02);
+    put16(c, kCode + 0x3C, 0x7007);    // MOVEQ #7,D0
+    put16(c, kCode + 0x3E, 0x764D);    // MOVEQ #77,D3
+    put16(c, kCode + 0x40, 0x4C40);    // DIVUL.L D0,D3:D3 (quotient wins)
+    put16(c, kCode + 0x42, 0x3003);
+    put16(c, kCode + 0x44, 0x60BA);    // BRA.S kCode
+}
+
+void installLongDivisionOverflowLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x4C40);    // signed 32-bit dividend / D0
+    put16(c, kCode + 0x02, 0x1802);    // Dl=D1, Dh=D2
+    put16(c, kCode + 0x04, 0x4C40);    // unsigned 64-bit dividend / D0
+    put16(c, kCode + 0x06, 0x3404);    // D4:D3
+    put16(c, kCode + 0x08, 0x4C40);    // signed 64-bit dividend / D0
+    put16(c, kCode + 0x0A, 0x5C06);    // D6:D5
+    put16(c, kCode + 0x0C, 0x60F2);    // BRA.S kCode
+}
+
+void installLongDivisionZeroLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put32(c, 5 * 4, kHandler);
+    put16(c, kHandler + 0, 0x4E73);    // RTE
+    put16(c, kHandler + 2, 0x4E71);
+    put16(c, kCode + 0x00, 0x4C40);    // DIVS.L D0,D2:D1
+    put16(c, kCode + 0x02, 0x1C02);
+    put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
+}
+
 void installGuardedDynamicShiftLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x7404);    // MOVEQ #4,D2
@@ -1367,6 +1427,122 @@ bool runWordDivisionLockstep(DivisionProgram program) {
            (!nativeGenerator || expectedResidency);
 }
 
+bool runLongDivisionLockstep(DivisionProgram program) {
+    SyntheticCpu ref, native;
+    switch (program) {
+        case DivisionProgram::Success:
+            installLongDivisionLoop(ref);
+            installLongDivisionLoop(native);
+            break;
+        case DivisionProgram::Overflow:
+            installLongDivisionOverflowLoop(ref);
+            installLongDivisionOverflowLoop(native);
+            break;
+        case DivisionProgram::Zero:
+            installLongDivisionZeroLoop(ref);
+            installLongDivisionZeroLoop(native);
+            break;
+    }
+    resetCpu(ref);
+    resetCpu(native);
+    if (program == DivisionProgram::Overflow) {
+        // First compile the three guards on stable, successful zero
+        // dividends, then retain that code while presenting each overflow.
+        native.setD(0, 0xFFFF'FFFFu);
+        native.jit.setEnabled(true);
+        native.jit.executeUntil(native.getClock() + 2048);
+        if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+        ref.mem = native.mem;
+        for (SyntheticCpu* c : {&ref, &native}) {
+            for (int reg = 0; reg < 8; reg++) {
+                c->setD(reg, 0);
+                if (reg != 7) c->setA(reg, 0);
+            }
+            c->setD(0, 0xFFFF'FFFFu);
+            c->setD(1, 0x8000'0000u);  // int32 MIN / -1
+            c->setD(2, 0x1357'9BDFu);
+            c->setD(3, 0xFFFF'FFFFu);  // UINT64_MAX / UINT32_MAX
+            c->setD(4, 0xFFFF'FFFFu);
+            c->setD(5, 0);             // INT64_MIN / -1
+            c->setD(6, 0x8000'0000u);
+            c->setA(7, kStack);
+            c->setPC(kCode);
+            c->setPC0(kCode);
+            c->setIRD(0x4C40);
+            c->setIRC(0x1802);
+            c->setSR(0x2710);
+            c->setClock(0);
+            clearRunFlags(*c);
+        }
+    } else if (program == DivisionProgram::Zero) {
+        native.setD(0, 1);
+        native.setD(1, 123);
+        native.jit.setEnabled(true);
+        native.jit.executeUntil(native.getClock() + 2048);
+        if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+        ref.mem = native.mem;
+        for (SyntheticCpu* c : {&ref, &native}) {
+            for (int reg = 0; reg < 8; reg++) {
+                c->setD(reg, 0);
+                if (reg != 7) c->setA(reg, 0);
+            }
+            c->setD(1, 123);
+            c->setA(7, kStack);
+            c->setPC(kCode);
+            c->setPC0(kCode);
+            c->setIRD(0x4C40);
+            c->setIRC(0x1C02);
+            c->setSR(0x2710);
+            c->setClock(0);
+            clearRunFlags(*c);
+        }
+        const auto before = native.jit.stats().snapshot();
+        ref.executeUntil(ref.getClock() + 1);
+        native.jit.executeUntil(native.getClock() + 1);
+        const auto after = native.jit.stats().snapshot();
+        const bool boundary = sameCpu(ref, native, true);
+        const bool frame = ref.getA(7) == kStack - 12 &&
+            native.getA(7) == ref.getA(7) &&
+            sameMemory(ref, native, ref.getA(7), 12, true);
+        const bool ram = sameMemory(ref, native, 0, kRamBytes, true);
+        std::printf("    long-division zero compiled=%llu runs=%llu/%llu "
+                    "sp=%08X/%08X boundary=%d frame=%d ram=%d\n",
+                    (unsigned long long)after.blocksCompiled,
+                    (unsigned long long)before.blocksRun,
+                    (unsigned long long)after.blocksRun,
+                    ref.getA(7), native.getA(7), boundary, frame, ram);
+        return boundary && frame && ram && after.blocksRun > before.blocksRun;
+    } else {
+        native.jit.setEnabled(true);
+    }
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 97;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    long-division divergence program=%d checkpoint=%d\n",
+                        int(program), step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    long-division program=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n",
+                int(program), (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    const bool expectedResidency = program == DivisionProgram::Success
+        ? s.slowInstrs == 0 : s.slowInstrs != 0;
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || expectedResidency);
+}
+
 bool runGuardedDynamicShiftLockstep() {
     SyntheticCpu ref, native;
     installGuardedDynamicShiftLoop(ref);
@@ -1577,6 +1753,12 @@ int main() {
           "word-division quotient overflow reaches Moira before guest mutation");
     check(runWordDivisionLockstep(DivisionProgram::Zero),
           "word division by zero reaches Moira's exact vector-5 path");
+    check(runLongDivisionLockstep(DivisionProgram::Success),
+          "all DIVL Dn extension actions stay native and exact");
+    check(runLongDivisionLockstep(DivisionProgram::Overflow),
+          "DIVL quotient overflow reaches Moira before guest mutation");
+    check(runLongDivisionLockstep(DivisionProgram::Zero),
+          "DIVL by zero reaches Moira's exact vector-5 path");
     check(runGuardedDynamicShiftLockstep(),
           "guarded dynamic LSL remains exact and is native with production CCR");
     check(runGuardIndexInvariant(),

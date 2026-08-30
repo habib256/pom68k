@@ -117,6 +117,10 @@ inline constexpr int8_t kDivuWord[EA_MODE_COUNT] =
     { 44, -1, 48, 48, 49, 49, 51, 48, 48, 49, 51, 46 };
 inline constexpr int8_t kDivsWord[EA_MODE_COUNT] =
     { 56, -1, 60, 60, 61, 61, 63, 60, 60, 61, 63, 58 };
+// execDivl, 68020 column. Signedness and 32-/64-bit dividend selection live
+// in the mandatory extension word but share this successful-retirement cost.
+inline constexpr int8_t kDivLong[EA_MODE_COUNT] =
+    { 84, -1, 88, 88, 89, 89, 91, 88, 88, 89, 91, 88 };
 
 // ── full-format (68020) extension prices ─────────────────────────────────
 

@@ -312,8 +312,13 @@ public:
     void negR(Sz sz, Reg r) { unaryR(sz, r, 3); }
     void notR(Sz sz, Reg r) { unaryR(sz, r, 2); }
     void cdq() { db(0x99); }                         // EDX:EAX = signext(EAX)
+    void cqo() { db(0x48); db(0x99); }               // RDX:RAX = signext(RAX)
     void divR(bool sign, Reg divisor) {             // EDX:EAX / r32
         rex(Sz::L, 0, divisor, true);
+        db(0xF7); modrm(sign ? 7 : 6, divisor);
+    }
+    void divR64(bool sign, Reg divisor) {           // RDX:RAX / r64
+        rex(Sz::Q, 0, divisor, true);
         db(0xF7); modrm(sign ? 7 : 6, divisor);
     }
     void incM(Sz sz, const Mem& m) {

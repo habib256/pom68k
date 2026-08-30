@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 343 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 344 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -108,6 +108,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how the last SimCity division witness became native without letting `IDIV` escape on `INT_MIN/-1`** → [2026-08-30 (seventh) — Long division…](#2026-08-30-long-division)
 - **how the three hot SimCity word divisions became native on both generators, and why their zero oracle fixed every `FlagMayTrap` replay** → [2026-08-30 (sixth) — Word division…](#2026-08-30-word-division)
 - **how x64 closed the dynamic register-bitfield gap without confusing its one remaining five-byte memory replay for a register failure** → [2026-08-30 (fifth) — x64 closes dynamic register bitfields…](#2026-08-30-x64-dynamic-register-bitfields)
 - **how x64 consumed the same tailless memory-bitfield write contract and turned SimCity's `EFD1` witness from replay into native code** → [2026-08-30 (fourth) — x64 consumes the tailless bitfield RMW contract…](#2026-08-30-x64-bitfield-writes)
@@ -350,6 +351,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (seventh)** — [The JIT closes SimCity's long-division `4C40` witness on both generators, with every extension action and trap guard proved](#2026-08-30-long-division)
 - **2026-08-30 (sixth)** — [Word division covers SimCity's three hot opcodes on both generators, and its zero guard closes a latent `FlagMayTrap` continuation bug](#2026-08-30-word-division)
 - **2026-08-30 (fifth)** — [x64 closes dynamic register bitfields, and a split oracle distinguishes zero register fallback from the one intentional five-byte memory replay](#2026-08-30-x64-dynamic-register-bitfields)
 - **2026-08-30 (fourth)** — [x64 consumes the tailless bitfield RMW contract: SimCity's `EFD1` witness falls from 83 replays to zero under both 040 and 030 oracles](#2026-08-30-x64-bitfield-writes)
@@ -693,6 +695,36 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-long-division"></a>
+## 2026-08-30 (seventh) — The JIT closes SimCity's long-division `4C40` witness on both generators, with every extension action and trap guard proved
+
+The remaining division witness was not a larger word divide: `DIVL` carries a
+mandatory extension before its source EA. Shared IR now names that family,
+places later EA extensions after the selector, publishes the sole long-memory
+read contract and owns Moira's 68020 cycle column. The first native slice is
+the census's register source (`4C40`), but it implements all four legal
+extension actions: signed/unsigned division with a 32- or 64-bit dividend,
+independent quotient/remainder registers, and the `Dh==Dl` write-order alias.
+
+Both hosts divide at 64-bit width and validate the 32-bit guest quotient before
+publishing either destination or CCR. That single shape catches unsigned and
+signed overflow uniformly. x64 additionally guards `INT64_MIN/-1` before
+`IDIV`; the 32-bit `INT_MIN/-1` case is deliberately widened, then rejected by
+the same signed-range test. A zero divisor, any overflow, or reserved extension
+bits therefore reach Moira with registers and flags untouched. Success writes
+remainder then quotient, sets N/Z from the quotient, clears V/C and preserves
+X exactly as the core does.
+
+The asset-free oracle runs five successful forms (the four actions plus the
+destination alias) with `native=1407 slow=0` on both native A64 and the actual
+x86-64 Mach-O under Rosetta. Three trained runtime overflows take 511 deliberate
+replays, and a separately trained zero divisor lands on an identical vector-5
+boundary and 12-byte frame. The 120,000-step LC II lockstep also passes on each
+native backend. Memory divisors remain explicit fallback, and no application
+speed claim is made before the existing SimCity promotion protocol is run.
 
 ---
 

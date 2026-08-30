@@ -67,6 +67,7 @@ const char* opName(SemanticOp op) {
         case SemanticOp::ShiftRegister:    return "ShiftRegister";
         case SemanticOp::Bitfield:         return "Bitfield";
         case SemanticOp::DivideWord:       return "DivideWord";
+        case SemanticOp::DivideLong:       return "DivideLong";
     }
     return "?";
 }

@@ -1195,8 +1195,10 @@ emitters it dispatches to.
   `LINK`/`UNLK`/`NOP`, **`EXG`** (all three forms) and **`CMPM`** with
   distinct address registers (both since 2026-08-21 — the x64 port of the
   a64 pair, PreflightAll on CMPM's two reads), and
-  **`DIVU.W`/`DIVS.W`** with a `Dn` or immediate divisor (zero and quotient
-  overflow replay the untouched instruction), and
+  **`DIVU.W`/`DIVS.W`** with a `Dn` or immediate divisor and all four
+  **`DIVL`** extension actions with a `Dn` divisor (32-/64-bit dividend,
+  signed/unsigned; zero and quotient overflow replay the untouched
+  instruction), and
   **`MOVEM`** (both directions, both sizes, one span probe per burst, the
   040 restart latch `mmu040MovemArmed` checked);
 * as block terminators: `Bcc`/`BRA`, `JSR`/`BSR`/`RTS`, **`DBcc`** (loops

@@ -748,14 +748,15 @@ Open, in ROI order:
   statiques ou dynamiques, sont natives sur A64 et x64 ; seules les queues
   mémoire cinq-octets gardent leur frontière transactionnelle documentée.
   `CHANGELOG.md` 2026-08-28 (eighth) et 2026-08-30 (second à fifth).
-- [ ] **Division, tranche mot partielle le 2026-08-30** : `DIVU.W`/`DIVS.W`
-  sur diviseur `Dn` ou immédiat sont natifs sur A64 et x64 ; cela couvre les
-  trois témoins SimCity `81FC`/`8DFC`/`8FFC`. Zéro et quotient hors plage
-  rejouent l'instruction intacte dans Moira ; l'oracle zéro a au passage fermé
-  la poursuite erronée après une exception interne `FlagMayTrap`. Restent
-  `4C40` (`DIVL`) et les sources mémoire, puis les quatre preuves de promotion
-  applicative : empreinte identique, gain répété, gates ciblés verts, tier
-  `etalon` complet vert. `CHANGELOG.md` 2026-08-30 (sixth).
+- [ ] **Division, tranches registre le 2026-08-30** : `DIVU.W`/`DIVS.W` sur
+  diviseur `Dn` ou immédiat et les quatre actions `DIVL` sur diviseur `Dn`
+  sont natives sur A64 et x64. Cela couvre les témoins SimCity
+  `81FC`/`8DFC`/`8FFC`/`4C40`. Zéro et quotient hors plage rejouent
+  l'instruction intacte dans Moira ; les oracles couvrent le dividende 32/64
+  bits, signé/non signé, `Dh==Dl`, `INT_MIN/-1` et le vecteur 5. Restent les
+  sources mémoire, puis les quatre preuves de promotion applicative :
+  empreinte identique, gain répété, gates ciblés verts, tier `etalon` complet
+  vert. `CHANGELOG.md` 2026-08-30 (sixth) et (seventh).
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur

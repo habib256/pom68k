@@ -308,6 +308,7 @@ private:
     bool emitShiftRegister(size_t i);
     bool emitBitfield(size_t i);
     bool emitDivideWord(size_t i);
+    bool emitDivideLong(size_t i);
     bool emitCmpm(size_t i);
     // `exactFetchWords` overrides the words+1 rule for the forms whose
     // mmuFetchWord count is NOT linear (DBcc: 2 on every path — see the
@@ -2918,6 +2919,82 @@ bool Emitter::emitDivideWord(size_t i) {
     return true;
 }
 
+// All four legal DIVL extension actions with a Dn divisor. The divide is
+// deliberately performed at host width 64 even for a 32-bit dividend: x86
+// can then represent the signed INT_MIN/-1 quotient and the common range
+// guard hands the 68k overflow to Moira instead of raising host #DE.
+bool Emitter::emitDivideLong(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::DivideLong || in.extensionCount < 1)
+        return false;
+    const uint16_t ext = in.extensionWord(0);
+    if ((ext & 0x83F8u) != 0) return false;          // reserved extension bits
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    Ea src;
+    if (!decode(i, sem.eaMode, sem.eaReg, 2, 1, src) ||
+        src.idx != EA_DN || !lengthOk(i, 1 + src.ext) ||
+        !memory.complete())
+        return false;
+    const int cycles = kDivLong[src.idx];
+    if (cycles < 0 || traced030(i) != unsigned(cycles)) return false;
+
+    const bool sign = (ext & 0x0800u) != 0;
+    const bool wideDividend = (ext & 0x0400u) != 0;
+    const unsigned dl = (ext >> 12) & 7, dh = ext & 7;
+
+    a_.movRM(Sz::L, RCX, D(src.reg));                // divisor
+    a_.testRR(Sz::L, RCX, RCX);
+    a_.jcc(Cc::E, runtimeStub(i));                   // vector 5
+    if (sign) a_.movsxd(RCX, RCX);
+
+    if (wideDividend) {
+        a_.movRM(Sz::L, RAX, D(dh));
+        a_.shiftRI(Sz::Q, RAX, 4, 32);
+        a_.movRM(Sz::L, RDX, D(dl));
+        a_.aluRR(Asm::Op::OR, Sz::Q, RAX, RDX);     // RAX = Dh:Dl
+    } else {
+        a_.movRM(Sz::L, RAX, D(dl));
+        if (sign) a_.movsxd(RAX, RAX);
+    }
+
+    if (sign) {
+        // The sole 64-bit host overflow is also a 68k quotient overflow.
+        Label& safe = *a_.fresh();
+        a_.aluRI(Asm::Op::CMP, Sz::Q, RCX, -1);
+        a_.jccShort(Cc::NE, safe);
+        a_.movRI64(RDI, 0x8000'0000'0000'0000ull);
+        a_.aluRR(Asm::Op::CMP, Sz::Q, RAX, RDI);
+        a_.jcc(Cc::E, runtimeStub(i));
+        a_.bind(safe);
+        a_.cqo();
+        a_.divR64(true, RCX);
+    } else {
+        a_.aluRR(Asm::Op::XOR, Sz::L, RDX, RDX);
+        a_.divR64(false, RCX);
+    }
+
+    if (sign) {
+        a_.movRR(Sz::L, RDI, RAX);
+        a_.movsxd(RDI, RDI);
+        a_.aluRR(Asm::Op::CMP, Sz::Q, RDI, RAX);
+        a_.jcc(Cc::NE, runtimeStub(i));              // outside int32_t
+    } else {
+        a_.movRR(Sz::Q, RDI, RAX);
+        a_.shiftRI(Sz::Q, RDI, 5, 32);
+        a_.testRR(Sz::L, RDI, RDI);
+        a_.jcc(Cc::NE, runtimeStub(i));              // outside uint32_t
+    }
+
+    // Match Moira's remainder-then-quotient write order. Dh==Dl therefore
+    // leaves the quotient, and no architectural state changed before here.
+    a_.movMR(Sz::L, D(dh), RDX);
+    a_.movMR(Sz::L, D(dl), RAX);
+    a_.testRR(Sz::L, RAX, RAX);
+    flagsLogic(Sz::L);                              // V=C=0, X preserved
+    return true;
+}
+
 // The 68020 bitfield family — a64's lowerings (a64:2891 memory, a64:3040
 // register) translated. Register forms fold the constants: with o and w
 // known at compile time the rotate, the extraction shift and the
@@ -3797,6 +3874,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::ShiftRegister: return emitShiftRegister(i);
         case SemanticOp::Bitfield: return emitBitfield(i);
         case SemanticOp::DivideWord: return emitDivideWord(i);
+        case SemanticOp::DivideLong: return emitDivideLong(i);
         case SemanticOp::CompareMemory: return emitCmpm(i);
         case SemanticOp::AddSubQuick: return emitAddSubQ(i);
         case SemanticOp::BranchSubroutine: return emitSubroutine(i);
@@ -4339,6 +4417,10 @@ bool X64Backend::canEmit(uint16_t op) const {
             // path in Moira; Dn and immediate sources have no access to undo.
             return eaCostIndex(mode, reg) == EA_DN ||
                    eaCostIndex(mode, reg) == EA_IM;
+        case SemanticOp::DivideLong:
+            // The extension word is validated by emitDivideLong; opcode-level
+            // census admission covers the SimCity Dn-divisor family.
+            return eaCostIndex(mode, reg) == EA_DN;
         case SemanticOp::Lea:
             return controlEa(eaCostIndex(mode, reg)) ||
                    eaCostIndex(mode, reg) == EA_IX ||

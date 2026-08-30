@@ -453,6 +453,9 @@ public:
     void sxtH(unsigned rd, unsigned rn) {
         emit(0x13003C00u | (rn << 5) | rd);
     }
+    void sxtW(unsigned rd, unsigned rn) {
+        emit(0x93407C00u | (rn << 5) | rd);
+    }
     void udivW(unsigned rd, unsigned rn, unsigned rm) {
         emit(0x1AC00800u | (rm << 16) | (rn << 5) | rd);
     }
@@ -461,6 +464,15 @@ public:
     }
     void msubW(unsigned rd, unsigned rn, unsigned rm, unsigned ra) {
         emit(0x1B008000u | (rm << 16) | (ra << 10) | (rn << 5) | rd);
+    }
+    void udivX(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0x9AC00800u | (rm << 16) | (rn << 5) | rd);
+    }
+    void sdivX(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0x9AC00C00u | (rm << 16) | (rn << 5) | rd);
+    }
+    void msubX(unsigned rd, unsigned rn, unsigned rm, unsigned ra) {
+        emit(0x9B008000u | (rm << 16) | (ra << 10) | (rn << 5) | rd);
     }
     void rorW(unsigned rd, unsigned rn, unsigned shift) {
         emit(0x13800000u | (rn << 16) | (shift << 10) | (rn << 5) | rd);
@@ -811,6 +823,17 @@ uint16_t guestRegisterWriteMask(const Instr& in) {
             mask |= 0x00FFu; break;
         case SemanticOp::DivideWord:
             reg(false, s.registerIndex); break;
+        case SemanticOp::DivideLong: {
+            if (in.extensionCount < 1 ||
+                (in.extensionWord(0) & 0x83F8u) != 0) {
+                mask = 0xFFFFu;
+                break;
+            }
+            const uint16_t ext = in.extensionWord(0);
+            reg(false, (ext >> 12) & 7);
+            reg(false, ext & 7);
+            break;
+        }
         case SemanticOp::DecrementBranch:
             reg(false, s.eaReg); break;
         default:
@@ -1116,6 +1139,10 @@ bool canEmitReg(uint16_t op) {
             // The first trap-capable slice: register/immediate sources only.
             // Zero and quotient overflow branch to the untouched fallback.
             return ei == EA_DN || ei == EA_IM;
+        case SemanticOp::DivideLong:
+            // The first DIVL slice is the SimCity $4C40 witness: a Dn
+            // divisor, with quotient/remainder registers from its extension.
+            return ei == EA_DN;
         default: return false;
     }
 }
@@ -2929,6 +2956,61 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         else      a.lslW(13, 11, 16);
         emitLogicFlags(a, L, 13, 32);
         a.strW(14, 0, L.d + sem.registerIndex * 4);
+        return true;
+    }
+
+    if (sem.operation == SemanticOp::DivideLong) {
+        // DIVUL/DIVSL and DIVU/DIVS long share one lowering. A 64-bit host
+        // divide also makes the 32-bit signed INT_MIN/-1 case non-trapping;
+        // the quotient range guard then sends every 68k overflow to Moira
+        // before either destination or CCR has changed.
+        if (slow < 0 || in.extensionCount < 1) return false;
+        const uint16_t ext = in.extensionWord(0);
+        if ((ext & 0x83F8u) != 0) return false;      // reserved extension bits
+        Ea src;
+        if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 1, src) ||
+            src.idx != EA_DN || in.words != unsigned(2 + src.ext) ||
+            !memory.complete())
+            return false;
+        const int cycles = kDivLong[src.idx];
+        if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
+
+        const bool sign = (ext & 0x0800u) != 0;
+        const bool wideDividend = (ext & 0x0400u) != 0;
+        const unsigned dl = (ext >> 12) & 7, dh = ext & 7;
+
+        loadGuestRegister(a, L, 9, false, unsigned(src.reg)); // divisor
+        a.cbzW(9, slow);                                     // vector 5
+        if (sign) a.sxtW(9, 9);
+
+        if (wideDividend) {
+            loadGuestRegister(a, L, 10, false, dh);
+            a.lslX(10, 10, 32);
+            loadGuestRegister(a, L, 11, false, dl);
+            a.orrX(10, 10, 11);              // x10 = Dh:Dl dividend
+        } else {
+            loadGuestRegister(a, L, 10, false, dl);
+            if (sign) a.sxtW(10, 10);
+        }
+
+        if (sign) a.sdivX(11, 10, 9);
+        else      a.udivX(11, 10, 9);
+        a.msubX(12, 11, 9, 10);              // dividend - quotient*divisor
+
+        if (sign) {
+            a.sxtW(13, 11);
+            a.cmpX(13, 11);
+            a.bCond(Asm::NE, slow);           // quotient outside int32_t
+        } else {
+            a.lsrX(13, 11, 32);
+            a.cbnzW(13, slow);                // quotient outside uint32_t
+        }
+
+        // Moira writes remainder first and quotient second; when Dh==Dl the
+        // quotient therefore wins. Publish only after every guard above.
+        a.strW(12, 0, L.d + dh * 4);
+        a.strW(11, 0, L.d + dl * 4);
+        emitLogicFlags(a, L, 11, 32);          // V=C=0, X preserved
         return true;
     }
 
