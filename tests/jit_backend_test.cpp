@@ -483,6 +483,33 @@ int main() {
               jsr.control.target == 0x00123456 &&
               jsr.control.returnAddress == 0x6006,
               "IR resolves constant JSR control data from its EA plan");
+        jsr.fetchWords = 3;
+        check(jit::provedLinearJsrFetch030(jsr),
+              "IR proves the three linear fetches of JSR abs.l");
+        jit::Instr indexedJsr;
+        indexedJsr.opcode = 0x4EB0; indexedJsr.words = 3;
+        indexedJsr.fetchWords = 4;
+        indexedJsr.semantics = jit::describeInstruction(indexedJsr.opcode);
+        check(jit::provedLinearJsrFetch030(indexedJsr),
+              "IR proves indexed JSR's one post-extension refill");
+        indexedJsr.fetchWords = 3;
+        check(!jit::provedLinearJsrFetch030(indexedJsr),
+              "IR rejects an indexed JSR with an unproved fetch count");
+        indexedJsr.pc = 0x6100; indexedJsr.words = 2;
+        indexedJsr.fetchWords = 3; indexedJsr.extensionCount = 1;
+        indexedJsr.extensions[0] = 0x2591;
+        indexedJsr.memory = jit::describeMemory(indexedJsr.opcode, true);
+        jit::describeEffectiveAddresses(indexedJsr);
+        jit::refineMemoryFromExtensions(indexedJsr, true);
+        const auto indexedJsrProof = jit::memoryProofPlan(
+            indexedJsr.memory, jit::MemoryProofOptions{});
+        check(indexedJsr.memory.count == 2 &&
+              indexedJsr.memory.order ==
+                  jit::MemoryOrder::SourceThenDestination &&
+              indexedJsrProof.protocol ==
+                  jit::MemoryProofProtocol::PreflightAll &&
+              indexedJsrProof.preflightMask == 3,
+              "IR requires pointer and stack preflight for indirect JSR");
         const auto movemLoad = jit::describeInstruction(0x4CDF);
         check(movemLoad.operation == jit::SemanticOp::Movem &&
               movemLoad.toRegisters && movemLoad.bytes() == 4,
@@ -953,6 +980,7 @@ int main() {
         // and a block boundary the linker could not cross.
         check(b->canEmit(0x4E75) == gen, "RTS");
         check(b->canEmit(0x4EB9) == gen, "JSR abs.l");
+        check(b->canEmit(0x4EB0) == gen, "JSR indexed");
         check(b->canEmit(0x6100) == gen, "BSR");
         check(jit::endsBlockAfter(jit::classify(0x4E75)), "RTS terminates a block");
         check(jit::endsBlockAfter(jit::classify(0x4EB9)), "JSR terminates a block");

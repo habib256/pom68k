@@ -64,6 +64,8 @@ public:
     jit::CodeGuard* guard = nullptr;
     jit::Engine jit;
     int writeFaults = 0;
+    int readFaults = 0;
+    int mmioReads = 0;
     WriteObservation observedWrite;
 
     bool inHole(uint32_t a) const {
@@ -119,11 +121,21 @@ private:
     }
 
     moira::u8 read8(moira::u32 a) const override {
-        if (inHole(a)) const_cast<FaultCpu*>(this)->extBusError();
+        if (inHole(a)) {
+            auto& c = *const_cast<FaultCpu*>(this);
+            c.readFaults++;
+            c.extBusError();
+        }
+        if (inMmio(a)) const_cast<FaultCpu*>(this)->mmioReads++;
         return mem[a & 0xFFFFFF];
     }
     moira::u16 read16(moira::u32 a) const override {
-        if (inHole(a)) const_cast<FaultCpu*>(this)->extBusError();
+        if (inHole(a)) {
+            auto& c = *const_cast<FaultCpu*>(this);
+            c.readFaults++;
+            c.extBusError();
+        }
+        if (inMmio(a)) const_cast<FaultCpu*>(this)->mmioReads++;
         return moira::u16(mem[a & 0xFFFFFF] << 8 |
                           mem[(a + 1) & 0xFFFFFF]);
     }
@@ -313,6 +325,29 @@ void installJsrLoop(FaultCpu& c) {
     put16(c, kSubroutine + 0, 0x5280);  // ADDQ.L #1,D0
     put16(c, kSubroutine + 2, 0x4E75);  // RTS
     put16(c, kSubroutine + 4, 0x4E71);
+    put16(c, kHandler, 0x4E71);
+}
+
+void installFullIndirectJsrLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0, 0x4E71);
+    put16(c, kCode + 2, 0x4E71);
+    put16(c, kCode + 4, 0x4E71);
+    put16(c, kCode + 6, 0x4EB0);        // JSR ([ZA0,D2.W*4])
+    put16(c, kCode + 8, 0x2591);        // Speedometer, null BD/OD
+    put16(c, kCode + 10, 0x4EB0);       // JSR ([16,ZA0,D2.W*4])
+    put16(c, kCode + 12, 0x25A1);       // Speedometer, word BD/null OD
+    put16(c, kCode + 14, 0x0010);
+    put16(c, kCode + 16, 0x4EB0);       // JSR ([A0,D1.L*4])
+    put16(c, kCode + 18, 0x1D11);       // arbitrary-pointer replay oracle
+    put16(c, kCode + 20, 0x60EA);       // BRA.S kCode
+    put16(c, kSubroutine + 0, 0x5280);  // ADDQ.L #1,D0
+    put16(c, kSubroutine + 2, 0x4E75);  // RTS
+    put16(c, kSubroutine + 4, 0x4E71);
+    put32(c, kBitfieldData - 0x10, kSubroutine);
+    put32(c, kBitfieldData, kSubroutine);
     put16(c, kHandler, 0x4E71);
 }
 
@@ -947,6 +982,120 @@ int main() {
         check(afterAlias.blocksRun > beforeAlias.blocksRun &&
               afterAlias.slowInstrs == beforeAlias.slowInstrs + 1,
               "aliased JSR range guard replays before either native access");
+    }
+
+    // Speedometer 4's dominant $4EB0 sites are full-format preindexed
+    // calls. Exercise both observed extension lengths, then force each
+    // transactional escape: an unprovable MMIO pointer, a pointer-read bus
+    // fault, and a stack/target alias whose push-before-read order matters.
+    {
+        FaultCpu jsrRef, jsrNative;
+        installFullIndirectJsrLoop(jsrRef);
+        installFullIndirectJsrLoop(jsrNative);
+        jsrRef.reset(); jsrNative.reset();
+        jsrRef.setTC(12u << 20); jsrNative.setTC(12u << 20);
+        for (FaultCpu* c : {&jsrRef, &jsrNative}) {
+            c->setD(0, 0);
+            c->setD(1, 0);
+            c->setD(2, (kBitfieldData - 0x10) / 4);
+            c->setA(0, kBitfieldData);
+            c->setA(7, kStack);
+            c->setSR(0x2700);
+        }
+        jsrNative.jit.setEnabled(true);
+
+        const auto sameBoundary = [&] {
+            bool same = true;
+            for (int r = 0; r < 8; r++)
+                same = same && jsrRef.getD(r) == jsrNative.getD(r) &&
+                       jsrRef.getA(r) == jsrNative.getA(r);
+            return same && jsrRef.getPC() == jsrNative.getPC() &&
+                   jsrRef.getPC0() == jsrNative.getPC0() &&
+                   jsrRef.getIRD() == jsrNative.getIRD() &&
+                   jsrRef.getIRC() == jsrNative.getIRC() &&
+                   jsrRef.getSR() == jsrNative.getSR() &&
+                   jsrRef.getClock() == jsrNative.getClock();
+        };
+        bool fullExact = true;
+        for (int step = 0; step < 128 && fullExact; step++) {
+            const int64_t target = jsrRef.getClock() + 37;
+            jsrRef.executeUntil(target);
+            jsrNative.jit.executeUntil(target);
+            fullExact = sameBoundary() &&
+                std::memcmp(jsrRef.mem.data() + kStack - 8,
+                            jsrNative.mem.data() + kStack - 8, 8) == 0;
+        }
+        const auto fullStats = jsrNative.jit.stats().snapshot();
+        check(fullExact,
+              "Speedometer full-indirect JSR forms stay exact in 030 lockstep");
+        check(fullStats.blocksCompiled != 0 && fullStats.blocksRun != 0 &&
+              fullStats.slowInstrs == 0,
+              "Speedometer $2591/$25A1 JSR forms execute wholly natively");
+
+        const auto preparePointerCall = [&](FaultCpu& c, uint32_t pointer) {
+            c.setPC(kCode + 16); c.setPC0(kCode + 16);
+            c.setIRD(0x4EB0); c.setIRC(0x1D11);
+            c.setD(0, 0); c.setD(1, 0); c.setA(0, pointer);
+            c.setA(7, kStack); c.setSR(0x2700); c.setClock(0);
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+
+        put32(jsrRef, kMmio, kSubroutine);
+        put32(jsrNative, kMmio, kSubroutine);
+        preparePointerCall(jsrRef, kMmio);
+        preparePointerCall(jsrNative, kMmio);
+        jsrRef.mmioReads = jsrNative.mmioReads = 0;
+        const auto beforeMmio = jsrNative.jit.stats().snapshot();
+        jsrRef.executeUntil(1);
+        jsrNative.jit.executeUntil(1);
+        const auto afterMmio = jsrNative.jit.stats().snapshot();
+        check(sameBoundary() && jsrRef.mmioReads == jsrNative.mmioReads &&
+              jsrRef.mmioReads != 0,
+              "full-indirect MMIO pointer is read only by the single replay");
+        check(afterMmio.blocksRun > beforeMmio.blocksRun &&
+              afterMmio.slowInstrs == beforeMmio.slowInstrs + 1,
+              "MMIO pointer refusal replays the pristine full-indirect JSR");
+
+        preparePointerCall(jsrRef, kHole);
+        preparePointerCall(jsrNative, kHole);
+        jsrRef.readFaults = jsrNative.readFaults = 0;
+        const auto beforeHole = jsrNative.jit.stats().snapshot();
+        jsrRef.executeUntil(1);
+        jsrNative.jit.executeUntil(1);
+        const auto afterHole = jsrNative.jit.stats().snapshot();
+        const uint32_t refFaultSp = jsrRef.getA(7);
+        const uint32_t nativeFaultSp = jsrNative.getA(7);
+        check(jsrRef.readFaults == 1 && jsrNative.readFaults == 1 &&
+              refFaultSp == nativeFaultSp &&
+              std::memcmp(jsrRef.mem.data() + refFaultSp,
+                          jsrNative.mem.data() + nativeFaultSp, 32) == 0,
+              "pointer-read fault preserves the exact 030 restart frame");
+        check(afterHole.blocksRun > beforeHole.blocksRun &&
+              afterHole.slowInstrs == beforeHole.slowInstrs,
+              "pointer-hole preflight faults only during untouched replay");
+
+        constexpr uint32_t aliasTarget = kBitfieldData + 0x180;
+        put32(jsrRef, kBitfieldData, aliasTarget);
+        put32(jsrNative, kBitfieldData, aliasTarget);
+        put16(jsrRef, aliasTarget, 0x4E71);
+        put16(jsrNative, aliasTarget, 0x4E71);
+        preparePointerCall(jsrRef, kBitfieldData);
+        preparePointerCall(jsrNative, kBitfieldData);
+        jsrRef.setA(7, aliasTarget + 4);
+        jsrNative.setA(7, aliasTarget + 4);
+        const auto beforeAlias = jsrNative.jit.stats().snapshot();
+        jsrRef.executeUntil(1);
+        jsrNative.jit.executeUntil(1);
+        const auto afterAlias = jsrNative.jit.stats().snapshot();
+        check(sameBoundary() &&
+              std::memcmp(jsrRef.mem.data() + aliasTarget,
+                          jsrNative.mem.data() + aliasTarget, 4) == 0,
+              "full-indirect alias preserves architectural push-before-read");
+        check(afterAlias.blocksRun > beforeAlias.blocksRun &&
+              afterAlias.slowInstrs == beforeAlias.slowInstrs + 1,
+              "full-indirect alias guard replays before pointer/push effects");
     }
 
     // MOVEM's native 030 contract is all-or-nothing: one proved contiguous

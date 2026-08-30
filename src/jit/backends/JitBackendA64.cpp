@@ -1115,6 +1115,7 @@ bool canEmitReg(uint16_t op) {
             return true;
         }
         case SemanticOp::JumpSubroutine:
+            return controlEa(ei) || ei == EA_IX || ei == EA_IXPC;
         case SemanticOp::Jump:
             return controlEa(ei);
         case SemanticOp::Lea:
@@ -3864,12 +3865,17 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         if (fullIndirect && !pointerRead.valid()) {
             watchRefusal(L, ir, in, "jsr:pointer"); return false;
         }
+        if (fullIndirect && jsr &&
+            (memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+             !pointerRead.preflight || !write.preflight ||
+             in.memory.order != MemoryOrder::SourceThenDestination)) {
+            watchRefusal(L, ir, in, "jsr:preflight"); return false;
+        }
         if (!memory.complete()) { watchRefusal(L, ir, in, "jsr:complete"); return false; }
         const int penalty = ea.fullFormat ? fullIndexPenalty(ea) : 0;
         const unsigned opCost = kJsrJmp[ea.idx] < 0 ? 0
             : unsigned(kJsrJmp[ea.idx] + penalty);
-        if (kJsrJmp[ea.idx] < 0 || traced030(L, in) != opCost ||
-            (fullIndirect && L.is030)) {
+        if (kJsrJmp[ea.idx] < 0 || traced030(L, in) != opCost) {
             watchRefusal(L, ir, in, "jsr:cost"); return false;
         }
 
@@ -3897,6 +3903,18 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         }
         a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.ubfxW(9, 9, 0, 1); a.cbnzW(9, slow);
+        if (fullIndirect && jsr) {
+            // The transactional path reads the target word before making
+            // the already-proved return-address store. Replay when those
+            // byte ranges overlap because the architectural push could
+            // otherwise rewrite the very program word being sampled.
+            a.ldrW(9, 1, 48);
+            a.ldrW(10, 1, 44);
+            a.subW(11, 9, 10); a.movW(12, 3); a.cmpW(11, 12);
+            a.bCond(Asm::LS, slow);
+            a.subW(11, 10, 9); a.movW(12, 1); a.cmpW(11, 12);
+            a.bCond(Asm::LS, slow);
+        }
         if (fullIndirect) {
             a.ldrW(9, 1, 48);
             readProgWord(a, L, slow);
@@ -3925,27 +3943,29 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
                 watchRefusal(L, ir, in, "jsr:ird"); return false;
             }
             if (write.exactRequired) { watchRefusal(L, ir, in, "jsr:write-plan"); return false; }
-            a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
-            a.strW(9, 1, 44);                       // the new A7
-            memProbe(a, L, ir.super, 4, true, slow); // x14 = proven host
-            a.strX(14, 1, 192);                     // Frame::progHost
-            a.ldrW(9, 1, 48);
-            // Moira pushes before reading the first target word. Reordering
-            // those two accesses is valid only when their byte ranges do
-            // not overlap; an aliased stack can rewrite the target itself.
-            a.ldrW(10, 1, 44);
-            a.subW(11, 9, 10); a.movW(12, 3); a.cmpW(11, 12);
-            a.bCond(Asm::LS, slow);
-            a.subW(11, 10, 9); a.movW(12, 1); a.cmpW(11, 12);
-            a.bCond(Asm::LS, slow);
-            readProgWord(a, L, slow);               // w11 = irc (nothing committed yet)
-            a.strW(11, 1, 40);                      // Frame::scratch
-            a.ldrX(14, 1, 192);
-            a.ldrW(9, 1, 44);
-            a.movW(11, control.returnAddress); a.strW(11, 1, 72);
-            observeDirectWrite(a, L, 32, in.pc);
-            storeGuest(a, 32, 11);
-            a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
+            if (!fullIndirect) {
+                a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
+                a.strW(9, 1, 44);                       // the new A7
+                memProbe(a, L, ir.super, 4, true, slow); // x14 = proven host
+                a.strX(14, 1, 192);                     // Frame::progHost
+                a.ldrW(9, 1, 48);
+                // Moira pushes before reading the first target word. Reordering
+                // those two accesses is valid only when their byte ranges do
+                // not overlap; an aliased stack can rewrite the target itself.
+                a.ldrW(10, 1, 44);
+                a.subW(11, 9, 10); a.movW(12, 3); a.cmpW(11, 12);
+                a.bCond(Asm::LS, slow);
+                a.subW(11, 10, 9); a.movW(12, 1); a.cmpW(11, 12);
+                a.bCond(Asm::LS, slow);
+                readProgWord(a, L, slow);               // w11 = irc (nothing committed yet)
+                a.strW(11, 1, 40);                      // Frame::scratch
+                a.ldrX(14, 1, 192);
+                a.ldrW(9, 1, 44);
+                a.movW(11, control.returnAddress); a.strW(11, 1, 72);
+                observeDirectWrite(a, L, 32, in.pc);
+                storeGuest(a, 32, 11);
+                a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
+            }
             a.ldrW(11, 1, 48);
             a.strW(11, 0, L.pc); a.strW(11, 0, L.pc0);
             if (icache) chargeIcache(a, L, ir, in, icacheShadow);
@@ -4282,29 +4302,16 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         const bool bccWord = icache && in.words == 2 &&
             in.semantics.operation == SemanticOp::Branch &&
             in.semantics.condition != 0;
-        // $4EBA decodes as JumpSubroutine, $6100 as BranchSubroutine: the
-        // exemption used to test BranchSubroutine for both, which made the
-        // JSR half dead code — every JSR d16(PC) fell back (2026-08-23,
-        // found by POM68K_JIT_WATCH_OPCODE=4EBA: 19 M of the idle Finder's
-        // in-block fallbacks).
-        // Every two-word JSR — d16(An), d16(PC), abs.W — is the same
-        // single path with a traced fetch count of 2 (4EAD JSR d16(A5) was
-        // the last 64-site refusal of the 2026-08-23 watch once d16(PC)
-        // compiled); the emitter's cost table and the runtime target read
-        // cover all three forms alike.
-        const bool jsrD16Pc = icache && in.words == 2 &&
-            ((in.semantics.operation == SemanticOp::JumpSubroutine &&
-              in.fetchWords == 2) ||
-             (in.opcode == 0x6100 && bsrWideAdmission() &&
-              in.semantics.operation == SemanticOp::BranchSubroutine));
-        // JSR abs.l is also single-path. SKIP_LAST_RD makes its three
-        // linear instruction fetches exactly its three encoded words; the
-        // target word is read separately at the live address below.
-        const bool jsrAbsLong = icache && in.opcode == 0x4EB9 &&
-            in.words == 3 && in.fetchWords == 3 &&
-            in.semantics.operation == SemanticOp::JumpSubroutine;
+        // The shared proof names exactly the JSR forms whose mode-5 fetch
+        // addresses are one linear path: the simple two-/three-word forms
+        // plus indexed forms' final post-extension refill. BSR.W has its
+        // own independently gated proof.
+        const bool jsrLinear = icache && provedLinearJsrFetch030(in);
+        const bool bsrWide = icache && in.opcode == 0x6100 &&
+            in.words == 2 && bsrWideAdmission() &&
+            in.semantics.operation == SemanticOp::BranchSubroutine;
         if (icache && in.kind == Kind::Branch && in.words > 1 &&
-            !dbcc && !bccWord && !jsrD16Pc && !jsrAbsLong) {
+            !dbcc && !bccWord && !jsrLinear && !bsrWide) {
             watchRefusal(L, ir, in, "multi-word-branch-guard");
             a.b(slowStatic[i]);
             continue;

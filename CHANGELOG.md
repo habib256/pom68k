@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's full-indirect `JSR` became transactional on both generators without losing 68030 restart state** → [2026-08-31 (third) — Speedometer's indexed indirect…](#2026-08-31-speedometer-jsr-full-indirect)
 - **how Speedometer separated an intentional SCSI pseudo-DMA fallback from the safe `JSR abs.l` promotion beside it** → [2026-08-31 (second) — Speedometer identifies…](#2026-08-31-speedometer-jsr-absolute-long)
 - **how Speedometer's hot word multiplies became exact native code, why their 68030 cost is fixed, and what the ABBA did not prove** → [2026-08-31 — Speedometer's three hot word multiplies…](#2026-08-31-speedometer-word-multiply)
 - **how Speedometer 4 isolated the count-16 logical shifts, what their guarded promotion buys, and why multiplication is now next** → [2026-08-30 (tenth) — Speedometer 4 turns…](#2026-08-30-speedometer-shift16)
@@ -356,6 +357,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (third)** — [Speedometer's indexed indirect `JSR` becomes transactional on A64 and x64, removing its largest static CPU fallback](#2026-08-31-speedometer-jsr-full-indirect)
 - **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](#2026-08-31-speedometer-jsr-absolute-long)
 - **2026-08-31** — [Speedometer's three hot word multiplies become native on both generators, with fixed 68030 timing and exact MMIO](#2026-08-31-speedometer-word-multiply)
 - **2026-08-30 (tenth)** — [Speedometer 4 turns three count-16 logical shifts native on both generators and names multiplication as the next honest coverage target](#2026-08-30-speedometer-shift16)
@@ -705,6 +707,58 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-jsr-full-indirect"></a>
+## 2026-08-31 (third) — Speedometer's indexed indirect `JSR` becomes transactional on A64 and x64, removing its largest static CPU fallback
+
+The post-`JSR abs.l` Speedometer census named one concentrated gap: 13,948
+static fallbacks at `4EB0`. These were not brief indexed calls. Every hot
+witness used a full-format memory-indirect EA with `I/IS=001` (preindexed),
+including the exact `$2591` null-displacement and `$25A1` word-base-
+displacement forms. Their traced base costs were 12 or 14 cycles: the shared
+indexed JSR cost 7 plus the already-modelled full-index pointer and
+displacement penalties.
+
+The 68030 order is now explicit in both generators. The EA first reads its
+pointer longword in data space, JSR pushes the return address, then reads the
+first target word in program space. Generated code preflights both pointer
+and stack mappings while the instruction is pristine, reads the pointer only
+from proved plain RAM, resolves the final target, rejects odd or stack-
+overlapping targets, reads the live program word, then stores through the
+proved stack pointer. MMIO, a mapping hole, a cross-page stack, or an alias
+replays the untouched instruction in Moira. This also closes the apparent
+`disp-store` problem: a fault is replayed before native effects, so Moira
+alone constructs the format-A/B restart state; on success its transient
+displacement bookkeeping is not architecturally observable.
+
+The mode-5 instruction-cache admission is shared too. Simple JSR forms retain
+their proved two/three fetches, while brief/full indexed JSR admits only
+`fetchWords == words + 1`, matching computeEA's one final linear refill after
+the encoded extensions. X64 gained the same pre/post-index address lowering
+and shared `kJsrJmp + fullIndexPenalty` cost used by A64, rather than another
+backend-local table.
+
+The directed 68030 gate executes the exact `$2591` and `$25A1` Speedometer
+forms with zero slow instructions and identical PC/IRD/IRC/clock/stack state.
+Separate witnesses prove no duplicated MMIO pointer read on replay, a byte-exact
+32-byte pointer-fault restart frame, and push-before-target-read behavior for
+an aliased stack. Backend parity, the asset-free 040 lockstep and the
+120,000-step real LC II lockstep all pass.
+
+In the real 270-frame Speedometer CPU phase, `4EB0` disappears from the
+unsupported table. Against the immediately preceding sample, unsupported
+fallbacks fall 49,476 → 37,290 (**−12,186 / −24.63 %**) and all fallbacks
+89,908 → 79,380 (**−10,528 / −11.71 %**). The runtime-cause table still
+records 87 `4EB0` fill/tag-MMU replays, which is the intended dynamic safety
+edge rather than missing code generation. The run retires 2,293,886
+instructions, reports 2,283,346 native (**99.54 %**), and preserves CPU
+`ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
+`5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577
+and halted=0. The instrumented 0.310552 s wall time is not a speed claim.
+The next measured static cluster is `0829`/`1029`/`1429` at
+3,242/3,157/3,142 fallbacks.
 
 ---
 

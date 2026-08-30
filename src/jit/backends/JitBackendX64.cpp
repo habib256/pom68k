@@ -190,16 +190,18 @@ struct Frame {
     uint64_t* slowStaticHisto;   // +80
     uint64_t* slowRuntimeHisto;  // +88
     uint8_t*  progHost;          // +96 proven JSR push pointer across target read
+    uint8_t*  pointerHost;       // +104 full-index pointer across stack probe
 };
 constexpr int32_t kFClockTarget = 0, kFInstrs = 8, kFExit = 12;
 constexpr int32_t kFDtlbSelf = 16, kFDtlbFill = 24, kFGuard = 32;
 constexpr int32_t kFScratch = 40, kFSaveA = 44, kFSaveV = 48;
 constexpr int32_t kFSlow = 52, kFPeriph = 56, kFLinkTab = 64, kFValue = 72;
 constexpr int32_t kFHistoStatic = 80, kFHistoRuntime = 88;
-constexpr int32_t kFProgHost = 96;
+constexpr int32_t kFProgHost = 96, kFPointerHost = 104;
 static_assert(offsetof(Frame, slowStaticHisto) == kFHistoStatic);
 static_assert(offsetof(Frame, slowRuntimeHisto) == kFHistoRuntime);
 static_assert(offsetof(Frame, progHost) == kFProgHost);
+static_assert(offsetof(Frame, pointerHost) == kFPointerHost);
 
 // Sizes. A 64-instruction block of memory-touching forms tops out around
 // 12 KB with its cold half; the code buffer holds thousands of blocks and
@@ -339,8 +341,12 @@ private:
 
     // ── operand plumbing ─────────────────────────────────────────────────
     bool decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea,
-                bool allowFullDirect = false);
+                bool allowFullDirect = false,
+                bool allowFullIndirect = false);
     void addrOf(const Ea& ea, Reg dst, int szIdx);
+    void addEaIndex(const Ea& ea, Reg dst);
+    void addrOfFullIndirectPointer(const Ea& ea, Reg dst);
+    void finishFullIndirect(const Ea& ea, Reg pointer, Reg dst);
     void commitEa(const Ea& ea, int szIdx,
                   const MemoryAccessPlan& access);
     // The decoded operands must account for EXACTLY the instruction length
@@ -1016,25 +1022,56 @@ bool Emitter::emitSubroutine(size_t i) {
     if (sem.operation != SemanticOp::JumpSubroutine || !control.valid ||
         !control.pushesReturnAddress) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
-    const MemoryAccessPlan write = memory.access(
-        MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
-    if (!write.valid() || !memory.complete()) return false;
     const int mode = sem.eaMode, reg = sem.eaReg;
     Ea ea;
-    if (!decode(i, mode, reg, 2, 0, ea)) return false;
+    if (!decode(i, mode, reg, 2, 0, ea, /*allowFullDirect=*/L_.is030,
+                /*allowFullIndirect=*/L_.is030)) return false;
     if (!ea.memory) return false;                    // JSR needs an address
     if (ea.idx == EA_PI || ea.idx == EA_PD) return false;   // not encodable
     if (!lengthOk(i, ea.ext)) return false;
-    static const int8_t kJsr[EA_MODE_COUNT] =
-        { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
-    if (kJsr[ea.idx] < 0 || unsigned(kJsr[ea.idx]) != traced030(i)) return false;
+    const bool fullIndirect = ea.fullFormat &&
+                              ea.indirect != IndexIndirect::None;
+    MemoryAccessPlan pointerRead;
+    if (fullIndirect)
+        pointerRead = memory.access(MemoryDirection::Read,
+                                    MemoryOperand::Control, 4, mode, reg);
+    const MemoryAccessPlan write = memory.access(
+        MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+    if (!write.valid() ||
+        (fullIndirect &&
+         (!pointerRead.valid() || !pointerRead.preflight || !write.preflight ||
+          memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+          in.memory.order != MemoryOrder::SourceThenDestination)) ||
+        !memory.complete()) return false;
+    const int penalty = ea.fullFormat ? fullIndexPenalty(ea) : 0;
+    const unsigned opCost = kJsrJmp[ea.idx] < 0 ? 0
+        : unsigned(kJsrJmp[ea.idx] + penalty);
+    if (kJsrJmp[ea.idx] < 0 || opCost != traced030(i)) return false;
 
     const bool constant = control.targetKnown;
     if (constant && (control.target & 1)) return false;
 
     // The target first: it must be known good before the stack moves,
     // because an odd one is an address error with nothing committed.
-    addrOf(ea, RAX, 2);
+    if (fullIndirect) {
+        // computeEA reads the pointer before JSR pushes. Prove both plain
+        // mappings while the instruction is pristine, then perform that
+        // read once; a refused stack can therefore never duplicate MMIO.
+        addrOfFullIndirectPointer(ea, RAX);
+        memProbe(RAX, 4, /*write=*/false, runtimeStub(i));
+        a_.movMR(Sz::Q, F(kFPointerHost), RSI);
+        a_.movRM(Sz::L, RAX, A(7));
+        a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+        a_.movMR(Sz::L, F(kFSaveA), RAX);
+        memProbe(RAX, 4, /*write=*/true, runtimeStub(i));
+        a_.movMR(Sz::Q, F(kFProgHost), RSI);
+        a_.movRM(Sz::Q, RSI, F(kFPointerHost));
+        a_.movRM(Sz::L, RDI, mem(RSI, 0));
+        a_.bswap(RDI);
+        finishFullIndirect(ea, RDI, RAX);
+    } else {
+        addrOf(ea, RAX, 2);
+    }
     a_.movMR(Sz::L, F(kFValue), RAX);
     if (!constant) {
         a_.testRI(Sz::L, RAX, 1);
@@ -1051,11 +1088,13 @@ bool Emitter::emitSubroutine(size_t i) {
         if (in.terminalQueueValid && in.terminalIrd != op) return false;
         if (write.exactRequired) return false;
 
-        a_.movRM(Sz::L, RAX, A(7));
-        a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
-        a_.movMR(Sz::L, F(kFSaveA), RAX);
-        memProbe(RAX, 4, /*write=*/true, runtimeStub(i));
-        a_.movMR(Sz::Q, F(kFProgHost), RSI);
+        if (!fullIndirect) {
+            a_.movRM(Sz::L, RAX, A(7));
+            a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+            a_.movMR(Sz::L, F(kFSaveA), RAX);
+            memProbe(RAX, 4, /*write=*/true, runtimeStub(i));
+            a_.movMR(Sz::Q, F(kFProgHost), RSI);
+        }
 
         // Interpreter order is push then target read. The transactional
         // lowering reverses them, so an overlapping [SP-4,SP) / [target,
@@ -1100,7 +1139,7 @@ bool Emitter::emitSubroutine(size_t i) {
             a_.movRM(Sz::W, RAX, F(kFScratch));
             a_.movMR(Sz::W, at(L_.irc), RAX);
         }
-        chargeCycles(kJsr[ea.idx]);
+        chargeCycles(int(opCost));
         retire();
         if (constant) leaveTo(control.target);
         else          leaveToDynamic();
@@ -1123,7 +1162,7 @@ bool Emitter::emitSubroutine(size_t i) {
     a_.movMR(Sz::L, at(L_.pc), RDI);
     a_.movMR(Sz::L, at(L_.pc0), RDI);
     commitQueue(op, ircAfter);
-    chargeCycles(kJsr[ea.idx]);          // table/base cost; the emitted
+    chargeCycles(int(opCost));           // table/base cost; the emitted
                                          // i-cache charge owns the misses
     retire();
     if (constant) leaveTo(control.target);
@@ -1391,12 +1430,12 @@ void Emitter::condToAl(int cc) {
 
 // ── effective addresses ──────────────────────────────────────────────────
 bool Emitter::decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea,
-                     bool allowFullDirect) {
-    // Shared admission wrapper (JitEaPlan.h). Memory indirection keeps the
-    // conservative default refusal on this backend: nothing below emits a
-    // pre/post-indexed plan yet, so `allowFullIndirect` stays false.
+                     bool allowFullDirect, bool allowFullIndirect) {
+    // Shared admission wrapper (JitEaPlan.h). Call sites must opt into
+    // memory indirection only when they also implement its ordered pointer
+    // access; ordinary operands retain the conservative default refusal.
     return decodeEaPlan(ir_.instrs[i], mode, reg, szIdx, extAt, ea,
-                        allowFullDirect, /*allowFullIndirect=*/false);
+                        allowFullDirect, allowFullIndirect);
 }
 
 // Guest effective address into `dst` (brief indexed forms also clobber RDX;
@@ -1444,6 +1483,38 @@ void Emitter::addrOf(const Ea& ea, Reg dst, int szIdx) {
         default:
             return;
     }
+}
+
+void Emitter::addEaIndex(const Ea& ea, Reg dst) {
+    if (ea.indexSuppressed) return;
+    if (ea.ixReg < 8) {
+        if (ea.ixLong) a_.movRM(Sz::L, RDX, D(ea.ixReg));
+        else a_.movsx(Sz::W, RDX, D(ea.ixReg));
+    } else {
+        if (ea.ixLong) a_.movRM(Sz::L, RDX, A(ea.ixReg - 8));
+        else a_.movsx(Sz::W, RDX, A(ea.ixReg - 8));
+    }
+    if (ea.ixShift) a_.shiftRI(Sz::L, RDX, 4, uint8_t(ea.ixShift));
+    a_.aluRR(Asm::Op::ADD, Sz::L, dst, RDX);
+}
+
+// Address of the data-space pointer used by a full-format memory-indirect
+// EA. Preindexed forms add Xn here; postindexed forms add it only after the
+// big-endian pointer longword has been read.
+void Emitter::addrOfFullIndirectPointer(const Ea& ea, Reg dst) {
+    if (ea.baseSuppressed) a_.movRI(dst, 0);
+    else if (ea.idx == EA_IX) a_.movRM(Sz::L, dst, A(ea.reg));
+    else a_.movRI(dst, ea.base);
+    if (ea.indirect == IndexIndirect::Preindexed) addEaIndex(ea, dst);
+    if (ea.baseDisplacement)
+        a_.aluRI(Asm::Op::ADD, Sz::L, dst, ea.baseDisplacement);
+}
+
+void Emitter::finishFullIndirect(const Ea& ea, Reg pointer, Reg dst) {
+    a_.movRR(Sz::L, dst, pointer);
+    if (ea.indirect == IndexIndirect::Postindexed) addEaIndex(ea, dst);
+    if (ea.outerDisplacement)
+        a_.aluRI(Asm::Op::ADD, Sz::L, dst, ea.outerDisplacement);
 }
 
 void Emitter::commitEa(const Ea& ea, int szIdx,
@@ -4098,11 +4169,10 @@ bool Emitter::emit() {
         // (BRA.W, BSR.W, multi-word JSR/JMP) used to diverge at step
         // 16097; that was the peripheral-phase class, closed 2026-08-21
         // (JIT_BRINGUP § C.4nonies). Each form still owes the per-form
-        // fetch-address proof against the mode-5 core before it widens —
-        // BSR.W has one (fetchWords=2, no readExt); BRA.W and multi-word
-        // indexed JSR/JMP do not yet. JSR abs.l is the narrow exception
-        // below: SKIP_LAST_RD proves its three encoded words are also its
-        // three linear fetch addresses.
+        // fetch-address proof against the mode-5 core before it widens.
+        // BSR.W has one (fetchWords=2, no readExt); JSR now has the shared
+        // `provedLinearJsrFetch030` proof, including indexed computeEA's
+        // one final refill. BRA.W and multi-word JMP remain outside it.
         //
         // A CONDITIONAL two-word Bcc is different: its fetch model is
         // proved against the mode-5 source — both paths fetch pc and
@@ -4127,18 +4197,14 @@ bool Emitter::emit() {
         // jit_lockstep_030_x64_alignment_test runs this admission ON).
         // Default rides the backend's accessClockBias declaration (ON
         // here since 2026-08-22, −2.3 % alone, −8.0 % with restart-base).
-        const bool jsrW030 = ic_ && ir_.instrs[i].words == 2 &&
-            ir_.instrs[i].fetchWords == 2 &&
-            ir_.instrs[i].semantics.operation == SemanticOp::JumpSubroutine;
-        const bool jsrAbsLong030 = ic_ && ir_.instrs[i].opcode == 0x4EB9 &&
-            ir_.instrs[i].words == 3 && ir_.instrs[i].fetchWords == 3 &&
-            ir_.instrs[i].semantics.operation == SemanticOp::JumpSubroutine;
+        const bool jsrLinear030 = ic_ &&
+            provedLinearJsrFetch030(ir_.instrs[i]);
         const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
             ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission() &&
             ir_.instrs[i].semantics.operation == SemanticOp::BranchSubroutine;
         if (ic_ && ir_.instrs[i].kind == Kind::Branch &&
             ir_.instrs[i].words > 1 && !dbcc030 && !bccW030 &&
-            !jsrW030 && !jsrAbsLong030 && !bsrW030) {
+            !jsrLinear030 && !bsrW030) {
             a_.jmp(staticStub(i));
             emitted = i + 1;
             continue;
@@ -4520,6 +4586,9 @@ bool X64Backend::canEmit(uint16_t op) const {
         case SemanticOp::MoveQuick:
             return true;
         case SemanticOp::JumpSubroutine:
+            return controlEa(eaCostIndex(mode, reg)) ||
+                   eaCostIndex(mode, reg) == EA_IX ||
+                   eaCostIndex(mode, reg) == EA_IXPC;
         case SemanticOp::Jump:
             return controlEa(eaCostIndex(mode, reg));
         case SemanticOp::ShiftRegister:

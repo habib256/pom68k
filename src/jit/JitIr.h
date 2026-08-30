@@ -1814,6 +1814,25 @@ inline uint32_t branchWords(uint16_t op, uint16_t indexExtension = 0) {
     return 2;                                      // DBcc: opcode + disp16
 }
 
+// The mode-5 68030 i-cache model needs fetch ADDRESSES, not merely a count.
+// These JSR forms have one path whose fetches are proved linear from pc:
+// d16/abs.W/PC-d16 consume their held extension, abs.L uses SKIP_LAST_RD,
+// while brief/full indexed computeEA performs one final linear refill after
+// all encoded extension words. The target-word read is a separate program-
+// space access and is never folded into this predicate.
+inline bool provedLinearJsrFetch030(const Instr& in) {
+    const InstructionSemantics& s = in.semantics;
+    if (s.operation != SemanticOp::JumpSubroutine) return false;
+    if (s.eaMode == 5 ||
+        (s.eaMode == 7 && (s.eaReg == 0 || s.eaReg == 2)))
+        return in.words == 2 && in.fetchWords == 2;
+    if (s.eaMode == 7 && s.eaReg == 1)
+        return in.words == 3 && in.fetchWords == 3;
+    if (s.eaMode == 6 || (s.eaMode == 7 && s.eaReg == 3))
+        return in.words >= 2 && in.fetchWords == in.words + 1;
+    return false;
+}
+
 // Kind::Muldiv also contains non-trapping multiplication because the opcode
 // classifier is deliberately coarse. The shared semantic decoder is precise
 // enough to keep MULU/MULS off the expensive post-fallback PC check while

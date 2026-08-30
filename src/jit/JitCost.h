@@ -94,9 +94,9 @@ inline constexpr int kCmpaExtraCycles = 2;
 // Each names its Moira exec column. A -1 is "no such encoding" (Dn/An rows
 // of address-only operations), never a backend's admission policy — an
 // unimplemented lowering refuses in the backend, not by blanking a cell
-// here. kJsrJmp carries the TRUE indexed cells (7): a64 emits them, x64
-// does not yet, and narrowing the shared column to x64's coverage would
-// bake an admission decision into a cost fact.
+// here. kJsrJmp carries the TRUE indexed cells (7); both generators now
+// consume them for JSR, including the full-format address penalty where
+// applicable, instead of transcribing a narrower backend-local table.
 inline constexpr int8_t kScc[EA_MODE_COUNT] =        // execSccEa, byte row
     { -1, -1, 10, 10, 11, 11, 13, 10, 10, -1, -1, -1 };
 inline constexpr int8_t kLea[EA_MODE_COUNT] =        // execLea

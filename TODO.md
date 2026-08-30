@@ -768,9 +768,8 @@ Open, in ROI order:
 - [ ] **L'ABBA sur hôte silencieux après la correction de garde de slices
   a64.** La paire provisoire lit −22,9 % (30k) / −23,8 % (6k), toutes deux
   `HOST BUSY` sous les démons d'indexation macOS. Rejouer Spotlight en pause.
-- [ ] **Le prochain census nommé** : les 13 % d'instructions encore dans la
-  fenêtre — `JSR idx(An)` `4EB0` (pas un seul chemin : base 12-14, 3-4 mots
-  lus), les re-preuves `PFLUSHA` (37 694 bumps de génération par `SwapMMUMode`,
+- [ ] **Les prochains leviers au-delà des opcodes nommés** : les re-preuves
+  `PFLUSHA` (37 694 bumps de génération par `SwapMMUMode`,
   dont un chemin par page ne prendrait que 25 %), et `arm backoff` 4,3 %.
   **Mesuré 2026-08-23** (`POM68K_JIT_ARM_BACKOFF`, 30 000 frames) : 32 → 94,2 s,
   8 → 90,5 s, 4 → 92,9 s, 1 → 93,1 s ; la part native monte
@@ -825,12 +824,20 @@ Open, in ROI order:
   d'alias pile/cible et lecture live du premier mot cible. Il disparaît du
   census, unsupported 55 174 → 49 476 dans l'échantillon, empreintes exactes.
   `CHANGELOG.md` (2026-08-31 second).
-- [ ] **Queue de couverture Speedometer après `JSR abs.l`** : `4EB0`
-  (13 948 dans le dernier échantillon) est réellement indexé complet et
-  mémoire-indirect (`I/IS=001`) ; il faut prouver le `disp-store`/restart 030,
-  pas seulement élargir le garde multi-mot. Suivent `0829`, `1029`, `1429`,
-  les ROX/décalages hors tranche et MOVEM indexé complet. Le long multiply
-  `4C00` tombe à 295 dans cet échantillon et reste derrière ces témoins.
+- **JSR indexé indirect Speedometer — CLOS le 2026-08-31** : les 13 948
+  replis `4EB0` étaient tous des EA complets préindexés (`I/IS=001`). A64 et
+  x64 prévalident maintenant lecture du pointeur + écriture de pile, ne lisent
+  le pointeur qu'en RAM prouvée, gardent cible impaire/alias pile, lisent le
+  mot programme live puis poussent par le pointeur prouvé. MMIO, trou et faute
+  rejouent l'instruction intacte ; le gate compare aussi la frame 030 de 32
+  octets. Le census réel passe 49 476 → 37 290 unsupported et 89 908 → 79 380
+  replis totaux ; `4EB0` disparaît du statique, avec 87 seuls fills/tags MMU
+  dynamiques observés. `CHANGELOG.md` (2026-08-31 third).
+- [ ] **Queue de couverture Speedometer après `4EB0`** : le prochain cluster
+  statique mesuré est `0829` / `1029` / `1429` à 3 242 / 3 157 / 3 142,
+  devant `D981` / `9381`, `6000` et `E9D4`. Les ROX/décalages hors tranche,
+  MOVEM indexé complet et `4C00` restent ensuite ; les traiter par contrat,
+  pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction
@@ -1548,9 +1555,11 @@ depuis (ABBA nul).
   rouge-immédiat si l'une bouge sans son jumeau. **Les shifts registre sont
   PORTÉS le 2026-08-29 (sixth)** — le déroulé pas-à-pas d'a64 traduit, la
   ligne d'exception retirée, 82,0 → 88,1 % natif au boot LC II, mur plat
-  (la leçon D1F0 tient une 2e fois). Restent, par taille MESURÉE sur ce
-  boot : JSR `$4EB0` (711 k — `pom68kJitReadProg` existe déjà côté x64),
-  TST mémoire `$4A11` (552 k), destinations indexées de MOVE (`$2F70`,
+  (la leçon D1F0 tient une 2e fois). **JSR `$4EB0` est PORTÉ le
+  2026-08-31 (third)** : x64 partage maintenant le calcul pré/postindexé, le
+  coût et la transaction pointeur/pile d'a64. Restent, sur cette photo
+  historique à reclasser par un census frais : TST mémoire `$4A11` (552 k),
+  destinations indexées de MOVE (`$2F70`,
   391 k), bit ops mémoire (`$08A9`, 332 k), MOVE from SR (105 k),
   bitfields. **L'« ordre `(An)+` » (`$24D0`, 1,64 M) est SORTI de cette
   liste le 2026-08-29 (seventh)** : mesuré identique dans les deux modes

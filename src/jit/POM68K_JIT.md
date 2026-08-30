@@ -718,7 +718,17 @@ target alias before reversing the proof/read/push sequence. The 68030 gate
 patches the target after compiling both d16(An) and abs.l callers; both remain
 native and exact. `4EB9` disappears from the real CPU fallback table, moving
 unsupported 55,174 → 49,476 in that sample with fingerprints unchanged.
-The full-indirect `4EB0` remains behind its separate restart-state proof.
+
+The following slice closes that separate restart-state proof for full-
+indirect `4EB0`. Pointer-read and stack-write mappings are both preflighted
+before the plain-RAM pointer is consumed; the final target is checked for
+oddness and stack overlap, its first program word is read live, and only then
+is the proved push committed. Any unprovable mapping or fault replays the
+untouched instruction, leaving Moira to build the exact 030 restart frame.
+The shared i-cache predicate admits indexed JSR only when its traced fetches
+are the encoded words plus computeEA's one final refill. The real CPU census
+moves 49,476 → 37,290 unsupported and 89,908 → 79,380 total fallbacks;
+`4EB0` has no unsupported row and only 87 observed fill/tag runtime replays.
 
 ### 3.6 What one window exit actually costs (2026-08-09)
 
