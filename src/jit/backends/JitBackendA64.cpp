@@ -4368,29 +4368,29 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         const Instr& in = ir.instrs[i];
         // Multi-word control flow needs a proved path-specific fetch model.
         // DBcc fetches exactly two words on all three paths. Conditional
-        // Bcc.W has two common words plus pc+4 on fall-through. JSR d16(PC)
-        // is a single path with a traced count, and so is BSR.W ($6100,
-        // fetchWords = 2): its historical step-16097 divergence was the
-        // peripheral-phase class (JIT_BRINGUP § C.4nonies), closed by the
-        // access-clock bias the thunks carry, so it rides the same knob as
-        // on x64 — ON by default under this backend's declaration. JSR
-        // abs.l has the separate three-word proof below; indexed transfers
-        // remain refused on the 030.
+        // Bcc.W has two common words plus pc+4 on fall-through. BRA.W/L,
+        // simple JSR/JMP and BSR.W ($6100, fetchWords = 2) are single-path
+        // transfers with proved linear counts. BSR.W's historical step-16097
+        // divergence was the peripheral-phase class (JIT_BRINGUP
+        // § C.4nonies), closed by the access-clock bias the thunks carry, so
+        // it rides the same knob as on x64 — ON by default under this
+        // backend's declaration. Indexed
+        // JSR has the separate post-extension-refill proof below; indexed
+        // JMP remains refused on the 030.
         const bool dbcc =
             in.semantics.operation == SemanticOp::DecrementBranch;
         const bool bccWord = icache && in.words == 2 &&
             in.semantics.operation == SemanticOp::Branch &&
             in.semantics.condition != 0;
-        // The shared proof names exactly the JSR forms whose mode-5 fetch
-        // addresses are one linear path: the simple two-/three-word forms
-        // plus indexed forms' final post-extension refill. BSR.W has its
-        // own independently gated proof.
-        const bool jsrLinear = icache && provedLinearJsrFetch030(in);
+        // The shared proof names exactly the BRA and JSR/JMP forms whose
+        // mode-5 fetch addresses are one linear path. BSR.W has its own
+        // independently gated proof.
+        const bool controlLinear = icache && provedLinearControlFetch030(in);
         const bool bsrWide = icache && in.opcode == 0x6100 &&
             in.words == 2 && bsrWideAdmission() &&
             in.semantics.operation == SemanticOp::BranchSubroutine;
         if (icache && in.kind == Kind::Branch && in.words > 1 &&
-            !dbcc && !bccWord && !jsrLinear && !bsrWide) {
+            !dbcc && !bccWord && !controlLinear && !bsrWide) {
             watchRefusal(L, ir, in, "multi-word-branch-guard");
             a.b(slowStatic[i]);
             continue;

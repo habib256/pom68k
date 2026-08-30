@@ -4266,14 +4266,12 @@ bool Emitter::emit() {
         // emitted before the condition, is path-independent and exact.
         const bool dbcc030 = ic_ &&
             ir_.instrs[i].semantics.operation == SemanticOp::DecrementBranch;
-        // Widening this exemption to the other single-path transfers
-        // (BRA.W, BSR.W, multi-word JSR/JMP) used to diverge at step
-        // 16097; that was the peripheral-phase class, closed 2026-08-21
-        // (JIT_BRINGUP § C.4nonies). Each form still owes the per-form
-        // fetch-address proof against the mode-5 core before it widens.
-        // BSR.W has one (fetchWords=2, no readExt); JSR now has the shared
-        // `provedLinearJsrFetch030` proof, including indexed computeEA's
-        // one final refill. BRA.W and multi-word JMP remain outside it.
+        // Widening this exemption to single-path transfers used to diverge
+        // at step 16097; that was the peripheral-phase class, closed
+        // 2026-08-21 (JIT_BRINGUP § C.4nonies). BRA.W/L and simple JSR/JMP
+        // now share `provedLinearControlFetch030`; indexed JSR additionally
+        // proves computeEA's one final refill. BSR.W keeps its independently
+        // gated proof (fetchWords=2, no readExt). Indexed JMP remains out.
         //
         // A CONDITIONAL two-word Bcc is different: its fetch model is
         // proved against the mode-5 source — both paths fetch pc and
@@ -4298,14 +4296,14 @@ bool Emitter::emit() {
         // jit_lockstep_030_x64_alignment_test runs this admission ON).
         // Default rides the backend's accessClockBias declaration (ON
         // here since 2026-08-22, −2.3 % alone, −8.0 % with restart-base).
-        const bool jsrLinear030 = ic_ &&
-            provedLinearJsrFetch030(ir_.instrs[i]);
+        const bool controlLinear030 = ic_ &&
+            provedLinearControlFetch030(ir_.instrs[i]);
         const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
             ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission() &&
             ir_.instrs[i].semantics.operation == SemanticOp::BranchSubroutine;
         if (ic_ && ir_.instrs[i].kind == Kind::Branch &&
             ir_.instrs[i].words > 1 && !dbcc030 && !bccW030 &&
-            !jsrLinear030 && !bsrW030) {
+            !controlLinear030 && !bsrW030) {
             a_.jmp(staticStub(i));
             emitted = i + 1;
             continue;

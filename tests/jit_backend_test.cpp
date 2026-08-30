@@ -527,17 +527,38 @@ int main() {
               jsr.control.returnAddress == 0x6006,
               "IR resolves constant JSR control data from its EA plan");
         jsr.fetchWords = 3;
-        check(jit::provedLinearJsrFetch030(jsr),
+        check(jit::provedLinearControlFetch030(jsr),
               "IR proves the three linear fetches of JSR abs.l");
         jit::Instr indexedJsr;
         indexedJsr.opcode = 0x4EB0; indexedJsr.words = 3;
         indexedJsr.fetchWords = 4;
         indexedJsr.semantics = jit::describeInstruction(indexedJsr.opcode);
-        check(jit::provedLinearJsrFetch030(indexedJsr),
+        check(jit::provedLinearControlFetch030(indexedJsr),
               "IR proves indexed JSR's one post-extension refill");
         indexedJsr.fetchWords = 3;
-        check(!jit::provedLinearJsrFetch030(indexedJsr),
+        check(!jit::provedLinearControlFetch030(indexedJsr),
               "IR rejects an indexed JSR with an unproved fetch count");
+
+        jit::Instr braWord;
+        braWord.opcode = 0x6000; braWord.words = 2; braWord.fetchWords = 2;
+        braWord.semantics = jit::describeInstruction(braWord.opcode);
+        check(jit::provedLinearControlFetch030(braWord),
+              "IR proves BRA.W's two linear 68030 fetches");
+        jit::Instr braLong;
+        braLong.opcode = 0x60FF; braLong.words = 3; braLong.fetchWords = 3;
+        braLong.semantics = jit::describeInstruction(braLong.opcode);
+        check(jit::provedLinearControlFetch030(braLong),
+              "IR proves BRA.L's three linear 68030 fetches");
+        jit::Instr bccWord = braWord;
+        bccWord.opcode = 0x6600;
+        bccWord.semantics = jit::describeInstruction(bccWord.opcode);
+        check(!jit::provedLinearControlFetch030(bccWord),
+              "IR keeps conditional Bcc.W out of the single-path proof");
+        jit::Instr jmpLong;
+        jmpLong.opcode = 0x4EF9; jmpLong.words = 3; jmpLong.fetchWords = 3;
+        jmpLong.semantics = jit::describeInstruction(jmpLong.opcode);
+        check(jit::provedLinearControlFetch030(jmpLong),
+              "IR proves JMP abs.l's three linear 68030 fetches");
         indexedJsr.pc = 0x6100; indexedJsr.words = 2;
         indexedJsr.fetchWords = 3; indexedJsr.extensionCount = 1;
         indexedJsr.extensions[0] = 0x2591;

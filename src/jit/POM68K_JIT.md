@@ -756,6 +756,30 @@ path. The real census moves 27,751 → 20,065 unsupported and 69,874 → 62,188
 total fallbacks; all encountered register forms disappear and the four
 fingerprints remain unchanged.
 
+The next two large rows, `6000` (`BRA.W`) and `4EF9` (`JMP abs.l`), were
+already understood by both generators; only the broad 68030 multiword-
+control guard kept them out. The mode-5 Moira path proves the missing
+fetch-address contract. `BRA.W` fetches exactly `pc,pc+2`, `BRA.L` fetches
+`pc,pc+2,pc+4`, and both change PC only after consuming that linear stream.
+Simple `JMP` d16/abs.W/abs.L/PC-d16 does the same; abs.L uses
+`SKIP_LAST_RD`, leaves its low address half in IRC and performs no target
+fetch because the 68030 `fullPrefetch` is a no-op. Their costs are fixed
+(10 for wide BRA, 4 for abs.L JMP in the observed forms). A shared
+`provedLinearControlFetch030` predicate now admits exactly those shapes on
+A64 and x64; conditional Bcc keeps its path-specific proof, and indexed JMP
+remains outside.
+
+The directed 68030 gate now arms CACR and the real i-cache overlay, then
+executes `BRA.W`, `BRA.L` and `JMP abs.l` from a cold cache. Each transfer
+enters compiled code without increasing `slowInstrs` and matches Moira's
+PC/IRD/IRC, fetch, hit, miss and clock state. All four real 030 locksteps
+remain identical. In the new 270-frame CPU census neither `6000` nor `4EF9`
+has an unsupported row; the secondary simple-JMP row `4EFA` is gone too.
+The sampled mix moves 20,065 → 16,145 unsupported (**−19.5 %**) and 62,188
+→ 59,247 total fallbacks (**−4.7 %**), while all four fingerprints, 270
+frames, 2,577 SCSI commands and halted=0 remain exact. The next dominant
+static row is now `E9D4`, followed by `C029`.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G

@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's `BRA.W` and `JMP abs.l` became native through one exact 68030 linear-fetch proof** → [2026-08-31 (sixth) — Speedometer's wide transfers…](#2026-08-31-speedometer-linear-transfers)
 - **how Speedometer's `ADDX`/`SUBX` register chains became native on both generators without losing X or cumulative Z** → [2026-08-31 (fifth) — Speedometer's extended arithmetic…](#2026-08-31-speedometer-addx-subx)
 - **why Speedometer's three apparently ordinary BTST/MOVE fallbacks require exact device reads, and how their live delay can remain native** → [2026-08-31 (fourth) — Speedometer's next three JIT…](#2026-08-31-speedometer-exact-polls)
 - **how Speedometer's full-indirect `JSR` became transactional on both generators without losing 68030 restart state** → [2026-08-31 (third) — Speedometer's indexed indirect…](#2026-08-31-speedometer-jsr-full-indirect)
@@ -359,6 +360,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (sixth)** — [Speedometer's wide unconditional branches and simple jumps become native through an exact 68030 linear-fetch proof](#2026-08-31-speedometer-linear-transfers)
 - **2026-08-31 (fifth)** — [Speedometer's register `ADDX`/`SUBX` chains become native on A64 and x64 with exact X and cumulative Z](#2026-08-31-speedometer-addx-subx)
 - **2026-08-31 (fourth)** — [Speedometer's next three JIT static fallbacks become native exact device reads, without flattening their live LC II delay](#2026-08-31-speedometer-exact-polls)
 - **2026-08-31 (third)** — [Speedometer's indexed indirect `JSR` becomes transactional on A64 and x64, removing its largest static CPU fallback](#2026-08-31-speedometer-jsr-full-indirect)
@@ -711,6 +713,47 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-linear-transfers"></a>
+## 2026-08-31 (sixth) — Speedometer's wide unconditional branches and simple jumps become native through an exact 68030 linear-fetch proof
+
+After register `ADDX`/`SUBX`, Speedometer's next control-flow gaps were
+`6000` (`BRA.W`) 3,026 times and `4EF9` (`JMP abs.l`) 1,557 times. Both
+generators already owned their target, queue and fixed-cost lowerings. They
+were refused earlier by the shared 68030 multiword-control guard, which
+requires an address-level instruction-fetch proof before an emitted i-cache
+charge may replace Moira's fetch loop.
+
+The mode-5 source gives that proof without approximation. `BRA.W` consumes
+exactly the opcode and held displacement at `pc,pc+2`; `BRA.L` adds the low
+displacement at `pc+4`. Simple `JMP` d16/abs.W/abs.L/PC-d16 follows the same
+linear stream. In particular, abs.L's `SKIP_LAST_RD` stops after its low
+target half, leaves that word in IRC and the 68030 `fullPrefetch` performs no
+target fetch. The wide BRA cost is fixed at 10 and the observed abs.L JMP
+cost at 4. The new shared `provedLinearControlFetch030` predicate admits
+only those single-path shapes. Conditional Bcc retains its separate two-path
+model, indexed JSR retains its final-refill proof, and indexed JMP remains
+refused because neither native emitter lowers it.
+
+The asset-free IR gate pins valid BRA.W/BRA.L/JMP abs.L shapes and rejects a
+conditional Bcc from this proof. The injected 68030 native gate now enables
+emitted i-cache accounting, arms CACR and starts both engines from the same
+cold cache. Directed `BRA.W`, `BRA.L` and `JMP abs.l` each enter compiled
+code without a slow instruction and leave identical PC, IRD, IRC, fetches,
+hits, misses and clock. Backend parity and all four real 030 locksteps pass.
+
+In the rebuilt 270-frame CPU census, neither `6000` nor `4EF9` has an
+unsupported row; the former secondary simple-JMP row `4EFA` is absent too.
+The sampled run reports 16,145 unsupported + 43,102 runtime fallbacks =
+59,247, against the preceding 20,065 + 42,123 = 62,188: **−19.5 %** static
+and **−4.7 %** total. It classifies 2,222,871 / 2,231,553 instructions native
+(**99.61 %**). CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 are unchanged. The
+instrumented 0.307813 s wall time is not a speed claim. `E9D4` is now the
+largest static CPU row, followed by `C029`.
 
 ---
 

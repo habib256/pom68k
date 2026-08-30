@@ -57,6 +57,24 @@ public:
         setModel(moira::Model::M68030);
     }
 
+    struct IcacheObservation {
+        int64_t fetches = 0;
+        int64_t hits = 0;
+        int64_t misses = 0;
+    };
+
+    void enableIcacheOverlay() {
+        pomIcache.armed = true;
+        pomIcache.missPenalty = 4;
+        pomIcache.reset();
+        pomIcache.fetches = pomIcache.hits = pomIcache.misses = 0;
+        setCACR(1);
+    }
+
+    IcacheObservation icacheObservation() const {
+        return {pomIcache.fetches, pomIcache.hits, pomIcache.misses};
+    }
+
     std::vector<uint8_t> mem;
     // The engine attaches its production write guard during construction.
     // Construct the callback destination first so its initializer cannot
@@ -227,18 +245,31 @@ void installSpeedometerPollLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
 }
 
-void installQueueLoop(FaultCpu& c, bool jumpAbsoluteLong) {
+enum class QueueTransfer { BranchWord, BranchLong, JumpAbsoluteLong };
+
+void installQueueLoop(FaultCpu& c, QueueTransfer transfer) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
     put32(c, 8, kHandler);
-    if (jumpAbsoluteLong) {
-        put16(c, kCode + 0, 0x4EF9);    // JMP (xxx).L kCode
-        put32(c, kCode + 2, kCode);
-    } else {
-        put16(c, kCode + 0, 0x60FF);    // BRA.L kCode, displacement -2
-        put32(c, kCode + 2, 0xFFFFFFFE);
+    uint32_t words = 0;
+    switch (transfer) {
+        case QueueTransfer::BranchWord:
+            put16(c, kCode + 0, 0x6000); // BRA.W kCode, displacement -2
+            put16(c, kCode + 2, 0xFFFE);
+            words = 2;
+            break;
+        case QueueTransfer::BranchLong:
+            put16(c, kCode + 0, 0x60FF); // BRA.L kCode, displacement -2
+            put32(c, kCode + 2, 0xFFFFFFFE);
+            words = 3;
+            break;
+        case QueueTransfer::JumpAbsoluteLong:
+            put16(c, kCode + 0, 0x4EF9); // JMP (xxx).L kCode
+            put32(c, kCode + 2, kCode);
+            words = 3;
+            break;
     }
-    put16(c, kCode + 6, 0x4E71);        // copied lookahead, never executed
+    put16(c, kCode + words * 2, 0x4E71); // copied lookahead, never executed
     put16(c, kHandler, 0x4E71);
 }
 
@@ -431,12 +462,11 @@ int main() {
     setenv("POM68K_JIT_PROFIT_SCORE", "0", 1);
     setenv("POM68K_JIT_ACCESS_THUNK", "2", 1);
     setenv("POM68K_JIT_030_MEMBF", "1", 1);
-    // The queue cases deliberately exercise multiword control flow. Its
-    // variable 030 fetch count is conservatively replayed while emitted
-    // i-cache accounting is enabled; disabling that attribution layer lets
-    // this gate isolate the queue contract (CACR remains disabled, so no
-    // architectural cycle cost is removed).
-    setenv("POM68K_JIT_ICACHE_EMIT", "0", 1);
+    // The queue cases deliberately exercise multiword control flow with the
+    // real 68030 i-cache overlay armed. This makes the gate judge the shared
+    // linear-fetch proof, its emitted accounting and the terminal queue as
+    // one contract.
+    setenv("POM68K_JIT_ICACHE_EMIT", "1", 1);
 
     FaultCpu ref, native;
     install(ref); install(native);
@@ -643,39 +673,60 @@ int main() {
     check(ref.getPC() == native.getPC() && ref.getPC() >= kHandler,
           "both engines leave vector 2 at the same handler boundary");
 
-    const auto checkQueueLoop = [&](bool jumpAbsoluteLong,
+    const auto checkQueueLoop = [&](QueueTransfer transfer,
                                     uint16_t expectedIrc,
+                                    int64_t expectedFetches,
                                     const char* name) {
         FaultCpu queueRef, queueNative;
-        installQueueLoop(queueRef, jumpAbsoluteLong);
-        installQueueLoop(queueNative, jumpAbsoluteLong);
+        installQueueLoop(queueRef, transfer);
+        installQueueLoop(queueNative, transfer);
         queueRef.reset(); queueNative.reset();
         queueRef.setTC(12u << 20); queueNative.setTC(12u << 20);
+        queueRef.enableIcacheOverlay(); queueNative.enableIcacheOverlay();
         queueNative.jit.setEnabled(true);
         queueNative.jit.executeUntil(queueNative.getClock() + 256);
         const auto trainedQueue = queueNative.jit.stats().snapshot();
 
         prepareFault(queueRef); prepareFault(queueNative);
         queueRef.setA(6, 0x004000); queueNative.setA(6, 0x004000);
+        // Keep the compiled block, but give both engines the same cold cache
+        // and zeroed counters for the one-instruction comparison.
+        queueRef.enableIcacheOverlay(); queueNative.enableIcacheOverlay();
         queueRef.executeUntil(queueRef.getClock() + 1);
         queueNative.jit.executeUntil(queueNative.getClock() + 1);
         const auto afterQueue = queueNative.jit.stats().snapshot();
+        const auto refIcache = queueRef.icacheObservation();
+        const auto nativeIcache = queueNative.icacheObservation();
 
         char what[160];
         std::snprintf(what, sizeof(what), "%s compiled and entered native code", name);
         check(trainedQueue.blocksCompiled != 0 &&
               afterQueue.blocksRun > trainedQueue.blocksRun, what);
-        std::snprintf(what, sizeof(what), "%s leaves identical PC/IRD/IRC", name);
+        std::snprintf(what, sizeof(what), "%s retires without fallback", name);
+        check(afterQueue.slowInstrs == trainedQueue.slowInstrs, what);
+        std::snprintf(what, sizeof(what), "%s leaves identical PC/IRD/IRC/clock", name);
         check(queueRef.getPC() == queueNative.getPC() &&
               queueRef.getIRD() == queueNative.getIRD() &&
-              queueRef.getIRC() == queueNative.getIRC(), what);
+              queueRef.getIRC() == queueNative.getIRC() &&
+              queueRef.getClock() == queueNative.getClock(), what);
         std::snprintf(what, sizeof(what), "%s keeps the exact last consumed word in IRC", name);
-        check(queueNative.getIRD() == (jumpAbsoluteLong ? 0x4EF9 : 0x60FF) &&
+        const uint16_t expectedIrd = transfer == QueueTransfer::JumpAbsoluteLong
+            ? 0x4EF9 : transfer == QueueTransfer::BranchLong ? 0x60FF : 0x6000;
+        check(queueNative.getIRD() == expectedIrd &&
               queueNative.getIRC() == expectedIrc, what);
+        std::snprintf(what, sizeof(what), "%s reproduces exact i-cache accounting", name);
+        check(refIcache.fetches == expectedFetches &&
+              nativeIcache.fetches == refIcache.fetches &&
+              nativeIcache.hits == refIcache.hits &&
+              nativeIcache.misses == refIcache.misses, what);
     };
 
-    checkQueueLoop(true, uint16_t(kCode), "JMP (xxx).L exit");
-    checkQueueLoop(false, 0xFFFE, "BRA.L taken exit");
+    checkQueueLoop(QueueTransfer::BranchWord, 0xFFFE, 2,
+                   "BRA.W taken exit");
+    checkQueueLoop(QueueTransfer::BranchLong, 0xFFFE, 3,
+                   "BRA.L taken exit");
+    checkQueueLoop(QueueTransfer::JumpAbsoluteLong, uint16_t(kCode), 3,
+                   "JMP (xxx).L exit");
 
     const auto checkSuccessfulPostincrement = [&](bool mmio, const char* name) {
         FaultCpu successRef, successNative;
