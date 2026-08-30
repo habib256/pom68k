@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's full-indirect `MOVE.L`/`MOVEA.L` became a two-read transaction on both 68030 JIT generators** → [2026-08-31 (ninth) — Speedometer's indirect MOVE…](#2026-08-31-speedometer-indirect-move)
 - **how Speedometer's full-indirect `LEA` became native on the 68030 without turning `C029`'s bad timing experiment into a false win** → [2026-08-31 (eighth) — Speedometer's indirect LEA…](#2026-08-31-speedometer-indirect-lea)
 - **how Speedometer's tailed `E9D4` made 68030 memory bitfields a proved default on A64 and x64** → [2026-08-31 (seventh) — Speedometer promotes memory bitfields…](#2026-08-31-speedometer-memory-bitfields)
 - **how Speedometer's `BRA.W` and `JMP abs.l` became native through one exact 68030 linear-fetch proof** → [2026-08-31 (sixth) — Speedometer's wide transfers…](#2026-08-31-speedometer-linear-transfers)
@@ -362,6 +363,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (ninth)** — [Speedometer's full-indirect `MOVE.L`/`MOVEA.L` becomes a two-read direct-RAM transaction on both 68030 JIT generators](#2026-08-31-speedometer-indirect-move)
 - **2026-08-31 (eighth)** — [Speedometer's full-indirect `LEA` becomes native on both 68030 JIT generators while `C029` stays behind its failed real-timing proof](#2026-08-31-speedometer-indirect-lea)
 - **2026-08-31 (seventh)** — [Speedometer's tailed `E9D4` gives x64 its missing fifth-byte reader and promotes 68030 memory bitfields on both generators](#2026-08-31-speedometer-memory-bitfields)
 - **2026-08-31 (sixth)** — [Speedometer's wide unconditional branches and simple jumps become native through an exact 68030 linear-fetch proof](#2026-08-31-speedometer-linear-transfers)
@@ -717,6 +719,52 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-indirect-move"></a>
+## 2026-08-31 (ninth) — Speedometer's full-indirect `MOVE.L`/`MOVEA.L` becomes a two-read direct-RAM transaction on both 68030 JIT generators
+
+After the indirect LEA slice, Speedometer's next rows were `2470` 902 and
+`2070` 808 times. Both are three-word `MOVEA.L ([bd.W],Zn),An` instructions
+with extension `81E1`: first read a longword pointer from data space, then
+read the final longword operand, and only then publish the destination
+address register. Their traced base cost is the fixed indexed-read price 9
+plus the full-format word-displacement/indirection penalty 7 = 16; observed
+24/28-cycle totals carry only the traced 030 i-cache misses. The shared IR
+already describes the two reads as `PreflightAll`, in sequential order.
+
+A64 had the complete 040 lowering but explicitly refused this shape on the
+030; x64 decoded neither its extensions nor its second access. Both now
+consume the same narrow 030 contract for longword, register-destination
+MOVE. They prove a plain mapping for both the pointer and final operand,
+read the pointer, finish pre/postindex formation, read the operand and commit
+Dn/An last. Neither access uses an exact thunk or cache shortcut inside this
+multi-read transaction. A fill refusal, code-page mapping, MMIO address or
+fault therefore reaches the whole-instruction fallback before any guest
+state changes, leaving Moira to own the exact device timing and restart
+state.
+
+The directed gate executes the exact `2470/81E1` and `2070/81E1` sequence for
+256 checkpoints with identical registers, PC/queue, SR and clock and zero
+slow instructions on native A64 and native x64 (the latter executed under
+Rosetta). It then changes only the proved RAM pointer's value to synthetic
+MMIO; the final mapping refuses, Moira performs both delayed 16-bit halves,
+and A2 is still committed exactly once. Backend parity, the asset-free suite
+and all four real LC II 030 locksteps pass.
+
+The same proof covers the other full-indirect longword-to-register forms met
+in the phase (`2270`, `2272`, `2230`, `2032`, `2075`, `2034`, `2C36`), while
+ordinary brief-index and memory-destination MOVE remain unchanged. In the
+production-profile 270-frame recensus, all named static rows disappear.
+Unsupported fallbacks move 9,408 → 5,286 (**−43.82 %**) and total fallbacks
+52,303 → 48,982 (**−6.35 %**); 2,226,797 / 2,235,488 instructions are native
+(**99.61 %**). CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
+histogrammed 0.312758 s wall time is not a speed claim. `C029` remains the
+largest static row by design; full-format indexed MOVE destinations
+(`2191`/`31A9`) are now the next structural candidates.
 
 ---
 

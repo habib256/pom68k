@@ -2039,7 +2039,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // forms do not ride on this sole-write proof.
         const bool indirectSource = src.fullFormat &&
                                     src.indirect != IndexIndirect::None;
-        if (indirectSource && (L.is030 || dst.memory)) return false;
+        if (indirectSource && dst.memory) return false;
+        // The new 030 admission is deliberately the Speedometer longword
+        // family. The 040 path below already owns the wider set through its
+        // measured sole-read timing proof; do not narrow that existing
+        // capability while keeping unmeasured 030 byte/word forms out.
+        if (indirectSource && L.is030 && bits != 32) return false;
         MemoryAccessPlan pointerAccess, srcAccess, dstAccess;
         if (src.memory) {
             if (indirectSource)
@@ -2227,6 +2232,19 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 !pointerAccess.preflight || !srcAccess.preflight ||
                 in.memory.order != MemoryOrder::Sequential)
                 return false;
+            if (L.is030) {
+                // Both reads are one transaction. On cacheless 030, admit
+                // only two direct-RAM mappings: a pointer or final-operand
+                // miss/MMIO address reaches the whole-instruction fallback
+                // before MOVEA can publish its destination register. Exact
+                // device timing is therefore left entirely to Moira.
+                if (pointerAccess.exactRequired || srcAccess.exactRequired)
+                    return false;
+                pointerAccess.exactThunk = false;
+                pointerAccess.cache = false;
+                srcAccess.exactThunk = false;
+                srcAccess.cache = false;
+            }
             addrOfFullIndirectPointer(a, L, src);
             memProbe(a, L, ir.super, 4, false, slow);
             loadGuest(a, 32, 10);

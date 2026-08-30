@@ -2055,13 +2055,21 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     const int dstMode = sem.destinationMode, dstReg = sem.destinationReg;
 
     Ea src, dst;
-    if (!decode(i, srcMode, srcReg, szIdx, 0, src)) return false;
+    if (!decode(i, srcMode, srcReg, szIdx, 0, src,
+                /*allowFullDirect=*/false,
+                /*allowFullIndirect=*/L_.is030)) return false;
     if (!decode(i, dstMode, dstReg, szIdx, src.ext, dst)) return false;
     if (src.idx == EA_AN && szIdx == 0) return false;     // MOVE.B An is illegal
     // A destination has to be writable: not an immediate, not PC-relative.
     if (dst.idx == EA_IM || dst.idx == EA_DIPC) return false;
     if (aliases(src, dst)) return false;
     if (!lengthOk(i, src.ext + dst.ext)) return false;
+    const bool indirectSource = src.fullFormat &&
+                                src.indirect != IndexIndirect::None;
+    // Speedometer's measured family is MOVE.L/MOVEA.L from a full-indirect
+    // source into a register. Memory destinations need a third proof slot;
+    // byte/word timing and MOVEA sign extension are intentionally unopened.
+    if (indirectSource && (szIdx != 2 || dst.memory)) return false;
 
     // a64's proven restartable-write family: register/immediate source into
     // (An)/(An)+/-(An)/d16(An)/brief-indexed/absolute, marked by the IR's
@@ -2081,7 +2089,10 @@ bool Emitter::emitMove(size_t i, int szIdx) {
             memory = memoryR;
         }
     }
-    const int rc = kEaRead[src.idx][szIdx];
+    const int sourcePenalty = indirectSource ? fullIndexPenalty(src) : 0;
+    const int rc = kEaRead[src.idx][szIdx] < 0
+                 ? kEaRead[src.idx][szIdx]
+                 : kEaRead[src.idx][szIdx] + sourcePenalty;
     // Brief-indexed destination calculation costs five base cycles in the
     // restartable family (a64:1268); the plain table refuses E_IX entirely.
     const int dc = (restartWrite && dst.idx == EA_IX) ? 5 : kMoveDst[dst.idx];
@@ -2110,13 +2121,18 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         restartWrite && !restartBaseAdmission()
             ? unsigned(ir_.instrs[i].cycles) : traced030(i);
 
-    MemoryAccessPlan srcAccess, dstAccess;
+    MemoryAccessPlan pointerAccess, srcAccess, dstAccess;
     if (src.memory) {
+        if (indirectSource)
+            pointerAccess = memory.access(MemoryDirection::Read,
+                                          MemoryOperand::Control, 4,
+                                          uint8_t(srcMode), uint8_t(srcReg));
         srcAccess = memory.access(MemoryDirection::Read,
                                   MemoryOperand::Source,
                                   uint8_t(sizeBytes(szIdx)),
                                   uint8_t(srcMode), uint8_t(srcReg));
-        if (!srcAccess.valid()) return false;
+        if (!srcAccess.valid() ||
+            (indirectSource && !pointerAccess.valid())) return false;
     }
     if (dst.memory) {
         dstAccess = memory.access(MemoryDirection::Write,
@@ -2126,7 +2142,21 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         if (!dstAccess.valid()) return false;
     }
     if (!memory.complete()) return false;
-    const bool soleReadTiming = src.memory && !dst.memory &&
+    if (indirectSource) {
+        if (memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+            !pointerAccess.preflight || !srcAccess.preflight ||
+            in.memory.order != MemoryOrder::Sequential ||
+            pointerAccess.exactRequired || srcAccess.exactRequired)
+            return false;
+        // The pair is all-or-replay. Refuse a non-plain pointer or final
+        // operand before changing the destination register, and let the
+        // untouched instruction execute through Moira's exact MMIO path.
+        pointerAccess.exactThunk = false;
+        pointerAccess.cache = false;
+        srcAccess.exactThunk = false;
+        srcAccess.cache = false;
+    }
+    const bool soleReadTiming = src.memory && !indirectSource && !dst.memory &&
         admitSoleReadTiming(i, srcAccess, unsigned(cycles));
     if (unsigned(cycles) != tracedMove && !soleReadTiming) return false;
 
@@ -2201,7 +2231,14 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         commitEa(dst, szIdx, dstAccess);
         return true;
     }
-    load(src, szIdx, RDI, srcAccess, movea);
+    if (indirectSource) {
+        addrOfFullIndirectPointer(src, RAX);
+        memLoad(RAX, 2, RDI, pointerAccess);
+        finishFullIndirect(src, RDI, RAX);
+        memLoad(RAX, szIdx, RDI, srcAccess);
+    } else {
+        load(src, szIdx, RDI, srcAccess, movea);
+    }
     if (movea) {
         a_.movMR(Sz::L, A(dst.reg), RDI);
     } else {

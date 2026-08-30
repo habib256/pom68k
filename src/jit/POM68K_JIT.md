@@ -824,6 +824,21 @@ unsupported falls 10,483 → 9,408 (**−10.25 %**) and total fallbacks 53,586 �
 52,303 (**−2.39 %**), with all fingerprints unchanged. `C029` remains the
 largest static row; `2470`/`2070` are the next structural candidates.
 
+Those two MOVEA rows expose a stronger but still transactional form of the
+same idea. Full-indirect `MOVE.L`/`MOVEA.L` to a register performs a pointer
+longword read and a final operand read under the IR's sequential
+`PreflightAll` contract, then commits Dn/An last. On the cacheless 030, A64
+and x64 now require both tokens to be preflightable and non-exact, disable
+thunk/cache doors for the pair, and replay the pristine instruction if
+either direct mapping refuses. The directed `2470`/`2070` oracle changes the
+RAM pointer result to delayed MMIO after compilation and remains exact on
+native A64 and x64. The production-profile 270-frame census removes those
+rows and their sibling longword-to-register forms: unsupported 9,408 → 5,286
+(**−43.82 %**), total fallbacks 52,303 → 48,982 (**−6.35 %**), 2,226,797 /
+2,235,488 native (**99.61 %**), with all four fingerprints, frames and SCSI
+count unchanged. Full-format indexed destinations remain separate because
+they place the fallible access on the write side of MOVE.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G

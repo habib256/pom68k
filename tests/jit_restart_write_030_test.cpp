@@ -402,6 +402,24 @@ void installSpeedometerIndirectLeaLoop(FaultCpu& c) {
     put32(c, kBitfieldData + 0x10, kBitfieldData + 0x100);
 }
 
+void installSpeedometerIndirectMoveLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x2470);    // MOVEA.L ([bd.W],Zn),A2
+    put16(c, kCode + 0x02, 0x81E1);    // full/preindexed, base/index suppressed
+    put16(c, kCode + 0x04, 0x7000);    // pointer at kBitfieldData
+    put16(c, kCode + 0x06, 0x2070);    // MOVEA.L ([bd.W],Zn),A0
+    put16(c, kCode + 0x08, 0x81E1);
+    put16(c, kCode + 0x0A, 0x7004);    // pointer at kBitfieldData + 4
+    put16(c, kCode + 0x0C, 0x60F2);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+    put32(c, kBitfieldData + 0x00, kBitfieldData + 0x100);
+    put32(c, kBitfieldData + 0x04, kBitfieldData + 0x104);
+    put32(c, kBitfieldData + 0x100, 0x12345678);
+    put32(c, kBitfieldData + 0x104, 0x89ABCDEF);
+}
+
 void installJsrLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -567,6 +585,84 @@ int main() {
         check(pollStats.blocksCompiled != 0 && pollStats.blocksRun != 0 &&
               pollStats.slowInstrs == 0,
               "Speedometer 0829/1029/1429 execute through native exact reads");
+    }
+
+    // Speedometer's 2470/2070 sites use one full-indirect pointer read and
+    // then a longword operand read before committing MOVEA's destination.
+    // Both mappings stay direct in the native path; changing the resolved
+    // operand to MMIO must replay the whole pristine instruction instead.
+    {
+        FaultCpu moveRef, moveNative;
+        installSpeedometerIndirectMoveLoop(moveRef);
+        installSpeedometerIndirectMoveLoop(moveNative);
+        moveRef.reset(); moveNative.reset();
+        moveRef.setTC(12u << 20); moveNative.setTC(12u << 20);
+        moveNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = moveRef.getClock() + 43;
+            moveRef.executeUntil(target);
+            moveNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && moveRef.getD(r) == moveNative.getD(r) &&
+                       moveRef.getA(r) == moveNative.getA(r);
+            same = same && moveRef.getPC() == moveNative.getPC() &&
+                   moveRef.getPC0() == moveNative.getPC0() &&
+                   moveRef.getIRD() == moveNative.getIRD() &&
+                   moveRef.getIRC() == moveNative.getIRC() &&
+                   moveRef.getSR() == moveNative.getSR() &&
+                   moveRef.getClock() == moveNative.getClock();
+            if (!same)
+                std::printf("    030 2470/2070 divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto moveStats = moveNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(moveNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(moveNative.jit.backendName(), "x86-64")) &&
+            !moveNative.jit.config().packedCcr;
+        check(same && moveNative.getA(2) == 0x12345678 &&
+              moveNative.getA(0) == 0x89ABCDEF &&
+              moveStats.blocksCompiled != 0 && moveStats.blocksRun != 0 &&
+              (!nativeProduction || moveStats.slowInstrs == 0),
+              "Speedometer 2470/2070 indirect MOVEA stays native on 030");
+
+        // Keep the pointer itself in proved RAM, but make its result a
+        // device address. The second probe must refuse before A2 changes;
+        // Moira then owns both 16-bit halves and their live delay exactly.
+        for (FaultCpu* c : {&moveRef, &moveNative}) {
+            put32(*c, kBitfieldData, kMmio);
+            put32(*c, kMmio, 0xCAFEBABE);
+            c->mmioReadDelay = 11;
+        }
+        bool replaySame = true;
+        for (int step = 0; step < 32 && replaySame; step++) {
+            const int64_t target = moveRef.getClock() + 43;
+            moveRef.executeUntil(target);
+            moveNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                replaySame = replaySame &&
+                    moveRef.getD(r) == moveNative.getD(r) &&
+                    moveRef.getA(r) == moveNative.getA(r);
+            replaySame = replaySame &&
+                moveRef.getPC() == moveNative.getPC() &&
+                moveRef.getPC0() == moveNative.getPC0() &&
+                moveRef.getIRD() == moveNative.getIRD() &&
+                moveRef.getIRC() == moveNative.getIRC() &&
+                moveRef.getSR() == moveNative.getSR() &&
+                moveRef.getClock() == moveNative.getClock() &&
+                moveRef.mmioReads == moveNative.mmioReads;
+            if (!replaySame)
+                std::printf("    2470 MMIO replay divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto replayStats = moveNative.jit.stats().snapshot();
+        check(replaySame && moveNative.getA(2) == 0xCAFEBABE &&
+              moveNative.mmioReads != 0 &&
+              (!nativeProduction ||
+               replayStats.slowInstrs > moveStats.slowInstrs),
+              "2470 non-plain final operand replays before its An commit");
     }
 
     // The ordinary read half of the brief-index lowering: signed word

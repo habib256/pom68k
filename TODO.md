@@ -852,14 +852,26 @@ Open, in ROI order:
   formes registre rencontrées disparaissent, empreintes inchangées. Les
   formes mémoire prédecrémentées restent un contrat de faute séparé.
   `CHANGELOG.md` (2026-08-31 fifth).
-- [ ] **Queue de couverture Speedometer après les LEA indirects** : `C029`
+- **MOVE full-indirects Speedometer — CLOS le 2026-08-31** : `2470` / `2070`
+  sont deux lectures séquentielles — pointeur long puis opérande long — avant
+  l'unique commit An. A64 et x64 consomment maintenant le contrat
+  `PreflightAll` sur le 030 sans thunk/cache intermédiaire ; un pointeur ou
+  opérande non plain rejoue l'instruction intacte. L'oracle exact `81E1`
+  passe 256 checkpoints sans repli sur A64 et x64, puis remplace seulement la
+  valeur du pointeur par du MMIO retardé et retrouve exactement les deux
+  demi-lectures de Moira. Le census 270 frames fait aussi disparaître les
+  formes sœurs `2270`/`2272`/`2230`/`2032`/`2075` : 9 408 → 5 286 unsupported
+  (**−43,82 %**), 52 303 → 48 982 replis totaux (**−6,35 %**), empreintes,
+  SCSI et fin inchangés. `CHANGELOG.md` (2026-08-31 ninth).
+- [ ] **Queue de couverture Speedometer après les MOVE indirects** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Les prochains candidats structurels
-  sont les MOVE full-indirects `2470` / `2070`, puis ROX/décalages hors
-  tranche, MOVEM indexé complet, `4C00` et ADDX/SUBX mémoire. `6000`, `4EF9`,
-  `E9D4` et les LEA `41F6`/`43F0` sont clos ; traiter la suite par contrat,
-  pas par largeur d'opcode.
+  sont les destinations MOVE indexées complètes `2191` / `31A9`, puis
+  ROX/décalages hors tranche, MOVEM indexé complet, `4C00` et ADDX/SUBX
+  mémoire. `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0` et les MOVE source
+  full-indirects sont clos ; traiter la suite par contrat, pas par largeur
+  d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction
