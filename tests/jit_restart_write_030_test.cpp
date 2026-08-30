@@ -307,8 +307,9 @@ void installJsrLoop(FaultCpu& c) {
     put32(c, 8, kHandler);
     put16(c, kCode + 0, 0x4EA8);        // JSR d16(A0)
     put16(c, kCode + 2, 0x0000);
-    put16(c, kCode + 4, 0x60FA);        // BRA.S kCode
-    put16(c, kCode + 6, 0x4E71);
+    put16(c, kCode + 4, 0x4EB9);        // JSR kSubroutine.l (Speedometer)
+    put32(c, kCode + 6, kSubroutine);
+    put16(c, kCode + 10, 0x60F4);       // BRA.S kCode
     put16(c, kSubroutine + 0, 0x5280);  // ADDQ.L #1,D0
     put16(c, kSubroutine + 2, 0x4E75);  // RTS
     put16(c, kSubroutine + 4, 0x4E71);
@@ -909,11 +910,43 @@ int main() {
         const auto afterJsr = jsrNative.jit.stats().snapshot();
 
         check(trainedExact && patchedExact && steadyExact,
-              "JSR d16(A0) keeps exact 68030 state after target patching");
+              "JSR d16(A0)/abs.l keep exact 68030 state after target patching");
         check(trainedJsr.blocksCompiled != 0 &&
               afterJsr.blocksRun > trainedJsr.blocksRun &&
               afterJsr.slowInstrs == warmedJsr.slowInstrs,
-              "patched JSR caller stays native with a run-time target word");
+              "patched d16/abs.l JSR callers stay native with live target words");
+
+        // The native transaction proves the push, reads the target word,
+        // then stores. If the stack aliases that word, Moira's architectural
+        // push-before-read order is observable and the caller must replay.
+        constexpr uint32_t aliasTarget = kBitfieldData + 0x100;
+        const auto prepareAlias = [&](FaultCpu& c) {
+            put16(c, aliasTarget, 0x4E71);
+            c.setA(0, aliasTarget);           // d16(A0) target
+            c.setA(7, aliasTarget + 4);       // pushed long starts at target
+            c.setPC(kCode); c.setPC0(kCode);
+            c.setIRD(0x4EA8); c.setIRC(0x0000);
+            c.setSR(0x2700); c.setClock(0);
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        prepareAlias(jsrRef); prepareAlias(jsrNative);
+        const auto beforeAlias = jsrNative.jit.stats().snapshot();
+        jsrRef.executeUntil(1);
+        jsrNative.jit.executeUntil(1);
+        const auto afterAlias = jsrNative.jit.stats().snapshot();
+        check(jsrRef.getPC() == jsrNative.getPC() &&
+              jsrRef.getIRD() == jsrNative.getIRD() &&
+              jsrRef.getIRC() == jsrNative.getIRC() &&
+              jsrRef.getA(7) == jsrNative.getA(7) &&
+              jsrRef.getClock() == jsrNative.getClock() &&
+              std::memcmp(jsrRef.mem.data() + aliasTarget,
+                          jsrNative.mem.data() + aliasTarget, 4) == 0,
+              "aliased JSR stack/target preserves push-before-read order");
+        check(afterAlias.blocksRun > beforeAlias.blocksRun &&
+              afterAlias.slowInstrs == beforeAlias.slowInstrs + 1,
+              "aliased JSR range guard replays before either native access");
     }
 
     // MOVEM's native 030 contract is all-or-nothing: one proved contiguous

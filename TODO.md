@@ -816,12 +816,21 @@ Open, in ROI order:
   empreintes restent exactes. L'ABBA même binaire donne un signal médian de
   −0,35 %, sous l'étendue contrôle de 2,18 % : couverture promue, pas de gain
   de vitesse revendiqué. `CHANGELOG.md` (2026-08-31).
-- [ ] **Queue de couverture Speedometer après multiplication** : diagnostiquer
-  d'abord le repli runtime `24D0` (25 849 occurrences, dont 25 800 classées
-  non-plain/MMIO), puis `JSR idx(An)` `4EB0` (13 823 unsupported). Suivent
-  `4EB9` (4 315), ROX/décalages hors tranche mesurée, MOVEM indexé complet et
-  destinations mémoire-indirectes. Le long multiply `4C00` n'apparaît que 534
-  fois et reste donc derrière ces témoins mesurés.
+- **Diagnostic `24D0` + `JSR abs.l` — CLOS le 2026-08-31** : les 25 792
+  gardes `24D0` observées lisent toutes `$50F06060`, le pseudo-DMA SCSI du V8.
+  Son BERR terminal peut suivre un long partiellement consommé : thunk puis
+  replay doublerait des octets FIFO, donc Moira reste volontairement
+  propriétaire. `4EB9`, lui, est le JSR absolu long mono-chemin prouvé
+  (`words=fetchWords=3`, base 4) ; A64/x64 l'admettent maintenant, avec garde
+  d'alias pile/cible et lecture live du premier mot cible. Il disparaît du
+  census, unsupported 55 174 → 49 476 dans l'échantillon, empreintes exactes.
+  `CHANGELOG.md` (2026-08-31 second).
+- [ ] **Queue de couverture Speedometer après `JSR abs.l`** : `4EB0`
+  (13 948 dans le dernier échantillon) est réellement indexé complet et
+  mémoire-indirect (`I/IS=001`) ; il faut prouver le `disp-store`/restart 030,
+  pas seulement élargir le garde multi-mot. Suivent `0829`, `1029`, `1429`,
+  les ROX/décalages hors tranche et MOVEM indexé complet. Le long multiply
+  `4C00` tombe à 295 dans cet échantillon et reste derrière ces témoins.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

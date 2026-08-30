@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer separated an intentional SCSI pseudo-DMA fallback from the safe `JSR abs.l` promotion beside it** → [2026-08-31 (second) — Speedometer identifies…](#2026-08-31-speedometer-jsr-absolute-long)
 - **how Speedometer's hot word multiplies became exact native code, why their 68030 cost is fixed, and what the ABBA did not prove** → [2026-08-31 — Speedometer's three hot word multiplies…](#2026-08-31-speedometer-word-multiply)
 - **how Speedometer 4 isolated the count-16 logical shifts, what their guarded promotion buys, and why multiplication is now next** → [2026-08-30 (tenth) — Speedometer 4 turns…](#2026-08-30-speedometer-shift16)
 - **how a trap-capable divide can inspect RAM, reject zero/overflow, and still replay without duplicating MMIO, cache or EA effects** → [2026-08-30 (eighth) — Memory division…](#2026-08-30-memory-division)
@@ -355,6 +356,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](#2026-08-31-speedometer-jsr-absolute-long)
 - **2026-08-31** — [Speedometer's three hot word multiplies become native on both generators, with fixed 68030 timing and exact MMIO](#2026-08-31-speedometer-word-multiply)
 - **2026-08-30 (tenth)** — [Speedometer 4 turns three count-16 logical shifts native on both generators and names multiplication as the next honest coverage target](#2026-08-30-speedometer-shift16)
 - **2026-08-30 (ninth)** — [The SimCity division promotion survives: two inter-binary regressions were code-layout noise, while same-binary ABBA measures native division 1.453 % faster](#2026-08-30-division-promotion)
@@ -703,6 +705,50 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-jsr-absolute-long"></a>
+## 2026-08-31 (second) — Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators
+
+The post-multiply queue's largest row, `24D0`, was not an ISA gap at all.
+A temporary address observer showed every one of its 25,792 exact CPU-phase
+runtime guards reading long from logical `$50F06060`: the LC II V8's SCSI
+pseudo-DMA window. This is the classic blind-transfer `MOVE.L (A0),(A2)+`
+loop. Its terminating bus error may arrive after part of the longword has
+already consumed FIFO bytes, so a generic read thunk followed by whole-
+instruction replay could duplicate device effects. The conformant decision
+is explicit: leave this multi-access instruction on Moira until a helper can
+carry a partial bus fault directly into the 68030 restart frame.
+
+The next rows exposed a different, safe boundary. Both `4EB0` and `4EB9` were
+being stopped before their mature emitters by the generic multi-word branch
+guard. The `4EB0` witnesses are genuine full-format memory-indirect JSRs
+(`I/IS=001`) and still need 68030 displacement-store/restart proof. `4EB9` is
+the narrow case that does not: `JSR abs.l` has one path, a fixed base cost of
+4, three encoded words and exactly three linear i-cache fetches because
+`SKIP_LAST_RD` consumes the last extension without a refill. The target's
+first word is still read at its live address by the existing program-space
+helper.
+
+A64 and x64 now admit only that proved shape: `opcode=4EB9`, `words=3`,
+`fetchWords=3`. The transactional JSR path also gains a missing alias
+guard: it may prove the stack pointer, read the target word, then perform the
+infallible push only when `[SP-4,SP)` cannot overlap `[target,target+2)`;
+otherwise Moira preserves its architectural push-before-read order. The
+68030 restart gate now runs both `JSR d16(An)` and `JSR abs.l`, patches the
+callee's first word after caller compilation, and requires both callers to
+remain native with identical PC/queue/clock/stack state. Backend parity and
+the 120,000-step LC II lockstep remain exact.
+
+In the real 270-frame Speedometer CPU phase, `4EB9` disappears from the
+fallback table. The sampled census moves 55,174 → 49,476 unsupported and
+96,956 → 89,908 total fallbacks; the broader deltas include live guest
+clock/SCSI activity, so the promoted claim is the named opcode's removal,
+not all 7,048 events. CPU `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. No wall
+speed claim is made from the instrumented run.
 
 ---
 

@@ -3930,6 +3930,14 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
             memProbe(a, L, ir.super, 4, true, slow); // x14 = proven host
             a.strX(14, 1, 192);                     // Frame::progHost
             a.ldrW(9, 1, 48);
+            // Moira pushes before reading the first target word. Reordering
+            // those two accesses is valid only when their byte ranges do
+            // not overlap; an aliased stack can rewrite the target itself.
+            a.ldrW(10, 1, 44);
+            a.subW(11, 9, 10); a.movW(12, 3); a.cmpW(11, 12);
+            a.bCond(Asm::LS, slow);
+            a.subW(11, 10, 9); a.movW(12, 1); a.cmpW(11, 12);
+            a.bCond(Asm::LS, slow);
             readProgWord(a, L, slow);               // w11 = irc (nothing committed yet)
             a.strW(11, 1, 40);                      // Frame::scratch
             a.ldrX(14, 1, 192);
@@ -4266,8 +4274,9 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // fetchWords = 2): its historical step-16097 divergence was the
         // peripheral-phase class (JIT_BRINGUP § C.4nonies), closed by the
         // access-clock bias the thunks carry, so it rides the same knob as
-        // on x64 — ON by default under this backend's declaration. Wider
-        // transfers remain refused.
+        // on x64 — ON by default under this backend's declaration. JSR
+        // abs.l has the separate three-word proof below; indexed transfers
+        // remain refused on the 030.
         const bool dbcc =
             in.semantics.operation == SemanticOp::DecrementBranch;
         const bool bccWord = icache && in.words == 2 &&
@@ -4288,8 +4297,14 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
               in.fetchWords == 2) ||
              (in.opcode == 0x6100 && bsrWideAdmission() &&
               in.semantics.operation == SemanticOp::BranchSubroutine));
+        // JSR abs.l is also single-path. SKIP_LAST_RD makes its three
+        // linear instruction fetches exactly its three encoded words; the
+        // target word is read separately at the live address below.
+        const bool jsrAbsLong = icache && in.opcode == 0x4EB9 &&
+            in.words == 3 && in.fetchWords == 3 &&
+            in.semantics.operation == SemanticOp::JumpSubroutine;
         if (icache && in.kind == Kind::Branch && in.words > 1 &&
-            !dbcc && !bccWord && !jsrD16Pc) {
+            !dbcc && !bccWord && !jsrD16Pc && !jsrAbsLong) {
             watchRefusal(L, ir, in, "multi-word-branch-guard");
             a.b(slowStatic[i]);
             continue;

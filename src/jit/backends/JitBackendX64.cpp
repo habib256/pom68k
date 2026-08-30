@@ -1057,6 +1057,20 @@ bool Emitter::emitSubroutine(size_t i) {
         memProbe(RAX, 4, /*write=*/true, runtimeStub(i));
         a_.movMR(Sz::Q, F(kFProgHost), RSI);
 
+        // Interpreter order is push then target read. The transactional
+        // lowering reverses them, so an overlapping [SP-4,SP) / [target,
+        // target+2) pair must replay before either access is observable.
+        a_.movRM(Sz::L, RCX, F(kFValue));
+        a_.movRM(Sz::L, RDX, F(kFSaveA));
+        a_.aluRR(Asm::Op::SUB, Sz::L, RCX, RDX);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RCX, 3);
+        a_.jcc(Cc::BE, runtimeStub(i));
+        a_.movRM(Sz::L, RCX, F(kFSaveA));
+        a_.movRM(Sz::L, RDX, F(kFValue));
+        a_.aluRR(Asm::Op::SUB, Sz::L, RCX, RDX);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RCX, 1);
+        a_.jcc(Cc::BE, runtimeStub(i));
+
         spillClock();
         a_.movRR(Sz::Q, RDI, kCpu);
         a_.movRM(Sz::L, RSI, F(kFValue));
@@ -4086,7 +4100,9 @@ bool Emitter::emit() {
         // (JIT_BRINGUP § C.4nonies). Each form still owes the per-form
         // fetch-address proof against the mode-5 core before it widens —
         // BSR.W has one (fetchWords=2, no readExt); BRA.W and multi-word
-        // JSR/JMP do not yet.
+        // indexed JSR/JMP do not yet. JSR abs.l is the narrow exception
+        // below: SKIP_LAST_RD proves its three encoded words are also its
+        // three linear fetch addresses.
         //
         // A CONDITIONAL two-word Bcc is different: its fetch model is
         // proved against the mode-5 source — both paths fetch pc and
@@ -4114,12 +4130,15 @@ bool Emitter::emit() {
         const bool jsrW030 = ic_ && ir_.instrs[i].words == 2 &&
             ir_.instrs[i].fetchWords == 2 &&
             ir_.instrs[i].semantics.operation == SemanticOp::JumpSubroutine;
+        const bool jsrAbsLong030 = ic_ && ir_.instrs[i].opcode == 0x4EB9 &&
+            ir_.instrs[i].words == 3 && ir_.instrs[i].fetchWords == 3 &&
+            ir_.instrs[i].semantics.operation == SemanticOp::JumpSubroutine;
         const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
             ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission() &&
             ir_.instrs[i].semantics.operation == SemanticOp::BranchSubroutine;
         if (ic_ && ir_.instrs[i].kind == Kind::Branch &&
             ir_.instrs[i].words > 1 && !dbcc030 && !bccW030 &&
-            !jsrW030 && !bsrW030) {
+            !jsrW030 && !jsrAbsLong030 && !bsrW030) {
             a_.jmp(staticStub(i));
             emitted = i + 1;
             continue;

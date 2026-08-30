@@ -707,6 +707,19 @@ ABBA measures medians 0.307857 s OFF and 0.306770 s ON (**−0.35 % signal**),
 below the control arm's 2.18 % span. This is a coverage result, not a promoted
 speed claim. The temporary attribution switch was removed before landing.
 
+The next census separated two superficially similar fallbacks. `24D0`
+(`MOVE.L (A0),(A2)+`) always reads `$50F06060`, the V8 SCSI pseudo-DMA FIFO.
+Its terminating BERR can follow a partial longword transfer, so an exact
+thunk followed by replay would risk consuming bytes twice; it deliberately
+stays on Moira. `4EB9`, by contrast, is single-path `JSR abs.l`: three encoded
+words, three linear 030 i-cache fetches, fixed base cost 4. A64 and x64 now
+admit exactly that shape, keep the live target-word read, and reject stack/
+target alias before reversing the proof/read/push sequence. The 68030 gate
+patches the target after compiling both d16(An) and abs.l callers; both remain
+native and exact. `4EB9` disappears from the real CPU fallback table, moving
+unsupported 55,174 → 49,476 in that sample with fingerprints unchanged.
+The full-indirect `4EB0` remains behind its separate restart-state proof.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
