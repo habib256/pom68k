@@ -111,8 +111,8 @@ inline constexpr int8_t kMovemToRegs[EA_MODE_COUNT] =
 inline constexpr int8_t kMovemToMem[EA_MODE_COUNT] =
     { -1, -1, 8, -1, 4, 9, -1, 8, 8, -1, -1, -1 };
 // execDivu/execDivs, 68020 word columns. Address-register direct is not a
-// legal source; all other cells remain guest timing facts even while a
-// backend admits only the register/immediate subset.
+// legal source; all other cells are guest timing facts, independent of the
+// transactional proof a backend requires for a particular memory mapping.
 inline constexpr int8_t kDivuWord[EA_MODE_COUNT] =
     { 44, -1, 48, 48, 49, 49, 51, 48, 48, 49, 51, 46 };
 inline constexpr int8_t kDivsWord[EA_MODE_COUNT] =

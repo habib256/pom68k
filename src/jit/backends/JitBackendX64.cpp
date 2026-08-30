@@ -379,6 +379,10 @@ private:
     // exact-thunk and cache eligibility are never guessed at a call site.
     void memLoad(Reg addr, int szIdx, Reg dst,
                  const MemoryAccessPlan& access);
+    bool loadReplayableMemory(size_t i, const Ea& ea, int szIdx, Reg dst,
+                              const MemoryAccessPlan& access);
+    void commitReplayableMemory(const Ea& ea, int szIdx,
+                                const MemoryAccessPlan& access);
     void memStore(Reg addr, int szIdx, Reg src,
                   const MemoryAccessPlan& access);
     void memRmwLoad(Reg addr, int szIdx, Reg dst,
@@ -1664,6 +1668,42 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
     });
 }
 
+// Speculative source for a trap-capable instruction. A plain host mapping is
+// side-effect free and can be read again by Moira on a later semantic bail;
+// with the 040 D-cache active, only a published resident line is admissible.
+// Its diagnostic hit is deferred to commitReplayableMemory().
+bool Emitter::loadReplayableMemory(size_t i, const Ea& ea, int szIdx, Reg dst,
+                                   const MemoryAccessPlan& access) {
+    if (!replayableSpeculativeRead(access) ||
+        access.bytes != unsigned(sizeBytes(szIdx)) ||
+        (L_.cache040Live && !access.cache))
+        return false;
+    addrOf(ea, RAX, szIdx);
+    if (L_.cache040Live)
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i),
+                 /*cacheRead=*/true, /*cacheWriteHit=*/nullptr,
+                 /*cacheOnly=*/true, /*countCacheHit=*/false);
+    else
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+    if (szIdx == 1) {
+        a_.movzx(Sz::W, dst, mem(RSI, 0));
+        a_.rolR16(dst, 8);
+    } else {
+        a_.movRM(Sz::L, dst, mem(RSI, 0));
+        a_.bswap(dst);
+    }
+    return true;
+}
+
+void Emitter::commitReplayableMemory(const Ea& ea, int szIdx,
+                                     const MemoryAccessPlan& access) {
+    commitEa(ea, szIdx, access);
+    if (!L_.cache040Live) return;
+    a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040Hits), 1);
+    if (cache040LineReadStatsEnabled())
+        a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040NativeReadHits), 1);
+}
+
 void Emitter::memStore(Reg addr, int szIdx, Reg src,
                        const MemoryAccessPlan& access) {
     if (!access.valid() || access.direction != MemoryDirection::Write ||
@@ -2856,9 +2896,8 @@ bool Emitter::emitShiftRegister(size_t i) {
     return true;
 }
 
-// DIVU.W / DIVS.W with a register or immediate divisor. Trap and overflow
-// paths branch to Moira before any guest register or flag changes; this is
-// what makes a trap-capable Kind::Muldiv safe inside an ordinary block.
+// DIVU.W / DIVS.W. Memory operands use a side-effect-free speculative probe,
+// so trap and overflow paths still reach Moira with pristine guest state.
 bool Emitter::emitDivideWord(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
@@ -2866,21 +2905,25 @@ bool Emitter::emitDivideWord(size_t i) {
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     Ea src;
     if (!decode(i, sem.eaMode, sem.eaReg, 1, 0, src) ||
-        (src.idx != EA_DN && src.idx != EA_IM) ||
-        !lengthOk(i, src.ext) || !memory.complete())
+        src.idx == EA_AN || !lengthOk(i, src.ext))
         return false;
+    MemoryAccessPlan read;
+    if (src.memory)
+        read = memory.access(MemoryDirection::Read, MemoryOperand::Source,
+                             2, uint8_t(sem.eaMode), sem.eaReg);
+    if (!memory.complete()) return false;
     const bool sign = sem.action != 0;
     const int cycles = sign ? kDivsWord[src.idx] : kDivuWord[src.idx];
     if (cycles < 0 || traced030(i) != unsigned(cycles)) return false;
 
     if (src.idx == EA_DN) {
-        if (sign) a_.movsx(Sz::W, RCX, D(src.reg));
-        else      a_.movzx(Sz::W, RCX, D(src.reg));
-    } else {
+        a_.movzx(Sz::W, RCX, D(src.reg));
+    } else if (src.idx == EA_IM) {
         const uint32_t divisor = sign
             ? uint32_t(int32_t(src.value)) : uint32_t(uint16_t(src.value));
         a_.movRI(RCX, divisor);
-    }
+    } else if (!loadReplayableMemory(i, src, 1, RCX, read)) return false;
+    if (sign) a_.movsxRR(Sz::W, RCX, RCX);
     a_.testRR(Sz::L, RCX, RCX);
     a_.jcc(Cc::E, runtimeStub(i));                 // divide-by-zero trap
     a_.movRM(Sz::L, RAX, D(sem.registerIndex));   // dividend
@@ -2913,13 +2956,14 @@ bool Emitter::emitDivideWord(size_t i) {
     a_.shiftRI(Sz::L, RDI, 4, 16);
     a_.aluRI(Asm::Op::AND, Sz::L, RAX, 0xFFFF);
     a_.aluRR(Asm::Op::OR, Sz::L, RDI, RAX);
+    if (src.memory) commitReplayableMemory(src, 1, read);
     a_.testRR(Sz::W, RAX, RAX);
     flagsLogic(Sz::W);
     a_.movMR(Sz::L, D(sem.registerIndex), RDI);
     return true;
 }
 
-// All four legal DIVL extension actions with a Dn divisor. The divide is
+// All four legal DIVL extension actions. The divide is
 // deliberately performed at host width 64 even for a 32-bit dividend: x86
 // can then represent the signed INT_MIN/-1 quotient and the common range
 // guard hands the 68k overflow to Moira instead of raising host #DE.
@@ -2933,9 +2977,13 @@ bool Emitter::emitDivideLong(size_t i) {
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     Ea src;
     if (!decode(i, sem.eaMode, sem.eaReg, 2, 1, src) ||
-        src.idx != EA_DN || !lengthOk(i, 1 + src.ext) ||
-        !memory.complete())
+        src.idx == EA_AN || !lengthOk(i, 1 + src.ext))
         return false;
+    MemoryAccessPlan read;
+    if (src.memory)
+        read = memory.access(MemoryDirection::Read, MemoryOperand::Source,
+                             4, uint8_t(sem.eaMode), sem.eaReg);
+    if (!memory.complete()) return false;
     const int cycles = kDivLong[src.idx];
     if (cycles < 0 || traced030(i) != unsigned(cycles)) return false;
 
@@ -2943,7 +2991,9 @@ bool Emitter::emitDivideLong(size_t i) {
     const bool wideDividend = (ext & 0x0400u) != 0;
     const unsigned dl = (ext >> 12) & 7, dh = ext & 7;
 
-    a_.movRM(Sz::L, RCX, D(src.reg));                // divisor
+    if (src.idx == EA_DN) a_.movRM(Sz::L, RCX, D(src.reg));
+    else if (src.idx == EA_IM) a_.movRI(RCX, uint32_t(src.value));
+    else if (!loadReplayableMemory(i, src, 2, RCX, read)) return false;
     a_.testRR(Sz::L, RCX, RCX);
     a_.jcc(Cc::E, runtimeStub(i));                   // vector 5
     if (sign) a_.movsxd(RCX, RCX);
@@ -2986,6 +3036,7 @@ bool Emitter::emitDivideLong(size_t i) {
         a_.jcc(Cc::NE, runtimeStub(i));              // outside uint32_t
     }
 
+    if (src.memory) commitReplayableMemory(src, 2, read);
     // Match Moira's remainder-then-quotient write order. Dh==Dl therefore
     // leaves the quotient, and no architectural state changed before here.
     a_.movMR(Sz::L, D(dh), RDX);
@@ -4413,14 +4464,11 @@ bool X64Backend::canEmit(uint16_t op) const {
             // two backends' admission stays comparable at this level.
             return mode == 0 || mode == 2 || mode == 5;
         case SemanticOp::DivideWord:
-            // Runtime zero/overflow guards keep every trap or undefined-CCR
-            // path in Moira; Dn and immediate sources have no access to undo.
-            return eaCostIndex(mode, reg) == EA_DN ||
-                   eaCostIndex(mode, reg) == EA_IM;
+            return eaCostIndex(mode, reg) >= 0 &&
+                   eaCostIndex(mode, reg) != EA_AN;
         case SemanticOp::DivideLong:
-            // The extension word is validated by emitDivideLong; opcode-level
-            // census admission covers the SimCity Dn-divisor family.
-            return eaCostIndex(mode, reg) == EA_DN;
+            return eaCostIndex(mode, reg) >= 0 &&
+                   eaCostIndex(mode, reg) != EA_AN;
         case SemanticOp::Lea:
             return controlEa(eaCostIndex(mode, reg)) ||
                    eaCostIndex(mode, reg) == EA_IX ||

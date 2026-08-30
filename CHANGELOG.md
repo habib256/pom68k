@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 344 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 345 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -108,6 +108,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how a trap-capable divide can inspect RAM, reject zero/overflow, and still replay without duplicating MMIO, cache or EA effects** → [2026-08-30 (eighth) — Memory division…](#2026-08-30-memory-division)
 - **how the last SimCity division witness became native without letting `IDIV` escape on `INT_MIN/-1`** → [2026-08-30 (seventh) — Long division…](#2026-08-30-long-division)
 - **how the three hot SimCity word divisions became native on both generators, and why their zero oracle fixed every `FlagMayTrap` replay** → [2026-08-30 (sixth) — Word division…](#2026-08-30-word-division)
 - **how x64 closed the dynamic register-bitfield gap without confusing its one remaining five-byte memory replay for a register failure** → [2026-08-30 (fifth) — x64 closes dynamic register bitfields…](#2026-08-30-x64-dynamic-register-bitfields)
@@ -351,6 +352,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (eighth)** — [Memory division becomes transactional on both generators: speculative RAM, deferred 040 cache/EA effects, and exactly one MMIO read](#2026-08-30-memory-division)
 - **2026-08-30 (seventh)** — [The JIT closes SimCity's long-division `4C40` witness on both generators, with every extension action and trap guard proved](#2026-08-30-long-division)
 - **2026-08-30 (sixth)** — [Word division covers SimCity's three hot opcodes on both generators, and its zero guard closes a latent `FlagMayTrap` continuation bug](#2026-08-30-word-division)
 - **2026-08-30 (fifth)** — [x64 closes dynamic register bitfields, and a split oracle distinguishes zero register fallback from the one intentional five-byte memory replay](#2026-08-30-x64-dynamic-register-bitfields)
@@ -695,6 +697,38 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-memory-division"></a>
+## 2026-08-30 (eighth) — Memory division becomes transactional on both generators: speculative RAM, deferred 040 cache/EA effects, and exactly one MMIO read
+
+A memory divisor cannot use the ordinary exact-read path and then branch to
+Moira on zero or quotient overflow: the replay would read a device twice. The
+shared memory plan now mints a narrower `replayableSpeculativeRead` capability
+only for a sole, restart-phase, non-exact source read. Both generators consume
+it with the same protocol. Plain RAM first passes the DTLB preflight and is
+then read through its side-effect-free host mapping. With the 040 D-cache
+active, only an already-published resident line qualifies; the diagnostic hit
+is held back until all divide guards pass. A cache miss, MMIO or other
+non-plain mapping exits before reading any divisor.
+
+Guest-visible publication is equally late. `(An)+` and `-(An)` updates wait
+until success, as do the 040 cache-hit counters and quotient/remainder writes.
+If zero or overflow rejects the speculative RAM value, Moira receives the
+untouched instruction and may safely reread the same bytes. Successful
+retirement now covers the ordinary legal non-`An` memory modes for
+`DIVU.W`/`DIVS.W` and all four `DIVL` actions; `DIVL` immediate joins the
+already-native register form as well.
+
+The asset-free oracle separates five claims on each real generator: successful
+word/long memory and long-immediate loops retire with zero slow instructions;
+trained word and long overflow replay deliberately; a trained zero reaches an
+identical vector-5 boundary and format-$7 frame; a device divisor records
+exactly `1/1` reads; and a resident 040 cache line stays native with its hit
+published only after the guard. Both seven-test `jit-fast` tiers pass, followed
+by native 120,000-checkpoint LC II/68030 locksteps on AArch64 and x86-64. This
+closes division coverage, not the separate SimCity wall-time promotion.
 
 ---
 

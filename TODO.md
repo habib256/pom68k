@@ -80,7 +80,7 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 | **0·B** | Les six réserves de la revue externe du 2026-08-26 | Recensement g++ FAIT le 2026-08-28 (17 lignes, 16 sites) : reste à corriger les 16 puis armer `-Werror` ; et le premier rapport de fuites Linux |
 | **1** | Aucun rouge JIT ouvert ; rouges de fixture/timeout, ouverts non rouges, règles de méthode | Réparer les fixtures `macii_persist` / `q605_afp_live`, puis la marge IIvx ; le mode-2 x64 reste une ABBA séparée |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | Famille bitfield close sur les deux générateurs ; reste la division, puis un PROFIL TEMPOREL pour le prochain levier mural |
+| **3** | JIT, second moteur d'exécution | Bitfields et couverture division clos sur les deux générateurs ; reste la promotion applicative, puis un PROFIL TEMPOREL pour le prochain levier mural |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -748,15 +748,18 @@ Open, in ROI order:
   statiques ou dynamiques, sont natives sur A64 et x64 ; seules les queues
   mémoire cinq-octets gardent leur frontière transactionnelle documentée.
   `CHANGELOG.md` 2026-08-28 (eighth) et 2026-08-30 (second à fifth).
-- [ ] **Division, tranches registre le 2026-08-30** : `DIVU.W`/`DIVS.W` sur
-  diviseur `Dn` ou immédiat et les quatre actions `DIVL` sur diviseur `Dn`
-  sont natives sur A64 et x64. Cela couvre les témoins SimCity
-  `81FC`/`8DFC`/`8FFC`/`4C40`. Zéro et quotient hors plage rejouent
-  l'instruction intacte dans Moira ; les oracles couvrent le dividende 32/64
-  bits, signé/non signé, `Dh==Dl`, `INT_MIN/-1` et le vecteur 5. Restent les
-  sources mémoire, puis les quatre preuves de promotion applicative :
-  empreinte identique, gain répété, gates ciblés verts, tier `etalon` complet
-  vert. `CHANGELOG.md` 2026-08-30 (sixth) et (seventh).
+- [ ] **Promotion applicative de la division SimCity** : la couverture est
+  close ; refaire maintenant le census sur la même session, puis l'ABBA
+  murale sur hôte silencieux. Une promotion exige encore les quatre preuves :
+  empreinte identique, gain répété au-dessus du plancher, gates ciblés verts,
+  tier `etalon` complet vert. Ne pas transformer la disparition des replis en
+  promesse de vitesse : `D1F0` a déjà réfuté cette inférence.
+- **Division — CLOS le 2026-08-30** : `DIVU.W`/`DIVS.W` et les quatre actions
+  `DIVL` sont natives sur A64 et x64 pour `Dn`, immédiat et sources mémoire
+  ordinaires. La RAM est lue spéculativement après prévalidation ; les effets
+  d'EA et de D-cache 040 attendent les gardes, tandis que MMIO/repli lit une
+  seule fois. Zéro, overflow, `Dh==Dl` et `INT_MIN/-1` restent à Moira sans
+  mutation invitée. `CHANGELOG.md` 2026-08-30 (sixth à eighth).
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur
@@ -797,8 +800,7 @@ Open, in ROI order:
   symptôme, la cause est que les deux backends ne partagent rien au-dessus de
   l'IR.
 - [ ] **Queue de couverture** : décalages/rotations en mémoire et par compteur
-  registre ; `MULU`/`MULS`, `DIVL` et les divisions mot à source mémoire
-  restent en repli (les multiplications ont des cycles dépendant des données —
+  registre ; `MULU`/`MULS` restent en repli (les multiplications ont des cycles dépendant des données —
   le contrôle croisé les refuse honnêtement). Restent refusés des deux côtés :
   MOVEM en indexé complet, les destinations mémoire-indirectes,
   l'arithmétique à cycles variables.

@@ -203,6 +203,12 @@ private:
         return mem[bus(a)];
     }
     moira::u16 read16(moira::u32 a) const override {
+        if (inDevice(a)) {
+            auto& c = *const_cast<SyntheticCpu*>(this);
+            const uint32_t n = c.deviceReads++;
+            c.setClock(c.getClock() + 3 + int64_t(n & 3));
+            return 7;                   // non-zero divide source
+        }
         if (inHole(a)) fault();
         const uint32_t p = bus(a);
         return moira::u16(mem[p] << 8 | mem[bus(p + 1)]);
@@ -673,6 +679,94 @@ void installLongDivisionZeroLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x00, 0x4C40);    // DIVS.L D0,D2:D1
     put16(c, kCode + 0x02, 0x1C02);
     put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
+}
+
+// Successful memory sources cover transactional (An)+/-(An), plain (An),
+// d16(An), and DIVL immediate ordering. The loop rebuilds every address and
+// dividend so an admitted form has no excuse to visit the cold stub.
+void installMemoryDivisionLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x7EFF);    // MOVEQ #-1,D7
+    put16(c, kCode + 0x02, 0xDE87);    // ADD.L D7,D7 (set X)
+    put16(c, kCode + 0x04, 0x207C);    // MOVEA.L #kData,A0
+    put32(c, kCode + 0x06, kData);
+    put16(c, kCode + 0x0A, 0x203C);    // MOVE.L #100000,D0
+    put32(c, kCode + 0x0C, 100000);
+    put16(c, kCode + 0x10, 0x80D8);    // DIVU.W (A0)+,D0
+    put16(c, kCode + 0x12, 0x223C);    // MOVE.L #-100000,D1
+    put32(c, kCode + 0x14, uint32_t(-100000));
+    put16(c, kCode + 0x18, 0x83D0);    // DIVS.W (A0),D1
+    put16(c, kCode + 0x1A, 0x243C);    // MOVE.L #12345,D2
+    put32(c, kCode + 0x1C, 12345);
+    put16(c, kCode + 0x20, 0x85E0);    // DIVS.W -(A0),D2
+    put16(c, kCode + 0x22, 0x207C);    // MOVEA.L #kData+4,A0
+    put32(c, kCode + 0x24, kData + 4);
+    put16(c, kCode + 0x28, 0x263C);    // MOVE.L #100,D3
+    put32(c, kCode + 0x2A, 100);
+    put16(c, kCode + 0x2E, 0x7801);    // MOVEQ #1,D4
+    put16(c, kCode + 0x30, 0x4C58);    // DIVUL.L (A0)+,D4:D3
+    put16(c, kCode + 0x32, 0x3004);
+    put16(c, kCode + 0x34, 0x2A3C);    // MOVE.L #-100,D5
+    put32(c, kCode + 0x36, uint32_t(-100));
+    put16(c, kCode + 0x3A, 0x7C01);    // MOVEQ #1,D6
+    put16(c, kCode + 0x3C, 0x4C50);    // DIVSL.L (A0),D6:D5
+    put16(c, kCode + 0x3E, 0x5806);
+    put16(c, kCode + 0x40, 0x7E05);    // MOVEQ #5,D7
+    put16(c, kCode + 0x42, 0x7401);    // MOVEQ #1,D2
+    put16(c, kCode + 0x44, 0x4C60);    // DIVU.L -(A0),D2:D7
+    put16(c, kCode + 0x46, 0x7402);
+    put16(c, kCode + 0x48, 0x223C);    // MOVE.L #100,D1
+    put32(c, kCode + 0x4A, 100);
+    put16(c, kCode + 0x4E, 0x7801);    // MOVEQ #1,D4
+    put16(c, kCode + 0x50, 0x4C7C);    // DIVUL.L #10,D4:D1
+    put16(c, kCode + 0x52, 0x1004);
+    put32(c, kCode + 0x54, 10);
+    put16(c, kCode + 0x58, 0x203C);    // MOVE.L #700,D0
+    put32(c, kCode + 0x5A, 700);
+    put16(c, kCode + 0x5E, 0x80E8);    // DIVU.W 2(A0),D0
+    put16(c, kCode + 0x60, 0x0002);
+    put16(c, kCode + 0x62, 0x609C);    // BRA.S kCode
+    put16(c, kData + 0, 7);
+    put16(c, kData + 2, 0xFFF9);       // -7
+    put32(c, kData + 4, 10);
+    put32(c, kData + 8, 0xFFFF'FFF9u); // -7
+}
+
+void installMemoryDivisionGuardLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x81D0);    // DIVS.W (A0),D0
+    put16(c, kCode + 0x02, 0x4C50);    // DIVS.L (A0),D2:D1
+    put16(c, kCode + 0x04, 0x1C02);
+    put16(c, kCode + 0x06, 0x60F8);    // BRA.S kCode
+    put32(c, kData, 0x0001'0001u);     // both divisors non-zero while training
+}
+
+void installMemoryLongDivisionZeroLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put32(c, 5 * 4, kHandler);
+    put16(c, kHandler + 0, 0x4E73);
+    put16(c, kHandler + 2, 0x4E71);
+    put16(c, kCode + 0x00, 0x4C50);    // DIVS.L (A0),D2:D1
+    put16(c, kCode + 0x02, 0x1C02);
+    put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
+    put32(c, kData, 1);
+}
+
+void installMemoryDivisionDeviceLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x80D0);    // DIVU.W (A0),D0
+    put16(c, kCode + 0x02, 0x60FC);    // BRA.S kCode
+    put16(c, kData, 7);
+}
+
+void installCachedMemoryDivisionLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x4A50);    // TST.W (A0), publishes resident line
+    put16(c, kCode + 0x02, 0x203C);    // MOVE.L #100000,D0
+    put32(c, kCode + 0x04, 100000);
+    put16(c, kCode + 0x08, 0x80D0);    // DIVU.W (A0),D0
+    put16(c, kCode + 0x0A, 0x60F4);    // BRA.S kCode
+    put16(c, kData, 7);
 }
 
 void installGuardedDynamicShiftLoop(SyntheticCpu& c) {
@@ -1543,6 +1637,215 @@ bool runLongDivisionLockstep(DivisionProgram program) {
            (!nativeGenerator || expectedResidency);
 }
 
+bool runMemoryDivisionLockstep() {
+    SyntheticCpu ref, native;
+    installMemoryDivisionLoop(ref);
+    installMemoryDivisionLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 97;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    memory-division divergence checkpoint=%d\n", step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    memory-division compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || s.slowInstrs == 0);
+}
+
+bool runMemoryDivisionOverflowLockstep() {
+    SyntheticCpu ref, native;
+    installMemoryDivisionGuardLoop(ref);
+    installMemoryDivisionGuardLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.setA(0, kData);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 2048);
+    if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+    ref.mem = native.mem;
+    for (SyntheticCpu* c : {&ref, &native}) {
+        for (int reg = 0; reg < 8; reg++) {
+            c->setD(reg, 0);
+            if (reg != 7) c->setA(reg, 0);
+        }
+        put32(*c, kData, 0xFFFF'FFFFu);
+        c->setD(0, 0x8000'0000u);      // signed word overflow / -1
+        c->setD(1, 0);
+        c->setD(2, 0x8000'0000u);      // signed INT64_MIN / -1
+        c->setA(0, kData);
+        c->setA(7, kStack);
+        c->setPC(kCode);
+        c->setPC0(kCode);
+        c->setIRD(0x81D0);
+        c->setIRC(0x4C50);
+        c->setSR(0x2710);
+        c->setClock(0);
+        clearRunFlags(*c);
+    }
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 97;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    memory-division overflow divergence checkpoint=%d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    memory-division overflow compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || s.slowInstrs != 0);
+}
+
+bool runMemoryLongDivisionZeroLockstep() {
+    SyntheticCpu ref, native;
+    installMemoryLongDivisionZeroLoop(ref);
+    installMemoryLongDivisionZeroLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.setA(0, kData);
+    native.setD(1, 123);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 2048);
+    if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+    ref.mem = native.mem;
+    for (SyntheticCpu* c : {&ref, &native}) {
+        for (int reg = 0; reg < 8; reg++) {
+            c->setD(reg, 0);
+            if (reg != 7) c->setA(reg, 0);
+        }
+        put32(*c, kData, 0);
+        c->setD(1, 123);
+        c->setA(0, kData);
+        c->setA(7, kStack);
+        c->setPC(kCode);
+        c->setPC0(kCode);
+        c->setIRD(0x4C50);
+        c->setIRC(0x1C02);
+        c->setSR(0x2710);
+        c->setClock(0);
+        clearRunFlags(*c);
+    }
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+    const bool boundary = sameCpu(ref, native, true);
+    const bool frame = ref.getA(7) == kStack - 12 &&
+        native.getA(7) == ref.getA(7) &&
+        sameMemory(ref, native, ref.getA(7), 12, true);
+    const bool ram = sameMemory(ref, native, 0, kRamBytes, true);
+    std::printf("    memory-division zero compiled=%llu runs=%llu/%llu "
+                "boundary=%d frame=%d ram=%d\n",
+                (unsigned long long)after.blocksCompiled,
+                (unsigned long long)before.blocksRun,
+                (unsigned long long)after.blocksRun,
+                boundary, frame, ram);
+    return boundary && frame && ram && after.blocksRun > before.blocksRun;
+}
+
+bool runMemoryDivisionDeviceOnce() {
+    SyntheticCpu ref, native;
+    installMemoryDivisionDeviceLoop(ref);
+    installMemoryDivisionDeviceLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.setA(0, kData);
+    native.setD(0, 100);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 1024);
+    if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+    ref.mem = native.mem;
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setA(0, kDevice);
+        c->setA(7, kStack);
+        c->setD(0, 100);
+        c->setPC(kCode);
+        c->setPC0(kCode);
+        c->setIRD(0x80D0);
+        c->setIRC(0x60FC);
+        c->setSR(0x2710);
+        c->setClock(0);
+        c->deviceReads = 0;
+        clearRunFlags(*c);
+    }
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+    const bool same = sameCpu(ref, native, true) &&
+        sameMemory(ref, native, 0, kRamBytes, true);
+    std::printf("    memory-division device reads=%u/%u runs=%llu/%llu slow=%llu\n",
+                ref.deviceReads, native.deviceReads,
+                (unsigned long long)before.blocksRun,
+                (unsigned long long)after.blocksRun,
+                (unsigned long long)after.slowInstrs);
+    return same && ref.deviceReads == 1 && native.deviceReads == 1 &&
+           after.blocksRun > before.blocksRun &&
+           after.slowInstrs > before.slowInstrs;
+}
+
+bool runCachedMemoryDivisionLockstep() {
+    SyntheticCpu ref, native;
+    installCachedMemoryDivisionLoop(ref);
+    installCachedMemoryDivisionLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setCACR(0x8000'0000u);       // 68040 data cache enabled
+        c->setA(0, kData);
+    }
+    native.jit.setEnabled(true);
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 67;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    cached memory-division divergence checkpoint=%d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    cached memory-division compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || s.slowInstrs == 0);
+}
+
 bool runGuardedDynamicShiftLockstep() {
     SyntheticCpu ref, native;
     installGuardedDynamicShiftLoop(ref);
@@ -1759,6 +2062,16 @@ int main() {
           "DIVL quotient overflow reaches Moira before guest mutation");
     check(runLongDivisionLockstep(DivisionProgram::Zero),
           "DIVL by zero reaches Moira's exact vector-5 path");
+    check(runMemoryDivisionLockstep(),
+          "word/long memory divisors and DIVL immediate stay native and exact");
+    check(runMemoryDivisionOverflowLockstep(),
+          "memory-divisor overflow replays after a side-effect-free probe");
+    check(runMemoryLongDivisionZeroLockstep(),
+          "zero memory divisor reaches Moira's exact vector-5 path");
+    check(runMemoryDivisionDeviceOnce(),
+          "MMIO divisor falls back before one and only one device read");
+    check(runCachedMemoryDivisionLockstep(),
+          "resident 040 cache divisors publish their hit only after guards");
     check(runGuardedDynamicShiftLockstep(),
           "guarded dynamic LSL remains exact and is native with production CCR");
     check(runGuardIndexInvariant(),

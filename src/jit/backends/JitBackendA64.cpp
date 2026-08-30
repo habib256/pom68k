@@ -1136,13 +1136,9 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::ShiftRegister:
             return sem.action != 2; // no ROX
         case SemanticOp::DivideWord:
-            // The first trap-capable slice: register/immediate sources only.
-            // Zero and quotient overflow branch to the untouched fallback.
-            return ei == EA_DN || ei == EA_IM;
+            return ei >= 0 && ei != EA_AN;
         case SemanticOp::DivideLong:
-            // The first DIVL slice is the SimCity $4C40 witness: a Dn
-            // divisor, with quotient/remainder registers from its extension.
-            return ei == EA_DN;
+            return ei >= 0 && ei != EA_AN;
         default: return false;
     }
 }
@@ -1629,6 +1625,43 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     markRuntimeReason(a, RuntimeOther); // handled MMIO was not the fallback
     a.ldrW(rd, 1, 72);                  // thunk result is host-ordered
     a.bind(done);
+}
+
+// Load a trap-capable instruction's sole memory operand without making the
+// access observable yet. Plain-memory bytes are replayable; with the 040
+// D-cache active only an already-published resident line qualifies, and its
+// hit counters are deliberately deferred until every divide guard succeeds.
+bool loadReplayableMemory(Asm& a, const Layout& L, bool super, const Ea& ea,
+                          int bits, unsigned rd, int slow,
+                          const MemoryAccessPlan& access) {
+    if (!replayableSpeculativeRead(access) ||
+        access.bytes != unsigned(bits / 8) ||
+        (L.cache040Live && !access.cache))
+        return false;
+    addrOf(a, L, ea, bits);
+    if (L.cache040Live)
+        memProbe(a, L, super, bits / 8, false, slow,
+                 /*cacheRead=*/true, /*cacheWriteHit=*/-1,
+                 /*cacheOnly=*/true, /*countCacheHit=*/false);
+    else
+        memProbe(a, L, super, bits / 8, false, slow);
+    loadGuest(a, bits, rd);
+    return true;
+}
+
+void commitReplayableMemory(Asm& a, const Layout& L, const Ea& ea, int bits,
+                            const MemoryAccessPlan& access) {
+    commitEaBeforeAccess(a, L, ea, bits, access);
+    commitEaAfterAccess(a, L, ea, bits, access);
+    if (!L.cache040Live) return;
+    a.ldrX(12, 0, L.cache040Hits);
+    a.addImmX(12, 12, 1);
+    a.strX(12, 0, L.cache040Hits);
+    if (cache040LineReadStatsEnabled()) {
+        a.ldrX(12, 0, L.cache040NativeReadHits);
+        a.addImmX(12, 12, 1);
+        a.strX(12, 0, L.cache040NativeReadHits);
+    }
 }
 
 void loadGuest(Asm& a, int bits, unsigned rd) {
@@ -2910,27 +2943,33 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     }
 
     if (sem.operation == SemanticOp::DivideWord) {
-        // Only register/immediate divisors are admitted in this first slice.
-        // Both trap and quotient-overflow paths branch to the untouched
-        // instruction fallback, avoiding the 030/040 undefined-CCR split.
+        // A memory divisor is inspected only through a replayable plain-RAM
+        // or resident-cache probe. Zero/overflow can therefore branch to the
+        // untouched instruction without duplicating MMIO or cache effects.
         if (slow < 0) return false;
         Ea src;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 16, 0, src) ||
-            (src.idx != EA_DN && src.idx != EA_IM) ||
-            in.words != unsigned(1 + src.ext) || !memory.complete())
+            src.idx == EA_AN || in.words != unsigned(1 + src.ext))
             return false;
+        MemoryAccessPlan read;
+        if (src.memory)
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Source, 2,
+                                 uint8_t(sem.eaMode), sem.eaReg);
+        if (!memory.complete()) return false;
         const bool sign = sem.action != 0;
         const int cycles = sign ? kDivsWord[src.idx] : kDivuWord[src.idx];
         if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
 
         if (src.idx == EA_DN) {
             loadGuestRegister(a, L, 9, false, unsigned(src.reg), 16);
-            if (sign) a.sxtH(9, 9);
-        } else {
+        } else if (src.idx == EA_IM) {
             const uint32_t divisor = sign
                 ? uint32_t(int32_t(src.value)) : uint32_t(uint16_t(src.value));
             a.movW(9, divisor);
-        }
+        } else if (!loadReplayableMemory(a, L, ir.super, src, 16, 9,
+                                         slow, read)) return false;
+        if (sign) a.sxtH(9, 9);
         a.cbzW(9, slow);                            // divide-by-zero trap
         loadGuestRegister(a, L, 10, false, sem.registerIndex);
         if (sign) a.sdivW(11, 10, 9);
@@ -2952,6 +2991,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         a.lslW(14, 12, 16);
         a.ubfxW(13, 11, 0, 16);
         a.orrW(14, 14, 13);
+        if (src.memory) commitReplayableMemory(a, L, src, 16, read);
         if (sign) a.movRegW(13, 11);
         else      a.lslW(13, 11, 16);
         emitLogicFlags(a, L, 13, 32);
@@ -2969,9 +3009,14 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if ((ext & 0x83F8u) != 0) return false;      // reserved extension bits
         Ea src;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 1, src) ||
-            src.idx != EA_DN || in.words != unsigned(2 + src.ext) ||
-            !memory.complete())
+            src.idx == EA_AN || in.words != unsigned(2 + src.ext))
             return false;
+        MemoryAccessPlan read;
+        if (src.memory)
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Source, 4,
+                                 uint8_t(sem.eaMode), sem.eaReg);
+        if (!memory.complete()) return false;
         const int cycles = kDivLong[src.idx];
         if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
 
@@ -2979,7 +3024,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const bool wideDividend = (ext & 0x0400u) != 0;
         const unsigned dl = (ext >> 12) & 7, dh = ext & 7;
 
-        loadGuestRegister(a, L, 9, false, unsigned(src.reg)); // divisor
+        if (src.idx == EA_DN)
+            loadGuestRegister(a, L, 9, false, unsigned(src.reg));
+        else if (src.idx == EA_IM)
+            a.movW(9, uint32_t(src.value));
+        else if (!loadReplayableMemory(a, L, ir.super, src, 32, 9,
+                                       slow, read)) return false;
         a.cbzW(9, slow);                                     // vector 5
         if (sign) a.sxtW(9, 9);
 
@@ -3006,9 +3056,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             a.cbnzW(13, slow);                // quotient outside uint32_t
         }
 
-        // Moira writes remainder first and quotient second; when Dh==Dl the
-        // quotient therefore wins. Publish only after every guard above.
-        a.strW(12, 0, L.d + dh * 4);
+        // Preserve the remainder across deferred EA/cache publication, then
+        // match Moira's remainder-first write order (quotient wins Dh==Dl).
+        a.movRegW(14, 12);
+        if (src.memory) commitReplayableMemory(a, L, src, 32, read);
+        a.strW(14, 0, L.d + dh * 4);
         a.strW(11, 0, L.d + dl * 4);
         emitLogicFlags(a, L, 11, 32);          // V=C=0, X preserved
         return true;

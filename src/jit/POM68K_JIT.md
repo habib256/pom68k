@@ -1195,8 +1195,8 @@ emitters it dispatches to.
   `LINK`/`UNLK`/`NOP`, **`EXG`** (all three forms) and **`CMPM`** with
   distinct address registers (both since 2026-08-21 — the x64 port of the
   a64 pair, PreflightAll on CMPM's two reads), and
-  **`DIVU.W`/`DIVS.W`** with a `Dn` or immediate divisor and all four
-  **`DIVL`** extension actions with a `Dn` divisor (32-/64-bit dividend,
+  **`DIVU.W`/`DIVS.W`** and all four **`DIVL`** extension actions over `Dn`,
+  immediate and ordinary non-`An` memory sources (32-/64-bit dividend,
   signed/unsigned; zero and quotient overflow replay the untouched
   instruction), and
   **`MOVEM`** (both directions, both sizes, one span probe per burst, the
@@ -1212,11 +1212,20 @@ emitters it dispatches to.
 
 Everything else — including full-indexed `MOVEM`, memory-indirect writes and
 three-access MOVE forms, unsupported shifts/rotates,
-`MULU`/`MULS`, `DIVL`, memory-source word division, `ABCD`/`SBCD`,
+`MULU`/`MULS`, `ABCD`/`SBCD`,
 `ADDX`/`SUBX`, same-register `CMPM`, `MOVEP` and `MOVE SR,Dn` — falls back per instruction
 to a cold stub that runs that one instruction through Moira and rejoins the
 compiled stream. A block whose native coverage falls below half is refused
 outright: it would be the same interpreter work plus a call and a frame.
+
+Memory division uses a narrower transaction than an ordinary read. Plain RAM
+is translated and read without publishing `(An)+`/`-(An)`; if a semantic
+zero/overflow guard fails, Moira may safely read those bytes again. With the
+040 D-cache active, only an already-published resident line qualifies, and its
+hit counters are committed after the guards. Cache misses, MMIO and other
+non-plain mappings leave before any data read, so the exact fallback observes
+the divisor exactly once. This is the shared `replayableSpeculativeRead()`
+contract, consumed independently by both generators.
 
 **Backend admission remains explicit even where the sets have converged.**
 A64 adds immediate and guarded register-count line-$E shifts/rotates (no

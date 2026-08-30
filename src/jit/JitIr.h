@@ -356,6 +356,18 @@ struct MemoryAccessPlan {
     }
 };
 
+// A trap-capable instruction may inspect a sole source read and still replay
+// itself only when the backend first proves a side-effect-free mapping. The
+// read token authorises that speculative probe; device/cache effects remain
+// backend mechanics and must be published only after every semantic guard.
+inline bool replayableSpeculativeRead(const MemoryAccessPlan& access) {
+    return access.valid() && access.single() && access.preflight &&
+           access.direction == MemoryDirection::Read &&
+           access.operand == MemoryOperand::Source &&
+           access.fault == FaultPhase::RestartInstruction &&
+           !access.exactRequired;
+}
+
 inline bool memoryEa(uint8_t mode, uint8_t reg) {
     return mode >= 2 && !(mode == 7 && reg == 4); // #immediate is not memory
 }
@@ -772,9 +784,8 @@ inline MemoryContract describeMemory(uint16_t op, bool is030) {
     }
 
     // Word division is a sole word source read followed by register-only
-    // arithmetic. Describe the read even though the first native slice
-    // deliberately admits only Dn/immediate sources: widening an emitter
-    // later must consume this contract instead of inventing one locally.
+    // arithmetic. A native backend may inspect a proved replayable mapping,
+    // but must defer EA/cache effects until its zero/overflow guards pass.
     if (line == 0x8000 &&
         (((op >> 6) & 7) == 3 || ((op >> 6) & 7) == 7)) {
         if (memoryEa(mode, reg))

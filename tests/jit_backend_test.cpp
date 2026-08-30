@@ -289,6 +289,15 @@ int main() {
               divuMemory.access[0].operand == jit::MemoryOperand::Source &&
               divuMemory.access[0].bytes == 2,
               "word division publishes its sole source-memory read");
+        const auto divuProof = jit::memoryProofPlan(divuMemory, cache);
+        auto divuRead = jit::memoryAccessPlan(
+            divuMemory, divuProof, jit::MemoryDirection::Read,
+            jit::MemoryOperand::Source, 2, 2, 0);
+        check(jit::replayableSpeculativeRead(divuRead),
+              "sole division source mints a replayable speculative read");
+        divuRead.exactRequired = true;
+        check(!jit::replayableSpeculativeRead(divuRead),
+              "an exact-required source cannot be speculatively replayed");
         const auto divl = jit::describeInstruction(0x4C40); // DIVL D0,Dr:Dq
         check(divl.operation == jit::SemanticOp::DivideLong &&
               divl.bytes() == 4 && divl.eaMode == 0 && divl.eaReg == 0,
@@ -953,12 +962,15 @@ int main() {
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
         check(b->canEmit(0x80C0) == gen, "DIVU.W D0,D0");
         check(b->canEmit(0x81FC) == gen, "DIVS.W #imm,D0");
-        check(!b->canEmit(0x81D0),
-              "DIVS.W memory source remains outside the first native slice");
+        check(!b->canEmit(0x80C8), "DIVU.W An source is illegal");
+        check(b->canEmit(0x81D0) == gen,
+              "DIVS.W (A0),D0 follows active generator coverage");
         check(b->canEmit(0x4C40) == gen,
               "DIVL D0,Dr:Dq follows active generator coverage");
-        check(!b->canEmit(0x4C50),
-              "DIVL memory source remains outside the first native slice");
+        check(b->canEmit(0x4C50) == gen,
+              "DIVL (A0),Dr:Dq follows active generator coverage");
+        check(b->canEmit(0x4C7C) == gen,
+              "DIVL #imm,Dr:Dq follows active generator coverage");
         check(!b->canEmit(0xC1C0), "MULS is not an ALU direction");
         check(!b->canEmit(0xC101), "ABCD is not OR-to-ea");
         check(b->canEmit(0xB308),
