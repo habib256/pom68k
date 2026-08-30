@@ -3211,8 +3211,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // floor(offset/8), while its low three bits select within one long.
         // Possible five-byte forms preflight both plain-memory mappings before
         // the first read and branch around the tail byte when it is not used.
-        // 040 by default; the 030 opts in via POM68K_JIT_030_MEMBF
-        // (2026-08-28): both mappings are proved before either load escapes,
+        // The 030 shares this path by default since the cross-backend
+        // Speedometer-tail proof of 2026-08-31; POM68K_JIT_030_MEMBF=0 is
+        // the attribution veto. Both mappings are proved before either load escapes,
         // so no fault frame is ever built by generated code — the format-A/B
         // worry that kept this 040-only reduces to timing, which the
         // sole-read contract prices and the 120k lockstep oracles.
@@ -3227,14 +3228,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             };
             const int eaColumn = sem.eaMode == 2 ? 0
                                : sem.eaMode == 5 ? 1 : -1;
-            // The 030 was excluded wholesale until 2026-08-28; the opt-in
-            // admits it through the SAME emission path, priced by the
+            // The 030 was excluded wholesale until 2026-08-28; it enters
+            // through the SAME emission path, priced by the
             // sole-read exact-thunk contract below (admitSoleReadTiming's
             // 030 arm) rather than by this 040 cycle table — a mispriced
             // form refuses, it does not mischarge. The tail (five-byte)
-            // path keeps its strict trace equality and therefore stays
-            // effectively 040-only until the 030 column is measured.
-            // Oracle: the 120k lockstep with POM68K_JIT_030_MEMBF=1.
+            // path keeps its strict trace equality; Speedometer supplied
+            // the measured 030 column used by its directed oracle.
+            // Oracles: the directed E9D4 tail/no-tail gate on both native
+            // hosts and the 120k alignment lockstep with the knob explicit.
             if ((L.is030 && !memBitfield030Admission()) || eaColumn < 0 ||
                 memoryCycles[kind][eaColumn] < 0) {
                 watchRefusal(L, ir, in, "bitfield-memory:shape");
@@ -3249,6 +3251,13 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             const unsigned opcodeCycles =
                 unsigned(memoryCycles[kind][eaColumn]);
             const bool possibleTail = !memoryBitfieldFitsLongword(ext);
+            // The two-read protocol proves plain mappings only. A live 040
+            // D-cache needs a paired cache transaction that this IR does not
+            // publish; the promoted Speedometer path is the cacheless 030.
+            if (possibleTail && L.cache040Live) {
+                watchRefusal(L, ir, in, "bitfield-memory:cache-tail");
+                return false;
+            }
             MemoryAccessPlan read = memory.access(
                 MemoryDirection::Read, MemoryOperand::Operand, 4,
                 sem.eaMode, sem.eaReg);

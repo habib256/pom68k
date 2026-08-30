@@ -3281,16 +3281,14 @@ bool Emitter::emitDivideLong(size_t i) {
 // The 68020 bitfield family — a64's lowerings (a64:2891 memory, a64:3040
 // register) translated. Register forms fold the constants: with o and w
 // known at compile time the rotate, the extraction shift and the
-// destination mask are all immediates. Memory forms cover the TAILLESS
-// subset (the field provably inside one longword after the signed byte-
-// displacement adjust — Rogue's, SC2K's and SimCity's hot shapes), static
-// or dynamic o/w, priced by this backend's centralized base-cycle charge.
-// Reads use the exact thunk; writes consume the shared read4/write4 RMW
-// contract and prove the writable translation before exposing the read.
+// destination mask are all immediates. Read-only memory forms cover both a
+// field contained in one longword and the optional fifth-byte tail after the
+// signed byte-displacement adjust, with static or dynamic o/w. Writes remain
+// TAILLESS and consume the shared read4/write4 RMW contract, proving the
+// writable translation before exposing the read.
 // Dynamic register forms use CL-counted shifts and keep their entire body
 // call-free. What refuses here, each with the door it leaves open: the
-// five-byte read tail wants the two-probe protocol (a64:2958); five-byte
-// writes need a four-slot transactional contract.
+// five-byte writes need a four-slot transactional contract.
 bool Emitter::emitBitfield(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
@@ -3305,7 +3303,12 @@ bool Emitter::emitBitfield(size_t i) {
                               kind == 5;
         if (L_.is030 && !memBitfield030Admission()) return false;
         if (sem.eaMode != 2 && sem.eaMode != 5) return false;
-        if (!memoryBitfieldFitsLongword(memExt)) return false;   // tail
+        const bool possibleTail = !memoryBitfieldFitsLongword(memExt);
+        if (!readOnly && possibleTail) return false;
+        // PreflightAll proves plain mappings, not a two-line 040 D-cache
+        // transaction. The promoted tail path is the cacheless 030; a live
+        // 040 cache keeps replaying until the IR can publish that protocol.
+        if (possibleTail && L_.cache040Live) return false;
         const bool dynOffset = (memExt & 0x0800) != 0;
         const bool dynWidth = (memExt & 0x0020) != 0;
         if ((dynOffset || dynWidth) && !dynamicRegisterBitfieldEnabled())
@@ -3317,6 +3320,11 @@ bool Emitter::emitBitfield(size_t i) {
         const MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Operand, 4,
             uint8_t(sem.eaMode), uint8_t(sem.eaReg));
+        MemoryAccessPlan tail;
+        if (readOnly && possibleTail)
+            tail = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Operand, 1,
+                                 uint8_t(sem.eaMode), uint8_t(sem.eaReg));
         MemoryAccessPlan write;
         if (!readOnly)
             write = memory.access(MemoryDirection::Write,
@@ -3324,7 +3332,27 @@ bool Emitter::emitBitfield(size_t i) {
                                   uint8_t(sem.eaMode), uint8_t(sem.eaReg));
         if (!read.valid() || (!readOnly &&
                               !memoryRmwAccessPair(read, write)) ||
+            (readOnly && possibleTail &&
+             (!tail.valid() || !read.preflight || !tail.preflight ||
+              read.protocol != MemoryProofProtocol::PreflightAll ||
+              tail.protocol != MemoryProofProtocol::PreflightAll ||
+              read.exactThunk || tail.exactThunk || read.cache || tail.cache)) ||
             !memory.complete()) return false;
+
+        // Same fixed 68020/68030 table as A64. A sole exact-required read may
+        // carry live device delay above it; a two-read tail is plain-memory
+        // preflight only and must match the fixed cost exactly.
+        static const int8_t memoryCycles[8][2] = {
+            {17,18}, {19,20}, {24,25}, {19,20},
+            {24,25}, {32,33}, {24,25}, {21,22}
+        };
+        const int eaColumn = sem.eaMode == 2 ? 0 : 1;
+        const unsigned opcodeCycles =
+            unsigned(memoryCycles[kind][eaColumn]);
+        MemoryAccessPlan timedRead = read;
+        const bool soleReadTiming = readOnly && !possibleTail &&
+            admitSoleReadTiming(i, timedRead, opcodeCycles);
+        if (traced030(i) != opcodeCycles && !soleReadTiming) return false;
         const unsigned oImm = (memExt >> 6) & 31, oReg = (memExt >> 6) & 7;
         const unsigned wImm = ((unsigned(memExt & 31) - 1u) & 31u) + 1u;
         const unsigned wReg = memExt & 7;
@@ -3340,8 +3368,54 @@ bool Emitter::emitBitfield(size_t i) {
         } else if (oImm >> 3) {
             a_.aluRI(Asm::Op::ADD, Sz::L, RAX, int32_t(oImm >> 3));
         }
-        if (readOnly) {
-            memLoad(RAX, 2, RDI, read);             // RDI = the longword
+        if (readOnly && possibleTail) {
+            // Prove both possible mappings before the first guest byte is
+            // observed. A failure therefore replays an untouched instruction
+            // and cannot duplicate an MMIO side effect. The second
+            // probe is skipped at run time when offset+width fits bit 31.
+            a_.movMR(Sz::L, F(kFSaveA), RAX);       // adjusted guest address
+            if (dynWidth) {
+                a_.movRM(Sz::L, RDX, D(int(wReg)));
+                a_.aluRI(Asm::Op::SUB, Sz::L, RDX, 1);
+                a_.aluRI(Asm::Op::AND, Sz::L, RDX, 31);
+                a_.aluRI(Asm::Op::ADD, Sz::L, RDX, 1);
+            } else {
+                a_.movRI(RDX, wImm);
+            }
+            a_.movMR(Sz::L, F(kFValue), RDX);       // normalized width
+
+            memProbe(RAX, 4, false, runtimeStub(i));
+            a_.movMR(Sz::Q, F(kFPointerHost), RSI); // first host pointer
+
+            if (dynOffset) {
+                a_.movRM(Sz::L, RCX, D(int(oReg)));
+                a_.aluRI(Asm::Op::AND, Sz::L, RCX, 7);
+            } else {
+                a_.movRI(RCX, oImm & 7);
+            }
+            a_.aluRM(Asm::Op::ADD, Sz::L, RCX, F(kFValue));
+            a_.aluRI(Asm::Op::CMP, Sz::L, RCX, 32);
+            Label& noTail = *a_.fresh();
+            Label& haveData = *a_.fresh();
+            a_.jcc(Cc::BE, noTail);
+
+            a_.movRM(Sz::L, RAX, F(kFSaveA));
+            a_.aluRI(Asm::Op::ADD, Sz::L, RAX, 4);
+            memProbe(RAX, 1, false, runtimeStub(i));
+            a_.movzx(Sz::B, R8, mem(RSI, 0));       // optional fifth byte
+            a_.movRM(Sz::Q, RSI, F(kFPointerHost));
+            a_.movRM(Sz::L, RDI, mem(RSI, 0));
+            a_.bswap(RDI);
+            a_.jmp(haveData);
+
+            a_.bind(noTail);
+            a_.movRI(R8, 0);
+            a_.movRM(Sz::Q, RSI, F(kFPointerHost));
+            a_.movRM(Sz::L, RDI, mem(RSI, 0));
+            a_.bswap(RDI);
+            a_.bind(haveData);
+        } else if (readOnly) {
+            memLoad(RAX, 2, RDI, timedRead);        // RDI = the longword
         } else {
             memRmwLoad(RAX, 2, RDI, read, write);
             a_.movMR(Sz::L, F(kFSaveV), RDI);       // pristine destination
@@ -3362,8 +3436,15 @@ bool Emitter::emitBitfield(size_t i) {
             a_.movRM(Sz::L, RCX, D(int(oReg)));
             a_.aluRI(Asm::Op::AND, Sz::L, RCX, 7);
             a_.shiftRCl(Sz::L, RDI, 4);             // SHL by CL
+            if (possibleTail) a_.shiftRCl(Sz::L, R8, 4);
         } else if (oImm & 7) {
             a_.shiftRI(Sz::L, RDI, 4, uint8_t(oImm & 7));
+            if (possibleTail)
+                a_.shiftRI(Sz::L, R8, 4, uint8_t(oImm & 7));
+        }
+        if (possibleTail) {
+            a_.shiftRI(Sz::L, R8, 5, 8);
+            a_.aluRR(Asm::Op::OR, Sz::L, RDI, R8);
         }
         if (dynWidth) {
             a_.movRI(RCX, 32);

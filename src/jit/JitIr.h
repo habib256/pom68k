@@ -1311,9 +1311,9 @@ inline void describeEffectiveAddresses(Instr& in) {
             add(OperandRole::Operand, s.eaMode, s.eaReg, s.sizeIndex, 1);
             break;
         case SemanticOp::Bitfield:
-            // Memory bitfields always begin with a longword access; a
-            // possible fifth byte is deliberately outside the currently
-            // described zero-offset subset below.
+            // Memory bitfields always begin with a longword access. Extension
+            // refinement below publishes a possible fifth-byte read as the
+            // second preflighted slot.
             add(OperandRole::Operand, s.eaMode, s.eaReg, 2, 1);
             break;
         case SemanticOp::DivideWord:

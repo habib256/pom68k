@@ -313,10 +313,10 @@ if(POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
     # experimental gate above runs these admissions by DEFAULT; this one
     # pins the explicit-knob road beside it, as on x86-64.
     # POM68K_JIT_030_MEMBF joined the pinned explicit knobs on 2026-08-28:
-    # 030 read-only memory bitfields through the 040 emission path, first
-    # proved on this very gate's configuration (120k identical, i-cache
-    # counters identical on both engines). Opt-in in the product until its
-    # own promotion evidence; this registration is its standing oracle.
+    # 030 memory bitfields through the shared emission path, first proved on
+    # this gate's configuration (120k identical, i-cache counters identical)
+    # and promoted after the cross-backend E9D4 tail/no-tail oracle. This
+    # explicit-1 registration remains the standing non-default configuration.
     add_test(NAME jit_lockstep_030_a64_alignment_test COMMAND jit_lockstep_030_test 120000
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(jit_lockstep_030_a64_alignment_test PROPERTIES

@@ -601,6 +601,7 @@ int main() {
             SavedEnv("POM68K_JIT_REG_CACHE"),
             SavedEnv("POM68K_JIT_EDGE_CELLS"),
             SavedEnv("POM68K_JIT_DYNAMIC_BITFIELD"),
+            SavedEnv("POM68K_JIT_030_MEMBF"),
         };
         for (const auto& e : saved) e.clear();
 
@@ -609,6 +610,16 @@ int main() {
               "measured codegen experiments stay off by default");
         check(jit::dynamicRegisterBitfieldEnabled(),
               "measured dynamic register bitfields stay on by default");
+        check(jit::memBitfield030Admission(),
+              "proved 68030 memory bitfields stay on by default");
+        setEnv("POM68K_JIT_030_MEMBF", "0");
+        {
+            const auto config = testjit::resolveFromEnvironment();
+            jit::ScopedResolvedConfig active(&config);
+            check(!jit::memBitfield030Admission(),
+                  "an explicit memory-bitfield veto overrides the proved default");
+        }
+        setEnv("POM68K_JIT_030_MEMBF", nullptr);
 
         setEnv("POM68K_JIT_PROFILE", "production");
         {

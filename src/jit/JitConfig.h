@@ -114,13 +114,12 @@ struct ResolvedConfig {
     bool bsrWideAdmission = false;
     bool bsrwExplicit = false;
 
-    // 68030 read-only memory bitfields (BFTST/BFEXTU/BFEXTS/BFFFO through a
-    // memory EA). OFF by default: the emission path is the 040's, admitted
-    // on the 030 through the sole-read exact-thunk contract, and the 120k
-    // lockstep is its oracle. SimCity 2000 names the stake: BFEXTU (A0) is
-    // 15.8 % of all gameplay fallbacks (CHANGELOG 2026-08-28). Flip the
-    // default only on its own D.1 evidence, like every admission before it.
-    bool memBitfield030 = false;
+    // 68030 memory bitfields through (An)/d16(An). Read-only forms preflight
+    // an optional fifth-byte tail before the first load; tailless writes use
+    // the shared read4/write4 RMW proof. ON after the cross-backend directed
+    // 030 oracle, four real locksteps and the Speedometer E9D4 census
+    // (2026-08-31). The explicit knob remains as an attribution/veto arm.
+    bool memBitfield030 = true;
 
     // A64 pacing control is captured here too: a backend must never retain
     // a private getenv-based policy surface.
@@ -234,7 +233,7 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     c.restartBaseAdmission = envBool(option::JitRestartBase, false);
     c.bsrwExplicit = present(option::JitBsrWide);
     c.bsrWideAdmission = envBool(option::JitBsrWide, false);
-    c.memBitfield030 = envBool(option::JitMemBitfield030, false);
+    c.memBitfield030 = envBool(option::JitMemBitfield030, true);
     c.a64Pacing = envBool(option::JitA64Pacing, true);
     c.requireNative = present(option::JitRequireNative);
     c.dispatchRing = envBool(option::JitDispatchRing, false);
@@ -378,11 +377,10 @@ inline bool bsrWideAdmission() {
     return detail::activeConfig ? detail::activeConfig->bsrWideAdmission : false;
 }
 
-// POM68K_JIT_030_MEMBF — 68030 read-only memory bitfields through the
-// existing 040 emission path (see the field comment above). Opt-in until
-// its own D.1 evidence.
+// POM68K_JIT_030_MEMBF — 68030 memory-bitfield admission. Production is ON;
+// an explicit 0 remains the exact attribution/veto arm.
 inline bool memBitfield030Admission() {
-    return detail::activeConfig ? detail::activeConfig->memBitfield030 : false;
+    return detail::activeConfig ? detail::activeConfig->memBitfield030 : true;
 }
 
 // J4 — resident 68040 D-cache line reads. Kept independently switchable so

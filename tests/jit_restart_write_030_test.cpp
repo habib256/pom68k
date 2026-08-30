@@ -368,6 +368,28 @@ void installBitfieldWriteLoop(FaultCpu& c) {
     put32(c, kBitfieldData + 0x08, 0x89ABCDEF);
 }
 
+void installSpeedometerBitfieldTailLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x7A07);    // MOVEQ #7,D5 (tail offset)
+    put16(c, kCode + 0x02, 0x7600);    // MOVEQ #0,D3 (width 32)
+    put16(c, kCode + 0x04, 0xE9D4);    // Speedometer BFEXTU (A4){D5:D3},D0
+    put16(c, kCode + 0x06, 0x0963);
+    put16(c, kCode + 0x08, 0x72FD);    // MOVEQ #-3,D1 (signed adjust + tail)
+    put16(c, kCode + 0x0A, 0xE9D4);    // BFEXTU (A4){D1:32},D0
+    put16(c, kCode + 0x0C, 0x0840);
+    put16(c, kCode + 0x0E, 0x7C00);    // MOVEQ #0,D6 (runtime no-tail arm)
+    put16(c, kCode + 0x10, 0xE9D4);    // BFEXTU (A4){D6:32},D0
+    put16(c, kCode + 0x12, 0x0980);
+    put16(c, kCode + 0x14, 0x60EA);    // BRA.S kCode
+    put16(c, kCode + 0x16, 0x4E71);
+    put16(c, kHandler, 0x4E71);
+    put32(c, kBitfieldData + 0x00, 0xA55A3CC3);
+    put32(c, kBitfieldData + 0x04, 0x5AA5C33C);
+    put32(c, kBitfieldData + 0x08, 0x89ABCDEF);
+}
+
 void installJsrLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -461,7 +483,9 @@ int main() {
     // restart oracle needs immediate compilation to exercise every thunk.
     setenv("POM68K_JIT_PROFIT_SCORE", "0", 1);
     setenv("POM68K_JIT_ACCESS_THUNK", "2", 1);
-    setenv("POM68K_JIT_030_MEMBF", "1", 1);
+    // This test is the cross-backend product-default oracle for 030 memory
+    // bitfields. An inherited attribution veto must not mask that default.
+    unsetenv("POM68K_JIT_030_MEMBF");
     // The queue cases deliberately exercise multiword control flow with the
     // real 68030 i-cache overlay armed. This makes the gate judge the shared
     // linear-fetch proof, its emitted accounting and the terminal queue as
@@ -625,6 +649,47 @@ int main() {
         check(same && bfStats.blocksCompiled != 0 && bfStats.blocksRun != 0 &&
               (!nativeProduction || bfStats.slowInstrs == 0),
               "tailless memory bitfield writes stay native and exact on native 030");
+    }
+
+    // Speedometer's E9D4 uses a dynamic offset and width that may require a
+    // fifth byte. Exercise two real tail paths plus the same compiled shape's
+    // runtime no-tail arm; both mappings must be proved before the first load.
+    {
+        FaultCpu bfRef, bfNative;
+        installSpeedometerBitfieldTailLoop(bfRef);
+        installSpeedometerBitfieldTailLoop(bfNative);
+        bfRef.reset(); bfNative.reset();
+        bfRef.setTC(12u << 20); bfNative.setTC(12u << 20);
+        bfRef.setA(4, kBitfieldData + 4);
+        bfNative.setA(4, kBitfieldData + 4);
+        bfNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = bfRef.getClock() + 43;
+            bfRef.executeUntil(target);
+            bfNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && bfRef.getD(r) == bfNative.getD(r) &&
+                       bfRef.getA(r) == bfNative.getA(r);
+            same = same && bfRef.getPC() == bfNative.getPC() &&
+                   bfRef.getPC0() == bfNative.getPC0() &&
+                   bfRef.getIRD() == bfNative.getIRD() &&
+                   bfRef.getIRC() == bfNative.getIRC() &&
+                   bfRef.getSR() == bfNative.getSR() &&
+                   bfRef.getClock() == bfNative.getClock();
+            if (!same)
+                std::printf("    030 E9D4 tail divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto bfStats = bfNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(bfNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(bfNative.jit.backendName(), "x86-64")) &&
+            !bfNative.jit.config().packedCcr;
+        check(same && bfStats.blocksCompiled != 0 && bfStats.blocksRun != 0 &&
+              (!nativeProduction || bfStats.slowInstrs == 0),
+              "Speedometer E9D4 tail/no-tail reads stay native on the 030 default");
     }
 
     // Train and compile the exact write while its destination is direct RAM.

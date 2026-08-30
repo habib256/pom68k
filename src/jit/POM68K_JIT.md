@@ -780,6 +780,29 @@ The sampled mix moves 20,065 → 16,145 unsupported (**−19.5 %**) and 62,188
 frames, 2,577 SCSI commands and halted=0 remain exact. The next dominant
 static row is now `E9D4`, followed by `C029`.
 
+`E9D4` is not a shift but Speedometer's dynamic `BFEXTU (A4){…},D0`.
+Its base cost is fixed at 19; its observed 19/23/27 totals differ only by
+030 i-cache misses. The shared IR already described the hard part: a
+longword plus an optional fifth-byte read under `PreflightAll`. A64 consumed
+that contract behind `POM68K_JIT_030_MEMBF`; x64 stopped at the tailless
+subset. X64 now mirrors the two-probe transaction: it proves both possible
+mappings before the first load, skips the second probe when runtime
+offset+width ends at bit 32, and combines the optional byte only on the tail
+path. Its memory-bitfield body also cross-checks the fixed action/EA timing
+table instead of accepting an arbitrary traced cost. Five-byte writes remain
+undescribed because a first committed store could not be replayed after a
+late tail failure.
+
+The 030 admission is now on by default on both generators; explicit
+`POM68K_JIT_030_MEMBF=0` remains the attribution/veto arm. The directed gate
+executes Speedometer extension `0963`, a signed negative-offset tail and a
+runtime no-tail arm with zero slow instructions on native A64 and native x64
+(the latter executed under Rosetta, not merely compiled). Four real 030
+locksteps remain identical. In the 270-frame CPU census every read-only
+`E9D0…E9D6` row disappears: unsupported falls 16,145 → 10,483
+(**−35.07 %**) and total fallbacks 59,247 → 53,586 (**−9.55 %**), with all
+four fingerprints unchanged. `C029` is now the largest static CPU row.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
@@ -1107,7 +1130,7 @@ do not affect an injected session.
 | `POM68K_JIT_PROFIT_SCORE` | `0` | experimental native compile gate; 0 preserves the current policy. Otherwise a recorded block must satisfy `visits × potentially native instructions >= score` in addition to `POM68K_JIT_HOT`. This lets long/native loops compile before short single-pass blocks; it is a measurement knob until repeated 1 000/3 000/6 000-frame ABBA evidence earns a default |
 | `POM68K_JIT_RESTART_BASE` | per-backend | admission (030): the restartable-write family on the split BASE cost instead of the traced total. Its historical coarse-budget divergence was the peripheral-phase class, CLOSED 2026-08-21 by the access-thunk clock bias (JIT_BRINGUP § C.4nonies). **Default follows the backend's `caps().accessClockBias` declaration — ON under x64 since 2026-08-22 (−4.3 % alone, −8.0 % with BSR.W at 6000 frames, fp identical) and under a64 since the same afternoon (its thunks carry the bias, replacing the `guardIcacheHits` replay); `threaded` declares none and needs none**; an explicit 0/1 wins either way. Both emitters consult it since the evening of 2026-08-22 (a64 had the total-cost rule hard-wired, refusing every push traced on an i-cache miss — native share 49 → 71 % at 30 000 frames once wired). `jit_lockstep_030_x64_alignment_test` / `jit_lockstep_030_a64_alignment_test` pin both admissions at 120k; `jit_backend_test` pins the declaration coupling |
 | `POM68K_JIT_BSRW` | per-backend | admission for BSR.W (`$6100`) into the armed-charge exemption. Charge proved correct (`fetchWords=2`); its step-16 097 divergence was the same peripheral-phase class, closed by the same fix. Same per-backend default and same gates as `POM68K_JIT_RESTART_BASE` (−2.3 % alone at 6000 frames) |
-| `POM68K_JIT_030_MEMBF` | 0 | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators. Sole reads use the exact-thunk timing contract; TAILLESS BFCHG/BFCLR/BFSET/BFINS consume the shared read4/write4 RMW proof and a writable translation before the read. A64 additionally handles five-byte reads by proving both mappings before either load escapes; x64 replays those tails, and five-byte writes remain undescribed everywhere. A mispriced form refuses. Opt-in until its own D.1 evidence; oracles: both host-specific alignment locksteps at 120k plus the directed 030 write loop in `jit_restart_write_030_test`. Stakes named by the SimCity census: `E9D0` BFEXTU `(A0)` 15.8 % and `EFD1` BFINS `(A1)` 15.75 % of gameplay fallbacks (CHANGELOG 2026-08-28/30) |
+| `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. TAILLESS BFCHG/BFCLR/BFSET/BFINS consume the shared read4/write4 RMW proof and a writable translation before the read; five-byte writes remain undescribed everywhere. A mispriced form refuses. Promoted 2026-08-31 after native A64+x64 tail/no-tail oracles, four real 030 locksteps and the exact Speedometer census; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
 | `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on the V8, whose store inventory is proved complete (`V8Memory::kJitStoreInventoryComplete` — every store into RAM passes `CodeGuard::note()`, pseudo-DMA included), honoured on VASP/RBV/MSC, whose inventories are not. `1` forces the hint back ON (prices it on a proven board: −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF — read by the V8 wrapper only (`Cpu030.cpp:85`): VASP/RBV/MSC always flush on the CI/CEI strobes and ignore the knob, so their unproven inventories cannot be un-flushed from the environment. Compare fingerprints on both sides or the number means nothing |
 | `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
 | `POM68K_JIT_WATCH_OPCODE` | unset | diagnosis (a64): `<hex>[,<hex>…]`, up to four opcodes — when the compile loop hands one to the fallback stub, print its admission inputs (trace/base/i-cache cycles, fetch count, terminal queue, semantics, memory proof plan) once per pc, tagged with the stage or the emitter check that refused it (`jsr:queue`, `movem:cost`, …). Turns a fallback-census row into WHICH check, without guessing from the source (2026-08-23) |
@@ -1177,11 +1200,14 @@ retain whole-instruction/span proofs. Since 2026-08-30 the write bitfields
 (`BFCHG`/`BFCLR`/`BFSET`/`BFINS` on memory) publish their TAILLESS form as
 the two-slot RMW contract — read4 then write4 at one address,
 `lastWrite = 1`. Both native generators consume it with one writable
-preflight before the read, on 040 by default and on 030 behind
-`POM68K_JIT_030_MEMBF`. The five-byte tail form would need four slots and has
-no write analogue of the probed-before-read tail protocol — a committed
-first store could not replay — so it stays undescribed and falls back
-whole. This makes a widening reviewable in one
+preflight before the read, on 040 and 030 by default. Read-only bitfields
+that may reach a fifth byte publish read4+read1 under `PreflightAll`; both
+generators prove the two mappings before access zero and branch around the
+tail probe when the runtime field fits one longword. The five-byte WRITE form
+would need four slots and has no analogue of that probes-before-load protocol
+— a committed first store could not replay — so it stays undescribed and
+falls back whole. `POM68K_JIT_030_MEMBF=0` vetoes the 030 admission for
+attribution. This makes a widening reviewable in one
 place: change the contract or planner, then make the pure IR assertions and
 the generated A64/x64 gate agree.
 

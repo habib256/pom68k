@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's tailed `E9D4` made 68030 memory bitfields a proved default on A64 and x64** → [2026-08-31 (seventh) — Speedometer promotes memory bitfields…](#2026-08-31-speedometer-memory-bitfields)
 - **how Speedometer's `BRA.W` and `JMP abs.l` became native through one exact 68030 linear-fetch proof** → [2026-08-31 (sixth) — Speedometer's wide transfers…](#2026-08-31-speedometer-linear-transfers)
 - **how Speedometer's `ADDX`/`SUBX` register chains became native on both generators without losing X or cumulative Z** → [2026-08-31 (fifth) — Speedometer's extended arithmetic…](#2026-08-31-speedometer-addx-subx)
 - **why Speedometer's three apparently ordinary BTST/MOVE fallbacks require exact device reads, and how their live delay can remain native** → [2026-08-31 (fourth) — Speedometer's next three JIT…](#2026-08-31-speedometer-exact-polls)
@@ -360,6 +361,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (seventh)** — [Speedometer's tailed `E9D4` gives x64 its missing fifth-byte reader and promotes 68030 memory bitfields on both generators](#2026-08-31-speedometer-memory-bitfields)
 - **2026-08-31 (sixth)** — [Speedometer's wide unconditional branches and simple jumps become native through an exact 68030 linear-fetch proof](#2026-08-31-speedometer-linear-transfers)
 - **2026-08-31 (fifth)** — [Speedometer's register `ADDX`/`SUBX` chains become native on A64 and x64 with exact X and cumulative Z](#2026-08-31-speedometer-addx-subx)
 - **2026-08-31 (fourth)** — [Speedometer's next three JIT static fallbacks become native exact device reads, without flattening their live LC II delay](#2026-08-31-speedometer-exact-polls)
@@ -713,6 +715,51 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-memory-bitfields"></a>
+## 2026-08-31 (seventh) — Speedometer's tailed `E9D4` gives x64 its missing fifth-byte reader and promotes 68030 memory bitfields on both generators
+
+After the wide transfer slice, Speedometer's largest static CPU row was
+`E9D4` 3,462 times. The watcher identifies it precisely as dynamic
+`BFEXTU (A4){offset:width},D0`, with extensions `0963`, `0840` and `0980`.
+Every trace has base cost 19; totals 19/23/27 differ only by zero, one or two
+030 i-cache misses. Its IR contract is already the right one: read4 followed
+by an optional read1, both in the `PreflightAll` mask. The refusal was policy
+on A64 and a missing fifth-byte consumer on x64, not unknown semantics.
+
+The x64 generator now mirrors A64's transaction. It computes the signed
+byte adjustment, saves the first proved host pointer, decides at run time
+whether residual-offset + normalized-width exceeds 32, proves the tail byte
+mapping before any load when needed, and only then assembles the field. A
+failure at either probe replays the untouched instruction, so no MMIO/cache
+read can be duplicated. The no-tail arm skips the second mapping entirely.
+The same change closes a latent timing-policy asymmetry: x64 memory bitfields
+now cross-check A64's fixed action/EA table, with only a model-required sole
+exact read allowed to carry live device delay above it. Five-byte WRITES stay
+out: their read4/read1/write4/write1 transaction does not fit the two-slot IR,
+and a committed first store could not be replayed after a late fault.
+
+The asset-free dynamic oracle already contained tail and no-tail fields; its
+residency assertion now applies to both generators. Native x64 execution
+under Rosetta reports `compiled=4 runs=251 native=1215 slow=0`. The dedicated
+030 gate adds the exact Speedometer `0963`, a negative-offset tail and the
+same compiled shape's runtime no-tail arm; it passes with zero fallback on
+native A64 and native x64, beside the existing tailless-write loop. Backend
+parity passes on both builds, and all four real A64 030 locksteps remain
+identical.
+
+That cross-backend evidence promotes `POM68K_JIT_030_MEMBF` from opt-in to
+production default; explicit `0` remains a precise attribution/veto. In the
+new 270-frame CPU census, all encountered read-only `E9D0…E9D6` rows vanish.
+Unsupported fallbacks move 16,145 → 10,483 (**−35.07 %**) and total fallbacks
+59,247 → 53,586 (**−9.55 %**); 2,223,240 / 2,231,915 instructions are native
+(**99.61 %**). CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 are unchanged. The
+instrumented 0.313342 s wall time is not a speed claim. `C029` is now the
+largest static CPU row.
 
 ---
 

@@ -507,7 +507,7 @@ void installStaticBitfieldLoop(SyntheticCpu& c) {
 // byte-displacement adjust), {0:D0} dynamic width reaching 32, a field
 // ending exactly at bit 32, and the d16(An) column. Every form here
 // provably fits one longword; the five-byte tail stays in the dynamic
-// scenario above, where only a64 carries the claim.
+// scenario above, where both production generators now carry the claim.
 void installMemoryBitfieldLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x72FD);    // MOVEQ #-3,D1
@@ -1324,10 +1324,12 @@ bool runDynamicBitfieldLockstep() {
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    const bool a64Production = !std::strcmp(native.jit.backendName(), "aarch64") &&
-                               !native.jit.config().packedCcr;
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!a64Production || s.slowInstrs == 0);
+           (!nativeProduction || s.slowInstrs == 0);
 }
 
 bool runDynamicRegisterBitfieldLockstep() {
@@ -2232,7 +2234,7 @@ int main() {
     check(runDependentMoveLockstep(),
           "MOVE.L (A7)+,(A7) uses the postincremented destination exactly");
     check(runDynamicBitfieldLockstep(),
-          "dynamic register and read-only memory bitfields stay native on A64");
+          "dynamic register and tailed memory bitfields stay native on BOTH generators");
     check(runDynamicRegisterBitfieldLockstep(),
           "dynamic register bitfields stay native and exact on BOTH generators");
     check(runStaticBitfieldLockstep(),
