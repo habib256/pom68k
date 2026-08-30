@@ -57,10 +57,10 @@ _Not yet generated on an aarch64 host — run `tools/status_md.py` there._
 | tier | daily | 88 |
 | tier | full | 135 |
 | tier | platform | 12 |
-| slots_src | assumed | 122 |
-| slots_src | measured | 113 |
+| slots_src | assumed | 119 |
+| slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 594 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 462 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Recorded runs
 

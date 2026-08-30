@@ -80,7 +80,7 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 | **0·B** | Les six réserves de la revue externe du 2026-08-26 | Recensement g++ FAIT le 2026-08-28 (17 lignes, 16 sites) : reste à corriger les 16 puis armer `-Werror` ; et le premier rapport de fuites Linux |
 | **1** | Aucun rouge JIT ouvert ; rouges de fixture/timeout, ouverts non rouges, règles de méthode | Réparer les fixtures `macii_persist` / `q605_afp_live`, puis la marge IIvx ; le mode-2 x64 reste une ABBA séparée |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | Bitfields mémoire A64 écriture clos ; restent le port x64 des écritures et des formes registre dynamiques, la division, puis un PROFIL TEMPOREL pour le prochain levier mural |
+| **3** | JIT, second moteur d'exécution | Bitfields mémoire sans-queue clos sur les deux générateurs ; restent les formes registre dynamiques x64, la division, puis un PROFIL TEMPOREL pour le prochain levier mural |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -759,7 +759,7 @@ Open, in ROI order:
     replis cross-page légitimes, total de phase 37,7 M → 31,2 M. Travail de
     couverture, pas de temps (leçon ABBA ci-dessus) ; le défaut reste
     opt-in en attendant sa propre preuve de promotion.
-  - `EFD1` (BFINS `(A1)`, 15,75 %) : **IR + émetteur A64 FAITS le
+  - `EFD1` (BFINS `(A1)`, 15,75 %) : **IR + les deux émetteurs FAITS le
     2026-08-30** — `refineMemoryFromExtensions` publie le contrat RMW
     deux-slots de la forme sans-queue (read4 + write4, `lastWrite=1`) pour
     les quatre actions d'écriture, la forme à queue reste hors contrat et
@@ -769,11 +769,13 @@ Open, in ROI order:
     et décalages pliés en constantes, `BSR`-de-zéro contourné pour BFFFO)
     — scénario dirigé `static-bitfield` dans
     `jit_asset_free_lockstep_test`, résidence exigée des DEUX générateurs,
-    row de parité Bitfield retiré. A64 consomme désormais le contrat des
-    quatre écritures TAILLESS : oracles dirigés 040 et 030 à 256 checkpoints,
-    `native=767 slow=0`, puis `jit|m040` 88/88 hors fixture AFP connue.
-    Restent le portage x64 des écritures mémoire et les formes registre
-    dynamiques sur x64 (`shiftRCl` existe, il faut leur preuve).
+    row de parité Bitfield retiré. Les deux générateurs consomment désormais
+    le contrat des quatre écritures TAILLESS : oracles dirigés 040 et 030 à
+    256 checkpoints, x64/Rosetta **83 replis → 0** sur le témoin A/B puis
+    boucle élargie aux largeurs dynamiques `native=704 slow=0` sur les deux
+    hôtes, et les trois locksteps 030 x64 verts. Restent les formes registre
+    dynamiques sur x64 (`shiftRCl` existe, il faut leur preuve) ; les queues
+    cinq-octets d'écriture restent volontairement hors contrat.
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur

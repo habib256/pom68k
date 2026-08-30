@@ -108,6 +108,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how x64 consumed the same tailless memory-bitfield write contract and turned SimCity's `EFD1` witness from replay into native code** → [2026-08-30 (fourth) — x64 consumes the tailless bitfield RMW contract…](#2026-08-30-x64-bitfield-writes)
 - **how the tailless memory-bitfield write contract became native on A64/040 and A64/030, and what the M4 handover actually proved** → [2026-08-30 (third) — The M4 closes the handover…](#2026-08-30-a64-bitfield-writes)
 - **what the Rogue re-census really found after indexed MOVEM, and why VRAM/QuickDraw HLE was not the answer** → [2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed…](#2026-08-23-rogue-re-census)
 - **what WinUAE-style CCR caching, register residency, exact edge dependencies and tiering actually buy under Moira's exact boundaries** → [2026-08-23 (tenth) — Four classic JIT levers implemented and priced…](#2026-08-23-four-jit-levers)
@@ -347,6 +348,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (fourth)** — [x64 consumes the tailless bitfield RMW contract: SimCity's `EFD1` witness falls from 83 replays to zero under both 040 and 030 oracles](#2026-08-30-x64-bitfield-writes)
 - **2026-08-30 (third)** — [The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host](#2026-08-30-a64-bitfield-writes)
 - **2026-08-30 (second)** — [The x64 generator learns the bitfield family's static register forms, the parity table loses its Bitfield row, and the write bitfields get their IR contract — "IR d'abord" delivered](#2026-08-30-x64-static-bitfields)
 - **2026-08-30** — [The x86-64 host with the assets runs the WHOLE registry for the first time, twice: the unit tier is green here at last, the only reds are the fixtures this host was already known to carry, and one gate is sitting on its own timeout](#2026-08-30-x86-full-run-night)
@@ -687,6 +689,49 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-x64-bitfield-writes"></a>
+## 2026-08-30 (fourth) — x64 consumes the tailless bitfield RMW contract: SimCity's `EFD1` witness falls from 83 replays to zero under both 040 and 030 oracles
+
+**The gap was measured before it moved.** The shared memory-write loop under
+the Rosetta x86-64 build was already architecturally exact, but only its read
+witnesses compiled: `compiled=2 runs=167 native=767 slow=83`. All four write
+actions — BFCHG/BFCLR/BFSET and SimCity's BFINS `EFD1` — still crossed the
+per-instruction interpreter door.
+
+**The x64 emitter now consumes, rather than re-decoding, the contract A64
+proved first.** A tailless write must mint the IR's ordered read4/write4
+`ReadModifyWrite` pair. `memRmwLoad` proves one writable translation before
+the read and preserves its host pointer; the emitter saves the pristine
+destination longword, rebuilds dynamic offset/width values after any DTLB fill,
+publishes old-field flags (or BFINS's cropped source flags), constructs the
+non-wrapping destination mask, and `memRmwStore` commits through the preserved
+pointer. A five-byte write remains undescribed and replays whole, so no first
+store can escape before a late refusal.
+
+**Both guest-family proofs are native and exact on the actual x64 generator.**
+The like-for-like 040 witness first moved to
+`compiled=4 runs=252 native=767 slow=0`; the final oracle then added dynamic
+width to BFCHG and a second BFINS dynamic-width source/mask branch. That wider
+loop is `compiled=5 runs=252 native=704 slow=0` at 256 CPU/CCR/RAM checkpoints
+on BOTH x64 and A64. The 030 restart oracle reports the same residency and also
+compares queue, clock and memory. Under Rosetta,
+`jit_backend_parity_test`, that restart oracle and all three registered x64
+030 locksteps are **6/6 green in 44.31 s**; the same alignment gate that pins
+`POM68K_JIT_030_MEMBF=1` therefore covers the new body. This remains coverage,
+not a promotion of the opt-in knob: D.1 still owns that decision. The final
+`jit-fast` selection is 7/7 on both host slices, and the native A64 relink
+leaves all 158 gate executables fresh.
+
+**One independent generated-doc drift surfaced during the alternate-host
+pass.** `STATUS.md`'s x64 slot-source table predated three measured budgets
+(`assumed` 122 → 119, `measured` 113 → 116; aggregate scheduling cost
+594 → 462 slots). It was regenerated from `build-x64-jit` with the x86-64
+Python slice, preserving both recorded full runs. The crossed GUI target
+still cannot link in this local directory because Homebrew's GLFW is arm64
+only; every named JIT gate above is a real x86-64 Mach-O run under Rosetta.
 
 ---
 

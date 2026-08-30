@@ -272,10 +272,10 @@ void installBitfieldWriteLoop(FaultCpu& c) {
     put16(c, kCode + 0x00, 0x72FD);    // MOVEQ #-3,D1
     put16(c, kCode + 0x02, 0x203C);    // MOVE.L #$13579BDF,D0
     put32(c, kCode + 0x04, 0x13579BDF);
-    put16(c, kCode + 0x08, 0xEAD0);    // BFCHG (A0){4:12}
-    put16(c, kCode + 0x0A, 0x010C);
-    put16(c, kCode + 0x0C, 0xE8D0);    // BFTST (A0){4:12}
-    put16(c, kCode + 0x0E, 0x010C);
+    put16(c, kCode + 0x08, 0xEAD0);    // BFCHG (A0){0:D0}
+    put16(c, kCode + 0x0A, 0x0020);
+    put16(c, kCode + 0x0C, 0xE8D0);    // BFTST (A0){0:D0}
+    put16(c, kCode + 0x0E, 0x0020);
     put16(c, kCode + 0x10, 0xECE9);    // BFCLR 4(A1){2:15}
     put16(c, kCode + 0x12, 0x008F);
     put16(c, kCode + 0x14, 0x0004);
@@ -290,7 +290,11 @@ void installBitfieldWriteLoop(FaultCpu& c) {
     put16(c, kCode + 0x26, 0x01C9);
     put16(c, kCode + 0x28, 0xE8D1);    // BFTST (A1){7:9}
     put16(c, kCode + 0x2A, 0x01C9);
-    put16(c, kCode + 0x2C, 0x60DA);    // BRA.S kCode+$08
+    put16(c, kCode + 0x2C, 0xEFD0);    // BFINS D0,(A0){0:D0}
+    put16(c, kCode + 0x2E, 0x0020);
+    put16(c, kCode + 0x30, 0xE8D0);    // BFTST (A0){0:D0}
+    put16(c, kCode + 0x32, 0x0020);
+    put16(c, kCode + 0x34, 0x60D2);    // BRA.S kCode+$08
     put16(c, kHandler, 0x4E71);
     put32(c, kBitfieldData + 0x00, 0xA55A3CC3);
     put32(c, kBitfieldData + 0x04, 0x5AA5C33C);
@@ -468,17 +472,18 @@ int main() {
                             step);
         }
         const auto bfStats = bfNative.jit.stats().snapshot();
-        const bool a64Production = !std::strcmp(bfNative.jit.backendName(),
-                                                "aarch64") &&
-                                   !bfNative.jit.config().packedCcr;
+        const bool nativeProduction =
+            (!std::strcmp(bfNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(bfNative.jit.backendName(), "x86-64")) &&
+            !bfNative.jit.config().packedCcr;
         std::printf("    030 bitfield-write compiled=%llu runs=%llu native=%llu slow=%llu\n",
                     (unsigned long long)bfStats.blocksCompiled,
                     (unsigned long long)bfStats.blocksRun,
                     (unsigned long long)bfStats.instrs,
                     (unsigned long long)bfStats.slowInstrs);
         check(same && bfStats.blocksCompiled != 0 && bfStats.blocksRun != 0 &&
-              (!a64Production || bfStats.slowInstrs == 0),
-              "tailless memory bitfield writes stay native and exact on A64/030");
+              (!nativeProduction || bfStats.slowInstrs == 0),
+              "tailless memory bitfield writes stay native and exact on native 030");
     }
 
     // Train and compile the exact write while its destination is direct RAM.

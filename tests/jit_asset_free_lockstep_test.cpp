@@ -515,19 +515,19 @@ void installMemoryBitfieldLoop(SyntheticCpu& c) {
 }
 
 // TAILLESS memory bitfield writes — the shared IR RMW contract consumed by
-// A64 since 2026-08-30. All four actions run, including SimCity's EFD1
-// BFINS shape, a signed dynamic offset and both admitted EA columns. Read
-// witnesses keep the x64 block useful while that backend still replays the
-// writes; only A64 carries the zero-slow residency claim for now.
+// both generators. All four actions run, including SimCity's EFD1 BFINS,
+// signed dynamic offset, dynamic width and both admitted EA columns. A second
+// BFINS reaches its dynamic-width source/mask branch; read witnesses make any
+// one-action regression visible in the final residency count.
 void installMemoryBitfieldWriteLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x72FD);    // MOVEQ #-3,D1
     put16(c, kCode + 0x02, 0x203C);    // MOVE.L #$13579BDF,D0
     put32(c, kCode + 0x04, 0x1357'9BDFu);
-    put16(c, kCode + 0x08, 0xEAD0);    // BFCHG (A0){4:12}
-    put16(c, kCode + 0x0A, 0x010C);
-    put16(c, kCode + 0x0C, 0xE8D0);    // BFTST (A0){4:12}
-    put16(c, kCode + 0x0E, 0x010C);
+    put16(c, kCode + 0x08, 0xEAD0);    // BFCHG (A0){0:D0}
+    put16(c, kCode + 0x0A, 0x0020);
+    put16(c, kCode + 0x0C, 0xE8D0);    // BFTST (A0){0:D0}
+    put16(c, kCode + 0x0E, 0x0020);
     put16(c, kCode + 0x10, 0xECE9);    // BFCLR 4(A1){2:15}
     put16(c, kCode + 0x12, 0x008F);
     put16(c, kCode + 0x14, 0x0004);
@@ -542,7 +542,11 @@ void installMemoryBitfieldWriteLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x26, 0x01C9);
     put16(c, kCode + 0x28, 0xE8D1);    // BFTST (A1){7:9}
     put16(c, kCode + 0x2A, 0x01C9);
-    put16(c, kCode + 0x2C, 0x60DA);    // BRA.S kCode+$08
+    put16(c, kCode + 0x2C, 0xEFD0);    // BFINS D0,(A0){0:D0}
+    put16(c, kCode + 0x2E, 0x0020);
+    put16(c, kCode + 0x30, 0xE8D0);    // BFTST (A0){0:D0}
+    put16(c, kCode + 0x32, 0x0020);
+    put16(c, kCode + 0x34, 0x60D2);    // BRA.S kCode+$08
     put32(c, kData + 0x00, 0xA55A'3CC3u);
     put32(c, kData + 0x04, 0x5AA5'C33Cu);
     put32(c, kData + 0x08, 0x89AB'CDEFu);
@@ -1131,11 +1135,12 @@ bool runMemoryBitfieldWriteLockstep() {
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    const bool a64Production =
-        !std::strcmp(native.jit.backendName(), "aarch64") &&
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
         !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!a64Production || s.slowInstrs == 0);
+           (!nativeProduction || s.slowInstrs == 0);
 }
 
 bool runGuardedDynamicShiftLockstep() {
@@ -1339,7 +1344,7 @@ int main() {
     check(runMemoryBitfieldLockstep(),
           "tailless memory bitfield reads stay native and exact on BOTH generators");
     check(runMemoryBitfieldWriteLockstep(),
-          "tailless memory bitfield writes stay native and exact on A64");
+          "tailless memory bitfield writes stay native and exact on BOTH generators");
     check(runGuardedDynamicShiftLockstep(),
           "guarded dynamic LSL remains exact and is native with production CCR");
     check(runGuardIndexInvariant(),

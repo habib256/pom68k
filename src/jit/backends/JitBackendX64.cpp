@@ -2857,17 +2857,16 @@ bool Emitter::emitShiftRegister(size_t i) {
 // The 68020 bitfield family — a64's lowerings (a64:2891 memory, a64:3040
 // register) translated. Register forms fold the constants: with o and w
 // known at compile time the rotate, the extraction shift and the
-// destination mask are all immediates. Memory forms cover the READ-ONLY
-// TAILLESS subset (the field provably inside one longword after the signed
-// byte-displacement adjust — Rogue's and SC2K's hot shapes), static or
-// dynamic o/w, priced by this backend's centralized base-cycle charge and
-// the exact-read thunk rather than a64's per-emitter sole-read contract.
+// destination mask are all immediates. Memory forms cover the TAILLESS
+// subset (the field provably inside one longword after the signed byte-
+// displacement adjust — Rogue's, SC2K's and SimCity's hot shapes), static
+// or dynamic o/w, priced by this backend's centralized base-cycle charge.
+// Reads use the exact thunk; writes consume the shared read4/write4 RMW
+// contract and prove the writable translation before exposing the read.
 // What refuses here, each with the door it leaves open: dynamic REGISTER
 // forms want CL shifts threaded through the flag block and their own
 // proof; the five-byte tail form wants the two-probe protocol (a64:2958);
-// the write actions on memory want an RMW emitter for the contract
-// JitIr.h now publishes (the a64 -1-row pattern: canEmit admits the
-// family, the emitter refuses the form).
+// five-byte writes need a four-slot transactional contract.
 bool Emitter::emitBitfield(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
@@ -2880,7 +2879,6 @@ bool Emitter::emitBitfield(size_t i) {
     if (sem.eaMode != 0) {
         const bool readOnly = kind == 0 || kind == 1 || kind == 3 ||
                               kind == 5;
-        if (!readOnly) return false;                // writes: emitter later
         if (L_.is030 && !memBitfield030Admission()) return false;
         if (sem.eaMode != 2 && sem.eaMode != 5) return false;
         if (!memoryBitfieldFitsLongword(memExt)) return false;   // tail
@@ -2895,7 +2893,14 @@ bool Emitter::emitBitfield(size_t i) {
         const MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Operand, 4,
             uint8_t(sem.eaMode), uint8_t(sem.eaReg));
-        if (!read.valid() || !memory.complete()) return false;
+        MemoryAccessPlan write;
+        if (!readOnly)
+            write = memory.access(MemoryDirection::Write,
+                                  MemoryOperand::Operand, 4,
+                                  uint8_t(sem.eaMode), uint8_t(sem.eaReg));
+        if (!read.valid() || (!readOnly &&
+                              !memoryRmwAccessPair(read, write)) ||
+            !memory.complete()) return false;
         const unsigned oImm = (memExt >> 6) & 31, oReg = (memExt >> 6) & 7;
         const unsigned wImm = ((unsigned(memExt & 31) - 1u) & 31u) + 1u;
         const unsigned wReg = memExt & 7;
@@ -2911,7 +2916,12 @@ bool Emitter::emitBitfield(size_t i) {
         } else if (oImm >> 3) {
             a_.aluRI(Asm::Op::ADD, Sz::L, RAX, int32_t(oImm >> 3));
         }
-        memLoad(RAX, 2, RDI, read);                 // RDI = the longword
+        if (readOnly) {
+            memLoad(RAX, 2, RDI, read);             // RDI = the longword
+        } else {
+            memRmwLoad(RAX, 2, RDI, read, write);
+            a_.movMR(Sz::L, F(kFSaveV), RDI);       // pristine destination
+        }
 
         // A miss called out and clobbered every caller-saved register, so
         // every extension-derived value is (re)built from guest state AFTER
@@ -2938,20 +2948,85 @@ bool Emitter::emitBitfield(size_t i) {
         } else if (wImm != 32) {
             a_.shiftRI(Sz::L, RDI, 5, uint8_t(32 - wImm));
         }
-        // N = bit (width-1) of the field, Z over the whole field, V=C=0.
-        a_.movRR(Sz::L, RSI, RDI);
-        if (dynWidth) {
-            a_.movRR(Sz::L, RCX, RDX);
-            a_.aluRI(Asm::Op::SUB, Sz::L, RCX, 1);
-            a_.shiftRCl(Sz::L, RSI, 5);
-        } else if (wImm > 1) {
-            a_.shiftRI(Sz::L, RSI, 5, uint8_t(wImm - 1));
+        if (kind != 7) {                            // BFINS uses source flags
+            // N = bit (width-1) of the field, Z over the whole field,
+            // V=C=0.
+            a_.movRR(Sz::L, RSI, RDI);
+            if (dynWidth) {
+                a_.movRR(Sz::L, RCX, RDX);
+                a_.aluRI(Asm::Op::SUB, Sz::L, RCX, 1);
+                a_.shiftRCl(Sz::L, RSI, 5);
+            } else if (wImm > 1) {
+                a_.shiftRI(Sz::L, RSI, 5, uint8_t(wImm - 1));
+            }
+            a_.movMR(Sz::B, at(L_.srN), RSI);
+            a_.aluRI(Asm::Op::CMP, Sz::L, RDI, 0);
+            a_.setccM(Cc::E, at(L_.srZ));
+            a_.movMI(Sz::B, at(L_.srV), 0);
+            a_.movMI(Sz::B, at(L_.srC), 0);
         }
-        a_.movMR(Sz::B, at(L_.srN), RSI);
-        a_.aluRI(Asm::Op::CMP, Sz::L, RDI, 0);
-        a_.setccM(Cc::E, at(L_.srZ));
-        a_.movMI(Sz::B, at(L_.srV), 0);
-        a_.movMI(Sz::B, at(L_.srC), 0);
+        if (!readOnly) {
+            // R8 is the aligned BFINS source when needed. Width remains in
+            // EDX for dynamic forms; offset is rebuilt from guest state so
+            // no value crosses the writable DTLB fill call above.
+            if (kind == 7) {
+                a_.movRM(Sz::L, R8, D((memExt >> 12) & 7));
+                if (dynWidth) {
+                    a_.movRI(RCX, 32);
+                    a_.aluRR(Asm::Op::SUB, Sz::L, RCX, RDX);
+                    a_.shiftRCl(Sz::L, R8, 4);
+                } else if (wImm != 32) {
+                    a_.shiftRI(Sz::L, R8, 4, uint8_t(32 - wImm));
+                }
+                a_.movRR(Sz::L, RCX, R8);
+                a_.shiftRI(Sz::L, RCX, 5, 31);
+                a_.movMR(Sz::B, at(L_.srN), RCX);
+                a_.aluRI(Asm::Op::CMP, Sz::L, R8, 0);
+                a_.setccM(Cc::E, at(L_.srZ));
+                a_.movMI(Sz::B, at(L_.srV), 0);
+                a_.movMI(Sz::B, at(L_.srC), 0);
+                if (dynOffset) {
+                    a_.movRM(Sz::L, RCX, D(int(oReg)));
+                    a_.aluRI(Asm::Op::AND, Sz::L, RCX, 7);
+                    a_.shiftRCl(Sz::L, R8, 5);
+                } else if (oImm & 7) {
+                    a_.shiftRI(Sz::L, R8, 5, uint8_t(oImm & 7));
+                }
+            }
+
+            // ESI = destination mask: top-width ones shifted right by the
+            // residual memory offset. A tailless memory field never wraps.
+            a_.movRI(RSI, 0xFFFFFFFFu);
+            if (dynWidth) {
+                a_.movRI(RCX, 32);
+                a_.aluRR(Asm::Op::SUB, Sz::L, RCX, RDX);
+                a_.shiftRCl(Sz::L, RSI, 4);
+            } else if (wImm != 32) {
+                a_.shiftRI(Sz::L, RSI, 4, uint8_t(32 - wImm));
+            }
+            if (dynOffset) {
+                a_.movRM(Sz::L, RCX, D(int(oReg)));
+                a_.aluRI(Asm::Op::AND, Sz::L, RCX, 7);
+                a_.shiftRCl(Sz::L, RSI, 5);
+            } else if (oImm & 7) {
+                a_.shiftRI(Sz::L, RSI, 5, uint8_t(oImm & 7));
+            }
+            a_.movRM(Sz::L, RDI, F(kFSaveV));
+            if (kind == 2) a_.aluRR(Asm::Op::XOR, Sz::L, RDI, RSI);
+            else if (kind == 4) {
+                a_.aluRI(Asm::Op::XOR, Sz::L, RSI, -1);
+                a_.aluRR(Asm::Op::AND, Sz::L, RDI, RSI);
+            } else if (kind == 6) {
+                a_.aluRR(Asm::Op::OR, Sz::L, RDI, RSI);
+            } else {                               // BFINS
+                a_.aluRI(Asm::Op::XOR, Sz::L, RSI, -1);
+                a_.aluRR(Asm::Op::AND, Sz::L, RDI, RSI);
+                a_.aluRR(Asm::Op::OR, Sz::L, RDI, R8);
+            }
+            memRmwStore(2, RDI, read, write);
+            commitEa(src, 2, write);
+            return true;
+        }
         switch (kind) {
         case 0:                                     // BFTST
             return true;
