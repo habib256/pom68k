@@ -307,6 +307,7 @@ private:
     bool emitExg(size_t i);
     bool emitShiftRegister(size_t i);
     bool emitBitfield(size_t i);
+    bool emitDivideWord(size_t i);
     bool emitCmpm(size_t i);
     // `exactFetchWords` overrides the words+1 rule for the forms whose
     // mmuFetchWord count is NOT linear (DBcc: 2 on every path — see the
@@ -2854,6 +2855,69 @@ bool Emitter::emitShiftRegister(size_t i) {
     return true;
 }
 
+// DIVU.W / DIVS.W with a register or immediate divisor. Trap and overflow
+// paths branch to Moira before any guest register or flag changes; this is
+// what makes a trap-capable Kind::Muldiv safe inside an ordinary block.
+bool Emitter::emitDivideWord(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::DivideWord) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    Ea src;
+    if (!decode(i, sem.eaMode, sem.eaReg, 1, 0, src) ||
+        (src.idx != EA_DN && src.idx != EA_IM) ||
+        !lengthOk(i, src.ext) || !memory.complete())
+        return false;
+    const bool sign = sem.action != 0;
+    const int cycles = sign ? kDivsWord[src.idx] : kDivuWord[src.idx];
+    if (cycles < 0 || traced030(i) != unsigned(cycles)) return false;
+
+    if (src.idx == EA_DN) {
+        if (sign) a_.movsx(Sz::W, RCX, D(src.reg));
+        else      a_.movzx(Sz::W, RCX, D(src.reg));
+    } else {
+        const uint32_t divisor = sign
+            ? uint32_t(int32_t(src.value)) : uint32_t(uint16_t(src.value));
+        a_.movRI(RCX, divisor);
+    }
+    a_.testRR(Sz::L, RCX, RCX);
+    a_.jcc(Cc::E, runtimeStub(i));                 // divide-by-zero trap
+    a_.movRM(Sz::L, RAX, D(sem.registerIndex));   // dividend
+
+    if (sign) {
+        // x86 IDIV alone would raise #DE for INT_MIN / -1. That quotient is
+        // a 68k word overflow anyway, so hand it back before executing IDIV.
+        Label& safe = *a_.fresh();
+        a_.aluRI(Asm::Op::CMP, Sz::L, RCX, -1);
+        a_.jccShort(Cc::NE, safe);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RAX, int32_t(0x80000000u));
+        a_.jcc(Cc::E, runtimeStub(i));
+        a_.bind(safe);
+        a_.cdq();
+        a_.divR(true, RCX);                        // EAX quotient, EDX remainder
+        a_.aluRI(Asm::Op::CMP, Sz::L, RAX, -32768);
+        a_.jcc(Cc::L, runtimeStub(i));
+        a_.aluRI(Asm::Op::CMP, Sz::L, RAX, 32767);
+        a_.jcc(Cc::G, runtimeStub(i));
+    } else {
+        a_.aluRR(Asm::Op::XOR, Sz::L, RDX, RDX);
+        a_.divR(false, RCX);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RAX, 65535);
+        a_.jcc(Cc::A, runtimeStub(i));
+    }
+
+    // 68k packs remainder:quotient into Dn and derives N/Z from the
+    // 16-bit quotient; V=C=0 and X survives.
+    a_.movRR(Sz::L, RDI, RDX);
+    a_.shiftRI(Sz::L, RDI, 4, 16);
+    a_.aluRI(Asm::Op::AND, Sz::L, RAX, 0xFFFF);
+    a_.aluRR(Asm::Op::OR, Sz::L, RDI, RAX);
+    a_.testRR(Sz::W, RAX, RAX);
+    flagsLogic(Sz::W);
+    a_.movMR(Sz::L, D(sem.registerIndex), RDI);
+    return true;
+}
+
 // The 68020 bitfield family — a64's lowerings (a64:2891 memory, a64:3040
 // register) translated. Register forms fold the constants: with o and w
 // known at compile time the rotate, the extraction shift and the
@@ -3732,6 +3796,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::Exchange: return emitExg(i);
         case SemanticOp::ShiftRegister: return emitShiftRegister(i);
         case SemanticOp::Bitfield: return emitBitfield(i);
+        case SemanticOp::DivideWord: return emitDivideWord(i);
         case SemanticOp::CompareMemory: return emitCmpm(i);
         case SemanticOp::AddSubQuick: return emitAddSubQ(i);
         case SemanticOp::BranchSubroutine: return emitSubroutine(i);
@@ -4019,6 +4084,20 @@ bool Emitter::emit() {
         // Moira may have written guest memory, and a write into this very
         // block's page leaves everything compiled after it stale. The
         // engine's write guard is the only thing that can see that.
+        if (ir_.instrs[i].flags & FlagMayTrap) {
+            // Internal DIV/CHK exceptions return "retired" from Moira but
+            // redirect PC. Keep that vector boundary instead of continuing
+            // at the next generated entry and overwriting it.
+            Label& straight = *a_.fresh();
+            a_.movRM(Sz::L, RAX, at(L_.pc));
+            a_.aluRI(Asm::Op::CMP, Sz::L, RAX,
+                     int32_t(ir_.instrs[i].pc +
+                             uint32_t(ir_.instrs[i].words) * 2));
+            a_.jcc(Cc::E, straight);
+            a_.movMI(Sz::L, F(kFExit), int32_t(Exit::BlockEnd));
+            a_.jmp(*epilogue_);
+            a_.bind(straight);
+        }
         a_.movRM(Sz::Q, RAX, F(kFGuard));
         a_.aluMI(Asm::Op::CMP, Sz::B, mem(RAX, 0), 0);
         a_.jcc(Cc::NE, *exitLost_);
@@ -4255,6 +4334,11 @@ bool X64Backend::canEmit(uint16_t op) const {
             // yet (memory, dynamic o/w) — the a64 -1-row pattern, so the
             // two backends' admission stays comparable at this level.
             return mode == 0 || mode == 2 || mode == 5;
+        case SemanticOp::DivideWord:
+            // Runtime zero/overflow guards keep every trap or undefined-CCR
+            // path in Moira; Dn and immediate sources have no access to undo.
+            return eaCostIndex(mode, reg) == EA_DN ||
+                   eaCostIndex(mode, reg) == EA_IM;
         case SemanticOp::Lea:
             return controlEa(eaCostIndex(mode, reg)) ||
                    eaCostIndex(mode, reg) == EA_IX ||

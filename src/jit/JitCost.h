@@ -110,6 +110,13 @@ inline constexpr int8_t kMovemToRegs[EA_MODE_COUNT] =
     { -1, -1, 12, 8, -1, 13, -1, 12, 12, 9, -1, -1 };
 inline constexpr int8_t kMovemToMem[EA_MODE_COUNT] =
     { -1, -1, 8, -1, 4, 9, -1, 8, 8, -1, -1, -1 };
+// execDivu/execDivs, 68020 word columns. Address-register direct is not a
+// legal source; all other cells remain guest timing facts even while a
+// backend admits only the register/immediate subset.
+inline constexpr int8_t kDivuWord[EA_MODE_COUNT] =
+    { 44, -1, 48, 48, 49, 49, 51, 48, 48, 49, 51, 46 };
+inline constexpr int8_t kDivsWord[EA_MODE_COUNT] =
+    { 56, -1, 60, 60, 61, 61, 63, 60, 60, 61, 63, 58 };
 
 // ── full-format (68020) extension prices ─────────────────────────────────
 

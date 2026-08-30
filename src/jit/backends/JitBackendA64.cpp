@@ -453,6 +453,15 @@ public:
     void sxtH(unsigned rd, unsigned rn) {
         emit(0x13003C00u | (rn << 5) | rd);
     }
+    void udivW(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0x1AC00800u | (rm << 16) | (rn << 5) | rd);
+    }
+    void sdivW(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0x1AC00C00u | (rm << 16) | (rn << 5) | rd);
+    }
+    void msubW(unsigned rd, unsigned rn, unsigned rm, unsigned ra) {
+        emit(0x1B008000u | (rm << 16) | (ra << 10) | (rn << 5) | rd);
+    }
     void rorW(unsigned rd, unsigned rn, unsigned shift) {
         emit(0x13800000u | (rn << 16) | (shift << 10) | (rn << 5) | rd);
     }
@@ -800,6 +809,8 @@ uint16_t guestRegisterWriteMask(const Instr& in) {
             reg(false, s.eaReg); break;
         case SemanticOp::Bitfield:
             mask |= 0x00FFu; break;
+        case SemanticOp::DivideWord:
+            reg(false, s.registerIndex); break;
         case SemanticOp::DecrementBranch:
             reg(false, s.eaReg); break;
         default:
@@ -1101,6 +1112,10 @@ bool canEmitReg(uint16_t op) {
             return mode == 0 || mode == 2 || mode == 5;
         case SemanticOp::ShiftRegister:
             return sem.action != 2; // no ROX
+        case SemanticOp::DivideWord:
+            // The first trap-capable slice: register/immediate sources only.
+            // Zero and quotient overflow branch to the untouched fallback.
+            return ei == EA_DN || ei == EA_IM;
         default: return false;
     }
 }
@@ -2867,6 +2882,56 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         return true;
     }
 
+    if (sem.operation == SemanticOp::DivideWord) {
+        // Only register/immediate divisors are admitted in this first slice.
+        // Both trap and quotient-overflow paths branch to the untouched
+        // instruction fallback, avoiding the 030/040 undefined-CCR split.
+        if (slow < 0) return false;
+        Ea src;
+        if (!decodeEa(in, sem.eaMode, sem.eaReg, 16, 0, src) ||
+            (src.idx != EA_DN && src.idx != EA_IM) ||
+            in.words != unsigned(1 + src.ext) || !memory.complete())
+            return false;
+        const bool sign = sem.action != 0;
+        const int cycles = sign ? kDivsWord[src.idx] : kDivuWord[src.idx];
+        if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
+
+        if (src.idx == EA_DN) {
+            loadGuestRegister(a, L, 9, false, unsigned(src.reg), 16);
+            if (sign) a.sxtH(9, 9);
+        } else {
+            const uint32_t divisor = sign
+                ? uint32_t(int32_t(src.value)) : uint32_t(uint16_t(src.value));
+            a.movW(9, divisor);
+        }
+        a.cbzW(9, slow);                            // divide-by-zero trap
+        loadGuestRegister(a, L, 10, false, sem.registerIndex);
+        if (sign) a.sdivW(11, 10, 9);
+        else      a.udivW(11, 10, 9);
+        a.msubW(12, 11, 9, 10);                   // dividend - q*divisor
+
+        if (sign) {
+            a.sxtH(13, 11);
+            a.cmpW(13, 11);
+            a.bCond(Asm::NE, slow);
+        } else {
+            a.lsrW(13, 11, 16);
+            a.cbnzW(13, slow);
+        }
+
+        // Save the packed remainder:quotient before flag publication, whose
+        // packed and byte forms both use w12/w13 as scratch. N/Z are the
+        // 16-bit quotient; V=C=0 and X survives.
+        a.lslW(14, 12, 16);
+        a.ubfxW(13, 11, 0, 16);
+        a.orrW(14, 14, 13);
+        if (sign) a.movRegW(13, 11);
+        else      a.lslW(13, 11, 16);
+        emitLogicFlags(a, L, 13, 32);
+        a.strW(14, 0, L.d + sem.registerIndex * 4);
+        return true;
+    }
+
     if (sem.operation == SemanticOp::Bitfield) {
         // These uncommon forms publish several independently calculated
         // flag bits. Until their packed lowering is proved, the exact
@@ -4204,6 +4269,20 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         a.ldrW(9, 1, 52);                 // slowInstrs
         a.addImmW(9, 9, 1);
         a.strW(9, 1, 52);
+        if (ir.instrs[i].flags & FlagMayTrap) {
+            // DIV/CHK-style exceptions are raised inside the handler and
+            // therefore count as a completed pomJitExecOne(), unlike a bus
+            // fault. A changed PC is nevertheless a control-flow boundary:
+            // preserve Moira's vector PC/queue instead of running entry i+1.
+            const int straight = a.label();
+            a.ldrW(9, 0, L.pc);
+            a.movW(10, ir.instrs[i].pc + uint32_t(ir.instrs[i].words) * 2);
+            a.cmpW(9, 10);
+            a.bCond(Asm::EQ, straight);
+            a.movW(9, uint32_t(Exit::BlockEnd)); a.strW(9, 1, 12);
+            a.b(epilogue);
+            a.bind(straight);
+        }
         a.ldrX(14, 1, 32);                // guardHit
         a.ldrB(9, 14, 0);
         a.cbnzW(9, exitLost);

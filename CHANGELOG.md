@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 342 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 343 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -108,6 +108,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how the three hot SimCity word divisions became native on both generators, and why their zero oracle fixed every `FlagMayTrap` replay** → [2026-08-30 (sixth) — Word division…](#2026-08-30-word-division)
 - **how x64 closed the dynamic register-bitfield gap without confusing its one remaining five-byte memory replay for a register failure** → [2026-08-30 (fifth) — x64 closes dynamic register bitfields…](#2026-08-30-x64-dynamic-register-bitfields)
 - **how x64 consumed the same tailless memory-bitfield write contract and turned SimCity's `EFD1` witness from replay into native code** → [2026-08-30 (fourth) — x64 consumes the tailless bitfield RMW contract…](#2026-08-30-x64-bitfield-writes)
 - **how the tailless memory-bitfield write contract became native on A64/040 and A64/030, and what the M4 handover actually proved** → [2026-08-30 (third) — The M4 closes the handover…](#2026-08-30-a64-bitfield-writes)
@@ -349,6 +350,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (sixth)** — [Word division covers SimCity's three hot opcodes on both generators, and its zero guard closes a latent `FlagMayTrap` continuation bug](#2026-08-30-word-division)
 - **2026-08-30 (fifth)** — [x64 closes dynamic register bitfields, and a split oracle distinguishes zero register fallback from the one intentional five-byte memory replay](#2026-08-30-x64-dynamic-register-bitfields)
 - **2026-08-30 (fourth)** — [x64 consumes the tailless bitfield RMW contract: SimCity's `EFD1` witness falls from 83 replays to zero under both 040 and 030 oracles](#2026-08-30-x64-bitfield-writes)
 - **2026-08-30 (third)** — [The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host](#2026-08-30-a64-bitfield-writes)
@@ -691,6 +693,37 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-word-division"></a>
+## 2026-08-30 (sixth) — Word division covers SimCity's three hot opcodes on both generators, and its zero guard closes a latent `FlagMayTrap` continuation bug
+
+The division item starts with the bounded part that has no memory access to
+undo. Shared IR now describes `DIVU.W`/`DIVS.W` and their 68020 cycle columns;
+both generators admit a `Dn` or immediate divisor. That includes all three
+word witnesses in the SimCity census (`81FC`, `8DFC`, `8FFC`). Successful
+host division packs remainder:quotient into Dn, derives N/Z from the 16-bit
+quotient, clears V/C and preserves X. Divide-by-zero and word-quotient
+overflow branch to the untouched per-instruction Moira replay. x64 also
+guards `INT_MIN/-1` before `IDIV`, whose host exception must never escape.
+
+The zero oracle exposed an older replay defect. Moira raises DIV/CHK-style
+exceptions inside their handler and reports the instruction as completed;
+the cold stub therefore continued at the next generated entry and overwrote
+the exception handler PC. Both backends now apply the `FlagMayTrap` contract
+after replay: a PC other than the recorded fall-through ends the block while
+preserving Moira's vector PC, queue, CCR, clock and stack frame. This is wider
+than division and makes the existing classifier promise true for CHK as well.
+
+The asset-free lockstep has separate success, signed/unsigned overflow and
+vector-5 programs. On native A64 the successful loop retires 1,198 generated
+instructions with zero fallback; the overflow loop takes 384 deliberate
+replays. The same three gates pass on the actual x86-64 Mach-O under Rosetta,
+and the three pinned native LC II locksteps pass 120,000 checkpoints each.
+`DIVL` (`4C40`) and memory-source word division remain explicit fallback, so
+this is a coverage slice, not yet the full SimCity promotion or a wall-time
+claim.
 
 ---
 

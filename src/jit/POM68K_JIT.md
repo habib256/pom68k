@@ -165,7 +165,7 @@ Each one names the gate that would catch it breaking.
 | # | invariant | gate |
 |---|---|---|
 | 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_asset_free_lockstep_test` is the daily native floor; `jit_lockstep_test` (five registrations, six on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2), widens it to real machines |
-| 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. | `jit_asset_free_lockstep_test` compares 768 generated boundaries plus restart/last-write frames; `jit_lockstep_x64_fine_test` widens that to a machine one cycle at a time |
+| 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. A replay of `FlagMayTrap` also verifies that PC remained on the recorded straight line; an internal DIV/CHK exception ends the block with Moira's vector PC and queue intact. | `jit_asset_free_lockstep_test` compares 768 generated boundaries plus restart/last-write and divide-zero frames; `jit_lockstep_x64_fine_test` widens that to a machine one cycle at a time |
 | 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is native `jit/auto` for 68040 and 68030 on AArch64/x86-64, and the interpreter on 68000/68020. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; ten `interp_*_boot_etalon` registrations keep one interpreter reference per accelerated platform — q605/centris650/q630/q700 and lcii/lc3/iivx/iisi/iifx/duo230 |
 | 4 | **Peripheral time stays owed.** Blocks never run past the caller's cycle target (`Context::clockTarget`) and generated cycles go through the machine's virtual `sync()` (`pomJitSync`), so VIA, ASC, SWIM and the Egret/Cuda MCU keep their pacing. | `jit_mactv_boot_etalon` — registered for exactly this reason: Tinker Bell's Cuda transport deadlocks on a 2 % shift in MCU pacing long before a Finder signature would fail |
 | 5 | **Nothing cached survives a change of the address map.** Overlay flips (`CodeGuard::invalidate()`), MMU/ATC changes (`blocksGen_` vs `Moira::pomJitMmuGen`) and cache-control writes (`didChangeCACR` → `flushAll()`) drop the block cache and the code window. | `jit_q605_boot_etalon` (the boot overlay flips in the first milliseconds); `jit_lockstep_test` |
@@ -1195,6 +1195,8 @@ emitters it dispatches to.
   `LINK`/`UNLK`/`NOP`, **`EXG`** (all three forms) and **`CMPM`** with
   distinct address registers (both since 2026-08-21 — the x64 port of the
   a64 pair, PreflightAll on CMPM's two reads), and
+  **`DIVU.W`/`DIVS.W`** with a `Dn` or immediate divisor (zero and quotient
+  overflow replay the untouched instruction), and
   **`MOVEM`** (both directions, both sizes, one span probe per burst, the
   040 restart latch `mmu040MovemArmed` checked);
 * as block terminators: `Bcc`/`BRA`, `JSR`/`BSR`/`RTS`, **`DBcc`** (loops
@@ -1208,7 +1210,7 @@ emitters it dispatches to.
 
 Everything else — including full-indexed `MOVEM`, memory-indirect writes and
 three-access MOVE forms, unsupported shifts/rotates,
-`MULU`/`MULS`/`DIVU`/`DIVS`, `ABCD`/`SBCD`,
+`MULU`/`MULS`, `DIVL`, memory-source word division, `ABCD`/`SBCD`,
 `ADDX`/`SUBX`, same-register `CMPM`, `MOVEP` and `MOVE SR,Dn` — falls back per instruction
 to a cold stub that runs that one instruction through Moira and rejoins the
 compiled stream. A block whose native coverage falls below half is refused

@@ -748,9 +748,14 @@ Open, in ROI order:
   statiques ou dynamiques, sont natives sur A64 et x64 ; seules les queues
   mémoire cinq-octets gardent leur frontière transactionnelle documentée.
   `CHANGELOG.md` 2026-08-28 (eighth) et 2026-08-30 (second à fifth).
-- [ ] **Ensuite : la division**, encore interprétée. Sa promotion garde les
-  quatre preuves habituelles : empreinte identique, gain répété, gates ciblés
-  verts, tier `etalon` complet vert.
+- [ ] **Division, tranche mot partielle le 2026-08-30** : `DIVU.W`/`DIVS.W`
+  sur diviseur `Dn` ou immédiat sont natifs sur A64 et x64 ; cela couvre les
+  trois témoins SimCity `81FC`/`8DFC`/`8FFC`. Zéro et quotient hors plage
+  rejouent l'instruction intacte dans Moira ; l'oracle zéro a au passage fermé
+  la poursuite erronée après une exception interne `FlagMayTrap`. Restent
+  `4C40` (`DIVL`) et les sources mémoire, puis les quatre preuves de promotion
+  applicative : empreinte identique, gain répété, gates ciblés verts, tier
+  `etalon` complet vert. `CHANGELOG.md` 2026-08-30 (sixth).
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur
@@ -791,10 +796,11 @@ Open, in ROI order:
   symptôme, la cause est que les deux backends ne partagent rien au-dessus de
   l'IR.
 - [ ] **Queue de couverture** : décalages/rotations en mémoire et par compteur
-  registre (x64 ne décode toujours rien de la ligne `$E`) ; MULU/DIVU restent
-  en repli (cycles dépendant des données — le contrôle croisé les refuse
-  honnêtement). Restent refusés des deux côtés : MOVEM en indexé complet, les
-  destinations mémoire-indirectes, l'arithmétique à cycles variables.
+  registre ; `MULU`/`MULS`, `DIVL` et les divisions mot à source mémoire
+  restent en repli (les multiplications ont des cycles dépendant des données —
+  le contrôle croisé les refuse honnêtement). Restent refusés des deux côtés :
+  MOVEM en indexé complet, les destinations mémoire-indirectes,
+  l'arithmétique à cycles variables.
   N'en ajouter un qu'après un recensement frais.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient

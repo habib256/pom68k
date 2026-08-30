@@ -97,6 +97,7 @@ enum class SemanticOp : uint8_t {
     ReturnSubroutine,
     ShiftRegister,
     Bitfield,
+    DivideWord,
 };
 
 enum class AluOperation : uint8_t {
@@ -523,6 +524,15 @@ inline InstructionSemantics describeInstruction(uint16_t op) {
         return s;
     }
 
+    if (line == 0x8000) {
+        const uint8_t opmode = uint8_t((op >> 6) & 7);
+        if (opmode == 3 || opmode == 7) {
+            set(SemanticOp::DivideWord, 1);
+            s.action = opmode == 7 ? 1 : 0; // DIVS / DIVU
+            return s;
+        }
+    }
+
     // CMPM has the same $Bxxx opcode space as CMP/EOR, but both operands
     // are independently postincremented memory reads. Describe it before
     // the generic ALU-family decoder so a backend cannot mistake its fixed
@@ -756,6 +766,19 @@ inline MemoryContract describeMemory(uint16_t op, bool is030) {
         setSingle(memoryAccess(MemoryDirection::Write,
                                MemoryOperand::Destination, 1, mode, reg,
                                is030, FaultPhase::LastWrite));
+        return c;
+    }
+
+    // Word division is a sole word source read followed by register-only
+    // arithmetic. Describe the read even though the first native slice
+    // deliberately admits only Dn/immediate sources: widening an emitter
+    // later must consume this contract instead of inventing one locally.
+    if (line == 0x8000 &&
+        (((op >> 6) & 7) == 3 || ((op >> 6) & 7) == 7)) {
+        if (memoryEa(mode, reg))
+            setSingle(memoryAccess(MemoryDirection::Read,
+                                   MemoryOperand::Source, 2, mode, reg,
+                                   is030, FaultPhase::RestartInstruction));
         return c;
     }
 
@@ -1220,6 +1243,9 @@ inline void describeEffectiveAddresses(Instr& in) {
             // possible fifth byte is deliberately outside the currently
             // described zero-offset subset below.
             add(OperandRole::Operand, s.eaMode, s.eaReg, 2, 1);
+            break;
+        case SemanticOp::DivideWord:
+            add(OperandRole::Source, s.eaMode, s.eaReg, 1, 0);
             break;
         case SemanticOp::Lea:
         case SemanticOp::Pea:

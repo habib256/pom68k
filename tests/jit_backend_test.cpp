@@ -277,6 +277,18 @@ int main() {
         check(eor.operation == jit::SemanticOp::AluRegToEa &&
               eor.alu == jit::AluOperation::Eor && eor.bytes() == 4,
               "IR distinguishes register-to-EA EOR from CMP encoding overlap");
+        const auto divs = jit::describeInstruction(0x8DFC); // DIVS.W #imm,D6
+        check(divs.operation == jit::SemanticOp::DivideWord &&
+              divs.action == 1 && divs.bytes() == 2 &&
+              divs.eaMode == 7 && divs.eaReg == 4 &&
+              divs.registerIndex == 6,
+              "IR describes signed word division without treating it as OR");
+        const auto divuMemory = jit::describeMemory(0x80D0, false);
+        check(divuMemory.count == 1 &&
+              divuMemory.access[0].direction == jit::MemoryDirection::Read &&
+              divuMemory.access[0].operand == jit::MemoryOperand::Source &&
+              divuMemory.access[0].bytes == 2,
+              "word division publishes its sole source-memory read");
         const auto exg = jit::describeInstruction(0xCD4F); // EXG A6,A7
         check(exg.operation == jit::SemanticOp::Exchange && exg.action == 1 &&
               exg.registerIndex == 6 && exg.eaReg == 7,
@@ -916,7 +928,11 @@ int main() {
         check(b->canEmit(0xCD4F),
               "EXG A6,A7 is native on both generators (x64 port 2026-08-21)");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
-        check(!b->canEmit(0x81C0), "DIVU is not an ALU direction");
+        check(b->canEmit(0x80C0) == gen, "DIVU.W D0,D0");
+        check(b->canEmit(0x81FC) == gen, "DIVS.W #imm,D0");
+        check(!b->canEmit(0x81D0),
+              "DIVS.W memory source remains outside the first native slice");
+        check(!b->canEmit(0x4C40), "DIVL remains outside word division");
         check(!b->canEmit(0xC1C0), "MULS is not an ALU direction");
         check(!b->canEmit(0xC101), "ABCD is not OR-to-ea");
         check(b->canEmit(0xB308),

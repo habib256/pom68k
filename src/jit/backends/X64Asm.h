@@ -311,6 +311,11 @@ public:
     void notM(Sz sz, const Mem& m) { unary(sz, m, 2); }
     void negR(Sz sz, Reg r) { unaryR(sz, r, 3); }
     void notR(Sz sz, Reg r) { unaryR(sz, r, 2); }
+    void cdq() { db(0x99); }                         // EDX:EAX = signext(EAX)
+    void divR(bool sign, Reg divisor) {             // EDX:EAX / r32
+        rex(Sz::L, 0, divisor, true);
+        db(0xF7); modrm(sign ? 7 : 6, divisor);
+    }
     void incM(Sz sz, const Mem& m) {
         opsize(sz); rex(sz, 0, m.base); db(sz == Sz::B ? 0xFE : 0xFF); modrm(0, m);
     }

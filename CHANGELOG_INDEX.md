@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 342 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 343 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 26 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
-| [Cross-cutting](#cross-cutting) | 58 |
+| [Cross-cutting](#cross-cutting) | 59 |
 
 ---
 
@@ -404,4 +404,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-29 (eighth)** — [Eleven CPU wrappers carried the same plumbing, tested in one copy; a CRTP base now carries it once — net −527 lines, and two phantom reds surfaced on the way](CHANGELOG.md#2026-08-29-cpu-wrapper-crtp-base)
 - **2026-08-29 (late night)** — [The mode-2 storm was an engine loop retiring nothing: coarse trip, exact eviction, and a guard exit that re-runs the store forever — fixed by one interpreted step](CHANGELOG.md#2026-08-29-mode2-storm-mechanized)
 - **2026-08-29 (seventh)** — ["Port the (An)+ order" dies on its first measurement: `$24D0`'s 1.64 M replays are remembered probe refusals, identical in both thunk modes](CHANGELOG.md#2026-08-29-anpi-refuted)
+- **2026-08-30 (sixth)** — [Word division covers SimCity's three hot opcodes on both generators, and its zero guard closes a latent `FlagMayTrap` continuation bug](CHANGELOG.md#2026-08-30-word-division)
 

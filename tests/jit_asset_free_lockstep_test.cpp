@@ -562,6 +562,59 @@ void installMemoryBitfieldWriteLoop(SyntheticCpu& c) {
     put32(c, kData + 0x08, 0x89AB'CDEFu);
 }
 
+// Successful word divisions cover the three immediate opcodes observed in
+// SimCity plus both signed/unsigned register sources. The preceding ADD sets
+// X, which every division must preserve while replacing N/Z/V/C.
+void installWordDivisionLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x74FF);    // MOVEQ #-1,D2
+    put16(c, kCode + 0x02, 0xD482);    // ADD.L D2,D2 (set X)
+    put16(c, kCode + 0x04, 0x203C);    // MOVE.L #100000,D0
+    put32(c, kCode + 0x06, 100000);
+    put16(c, kCode + 0x0A, 0x2C3C);    // MOVE.L #-100000,D6
+    put32(c, kCode + 0x0C, uint32_t(-100000));
+    put16(c, kCode + 0x10, 0x2E3C);    // MOVE.L #32767,D7
+    put32(c, kCode + 0x12, 32767);
+    put16(c, kCode + 0x16, 0x2A3C);    // MOVE.L #123456,D5
+    put32(c, kCode + 0x18, 123456);
+    put16(c, kCode + 0x1C, 0x263C);    // MOVE.L #60000,D3
+    put32(c, kCode + 0x1E, 60000);
+    put16(c, kCode + 0x22, 0x7825);    // MOVEQ #37,D4
+    put16(c, kCode + 0x24, 0x81FC);    // DIVS.W #10,D0 (SimCity)
+    put16(c, kCode + 0x26, 10);
+    put16(c, kCode + 0x28, 0x8DFC);    // DIVS.W #300,D6 (SimCity)
+    put16(c, kCode + 0x2A, 300);
+    put16(c, kCode + 0x2C, 0x8FFC);    // DIVS.W #-7,D7 (SimCity)
+    put16(c, kCode + 0x2E, 0xFFF9);
+    put16(c, kCode + 0x30, 0x8BC4);    // DIVS.W D4,D5
+    put16(c, kCode + 0x32, 0x86C4);    // DIVU.W D4,D3
+    put16(c, kCode + 0x34, 0x60CA);    // BRA.S kCode
+}
+
+// All three quotient-overflow shapes must enter Moira before changing Dn or
+// CCR. INT_MIN/-1 is explicit because x86 IDIV would otherwise raise #DE.
+void installWordDivisionOverflowLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x81FC);    // DIVS.W #1,D0: positive overflow
+    put16(c, kCode + 0x02, 1);
+    put16(c, kCode + 0x04, 0x83FC);    // DIVS.W #-1,D1: host #DE guard
+    put16(c, kCode + 0x06, 0xFFFF);
+    put16(c, kCode + 0x08, 0x84FC);    // DIVU.W #1,D2: unsigned overflow
+    put16(c, kCode + 0x0A, 1);
+    put16(c, kCode + 0x0C, 0x60F2);    // BRA.S kCode
+}
+
+// A recurrent vector-5 path proves that zero reaches the interpreter's exact
+// exception implementation instead of executing a host divide instruction.
+void installWordDivisionZeroLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put32(c, 5 * 4, kHandler);          // vector 5: integer divide by zero
+    put16(c, kHandler + 0, 0x4E73);    // RTE
+    put16(c, kHandler + 2, 0x4E71);    // prefetch padding
+    put16(c, kCode + 0x00, 0x81C1);    // DIVS.W D1,D0 (trained nonzero)
+    put16(c, kCode + 0x02, 0x60FC);    // BRA.S kCode
+}
+
 void installGuardedDynamicShiftLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x7404);    // MOVEQ #4,D2
@@ -1185,6 +1238,135 @@ bool runMemoryBitfieldWriteLockstep() {
            (!nativeProduction || s.slowInstrs == 0);
 }
 
+enum class DivisionProgram { Success, Overflow, Zero };
+
+bool runWordDivisionLockstep(DivisionProgram program) {
+    SyntheticCpu ref, native;
+    switch (program) {
+        case DivisionProgram::Success:
+            installWordDivisionLoop(ref);
+            installWordDivisionLoop(native);
+            break;
+        case DivisionProgram::Overflow:
+            installWordDivisionOverflowLoop(ref);
+            installWordDivisionOverflowLoop(native);
+            break;
+        case DivisionProgram::Zero:
+            installWordDivisionZeroLoop(ref);
+            installWordDivisionZeroLoop(native);
+            break;
+    }
+    resetCpu(ref);
+    resetCpu(native);
+    if (program == DivisionProgram::Overflow) {
+        // Train all three immediate forms on their full-cost success path.
+        // The same generated code is then entered with overflow dividends,
+        // proving the runtime guards rather than a trace-time cost refusal.
+        native.setD(0, 100);
+        native.setD(1, 0);
+        native.setD(2, 100);
+        native.jit.setEnabled(true);
+        native.jit.executeUntil(native.getClock() + 1024);
+        if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+        ref.mem = native.mem;
+        for (SyntheticCpu* c : {&ref, &native}) {
+            for (int reg = 0; reg < 8; reg++) {
+                c->setD(reg, 0);
+                if (reg != 7) c->setA(reg, 0);
+            }
+            c->setD(0, 65536);
+            c->setD(1, 0x8000'0000u);
+            c->setD(2, 65536);
+            c->setA(7, kStack);
+            c->setPC(kCode);
+            c->setPC0(kCode);
+            c->setIRD(0x81FC);
+            c->setIRC(0x0001);
+            c->setSR(0x2710);
+            c->setClock(0);
+            clearRunFlags(*c);
+        }
+    } else if (program == DivisionProgram::Zero) {
+        // An immediate zero traps before the entry can become hot. Train the
+        // same register-divisor block with D1=1, then retain its generated
+        // code while presenting zero to both architectural states.
+        native.setPC(kCode);
+        native.setPC0(kCode);
+        native.setIRD(0x81C1);
+        native.setIRC(0x60FC);
+        native.setD(0, 123);
+        native.setD(1, 1);
+        clearRunFlags(native);
+        native.jit.setEnabled(true);
+        native.jit.executeUntil(native.getClock() + 1024);
+        if (native.jit.stats().snapshot().blocksCompiled == 0) return false;
+        ref.mem = native.mem;
+        for (SyntheticCpu* c : {&ref, &native}) {
+            for (int reg = 0; reg < 8; reg++) {
+                c->setD(reg, 0);
+                if (reg != 7) c->setA(reg, 0);
+            }
+            c->setD(1, 0);
+            c->setA(7, kStack);
+            c->setD(0, 123);
+            c->setPC(kCode);
+            c->setPC0(kCode);
+            c->setIRD(0x81C1);
+            c->setIRC(0x60FC);
+            c->setSR(0x2710);
+            c->setClock(0);
+            clearRunFlags(*c);
+        }
+        // Like the /BERR oracle, start directly on the faulting instruction
+        // and give it a one-cycle target so both sides stop at the vector-5
+        // boundary instead of consuming the handler's RTE as well.
+        const auto before = native.jit.stats().snapshot();
+        ref.executeUntil(ref.getClock() + 1);
+        native.jit.executeUntil(native.getClock() + 1);
+        const auto after = native.jit.stats().snapshot();
+        const bool boundary = sameCpu(ref, native, true);
+        const bool frame = ref.getA(7) == kStack - 12 &&
+            native.getA(7) == ref.getA(7) &&
+            sameMemory(ref, native, ref.getA(7), 12, true);
+        const bool ram = sameMemory(ref, native, 0, kRamBytes, true);
+        std::printf("    word-division zero compiled=%llu runs=%llu/%llu "
+                    "sp=%08X/%08X boundary=%d frame=%d ram=%d\n",
+                    (unsigned long long)after.blocksCompiled,
+                    (unsigned long long)before.blocksRun,
+                    (unsigned long long)after.blocksRun,
+                    ref.getA(7), native.getA(7), boundary, frame, ram);
+        return boundary && frame && ram && after.blocksRun > before.blocksRun;
+    } else {
+        native.jit.setEnabled(true);
+    }
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 67;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    word-division divergence program=%d checkpoint=%d\n",
+                        int(program), step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    word-division program=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n",
+                int(program), (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    const bool expectedResidency = program == DivisionProgram::Success
+        ? s.slowInstrs == 0 : s.slowInstrs != 0;
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || expectedResidency);
+}
+
 bool runGuardedDynamicShiftLockstep() {
     SyntheticCpu ref, native;
     installGuardedDynamicShiftLoop(ref);
@@ -1389,6 +1571,12 @@ int main() {
           "tailless memory bitfield reads stay native and exact on BOTH generators");
     check(runMemoryBitfieldWriteLockstep(),
           "tailless memory bitfield writes stay native and exact on BOTH generators");
+    check(runWordDivisionLockstep(DivisionProgram::Success),
+          "DIVU.W/DIVS.W register and hot immediate forms stay native and exact");
+    check(runWordDivisionLockstep(DivisionProgram::Overflow),
+          "word-division quotient overflow reaches Moira before guest mutation");
+    check(runWordDivisionLockstep(DivisionProgram::Zero),
+          "word division by zero reaches Moira's exact vector-5 path");
     check(runGuardedDynamicShiftLockstep(),
           "guarded dynamic LSL remains exact and is native with production CCR");
     check(runGuardIndexInvariant(),
