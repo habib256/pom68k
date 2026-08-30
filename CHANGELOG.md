@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why Speedometer's three apparently ordinary BTST/MOVE fallbacks require exact device reads, and how their live delay can remain native** → [2026-08-31 (fourth) — Speedometer's next three JIT…](#2026-08-31-speedometer-exact-polls)
 - **how Speedometer's full-indirect `JSR` became transactional on both generators without losing 68030 restart state** → [2026-08-31 (third) — Speedometer's indexed indirect…](#2026-08-31-speedometer-jsr-full-indirect)
 - **how Speedometer separated an intentional SCSI pseudo-DMA fallback from the safe `JSR abs.l` promotion beside it** → [2026-08-31 (second) — Speedometer identifies…](#2026-08-31-speedometer-jsr-absolute-long)
 - **how Speedometer's hot word multiplies became exact native code, why their 68030 cost is fixed, and what the ABBA did not prove** → [2026-08-31 — Speedometer's three hot word multiplies…](#2026-08-31-speedometer-word-multiply)
@@ -357,6 +358,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (fourth)** — [Speedometer's next three JIT static fallbacks become native exact device reads, without flattening their live LC II delay](#2026-08-31-speedometer-exact-polls)
 - **2026-08-31 (third)** — [Speedometer's indexed indirect `JSR` becomes transactional on A64 and x64, removing its largest static CPU fallback](#2026-08-31-speedometer-jsr-full-indirect)
 - **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](#2026-08-31-speedometer-jsr-absolute-long)
 - **2026-08-31** — [Speedometer's three hot word multiplies become native on both generators, with fixed 68030 timing and exact MMIO](#2026-08-31-speedometer-word-multiply)
@@ -707,6 +709,46 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-exact-polls"></a>
+## 2026-08-31 (fourth) — Speedometer's next three JIT static fallbacks become native exact device reads, without flattening their live LC II delay
+
+After full-indirect `JSR`, the Speedometer CPU census named `0829`, `1029`
+and `1429` at 3,242 / 3,157 / 3,142 static fallbacks. All three already had
+decoded EAs, a `SingleRead` memory proof, preflight and an exact-read thunk;
+their emitters refused only the timing comparison. The observed 68030 base
+cost was 59–129 cycles instead of the small fixed BTST/MOVE table cost.
+
+That excess was real. A temporary entry-boundary probe resolved the hot EAs
+to A1=`$50F00000` plus `$1000`, `$1200`, `$1400`, `$1600` or `$1A00`: the LC
+II device aperture. Promoting them as ordinary DTLB loads would erase a live
+peripheral-owned delay. Inferring “device” from every slow trace was also not
+acceptable; that broad 030 timing admission has failed lockstep before.
+
+The shared IR now marks exactly these three 68030 read contracts
+`exactRequired`, beside the existing `$4A11` poll. A64's sole-read admission
+therefore delegates the live access to `pom68kA64Read` and charges only the
+fixed opcode tail. x64 gains the same narrow split, makes an exact-required
+load bypass even an available host mapping, and consequently consumes the
+existing `$4A11` policy too. Other slow-looking 030 reads still refuse.
+
+The directed 030 gate runs all three forms in a loop whose synthetic MMIO
+callback injects 23 cycles per read. Interpreter and native paths keep
+registers, SR, PC/PC0, IRD/IRC, clock and read count identical, while the
+native side records zero slow instructions. The backend/IR tests pin the
+model scope, backend parity and asset-free lockstep pass, and the real LC II
+lockstep remains identical for 120,000 comparisons.
+
+In the real 270-frame CPU phase, unsupported fallbacks fall 37,290 → 27,751
+(**−9,539 / −25.58 %**) and all fallbacks 79,380 → 69,874
+(**−9,506 / −11.98 %**). The three rows disappear; 2,282,306 of 2,292,839
+instructions are classified native (**99.54 %**). CPU fingerprint
+`ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
+`5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577
+and halted=0 are unchanged. The instrumented 0.310871 s wall time is not a
+speed claim. The next static rows are `D981`/`9381`, `6000` and `E9D4`.
 
 ---
 

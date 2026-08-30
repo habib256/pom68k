@@ -489,6 +489,22 @@ private:
         return in.baseCycles;
     }
 
+    // A model-required sole read owns its variable 030 data-bus delay in
+    // pom68kJitRead. The native instruction must therefore charge only the
+    // fixed opcode cost, just as A64's admitSoleReadTiming does. Keep this
+    // deliberately narrower than the 040 timing split: only IR policy may
+    // opt a 030 opcode into the exact-required path.
+    bool admitSoleReadTiming(size_t i, MemoryAccessPlan& read,
+                             unsigned fixedCycles) {
+        const Instr& in = ir_.instrs[i];
+        if (!L_.is030 || !read.valid() || !read.single() ||
+            !read.exactThunk || !read.exactRequired ||
+            in.postExceptionCycles != 0 || in.baseCycles < fixedCycles)
+            return false;
+        instructionCycles_ = uint16_t(fixedCycles);
+        return true;
+    }
+
     bool tracedQueueIs(size_t i, uint16_t irc) const {
         const Instr& in = ir_.instrs[i];
         return !L_.is030 || !in.terminalQueueValid ||
@@ -530,6 +546,7 @@ private:
     size_t linkEntry_ = 0;
     int native_ = 0;
     size_t cur_ = 0;                 // instruction being emitted
+    uint16_t instructionCycles_ = 0; // fixed cost after exact-read splitting
     bool histo_ = false;             // POM68K_JIT_HISTO
     bool packedCcr_ = false;
     // 68030 i-cache overlay (Layout::icLive). When set, every NATIVELY
@@ -1722,15 +1739,24 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
     const bool exactAccess = access.exactThunk;
     Label& miss = exactAccess ? *a_.fresh() : runtimeStub(cur_);
 
-    memProbe(addr, sizeBytes(szIdx), false, miss, cacheRead);
-    if (szIdx == 0) {
-        a_.movzx(Sz::B, dst, mem(RSI, 0));
-    } else if (szIdx == 1) {
-        a_.movzx(Sz::W, dst, mem(RSI, 0));
-        a_.rolR16(dst, 8);
+    if (!access.exactRequired) {
+        memProbe(addr, sizeBytes(szIdx), false, miss, cacheRead);
+        if (szIdx == 0) {
+            a_.movzx(Sz::B, dst, mem(RSI, 0));
+        } else if (szIdx == 1) {
+            a_.movzx(Sz::W, dst, mem(RSI, 0));
+            a_.rolR16(dst, 8);
+        } else {
+            a_.movRM(Sz::L, dst, mem(RSI, 0));
+            a_.bswap(dst);
+        }
+    } else if (exactAccess) {
+        // The device delay is semantically part of this read even when a
+        // host mapping happens to exist. Always take the exact thunk.
+        a_.jmp(miss);
     } else {
-        a_.movRM(Sz::L, dst, mem(RSI, 0));
-        a_.bswap(dst);
+        a_.jmp(runtimeStub(cur_));
+        return;
     }
     if (!exactAccess) return;
 
@@ -2049,7 +2075,6 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     const unsigned tracedMove =
         restartWrite && !restartBaseAdmission()
             ? unsigned(ir_.instrs[i].cycles) : traced030(i);
-    if (unsigned(cycles) != tracedMove) return false;
 
     MemoryAccessPlan srcAccess, dstAccess;
     if (src.memory) {
@@ -2067,6 +2092,9 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         if (!dstAccess.valid()) return false;
     }
     if (!memory.complete()) return false;
+    const bool soleReadTiming = src.memory && !dst.memory &&
+        admitSoleReadTiming(i, srcAccess, unsigned(cycles));
+    if (unsigned(cycles) != tracedMove && !soleReadTiming) return false;
 
     const bool movea = (dst.idx == EA_AN);
     const bool cachePair = memory.proof.atomicCachePair();
@@ -2515,7 +2543,7 @@ bool Emitter::emitBitOp(size_t i) {
     if (!lengthOk(i, extUsed + dst.ext)) return false;
 
     const int cycles = toReg ? 4 : eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
+    if (cycles < 0) return false;
 
     MemoryAccessPlan read;
     if (dst.memory) {
@@ -2524,6 +2552,9 @@ bool Emitter::emitBitOp(size_t i) {
         if (!read.valid()) return false;
     }
     if (!memory.complete()) return false;
+    const bool soleReadTiming = dst.memory &&
+        admitSoleReadTiming(i, read, unsigned(cycles));
+    if (unsigned(cycles) != traced030(i) && !soleReadTiming) return false;
 
     // Z = !bit. Everything else is untouched.
     //
@@ -2701,10 +2732,7 @@ bool Emitter::emitLine4(size_t i) {
         if (src.idx == EA_AN && szIdx == 0) return false;
         if (!lengthOk(i, src.ext)) return false;
         const int cycles = kEaRead[src.idx][szIdx];
-        // TST (An)/(An)+ is read-only: consume the split base cost on an
-        // (the exact-thunk 4A11 refinement is NOT ported —
-        // that form stays refused here).
-        if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
+        if (cycles < 0) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         MemoryAccessPlan read;
         if (src.memory) {
@@ -2715,6 +2743,9 @@ bool Emitter::emitLine4(size_t i) {
             if (!read.valid()) return false;
         }
         if (!memory.complete()) return false;
+        const bool soleReadTiming = src.memory &&
+            admitSoleReadTiming(i, read, unsigned(cycles));
+        if (unsigned(cycles) != traced030(i) && !soleReadTiming) return false;
         load(src, szIdx, RDI, read, false);
         a_.testRR(hostSz(szIdx), RDI, RDI);
         flagsLogic(hostSz(szIdx));
@@ -4221,6 +4252,8 @@ bool Emitter::emit() {
 
         const Asm::Mark mark = a_.mark();
         pollIpl();
+        instructionCycles_ = uint16_t(
+            L_.is030 ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles);
         const bool native = emitInstr(i);
         emitted = i + 1;
 
@@ -4267,8 +4300,7 @@ bool Emitter::emit() {
         // the first split admissions. Instructions traced on hits have
         // base == cycles, so this changes behaviour only for the admitted
         // split forms — a64's rule verbatim (JitBackendA64.cpp:2622).
-        chargeCycles(int(L_.is030 ? ir_.instrs[i].baseCycles
-                                  : ir_.instrs[i].cycles));
+        chargeCycles(int(instructionCycles_));
         retire();
     }
 

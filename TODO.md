@@ -833,11 +833,20 @@ Open, in ROI order:
   octets. Le census réel passe 49 476 → 37 290 unsupported et 89 908 → 79 380
   replis totaux ; `4EB0` disparaît du statique, avec 87 seuls fills/tags MMU
   dynamiques observés. `CHANGELOG.md` (2026-08-31 third).
-- [ ] **Queue de couverture Speedometer après `4EB0`** : le prochain cluster
-  statique mesuré est `0829` / `1029` / `1429` à 3 242 / 3 157 / 3 142,
-  devant `D981` / `9381`, `6000` et `E9D4`. Les ROX/décalages hors tranche,
-  MOVEM indexé complet et `4C00` restent ensuite ; les traiter par contrat,
-  pas par largeur d'opcode.
+- **Lectures périphériques Speedometer `0829` / `1029` / `1429` — CLOS le
+  2026-08-31** : leurs coûts de base variables (59–129 cycles) venaient bien
+  des lectures `$50F01000/$1200/$1400/$1600/$1A00`, pas d'une table JIT
+  fausse. L'IR les marque `exactRequired` sur 030 ; A64/x64 délèguent la
+  lecture vivante au thunk et ne facturent que le coût fixe. Un oracle injecte
+  23 cycles par lecture MMIO et reste exact avec zéro repli. Le census réel
+  passe 37 290 → 27 751 unsupported et 79 380 → 69 874 replis totaux ; les
+  trois lignes disparaissent, empreintes inchangées. `CHANGELOG.md`
+  (2026-08-31 fourth).
+- [ ] **Queue de couverture Speedometer après les polls exacts** : le prochain
+  cluster statique mesuré est `D981` / `9381` à 3 140 / 3 139, puis `6000`
+  (3 026), `E9D4` (3 002), `C029` (1 153) et les MOVE indexés `2470` /
+  `2070`. Les ROX/décalages hors tranche, MOVEM indexé complet et `4C00`
+  restent ensuite ; les traiter par contrat, pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

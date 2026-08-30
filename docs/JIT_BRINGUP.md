@@ -966,6 +966,15 @@ exactly as before, and only the flush the access forces sees the
 interpreter-aligned clock. Nothing changes on the 68040 (`pomIcache`
 unarmed → bias 0) or on any fallback-run instruction.
 
+**A direct consumer added 2026-08-31.** Speedometer 4's `0829`, `1029` and
+`1429` reads all land in the LC II `$50F0xxxx` device aperture and trace at
+59–129 base cycles. Their IR accesses are now `exactRequired`: the thunk owns
+that live peripheral delay while A64/x64 charge the fixed BTST/MOVE tail.
+This is intentionally opcode-scoped policy, not a rule that any slow 030
+trace is a device access. `jit_restart_write_030_test` injects 23 cycles per
+MMIO read and compares every architectural boundary with zero native slow
+instructions; the real 120k LC II lockstep remains identical.
+
 **Validated 2026-08-21:** both reproducers heal at the full 120k —
 `POM68K_JIT_RESTART_BASE=1`, `POM68K_JIT_BSRW=1`, both together, and the
 default config, all four `OK — 120000 steps identical` with i-cache

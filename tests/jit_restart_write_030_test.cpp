@@ -66,6 +66,7 @@ public:
     int writeFaults = 0;
     int readFaults = 0;
     int mmioReads = 0;
+    int mmioReadDelay = 0;
     WriteObservation observedWrite;
 
     bool inHole(uint32_t a) const {
@@ -126,7 +127,11 @@ private:
             c.readFaults++;
             c.extBusError();
         }
-        if (inMmio(a)) const_cast<FaultCpu*>(this)->mmioReads++;
+        if (inMmio(a)) {
+            auto& c = *const_cast<FaultCpu*>(this);
+            c.mmioReads++;
+            if (c.mmioReadDelay) c.pomJitSync(c.mmioReadDelay);
+        }
         return mem[a & 0xFFFFFF];
     }
     moira::u16 read16(moira::u32 a) const override {
@@ -135,7 +140,11 @@ private:
             c.readFaults++;
             c.extBusError();
         }
-        if (inMmio(a)) const_cast<FaultCpu*>(this)->mmioReads++;
+        if (inMmio(a)) {
+            auto& c = *const_cast<FaultCpu*>(this);
+            c.mmioReads++;
+            if (c.mmioReadDelay) c.pomJitSync(c.mmioReadDelay);
+        }
         return moira::u16(mem[a & 0xFFFFFF] << 8 |
                           mem[(a + 1) & 0xFFFFFF]);
     }
@@ -201,6 +210,21 @@ void install(FaultCpu& c) {
     put16(c, kCode + 2, 0x0000);
     put16(c, kCode + 4, 0x60FA);        // BRA.S kCode (training loop)
     put16(c, kHandler, 0x4E71);         // harmless common post-vector boundary
+}
+
+void installSpeedometerPollLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x0829);     // BTST #5,d16(A1)
+    put16(c, kCode + 0x02, 0x0005);
+    put16(c, kCode + 0x04, 0x0000);
+    put16(c, kCode + 0x06, 0x1029);     // MOVE.B d16(A1),D0
+    put16(c, kCode + 0x08, 0x0001);
+    put16(c, kCode + 0x0A, 0x1429);     // MOVE.B d16(A1),D2
+    put16(c, kCode + 0x0C, 0x0002);
+    put16(c, kCode + 0x0E, 0x60F0);     // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
 }
 
 void installQueueLoop(FaultCpu& c, bool jumpAbsoluteLong) {
@@ -426,6 +450,57 @@ int main() {
         std::printf("SKIP: native backend '%s' unavailable (%s)\n",
                     nativeName, native.jit.backendName());
         return 0;
+    }
+
+    // Speedometer 4 polls the LC II's $50F0xxxx device aperture with these
+    // exact three forms. A synthetic delay makes the trace's base cost
+    // deliberately exceed the opcode table: generated code must keep the
+    // access in the exact thunk, charge only the fixed tail and never enter
+    // the per-instruction interpreter fallback on a successful device read.
+    {
+        FaultCpu pollRef, pollNative;
+        installSpeedometerPollLoop(pollRef);
+        installSpeedometerPollLoop(pollNative);
+        pollRef.reset(); pollNative.reset();
+        pollRef.setTC(12u << 20); pollNative.setTC(12u << 20);
+        for (FaultCpu* c : {&pollRef, &pollNative}) {
+            c->setA(1, kMmio);
+            c->setD(0, 0xA5A5A500);
+            c->setD(2, 0x5A5A5A00);
+            c->mem[kMmio + 0] = 0x20;
+            c->mem[kMmio + 1] = 0x3C;
+            c->mem[kMmio + 2] = 0x80;
+            c->mmioReadDelay = 23;
+        }
+        pollNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 128 && same; step++) {
+            const int64_t target = pollRef.getClock() + 79;
+            pollRef.executeUntil(target);
+            pollNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && pollRef.getD(r) == pollNative.getD(r) &&
+                       pollRef.getA(r) == pollNative.getA(r);
+            same = same && pollRef.getPC() == pollNative.getPC() &&
+                   pollRef.getPC0() == pollNative.getPC0() &&
+                   pollRef.getIRD() == pollNative.getIRD() &&
+                   pollRef.getIRC() == pollNative.getIRC() &&
+                   pollRef.getSR() == pollNative.getSR() &&
+                   pollRef.getClock() == pollNative.getClock() &&
+                   pollRef.mmioReads == pollNative.mmioReads;
+            if (!same)
+                std::printf("    Speedometer-poll divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto pollStats = pollNative.jit.stats().snapshot();
+        check(same && pollNative.getD(0) == 0xA5A5A53C &&
+              pollNative.getD(2) == 0x5A5A5A80 &&
+              pollNative.mmioReads != 0,
+              "Speedometer device polls preserve live delay and CPU state");
+        check(pollStats.blocksCompiled != 0 && pollStats.blocksRun != 0 &&
+              pollStats.slowInstrs == 0,
+              "Speedometer 0829/1029/1429 execute through native exact reads");
     }
 
     // The ordinary read half of the brief-index lowering: signed word

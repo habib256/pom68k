@@ -661,11 +661,19 @@ inline MemoryContract describeMemory(uint16_t op, bool is030) {
         const uint8_t dm = uint8_t((op >> 6) & 7), dr = uint8_t((op >> 9) & 7);
         const bool srcMem = memoryEa(sm, sr), dstMem = memoryEa(dm, dr);
         uint8_t n = 0;
-        if (srcMem)
-            c.access[n++] = memoryAccess(MemoryDirection::Read,
-                                         MemoryOperand::Source, bytes,
-                                         sm, sr, is030,
-                                         FaultPhase::RestartInstruction);
+        if (srcMem) {
+            MemoryAccess a = memoryAccess(
+                MemoryDirection::Read, MemoryOperand::Source, bytes,
+                sm, sr, is030, FaultPhase::RestartInstruction);
+            // Speedometer 4's CPU test reaches the LC II device aperture
+            // through these two MOVE.B d16(A1),Dn polls. Their observed
+            // base cost includes a live device-owned delay, so even a
+            // resident plain mapping must not turn them into a direct host
+            // load on the 030. The exact thunk owns that variable part and
+            // the generated tail charges only the fixed opcode cost.
+            a.exactRequired = is030 && (op == 0x1029 || op == 0x1429);
+            c.access[n++] = a;
+        }
         if (dstMem) {
             FaultPhase fault = FaultPhase::LastWrite;
             // The proved 030 family: a register/immediate source followed by
@@ -754,11 +762,15 @@ inline MemoryContract describeMemory(uint16_t op, bool is030) {
     const bool dynamicBit = (op & 0xF100) == 0x0100;
     const bool staticBit = (op & 0xFF00) == 0x0800;
     if ((dynamicBit || staticBit) && memoryEa(mode, reg)) {
-        if (((op >> 6) & 3) == 0)
-            setSingle(memoryAccess(MemoryDirection::Read,
-                                   MemoryOperand::Operand, 1, mode, reg,
-                                   is030, FaultPhase::RestartInstruction));
-        else
+        if (((op >> 6) & 3) == 0) {
+            MemoryAccess a = memoryAccess(
+                MemoryDirection::Read, MemoryOperand::Operand, 1, mode, reg,
+                is030, FaultPhase::RestartInstruction);
+            // Speedometer's static BTST #imm,d16(A1) sites poll the same
+            // $50F0xxxx LC II device aperture as the exact MOVE.B pair.
+            a.exactRequired = is030 && op == 0x0829;
+            setSingle(a);
+        } else
             setRmw(1, MemoryOperand::Operand);
         return c;
     }

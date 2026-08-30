@@ -730,6 +730,20 @@ are the encoded words plus computeEA's one final refill. The real CPU census
 moves 49,476 → 37,290 unsupported and 89,908 → 79,380 total fallbacks;
 `4EB0` has no unsupported row and only 87 observed fill/tag runtime replays.
 
+The next three rows looked like ordinary missing MOVE/BTST emission but were
+the opposite. `0829`, `1029` and `1429` traced at 59–129 base cycles although
+their fixed costs are small; a temporary entry-boundary address probe placed
+their reads at the LC II's `$50F0xxxx` device aperture (`$1000`, `$1200`,
+`$1400`, `$1600`, `$1A00`). The variable part is live peripheral delay.
+Their 68030 memory contracts are therefore `exactRequired`: A64 and x64 call
+the exact read thunk even if a host mapping exists, while their emitted tails
+charge only the fixed opcode cost. A directed oracle adds 23 cycles inside
+every synthetic MMIO read and proves exact PC/queue/SR/register/clock state
+with zero instruction fallback. The real 270-frame census moves 37,290 →
+27,751 unsupported and 79,380 → 69,874 total fallbacks; all three rows vanish
+with the CPU and screen fingerprints unchanged. The instrumented 0.310871 s
+wall time is not a speed claim.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
@@ -1101,11 +1115,13 @@ longer its only witness.
 Two more `jit` gates carry no environment at all, because what they pin is
 a boundary rather than a configuration: `jit_restart_write_030_test`
 (a native `MOVE.B D0,d16(A6)` block pointed into a `/BERR` hole, all 32
-bytes of the 68030 format-$A frame compared with a pure-interpreter oracle)
+bytes of the 68030 format-$A frame compared with a pure-interpreter oracle,
+plus Speedometer's three exact device polls under an injected live delay)
 and `jit_store_guard_a64_test` (mask-null RAM goes direct; a true overlap
-with translated code is seen by the memory map and evicts the block). Both
-soft-skip away from AArch64. `docs/JIT_BRINGUP.md` § C is where they come
-from.
+with translated code is seen by the memory map and evicts the block). The
+restart gate judges whichever native backend the host carries; the store
+guard soft-skips away from AArch64. `docs/JIT_BRINGUP.md` § C is where they
+come from.
 
 ### 6.1 The IR memory protocol
 
@@ -1132,6 +1148,14 @@ first store could not replay — so it stays undescribed and falls back
 whole. This makes a widening reviewable in one
 place: change the contract or planner, then make the pure IR assertions and
 the generated A64/x64 gate agree.
+
+`MemoryAccess::exactRequired` is stronger than optional exact-thunk
+availability: it forbids a direct host load and assigns the access's variable
+bus delay to the live model callback. The 68030 LC II polls `4A11`, `0829`,
+`1029` and `1429` use it. Both generators may admit a traced base cost above
+the fixed table only for such a sole read, and then charge that fixed cost;
+an arbitrary slow-looking 030 read still refuses rather than inferring device
+semantics from one trace.
 
 Emission consumes that lowering through `InstructionMemoryPlan`. Each
 mechanically decoded EA must mint a `MemoryAccessPlan` matching direction,

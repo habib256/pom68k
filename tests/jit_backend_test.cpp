@@ -189,6 +189,29 @@ int main() {
               timedProof.exactThunkMask == 1 && timedProof.cacheMask == 0,
               "model-required exact access is IR policy, not an A64 opcode exception");
 
+        const auto speedometerBtst = jit::describeMemory(0x0829, true);
+        const auto speedometerMove0 = jit::describeMemory(0x1029, true);
+        const auto speedometerMove2 = jit::describeMemory(0x1429, true);
+        const auto speedometerBtstProof = jit::memoryProofPlan(
+            speedometerBtst, noOptionalThunks);
+        const auto speedometerMove0Proof = jit::memoryProofPlan(
+            speedometerMove0, noOptionalThunks);
+        const auto speedometerMove2Proof = jit::memoryProofPlan(
+            speedometerMove2, noOptionalThunks);
+        check(jit::memoryRequiresExactAccess(speedometerBtst) &&
+              jit::memoryRequiresExactAccess(speedometerMove0) &&
+              jit::memoryRequiresExactAccess(speedometerMove2) &&
+              speedometerBtstProof.exactThunkMask == 1 &&
+              speedometerMove0Proof.exactThunkMask == 1 &&
+              speedometerMove2Proof.exactThunkMask == 1 &&
+              !jit::memoryRequiresExactAccess(
+                  jit::describeMemory(0x0829, false)) &&
+              !jit::memoryRequiresExactAccess(
+                  jit::describeMemory(0x1029, false)) &&
+              !jit::memoryRequiresExactAccess(
+                  jit::describeMemory(0x1429, false)),
+              "Speedometer device polls require exact reads only on the 68030");
+
         jit::Instr bfextuMemory;
         bfextuMemory.opcode = 0xE9D0;       // BFEXTU (A0){0:D0},D2
         bfextuMemory.words = 2;
