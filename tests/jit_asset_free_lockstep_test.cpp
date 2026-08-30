@@ -451,6 +451,69 @@ void installDynamicBitfieldLoop(SyntheticCpu& c) {
     put32(c, kData + 4, 0x5AA5'C33Cu);
 }
 
+// Static offset/width register bitfields — the subset BOTH production
+// generators lower (x64 gained it on 2026-08-30; a64 has carried it since
+// the family landed). Edge cases on purpose: {0:32} full-long, {31:1} the
+// last bit, {12:20} ending exactly at bit 32, and a BFFFO over a field
+// wiped by the preceding BFCLR so the zero-field arm (offset+width, where
+// x64's BSR is undefined) executes every lap.
+void installStaticBitfieldLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x2A3C);    // MOVE.L #$89ABCDEF,D5
+    put32(c, kCode + 0x02, 0x89AB'CDEFu);
+    put16(c, kCode + 0x06, 0x2C3C);    // MOVE.L #$13579BDF,D6
+    put32(c, kCode + 0x08, 0x1357'9BDFu);
+    put16(c, kCode + 0x0C, 0x7E00);    // MOVEQ #0,D7
+    put16(c, kCode + 0x0E, 0xE8C5);    // BFTST  D5{0:32}
+    put16(c, kCode + 0x10, 0x0000);
+    put16(c, kCode + 0x12, 0xE9C5);    // BFEXTU D5{5:8},D0
+    put16(c, kCode + 0x14, 0x0148);
+    put16(c, kCode + 0x16, 0xEAC5);    // BFCHG  D5{12:20}
+    put16(c, kCode + 0x18, 0x0314);
+    put16(c, kCode + 0x1A, 0xEBC5);    // BFEXTS D5{31:1},D0
+    put16(c, kCode + 0x1C, 0x07C1);
+    put16(c, kCode + 0x1E, 0xECC5);    // BFCLR  D5{0:16}
+    put16(c, kCode + 0x20, 0x0010);
+    put16(c, kCode + 0x22, 0xEDC5);    // BFFFO  D5{4:12},D1
+    put16(c, kCode + 0x24, 0x110C);
+    put16(c, kCode + 0x26, 0xEEC5);    // BFSET  D5{24:8}
+    put16(c, kCode + 0x28, 0x0608);
+    put16(c, kCode + 0x2A, 0xEFC6);    // BFINS  D0,D6{7:9}
+    put16(c, kCode + 0x2C, 0x01C9);
+    put16(c, kCode + 0x2E, 0xEDC7);    // BFFFO  D7{3:5},D2 (zero field)
+    put16(c, kCode + 0x30, 0x20C5);
+    put16(c, kCode + 0x32, 0x60CC);    // BRA.S kCode
+}
+
+// Read-only TAILLESS memory bitfields — the subset BOTH generators lower
+// since 2026-08-30 (x64 gained it; a64 has carried it). The census's hot
+// shapes on purpose: {D1:8} with a NEGATIVE Dn offset (the signed
+// byte-displacement adjust), {0:D0} dynamic width reaching 32, a field
+// ending exactly at bit 32, and the d16(An) column. Every form here
+// provably fits one longword; the five-byte tail stays in the dynamic
+// scenario above, where only a64 carries the claim.
+void installMemoryBitfieldLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x72FD);    // MOVEQ #-3,D1
+    put16(c, kCode + 0x02, 0x7014);    // MOVEQ #20,D0
+    put16(c, kCode + 0x04, 0xE8D0);    // BFTST  (A0){4:12}
+    put16(c, kCode + 0x06, 0x010C);
+    put16(c, kCode + 0x08, 0xE9D0);    // BFEXTU (A0){D1:8},D5 (SC2K/Rogue)
+    put16(c, kCode + 0x0A, 0x5848);
+    put16(c, kCode + 0x0C, 0xEBD0);    // BFEXTS (A0){2:15},D3
+    put16(c, kCode + 0x0E, 0x308F);
+    put16(c, kCode + 0x10, 0xEDD0);    // BFFFO  (A0){0:D0},D2 (Rogue)
+    put16(c, kCode + 0x12, 0x2020);
+    put16(c, kCode + 0x14, 0xE9E9);    // BFEXTU d16(A1){5:8},D4
+    put16(c, kCode + 0x16, 0x4148);
+    put16(c, kCode + 0x18, 0x0004);
+    put16(c, kCode + 0x1A, 0xE8D0);    // BFTST  (A0){0:32}
+    put16(c, kCode + 0x1C, 0x0000);
+    put16(c, kCode + 0x1E, 0x60E0);    // BRA.S kCode
+    put32(c, kData, 0xA55A'3CC3u);
+    put32(c, kData + 4, 0x5AA5'C33Cu);
+}
+
 void installGuardedDynamicShiftLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x7404);    // MOVEQ #4,D2
@@ -929,6 +992,82 @@ bool runDynamicBitfieldLockstep() {
            (!a64Production || s.slowInstrs == 0);
 }
 
+bool runStaticBitfieldLockstep() {
+    SyntheticCpu ref, native;
+    installStaticBitfieldLoop(ref);
+    installStaticBitfieldLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 43;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    static-bitfield divergence at checkpoint %d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    static-bitfield compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    // Unlike the dynamic scenario above, the residency claim holds on BOTH
+    // production generators: the static register forms are the subset x64
+    // lowers too (2026-08-30).
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeProduction || s.slowInstrs == 0);
+}
+
+bool runMemoryBitfieldLockstep() {
+    SyntheticCpu ref, native;
+    installMemoryBitfieldLoop(ref);
+    installMemoryBitfieldLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    // D1 = -3 adjusts the base by floor(-3/8) = -1 byte; keep the adjusted
+    // longword inside kData's page so the native path is exercised, not the
+    // cross-page fallback.
+    ref.setA(0, kData + 4);
+    native.setA(0, kData + 4);
+    ref.setA(1, kData);
+    native.setA(1, kData);
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 43;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    memory-bitfield divergence at checkpoint %d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    memory-bitfield compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeProduction || s.slowInstrs == 0);
+}
+
 bool runGuardedDynamicShiftLockstep() {
     SyntheticCpu ref, native;
     installGuardedDynamicShiftLoop(ref);
@@ -1125,6 +1264,10 @@ int main() {
           "MOVE.L (A7)+,(A7) uses the postincremented destination exactly");
     check(runDynamicBitfieldLockstep(),
           "dynamic register and read-only memory bitfields stay native on A64");
+    check(runStaticBitfieldLockstep(),
+          "static register bitfields stay native and exact on BOTH generators");
+    check(runMemoryBitfieldLockstep(),
+          "tailless memory bitfield reads stay native and exact on BOTH generators");
     check(runGuardedDynamicShiftLockstep(),
           "guarded dynamic LSL remains exact and is native with production CCR");
     check(runGuardIndexInvariant(),

@@ -1055,7 +1055,14 @@ eligibility.
 write may use its exact thunk and one published 040 line. A memory-to-memory
 instruction preflights both mappings before access zero; only the separately
 proved `$2F38`/`$21DF` contracts lower to `AtomicCachePair`. RMW and MOVEM
-retain whole-instruction/span proofs. This makes a widening reviewable in one
+retain whole-instruction/span proofs. Since 2026-08-30 the write bitfields
+(`BFCHG`/`BFCLR`/`BFSET`/`BFINS` on memory) publish their TAILLESS form as
+the two-slot RMW contract — read4 then write4 at one address,
+`lastWrite = 1` — for an emitter to consume (none does yet; TODO § 3's
+named next slice). The five-byte tail form would need four slots and has
+no write analogue of the probed-before-read tail protocol — a committed
+first store could not replay — so it stays undescribed and falls back
+whole. This makes a widening reviewable in one
 place: change the contract or planner, then make the pure IR assertions and
 the generated A64/x64 gate agree.
 
@@ -1208,9 +1215,17 @@ outright: it would be the same interpreter work plus a call and a frame.
 
 **Backend admission remains explicit even where the sets have converged.**
 A64 adds immediate and guarded register-count line-$E shifts/rotates (no
-`ROX` yet), register and read-only memory bitfields, and `MOVE SR,Dn`;
-brief-indexed reads/RMW, `Scc`, `PEA` and `LEA`,
-plus `EXG` and distinct-register `CMPM`, are now on both. The shared synthetic
+`ROX` yet), dynamic register and read-only memory bitfields, and
+`MOVE SR,Dn`; brief-indexed reads/RMW, `Scc`, `PEA` and `LEA`,
+plus `EXG` and distinct-register `CMPM`, are now on both — and since
+2026-08-30 so are the STATIC offset/width register bitfields (all eight
+actions; with o and w compile-time constants the x64 body folds the
+rotate, the extraction shift and the destination mask into immediates,
+`BFFFO` branching around x86's undefined `BSR`-of-zero). The two
+backends admit the bitfield family with the same `canEmit` rule, so the
+parity gate carries no Bitfield exception row any more; what still
+refuses on x64 refuses at emission (memory forms, dynamic o/w), which
+the census sees and the parity sweep cannot. The shared synthetic
 040 oracle demands brief An/PC reads and `LEA`, indexed `Scc`/`PEA`, complete
 CPU/RAM lockstep and zero slow instructions. Its direct-full `LEA` twin must
 also stay native through base/index suppression and 9/11/15-cycle forms,

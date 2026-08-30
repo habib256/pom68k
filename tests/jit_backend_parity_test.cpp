@@ -85,8 +85,10 @@ const AllowedDivergence kAllowed[] = {
     // ── real coverage gaps: lowerings a64 has and x64 lacks ──────────────
     // (the three the 2026-08-28 review named, plus what this gate's first
     // sweep added the same day; closing one = landing the x64 lowering)
-    { SemanticOp::Bitfield, true,
-      "2026-08-28: a64 lowers the 68020 bitfield family; x64 has no emitter" },
+    // (2026-08-30: the Bitfield row is retired — x64 admits the family with
+    // a64:1100's exact rule and lowers the static register forms; memory
+    // and dynamic forms refuse at EMISSION, which this gate cannot see and
+    // the census can.)
     { SemanticOp::MoveSrToReg, true,
       "2026-08-28: a64 lowers MOVE SR,Dn; x64 has no emitter" },
     { SemanticOp::Bit, true,

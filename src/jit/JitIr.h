@@ -1274,7 +1274,34 @@ inline void refineMemoryFromExtensions(Instr& in, bool is030) {
         const uint16_t ext = in.extensionWord(0);
         const bool readOnly = s.action == 0 || s.action == 1 ||
                               s.action == 3 || s.action == 5;
-        if (!readOnly) return;
+        if (!readOnly) {
+            // The write actions (BFCHG/BFCLR/BFSET/BFINS) are a
+            // read-modify-write of ONE longword. The TAILLESS form fits the
+            // two-slot contract exactly — read4 then write4 at the same
+            // address, the write the only access allowed to fault late —
+            // and is published so an emitter can lower it (TODO § 3's named
+            // next slice; no backend consumes it yet). The five-byte tail
+            // form would need four slots, and there is no write analogue of
+            // the probed-before-read tail protocol — a first store that
+            // committed could not replay — so it stays undescribed and the
+            // instruction falls back whole.
+            if (!memoryBitfieldFitsLongword(ext)) return;
+            MemoryContract c;
+            c.described = true;
+            c.count = 2;
+            c.order = MemoryOrder::ReadModifyWrite;
+            c.access[0] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Operand, 4,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+            c.access[1] = memoryAccess(MemoryDirection::Write,
+                                       MemoryOperand::Operand, 4,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::LastWrite);
+            c.lastWrite = 1;
+            in.memory = c;
+            return;
+        }
 
         MemoryContract c;
         c.described = true;

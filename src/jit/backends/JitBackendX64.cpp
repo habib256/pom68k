@@ -306,6 +306,7 @@ private:
     bool emitScc(size_t i);
     bool emitExg(size_t i);
     bool emitShiftRegister(size_t i);
+    bool emitBitfield(size_t i);
     bool emitCmpm(size_t i);
     // `exactFetchWords` overrides the words+1 rule for the forms whose
     // mmuFetchWord count is NOT linear (DBcc: 2 on every path — see the
@@ -2853,6 +2854,241 @@ bool Emitter::emitShiftRegister(size_t i) {
     return true;
 }
 
+// The 68020 bitfield family — a64's lowerings (a64:2891 memory, a64:3040
+// register) translated. Register forms fold the constants: with o and w
+// known at compile time the rotate, the extraction shift and the
+// destination mask are all immediates. Memory forms cover the READ-ONLY
+// TAILLESS subset (the field provably inside one longword after the signed
+// byte-displacement adjust — Rogue's and SC2K's hot shapes), static or
+// dynamic o/w, priced by this backend's centralized base-cycle charge and
+// the exact-read thunk rather than a64's per-emitter sole-read contract.
+// What refuses here, each with the door it leaves open: dynamic REGISTER
+// forms want CL shifts threaded through the flag block and their own
+// proof; the five-byte tail form wants the two-probe protocol (a64:2958);
+// the write actions on memory want an RMW emitter for the contract
+// JitIr.h now publishes (the a64 -1-row pattern: canEmit admits the
+// family, the emitter refuses the form).
+bool Emitter::emitBitfield(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::Bitfield) return false;
+    // a64:2874's rule verbatim: these forms publish several independently
+    // computed flag bits; refuse under the packed CCR.
+    if (packedCcr_) return false;
+    const int kind = sem.action;
+    const uint16_t memExt = in.extensionWord(0);
+    if (sem.eaMode != 0) {
+        const bool readOnly = kind == 0 || kind == 1 || kind == 3 ||
+                              kind == 5;
+        if (!readOnly) return false;                // writes: emitter later
+        if (L_.is030 && !memBitfield030Admission()) return false;
+        if (sem.eaMode != 2 && sem.eaMode != 5) return false;
+        if (!memoryBitfieldFitsLongword(memExt)) return false;   // tail
+        const bool dynOffset = (memExt & 0x0800) != 0;
+        const bool dynWidth = (memExt & 0x0020) != 0;
+        if ((dynOffset || dynWidth) && !dynamicRegisterBitfieldEnabled())
+            return false;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        Ea src;
+        if (!decode(i, sem.eaMode, sem.eaReg, 2, 1, src) ||
+            !lengthOk(i, 1 + src.ext)) return false;
+        const MemoryAccessPlan read = memory.access(
+            MemoryDirection::Read, MemoryOperand::Operand, 4,
+            uint8_t(sem.eaMode), uint8_t(sem.eaReg));
+        if (!read.valid() || !memory.complete()) return false;
+        const unsigned oImm = (memExt >> 6) & 31, oReg = (memExt >> 6) & 7;
+        const unsigned wImm = ((unsigned(memExt & 31) - 1u) & 31u) + 1u;
+        const unsigned wReg = memExt & 7;
+
+        // The signed byte displacement moves the base address by
+        // floor(rawOffset/8); the low three bits select within the loaded
+        // longword (a64:2956 — SAR, not SHR: a Dn offset is signed).
+        addrOf(src, RAX, 2);
+        if (dynOffset) {
+            a_.movRM(Sz::L, RCX, D(int(oReg)));
+            a_.shiftRI(Sz::L, RCX, 7, 3);
+            a_.aluRR(Asm::Op::ADD, Sz::L, RAX, RCX);
+        } else if (oImm >> 3) {
+            a_.aluRI(Asm::Op::ADD, Sz::L, RAX, int32_t(oImm >> 3));
+        }
+        memLoad(RAX, 2, RDI, read);                 // RDI = the longword
+
+        // A miss called out and clobbered every caller-saved register, so
+        // every extension-derived value is (re)built from guest state AFTER
+        // the access (a64:2999's rule). RDX carries the normalized width
+        // for the rest of the body when it is dynamic.
+        if (dynWidth) {
+            a_.movRM(Sz::L, RDX, D(int(wReg)));
+            a_.aluRI(Asm::Op::SUB, Sz::L, RDX, 1);
+            a_.aluRI(Asm::Op::AND, Sz::L, RDX, 31);
+            a_.aluRI(Asm::Op::ADD, Sz::L, RDX, 1);  // 32,1..31
+        }
+        // field = (value << (raw & 7)) >> (32 - w), both zero-fill.
+        if (dynOffset) {
+            a_.movRM(Sz::L, RCX, D(int(oReg)));
+            a_.aluRI(Asm::Op::AND, Sz::L, RCX, 7);
+            a_.shiftRCl(Sz::L, RDI, 4);             // SHL by CL
+        } else if (oImm & 7) {
+            a_.shiftRI(Sz::L, RDI, 4, uint8_t(oImm & 7));
+        }
+        if (dynWidth) {
+            a_.movRI(RCX, 32);
+            a_.aluRR(Asm::Op::SUB, Sz::L, RCX, RDX);
+            a_.shiftRCl(Sz::L, RDI, 5);             // SHR by CL (0..31)
+        } else if (wImm != 32) {
+            a_.shiftRI(Sz::L, RDI, 5, uint8_t(32 - wImm));
+        }
+        // N = bit (width-1) of the field, Z over the whole field, V=C=0.
+        a_.movRR(Sz::L, RSI, RDI);
+        if (dynWidth) {
+            a_.movRR(Sz::L, RCX, RDX);
+            a_.aluRI(Asm::Op::SUB, Sz::L, RCX, 1);
+            a_.shiftRCl(Sz::L, RSI, 5);
+        } else if (wImm > 1) {
+            a_.shiftRI(Sz::L, RSI, 5, uint8_t(wImm - 1));
+        }
+        a_.movMR(Sz::B, at(L_.srN), RSI);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RDI, 0);
+        a_.setccM(Cc::E, at(L_.srZ));
+        a_.movMI(Sz::B, at(L_.srV), 0);
+        a_.movMI(Sz::B, at(L_.srC), 0);
+        switch (kind) {
+        case 0:                                     // BFTST
+            return true;
+        case 1:                                     // BFEXTU
+            a_.movMR(Sz::L, D((memExt >> 12) & 7), RDI);
+            return true;
+        case 3:                                     // BFEXTS
+            if (dynWidth) {
+                a_.movRI(RCX, 32);
+                a_.aluRR(Asm::Op::SUB, Sz::L, RCX, RDX);
+                a_.shiftRCl(Sz::L, RDI, 4);
+                a_.shiftRCl(Sz::L, RDI, 7);         // SAR by the same CL
+            } else if (wImm != 32) {
+                a_.shiftRI(Sz::L, RDI, 4, uint8_t(32 - wImm));
+                a_.shiftRI(Sz::L, RDI, 7, uint8_t(32 - wImm));
+            }
+            a_.movMR(Sz::L, D((memExt >> 12) & 7), RDI);
+            return true;
+        case 5: {                                   // BFFFO
+            // raw offset (UNCROPPED, signed for a Dn) + width when the
+            // field is empty, else raw + width - 1 - bsr(field).
+            if (dynOffset) a_.movRM(Sz::L, RSI, D(int(oReg)));
+            else a_.movRI(RSI, oImm);
+            if (dynWidth) a_.aluRR(Asm::Op::ADD, Sz::L, RSI, RDX);
+            else a_.aluRI(Asm::Op::ADD, Sz::L, RSI, int32_t(wImm));
+            Label& ffoDone = *a_.fresh();
+            a_.testRR(Sz::L, RDI, RDI);
+            a_.jccShort(Cc::E, ffoDone);
+            a_.bsrRR(Sz::L, RCX, RDI);
+            a_.aluRI(Asm::Op::SUB, Sz::L, RSI, 1);
+            a_.aluRR(Asm::Op::SUB, Sz::L, RSI, RCX);
+            a_.bind(ffoDone);
+            a_.movMR(Sz::L, D((memExt >> 12) & 7), RSI);
+            return true;
+        }
+        default:
+            return false;
+        }
+    }
+    const uint16_t ext = memExt;
+    if (ext & 0x0820) return false;                 // dynamic o/w: not yet
+    if (in.words != 2) return false;
+    // Per-action traced base cycles, a64:3041's table verbatim; a form
+    // whose trace disagrees refuses rather than mischarges.
+    static const uint8_t cycles[8] = {6, 8, 12, 8, 12, 18, 12, 10};
+    if (traced030(i) != cycles[kind]) return false;
+    const int dst = sem.eaReg, out = (ext >> 12) & 7;
+    const unsigned offset = (ext >> 6) & 31;
+    const unsigned width = ((unsigned(ext & 31) - 1u) & 31u) + 1u; // 32,1..31
+    const uint32_t topMask =
+        width == 32 ? 0xFFFFFFFFu : 0xFFFFFFFFu << (32 - width);
+    const uint32_t mask = offset
+        ? (topMask >> offset) | (topMask << (32 - offset))
+        : topMask;                                  // field mask at offset
+
+    // EDI = original destination; ESI = extracted field (zero-extended).
+    a_.movRM(Sz::L, RDI, D(dst));
+    if (kind != 7) {                                // BFINS uses source flags
+        a_.movRR(Sz::L, RSI, RDI);
+        if (offset) a_.shiftRI(Sz::L, RSI, 0, uint8_t(offset));        // ROL
+        if (width != 32) a_.shiftRI(Sz::L, RSI, 5, uint8_t(32 - width)); // SHR
+        // N = bit (width-1) of the field, Z over the whole field, V=C=0 —
+        // a64:3078-3081's store order.
+        a_.movRR(Sz::L, RCX, RSI);
+        if (width > 1) a_.shiftRI(Sz::L, RCX, 5, uint8_t(width - 1));
+        a_.movMR(Sz::B, at(L_.srN), RCX);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RSI, 0);
+        a_.setccM(Cc::E, at(L_.srZ));
+        a_.movMI(Sz::B, at(L_.srV), 0);
+        a_.movMI(Sz::B, at(L_.srC), 0);
+    }
+    switch (kind) {
+    case 0:                                         // BFTST
+        return true;
+    case 1:                                         // BFEXTU
+        a_.movMR(Sz::L, D(out), RSI);
+        return true;
+    case 3:                                         // BFEXTS
+        if (width != 32) {
+            a_.shiftRI(Sz::L, RSI, 4, uint8_t(32 - width));            // SHL
+            a_.shiftRI(Sz::L, RSI, 7, uint8_t(32 - width));            // SAR
+        }
+        a_.movMR(Sz::L, D(out), RSI);
+        return true;
+    case 5: {                                       // BFFFO
+        // offset + leading zeros inside the field: offset+width when the
+        // field is zero (BSR is undefined there), else
+        // offset + width - 1 - bsr(field) — the a64 clz math rearranged.
+        // The label MUST be arena-allocated (a_.fresh()): finish() patches
+        // fixups through Label POINTERS after this frame is gone, and a
+        // stack-local Label here read freed stack at patch time — green in
+        // the shallow lockstep by luck, SIGSEGV 19 s into the barefpu boot.
+        Label& done = *a_.fresh();
+        a_.movRI(RCX, offset + width);
+        a_.testRR(Sz::L, RSI, RSI);
+        a_.jccShort(Cc::E, done);
+        a_.bsrRR(Sz::L, RDX, RSI);
+        a_.movRI(RCX, offset + width - 1);
+        a_.aluRR(Asm::Op::SUB, Sz::L, RCX, RDX);
+        a_.bind(done);
+        a_.movMR(Sz::L, D(out), RCX);
+        return true;
+    }
+    case 2:                                         // BFCHG
+        a_.aluRI(Asm::Op::XOR, Sz::L, RDI, int32_t(mask));
+        a_.movMR(Sz::L, D(dst), RDI);
+        return true;
+    case 4:                                         // BFCLR
+        a_.aluRI(Asm::Op::AND, Sz::L, RDI, int32_t(~mask));
+        a_.movMR(Sz::L, D(dst), RDI);
+        return true;
+    case 6:                                         // BFSET
+        a_.aluRI(Asm::Op::OR, Sz::L, RDI, int32_t(mask));
+        a_.movMR(Sz::L, D(dst), RDI);
+        return true;
+    case 7: {                                       // BFINS
+        a_.movRM(Sz::L, RSI, D(out));               // source Dn
+        if (width != 32) a_.shiftRI(Sz::L, RSI, 4, uint8_t(32 - width));
+        // Flags from the cropped, top-aligned source (a64:3110-3113).
+        a_.movRR(Sz::L, RCX, RSI);
+        a_.shiftRI(Sz::L, RCX, 5, 31);
+        a_.movMR(Sz::B, at(L_.srN), RCX);
+        a_.aluRI(Asm::Op::CMP, Sz::L, RSI, 0);
+        a_.setccM(Cc::E, at(L_.srZ));
+        a_.movMI(Sz::B, at(L_.srV), 0);
+        a_.movMI(Sz::B, at(L_.srC), 0);
+        if (offset) a_.shiftRI(Sz::L, RSI, 1, uint8_t(offset));        // ROR
+        a_.aluRI(Asm::Op::AND, Sz::L, RDI, int32_t(~mask));
+        a_.aluRR(Asm::Op::OR, Sz::L, RDI, RSI);
+        a_.movMR(Sz::L, D(dst), RDI);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 // CMPM.<s> (Ay)+,(Ax)+ — two postincremented reads, no write. Distinct
 // address registers let both DTLB mappings be proved while the entry state
 // is pristine (the x64 expansion of PreflightAll, exactly as the
@@ -3320,6 +3556,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::SetCondition: return emitScc(i);
         case SemanticOp::Exchange: return emitExg(i);
         case SemanticOp::ShiftRegister: return emitShiftRegister(i);
+        case SemanticOp::Bitfield: return emitBitfield(i);
         case SemanticOp::CompareMemory: return emitCmpm(i);
         case SemanticOp::AddSubQuick: return emitAddSubQ(i);
         case SemanticOp::BranchSubroutine: return emitSubroutine(i);
@@ -3837,6 +4074,12 @@ bool X64Backend::canEmit(uint16_t op) const {
             return controlEa(eaCostIndex(mode, reg));
         case SemanticOp::ShiftRegister:
             return sem.action != 2;  // a64's rule verbatim: no ROXd
+        case SemanticOp::Bitfield:
+            // a64:1100's rule verbatim: register, (An) and d16(An)
+            // operands. The emitter then refuses the forms it cannot lower
+            // yet (memory, dynamic o/w) — the a64 -1-row pattern, so the
+            // two backends' admission stays comparable at this level.
+            return mode == 0 || mode == 2 || mode == 5;
         case SemanticOp::Lea:
             return controlEa(eaCostIndex(mode, reg)) ||
                    eaCostIndex(mode, reg) == EA_IX ||
