@@ -115,6 +115,10 @@ inline constexpr int8_t kMovemToMem[EA_MODE_COUNT] =
 // cyclesMul term; signed and unsigned forms share the same fixed column.
 inline constexpr int8_t kMulWord[EA_MODE_COUNT] =
     { 27, -1, 31, 31, 32, 32, 34, 31, 31, 32, 34, 29 };
+// execMull, 68020/68030 column. The mandatory extension selects signedness
+// and a 32- or 64-bit result, but every successful form shares this EA cost.
+inline constexpr int8_t kMulLong[EA_MODE_COUNT] =
+    { 43, -1, 47, 47, 48, 48, 50, 47, 47, 48, 50, 47 };
 // execDivu/execDivs, 68020 word columns. Address-register direct is not a
 // legal source; all other cells are guest timing facts, independent of the
 // transactional proof a backend requires for a particular memory mapping.

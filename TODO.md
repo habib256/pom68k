@@ -873,14 +873,22 @@ Open, in ROI order:
   `319F`/`31B2`/`2D9F` disparaissent aussi : 5 286 → 3 910 unsupported
   (**−26,03 %**) et 48 982 → 47 768 replis totaux (**−2,48 %**), toutes les
   empreintes restant exactes. `CHANGELOG.md` (2026-08-31 tenth).
-- [ ] **Queue de couverture Speedometer après les MOVE indexés** : `C029`
+- **Multiplication longue Speedometer — CLOS le 2026-08-31** : `4C00 4004`
+  est exactement `MULU.L D0,D4`, résultat 32 bits, coût fixe 43. A64/x64
+  calculent le produit complet 64 bits afin de publier V si la moitié haute
+  est non nulle, puis écrivent le bas dans D4 avec N/Z, C=0 et X préservé.
+  L'oracle traverse V=0 puis V=1 sur 256 checkpoints sans repli ; le census
+  réel fait disparaître les 351 refus statiques, 3 910 → 3 559 unsupported et
+  47 768 → 47 414 replis totaux, empreintes inchangées. Les autres extensions
+  MULL restent à Moira. `CHANGELOG.md` (2026-08-31 eleventh).
+- [ ] **Queue de couverture Speedometer après `MULU.L`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Les prochains candidats structurels
-  sont `4C00`, puis ROX/décalages hors tranche, MOVEM indexé complet et
-  ADDX/SUBX mémoire. `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE
-  source full-indirects et les destinations brèves prouvées sont clos ;
-  traiter la suite par contrat, pas par largeur d'opcode.
+  sont ROX/décalages hors tranche, MOVEM indexé complet et ADDX/SUBX mémoire.
+  `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
+  full-indirects, les destinations brèves et `4C00 4004` sont clos ; traiter
+  la suite par contrat, pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

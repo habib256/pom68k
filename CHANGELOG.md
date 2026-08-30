@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's exact `MULU.L D0,D4` became native without losing its 32-bit overflow flag** → [2026-08-31 (eleventh) — Speedometer's long multiply…](#2026-08-31-speedometer-long-multiply)
 - **how Speedometer's brief-indexed MOVE destinations reuse the two-memory preflight without duplicating MMIO effects** → [2026-08-31 (tenth) — Speedometer's indexed MOVE destinations…](#2026-08-31-speedometer-indexed-move-destination)
 - **how Speedometer's full-indirect `MOVE.L`/`MOVEA.L` became a two-read transaction on both 68030 JIT generators** → [2026-08-31 (ninth) — Speedometer's indirect MOVE…](#2026-08-31-speedometer-indirect-move)
 - **how Speedometer's full-indirect `LEA` became native on the 68030 without turning `C029`'s bad timing experiment into a false win** → [2026-08-31 (eighth) — Speedometer's indirect LEA…](#2026-08-31-speedometer-indirect-lea)
@@ -364,6 +365,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (eleventh)** — [Speedometer's exact `MULU.L D0,D4` becomes native on A64 and x64 with its 32-bit overflow flag intact](#2026-08-31-speedometer-long-multiply)
 - **2026-08-31 (tenth)** — [Speedometer's brief-indexed MOVE destinations reuse the transactional two-memory path on both 68030 JIT generators](#2026-08-31-speedometer-indexed-move-destination)
 - **2026-08-31 (ninth)** — [Speedometer's full-indirect `MOVE.L`/`MOVEA.L` becomes a two-read direct-RAM transaction on both 68030 JIT generators](#2026-08-31-speedometer-indirect-move)
 - **2026-08-31 (eighth)** — [Speedometer's full-indirect `LEA` becomes native on both 68030 JIT generators while `C029` stays behind its failed real-timing proof](#2026-08-31-speedometer-indirect-lea)
@@ -721,6 +723,46 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-long-multiply"></a>
+## 2026-08-31 (eleventh) — Speedometer's exact `MULU.L D0,D4` becomes native on A64 and x64 with its 32-bit overflow flag intact
+
+After the indexed-destination slice, `4C00` was the next safe structural row
+behind the deliberately parked `C029`. The watcher found one exact site at
+`$00057B86`: two words, mandatory extension `4004`, fixed base cost 43 plus
+only an observed i-cache miss. That selector is `MULU.L D0,D4` with a 32-bit
+result. It has no data-memory access and no arithmetic exception.
+
+Shared IR now distinguishes MULL from DIVL, places every source EA extension
+after the mandatory selector word and publishes the long source-read contract
+for future memory forms. The shared 68020/030 cost row records Moira's fixed
+43/47/48/50-cycle per-EA table. Both generators deliberately admit only the
+observed `4C00 4004` form: signed, other-register and two-register 64-bit
+results remain with Moira instead of inheriting an unproved family-wide
+claim.
+
+The first directed run caught a semantic detail before it could reach the
+application: the low 32-bit product and every boundary matched, but native
+code had cleared V where Moira set it. For the 32-bit-result form, V means
+that the full unsigned product has a non-zero high half. A64 and x64 now
+multiply at host width 64, store the low half in D4, publish N/Z from that
+low half, V from the high half, C=0 and preserve X. The oracle begins with a
+non-overflowing product, crosses into overflow, and stays identical for 256
+030 checkpoints. It records 254 generated block runs and zero slow
+instructions on native A64 and native x64 under Rosetta. Backend semantic,
+parity and all four real LC II 030 locksteps pass.
+
+In the production-profile 270-frame recensus, `4C00` disappears and the 351
+static refusals are removed: unsupported fallbacks move 3,910 → 3,559
+(**−8.98 %**) and total fallbacks 47,768 → 47,414 (**−0.74 %**). The phase
+retires 2,224,131 / 2,232,758 instructions natively (**99.61 %**). CPU
+fingerprint `ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
+`5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577
+and halted=0 remain exact. The histogrammed 0.305674 s wall time is not a
+speed claim. `C029` remains parked behind its failed peripheral-phase proof;
+ROX/out-of-range shifts are the next structural group.
 
 ---
 

@@ -379,6 +379,10 @@ public:
         // MUL Wd,Wn,Wm is MADD Wd,Wn,Wm,WZR.
         emit(0x1B007C00u | (rm << 16) | (rn << 5) | rd);
     }
+    void mulX(unsigned rd, unsigned rn, unsigned rm) {
+        // MUL Xd,Xn,Xm is MADD Xd,Xn,Xm,XZR.
+        emit(0x9B007C00u | (rm << 16) | (rn << 5) | rd);
+    }
     void addImmW(unsigned rd, unsigned rn, unsigned imm) {
         emit(0x11000000u | ((imm & 0xFFFu) << 10) | (rn << 5) | rd);
     }
@@ -830,6 +834,17 @@ uint16_t guestRegisterWriteMask(const Instr& in) {
         case SemanticOp::DivideWord:
         case SemanticOp::MultiplyWord:
             reg(false, s.registerIndex); break;
+        case SemanticOp::MultiplyLong: {
+            if (in.extensionCount < 1 ||
+                (in.extensionWord(0) & 0x83F8u) != 0) {
+                mask = 0xFFFFu;
+                break;
+            }
+            const uint16_t ext = in.extensionWord(0);
+            reg(false, (ext >> 12) & 7);
+            if (ext & 0x0400u) reg(false, ext & 7);
+            break;
+        }
         case SemanticOp::DivideLong: {
             if (in.extensionCount < 1 ||
                 (in.extensionWord(0) & 0x83F8u) != 0) {
@@ -1214,6 +1229,8 @@ bool canEmitReg(uint16_t op) {
             return ei >= 0 && ei != EA_AN;
         case SemanticOp::MultiplyWord:
             return ei >= 0 && ei != EA_AN;
+        case SemanticOp::MultiplyLong:
+            return op == 0x4C00;
         case SemanticOp::DivideLong:
             return ei >= 0 && ei != EA_AN;
         default: return false;
@@ -3106,6 +3123,37 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         a.mulW(11, 9, 10);
         a.strW(11, 0, L.d + sem.registerIndex * 4);
         emitLogicFlags(a, L, 11, 32);               // X survives
+        return true;
+    }
+
+    if (sem.operation == SemanticOp::MultiplyLong) {
+        // Speedometer 4's measured hot form is exactly MULU.L D0,D4. Keep
+        // this first admission extension-specific: the other extension
+        // actions include signed and two-register 64-bit results and remain
+        // in Moira until separately observed and proved.
+        if (in.extensionCount < 1 || in.extensionWord(0) != 0x4004u)
+            return false;
+        Ea src;
+        if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 1, src) ||
+            src.idx != EA_DN || src.reg != 0 || in.words != 2)
+            return false;
+        const int cycles = kMulLong[src.idx];
+        if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
+
+        loadGuestRegister(a, L, 9, false, 0);
+        loadGuestRegister(a, L, 10, false, 4);
+        a.mulX(11, 9, 10);                         // full unsigned product
+        a.lsrX(14, 11, 32);
+        a.cmpXZero(14);
+        a.csetW(14, Asm::NE);                      // 32-bit result overflow
+        a.strW(11, 0, L.d + 4 * 4);
+        emitLogicFlags(a, L, 11, 32);              // N/Z low, C=0, X survives
+        if (gPackedCcr) {
+            a.lslW(14, 14, 1);
+            setPackedCcrBits(a, 14, 2);
+        } else {
+            a.strB(14, 0, L.srV);
+        }
         return true;
     }
 

@@ -325,6 +325,10 @@ public:
         rex(Sz::L, dst, src, true);
         db(0x0F); db(0xAF); modrm(dst, src);
     }
+    void imulRR64(Reg dst, Reg src) {               // dst = dst * src
+        rex(Sz::Q, dst, src, true);
+        db(0x0F); db(0xAF); modrm(dst, src);
+    }
     void incM(Sz sz, const Mem& m) {
         opsize(sz); rex(sz, 0, m.base); db(sz == Sz::B ? 0xFE : 0xFF); modrm(0, m);
     }

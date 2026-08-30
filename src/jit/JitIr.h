@@ -99,6 +99,7 @@ enum class SemanticOp : uint8_t {
     ShiftRegister,
     Bitfield,
     MultiplyWord,
+    MultiplyLong,
     DivideWord,
     DivideLong,
 };
@@ -476,7 +477,8 @@ inline InstructionSemantics describeInstruction(uint16_t op) {
     }
 
     if (line == 0x4000) {
-        if ((op & 0xFFC0) == 0x4C40) set(SemanticOp::DivideLong, 2);
+        if ((op & 0xFFC0) == 0x4C00) set(SemanticOp::MultiplyLong, 2);
+        else if ((op & 0xFFC0) == 0x4C40) set(SemanticOp::DivideLong, 2);
         else if (op == 0x4E71) set(SemanticOp::Nop);
         else if (op == 0x4E75) set(SemanticOp::ReturnSubroutine);
         else if ((op & 0xFFF8) == 0x4E50) set(SemanticOp::Link, 2);
@@ -843,10 +845,10 @@ inline MemoryContract describeMemory(uint16_t op, bool is030) {
         return c;
     }
 
-    // 68020+ long division consumes its register-selector word before the
-    // source EA extensions. The arithmetic and both destinations are still
+    // 68020+ long multiplication/division consumes its register-selector
+    // word before the source EA extensions. Arithmetic and destinations are
     // register-only, so memory forms publish one long source read.
-    if ((op & 0xFFC0) == 0x4C40) {
+    if ((op & 0xFFC0) == 0x4C00 || (op & 0xFFC0) == 0x4C40) {
         if (memoryEa(mode, reg))
             setSingle(memoryAccess(MemoryDirection::Read,
                                    MemoryOperand::Source, 4, mode, reg,
@@ -1320,8 +1322,9 @@ inline void describeEffectiveAddresses(Instr& in) {
         case SemanticOp::MultiplyWord:
             add(OperandRole::Source, s.eaMode, s.eaReg, 1, 0);
             break;
+        case SemanticOp::MultiplyLong:
         case SemanticOp::DivideLong:
-            // The mandatory quotient/remainder selector precedes every EA
+            // The mandatory result-register selector precedes every EA
             // extension in the instruction stream.
             add(OperandRole::Source, s.eaMode, s.eaReg, 2, 1);
             break;

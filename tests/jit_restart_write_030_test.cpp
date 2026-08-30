@@ -435,6 +435,16 @@ void installSpeedometerIndexedDestinationLoop(FaultCpu& c) {
     put16(c, kBitfieldData + 0x04, 0xABCD);
 }
 
+void installSpeedometerMuluLongLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x4C00);    // MULU.L D0,D4
+    put16(c, kCode + 0x02, 0x4004);    // Speedometer exact 32-bit selector
+    put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+}
+
 void installJsrLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -678,6 +688,71 @@ int main() {
               (!nativeProduction ||
                replayStats.slowInstrs > moveStats.slowInstrs),
               "2470 non-plain final operand replays before its An commit");
+    }
+
+    // Speedometer's 4C00 4004 is the non-trapping 32-bit-result form of
+    // MULL. Exercise its exact selector with an odd multiplier so D4 keeps
+    // changing instead of converging to zero and crosses from V=0 to V=1;
+    // X must survive while N/Z/V/C and the 030 boundary remain identical.
+    {
+        FaultCpu mulRef, mulNative;
+        installSpeedometerMuluLongLoop(mulRef);
+        installSpeedometerMuluLongLoop(mulNative);
+        mulRef.reset(); mulNative.reset();
+        mulRef.setTC(12u << 20); mulNative.setTC(12u << 20);
+        for (FaultCpu* c : {&mulRef, &mulNative}) {
+            c->setD(0, 3);
+            c->setD(4, 1);
+            c->setSR(0x2710);                     // X set, NZVC clear
+        }
+        mulNative.jit.setEnabled(true);
+
+        bool same = true, sawV0 = false, sawV1 = false;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = mulRef.getClock() + 47;
+            mulRef.executeUntil(target);
+            mulNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && mulRef.getD(r) == mulNative.getD(r) &&
+                       mulRef.getA(r) == mulNative.getA(r);
+            same = same && mulRef.getPC() == mulNative.getPC() &&
+                   mulRef.getPC0() == mulNative.getPC0() &&
+                   mulRef.getIRD() == mulNative.getIRD() &&
+                   mulRef.getIRC() == mulNative.getIRC() &&
+                   mulRef.getSR() == mulNative.getSR() &&
+                   mulRef.getClock() == mulNative.getClock();
+            sawV0 = sawV0 || (mulNative.getSR() & 0x02u) == 0;
+            sawV1 = sawV1 || (mulNative.getSR() & 0x02u) != 0;
+            if (!same)
+                std::printf("    030 4C00/4004 divergence at checkpoint %d: "
+                            "D4=%08X/%08X SR=%04X/%04X PC=%08X/%08X "
+                            "PC0=%08X/%08X IRD=%04X/%04X IRC=%04X/%04X "
+                            "clock=%lld/%lld\n",
+                            step, mulRef.getD(4), mulNative.getD(4),
+                            mulRef.getSR(), mulNative.getSR(),
+                            mulRef.getPC(), mulNative.getPC(),
+                            mulRef.getPC0(), mulNative.getPC0(),
+                            mulRef.getIRD(), mulNative.getIRD(),
+                            mulRef.getIRC(), mulNative.getIRC(),
+                            (long long)mulRef.getClock(),
+                            (long long)mulNative.getClock());
+        }
+        const auto mulStats = mulNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(mulNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(mulNative.jit.backendName(), "x86-64")) &&
+            !mulNative.jit.config().packedCcr;
+        std::printf("    030 MULU.L compiled=%llu runs=%llu slow=%llu\n",
+                    (unsigned long long)mulStats.blocksCompiled,
+                    (unsigned long long)mulStats.blocksRun,
+                    (unsigned long long)mulStats.slowInstrs);
+        check(same && sawV0 && sawV1 && mulNative.getD(4) != 1 &&
+              (mulNative.getD(4) & 1u) != 0 &&
+              (mulNative.getSR() & 0x10u) != 0 &&
+              (mulNative.getSR() & 0x01u) == 0 &&
+              mulStats.blocksCompiled != 0 && mulStats.blocksRun != 0 &&
+              (!nativeProduction || mulStats.slowInstrs == 0),
+              "Speedometer 4C00 4004 MULU.L stays native on 030");
     }
 
     // Speedometer's 2191/31A9 pair writes two independent RAM sources to

@@ -310,6 +310,7 @@ private:
     bool emitShiftRegister(size_t i);
     bool emitBitfield(size_t i);
     bool emitMultiplyWord(size_t i);
+    bool emitMultiplyLong(size_t i);
     bool emitDivideWord(size_t i);
     bool emitDivideLong(size_t i);
     bool emitCmpm(size_t i);
@@ -3192,6 +3193,42 @@ bool Emitter::emitMultiplyWord(size_t i) {
     return true;
 }
 
+// Speedometer 4's observed MULL selector, MULU.L D0,D4. Deliberately do not
+// infer support for the signed or two-register 64-bit extension actions.
+bool Emitter::emitMultiplyLong(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::MultiplyLong ||
+        in.extensionCount < 1 || in.extensionWord(0) != 0x4004u)
+        return false;
+    Ea src;
+    if (!decode(i, sem.eaMode, sem.eaReg, 2, 1, src) ||
+        src.idx != EA_DN || src.reg != 0 || !lengthOk(i, 1 + src.ext))
+        return false;
+    const int cycles = kMulLong[src.idx];
+    if (cycles < 0 || traced030(i) != unsigned(cycles)) return false;
+
+    a_.movRM(Sz::L, RCX, D(0));
+    a_.movRM(Sz::L, RDI, D(4));
+    a_.imulRR64(RDI, RCX);                          // full unsigned product
+    a_.movMR(Sz::L, D(4), RDI);
+    a_.movRR(Sz::Q, R8, RDI);
+    a_.shiftRI(Sz::Q, R8, 5, 32);
+    a_.testRR(Sz::Q, R8, R8);
+    a_.setccR(Cc::NE, R8);
+    a_.movzxRR(Sz::B, R8, R8);                     // high half != 0
+    a_.testRR(Sz::L, RDI, RDI);
+    flagsLogic(Sz::L);                              // N/Z low, C=0, X survives
+    if (packedCcr_) {
+        a_.shiftRI(Sz::L, R8, 4, 1);
+        a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~2);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R8);
+    } else {
+        a_.movMR(Sz::B, at(L_.srV), R8);
+    }
+    return true;
+}
+
 // DIVU.W / DIVS.W. Memory operands use a side-effect-free speculative probe,
 // so trap and overflow paths still reach Moira with pristine guest state.
 bool Emitter::emitDivideWord(size_t i) {
@@ -4302,6 +4339,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::ShiftRegister: return emitShiftRegister(i);
         case SemanticOp::Bitfield: return emitBitfield(i);
         case SemanticOp::MultiplyWord: return emitMultiplyWord(i);
+        case SemanticOp::MultiplyLong: return emitMultiplyLong(i);
         case SemanticOp::DivideWord: return emitDivideWord(i);
         case SemanticOp::DivideLong: return emitDivideLong(i);
         case SemanticOp::CompareMemory: return emitCmpm(i);
@@ -4851,6 +4889,8 @@ bool X64Backend::canEmit(uint16_t op) const {
         case SemanticOp::MultiplyWord:
             return eaCostIndex(mode, reg) >= 0 &&
                    eaCostIndex(mode, reg) != EA_AN;
+        case SemanticOp::MultiplyLong:
+            return op == 0x4C00;
         case SemanticOp::DivideLong:
             return eaCostIndex(mode, reg) >= 0 &&
                    eaCostIndex(mode, reg) != EA_AN;

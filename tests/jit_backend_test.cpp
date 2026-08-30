@@ -371,6 +371,16 @@ int main() {
         divuRead.exactRequired = true;
         check(!jit::replayableSpeculativeRead(divuRead),
               "an exact-required source cannot be speculatively replayed");
+        const auto mull = jit::describeInstruction(0x4C00); // MULL D0,Dh:Dl
+        check(mull.operation == jit::SemanticOp::MultiplyLong &&
+              mull.bytes() == 4 && mull.eaMode == 0 && mull.eaReg == 0,
+              "IR describes 68020 long multiplication as its own operation");
+        const auto mullMemory = jit::describeMemory(0x4C10, true);
+        check(mullMemory.count == 1 &&
+              mullMemory.access[0].direction == jit::MemoryDirection::Read &&
+              mullMemory.access[0].operand == jit::MemoryOperand::Source &&
+              mullMemory.access[0].bytes == 4,
+              "long multiplication publishes its sole long source-memory read");
         const auto divl = jit::describeInstruction(0x4C40); // DIVL D0,Dr:Dq
         check(divl.operation == jit::SemanticOp::DivideLong &&
               divl.bytes() == 4 && divl.eaMode == 0 && divl.eaReg == 0,

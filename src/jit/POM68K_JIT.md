@@ -851,6 +851,24 @@ EA siblings: unsupported 5,286 → 3,910 (**−26.03 %**), total fallbacks 48,98
 → 47,768 (**−2.48 %**), 2,224,199 / 2,232,870 native (**99.61 %**), with the
 four fingerprints and SCSI count unchanged.
 
+The next static row, `4C00`, is Speedometer's exact `MULU.L D0,D4` selector
+`4004`: unsigned 32-bit result, fixed base cost 43 and no memory access. The
+low result alone is written, but this is not the word multiply's ordinary
+logic-flag tail: V reports whether the full unsigned 64-bit product has a
+non-zero high half. A64 and x64 therefore compute that full product, write
+its low half to D4, derive N/Z from the low half, set V from the high half,
+clear C and preserve X. Admission remains exact-extension-only; signed,
+64-bit-result and other-register MULL forms still replay through Moira.
+
+The directed 030 oracle starts below overflow, crosses into V=1 and compares
+256 queue/cycle checkpoints with 254 generated block runs and zero slow
+instructions on native A64 and native x64 under Rosetta. All four real LC II
+030 locksteps remain identical. The production-profile recensus removes the
+351 static refusals: unsupported 3,910 → 3,559 (**−8.98 %**) and total
+fallbacks 47,768 → 47,414 (**−0.74 %**); 2,224,131 / 2,232,758 instructions
+are native (**99.61 %**). The four fingerprints, 270 frames, 2,577 SCSI
+commands and halted=0 remain unchanged.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
