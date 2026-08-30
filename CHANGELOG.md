@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 345 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 346 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"native division makes SimCity 3.69 % slower" — two rebuilt-binary comparisons agreed and were both wrong; the same executable with an injected admission switch measures division 1.453 % faster, proving the apparent regression was code-layout noise** → [2026-08-30 (ninth) — The SimCity division promotion survives…](#2026-08-30-division-promotion)
 - **"patch 31 caused the 68030 wedge, because the `-L etalon` tier had run 118/118 green eight days earlier" — a dated green tier is not a control; both arms built from HEAD *without* the patch wedge identically, and the real finding is that no 68030 boots under the shipping default on x86-64** → [2026-08-29 — Moira patch 31…](#2026-08-29-patch31-and-the-withdrawal)
 - **"the x64 030 generator refuses 100 % of its code windows" — both backends refuse identically at the same step, and the cause is a one-byte page from an unprogrammed TC, bounded to the pre-MMU boot** → [2026-08-28 (fourteenth) — The 100 % window refusal…](#2026-08-28-030-degenerate-page)
 - **"the GUI speed gap is the per-slice AppleTalk path" (×9.235 off vs ×0.845 on, 2026-08-25) — its two arms match turbo-vs-paced, and the real thief was the pacer sleeping relative to emulation cost alone: every paced machine ran at ~×0.75 nominal** → [2026-08-28 (ninth) — Nominal mode never held ×1…](#2026-08-28-pacing-absolute-deadline)
@@ -352,6 +353,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (ninth)** — [The SimCity division promotion survives: two inter-binary regressions were code-layout noise, while same-binary ABBA measures native division 1.453 % faster](#2026-08-30-division-promotion)
 - **2026-08-30 (eighth)** — [Memory division becomes transactional on both generators: speculative RAM, deferred 040 cache/EA effects, and exactly one MMIO read](#2026-08-30-memory-division)
 - **2026-08-30 (seventh)** — [The JIT closes SimCity's long-division `4C40` witness on both generators, with every extension action and trap guard proved](#2026-08-30-long-division)
 - **2026-08-30 (sixth)** — [Word division covers SimCity's three hot opcodes on both generators, and its zero guard closes a latent `FlagMayTrap` continuation bug](#2026-08-30-word-division)
@@ -699,6 +701,52 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-30-division-promotion"></a>
+## 2026-08-30 (ninth) — The SimCity division promotion survives: two inter-binary regressions were code-layout noise, while same-binary ABBA measures native division 1.453 % faster
+
+The named workload has now answered the question the division work was for.
+Rebuilding `lcii_simcity_census` at the end of the word, long and memory
+lowerings launches the same BLACK FOREST MONSTRE city (93.8 % of the screen
+changes, +460 SCSI commands, 2526 total, CPU not halted), and the application
+phase no longer contains any of its four original division witnesses:
+`81FC`, `8DFC`, `8FFC` and `4C40` have disappeared from the fallback table.
+
+The census itself was missing the observable needed for promotion. It now
+times only the final 7,200-frame application loop, not boot or launch, and
+prints both `bench::fingerprint(cpu)` and an FNV-1a fingerprint of the decoded
+framebuffer. All fourteen runs of the first campaign and all later runs agreed
+on CPU `59b9002342188fc1`, screen `df57e5295321d553`, halted=0 and SCSI=2526.
+This closes the usual trap where a faster result silently ran a different
+screen or stopped before the application workload.
+
+The first ABBA looked like a clear refusal. Against `6987127`, the last commit
+before division, three application samples measured 10.453863 s median for the
+baseline and 10.755240 s for HEAD: **+2.883 % slower**. Arm spread was 0.501 %
+and a three-pair HEAD-vs-HEAD null measured a 0.570 % floor. A second build from
+the same HEAD with only A64 division admission patched out seemed even more
+decisive: 10.443963 s OFF versus 10.829467 s ON, **+3.691 %**, against a 0.696 %
+arm floor. On those figures an opt-in `POM68K_JIT_030_DIVISION` was drafted.
+
+That was still not a controlled executable. Changing one source branch and
+relinking changes every downstream code address; two distinct binaries can
+agree on the guest footprint and still price host layout. Before committing
+the withdrawal, the draft admission was captured in `ResolvedConfig` and an
+AB/BA/AB campaign compared `0` and `1` in the **same executable**. The answer
+reversed cleanly:
+
+- division OFF: 10.938232 s median, 10.911048–10.968233, 0.523 % spread;
+- division ON: 10.779277 s median, 10.776535–10.835160, 0.544 % spread;
+- ON is **1.453 % faster**, 2.55 times the prior 0.570 % null floor; load stayed
+  below the 2.5/10-core busy threshold and every guest footprint stayed exact.
+
+The +2.883 % and +3.691 % claims are therefore retracted as inter-binary
+layout artefacts. The draft knob is deleted before landing; native word/long
+division remains admitted on the 68030 and 68040, backed by the asset-free trap,
+overflow, MMIO and cache oracles plus both 120k 030 alignment locksteps. The
+lasting change here is the census timer/fingerprint, so the next promotion
+decision starts with a same-binary control instead of discovering this lesson
+after two persuasive false positives.
 
 <a id="2026-08-30-memory-division"></a>
 ## 2026-08-30 (eighth) — Memory division becomes transactional on both generators: speculative RAM, deferred 040 cache/EA effects, and exactly one MMIO read

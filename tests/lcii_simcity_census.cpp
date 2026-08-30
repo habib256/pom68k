@@ -33,11 +33,13 @@
 // POM68K_DUMP=1 writes lcii_simcity_*.ppm at every phase.
 
 #include "AssetFingerprint.h"
+#include "BenchHarness.h"
 #include "Cpu030.h"
 #include "JitTestConfig.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -168,6 +170,19 @@ double changed(const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) {
     return a.empty() ? 0.0 : double(n) / double(a.size());
 }
 
+uint64_t screenFingerprint() {
+    std::vector<uint32_t> fb;
+    screen(fb);
+    uint64_t fp = 1469598103934665603ull;
+    for (uint32_t pixel : fb) {
+        for (int byte = 0; byte < 4; byte++) {
+            fp ^= (pixel >> (byte * 8)) & 0xFF;
+            fp *= 1099511628211ull;
+        }
+    }
+    return fp;
+}
+
 }  // namespace
 
 int main() {
@@ -283,14 +298,22 @@ int main() {
     // ── Phase 4: the number this harness exists for ──────────────────────
     // Whatever is on screen now runs for two emulated minutes with the mouse
     // wiggling, which is what a person does: the redraw path is the load.
+    const auto loadStart = std::chrono::steady_clock::now();
     for (int i = 0; i < 120; i++) {
         mem.mouseMove((i % 2) ? 6 : -6, (i % 3) ? 4 : -4);
         runFrames(60);
     }
+    const auto loadEnd = std::chrono::steady_clock::now();
+    const double loadWall =
+        std::chrono::duration<double>(loadEnd - loadStart).count();
     dump("lcii_simcity_load.ppm");
     cpu.jit().censusPhase(moved < 0.05 ? "app-load(INVALID: nothing launched)"
                                        : "app-load");
 
+    std::printf("app-load: wall=%.6fs fp=%016llx screen=%016llx\n",
+                loadWall,
+                (unsigned long long)bench::fingerprint(cpu),
+                (unsigned long long)screenFingerprint());
     std::printf("halted=%d, SCSI %ld commands total\n",
                 gCpu->isHalted(), mem.scsi().commands);
     if (moved < 0.05) {
