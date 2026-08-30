@@ -863,15 +863,24 @@ Open, in ROI order:
   formes sœurs `2270`/`2272`/`2230`/`2032`/`2075` : 9 408 → 5 286 unsupported
   (**−43,82 %**), 52 303 → 48 982 replis totaux (**−6,35 %**), empreintes,
   SCSI et fin inchangés. `CHANGELOG.md` (2026-08-31 ninth).
-- [ ] **Queue de couverture Speedometer après les MOVE indirects** : `C029`
+- **Destinations MOVE indexées Speedometer — CLOS le 2026-08-31** : le traceur
+  corrige l'étiquette initiale : `2191` / `31A9` sont des destinations
+  **brèves** `1000`, pas full-format, à coût 5. Le chemin deux-mémoires
+  prévalide déjà source et destination avant la lecture ; A64/x64 ouvrent
+  donc cette cellule seulement pour la paire mémoire `PreflightAll` sur 030.
+  L'oracle exact reste natif 256 checkpoints, puis déplace la destination sur
+  MMIO et retrouve callbacks/état/horloge de Moira. Les formes sœurs
+  `319F`/`31B2`/`2D9F` disparaissent aussi : 5 286 → 3 910 unsupported
+  (**−26,03 %**) et 48 982 → 47 768 replis totaux (**−2,48 %**), toutes les
+  empreintes restant exactes. `CHANGELOG.md` (2026-08-31 tenth).
+- [ ] **Queue de couverture Speedometer après les MOVE indexés** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Les prochains candidats structurels
-  sont les destinations MOVE indexées complètes `2191` / `31A9`, puis
-  ROX/décalages hors tranche, MOVEM indexé complet, `4C00` et ADDX/SUBX
-  mémoire. `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0` et les MOVE source
-  full-indirects sont clos ; traiter la suite par contrat, pas par largeur
-  d'opcode.
+  sont `4C00`, puis ROX/décalages hors tranche, MOVEM indexé complet et
+  ADDX/SUBX mémoire. `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE
+  source full-indirects et les destinations brèves prouvées sont clos ;
+  traiter la suite par contrat, pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

@@ -2068,7 +2068,16 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (!memory.complete()) return false;
         const bool restartWrite = L.is030 &&
                                   memory.proof.restartableLastWrite();
-        const int dstCycles = restartWrite && dst.idx == EA_IX
+        // Speedometer's 2191/31A9 pair writes through a BRIEF indexed
+        // destination after reading an independent memory source. The
+        // PreflightAll lowering below proves both mappings before that read,
+        // so its measured five-cycle destination formation is as safe as
+        // the restartable single-write family. Full-format destinations are
+        // still refused by decodeEa's default admission.
+        const bool preflightIndexedPair = L.is030 && src.memory &&
+                                          dst.idx == EA_IX;
+        const int dstCycles = (restartWrite || preflightIndexedPair) &&
+                              dst.idx == EA_IX
             ? 5 : kMoveDst[dst.idx];
         const int sourcePenalty = src.fullFormat ? fullIndexPenalty(src) : 0;
         const int cycles = kEaRead[src.idx][sz] + sourcePenalty + dstCycles;

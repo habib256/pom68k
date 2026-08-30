@@ -420,6 +420,21 @@ void installSpeedometerIndirectMoveLoop(FaultCpu& c) {
     put32(c, kBitfieldData + 0x104, 0x89ABCDEF);
 }
 
+void installSpeedometerIndexedDestinationLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x2191);    // MOVE.L (A1),0(A0,D1.W)
+    put16(c, kCode + 0x02, 0x1000);    // Speedometer brief destination
+    put16(c, kCode + 0x04, 0x31A9);    // MOVE.W 4(A1),0(A0,D1.W)
+    put16(c, kCode + 0x06, 0x0004);    // source displacement
+    put16(c, kCode + 0x08, 0x1000);    // Speedometer brief destination
+    put16(c, kCode + 0x0A, 0x60F4);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+    put32(c, kBitfieldData + 0x00, 0x12345678);
+    put16(c, kBitfieldData + 0x04, 0xABCD);
+}
+
 void installJsrLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -663,6 +678,107 @@ int main() {
               (!nativeProduction ||
                replayStats.slowInstrs > moveStats.slowInstrs),
               "2470 non-plain final operand replays before its An commit");
+    }
+
+    // Speedometer's 2191/31A9 pair writes two independent RAM sources to
+    // the same brief-indexed destination. Both source and destination must
+    // be proved before the first load; a refused write mapping then replays
+    // without duplicating a read or publishing flags early.
+    {
+        FaultCpu moveRef, moveNative;
+        installSpeedometerIndexedDestinationLoop(moveRef);
+        installSpeedometerIndexedDestinationLoop(moveNative);
+        moveRef.reset(); moveNative.reset();
+        moveRef.setTC(12u << 20); moveNative.setTC(12u << 20);
+        for (FaultCpu* c : {&moveRef, &moveNative}) {
+            c->setA(0, kBitfieldData + 0x200);
+            c->setA(1, kBitfieldData);
+            c->setD(1, 8);
+        }
+        moveNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = moveRef.getClock() + 43;
+            moveRef.executeUntil(target);
+            moveNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && moveRef.getD(r) == moveNative.getD(r) &&
+                       moveRef.getA(r) == moveNative.getA(r);
+            same = same && moveRef.getPC() == moveNative.getPC() &&
+                   moveRef.getPC0() == moveNative.getPC0() &&
+                   moveRef.getIRD() == moveNative.getIRD() &&
+                   moveRef.getIRC() == moveNative.getIRC() &&
+                   moveRef.getSR() == moveNative.getSR() &&
+                   moveRef.getClock() == moveNative.getClock() &&
+                   get32(moveRef, kBitfieldData + 0x208) ==
+                       get32(moveNative, kBitfieldData + 0x208);
+            if (!same)
+                std::printf("    030 2191/31A9 divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto moveStats = moveNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(moveNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(moveNative.jit.backendName(), "x86-64")) &&
+            !moveNative.jit.config().packedCcr;
+        const uint32_t destinationValue =
+            get32(moveNative, kBitfieldData + 0x208);
+        std::printf("    030 indexed-destination compiled=%llu runs=%llu slow=%llu\n",
+                    (unsigned long long)moveStats.blocksCompiled,
+                    (unsigned long long)moveStats.blocksRun,
+                    (unsigned long long)moveStats.slowInstrs);
+        // A checkpoint may land after 2191 or after 31A9. The first value is
+        // therefore a valid boundary too; the next instruction replaces its
+        // high word with ABCD without touching the low word.
+        check(same && (destinationValue == 0x12345678 ||
+                       destinationValue == 0xABCD5678) &&
+              moveStats.blocksCompiled != 0 && moveStats.blocksRun != 0 &&
+              (!nativeProduction || moveStats.slowInstrs == 0),
+              "Speedometer 2191/31A9 indexed destinations stay native on 030");
+
+        // Move only the destination onto synthetic MMIO. The compiled pair
+        // must reject its write mapping before reading the source; untouched
+        // interpreter replay owns every long/word callback and boundary.
+        for (FaultCpu* c : {&moveRef, &moveNative})
+            c->setA(0, kMmio - 8);
+        bool replaySame = true;
+        for (int step = 0; step < 32 && replaySame; step++) {
+            const int64_t target = moveRef.getClock() + 43;
+            moveRef.executeUntil(target);
+            moveNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                replaySame = replaySame &&
+                    moveRef.getD(r) == moveNative.getD(r) &&
+                    moveRef.getA(r) == moveNative.getA(r);
+            const auto& refWrite = moveRef.observedWrite;
+            const auto& nativeWrite = moveNative.observedWrite;
+            replaySame = replaySame &&
+                moveRef.getPC() == moveNative.getPC() &&
+                moveRef.getPC0() == moveNative.getPC0() &&
+                moveRef.getIRD() == moveNative.getIRD() &&
+                moveRef.getIRC() == moveNative.getIRC() &&
+                moveRef.getSR() == moveNative.getSR() &&
+                moveRef.getClock() == moveNative.getClock() &&
+                refWrite.count == nativeWrite.count &&
+                refWrite.address == nativeWrite.address &&
+                refWrite.value == nativeWrite.value &&
+                refWrite.bytes == nativeWrite.bytes &&
+                refWrite.pc == nativeWrite.pc &&
+                refWrite.pc0 == nativeWrite.pc0 &&
+                refWrite.ird == nativeWrite.ird &&
+                refWrite.irc == nativeWrite.irc &&
+                refWrite.sr == nativeWrite.sr &&
+                refWrite.clock == nativeWrite.clock;
+            if (!replaySame)
+                std::printf("    indexed-destination MMIO divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto replayStats = moveNative.jit.stats().snapshot();
+        check(replaySame && moveNative.observedWrite.count != 0 &&
+              (!nativeProduction ||
+               replayStats.slowInstrs > moveStats.slowInstrs),
+              "indexed MMIO destination replays before source/flags escape");
     }
 
     // The ordinary read half of the brief-index lowering: signed word

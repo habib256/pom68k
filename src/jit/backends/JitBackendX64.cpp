@@ -2094,8 +2094,14 @@ bool Emitter::emitMove(size_t i, int szIdx) {
                  ? kEaRead[src.idx][szIdx]
                  : kEaRead[src.idx][szIdx] + sourcePenalty;
     // Brief-indexed destination calculation costs five base cycles in the
-    // restartable family (a64:1268); the plain table refuses E_IX entirely.
-    const int dc = (restartWrite && dst.idx == EA_IX) ? 5 : kMoveDst[dst.idx];
+    // restartable family (a64:1268). Speedometer's 2191/31A9 forms add the
+    // independently proved memory-source pair: both mappings are checked by
+    // the PreflightAll body before it performs the source read. Full-format
+    // destinations remain behind decode()'s default refusal.
+    const bool preflightIndexedPair = L_.is030 && src.memory &&
+                                      dst.idx == EA_IX;
+    const int dc = ((restartWrite || preflightIndexedPair) &&
+                    dst.idx == EA_IX) ? 5 : kMoveDst[dst.idx];
     if (rc < 0 || dc < 0) return false;
     const int cycles = rc + dc;
     // On an 030 the traced total carries the i-cache penalty of THAT run

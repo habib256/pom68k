@@ -836,8 +836,20 @@ native A64 and x64. The production-profile 270-frame census removes those
 rows and their sibling longword-to-register forms: unsupported 9,408 → 5,286
 (**−43.82 %**), total fallbacks 52,303 → 48,982 (**−6.35 %**), 2,226,797 /
 2,235,488 native (**99.61 %**), with all four fingerprints, frames and SCSI
-count unchanged. Full-format indexed destinations remain separate because
-they place the fallible access on the write side of MOVE.
+count unchanged.
+
+The next pair, `2191`/`31A9`, turned out to be BRIEF indexed destinations,
+not full-format ones. Their fixed base costs leave a five-cycle destination
+formation after the ordinary source read. Both generators already prove the
+source and destination mappings before that read in the two-memory
+`PreflightAll` body; the 030 cost gate now accepts the indexed cell only for
+that memory-source transaction. A destination refusal therefore replays
+before source, flags or write effects escape. The directed oracle moves the
+destination to MMIO after compilation and matches every callback boundary on
+native A64 and x64. The 270-frame census removes the pair and its independent
+EA siblings: unsupported 5,286 → 3,910 (**−26.03 %**), total fallbacks 48,982
+→ 47,768 (**−2.48 %**), 2,224,199 / 2,232,870 native (**99.61 %**), with the
+four fingerprints and SCSI count unchanged.
 
 ### 3.6 What one window exit actually costs (2026-08-09)
 

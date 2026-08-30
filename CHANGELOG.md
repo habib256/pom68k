@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's brief-indexed MOVE destinations reuse the two-memory preflight without duplicating MMIO effects** → [2026-08-31 (tenth) — Speedometer's indexed MOVE destinations…](#2026-08-31-speedometer-indexed-move-destination)
 - **how Speedometer's full-indirect `MOVE.L`/`MOVEA.L` became a two-read transaction on both 68030 JIT generators** → [2026-08-31 (ninth) — Speedometer's indirect MOVE…](#2026-08-31-speedometer-indirect-move)
 - **how Speedometer's full-indirect `LEA` became native on the 68030 without turning `C029`'s bad timing experiment into a false win** → [2026-08-31 (eighth) — Speedometer's indirect LEA…](#2026-08-31-speedometer-indirect-lea)
 - **how Speedometer's tailed `E9D4` made 68030 memory bitfields a proved default on A64 and x64** → [2026-08-31 (seventh) — Speedometer promotes memory bitfields…](#2026-08-31-speedometer-memory-bitfields)
@@ -363,6 +364,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (tenth)** — [Speedometer's brief-indexed MOVE destinations reuse the transactional two-memory path on both 68030 JIT generators](#2026-08-31-speedometer-indexed-move-destination)
 - **2026-08-31 (ninth)** — [Speedometer's full-indirect `MOVE.L`/`MOVEA.L` becomes a two-read direct-RAM transaction on both 68030 JIT generators](#2026-08-31-speedometer-indirect-move)
 - **2026-08-31 (eighth)** — [Speedometer's full-indirect `LEA` becomes native on both 68030 JIT generators while `C029` stays behind its failed real-timing proof](#2026-08-31-speedometer-indirect-lea)
 - **2026-08-31 (seventh)** — [Speedometer's tailed `E9D4` gives x64 its missing fifth-byte reader and promotes 68030 memory bitfields on both generators](#2026-08-31-speedometer-memory-bitfields)
@@ -722,6 +724,50 @@ Newest first.
 
 ---
 
+<a id="2026-08-31-speedometer-indexed-move-destination"></a>
+## 2026-08-31 (tenth) — Speedometer's brief-indexed MOVE destinations reuse the transactional two-memory path on both 68030 JIT generators
+
+The post-indirect-MOVE census put `2191` 575 and `31A9` 445 at the front of
+the next structural group. The watcher corrected the initial label: these
+are not full-format destinations. They are respectively
+`MOVE.L (A1),0(A0,D1.W)` (`1000`) and
+`MOVE.W 4(A1),0(A0,D1.W)` (`0004/1000`), with traced base costs 11 and 12.
+The shared source-read prices are 6 and 7, leaving the same measured
+five-cycle brief-index destination formation in both cases. Their
+`PreflightAll` contracts already publish source-read then last-write order,
+with both mappings preflightable and no exact thunk.
+
+Both generators already had the required transactional body: calculate and
+prove source and destination addresses before the first load, then load,
+commit any source EA update, store through the proved host pointer, commit
+the destination and publish flags. Only the MOVE cost gate still left the
+indexed-destination table cell closed except for a restartable single-write
+family. A64 and x64 now accept that five-cycle cell on the cacheless 030 when
+the source is also memory; the later `PreflightAll`/order checks remain the
+actual admission proof. Full-format destinations and register-source indexed
+writes are unchanged.
+
+The directed 030 gate runs the exact `2191/1000` and
+`31A9/0004/1000` sequence for 256 checkpoints with identical registers,
+memory, PC/queue, SR and clock and zero slow instructions on native A64 and
+native x64 under Rosetta. It then moves only the destination to synthetic
+MMIO. The write probe refuses before the source read, and untouched Moira
+replay produces identical callback count, address, value, width and full
+observable CPU boundary. Backend parity, the asset-free suite and all four
+real LC II 030 locksteps pass.
+
+The same proof removes the phase's independent-source siblings `319F`,
+`31B2` and `2D9F`. In the production-profile 270-frame recensus, unsupported
+fallbacks move 5,286 → 3,910 (**−26.03 %**) and total fallbacks 48,982 →
+47,768 (**−2.48 %**); 2,224,199 / 2,232,870 instructions are native
+(**99.61 %**). CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
+histogrammed 0.307259 s wall time is not a speed claim. `C029` stays behind
+its failed peripheral-phase proof; `4C00` is now the next static CPU row.
+
+---
+
 <a id="2026-08-31-speedometer-indirect-move"></a>
 ## 2026-08-31 (ninth) — Speedometer's full-indirect `MOVE.L`/`MOVEA.L` becomes a two-read direct-RAM transaction on both 68030 JIT generators
 
@@ -763,7 +809,7 @@ Unsupported fallbacks move 9,408 → 5,286 (**−43.82 %**) and total fallbacks
 `be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
 `0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
 histogrammed 0.312758 s wall time is not a speed claim. `C029` remains the
-largest static row by design; full-format indexed MOVE destinations
+largest static row by design; brief-indexed MOVE destinations
 (`2191`/`31A9`) are now the next structural candidates.
 
 ---
