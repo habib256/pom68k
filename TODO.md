@@ -137,6 +137,12 @@ sont depuis le 2026-08-25 (`CHANGELOG.md` à leurs dates) :
   **Reste à faire pour cocher** : rejouer le palier sur un hôte x86-64
   *portant les assets* — le seul hôte de ce type n'existe pas encore ; c'est
   la même machine-unique que § 10 constat 3 veut doubler d'un runner.
+  **La mesure est faite le 2026-08-30** : les deux premiers runs COMPLETS
+  du registre sur l'hôte x86-64 portant les assets (233/235 puis 232/235,
+  `STATUS.md`) contiennent le palier `unit` entier **vert et exécuté** les
+  deux fois — les échecs sont trois etalons, deux sur l'état des fixtures
+  de cet hôte (§ 1) et un sur une marge de TIMEOUT. La case attend la
+  décision de séquencement, pas une mesure.
 
 `docs_test` vérifie la cohérence dynamique du catalogue compilé, des gates,
 des budgets et de la documentation ; il ne doit contenir aucun nombre plafond
@@ -483,6 +489,26 @@ soft-skippe sort 0 et est compté vert par `ctest`. Et depuis le 2026-08-28,
 une troisième : **elle ne parle que de l'hôte qui l'a produite** — l'autre
 jambe se lit dans la CI, pas dans ce fichier.
 
+- [ ] **TWO MORE REDS, x86-64 host only, found by the FIRST full-registry
+  runs on the host carrying the assets (2026-08-30, twice, plus a serial
+  re-run — deterministic, not load).** `macii_persist_etalon` (KeyMap shows
+  Cmd-N live, no folder ever appears; boots `hdv/System 7.5.5 HD.dsk`,
+  which `tools/check_volume_state.py` marks DRIFTED from `assets.lock`)
+  and `q605_afp_live_etalon` (login dialog reached, `AFP sessions=0`
+  through every phase; its boot volume `hdv/MacOS-8.1-boot.vhd` is DIRTY
+  **and** DRIFTED). Both land on this host's documented fixture state
+  (8 dirty volumes / 4 drifted references) — read the volumes before the
+  code, per the method rule below. Next, in order: restore the two
+  reference images to their `assets.lock` identities (or re-record the
+  identities deliberately), then re-run the pair; only a failure on a
+  clean, matching image earns a code hunt. Runs recorded in `STATUS.md`.
+- [ ] **`iivx_persist_etalon` sits ON its 1800 s bound on this host**:
+  1795.94 s green in the first full run, `Timeout` at 1800.05 s in the
+  second — the slowest gate of the registry here (next: `lc520_persist`
+  1523 s, `sonora_persist` 1491 s). Not a wedge; a margin of 4 seconds.
+  Raise its TIMEOUT alongside the other persists, or measure why the IIvx
+  persist costs 1.2× the LC 520's on this host.
+
 ### Open here, and not red
 
 - [ ] **38 gates prefer a 1.37 GiB unversioned image over the 250 MiB
@@ -738,13 +764,21 @@ Open, in ROI order:
     replis cross-page légitimes, total de phase 37,7 M → 31,2 M. Travail de
     couverture, pas de temps (leçon ABBA ci-dessus) ; le défaut reste
     opt-in en attendant sa propre preuve de promotion.
-  - `EFD1` (BFINS `(A1)`, 15,75 %) : vraie absence — bitfield mémoire en
-    ÉCRITURE, aucun contrat IR (`refineMemoryFromExtensions` ne décrit que
-    les formes lecture seule) et rangée `-1` dans la table 040. La forme
-    sans-queue tient dans les 2 slots du `MemoryContract`
-    (read4 + write4, `lastWrite=1`, RestartInstruction) ; la forme à queue
-    en demanderait 4 — hors contrat, à refuser. C'est le prochain morceau,
-    IR d'abord, émetteur ensuite.
+  - `EFD1` (BFINS `(A1)`, 15,75 %) : **la moitié IR est FAITE le
+    2026-08-30** — `refineMemoryFromExtensions` publie le contrat RMW
+    deux-slots de la forme sans-queue (read4 + write4, `lastWrite=1`) pour
+    les quatre actions d'écriture, la forme à queue reste hors contrat et
+    refusée (pas d'analogue écriture du protocole sondé-avant-lecture : un
+    premier store commis ne se rejoue pas). Le même lot a porté sur x64
+    **la famille bitfield REGISTRE statique entière** (8 actions, masques
+    et décalages pliés en constantes, `BSR`-de-zéro contourné pour BFFFO)
+    — scénario dirigé `static-bitfield` dans
+    `jit_asset_free_lockstep_test`, résidence exigée des DEUX générateurs,
+    row de parité Bitfield retiré. Restent les ÉMETTEURS mémoire : la
+    rangée `-1` de BFINS dans la table a64 (consommer le contrat publié),
+    le portage x64 des lectures mémoire derrière `POM68K_JIT_030_MEMBF`,
+    et les formes registre dynamiques sur x64 (`shiftRCl` existe, il faut
+    leur preuve).
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur

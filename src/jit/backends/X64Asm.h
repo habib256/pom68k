@@ -214,6 +214,14 @@ public:
         db(0x0F); db(from == Sz::B ? 0xBE : 0xBF);
         modrm(dst, src);
     }
+    // Bit Scan Reverse: dst = index of the highest set bit of src.
+    // UNDEFINED when src is zero — every caller branches around that case
+    // (BFFFO's zero-field arm). Baseline x86-64; no LZCNT/ABM assumed.
+    void bsrRR(Sz sz, Reg dst, Reg src) {
+        opsize(sz); rex(sz, dst, src, true);
+        db(0x0F); db(0xBD);
+        modrm(dst, src);
+    }
     // 32 -> 64 sign extension (movsxd), for guest addresses used as offsets.
     void movsxd(Reg dst, Reg src) {
         rex(Sz::Q, dst, src); db(0x63); modrm(dst, src);

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 337 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 339 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -346,6 +346,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (second)** — [The x64 generator learns the bitfield family's static register forms, the parity table loses its Bitfield row, and the write bitfields get their IR contract — "IR d'abord" delivered](#2026-08-30-x64-static-bitfields)
+- **2026-08-30** — [The x86-64 host with the assets runs the WHOLE registry for the first time, twice: the unit tier is green here at last, the only reds are the fixtures this host was already known to carry, and one gate is sitting on its own timeout](#2026-08-30-x86-full-run-night)
 - **2026-08-29 (eleventh)** — [Recording moves onto the Machine menu: start/stop are queued like a save-state request, performed between two quanta, and the tick follows the machine](#2026-08-29-recording-menu)
 - **2026-08-29 (tenth)** — [Real sessions become replayable benchmarks: the input journal records every GUI input at its machine clock, and a recorded session replays bit-identically from its snapshot](#2026-08-29-input-journal)
 - **2026-08-29 (ninth)** — [The registry's numbers stop being typed: `STATUS.md` is generated from the configure-time roster, and `docs_test` verifies the artifact instead of only chasing prose](#2026-08-29-status-md-generated)
@@ -683,6 +685,139 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-x64-static-bitfields"></a>
+## 2026-08-30 (second) — The x64 generator learns the bitfield family's static register forms, the parity table loses its Bitfield row, and the write bitfields get their IR contract — "IR d'abord" delivered
+
+The next slice in TODO § 3's order (bitfields after `D1F0`), done on the
+host whose gates can prove it — the x86-64 box where the three pinned 030
+locksteps live.
+
+**The emitter.** `SemanticOp::Bitfield` lands in `JitBackendX64.cpp`: the
+static offset/width register forms, all eight actions, a64:3040's
+lowering translated with the constants folded — with o and w known at
+compile time the rotate, the extraction shift and the destination mask
+are immediates, so the x64 body is shorter than the a64 one it mirrors.
+`BFFFO` needed one new instruction in the mini-assembler (`bsrRR`,
+`0F BD /r`, baseline x86-64) and a branch around x86's undefined
+BSR-of-zero: offset+width for the empty field, offset+width−1−bsr
+otherwise. Admission is a64:1100's `canEmit` rule verbatim (register,
+`(An)`, `d16(An)`), so the parity sweep sees identical sets and the
+`{Bitfield, a64Only}` exception row is RETIRED; what x64 still cannot
+lower — memory forms, dynamic o/w — refuses at EMISSION, the a64
+−1-row pattern, visible to the census and invisible to the parity gate
+by design. Per-action traced-cycle equality (a64:3041's table verbatim)
+keeps a mispriced form refusing rather than mischarging.
+
+**The proof is directed, not incidental.** A new `static-bitfield`
+scenario in `jit_asset_free_lockstep_test` loops all eight actions over
+edge cases ({0:32}, {31:1}, a field ending exactly at bit 32, and a
+BFCLR-wiped field so BFFFO's zero arm runs every lap): 256 lockstep
+checkpoints against the interpreter, registers, memory and flags equal,
+and **`slow=0` demanded of BOTH production generators** — the first
+scenario whose residency claim binds x64 too. Result:
+`compiled=1 runs=51 native=1332 slow=0`. Around it: the nine
+lockstep/backend gates green, then the whole `-L 'jit|m030'` selection
+**87/87 green** on 158/158 fresh binaries.
+
+**Same day, the memory READS followed — and flushed out a latent UB in the
+register lot.** The x64 memory arm lowers the read-only TAILLESS subset
+(the field provably inside one longword after the signed byte-displacement
+adjust — SC2K's `{D1:8}` and Rogue's `{0:D0}` shapes), static and dynamic
+o/w, on `(An)` and `d16(An)`, priced by this backend's centralized
+base-cycle charge + the exact-read thunk rather than a64's per-emitter
+sole-read contract; the five-byte tail refuses. Directed proof: a new
+`memory-bitfield` scenario (negative Dn offset, dynamic width to 32, the
+d16 column) — `native=922 slow=0`, 256 lockstep checkpoints exact, the
+claim binding BOTH generators. The first tier pass then produced a
+SIGSEGV **19 s into `q605_barefpu_boot_etalon` only** (its three siblings
+green): gdb batch put RIP inside generated code with the probe's host
+pointer null. Root cause READ-ONLY, in the REGISTER lot of the morning:
+the static BFFFO used a stack-local `Asm::Label` — `finish()` patches
+fixups through Label POINTERS after the emitter frame is gone, so the
+rel8 delta was read from freed stack. Green through every shallow
+lockstep by luck; the memory arm's new code paths deepened the stack and
+made it fire. One-line fix (`*a_.fresh()`, the arena label every other
+emitter uses), the crash's own comment now standing where the bug was;
+barefpu boots its bare-68LC040 Finder again. **Validation state at the
+host handover** (this box retires tonight; the next session is the M4):
+the pre-fix tier run was 135/137 (the two misses being the known fixture
+red and this crash), barefpu green post-fix on a fresh build; the
+post-fix FULL `jit|m030|m040` revalidation was launched and had to be
+cut by the handover — it is the FIRST thing to run, and neither this
+slice nor the tree's registry may be quoted green until it has.
+
+**The IR half of `EFD1`.** `refineMemoryFromExtensions` now publishes the
+TAILLESS write-bitfield contract — read4 + write4 at one address,
+`MemoryOrder::ReadModifyWrite`, `lastWrite = 1` — for
+BFCHG/BFCLR/BFSET/BFINS on memory, exactly the two-slot shape TODO § 3
+sketched. No backend consumes it yet, and both refuse those forms before
+touching the plan, so the change is inert until the memory emitters
+arrive; the five-byte tail form stays undescribed on the stated ground
+that a committed first store cannot replay. What remains, named in
+TODO § 3: a64's BFINS −1 row consuming the contract, the x64 port of the
+memory reads behind `POM68K_JIT_030_MEMBF`, and the dynamic register
+forms on x64.
+
+---
+
+<a id="2026-08-30-x86-full-run-night"></a>
+## 2026-08-30 — The x86-64 host with the assets runs the WHOLE registry for the first time, twice: the unit tier is green here at last, the only reds are the fixtures this host was already known to carry, and one gate is sitting on its own timeout
+
+An overnight measurement campaign, run to the book: full `make -j4` under
+the memory scope, `check_binaries_fresh.py --self-test` then 158/158
+fresh, and the registry in ONE `ctest -j64` — something no x86-64 host
+carrying the assets had ever done.
+
+**Run 1: 233/235 in 3 134 s wall (52 min 14 s); census 232 executed,
+1 soft-skipped (`jit_store_guard_a64_test`, a64 backend absent — the
+expected one), 2 failed. Run 2: 232/235 in 3 271 s; same census shape.**
+Both recorded in `STATUS.md` (`--record-run`). The `unit` tier is inside
+both runs, whole, green and EXECUTING — the measurement § 0's last open
+box was waiting for; the box itself is left to the sequencing decision.
+
+The failures, each triaged before being named:
+
+- `macii_persist_etalon` and `q605_afp_live_etalon` fail IDENTICALLY in
+  both parallel runs and in a serial re-run — deterministic, not load.
+  Both preambles and `tools/check_volume_state.py` say why before any
+  code is suspected: the Mac II leg boots `hdv/System 7.5.5 HD.dsk`,
+  DRIFTED from its `assets.lock` identity, and the AFP gate's
+  `hdv/MacOS-8.1-boot.vhd` is DIRTY and DRIFTED (this host: 8 dirty
+  volumes, 4 drifted references — its documented state). TODO § 1 carries
+  the restore-then-re-run plan; the night's code is exonerated by scope
+  (the input-journal lots touch no machine path these gates use).
+- `iivx_persist_etalon` passed run 1 at **1 795.94 s — four seconds under
+  its 1 800 s TIMEOUT** — and timed out in run 2 at 1 800.05 s. Not a
+  wedge; the registry's slowest gate here, sitting on its bound.
+
+**The benches, on the quiet host (load 1.0), null experiments first**:
+LC II null pair 50.79/51.46 s, Q605 null pair 51.92/51.94 s — the floor
+is real. Three interleaved rounds per arm, fixed budgets, and **every
+arm of both machines prints the same architectural fingerprint**
+(`cfb184b6faddabec` LC II, `bbf4a937c93e669d` Q605) — three engines,
+same guest work, the conformance claim holding on this host:
+
+| machine (budget) | interp | threaded | x64 pinned |
+|---|---|---|---|
+| LC II (6 000 frames) | 51.5 s ×1.94 | 46.2 s ×2.16 | **18.9 s ×5.28** |
+| Q605 (3 000 frames) | 52.0 s ×0.96 | 26.9 s ×1.86 | **8.2 s ×6.08** |
+
+The Q605 interpreter cannot hold real time on this host (×0.96); the
+x64 030 generator under the mode-1 clamp is ×2.4 over `threaded` on the
+LC II — numbers per arm with matching fingerprints, no delta claimed
+beyond them.
+
+**The SimCity census ran here for the first time**: the default-engine
+pass (threaded — `auto` on an x86-64 030 since the withdrawal) boots,
+launches SC2K (84.3 % of the screen changes, SCSI +520) and never
+halts — one traversal of the GISTPERSO startup-race path without the
+race, worth exactly one data point. The x64-pinned pass puts the
+generator at **82.9 % native in boot, 82.5 % at the idle Finder, 97.1 %
+during launch, 96.6 % in app-load** — the patched, clamped 030 generator
+carrying a real application load.
 
 ---
 

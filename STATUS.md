@@ -70,5 +70,5 @@ overwrites it, including a one-gate `ctest -R`.
 
 | start | host | in log | executed | soft-skipped | failed | note |
 |---|---|---|---|---|---|---|
-
-_(no run recorded yet)_
+| Aug 29 23:58 +04 | x86_64 | 235 | 232 | 1 | 2 | first FULL registry run on an x86-64 host carrying the assets; ctest -j64, 3134 s wall; the two reds land on dirty/drifted reference volumes (check_volume_state.py) |
+| Aug 30 01:24 +04 | x86_64 | 235 | 231 | 1 | 3 | stability repeat, ctest -j64, 3271 s wall; same two fixture reds, plus iivx_persist_etalon Timeout at 1800 s after passing run 1 at 1795.94 s — a gate sitting ON its bound here |
