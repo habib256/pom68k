@@ -2863,10 +2863,10 @@ bool Emitter::emitShiftRegister(size_t i) {
 // or dynamic o/w, priced by this backend's centralized base-cycle charge.
 // Reads use the exact thunk; writes consume the shared read4/write4 RMW
 // contract and prove the writable translation before exposing the read.
-// What refuses here, each with the door it leaves open: dynamic REGISTER
-// forms want CL shifts threaded through the flag block and their own
-// proof; the five-byte tail form wants the two-probe protocol (a64:2958);
-// five-byte writes need a four-slot transactional contract.
+// Dynamic register forms use CL-counted shifts and keep their entire body
+// call-free. What refuses here, each with the door it leaves open: the
+// five-byte read tail wants the two-probe protocol (a64:2958); five-byte
+// writes need a four-slot transactional contract.
 bool Emitter::emitBitfield(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
@@ -3067,13 +3067,113 @@ bool Emitter::emitBitfield(size_t i) {
         }
     }
     const uint16_t ext = memExt;
-    if (ext & 0x0820) return false;                 // dynamic o/w: not yet
     if (in.words != 2) return false;
     // Per-action traced base cycles, a64:3041's table verbatim; a form
     // whose trace disagrees refuses rather than mischarges.
     static const uint8_t cycles[8] = {6, 8, 12, 8, 12, 18, 12, 10};
     if (traced030(i) != cycles[kind]) return false;
     const int dst = sem.eaReg, out = (ext >> 12) & 7;
+    const bool dynOffset = (ext & 0x0800) != 0;
+    const bool dynWidth = (ext & 0x0020) != 0;
+    if (dynOffset || dynWidth) {
+        if (!dynamicRegisterBitfieldEnabled()) return false;
+        // Runtime register bitfields have fixed 68k timing. Keep the values
+        // in caller-saved host registers: this body never calls out.
+        //   EDI original destination, ESI selected field
+        //   R8D cropped offset, R9D raw offset (BFFFO)
+        //   R10D normalized width, R11D = 32-width
+        a_.movRM(Sz::L, RDI, D(dst));
+        if (dynOffset) {
+            a_.movRM(Sz::L, R8, D((ext >> 6) & 7));
+            a_.movRR(Sz::L, R9, R8);
+            a_.aluRI(Asm::Op::AND, Sz::L, R8, 31);
+        } else {
+            a_.movRI(R8, (ext >> 6) & 31);
+            a_.movRR(Sz::L, R9, R8);
+        }
+        if (dynWidth) a_.movRM(Sz::L, R10, D(ext & 7));
+        else a_.movRI(R10, ext & 31);
+        a_.aluRI(Asm::Op::SUB, Sz::L, R10, 1);
+        a_.aluRI(Asm::Op::AND, Sz::L, R10, 31);
+        a_.aluRI(Asm::Op::ADD, Sz::L, R10, 1);     // 32,1..31
+        a_.movRI(R11, 32);
+        a_.aluRR(Asm::Op::SUB, Sz::L, R11, R10);   // 32-width
+
+        // rotl(original,offset), then right-justify the field. x86 variable
+        // shifts mask CL to five bits, exactly the register-bitfield rule.
+        a_.movRR(Sz::L, RSI, RDI);
+        a_.movRR(Sz::L, RCX, R8);
+        a_.shiftRCl(Sz::L, RSI, 0);                // ROL by offset
+        a_.movRR(Sz::L, RCX, R11);
+        a_.shiftRCl(Sz::L, RSI, 5);                // SHR by 32-width
+
+        if (kind != 7) {                           // BFINS uses source flags
+            a_.movRR(Sz::L, RDX, RSI);
+            a_.movRR(Sz::L, RCX, R10);
+            a_.aluRI(Asm::Op::SUB, Sz::L, RCX, 1);
+            a_.shiftRCl(Sz::L, RDX, 5);
+            a_.movMR(Sz::B, at(L_.srN), RDX);
+            a_.aluRI(Asm::Op::CMP, Sz::L, RSI, 0);
+            a_.setccM(Cc::E, at(L_.srZ));
+            a_.movMI(Sz::B, at(L_.srV), 0);
+            a_.movMI(Sz::B, at(L_.srC), 0);
+        }
+        if (kind == 0) return true;                // BFTST
+        if (kind == 1 || kind == 3) {              // BFEXTU / BFEXTS
+            if (kind == 3) {
+                a_.movRR(Sz::L, RCX, R11);
+                a_.shiftRCl(Sz::L, RSI, 4);
+                a_.shiftRCl(Sz::L, RSI, 7);        // SAR by same CL
+            }
+            a_.movMR(Sz::L, D(out), RSI);
+            return true;
+        }
+        if (kind == 5) {                           // BFFFO
+            a_.movRR(Sz::L, RDX, R9);
+            a_.aluRR(Asm::Op::ADD, Sz::L, RDX, R10);
+            Label& done = *a_.fresh();
+            a_.testRR(Sz::L, RSI, RSI);
+            a_.jccShort(Cc::E, done);
+            a_.bsrRR(Sz::L, RCX, RSI);
+            a_.aluRI(Asm::Op::SUB, Sz::L, RDX, 1);
+            a_.aluRR(Asm::Op::SUB, Sz::L, RDX, RCX);
+            a_.bind(done);
+            a_.movMR(Sz::L, D(out), RDX);
+            return true;
+        }
+
+        // Top-width mask rotated right by the cropped offset.
+        a_.movRI(RDX, 0xFFFFFFFFu);
+        a_.movRR(Sz::L, RCX, R11);
+        a_.shiftRCl(Sz::L, RDX, 4);
+        a_.movRR(Sz::L, RCX, R8);
+        a_.shiftRCl(Sz::L, RDX, 1);                // ROR by offset
+        if (kind == 2) a_.aluRR(Asm::Op::XOR, Sz::L, RDI, RDX);
+        else if (kind == 4) {
+            a_.aluRI(Asm::Op::XOR, Sz::L, RDX, -1);
+            a_.aluRR(Asm::Op::AND, Sz::L, RDI, RDX);
+        } else if (kind == 6) {
+            a_.aluRR(Asm::Op::OR, Sz::L, RDI, RDX);
+        } else {                                   // BFINS
+            a_.movRM(Sz::L, RSI, D(out));
+            a_.movRR(Sz::L, RCX, R11);
+            a_.shiftRCl(Sz::L, RSI, 4);            // crop + top-align source
+            a_.movRR(Sz::L, RCX, RSI);
+            a_.shiftRI(Sz::L, RCX, 5, 31);
+            a_.movMR(Sz::B, at(L_.srN), RCX);
+            a_.aluRI(Asm::Op::CMP, Sz::L, RSI, 0);
+            a_.setccM(Cc::E, at(L_.srZ));
+            a_.movMI(Sz::B, at(L_.srV), 0);
+            a_.movMI(Sz::B, at(L_.srC), 0);
+            a_.movRR(Sz::L, RCX, R8);
+            a_.shiftRCl(Sz::L, RSI, 1);            // ROR into destination
+            a_.aluRI(Asm::Op::XOR, Sz::L, RDX, -1);
+            a_.aluRR(Asm::Op::AND, Sz::L, RDI, RDX);
+            a_.aluRR(Asm::Op::OR, Sz::L, RDI, RSI);
+        }
+        a_.movMR(Sz::L, D(dst), RDI);
+        return true;
+    }
     const unsigned offset = (ext >> 6) & 31;
     const unsigned width = ((unsigned(ext & 31) - 1u) & 31u) + 1u; // 32,1..31
     const uint32_t topMask =

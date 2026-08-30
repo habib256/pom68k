@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 339 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 342 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -108,6 +108,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how x64 closed the dynamic register-bitfield gap without confusing its one remaining five-byte memory replay for a register failure** → [2026-08-30 (fifth) — x64 closes dynamic register bitfields…](#2026-08-30-x64-dynamic-register-bitfields)
 - **how x64 consumed the same tailless memory-bitfield write contract and turned SimCity's `EFD1` witness from replay into native code** → [2026-08-30 (fourth) — x64 consumes the tailless bitfield RMW contract…](#2026-08-30-x64-bitfield-writes)
 - **how the tailless memory-bitfield write contract became native on A64/040 and A64/030, and what the M4 handover actually proved** → [2026-08-30 (third) — The M4 closes the handover…](#2026-08-30-a64-bitfield-writes)
 - **what the Rogue re-census really found after indexed MOVEM, and why VRAM/QuickDraw HLE was not the answer** → [2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed…](#2026-08-23-rogue-re-census)
@@ -348,6 +349,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (fifth)** — [x64 closes dynamic register bitfields, and a split oracle distinguishes zero register fallback from the one intentional five-byte memory replay](#2026-08-30-x64-dynamic-register-bitfields)
 - **2026-08-30 (fourth)** — [x64 consumes the tailless bitfield RMW contract: SimCity's `EFD1` witness falls from 83 replays to zero under both 040 and 030 oracles](#2026-08-30-x64-bitfield-writes)
 - **2026-08-30 (third)** — [The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host](#2026-08-30-a64-bitfield-writes)
 - **2026-08-30 (second)** — [The x64 generator learns the bitfield family's static register forms, the parity table loses its Bitfield row, and the write bitfields get their IR contract — "IR d'abord" delivered](#2026-08-30-x64-static-bitfields)
@@ -689,6 +691,48 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-x64-dynamic-register-bitfields"></a>
+## 2026-08-30 (fifth) — x64 closes dynamic register bitfields, and a split oracle distinguishes zero register fallback from the one intentional five-byte memory replay
+
+The last named bitfield delta in TODO § 3 was real and sharply bounded. In
+the existing mixed dynamic loop under the Rosetta x86-64 generator, all eight
+register actions still replayed: `compiled=3 runs=188 native=1215 slow=312`.
+The register-direct emitter rejected any extension with a Dn-selected offset
+or width before it reached the already complete constant-folded body.
+
+**The x64 body now implements the 68020 runtime rules directly.** Offset is
+cropped to five bits for the rotate while its raw signed value remains live
+for BFFFO; width normalizes with `((Dn - 1) & 31) + 1`, so zero means 32.
+CL-counted rotates/shifts select the field and build its destination mask,
+the four flags come from the old field except for BFINS's cropped source, and
+BFEXTS sign-extends from the runtime width. BFFFO handles the zero field
+without executing x86's undefined `BSR 0`. The whole path is call-free, so
+guest values remain in caller-saved registers without crossing an exact
+memory thunk. The existing `POM68K_JIT_DYNAMIC_BITFIELD` admission remains an
+exact off control and now governs the implementation on both generators.
+
+**The first result, `slow=63`, was not a partial port.** The old oracle mixed
+the register actions with `(A0){D1:32}`: a dynamic bit offset plus width 32 can
+touch a fifth byte, whose two-probe read protocol remains A64-only. There is
+one such instruction per 63 completed laps. A register-only arm now runs all
+eight actions, including signed offset −3, dynamic widths, a modifying chain,
+BFINS and both the zero/nonzero BFFFO arms, then separately covers
+dynamic-width-only `{4:D7}` with D7=0 (width 32) and dynamic-offset-only
+`{D1:8}`. It requires zero fallback on BOTH production generators. At 256
+CPU/CCR/RAM checkpoints it reports the same
+`compiled=3 runs=252 native=1538 slow=0` on x64 and A64. The unchanged mixed
+arm is `compiled=4 runs=251 native=1215 slow=63` on x64 and zero-slow on A64,
+pinning the boundary instead of hiding it.
+
+**Validation used the actual generators.** The directed asset-free proof is
+green on A64 and under Rosetta. The x64 backend/parity/RMW gate plus all four
+registered 030 locksteps are 7/7 green, `jit-fast` is 7/7, and the bare-68LC040
+Finder boot remains green. This is a coverage/parity closure, not a wall-time
+claim; TODO § 3 now advances to division, while possible five-byte reads and
+transactionally undescribed five-byte writes keep their documented boundary.
 
 ---
 

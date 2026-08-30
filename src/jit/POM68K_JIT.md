@@ -971,7 +971,7 @@ do not affect an injected session.
 | `POM68K_JIT_PACKED_CCR` | `0` | conformant deferred-CCR prototype (§ 3.8): keep `XNZVC` beside the generated retired count and materialise it at helper/exit boundaries. Emitted by A64 and x64; A64 lockstep-proved and measured **5.8 % slower**, so not a production default |
 | `POM68K_JIT_REG_CACHE` | `0` | A64 per-block cache of up to two read-only Dn/An values in x27/x28. Linked targets reload from canonical guest state and all blocks share the option-selected frame ABI. Lockstep-proved, performance-neutral, hence opt-in |
 | `POM68K_JIT_EDGE_CELLS` | `0` | constant branches use exact stable dependency cells rather than the colliding direct table; target publication/invalidation updates the cell in O(1). It removes 202,293 outer block runs on the fixed Q605 workload but measures 0.5 % slower; dynamic targets retain the table |
-| `POM68K_JIT_DYNAMIC_BITFIELD` | `1` | production admission for A64 BFEXTU/BFINS forms whose offset and/or width come from Dn; `0` is the exact attribution control. Rogue's measured mask loop is dominated by this form; `jit_backend_test` locks the resolved default |
+| `POM68K_JIT_DYNAMIC_BITFIELD` | `1` | production admission on both native generators for register bitfields and TAILLESS memory forms whose offset and/or width come from Dn; `0` is the exact attribution control. Rogue's measured mask loop is dominated by this form; `jit_backend_test` locks the resolved default and the asset-free oracle locks all eight dynamic register actions to zero fallback on A64/x64 |
 | `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
 | `POM68K_Q605_EVENT_SCC` | `1` | Q605 carries serialized SCC time debt to its exact event/MMIO boundary; `0` restores per-`tick` stepping for A/B attribution |
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
@@ -1216,18 +1216,17 @@ outright: it would be the same interpreter work plus a call and a frame.
 
 **Backend admission remains explicit even where the sets have converged.**
 A64 adds immediate and guarded register-count line-$E shifts/rotates (no
-`ROX` yet), dynamic register bitfields, five-byte memory reads and
-`MOVE SR,Dn`; brief-indexed reads/RMW, `Scc`, `PEA` and `LEA`,
-plus `EXG`, distinct-register `CMPM` and TAILLESS memory bitfields (all
-eight read/write actions), are now on both — and since 2026-08-30 so are
-the STATIC offset/width register bitfields (all eight
-actions; with o and w compile-time constants the x64 body folds the
-rotate, the extraction shift and the destination mask into immediates,
-`BFFFO` branching around x86's undefined `BSR`-of-zero). The two
+`ROX` yet), five-byte memory reads and `MOVE SR,Dn`; brief-indexed reads/RMW,
+`Scc`, `PEA` and `LEA`, plus `EXG`, distinct-register `CMPM`, TAILLESS memory
+bitfields (all eight read/write actions) and register bitfields (all eight
+actions, static or dynamic offset/width) are now on both. The x64 static body
+folds the rotate, extraction shift and destination mask into immediates; its
+dynamic body uses CL-counted shifts, with both `BFFFO` paths branching around
+x86's undefined `BSR`-of-zero. The two
 backends admit the bitfield family with the same `canEmit` rule, so the
 parity gate carries no Bitfield exception row any more; what still
-refuses on x64 refuses at emission (dynamic register o/w and five-byte read
-tails), which the census sees and the parity sweep cannot. The shared synthetic
+refuses on x64 refuses at emission (five-byte read tails), which the census
+sees and the parity sweep cannot. The shared synthetic
 040 oracle demands brief An/PC reads and `LEA`, indexed `Scc`/`PEA`, complete
 CPU/RAM lockstep and zero slow instructions. Its direct-full `LEA` twin must
 also stay native through base/index suppression and 9/11/15-cycle forms,
@@ -1238,7 +1237,7 @@ oracle separately pins native signed/scaled reads plus brief/direct-full
 indexed `Scc` there remains conservatively replayed by the trace-cost guard.
 Each backend's
 `canEmit()` remains the source of truth, and `jit_backend_test` pins the
-remaining keyed differences (`MOVE SR,Dn`, shifts and bitfields) plus the
+remaining keyed differences (`MOVE SR,Dn`, shifts and five-byte bitfields) plus the
 indexed parity/control-flow refusal, so a coverage change is also a gate
 change.
 

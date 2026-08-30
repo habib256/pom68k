@@ -80,7 +80,7 @@ it. § 10 was appended on 2026-08-28 for exactly that reason.
 | **0·B** | Les six réserves de la revue externe du 2026-08-26 | Recensement g++ FAIT le 2026-08-28 (17 lignes, 16 sites) : reste à corriger les 16 puis armer `-Werror` ; et le premier rapport de fuites Linux |
 | **1** | Aucun rouge JIT ouvert ; rouges de fixture/timeout, ouverts non rouges, règles de méthode | Réparer les fixtures `macii_persist` / `q605_afp_live`, puis la marge IIvx ; le mode-2 x64 reste une ABBA séparée |
 | **2** | Profondeur de test au-delà du boot — le plus gros manque | Prochaine paire beyond-boot : la famille AIO ; et la charge applicative de § 3 |
-| **3** | JIT, second moteur d'exécution | Bitfields mémoire sans-queue clos sur les deux générateurs ; restent les formes registre dynamiques x64, la division, puis un PROFIL TEMPOREL pour le prochain levier mural |
+| **3** | JIT, second moteur d'exécution | Famille bitfield close sur les deux générateurs ; reste la division, puis un PROFIL TEMPOREL pour le prochain levier mural |
 | **4** | Fidélité LLE — remplacer les raccourcis HLE | Étendre les commandes Cuda du Q605/LC 475 seulement sur preuve ROM/pilote |
 | **5** | Backlogs par machine | Étalon de montage/boot 1,44 Mo au niveau invité |
 | **6** | Réseau — AppleTalk, LocalTalk, MacIP, Ethernet-sur-SCSI | Fermer la course de l'ACK de défense d'adresse lapENQ |
@@ -743,39 +743,14 @@ Open, in ROI order:
   > d'exception du gate de parité) ; **le prochain levier mural exige un
   > profil temporel** — l'hypothèse des 64 tranches AppleTalk de § 0·A est
   > le premier candidat nommé.
-- [ ] **Ensuite, dans cet ordre** : (2) les champs de bits (`E9D0`/`EFD1`) ;
-  (3) la division, encore interprétée. Chaque promotion garde les quatre
-  preuves habituelles : empreinte identique, gain répété, gates ciblés
+- **Champs de bits (`E9D0`/`EFD1`) — CLOS le 2026-08-30** : lectures et
+  écritures TAILLESS ainsi que les huit actions registre, offset/largeur
+  statiques ou dynamiques, sont natives sur A64 et x64 ; seules les queues
+  mémoire cinq-octets gardent leur frontière transactionnelle documentée.
+  `CHANGELOG.md` 2026-08-28 (eighth) et 2026-08-30 (second à fifth).
+- [ ] **Ensuite : la division**, encore interprétée. Sa promotion garde les
+  quatre preuves habituelles : empreinte identique, gain répété, gates ciblés
   verts, tier `etalon` complet vert.
-  **Le diagnostic (2) est fait, 2026-08-28, et « jamais émis » était faux
-  d'une moitié** : a64 possède un émetteur de bitfields MÉMOIRE complet
-  (lecture seule, chemin cinq-octets sondé-avant-lecture compris) — il était
-  simplement **exclu en bloc du 030** (`L.is030`), la LC II de SimCity. Donc :
-  - `E9D0` (BFEXTU `(A0)`, 15,8 % des replis de jeu) : **FAIT derrière
-    `POM68K_JIT_030_MEMBF=1`** (`CHANGELOG.md` 2026-08-28 (eighth)) — même
-    chemin d'émission, prix par le contrat sole-read/exact-thunk, lockstep
-    120k identique compteurs i-cache compris, le bouton épinglé dans
-    `jit_lockstep_030_a64_alignment_test`. Census : 5,95 M → 3 455
-    replis cross-page légitimes, total de phase 37,7 M → 31,2 M. Travail de
-    couverture, pas de temps (leçon ABBA ci-dessus) ; le défaut reste
-    opt-in en attendant sa propre preuve de promotion.
-  - `EFD1` (BFINS `(A1)`, 15,75 %) : **IR + les deux émetteurs FAITS le
-    2026-08-30** — `refineMemoryFromExtensions` publie le contrat RMW
-    deux-slots de la forme sans-queue (read4 + write4, `lastWrite=1`) pour
-    les quatre actions d'écriture, la forme à queue reste hors contrat et
-    refusée (pas d'analogue écriture du protocole sondé-avant-lecture : un
-    premier store commis ne se rejoue pas). Le même lot a porté sur x64
-    **la famille bitfield REGISTRE statique entière** (8 actions, masques
-    et décalages pliés en constantes, `BSR`-de-zéro contourné pour BFFFO)
-    — scénario dirigé `static-bitfield` dans
-    `jit_asset_free_lockstep_test`, résidence exigée des DEUX générateurs,
-    row de parité Bitfield retiré. Les deux générateurs consomment désormais
-    le contrat des quatre écritures TAILLESS : oracles dirigés 040 et 030 à
-    256 checkpoints, x64/Rosetta **83 replis → 0** sur le témoin A/B puis
-    boucle élargie aux largeurs dynamiques `native=704 slow=0` sur les deux
-    hôtes, et les trois locksteps 030 x64 verts. Restent les formes registre
-    dynamiques sur x64 (`shiftRCl` existe, il faut leur preuve) ; les queues
-    cinq-octets d'écriture restent volontairement hors contrat.
 - [ ] **Finir le tier `-L etalon` sous la bascule `accessClockBias` sur
   x86-64.** La validation du 2026-08-22 a été coupée par un arrêt de l'hôte à
   47/106 gates parallèles, zéro échec (`CHANGELOG.md` a l'état exact). Sur

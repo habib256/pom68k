@@ -411,7 +411,7 @@ void installDependentMoveLoop(SyntheticCpu& c) {
     put32(c, kStack, 0x1357'9BDFu);
 }
 
-void installDynamicBitfieldLoop(SyntheticCpu& c) {
+void installDynamicBitfieldLoop(SyntheticCpu& c, bool includeMemory) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x2A3C);    // MOVE.L #$89ABCDEF,D5
     put32(c, kCode + 0x02, 0x89AB'CDEFu);
@@ -437,6 +437,16 @@ void installDynamicBitfieldLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x2E, 0x0863);
     put16(c, kCode + 0x30, 0xEFC6);    // BFINS D0,D6{D2:D4} (Rogue)
     put16(c, kCode + 0x32, 0x08A4);
+    if (!includeMemory) {
+        put16(c, kCode + 0x34, 0xEDC5); // BFFFO D5{D1:D3},D0, nonzero arm
+        put16(c, kCode + 0x36, 0x0863);
+        put16(c, kCode + 0x38, 0xE8C5); // BFTST D5{4:D7}, D7=0 => width 32
+        put16(c, kCode + 0x3A, 0x0127);
+        put16(c, kCode + 0x3C, 0xE8C5); // BFTST D5{D1:8}
+        put16(c, kCode + 0x3E, 0x0848);
+        put16(c, kCode + 0x40, 0x60BE); // BRA.S kCode
+        return;
+    }
     put16(c, kCode + 0x34, 0xE9D0);    // BFEXTU (A0){0:D0},D2 (Rogue)
     put16(c, kCode + 0x36, 0x2020);
     put16(c, kCode + 0x38, 0xE9D0);    // BFEXTU (A0){D1:8},D5 (Rogue)
@@ -994,8 +1004,8 @@ bool runDependentMoveLockstep() {
 
 bool runDynamicBitfieldLockstep() {
     SyntheticCpu ref, native;
-    installDynamicBitfieldLoop(ref);
-    installDynamicBitfieldLoop(native);
+    installDynamicBitfieldLoop(ref, true);
+    installDynamicBitfieldLoop(native, true);
     resetCpu(ref);
     resetCpu(native);
     // Keep D1=-3's adjusted longword and optional fifth byte on one guest
@@ -1030,6 +1040,39 @@ bool runDynamicBitfieldLockstep() {
            (!a64Production || s.slowInstrs == 0);
 }
 
+bool runDynamicRegisterBitfieldLockstep() {
+    SyntheticCpu ref, native;
+    installDynamicBitfieldLoop(ref, false);
+    installDynamicBitfieldLoop(native, false);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 43;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    dynamic-register-bitfield divergence at checkpoint %d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    dynamic-register-bitfield compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeProduction || s.slowInstrs == 0);
+}
+
 bool runStaticBitfieldLockstep() {
     SyntheticCpu ref, native;
     installStaticBitfieldLoop(ref);
@@ -1055,9 +1098,8 @@ bool runStaticBitfieldLockstep() {
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    // Unlike the dynamic scenario above, the residency claim holds on BOTH
-    // production generators: the static register forms are the subset x64
-    // lowers too (2026-08-30).
+    // Like the dedicated dynamic-register scenario above, this residency
+    // claim holds on BOTH production generators (2026-08-30).
     const bool nativeProduction =
         (!std::strcmp(native.jit.backendName(), "aarch64") ||
          !std::strcmp(native.jit.backendName(), "x86-64")) &&
@@ -1339,6 +1381,8 @@ int main() {
           "MOVE.L (A7)+,(A7) uses the postincremented destination exactly");
     check(runDynamicBitfieldLockstep(),
           "dynamic register and read-only memory bitfields stay native on A64");
+    check(runDynamicRegisterBitfieldLockstep(),
+          "dynamic register bitfields stay native and exact on BOTH generators");
     check(runStaticBitfieldLockstep(),
           "static register bitfields stay native and exact on BOTH generators");
     check(runMemoryBitfieldLockstep(),

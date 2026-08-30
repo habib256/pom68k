@@ -25,7 +25,7 @@ src/GuiShellCommon.h                     366
 src/GuiShell.cpp                         389
 src/GuiTobyStatus.h                      41
 src/jit/backends/JitBackendA64.cpp       4341
-src/jit/backends/JitBackendX64.cpp       4290
+src/jit/backends/JitBackendX64.cpp       4390
 src/jit/JitConfig.h                      536
 src/jit/JitEngine.cpp                    1627
 src/jit/JitIr.h                          1760
