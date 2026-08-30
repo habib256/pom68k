@@ -594,6 +594,56 @@ void installWordMultiplyLoop(SyntheticCpu& c) {
     put16(c, kData, 0xFFF9);           // -7 signed / 65529 unsigned
 }
 
+// Register ADDX/SUBX is Speedometer's hottest remaining unsupported family.
+// Rebuild every operand and CCR seed on each lap, then exercise both
+// operations at byte/word/long width. The long chain contains the exact
+// D981/9381 opcodes from the application and the source=$FFFFFFFF,X=1 case
+// that requires a 33-bit intermediate for conforming SUBX borrow handling.
+void installAddSubExtendLoop(SyntheticCpu& c) {
+    installVectors(c);
+    uint32_t p = kCode;
+    const auto word = [&](uint16_t v) { put16(c, p, v); p += 2; };
+    const auto moveLong = [&](unsigned dn, uint32_t v) {
+        word(uint16_t(0x203C | (dn << 9))); put32(c, p, v); p += 4;
+    };
+    const auto seedX1Z1 = [&]() {
+        word(0x7CFF);                   // MOVEQ #-1,D6
+        word(0x7E01);                   // MOVEQ #1,D7
+        word(0xDC87);                   // ADD.L D7,D6 -> 0, X=1, Z=1
+    };
+
+    moveLong(0, 0);
+    moveLong(1, 0x7F);
+    moveLong(2, 0);
+    moveLong(3, 0);
+    seedX1Z1();
+    word(0xD300);                       // ADDX.B D0,D1 -> $80, V=1,Z=0
+    word(0xD702);                       // ADDX.B D2,D3 -> 0, sticky Z=0
+    word(0x9702);                       // SUBX.B D2,D3 -> 0, sticky Z=0
+
+    moveLong(0, 0xFFFF);
+    moveLong(1, 0);
+    moveLong(2, 0x7FFF);
+    moveLong(3, 0x8000);
+    seedX1Z1();
+    word(0xD340);                       // ADDX.W D0,D1 -> 0, C/X=1,Z=1
+    word(0x9742);                       // SUBX.W D2,D3 -> 0, V=1,Z=1
+
+    moveLong(0, 0xFFFF'FFFFu);
+    moveLong(1, 0);
+    moveLong(2, 0xFFFF'FFFFu);
+    moveLong(3, 0);
+    moveLong(4, 0xFFFF'FFFFu);
+    seedX1Z1();
+    word(0xD380);                       // ADDX.L D0,D1 -> 0, carry
+    word(0x9782);                       // SUBX.L D2,D3, source+X = 2^32
+    word(0xD981);                       // ADDX.L D1,D4 (Speedometer)
+    word(0x9381);                       // SUBX.L D1,D1 (Speedometer)
+
+    const int32_t displacement = int32_t(kCode) - int32_t(p + 2);
+    word(uint16_t(0x6000 | uint8_t(displacement))); // BRA.S kCode
+}
+
 void installMemoryMultiplyDeviceLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0xC0D8);    // MULU.W (A0)+,D0
@@ -1455,6 +1505,36 @@ bool runWordMultiplyLockstep() {
            (!nativeGenerator || s.slowInstrs == 0);
 }
 
+bool runAddSubExtendLockstep() {
+    SyntheticCpu ref, native;
+    installAddSubExtendLoop(ref);
+    installAddSubExtendLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 71;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    ADDX/SUBX divergence checkpoint=%d\n", step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    ADDX/SUBX compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || s.slowInstrs == 0);
+}
+
 bool runMemoryMultiplyDeviceOnce() {
     SyntheticCpu ref, native;
     installMemoryMultiplyDeviceLoop(ref);
@@ -2163,6 +2243,8 @@ int main() {
           "tailless memory bitfield writes stay native and exact on BOTH generators");
     check(runWordMultiplyLockstep(),
           "Speedometer MULU.W/MULS.W register, immediate and RAM forms stay native");
+    check(runAddSubExtendLockstep(),
+          "Speedometer ADDX/SUBX B/W/L preserve X and cumulative Z natively");
     check(runMemoryMultiplyDeviceOnce(),
           "word multiplication consumes one exact MMIO read and stays native");
     check(runWordDivisionLockstep(DivisionProgram::Success),

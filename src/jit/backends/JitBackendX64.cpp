@@ -330,6 +330,7 @@ private:
     bool emitAluEaRg(size_t i);
     bool emitAluRgEa(size_t i);
     bool emitAddSubQ(size_t i);
+    bool emitAddSubExtend(size_t i);
     bool emitMoveq(size_t i);
     bool emitImmediate(size_t i);
     bool emitBitOp(size_t i);
@@ -403,6 +404,7 @@ private:
     // ── flags ────────────────────────────────────────────────────────────
     void flagsLogic(Sz sz);          // N,Z from the result; V=C=0
     void flagsAddSub(bool withX);    // N,Z,V,C from EFLAGS (+X = C)
+    void flagsAddSubExtend(Reg oldZ);// ADDX/SUBX sticky Z, X=C
     void clearVC();
     void flagZFromEflags();
     void condToAl(int cc);           // 68k condition -> ZF set == taken
@@ -1323,6 +1325,38 @@ void Emitter::flagsAddSub(bool withX) {
     a_.setccM(Cc::O, at(L_.srV));
     a_.setccM(Cc::B, at(L_.srC));
     if (withX) a_.setccM(Cc::B, at(L_.srX));
+}
+
+// Consume the still-live ADC/SBB flags. Unlike ordinary ADD/SUB, ADDX/SUBX
+// keep Z clear once any limb in a multi-precision chain was non-zero.
+void Emitter::flagsAddSubExtend(Reg oldZ) {
+    a_.setccR(Cc::S, RCX);
+    a_.setccR(Cc::E, RAX);
+    a_.setccR(Cc::O, R8);
+    a_.setccR(Cc::B, R9);
+    a_.movzxRR(Sz::B, RCX, RCX);
+    a_.movzxRR(Sz::B, RAX, RAX);
+    a_.movzxRR(Sz::B, R8, R8);
+    a_.movzxRR(Sz::B, R9, R9);
+    a_.aluRR(Asm::Op::AND, Sz::L, RAX, oldZ);
+    if (packedCcr_) {
+        a_.shiftRI(Sz::L, RCX, 4, 3);
+        a_.shiftRI(Sz::L, RAX, 4, 2);
+        a_.shiftRI(Sz::L, R8, 4, 1);
+        a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~0x1F);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RCX);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RAX);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R8);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R9);
+        a_.shiftRI(Sz::L, R9, 4, 4);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R9);
+        return;
+    }
+    a_.movMR(Sz::B, at(L_.srN), RCX);
+    a_.movMR(Sz::B, at(L_.srZ), RAX);
+    a_.movMR(Sz::B, at(L_.srV), R8);
+    a_.movMR(Sz::B, at(L_.srC), R9);
+    a_.movMR(Sz::B, at(L_.srX), R9);
 }
 
 void Emitter::flagZFromEflags() {
@@ -2417,6 +2451,41 @@ bool Emitter::emitAddSubQ(size_t i) {
     flagsAddSub(true);
     memRmwStore(szIdx, RDI, read, write);
     commitEa(dst, szIdx, write);
+    return true;
+}
+
+// ADDX/SUBX Dn,Dn. NEG of the canonical 0/1 X value seeds x86 CF exactly;
+// ADC/SBB then provide the guest-width N/V/C result for byte, word and long.
+bool Emitter::emitAddSubExtend(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::AddSubExtend || sem.sizeIndex > 2 ||
+        in.words != 1 || traced030(i) != 2 ||
+        (sem.alu != AluOperation::Add && sem.alu != AluOperation::Sub))
+        return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    if (!memory.complete()) return false;
+
+    if (packedCcr_) {
+        a_.movRR(Sz::L, R10, kCnt);
+        a_.shiftRI(Sz::L, R10, 5, 2);
+        a_.aluRI(Asm::Op::AND, Sz::L, R10, 1); // old cumulative Z
+        a_.movRR(Sz::L, RCX, kCnt);
+        a_.shiftRI(Sz::L, RCX, 5, 4);
+        a_.aluRI(Asm::Op::AND, Sz::L, RCX, 1); // input X
+    } else {
+        a_.movzx(Sz::B, R10, at(L_.srZ));
+        a_.movzx(Sz::B, RCX, at(L_.srX));
+    }
+    a_.movRM(Sz::L, RDI, D(sem.registerIndex));
+    a_.movRM(Sz::L, RDX, D(sem.eaReg));
+    a_.movRR(Sz::L, RAX, RCX);
+    a_.negR(Sz::L, RAX);                  // CF = (X != 0)
+    const Asm::Op op = sem.alu == AluOperation::Sub
+        ? Asm::Op::SBB : Asm::Op::ADC;
+    a_.aluRR(op, hostSz(sem.sizeIndex), RDI, RDX);
+    a_.movMR(hostSz(sem.sizeIndex), D(sem.registerIndex), RDI);
+    flagsAddSubExtend(R10);
     return true;
 }
 
@@ -4092,6 +4161,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::DivideLong: return emitDivideLong(i);
         case SemanticOp::CompareMemory: return emitCmpm(i);
         case SemanticOp::AddSubQuick: return emitAddSubQ(i);
+        case SemanticOp::AddSubExtend: return emitAddSubExtend(i);
         case SemanticOp::BranchSubroutine: return emitSubroutine(i);
         case SemanticOp::Branch: return emitBranch(i);
         case SemanticOp::MoveQuick: return emitMoveq(i);
@@ -4616,6 +4686,7 @@ bool X64Backend::canEmit(uint16_t op) const {
         case SemanticOp::Branch:
         case SemanticOp::BranchSubroutine:
         case SemanticOp::MoveQuick:
+        case SemanticOp::AddSubExtend:
             return true;
         case SemanticOp::JumpSubroutine:
             return controlEa(eaCostIndex(mode, reg)) ||

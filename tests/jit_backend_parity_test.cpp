@@ -41,6 +41,7 @@ const char* opName(SemanticOp op) {
         case SemanticOp::ImmediateAlu:     return "ImmediateAlu";
         case SemanticOp::Bit:              return "Bit";
         case SemanticOp::AddSubQuick:      return "AddSubQuick";
+        case SemanticOp::AddSubExtend:     return "AddSubExtend";
         case SemanticOp::AluEaToReg:       return "AluEaToReg";
         case SemanticOp::AluRegToEa:       return "AluRegToEa";
         case SemanticOp::AddressAlu:       return "AddressAlu";

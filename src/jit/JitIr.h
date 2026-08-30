@@ -72,6 +72,7 @@ enum class SemanticOp : uint8_t {
     ImmediateAlu,
     Bit,
     AddSubQuick,
+    AddSubExtend,
     AluEaToReg,
     AluRegToEa,
     AddressAlu,
@@ -579,6 +580,19 @@ inline InstructionSemantics describeInstruction(uint16_t op) {
         s.eaReg = uint8_t(op & 7);
         s.action = (op & 0x00F8) == 0x0048 ? 1
                  : (op & 0x00F8) == 0x0088 ? 2 : 0;
+        return s;
+    }
+
+    // ADDX/SUBX Dn,Dn overlap the register-to-EA ADD/SUB opmodes. They
+    // consume X and use cumulative Z (a zero result leaves a previously
+    // clear Z clear), so ordinary AluRegToEa is not their semantic contract.
+    // The -(An),-(An) variants differ again: two ordered accesses and their
+    // fault-visible predecrements need a separate memory operation.
+    if ((line == 0x9000 || line == 0xD000) &&
+        (op & 0xF138) == uint16_t(line | 0x0100) &&
+        ((op >> 6) & 3) <= 2) {
+        set(SemanticOp::AddSubExtend, uint8_t((op >> 6) & 3));
+        s.alu = line == 0x9000 ? AluOperation::Sub : AluOperation::Add;
         return s;
     }
 

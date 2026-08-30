@@ -842,11 +842,21 @@ Open, in ROI order:
   passe 37 290 → 27 751 unsupported et 79 380 → 69 874 replis totaux ; les
   trois lignes disparaissent, empreintes inchangées. `CHANGELOG.md`
   (2026-08-31 fourth).
-- [ ] **Queue de couverture Speedometer après les polls exacts** : le prochain
-  cluster statique mesuré est `D981` / `9381` à 3 140 / 3 139, puis `6000`
-  (3 026), `E9D4` (3 002), `C029` (1 153) et les MOVE indexés `2470` /
-  `2070`. Les ROX/décalages hors tranche, MOVEM indexé complet et `4C00`
-  restent ensuite ; les traiter par contrat, pas par largeur d'opcode.
+- **Arithmétique étendue Speedometer — CLOS le 2026-08-31** : `D981` et
+  `9381` étaient des `ADDX.L`/`SUBX.L` registre d'un mot, coût fixe 2 ; seul
+  l'IR `Unknown` les refusait. Le nouveau contrat partagé couvre B/W/L,
+  consomme X, produit C=X et garde `Z'=Z&&result==0`; x64 emploie ADC/SBB et
+  A64 un intermédiaire 64 bits. L'oracle exécute 4 915 formes natives sans
+  repli, y compris packed CCR et le bord source+X=2^32. Le census réel passe
+  27 751 → 20 065 unsupported et 69 874 → 62 188 replis totaux ; toutes les
+  formes registre rencontrées disparaissent, empreintes inchangées. Les
+  formes mémoire prédecrémentées restent un contrat de faute séparé.
+  `CHANGELOG.md` (2026-08-31 fifth).
+- [ ] **Queue de couverture Speedometer après ADDX/SUBX** : `6000` (3 026),
+  `E9D4` (3 002), `4EF9` (1 557), `C029` (1 153), puis les MOVE indexés
+  `2470` / `2070`. Les ROX/décalages hors tranche, MOVEM indexé complet,
+  `4C00` et ADDX/SUBX mémoire restent ensuite ; les traiter par contrat, pas
+  par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

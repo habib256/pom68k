@@ -797,6 +797,8 @@ uint16_t guestRegisterWriteMask(const Instr& in) {
             if (s.eaMode == 0) reg(false, s.eaReg);
             else if (s.eaMode == 1) reg(true, s.eaReg);
             break;
+        case SemanticOp::AddSubExtend:
+            reg(false, s.registerIndex); break;
         case SemanticOp::AluEaToReg:
             if (s.alu != AluOperation::Cmp) reg(false, s.registerIndex);
             break;
@@ -872,6 +874,7 @@ void chooseGuestRegisterCache(const BlockIr& ir) {
         switch (s.operation) {
             case SemanticOp::AluEaToReg:
             case SemanticOp::AluRegToEa:
+            case SemanticOp::AddSubExtend:
             case SemanticOp::MoveQuick:
                 if (s.registerIndex < 8) score[s.registerIndex] += 2; break;
             case SemanticOp::AddressAlu:
@@ -1061,6 +1064,71 @@ void emitAddSubFlags(Asm& a, const Layout& L, bool sub, bool setX) {
     if (setX) a.strB(12, 0, L.srX);
 }
 
+// ADDX/SUBX use the incoming X bit as carry/borrow and retain Z across a
+// multi-precision chain: Z' = Z && result==0. AArch64 has no byte/word ADC,
+// so calculate the guest-width carry in 64 bits and derive all five flags
+// explicitly. This also avoids treating AArch64's subtraction C (no borrow)
+// as the 68k C/X (borrow).
+void emitAddSubExtend(Asm& a, const Layout& L,
+                      const InstructionSemantics& sem) {
+    const int bits = sem.sizeIndex == 0 ? 8 : sem.sizeIndex == 1 ? 16 : 32;
+    const bool sub = sem.alu == AluOperation::Sub;
+    const unsigned src = sem.eaReg;
+    const unsigned dst = sem.registerIndex;
+
+    loadSized(a, L, 9, false, dst, bits);
+    loadSized(a, L, 10, false, src, bits);
+    if (gPackedCcr) {
+        a.ubfxW(17, 26, 2, 1);          // old cumulative Z
+        a.ubfxW(18, 26, 4, 1);          // carry/borrow input X
+    } else {
+        a.ldrB(17, 0, L.srZ);
+        a.ldrB(18, 0, L.srX);
+    }
+
+    if (sub) {
+        a.addX(12, 10, 18);             // source + X cannot wrap 64 bits
+        a.subX(11, 9, 12);
+        a.cmpX(9, 12);
+        a.csetW(12, Asm::CC);           // 68k C/X = unsigned borrow
+    } else {
+        a.addX(11, 9, 10);
+        a.addX(11, 11, 18);
+        a.lsrX(12, 11, unsigned(bits)); // carry past guest width
+    }
+    maskResult(a, 11, bits);
+    storeSized(a, L, 11, false, dst, bits);
+
+    // V = (~(dst^src) for ADD, dst^src for SUB) & (dst^result) & sign.
+    a.eorW(13, 9, 10);
+    if (!sub) a.mvnW(13, 13);
+    a.eorW(18, 9, 11);
+    a.andW(13, 13, 18);
+    a.ubfxW(13, 13, unsigned(bits - 1), 1);
+    a.ubfxW(18, 11, unsigned(bits - 1), 1); // N
+    a.cmpWZero(11);
+    a.csetW(10, Asm::EQ);
+    a.andW(10, 10, 17);                // sticky Z
+
+    if (gPackedCcr) {
+        a.lslW(18, 18, 3);
+        a.lslW(10, 10, 2);
+        a.lslW(13, 13, 1);
+        a.lslW(9, 12, 4);
+        a.orrW(12, 12, 9);             // C and X are identical
+        a.orrW(12, 12, 13);
+        a.orrW(12, 12, 10);
+        a.orrW(12, 12, 18);
+        setPackedCcrBits(a, 12, 0x1F);
+        return;
+    }
+    a.strB(18, 0, L.srN);
+    a.strB(10, 0, L.srZ);
+    a.strB(13, 0, L.srV);
+    a.strB(12, 0, L.srC);
+    a.strB(12, 0, L.srX);
+}
+
 // The EA cost index, the 68020 cycle columns and the EaPlan struct live in
 // JitCost.h / JitEaPlan.h — they model the 68k, not this host, and the x64
 // backend reads the SAME tables (TODO.md § 10 wave 2, 2026-08-28). This
@@ -1133,6 +1201,7 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::AluRegToEa:
             return ei >= 0 && ei != EA_IM;
         case SemanticOp::AddSubQuick:
+        case SemanticOp::AddSubExtend:
             return ei >= 0 && ei != EA_IM && ei != EA_DIPC;
         case SemanticOp::AluEaToReg:
         case SemanticOp::AddressAlu:
@@ -1859,6 +1928,16 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         loadGuestRegister(a, L, 10, rightAddress, ry);
         a.strW(10, 0, regOff(L, leftAddress, rx));
         a.strW(9, 0, regOff(L, rightAddress, ry));
+        return true;
+    }
+
+    if (sem.operation == SemanticOp::AddSubExtend) {
+        if (in.words != 1 || traced030(L, in) != 2 ||
+            sem.sizeIndex > 2 ||
+            (sem.alu != AluOperation::Add && sem.alu != AluOperation::Sub) ||
+            !memory.complete())
+            return false;
+        emitAddSubExtend(a, L, sem);
         return true;
     }
 

@@ -744,6 +744,18 @@ with zero instruction fallback. The real 270-frame census moves 37,290 →
 with the CPU and screen fingerprints unchanged. The instrumented 0.310871 s
 wall time is not a speed claim.
 
+The following `D981`/`9381` cluster is register `ADDX.L`/`SUBX.L`, not an EA
+or variable-timing problem: both are one word and cost two cycles. Shared
+`AddSubExtend` semantics now cover register B/W/L on both generators, with X
+as carry/borrow, C=X and cumulative `Z'=Z&&result==0`. X64 lowers through
+width-exact ADC/SBB; A64 uses a 64-bit intermediate so byte/word carry and the
+long `source+X=2^32` edge remain exact. Predecrement memory forms deliberately
+remain separate because their two-access fault contract exposes An updates.
+The directed oracle retires 4,915 such instructions natively with no slow
+path. The real census moves 27,751 → 20,065 unsupported and 69,874 → 62,188
+total fallbacks; all encountered register forms disappear and the four
+fingerprints remain unchanged.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
@@ -1279,7 +1291,8 @@ emitters it dispatches to.
 
 * straight-line: `MOVE`/`MOVEA`/`MOVEQ`; the
   `ADD`/`SUB`/`AND`/`OR`/`EOR`/`CMP` families in both directions;
-  `ADDA`/`SUBA`/`CMPA`; `ADDQ`/`SUBQ`; the
+  `ADDA`/`SUBA`/`CMPA`; `ADDQ`/`SUBQ`; register **`ADDX`/`SUBX`** B/W/L
+  (X input, C=X, cumulative Z); the
   `ADDI`/`SUBI`/`ANDI`/`ORI`/`EORI`/`CMPI` immediates; `TST`, `CLR`, `NEG`,
   `NOT`, `EXT`, `SWAP`, `LEA`, `PEA`, `Scc`, `BTST` (both forms),
   `LINK`/`UNLK`/`NOP`, **`EXG`** (all three forms) and **`CMPM`** with
@@ -1288,7 +1301,8 @@ emitters it dispatches to.
   **`DIVU.W`/`DIVS.W`** and all four **`DIVL`** extension actions over `Dn`,
   immediate and ordinary non-`An` memory sources (32-/64-bit dividend,
   signed/unsigned; zero and quotient overflow replay the untouched
-  instruction), and
+  instruction), **`MULU.W`/`MULS.W`** over register, immediate and ordinary
+  memory sources, and
   **`MOVEM`** (both directions, both sizes, one span probe per burst, the
   040 restart latch `mmu040MovemArmed` checked);
 * as block terminators: `Bcc`/`BRA`, `JSR`/`BSR`/`RTS`, **`DBcc`** (loops
@@ -1302,8 +1316,8 @@ emitters it dispatches to.
 
 Everything else — including full-indexed `MOVEM`, memory-indirect writes and
 three-access MOVE forms, unsupported shifts/rotates,
-`MULU`/`MULS`, `ABCD`/`SBCD`,
-`ADDX`/`SUBX`, same-register `CMPM`, `MOVEP` and `MOVE SR,Dn` — falls back per instruction
+`ABCD`/`SBCD`, predecrement-memory `ADDX`/`SUBX`, same-register `CMPM`,
+`MOVEP` and `MOVE SR,Dn` — falls back per instruction
 to a cold stub that runs that one instruction through Moira and rejoins the
 compiled stream. A block whose native coverage falls below half is refused
 outright: it would be the same interpreter work plus a call and a frame.

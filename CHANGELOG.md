@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's `ADDX`/`SUBX` register chains became native on both generators without losing X or cumulative Z** → [2026-08-31 (fifth) — Speedometer's extended arithmetic…](#2026-08-31-speedometer-addx-subx)
 - **why Speedometer's three apparently ordinary BTST/MOVE fallbacks require exact device reads, and how their live delay can remain native** → [2026-08-31 (fourth) — Speedometer's next three JIT…](#2026-08-31-speedometer-exact-polls)
 - **how Speedometer's full-indirect `JSR` became transactional on both generators without losing 68030 restart state** → [2026-08-31 (third) — Speedometer's indexed indirect…](#2026-08-31-speedometer-jsr-full-indirect)
 - **how Speedometer separated an intentional SCSI pseudo-DMA fallback from the safe `JSR abs.l` promotion beside it** → [2026-08-31 (second) — Speedometer identifies…](#2026-08-31-speedometer-jsr-absolute-long)
@@ -358,6 +359,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (fifth)** — [Speedometer's register `ADDX`/`SUBX` chains become native on A64 and x64 with exact X and cumulative Z](#2026-08-31-speedometer-addx-subx)
 - **2026-08-31 (fourth)** — [Speedometer's next three JIT static fallbacks become native exact device reads, without flattening their live LC II delay](#2026-08-31-speedometer-exact-polls)
 - **2026-08-31 (third)** — [Speedometer's indexed indirect `JSR` becomes transactional on A64 and x64, removing its largest static CPU fallback](#2026-08-31-speedometer-jsr-full-indirect)
 - **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](#2026-08-31-speedometer-jsr-absolute-long)
@@ -709,6 +711,47 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-addx-subx"></a>
+## 2026-08-31 (fifth) — Speedometer's register `ADDX`/`SUBX` chains become native on A64 and x64 with exact X and cumulative Z
+
+After the exact device polls, the next Speedometer rows were `D981`
+(`ADDX.L D1,D4`) 3,140 times and `9381` (`SUBX.L D1,D1`) 3,139 times.
+Both are one-word register instructions with the fixed 68020/68030 cost of
+two cycles. The backend was not refusing an EA or a timing proof: the shared
+decoder deliberately returned `Unknown` for the ADD/SUB overlap because
+extended arithmetic has a different CCR contract.
+
+The new host-neutral `AddSubExtend` semantic covers register byte, word and
+long forms. It consumes X as carry/borrow, publishes C=X, and implements the
+multi-precision rule `Z' = oldZ && result==0`. X64 seeds CF from the guest X
+bit and uses width-exact `ADC`/`SBB`. A64 calculates the sum or subtractor in
+64 bits, derives the guest-width carry/borrow and N/V explicitly, and masks
+the result before its partial Dn write. Both canonical per-flag storage and
+the optional packed-CCR path are covered. The predecrement memory forms stay
+out: their two ordered accesses and fault-visible An updates are a separate
+restart contract, not a widening of this register operation.
+
+The asset-free oracle executes all six operation/size combinations, the
+exact `D981`/`9381` pair, sticky-Z chains, signed overflow, carry and the
+`$FFFFFFFF + X` 33-bit subtractor edge. It records 4,915 native instructions,
+zero slow instructions and identical registers, SR, queue, clock and RAM;
+the same gate passes with packed CCR enabled. Backend semantics and the full
+65,536-opcode A64/x64 parity sweep pass. Four real 68030 locksteps, including
+both 120,000-step variants, remain identical.
+
+The rebuilt 270-frame Speedometer CPU census reports 20,065 unsupported +
+42,123 runtime fallbacks = 62,188, down from 27,751 + 42,123 = 69,874.
+That removes 7,686 static fallbacks (**−27.70 %**) and 11.00 % of all
+fallbacks; every encountered register `ADDX`/`SUBX` row, including
+`D981`/`9381`, disappears. It classifies 2,282,773 of 2,292,741 instructions
+native (**99.57 %**). CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 are unchanged. The
+instrumented 0.310200 s wall time is not a speed claim. The next measured
+static rows are `6000` (3,026), `E9D4` (3,002) and `4EF9` (1,557).
 
 ---
 

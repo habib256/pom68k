@@ -78,16 +78,23 @@ struct SavedEnv {
 
 int main() {
     // The x64 translation unit compiles on every host, but an A64 machine
-    // cannot execute its generated code. Keep the new IMUL encoder pinned at
-    // the byte level here; x64 CI exercises the complete lowering.
+    // cannot execute its generated code. Keep the host opcodes introduced by
+    // recent Speedometer lowerings pinned at the byte level here; x64 CI
+    // exercises the complete generated paths.
     {
         uint8_t code[16] = {};
         jit::x64::Asm a(code, sizeof(code));
         a.imulRR(jit::x64::RDI, jit::x64::RCX);
         a.imulRR(jit::x64::R9, jit::x64::R10);
-        check(a.size() == 7 &&
-              !std::memcmp(code, "\x0F\xAF\xF9\x45\x0F\xAF\xCA", 7),
-              "x64 IMUL r32,r32 encoding including extended registers");
+        a.aluRR(jit::x64::Asm::Op::ADC, jit::x64::Sz::B,
+                jit::x64::RDI, jit::x64::RDX);
+        a.aluRR(jit::x64::Asm::Op::SBB, jit::x64::Sz::W,
+                jit::x64::R9, jit::x64::R10);
+        check(a.size() == 14 &&
+              !std::memcmp(code,
+                  "\x0F\xAF\xF9\x45\x0F\xAF\xCA"
+                  "\x40\x10\xD7\x66\x45\x19\xD1", 14),
+              "x64 IMUL plus byte ADC/extended-register word SBB encodings");
     }
 
     // ── One IR memory contract, one proof planner, every backend ─────────
@@ -310,6 +317,19 @@ int main() {
               adda.eaMode == 0 && adda.eaReg == 1 &&
               adda.registerIndex == 1,
               "IR describes ADDA operation, width and operands once");
+        const auto addx = jit::describeInstruction(0xD981); // ADDX.L D1,D4
+        check(addx.operation == jit::SemanticOp::AddSubExtend &&
+              addx.alu == jit::AluOperation::Add && addx.sizeIndex == 2 &&
+              addx.eaReg == 1 && addx.registerIndex == 4,
+              "IR distinguishes register ADDX and its X/sticky-Z contract");
+        const auto subx = jit::describeInstruction(0x9381); // SUBX.L D1,D1
+        check(subx.operation == jit::SemanticOp::AddSubExtend &&
+              subx.alu == jit::AluOperation::Sub && subx.sizeIndex == 2 &&
+              subx.eaReg == 1 && subx.registerIndex == 1,
+              "IR distinguishes Speedometer register SUBX from SUB overlap");
+        check(jit::describeInstruction(0xD109).operation ==
+                  jit::SemanticOp::Unknown,
+              "predecrement-memory ADDX remains outside register semantics");
         const auto eor = jit::describeInstruction(0xB592); // EOR.L D2,(A2)
         check(eor.operation == jit::SemanticOp::AluRegToEa &&
               eor.alu == jit::AluOperation::Eor && eor.bytes() == 4,
