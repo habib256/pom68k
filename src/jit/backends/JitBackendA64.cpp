@@ -3383,13 +3383,18 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // phase enough to prevent Finder boot. Keep the useful Rogue
             // case without that timing ambiguity: specialize the block for
             // the traced count, guard it before changing any state, and replay
-            // through Moira if Dn later changes. Limiting the unroll to eight
-            // bounds code size; E5A8's hot drawing sites use four.
+            // through Moira if Dn later changes. The shared ceiling bounds
+            // code size; Rogue uses four and Speedometer's three hot logical
+            // shifts use sixteen.
             if (slow < 0) return false;
             const unsigned dynamicBase = type == 3 ||
                 (type == 0 && sem.left) ? 8u : 6u;
             const unsigned traced = traced030(L, in);
-            if (traced < dynamicBase || traced > dynamicBase + 8)
+            const unsigned maxCount = type == 1
+                ? kMaxSpecializedLogicalShiftCount
+                : kMaxSpecializedShiftCount;
+            if (traced < dynamicBase ||
+                traced > dynamicBase + maxCount)
                 return false;
             count = int(traced - dynamicBase);
             loadGuestRegister(a, L, 9, false, sem.registerIndex);

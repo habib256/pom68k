@@ -61,6 +61,13 @@ target_link_libraries(q605_rogue_census PRIVATE pom68k_core)
 add_executable(lcii_simcity_census EXCLUDE_FROM_ALL tests/lcii_simcity_census.cpp)
 target_link_libraries(lcii_simcity_census PRIVATE pom68k_core)
 
+# Real benchmark harness: Speedometer 4.02 on the same LC II
+# volume. Its subtests separate CPU, graphics, disk and floating-point loads,
+# making it the next workload selector after the broad SimCity census.
+add_executable(lcii_speedometer_census EXCLUDE_FROM_ALL
+               tests/lcii_speedometer_census.cpp)
+target_link_libraries(lcii_speedometer_census PRIVATE pom68k_core)
+
 # Replay a RECORDED GUI session (POM68K_INPUT_RECORD → src/InputJournal.h)
 # on the LC II at full speed and print the × real-time ratio — the workload
 # instrument TODO.md § 3 asks for after the D1F0 lesson: the unit of
@@ -122,4 +129,3 @@ target_link_libraries(macii_hmmu_trace PRIVATE pom68k_core)
 # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,
 # see docs/BASILISK_ROM_NOTES.md. Standalone, no emulator core.
 add_executable(rominfo EXCLUDE_FROM_ALL tools/rominfo.cpp)
-

@@ -2828,7 +2828,11 @@ bool Emitter::emitShiftRegister(size_t i) {
         const unsigned dynamicBase =
             type == 3 || (type == 0 && left) ? 8u : 6u;
         const unsigned traced = traced030(i);
-        if (traced < dynamicBase || traced > dynamicBase + 8) return false;
+        const unsigned maxCount = type == 1
+            ? kMaxSpecializedLogicalShiftCount
+            : kMaxSpecializedShiftCount;
+        if (traced < dynamicBase ||
+            traced > dynamicBase + maxCount) return false;
         count = int(traced - dynamicBase);
         a_.movRM(Sz::L, RCX, D(sem.registerIndex));
         a_.aluRI(Asm::Op::AND, Sz::L, RCX, 63);

@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer 4 isolated the count-16 logical shifts, what their guarded promotion buys, and why multiplication is now next** → [2026-08-30 (tenth) — Speedometer 4 turns…](#2026-08-30-speedometer-shift16)
 - **how a trap-capable divide can inspect RAM, reject zero/overflow, and still replay without duplicating MMIO, cache or EA effects** → [2026-08-30 (eighth) — Memory division…](#2026-08-30-memory-division)
 - **how the last SimCity division witness became native without letting `IDIV` escape on `INT_MIN/-1`** → [2026-08-30 (seventh) — Long division…](#2026-08-30-long-division)
 - **how the three hot SimCity word divisions became native on both generators, and why their zero oracle fixed every `FlagMayTrap` replay** → [2026-08-30 (sixth) — Word division…](#2026-08-30-word-division)
@@ -353,6 +354,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-30 (tenth)** — [Speedometer 4 turns three count-16 logical shifts native on both generators and names multiplication as the next honest coverage target](#2026-08-30-speedometer-shift16)
 - **2026-08-30 (ninth)** — [The SimCity division promotion survives: two inter-binary regressions were code-layout noise, while same-binary ABBA measures native division 1.453 % faster](#2026-08-30-division-promotion)
 - **2026-08-30 (eighth)** — [Memory division becomes transactional on both generators: speculative RAM, deferred 040 cache/EA effects, and exactly one MMIO read](#2026-08-30-memory-division)
 - **2026-08-30 (seventh)** — [The JIT closes SimCity's long-division `4C40` witness on both generators, with every extension action and trap guard proved](#2026-08-30-long-division)
@@ -699,6 +701,55 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-30-speedometer-shift16"></a>
+## 2026-08-30 (tenth) — Speedometer 4 turns three count-16 logical shifts native on both generators and names multiplication as the next honest coverage target
+
+The GISTPERSO volume already carried a second real benchmark after SimCity:
+`Logiciels/Speedo402/Speedometer 4.02`. A new EXCLUDE_FROM_ALL harness now
+drives that exact path on the LC II, dismisses its Page Setup, splash and
+registration dialogs, exposes the `Tests` menu, and selects only
+`Performance Rating / CPU`. The SimCity and Speedometer tools share their
+boot, framebuffer, ADB and fingerprint driver in
+`tests/LciiApplicationHarness.h`; no source file includes another executable's
+`.cpp`.
+
+The finish condition is visible evidence, not a long sleep: two black
+seven-segment score panels around the light "tests are done" modal. JIT and
+interpreter both reach it at 270 frames with CPU fingerprint
+`ce2e6699cc81f501`, screen `be29f2c8d37f6bb3`, SCSI totals and the displayed
+CPU score `1.053` identical. The uninstrumented useful phase is 0.303736 s on
+A64 versus 1.288846 s interpreted, **4.243x**. The later `Benchmark Mix`
+dialog confirms ten separable workloads: Whetstones, Dhrystones, Hanoi,
+Quicksort, Bubble Sort, Queens, Puzzle, Permutations, Matrix and Sieve.
+
+The first CPU census named a small, exact gap. `E8A8`, `E4AC` and `E2AD` each
+arrive with traced base cost 22. They are logical register-count shifts, whose
+dynamic base is 6: the observed count is therefore 16, and Rogue's historical
+count-eight unroll ceiling was their sole refusal. `JitCost.h` now owns two
+shared ceilings: eight for arithmetic shifts/rotates and sixteen for logical
+shifts. A64 and x64 consume the same rule, still compare `Dn & 63`
+before any state change, and replay through Moira when the live count differs.
+The directed asset-free lockstep now uses count 16 and reports 639 native
+instructions, zero slow instructions, with every CPU/cycle/RAM checkpoint
+identical. Backend acceptance and parity gates remain green.
+
+On the original 600-frame census, unsupported fallbacks fall 330,241 →
+317,894; the three named opcodes' 11,979 executions disappear. CPU and screen
+fingerprints remain unchanged. The only before/after wall pair is
+1.117377 → 1.095146 s (−1.99 %), so this entry deliberately makes no promoted
+speed claim: it is a coverage result until a repeated same-binary control
+prices it above the host floor.
+
+The tighter post-change phase retires 2,298,679 instructions, 2,284,402 native
+(**99.4 %**), and records 71,863 unsupported + 41,789 runtime fallbacks. Its
+next target is not guessed: `C7FC` 7,965 + `C9C0` 3,988 + `C2FC` 3,161 =
+**15,114**, 13.3 % of all fallbacks and 21.0 % of the unsupported subset.
+Those are `MULU`/`MULS`, whose 68030 cycles depend on operand data. The next
+conformant lowering must calculate a live cost or guard an operand
+specialization; copying the trace-time number would be fast and wrong.
 
 ---
 

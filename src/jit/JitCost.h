@@ -122,6 +122,14 @@ inline constexpr int8_t kDivsWord[EA_MODE_COUNT] =
 inline constexpr int8_t kDivLong[EA_MODE_COUNT] =
     { 84, -1, 88, 88, 89, 89, 91, 88, 88, 89, 91, 88 };
 
+// Register-count shifts have data-dependent timing, so both native backends
+// specialize a block for the traced count and guard Dn&63 before any effect.
+// Rogue justified eight for the whole family. Speedometer 4 then identified
+// three equally hot *logical* shifts at count sixteen (E8A8/E4AC/E2AD); keep
+// that measured extension narrow rather than silently widening AS/RO as well.
+inline constexpr unsigned kMaxSpecializedShiftCount = 8;
+inline constexpr unsigned kMaxSpecializedLogicalShiftCount = 16;
+
 // ── full-format (68020) extension prices ─────────────────────────────────
 
 // Address-FORMATION penalty of a full-format extension, on top of the

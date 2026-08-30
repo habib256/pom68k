@@ -748,12 +748,11 @@ Open, in ROI order:
   statiques ou dynamiques, sont natives sur A64 et x64 ; seules les queues
   mémoire cinq-octets gardent leur frontière transactionnelle documentée.
   `CHANGELOG.md` 2026-08-28 (eighth) et 2026-08-30 (second à fifth).
-- [ ] **Promotion applicative de la division SimCity** : la couverture est
-  close ; refaire maintenant le census sur la même session, puis l'ABBA
-  murale sur hôte silencieux. Une promotion exige encore les quatre preuves :
-  empreinte identique, gain répété au-dessus du plancher, gates ciblés verts,
-  tier `etalon` complet vert. Ne pas transformer la disparition des replis en
-  promesse de vitesse : `D1F0` a déjà réfuté cette inférence.
+- **Promotion applicative de la division SimCity — CLOSE le 2026-08-30** :
+  le même exécutable, admission OFF/ON injectée, mesure **−1,453 %** en ABBA
+  avec empreintes CPU/écran identiques, 2,55× le plancher nul. Les deux
+  comparaisons inter-binaires qui donnaient +2,883 % et +3,691 % étaient du
+  bruit de layout et sont rétractées. `CHANGELOG.md` 2026-08-30 (ninth).
 - **Division — CLOS le 2026-08-30** : `DIVU.W`/`DIVS.W` et les quatre actions
   `DIVL` sont natives sur A64 et x64 pour `Dn`, immédiat et sources mémoire
   ordinaires. La RAM est lue spéculativement après prévalidation ; les effets
@@ -799,12 +798,23 @@ Open, in ROI order:
   un 68030 quand x64 était à 44 %. **Voir § 10 vague 2** : cet item est le
   symptôme, la cause est que les deux backends ne partagent rien au-dessus de
   l'IR.
-- [ ] **Queue de couverture** : décalages/rotations en mémoire et par compteur
-  registre ; `MULU`/`MULS` restent en repli (les multiplications ont des cycles dépendant des données —
-  le contrôle croisé les refuse honnêtement). Restent refusés des deux côtés :
-  MOVEM en indexé complet, les destinations mémoire-indirectes,
-  l'arithmétique à cycles variables.
-  N'en ajouter un qu'après un recensement frais.
+- **Décalages logiques Speedometer — CLOS le 2026-08-30** : le nouveau
+  `lcii_speedometer_census` isole `Performance Rating / CPU` en 270 frames,
+  avec fin structurellement détectée. `E8A8`, `E4AC`, `E2AD` portaient tous
+  un compteur tracé de 16, seule raison de leur refus. La spécialisation
+  gardée `Dn&63` couvre maintenant 16 pour les décalages logiques sur A64 et
+  x64, huit pour AS/RO ; le lockstep compteur-16 passe sans repli. Sur la
+  fenêtre historique de 600 frames, 330 241 → 317 894 replis unsupported,
+  empreintes inchangées. Le couple mural −1,99 % reste un signal non promu,
+  faute de répétitions au-dessus du plancher. `CHANGELOG.md` (tenth).
+- [ ] **Queue de couverture, maintenant mesurée par Speedometer** : sur la
+  phase CPU exacte (2 298 679 instructions, 99,4 % natives), `C7FC`, `C9C0`,
+  `C2FC` totalisent **15 114 replis**, 13,3 % de tous les replis et 21,0 % des
+  unsupported. `MULU`/`MULS` sont donc la prochaine famille de couverture,
+  mais leurs cycles dépendent des données : le prochain lowering doit calculer
+  le coût à l'exécution ou spécialiser+garder l'opérande, pas réutiliser le
+  coût d'une trace. Suivent `JSR idx(An)` `4EB0` (13 823), ROX/décalages hors
+  tranche mesurée, MOVEM indexé complet et destinations mémoire-indirectes.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

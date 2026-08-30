@@ -642,9 +642,10 @@ The recensus then drove each lowering, in descending measured order:
   reads are separate IR accesses and the pointer mapping must prove plain
   before generated code reads it;
 * full-direct MOVE sources, the dependent `MOVE.L (A7)+,(A7)` case, and a
-  guarded dynamic-shift specialization. A shift site is emitted only for a
-  traced count no greater than eight and checks `Dn & 63` before any effect;
-  a changed count replays the untouched instruction through Moira.
+  guarded dynamic-shift specialization. A shift site checks `Dn & 63` before
+  any effect; a changed count replays the untouched instruction through
+  Moira. The original Rogue ceiling is eight. Speedometer 4 later justified
+  sixteen for logical shifts only; AS/RO retain eight.
 
 The final identical 445/468-key drawing run reports **278,660 unsupported +
 255,754 exact runtime guards = 534,414 fallbacks**, down **99.48 %** from the
@@ -663,6 +664,36 @@ the census did not identify one as a remaining dominant cost. This is also
 why QuickDraw HLE is not the next step; improving its instructions and plain
 framebuffer accesses accelerates QuickDraw and direct-framebuffer games
 without replacing either guest algorithm.
+
+#### 3.5quater Speedometer 4 separates the CPU mix (2026-08-30)
+
+`lcii_speedometer_census` drives the existing GISTPERSO volume through
+`Logiciels/Speedo402/Speedometer 4.02`, cancels the printer and registration
+dialogs, then runs only `Performance Rating / CPU`. Completion is detected by
+the result window's two black seven-segment panels around its light modal,
+not by an arbitrary sleep. Both engines reach it after exactly 270 frames,
+with CPU fingerprint `ce2e6699cc81f501`, screen `be29f2c8d37f6bb3`, SCSI
+traffic and the visible CPU score `1.053` identical. The uninstrumented phase
+takes 0.303736 s on A64 against 1.288846 s in the interpreter: **4.243x** for
+the generated engine on this exact application benchmark.
+
+The first CPU census caught three logical register shifts at one site group:
+`E8A8`, `E4AC`, `E2AD`, each traced at base cost 22. Their dynamic base is 6,
+so all carry count 16 and were refused solely by Rogue's count-eight code-size
+ceiling. A shared cost-policy constant now lets logical shifts specialize to
+16 on both generators while AS/RO remain at eight. The pre/post 600-frame
+census moves unsupported fallbacks 330,241 → 317,894; the three opcodes'
+11,979 executions disappear, and both guest fingerprints stay exact. One
+instrumented wall pair moves 1.117377 → 1.095146 s (−1.99 %), which is recorded
+as a signal only, not a speed claim without a repeated same-binary control.
+
+On the exact 270-frame post-change phase, 2,284,402 / 2,298,679 instructions
+are native (**99.4 %**). The next honest coverage target is multiplication:
+`C7FC` 7,965 + `C9C0` 3,988 + `C2FC` 3,161 = **15,114**, 13.3 % of all
+113,652 fallbacks and 21.0 % of the unsupported subset. Unlike the count-16
+shift, a multiply cannot simply trust its traced cost: 68030 multiplication
+timing depends on operand data. A conformant lowering must compute that live
+cost or guard a specialization before any guest effect.
 
 ### 3.6 What one window exit actually costs (2026-08-09)
 

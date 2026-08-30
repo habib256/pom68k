@@ -769,9 +769,9 @@ void installCachedMemoryDivisionLoop(SyntheticCpu& c) {
     put16(c, kData, 7);
 }
 
-void installGuardedDynamicShiftLoop(SyntheticCpu& c) {
+void installGuardedDynamicShiftLoop(SyntheticCpu& c, uint8_t count) {
     installVectors(c);
-    put16(c, kCode + 0x00, 0x7404);    // MOVEQ #4,D2
+    put16(c, kCode + 0x00, uint16_t(0x7400 | count)); // MOVEQ #count,D2
     put16(c, kCode + 0x02, 0x203C);    // MOVE.L #$89ABCDEF,D0
     put32(c, kCode + 0x04, 0x89AB'CDEFu);
     put16(c, kCode + 0x08, 0xE5A8);    // LSL.L D2,D0 (Rogue)
@@ -1846,10 +1846,10 @@ bool runCachedMemoryDivisionLockstep() {
            (!nativeGenerator || s.slowInstrs == 0);
 }
 
-bool runGuardedDynamicShiftLockstep() {
+bool runGuardedDynamicShiftLockstep(uint8_t count) {
     SyntheticCpu ref, native;
-    installGuardedDynamicShiftLoop(ref);
-    installGuardedDynamicShiftLoop(native);
+    installGuardedDynamicShiftLoop(ref, count);
+    installGuardedDynamicShiftLoop(native, count);
     resetCpu(ref);
     resetCpu(native);
     native.jit.setEnabled(true);
@@ -1865,15 +1865,18 @@ bool runGuardedDynamicShiftLockstep() {
         }
     }
     const auto s = native.jit.stats().snapshot();
-    std::printf("    guarded dynamic-shift compiled=%llu runs=%llu native=%llu slow=%llu\n",
+    std::printf("    guarded dynamic-shift count=%u compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n", unsigned(count),
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    const bool a64Production = !std::strcmp(native.jit.backendName(), "aarch64") &&
-                               !native.jit.config().packedCcr;
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!a64Production || s.slowInstrs == 0);
+           (!nativeProduction || s.slowInstrs == 0);
 }
 
 void positionAt(SyntheticCpu& c, uint32_t pc) {
@@ -2072,8 +2075,10 @@ int main() {
           "MMIO divisor falls back before one and only one device read");
     check(runCachedMemoryDivisionLockstep(),
           "resident 040 cache divisors publish their hit only after guards");
-    check(runGuardedDynamicShiftLockstep(),
-          "guarded dynamic LSL remains exact and is native with production CCR");
+    check(runGuardedDynamicShiftLockstep(4),
+          "guarded Rogue count-4 LSL remains exact and native");
+    check(runGuardedDynamicShiftLockstep(16),
+          "guarded Speedometer count-16 LSL remains exact and native");
     check(runGuardIndexInvariant(),
           "mark/unmark inverse stays exact across 384 one/two-slice evictions");
 
