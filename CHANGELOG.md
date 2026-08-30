@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's full-indirect `LEA` became native on the 68030 without turning `C029`'s bad timing experiment into a false win** → [2026-08-31 (eighth) — Speedometer's indirect LEA…](#2026-08-31-speedometer-indirect-lea)
 - **how Speedometer's tailed `E9D4` made 68030 memory bitfields a proved default on A64 and x64** → [2026-08-31 (seventh) — Speedometer promotes memory bitfields…](#2026-08-31-speedometer-memory-bitfields)
 - **how Speedometer's `BRA.W` and `JMP abs.l` became native through one exact 68030 linear-fetch proof** → [2026-08-31 (sixth) — Speedometer's wide transfers…](#2026-08-31-speedometer-linear-transfers)
 - **how Speedometer's `ADDX`/`SUBX` register chains became native on both generators without losing X or cumulative Z** → [2026-08-31 (fifth) — Speedometer's extended arithmetic…](#2026-08-31-speedometer-addx-subx)
@@ -361,6 +362,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (eighth)** — [Speedometer's full-indirect `LEA` becomes native on both 68030 JIT generators while `C029` stays behind its failed real-timing proof](#2026-08-31-speedometer-indirect-lea)
 - **2026-08-31 (seventh)** — [Speedometer's tailed `E9D4` gives x64 its missing fifth-byte reader and promotes 68030 memory bitfields on both generators](#2026-08-31-speedometer-memory-bitfields)
 - **2026-08-31 (sixth)** — [Speedometer's wide unconditional branches and simple jumps become native through an exact 68030 linear-fetch proof](#2026-08-31-speedometer-linear-transfers)
 - **2026-08-31 (fifth)** — [Speedometer's register `ADDX`/`SUBX` chains become native on A64 and x64 with exact X and cumulative Z](#2026-08-31-speedometer-addx-subx)
@@ -715,6 +717,49 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-indirect-lea"></a>
+## 2026-08-31 (eighth) — Speedometer's full-indirect `LEA` becomes native on both 68030 JIT generators while `C029` stays behind its failed real-timing proof
+
+The first post-bitfield row, `C029`, was the useful negative result. It is
+`AND.B d16(A1),D0` at Speedometer extensions `1A00` and `1C00`, with observed
+base costs 75–103 around a fixed cost of 7. Marking the opcode exact, then
+restricting it by extension, and finally requiring a non-plain runtime
+mapping all passed the synthetic delayed-MMIO oracle but changed the real CPU
+test from its exact 270-frame path to 450 frames and changed CPU/screen state.
+Every version was reverted. The current access thunk does not prove the
+peripheral phase of these reads, so `C029` deliberately remains interpreted.
+
+The next static row had a complete proof. `41F6` is
+`LEA ([bd.W,A6],D6.L),A0`, full-format postindexed extension `6925`: one
+three-word instruction, one control-space pointer longword, fixed base cost
+16; its observed 16/20 totals differ only by one 030 i-cache miss. `43F0` is
+the same family with a longer full-format shape and fixed base 18. The shared
+IR already publishes their sole pointer read. A64's mature 040 lowering had
+only an explicit 030 refusal, while x64 decoded full-direct LEA but did not
+consume memory indirection.
+
+Both generators now admit the cacheless 030 direct-RAM transaction. They
+form and preflight the pointer address before reading it, assemble the
+postindexed result only after the proved longword load, and commit the
+destination An last. A mapping miss, MMIO address or fault therefore replays
+the untouched LEA through Moira; no device timing is inferred. X64 reuses the
+same full-indirect pointer/finish primitives already used by transactional
+JSR. The directed 030 oracle executes the exact `41F6/6925` shape for 256
+checkpoints with identical registers, queue, SR and clock and zero slow
+instructions on native A64 and native x64. Backend parity, the asset-free
+suite and all four real LC II 030 locksteps pass.
+
+In the exact 270-frame recensus, both `41F6` and `43F0` disappear. Unsupported
+fallbacks move 10,483 → 9,408 (**−10.25 %**) and total fallbacks 53,586 →
+52,303 (**−2.39 %**); 2,225,525 / 2,234,199 instructions are native
+(**99.61 %**). CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
+instrumented 0.302729 s wall time is not a speed claim. `C029` remains the
+largest static row; `2470`/`2070` are the next safe structural candidates.
 
 ---
 

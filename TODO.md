@@ -852,11 +852,14 @@ Open, in ROI order:
   formes registre rencontrées disparaissent, empreintes inchangées. Les
   formes mémoire prédecrémentées restent un contrat de faute séparé.
   `CHANGELOG.md` (2026-08-31 fifth).
-- [ ] **Queue de couverture Speedometer après ADDX/SUBX** : `6000` (3 026),
-  `E9D4` (3 002), `4EF9` (1 557), `C029` (1 153), puis les MOVE indexés
-  `2470` / `2070`. Les ROX/décalages hors tranche, MOVEM indexé complet,
-  `4C00` et ADDX/SUBX mémoire restent ensuite ; les traiter par contrat, pas
-  par largeur d'opcode.
+- [ ] **Queue de couverture Speedometer après les LEA indirects** : `C029`
+  reste premier mais son admission exact-thunk a échoué le vrai oracle
+  (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
+  sans preuve de phase périphérique. Les prochains candidats structurels
+  sont les MOVE full-indirects `2470` / `2070`, puis ROX/décalages hors
+  tranche, MOVEM indexé complet, `4C00` et ADDX/SUBX mémoire. `6000`, `4EF9`,
+  `E9D4` et les LEA `41F6`/`43F0` sont clos ; traiter la suite par contrat,
+  pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

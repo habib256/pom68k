@@ -803,6 +803,27 @@ locksteps remain identical. In the 270-frame CPU census every read-only
 (**−35.07 %**) and total fallbacks 59,247 → 53,586 (**−9.55 %**), with all
 four fingerprints unchanged. `C029` is now the largest static CPU row.
 
+`C029` also demonstrates why a fallback count is not an admission proof.
+The two Speedometer sites are `AND.B d16(A1),D0` at displacements `1A00` and
+`1C00`, with 75–103 observed base cycles around a fixed cost of 7. Three
+increasingly narrow exact-thunk experiments passed a synthetic delayed-MMIO
+lockstep yet changed the real benchmark from its exact 270-frame path to 450
+frames and changed CPU/screen state. They were all removed: the present
+thunk does not prove the access phase this device observes, so `C029` stays
+with Moira.
+
+The next row, `41F6`, has no such ambiguity. It is the full-format
+postindexed `LEA ([bd.W,A6],D6.L),A0` (`6925`): a sole direct-RAM pointer
+read, fixed base 16, with only i-cache misses above it. `43F0` is the same
+family at fixed base 18. On the cacheless 030 both generators now preflight
+the pointer mapping, read the longword, finish the postindex and commit An
+last; a miss/MMIO address replays the pristine instruction. A directed
+`41F6` oracle stays wholly native on A64 and x64, and all four real 030
+locksteps remain identical. The 270-frame recensus removes both LEA rows:
+unsupported falls 10,483 → 9,408 (**−10.25 %**) and total fallbacks 53,586 →
+52,303 (**−2.39 %**), with all fingerprints unchanged. `C029` remains the
+largest static row; `2470`/`2070` are the next structural candidates.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
@@ -1398,9 +1419,9 @@ sees and the parity sweep cannot. The shared synthetic
 CPU/RAM lockstep and zero slow instructions. Its direct-full `LEA` twin must
 also stay native through base/index suppression and 9/11/15-cycle forms,
 while memory-indirect LEA/JSR/MOVE/CMP twins must remain exact and native on
-A64. The 030
-oracle separately pins native signed/scaled reads plus brief/direct-full
-`LEA`, and the restartable indexed-MOVE format-$A fault frame on both hosts;
+A64. The 030 oracle separately pins native signed/scaled reads plus
+brief/direct-full `LEA`, the direct-RAM full-indirect `LEA` transaction on
+both hosts, and the restartable indexed-MOVE format-$A fault frame;
 indexed `Scc` there remains conservatively replayed by the trace-cost guard.
 Each backend's
 `canEmit()` remains the source of truth, and `jit_backend_test` pins the

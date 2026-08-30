@@ -2786,10 +2786,22 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                     uint8_t(mode), sem.eaReg);
             if (!memory.complete()) return false;
             if (src.indirect != IndexIndirect::None) {
-                if (L.is030 || !pointerRead.valid() || slow < 0) return false;
-                if (!admitSoleReadTiming(L, in, pointerRead, fixedCycles,
-                                         nativeCycles))
+                if (!pointerRead.valid() || !pointerRead.preflight ||
+                    pointerRead.exactRequired || slow < 0)
                     return false;
+                if (L.is030) {
+                    // The 030 admission is the fixed-cost, direct-RAM
+                    // pointer path named by Speedometer's 41F6. A mapping
+                    // miss replays the untouched LEA; device/cache timing
+                    // remains with Moira rather than being inferred here.
+                    if (traced030(L, in) != fixedCycles) return false;
+                    pointerRead.exactThunk = false;
+                    pointerRead.cache = false;
+                } else if (!admitSoleReadTiming(
+                               L, in, pointerRead, fixedCycles,
+                               nativeCycles)) {
+                    return false;
+                }
                 addrOfFullIndirectPointer(a, L, src);
                 memLoadGuest(a, L, ir.super, 32, 11, slow, pointerRead);
                 finishFullIndirect(a, L, src, 11);

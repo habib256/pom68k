@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 354 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 355 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 55 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 56 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 37 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
@@ -77,6 +77,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-30 (second)** — [The x64 generator learns the bitfield family's static register forms, the parity table loses its Bitfield row, and the write bitfields get their IR contract — "IR d'abord" delivered](CHANGELOG.md#2026-08-30-x64-static-bitfields)
 - **2026-08-30 (seventh)** — [The JIT closes SimCity's long-division `4C40` witness on both generators, with every extension action and trap guard proved](CHANGELOG.md#2026-08-30-long-division)
 - **2026-08-30 (third)** — [The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host](CHANGELOG.md#2026-08-30-a64-bitfield-writes)
+- **2026-08-31 (eighth)** — [Speedometer's full-indirect `LEA` becomes native on both 68030 JIT generators while `C029` stays behind its failed real-timing proof](CHANGELOG.md#2026-08-31-speedometer-indirect-lea)
 - **2026-08-31 (fifth)** — [Speedometer's register `ADDX`/`SUBX` chains become native on A64 and x64 with exact X and cumulative Z](CHANGELOG.md#2026-08-31-speedometer-addx-subx)
 - **2026-08-31 (fourth)** — [Speedometer's next three JIT static fallbacks become native exact device reads, without flattening their live LC II delay](CHANGELOG.md#2026-08-31-speedometer-exact-polls)
 - **2026-08-31 (seventh)** — [Speedometer's tailed `E9D4` gives x64 its missing fifth-byte reader and promotes 68030 memory bitfields on both generators](CHANGELOG.md#2026-08-31-speedometer-memory-bitfields)

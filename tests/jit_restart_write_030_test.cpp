@@ -390,6 +390,18 @@ void installSpeedometerBitfieldTailLoop(FaultCpu& c) {
     put32(c, kBitfieldData + 0x08, 0x89ABCDEF);
 }
 
+void installSpeedometerIndirectLeaLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x41F6);    // LEA ([bd.W,A6],D6.L),A0
+    put16(c, kCode + 0x02, 0x6925);    // full/postindexed, null outer disp
+    put16(c, kCode + 0x04, 0x0010);    // word base displacement
+    put16(c, kCode + 0x06, 0x60F8);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+    put32(c, kBitfieldData + 0x10, kBitfieldData + 0x100);
+}
+
 void installJsrLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -690,6 +702,83 @@ int main() {
         check(same && bfStats.blocksCompiled != 0 && bfStats.blocksRun != 0 &&
               (!nativeProduction || bfStats.slowInstrs == 0),
               "Speedometer E9D4 tail/no-tail reads stay native on the 030 default");
+    }
+
+    // Speedometer's 41F6 is a full-format postindexed LEA: one direct-RAM
+    // pointer read followed by register-only address formation. A failed
+    // mapping must replay before A0 changes; a proved mapping stays native.
+    {
+        FaultCpu leaRef, leaNative;
+        installSpeedometerIndirectLeaLoop(leaRef);
+        installSpeedometerIndirectLeaLoop(leaNative);
+        leaRef.reset(); leaNative.reset();
+        leaRef.setTC(12u << 20); leaNative.setTC(12u << 20);
+        for (FaultCpu* c : {&leaRef, &leaNative}) {
+            c->setA(6, kBitfieldData);
+            c->setD(6, 0x20);
+        }
+        leaNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = leaRef.getClock() + 43;
+            leaRef.executeUntil(target);
+            leaNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && leaRef.getD(r) == leaNative.getD(r) &&
+                       leaRef.getA(r) == leaNative.getA(r);
+            same = same && leaRef.getPC() == leaNative.getPC() &&
+                   leaRef.getPC0() == leaNative.getPC0() &&
+                   leaRef.getIRD() == leaNative.getIRD() &&
+                   leaRef.getIRC() == leaNative.getIRC() &&
+                   leaRef.getSR() == leaNative.getSR() &&
+                   leaRef.getClock() == leaNative.getClock();
+            if (!same)
+                std::printf("    030 41F6 divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto leaStats = leaNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(leaNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(leaNative.jit.backendName(), "x86-64")) &&
+            !leaNative.jit.config().packedCcr;
+        check(same && leaNative.getA(0) == kBitfieldData + 0x120 &&
+              leaStats.blocksCompiled != 0 && leaStats.blocksRun != 0 &&
+              (!nativeProduction || leaStats.slowInstrs == 0),
+              "Speedometer 41F6 full-indirect LEA stays native and exact on 030");
+
+        // Move the already-compiled pointer EA onto synthetic MMIO. The
+        // direct-only admission must now replay before changing A0, leaving
+        // the model to own both longword halves and their live delay.
+        for (FaultCpu* c : {&leaRef, &leaNative}) {
+            c->setA(6, kMmio - 0x10);
+            put32(*c, kMmio, kBitfieldData + 0x180);
+            c->mmioReadDelay = 11;
+        }
+        bool replaySame = true;
+        for (int step = 0; step < 32 && replaySame; step++) {
+            const int64_t target = leaRef.getClock() + 43;
+            leaRef.executeUntil(target);
+            leaNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                replaySame = replaySame &&
+                    leaRef.getD(r) == leaNative.getD(r) &&
+                    leaRef.getA(r) == leaNative.getA(r);
+            replaySame = replaySame &&
+                leaRef.getPC() == leaNative.getPC() &&
+                leaRef.getPC0() == leaNative.getPC0() &&
+                leaRef.getIRD() == leaNative.getIRD() &&
+                leaRef.getIRC() == leaNative.getIRC() &&
+                leaRef.getSR() == leaNative.getSR() &&
+                leaRef.getClock() == leaNative.getClock() &&
+                leaRef.mmioReads == leaNative.mmioReads;
+        }
+        const auto replayStats = leaNative.jit.stats().snapshot();
+        check(replaySame && leaNative.getA(0) == kBitfieldData + 0x1A0 &&
+              leaNative.mmioReads != 0 &&
+              (!nativeProduction ||
+               replayStats.slowInstrs > leaStats.slowInstrs),
+              "41F6 non-plain pointer replays before its An commit");
     }
 
     // Train and compile the exact write while its destination is direct RAM.

@@ -2722,7 +2722,7 @@ bool Emitter::emitLine4(size_t i) {
     if (sem.operation == SemanticOp::Lea) {          // LEA <ea>,An
         const int an = sem.registerIndex;
         Ea src;
-        if (!decode(i, mode, reg, 2, 0, src, true)) return false;
+        if (!decode(i, mode, reg, 2, 0, src, true, true)) return false;
         if (!src.memory) return false;               // LEA needs an address
         if (src.idx == EA_PI || src.idx == EA_PD) return false;  // not encodable
         if (!lengthOk(i, src.ext)) return false;
@@ -2730,7 +2730,28 @@ bool Emitter::emitLine4(size_t i) {
         const int cycles = kLea[src.idx] < 0 ? -1 :
             kLea[src.idx] + fullPenalty;
         if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
-        addrOf(src, RAX, 2);
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        MemoryAccessPlan pointerRead;
+        if (src.indirect != IndexIndirect::None)
+            pointerRead = memory.access(
+                MemoryDirection::Read, MemoryOperand::Control, 4,
+                uint8_t(mode), uint8_t(reg));
+        if (!memory.complete()) return false;
+        if (src.indirect != IndexIndirect::None) {
+            // New only for the cacheless 030: prove a direct RAM pointer
+            // mapping before reading it. A miss/MMIO address replays the
+            // pristine instruction, so no exact-device timing is guessed.
+            if (!L_.is030 || !pointerRead.valid() ||
+                !pointerRead.preflight || pointerRead.exactRequired)
+                return false;
+            pointerRead.exactThunk = false;
+            pointerRead.cache = false;
+            addrOfFullIndirectPointer(src, RAX);
+            memLoad(RAX, 2, RDI, pointerRead);
+            finishFullIndirect(src, RDI, RAX);
+        } else {
+            addrOf(src, RAX, 2);
+        }
         a_.movMR(Sz::L, A(an), RAX);
         return true;
     }
