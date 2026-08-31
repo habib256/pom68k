@@ -1231,7 +1231,7 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::MultiplyWord:
             return ei >= 0 && ei != EA_AN;
         case SemanticOp::MultiplyLong:
-            return op == 0x4C00;
+            return op == 0x4C00 || op == 0x4C2F;
         case SemanticOp::DivideLong:
             return ei >= 0 && ei != EA_AN;
         default: return false;
@@ -3198,32 +3198,81 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     }
 
     if (sem.operation == SemanticOp::MultiplyLong) {
-        // Speedometer 4's measured hot form is exactly MULU.L D0,D4. Keep
-        // this first admission extension-specific: the other extension
-        // actions include signed and two-register 64-bit results and remain
-        // in Moira until separately observed and proved.
-        if (in.extensionCount < 1 || in.extensionWord(0) != 0x4004u)
-            return false;
+        // Speedometer supplies two exact selectors: unsigned 32-bit
+        // MULU.L D0,D4 and signed 64-bit MULS.L d16(A7),D0:D1. Keep the
+        // admission selector-specific; the two unobserved extension actions
+        // remain in Moira.
+        if (in.extensionCount < 1) return false;
+        const uint16_t ext = in.extensionWord(0);
+        const bool unsignedRegister = ext == 0x4004u;
+        const bool signedMemory = ext == 0x1C00u;
+        if (!unsignedRegister && !signedMemory) return false;
         Ea src;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 1, src) ||
-            src.idx != EA_DN || src.reg != 0 || in.words != 2)
+            in.words != unsigned(2 + src.ext) ||
+            (unsignedRegister && (src.idx != EA_DN || src.reg != 0)) ||
+            (signedMemory && (src.idx != EA_DI || src.reg != 7)))
             return false;
+        MemoryAccessPlan read;
+        if (src.memory)
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Source, 4,
+                                 uint8_t(sem.eaMode), sem.eaReg);
+        if (!memory.complete()) return false;
         const int cycles = kMulLong[src.idx];
         if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
 
-        loadGuestRegister(a, L, 9, false, 0);
-        loadGuestRegister(a, L, 10, false, 4);
-        a.mulX(11, 9, 10);                         // full unsigned product
-        a.lsrX(14, 11, 32);
-        a.cmpXZero(14);
-        a.csetW(14, Asm::NE);                      // 32-bit result overflow
-        a.strW(11, 0, L.d + 4 * 4);
-        emitLogicFlags(a, L, 11, 32);              // N/Z low, C=0, X survives
-        if (gPackedCcr) {
-            a.lslW(14, 14, 1);
-            setPackedCcrBits(a, 14, 2);
+        if (src.idx == EA_DN) {
+            loadGuestRegister(a, L, 9, false, unsigned(src.reg));
         } else {
-            a.strB(14, 0, L.srV);
+            if (slow < 0) return false;
+            addrOf(a, L, src, 32);
+            memLoadGuest(a, L, ir.super, 32, 9, slow, read, &src);
+            commitEaAfterAccess(a, L, src, 32, read);
+        }
+        const unsigned dl = (ext >> 12) & 7;
+        const unsigned dh = ext & 7;
+        loadGuestRegister(a, L, 10, false, dl);
+        if (signedMemory) {
+            a.sxtW(9, 9);
+            a.sxtW(10, 10);
+        }
+        a.mulX(11, 9, 10);                         // full signed/unsigned product
+        a.lsrX(14, 11, 32);
+        a.strW(11, 0, L.d + dl * 4);               // 030 writes low first
+        if (signedMemory) {
+            a.strW(14, 0, L.d + dh * 4);
+            if (gPackedCcr) {
+                a.lsrW(12, 14, 31);                // N = result bit 63
+                a.lslW(12, 12, 3);
+                a.cmpXZero(11);
+                a.csetW(13, Asm::EQ);
+                a.lslW(13, 13, 2);
+                a.orrW(12, 12, 13);
+                setPackedCcrBits(a, 12, 0x0F);     // X survives, V=C=0
+            } else {
+                a.lsrW(12, 14, 31);
+                a.strB(12, 0, L.srN);
+                a.cmpXZero(11);
+                a.csetW(12, Asm::EQ);
+                a.strB(12, 0, L.srZ);
+                a.movW(12, 0);
+                if (L.srC == L.srV + 1) a.strH(12, 0, L.srV);
+                else {
+                    a.strB(12, 0, L.srV);
+                    a.strB(12, 0, L.srC);
+                }
+            }
+        } else {
+            a.cmpXZero(14);
+            a.csetW(14, Asm::NE);                  // 32-bit result overflow
+            emitLogicFlags(a, L, 11, 32);          // X survives
+            if (gPackedCcr) {
+                a.lslW(14, 14, 1);
+                setPackedCcrBits(a, 14, 2);
+            } else {
+                a.strB(14, 0, L.srV);
+            }
         }
         return true;
     }

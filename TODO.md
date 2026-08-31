@@ -945,18 +945,28 @@ Open, in ROI order:
   `4EB2/4EB4` disparaissent dans les neuf phases ; le CPU-test fait
   2 153 → 2 012 unsupported et 46 098 → 45 956 replis totaux, empreintes
   inchangées. `CHANGELOG.md` (2026-08-31 eighteenth).
-- [ ] **Queue de couverture Speedometer après `4EB2/4EB4`** : `C029`
+- **MULL signé 64 bits mémoire Speedometer — CLOS le 2026-08-31** :
+  `4C2F 1C00` est `MULS.L d16(A7),D0:D1`, lecture longue unique, coût fixe
+  48, publication low puis high et N/Z sur les 64 bits. A64 et x64 passent
+  l'oracle de 256 checkpoints sans repli et les huit locksteps réels. Les
+  777 lignes statiques disparaissent des sept phases concernées ; CPU-test
+  2 012 → 1 998 unsupported et 45 956 → 45 942 replis totaux, empreintes
+  inchangées. `CHANGELOG.md` (2026-08-31 nineteenth).
+- [ ] **Queue de couverture Speedometer après `4C2F`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Le census des neuf phases ne montre
   **aucun** MOVEM indexé complet ni ADDX/SUBX mémoire : ne pas prioriser ces
-  familles sans nouveau corpus. Le prochain refus fixe observé à tracer est
-  `9611` (86 dans le CPU-test). Les décalages dynamiques hors tranche
-  demandent un cache multi-version, pas un plafond d'unrolling plus large.
+  familles sans nouveau corpus. `9611`, `C229`, `1411`, `1229` et `0811`
+  montrent eux aussi 59–128 cycles de base sur des lectures fixes courtes :
+  même preuve de phase périphérique manquante, donc rester sur Moira. Le
+  prochain candidat générable est `E291` (`ROXR.L D1,D1`) avec garde sur le
+  compte vivant ; les autres décalages dynamiques demandent un cache
+  multi-version, pas un plafond d'unrolling plus large.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
   full-indirects, les destinations brèves, `4C00 4004`, les MOVE A7
-  dépendants, `4A76`, `49C7`, `61FF` et `4EB2/4EB4` sont clos ; traiter la suite par
-  contrat, pas par largeur d'opcode.
+  dépendants, `4A76`, `49C7`, `61FF`, `4EB2/4EB4` et `4C2F 1C00` sont clos ;
+  traiter la suite par contrat, pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

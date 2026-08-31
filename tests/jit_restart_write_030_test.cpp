@@ -492,6 +492,18 @@ void installSpeedometerMuluLongLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
 }
 
+void installSpeedometerMulsLongMemoryLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x4C2F);    // MULS.L 24(A7),D0:D1
+    put16(c, kCode + 0x02, 0x1C00);    // signed 64-bit, Dh=D0/Dl=D1
+    put16(c, kCode + 0x04, 0x0018);
+    put16(c, kCode + 0x06, 0x60F8);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+    put32(c, kStack + 0x18, 0xFFFF'FFFDu); // -3
+}
+
 void installSpeedometerRoxrByteLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -1043,6 +1055,56 @@ int main() {
               mulStats.blocksCompiled != 0 && mulStats.blocksRun != 0 &&
               (!nativeProduction || mulStats.slowInstrs == 0),
               "Speedometer 4C00 4004 MULU.L stays native on 030");
+    }
+
+    // Speedometer's later 4C2F 1C00 sites multiply a d16(A7) source into a
+    // signed 64-bit D0:D1 result. -3 * INT_MIN is a stable loop value with
+    // a non-zero high half, so it pins source memory, signed widening,
+    // low-then-high 030 register publication and 64-bit N/Z in one oracle.
+    {
+        FaultCpu mulRef, mulNative;
+        installSpeedometerMulsLongMemoryLoop(mulRef);
+        installSpeedometerMulsLongMemoryLoop(mulNative);
+        mulRef.reset(); mulNative.reset();
+        mulRef.setTC(12u << 20); mulNative.setTC(12u << 20);
+        for (FaultCpu* c : {&mulRef, &mulNative}) {
+            c->setD(0, 0);
+            c->setD(1, 0x8000'0000u);
+            c->setSR(0x2710);                     // X set, NZVC clear
+        }
+        mulNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = mulRef.getClock() + 48;
+            mulRef.executeUntil(target);
+            mulNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && mulRef.getD(r) == mulNative.getD(r) &&
+                       mulRef.getA(r) == mulNative.getA(r);
+            same = same && mulRef.getPC() == mulNative.getPC() &&
+                   mulRef.getPC0() == mulNative.getPC0() &&
+                   mulRef.getIRD() == mulNative.getIRD() &&
+                   mulRef.getIRC() == mulNative.getIRC() &&
+                   mulRef.getSR() == mulNative.getSR() &&
+                   mulRef.getClock() == mulNative.getClock();
+        }
+        const auto mulStats = mulNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(mulNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(mulNative.jit.backendName(), "x86-64")) &&
+            !mulNative.jit.config().packedCcr;
+        std::printf("    030 MULS.L memory compiled=%llu runs=%llu slow=%llu\n",
+                    (unsigned long long)mulStats.blocksCompiled,
+                    (unsigned long long)mulStats.blocksRun,
+                    (unsigned long long)mulStats.slowInstrs);
+        check(same && mulNative.getD(0) == 1 &&
+              mulNative.getD(1) == 0x8000'0000u &&
+              (mulNative.getSR() & 0x10u) != 0 &&
+              (mulNative.getSR() & 0x0Fu) == 0 &&
+              mulStats.blocksCompiled != 0 && mulStats.blocksRun != 0 &&
+              (!nativeProduction || mulStats.slowInstrs == 0),
+              "Speedometer 4C2F 1C00 MULS.L memory stays native on 030");
     }
 
     // Speedometer's remaining E410 row is the fixed two-step ROXR.B form.

@@ -214,6 +214,10 @@ public:
         db(0x0F); db(from == Sz::B ? 0xBE : 0xBF);
         modrm(dst, src);
     }
+    void movsxdRR(Reg dst, Reg src) {
+        rex(Sz::Q, dst, src, true);
+        db(0x63); modrm(dst, src);
+    }
     // Bit Scan Reverse: dst = index of the highest set bit of src.
     // UNDEFINED when src is zero — every caller branches around that case
     // (BFFFO's zero-field arm). Baseline x86-64; no LZCNT/ABM assumed.

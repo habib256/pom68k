@@ -318,6 +318,13 @@ reset block.
    target alias and defer the push until the target read succeeds. The
    restart oracle patches the live target after compilation; all eight real
    LC II locksteps remain exact.
+   **Signed 64-bit memory MULL closed on both generators, 2026-08-31:**
+   Speedometer's `4C2F 1C00` is `MULS.L d16(A7),D0:D1`, one sole longword
+   read at fixed base cost 48. A64 signed-widens before its 64-bit multiply;
+   x64 uses `MOVSXD`/`IMUL`. Both publish low D1 before high D0, set N/Z from
+   the full 64-bit result, clear V/C and preserve X. The 256-checkpoint 030
+   oracle and all eight real LC II locksteps pass; the two unobserved MULL
+   selectors remain deliberately outside admission.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at

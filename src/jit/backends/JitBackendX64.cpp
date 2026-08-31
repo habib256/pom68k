@@ -3307,38 +3307,62 @@ bool Emitter::emitMultiplyWord(size_t i) {
     return true;
 }
 
-// Speedometer 4's observed MULL selector, MULU.L D0,D4. Deliberately do not
-// infer support for the signed or two-register 64-bit extension actions.
+// Speedometer 4's observed MULL selectors: MULU.L D0,D4 and
+// MULS.L d16(A7),D0:D1. The two other extension actions stay interpreted.
 bool Emitter::emitMultiplyLong(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
-    if (sem.operation != SemanticOp::MultiplyLong ||
-        in.extensionCount < 1 || in.extensionWord(0) != 0x4004u)
+    if (sem.operation != SemanticOp::MultiplyLong || in.extensionCount < 1)
         return false;
+    const uint16_t ext = in.extensionWord(0);
+    const bool unsignedRegister = ext == 0x4004u;
+    const bool signedMemory = ext == 0x1C00u;
+    if (!unsignedRegister && !signedMemory) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     Ea src;
     if (!decode(i, sem.eaMode, sem.eaReg, 2, 1, src) ||
-        src.idx != EA_DN || src.reg != 0 || !lengthOk(i, 1 + src.ext))
+        !lengthOk(i, 1 + src.ext) ||
+        (unsignedRegister && (src.idx != EA_DN || src.reg != 0)) ||
+        (signedMemory && (src.idx != EA_DI || src.reg != 7)))
         return false;
+    MemoryAccessPlan read;
+    if (src.memory)
+        read = memory.access(MemoryDirection::Read, MemoryOperand::Source,
+                             4, uint8_t(sem.eaMode), sem.eaReg);
+    if (!memory.complete()) return false;
     const int cycles = kMulLong[src.idx];
     if (cycles < 0 || traced030(i) != unsigned(cycles)) return false;
 
-    a_.movRM(Sz::L, RCX, D(0));
-    a_.movRM(Sz::L, RDI, D(4));
-    a_.imulRR64(RDI, RCX);                          // full unsigned product
-    a_.movMR(Sz::L, D(4), RDI);
+    load(src, 2, RCX, read, false);
+    const unsigned dl = (ext >> 12) & 7;
+    const unsigned dh = ext & 7;
+    a_.movRM(Sz::L, RDI, D(dl));
+    if (signedMemory) {
+        a_.movsxdRR(RCX, RCX);
+        a_.movsxdRR(RDI, RDI);
+    }
+    a_.imulRR64(RDI, RCX);                          // full 64-bit product
     a_.movRR(Sz::Q, R8, RDI);
     a_.shiftRI(Sz::Q, R8, 5, 32);
-    a_.testRR(Sz::Q, R8, R8);
-    a_.setccR(Cc::NE, R8);
-    a_.movzxRR(Sz::B, R8, R8);                     // high half != 0
-    a_.testRR(Sz::L, RDI, RDI);
-    flagsLogic(Sz::L);                              // N/Z low, C=0, X survives
-    if (packedCcr_) {
-        a_.shiftRI(Sz::L, R8, 4, 1);
-        a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~2);
-        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R8);
+    if (src.memory) commitEa(src, 2, read);
+    a_.movMR(Sz::L, D(dl), RDI);                    // 030 writes low first
+    if (signedMemory) {
+        a_.movMR(Sz::L, D(dh), R8);
+        a_.testRR(Sz::Q, RDI, RDI);
+        flagsLogic(Sz::Q);                          // N/Z over 64 bits
     } else {
-        a_.movMR(Sz::B, at(L_.srV), R8);
+        a_.testRR(Sz::Q, R8, R8);
+        a_.setccR(Cc::NE, R8);
+        a_.movzxRR(Sz::B, R8, R8);                 // high half != 0
+        a_.testRR(Sz::L, RDI, RDI);
+        flagsLogic(Sz::L);                          // N/Z low, C=0, X survives
+        if (packedCcr_) {
+            a_.shiftRI(Sz::L, R8, 4, 1);
+            a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~2);
+            a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R8);
+        } else {
+            a_.movMR(Sz::B, at(L_.srV), R8);
+        }
     }
     return true;
 }
@@ -5006,7 +5030,7 @@ bool X64Backend::canEmit(uint16_t op) const {
             return eaCostIndex(mode, reg) >= 0 &&
                    eaCostIndex(mode, reg) != EA_AN;
         case SemanticOp::MultiplyLong:
-            return op == 0x4C00;
+            return op == 0x4C00 || op == 0x4C2F;
         case SemanticOp::DivideLong:
             return eaCostIndex(mode, reg) >= 0 &&
                    eaCostIndex(mode, reg) != EA_AN;

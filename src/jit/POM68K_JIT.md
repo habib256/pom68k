@@ -862,8 +862,9 @@ low result alone is written, but this is not the word multiply's ordinary
 logic-flag tail: V reports whether the full unsigned 64-bit product has a
 non-zero high half. A64 and x64 therefore compute that full product, write
 its low half to D4, derive N/Z from the low half, set V from the high half,
-clear C and preserve X. Admission remains exact-extension-only; signed,
-64-bit-result and other-register MULL forms still replay through Moira.
+clear C and preserve X. Admission began exact-extension-only; the later
+signed 64-bit selector below joins it, while the two still-unobserved MULL
+actions replay through Moira.
 
 The directed 030 oracle starts below overflow, crosses into V=1 and compares
 256 queue/cycle checkpoints with 254 generated block runs and zero slow
@@ -873,6 +874,16 @@ instructions on native A64 and native x64 under Rosetta. All four real LC II
 fallbacks 47,768 → 47,414 (**−0.74 %**); 2,224,131 / 2,232,758 instructions
 are native (**99.61 %**). The four fingerprints, 270 frames, 2,577 SCSI
 commands and halted=0 remain unchanged.
+
+A later Speedometer row supplies the separately proved signed/64-bit/memory
+selector `4C2F 1C00`: `MULS.L d16(A7),D0:D1`, with one longword source read
+and a fixed base cost of 48. A64 and x64 sign-extend both operands, compute
+the full product, publish low D1 before high D0 as the 68030 does, derive N
+from bit 63 and Z from all 64 bits, clear V/C and preserve X. A 256-checkpoint
+oracle pins `-3 * INT_MIN`, the shared memory contract, queue and cycles on
+both host paths. Its 777 static rows disappear across seven real phases with
+all fingerprints unchanged. The two other, unobserved MULL selector actions
+remain interpreted.
 
 The next shift audit separates one useful fixed form from three misleading
 dynamic rows. `E410` is exactly `ROXR.B #2,D0`, fixed cost 12. A64 and x64

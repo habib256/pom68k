@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's signed 64-bit memory MULL keeps its sole read, 68030 register-write order and 64-bit flags native** → [2026-08-31 (nineteenth) — Speedometer's memory MULL…](#2026-08-31-speedometer-memory-mull)
 - **why brief-indexed JSR has two 68030 fetches while full-indexed JSR has one final refill, and how both keep a live target word** → [2026-08-31 (eighteenth) — Speedometer's brief-indexed JSR…](#2026-08-31-speedometer-brief-indexed-jsr)
 - **how Speedometer's `BSR.L` keeps its three-word 68030 fetch, low-half IRC and PC+6 stack return in generated code** → [2026-08-31 (seventeenth) — Speedometer's BSR.L…](#2026-08-31-speedometer-bsr-long)
 - **why Speedometer's `EXTB.L` was a better measured target than the unobserved full-indexed MOVEM/ADDX-memory backlog** → [2026-08-31 (sixteenth) — Speedometer's EXTB.L…](#2026-08-31-speedometer-extb)
@@ -372,6 +373,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (nineteenth)** — [Speedometer's signed 64-bit memory MULL becomes native on both generators](#2026-08-31-speedometer-memory-mull)
 - **2026-08-31 (eighteenth)** — [Speedometer's brief-indexed `JSR` becomes native by separating its two-fetch contract from full-indexed refill](#2026-08-31-speedometer-brief-indexed-jsr)
 - **2026-08-31 (seventeenth)** — [Speedometer's `BSR.L` becomes native through an exact three-word 68030 JIT fetch proof](#2026-08-31-speedometer-bsr-long)
 - **2026-08-31 (sixteenth)** — [Speedometer's `EXTB.L` becomes native in both JIT generators after the census rejects two speculative targets](#2026-08-31-speedometer-extb)
@@ -737,6 +739,51 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-memory-mull"></a>
+## 2026-08-31 (nineteenth) — Speedometer's signed 64-bit memory MULL becomes native on both generators
+
+The apparent next CPU row, `9611`, is `SUB.B (A1),D3`, but its observed base
+cost changes from 66 to 90 around a four-cycle fixed instruction. Its nearby
+`C229`, `1411`, `1229` and `0811` reads likewise carry 59–128 base cycles.
+They belong to the live peripheral-delay class whose increasingly narrow
+exact-thunk experiments already changed the real `C029` benchmark from 270
+to 450 frames. They remain on Moira; a low fallback count does not repair
+that missing peripheral-phase proof.
+
+The next safe structural row is `4C2F 1C00`: Speedometer executes
+`MULS.L d16(A7),D0:D1` at two sites with displacements `$18` and `$14`.
+It has three encoded words, one sole longword data read and a fixed base cost
+of 48; the observed 48/56 totals differ only by the traced i-cache misses.
+The selector requests a signed 64-bit result, with low D1 written before high
+D0 on the 68030. N comes from bit 63, Z tests the complete 64-bit result,
+V/C clear and X survives.
+
+A64 sign-extends both 32-bit operands before its 64-bit multiply; x64 adds
+the matching `MOVSXD` primitive before `IMUL`. Both consume the shared sole-
+read memory plan, publish low then high and build the 64-bit flags explicitly.
+Admission remains narrow: the earlier `4C00 4004` unsigned register selector
+and this measured `4C2F 1C00` memory selector are native; the two unobserved
+MULL actions still replay through Moira.
+
+The directed 68030 oracle holds `-3 * INT_MIN` at
+`D0:D1 = 00000001:80000000`, preserving X while pinning the memory read,
+signed widening, write order and 64-bit N/Z for 256 exact checkpoints with
+zero slow instructions on A64 and x64/Rosetta. Backend/parity gates, the
+asset-free oracle, and all four real LC II locksteps pass on each host path.
+
+Every `4C2F` row disappears from the seven Speedometer phases that execute
+it: 777 static fallbacks total, including 243 in launch-dialog, 14 in the CPU
+phase and 63 in the final phase, with no runtime fallback added. The CPU
+phase moves 2,012 → 1,998 unsupported and 45,956 → 45,942 total; the final
+phase moves 7,786 → 7,723 and 244,377 → 244,314. CPU fingerprint
+`ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
+`5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577
+and halted=0 remain exact. The instrumented 0.310487 s wall time is not a
+speed claim. The next plausible generated-code slice is dynamic `E291`
+(`ROXR.L D1,D1`), behind a live-count guard.
 
 ---
 
