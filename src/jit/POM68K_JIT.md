@@ -885,13 +885,16 @@ both host paths. Its 777 static rows disappear across seven real phases with
 all fingerprints unchanged. The two other, unobserved MULL selector actions
 remain interpreted.
 
-The next shift audit separates one useful fixed form from three misleading
-dynamic rows. `E410` is exactly `ROXR.B #2,D0`, fixed cost 12. A64 and x64
-now lower only that ROX opcode: X enters the byte as a ninth rotate bit, the
-last outgoing bit becomes both C and X, N/Z describe the final byte, V clears
-and D0's upper 24 bits survive. Its directed 030 loop matches 256 boundaries
-with zero slow instructions on native A64 and x64; all four real 030
-locksteps remain identical and the 116 static census refusals disappear.
+The next shift audits separate two useful fixed forms from three misleading
+dynamic rows. `E410` is exactly `ROXR.B #2,D0`, fixed cost 12, and `E291` is
+`ROXR.L #1,D1`, also fixed cost 12. A64 and x64 lower only those measured ROX
+opcodes: X enters respectively a 9- or 33-bit rotate ring, the last outgoing
+bit becomes both C and X, N/Z describe the sized result and V clears. The byte
+form preserves D0's upper 24 bits. Their combined directed 030 loop matches
+256 boundaries with zero slow instructions on native A64 and x64; all four
+real 030 locksteps remain identical on each host path. The first promotion
+removed 116 static refusals from its sampled phase; the second removes all
+1,410 `E291` rows across the nine-phase census without adding runtime replay.
 
 The nearby `E0A9`, `E2AB` and `E4A4` rows are dynamic LSR/ASR at observed
 counts 24, 27, 28 and 31. An opcode-scoped extension of the unroll ceiling
@@ -899,10 +902,10 @@ passed both native oracles, but the real recensus turned 382 static refusals
 into 350 count-guard replays and removed only 32 total fallbacks. The block
 cache keeps one specialization per PC, so widening the body cannot cover a
 site whose count changes. That experiment was removed; a multi-version cache
-would be the relevant mechanism. With only E410 retained, one sampled phase
-reports 3,439 unsupported + 43,930 runtime = 47,369, but its instruction mix
-also differs slightly from the prior sample, so only E410's absent 116-row is
-attributed. The four fingerprints, 270 frames and SCSI count remain exact.
+would be the relevant mechanism. After `E291`, the CPU phase moves
+1,998 → 1,982 unsupported and 45,942 → 45,926 total; the final phase moves
+7,723 → 7,631 and 244,314 → 244,222. The four fingerprints, 270 frames,
+2,577 SCSI commands and halted=0 remain exact.
 
 ### 3.6 What one window exit actually costs (2026-08-09)
 

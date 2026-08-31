@@ -325,6 +325,13 @@ reset block.
    the full 64-bit result, clear V/C and preserve X. The 256-checkpoint 030
    oracle and all eight real LC II locksteps pass; the two unobserved MULL
    selectors remain deliberately outside admission.
+   **Long immediate ROXR closed on both generators, 2026-08-31:** `E291` is
+   Speedometer's fixed `ROXR.L #1,D1`, not a live-count form. It reuses the
+   step-exact ROX body already proved by `E410`: X is the 33rd ring bit, the
+   outgoing bit becomes C and X, N/Z describe the long result and V clears.
+   The combined 256-checkpoint oracle stays wholly native on A64 and
+   x64/Rosetta, all eight LC II locksteps pass, and all 1,410 static `E291`
+   rows disappear across the nine real phases without runtime replay.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at

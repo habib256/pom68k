@@ -1225,7 +1225,8 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::Bitfield:
             return mode == 0 || mode == 2 || mode == 5;
         case SemanticOp::ShiftRegister:
-            return sem.action != 2 || op == 0xE410; // Speedometer ROXR.B #2,D0
+            // Exact immediate ROXR witnesses from Speedometer.
+            return sem.action != 2 || op == 0xE410 || op == 0xE291;
         case SemanticOp::DivideWord:
             return ei >= 0 && ei != EA_AN;
         case SemanticOp::MultiplyWord:
@@ -3718,7 +3719,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     if (sem.operation == SemanticOp::ShiftRegister) {
         if (gPackedCcr) return false;
         const int sz = sem.sizeIndex, type = sem.action;
-        if (sz > 2 || (type == 2 && (in.opcode != 0xE410 || sem.dynamic)) ||
+        const bool speedometerRoxr =
+            !sem.dynamic && (in.opcode == 0xE410 || in.opcode == 0xE291);
+        if (sz > 2 || (type == 2 && !speedometerRoxr) ||
             in.words != 1)
             return false;
         const int bits = bitsForSizeIndex(sz);

@@ -952,21 +952,31 @@ Open, in ROI order:
   777 lignes statiques disparaissent des sept phases concernées ; CPU-test
   2 012 → 1 998 unsupported et 45 956 → 45 942 replis totaux, empreintes
   inchangées. `CHANGELOG.md` (2026-08-31 nineteenth).
-- [ ] **Queue de couverture Speedometer après `4C2F`** : `C029`
+- **ROXR long immédiat Speedometer — CLOS le 2026-08-31** : `E291` est
+  `ROXR.L #1,D1`, compte immédiat fixe et coût de base 12. Il réutilise le
+  corps ROX step-exact de `E410` sur un anneau X:D1 de 33 bits. L'oracle
+  combiné passe 256 checkpoints sans repli sur A64 et x64/Rosetta, puis les
+  huit locksteps réels restent exacts. Les 1 410 lignes statiques `E291`
+  disparaissent des neuf phases sans repli runtime ajouté ; CPU-test
+  1 998 → 1 982 unsupported et 45 942 → 45 926 replis totaux, empreintes
+  inchangées. `CHANGELOG.md` (2026-08-31 twentieth).
+- [ ] **Queue de couverture Speedometer après `E291`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Le census des neuf phases ne montre
   **aucun** MOVEM indexé complet ni ADDX/SUBX mémoire : ne pas prioriser ces
   familles sans nouveau corpus. `9611`, `C229`, `1411`, `1229` et `0811`
   montrent eux aussi 59–128 cycles de base sur des lectures fixes courtes :
-  même preuve de phase périphérique manquante, donc rester sur Moira. Le
-  prochain candidat générable est `E291` (`ROXR.L D1,D1`) avec garde sur le
-  compte vivant ; les autres décalages dynamiques demandent un cache
-  multi-version, pas un plafond d'unrolling plus large.
+  même preuve de phase périphérique manquante, donc rester sur Moira. `08D1`
+  est un BSET mémoire read-modify-write périphérique à coût variable et
+  `EFD4` un possible BFINS à écriture de cinq octets, contrat encore absent :
+  les garder interprétés. Le prochain levier générable est le cache
+  multi-version borné pour les comptes vivants de `E0A9` / `E2AB` / `E4A4` /
+  `E2AA`, pas un plafond d'unrolling plus large dans une version unique.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
   full-indirects, les destinations brèves, `4C00 4004`, les MOVE A7
-  dépendants, `4A76`, `49C7`, `61FF`, `4EB2/4EB4` et `4C2F 1C00` sont clos ;
-  traiter la suite par contrat, pas par largeur d'opcode.
+  dépendants, `4A76`, `49C7`, `61FF`, `4EB2/4EB4`, `4C2F 1C00` et `E291`
+  sont clos ; traiter la suite par contrat, pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

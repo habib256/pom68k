@@ -3163,7 +3163,7 @@ bool Emitter::emitExg(size_t i) {
 // and its CF at count >= width differs from the 68k's, so the unrolled
 // single-bit steps that a64's 120k lockstep proved are kept as-is and the
 // two backends agree by construction. ROXd stays interpreted except for
-// Speedometer's exact immediate ROXR.B #2,D0 witness.
+// Speedometer's exact immediate ROXR.B #2,D0 and ROXR.L #1,D1 witnesses.
 // The dynamic form is specialized for the traced count, guarded on Dn
 // BEFORE any state changes, and replays through Moira when Dn moved —
 // a64's rule verbatim, including the cycle arithmetic that recovers the
@@ -3174,7 +3174,9 @@ bool Emitter::emitShiftRegister(size_t i) {
     if (sem.operation != SemanticOp::ShiftRegister) return false;
     if (packedCcr_) return false;
     const int sz = sem.sizeIndex, type = sem.action;
-    if (sz > 2 || (type == 2 && (in.opcode != 0xE410 || sem.dynamic)) ||
+    const bool speedometerRoxr =
+        !sem.dynamic && (in.opcode == 0xE410 || in.opcode == 0xE291);
+    if (sz > 2 || (type == 2 && !speedometerRoxr) ||
         in.words != 1)
         return false;
     const int bits = sz == 0 ? 8 : sz == 1 ? 16 : 32;
@@ -5016,7 +5018,7 @@ bool X64Backend::canEmit(uint16_t op) const {
         case SemanticOp::Jump:
             return controlEa(eaCostIndex(mode, reg));
         case SemanticOp::ShiftRegister:
-            return sem.action != 2 || op == 0xE410;
+            return sem.action != 2 || op == 0xE410 || op == 0xE291;
         case SemanticOp::Bitfield:
             // a64:1100's rule verbatim: register, (An) and d16(An)
             // operands. The emitter then refuses the forms it cannot lower

@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's fixed `ROXR.L #1,D1` reuses the exact rotate-through-X proof and removes 1,410 static refusals** → [2026-08-31 (twentieth) — Speedometer's long immediate ROXR…](#2026-08-31-speedometer-roxr-long)
 - **how Speedometer's signed 64-bit memory MULL keeps its sole read, 68030 register-write order and 64-bit flags native** → [2026-08-31 (nineteenth) — Speedometer's memory MULL…](#2026-08-31-speedometer-memory-mull)
 - **why brief-indexed JSR has two 68030 fetches while full-indexed JSR has one final refill, and how both keep a live target word** → [2026-08-31 (eighteenth) — Speedometer's brief-indexed JSR…](#2026-08-31-speedometer-brief-indexed-jsr)
 - **how Speedometer's `BSR.L` keeps its three-word 68030 fetch, low-half IRC and PC+6 stack return in generated code** → [2026-08-31 (seventeenth) — Speedometer's BSR.L…](#2026-08-31-speedometer-bsr-long)
@@ -373,6 +374,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (twentieth)** — [Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body](#2026-08-31-speedometer-roxr-long)
 - **2026-08-31 (nineteenth)** — [Speedometer's signed 64-bit memory MULL becomes native on both generators](#2026-08-31-speedometer-memory-mull)
 - **2026-08-31 (eighteenth)** — [Speedometer's brief-indexed `JSR` becomes native by separating its two-fetch contract from full-indexed refill](#2026-08-31-speedometer-brief-indexed-jsr)
 - **2026-08-31 (seventeenth)** — [Speedometer's `BSR.L` becomes native through an exact three-word 68030 JIT fetch proof](#2026-08-31-speedometer-bsr-long)
@@ -742,6 +744,46 @@ Newest first.
 
 ---
 
+<a id="2026-08-31-speedometer-roxr-long"></a>
+## 2026-08-31 (twentieth) — Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body
+
+The post-MULL census initially made `E291` look like another dynamic-count
+shift, but the shared decoder says otherwise: it is `ROXR.L #1,D1`, one
+encoded word, two instruction fetches and fixed base cost 12. The two watched
+sites are `$40A262D8` and `$000A94B0`. No count guard or cache specialization
+is involved.
+
+Both generators already had a step-exact rotate-through-extend body for the
+measured byte witness `E410`. Admission now names exactly the two proved
+immediate opcodes, `E410` and `E291`. For the long form, X enters D1 as the
+33rd ring bit, the outgoing low bit becomes both C and X, N/Z describe the
+32-bit result and V clears. The byte form still preserves D0's upper 24 bits;
+all other ROX encodings remain on Moira.
+
+The directed 68030 loop executes both forms and compares complete state,
+prefetch queue and cycles for 256 checkpoints. It also pins D0's untouched
+upper bits and verifies that D1 changes. Native A64 and x64/Rosetta report
+zero slow instructions; backend and parity gates pass. The asset-free gate
+and all four real LC II locksteps pass on each host path.
+
+Every `E291` static row disappears in all nine Speedometer phases: 1,410
+refusals removed without adding a runtime replay. The CPU phase moves
+1,998 → 1,982 unsupported and 45,942 → 45,926 total; the final phase moves
+7,723 → 7,631 and 244,314 → 244,222. CPU fingerprint
+`ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
+`5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577
+and halted=0 remain exact. The instrumented 0.309202 s wall time is not a
+speed claim.
+
+The residual audit keeps `08D1` interpreted because it is a variable-cost
+memory BSET read-modify-write, and keeps `EFD4` interpreted because a possible
+five-byte BFINS write has no transaction contract yet. The next structural
+lever is a bounded multi-version cache for the genuinely live counts at
+`E0A9`, `E2AB`, `E4A4` and `E2AA`; merely widening a single generated body's
+unroll ceiling has already been measured and rejected.
+
+---
+
 <a id="2026-08-31-speedometer-memory-mull"></a>
 ## 2026-08-31 (nineteenth) — Speedometer's signed 64-bit memory MULL becomes native on both generators
 
@@ -782,8 +824,8 @@ phase moves 7,786 → 7,723 and 244,377 → 244,314. CPU fingerprint
 `ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
 `5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577
 and halted=0 remain exact. The instrumented 0.310487 s wall time is not a
-speed claim. The next plausible generated-code slice is dynamic `E291`
-(`ROXR.L D1,D1`), behind a live-count guard.
+speed claim. The next plausible generated-code slice is `E291`; the follow-up
+decode below establishes that its count is immediate rather than live.
 
 ---
 

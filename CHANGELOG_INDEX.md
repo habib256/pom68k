@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 366 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 367 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 27 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
-| [Cross-cutting](#cross-cutting) | 65 |
+| [Cross-cutting](#cross-cutting) | 66 |
 
 ---
 
@@ -428,4 +428,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (eighteenth)** — [Speedometer's brief-indexed `JSR` becomes native by separating its two-fetch contract from full-indexed refill](CHANGELOG.md#2026-08-31-speedometer-brief-indexed-jsr)
 - **2026-08-31 (nineteenth)** — [Speedometer's signed 64-bit memory MULL becomes native on both generators](CHANGELOG.md#2026-08-31-speedometer-memory-mull)
 - **2026-08-31 (thirteenth)** — [Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators](CHANGELOG.md#2026-08-31-speedometer-dependent-move)
+- **2026-08-31 (twentieth)** — [Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body](CHANGELOG.md#2026-08-31-speedometer-roxr-long)
 
