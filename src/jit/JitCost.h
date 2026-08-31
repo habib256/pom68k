@@ -139,6 +139,31 @@ inline constexpr int8_t kDivLong[EA_MODE_COUNT] =
 inline constexpr unsigned kMaxSpecializedShiftCount = 8;
 inline constexpr unsigned kMaxSpecializedLogicalShiftCount = 16;
 
+// Speedometer exercises these four register-count shifts across almost the
+// complete 0..31 domain. They are isolated as single-instruction cache entries,
+// keyed by the live count, so widening their unrolled body cannot turn a
+// changed count into an in-block replay storm. Keep the opcode set exact:
+// arbitrary AS/LS/RO forms have not earned the extra code size.
+inline constexpr unsigned kMaxMultiVersionShiftCount = 31;
+inline constexpr bool isMultiVersionShiftOpcode(uint16_t op) {
+    return op == 0xE0A9 || op == 0xE2AB ||
+           op == 0xE4A4 || op == 0xE2AA;
+}
+
+inline constexpr unsigned multiVersionShiftIndex(uint16_t op) {
+    return op == 0xE0A9 ? 0
+         : op == 0xE2AB ? 1
+         : op == 0xE4A4 ? 2
+                        : 3; // caller first proved isMultiVersionShiftOpcode
+}
+
+inline constexpr unsigned specializedShiftCountCeiling(uint16_t op,
+                                                        uint8_t action) {
+    return isMultiVersionShiftOpcode(op) ? kMaxMultiVersionShiftCount
+         : action == 1 ? kMaxSpecializedLogicalShiftCount
+                       : kMaxSpecializedShiftCount;
+}
+
 // ── full-format (68020) extension prices ─────────────────────────────────
 
 // Address-FORMATION penalty of a full-format extension, on top of the

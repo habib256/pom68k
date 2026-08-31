@@ -13,6 +13,7 @@
 #include "jit/JitEngine.h"
 #include "JitTestConfig.h"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -511,6 +512,35 @@ void installSpeedometerRoxrLoop(FaultCpu& c) {
     put16(c, kCode + 0x00, 0xE410);    // ROXR.B #2,D0
     put16(c, kCode + 0x02, 0xE291);    // ROXR.L #1,D1
     put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+}
+
+void installSpeedometerMultiVersionShiftLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x0A81);    // EORI.L #7,D1: 24 <-> 31
+    put32(c, kCode + 0x02, 7);
+    put16(c, kCode + 0x06, 0x263C);    // MOVE.L #$89ABCDEF,D3
+    put32(c, kCode + 0x08, 0x89AB'CDEFu);
+    put16(c, kCode + 0x0C, 0xE2AB);    // LSR.L D1,D3 (Speedometer)
+    put16(c, kCode + 0x0E, 0x60F0);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+}
+
+void installSpeedometerShiftVersionMatrix(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    static constexpr std::array<uint16_t, 4> ops{
+        0xE0A9, 0xE2AB, 0xE4A4, 0xE2AA
+    };
+    for (unsigned op = 0; op < ops.size(); op++)
+        for (unsigned count = 0; count <= 31; count++) {
+            const uint32_t site = kCode + (op * 32 + count) * 4;
+            put16(c, site, ops[op]);
+            put16(c, site + 2, 0x60FC); // BRA.S site
+        }
     put16(c, kHandler, 0x4E71);
 }
 
@@ -1155,6 +1185,118 @@ int main() {
               roxStats.blocksCompiled != 0 && roxStats.blocksRun != 0 &&
               (!nativeProduction || roxStats.slowInstrs == 0),
               "Speedometer E410/E291 immediate ROXR stays native on 030");
+    }
+
+    // The same Speedometer LSR site alternates between two high live counts.
+    // Each count owns a separate mono-instruction block; neither version is a
+    // direct-link target, so dispatch selects it before its existing guard.
+    {
+        FaultCpu shiftRef, shiftNative;
+        installSpeedometerMultiVersionShiftLoop(shiftRef);
+        installSpeedometerMultiVersionShiftLoop(shiftNative);
+        shiftRef.reset(); shiftNative.reset();
+        shiftRef.setTC(12u << 20); shiftNative.setTC(12u << 20);
+        for (FaultCpu* c : {&shiftRef, &shiftNative}) c->setD(1, 31);
+        shiftNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 512 && same; step++) {
+            const int64_t target = shiftRef.getClock() + 97;
+            shiftRef.executeUntil(target);
+            shiftNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && shiftRef.getD(r) == shiftNative.getD(r) &&
+                       shiftRef.getA(r) == shiftNative.getA(r);
+            same = same && shiftRef.getPC() == shiftNative.getPC() &&
+                   shiftRef.getPC0() == shiftNative.getPC0() &&
+                   shiftRef.getIRD() == shiftNative.getIRD() &&
+                   shiftRef.getIRC() == shiftNative.getIRC() &&
+                   shiftRef.getSR() == shiftNative.getSR() &&
+                   shiftRef.getClock() == shiftNative.getClock();
+            if (!same)
+                std::printf("    030 E2AB multi-version divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto shiftStats = shiftNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(shiftNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(shiftNative.jit.backendName(), "x86-64")) &&
+            !shiftNative.jit.config().packedCcr;
+        std::printf("    030 E2AB multi-version compiled=%llu runs=%llu slow=%llu\n",
+                    (unsigned long long)shiftStats.blocksCompiled,
+                    (unsigned long long)shiftStats.blocksRun,
+                    (unsigned long long)shiftStats.slowInstrs);
+        check(same && shiftStats.blocksCompiled >= 2 &&
+              shiftStats.blocksRun != 0 &&
+              (!nativeProduction || shiftStats.slowInstrs == 0),
+              "Speedometer E2AB count-24/31 versions stay native on 030");
+    }
+
+    // Every count admitted by the exact four-opcode policy, on the actual
+    // 68030 layout/timing path. The 68040 matrix in the asset-free gate
+    // proves the same generated arithmetic; this one additionally proves
+    // the 030 base-cycle split used to recover and guard the live count.
+    {
+        FaultCpu shiftRef, shiftNative;
+        installSpeedometerShiftVersionMatrix(shiftRef);
+        installSpeedometerShiftVersionMatrix(shiftNative);
+        shiftRef.reset(); shiftNative.reset();
+        shiftRef.setTC(12u << 20); shiftNative.setTC(12u << 20);
+        shiftNative.jit.setEnabled(true);
+        static constexpr std::array<uint16_t, 4> ops{
+            0xE0A9, 0xE2AB, 0xE4A4, 0xE2AA
+        };
+        static constexpr std::array<unsigned, 4> countRegs{0, 1, 2, 1};
+        bool same = true;
+        for (unsigned op = 0; op < ops.size() && same; op++)
+            for (unsigned count = 0; count <= 31 && same; count++) {
+                const uint32_t site = kCode + (op * 32 + count) * 4;
+                for (FaultCpu* c : {&shiftRef, &shiftNative}) {
+                    for (unsigned reg = 0; reg < 8; reg++)
+                        c->setD(reg, 0x89AB'CDEFu ^
+                                     (reg * 0x1111'1111u));
+                    c->setD(countRegs[op], count);
+                    c->setSR(uint16_t(0x2700 |
+                                      ((op + count) & 1 ? 0x10 : 0)));
+                    c->setPC(site); c->setPC0(site);
+                    c->setIRD(ops[op]); c->setIRC(0x60FC);
+                    const auto layout = c->pomJitLayout();
+                    *reinterpret_cast<uint32_t*>(
+                        reinterpret_cast<uint8_t*>(c) + layout.flags) = 0;
+                }
+                for (int step = 0; step < 64 && same; step++) {
+                    const int64_t target = shiftRef.getClock() + 47;
+                    shiftRef.executeUntil(target);
+                    shiftNative.jit.executeUntil(target);
+                    for (int reg = 0; reg < 8; reg++)
+                        same = same &&
+                               shiftRef.getD(reg) == shiftNative.getD(reg) &&
+                               shiftRef.getA(reg) == shiftNative.getA(reg);
+                    same = same && shiftRef.getPC() == shiftNative.getPC() &&
+                           shiftRef.getPC0() == shiftNative.getPC0() &&
+                           shiftRef.getIRD() == shiftNative.getIRD() &&
+                           shiftRef.getIRC() == shiftNative.getIRC() &&
+                           shiftRef.getSR() == shiftNative.getSR() &&
+                           shiftRef.getClock() == shiftNative.getClock();
+                    if (!same)
+                        std::printf("    030 shift matrix divergence op=%04X "
+                                    "count=%u checkpoint=%d\n",
+                                    ops[op], count, step);
+                }
+            }
+        const auto shiftStats = shiftNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(shiftNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(shiftNative.jit.backendName(), "x86-64")) &&
+            !shiftNative.jit.config().packedCcr;
+        std::printf("    030 shift matrix compiled=%llu runs=%llu slow=%llu\n",
+                    (unsigned long long)shiftStats.blocksCompiled,
+                    (unsigned long long)shiftStats.blocksRun,
+                    (unsigned long long)shiftStats.slowInstrs);
+        check(same && (!nativeProduction ||
+                      (shiftStats.blocksCompiled >= 128 &&
+                       shiftStats.slowInstrs == 0)),
+              "Speedometer four-opcode count-0..31 matrix stays native on 030");
     }
 
     // Speedometer's 2191/31A9 pair writes two independent RAM sources to

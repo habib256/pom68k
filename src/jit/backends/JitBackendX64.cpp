@@ -3187,9 +3187,8 @@ bool Emitter::emitShiftRegister(size_t i) {
         const unsigned dynamicBase =
             type == 3 || (type == 0 && left) ? 8u : 6u;
         const unsigned traced = traced030(i);
-        const unsigned maxCount = type == 1
-            ? kMaxSpecializedLogicalShiftCount
-            : kMaxSpecializedShiftCount;
+        const unsigned maxCount =
+            specializedShiftCountCeiling(in.opcode, uint8_t(type));
         if (traced < dynamicBase ||
             traced > dynamicBase + maxCount) return false;
         count = int(traced - dynamicBase);

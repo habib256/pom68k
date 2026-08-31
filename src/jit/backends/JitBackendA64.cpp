@@ -3733,15 +3733,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // case without that timing ambiguity: specialize the block for
             // the traced count, guard it before changing any state, and replay
             // through Moira if Dn later changes. The shared ceiling bounds
-            // code size; Rogue uses four and Speedometer's three hot logical
-            // shifts use sixteen.
+            // code size. The four exact Speedometer opcodes may use the full
+            // measured 0..31 domain because each count owns a separately hot-
+            // gated cache version; every other opcode keeps the narrow cap.
             if (slow < 0) return false;
             const unsigned dynamicBase = type == 3 ||
                 (type == 0 && sem.left) ? 8u : 6u;
             const unsigned traced = traced030(L, in);
-            const unsigned maxCount = type == 1
-                ? kMaxSpecializedLogicalShiftCount
-                : kMaxSpecializedShiftCount;
+            const unsigned maxCount =
+                specializedShiftCountCeiling(in.opcode, uint8_t(type));
             if (traced < dynamicBase ||
                 traced > dynamicBase + maxCount)
                 return false;

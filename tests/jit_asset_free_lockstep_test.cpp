@@ -15,6 +15,7 @@
 #include "jit/JitMetrics.h"
 
 #include <chrono>
+#include <bit>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -34,9 +35,19 @@ struct EngineGuardIndexProbe {
     static bool consistent(const Engine& e, uint64_t* entries = nullptr) {
         std::unordered_map<uint32_t, std::unordered_set<uint64_t>> expected;
         std::unordered_map<uint32_t, uint8_t> expectedMasks;
+        std::unordered_map<uint64_t, uint32_t> expectedShiftVersions;
         uint64_t expectedEntries = 0;
 
         for (const auto& [key, block] : e.blocks_) {
+            if (block.shiftVersion != 0xFF) {
+                if (!Engine::isShiftVersionKey(key) ||
+                    Engine::shiftVersionFromKey(key) != block.shiftVersion)
+                    return false;
+                expectedShiftVersions[ShiftVersionCache::baseKey(key)] |=
+                    uint32_t(1) << block.shiftVersion;
+            } else if (Engine::isShiftVersionKey(key)) {
+                return false;
+            }
             uint32_t lo = 0, len = 0;
             Engine::blockSpan(block.ir, lo, len);
             if (!len) return false;
@@ -70,6 +81,7 @@ struct EngineGuardIndexProbe {
         }
         if (actualEntries != expectedEntries) return false;
         if (entries) *entries = actualEntries;
+        if (e.shiftVersions_.masks() != expectedShiftVersions) return false;
 
         for (uint32_t slice = 0; slice < e.pageMap_.size(); slice++) {
             auto mark = expectedMasks.find(slice);
@@ -98,6 +110,33 @@ struct EngineGuardIndexProbe {
         for (const auto& [slice, keys] : e.sliceIndex_)
             std::printf("      slice=%08X mask=%02X keys=%zu\n",
                         slice, e.pageMap_[slice], keys.size());
+    }
+
+    static uint32_t shiftVersionMask(const Engine& e, uint32_t pc,
+                                     bool super = true) {
+        return e.shiftVersions_.mask(Engine::key(pc, super));
+    }
+
+    static unsigned compiledShiftVersions(const Engine& e, uint32_t pc) {
+        unsigned result = 0;
+        for (const auto& [blockKey, block] : e.blocks_) {
+            (void)blockKey;
+            if (block.ir.entryPc == pc && block.shiftVersion != 0xFF &&
+                block.code)
+                result++;
+        }
+        return result;
+    }
+
+    static bool shiftTargetUnpublished(const Engine& e, uint32_t pc,
+                                       bool super = true) {
+        const Engine::LinkSlot& slot = e.linkTable_[Engine::linkIndex(pc)];
+        return slot.tag != (pc | uint32_t(super));
+    }
+
+    static bool knowsShiftSite(const Engine& e, uint32_t pc,
+                               bool super = true) {
+        return e.shiftVersions_.knows(Engine::key(pc, super));
     }
 };
 
@@ -881,6 +920,35 @@ void installGuardedDynamicShiftLoop(SyntheticCpu& c, uint8_t count) {
     put32(c, kCode + 0x04, 0x89AB'CDEFu);
     put16(c, kCode + 0x08, 0xE5A8);    // LSL.L D2,D0 (Rogue)
     put16(c, kCode + 0x0A, 0x60F4);    // BRA.S kCode
+}
+
+void installMultiVersionShiftLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x0A81);    // EORI.L #7,D1: 24 <-> 31
+    put32(c, kCode + 0x02, 7);
+    put16(c, kCode + 0x06, 0x263C);    // MOVE.L #$89ABCDEF,D3
+    put32(c, kCode + 0x08, 0x89AB'CDEFu);
+    put16(c, kCode + 0x0C, 0xE2AB);    // LSR.L D1,D3 (Speedometer)
+    put16(c, kCode + 0x0E, 0x60F0);    // BRA.S kCode
+}
+
+void installBoundedShiftVersionLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0xE2AB);    // LSR.L D1,D3 (Speedometer)
+    put16(c, kCode + 0x02, 0x60FC);    // BRA.S kCode
+}
+
+void installExactShiftVersionMatrix(SyntheticCpu& c) {
+    installVectors(c);
+    static constexpr std::array<uint16_t, 4> ops{
+        0xE0A9, 0xE2AB, 0xE4A4, 0xE2AA
+    };
+    for (unsigned op = 0; op < ops.size(); op++)
+        for (unsigned count = 0; count <= 31; count++) {
+            const uint32_t site = kCode + (op * 32 + count) * 4;
+            put16(c, site, ops[op]);
+            put16(c, site + 2, 0x60FC); // BRA.S site
+        }
 }
 
 void installGuardIndexLoops(SyntheticCpu& c) {
@@ -2122,6 +2190,153 @@ bool runGuardedDynamicShiftLockstep(uint8_t count) {
            (!nativeProduction || s.slowInstrs == 0);
 }
 
+void positionAt(SyntheticCpu& c, uint32_t pc);
+
+bool runMultiVersionShiftLockstep() {
+    SyntheticCpu ref, native;
+    installMultiVersionShiftLoop(ref);
+    installMultiVersionShiftLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) c->setD(1, 31);
+    native.jit.setEnabled(true);
+    for (int step = 0; step < 384; step++) {
+        const int64_t target = ref.getClock() + 97;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    multi-version shift divergence checkpoint=%d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    const uint32_t mask = jit::EngineGuardIndexProbe::shiftVersionMask(
+        native.jit, kCode + 0x0C);
+    const unsigned compiled =
+        jit::EngineGuardIndexProbe::compiledShiftVersions(native.jit,
+                                                           kCode + 0x0C);
+    const bool unpublished =
+        jit::EngineGuardIndexProbe::shiftTargetUnpublished(native.jit,
+                                                            kCode + 0x0C);
+    std::printf("    multi-version shift mask=%08X compiled=%u slow=%llu\n",
+                mask, compiled, (unsigned long long)s.slowInstrs);
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
+    return mask == ((uint32_t(1) << 24) | (uint32_t(1) << 31)) &&
+           unpublished && (!nativeProduction ||
+               (compiled == 2 && s.slowInstrs == 0));
+}
+
+bool runBoundedShiftVersionLockstep() {
+    SyntheticCpu ref, native;
+    installBoundedShiftVersionLoop(ref);
+    installBoundedShiftVersionLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+    for (uint8_t count = 0; count <= 31; count++) {
+        for (SyntheticCpu* c : {&ref, &native}) {
+            c->setD(1, count);
+            c->setD(3, 0x89AB'CDEFu);
+            positionAt(*c, kCode);
+        }
+        for (int step = 0; step < 96; step++) {
+            const int64_t target = ref.getClock() + 89;
+            ref.executeUntil(target);
+            native.jit.executeUntil(target);
+            if (!sameCpu(ref, native, true) ||
+                !sameMemory(ref, native, 0, kRamBytes, true)) {
+                std::printf("    bounded shift divergence count=%u checkpoint=%d\n",
+                            unsigned(count), step);
+                return false;
+            }
+        }
+    }
+    const uint32_t mask = jit::EngineGuardIndexProbe::shiftVersionMask(
+        native.jit, kCode);
+    std::printf("    bounded shift versions=%u mask=%08X\n",
+                unsigned(std::popcount(mask)), mask);
+    if (std::popcount(mask) != 32 || mask != 0xFFFF'FFFFu ||
+        !jit::EngineGuardIndexProbe::consistent(native.jit) || !native.guard)
+        return false;
+
+    // One code write must evict all 32 physical-footprint aliases, clear
+    // their version mask and forget the site hint once no base block remains.
+    native.guard->note(kCode, 2);
+    positionAt(native, kCode + 2);
+    native.jit.executeUntil(native.getClock() + 1);
+    return jit::EngineGuardIndexProbe::shiftVersionMask(native.jit, kCode) == 0 &&
+           !jit::EngineGuardIndexProbe::knowsShiftSite(native.jit, kCode) &&
+           jit::EngineGuardIndexProbe::consistent(native.jit);
+}
+
+bool runExactShiftVersionMatrixLockstep() {
+    SyntheticCpu ref, native;
+    installExactShiftVersionMatrix(ref);
+    installExactShiftVersionMatrix(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+    static constexpr std::array<uint16_t, 4> ops{
+        0xE0A9, 0xE2AB, 0xE4A4, 0xE2AA
+    };
+    static constexpr std::array<unsigned, 4> countRegs{0, 1, 2, 1};
+    unsigned compiled = 0;
+    for (unsigned op = 0; op < ops.size(); op++)
+        for (unsigned count = 0; count <= 31; count++) {
+            const uint32_t site = kCode + (op * 32 + count) * 4;
+            for (SyntheticCpu* c : {&ref, &native}) {
+                for (unsigned reg = 0; reg < 8; reg++)
+                    c->setD(reg, 0x89AB'CDEFu ^ (reg * 0x1111'1111u));
+                c->setD(countRegs[op], count);
+                c->setSR(uint16_t(0x2700 | ((op + count) & 1 ? 0x10 : 0)));
+                positionAt(*c, site);
+            }
+            for (int step = 0; step < 64; step++) {
+                const int64_t target = ref.getClock() + 47;
+                ref.executeUntil(target);
+                native.jit.executeUntil(target);
+                if (!sameCpu(ref, native, true) ||
+                    !sameMemory(ref, native, 0, kRamBytes, true)) {
+                    std::printf("    exact shift matrix divergence op=%04X "
+                                "count=%u checkpoint=%d\n",
+                                ops[op], count, step);
+                    return false;
+                }
+            }
+            const uint32_t mask =
+                jit::EngineGuardIndexProbe::shiftVersionMask(native.jit, site);
+            const unsigned siteCompiled =
+                jit::EngineGuardIndexProbe::compiledShiftVersions(native.jit,
+                                                                   site);
+            const bool nativeProduction =
+                (!std::strcmp(native.jit.backendName(), "aarch64") ||
+                 !std::strcmp(native.jit.backendName(), "x86-64")) &&
+                !native.jit.config().packedCcr;
+            if (nativeProduction &&
+                (mask != (uint32_t(1) << count) || siteCompiled != 1)) {
+                std::printf("    exact shift matrix not native op=%04X "
+                            "count=%u mask=%08X compiled=%u\n",
+                            ops[op], count, mask, siteCompiled);
+                return false;
+            }
+            compiled += siteCompiled;
+        }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    exact shift matrix 4 opcodes x 32 counts: "
+                "compiled=%u slow=%llu\n", compiled,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
+    return !nativeProduction || (compiled == 128 && s.slowInstrs == 0);
+}
+
 void positionAt(SyntheticCpu& c, uint32_t pc) {
     c.setPC(pc);
     c.setPC0(pc);
@@ -2330,6 +2545,12 @@ int main() {
           "guarded Rogue count-4 LSL remains exact and native");
     check(runGuardedDynamicShiftLockstep(16),
           "guarded Speedometer count-16 LSL remains exact and native");
+    check(runMultiVersionShiftLockstep(),
+          "Speedometer count-24/31 LSR selects two native cache versions");
+    check(runBoundedShiftVersionLockstep(),
+          "dynamic-shift cache covers exactly the bounded 0..31 count domain");
+    check(runExactShiftVersionMatrixLockstep(),
+          "all four measured shifts stay exact and native for counts 0..31");
     check(runGuardIndexInvariant(),
           "mark/unmark inverse stays exact across 384 one/two-slice evictions");
 

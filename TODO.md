@@ -960,6 +960,17 @@ Open, in ROI order:
   disparaissent des neuf phases sans repli runtime ajouté ; CPU-test
   1 998 → 1 982 unsupported et 45 942 → 45 926 replis totaux, empreintes
   inchangées. `CHANGELOG.md` (2026-08-31 twentieth).
+- **Cache multi-version des shifts Speedometer — CLOS le 2026-08-31** :
+  `E0A9` / `E2AB` / `E4A4` / `E2AA` sont isolés par site et indexés par le
+  compte vivant 0..31 ; aucune version n'est une cible de lien direct, le
+  seuil de chauffe borne le code émis, et un masque exact permet à une
+  écriture SMC d'évincer les 32 alias possibles. Les matrices 68030/68040
+  couvrent les quatre opcodes × 32 comptes sur A64 et x64 ; le vrai run voit
+  121 versions sur six sites, zéro repli backend, zéro refus de plafond et
+  zéro compte >31. Les lignes visibles retirées totalisent 6 092 statiques +
+  10 829 runtime ; CPU-test 45 926 → 43 903 et final 244 222 → 238 879, avec
+  les quatre empreintes exactes. Le mur 0,309202 → 0,309541 s ne revendique
+  aucun gain. `CHANGELOG.md` (2026-08-31 twenty-first).
 - [ ] **Queue de couverture Speedometer après `E291`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
@@ -970,9 +981,10 @@ Open, in ROI order:
   même preuve de phase périphérique manquante, donc rester sur Moira. `08D1`
   est un BSET mémoire read-modify-write périphérique à coût variable et
   `EFD4` un possible BFINS à écriture de cinq octets, contrat encore absent :
-  les garder interprétés. Le prochain levier générable est le cache
-  multi-version borné pour les comptes vivants de `E0A9` / `E2AB` / `E4A4` /
-  `E2AA`, pas un plafond d'unrolling plus large dans une version unique.
+  les garder interprétés. Le cache multi-version des shifts est clos ; le
+  prochain choix doit venir d'un profil temporel de la phase CPU, ou d'un
+  contrat transactionnel cinq-octets prouvé pour `EFD4`, pas du classement
+  brut des fallbacks.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
   full-indirects, les destinations brèves, `4C00 4004`, les MOVE A7
   dépendants, `4A76`, `49C7`, `61FF`, `4EB2/4EB4`, `4C2F 1C00` et `E291`

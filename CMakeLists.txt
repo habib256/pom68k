@@ -300,7 +300,7 @@ set(POM68K_JIT_BACKENDS "auto" CACHE STRING
     "JIT backends to compile: auto | threaded | x64 | a64")
 set_property(CACHE POM68K_JIT_BACKENDS PROPERTY STRINGS auto threaded x64 a64)
 set(POM68K_JIT_SOURCES
-    src/jit/JitEngine.cpp        # layer 1 — blocks, code window, invalidation
+    src/jit/JitEngine.cpp src/jit/JitEngineCensus.cpp src/jit/JitShiftVersions.cpp # layer 1
     src/jit/JitBackend.cpp       # layer 2 — backend registry and selection
     src/jit/JitCodeBuffer.cpp    # portable W^X memory for code generators
     src/jit/backends/JitBackendThreaded.cpp   # the portable floor

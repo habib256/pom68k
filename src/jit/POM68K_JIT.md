@@ -896,16 +896,36 @@ real 030 locksteps remain identical on each host path. The first promotion
 removed 116 static refusals from its sampled phase; the second removes all
 1,410 `E291` rows across the nine-phase census without adding runtime replay.
 
-The nearby `E0A9`, `E2AB` and `E4A4` rows are dynamic LSR/ASR at observed
-counts 24, 27, 28 and 31. An opcode-scoped extension of the unroll ceiling
-passed both native oracles, but the real recensus turned 382 static refusals
-into 350 count-guard replays and removed only 32 total fallbacks. The block
-cache keeps one specialization per PC, so widening the body cannot cover a
-site whose count changes. That experiment was removed; a multi-version cache
-would be the relevant mechanism. After `E291`, the CPU phase moves
-1,998 → 1,982 unsupported and 45,942 → 45,926 total; the final phase moves
-7,723 → 7,631 and 244,314 → 244,222. The four fingerprints, 270 frames,
-2,577 SCSI commands and halted=0 remain exact.
+The nearby `E0A9`, `E2AB`, `E4A4` and `E2AA` rows are dynamic LSR/ASR. An
+opcode-scoped extension of the unroll ceiling first passed both native
+oracles, but the real recensus turned 382 static refusals into 350
+count-guard replays and removed only 32 total fallbacks: one block-cache key
+per PC could retain only the first traced count. That experiment was removed.
+
+The replacement is a bounded multi-version cache, still exact-opcode-only.
+Each measured shift is isolated as a single-instruction block keyed by
+`(PC, supervisor, Dn&63)` for the complete finite 0..31 admitted domain.
+Versioned entries are never published as direct-link targets, so dispatch
+chooses the live count before the existing generated guard can change state;
+counts 32..63 stay on the ordinary interpreter path. The normal hotness gate
+still decides which recorded versions earn host code. Per-site bitmasks make
+SMC/MMU eviction remove every physical-footprint alias and are cleared with
+the cache.
+
+A four-opcode × 32-count matrix passes complete state, CCR, queue, clock and
+RAM comparisons on the 68040 and the actual 68030 layout on native A64 and
+x64/Rosetta, with zero generated slow instructions. A second oracle fills all
+32 versions at one PC, proves the exact bound, then evicts all 32 with one
+code write and rechecks the slice index. The real Speedometer run sees six
+sites and 121 live versions at the final snapshot (only one site uses all 32),
+with zero backend fallback, zero cache-cap interpretation and zero count over
+31 in every phase. The visible old target rows total 6,092 static + 10,829
+runtime fallbacks; all disappear. Aggregate fallback accounting across the
+nine snapshots falls by 34,465, though block segmentation means that larger
+number is not attributable opcode-for-opcode. The CPU phase moves 45,926 →
+43,903 and the final snapshot 244,222 → 238,879. All four fingerprints,
+270 frames, 2,577 SCSI commands and halted=0 remain exact; 0.309202 →
+0.309541 s is deliberately not presented as a wall-time gain.
 
 ### 3.6 What one window exit actually costs (2026-08-09)
 

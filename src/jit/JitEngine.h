@@ -25,6 +25,7 @@
 #include "JitConfig.h"
 #include "JitGuard.h"
 #include "JitIr.h"
+#include "JitShiftVersions.h"
 #include "JitStats.h"
 
 #include <array>
@@ -190,6 +191,10 @@ private:
         // once because the experimental profitability gate consults it on
         // every return to an untranslated block.
         uint16_t  nativePotential = 0;
+        // 0..31 for a bounded register-count shift version; 0xFF for every
+        // ordinary pc-keyed block. Versioned blocks are never published as
+        // direct-link targets: the engine must select their count first.
+        uint8_t   shiftVersion = 0xFF;
         bool      rejected = false;      // the backend declined it; do not retry
     };
 
@@ -336,6 +341,16 @@ private:
     static uint64_t key(uint32_t pc, bool super) {
         return uint64_t(pc) | (super ? (uint64_t(1) << 32) : 0);
     }
+    static uint64_t shiftVersionKey(uint32_t pc, bool super, unsigned count) {
+        return ShiftVersionCache::versionKey(key(pc, super), count);
+    }
+    static bool isShiftVersionKey(uint64_t blockKey) {
+        return ShiftVersionCache::isVersionKey(blockKey);
+    }
+    static unsigned shiftVersionFromKey(uint64_t blockKey) {
+        return ShiftVersionCache::versionFromKey(blockKey);
+    }
+    uint64_t dispatchBlockKey(uint32_t pc, bool super);
 
     moira::Moira& cpu_;
     MemoryHooks   mem_;
@@ -376,6 +391,7 @@ private:
     bool maskAware_ = false;
 
     std::unordered_map<uint64_t, Block> blocks_;
+    ShiftVersionCache shiftVersions_;
     // slice -> the blocks translated from it. Servicing a guard trip by
     // scanning the whole cache is O(blocks) per write, and the writes are
     // frequent: on a full boot that cost more than everything the code

@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "JitEngine.h"
+#include "JitCost.h"
 
 #include "Moira.h"
 
@@ -197,21 +198,6 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
     setEnabled(config_.engineForGuest(jitByDefault) == EngineKind::Jit);
 }
 
-void Engine::recordRuntimeAddress(uint32_t reason, uint32_t opcode,
-                                  uint32_t address, uint32_t bytes,
-                                  uint32_t write, uint32_t codeMask) {
-    RuntimeAddressKey key{reason, opcode, address, bytes, write, codeMask};
-    if (lastRuntimeAddressCount_ && key == lastRuntimeAddress_) {
-        ++*lastRuntimeAddressCount_;
-        return;
-    }
-    auto [it, inserted] = runtimeAddressHisto_.try_emplace(key, 0);
-    (void)inserted;
-    lastRuntimeAddress_ = key;
-    lastRuntimeAddressCount_ = &it->second;
-    ++it->second;
-}
-
 Engine::~Engine() {
     // The one number that says whether the engine did anything at all:
     // how much of the run was actually fetched through the window, and how
@@ -358,6 +344,11 @@ void Engine::dumpHisto() const {
                      slowTotal ? 100.0 * double(n) / double(slowTotal) : 0.0,
                      ea);
     }
+
+    // The ordinary table is capped at 60 rows. The helper prints exact
+    // zero/nonzero verdicts for its four measured witnesses, including
+    // interpretations that never reached a backend fallback counter.
+    shiftVersions_.dump(slowStaticHisto_, slowRuntimeHisto_);
 
     if (!slowRuntimeReasonHisto_.empty()) {
         static constexpr const char* names[RuntimeReasonCount] = {
@@ -568,44 +559,6 @@ void Engine::dumpHisto() const {
     }
 }
 
-// One tally per COMPILED slot, not per execution: the question it answers
-// is "what shape is the code", and the static census supplies the weight.
-void Engine::recordIndexForms(const BlockIr& ir) {
-    if (indexFormSites_.empty()) return;
-    for (const Instr& in : ir.instrs) {
-        for (uint8_t e = 0; e < in.effectiveAddressCount; e++) {
-            const DecodedEffectiveAddress& ea = in.effectiveAddresses[e];
-            switch (ea.kind) {
-                case EffectiveAddressKind::BriefIndex:
-                case EffectiveAddressKind::PcBriefIndex:
-                    indexFormSites_[in.opcode][0]++;
-                    break;
-                case EffectiveAddressKind::FullIndex:
-                case EffectiveAddressKind::PcFullIndex:
-                    indexFormSites_[in.opcode][1]++;
-                    break;
-                default: break;
-            }
-        }
-    }
-}
-
-void Engine::censusPhase(const char* label) {
-    if (histo_.empty()) return;
-    std::fprintf(stderr, "\n[jit] ════ census phase '%s' ════\n", label);
-    dumpHisto();
-    std::fill(histo_.begin(), histo_.end(), 0);
-    std::fill(slowStaticHisto_.begin(), slowStaticHisto_.end(), 0);
-    std::fill(slowRuntimeHisto_.begin(), slowRuntimeHisto_.end(), 0);
-    std::fill(slowRuntimeReasonHisto_.begin(), slowRuntimeReasonHisto_.end(), 0);
-    // lastRuntimeAddressCount_ points INTO this map; clearing without
-    // resetting it would leave the fast-path cache writing through a
-    // dangling pointer on the next runtime fallback.
-    runtimeAddressHisto_.clear();
-    lastRuntimeAddress_ = {};
-    lastRuntimeAddressCount_ = nullptr;
-}
-
 void Engine::setEnabled(bool on) {
     // Unconditional, even when the state does not change: leaving a window
     // armed while the interpreter runs would let IT fetch from a host
@@ -685,6 +638,7 @@ void Engine::flushAll(Flush cause) {
 
     for (auto& kv : blocks_) if (kv.second.code) backend_->release(kv.second.code);
     blocks_.clear();
+    shiftVersions_.clear();
     sliceIndex_.clear();
     clearLinks();
     backend_->flushAll();
@@ -734,12 +688,16 @@ void Engine::serviceGuard() {
             uint32_t lo = 0, len = 0;
             blockSpan(ir, lo, len);
             if (!len || h.hi < lo || h.lo > lo + len - 1) continue;
-            if (b->second.code) {
+            if (b->second.code && b->second.shiftVersion == 0xFF) {
                 retractLink(ir.entryPc, ir.super);
-                backend_->release(b->second.code);
             }
+            if (b->second.code) backend_->release(b->second.code);
             unmarkPages(blockKey, lo, len);
+            shiftVersions_.forget(blockKey);
             blocks_.erase(b);
+            shiftVersions_.prune(
+                blockKey,
+                blocks_.contains(ShiftVersionCache::baseKey(blockKey)));
             stats_.add(stats_.evictions);
         }
     }
@@ -966,6 +924,24 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     // engine would have done anyway.
     if (int(blocks_.size()) >= maxBlocks_) return nullptr;
 
+    const uint64_t baseKey = key(pc, super);
+    const uint16_t entryOpcode = cpu_.pomJitPeek(pc);
+    bool versionedEntry = backend_->caps().nativeCode &&
+        isMultiVersionShiftOpcode(entryOpcode);
+    int liveShiftCount = -1;
+    if (versionedEntry) {
+        const InstructionSemantics sem = describeInstruction(entryOpcode);
+        if (sem.operation == SemanticOp::ShiftRegister && sem.dynamic &&
+            sem.registerIndex <= 7)
+            liveShiftCount = int(cpu_.getD(sem.registerIndex) & 63u);
+        else
+            versionedEntry = false;
+    }
+    const ShiftVersionCache::Admission shiftAdmission = shiftVersions_.admit(
+        baseKey, entryOpcode, liveShiftCount, versionedEntry, !histo_.empty());
+    if (!shiftAdmission.accepted) return nullptr;
+    const uint64_t cacheKey = shiftAdmission.cacheKey;
+
     BlockIr ir;
     ir.entryPc = pc;
     ir.super = super;
@@ -990,6 +966,13 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         if (!cpu_.pomJitCovers(at)) { why = EndReason::WindowEdge; break; }
 
         const uint16_t op = cpu_.pomJitPeek(at);
+        const bool versionedShift = backend_->caps().nativeCode &&
+            isMultiVersionShiftOpcode(op);
+        if (versionedShift && at != pc) {
+            shiftVersions_.remember(key(at, super));
+            why = EndReason::LengthLimit;
+            break;
+        }
         const Kind kind = classify(op);
         if (endsBlock(kind)) { why = EndReason::Unsafe; break; }
 
@@ -1098,6 +1081,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         ir.instrs.back().semantics = describeInstruction(op);
         at = next;
 
+        if (versionedShift) { why = EndReason::LengthLimit; break; }
         if (guard_.tripped()) { why = EndReason::WindowEdge; break; }
     }
 
@@ -1115,6 +1099,8 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     if (ir.instrs.empty() || why == EndReason::Discontinuity ||
         why == EndReason::Faulted) {
         stats_.bump(Exit::NotCompilable);
+        if (versionedEntry)
+            shiftVersions_.prune(cacheKey, blocks_.contains(baseKey));
         return nullptr;
     }
 
@@ -1154,6 +1140,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     Block b;
     b.ir = std::move(ir);
     b.gen = blocksGen_;
+    b.shiftVersion = shiftAdmission.version;
     if (profitScore_) {
         const BackendCaps caps = backend_->caps();
         for (const Instr& in : b.ir.instrs)
@@ -1161,8 +1148,9 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                 (in.kind == Kind::Branch && caps.branches))
                 b.nativePotential++;
     }
-    auto [it, inserted] = blocks_.emplace(key(pc, super), std::move(b));
+    auto [it, inserted] = blocks_.emplace(cacheKey, std::move(b));
     if (!inserted) return &it->second;
+    shiftVersions_.commit(shiftAdmission);
 
     // POM68K_JIT_TRACE_BLOCK=<hex pc> — print a block's IR the moment it is
     // recorded. The instrument that settled the 2026-08-29 ±2: a counter
@@ -1186,7 +1174,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     {
         uint32_t lo = 0, len = 0;
         blockSpan(it->second.ir, lo, len);
-        markPages(key(pc, super), lo, len);
+        markPages(cacheKey, lo, len);
     }
     stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
     return &it->second;
@@ -1403,13 +1391,14 @@ void Engine::executeUntil(int64_t clockTarget) {
             stats_.bump(Flush::MmuGen);
         }
 
-        auto it = blocks_.find(key(pc, super));
+        const uint64_t blockKey = dispatchBlockKey(pc, super);
+        auto it = blocks_.find(blockKey);
         if (it != blocks_.end() && it->second.gen != blocksGen_) {
             Block& b = it->second;
             if (b.ir.codeBase == cpu_.pomJitWindow.base &&
                 b.ir.physBase == winPhys_ && b.ir.physLen == winLen_) {
                 b.gen = blocksGen_;
-                if (b.code)
+                if (b.code && b.shiftVersion == 0xFF)
                     if (void* e = backend_->linkEntry(b.code))
                         publishLink(pc, super, e);
             } else {
@@ -1423,7 +1412,12 @@ void Engine::executeUntil(int64_t clockTarget) {
                     blockSpan(b.ir, lo, len);
                     unmarkPages(it->first, lo, len);
                 }
+                shiftVersions_.forget(it->first);
+                const uint64_t erasedKey = it->first;
                 blocks_.erase(it);
+                shiftVersions_.prune(
+                    erasedKey,
+                    blocks_.contains(ShiftVersionCache::baseKey(erasedKey)));
                 it = blocks_.end();
             }
         }
@@ -1527,7 +1521,9 @@ void Engine::executeUntil(int64_t clockTarget) {
                     stats_.add(stats_.blocksCompiled);
                     // From here on another block may jump straight into it
                     // instead of coming back through the engine.
-                    if (void* e = backend_->linkEntry(b.code)) publishLink(pc, super, e);
+                    if (b.shiftVersion == 0xFF)
+                        if (void* e = backend_->linkEntry(b.code))
+                            publishLink(pc, super, e);
                 } else if (cacheReady) {
                     b.rejected = true;
                 }

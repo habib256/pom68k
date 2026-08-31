@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 364 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 368 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how a count-changing Speedometer shift gets exact native code without a direct link bypassing its live-count selection, and why four versions were not enough** → [2026-08-31 (twenty-first) — Speedometer's dynamic shifts get a bounded multi-version cache…](#2026-08-31-speedometer-shift-multiversion)
 - **how Speedometer's fixed `ROXR.L #1,D1` reuses the exact rotate-through-X proof and removes 1,410 static refusals** → [2026-08-31 (twentieth) — Speedometer's long immediate ROXR…](#2026-08-31-speedometer-roxr-long)
 - **how Speedometer's signed 64-bit memory MULL keeps its sole read, 68030 register-write order and 64-bit flags native** → [2026-08-31 (nineteenth) — Speedometer's memory MULL…](#2026-08-31-speedometer-memory-mull)
 - **why brief-indexed JSR has two 68030 fetches while full-indexed JSR has one final refill, and how both keep a live target word** → [2026-08-31 (eighteenth) — Speedometer's brief-indexed JSR…](#2026-08-31-speedometer-brief-indexed-jsr)
@@ -374,6 +375,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (twenty-first)** — [Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain](#2026-08-31-speedometer-shift-multiversion)
 - **2026-08-31 (twentieth)** — [Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body](#2026-08-31-speedometer-roxr-long)
 - **2026-08-31 (nineteenth)** — [Speedometer's signed 64-bit memory MULL becomes native on both generators](#2026-08-31-speedometer-memory-mull)
 - **2026-08-31 (eighteenth)** — [Speedometer's brief-indexed `JSR` becomes native by separating its two-fetch contract from full-indexed refill](#2026-08-31-speedometer-brief-indexed-jsr)
@@ -741,6 +743,68 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-shift-multiversion"></a>
+## 2026-08-31 (twenty-first) — Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain
+
+The `E0A9`/`E2AB`/`E4A4` experiment removed after the twelfth pass had proved
+the arithmetic but not the cache policy. Widening one PC-keyed specialization
+from count 16 to 31 merely changed 382 static refusals into 350 guard replays:
+the next live count still entered the old block, failed its pre-state guard and
+returned to Moira. The later `E291` audit added `E2AA` to the same measured
+family and named a multi-version cache as the missing mechanism.
+
+Only those four exact opcodes now form single-instruction specialization
+boundaries. Their cache key is `(PC, supervisor, Dn&63)` for counts 0..31.
+Versioned entries are never published as direct-link targets, so every entry
+passes through live-count selection before the existing generated guard can
+mutate state; outgoing links remain safe. Counts 32..63 retain the ordinary
+PC key and interpreter path. The complete 5-bit domain is the bound, not an
+open-ended tier: the product hotness gate still controls compilation, and at
+most 32 recorded scripts can exist at one measured site. Per-site masks give
+SMC/MMU eviction an exact inverse; a full flush clears both masks and site
+hints.
+
+The first implementation retained only four counts per site. Its ordinary
+backend fallback table printed four reassuring zeroes while 11,974 executions
+across the nine snapshots were actually being interpreted before they ever
+reached a backend. A new census column exposed `cap-interp` and `count>31`,
+and a site/count diagnostic showed why an LRU would not repair the design:
+the shared ROM routines exercise almost the entire 0..31 domain. Extending
+the bound to that finite domain removes both hidden populations without
+opening any additional opcode.
+
+Two matrices prove the resulting contract on native A64 and x64/Rosetta. The
+asset-free 68040 oracle compiles all four opcodes at every count 0..31 and
+compares registers, CCR, queue, clock and RAM with zero slow instructions.
+The 68030 oracle repeats the 128 combinations through the real base-cycle
+split. A separate same-PC test fills all 32 version bits, proves the exact
+bound, then performs one code write and verifies that all 32 aliases, their
+mask and their slice-index entries disappear. Backend/parity gates and the
+generic, hot-block and alignment real LC II locksteps pass on both host ISAs.
+
+The final Speedometer census sees six sites and 121 live versions at the last
+snapshot; only one site reaches all 32. Every phase reports zero unsupported,
+zero runtime guard replay, zero `cap-interp` and zero `count>31` for all four
+opcodes. The visible old rows total 6,092 static + 10,829 runtime fallbacks.
+Aggregate fallback accounting falls by 34,465 over the nine snapshots, but
+that larger figure is not attributed opcode-for-opcode because isolating the
+shift also changes block segmentation. CPU-test moves 45,926 → 43,903 and the
+final snapshot 244,222 → 238,879. Two consecutive final-binary censuses are
+identical apart from wall time: CPU fingerprint `ce2e6699cc81f501`, result
+screen `be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0. The disk SHA-256
+remains `ea613884…0692b` and its mtime is unchanged.
+
+One earlier four-version diagnostic run took an alternate boot trajectory and
+ended with different fingerprints; it was treated as red, not averaged away.
+The same binary then reproduced the reference repeatedly, and the promoted
+full-domain binary produced the two identical complete census streams above
+plus the interpreter/JIT locksteps. The retained timing observation is
+0.309202 s before versus 0.309541/0.307164 s after: coverage is improved, but
+no wall-time gain is claimed below the measurement floor.
 
 ---
 
