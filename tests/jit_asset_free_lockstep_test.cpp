@@ -413,7 +413,11 @@ void installDependentMoveLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x02, 0x4E71);
     put16(c, kCode + 0x04, 0x4E71);
     put16(c, kCode + 0x06, 0x2E9F);    // MOVE.L (A7)+,(A7)
-    put16(c, kCode + 0x08, 0x60F6);    // BRA.S kCode
+    put16(c, kCode + 0x08, 0x3F5F);    // MOVE.W (A7)+,4(A7)
+    put16(c, kCode + 0x0A, 0x0004);
+    put16(c, kCode + 0x0C, 0x2F5F);    // MOVE.L (A7)+,4(A7)
+    put16(c, kCode + 0x0E, 0x0004);
+    put16(c, kCode + 0x10, 0x60EE);    // BRA.S kCode
     put32(c, kStack, 0x1357'9BDFu);
 }
 
@@ -1282,13 +1286,12 @@ bool runDependentMoveLockstep() {
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    // The (An)+ pre-access commit order behind the dependent MOVE is the
-    // "last a64 030 delta not ported to x64" item of TODO.md § 3; x64
-    // falls back on it and only a64 carries the residency claim.
-    const bool a64Production = !std::strcmp(native.jit.backendName(), "aarch64") &&
-                               !native.jit.config().packedCcr;
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64")) &&
+        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!a64Production || s.slowInstrs == 0) &&
+           (!nativeProduction || s.slowInstrs == 0) &&
            native.getA(7) > kStack;
 }
 
@@ -2232,7 +2235,7 @@ int main() {
     check(runFullIndirectJsrLockstep(),
           "memory-indirect full-index JSR preflights pointer and stack exactly");
     check(runDependentMoveLockstep(),
-          "MOVE.L (A7)+,(A7) uses the postincremented destination exactly");
+          "dependent (A7)+ destinations use the postincremented base exactly");
     check(runDynamicBitfieldLockstep(),
           "dynamic register and tailed memory bitfields stay native on BOTH generators");
     check(runDynamicRegisterBitfieldLockstep(),

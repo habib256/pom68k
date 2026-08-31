@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's `(A7)+` source can feed a destination based on the updated A7 without making fallback non-transactional** → [2026-08-31 (thirteenth) — Speedometer's dependent stack MOVEs…](#2026-08-31-speedometer-dependent-move)
 - **why Speedometer's fixed `ROXR.B #2,D0` is worth generating while its count-24–31 shifts are not** → [2026-08-31 (twelfth) — Speedometer's exact ROXR…](#2026-08-31-speedometer-roxr)
 - **how Speedometer's exact `MULU.L D0,D4` became native without losing its 32-bit overflow flag** → [2026-08-31 (eleventh) — Speedometer's long multiply…](#2026-08-31-speedometer-long-multiply)
 - **how Speedometer's brief-indexed MOVE destinations reuse the two-memory preflight without duplicating MMIO effects** → [2026-08-31 (tenth) — Speedometer's indexed MOVE destinations…](#2026-08-31-speedometer-indexed-move-destination)
@@ -366,6 +367,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (thirteenth)** — [Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators](#2026-08-31-speedometer-dependent-move)
 - **2026-08-31 (twelfth)** — [Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed](#2026-08-31-speedometer-roxr)
 - **2026-08-31 (eleventh)** — [Speedometer's exact `MULU.L D0,D4` becomes native on A64 and x64 with its 32-bit overflow flag intact](#2026-08-31-speedometer-long-multiply)
 - **2026-08-31 (tenth)** — [Speedometer's brief-indexed MOVE destinations reuse the transactional two-memory path on both 68030 JIT generators](#2026-08-31-speedometer-indexed-move-destination)
@@ -725,6 +727,48 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-dependent-move"></a>
+## 2026-08-31 (thirteenth) — Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators
+
+After `ROXR.B`, the next structural rows were `3F5F` and `2F5F`:
+`MOVE.W/L (A7)+,d16(A7)`. The watcher found one extension word, fixed base
+cost 9 and live displacements `+4`, `+10`, `+12` and `+16`. These are not
+ordinary two-memory MOVEs. Moira reads through old A7, advances A7 by the
+source width, then calculates the destination displacement from that updated
+base. Calculating both EAs from block-entry state writes to the wrong address;
+publishing A7 before the destination probe makes a refused instruction
+impossible to replay safely.
+
+The A64 dependent-MOVE lowering now admits `(An)+` to either `(An)` or
+`d16(An)`. The x64 generator gains the same two forms, closing its old
+dependent-order gap. Both calculate and prove the old source mapping first,
+then prove `old An + step + displacement` without publishing it. Only after
+both mappings are direct writable RAM do they load the source, store it with
+the exact guest endianness and flags, and commit the postincrement once.
+MMIO, code-mask overlap, cross-page access and `/BERR` all leave a pristine
+boundary for Moira replay. Other PI/PD alias combinations remain refused.
+
+The asset-free loop now combines `(A7)+,(A7)` with the exact Speedometer word
+and long encodings; A64 and x64/Rosetta each execute 447 native instructions
+with zero slow instructions. The stronger 68030 oracle runs each size for 96
+RAM checkpoints, moves only the dependent destination onto MMIO and verifies
+that the callback sees postincremented A7, then faults that destination from
+user mode and compares the complete 32-byte format-$A frame plus saved USP.
+Both native generators pass. All four real LC II locksteps pass on native
+AArch64 and again through the x86-64 binaries under Rosetta.
+
+In the comparable production-profile 270-frame CPU census, both opcode rows
+disappear. Unsupported fallbacks move 3,439 → 2,958 (**−481**) and total
+fallbacks 47,369 → 46,918 (**−451**); runtime guards rise by 30 because the
+instruction mix varies slightly, so only disappearance of the two static rows
+is attributed directly. The phase retires 2,221,968 / 2,230,589 instructions
+natively (**99.61 %**). CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
+histogrammed 0.303055 s wall time is not a speed claim.
 
 ---
 

@@ -43,6 +43,7 @@ public:
         uint32_t value = 0;
         unsigned bytes = 0;
         uint32_t a6 = 0;
+        uint32_t a7 = 0;
         uint32_t pc = 0;
         uint32_t pc0 = 0;
         uint16_t ird = 0;
@@ -101,6 +102,7 @@ public:
         observedWrite.value = v;
         observedWrite.bytes = bytes;
         observedWrite.a6 = getA(6);
+        observedWrite.a7 = getA(7);
         observedWrite.pc = getPC();
         observedWrite.pc0 = getPC0();
         observedWrite.ird = getIRD();
@@ -433,6 +435,16 @@ void installSpeedometerIndexedDestinationLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
     put32(c, kBitfieldData + 0x00, 0x12345678);
     put16(c, kBitfieldData + 0x04, 0xABCD);
+}
+
+void installSpeedometerDependentMoveLoop(FaultCpu& c, uint16_t opcode) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, opcode);     // MOVE.W/L (A7)+,4(A7)
+    put16(c, kCode + 0x02, 0x0004);     // destination uses updated A7
+    put16(c, kCode + 0x04, 0x60FA);     // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
 }
 
 void installSpeedometerMuluLongLoop(FaultCpu& c) {
@@ -910,6 +922,176 @@ int main() {
               (!nativeProduction ||
                replayStats.slowInstrs > moveStats.slowInstrs),
               "indexed MMIO destination replays before source/flags escape");
+    }
+
+    // Speedometer's 3F5F/2F5F stack shuffles are not ordinary two-EA
+    // MOVEs: d16(A7) is calculated after the source (A7)+ has advanced.
+    // Exercise both sizes in RAM, then redirect only the dependent
+    // destination to MMIO and /BERR. The native transaction must refuse
+    // before the source read or A7 update and let one pristine Moira replay
+    // expose the architecturally updated A7 to the callback/fault frame.
+    struct DependentMoveForm {
+        uint16_t opcode;
+        unsigned bytes;
+        const char* name;
+    };
+    for (const DependentMoveForm form : {
+             DependentMoveForm{0x3F5F, 2, "3F5F MOVE.W (A7)+,4(A7)"},
+             DependentMoveForm{0x2F5F, 4, "2F5F MOVE.L (A7)+,4(A7)"}}) {
+        FaultCpu moveRef, moveNative;
+        installSpeedometerDependentMoveLoop(moveRef, form.opcode);
+        installSpeedometerDependentMoveLoop(moveNative, form.opcode);
+        moveRef.reset(); moveNative.reset();
+        moveRef.setTC(12u << 20); moveNative.setTC(12u << 20);
+        for (FaultCpu* c : {&moveRef, &moveNative}) {
+            c->setISP(kStack);
+            c->setSR(0x0710);                 // user A7; faults use valid ISP
+            c->setA(7, kBitfieldData);
+            for (uint32_t p = 0; p < 0x2000; p++)
+                c->mem[kBitfieldData + p] = uint8_t((p * 37 + 11) & 0xFF);
+        }
+        moveNative.jit.setEnabled(true);
+
+        bool ramSame = true;
+        for (int step = 0; step < 96 && ramSame; step++) {
+            const int64_t target = moveRef.getClock() + 43;
+            moveRef.executeUntil(target);
+            moveNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                ramSame = ramSame &&
+                    moveRef.getD(r) == moveNative.getD(r) &&
+                    moveRef.getA(r) == moveNative.getA(r);
+            ramSame = ramSame &&
+                moveRef.getPC() == moveNative.getPC() &&
+                moveRef.getPC0() == moveNative.getPC0() &&
+                moveRef.getIRD() == moveNative.getIRD() &&
+                moveRef.getIRC() == moveNative.getIRC() &&
+                moveRef.getSR() == moveNative.getSR() &&
+                moveRef.getClock() == moveNative.getClock() &&
+                std::memcmp(moveRef.mem.data() + kBitfieldData,
+                            moveNative.mem.data() + kBitfieldData,
+                            0x2000) == 0;
+            if (!ramSame)
+                std::printf("    030 %04X dependent MOVE divergence at checkpoint %d\n",
+                            form.opcode, step);
+        }
+        const auto ramStats = moveNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(moveNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(moveNative.jit.backendName(), "x86-64")) &&
+            !moveNative.jit.config().packedCcr;
+        char what[176];
+        std::snprintf(what, sizeof(what), "%s stays native with updated-base destination",
+                      form.name);
+        check(ramSame && ramStats.blocksCompiled != 0 &&
+              ramStats.blocksRun != 0 &&
+              (!nativeProduction || ramStats.slowInstrs == 0), what);
+
+        const auto prepareBoundary = [&](FaultCpu& c, uint32_t source) {
+            c.setPC(kCode); c.setPC0(kCode);
+            c.setIRD(form.opcode); c.setIRC(0x0004);
+            c.setISP(kStack); c.setSR(0x0710); c.setA(7, source);
+            c.setClock(0);
+            c.writeFaults = c.readFaults = c.mmioReads = 0;
+            c.observedWrite = {};
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        const auto putSource = [&](FaultCpu& c, uint32_t source) {
+            if (form.bytes == 2) put16(c, source, 0x89AB);
+            else put32(c, source, 0x89ABCDEF);
+        };
+
+        // old A7 + source step + displacement == first MMIO byte.
+        const uint32_t mmioSource = kMmio - form.bytes - 4;
+        for (FaultCpu* c : {&moveRef, &moveNative}) {
+            prepareBoundary(*c, mmioSource);
+            putSource(*c, mmioSource);
+        }
+        const auto beforeMmio = moveNative.jit.stats().snapshot();
+        moveRef.executeUntil(1);
+        moveNative.jit.executeUntil(1);
+        const auto afterMmio = moveNative.jit.stats().snapshot();
+        bool mmioSame = true;
+        for (int r = 0; r < 8; r++)
+            mmioSame = mmioSame &&
+                moveRef.getD(r) == moveNative.getD(r) &&
+                moveRef.getA(r) == moveNative.getA(r);
+        const auto& refWrite = moveRef.observedWrite;
+        const auto& nativeWrite = moveNative.observedWrite;
+        mmioSame = mmioSame &&
+            moveRef.getPC() == moveNative.getPC() &&
+            moveRef.getPC0() == moveNative.getPC0() &&
+            moveRef.getIRD() == moveNative.getIRD() &&
+            moveRef.getIRC() == moveNative.getIRC() &&
+            moveRef.getSR() == moveNative.getSR() &&
+            moveRef.getClock() == moveNative.getClock() &&
+            refWrite.count == nativeWrite.count &&
+            refWrite.address == nativeWrite.address &&
+            refWrite.value == nativeWrite.value &&
+            refWrite.bytes == nativeWrite.bytes &&
+            refWrite.a7 == nativeWrite.a7 &&
+            refWrite.pc == nativeWrite.pc &&
+            refWrite.pc0 == nativeWrite.pc0 &&
+            refWrite.ird == nativeWrite.ird &&
+            refWrite.irc == nativeWrite.irc &&
+            refWrite.sr == nativeWrite.sr &&
+            refWrite.clock == nativeWrite.clock;
+        std::snprintf(what, sizeof(what), "%s MMIO replay observes incremented A7",
+                      form.name);
+        check(mmioSame && refWrite.count != 0 &&
+              refWrite.a7 == mmioSource + form.bytes &&
+              (!nativeProduction ||
+               (afterMmio.blocksRun > beforeMmio.blocksRun &&
+                afterMmio.slowInstrs > beforeMmio.slowInstrs)), what);
+
+        // The destination mapping faults, but the source has already
+        // postincremented USP architecturally. Native code must preflight
+        // and replay, yielding one fault and the exact format-$A frame.
+        const uint32_t berrSource = kHole - form.bytes - 4;
+        for (FaultCpu* c : {&moveRef, &moveNative}) {
+            prepareBoundary(*c, berrSource);
+            putSource(*c, berrSource);
+        }
+        const auto beforeBerr = moveNative.jit.stats().snapshot();
+        moveRef.executeUntil(1);
+        moveNative.jit.executeUntil(1);
+        const auto afterBerr = moveNative.jit.stats().snapshot();
+        const uint32_t refSp = moveRef.getA(7);
+        const uint32_t nativeSp = moveNative.getA(7);
+        const int frameDiff = refSp == kStack - 32 && nativeSp == refSp
+            ? std::memcmp(moveRef.mem.data() + refSp,
+                          moveNative.mem.data() + nativeSp, 32)
+            : -1;
+        const bool berrExact =
+            moveRef.writeFaults == 1 && moveNative.writeFaults == 1 &&
+            moveRef.getUSP() == berrSource + form.bytes &&
+            moveNative.getUSP() == moveRef.getUSP() &&
+            refSp == kStack - 32 && nativeSp == refSp &&
+            frameDiff == 0 &&
+            moveRef.getPC() == moveNative.getPC() &&
+            moveRef.getClock() == moveNative.getClock() &&
+            (!nativeProduction ||
+             afterBerr.blocksRun > beforeBerr.blocksRun);
+        if (!berrExact)
+            std::printf("    %04X BERR faults=%d/%d usp=%08X/%08X want=%08X "
+                        "sp=%08X/%08X pc=%08X/%08X clk=%lld/%lld "
+                        "runs=%llu->%llu slow=%llu->%llu frame=%d\n",
+                        form.opcode, moveRef.writeFaults, moveNative.writeFaults,
+                        moveRef.getUSP(), moveNative.getUSP(),
+                        berrSource + form.bytes, refSp, nativeSp,
+                        moveRef.getPC(), moveNative.getPC(),
+                        (long long)moveRef.getClock(),
+                        (long long)moveNative.getClock(),
+                        (unsigned long long)beforeBerr.blocksRun,
+                        (unsigned long long)afterBerr.blocksRun,
+                        (unsigned long long)beforeBerr.slowInstrs,
+                        (unsigned long long)afterBerr.slowInstrs,
+                        frameDiff);
+        std::snprintf(what, sizeof(what), "%s destination /BERR frame is exact",
+                      form.name);
+        check(berrExact, what);
     }
 
     // The ordinary read half of the brief-index lowering: signed word

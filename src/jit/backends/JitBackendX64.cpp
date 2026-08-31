@@ -357,10 +357,9 @@ private:
     bool lengthOk(size_t i, int extWords) const {
         return 1 + extWords == int(ir_.instrs[i].words);
     }
-    // An auto-increment source updates its address register BEFORE the
-    // destination address is computed. Rather than model that (and lose the
-    // "nothing is committed until every access has succeeded" property that
-    // makes bail-out safe), refuse the aliasing cases outright.
+    // An auto-update source changes its address register BEFORE the
+    // destination address is computed. Most aliasing cases stay refused;
+    // emitMove owns the transactional (An)+ -> (An)/d16(An) exception.
     static bool aliases(const Ea& src, const Ea& dst) {
         if (src.idx != EA_PI && src.idx != EA_PD) return false;
         switch (dst.idx) {
@@ -2063,7 +2062,10 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     if (src.idx == EA_AN && szIdx == 0) return false;     // MOVE.B An is illegal
     // A destination has to be writable: not an immediate, not PC-relative.
     if (dst.idx == EA_IM || dst.idx == EA_DIPC) return false;
-    if (aliases(src, dst)) return false;
+    const bool dependentPostincDestination =
+        src.idx == EA_PI && src.reg == dst.reg &&
+        (dst.idx == EA_AI || dst.idx == EA_DI);
+    if (aliases(src, dst) && !dependentPostincDestination) return false;
     if (!lengthOk(i, src.ext + dst.ext)) return false;
     const bool indirectSource = src.fullFormat &&
                                 src.indirect != IndexIndirect::None;
@@ -2169,6 +2171,52 @@ bool Emitter::emitMove(size_t i, int szIdx) {
 
     const bool movea = (dst.idx == EA_AN);
     const bool cachePair = memory.proof.atomicCachePair();
+    // The destination of Speedometer's 3F5F/2F5F uses A7 after the source
+    // postincrement. Compute that value speculatively for the second probe,
+    // but publish A7 only after both direct-RAM accesses have succeeded. Any
+    // MMIO, code guard, crossing or /BERR mapping therefore reaches Moira
+    // with a pristine instruction boundary.
+    if (dependentPostincDestination) {
+        if (memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+            !srcAccess.preflight || !dstAccess.preflight ||
+            in.memory.order != MemoryOrder::SourceThenDestination)
+            return false;
+        const int step = (src.reg == 7 && szIdx == 0) ? 2 : sizeBytes(szIdx);
+        addrOf(src, RAX, szIdx);
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+        a_.movMR(Sz::Q, F(kFValue), RSI);
+
+        a_.movRM(Sz::L, RAX, A(src.reg));
+        a_.aluRI(Asm::Op::ADD, Sz::L, RAX, step);
+        if (dst.idx == EA_DI && dst.value)
+            a_.aluRI(Asm::Op::ADD, Sz::L, RAX, dst.value);
+        memProbe(RAX, sizeBytes(szIdx), true, runtimeStub(i));
+        a_.movRR(Sz::Q, R11, RSI);
+        a_.movRM(Sz::Q, R10, F(kFValue));
+
+        if (szIdx == 0) {
+            a_.movzx(Sz::B, RDI, mem(R10, 0));
+        } else if (szIdx == 1) {
+            a_.movzx(Sz::W, RDI, mem(R10, 0));
+            a_.rolR16(RDI, 8);
+        } else {
+            a_.movRM(Sz::L, RDI, mem(R10, 0));
+            a_.bswap(RDI);
+        }
+        a_.testRR(hostSz(szIdx), RDI, RDI);
+        flagsLogic(hostSz(szIdx));
+        if (szIdx == 0) {
+            a_.movMR(Sz::B, mem(R11, 0), RDI);
+        } else if (szIdx == 1) {
+            a_.rolR16(RDI, 8);
+            a_.movMR(Sz::W, mem(R11, 0), RDI);
+        } else {
+            a_.bswap(RDI);
+            a_.movMR(Sz::L, mem(R11, 0), RDI);
+        }
+        commitEa(src, szIdx, srcAccess);
+        return true;
+    }
     if (cachePair) {
         if (!srcAccess.cache || !dstAccess.cache) return false;
         // Probe both cache lines before the first load. R10/R11 are untouched

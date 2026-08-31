@@ -277,6 +277,16 @@ reset block.
    register and rolls it back if it reports a fault, so Moira can replay the
    untouched instruction and build the frame. The 040 post-access order is
    unchanged.
+   **Dependent destination closed on both generators, 2026-08-31:**
+   Speedometer's `3F5F`/`2F5F` calculate `d16(A7)` from A7 *after* the
+   source `(A7)+`. A64 and x64 now prove the old source mapping and the
+   speculative `old A7 + step + d16` destination mapping before access zero,
+   then load, store and publish A7 once. MMIO, code guard, crossing and
+   `/BERR` refusals therefore replay from a pristine boundary. The 030 oracle
+   pins RAM lockstep, the A7 visible inside the exact MMIO callback and the
+   complete 32-byte destination-fault frame for both word and long forms;
+   native A64 and x64/Rosetta execute the RAM cases with zero slow
+   instructions.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at

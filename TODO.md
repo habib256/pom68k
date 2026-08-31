@@ -790,13 +790,14 @@ Open, in ROI order:
   sur chaque carte 68030 : **fait pour le V8** (SCSI en pseudo-DMA piloté CPU,
   IWM polled, stores générés traversant le `codeMask` du DTLB), **pas fait**
   pour VASP, RBV, MSC.
-- [ ] **Le dernier écart 030 de a64 non porté sur x64** : le contrôle de coût
-  qui refuse les instructions dont les cycles tracés portent une pénalité
-  i-cache (`Instr::baseCycles`, qu'a64 consomme pour les formes étroites), et
-  l'ordre pré-accès de `(An)+`. C'est ce qui plaçait a64 à 3 % de `threaded` sur
-  un 68030 quand x64 était à 44 %. **Voir § 10 vague 2** : cet item est le
-  symptôme, la cause est que les deux backends ne partagent rien au-dessus de
-  l'IR.
+- [ ] **L'écart 030 de coût restant entre a64 et x64** : le contrôle qui refuse
+  les instructions dont les cycles tracés portent une pénalité i-cache
+  (`Instr::baseCycles`, qu'a64 consomme pour les formes étroites). L'ancien
+  second volet, l'ordre dépendant `(An)+` → `(An)`/`d16(An)`, est clos sur x64
+  depuis le 2026-08-31 par le chemin transactionnel Speedometer ci-dessous.
+  Les autres alias PI/PD restent volontairement refusés. **Voir § 10 vague 2** :
+  cet item est le symptôme, la cause est que les deux backends ne partagent
+  encore que l'IR, le plan EA et le coût, pas leurs lowerings.
 - **Décalages logiques Speedometer — CLOS le 2026-08-30** : le nouveau
   `lcii_speedometer_census` isole `Performance Rating / CPU` en 270 frames,
   avec fin structurellement détectée. `E8A8`, `E4AC`, `E2AD` portaient tous
@@ -890,16 +891,26 @@ Open, in ROI order:
   comptes 24–31 n'enlevait que 32 replis (382 statiques devenaient 350
   gardes) : retiré, car le cache mono-version par PC annule presque tout le
   bénéfice. `CHANGELOG.md` (2026-08-31 twelfth).
+- **MOVE dépendants de A7 Speedometer — CLOS le 2026-08-31** : `3F5F` et
+  `2F5F` sont `MOVE.W/L (A7)+,d16(A7)`, coût fixe 9. La destination emploie
+  A7 **après** le pas source ; A64 et x64 prévalident donc l'ancienne source
+  et la destination calculée depuis le nouveau A7, puis ne publient le pas
+  qu'après les deux preuves RAM. MMIO et `/BERR` rejouent l'instruction
+  intacte ; l'oracle compare aussi l'A7 visible du callback et les 32 octets
+  de la frame 030. Les lignes disparaissent : 3 439 → 2 958 unsupported et
+  47 369 → 46 918 replis totaux dans l'échantillon comparable, empreintes
+  inchangées. `CHANGELOG.md` (2026-08-31 thirteenth).
 - [ ] **Queue de couverture Speedometer après `ROXR.B`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Les prochains candidats structurels
-  sont les MOVE dépendants de A7 (`3F5F`/`2F5F`), `137C`, `4A76`, MOVEM
-  indexé complet et ADDX/SUBX mémoire. Les décalages dynamiques hors tranche
+  sont `137C`, `4A76`, MOVEM indexé complet et ADDX/SUBX mémoire. Les
+  décalages dynamiques hors tranche
   demandent un cache multi-version, pas un plafond d'unrolling plus large.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
-  full-indirects, les destinations brèves et `4C00 4004` sont clos ; traiter
-  la suite par contrat, pas par largeur d'opcode.
+  full-indirects, les destinations brèves, `4C00 4004` et les MOVE A7
+  dépendants sont clos ; traiter la suite par contrat, pas par largeur
+  d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

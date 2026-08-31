@@ -2040,12 +2040,13 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (!decodeEa(in, sm, sr, bits, 0, src, true, true) ||
             !decodeEa(in, dm, dr, bits, src.ext, dst)) return false;
         if (bits == 8 && (src.idx == EA_AN || dst.idx == EA_AN)) return false;
-        const bool dependentPostincAi = src.idx == EA_PI && dst.idx == EA_AI &&
-                                        src.reg == dst.reg;
+        const bool dependentPostincDestination =
+            src.idx == EA_PI && src.reg == dst.reg &&
+            (dst.idx == EA_AI || dst.idx == EA_DI);
         if ((src.idx == EA_PI || src.idx == EA_PD) && src.reg == dst.reg &&
             (dst.idx == EA_AN || dst.idx == EA_AI || dst.idx == EA_PI ||
              dst.idx == EA_PD || dst.idx == EA_DI) &&
-            !dependentPostincAi)
+            !dependentPostincDestination)
             return false;
         const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
         // A postincrement source whose sole access uses the pre-update /
@@ -2116,12 +2117,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             (tracedCycles != unsigned(cycles) && !soleReadTiming) ||
             in.words != unsigned(1 + src.ext + dst.ext)) return false;
 
-        // MOVE.<s> (An)+,(An) is a common ROM trampoline idiom. The
-        // destination uses An AFTER the source increment; computing both EAs
-        // from the entry register was the reason the generic alias gate had
-        // to refuse it. Prove old-An and old-An+step first, then perform the
-        // read, architectural increment and write exactly once.
-        if (dependentPostincAi) {
+        // MOVE.<s> (An)+,(An)/d16(An) computes its destination from An AFTER
+        // the source increment. This includes Speedometer's 3F5F/2F5F stack
+        // shuffles. Prove the old source and post-incremented destination
+        // first, then perform the read, architectural increment and write
+        // exactly once; a refused mapping can still replay pristine Moira.
+        if (dependentPostincDestination) {
             if (slow < 0 ||
                 memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
                 !srcAccess.preflight || !dstAccess.preflight ||
@@ -2134,6 +2135,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             a.strX(14, 1, 120);
             loadGuestRegister(a, L, 9, true, unsigned(src.reg));
             a.addImmW(9, 9, step);
+            if (dst.idx == EA_DI && dst.value) {
+                a.movW(10, uint32_t(dst.value));
+                a.addW(9, 9, 10);
+            }
             memProbe(a, L, ir.super, bits / 8, true, slow);
             a.strX(14, 1, 96);
 
