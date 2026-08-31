@@ -308,8 +308,10 @@ int main(int argc, char** argv) {
     // boot disk when it is there — READ-ONLY, so both machines see identical
     // media — and the comparison then covers the System loading, the Finder,
     // and the whole SCSI/PMMU path with it.
-    const std::string diskPath = findAsset({ "hdv/lcii-boot.vhd", "hdv/boot.vhd",
-                                             "hdv/GISTPERSO-boot.vhd" });
+    std::string diskPath = testasset::overrideImage();
+    if (diskPath.empty())
+        diskPath = findAsset({ "hdv/lcii-boot.vhd", "hdv/boot.vhd",
+                               "hdv/GISTPERSO-boot.vhd" });
     if (!diskPath.empty()) {
         memRef.attachScsi(diskPath);
         memJit.attachScsi(diskPath);

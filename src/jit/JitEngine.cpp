@@ -1164,11 +1164,13 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         for (const Instr& in : ir2.instrs)
             std::fprintf(stderr,
                          "  pc=$%08X op=%04X words=%u fetchWords=%u cycles=%u "
-                         "base=%u icache=%u nextPc=$%08X ird=%04X irc=%04X\n",
+                         "base=%u icache=%u nextPc=$%08X ird=%04X irc=%04X "
+                         "ext0=%04X\n",
                          in.pc, in.opcode, unsigned(in.words),
                          unsigned(in.fetchWords), unsigned(in.cycles),
                          unsigned(in.baseCycles), unsigned(in.icacheCycles),
-                         in.observedNextPc, in.terminalIrd, in.terminalIrc);
+                         in.observedNextPc, in.terminalIrd, in.terminalIrc,
+                         in.extensionCount ? in.extensionWord(0) : 0);
     }
 
     {

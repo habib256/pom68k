@@ -262,6 +262,29 @@ void installSpeedometerSelectorWriteLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
 }
 
+void installSpeedometerCmpiBranchLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x2F0A);    // MOVE.L A2,-(A7)
+    put16(c, kCode + 0x02, 0x2F02);    // MOVE.L D2,-(A7)
+    put16(c, kCode + 0x04, 0x246F);    // MOVEA.L 10(A7),A2
+    put16(c, kCode + 0x06, 0x000A);
+    put16(c, kCode + 0x08, 0x341A);    // MOVE.W (A2)+,D2
+    put16(c, kCode + 0x0A, 0x0C42);    // CMPI.W #$A800,D2
+    put16(c, kCode + 0x0C, 0xA800);
+    put16(c, kCode + 0x0E, 0x6506);    // BCS.S taken
+    put16(c, kCode + 0x10, 0x7000);    // MOVEQ #0,D0
+    put16(c, kCode + 0x12, 0x6004);    // BRA.S restore
+    put16(c, kCode + 0x14, 0x4E71);    // branch lookahead
+    put16(c, kCode + 0x16, 0x7001);    // taken: MOVEQ #1,D0
+    put16(c, kCode + 0x18, 0x241F);    // MOVE.L (A7)+,D2
+    put16(c, kCode + 0x1A, 0x245F);    // MOVEA.L (A7)+,A2
+    put16(c, kCode + 0x1C, 0x60E2);    // BRA.S kCode
+    put16(c, kCode + 0x1E, 0x4E71);
+    put16(c, kHandler, 0x4E71);
+}
+
 enum class QueueTransfer {
     BranchWord, BranchLong, BranchSubroutineLong, JumpAbsoluteLong
 };
@@ -662,6 +685,58 @@ int main() {
         std::printf("SKIP: native backend '%s' unavailable (%s)\n",
                     nativeName, native.jit.backendName());
         return 0;
+    }
+
+    // Speedometer 4's CPU test uses this exact six-instruction sequence in
+    // its data classifier. In packed-CCR mode the compare and BCS must keep
+    // the same unsigned decision across intervening stack and memory EAs.
+    {
+        static constexpr std::array<uint16_t, 7> operands{
+            0x0000, 0x7FFF, 0xA7FF, 0xA800, 0xA801, 0xFFFE, 0xFFFF
+        };
+        bool allSame = true;
+        for (uint16_t operand : operands) {
+            FaultCpu cmpRef, cmpNative;
+            installSpeedometerCmpiBranchLoop(cmpRef);
+            installSpeedometerCmpiBranchLoop(cmpNative);
+            cmpRef.reset(); cmpNative.reset();
+            cmpRef.setTC(12u << 20); cmpNative.setTC(12u << 20);
+            constexpr uint32_t data = kBitfieldData + 0x300;
+            for (FaultCpu* c : {&cmpRef, &cmpNative}) {
+                c->setA(2, 0x12345678);
+                c->setD(2, 0x89ABCDEF);
+                c->setSR(0x271F);
+                put32(*c, kStack + 2, data);
+                put16(*c, data, operand);
+            }
+            cmpNative.jit.setEnabled(true);
+            for (int step = 0; step < 48 && allSame; step++) {
+                const int64_t target = cmpRef.getClock() + 83;
+                cmpRef.executeUntil(target);
+                cmpNative.jit.executeUntil(target);
+                for (int r = 0; r < 8; r++)
+                    allSame = allSame &&
+                        cmpRef.getD(r) == cmpNative.getD(r) &&
+                        cmpRef.getA(r) == cmpNative.getA(r);
+                allSame = allSame &&
+                    cmpRef.getPC() == cmpNative.getPC() &&
+                    cmpRef.getPC0() == cmpNative.getPC0() &&
+                    cmpRef.getIRD() == cmpNative.getIRD() &&
+                    cmpRef.getIRC() == cmpNative.getIRC() &&
+                    cmpRef.getSR() == cmpNative.getSR() &&
+                    cmpRef.getClock() == cmpNative.getClock() &&
+                    cmpRef.mem == cmpNative.mem;
+                if (!allSame)
+                    std::printf("    CMPI/BCS divergence operand=$%04X "
+                                "checkpoint=%d ref/jit D0=%08X/%08X "
+                                "SR=%04X/%04X PC=%08X/%08X\n",
+                                operand, step, cmpRef.getD(0), cmpNative.getD(0),
+                                cmpRef.getSR(), cmpNative.getSR(),
+                                cmpRef.getPC(), cmpNative.getPC());
+            }
+        }
+        check(allSame,
+              "Speedometer 2F0A/2F02/246F/341A/0C42/6506 stays exact");
     }
 
     // Speedometer 4 polls the LC II's $50F0xxxx device aperture with these

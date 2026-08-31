@@ -994,7 +994,11 @@ void emitZFlag(Asm& a, const Layout& L, unsigned value) {
 
 void emitNz(Asm& a, const Layout& L, unsigned result, int bits) {
     if (gPackedCcr) {
-        a.lsrW(12, result, unsigned(bits - 1));
+        // Isolate N before merging it into x26. A plain LSR would leave all
+        // higher result bits live; an accidentally sign-extended byte/word
+        // operand could then corrupt X and the retired count packed above
+        // the CCR instead of merely contributing its sign bit.
+        a.ubfxW(12, result, unsigned(bits - 1), 1);
         a.lslW(12, 12, 3);
         a.cmpWZero(result);
         a.csetW(13, Asm::EQ);
