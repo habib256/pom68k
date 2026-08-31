@@ -1913,6 +1913,12 @@ inline bool provedLinearControlFetch030(const Instr& in) {
     if (s.operation == SemanticOp::Branch)
         return s.condition == 0 && (in.words == 2 || in.words == 3) &&
                in.fetchWords == in.words;
+    // BSR.L consumes both displacement halves linearly, leaves the low half
+    // held in IRC, then changes PC. BSR.W retains its independent historical
+    // admission gate; do not let this shared proof bypass it.
+    if (s.operation == SemanticOp::BranchSubroutine)
+        return uint8_t(in.opcode) == 0xFF && in.words == 3 &&
+               in.fetchWords == 3;
     if (s.operation != SemanticOp::JumpSubroutine &&
         s.operation != SemanticOp::Jump) return false;
     if (s.eaMode == 5 ||

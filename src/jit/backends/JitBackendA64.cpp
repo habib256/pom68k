@@ -4543,8 +4543,9 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // Multi-word control flow needs a proved path-specific fetch model.
         // DBcc fetches exactly two words on all three paths. Conditional
         // Bcc.W has two common words plus pc+4 on fall-through. BRA.W/L,
-        // simple JSR/JMP and BSR.W ($6100, fetchWords = 2) are single-path
-        // transfers with proved linear counts. BSR.W's historical step-16097
+        // simple JSR/JMP and BSR.L are single-path transfers with shared
+        // proved linear counts. BSR.W ($6100, fetchWords = 2) stays behind
+        // its historical step-16097
         // divergence was the peripheral-phase class (JIT_BRINGUP
         // § C.4nonies), closed by the access-clock bias the thunks carry, so
         // it rides the same knob as on x64 — ON by default under this
@@ -4557,8 +4558,8 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             in.semantics.operation == SemanticOp::Branch &&
             in.semantics.condition != 0;
         // The shared proof names exactly the BRA and JSR/JMP forms whose
-        // mode-5 fetch addresses are one linear path. BSR.W has its own
-        // independently gated proof.
+        // mode-5 fetch addresses are one linear path. BSR.L consumes three
+        // linear words; BSR.W has its own independently gated proof.
         const bool controlLinear = icache && provedLinearControlFetch030(in);
         const bool bsrWide = icache && in.opcode == 0x6100 &&
             in.words == 2 && bsrWideAdmission() &&

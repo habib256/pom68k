@@ -929,18 +929,26 @@ Open, in ROI order:
   générateurs. Dans le CPU-test réel, 2 406 → 2 254 unsupported et
   46 351 → 46 199 replis totaux, empreintes inchangées. `CHANGELOG.md`
   (2026-08-31 sixteenth).
-- [ ] **Queue de couverture Speedometer après `49C7`** : `C029`
+- **Appel long Speedometer — CLOS le 2026-08-31** : `61FF` est `BSR.L`,
+  trois mots/fetches linéaires, cible `PC+2+disp32`, retour empilé `PC+6` et
+  coût fixe 7. La preuve partagée ouvre seulement cette forme longue sans
+  contourner le gate historique de `BSR.W`; A64 était déjà prêt et x64 lève
+  son ancien plafond de deux mots. Les oracles 030/040 et les huit locksteps
+  LC II passent sur les deux ISA. Le CPU-test fait disparaître les 101 refus :
+  2 254 → 2 153 unsupported et 46 199 → 46 098 replis totaux, empreintes
+  inchangées. `CHANGELOG.md` (2026-08-31 seventeenth).
+- [ ] **Queue de couverture Speedometer après `61FF`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Le census des neuf phases ne montre
   **aucun** MOVEM indexé complet ni ADDX/SUBX mémoire : ne pas prioriser ces
-  familles sans nouveau corpus. Les prochains refus fixes observés à tracer
-  sont `61FF` (`BSR.L`, 101) et `4EB2` (93). Les décalages dynamiques hors tranche
+  familles sans nouveau corpus. Le prochain refus fixe observé à tracer est
+  `4EB2` (93). Les décalages dynamiques hors tranche
   demandent un cache multi-version, pas un plafond d'unrolling plus large.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
   full-indirects, les destinations brèves, `4C00 4004`, les MOVE A7
-  dépendants, `4A76` et `49C7` sont clos ; traiter la suite par contrat, pas
-  par largeur d'opcode.
+  dépendants, `4A76`, `49C7` et `61FF` sont clos ; traiter la suite par
+  contrat, pas par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 363 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 364 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's `BSR.L` keeps its three-word 68030 fetch, low-half IRC and PC+6 stack return in generated code** → [2026-08-31 (seventeenth) — Speedometer's BSR.L…](#2026-08-31-speedometer-bsr-long)
 - **why Speedometer's `EXTB.L` was a better measured target than the unobserved full-indexed MOVEM/ADDX-memory backlog** → [2026-08-31 (sixteenth) — Speedometer's EXTB.L…](#2026-08-31-speedometer-extb)
 - **how Speedometer's full-indirect `TST.W` became a two-read JIT transaction without duplicating pointer or operand MMIO** → [2026-08-31 (fifteenth) — Speedometer's full-indirect TST…](#2026-08-31-speedometer-full-indirect-tst)
 - **how Speedometer's selector write keeps its live peripheral delay while generated MOVE owns only the fixed tail** → [2026-08-31 (fourteenth) — Speedometer's selector write…](#2026-08-31-speedometer-exact-selector-write)
@@ -370,6 +371,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (seventeenth)** — [Speedometer's `BSR.L` becomes native through an exact three-word 68030 JIT fetch proof](#2026-08-31-speedometer-bsr-long)
 - **2026-08-31 (sixteenth)** — [Speedometer's `EXTB.L` becomes native in both JIT generators after the census rejects two speculative targets](#2026-08-31-speedometer-extb)
 - **2026-08-31 (fifteenth)** — [Speedometer's full-indirect `TST.W` becomes a two-read JIT transaction on both 68030 generators](#2026-08-31-speedometer-full-indirect-tst)
 - **2026-08-31 (fourteenth)** — [Speedometer's selector `MOVE.B` becomes an exact generated JIT write without flattening its live device wait](#2026-08-31-speedometer-exact-selector-write)
@@ -733,6 +735,43 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-bsr-long"></a>
+## 2026-08-31 (seventeenth) — Speedometer's `BSR.L` becomes native through an exact three-word 68030 JIT fetch proof
+
+After `EXTB.L`, the next fixed-cost CPU refusal was `61FF`. The watcher finds
+three ROM sites, including `$40A3D1F2` with displacement `$FFFF424E`; each is
+one opcode plus a long displacement, fetches exactly three linear words,
+leaves the low displacement half in IRC and costs seven base cycles (eleven
+on the observed four-cycle i-cache miss). The target is `PC+2+disp32`, while
+the return address pushed on the stack is the six-byte fallthrough `PC+6`.
+
+The shared linear-control proof now accepts only the exact long BSR shape:
+low opcode byte `$FF`, three encoded words and three traced fetches. It does
+not admit `BSR.W`, whose independent historical peripheral-alignment gate
+remains unchanged. A64 already lowered three-word direct calls once the outer
+guard admitted them. x64's otherwise identical subroutine emitter had one
+remaining `words <= 2` check; it now accepts the third word and uses the
+existing last-held-word helper for the low displacement half.
+
+The 68030 oracle executes a self-call after native training and compares the
+three i-cache fetches, target PC, `IRD=61FF`, `IRC=FFFE`, stack pointer and the
+single pushed `PC+6` longword against Moira. The asset-free 68040 loop now uses
+`BSR.L`/`RTS` rather than its former short call, so both native A64 and
+x64/Rosetta exercise the lowering with zero slow instructions. Backend parity
+and all four real LC II locksteps (generic, blocks, experimental and
+alignment) pass on each host ISA.
+
+In the comparable CPU census, the 101-entry `61FF` row disappears:
+unsupported moves 2,254 → 2,153 and total fallbacks 46,199 → 46,098, while
+runtime guards remain 43,945. The phase records 2,230,581 guest instructions,
+69 fewer than the previous run, so no native-residency delta is attributed.
+CPU fingerprint `ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final
+CPU `5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI
+2,577 and halted=0 remain exact. The instrumented 0.309941 s wall time is not
+a speed claim. The next fixed-cost structural row is `4EB2` (93 CPU refusals).
 
 ---
 

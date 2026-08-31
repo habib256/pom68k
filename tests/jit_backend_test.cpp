@@ -604,6 +604,22 @@ int main() {
               bsrInstr.control.returnAddress == 0x5004 &&
               bsrInstr.control.pushesReturnAddress,
               "IR owns BSR target, fallthrough and pushed return address");
+        jit::Instr bsrLong;
+        bsrLong.pc = 0x5000; bsrLong.opcode = 0x61FF; bsrLong.words = 3;
+        bsrLong.fetchWords = 3;
+        bsrLong.semantics = jit::describeInstruction(bsrLong.opcode);
+        bsrLong.extensionCount = 2;
+        bsrLong.extensions[0] = 0xFFFF;
+        bsrLong.extensions[1] = 0xFFFE;
+        jit::describeControlFlow(bsrLong);
+        check(bsrLong.control.valid && bsrLong.control.target == 0x5000 &&
+              bsrLong.control.fallthrough == 0x5006 &&
+              bsrLong.control.returnAddress == 0x5006 &&
+              jit::provedLinearControlFetch030(bsrLong),
+              "IR proves BSR.L target, PC+6 return and three linear fetches");
+        bsrLong.fetchWords = 2;
+        check(!jit::provedLinearControlFetch030(bsrLong),
+              "IR rejects BSR.L without all three traced fetches");
 
         jit::Instr jsr;
         jsr.pc = 0x6000; jsr.opcode = 0x4EB9; jsr.words = 3;
@@ -1153,6 +1169,7 @@ int main() {
         check(jit::endsBlockAfter(jit::classify(0x4EB9)), "JSR terminates a block");
         check(jit::endsBlockAfter(jit::classify(0x6100)), "BSR terminates a block");
         check(jit::branchWords(0x4E75) == 1, "RTS is one word");
+        check(jit::branchWords(0x61FF) == 3, "BSR.L is three words");
         check(jit::branchWords(0x4EB9) == 3, "JSR abs.l is three words");
         check(jit::branchWords(0x4EAE) == 2, "JSR d16(A6) is two words");
         check(jit::branchWords(0x4EB0, 0x81E1) == 3,

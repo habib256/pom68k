@@ -300,13 +300,13 @@ void installLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x24, 0xB5C8);    // CMPA.L A0,A2
     put16(c, kCode + 0x26, 0x51CF);    // DBF D7,kCode+$10
     put16(c, kCode + 0x28, 0xFFE8);
-    put16(c, kCode + 0x2A, 0x6106);    // BSR.S subroutine
-    put16(c, kCode + 0x2C, 0x60E2);    // BRA.S kCode+$10
-    put16(c, kCode + 0x2E, 0x4E71);    // padding
-    put16(c, kCode + 0x30, 0x4E71);
-    put16(c, kCode + 0x32, 0x2612);    // MOVE.L (A2),D3
-    put16(c, kCode + 0x34, 0x4843);    // SWAP D3
-    put16(c, kCode + 0x36, 0x4E75);    // RTS
+    put16(c, kCode + 0x2A, 0x61FF);    // BSR.L subroutine
+    put32(c, kCode + 0x2C, 0x00000008); // target kCode+$34 from PC+2
+    put16(c, kCode + 0x30, 0x60DE);    // BRA.S kCode+$10
+    put16(c, kCode + 0x32, 0x4E71);    // padding
+    put16(c, kCode + 0x34, 0x2612);    // MOVE.L (A2),D3
+    put16(c, kCode + 0x36, 0x4843);    // SWAP D3
+    put16(c, kCode + 0x38, 0x4E75);    // RTS
 }
 
 enum class FaultProgram { LastWrite, RestartRead };

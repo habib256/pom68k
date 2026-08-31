@@ -1023,7 +1023,7 @@ bool Emitter::emitSubroutine(size_t i) {
         const unsigned bsrCost = traced030(i);
         if (!control.valid || control.kind != ControlFlowKind::DirectCall ||
             !control.targetKnown || !control.pushesReturnAddress ||
-            in.words > 2 || (bsrCost != 7 && bsrCost != 5) ||
+            in.words > 3 || (bsrCost != 7 && bsrCost != 5) ||
             !tracedQueueIs(i, ircAfter)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan write = memory.access(
@@ -4567,8 +4567,9 @@ bool Emitter::emit() {
         // at step 16097; that was the peripheral-phase class, closed
         // 2026-08-21 (JIT_BRINGUP § C.4nonies). BRA.W/L and simple JSR/JMP
         // now share `provedLinearControlFetch030`; indexed JSR additionally
-        // proves computeEA's one final refill. BSR.W keeps its independently
-        // gated proof (fetchWords=2, no readExt). Indexed JMP remains out.
+        // proves computeEA's one final refill. BSR.L joins the shared proof;
+        // BSR.W keeps its independently gated proof (fetchWords=2, no
+        // readExt). Indexed JMP remains out.
         //
         // A CONDITIONAL two-word Bcc is different: its fetch model is
         // proved against the mode-5 source — both paths fetch pc and

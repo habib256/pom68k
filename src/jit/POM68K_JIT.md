@@ -1441,7 +1441,8 @@ emitters it dispatches to.
   memory sources, and
   **`MOVEM`** (both directions, both sizes, one span probe per burst, the
   040 restart latch `mmu040MovemArmed` checked);
-* as block terminators: `Bcc`/`BRA`, `JSR`/`BSR`/`RTS`, **`DBcc`** (loops
+* as block terminators: `Bcc`/`BRA`, `JSR`/`BSR.S`/`BSR.W`/`BSR.L`/`RTS`,
+  **`DBcc`** (loops
   close internally like `Bcc`) and **`JMP <ea>`**;
 * over addressing modes `Dn`, `An`, `(An)`, `(An)+`, `-(An)`, `d16(An)`,
   brief `d8(An,Xn)` / `d8(PC,Xn)` (word/long Dn or An index, ×1/2/4/8),

@@ -261,7 +261,9 @@ void installSpeedometerSelectorWriteLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
 }
 
-enum class QueueTransfer { BranchWord, BranchLong, JumpAbsoluteLong };
+enum class QueueTransfer {
+    BranchWord, BranchLong, BranchSubroutineLong, JumpAbsoluteLong
+};
 
 void installQueueLoop(FaultCpu& c, QueueTransfer transfer) {
     put32(c, 0, kStack);
@@ -276,6 +278,11 @@ void installQueueLoop(FaultCpu& c, QueueTransfer transfer) {
             break;
         case QueueTransfer::BranchLong:
             put16(c, kCode + 0, 0x60FF); // BRA.L kCode, displacement -2
+            put32(c, kCode + 2, 0xFFFFFFFE);
+            words = 3;
+            break;
+        case QueueTransfer::BranchSubroutineLong:
+            put16(c, kCode + 0, 0x61FF); // BSR.L kCode, displacement -2
             put32(c, kCode + 2, 0xFFFFFFFE);
             words = 3;
             break;
@@ -1624,6 +1631,7 @@ int main() {
         queueNative.jit.executeUntil(queueNative.getClock() + 256);
         const auto trainedQueue = queueNative.jit.stats().snapshot();
 
+        queueRef.mem = queueNative.mem;
         prepareFault(queueRef); prepareFault(queueNative);
         queueRef.setA(6, 0x004000); queueNative.setA(6, 0x004000);
         // Keep the compiled block, but give both engines the same cold cache
@@ -1648,9 +1656,19 @@ int main() {
               queueRef.getClock() == queueNative.getClock(), what);
         std::snprintf(what, sizeof(what), "%s keeps the exact last consumed word in IRC", name);
         const uint16_t expectedIrd = transfer == QueueTransfer::JumpAbsoluteLong
-            ? 0x4EF9 : transfer == QueueTransfer::BranchLong ? 0x60FF : 0x6000;
+            ? 0x4EF9
+            : transfer == QueueTransfer::BranchSubroutineLong ? 0x61FF
+            : transfer == QueueTransfer::BranchLong ? 0x60FF : 0x6000;
         check(queueNative.getIRD() == expectedIrd &&
               queueNative.getIRC() == expectedIrc, what);
+        if (transfer == QueueTransfer::BranchSubroutineLong) {
+            std::snprintf(what, sizeof(what),
+                          "%s pushes PC+6 and commits A7 exactly once", name);
+            check(queueRef.getA(7) == kStack - 4 &&
+                  queueNative.getA(7) == queueRef.getA(7) &&
+                  get32(queueRef, kStack - 4) == kCode + 6 &&
+                  get32(queueNative, kStack - 4) == kCode + 6, what);
+        }
         std::snprintf(what, sizeof(what), "%s reproduces exact i-cache accounting", name);
         check(refIcache.fetches == expectedFetches &&
               nativeIcache.fetches == refIcache.fetches &&
@@ -1662,6 +1680,8 @@ int main() {
                    "BRA.W taken exit");
     checkQueueLoop(QueueTransfer::BranchLong, 0xFFFE, 3,
                    "BRA.L taken exit");
+    checkQueueLoop(QueueTransfer::BranchSubroutineLong, 0xFFFE, 3,
+                   "BSR.L taken exit");
     checkQueueLoop(QueueTransfer::JumpAbsoluteLong, uint16_t(kCode), 3,
                    "JMP (xxx).L exit");
 

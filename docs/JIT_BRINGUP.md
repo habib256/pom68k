@@ -302,6 +302,13 @@ reset block.
    action beside `EXT.W`/`EXT.L`; A64 `SXTB` and x64 byte `MOVSX` overwrite
    the full Dn, preserve X and publish long N/Z with V/C clear. A 256-boundary
    negative/zero/positive oracle stays wholly native on both host ISAs.
+   **Long direct call closed on both generators, 2026-08-31:** Speedometer's
+   `61FF` is `BSR.L`: three linear instruction fetches, target
+   `PC+2+disp32`, pushed return `PC+6`, and the low displacement half held in
+   IRC. The shared proof admits only that exact three-word/three-fetch shape;
+   `BSR.W` keeps its separate historical alignment gate. The 030 oracle
+   compares fetch counters, queue, target, A7 and pushed longword, while the
+   asset-free 040 loop executes `BSR.L/RTS` on native A64 and x64/Rosetta.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at
