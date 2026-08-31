@@ -645,6 +645,16 @@ int main() {
         indexedJsr.fetchWords = 3;
         check(!jit::provedLinearControlFetch030(indexedJsr),
               "IR rejects an indexed JSR with an unproved fetch count");
+        jit::Instr briefJsr;
+        briefJsr.opcode = 0x4EB2; briefJsr.words = 2;
+        briefJsr.fetchWords = 2; briefJsr.extensionCount = 1;
+        briefJsr.extensions[0] = 0x1000;
+        briefJsr.semantics = jit::describeInstruction(briefJsr.opcode);
+        check(jit::provedLinearControlFetch030(briefJsr),
+              "IR proves Speedometer brief indexed JSR's two fetches");
+        briefJsr.fetchWords = 3;
+        check(!jit::provedLinearControlFetch030(briefJsr),
+              "IR rejects a spurious computeEA refill on brief indexed JSR");
 
         jit::Instr braWord;
         braWord.opcode = 0x6000; braWord.words = 2; braWord.fetchWords = 2;

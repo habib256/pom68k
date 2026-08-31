@@ -4567,7 +4567,8 @@ bool Emitter::emit() {
         // at step 16097; that was the peripheral-phase class, closed
         // 2026-08-21 (JIT_BRINGUP § C.4nonies). BRA.W/L and simple JSR/JMP
         // now share `provedLinearControlFetch030`; indexed JSR additionally
-        // proves computeEA's one final refill. BSR.L joins the shared proof;
+        // proves brief/no-refill vs full/final-refill fetches. BSR.L joins
+        // the shared proof;
         // BSR.W keeps its independently gated proof (fetchWords=2, no
         // readExt). Indexed JMP remains out.
         //

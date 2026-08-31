@@ -725,10 +725,15 @@ before the plain-RAM pointer is consumed; the final target is checked for
 oddness and stack overlap, its first program word is read live, and only then
 is the proved push committed. Any unprovable mapping or fault replays the
 untouched instruction, leaving Moira to build the exact 030 restart frame.
-The shared i-cache predicate admits indexed JSR only when its traced fetches
-are the encoded words plus computeEA's one final refill. The real CPU census
-moves 49,476 → 37,290 unsupported and 89,908 → 79,380 total fallbacks;
-`4EB0` has no unsupported row and only 87 observed fill/tag runtime replays.
+The shared i-cache predicate distinguishes the two shapes: brief indexed JSR
+consumes its held extension and has exactly two words/two fetches, whereas
+full-format indexed JSR has the encoded words plus computeEA's one final
+refill. The real CPU census for the full-indirect slice moves 49,476 → 37,290
+unsupported and 89,908 → 79,380 total fallbacks; `4EB0` has no unsupported
+row and only 87 observed fill/tag runtime replays. The later brief-indexed
+Speedometer slice removes all `4EB2`/`4EB4` static rows too: 2,153 → 2,012
+unsupported and 46,098 → 45,956 total in its comparable CPU phase, with
+fingerprints unchanged.
 
 The next three rows looked like ordinary missing MOVE/BTST emission but were
 the opposite. `0829`, `1029` and `1429` traced at 59–129 base cycles although

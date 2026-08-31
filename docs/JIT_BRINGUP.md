@@ -309,6 +309,15 @@ reset block.
    `BSR.W` keeps its separate historical alignment gate. The 030 oracle
    compares fetch counters, queue, target, A7 and pushed longword, while the
    asset-free 040 loop executes `BSR.L/RTS` on native A64 and x64/Rosetta.
+   **Brief-indexed call closed on both generators, 2026-08-31:** Speedometer's
+   `4EB2 1000` and `4EB4 0000` are two-word `JSR 0(An,Dn.W)` forms. They
+   consume the held brief extension without computeEA's full-format final
+   refill, then read the first target word live. The shared i-cache proof now
+   separates those exact two fetches from full-indexed JSR's `words+1`, while
+   the existing A64/x64 transaction continues to prove the stack, reject
+   target alias and defer the push until the target read succeeds. The
+   restart oracle patches the live target after compilation; all eight real
+   LC II locksteps remain exact.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at

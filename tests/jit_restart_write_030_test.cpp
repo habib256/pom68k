@@ -509,8 +509,12 @@ void installJsrLoop(FaultCpu& c) {
     put16(c, kCode + 2, 0x0000);
     put16(c, kCode + 4, 0x4EB9);        // JSR kSubroutine.l (Speedometer)
     put32(c, kCode + 6, kSubroutine);
-    put16(c, kCode + 10, 0x60F4);       // BRA.S kCode
-    put16(c, kSubroutine + 0, 0x5280);  // ADDQ.L #1,D0
+    put16(c, kCode + 10, 0x4EB2);       // JSR 0(A2,D1.W) (Speedometer)
+    put16(c, kCode + 12, 0x1000);
+    put16(c, kCode + 14, 0x4EB4);       // JSR 0(A4,D0.W) (Speedometer)
+    put16(c, kCode + 16, 0x0000);
+    put16(c, kCode + 18, 0x60EC);       // BRA.S kCode
+    put16(c, kSubroutine + 0, 0x5287);  // ADDQ.L #1,D7
     put16(c, kSubroutine + 2, 0x4E75);  // RTS
     put16(c, kSubroutine + 4, 0x4E71);
     put16(c, kHandler, 0x4E71);
@@ -1990,8 +1994,12 @@ int main() {
         jsrRef.setTC(12u << 20); jsrNative.setTC(12u << 20);
         for (FaultCpu* c : {&jsrRef, &jsrNative}) {
             c->setA(0, kSubroutine);
+            c->setA(2, kSubroutine);
+            c->setA(4, kSubroutine);
             c->setA(7, kStack);
             c->setD(0, 0);
+            c->setD(1, 0);
+            c->setD(7, 0);
             c->setSR(0x2700);
         }
         jsrNative.jit.setEnabled(true);
@@ -2019,8 +2027,8 @@ int main() {
 
         const bool trainedExact = runJsrLockstep(64);
         const auto trainedJsr = jsrNative.jit.stats().snapshot();
-        put16(jsrRef, kSubroutine, 0x5480);    // ADDQ.L #2,D0
-        put16(jsrNative, kSubroutine, 0x5480);
+        put16(jsrRef, kSubroutine, 0x5487);    // ADDQ.L #2,D7
+        put16(jsrNative, kSubroutine, 0x5487);
         if (jsrNative.guard) jsrNative.guard->note(kSubroutine, 2);
         const bool patchedExact = runJsrLockstep(64);
         const auto warmedJsr = jsrNative.jit.stats().snapshot();
@@ -2028,11 +2036,11 @@ int main() {
         const auto afterJsr = jsrNative.jit.stats().snapshot();
 
         check(trainedExact && patchedExact && steadyExact,
-              "JSR d16(A0)/abs.l keep exact 68030 state after target patching");
+              "JSR d16/abs.l/brief-indexed keep exact state after target patching");
         check(trainedJsr.blocksCompiled != 0 &&
               afterJsr.blocksRun > trainedJsr.blocksRun &&
               afterJsr.slowInstrs == warmedJsr.slowInstrs,
-              "patched d16/abs.l JSR callers stay native with live target words");
+              "patched simple/brief JSR callers stay native with live target words");
 
         // The native transaction proves the push, reads the target word,
         // then stores. If the stack aliases that word, Moira's architectural

@@ -4550,8 +4550,8 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // § C.4nonies), closed by the access-clock bias the thunks carry, so
         // it rides the same knob as on x64 — ON by default under this
         // backend's declaration. Indexed
-        // JSR has the separate post-extension-refill proof below; indexed
-        // JMP remains refused on the 030.
+        // JSR has the separate brief/no-refill vs full/final-refill proof
+        // below; indexed JMP remains refused on the 030.
         const bool dbcc =
             in.semantics.operation == SemanticOp::DecrementBranch;
         const bool bccWord = icache && in.words == 2 &&

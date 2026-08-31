@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why brief-indexed JSR has two 68030 fetches while full-indexed JSR has one final refill, and how both keep a live target word** → [2026-08-31 (eighteenth) — Speedometer's brief-indexed JSR…](#2026-08-31-speedometer-brief-indexed-jsr)
 - **how Speedometer's `BSR.L` keeps its three-word 68030 fetch, low-half IRC and PC+6 stack return in generated code** → [2026-08-31 (seventeenth) — Speedometer's BSR.L…](#2026-08-31-speedometer-bsr-long)
 - **why Speedometer's `EXTB.L` was a better measured target than the unobserved full-indexed MOVEM/ADDX-memory backlog** → [2026-08-31 (sixteenth) — Speedometer's EXTB.L…](#2026-08-31-speedometer-extb)
 - **how Speedometer's full-indirect `TST.W` became a two-read JIT transaction without duplicating pointer or operand MMIO** → [2026-08-31 (fifteenth) — Speedometer's full-indirect TST…](#2026-08-31-speedometer-full-indirect-tst)
@@ -371,6 +372,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (eighteenth)** — [Speedometer's brief-indexed `JSR` becomes native by separating its two-fetch contract from full-indexed refill](#2026-08-31-speedometer-brief-indexed-jsr)
 - **2026-08-31 (seventeenth)** — [Speedometer's `BSR.L` becomes native through an exact three-word 68030 JIT fetch proof](#2026-08-31-speedometer-bsr-long)
 - **2026-08-31 (sixteenth)** — [Speedometer's `EXTB.L` becomes native in both JIT generators after the census rejects two speculative targets](#2026-08-31-speedometer-extb)
 - **2026-08-31 (fifteenth)** — [Speedometer's full-indirect `TST.W` becomes a two-read JIT transaction on both 68030 generators](#2026-08-31-speedometer-full-indirect-tst)
@@ -735,6 +737,46 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-brief-indexed-jsr"></a>
+## 2026-08-31 (eighteenth) — Speedometer's brief-indexed `JSR` becomes native by separating its two-fetch contract from full-indexed refill
+
+After `BSR.L`, the next fixed structural rows were `4EB2` and `4EB4`. The
+watcher identifies respectively `JSR 0(A2,D1.W)` (`ext=1000`) and
+`JSR 0(A4,D0.W)` (`ext=0000`). Both are two-word brief-indexed calls with a
+fixed base cost of seven. They fetch exactly the opcode and held brief
+extension, then leave the first live target word in IRC. Unlike a full-format
+indexed JSR, they do not execute computeEA's final linear refill.
+
+The native A64 and x64 transactional JSR emitters already computed the brief
+index, proved the stack write, rejected stack/target alias and read the target
+word live before committing the push. The only refusal was the shared outer
+i-cache predicate, which incorrectly required `encoded words + 1` for every
+indexed call. It now admits exactly two words/two fetches when the first
+extension is brief, while retaining the final-refill rule for full-format
+indexed JSR. Indexed JMP remains outside this proof.
+
+The IR oracle distinguishes the two-fetch shape from a spurious third fetch.
+The 68030 restart oracle now trains `JSR d16(An)`, `JSR abs.l` and both exact
+brief-indexed forms, patches their common target after compilation and proves
+that all callers remain native while consuming the new target word. Backend
+and parity gates, the asset-free oracle, and all four real LC II locksteps
+(generic, blocks, experimental and alignment) pass on both A64 and the
+x64/Rosetta host path.
+
+Every `4EB2`/`4EB4` unsupported row disappears in all nine Speedometer phases.
+The launch-dialog phase moves 42,293 → 14,039 unsupported and 855,867 →
+827,657 total fallbacks; the old rows contributed 28,263 entries there. In
+the comparable CPU phase, the 93 + 49 rows disappear, unsupported moves
+2,153 → 2,012 and total fallbacks 46,098 → 45,956 (runtime 43,945 → 43,944).
+That phase executes 81 more guest instructions, so the one-count differences
+are phase mix rather than an attributed runtime effect. CPU fingerprint
+`ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
+`5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577
+and halted=0 remain exact. The instrumented 0.307799 s wall time is not a
+speed claim. The next fixed CPU row to trace is `9611` (86 refusals).
 
 ---
 

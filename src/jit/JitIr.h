@@ -1927,8 +1927,15 @@ inline bool provedLinearControlFetch030(const Instr& in) {
     if (s.eaMode == 7 && s.eaReg == 1)
         return in.words == 3 && in.fetchWords == 3;
     if (s.operation == SemanticOp::JumpSubroutine &&
-        (s.eaMode == 6 || (s.eaMode == 7 && s.eaReg == 3)))
+        (s.eaMode == 6 || (s.eaMode == 7 && s.eaReg == 3))) {
+        // Brief indexed JSR consumes the held extension and changes PC with
+        // no computeEA refill. Full-format indexed JSR performs one final
+        // linear refill after all encoded extensions.
+        if (in.words == 2 && in.extensionCount >= 1 &&
+            !(in.extensionWord(0) & 0x0100))
+            return in.fetchWords == 2;
         return in.words >= 2 && in.fetchWords == in.words + 1;
+    }
     return false;
 }
 
