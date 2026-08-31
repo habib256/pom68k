@@ -1017,7 +1017,10 @@ void emitNz(Asm& a, const Layout& L, unsigned result, int bits) {
 
 void emitLogicFlags(Asm& a, const Layout& L, unsigned result, int bits) {
     if (gPackedCcr) {
-        a.lsrW(12, result, unsigned(bits - 1));
+        // Only the guest sign bit belongs in N. Immediate byte/word EAs are
+        // sign-extended by the shared decoder; a plain LSR leaked all their
+        // higher ones above XNZVC and into the retired count packed in x26.
+        a.ubfxW(12, result, unsigned(bits - 1), 1);
         a.lslW(12, 12, 3);
         a.cmpWZero(result);
         a.csetW(13, Asm::EQ);
@@ -1191,16 +1194,13 @@ bool canEmitReg(uint16_t op) {
             // the independent-EA subset.
             return sem.eaReg != sem.destinationReg;
         case SemanticOp::Bit:
-            return mode != 1 && ei >= 0 && ei != EA_AN && ei != EA_IM &&
-                   (sem.action == 0 || ei != EA_DIPC);
+            return bitOperandEncodingAllowed(sem) && ei >= 0;
         case SemanticOp::ImmediateAlu:
-            return ei >= 0 && ei != EA_AN && ei != EA_IM && ei != EA_DIPC;
+            return immediateAluOperandEncodingAllowed(sem) && ei >= 0;
         case SemanticOp::Move: {
             const int dm = sem.destinationMode, dr = sem.destinationReg;
             const int si = ei, di = eaCostIndex(dm, dr);
-            if (si < 0 || di < 0 || di == EA_IM || di == EA_DIPC) return false;
-            if (sem.sizeIndex == 0 && (mode == 1 || dm == 1)) return false;
-            return true;
+            return moveOperandEncodingAllowed(sem) && si >= 0 && di >= 0;
         }
         case SemanticOp::JumpSubroutine:
             return controlEa(ei) || ei == EA_IX || ei == EA_IXPC;
@@ -1209,18 +1209,21 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::Lea:
             return controlEa(ei) || ei == EA_IX || ei == EA_IXPC;
         case SemanticOp::Pea:
-            return controlEa(ei) || ei == EA_IX || ei == EA_IXPC;
+            return peaOperandEncodingAllowed(sem) && ei >= 0;
         case SemanticOp::Movem:
             return true;
         case SemanticOp::SetCondition:
             return ei >= 0 && ei != EA_AN && ei != EA_DIPC && ei != EA_IM;
-        case SemanticOp::Test:
         case SemanticOp::Clear:
         case SemanticOp::Negate:
         case SemanticOp::Complement:
+            return unaryModifyOperandEncodingAllowed(sem) && ei >= 0;
+        case SemanticOp::Test:
+            return testOperandEncodingAllowed(sem) && ei >= 0;
         case SemanticOp::AluRegToEa:
-            return ei >= 0 && ei != EA_IM;
+            return aluRegToEaOperandEncodingAllowed(sem) && ei >= 0;
         case SemanticOp::AddSubQuick:
+            return addSubQuickOperandEncodingAllowed(sem) && ei >= 0;
         case SemanticOp::AddSubExtend:
             return ei >= 0 && ei != EA_IM && ei != EA_DIPC;
         case SemanticOp::AluEaToReg:
@@ -2058,6 +2061,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     }
 
     if (sem.operation == SemanticOp::Move) {         // MOVE/MOVEA
+        if (!moveOperandEncodingAllowed(sem)) return false;
         const int bits = bitsForSizeIndex(sem.sizeIndex);
         const int sm = sem.eaMode, sr = sem.eaReg;
         const int dm = sem.destinationMode, dr = sem.destinationReg;
@@ -2384,15 +2388,13 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int mode = sem.eaMode;
         if (sem.operation == SemanticOp::Bit) {      // BTST/BCHG/BCLR/BSET
             const bool dynamicBit = sem.dynamic;
-            if (mode == 1) return false;             // MOVEP overlap / An
+            if (!bitOperandEncodingAllowed(sem)) return false;
             const bool toReg = mode == 0;
             const int bits = toReg ? 32 : 8;
             const int action = sem.action;           // 0 test,1 xor,2 clear,3 set
             const int extUsed = dynamicBit ? 0 : 1;
             Ea dst;
             if (!decodeEa(in, mode, sem.eaReg, bits, extUsed, dst) ||
-                dst.idx == EA_AN || dst.idx == EA_IM ||
-                (action != 0 && dst.idx == EA_DIPC) ||
                 in.words != unsigned(1 + extUsed + dst.ext)) return false;
             const int sz = toReg ? 2 : 0;
             const int base = kEaRead[dst.idx][sz];
@@ -2427,6 +2429,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                     commitEaBeforeAccess(a, L, dst, bits, read);
                     loadGuest(a, bits, 11);
                 }
+            } else if (dst.idx == EA_IM) {
+                a.movW(11, uint32_t(dst.value));
             } else {
                 loadSized(a, L, 11, false, unsigned(dst.reg), 32);
             }
@@ -2471,6 +2475,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                                     action == 0 ? read : write);
             return true;
         }
+        if (!immediateAluOperandEncodingAllowed(sem)) return false;
         const int sz = sem.sizeIndex;
         if (sz > 2) return false;
         const AluOperation kind = sem.alu;
@@ -2479,7 +2484,6 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int immExt = bits == 32 ? 2 : 1;
         Ea dst;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, bits, immExt, dst) ||
-            dst.idx == EA_AN || dst.idx == EA_IM || dst.idx == EA_DIPC ||
             in.words != unsigned(1 + immExt + dst.ext)) return false;
         const int base = kEaRead[dst.idx][sz];
         const int cycles = kind == AluOperation::Cmp ? base
@@ -2515,6 +2519,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 commitEaBeforeAccess(a, L, dst, bits, read);
                 loadGuest(a, bits, 9);
             }
+        } else if (dst.idx == EA_IM) {
+            a.movW(9, uint32_t(dst.value));
         } else {
             loadSized(a, L, 9, false, unsigned(dst.reg), bits);
         }
@@ -2573,6 +2579,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     }
 
     if (sem.operation == SemanticOp::AddSubQuick) {
+        if (!addSubQuickOperandEncodingAllowed(sem)) return false;
         const int sz = sem.sizeIndex, mode = sem.eaMode;
         if (sz > 2) return false;
         int imm = sem.registerIndex; if (!imm) imm = 8;
@@ -2639,6 +2646,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     if (sem.operation == SemanticOp::AluEaToReg ||
         sem.operation == SemanticOp::AluRegToEa ||
         sem.operation == SemanticOp::AddressAlu) {
+        if (sem.operation == SemanticOp::AluRegToEa &&
+            !aluRegToEaOperandEncodingAllowed(sem)) return false;
         const int direction = sem.operation == SemanticOp::AluRegToEa ? 1 : 0;
         const int mode = sem.eaMode;
 
@@ -2892,6 +2901,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return true;
         }
         if (sem.operation == SemanticOp::Pea) {      // PEA <ea>
+            if (!peaOperandEncodingAllowed(sem)) return false;
             // Compute the source address before touching A7: PEA (A7) and
             // PEA d16(A7) use the old stack pointer as their source base.
             Ea src;
@@ -3036,14 +3046,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             sem.operation != SemanticOp::Complement &&
             sem.operation != SemanticOp::Negate) return false;
         const bool tst = sem.operation == SemanticOp::Test;
+        if (tst ? !testOperandEncodingAllowed(sem)
+                : !unaryModifyOperandEncodingAllowed(sem)) return false;
         Ea ea;
         if (!decodeEa(in, mode, sem.eaReg, bits, 0, ea,
                       /*allowFullDirect=*/false,
                       /*allowFullIndirect=*/tst && L.is030) ||
-            in.words != unsigned(1 + ea.ext) || ea.idx == EA_IM ||
-            (bits == 8 && ea.idx == EA_AN)) return false;
-        if (!tst && ea.idx == EA_AN) return false;
-        const int base = kEaRead[ea.idx][sz];
+            in.words != unsigned(1 + ea.ext)) return false;
+        const int base = tst ? tstEaCycles(ea.idx, sz)
+                             : kEaRead[ea.idx][sz];
         const bool indirectTst = tst && ea.fullFormat &&
                                  ea.indirect != IndexIndirect::None;
         const int fullPenalty = indirectTst ? fullIndexPenalty(ea) : 0;
@@ -3125,6 +3136,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                     loadGuest(a, bits, 9);
                 }
             }
+        } else if (ea.idx == EA_IM) {
+            a.movW(9, uint32_t(ea.value));
         } else {
             loadSized(a, L, 9, ea.idx == EA_AN, unsigned(ea.reg), bits);
             maskResult(a, 9, bits);

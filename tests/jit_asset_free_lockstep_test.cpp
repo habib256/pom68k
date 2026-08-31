@@ -7,7 +7,8 @@
 // hosts: registers/CCR/queue/clock, direct RAM writes and EA commits over a
 // linked multi-block loop, restart-vs-last-write /BERR boundaries and their
 // complete format-$7 stack frames, brief-vs-full indexed-EA admission, and
-// exact write-guard slice indexing.
+// exact write-guard slice indexing. Classic bit operations additionally pin
+// the irregular legal-EA mask and the prove-write-before-read RMW protocol.
 
 #include "Moira.h"
 #include "jit/JitEngine.h"
@@ -168,9 +169,10 @@ const jit::ResolvedConfig& injectedJitConfig() {
 
 class SyntheticCpu final : public moira::Moira {
 public:
-    SyntheticCpu()
+    explicit SyntheticCpu(const jit::ResolvedConfig& config =
+                              injectedJitConfig())
         : mem(kRamBytes, 0), jit(*this, hooks(this), jit::kGuest68040,
-                                 injectedJitConfig()) {
+                                 config) {
         setModel(moira::Model::M68040);
     }
 
@@ -183,6 +185,8 @@ public:
     jit::Engine jit;
     uint32_t busFaults = 0;
     uint32_t deviceReads = 0;
+    uint32_t deviceWrites = 0;
+    uint8_t deviceValue = 0xA5;
 
     static uint32_t bus(uint32_t a) { return a & kRamMask; }
     static bool inHole(uint32_t a) {
@@ -236,7 +240,7 @@ private:
             // code must add only MOVE's fixed cycles and must never duplicate
             // this side-effecting read after the destination was preflighted.
             c.setClock(c.getClock() + 3 + int64_t(n & 3));
-            return moira::u8(0xA5u ^ n);
+            return moira::u8(c.deviceValue ^ n);
         }
         if (inHole(a)) fault();
         return mem[bus(a)];
@@ -254,6 +258,12 @@ private:
     }
     void write8(moira::u32 a, moira::u8 v) const override {
         auto& c = *const_cast<SyntheticCpu*>(this);
+        if (inDevice(a)) {
+            const uint32_t n = c.deviceWrites++;
+            c.setClock(c.getClock() + 2 + int64_t(n & 1));
+            c.deviceValue = v;
+            return;
+        }
         if (inHole(a)) fault();
         const uint32_t p = bus(a);
         if (c.guard) c.guard->note(p, 1);
@@ -458,6 +468,80 @@ void installDependentMoveLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x0E, 0x0004);
     put16(c, kCode + 0x10, 0x60EE);    // BRA.S kCode
     put32(c, kStack, 0x1357'9BDFu);
+}
+
+// Classic bit operations exercise the shared, deliberately irregular EA
+// mask as executable code. Register operands use modulo 32; memory and the
+// legal dynamic-immediate BTST operand use modulo 8. PI/PD make a missing EA
+// commit visible, while the three modifying actions cover XOR/AND/OR.
+void installClassicBitLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x7EFF);    // MOVEQ #-1,D7
+    put16(c, kCode + 0x02, 0xDE87);    // ADD.L D7,D7 (X/N/C witnesses)
+    put16(c, kCode + 0x04, 0x283C);    // MOVE.L #$81234567,D4
+    put32(c, kCode + 0x06, 0x8123'4567u);
+    put16(c, kCode + 0x0A, 0x7225);    // MOVEQ #37,D1
+    put16(c, kCode + 0x0C, 0x0344);    // BCHG D1,D4 (bit 5)
+    put16(c, kCode + 0x0E, 0x0884);    // BCLR #31,D4
+    put16(c, kCode + 0x10, 31);
+    put16(c, kCode + 0x12, 0x08C4);    // BSET #30,D4
+    put16(c, kCode + 0x14, 30);
+    put16(c, kCode + 0x16, 0x0804);    // BTST #30,D4
+    put16(c, kCode + 0x18, 30);
+    put16(c, kCode + 0x1A, 0x207C);    // MOVEA.L #kData,A0
+    put32(c, kCode + 0x1C, kData);
+    put16(c, kCode + 0x20, 0x227C);    // MOVEA.L #kData+2,A1
+    put32(c, kCode + 0x22, kData + 2);
+    put16(c, kCode + 0x26, 0x247C);    // MOVEA.L #kData+2,A2
+    put32(c, kCode + 0x28, kData + 2);
+    put16(c, kCode + 0x2C, 0x0358);    // BCHG D1,(A0)+ (bit 5)
+    put16(c, kCode + 0x2E, 0x08A1);    // BCLR #10,-(A1) (bit 2)
+    put16(c, kCode + 0x30, 10);
+    put16(c, kCode + 0x32, 0x08EA);    // BSET #15,0(A2) (bit 7)
+    put16(c, kCode + 0x34, 15);
+    put16(c, kCode + 0x36, 0);
+    put16(c, kCode + 0x38, 0x033C);    // BTST D1,#$20 (legal 020+ form)
+    put16(c, kCode + 0x3A, 0x0020);
+    put16(c, kCode + 0x3C, 0x60C2);    // BRA.S kCode
+    c.mem[kData + 0] = 0x20;
+    c.mem[kData + 1] = 0xFF;
+    c.mem[kData + 2] = 0x00;
+}
+
+void installBitRmwLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x0850);    // BCHG #0,(A0)
+    put16(c, kCode + 0x02, 0);
+    put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
+    c.mem[kData] = 0xA5;
+}
+
+// Two read-only 68020+ EA extensions that were hidden among x64's broad
+// opcode-level over-claims: TST accepts an immediate operand and CMPI accepts
+// PC-relative operands.  Their neighbours (writes to An/PC/#imm) are illegal
+// and are pinned separately by jit_backend_test.
+void installLegalReadOnlyEaLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x7000);    // MOVEQ #0,D0 (index = 0)
+    put16(c, kCode + 0x02, 0x4A3C);    // TST.B #$80
+    put16(c, kCode + 0x04, 0x0080);
+    put16(c, kCode + 0x06, 0x4A7C);    // TST.W #0
+    put16(c, kCode + 0x08, 0x0000);
+    put16(c, kCode + 0x0A, 0x4ABC);    // TST.L #$80000000
+    put32(c, kCode + 0x0C, 0x8000'0000u);
+    put16(c, kCode + 0x10, 0x0C3A);    // CMPI.B #$5A,28(PC)
+    put16(c, kCode + 0x12, 0x005A);
+    put16(c, kCode + 0x14, 0x001C);    // EA base $14 -> literal $30
+    put16(c, kCode + 0x16, 0x0C7B);    // CMPI.W #$1234,24(PC,D0.W)
+    put16(c, kCode + 0x18, 0x1234);
+    put16(c, kCode + 0x1A, 0x0018);    // EA base $1A -> literal $32
+    put16(c, kCode + 0x1C, 0x0CBA);    // CMPI.L #$89ABCDEF,18(PC)
+    put32(c, kCode + 0x1E, 0x89AB'CDEFu);
+    put16(c, kCode + 0x22, 0x0012);    // EA base $22 -> literal $34
+    put16(c, kCode + 0x24, 0x60DA);    // BRA.S kCode
+    c.mem[kCode + 0x30] = 0x5A;
+    put16(c, kCode + 0x32, 0x1234);
+    put32(c, kCode + 0x34, 0x89AB'CDEFu);
 }
 
 void installDynamicBitfieldLoop(SyntheticCpu& c, bool includeMemory) {
@@ -1379,6 +1463,150 @@ bool runDependentMoveLockstep() {
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
            (!nativeProduction || s.slowInstrs == 0) &&
            native.getA(7) > kStack;
+}
+
+bool runClassicBitLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
+    installClassicBitLoop(ref);
+    installClassicBitLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 43;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    classic-bit divergence at checkpoint %d\n", step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    classic-bit packed=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n",
+                int(packedCcr),
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeProduction =
+        (!std::strcmp(native.jit.backendName(), "aarch64") ||
+         !std::strcmp(native.jit.backendName(), "x86-64"));
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeProduction || s.slowInstrs == 0) &&
+           native.getA(0) == kData + 1 && native.getA(1) == kData + 1;
+}
+
+bool runLegalReadOnlyEaLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
+    installLegalReadOnlyEaLoop(ref);
+    installLegalReadOnlyEaLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    ref.setSR(ref.getSR() | 0x10);       // X must survive every TST/CMPI
+    native.setSR(native.getSR() | 0x10);
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 47;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    legal read-only EA divergence at checkpoint %d\n",
+                        step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    legal-read-EA packed=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n",
+                int(packedCcr),
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeProduction =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeProduction || s.slowInstrs == 0) &&
+           s.instrs == 2047 && // also pins packed CCR/retired-count isolation
+           (native.getSR() & 0x10) != 0;
+}
+
+enum class BitRmwBoundary { Device, Fault };
+
+void prepareBitRmwBoundary(SyntheticCpu& c, BitRmwBoundary boundary) {
+    c.setPC(kCode);
+    c.setPC0(kCode);
+    c.setIRD(0x0850);
+    c.setIRC(0x0000);
+    c.setA(0, boundary == BitRmwBoundary::Device ? kDevice : kHole);
+    c.setA(7, kStack);
+    c.setSR(0x271F);
+    c.setClock(0);
+    c.busFaults = 0;
+    c.deviceReads = 0;
+    c.deviceWrites = 0;
+    c.deviceValue = 0xA5;
+    clearRunFlags(c);
+}
+
+bool runBitRmwBoundary(BitRmwBoundary boundary, bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
+    installBitRmwLoop(ref);
+    installBitRmwLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+
+    native.setA(0, kData);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 512);
+    const auto trained = native.jit.stats().snapshot();
+    if (trained.blocksCompiled == 0) return false;
+
+    ref.mem = native.mem;
+    prepareBitRmwBoundary(ref, boundary);
+    prepareBitRmwBoundary(native, boundary);
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+
+    const bool same = sameCpu(ref, native, true) &&
+        sameMemory(ref, native, 0, kRamBytes, true);
+    const bool nativeEntry = after.blocksRun > before.blocksRun;
+    if (boundary == BitRmwBoundary::Device) {
+        std::printf("    bit-RMW MMIO packed=%d reads=%u/%u writes=%u/%u "
+                    "value=%02X/%02X slow=%llu\n",
+                    int(packedCcr),
+                    ref.deviceReads, native.deviceReads,
+                    ref.deviceWrites, native.deviceWrites,
+                    ref.deviceValue, native.deviceValue,
+                    (unsigned long long)(after.slowInstrs - before.slowInstrs));
+        return same && nativeEntry && ref.deviceReads == 1 &&
+               native.deviceReads == 1 && ref.deviceWrites == 1 &&
+               native.deviceWrites == 1 && ref.deviceValue == 0xA4 &&
+               native.deviceValue == ref.deviceValue &&
+               after.slowInstrs == before.slowInstrs + 1;
+    }
+
+    const bool frame = ref.getA(7) == kStack - 60 &&
+        native.getA(7) == ref.getA(7) &&
+        sameMemory(ref, native, ref.getA(7), 60, true);
+    return same && frame && nativeEntry && ref.busFaults != 0 &&
+           native.busFaults != 0 && ref.deviceReads == 0 &&
+           native.deviceReads == 0 && ref.deviceWrites == 0 &&
+           native.deviceWrites == 0;
 }
 
 bool runDynamicBitfieldLockstep() {
@@ -2501,6 +2729,22 @@ int main() {
           "memory-indirect full-index JSR preflights pointer and stack exactly");
     check(runDependentMoveLockstep(),
           "dependent (A7)+ destinations use the postincremented base exactly");
+    check(runClassicBitLockstep(false),
+          "BTST/BCHG/BCLR/BSET register and RAM forms stay native and exact");
+    check(runBitRmwBoundary(BitRmwBoundary::Device, false),
+          "bit RMW refuses before MMIO read, then replays exactly once");
+    check(runBitRmwBoundary(BitRmwBoundary::Fault, false),
+          "bit RMW /BERR replays pristine and builds the exact format-$7 frame");
+    check(runClassicBitLockstep(true),
+          "classic bit operations preserve packed X/N/V/C and update only Z");
+    check(runBitRmwBoundary(BitRmwBoundary::Device, true),
+          "packed-CCR bit RMW replays MMIO exactly once");
+    check(runBitRmwBoundary(BitRmwBoundary::Fault, true),
+          "packed-CCR cold fallback preserves the /BERR result and frame");
+    check(runLegalReadOnlyEaLockstep(false),
+          "TST immediate and CMPI PC-relative stay native and exact");
+    check(runLegalReadOnlyEaLockstep(true),
+          "legal read-only 020 EAs preserve packed X and publish exact NZVC");
     check(runDynamicBitfieldLockstep(),
           "dynamic register and tailed memory bitfields stay native on BOTH generators");
     check(runDynamicRegisterBitfieldLockstep(),

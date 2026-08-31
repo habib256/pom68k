@@ -13,19 +13,20 @@ configure-time roster + manifest; `docs_test` re-derives the artifact and
 fails on drift) — read them there instead of re-deriving them here:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-29): **238 gates** — 113
-  `unit`, 88 `asset-none`, 9 `smoke`, 41 `jit`, 54 `m040`, 56 `m030`, 124
+  somewhere.** The documented registry (2026-08-31): **239 gates** — 114
+  `unit`, 88 `asset-none`, 9 `smoke`, 42 `jit`, 54 `m040`, 56 `m030`, 124
   `etalon`, 12 `etalon-core` (`input_journal_test` joined on 2026-08-29;
   `jit_backend_parity_test` and the LC 520
-  beyond-boot pair on 2026-08-28). Five are host-conditional — the
+  beyond-boot pair on 2026-08-28). Six are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
   `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
   the x86-64-only `jit_lockstep_030_x64_experimental_test` +
-  `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
-  **235** (110 `unit`, 8 `smoke`, 38 `jit`) and an AArch64 one 236 (111
-  `unit`, 39 `jit`) — union minus the three, resp. the two, that host
-  cannot register (previous totals measured `ctest -N` 2026-08-28, x86-64). Eight more
+  `jit_lockstep_030_x64_packed_ccr_test` +
+  `jit_lockstep_030_x64_alignment_test` — the AArch64 configure sees **236**,
+  and the x86-64 configure sees **236** (111 `unit`; 8 `smoke`/39 `jit` on
+  x64, 9/39 on AArch64), the
+  union minus the other host's three. Eight more
   exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:466`, and it FATAL_ERRORs off AArch64 in
   `cmake/Pom68kJitGates.cmake:458-464`).
@@ -979,6 +980,27 @@ Open, in ROI order:
   des deux ISA, le gate transactionnel 030 et le lockstep LC II x64 de
   120 000 frontières restent exacts. La ligne `MoveSrToReg` disparaît de la
   table de parité, qui compte maintenant 12 groupes documentés.
+- **Parité `BCHG/BCLR/BSET` x64 — CLOSE le 2026-08-31** : la règle légale
+  des opérandes de bits vit désormais une fois dans `JitIr.h` et suit les
+  masques de Moira, y compris l'étrange mais légal `BTST Dn,#imm`. x64
+  pré-sonde l'écriture avant toute lecture RMW, conserve le pointeur hôte,
+  ne change que Z puis publie octet et PI/PD sans nouvelle opération
+  faillible. L'oracle 040 exécute 1 920 instructions sans repli sur A64 et
+  x64, puis prouve un seul read/write MMIO et la frame `/BERR` format-$7 ;
+  les locksteps LC II 030 et Quadra 605 040 restent exacts. Les deux lignes
+  `Bit` disparaissent de la parité, ramenée de 12 à 10 groupes documentés.
+- **Fallback `/BERR` avec CCR compacté sur x64 — CLOS le 2026-08-31** :
+  `call()` rechargeait XNZVC avec `RAX` après `pom68kJitStep` et détruisait
+  donc son résultat ABI ; un fault `0` avec X=1 devenait positif et le bloc
+  continuait. `RAX` est maintenant préservé autour de la rematérialisation.
+  Le gate asset-free exécute en permanence le loop bit, le replay MMIO et le
+  fault format-$7 avec CCR canonique puis compacté sur A64 et x64. Le replay
+  réel compacté a aussi nommé un second défaut : après le `TST.B (A1)` exact
+  à `$00A14E9C`, x64/030 pouvait sauter le rendez-vous périphérique puis payer
+  +80 cycles au poll suivant. Cette seule combinaison expérimentale utilise
+  désormais le chemin non batché, un `sync()` par instruction ; le nouveau
+  `jit_lockstep_030_x64_packed_ccr_test` verrouille 120 000 frontières LC II,
+  et le même run compacté est vert manuellement sur A64.
 - [ ] **Queue de couverture Speedometer après `E291`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
@@ -1717,11 +1739,13 @@ depuis (ABBA nul).
   (la leçon D1F0 tient une 2e fois). **JSR `$4EB0` est PORTÉ le
   2026-08-31 (third)** : x64 partage maintenant le calcul pré/postindexé, le
   coût et la transaction pointeur/pile d'a64. Les bitfields sont PORTÉS
-  depuis le 2026-08-30/31, et `MOVE SR,Dn` depuis le 2026-08-31
-  (twenty-second) : le gate ne porte plus que deux groupes a64-only, les bit
-  ops modifiants et l'admission MOVE plus large. Sur la photo historique,
-  leurs témoins à reclasser par un census frais étaient les destinations
-  indexées de MOVE (`$2F70`, 391 k) et les bit ops mémoire (`$08A9`, 332 k).
+  depuis le 2026-08-30/31, `MOVE SR,Dn` depuis le 2026-08-31
+  (twenty-second), et les bit ops modifiants depuis le twenty-third : le gate
+  ne porte plus qu'un groupe a64-only, l'admission MOVE plus large. Sur la
+  photo historique, son témoin à reclasser par un census frais était les
+  destinations indexées de MOVE (`$2F70`, 391 k). Le témoin bit mémoire
+  `$08A9` (332 k) est désormais porté pour la RAM ; les accès périphériques
+  refusent toujours avant lecture et rejouent exactement dans Moira.
   **L'« ordre `(An)+` » (`$24D0`, 1,64 M) est SORTI de cette
   liste le 2026-08-29 (seventh)** : mesuré identique dans les deux modes
   thunk, ce sont des refus de sonde mémorisés (probe 66 k / codepage 25 k /

@@ -1178,6 +1178,42 @@ int main() {
               "every opcode claimed by the active backend has shared IR semantics");
         // The two opcodes a Mac ROM's hardware poll loops are built from.
         check(b->canEmit(0x082B) == gen, "BTST #imm,d16(A3)");
+        check(b->canEmit(0x0344) == gen, "BCHG D1,D4");
+        check(b->canEmit(0x08A1) == gen, "BCLR #imm,-(A1)");
+        check(b->canEmit(0x08EA) == gen, "BSET #imm,d16(A2)");
+        check(b->canEmit(0x033C) == gen,
+              "BTST D1,#imm is the legal dynamic-immediate form");
+        check(b->canEmit(0x083A) == gen,
+              "BTST #imm,d16(PC) is the legal static PC-relative form");
+        check(!b->canEmit(0x0808), "BTST #imm,An is illegal");
+        check(!b->canEmit(0x083C), "BTST #imm,#imm is illegal");
+        check(!b->canEmit(0x08FA), "BSET #imm,d16(PC) is illegal");
+        check(!b->canEmit(0x08FC), "BSET #imm,#imm is illegal");
+        check(b->canEmit(0x4A3C) == gen, "TST.B #imm is legal on 020+");
+        check(b->canEmit(0x4A7C) == gen, "TST.W #imm is legal on 020+");
+        check(b->canEmit(0x4ABC) == gen, "TST.L #imm is legal on 020+");
+        check(b->canEmit(0x0C3A) == gen,
+              "CMPI.B #imm,d16(PC) is legal on 020+");
+        check(b->canEmit(0x0C7B) == gen,
+              "CMPI.W #imm,d8(PC,Dn) is legal on 020+");
+        check(!b->canEmit(0x0008), "ORI.B #imm,An is illegal");
+        check(!b->canEmit(0x003A), "ORI.B #imm,d16(PC) is illegal");
+        check(!b->canEmit(0x063C), "ADDI.B #imm,#imm is illegal");
+        check(!b->canEmit(0x5008), "ADDQ.B #imm,An is illegal");
+        check(b->canEmit(0x5048) == gen, "ADDQ.W #imm,An is legal");
+        check(!b->canEmit(0x503A), "ADDQ.B #imm,d16(PC) is illegal");
+        check(!b->canEmit(0x813C), "OR.B D0,#imm is illegal");
+        check(!b->canEmit(0x423C), "CLR.B #imm is illegal");
+        check(!b->canEmit(0x4208), "CLR.B An is illegal");
+        check(!b->canEmit(0x4A08), "TST.B An is illegal");
+        check(b->canEmit(0x4A48) == gen, "TST.W An is legal on 020+");
+        check(!b->canEmit(0x4858), "PEA (An)+ is illegal");
+        check(!b->canEmit(0x4860), "PEA -(An) is illegal");
+        check(!b->canEmit(0x487C), "PEA #imm is illegal");
+        check(b->canEmit(0x487A) == gen, "PEA d16(PC) is legal");
+        check(!b->canEmit(0x1008), "MOVE.B An,Dn is illegal");
+        check(!b->canEmit(0x1040), "MOVEA.B Dn,An is illegal");
+        check(b->canEmit(0x3040) == gen, "MOVEA.W Dn,An is legal");
         check(b->canEmit(0x66F8) == gen, "BNE.S -8");
         check(b->canEmit(0x2ADC) == gen, "MOVE.L (A4)+,(A5)+");
         check(b->canEmit(0x7000) == gen, "MOVEQ #0,D0");

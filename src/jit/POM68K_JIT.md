@@ -1185,17 +1185,18 @@ Widen only when the smoke tier is green:
 | command | gates | when |
 |---|---|---|
 | `ctest -L jit-fast` | 7 | native A64/x64 lockstep/IR/protocol + docs/config, asset-free |
-| `ctest -L unit` | 108 | legacy non-etalon tier on AArch64 (not synonymous with asset-free) |
-| `ctest -L jit` | 40 | before proposing a JIT change (`jit-fast` matches the regex too) |
-| `ctest -L m040` | 51 | the 68040 family — the JIT's blast radius |
+| `ctest -L unit` | 111 | legacy non-etalon tier on either native host (not synonymous with asset-free) |
+| `ctest -L jit` | 39 | before proposing a JIT change (`jit-fast` matches the regex too) |
+| `ctest -L m040` | 54 | the 68040 family — the JIT's blast radius |
 | `ctest -L etalon-core` | 12 | one profile per platform, ~32 min — the pre-commit tier |
-| `ctest` | 228 | this AArch64 host; 230 in the cross-host union |
+| `ctest` | 236 | either native host; 239 in the cross-host union |
 
-(Counts from `ctest -N` on 2026-08-26, on an **AArch64** host with
-`POM68K_JIT_BACKENDS=auto`. Five gates are host-conditional: the AArch64
-coarse/030-experimental/030-alignment trio and the x86-64 030 experimental +
-alignment pair. Re-derive with `ctest -N` rather than arithmetic; `m040` and
-`etalon` are host-independent.)
+(Counts from `ctest -N` on 2026-08-31 with `POM68K_JIT_BACKENDS=auto`.
+Six gates are host-conditional: the AArch64 coarse/030-experimental/
+030-alignment trio and the x86-64 030 experimental/packed-CCR/alignment trio.
+The union has 114 `unit` and 42 `jit`; either host omits the other one's three.
+Re-derive with `ctest -N` rather than arithmetic; `m040` and `etalon` are
+host-independent.)
 
 Labels are derived from test names in `cmake/Pom68kGatePolicy.cmake`, so a
 new gate is classified the moment it is registered. The derivation merges and
@@ -1232,7 +1233,7 @@ do not affect an injected session.
 | `POM68K_JIT_HOT` | native `1`, threaded `512` | visits before a recorded block is translated |
 | `POM68K_JIT_ARM_BACKOFF` | `32` | single-stepped instructions after an `armWindow()` refusal before the next arm attempt (0-4096). Measured 2026-08-23 at 30 000 LC II frames, single runs, same binary: 32 → 94.2 s, 8 → 90.5 s, 4 → 92.9 s, 1 → 93.1 s, native share rising monotonically (85.6 → 88.2 %) while wall does not. A streak-growing backoff (1, 2, 4 … 32) gave 93.0 s / 88.2 % on the 030 with identical locksteps — and **diverged the two 68040 locksteps** (`D1` differs at the first coarse boundary): when the window is armed is NOT architecturally invisible on the 040, so the constant stays (CHANGELOG 2026-08-23 (fourth)) |
 | `POM68K_JIT_LINKS` | profile | direct block-to-block linking for native backends; on only in `production` unless explicitly overridden |
-| `POM68K_JIT_PACKED_CCR` | `0` | conformant deferred-CCR prototype (§ 3.8): keep `XNZVC` beside the generated retired count and materialise it at helper/exit boundaries. Emitted by A64 and x64; A64 lockstep-proved and measured **5.8 % slower**, so not a production default |
+| `POM68K_JIT_PACKED_CCR` | `0` | conformant deferred-CCR prototype (§ 3.8): keep `XNZVC` beside the generated retired count and materialise it at helper/exit boundaries. Emitted and asset-free-lockstep-proved on A64/x64; the real 120k LC II replay is a permanent x64 gate. A64 measured **5.8 % slower**, so not a production default |
 | `POM68K_JIT_REG_CACHE` | `0` | A64 per-block cache of up to two read-only Dn/An values in x27/x28. Linked targets reload from canonical guest state and all blocks share the option-selected frame ABI. Lockstep-proved, performance-neutral, hence opt-in |
 | `POM68K_JIT_EDGE_CELLS` | `0` | constant branches use exact stable dependency cells rather than the colliding direct table; target publication/invalidation updates the cell in O(1). It removes 202,293 outer block runs on the fixed Q605 workload but measures 0.5 % slower; dynamic targets retain the table |
 | `POM68K_JIT_DYNAMIC_BITFIELD` | `1` | production admission on both native generators for register bitfields and TAILLESS memory forms whose offset and/or width come from Dn; `0` is the exact attribution control. Rogue's measured mask loop is dominated by this form; `jit_backend_test` locks the resolved default and the asset-free oracle locks all eight dynamic register actions to zero fallback on A64/x64 |
@@ -1468,8 +1469,8 @@ Source of truth: `X64Backend::canEmit()` plus the emitters it dispatches to.
   `ADDA`/`SUBA`/`CMPA`; `ADDQ`/`SUBQ`; register **`ADDX`/`SUBX`** B/W/L
   (X input, C=X, cumulative Z); the
   `ADDI`/`SUBI`/`ANDI`/`ORI`/`EORI`/`CMPI` immediates; `TST`, `CLR`, `NEG`,
-  `NOT`, `EXT.W`/`EXT.L`/`EXTB.L`, `SWAP`, `LEA`, `PEA`, `Scc`, `BTST`
-  (both forms),
+  `NOT`, `EXT.W`/`EXT.L`/`EXTB.L`, `SWAP`, `LEA`, `PEA`, `Scc`,
+  `BTST`/`BCHG`/`BCLR`/`BSET` (static or dynamic),
   `LINK`/`UNLK`/`NOP`, **`EXG`** (all three forms) and **`CMPM`** with
   distinct address registers (both since 2026-08-21 — the x64 port of the
   a64 pair, PreflightAll on CMPM's two reads), and
@@ -1507,9 +1508,34 @@ non-plain mappings leave before any data read, so the exact fallback observes
 the divisor exactly once. This is the shared `replayableSpeculativeRead()`
 contract, consumed independently by both generators.
 
+Classic memory-bit mutations use the stricter shared RMW contract. The
+writable mapping is proved before the read becomes observable; the generated
+body retains that host pointer through Z-flag generation and writes through
+it without a second fallible lookup. Only then does it publish a PI/PD update.
+The shared legal-encoding predicate also captures the family's irregular EA
+mask: modifying forms end at absolute long, BTST adds PC-relative operands,
+and only dynamic BTST accepts an immediate operand. A device or faulting
+mapping is therefore refused before its read and the whole pristine
+instruction executes once in Moira.
+
+Packed-CCR helper calls have one extra ABI rule on x64: `RAX` is saved while
+canonical XNZVC is reloaded into the packed register. The reload itself uses
+`RAX` as scratch, but read/write/step helpers return their success or fault
+code there; clobbering it once made a fault with X set look like a successful
+retirement. The asset-free oracle always runs the bit loop plus MMIO and
+format-$7 fallback legs with packed CCR both off and on, on each native host.
+On the 68030, an exact device-read helper can also advance the peripheral
+deadline while CCR state is materialised. The experimental x64/030/packed
+combination therefore deliberately disables inline batching and calls the
+conformant `sync()` path after each instruction; otherwise the LC II poll at
+`$00A14E9C` misses that rendezvous and the next boundary is +80 cycles late.
+`jit_lockstep_030_x64_packed_ccr_test` pins 120,000 real LC II boundaries.
+Canonical x64/030 and packed x64/040 retain inline pacing.
+
 **Backend admission remains explicit even where the sets have converged.**
 Immediate and guarded register-count line-$E shifts/rotates, `MOVE SR,Dn`,
-brief-indexed reads/RMW, `Scc`, `PEA` and `LEA`, plus `EXG`,
+all legal classic bit operations, brief-indexed reads/RMW, `Scc`, `PEA` and
+`LEA`, plus `EXG`,
 distinct-register `CMPM`, memory-bitfield reads (including the optional
 fifth byte), TAILLESS memory-bitfield writes and all eight register-bitfield
 actions are now on both generators. The x64 static bitfield body
@@ -1530,9 +1556,9 @@ both hosts, and the restartable indexed-MOVE format-$A fault frame;
 indexed `Scc` there remains conservatively replayed by the trace-cost guard.
 Each backend's
 `canEmit()` remains the source of truth, and `jit_backend_test` pins the
-remaining keyed differences (modifying bit operations and the broader A64
-indexed-MOVE admission), plus the indexed control-flow refusal, so a coverage
-change is also a gate change.
+remaining keyed difference (the broader A64 indexed-MOVE admission), plus the
+indexed control-flow refusal, so a coverage change is also a gate change. The
+full sweep currently carries ten dated divergence groups and none for `Bit`.
 
 ### What it is worth
 

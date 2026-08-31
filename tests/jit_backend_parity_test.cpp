@@ -90,47 +90,12 @@ const AllowedDivergence kAllowed[] = {
     // ── real coverage gaps: lowerings a64 has and x64 lacks ──────────────
     // (the three the 2026-08-28 review named, plus what this gate's first
     // sweep added the same day; closing one = landing the x64 lowering)
-    // (2026-08-31: the Bitfield row is retired — x64 admits register forms,
-    // tailless writes and optional fifth-byte reads under the same shared
-    // contracts. MOVE SR,Dn is retired too: both CCR layouts execute in the
-    // cross-host native smoke.)
-    { SemanticOp::Bit, true,
-      "2026-08-28: a64 lowers the modifying bit ops (BCHG/BCLR/BSET, "
-      "action != 0); x64's rule admits BTST only" },
+    // (2026-09-01: Bitfield, MOVE SR,Dn, classic Bit and every false
+    // opcode-level admission row are retired. Shared Moira-derived EA masks
+    // now leave only the real indexed-MOVE lowering gap.)
     { SemanticOp::Move, true,
       "2026-08-28: a64 admits indexed destinations x64's kMoveDst row "
       "refuses — the 'port the a64 030 deltas' debt made visible" },
-    // ── x64 canEmit over-claims: forms its EMITTER refuses ───────────────
-    // canEmit answers yes and compile() then rejects, which only costs an
-    // invisible refusal — but the drift is real and stays documented until
-    // the x64 predicate is tightened on a host that can run its gates.
-    // Most rows are illegal 68k encodings (An with byte size, immediate or
-    // PC-relative destinations); Test also covers TST #imm, a legal 020
-    // form only x64 claims, and Bit covers BTST Dn,#imm likewise.
-    { SemanticOp::Move, false,
-      "2026-08-28: x64's rule omits a64's byte-size-An exclusion — "
-      "MOVE.B An,<ea> / MOVE.B <ea>,An are illegal encodings" },
-    { SemanticOp::ImmediateAlu, false,
-      "2026-08-28: x64 admits An/immediate/d16(PC) destinations a64 "
-      "refuses; only CMPI d16(PC) among them is a legal 020 form" },
-    { SemanticOp::Bit, false,
-      "2026-08-28: x64 admits An/#imm static-bit operands a64 refuses "
-      "(BTST Dn,#imm is the one legal form)" },
-    { SemanticOp::AddSubQuick, false,
-      "2026-08-28: x64 admits the illegal d16(PC) destination" },
-    { SemanticOp::AluRegToEa, false,
-      "2026-08-28: x64 admits the illegal immediate destination" },
-    { SemanticOp::Test, false,
-      "2026-08-28: TST #imm — legal on the 020+, only x64 claims it" },
-    { SemanticOp::Clear, false,
-      "2026-08-28: x64 admits the illegal immediate destination" },
-    { SemanticOp::Negate, false,
-      "2026-08-28: x64 admits the illegal immediate destination" },
-    { SemanticOp::Complement, false,
-      "2026-08-28: x64 admits the illegal immediate destination" },
-    { SemanticOp::Pea, false,
-      "2026-08-28: x64 admits (An)+/-(An)/An/#imm — illegal PEA "
-      "encodings its own kPea row refuses at emit time" },
 };
 
 int failures = 0;

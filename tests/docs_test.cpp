@@ -1522,7 +1522,7 @@ int main() {
         const std::string todo = slurp(todoPath);
         const size_t begin = todo.find("The documented registry");
         const size_t end = begin == std::string::npos
-            ? std::string::npos : todo.find("Five are host-conditional", begin);
+            ? std::string::npos : todo.find("Six are host-conditional", begin);
         check(begin != std::string::npos && end != std::string::npos,
               "TODO.md carries a bounded gate-registry headline");
         if (begin != std::string::npos && end != std::string::npos) {
@@ -1617,7 +1617,7 @@ int main() {
     // goes unchecked and says so.
     {
 #if defined(__aarch64__) || defined(_M_ARM64)
-        const char* hostPhrase = "AArch64 one";
+        const char* hostPhrase = "AArch64 configure sees";
         const char* hostName   = "AArch64";
 #elif defined(__x86_64__) || defined(_M_X64)
         const char* hostPhrase = "x86-64 configure sees";

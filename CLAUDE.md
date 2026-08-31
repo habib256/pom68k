@@ -62,15 +62,14 @@ coverage, not a product ceiling.
   (System 4.1 → Mac OS 8.1) is `tests/finder_boot_matrix.cpp` — an on-demand
   harness, `EXCLUDE_FROM_ALL` and **not** a registered CTest. Bring-up
   history: `CHANGELOG.md`, by date.
-- **238 CTest gates** (2026-08-29: 113 `unit`, 9 `smoke`, 41 `jit`,
+- **239 CTest gates** (2026-08-31: 114 `unit`, 9 `smoke`, 42 `jit`,
   54 `m040`, 56 `m030`, 124 `etalon`, of which 12 `etalon-core` — one profile
   per platform, the pre-commit tier, 12/12 green in 31 min 41 s). The registry
-  is **host-conditional by five**: the AArch64 lockstep trio (040 coarse,
+  is **host-conditional by six**: the AArch64 lockstep trio (040 coarse,
   030 experimental, 030 alignment) is registered only on an AArch64 host
-  with the native backends, and the x64 030 experimental + alignment
-  locksteps only on x86-64 — so an x86-64 configure sees 235 and an
-  AArch64 one 236 (union minus the three, resp. the two, this host cannot
-  register).
+  with the native backends, and the x64 030 experimental + packed-CCR +
+  alignment locksteps only on x86-64 — the AArch64 configure sees 236, and
+  the x86-64 configure sees 236 (the union minus the other host's three).
   `docs_test` re-checks these totals — and every gate name this file spells
   out — against the roster CMake writes at configure time, and fails if any
   gate carries no label; since 2026-08-19 it also holds every in-tree
@@ -238,12 +237,12 @@ coverage, not a product ceiling.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest -j64                   # 238 gates, 20 min here; `-j` = RAM budget / 256 MiB
-ctest -L unit                # 113 legacy non-etalon gates
+ctest -j64                   # 239 gates, 20 min here; `-j` = RAM budget / 256 MiB
+ctest -L unit                # 114 legacy non-etalon gates
 ctest -L asset-none          # 88 gates — manifest-declared asset-free tier
 ctest -L smoke               # 9 gates — one machine, both CPU engines
 ctest -L etalon-core         # 12 gates — ONE profile per platform, 31 min
-ctest -L jit                 # 41 gates;  -L m040 = 54;  -L m030 = 56
+ctest -L jit                 # 42 gates;  -L m040 = 54;  -L m030 = 56
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 cmake --build . -j4 --target jitfast && POM68K_JIT_REQUIRE_NATIVE=1 ctest -L jit-fast
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the

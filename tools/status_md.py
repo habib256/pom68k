@@ -56,8 +56,30 @@ POLICY_PREFIXES = ("asset-", "host-", "scope-", "tier-")
 KNOWN_HOSTS = ("aarch64", "x86_64")
 
 
-def normalize_host():
-    """Mirror Pom68kJitGates.cmake's POM68K_PERF_HOST normalization."""
+def normalize_host(build_dir=None):
+    """Name the architecture the configured binaries run as.
+
+    On Apple Silicon, ``platform.machine()`` still reports arm64 while a
+    Rosetta build directory targets x86_64. Prefer that explicit single-arch
+    CMake setting so regenerating the x64 section does not silently rewrite
+    the AArch64 one instead.
+    """
+    if build_dir:
+        cache = os.path.join(build_dir, "CMakeCache.txt")
+        try:
+            with open(cache, encoding="utf-8", errors="replace") as f:
+                cache_text = f.read()
+            match = re.search(
+                r"^CMAKE_OSX_ARCHITECTURES:[^=]*=([^;\r\n]+)$",
+                cache_text, re.M)
+            if match:
+                target = match.group(1).strip().lower()
+                if target in ("arm64", "aarch64"):
+                    return "aarch64"
+                if target in ("x86_64", "amd64"):
+                    return "x86_64"
+        except OSError:
+            pass
     m = platform.machine().lower()
     if m in ("arm64", "aarch64"):
         return "aarch64"
@@ -191,7 +213,7 @@ def main():
                     help="free text for the recorded run's note column")
     args = ap.parse_args()
 
-    host = normalize_host()
+    host = normalize_host(args.build_dir)
     gates = read_labelled(os.path.join(args.build_dir, "pom68k_gates.tsv"))
     absent = read_labelled(
         os.path.join(args.build_dir, "pom68k_gates_absent.tsv"))

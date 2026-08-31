@@ -68,6 +68,14 @@ inline constexpr int8_t kEaRead[EA_MODE_COUNT][3] = {   // [mode][0=B 1=W 2=L]
     { 4, 4, 6 },   // #imm
 };
 
+// TST shares kEaRead everywhere except its 68020+ immediate extension:
+// execTst charges six cycles for B/W/L, whereas ordinary byte/word immediate
+// sources cost four. Keeping the exception here prevents the two generators
+// from rediscovering the same Moira table cell independently.
+inline int tstEaCycles(int mode, int szIdx) {
+    return mode == EA_IM ? 6 : kEaRead[mode][szIdx];
+}
+
 // "Read-modify-write <ea>" — execAndRgEa / execAddqEa / execAndiEa /
 // execClr / execNegEa / the BTST family all agree: the read cost plus two,
 // and a plain 2 when the destination is a register.

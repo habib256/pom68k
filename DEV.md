@@ -1777,22 +1777,25 @@ three under different environments.
 |---|---|---|
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
 | `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
-| `ctest -L unit` | 113 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
+| `ctest -L unit` | 114 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
 | `ctest -L asset-none` | 88 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
-| `ctest -L jit` | 41 | before proposing a JIT change (`jit-fast` matches this regex too) |
+| `ctest -L jit` | 42 | before proposing a JIT change (`jit-fast` matches this regex too) |
 | `ctest -L m040` | 54 | the 68040 family on the default engine plus explicit interpreter references |
 | `ctest -L m030` | 56 | the 68030 family, same shape (since 2026-08-18) |
 | `ctest -L etalon` | 124 (4 h 33 serial-equivalent) | every profile — the release gate, not a pre-commit check |
-| `ctest -j64` | 238 (**20 min** with this host's RAM rows; 30 min at `-j16`, 18 min uncalibrated, 4 h 46 serial) | documented host-union; use `ctest -N` for this host |
+| `ctest -j64` | 239 (**20 min** with this host's RAM rows; 30 min at `-j16`, 18 min uncalibrated, 4 h 46 serial) | documented host-union; use `ctest -N` for this host |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
-is the authority. Five gates are host-conditional: the AArch64 trio
+is the authority. Six gates are host-conditional: the AArch64 trio
 `jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
 + `jit_lockstep_030_a64_alignment_test` and the x86-64-only
-`jit_lockstep_030_x64_experimental_test` + `jit_lockstep_030_x64_alignment_test`
-— so an x86-64 tree reads **235** total, 110 `unit`, 8 `smoke`, 38 `jit`,
-and an AArch64 one 236 (`m040` and `etalon` are host-independent). Eight more
+`jit_lockstep_030_x64_experimental_test` +
+`jit_lockstep_030_x64_packed_ccr_test` +
+`jit_lockstep_030_x64_alignment_test`. The AArch64 configure sees **236**,
+and the x86-64 configure sees **236**, both with 111 `unit`; x64 has 8
+`smoke`/39 `jit`, AArch64 9/39
+(`m040` and `etalon` are host-independent). Eight more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of
 skipping.

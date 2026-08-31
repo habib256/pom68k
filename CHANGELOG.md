@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 369 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 370 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how the classic bit family shares one legal-EA mask and makes a memory mutation transactional before its read** → [2026-08-31 (twenty-third) — x64 closes…](#2026-08-31-x64-classic-bit-rmw)
 - **how x64 reconstructs `MOVE SR,Dn` from canonical or packed CCR state while preserving Dn's upper word** → [2026-08-31 (twenty-second) — x64 closes…](#2026-08-31-x64-move-sr)
 - **how a count-changing Speedometer shift gets exact native code without a direct link bypassing its live-count selection, and why four versions were not enough** → [2026-08-31 (twenty-first) — Speedometer's dynamic shifts get a bounded multi-version cache…](#2026-08-31-speedometer-shift-multiversion)
 - **how Speedometer's fixed `ROXR.L #1,D1` reuses the exact rotate-through-X proof and removes 1,410 static refusals** → [2026-08-31 (twentieth) — Speedometer's long immediate ROXR…](#2026-08-31-speedometer-roxr-long)
@@ -376,6 +377,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (twenty-third)** — [x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW](#2026-08-31-x64-classic-bit-rmw)
 - **2026-08-31 (twenty-second)** — [x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively](#2026-08-31-x64-move-sr)
 - **2026-08-31 (twenty-first)** — [Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain](#2026-08-31-speedometer-shift-multiversion)
 - **2026-08-31 (twentieth)** — [Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body](#2026-08-31-speedometer-roxr-long)
@@ -747,6 +749,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-31-x64-classic-bit-rmw"></a>
+## 2026-08-31 (twenty-third) — x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW
+
+The parity table carried both sides of one modelling error. AArch64 emitted
+`BCHG`/`BCLR`/`BSET`, while x64 stopped at `BTST`; conversely, each backend's
+local admission rule described a different set of illegal An, PC-relative or
+immediate destinations. Moira's opcode masks are now written once as
+`bitOperandEncodingAllowed()`: Dn is always legal, modifying memory forms stop
+at absolute long, `BTST` also admits PC-relative operands, and only dynamic
+`BTST` admits an immediate operand (`BTST Dn,#imm`). Both generators consume
+that rule, and A64 now emits the last legal form instead of refusing it.
+
+The x64 lowering covers all four actions. A memory mutation first proves the
+writable translation, then reads through the retained host pointer; the bit
+mask is materialised only after that potentially clobbering probe. Z records
+the original bit while X/N/V/C remain untouched, XOR/AND/OR computes the new
+value, and the retained pointer is written before a postincrement or
+predecrement EA is committed. MMIO, code pages, cross-page operands and faults
+therefore leave before the read and replay the pristine instruction in Moira.
+
+The asset-free 040 oracle retires 1,920 native instructions in its classic-bit
+loop on both A64 and x64 with zero slow instructions, including modulo-32
+register bits, modulo-8 RAM bits, all mutations, PI/PD and dynamic-immediate `BTST`.
+Its adversarial RMW leg sees exactly one MMIO read and one write after native
+refusal, and the `/BERR` leg matches the interpreter's complete format-$7
+frame. Canonical and packed CCR runs keep the new normal path exact. That
+packed x64 pass exposed a second conformance bug in the common helper wrapper:
+reloading XNZVC used `RAX` after `pom68kJitStep`, overwriting its ABI result
+`0` for a fault with the last flag scratch value. The wrapper now preserves
+`RAX` around CCR rematerialisation, and the permanent asset-free gate runs
+the classic-bit, MMIO and `/BERR` legs under both CCR layouts on both hosts.
+The packed real LC II replay then found the other boundary the synthetic
+oracle could not name: after the exact device read in `TST.B (A1)` at
+`$00A14E9C`, helper-boundary CCR materialisation could advance the peripheral
+deadline while x64's inline batch test still skipped the post-instruction
+rendezvous; the next poll paid **+80 cycles**. Only the experimental
+x64/030/packed combination now takes the conformant unbatched path, one
+`sync()` per instruction. Canonical x64 pacing and packed 040 pacing retain
+the inline fast path. A dedicated
+`jit_lockstep_030_x64_packed_ccr_test` permanently replays 120,000 LC II
+boundaries; the same packed real oracle is green manually on A64.
+Registering it also exposed a documentation-tooling blind spot: on Apple
+Silicon, `status_md.py` used the Python process architecture and therefore
+could not own the x86-64 section of a Rosetta build. It now prefers an
+explicit single-architecture `CMAKE_OSX_ARCHITECTURES`, so both generated
+per-host sections advance to 236 without hand-editing `STATUS.md`.
+
+The two 65,536-opcode sweeps now report **10 documented divergence groups**,
+with no `Bit` row. Both real LC II 030 gates and the A64/x64 Quadra 605 040
+locksteps remain exact. The observed Speedometer `08D1` device RMW still
+deliberately falls back for its live peripheral timing, so this closes
+codegen/parity debt without claiming a workload speedup.
 
 <a id="2026-08-31-x64-move-sr"></a>
 ## 2026-08-31 (twenty-second) — x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively

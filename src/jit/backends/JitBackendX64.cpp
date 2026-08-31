@@ -281,7 +281,16 @@ public:
           linkMask_(ctx.linkTable ? ctx.linkMask : 0),
           linkCell_(ctx.linkMask ? ctx.linkCell : nullptr),
           linkCellSelf_(ctx.linkCellSelf),
-          paced_(ctx.periphClock != nullptr && ctx.periphBatch != 0),
+          // The packed-CCR prototype adds helper-boundary materialisation.
+          // On the 030 an exact device read can advance the peripheral
+          // deadline inside that boundary; the inlined batching test then
+          // skipped the interpreter's post-instruction sync and the next
+          // poll paid the accumulated stall (LC II $A14E9C, +80 cycles).
+          // Use the unbatched, one-sync-per-instruction oracle path for this
+          // experimental combination. Production canonical-CCR pacing and
+          // packed 040 pacing retain the fast inline test.
+          paced_(ctx.periphClock != nullptr && ctx.periphBatch != 0 &&
+                 !(L.is030 && packedCcrEnabled())),
           batch_(ctx.periphBatch),
           histo_(ctx.slowStaticHisto != nullptr),
           packedCcr_(packedCcrEnabled()),
@@ -1206,12 +1215,19 @@ bool Emitter::emitSubroutine(size_t i) {
 void Emitter::call(void* fn) {
     // Helpers execute against the canonical Moira object. Publish a deferred
     // CCR before they can observe it (fault frame, SR read, interpreter
-    // fallback), then accept any CCR they produced on return. The retired
-    // count in r15's upper bits survives both operations and the ABI call.
+    // fallback), then accept any CCR they produced on return. Preserve RAX
+    // while rebuilding the packed state: it is also the SysV result register,
+    // and turning pom68kJitStep's fault result 0 into the last CCR scratch
+    // value used to continue the block whenever X was set. The retired count
+    // in r15's upper bits survives both operations and the ABI call.
     if (packedCcr_) spillPackedCcr();
     a_.movRI64(RAX, uint64_t(uintptr_t(fn)));
     a_.callR(RAX);
-    if (packedCcr_) loadPackedCcr();
+    if (packedCcr_) {
+        a_.push(RAX);
+        loadPackedCcr();
+        a_.pop(RAX);
+    }
 }
 
 void Emitter::loadPackedCcr() {
@@ -2072,6 +2088,7 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     const InstructionSemantics& sem = in.semantics;
     if (sem.operation != SemanticOp::Move || sem.sizeIndex != szIdx)
         return false;
+    if (!moveOperandEncodingAllowed(sem)) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     const int srcMode = sem.eaMode, srcReg = sem.eaReg;
     const int dstMode = sem.destinationMode, dstReg = sem.destinationReg;
@@ -2462,6 +2479,7 @@ bool Emitter::emitAluRgEa(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
     if (sem.operation != SemanticOp::AluRegToEa) return false;
+    if (!aluRegToEaOperandEncodingAllowed(sem)) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     const int dn = sem.registerIndex;
     const int szIdx = sem.sizeIndex;
@@ -2519,6 +2537,7 @@ bool Emitter::emitAddSubQ(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
     if (sem.operation != SemanticOp::AddSubQuick) return false;
+    if (!addSubQuickOperandEncodingAllowed(sem)) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     const int szIdx = sem.sizeIndex;
     if (szIdx > 2) return false;
@@ -2667,6 +2686,7 @@ bool Emitter::emitImmediate(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
     if (sem.operation != SemanticOp::ImmediateAlu) return false;
+    if (!immediateAluOperandEncodingAllowed(sem)) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     const int szIdx = sem.sizeIndex;
     if (szIdx > 2) return false;
@@ -2679,7 +2699,6 @@ bool Emitter::emitImmediate(size_t i) {
     Ea imm, dst;
     if (!decode(i, 7, 4, szIdx, 0, imm)) return false;
     if (!decode(i, mode, reg, szIdx, imm.ext, dst)) return false;
-    if (dst.idx == EA_AN || dst.idx == EA_IM || dst.idx == EA_DIPC) return false;
     if (!lengthOk(i, imm.ext + dst.ext)) return false;
 
     const int cycles = isCmp ? kEaRead[dst.idx][szIdx] : eaRmwCost(dst.idx, szIdx);
@@ -2729,27 +2748,25 @@ bool Emitter::emitImmediate(size_t i) {
     return true;
 }
 
-// BTST only, static (#imm) and dynamic (Dn) forms. BSET/BCLR/BCHG write
-// back and are left out of this pass; BTST is what a Mac ROM's hardware
-// poll loops are made of, and it is read-only, which keeps the bail-out
-// argument trivial.
+// Static (#imm) and dynamic (Dn) BTST/BCHG/BCLR/BSET.  Memory writes use the
+// common true-RMW protocol: prove the writable translation before the read,
+// retain that host pointer, then publish the byte and any PI/PD update only
+// after every fallible operation has succeeded.
 bool Emitter::emitBitOp(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
-    if (sem.operation != SemanticOp::Bit || sem.action != 0) return false;
+    if (!bitOperandEncodingAllowed(sem)) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     const int mode = sem.eaMode, reg = sem.eaReg;
+    const int action = sem.action;                   // 0 test,1 xor,2 clear,3 set
 
     int bitReg = -1;
     int32_t bitImm = 0;
     int extUsed = 0;
     const bool dynamic = sem.dynamic;
-    if (dynamic) {                                    // BTST Dn,<ea>
-        // …which is also MOVEP's encoding when the mode field is 001. The
-        // shared decoder has already excluded that overlap.
-        if (mode == 1) return false;
+    if (dynamic) {                                    // bit Dn,<ea>
         bitReg = sem.registerIndex;
-    } else {                                         // BTST #imm,<ea>
+    } else {                                         // bit #imm,<ea>
         bitImm = in.extensionWord(0) & 0xFF;
         extUsed = 1;
     }
@@ -2760,20 +2777,25 @@ bool Emitter::emitBitOp(size_t i) {
 
     Ea dst;
     if (!decode(i, mode, reg, szIdx, extUsed, dst)) return false;
-    if (dst.idx == EA_AN || dst.idx == EA_IM) return false;
     if (!lengthOk(i, extUsed + dst.ext)) return false;
 
     const int cycles = toReg ? 4 : eaRmwCost(dst.idx, szIdx);
     if (cycles < 0) return false;
 
-    MemoryAccessPlan read;
+    MemoryAccessPlan read, write;
     if (dst.memory) {
         read = memory.access(MemoryDirection::Read, MemoryOperand::Operand,
                              1, uint8_t(mode), uint8_t(reg));
         if (!read.valid()) return false;
+        if (action != 0) {
+            write = memory.access(MemoryDirection::Write,
+                                  MemoryOperand::Operand, 1,
+                                  uint8_t(mode), uint8_t(reg));
+            if (!memoryRmwAccessPair(read, write)) return false;
+        }
     }
     if (!memory.complete()) return false;
-    const bool soleReadTiming = dst.memory &&
+    const bool soleReadTiming = action == 0 && dst.memory &&
         admitSoleReadTiming(i, read, unsigned(cycles));
     if (unsigned(cycles) != traced030(i) && !soleReadTiming) return false;
 
@@ -2787,9 +2809,12 @@ bool Emitter::emitBitOp(size_t i) {
     // because memLoad is what leaves it there.
     if (toReg) {
         a_.movRM(Sz::L, RDI, D(dst.reg));
+    } else if (dst.idx == EA_IM) {
+        a_.movRI(RDI, uint32_t(dst.value));
     } else {
         addrOf(dst, RAX, szIdx);
-        memLoad(RAX, szIdx, RDI, read);
+        if (action == 0) memLoad(RAX, szIdx, RDI, read);
+        else memRmwLoad(RAX, szIdx, RDI, read, write);
     }
     if (dynamic) {
         a_.movRM(Sz::L, RCX, D(bitReg));
@@ -2801,7 +2826,19 @@ bool Emitter::emitBitOp(size_t i) {
     }
     a_.testRR(Sz::L, RDI, RDX);
     flagZFromEflags();
-    commitEa(dst, szIdx, read);
+    if (action != 0) {
+        if (action == 1) {
+            a_.aluRR(Asm::Op::XOR, Sz::L, RDI, RDX);
+        } else if (action == 2) {
+            a_.notR(Sz::L, RDX);
+            a_.aluRR(Asm::Op::AND, Sz::L, RDI, RDX);
+        } else {
+            a_.aluRR(Asm::Op::OR, Sz::L, RDI, RDX);
+        }
+        if (toReg) a_.movMR(Sz::L, D(dst.reg), RDI);
+        else memRmwStore(szIdx, RDI, read, write);
+    }
+    if (dst.memory) commitEa(dst, szIdx, action == 0 ? read : write);
     return true;
 }
 
@@ -2939,6 +2976,7 @@ bool Emitter::emitLine4(size_t i) {
     }
 
     if (sem.operation == SemanticOp::Pea) {          // PEA <ea>
+        if (!peaOperandEncodingAllowed(sem)) return false;
         // The address computation must come BEFORE the stack moves: Moira
         // is computeEA then push, and `PEA (A7)` / `PEA d16(A7)` are legal
         // and read the OLD A7. Same shape as BSR's push above; the only
@@ -2970,17 +3008,16 @@ bool Emitter::emitLine4(size_t i) {
     if (szIdx > 2) return false;
 
     if (sem.operation == SemanticOp::Test) {         // TST <ea>
+        if (!testOperandEncodingAllowed(sem)) return false;
         Ea src;
         if (!decode(i, mode, reg, szIdx, 0, src,
                     /*allowFullDirect=*/false,
                     /*allowFullIndirect=*/L_.is030)) return false;
-        if (src.idx == EA_IM) return false;
-        if (src.idx == EA_AN && szIdx == 0) return false;
         if (!lengthOk(i, src.ext)) return false;
         const bool indirectTst = src.fullFormat &&
                                  src.indirect != IndexIndirect::None;
         const int fullPenalty = indirectTst ? fullIndexPenalty(src) : 0;
-        const int cycles = kEaRead[src.idx][szIdx] + fullPenalty;
+        const int cycles = tstEaCycles(src.idx, szIdx) + fullPenalty;
         if (cycles < 0) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         MemoryAccessPlan pointerRead, read;
@@ -3029,6 +3066,7 @@ bool Emitter::emitLine4(size_t i) {
     if (sem.operation != SemanticOp::Clear &&
         sem.operation != SemanticOp::Complement &&
         sem.operation != SemanticOp::Negate) return false;
+    if (!unaryModifyOperandEncodingAllowed(sem)) return false;
 
     Ea dst;
     if (!decode(i, mode, reg, szIdx, 0, dst)) return false;
@@ -5028,12 +5066,14 @@ bool X64Backend::canEmit(uint16_t op) const {
     };
     switch (sem.operation) {
         case SemanticOp::ImmediateAlu:
-            return eaOk;
+            return immediateAluOperandEncodingAllowed(sem) && eaOk;
         case SemanticOp::Bit:
-            return sem.action == 0 && eaOk && (!sem.dynamic || mode != 1);
+            return bitOperandEncodingAllowed(sem) && eaOk;
         case SemanticOp::Move: {
             const int dm = sem.destinationMode, dr = sem.destinationReg;
-            return eaOk && eaCostIndex(dm, dr) >= 0 && kMoveDst[eaCostIndex(dm, dr)] >= 0;
+            return moveOperandEncodingAllowed(sem) && eaOk &&
+                   eaCostIndex(dm, dr) >= 0 &&
+                   kMoveDst[eaCostIndex(dm, dr)] >= 0;
         }
         case SemanticOp::Nop:
         case SemanticOp::MoveSrToReg:
@@ -5078,18 +5118,22 @@ bool X64Backend::canEmit(uint16_t op) const {
                    eaCostIndex(mode, reg) == EA_IX ||
                    eaCostIndex(mode, reg) == EA_IXPC;
         case SemanticOp::Pea:
-            return eaOk;
+            return peaOperandEncodingAllowed(sem) && eaOk;
         case SemanticOp::Movem:
             return true;
-        case SemanticOp::Test:
         case SemanticOp::Clear:
         case SemanticOp::Negate:
         case SemanticOp::Complement:
+            return unaryModifyOperandEncodingAllowed(sem) && eaOk;
+        case SemanticOp::Test:
+            return testOperandEncodingAllowed(sem) && eaOk;
         case SemanticOp::AddSubQuick:
+            return addSubQuickOperandEncodingAllowed(sem) && eaOk;
         case SemanticOp::AluEaToReg:
-        case SemanticOp::AluRegToEa:
         case SemanticOp::AddressAlu:
             return eaOk;
+        case SemanticOp::AluRegToEa:
+            return aluRegToEaOperandEncodingAllowed(sem) && eaOk;
         case SemanticOp::SetCondition:
             return mode == 0 || (eaOk && mode != 1 &&
                                  eaCostIndex(mode, reg) != EA_DIPC &&

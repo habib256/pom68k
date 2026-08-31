@@ -348,6 +348,18 @@ if(POM68K_JIT_NATIVE_BACKEND STREQUAL "x64")
                          ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                          TIMEOUT 1800)
 
+    # Packed XNZVC crosses every helper boundary. Its first real 030 audit
+    # found two independent defects hidden by the 040-only synthetic proof:
+    # the helper wrapper clobbered RAX's fault result, then exact device
+    # reads skipped the post-instruction pacing rendezvous. Keep the same
+    # 120k LC II oracle permanently attached to this experimental layout.
+    add_test(NAME jit_lockstep_030_x64_packed_ccr_test
+             COMMAND jit_lockstep_030_test 120000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_030_x64_packed_ccr_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_PACKED_CCR=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                         TIMEOUT 1800)
+
     # The peripheral-phase alignment gate (2026-08-21, JIT_BRINGUP
     # § C.4nonies): the same 120k lockstep with BOTH admissions
     # explicitly on — the restartable-write base cost and BSR.W. Each
@@ -366,6 +378,8 @@ if(POM68K_JIT_NATIVE_BACKEND STREQUAL "x64")
 else()
     string(APPEND pom68k_absent_gates
         "jit_lockstep_030_x64_experimental_test\tunit,jit\n")
+    string(APPEND pom68k_absent_gates
+        "jit_lockstep_030_x64_packed_ccr_test\tunit,jit\n")
     string(APPEND pom68k_absent_gates
         "jit_lockstep_030_x64_alignment_test\tunit,jit\n")
 endif()
@@ -585,5 +599,4 @@ add_test(NAME jit_classic_boot_etalon COMMAND compact_boot_etalon
 set_tests_properties(jit_classic_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=classic;POM68K_CPU_ENGINE=jit"
                      TIMEOUT 3600)
-
 

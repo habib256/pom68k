@@ -15,19 +15,19 @@ labour as `gate_resource_budgets.tsv`. Recorded runs carry
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 238 gates
+## Union across hosts — 239 gates
 
 | `ctest -L` | selects |
 |---|---|
 | `etalon` | 124 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
-| `jit` | 41 |
+| `jit` | 42 |
 | `jit-fast` | 7 |
 | `m030` | 56 |
 | `m040` | 54 |
 | `smoke` | 9 |
-| `unit` | 113 |
+| `unit` | 114 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -35,32 +35,53 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-_Not yet generated on an aarch64 host — run `tools/status_md.py` there._
-
-## Registered on x86_64
-
-235 gates registered; 3 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`.
+236 gates registered; 3 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 88 |
 | assets | optional | 12 |
-| assets | required | 135 |
-| host | a64 | 1 |
+| assets | required | 136 |
+| host | a64 | 4 |
 | host | any | 224 |
 | host | native | 6 |
-| host | x64 | 4 |
+| host | x64 | 2 |
 | scope | component | 88 |
-| scope | engine | 21 |
+| scope | engine | 22 |
 | scope | profile | 124 |
 | scope | repository | 2 |
 | tier | daily | 88 |
-| tier | full | 135 |
+| tier | full | 136 |
 | tier | platform | 12 |
-| slots_src | assumed | 119 |
+| slots_src | assumed | 120 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 462 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 463 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+
+## Registered on x86_64
+
+236 gates registered; 3 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`.
+
+| dimension | value | gates |
+|---|---|---|
+| assets | none | 88 |
+| assets | optional | 12 |
+| assets | required | 136 |
+| host | a64 | 1 |
+| host | any | 224 |
+| host | native | 6 |
+| host | x64 | 5 |
+| scope | component | 88 |
+| scope | engine | 22 |
+| scope | profile | 124 |
+| scope | repository | 2 |
+| tier | daily | 88 |
+| tier | full | 136 |
+| tier | platform | 12 |
+| slots_src | assumed | 120 |
+| slots_src | measured | 116 |
+
+Scheduling cost if every gate ran at once: 463 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Recorded runs
 

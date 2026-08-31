@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 369 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 370 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 64 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 65 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 37 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
@@ -90,6 +90,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (tenth)** — [Speedometer's brief-indexed MOVE destinations reuse the transactional two-memory path on both 68030 JIT generators](CHANGELOG.md#2026-08-31-speedometer-indexed-move-destination)
 - **2026-08-31 (third)** — [Speedometer's indexed indirect `JSR` becomes transactional on A64 and x64, removing its largest static CPU fallback](CHANGELOG.md#2026-08-31-speedometer-jsr-full-indirect)
 - **2026-08-31 (twenty-second)** — [x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively](CHANGELOG.md#2026-08-31-x64-move-sr)
+- **2026-08-31 (twenty-third)** — [x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW](CHANGELOG.md#2026-08-31-x64-classic-bit-rmw)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

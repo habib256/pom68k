@@ -132,6 +132,106 @@ struct InstructionSemantics {
     }
 };
 
+// The line-$0 bit family has a deliberately irregular EA mask.  Keeping the
+// mask next to the shared semantic decoder prevents a backend census from
+// claiming encodings that its emitter must later refuse:
+//
+//   * Dn is always legal and is a 32-bit operand;
+//   * modifying memory forms stop at absolute long;
+//   * BTST additionally admits PC-relative operands;
+//   * only dynamic BTST admits an immediate operand (BTST Dn,#imm).
+//
+// MoiraInit_cpp.h publishes exactly these BitDxDy/BitDxEa/BitImDy/BitImEa
+// availability masks.  Illegal encodings remain described so that the whole
+// instruction can fall back to Moira's illegal-instruction path, but no
+// native backend may advertise them.
+inline bool bitOperandEncodingAllowed(const InstructionSemantics& s) {
+    if (s.operation != SemanticOp::Bit || s.action > 3 || s.eaReg >= 8)
+        return false;
+    if (s.eaMode == 0) return true;                  // Dn
+    if (s.eaMode >= 2 && s.eaMode <= 6) return true;// (An)..indexed An
+    if (s.eaMode != 7) return false;
+    if (s.eaReg <= 1) return true;                   // abs.w / abs.l
+    if (s.action != 0) return false;                 // no PC/#imm writes
+    if (s.eaReg <= 3) return true;                   // d16/brief-indexed PC
+    return s.dynamic && s.eaReg == 4;                // BTST Dn,#imm only
+}
+
+// Opcode-level EA masks shared by both generators. The semantic decoder is
+// deliberately broad enough to describe reserved encodings so they can fall
+// back to Moira's illegal-instruction handler; admission must apply the same
+// masks MoiraInit_cpp.h uses when it installs real handlers.
+inline bool dataAlterableEncodingAllowed(uint8_t mode, uint8_t reg) {
+    return mode == 0 || (mode >= 2 && mode <= 6) ||
+           (mode == 7 && reg <= 1);                  // Dn, memory, abs.w/l
+}
+
+inline bool controlEncodingAllowed(uint8_t mode, uint8_t reg) {
+    return mode == 2 || mode == 5 || mode == 6 ||
+           (mode == 7 && reg <= 3);                  // (An), d16/index, PC
+}
+
+inline bool moveOperandEncodingAllowed(const InstructionSemantics& s) {
+    if (s.operation != SemanticOp::Move || s.sizeIndex > 2 ||
+        s.eaReg >= 8 || s.destinationReg >= 8)
+        return false;
+    const bool source = s.eaMode <= 6 ||
+                        (s.eaMode == 7 && s.eaReg <= 4);
+    if (!source || (s.sizeIndex == 0 && s.eaMode == 1)) return false;
+    if (s.destinationMode == 1) return s.sizeIndex != 0; // MOVEA.W/L
+    return dataAlterableEncodingAllowed(s.destinationMode,
+                                        s.destinationReg);
+}
+
+inline bool immediateAluOperandEncodingAllowed(
+    const InstructionSemantics& s) {
+    if (s.operation != SemanticOp::ImmediateAlu || s.sizeIndex > 2)
+        return false;
+    if (dataAlterableEncodingAllowed(s.eaMode, s.eaReg)) return true;
+    // 68020+ CMPI also accepts d16(PC) and indexed PC, never #imm or An.
+    return s.alu == AluOperation::Cmp && s.eaMode == 7 && s.eaReg >= 2 &&
+           s.eaReg <= 3;
+}
+
+inline bool addSubQuickOperandEncodingAllowed(
+    const InstructionSemantics& s) {
+    if (s.operation != SemanticOp::AddSubQuick || s.sizeIndex > 2)
+        return false;
+    if (s.eaMode == 1) return s.sizeIndex != 0;       // An is W/L only
+    return dataAlterableEncodingAllowed(s.eaMode, s.eaReg);
+}
+
+inline bool aluRegToEaOperandEncodingAllowed(
+    const InstructionSemantics& s) {
+    if (s.operation != SemanticOp::AluRegToEa || s.sizeIndex > 2)
+        return false;
+    // EOR has a Dn destination form; ADD/SUB/AND/OR use alterable memory.
+    if (s.eaMode == 0) return s.alu == AluOperation::Eor;
+    return (s.eaMode >= 2 && s.eaMode <= 6) ||
+           (s.eaMode == 7 && s.eaReg <= 1);
+}
+
+inline bool testOperandEncodingAllowed(const InstructionSemantics& s) {
+    if (s.operation != SemanticOp::Test || s.sizeIndex > 2) return false;
+    if (s.eaMode == 0 || (s.eaMode >= 2 && s.eaMode <= 6)) return true;
+    if (s.eaMode == 1) return s.sizeIndex != 0;       // TST.W/L An on 020+
+    return s.eaMode == 7 && s.eaReg <= 4;            // abs, PC and #imm
+}
+
+inline bool unaryModifyOperandEncodingAllowed(
+    const InstructionSemantics& s) {
+    return (s.operation == SemanticOp::Clear ||
+            s.operation == SemanticOp::Negate ||
+            s.operation == SemanticOp::Complement) &&
+           s.sizeIndex <= 2 &&
+           dataAlterableEncodingAllowed(s.eaMode, s.eaReg);
+}
+
+inline bool peaOperandEncodingAllowed(const InstructionSemantics& s) {
+    return s.operation == SemanticOp::Pea &&
+           controlEncodingAllowed(s.eaMode, s.eaReg);
+}
+
 // Host-neutral effective-address vocabulary. Extension words are copied into
 // Instr and decoded here once; a backend maps this result to host registers
 // and addressing instructions, but never parses the 68k extension format.
