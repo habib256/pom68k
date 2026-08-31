@@ -293,6 +293,33 @@ int main() {
               lastWrite.restartableLastWrite() && lastWrite.exactThunkMask == 1,
               "68030 proved LASTWRITE produces a restartable exact-write plan");
 
+        jit::Instr speedometerWrite;
+        speedometerWrite.opcode = 0x137C;
+        speedometerWrite.words = 3;
+        speedometerWrite.semantics =
+            jit::describeInstruction(speedometerWrite.opcode);
+        speedometerWrite.memory =
+            jit::describeMemory(speedometerWrite.opcode, true);
+        speedometerWrite.extensionCount = 2;
+        speedometerWrite.extensions[0] = 0x0002;
+        speedometerWrite.extensions[1] = 0x1A00;
+        jit::describeEffectiveAddresses(speedometerWrite);
+        jit::refineMemoryFromExtensions(speedometerWrite, true);
+        const auto speedometerWriteProof =
+            jit::memoryProofPlan(speedometerWrite.memory, proof030);
+        check(speedometerWrite.memory.count == 1 &&
+              speedometerWrite.memory.access[0].exactRequired &&
+              speedometerWriteProof.protocol ==
+                  jit::MemoryProofProtocol::SingleWrite &&
+              speedometerWriteProof.exactThunkMask == 1,
+              "Speedometer 137C/$1A00 publishes a model-required exact write");
+        speedometerWrite.extensions[1] = 0x1A02;
+        speedometerWrite.memory =
+            jit::describeMemory(speedometerWrite.opcode, true);
+        jit::refineMemoryFromExtensions(speedometerWrite, true);
+        check(!speedometerWrite.memory.access[0].exactRequired,
+              "an unrelated 137C displacement keeps the ordinary RAM path");
+
         const auto bsr = jit::describeMemory(0x6106, false);
         const auto rts = jit::describeMemory(0x4E75, false);
         check(jit::memoryProofPlan(bsr, cache).protocol ==

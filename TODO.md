@@ -900,11 +900,21 @@ Open, in ROI order:
   de la frame 030. Les lignes disparaissent : 3 439 → 2 958 unsupported et
   47 369 → 46 918 replis totaux dans l'échantillon comparable, empreintes
   inchangées. `CHANGELOG.md` (2026-08-31 thirteenth).
+- **Écriture de sélection périphérique Speedometer `137C` — CLOS le
+  2026-08-31** : les deux sites sont `MOVE.B #1/#2,$1A00(A1)` vers la fenêtre
+  LC II `$50F01000`. Leur coût de base 75–111 contient l'attente vivante du
+  périphérique, au-delà du coût MOVE fixe 7. L'IR réserve donc le thunk exact
+  à l'opcode **et** au déplacement `$1A00`; A64/x64 laissent le thunk posséder
+  l'attente et ne facturent que la queue fixe. L'oracle injecte 23 cycles par
+  écriture MMIO, vérifie zéro repli puis compare les 32 octets de la frame
+  `/BERR`. Les 301 refus `137C` disparaissent : 2 958 → 2 657 unsupported et
+  46 918 → 46 617 replis totaux, empreintes inchangées. `CHANGELOG.md`
+  (2026-08-31 fourteenth).
 - [ ] **Queue de couverture Speedometer après `ROXR.B`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Les prochains candidats structurels
-  sont `137C`, `4A76`, MOVEM indexé complet et ADDX/SUBX mémoire. Les
+  sont `4A76`, MOVEM indexé complet et ADDX/SUBX mémoire. Les
   décalages dynamiques hors tranche
   demandent un cache multi-version, pas un plafond d'unrolling plus large.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source

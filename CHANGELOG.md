@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 346 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 361 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's selector write keeps its live peripheral delay while generated MOVE owns only the fixed tail** → [2026-08-31 (fourteenth) — Speedometer's selector write…](#2026-08-31-speedometer-exact-selector-write)
 - **how Speedometer's `(A7)+` source can feed a destination based on the updated A7 without making fallback non-transactional** → [2026-08-31 (thirteenth) — Speedometer's dependent stack MOVEs…](#2026-08-31-speedometer-dependent-move)
 - **why Speedometer's fixed `ROXR.B #2,D0` is worth generating while its count-24–31 shifts are not** → [2026-08-31 (twelfth) — Speedometer's exact ROXR…](#2026-08-31-speedometer-roxr)
 - **how Speedometer's exact `MULU.L D0,D4` became native without losing its 32-bit overflow flag** → [2026-08-31 (eleventh) — Speedometer's long multiply…](#2026-08-31-speedometer-long-multiply)
@@ -367,6 +368,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (fourteenth)** — [Speedometer's selector `MOVE.B` becomes an exact generated JIT write without flattening its live device wait](#2026-08-31-speedometer-exact-selector-write)
 - **2026-08-31 (thirteenth)** — [Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators](#2026-08-31-speedometer-dependent-move)
 - **2026-08-31 (twelfth)** — [Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed](#2026-08-31-speedometer-roxr)
 - **2026-08-31 (eleventh)** — [Speedometer's exact `MULU.L D0,D4` becomes native on A64 and x64 with its 32-bit overflow flag intact](#2026-08-31-speedometer-long-multiply)
@@ -727,6 +729,46 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-exact-selector-write"></a>
+## 2026-08-31 (fourteenth) — Speedometer's selector `MOVE.B` becomes an exact generated JIT write without flattening its live device wait
+
+After the dependent stack MOVEs, the next structural row was `137C`. The
+extended refusal watcher identifies two exact sites: `MOVE.B #2,$1A00(A1)` at
+`$40A0A29A` and `MOVE.B #1,$1A00(A1)` at `$40A0B140`. They write the LC II
+`$50F01000` device aperture. Although the fixed 68030 opcode cost is 7, the
+observed base cost varies from 75 to 111 cycles: the difference is the live
+device wait and cannot be flattened into a generated constant.
+
+The shared memory IR now marks only `137C` with destination extension `$1A00`
+as `exactRequired`; a neighbouring displacement is explicitly tested to keep
+the ordinary RAM path. A64 and x64 gain the write twin of their fixed-tail
+sole-read admission: the exact thunk owns the variable write delay, while the
+generated instruction charges MOVE's fixed seven cycles. An exact-required
+write is forced through that thunk even when a direct mapping is resident.
+Flags, PC and the 68030 queue are materialised at the restartable LASTWRITE
+boundary before the call.
+
+The asset-free 030 oracle executes the real three-word encoding for 128
+checkpoints with a synthetic 23-cycle MMIO write delay, compares all registers,
+PC/PC0, IRD/IRC, SR, clock and callback state, and observes zero slow
+instructions on both A64 and x64/Rosetta. Moving only the destination to a bus
+error hole makes the native exact thunk fault once and pristine Moira replay
+fault once more; its complete 32-byte format-$A frame is byte-identical. All
+four real LC II locksteps (generic, blocks, experimental and alignment) pass
+on native AArch64 and again under Rosetta x64.
+
+In the comparable production-profile 270-frame CPU census, the 301 `137C`
+static refusals disappear. Unsupported fallbacks move 2,958 → 2,657 and total
+fallbacks 46,918 → 46,617; runtime guards remain exactly 43,960. CPU
+fingerprint `ce2e6699cc81f501`, result screen `be29f2c8d37f6bb3`, final CPU
+`5640a493258f74c7`, final screen `0289cf442344cc81`, 270 frames, SCSI 2,577 and
+halted=0 remain exact. The instrumented 0.311514 s wall time is not a speed
+claim. `C029` remains parked behind its failed real peripheral-phase proof;
+the next structural candidates are `4A76`, full-indexed MOVEM and memory
+ADDX/SUBX.
 
 ---
 

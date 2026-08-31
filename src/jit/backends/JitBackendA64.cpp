@@ -217,7 +217,7 @@ void watchRefusal(const Layout& L, const BlockIr& ir, const Instr& in,
         "fetch=%u queue=%d ird=%04X irc=%04X next=%08X kind=%d op=%d "
         "ea=%d/%d size=%d ext=%u proto=%d preflight=%02X thunk=%02X "
         "cache=%02X lastWrite=%u restartable=%d order=%d super=%d "
-        "ext0=%04X action=%u bf4=%d\n",
+        "ext0=%04X ext1=%04X ext2=%04X action=%u bf4=%d\n",
         in.opcode, in.pc, stage, unsigned(in.words), unsigned(in.cycles),
         unsigned(in.baseCycles), unsigned(in.icacheCycles),
         unsigned(in.postExceptionCycles), unsigned(in.fetchWords),
@@ -228,6 +228,7 @@ void watchRefusal(const Layout& L, const BlockIr& ir, const Instr& in,
         int(p.protocol), p.preflightMask, p.exactThunkMask, p.cacheMask,
         unsigned(p.lastWrite), int(p.lastWriteRestartable),
         int(in.memory.order), int(ir.super), in.extensionWord(0),
+        in.extensionWord(1), in.extensionWord(2),
         unsigned(in.semantics.action),
         int(memoryBitfieldFitsLongword(in.extensionWord(0))));
 }
@@ -1274,6 +1275,20 @@ bool admitSoleReadTiming(const Layout& L, const Instr& in,
     return true;
 }
 
+// The write twin is deliberately 030- and IR-policy-only. A successful
+// exact write owns Speedometer's variable device wait; generated MOVE owns
+// only its fixed opcode cost. Never infer this from a merely slow trace.
+bool admitSoleWriteTiming(const Layout& L, const Instr& in,
+                          const MemoryAccessPlan& write,
+                          unsigned fixedCycles, uint16_t& nativeCycles) {
+    if (!L.is030 || !write.valid() || !write.single() ||
+        !write.exactThunk || !write.exactRequired ||
+        in.postExceptionCycles != 0 || in.baseCycles < fixedCycles)
+        return false;
+    nativeCycles = uint16_t(fixedCycles);
+    return true;
+}
+
 void branchIfCond(Asm& a, const Layout& L, int cc, int taken);
 
 bool emitAluResult(Asm& a, const Layout& L, AluOperation kind, int bits,
@@ -1841,6 +1856,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     const bool cacheExactWrite = !L.is030 && access.single() && L.cache040Live;
     const bool cacheWrite = access.cache;
     const bool exactAccess = L.is030 && access.exactThunk;
+    if (access.exactRequired && !exactAccess) { a.b(slow); return; }
     if (!exactAccess) {
         // This is the attribution-control half of the J4 write gate. Once
         // the architectural D-cache is live, disabling its native line hit
@@ -1872,11 +1888,15 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     }
 
     const int miss = a.label(), done = a.label(), ok = a.label();
-    memProbe(a, L, super, bits / 8, true, miss);
-    if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
-    a.ldrW(rs, 1, 72);
-    storeGuest(a, bits, rs);
-    a.b(done);
+    if (access.exactRequired) {
+        a.b(miss);
+    } else {
+        memProbe(a, L, super, bits / 8, true, miss);
+        if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
+        a.ldrW(rs, 1, 72);
+        storeGuest(a, bits, rs);
+        a.b(done);
+    }
 
     a.bind(miss);
     a.strX(21, 1, 96);
@@ -2113,8 +2133,13 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             cycles >= 0 &&
             admitSoleReadTiming(L, in, srcAccess, unsigned(cycles),
                                 nativeCycles);
+        const bool soleWriteTiming = dst.memory && !src.memory &&
+            cycles >= 0 &&
+            admitSoleWriteTiming(L, in, dstAccess, unsigned(cycles),
+                                 nativeCycles);
         if (cycles < 0 ||
-            (tracedCycles != unsigned(cycles) && !soleReadTiming) ||
+            (tracedCycles != unsigned(cycles) && !soleReadTiming &&
+             !soleWriteTiming) ||
             in.words != unsigned(1 + src.ext + dst.ext)) return false;
 
         // MOVE.<s> (An)+,(An)/d16(An) computes its destination from An AFTER

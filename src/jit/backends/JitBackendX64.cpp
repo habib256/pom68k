@@ -507,6 +507,19 @@ private:
         return true;
     }
 
+    // Exact-required sole writes own their variable 030 device delay in the
+    // write thunk. Only shared IR policy can request this fixed-tail split.
+    bool admitSoleWriteTiming(size_t i, const MemoryAccessPlan& write,
+                              unsigned fixedCycles) {
+        const Instr& in = ir_.instrs[i];
+        if (!L_.is030 || !write.valid() || !write.single() ||
+            !write.exactThunk || !write.exactRequired ||
+            in.postExceptionCycles != 0 || in.baseCycles < fixedCycles)
+            return false;
+        instructionCycles_ = uint16_t(fixedCycles);
+        return true;
+    }
+
     bool tracedQueueIs(size_t i, uint16_t irc) const {
         const Instr& in = ir_.instrs[i];
         return !L_.is030 || !in.terminalQueueValid ||
@@ -1859,6 +1872,10 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
     }
     const bool cacheWrite = access.cache;
     const bool exactAccess = access.exactThunk;
+    if (access.exactRequired && !exactAccess) {
+        a_.jmp(runtimeStub(cur_));
+        return;
+    }
     Label& miss = exactAccess ? *a_.fresh() : runtimeStub(cur_);
     Label* cacheHit = cacheWrite ? a_.fresh() : nullptr;
     Label* cacheDone = cacheWrite ? a_.fresh() : nullptr;
@@ -1866,7 +1883,6 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
     // The value is live across memProbe, whose miss path calls out and
     // therefore clobbers every caller-saved register, `src` included.
     a_.movMR(Sz::L, F(kFSaveV), src);
-    memProbe(addr, sizeBytes(szIdx), true, miss, false, cacheHit);
     const auto emitStore = [&] {
         a_.movRM(Sz::L, src, F(kFSaveV));
         if (szIdx == 0) {
@@ -1879,13 +1895,18 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
             a_.movMR(Sz::L, mem(RSI, 0), src);
         }
     };
-    emitStore();
-    if (cacheWrite) {
-        a_.jmp(*cacheDone);
-        a_.bind(*cacheHit);
+    if (access.exactRequired) {
+        a_.jmp(miss);
+    } else {
+        memProbe(addr, sizeBytes(szIdx), true, miss, false, cacheHit);
         emitStore();
-        markCache040Dirty(addr, sizeBytes(szIdx));
-        a_.bind(*cacheDone);
+        if (cacheWrite) {
+            a_.jmp(*cacheDone);
+            a_.bind(*cacheHit);
+            emitStore();
+            markCache040Dirty(addr, sizeBytes(szIdx));
+            a_.bind(*cacheDone);
+        }
     }
     if (!exactAccess) return;
 
@@ -2167,7 +2188,10 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     }
     const bool soleReadTiming = src.memory && !indirectSource && !dst.memory &&
         admitSoleReadTiming(i, srcAccess, unsigned(cycles));
-    if (unsigned(cycles) != tracedMove && !soleReadTiming) return false;
+    const bool soleWriteTiming = dst.memory && !src.memory &&
+        admitSoleWriteTiming(i, dstAccess, unsigned(cycles));
+    if (unsigned(cycles) != tracedMove && !soleReadTiming && !soleWriteTiming)
+        return false;
 
     const bool movea = (dst.idx == EA_AN);
     const bool cachePair = memory.proof.atomicCachePair();

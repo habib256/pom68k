@@ -985,6 +985,16 @@ trace is a device access. `jit_restart_write_030_test` injects 23 cycles per
 MMIO read and compares every architectural boundary with zero native slow
 instructions; the real 120k LC II lockstep remains identical.
 
+**The write-side consumer added the same day.** Speedometer's two `137C`
+sites are `MOVE.B #1/#2,$1A00(A1)` writes to `$50F01000`; their 75–111 base
+cycles include the same live device-owned delay, while the fixed 68030 MOVE
+cost is 7. Extension refinement marks only the observed opcode/displacement
+pair `exactRequired`, so unrelated `137C` RAM destinations keep the ordinary
+path. Both native emitters force this access through the exact write thunk and
+charge only the fixed tail. The restart-write oracle injects a 23-cycle MMIO
+delay, then moves the destination to `/BERR` and proves the complete 32-byte
+format-$A frame against untouched Moira replay.
+
 **Validated 2026-08-21:** both reproducers heal at the full 120k —
 `POM68K_JIT_RESTART_BASE=1`, `POM68K_JIT_BSRW=1`, both together, and the
 default config, all four `OK — 120000 steps identical` with i-cache

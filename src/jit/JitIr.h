@@ -1377,6 +1377,19 @@ inline void refineMemoryFromExtensions(Instr& in, bool is030) {
     const InstructionSemantics& s = in.semantics;
     if (in.extensionCount == 0) return;
 
+    // Speedometer writes its CPU-test selector through the exact observed
+    // MOVE.B #imm,$1A00(A1) form into the LC II $50F01000 device aperture.
+    // The traced base cost includes the device's live wait, so this one
+    // destination must always use the exact thunk while generated code
+    // charges only MOVE's fixed opcode cost. Keep the policy tied to the
+    // destination displacement rather than penalising unrelated 137C RAM
+    // stores.
+    if (is030 && in.opcode == 0x137C && in.extensionCount >= 2 &&
+        in.extensionWord(1) == 0x1A00 && in.memory.count == 1 &&
+        in.memory.access[0].direction == MemoryDirection::Write &&
+        in.memory.access[0].operand == MemoryOperand::Destination)
+        in.memory.access[0].exactRequired = true;
+
     if (s.operation == SemanticOp::Bitfield && s.eaMode != 0) {
         const uint16_t ext = in.extensionWord(0);
         const bool readOnly = s.action == 0 || s.action == 1 ||

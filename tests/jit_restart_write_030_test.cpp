@@ -86,6 +86,7 @@ public:
     int readFaults = 0;
     int mmioReads = 0;
     int mmioReadDelay = 0;
+    int mmioWriteDelay = 0;
     WriteObservation observedWrite;
 
     bool inHole(uint32_t a) const {
@@ -175,6 +176,7 @@ private:
             c.extBusError();
         }
         if (inMmio(a)) {
+            if (c.mmioWriteDelay) c.pomJitSync(c.mmioWriteDelay);
             c.observeWrite(a, v, 1);
             return;
         }
@@ -189,6 +191,7 @@ private:
             c.extBusError();
         }
         if (inMmio(a)) {
+            if (c.mmioWriteDelay) c.pomJitSync(c.mmioWriteDelay);
             c.observeWrite(a, v, 2);
             return;
         }
@@ -244,6 +247,17 @@ void installSpeedometerPollLoop(FaultCpu& c) {
     put16(c, kCode + 0x0A, 0x1429);     // MOVE.B d16(A1),D2
     put16(c, kCode + 0x0C, 0x0002);
     put16(c, kCode + 0x0E, 0x60F0);     // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+}
+
+void installSpeedometerSelectorWriteLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x137C);    // MOVE.B #2,$1A00(A1)
+    put16(c, kCode + 0x02, 0x0002);
+    put16(c, kCode + 0x04, 0x1A00);
+    put16(c, kCode + 0x06, 0x60F8);    // BRA.S kCode
     put16(c, kHandler, 0x4E71);
 }
 
@@ -631,6 +645,95 @@ int main() {
         check(pollStats.blocksCompiled != 0 && pollStats.blocksRun != 0 &&
               pollStats.slowInstrs == 0,
               "Speedometer 0829/1029/1429 execute through native exact reads");
+    }
+
+    // The companion selector write is MOVE.B #imm,$1A00(A1). Its traced
+    // base cost contains the same live device wait as the polls above. The
+    // generated instruction must publish flags/queue at the last-write
+    // boundary, execute exactly one delayed MMIO write, and charge only the
+    // fixed seven-cycle MOVE tail.
+    {
+        FaultCpu writeRef, writeNative;
+        installSpeedometerSelectorWriteLoop(writeRef);
+        installSpeedometerSelectorWriteLoop(writeNative);
+        writeRef.reset(); writeNative.reset();
+        writeRef.setTC(12u << 20); writeNative.setTC(12u << 20);
+        for (FaultCpu* c : {&writeRef, &writeNative}) {
+            c->setA(1, kMmio - 0x1A00);
+            c->setSR(0x2710);                 // MOVE preserves X
+            c->mmioWriteDelay = 23;
+        }
+        writeNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 128 && same; step++) {
+            const int64_t target = writeRef.getClock() + 79;
+            writeRef.executeUntil(target);
+            writeNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && writeRef.getD(r) == writeNative.getD(r) &&
+                       writeRef.getA(r) == writeNative.getA(r);
+            const auto& refWrite = writeRef.observedWrite;
+            const auto& nativeWrite = writeNative.observedWrite;
+            same = same && writeRef.getPC() == writeNative.getPC() &&
+                   writeRef.getPC0() == writeNative.getPC0() &&
+                   writeRef.getIRD() == writeNative.getIRD() &&
+                   writeRef.getIRC() == writeNative.getIRC() &&
+                   writeRef.getSR() == writeNative.getSR() &&
+                   writeRef.getClock() == writeNative.getClock() &&
+                   refWrite.count == nativeWrite.count &&
+                   refWrite.address == nativeWrite.address &&
+                   refWrite.value == nativeWrite.value &&
+                   refWrite.bytes == nativeWrite.bytes &&
+                   refWrite.pc == nativeWrite.pc &&
+                   refWrite.pc0 == nativeWrite.pc0 &&
+                   refWrite.ird == nativeWrite.ird &&
+                   refWrite.irc == nativeWrite.irc &&
+                   refWrite.sr == nativeWrite.sr &&
+                   refWrite.clock == nativeWrite.clock;
+            if (!same)
+                std::printf("    Speedometer 137C divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto writeStats = writeNative.jit.stats().snapshot();
+        check(same && writeNative.observedWrite.count != 0 &&
+              writeNative.observedWrite.address == kMmio &&
+              writeNative.observedWrite.value == 2 &&
+              writeNative.observedWrite.bytes == 1 &&
+              writeStats.blocksCompiled != 0 && writeStats.blocksRun != 0 &&
+              writeStats.slowInstrs == 0,
+              "Speedometer 137C exact write owns live delay and stays native");
+
+        // Re-enter that compiled block with only the destination moved to a
+        // bus-error hole. The exact thunk faults once; untouched Moira replay
+        // faults once more and must build the same restartable format-$A
+        // frame as the pure interpreter.
+        const auto prepareSelectorFault = [](FaultCpu& c) {
+            c.setPC(kCode); c.setPC0(kCode);
+            c.setIRD(0x137C); c.setIRC(0x0002);
+            c.setA(1, kHole - 0x1A00); c.setA(7, kStack);
+            c.setSR(0x2710); c.setClock(0);
+            c.writeFaults = 0; c.observedWrite = {};
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        prepareSelectorFault(writeRef);
+        prepareSelectorFault(writeNative);
+        const auto beforeFault = writeNative.jit.stats().snapshot();
+        writeRef.executeUntil(1);
+        writeNative.jit.executeUntil(1);
+        const auto afterFault = writeNative.jit.stats().snapshot();
+        const uint32_t refSp = writeRef.getA(7);
+        const uint32_t nativeSp = writeNative.getA(7);
+        check(writeRef.writeFaults == 1 && writeNative.writeFaults == 2 &&
+              afterFault.blocksRun > beforeFault.blocksRun &&
+              refSp == kStack - 32 && nativeSp == refSp &&
+              std::memcmp(writeRef.mem.data() + refSp,
+                          writeNative.mem.data() + nativeSp, 32) == 0 &&
+              writeRef.getPC() == writeNative.getPC() &&
+              writeRef.getClock() == writeNative.getClock(),
+              "Speedometer 137C exact-write /BERR replay frame is identical");
     }
 
     // Speedometer's 2470/2070 sites use one full-indirect pointer read and
