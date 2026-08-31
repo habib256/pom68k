@@ -90,12 +90,10 @@ const AllowedDivergence kAllowed[] = {
     // ── real coverage gaps: lowerings a64 has and x64 lacks ──────────────
     // (the three the 2026-08-28 review named, plus what this gate's first
     // sweep added the same day; closing one = landing the x64 lowering)
-    // (2026-08-30: the Bitfield row is retired — x64 admits the family with
-    // a64:1100's exact rule and lowers register plus TAILLESS memory forms.
-    // Possible five-byte reads still refuse at EMISSION on x64, which this
-    // gate cannot see and the directed residency oracle can.)
-    { SemanticOp::MoveSrToReg, true,
-      "2026-08-28: a64 lowers MOVE SR,Dn; x64 has no emitter" },
+    // (2026-08-31: the Bitfield row is retired — x64 admits register forms,
+    // tailless writes and optional fifth-byte reads under the same shared
+    // contracts. MOVE SR,Dn is retired too: both CCR layouts execute in the
+    // cross-host native smoke.)
     { SemanticOp::Bit, true,
       "2026-08-28: a64 lowers the modifying bit ops (BCHG/BCLR/BSET, "
       "action != 0); x64's rule admits BTST only" },

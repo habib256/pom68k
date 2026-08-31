@@ -971,6 +971,14 @@ Open, in ROI order:
   10 829 runtime ; CPU-test 45 926 → 43 903 et final 244 222 → 238 879, avec
   les quatre empreintes exactes. Le mur 0,309202 → 0,309541 s ne revendique
   aucun gain. `CHANGELOG.md` (2026-08-31 twenty-first).
+- **Parité `MOVE SR,Dn` x64 — CLOSE le 2026-08-31** : le générateur x64
+  reconstruit T1/T0/S/M, IPL et XNZVC depuis les champs canoniques de Moira,
+  ou depuis le CCR compacté quand cette optimisation est active, puis écrit
+  seulement le mot bas de Dn. Le smoke natif exécute désormais le même bloc
+  sur A64 et x64 avec les deux dispositions CCR ; les locksteps synthétiques
+  des deux ISA, le gate transactionnel 030 et le lockstep LC II x64 de
+  120 000 frontières restent exacts. La ligne `MoveSrToReg` disparaît de la
+  table de parité, qui compte maintenant 12 groupes documentés.
 - [ ] **Queue de couverture Speedometer après `E291`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
@@ -1708,11 +1716,13 @@ depuis (ABBA nul).
   ligne d'exception retirée, 82,0 → 88,1 % natif au boot LC II, mur plat
   (la leçon D1F0 tient une 2e fois). **JSR `$4EB0` est PORTÉ le
   2026-08-31 (third)** : x64 partage maintenant le calcul pré/postindexé, le
-  coût et la transaction pointeur/pile d'a64. Restent, sur cette photo
-  historique à reclasser par un census frais : TST mémoire `$4A11` (552 k),
-  destinations indexées de MOVE (`$2F70`,
-  391 k), bit ops mémoire (`$08A9`, 332 k), MOVE from SR (105 k),
-  bitfields. **L'« ordre `(An)+` » (`$24D0`, 1,64 M) est SORTI de cette
+  coût et la transaction pointeur/pile d'a64. Les bitfields sont PORTÉS
+  depuis le 2026-08-30/31, et `MOVE SR,Dn` depuis le 2026-08-31
+  (twenty-second) : le gate ne porte plus que deux groupes a64-only, les bit
+  ops modifiants et l'admission MOVE plus large. Sur la photo historique,
+  leurs témoins à reclasser par un census frais étaient les destinations
+  indexées de MOVE (`$2F70`, 391 k) et les bit ops mémoire (`$08A9`, 332 k).
+  **L'« ordre `(An)+` » (`$24D0`, 1,64 M) est SORTI de cette
   liste le 2026-08-29 (seventh)** : mesuré identique dans les deux modes
   thunk, ce sont des refus de sonde mémorisés (probe 66 k / codepage 25 k /
   notram 25 k) — un port d'émetteur n'y changerait rien, et a64 porte les

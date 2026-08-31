@@ -332,6 +332,7 @@ private:
     bool emitAluRgEa(size_t i);
     bool emitAddSubQ(size_t i);
     bool emitAddSubExtend(size_t i);
+    bool emitMoveSrToReg(size_t i);
     bool emitMoveq(size_t i);
     bool emitImmediate(size_t i);
     bool emitBitOp(size_t i);
@@ -2626,6 +2627,41 @@ bool Emitter::emitMoveq(size_t i) {
     return true;
 }
 
+// MOVE SR,Dn is the read-only SR form: it is safe inside a block and writes
+// only the low word of the destination.  Rebuild the architectural word from
+// Moira's canonical fields instead of assuming that the host's flags or the
+// packed-CCR optimization have already been materialised.
+bool Emitter::emitMoveSrToReg(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::MoveSrToReg || sem.eaMode != 0 ||
+        sem.eaReg >= 8 || in.words != 1 || in.baseCycles != 8 ||
+        in.postExceptionCycles != 0)
+        return false;
+
+    a_.aluRR(Asm::Op::XOR, Sz::L, RDI, RDI);
+    const auto addSrBit = [&](uint32_t off, uint8_t bit) {
+        a_.movzx(Sz::B, RAX, at(off));
+        if (bit) a_.shiftRI(Sz::L, RAX, 4, bit);
+        a_.aluRR(Asm::Op::OR, Sz::L, RDI, RAX);
+    };
+    addSrBit(L_.srT1, 15); addSrBit(L_.srT0, 14);
+    addSrBit(L_.srS, 13);  addSrBit(L_.srM, 12);
+    a_.movzx(Sz::B, RAX, at(L_.srIpl));
+    a_.shiftRI(Sz::L, RAX, 4, 8);
+    a_.aluRR(Asm::Op::OR, Sz::L, RDI, RAX);
+    if (packedCcr_) {
+        a_.movRR(Sz::L, RAX, kCnt);
+        a_.aluRI(Asm::Op::AND, Sz::L, RAX, kCcrMask);
+        a_.aluRR(Asm::Op::OR, Sz::L, RDI, RAX);
+    } else {
+        addSrBit(L_.srX, 4); addSrBit(L_.srN, 3); addSrBit(L_.srZ, 2);
+        addSrBit(L_.srV, 1); addSrBit(L_.srC, 0);
+    }
+    a_.movMR(Sz::W, D(sem.eaReg), RDI);
+    return true;
+}
+
 // ORI/ANDI/SUBI/ADDI/EORI/CMPI #imm,<ea>
 bool Emitter::emitImmediate(size_t i) {
     const Instr& in = ir_.instrs[i];
@@ -4456,6 +4492,7 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::ImmediateAlu: return emitImmediate(i);
         case SemanticOp::Bit: return emitBitOp(i);
         case SemanticOp::Move: return emitMove(i, sem.sizeIndex);
+        case SemanticOp::MoveSrToReg: return emitMoveSrToReg(i);
         case SemanticOp::Jump: return emitJmp(i);
         case SemanticOp::Movem: return emitMovem(i);
         case SemanticOp::Nop:
@@ -4999,6 +5036,7 @@ bool X64Backend::canEmit(uint16_t op) const {
             return eaOk && eaCostIndex(dm, dr) >= 0 && kMoveDst[eaCostIndex(dm, dr)] >= 0;
         }
         case SemanticOp::Nop:
+        case SemanticOp::MoveSrToReg:
         case SemanticOp::Link:
         case SemanticOp::Unlink:
         case SemanticOp::Extend:

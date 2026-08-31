@@ -1065,8 +1065,9 @@ already caught by the replay checks.
 necessarily supervisor mode, and it changes no mapping and no execution
 state. It is `Kind::Alu`, a read-only block member. A memory destination
 (`MOVE SR,<ea>`) stays `Unsafe` — conservative, and `jit_backend_test` pins
-both halves. Only the AArch64 backend emits it natively; x86-64 takes the
-cold stub.
+both halves. AArch64 and x86-64 both emit the register form natively; each
+rebuilds the architectural SR from Moira's canonical fields, including the
+packed-CCR configuration, and preserves Dn's upper word.
 
 **`Branch`** is the block's **terminator**, and part of it. The set grew
 twice, each time for a measured reason recorded in `JitIr.h`:
@@ -1460,10 +1461,9 @@ state.
 
 ### What it emits natively
 
-Source of truth: `X64Backend::canEmit()` (`JitBackendX64.cpp:3297`) plus the
-emitters it dispatches to.
+Source of truth: `X64Backend::canEmit()` plus the emitters it dispatches to.
 
-* straight-line: `MOVE`/`MOVEA`/`MOVEQ`; the
+* straight-line: `MOVE`/`MOVEA`/`MOVEQ`, plus read-only `MOVE SR,Dn`; the
   `ADD`/`SUB`/`AND`/`OR`/`EOR`/`CMP` families in both directions;
   `ADDA`/`SUBA`/`CMPA`; `ADDQ`/`SUBQ`; register **`ADDX`/`SUBX`** B/W/L
   (X input, C=X, cumulative Z); the
@@ -1493,7 +1493,7 @@ emitters it dispatches to.
 Everything else — including full-indexed `MOVEM`, memory-indirect writes and
 three-access MOVE forms, unsupported shifts/rotates,
 `ABCD`/`SBCD`, predecrement-memory `ADDX`/`SUBX`, same-register `CMPM`,
-`MOVEP` and `MOVE SR,Dn` — falls back per instruction
+and `MOVEP` — falls back per instruction
 to a cold stub that runs that one instruction through Moira and rejoins the
 compiled stream. A block whose native coverage falls below half is refused
 outright: it would be the same interpreter work plus a call and a frame.
@@ -1508,18 +1508,18 @@ the divisor exactly once. This is the shared `replayableSpeculativeRead()`
 contract, consumed independently by both generators.
 
 **Backend admission remains explicit even where the sets have converged.**
-A64 adds immediate and guarded register-count line-$E shifts/rotates (no
-`ROX` yet), five-byte memory reads and `MOVE SR,Dn`; brief-indexed reads/RMW,
-`Scc`, `PEA` and `LEA`, plus `EXG`, distinct-register `CMPM`, TAILLESS memory
-bitfields (all eight read/write actions) and register bitfields (all eight
-actions, static or dynamic offset/width) are now on both. The x64 static body
+Immediate and guarded register-count line-$E shifts/rotates, `MOVE SR,Dn`,
+brief-indexed reads/RMW, `Scc`, `PEA` and `LEA`, plus `EXG`,
+distinct-register `CMPM`, memory-bitfield reads (including the optional
+fifth byte), TAILLESS memory-bitfield writes and all eight register-bitfield
+actions are now on both generators. The x64 static bitfield body
 folds the rotate, extraction shift and destination mask into immediates; its
 dynamic body uses CL-counted shifts, with both `BFFFO` paths branching around
 x86's undefined `BSR`-of-zero. The two
 backends admit the bitfield family with the same `canEmit` rule, so the
-parity gate carries no Bitfield exception row any more; what still
-refuses on x64 refuses at emission (five-byte read tails), which the census
-sees and the parity sweep cannot. The shared synthetic
+parity gate carries no Bitfield exception row any more. Five-byte memory
+writes remain undescribed for both backends; they are a shared transaction
+gap, not an x64 parity exception. The shared synthetic
 040 oracle demands brief An/PC reads and `LEA`, indexed `Scc`/`PEA`, complete
 CPU/RAM lockstep and zero slow instructions. Its direct-full `LEA` twin must
 also stay native through base/index suppression and 9/11/15-cycle forms,
@@ -1530,9 +1530,9 @@ both hosts, and the restartable indexed-MOVE format-$A fault frame;
 indexed `Scc` there remains conservatively replayed by the trace-cost guard.
 Each backend's
 `canEmit()` remains the source of truth, and `jit_backend_test` pins the
-remaining keyed differences (`MOVE SR,Dn`, shifts and five-byte bitfields) plus the
-indexed parity/control-flow refusal, so a coverage change is also a gate
-change.
+remaining keyed differences (modifying bit operations and the broader A64
+indexed-MOVE admission), plus the indexed control-flow refusal, so a coverage
+change is also a gate change.
 
 ### What it is worth
 

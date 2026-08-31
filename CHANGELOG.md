@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 368 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 369 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how x64 reconstructs `MOVE SR,Dn` from canonical or packed CCR state while preserving Dn's upper word** → [2026-08-31 (twenty-second) — x64 closes…](#2026-08-31-x64-move-sr)
 - **how a count-changing Speedometer shift gets exact native code without a direct link bypassing its live-count selection, and why four versions were not enough** → [2026-08-31 (twenty-first) — Speedometer's dynamic shifts get a bounded multi-version cache…](#2026-08-31-speedometer-shift-multiversion)
 - **how Speedometer's fixed `ROXR.L #1,D1` reuses the exact rotate-through-X proof and removes 1,410 static refusals** → [2026-08-31 (twentieth) — Speedometer's long immediate ROXR…](#2026-08-31-speedometer-roxr-long)
 - **how Speedometer's signed 64-bit memory MULL keeps its sole read, 68030 register-write order and 64-bit flags native** → [2026-08-31 (nineteenth) — Speedometer's memory MULL…](#2026-08-31-speedometer-memory-mull)
@@ -375,6 +376,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (twenty-second)** — [x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively](#2026-08-31-x64-move-sr)
 - **2026-08-31 (twenty-first)** — [Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain](#2026-08-31-speedometer-shift-multiversion)
 - **2026-08-31 (twentieth)** — [Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body](#2026-08-31-speedometer-roxr-long)
 - **2026-08-31 (nineteenth)** — [Speedometer's signed 64-bit memory MULL becomes native on both generators](#2026-08-31-speedometer-memory-mull)
@@ -745,6 +747,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-31-x64-move-sr"></a>
+## 2026-08-31 (twenty-second) — x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively
+
+The backend-parity gate still carried one bounded architectural mismatch:
+`MoveSrToReg` was emitted by AArch64 and refused by x86-64. This is the
+read-only register form, already proved safe inside a block; the memory form
+remains `Unsafe`. Its 68k result is also narrower than the host operation:
+only Dn's low word changes, while T1/T0/S/M, IPL and XNZVC all have to be
+reconstructed from Moira's split state.
+
+The x64 lowering now performs that reconstruction directly. Under the
+ordinary configuration it reads the five canonical CCR bytes; under
+`POM68K_JIT_PACKED_CCR` it consumes XNZVC from the low five bits of the
+retired-count register without disturbing that count. A word store preserves
+Dn's upper half, and admission still requires the observed one-word,
+eight-base-cycle, no-post-exception contract.
+
+The native smoke is no longer A64-only: the same `MOVEQ; MOVE SR,D1; NOP`
+block executes on both generators with packed CCR off and on, retires three
+native instructions, leaves `D1=$A5A5F718`, and charges 12 cycles. Both
+65,536-opcode parity sweeps now report **12 documented divergence groups**
+and zero failures. The A64 and x64 asset-free locksteps, the 68030
+transactional gate, and the real LC II x64 lockstep over 120,000 boundaries
+all remain exact. This closes a coverage/parity debt; no wall-time gain is
+claimed without a workload measurement.
 
 <a id="2026-08-31-speedometer-shift-multiversion"></a>
 ## 2026-08-31 (twenty-first) — Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain

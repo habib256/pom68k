@@ -1,9 +1,10 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// JIT gate: the portability seam. No emulated machine, no assets — this
-// checks the things that decide whether the JIT exists at all on a given
-// host (src/jit/POM68K_JIT.md invariants 6 and 7):
+// JIT gate: the portability seam. No external assets; native hosts also run
+// one hand-built block against the Q605 CPU wrapper. This checks the things
+// that decide whether the JIT exists at all on a given host
+// (src/jit/POM68K_JIT.md invariants 6 and 7):
 //
 //   * backend selection, including that `auto` chooses a usable native
 //     generator when eligible and an unknown name lands on `threaded`;
@@ -20,7 +21,7 @@
 #include "jit/backends/X64Asm.h"
 #include "JitTestConfig.h"
 
-#if defined(POM68K_JIT_BACKEND_A64)
+#if defined(POM68K_JIT_BACKEND_A64) || defined(POM68K_JIT_BACKEND_X64)
 #include "Cpu040.h"
 #include "Q605Memory.h"
 #endif
@@ -1042,14 +1043,22 @@ int main() {
         check(!buf.valid(), "release");
     }
 
-#if defined(POM68K_JIT_BACKEND_A64)
+#if defined(POM68K_JIT_BACKEND_A64) || defined(POM68K_JIT_BACKEND_X64)
     // Execute a hand-built all-native block. This catches emitter encodings,
-    // the Darwin AAPCS frame, MAP_JIT W^X transitions, I-cache invalidation,
+    // the native ABI frame, W^X transitions, I-cache invalidation,
     // MOVEQ flags and cycle charging without needing a user ROM.
     {
-        std::printf("[jit_backend] aarch64 native smoke\n");
-        check(!std::strcmp(autoPick->name(), "aarch64"),
-              "auto selects the validated AArch64 backend on arm64");
+        std::printf("[jit_backend] native codegen smoke\n");
+#if defined(POM68K_JIT_BACKEND_A64)
+        constexpr const char* backendKey = "a64";
+        constexpr const char* backendName = "aarch64";
+#else
+        constexpr const char* backendKey = "x64";
+        constexpr const char* backendName = "x86-64";
+#endif
+        check(!std::strcmp(autoPick->name(), backendName),
+              "auto selects the validated native backend on this host");
+#if defined(POM68K_JIT_BACKEND_A64)
         // AArch64 earns the 030 automatic path independently of x64: exact
         // i-cache/state lockstep plus a fixed-budget win over threaded.
         {
@@ -1064,19 +1073,12 @@ int main() {
                   "since 2026-08-22 (pom68kA64Read/Write, JIT_BRINGUP "
                   "§ C.4nonies) — the admission defaults ride it");
         }
+#endif
         static Q605Memory mem(pom68k::defaultCoreConfig());
         static Cpu040 cpu(mem, jit::defaultResolvedConfig(),
                           pom68k::defaultCoreConfig().cpu,
                           pom68k::defaultCoreConfig().diagnostics);
         mem.setCpu(&cpu);
-        cpu.setClock(0);
-        cpu.setPC(0x1000);
-        cpu.setSR(0x2710);                  // supervisor + IPL 7 + X
-        cpu.setD(0, 0);
-        cpu.setD(1, 0xA5A50000);
-        const auto layout = cpu.pomJitLayout();
-        *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&cpu) +
-                                     layout.flags) = 0;
 
         jit::BlockIr ir;
         ir.entryPc = ir.codeBase = 0x1000;
@@ -1086,8 +1088,7 @@ int main() {
         // const Instr& parameter from a bare braced list because
         // MemoryContract carries `MemoryAccess access[2] = {}` (a C array
         // with a default member initializer); direct-list-initialization
-        // of the temporary is accepted. Only AArch64 compiles this block,
-        // so an x86-64 build never sees the difference.
+        // of the temporary is accepted.
         ir.instrs.push_back(jit::Instr{0x1000, 0x70FF, 1, jit::Kind::Move,
                                        jit::FlagSetsCcr, 2});
         ir.instrs.push_back(jit::Instr{0x1002, 0x40C1, 1, jit::Kind::Alu,
@@ -1102,29 +1103,56 @@ int main() {
         jit::Context ctx;
         ctx.cpu = &cpu;
         ctx.clockTarget = 100;
-        jit::Backend* a64 = jit::selectBackend("a64", jit::kGuest68040);
-        check(!std::strcmp(a64->name(), "aarch64"), "explicit a64 resolves");
-        jit::Compiled* code = a64->compile(ir, ctx).code;
-        check(code != nullptr, "MOVEQ/NOP block compiles to AArch64");
-        if (code) {
-            jit::RunResult rr = a64->run(code, ctx);
-            std::printf("  result: retired=%u exit=%s D0=$%08X SR=$%04X "
-                        "PC=$%08X clock=%lld\n",
-                        rr.instrs, jit::exitName(rr.exit), cpu.getD(0), cpu.getSR(),
-                        cpu.getPC(), (long long)cpu.getClock());
-            check(rr.instrs == 3 && rr.slowInstrs == 0,
-                  "three instructions retire natively");
-            check(rr.exit == jit::Exit::BlockEnd, "native block exits cleanly");
-            check(cpu.getD(0) == 0xFFFFFFFFu, "MOVEQ sign-extends into D0");
-            check((cpu.getSR() & 0x1F) == 0x18,
-                  "MOVEQ sets N, clears Z/V/C and preserves X");
-            check(cpu.getD(1) == 0xA5A52718u,
-                  "MOVE SR,D1 reconstructs IPL and CCR without clobbering high word");
-            check(cpu.getPC() == 0x1006, "native block commits its exit PC");
-            check(cpu.getClock() == 12, "native block charges exact cycles");
-            a64->release(code);
+        jit::Backend* native =
+            jit::selectBackend(backendKey, jit::kGuest68040);
+        check(!std::strcmp(native->name(), backendName),
+              "explicit native backend resolves");
+        for (const bool packedCcr : {false, true}) {
+            cpu.setClock(0);
+            cpu.setPC(0x1000);
+            cpu.setSR(0x2710);              // supervisor + IPL 7 + X
+            cpu.setD(0, 0);
+            cpu.setD(1, 0xA5A50000);
+            const auto layout = cpu.pomJitLayout();
+            auto* raw = reinterpret_cast<uint8_t*>(&cpu);
+            raw[layout.srT1] = 1;
+            raw[layout.srT0] = 1;
+            raw[layout.srM] = 1;
+            *reinterpret_cast<uint32_t*>(raw + layout.flags) = 0;
+
+            jit::ResolvedConfig smokeConfig = jit::defaultResolvedConfig();
+            smokeConfig.packedCcr = packedCcr;
+            ctx.config = &smokeConfig;
+            jit::ScopedResolvedConfig active(&smokeConfig);
+            jit::Compiled* code = native->compile(ir, ctx).code;
+            check(code != nullptr,
+                  "MOVEQ/MOVE SR/NOP block compiles with either CCR layout");
+            if (code) {
+                jit::RunResult rr = native->run(code, ctx);
+                std::printf("  packed=%d result: retired=%u exit=%s "
+                            "D0=$%08X SR=$%04X PC=$%08X clock=%lld\n",
+                            int(packedCcr), rr.instrs, jit::exitName(rr.exit),
+                            cpu.getD(0), cpu.getSR(), cpu.getPC(),
+                            (long long)cpu.getClock());
+                check(rr.instrs == 3 && rr.slowInstrs == 0,
+                      "three instructions retire natively");
+                check(rr.exit == jit::Exit::BlockEnd,
+                      "native block exits cleanly");
+                check(cpu.getD(0) == 0xFFFFFFFFu,
+                      "MOVEQ sign-extends into D0");
+                check((cpu.getSR() & 0x1F) == 0x18,
+                      "MOVEQ sets N, clears Z/V/C and preserves X");
+                check(cpu.getD(1) == 0xA5A5F718u,
+                      "MOVE SR,D1 reconstructs T/S/M, IPL and CCR without "
+                      "clobbering high word");
+                check(cpu.getPC() == 0x1006,
+                      "native block commits its exit PC");
+                check(cpu.getClock() == 12,
+                      "native block charges exact cycles");
+                native->release(code);
+            }
+            native->flushAll();
         }
-        a64->flushAll();
     }
 #endif
 
@@ -1195,11 +1223,10 @@ int main() {
               "MOVEM.L regs,-(SP) follows the active generator's coverage");
         check(b->canEmit(0x4CDF) == gen,
               "MOVEM.L (SP)+,regs follows the active generator's coverage");
-        const bool a64 = !std::strcmp(b->name(), "aarch64");
         check(b->canEmit(0x51C8) == gen,
               "DBRA follows the active generator's coverage");
-        check(b->canEmit(0x40C0) == a64,
-              "MOVE SR,D0 follows AArch64 native coverage");
+        check(b->canEmit(0x40C0) == gen,
+              "MOVE SR,D0 follows both native generators' coverage");
         checkSafe(0x40C0, "MOVE SR,D0 does not end a block");
         checkUnsafe(0x40D0, "MOVE SR,(A0) remains a block boundary");
         check(!b->canEmit(0xF200), "F-line is never native");
