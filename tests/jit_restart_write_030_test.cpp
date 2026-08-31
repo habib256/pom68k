@@ -436,6 +436,20 @@ void installSpeedometerIndirectMoveLoop(FaultCpu& c) {
     put32(c, kBitfieldData + 0x104, 0x89ABCDEF);
 }
 
+void installSpeedometerIndirectTstLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x4A76);    // TST.W ([40,A6],4)
+    put16(c, kCode + 0x02, 0x8162);    // full/preindexed, index suppressed
+    put16(c, kCode + 0x04, 0x0028);    // word base displacement
+    put16(c, kCode + 0x06, 0x0004);    // word outer displacement
+    put16(c, kCode + 0x08, 0x60F6);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+    put32(c, kBitfieldData + 0x28, kBitfieldData + 0xFC);
+    put16(c, kBitfieldData + 0x100, 0x8001);
+}
+
 void installSpeedometerIndexedDestinationLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -812,6 +826,147 @@ int main() {
               (!nativeProduction ||
                replayStats.slowInstrs > moveStats.slowInstrs),
               "2470 non-plain final operand replays before its An commit");
+    }
+
+    // Speedometer's 4A76 is TST.W ([40,A6],4): a plain longword pointer
+    // read followed by a word operand read, then flags. Keep both reads in
+    // one replayable transaction. Either MMIO position and a final /BERR
+    // must remain wholly owned by untouched Moira replay.
+    {
+        FaultCpu tstRef, tstNative;
+        installSpeedometerIndirectTstLoop(tstRef);
+        installSpeedometerIndirectTstLoop(tstNative);
+        tstRef.reset(); tstNative.reset();
+        tstRef.setTC(12u << 20); tstNative.setTC(12u << 20);
+        for (FaultCpu* c : {&tstRef, &tstNative}) {
+            c->setA(6, kBitfieldData);
+            c->setSR(0x2710);                 // TST preserves X
+        }
+        tstNative.jit.setEnabled(true);
+
+        const auto sameBoundary = [&] {
+            bool same = true;
+            for (int r = 0; r < 8; r++)
+                same = same && tstRef.getD(r) == tstNative.getD(r) &&
+                       tstRef.getA(r) == tstNative.getA(r);
+            return same && tstRef.getPC() == tstNative.getPC() &&
+                   tstRef.getPC0() == tstNative.getPC0() &&
+                   tstRef.getIRD() == tstNative.getIRD() &&
+                   tstRef.getIRC() == tstNative.getIRC() &&
+                   tstRef.getSR() == tstNative.getSR() &&
+                   tstRef.getClock() == tstNative.getClock();
+        };
+
+        bool ramSame = true;
+        for (int step = 0; step < 256 && ramSame; step++) {
+            const int64_t target = tstRef.getClock() + 43;
+            tstRef.executeUntil(target);
+            tstNative.jit.executeUntil(target);
+            ramSame = sameBoundary();
+            if (!ramSame)
+                std::printf("    030 4A76 RAM divergence at checkpoint %d\n",
+                            step);
+        }
+        const auto ramStats = tstNative.jit.stats().snapshot();
+        check(ramSame && (tstNative.getSR() & 0x1F) == 0x18 &&
+              ramStats.blocksCompiled != 0 && ramStats.blocksRun != 0 &&
+              ramStats.slowInstrs == 0,
+              "Speedometer 4A76 full-indirect TST stays native in RAM");
+
+        // A non-plain final operand is discovered only after the proved RAM
+        // pointer has been read. Repeating that RAM read in the fallback is
+        // harmless; the device word itself must still be read exactly once.
+        for (FaultCpu* c : {&tstRef, &tstNative}) {
+            put32(*c, kBitfieldData + 0x28, kMmio - 4);
+            put16(*c, kMmio, 0x0000);
+            c->mmioReads = 0;
+            c->mmioReadDelay = 13;
+        }
+        bool operandMmioSame = true;
+        for (int step = 0; step < 32 && operandMmioSame; step++) {
+            const int64_t target = tstRef.getClock() + 43;
+            tstRef.executeUntil(target);
+            tstNative.jit.executeUntil(target);
+            operandMmioSame = sameBoundary() &&
+                tstRef.mmioReads == tstNative.mmioReads;
+        }
+        const auto operandMmioStats = tstNative.jit.stats().snapshot();
+        check(operandMmioSame && tstNative.mmioReads != 0 &&
+              operandMmioStats.slowInstrs > ramStats.slowInstrs,
+              "4A76 non-plain operand is read only by pristine replay");
+
+        // The pointer itself may also be a device read. The native path must
+        // refuse before consuming even its first half.
+        for (FaultCpu* c : {&tstRef, &tstNative}) {
+            c->setA(6, kMmio - 0x28);
+            put32(*c, kMmio, kBitfieldData + 0xFC);
+            put16(*c, kBitfieldData + 0x100, 0x8001);
+            c->mmioReads = 0;
+        }
+        bool pointerMmioSame = true;
+        for (int step = 0; step < 32 && pointerMmioSame; step++) {
+            const int64_t target = tstRef.getClock() + 43;
+            tstRef.executeUntil(target);
+            tstNative.jit.executeUntil(target);
+            pointerMmioSame = sameBoundary() &&
+                tstRef.mmioReads == tstNative.mmioReads;
+        }
+        check(pointerMmioSame && tstNative.mmioReads != 0,
+              "4A76 non-plain pointer is read only by pristine replay");
+
+        const auto prepareTstFault = [](FaultCpu& c) {
+            put32(c, kBitfieldData + 0x28, kHole - 4);
+            c.setPC(kCode); c.setPC0(kCode);
+            c.setIRD(0x4A76); c.setIRC(0x8162);
+            c.setA(6, kBitfieldData); c.setA(7, kStack);
+            c.setSR(0x2710); c.setClock(0);
+            c.readFaults = 0; c.mmioReadDelay = 0;
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        prepareTstFault(tstRef);
+        prepareTstFault(tstNative);
+        const auto beforeFault = tstNative.jit.stats().snapshot();
+        tstRef.executeUntil(1);
+        tstNative.jit.executeUntil(1);
+        const auto afterFault = tstNative.jit.stats().snapshot();
+        const uint32_t refSp = tstRef.getA(7);
+        const uint32_t nativeSp = tstNative.getA(7);
+        constexpr uint32_t kTstFaultFrameBytes = 92;
+        const bool faultSame =
+              tstRef.readFaults == 1 && tstNative.readFaults == 1 &&
+              afterFault.blocksRun > beforeFault.blocksRun &&
+              refSp == kStack - kTstFaultFrameBytes && nativeSp == refSp &&
+              std::memcmp(tstRef.mem.data() + refSp,
+                          tstNative.mem.data() + nativeSp,
+                          kTstFaultFrameBytes) == 0 &&
+              get16(tstNative, nativeSp + 6) == 0xB008 &&
+              tstRef.getPC() == tstNative.getPC() &&
+              tstRef.getClock() == tstNative.getClock();
+        if (!faultSame) {
+            int firstDiff = -1;
+            if (refSp + kTstFaultFrameBytes <= tstRef.mem.size() &&
+                nativeSp + kTstFaultFrameBytes <= tstNative.mem.size()) {
+                for (uint32_t i = 0; i < kTstFaultFrameBytes; i++)
+                    if (tstRef.mem[refSp + i] !=
+                        tstNative.mem[nativeSp + i]) {
+                        firstDiff = int(i);
+                        break;
+                    }
+            }
+            std::printf("    4A76 /BERR refFaults=%d jitFaults=%d "
+                        "blocks=%llu->%llu SP=%08X/%08X PC=%08X/%08X "
+                        "clock=%lld/%lld frameDiff=%d\n",
+                        tstRef.readFaults, tstNative.readFaults,
+                        (unsigned long long)beforeFault.blocksRun,
+                        (unsigned long long)afterFault.blocksRun,
+                        refSp, nativeSp, tstRef.getPC(), tstNative.getPC(),
+                        (long long)tstRef.getClock(),
+                        (long long)tstNative.getClock(), firstDiff);
+        }
+        check(faultSame,
+              "4A76 /BERR preserves the complete 030 format-$B frame");
     }
 
     // Speedometer's 4C00 4004 is the non-trapping 32-bit-result form of

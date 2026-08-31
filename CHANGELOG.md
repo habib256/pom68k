@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 361 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 362 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how Speedometer's full-indirect `TST.W` became a two-read JIT transaction without duplicating pointer or operand MMIO** → [2026-08-31 (fifteenth) — Speedometer's full-indirect TST…](#2026-08-31-speedometer-full-indirect-tst)
 - **how Speedometer's selector write keeps its live peripheral delay while generated MOVE owns only the fixed tail** → [2026-08-31 (fourteenth) — Speedometer's selector write…](#2026-08-31-speedometer-exact-selector-write)
 - **how Speedometer's `(A7)+` source can feed a destination based on the updated A7 without making fallback non-transactional** → [2026-08-31 (thirteenth) — Speedometer's dependent stack MOVEs…](#2026-08-31-speedometer-dependent-move)
 - **why Speedometer's fixed `ROXR.B #2,D0` is worth generating while its count-24–31 shifts are not** → [2026-08-31 (twelfth) — Speedometer's exact ROXR…](#2026-08-31-speedometer-roxr)
@@ -368,6 +369,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (fifteenth)** — [Speedometer's full-indirect `TST.W` becomes a two-read JIT transaction on both 68030 generators](#2026-08-31-speedometer-full-indirect-tst)
 - **2026-08-31 (fourteenth)** — [Speedometer's selector `MOVE.B` becomes an exact generated JIT write without flattening its live device wait](#2026-08-31-speedometer-exact-selector-write)
 - **2026-08-31 (thirteenth)** — [Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators](#2026-08-31-speedometer-dependent-move)
 - **2026-08-31 (twelfth)** — [Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed](#2026-08-31-speedometer-roxr)
@@ -729,6 +731,51 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-full-indirect-tst"></a>
+## 2026-08-31 (fifteenth) — Speedometer's full-indirect `TST.W` becomes a two-read JIT transaction on both 68030 generators
+
+After the selector write, the next structural row was one site at `$0001E174`:
+`4A76 8162 0028 0004`, or `TST.W ([40,A6],4)`. The refusal watcher records
+four words, three extension words, five instruction fetches and a clean base
+cost of 18 cycles (plus the observed eight-cycle i-cache component). That 18
+is exactly the brief indexed TST cost 9 plus the shared full-index formation
+penalty 9. Decode and timing were already facts; the memory contract was not:
+it still described only the final word although the EA first reads a longword
+pointer.
+
+Extension refinement now publishes the two reads in order: control pointer
+longword, then tested word operand. A64 and x64 admit that `PreflightAll`
+shape only on the cacheless 68030. They prove and speculatively read a plain
+RAM pointer, resolve the outer displacement, then require a second plain RAM
+mapping before reading the word or changing CCR. If either mapping is MMIO,
+cross-page, protected or faulting, the whole pristine instruction goes to
+Moira; a harmless RAM pointer may be read twice, but a device read never is.
+The trace remains the final cost gate, so other full-index encodings cannot
+silently inherit the measured 18.
+
+The directed oracle executes the exact four-word encoding for 256 RAM
+checkpoints with X preserved and zero slow instructions on both native A64
+and x64/Rosetta. It then places the final operand on delayed MMIO, then the
+pointer itself on delayed MMIO, and in both cases observes exactly the same
+read count, clock and architectural boundary as the interpreter. A fault in
+the final operand produces the long 68030 format-$B frame: all 92 bytes are
+identical after one untouched replay. All four real LC II locksteps (generic,
+blocks, experimental and alignment) pass on each host ISA.
+
+In the comparable production-profile 270-frame CPU census, the 250 `4A76`
+static refusals disappear. Unsupported fallbacks move 2,657 → 2,406 and total
+fallbacks 46,617 → 46,351; the phase contains 61 more guest instructions and
+runtime guards move 43,960 → 43,945, so only disappearance of the opcode row
+is attributed directly. Outside that phase the census retains two deliberate
+`4A76` guards: its pointer longword starts at `$00920FFE` and crosses the
+4 KiB proof slice. CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
+instrumented 0.308765 s wall time is not a speed claim. `C029` stays parked;
+the next structural candidates are full-indexed MOVEM and memory ADDX/SUBX.
 
 ---
 

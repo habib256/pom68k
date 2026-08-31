@@ -910,17 +910,28 @@ Open, in ROI order:
   `/BERR`. Les 301 refus `137C` disparaissent : 2 958 → 2 657 unsupported et
   46 918 → 46 617 replis totaux, empreintes inchangées. `CHANGELOG.md`
   (2026-08-31 fourteenth).
-- [ ] **Queue de couverture Speedometer après `ROXR.B`** : `C029`
+- **TST full-indirect Speedometer `4A76` — CLOS le 2026-08-31** : l'unique
+  site est `TST.W ([40,A6],4)`, extension `8162 0028 0004`, coût fixe 18.
+  L'IR publie désormais lecture du pointeur long puis lecture de l'opérande
+  mot ; A64/x64 n'exécutent la paire que sur deux mappings RAM prouvés et
+  rejouent l'instruction intacte si le pointeur ou l'opérande est MMIO.
+  L'oracle vérifie les deux positions MMIO et compare la frame `/BERR`
+  format `$B` complète de 92 octets. Les 250 refus CPU disparaissent ;
+  2 657 → 2 406 unsupported et 46 617 → 46 351 replis totaux dans le run
+  comparable, empreintes inchangées. Deux lectures de pointeur à l'offset
+  page `$FFE` restent correctement des gardes cross-page hors phase CPU.
+  `CHANGELOG.md` (2026-08-31 fifteenth).
+- [ ] **Queue de couverture Speedometer après `4A76`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Les prochains candidats structurels
-  sont `4A76`, MOVEM indexé complet et ADDX/SUBX mémoire. Les
+  sont MOVEM indexé complet et ADDX/SUBX mémoire. Les
   décalages dynamiques hors tranche
   demandent un cache multi-version, pas un plafond d'unrolling plus large.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
-  full-indirects, les destinations brèves, `4C00 4004` et les MOVE A7
-  dépendants sont clos ; traiter la suite par contrat, pas par largeur
-  d'opcode.
+  full-indirects, les destinations brèves, `4C00 4004`, les MOVE A7
+  dépendants et `4A76` sont clos ; traiter la suite par contrat, pas par
+  largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

@@ -15,6 +15,7 @@
 #include "jit/JitBackend.h"
 #include "jit/JitCodeBuffer.h"
 #include "jit/JitConfig.h"
+#include "jit/JitCost.h"
 #include "jit/JitIr.h"
 #include "jit/backends/X64Asm.h"
 #include "JitTestConfig.h"
@@ -517,6 +518,51 @@ int main() {
               indirectEa->indirect == jit::IndexIndirect::Preindexed &&
               indirectEa->extensionWords == 4,
               "IR separates base/outer displacement and preindexed indirection");
+
+        jit::Instr speedometerTst;
+        speedometerTst.pc = 0x3200;
+        speedometerTst.opcode = 0x4A76; // TST.W ([40,A6],4)
+        speedometerTst.words = 4;
+        speedometerTst.semantics =
+            jit::describeInstruction(speedometerTst.opcode);
+        speedometerTst.memory =
+            jit::describeMemory(speedometerTst.opcode, true);
+        speedometerTst.extensionCount = 3;
+        speedometerTst.extensions[0] = 0x8162;
+        speedometerTst.extensions[1] = 0x0028;
+        speedometerTst.extensions[2] = 0x0004;
+        jit::describeEffectiveAddresses(speedometerTst);
+        jit::refineMemoryFromExtensions(speedometerTst, true);
+        const auto* speedometerTstEa = jit::findEffectiveAddress(
+            speedometerTst, 6, 6, 1, 0);
+        auto speedometerTstUse = jit::instructionMemoryPlan(
+            speedometerTst.memory, cache);
+        const auto speedometerTstPointer = speedometerTstUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Control,
+            4, 6, 6);
+        const auto speedometerTstOperand = speedometerTstUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            2, 6, 6);
+        check(speedometerTstEa && speedometerTstEa->valid &&
+              speedometerTstEa->fullFormat &&
+              speedometerTstEa->indexSuppressed &&
+              speedometerTstEa->baseDisplacement == 0x28 &&
+              speedometerTstEa->outerDisplacement == 4 &&
+              speedometerTstEa->indirect ==
+                  jit::IndexIndirect::Preindexed &&
+              jit::fullIndexPenalty(
+                  speedometerTstEa->baseDisplacementWords,
+                  speedometerTstEa->indirect,
+                  speedometerTstEa->outerDisplacementWords) == 9,
+              "IR decodes Speedometer's exact 4A76 full-indirect operand");
+        check(speedometerTst.memory.count == 2 &&
+              speedometerTst.memory.order == jit::MemoryOrder::Sequential &&
+              speedometerTstPointer.valid() &&
+              speedometerTstOperand.valid() &&
+              speedometerTstPointer.preflight &&
+              speedometerTstOperand.preflight &&
+              speedometerTstUse.complete(),
+              "full-indirect TST publishes pointer then operand reads");
 
         jit::Instr fullPost;
         fullPost.pc = 0x4000;

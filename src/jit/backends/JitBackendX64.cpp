@@ -2933,26 +2933,55 @@ bool Emitter::emitLine4(size_t i) {
 
     if (sem.operation == SemanticOp::Test) {         // TST <ea>
         Ea src;
-        if (!decode(i, mode, reg, szIdx, 0, src)) return false;
+        if (!decode(i, mode, reg, szIdx, 0, src,
+                    /*allowFullDirect=*/false,
+                    /*allowFullIndirect=*/L_.is030)) return false;
         if (src.idx == EA_IM) return false;
         if (src.idx == EA_AN && szIdx == 0) return false;
         if (!lengthOk(i, src.ext)) return false;
-        const int cycles = kEaRead[src.idx][szIdx];
+        const bool indirectTst = src.fullFormat &&
+                                 src.indirect != IndexIndirect::None;
+        const int fullPenalty = indirectTst ? fullIndexPenalty(src) : 0;
+        const int cycles = kEaRead[src.idx][szIdx] + fullPenalty;
         if (cycles < 0) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
-        MemoryAccessPlan read;
+        MemoryAccessPlan pointerRead, read;
         if (src.memory) {
+            if (indirectTst)
+                pointerRead = memory.access(
+                    MemoryDirection::Read, MemoryOperand::Control, 4,
+                    uint8_t(mode), uint8_t(reg));
             read = memory.access(MemoryDirection::Read,
                                  MemoryOperand::Operand,
                                  uint8_t(sizeBytes(szIdx)), uint8_t(mode),
                                  uint8_t(reg));
-            if (!read.valid()) return false;
+            if (!read.valid() ||
+                (indirectTst && !pointerRead.valid())) return false;
         }
         if (!memory.complete()) return false;
-        const bool soleReadTiming = src.memory &&
+        if (indirectTst) {
+            if (!L_.is030 ||
+                memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+                !pointerRead.preflight || !read.preflight ||
+                in.memory.order != MemoryOrder::Sequential ||
+                pointerRead.exactRequired || read.exactRequired)
+                return false;
+            pointerRead.exactThunk = false;
+            pointerRead.cache = false;
+            read.exactThunk = false;
+            read.cache = false;
+        }
+        const bool soleReadTiming = src.memory && !indirectTst &&
             admitSoleReadTiming(i, read, unsigned(cycles));
         if (unsigned(cycles) != traced030(i) && !soleReadTiming) return false;
-        load(src, szIdx, RDI, read, false);
+        if (indirectTst) {
+            addrOfFullIndirectPointer(src, RAX);
+            memLoad(RAX, 2, RDI, pointerRead);
+            finishFullIndirect(src, RDI, RAX);
+            memLoad(RAX, szIdx, RDI, read);
+        } else {
+            load(src, szIdx, RDI, read, false);
+        }
         a_.testRR(hostSz(szIdx), RDI, RDI);
         flagsLogic(hostSz(szIdx));
         commitEa(src, szIdx, read);

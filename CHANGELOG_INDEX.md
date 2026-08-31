@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 361 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 362 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 60 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 61 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 37 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
@@ -79,6 +79,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-30 (third)** — [The M4 closes the x64 handover, A64 consumes the tailless bitfield RMW contract, and the host-conditional docs gate learns its other host](CHANGELOG.md#2026-08-30-a64-bitfield-writes)
 - **2026-08-31 (eighth)** — [Speedometer's full-indirect `LEA` becomes native on both 68030 JIT generators while `C029` stays behind its failed real-timing proof](CHANGELOG.md#2026-08-31-speedometer-indirect-lea)
 - **2026-08-31 (eleventh)** — [Speedometer's exact `MULU.L D0,D4` becomes native on A64 and x64 with its 32-bit overflow flag intact](CHANGELOG.md#2026-08-31-speedometer-long-multiply)
+- **2026-08-31 (fifteenth)** — [Speedometer's full-indirect `TST.W` becomes a two-read JIT transaction on both 68030 generators](CHANGELOG.md#2026-08-31-speedometer-full-indirect-tst)
 - **2026-08-31 (fifth)** — [Speedometer's register `ADDX`/`SUBX` chains become native on A64 and x64 with exact X and cumulative Z](CHANGELOG.md#2026-08-31-speedometer-addx-subx)
 - **2026-08-31 (fourteenth)** — [Speedometer's selector `MOVE.B` becomes an exact generated JIT write without flattening its live device wait](CHANGELOG.md#2026-08-31-speedometer-exact-selector-write)
 - **2026-08-31 (fourth)** — [Speedometer's next three JIT static fallbacks become native exact device reads, without flattening their live LC II delay](CHANGELOG.md#2026-08-31-speedometer-exact-polls)

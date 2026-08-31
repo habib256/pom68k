@@ -287,6 +287,15 @@ reset block.
    complete 32-byte destination-fault frame for both word and long forms;
    native A64 and x64/Rosetta execute the RAM cases with zero slow
    instructions.
+   **Full-indirect read-only transaction closed on both generators,
+   2026-08-31:** Speedometer's `4A76` is
+   `TST.W ([40,A6],4)`, not one ordinary indexed read. The IR publishes the
+   pointer-longword read followed by the word operand read; A64/x64 consume
+   the pair only on the cacheless 030 and only through direct RAM mappings.
+   A non-plain pointer or final operand replays pristine Moira, so MMIO is
+   never duplicated. The oracle pins both MMIO positions and a complete
+   92-byte format-$B operand-fault frame; the real corpus retains only two
+   intentional cross-page pointer guards at page offset `$FFE`.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at

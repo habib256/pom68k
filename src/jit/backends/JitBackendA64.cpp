@@ -3024,27 +3024,38 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             sem.operation != SemanticOp::Clear &&
             sem.operation != SemanticOp::Complement &&
             sem.operation != SemanticOp::Negate) return false;
+        const bool tst = sem.operation == SemanticOp::Test;
         Ea ea;
-        if (!decodeEa(in, mode, sem.eaReg, bits, 0, ea) ||
+        if (!decodeEa(in, mode, sem.eaReg, bits, 0, ea,
+                      /*allowFullDirect=*/false,
+                      /*allowFullIndirect=*/tst && L.is030) ||
             in.words != unsigned(1 + ea.ext) || ea.idx == EA_IM ||
             (bits == 8 && ea.idx == EA_AN)) return false;
-        const bool tst = sem.operation == SemanticOp::Test;
         if (!tst && ea.idx == EA_AN) return false;
         const int base = kEaRead[ea.idx][sz];
-        const int cycles = tst ? base : (ea.idx <= EA_AN ? 2 : base + 2);
+        const bool indirectTst = tst && ea.fullFormat &&
+                                 ea.indirect != IndexIndirect::None;
+        const int fullPenalty = indirectTst ? fullIndexPenalty(ea) : 0;
+        const int cycles = tst ? base + fullPenalty
+                               : (ea.idx <= EA_AN ? 2 : base + 2);
         // TST (An) is read-only. Ordinarily its measured base component must
         // match the inline access cost. The hot LC II 4A11 exception below
         // uses the exact MMU/device thunk, so the device reproduces the
         // variable part of that component at run time.
         const unsigned tracedCycles = traced030(L, in);
-        MemoryAccessPlan read, write;
+        MemoryAccessPlan pointerRead, read, write;
         if (ea.memory) {
             if (tst) {
+                if (indirectTst)
+                    pointerRead = memory.access(
+                        MemoryDirection::Read, MemoryOperand::Control, 4,
+                        uint8_t(mode), sem.eaReg);
                 read = memory.access(MemoryDirection::Read,
                                      MemoryOperand::Operand,
                                      uint8_t(bits / 8), uint8_t(mode),
                                      sem.eaReg);
-                if (!read.valid()) return false;
+                if (!read.valid() ||
+                    (indirectTst && !pointerRead.valid())) return false;
             } else if (sem.operation == SemanticOp::Clear) {
                 write = memory.access(MemoryDirection::Write,
                                       MemoryOperand::Destination,
@@ -3065,19 +3076,43 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
         }
         if (!memory.complete()) return false;
-        const bool soleReadTiming = tst && ea.memory && base >= 0 &&
+        if (indirectTst) {
+            if (!L.is030 || slow < 0 ||
+                memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+                !pointerRead.preflight || !read.preflight ||
+                in.memory.order != MemoryOrder::Sequential ||
+                pointerRead.exactRequired || read.exactRequired)
+                return false;
+            // The pair is one cacheless-030 transaction. Only plain RAM is
+            // consumed natively; either non-plain mapping replays the whole
+            // pristine TST through Moira, including device timing/faults.
+            pointerRead.exactThunk = false;
+            pointerRead.cache = false;
+            read.exactThunk = false;
+            read.cache = false;
+        }
+        const bool soleReadTiming = tst && ea.memory && !indirectTst &&
+            base >= 0 &&
             admitSoleReadTiming(L, in, read, unsigned(cycles), nativeCycles);
         if (base < 0 || (tracedCycles != unsigned(cycles) &&
                          !soleReadTiming)) return false;
         if (ea.memory) {
             if (slow < 0) return false;
-            addrOf(a, L, ea, bits);
-            if (tst)
-                memLoadGuest(a, L, ir.super, bits, 9, slow, read, &ea);
-            else if (sem.operation != SemanticOp::Clear) {
-                memProbe(a, L, ir.super, bits / 8, true, slow);
-                commitEaBeforeAccess(a, L, ea, bits, read);
-                loadGuest(a, bits, 9);
+            if (indirectTst) {
+                addrOfFullIndirectPointer(a, L, ea);
+                memProbe(a, L, ir.super, 4, false, slow);
+                loadGuest(a, 32, 10);
+                finishFullIndirect(a, L, ea, 10);
+                memLoadGuest(a, L, ir.super, bits, 9, slow, read);
+            } else {
+                addrOf(a, L, ea, bits);
+                if (tst)
+                    memLoadGuest(a, L, ir.super, bits, 9, slow, read, &ea);
+                else if (sem.operation != SemanticOp::Clear) {
+                    memProbe(a, L, ir.super, bits / 8, true, slow);
+                    commitEaBeforeAccess(a, L, ea, bits, read);
+                    loadGuest(a, bits, 9);
+                }
             }
         } else {
             loadSized(a, L, 9, ea.idx == EA_AN, unsigned(ea.reg), bits);

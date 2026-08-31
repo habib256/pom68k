@@ -1477,6 +1477,42 @@ inline void refineMemoryFromExtensions(Instr& in, bool is030) {
         }
     }
 
+    // A read-only full-indirect TST has the same staged two-read shape as a
+    // register-destination MOVE: resolve a longword pointer first, then read
+    // the tested operand. Speedometer's 4A76 witness uses this exact form.
+    // Publishing only the final word read would let a backend hide the
+    // fallible pointer access and could duplicate MMIO during replay.
+    if (s.operation == SemanticOp::Test) {
+        const DecodedEffectiveAddress* operand = nullptr;
+        for (unsigned i = 0; i < in.effectiveAddressCount; i++) {
+            const auto& candidate = in.effectiveAddresses[i];
+            if (candidate.role == OperandRole::Operand &&
+                candidate.mode == s.eaMode && candidate.reg == s.eaReg &&
+                candidate.extensionOffset == 0) {
+                operand = &candidate;
+                break;
+            }
+        }
+        if (operand && operand->valid && operand->fullFormat &&
+            operand->indirect != IndexIndirect::None) {
+            MemoryContract c;
+            c.described = true;
+            c.count = 2;
+            c.order = MemoryOrder::Sequential;
+            c.access[0] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Control, 4,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+            c.access[1] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Operand,
+                                       uint8_t(1u << s.sizeIndex),
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+            in.memory = c;
+            return;
+        }
+    }
+
     // Read-only ALU sources use the same two-read resolution protocol as a
     // register-destination MOVE. Rogue pairs its full-indirect MOVEs with
     // CMP.L ([$bd],Zn),Dn (B2B0), so describing only the final operand read
