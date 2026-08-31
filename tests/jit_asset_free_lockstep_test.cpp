@@ -648,6 +648,24 @@ void installAddSubExtendLoop(SyntheticCpu& c) {
     word(uint16_t(0x6000 | uint8_t(displacement))); // BRA.S kCode
 }
 
+// Speedometer executes EXTB.L D2/D7 throughout launch and CPU phases.  The
+// three values cover negative, zero and positive byte results while carrying
+// unrelated high bits into the instruction; each EXTB must overwrite all 32
+// destination bits, set N/Z, clear V/C and preserve X.
+void installExtendByteLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x2E3C);    // MOVE.L #$12345680,D7
+    put32(c, kCode + 0x02, 0x1234'5680u);
+    put16(c, kCode + 0x06, 0x49C7);    // EXTB.L D7 -> $FFFFFF80
+    put16(c, kCode + 0x08, 0x243C);    // MOVE.L #$89ABCD00,D2
+    put32(c, kCode + 0x0A, 0x89AB'CD00u);
+    put16(c, kCode + 0x0E, 0x49C2);    // EXTB.L D2 -> 0
+    put16(c, kCode + 0x10, 0x2E3C);    // MOVE.L #$7654327F,D7
+    put32(c, kCode + 0x12, 0x7654'327Fu);
+    put16(c, kCode + 0x16, 0x49C7);    // EXTB.L D7 -> $0000007F
+    put16(c, kCode + 0x18, 0x60E6);    // BRA.S kCode
+}
+
 void installMemoryMultiplyDeviceLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0xC0D8);    // MULU.W (A0)+,D0
@@ -1540,6 +1558,38 @@ bool runAddSubExtendLockstep() {
            (!nativeGenerator || s.slowInstrs == 0);
 }
 
+bool runExtendByteLockstep() {
+    SyntheticCpu ref, native;
+    installExtendByteLoop(ref);
+    installExtendByteLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    ref.setSR(0x2710);                 // X=1 must survive all three EXTB.L
+    native.setSR(0x2710);
+    native.jit.setEnabled(true);
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 43;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    EXTB.L divergence checkpoint=%d\n", step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    EXTB.L compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const bool nativeGenerator =
+        !std::strcmp(native.jit.backendName(), "aarch64") ||
+        !std::strcmp(native.jit.backendName(), "x86-64");
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           (!nativeGenerator || s.slowInstrs == 0);
+}
+
 bool runMemoryMultiplyDeviceOnce() {
     SyntheticCpu ref, native;
     installMemoryMultiplyDeviceLoop(ref);
@@ -2250,6 +2300,8 @@ int main() {
           "Speedometer MULU.W/MULS.W register, immediate and RAM forms stay native");
     check(runAddSubExtendLockstep(),
           "Speedometer ADDX/SUBX B/W/L preserve X and cumulative Z natively");
+    check(runExtendByteLockstep(),
+          "Speedometer EXTB.L overwrites Dn, preserves X and publishes N/Z/V/C");
     check(runMemoryMultiplyDeviceOnce(),
           "word multiplication consumes one exact MMIO read and stays native");
     check(runWordDivisionLockstep(DivisionProgram::Success),

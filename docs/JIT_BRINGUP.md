@@ -296,6 +296,12 @@ reset block.
    never duplicated. The oracle pins both MMIO positions and a complete
    92-byte format-$B operand-fault frame; the real corpus retains only two
    intentional cross-page pointer guards at page offset `$FFE`.
+   **Register-only 68020 extension closed on both generators, 2026-08-31:**
+   Speedometer's `49C2`/`49C7` is `EXTB.L D2/D7`, not LEA despite sharing its
+   broad register mask. The common IR gives byte-to-long extension its own
+   action beside `EXT.W`/`EXT.L`; A64 `SXTB` and x64 byte `MOVSX` overwrite
+   the full Dn, preserve X and publish long N/Z with V/C clear. A 256-boundary
+   negative/zero/positive oracle stays wholly native on both host ISAs.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at

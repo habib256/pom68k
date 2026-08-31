@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 362 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 363 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why Speedometer's `EXTB.L` was a better measured target than the unobserved full-indexed MOVEM/ADDX-memory backlog** → [2026-08-31 (sixteenth) — Speedometer's EXTB.L…](#2026-08-31-speedometer-extb)
 - **how Speedometer's full-indirect `TST.W` became a two-read JIT transaction without duplicating pointer or operand MMIO** → [2026-08-31 (fifteenth) — Speedometer's full-indirect TST…](#2026-08-31-speedometer-full-indirect-tst)
 - **how Speedometer's selector write keeps its live peripheral delay while generated MOVE owns only the fixed tail** → [2026-08-31 (fourteenth) — Speedometer's selector write…](#2026-08-31-speedometer-exact-selector-write)
 - **how Speedometer's `(A7)+` source can feed a destination based on the updated A7 without making fallback non-transactional** → [2026-08-31 (thirteenth) — Speedometer's dependent stack MOVEs…](#2026-08-31-speedometer-dependent-move)
@@ -369,6 +370,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (sixteenth)** — [Speedometer's `EXTB.L` becomes native in both JIT generators after the census rejects two speculative targets](#2026-08-31-speedometer-extb)
 - **2026-08-31 (fifteenth)** — [Speedometer's full-indirect `TST.W` becomes a two-read JIT transaction on both 68030 generators](#2026-08-31-speedometer-full-indirect-tst)
 - **2026-08-31 (fourteenth)** — [Speedometer's selector `MOVE.B` becomes an exact generated JIT write without flattening its live device wait](#2026-08-31-speedometer-exact-selector-write)
 - **2026-08-31 (thirteenth)** — [Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators](#2026-08-31-speedometer-dependent-move)
@@ -731,6 +733,42 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-extb"></a>
+## 2026-08-31 (sixteenth) — Speedometer's `EXTB.L` becomes native in both JIT generators after the census rejects two speculative targets
+
+The post-`4A76` queue named full-indexed MOVEM and predecrement-memory
+`ADDX`/`SUBX`, but the nine real Speedometer phases execute neither form: every
+MOVEM fallback address is `(An)`, `(An)+`, `-(An)` or `d16(An)`, and no memory
+ADDX/SUBX opcode reaches the fallback top set. The next measured fixed-cost
+gap was instead `49C2`/`49C7`, or `EXTB.L D2/D7`, present from folder launch
+through the CPU test. The watcher pins `49C7` at one word and four base cycles.
+
+The shared decoder now represents all three extension operations explicitly:
+ordinary `EXT.W` and `EXT.L` keep action 0, while 68020+ `EXTB.L` uses action 1
+to declare a byte source and long destination. This also fixes an instruction
+identity hole: the broad LEA destination-register mask previously captured
+`49Cx` before the extension decoder could see it. A64 sign-extends the low byte
+with `SXTB`; x64 selects its byte `MOVSX`. Both overwrite all 32 destination
+bits, publish long-sized N/Z, clear V/C and preserve X. The four-cycle trace
+check remains the admission gate.
+
+The directed oracle cycles negative, zero and positive byte results carrying
+unrelated high bits through 256 checkpoints. It runs with zero slow
+instructions on native A64 and x64/Rosetta. Backend admission parity and all
+four real LC II locksteps (generic, blocks, experimental and alignment) pass
+on each host ISA.
+
+In the comparable 2,230,650-instruction CPU phase, `49C7` disappears from the
+fallback census: unsupported moves 2,406 → 2,254, total fallbacks 46,351 →
+46,199, runtime guards remain 43,945 and the native counter rises 2,222,031 →
+2,222,131. CPU fingerprint `ce2e6699cc81f501`, result screen
+`be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
+instrumented 0.308591 s wall time is not a speed claim. `C029` stays parked;
+the next observed fixed-cost structural probes are `61FF` and `4EB2`.
 
 ---
 

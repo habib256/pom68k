@@ -2998,13 +2998,19 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
             return true;
         }
-        if (sem.operation == SemanticOp::Extend) {   // EXT
-            if (traced030(L, in) != 4 || in.words != 1) return false;
+        if (sem.operation == SemanticOp::Extend) {   // EXT / EXTB.L
+            if (traced030(L, in) != 4 || in.words != 1 || sem.action > 1)
+                return false;
             const unsigned dn = sem.eaReg;
             if (sem.sizeIndex == 2) {
-                a.ldrH(11, 0, L.d + dn * 4); a.sxtH(11, 11);
+                if (sem.action == 1) {
+                    a.ldrB(11, 0, L.d + dn * 4); a.sxtB(11, 11);
+                } else {
+                    a.ldrH(11, 0, L.d + dn * 4); a.sxtH(11, 11);
+                }
                 a.strW(11, 0, L.d + dn * 4); emitLogicFlags(a, L, 11, 32);
             } else {
+                if (sem.action != 0) return false;
                 a.ldrB(11, 0, L.d + dn * 4); a.sxtB(11, 11);
                 a.strH(11, 0, L.d + dn * 4); maskResult(a, 11, 16);
                 emitLogicFlags(a, L, 11, 16);

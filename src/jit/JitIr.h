@@ -486,13 +486,21 @@ inline InstructionSemantics describeInstruction(uint16_t op) {
         else if ((op & 0xFFC0) == 0x4E80) set(SemanticOp::JumpSubroutine, 2);
         else if ((op & 0xFFC0) == 0x4EC0) set(SemanticOp::Jump, 2);
         else if ((op & 0xFFF8) == 0x40C0) set(SemanticOp::MoveSrToReg, 1);
+        // EXTB.L shares LEA's broad destination-register mask, so the exact
+        // 68020+ register opcode must be decoded before the control-EA form.
+        else if ((op & 0xFFF8) == 0x49C0) {
+            set(SemanticOp::Extend, 2);
+            s.action = 1; // byte -> long
+        }
         else if ((op & 0xF1C0) == 0x41C0) set(SemanticOp::Lea, 2);
         else if ((op & 0xFB80) == 0x4880 && mode >= 2) {
             set(SemanticOp::Movem, (op & 0x0040) ? 2 : 1);
             s.toRegisters = (op & 0x0400) != 0;
         }
-        else if ((op & 0xFFB8) == 0x4880)
+        else if ((op & 0xFFB8) == 0x4880) {
             set(SemanticOp::Extend, (op & 0x0040) ? 2 : 1);
+            s.action = 0; // byte -> word or word -> long
+        }
         else if ((op & 0xFFF8) == 0x4840) set(SemanticOp::Swap, 2);
         else if ((op & 0xFFC0) == 0x4840 && mode >= 2)
             set(SemanticOp::Pea, 2);

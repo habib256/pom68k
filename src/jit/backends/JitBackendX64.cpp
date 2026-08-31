@@ -2872,15 +2872,17 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
 
-    if (sem.operation == SemanticOp::Extend) {       // EXT.W / EXT.L
-        if (traced030(i) != 4) return false;
+    if (sem.operation == SemanticOp::Extend) {       // EXT.W / EXT.L / EXTB.L
+        if (traced030(i) != 4 || in.words != 1 || sem.action > 1)
+            return false;
         const int dn = sem.eaReg;
         const bool toLong = sem.sizeIndex == 2;
         if (toLong) {
-            a_.movsx(Sz::W, RDI, D(dn));
+            a_.movsx(sem.action == 1 ? Sz::B : Sz::W, RDI, D(dn));
             a_.movMR(Sz::L, D(dn), RDI);
             a_.testRR(Sz::L, RDI, RDI);
         } else {
+            if (sem.action != 0) return false;
             a_.movsx(Sz::B, RDI, D(dn));
             a_.movMR(Sz::W, D(dn), RDI);
             a_.testRR(Sz::W, RDI, RDI);

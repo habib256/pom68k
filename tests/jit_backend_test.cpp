@@ -358,6 +358,14 @@ int main() {
         check(jit::describeInstruction(0xD109).operation ==
                   jit::SemanticOp::Unknown,
               "predecrement-memory ADDX remains outside register semantics");
+        const auto extb = jit::describeInstruction(0x49C7); // EXTB.L D7
+        check(extb.operation == jit::SemanticOp::Extend &&
+              extb.sizeIndex == 2 && extb.eaReg == 7 && extb.action == 1,
+              "IR distinguishes EXTB.L's byte source from ordinary EXT.L");
+        const auto extl = jit::describeInstruction(0x48C7); // EXT.L D7
+        check(extl.operation == jit::SemanticOp::Extend &&
+              extl.sizeIndex == 2 && extl.eaReg == 7 && extl.action == 0,
+              "ordinary EXT.L keeps its word-source Extend action");
         const auto eor = jit::describeInstruction(0xB592); // EOR.L D2,(A2)
         check(eor.operation == jit::SemanticOp::AluRegToEa &&
               eor.alu == jit::AluOperation::Eor && eor.bytes() == 4,
@@ -1119,6 +1127,7 @@ int main() {
         check(b->canEmit(0x66F8) == gen, "BNE.S -8");
         check(b->canEmit(0x2ADC) == gen, "MOVE.L (A4)+,(A5)+");
         check(b->canEmit(0x7000) == gen, "MOVEQ #0,D0");
+        check(b->canEmit(0x49C7) == gen, "Speedometer EXTB.L D7");
         check(b->canEmit(0xD3C1) == gen, "ADDA.L D1,A1");
         // …and forms no backend may claim because they are Unsafe or opcode
         // overlaps. Both native generators implement brief indexed EAs;

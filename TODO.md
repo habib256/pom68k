@@ -921,17 +921,26 @@ Open, in ROI order:
   comparable, empreintes inchangées. Deux lectures de pointeur à l'offset
   page `$FFE` restent correctement des gardes cross-page hors phase CPU.
   `CHANGELOG.md` (2026-08-31 fifteenth).
-- [ ] **Queue de couverture Speedometer après `4A76`** : `C029`
+- **Extension byte-to-long Speedometer — CLOS le 2026-08-31** : `49C2` /
+  `49C7` sont `EXTB.L D2/D7`, un mot et quatre cycles fixes. Le décodeur
+  partagé les sépare maintenant de `EXT.L` et du masque large de LEA ; A64 et
+  x64 étendent le byte bas sur 32 bits, gardent X et publient N/Z avec V=C=0.
+  L'oracle négatif/zéro/positif passe 256 checkpoints sans repli sur les deux
+  générateurs. Dans le CPU-test réel, 2 406 → 2 254 unsupported et
+  46 351 → 46 199 replis totaux, empreintes inchangées. `CHANGELOG.md`
+  (2026-08-31 sixteenth).
+- [ ] **Queue de couverture Speedometer après `49C7`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
-  sans preuve de phase périphérique. Les prochains candidats structurels
-  sont MOVEM indexé complet et ADDX/SUBX mémoire. Les
-  décalages dynamiques hors tranche
+  sans preuve de phase périphérique. Le census des neuf phases ne montre
+  **aucun** MOVEM indexé complet ni ADDX/SUBX mémoire : ne pas prioriser ces
+  familles sans nouveau corpus. Les prochains refus fixes observés à tracer
+  sont `61FF` (`BSR.L`, 101) et `4EB2` (93). Les décalages dynamiques hors tranche
   demandent un cache multi-version, pas un plafond d'unrolling plus large.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
   full-indirects, les destinations brèves, `4C00 4004`, les MOVE A7
-  dépendants et `4A76` sont clos ; traiter la suite par contrat, pas par
-  largeur d'opcode.
+  dépendants, `4A76` et `49C7` sont clos ; traiter la suite par contrat, pas
+  par largeur d'opcode.
 - [ ] **Compact `mmu040InstrStart`.** Huit remises à zéro de champs par
   instruction + un `getCCR()` packé ; des champs adjacents pourraient
   s'effondrer en un ou deux stores larges. Petit, mais sur *chaque* instruction

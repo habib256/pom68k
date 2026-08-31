@@ -1429,7 +1429,8 @@ emitters it dispatches to.
   `ADDA`/`SUBA`/`CMPA`; `ADDQ`/`SUBQ`; register **`ADDX`/`SUBX`** B/W/L
   (X input, C=X, cumulative Z); the
   `ADDI`/`SUBI`/`ANDI`/`ORI`/`EORI`/`CMPI` immediates; `TST`, `CLR`, `NEG`,
-  `NOT`, `EXT`, `SWAP`, `LEA`, `PEA`, `Scc`, `BTST` (both forms),
+  `NOT`, `EXT.W`/`EXT.L`/`EXTB.L`, `SWAP`, `LEA`, `PEA`, `Scc`, `BTST`
+  (both forms),
   `LINK`/`UNLK`/`NOP`, **`EXG`** (all three forms) and **`CMPM`** with
   distinct address registers (both since 2026-08-21 — the x64 port of the
   a64 pair, PreflightAll on CMPM's two reads), and
