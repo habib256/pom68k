@@ -869,6 +869,25 @@ fallbacks 47,768 → 47,414 (**−0.74 %**); 2,224,131 / 2,232,758 instructions
 are native (**99.61 %**). The four fingerprints, 270 frames, 2,577 SCSI
 commands and halted=0 remain unchanged.
 
+The next shift audit separates one useful fixed form from three misleading
+dynamic rows. `E410` is exactly `ROXR.B #2,D0`, fixed cost 12. A64 and x64
+now lower only that ROX opcode: X enters the byte as a ninth rotate bit, the
+last outgoing bit becomes both C and X, N/Z describe the final byte, V clears
+and D0's upper 24 bits survive. Its directed 030 loop matches 256 boundaries
+with zero slow instructions on native A64 and x64; all four real 030
+locksteps remain identical and the 116 static census refusals disappear.
+
+The nearby `E0A9`, `E2AB` and `E4A4` rows are dynamic LSR/ASR at observed
+counts 24, 27, 28 and 31. An opcode-scoped extension of the unroll ceiling
+passed both native oracles, but the real recensus turned 382 static refusals
+into 350 count-guard replays and removed only 32 total fallbacks. The block
+cache keeps one specialization per PC, so widening the body cannot cover a
+site whose count changes. That experiment was removed; a multi-version cache
+would be the relevant mechanism. With only E410 retained, one sampled phase
+reports 3,439 unsupported + 43,930 runtime = 47,369, but its instruction mix
+also differs slightly from the prior sample, so only E410's absent 116-row is
+attributed. The four fingerprints, 270 frames and SCSI count remain exact.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G

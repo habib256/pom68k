@@ -445,6 +445,15 @@ void installSpeedometerMuluLongLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
 }
 
+void installSpeedometerRoxrByteLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0xE410);    // ROXR.B #2,D0
+    put16(c, kCode + 0x02, 0x60FC);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+}
+
 void installJsrLoop(FaultCpu& c) {
     put32(c, 0, kStack);
     put32(c, 4, kCode);
@@ -753,6 +762,53 @@ int main() {
               mulStats.blocksCompiled != 0 && mulStats.blocksRun != 0 &&
               (!nativeProduction || mulStats.slowInstrs == 0),
               "Speedometer 4C00 4004 MULU.L stays native on 030");
+    }
+
+    // Speedometer's remaining E410 row is the fixed two-step ROXR.B form.
+    // It rotates X through the byte as a ninth bit, then makes the last
+    // outgoing bit both C and X while leaving D0's upper 24 bits untouched.
+    {
+        FaultCpu roxRef, roxNative;
+        installSpeedometerRoxrByteLoop(roxRef);
+        installSpeedometerRoxrByteLoop(roxNative);
+        roxRef.reset(); roxNative.reset();
+        roxRef.setTC(12u << 20); roxNative.setTC(12u << 20);
+        for (FaultCpu* c : {&roxRef, &roxNative}) {
+            c->setD(0, 0x123456B5u);
+            c->setSR(0x2710);                     // X begins set
+        }
+        roxNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = roxRef.getClock() + 31;
+            roxRef.executeUntil(target);
+            roxNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && roxRef.getD(r) == roxNative.getD(r) &&
+                       roxRef.getA(r) == roxNative.getA(r);
+            same = same && roxRef.getPC() == roxNative.getPC() &&
+                   roxRef.getPC0() == roxNative.getPC0() &&
+                   roxRef.getIRD() == roxNative.getIRD() &&
+                   roxRef.getIRC() == roxNative.getIRC() &&
+                   roxRef.getSR() == roxNative.getSR() &&
+                   roxRef.getClock() == roxNative.getClock();
+            if (!same)
+                std::printf("    030 E410 divergence at checkpoint %d\n", step);
+        }
+        const auto roxStats = roxNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(roxNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(roxNative.jit.backendName(), "x86-64")) &&
+            !roxNative.jit.config().packedCcr;
+        std::printf("    030 ROXR.B compiled=%llu runs=%llu slow=%llu\n",
+                    (unsigned long long)roxStats.blocksCompiled,
+                    (unsigned long long)roxStats.blocksRun,
+                    (unsigned long long)roxStats.slowInstrs);
+        check(same && (roxNative.getD(0) & 0xFFFFFF00u) == 0x12345600u &&
+              roxStats.blocksCompiled != 0 && roxStats.blocksRun != 0 &&
+              (!nativeProduction || roxStats.slowInstrs == 0),
+              "Speedometer E410 ROXR.B #2,D0 stays native on 030");
     }
 
     // Speedometer's 2191/31A9 pair writes two independent RAM sources to

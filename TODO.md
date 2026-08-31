@@ -881,11 +881,22 @@ Open, in ROI order:
   réel fait disparaître les 351 refus statiques, 3 910 → 3 559 unsupported et
   47 768 → 47 414 replis totaux, empreintes inchangées. Les autres extensions
   MULL restent à Moira. `CHANGELOG.md` (2026-08-31 eleventh).
-- [ ] **Queue de couverture Speedometer après `MULU.L`** : `C029`
+- **ROXR byte Speedometer — CLOS le 2026-08-31** : `E410` est exactement
+  `ROXR.B #2,D0`, coût fixe 12. A64/x64 font circuler X comme neuvième bit,
+  republient le dernier bit sortant dans C et X, gardent N/Z, V=0 et les
+  24 bits hauts de D0. L'oracle 030 passe 256 checkpoints sans repli sur les
+  deux générateurs et les 116 refus disparaissent du census réel. L'essai
+  séparé d'élargissement des shifts dynamiques `E0A9`/`E2AB`/`E4A4` à leurs
+  comptes 24–31 n'enlevait que 32 replis (382 statiques devenaient 350
+  gardes) : retiré, car le cache mono-version par PC annule presque tout le
+  bénéfice. `CHANGELOG.md` (2026-08-31 twelfth).
+- [ ] **Queue de couverture Speedometer après `ROXR.B`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
   sans preuve de phase périphérique. Les prochains candidats structurels
-  sont ROX/décalages hors tranche, MOVEM indexé complet et ADDX/SUBX mémoire.
+  sont les MOVE dépendants de A7 (`3F5F`/`2F5F`), `137C`, `4A76`, MOVEM
+  indexé complet et ADDX/SUBX mémoire. Les décalages dynamiques hors tranche
+  demandent un cache multi-version, pas un plafond d'unrolling plus large.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
   full-indirects, les destinations brèves et `4C00 4004` sont clos ; traiter
   la suite par contrat, pas par largeur d'opcode.

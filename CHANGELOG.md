@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why Speedometer's fixed `ROXR.B #2,D0` is worth generating while its count-24–31 shifts are not** → [2026-08-31 (twelfth) — Speedometer's exact ROXR…](#2026-08-31-speedometer-roxr)
 - **how Speedometer's exact `MULU.L D0,D4` became native without losing its 32-bit overflow flag** → [2026-08-31 (eleventh) — Speedometer's long multiply…](#2026-08-31-speedometer-long-multiply)
 - **how Speedometer's brief-indexed MOVE destinations reuse the two-memory preflight without duplicating MMIO effects** → [2026-08-31 (tenth) — Speedometer's indexed MOVE destinations…](#2026-08-31-speedometer-indexed-move-destination)
 - **how Speedometer's full-indirect `MOVE.L`/`MOVEA.L` became a two-read transaction on both 68030 JIT generators** → [2026-08-31 (ninth) — Speedometer's indirect MOVE…](#2026-08-31-speedometer-indirect-move)
@@ -365,6 +366,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-31 (twelfth)** — [Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed](#2026-08-31-speedometer-roxr)
 - **2026-08-31 (eleventh)** — [Speedometer's exact `MULU.L D0,D4` becomes native on A64 and x64 with its 32-bit overflow flag intact](#2026-08-31-speedometer-long-multiply)
 - **2026-08-31 (tenth)** — [Speedometer's brief-indexed MOVE destinations reuse the transactional two-memory path on both 68030 JIT generators](#2026-08-31-speedometer-indexed-move-destination)
 - **2026-08-31 (ninth)** — [Speedometer's full-indirect `MOVE.L`/`MOVEA.L` becomes a two-read direct-RAM transaction on both 68030 JIT generators](#2026-08-31-speedometer-indirect-move)
@@ -723,6 +725,42 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-31-speedometer-roxr"></a>
+## 2026-08-31 (twelfth) — Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed
+
+After long multiplication, the next shift rows mixed two different problems.
+The watcher measured `E0A9` as dynamic LSR counts 24, 27 and 31, `E2AB` as
+LSR count 31, and `E4A4` as ASR count 28. An opcode-scoped extension of the
+existing guarded unroll ceiling passed both A64 and x64 oracles for all five
+observed cases with zero slow instructions. In the real application it was
+nearly useless: 382 static refusals became 350 runtime count-guard failures,
+and total fallbacks moved only 47,414 → 47,382. The cache has one compiled
+specialization per PC; changing the ceiling cannot make a varying count match
+that one version. The experiment was removed instead of landing 24–31-step
+bodies for 32 successful visits.
+
+`E410` is the useful fixed form: `ROXR.B #2,D0`, immediate count two and fixed
+68020/030 cost 12. Both generators admit only this ROX opcode. Their
+step-exact bodies load X as the ninth ring bit, rotate it through bit 7,
+publish the final outgoing bit as C and X, derive N/Z from the byte, clear V
+and write only D0's low byte. Every other ROX form remains in Moira.
+
+The directed 68030 gate starts with X set and a mixed byte, then compares 256
+checkpoints through the nine-bit orbit. It records 256 generated block runs
+and zero slow instructions on native A64 and native x64 under Rosetta. Backend
+parity and all four real LC II 030 locksteps pass.
+
+In the real 270-frame phase, the 116-entry `E410` row disappears. The sampled
+census reads 3,439 unsupported + 43,930 runtime = 47,369 and 2,222,260 /
+2,230,889 statically admissible instructions (**99.61 %**), but the total
+instruction mix differs slightly from the prior sample, so the 45-fallback
+delta is not promoted as causal. CPU fingerprint `ce2e6699cc81f501`, result
+screen `be29f2c8d37f6bb3`, final CPU `5640a493258f74c7`, final screen
+`0289cf442344cc81`, 270 frames, SCSI 2,577 and halted=0 remain exact. The
+histogrammed 0.306598 s wall time is not a speed claim.
 
 ---
 

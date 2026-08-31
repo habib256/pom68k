@@ -3059,7 +3059,8 @@ bool Emitter::emitExg(size_t i) {
 // mapped onto x86's native shifts: x86 leaves OF undefined past count 1
 // and its CF at count >= width differs from the 68k's, so the unrolled
 // single-bit steps that a64's 120k lockstep proved are kept as-is and the
-// two backends agree by construction. ROXd stays interpreted on both.
+// two backends agree by construction. ROXd stays interpreted except for
+// Speedometer's exact immediate ROXR.B #2,D0 witness.
 // The dynamic form is specialized for the traced count, guarded on Dn
 // BEFORE any state changes, and replays through Moira when Dn moved —
 // a64's rule verbatim, including the cycle arithmetic that recovers the
@@ -3070,7 +3071,9 @@ bool Emitter::emitShiftRegister(size_t i) {
     if (sem.operation != SemanticOp::ShiftRegister) return false;
     if (packedCcr_) return false;
     const int sz = sem.sizeIndex, type = sem.action;
-    if (sz > 2 || type == 2 || in.words != 1) return false;
+    if (sz > 2 || (type == 2 && (in.opcode != 0xE410 || sem.dynamic)) ||
+        in.words != 1)
+        return false;
     const int bits = sz == 0 ? 8 : sz == 1 ? 16 : 32;
     const uint32_t mask = bits == 32 ? 0xFFFFFFFFu : (1u << bits) - 1u;
     const bool left = sem.left;
@@ -3098,6 +3101,9 @@ bool Emitter::emitShiftRegister(size_t i) {
     a_.movRM(Sz::L, RDI, D(dn));
     if (bits != 32) a_.aluRI(Asm::Op::AND, Sz::L, RDI, int32_t(mask));
     if (type == 0 && left) a_.aluRR(Asm::Op::XOR, Sz::L, RDX, RDX);
+    if (type == 2) {
+        a_.movzx(Sz::B, R8, at(L_.srX));            // ROX ring's ninth bit
+    }
     if (!count) a_.aluRR(Asm::Op::XOR, Sz::L, RSI, RSI);   // zero count: C=0
     for (int k = 0; k < count; k++) {
         if (left) {
@@ -3128,6 +3134,11 @@ bool Emitter::emitShiftRegister(size_t i) {
                     a_.movRR(Sz::L, RCX, RSI);
                     a_.shiftRI(Sz::L, RCX, 4, uint8_t(bits - 1));
                     a_.aluRR(Asm::Op::OR, Sz::L, RDI, RCX);
+                } else if (type == 2) {
+                    a_.movRR(Sz::L, RCX, R8);
+                    a_.shiftRI(Sz::L, RCX, 4, uint8_t(bits - 1));
+                    a_.aluRR(Asm::Op::OR, Sz::L, RDI, RCX);
+                    a_.movRR(Sz::L, R8, RSI);        // outgoing becomes X
                 }
             }
         }
@@ -4876,7 +4887,7 @@ bool X64Backend::canEmit(uint16_t op) const {
         case SemanticOp::Jump:
             return controlEa(eaCostIndex(mode, reg));
         case SemanticOp::ShiftRegister:
-            return sem.action != 2;  // a64's rule verbatim: no ROXd
+            return sem.action != 2 || op == 0xE410;
         case SemanticOp::Bitfield:
             // a64:1100's rule verbatim: register, (An) and d16(An)
             // operands. The emitter then refuses the forms it cannot lower

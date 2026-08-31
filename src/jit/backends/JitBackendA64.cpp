@@ -1224,7 +1224,7 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::Bitfield:
             return mode == 0 || mode == 2 || mode == 5;
         case SemanticOp::ShiftRegister:
-            return sem.action != 2; // no ROX
+            return sem.action != 2 || op == 0xE410; // Speedometer ROXR.B #2,D0
         case SemanticOp::DivideWord:
             return ei >= 0 && ei != EA_AN;
         case SemanticOp::MultiplyWord:
@@ -3598,7 +3598,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     if (sem.operation == SemanticOp::ShiftRegister) {
         if (gPackedCcr) return false;
         const int sz = sem.sizeIndex, type = sem.action;
-        if (sz > 2 || type == 2 || in.words != 1) return false;
+        if (sz > 2 || (type == 2 && (in.opcode != 0xE410 || sem.dynamic)) ||
+            in.words != 1)
+            return false;
         const int bits = bitsForSizeIndex(sz);
         int count = sem.registerIndex;
         if (sem.dynamic) {
@@ -3631,11 +3633,13 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const bool left = sem.left;
         const int expected = sem.dynamic
                            ? (type == 3 || (type == 0 && left) ? 8 : 6) + count
-                           : type == 1 ? 4 : type == 3 ? 8 : left ? 8 : 6;
+                           : type == 1 ? 4 : type == 2 ? 12
+                             : type == 3 ? 8 : left ? 8 : 6;
         if (traced030(L, in) != unsigned(expected)) return false;
         const unsigned dn = sem.eaReg;
         loadSized(a, L, 11, false, dn, bits); maskResult(a, 11, bits);
         a.movW(13, 0);                              // accumulated ASL overflow
+        if (type == 2) a.ldrB(14, 0, L.srX);        // ROX ring's ninth bit
         if (!count) a.movW(10, 0);                  // dynamic count zero: C=0
         for (int k = 0; k < count; k++) {
             if (left) {
@@ -3659,6 +3663,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                     a.lsrW(12, 11, 1);
                     if (type == 3) {
                         a.lslW(9, 10, unsigned(bits - 1)); a.orrW(12, 12, 9);
+                    } else if (type == 2) {
+                        a.lslW(9, 14, unsigned(bits - 1)); a.orrW(12, 12, 9);
+                        a.movRegW(14, 10);           // outgoing becomes X
                     }
                 }
             }
