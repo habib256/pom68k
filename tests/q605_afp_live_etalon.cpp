@@ -309,7 +309,7 @@ int main() {
     // Chooser row (calibrated): itemY below. A miss leaves the menu open,
     // which the phase-2 dump makes obvious.
     const int chooserY = getenv("POM68K_AFP_CHOOSER_Y")
-                       ? atoi(getenv("POM68K_AFP_CHOOSER_Y")) : 58;
+                       ? atoi(getenv("POM68K_AFP_CHOOSER_Y")) : 139;
     if (!click(60, chooserY)) { std::fprintf(stderr, "FAIL: chooser item\n"); return 1; }
     frames(600);                              // the DA loads from disk
     snap("afp_live_2_chooser.ppm");
@@ -318,19 +318,23 @@ int main() {
     if (stopPhase <= 2) return 0;
 
     // ── Phase 3: AppleShare device → NBP lookup → server list ────────────
-    const int asX = getenv("POM68K_AFP_AS_X") ? atoi(getenv("POM68K_AFP_AS_X")) : 150;
-    const int asY = getenv("POM68K_AFP_AS_Y") ? atoi(getenv("POM68K_AFP_AS_Y")) : 130;
+    const int asX = getenv("POM68K_AFP_AS_X") ? atoi(getenv("POM68K_AFP_AS_X")) : 88;
+    const int asY = getenv("POM68K_AFP_AS_Y") ? atoi(getenv("POM68K_AFP_AS_Y")) : 84;
     if (!click(asX, asY)) { std::fprintf(stderr, "FAIL: AppleShare icon\n"); return 1; }
     frames(900);                              // NBP lookup + list fill
     snap("afp_live_3_servers.ppm");
-    std::printf("phase 3: server list (NBP lookups=%ld)\n",
-                hub.snapshot().net.nbpLookups);
+    const long nbpLookups = hub.snapshot().net.nbpLookups;
+    std::printf("phase 3: server list (NBP lookups=%ld)\n", nbpLookups);
     std::fflush(stdout);
+    if (nbpLookups < 1) {
+        std::fprintf(stderr, "FAIL: AppleShare did not issue an NBP lookup\n");
+        return 1;
+    }
     if (stopPhase <= 3) return 0;
 
     // ── Phase 4: pick "POM68K", OK → login dialog ────────────────────────
-    const int svX = getenv("POM68K_AFP_SV_X") ? atoi(getenv("POM68K_AFP_SV_X")) : 420;
-    const int svY = getenv("POM68K_AFP_SV_Y") ? atoi(getenv("POM68K_AFP_SV_Y")) : 150;
+    const int svX = getenv("POM68K_AFP_SV_X") ? atoi(getenv("POM68K_AFP_SV_X")) : 300;
+    const int svY = getenv("POM68K_AFP_SV_Y") ? atoi(getenv("POM68K_AFP_SV_Y")) : 88;
     if (!click(svX, svY, 2)) { std::fprintf(stderr, "FAIL: server row\n"); return 1; }
     frames(600);
     snap("afp_live_4_login.ppm");
@@ -339,24 +343,28 @@ int main() {
     if (stopPhase <= 4) return 0;
 
     // ── Phase 5: Guest radio, OK → volume list ───────────────────────────
-    const int guX = getenv("POM68K_AFP_GUEST_X") ? atoi(getenv("POM68K_AFP_GUEST_X")) : 220;
-    const int guY = getenv("POM68K_AFP_GUEST_Y") ? atoi(getenv("POM68K_AFP_GUEST_Y")) : 180;
+    const int guX = getenv("POM68K_AFP_GUEST_X") ? atoi(getenv("POM68K_AFP_GUEST_X")) : 146;
+    const int guY = getenv("POM68K_AFP_GUEST_Y") ? atoi(getenv("POM68K_AFP_GUEST_Y")) : 153;
     if (!click(guX, guY)) { std::fprintf(stderr, "FAIL: guest radio\n"); return 1; }
     frames(60);
     key(0x24, 8, 90);                         // Return = Connect/OK
     frames(600);
     snap("afp_live_5_volumes.ppm");
-    std::printf("phase 5: volume list (AFP sessions=%d)\n",
-                hub.snapshot().afp.sessions);
+    const int afpSessions = hub.snapshot().afp.sessions;
+    std::printf("phase 5: volume list (AFP sessions=%d)\n", afpSessions);
     std::fflush(stdout);
+    if (afpSessions < 1) {
+        std::fprintf(stderr, "FAIL: guest login did not open an AFP session\n");
+        return 1;
+    }
     if (stopPhase <= 5) return 0;
 
     // ── Phase 6: mount, close the Chooser ────────────────────────────────
     key(0x24, 8, 90);                         // Return = OK on "Echange"
     frames(600);
     // Close box of the Chooser window (calibrated).
-    const int cbX = getenv("POM68K_AFP_CLOSE_X") ? atoi(getenv("POM68K_AFP_CLOSE_X")) : 122;
-    const int cbY = getenv("POM68K_AFP_CLOSE_Y") ? atoi(getenv("POM68K_AFP_CLOSE_Y")) : 84;
+    const int cbX = getenv("POM68K_AFP_CLOSE_X") ? atoi(getenv("POM68K_AFP_CLOSE_X")) : 34;
+    const int cbY = getenv("POM68K_AFP_CLOSE_Y") ? atoi(getenv("POM68K_AFP_CLOSE_Y")) : 40;
     if (!click(cbX, cbY)) { std::fprintf(stderr, "FAIL: chooser close\n"); return 1; }
     frames(300);
     Screen desk1 = snap("afp_live_6_mounted.ppm");

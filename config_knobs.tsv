@@ -117,6 +117,8 @@ POM68K_JIT_LOCKSTEP_N	test	owner:tests/jit_lockstep_test.cpp
 POM68K_JIT_LOCKSTEP_PERIPH_DUMP	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_TRACE_AT	test	owner:tests/jit_lockstep_test.cpp
+POM68K_JIT_LOCKSTEP_TRACE_CLOCK_FROM	test	owner:tests/jit_lockstep_test.cpp
+POM68K_JIT_LOCKSTEP_TRACE_CLOCK_TO	test	owner:tests/jit_lockstep_test.cpp
 POM68K_JIT_LOCKSTEP_TRACE_FROM	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_WRITE_TRACE_AT	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_MAX_BLOCKS	product	gate:jit_backend_test
