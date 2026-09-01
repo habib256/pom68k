@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -240,17 +241,25 @@ int main(int argc, char** argv) {
     if (hidden) std::printf("[jit_lockstep] hidden CPU/device state comparison enabled\n");
     long traceAt = -1;
     if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_TRACE_AT")) traceAt = std::atol(t);
+    long long traceClockFrom = std::numeric_limits<long long>::min();
+    long long traceClockTo = std::numeric_limits<long long>::max();
+    if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_TRACE_CLOCK_FROM"))
+        traceClockFrom = std::atoll(t);
+    if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_TRACE_CLOCK_TO"))
+        traceClockTo = std::atoll(t);
     long activeStep = -1;
     auto trace = [&](const char* who) {
         return [&, who](const char* event, const Cpu040::LockstepDebug& d) {
             if (activeStep != traceAt) return;
+            if (d.clock < traceClockFrom || d.clock > traceClockTo) return;
             const Cpu040& cpu = std::strcmp(who, "interp") == 0 ? cpuRef : cpuJit;
             std::printf("[jit_lockstep] trace step=%ld %-6s %-5s "
-                        "pc=$%08X clk=%lld last=%lld acc=%lld deadline=%lld "
+                        "pc=$%08X ird=$%04X irc=$%04X clk=%lld last=%lld "
+                        "acc=%lld deadline=%lld "
                         "D3=$%08X SR=$%04X flags=$%X pin=%u sampled=%u "
                         "memIpl=%d next=%d\n",
                         activeStep, who, event,
-                        cpu.getPC(),
+                        cpu.getPC(), cpu.getIRD(), cpu.getIRC(),
                         (long long)d.clock, (long long)d.lastPeriphClock,
                         (long long)d.periphAccum, (long long)d.periphDeadline,
                         cpu.getD(3), cpu.getSR(), d.flags, d.iplPin, d.iplSampled,

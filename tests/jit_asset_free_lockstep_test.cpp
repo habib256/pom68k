@@ -157,6 +157,7 @@ constexpr uint32_t kData = 0x004000;
 constexpr uint32_t kStack = 0x00E000;
 constexpr uint32_t kHole = 0x0F0000;
 constexpr uint32_t kDevice = 0x00500000;
+constexpr uint32_t kTailDevice = kDevice + 0x2000;
 constexpr uint32_t kGuardA = kCode;
 constexpr uint32_t kGuardB = kCode + 0x40;
 constexpr uint32_t kGuardCross = kCode + 0xFC;
@@ -194,7 +195,7 @@ public:
         return p >= kHole && p < kHole + 0x10000;
     }
     static bool inDevice(uint32_t a) {
-        return a >= kDevice && a < kDevice + 0x1000;
+        return (a >= kDevice && a < kDevice + 0x1000) || a == kTailDevice;
     }
 
 private:
@@ -381,6 +382,12 @@ void installExactSourceLoop(SyntheticCpu& c) {
     put16(c, kCode + 8, 0x60F6);       // BRA.S kCode
 }
 
+void installAddressSourceAluLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0, 0xD089);       // ADD.L A1,D0
+    put16(c, kCode + 2, 0x60FC);       // BRA.S kCode
+}
+
 void installBriefIndexedLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x2430);    // MOVE.L 4(A0,D1.W*2),D2
@@ -401,6 +408,42 @@ void installBriefIndexedLoop(SyntheticCpu& c) {
         put16(c, kCode + p, 0x4E71);   // padding before PC-relative literal
     put32(c, kCode + 0x30, 0x89AB'CDEFu);
     put32(c, kData + 0x22, 0x0123'4567u);
+}
+
+// MOVE's destination mode is encoded separately from its source mode. This
+// loop crosses the complete protocol split for a 68040 brief-indexed write:
+// register and immediate sources use SingleWrite, while direct and indexed
+// memory sources use PreflightAll (or the proved atomic cache-pair door).
+// Byte/word/long values make the destination cost and packed flag widths
+// independently visible.
+void installIndexedMoveDestinationLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x7203);    // MOVEQ #3,D1 (signed word index)
+    put16(c, kCode + 0x02, 0x7480);    // MOVEQ #-128,D2
+    put16(c, kCode + 0x04, 0x263C);    // MOVE.L #$81234567,D3
+    put32(c, kCode + 0x06, 0x8123'4567u);
+    put16(c, kCode + 0x0A, 0x1182);    // MOVE.B D2,0(A0,D1.W)
+    put16(c, kCode + 0x0C, 0x1000);
+    put16(c, kCode + 0x0E, 0x31BC);    // MOVE.W #$8001,4(A0,D1.W)
+    put16(c, kCode + 0x10, 0x8001);
+    put16(c, kCode + 0x12, 0x1004);
+    put16(c, kCode + 0x14, 0x2183);    // MOVE.L D3,8(A0,D1.W)
+    put16(c, kCode + 0x16, 0x1008);
+    put16(c, kCode + 0x18, 0x3192);    // MOVE.W (A2),12(A0,D1.W)
+    put16(c, kCode + 0x1A, 0x100C);
+    put16(c, kCode + 0x1C, 0x21B2);    // MOVE.L 4(A2,D1.W*2),16(A0,D1.W)
+    put16(c, kCode + 0x1E, 0x1204);
+    put16(c, kCode + 0x20, 0x1010);
+    put16(c, kCode + 0x22, 0x60DC);    // BRA.S kCode
+    put16(c, kData + 0x200, 0x2468);
+    put32(c, kData + 0x20A, 0x89AB'CDEFu);
+}
+
+void installIndexedMoveBoundaryLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x1180);    // MOVE.B D0,0(A0,D1.W)
+    put16(c, kCode + 0x02, 0x1000);
+    put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
 }
 
 void installFullDirectLeaLoop(SyntheticCpu& c) {
@@ -693,6 +736,44 @@ void installMemoryBitfieldWriteLoop(SyntheticCpu& c) {
     put32(c, kData + 0x00, 0xA55A'3CC3u);
     put32(c, kData + 0x04, 0x5AA5'C33Cu);
     put32(c, kData + 0x08, 0x89AB'CDEFu);
+}
+
+// Crossing memory bitfield writes exercise the four-slot transaction shared
+// by both native generators. The final dynamic BFCHG selects width 8 at run
+// time, proving that the maximum-path contract still branches around an
+// unused tail byte. The scenario is run under both CCR layouts and requires
+// native residency on both generators.
+void installMemoryBitfieldTailWriteLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0x7207);    // MOVEQ #7,D1
+    put16(c, kCode + 0x02, 0x7420);    // MOVEQ #32,D2
+    put16(c, kCode + 0x04, 0x203C);    // MOVE.L #$13579BDF,D0
+    put32(c, kCode + 0x06, 0x1357'9BDFu);
+    put16(c, kCode + 0x0A, 0xEAD0);    // BFCHG (A0){D1:D2}
+    put16(c, kCode + 0x0C, 0x0862);
+    put16(c, kCode + 0x0E, 0xECE9);    // BFCLR 4(A1){2:31}, 1 tail bit
+    put16(c, kCode + 0x10, 0x009F);
+    put16(c, kCode + 0x12, 0x0004);
+    put16(c, kCode + 0x14, 0xEED0);    // BFSET (A0){5:31}, 4 tail bits
+    put16(c, kCode + 0x16, 0x015F);
+    put16(c, kCode + 0x18, 0xEFE9);    // BFINS D0,4(A1){7:27}, 2 tail bits
+    put16(c, kCode + 0x1A, 0x01DB);
+    put16(c, kCode + 0x1C, 0x0004);
+    put16(c, kCode + 0x1E, 0x7408);    // MOVEQ #8,D2: no-tail runtime arm
+    put16(c, kCode + 0x20, 0xEAD0);    // BFCHG (A0){D1:D2}
+    put16(c, kCode + 0x22, 0x0862);
+    put16(c, kCode + 0x24, 0x60DA);    // BRA.S kCode
+    put32(c, kData + 0x100, 0xA55A'3CC3u);
+    put32(c, kData + 0x104, 0x5AA5'C33Cu);
+    put32(c, kData + 0x204, 0x89AB'CDEFu);
+    put32(c, kData + 0x208, 0x7654'3210u);
+}
+
+void installMemoryBitfieldTailBoundaryLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0x00, 0xEAD0);    // BFCHG (A0){7:32}
+    put16(c, kCode + 0x02, 0x01C0);
+    put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
 }
 
 // Speedometer's exact three hot forms plus predecrement/postincrement memory
@@ -1269,6 +1350,39 @@ bool runExactSourceMove() {
            native.deviceReads != 0;
 }
 
+bool runAddressSourceAluLockstep() {
+    SyntheticCpu ref, native;
+    installAddressSourceAluLoop(ref);
+    installAddressSourceAluLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setD(0, 1);
+        c->setA(1, 0xFFFF'FFFFu);
+        c->setSR(0x2710);
+    }
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 37;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true)) {
+            std::printf("    address-source ALU divergence checkpoint=%d "
+                        "D0=%08X/%08X SR=%04X/%04X\n", step,
+                        ref.getD(0), native.getD(0), ref.getSR(), native.getSR());
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    address-source ALU compiled=%llu runs=%llu native=%llu slow=%llu\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    return s.blocksCompiled != 0 && s.blocksRun != 0 && s.slowInstrs == 0;
+}
+
 bool runBriefIndexedLockstep() {
     SyntheticCpu ref, native;
     installBriefIndexedLoop(ref);
@@ -1307,6 +1421,127 @@ bool runBriefIndexedLockstep() {
            native.getA(3) == kData + 0x22 &&
            native.getA(4) == kCode + 0x24 &&
            native.mem[kData + 0x88] == 0xFF && native.getA(7) == kStack;
+}
+
+bool runIndexedMoveDestinationLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
+    installIndexedMoveDestinationLoop(ref);
+    installIndexedMoveDestinationLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setA(0, kData + 0x100);
+        c->setA(2, kData + 0x200);
+        c->setSR(0x2710);              // X survives MOVE flag publication
+    }
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 43;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    indexed MOVE destination divergence at "
+                        "checkpoint %d\n", step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    indexed MOVE destination packed=%d compiled=%llu "
+                "runs=%llu native=%llu slow=%llu\n",
+                int(packedCcr),
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    const uint32_t base = kData + 0x100;
+    return s.blocksCompiled != 0 && s.blocksRun != 0 && s.slowInstrs == 0 &&
+           native.mem[base + 3] == 0x80 &&
+           native.mem[base + 7] == 0x80 && native.mem[base + 8] == 0x01 &&
+           native.mem[base + 11] == 0x81 && native.mem[base + 12] == 0x23 &&
+           native.mem[base + 13] == 0x45 && native.mem[base + 14] == 0x67 &&
+           native.mem[base + 15] == 0x24 && native.mem[base + 16] == 0x68 &&
+           native.mem[base + 19] == 0x89 && native.mem[base + 20] == 0xAB &&
+           native.mem[base + 21] == 0xCD && native.mem[base + 22] == 0xEF &&
+           (native.getSR() & 0x18) == 0x18;
+}
+
+enum class IndexedMoveBoundary { Device, Fault };
+
+void prepareIndexedMoveBoundary(SyntheticCpu& c,
+                                IndexedMoveBoundary boundary) {
+    c.setPC(kCode);
+    c.setPC0(kCode);
+    c.setIRD(0x1180);
+    c.setIRC(0x1000);
+    c.setA(0, boundary == IndexedMoveBoundary::Device ? kDevice : kHole);
+    c.setA(7, kStack);
+    c.setD(0, 0x80);
+    c.setD(1, 0);
+    c.setSR(0x2710);
+    c.setClock(0);
+    c.busFaults = 0;
+    c.deviceReads = 0;
+    c.deviceWrites = 0;
+    c.deviceValue = 0xA5;
+    clearRunFlags(c);
+}
+
+bool runIndexedMoveBoundary(IndexedMoveBoundary boundary, bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
+    installIndexedMoveBoundaryLoop(ref);
+    installIndexedMoveBoundaryLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+
+    native.setA(0, kData);
+    native.setD(1, 0);
+    native.setD(0, 0x42);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 512);
+    const auto trained = native.jit.stats().snapshot();
+    if (trained.blocksCompiled == 0) return false;
+
+    ref.mem = native.mem;
+    prepareIndexedMoveBoundary(ref, boundary);
+    prepareIndexedMoveBoundary(native, boundary);
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+
+    const bool same = sameCpu(ref, native, true) &&
+        sameMemory(ref, native, 0, kRamBytes, true);
+    const bool nativeEntry = after.blocksRun > before.blocksRun;
+    if (boundary == IndexedMoveBoundary::Device) {
+        std::printf("    indexed MOVE MMIO packed=%d writes=%u/%u "
+                    "value=%02X/%02X slow=%llu\n",
+                    int(packedCcr), ref.deviceWrites, native.deviceWrites,
+                    ref.deviceValue, native.deviceValue,
+                    (unsigned long long)(after.slowInstrs -
+                                         before.slowInstrs));
+        return same && nativeEntry && ref.deviceReads == 0 &&
+               native.deviceReads == 0 && ref.deviceWrites == 1 &&
+               native.deviceWrites == 1 && ref.deviceValue == 0x80 &&
+               native.deviceValue == ref.deviceValue &&
+               // A64 attributes the successful exact thunk to slowInstrs;
+               // x64 counts only an interpreter replay. Both conventions
+               // are conformant here, but neither may execute it twice.
+               after.slowInstrs <= before.slowInstrs + 1;
+    }
+
+    const bool frame = ref.getA(7) == kStack - 60 &&
+        native.getA(7) == ref.getA(7) &&
+        sameMemory(ref, native, ref.getA(7), 60, true);
+    return same && frame && nativeEntry && ref.busFaults != 0 &&
+           native.busFaults != 0 && ref.deviceReads == 0 &&
+           native.deviceReads == 0 && ref.deviceWrites == 0 &&
+           native.deviceWrites == 0;
 }
 
 bool runFullDirectLeaLockstep() {
@@ -1609,8 +1844,20 @@ bool runBitRmwBoundary(BitRmwBoundary boundary, bool packedCcr) {
            native.deviceWrites == 0;
 }
 
-bool runDynamicBitfieldLockstep() {
-    SyntheticCpu ref, native;
+bool bitfieldNativeResidencyRequired(const SyntheticCpu& cpu) {
+    return !std::strcmp(cpu.jit.backendName(), "aarch64") ||
+           !std::strcmp(cpu.jit.backendName(), "x86-64");
+}
+
+bool validBitfieldResidency(const SyntheticCpu& cpu, uint64_t slowInstrs) {
+    return !bitfieldNativeResidencyRequired(cpu) ||
+           slowInstrs == 0;
+}
+
+bool runDynamicBitfieldLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
     installDynamicBitfieldLoop(ref, true);
     installDynamicBitfieldLoop(native, true);
     resetCpu(ref);
@@ -1636,21 +1883,20 @@ bool runDynamicBitfieldLockstep() {
         }
     }
     const auto s = native.jit.stats().snapshot();
-    std::printf("    dynamic-bitfield compiled=%llu runs=%llu native=%llu slow=%llu\n",
+    std::printf("    dynamic-bitfield packed=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n", int(packedCcr),
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    const bool nativeProduction =
-        (!std::strcmp(native.jit.backendName(), "aarch64") ||
-         !std::strcmp(native.jit.backendName(), "x86-64")) &&
-        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!nativeProduction || s.slowInstrs == 0);
+           validBitfieldResidency(native, s.slowInstrs);
 }
 
-bool runDynamicRegisterBitfieldLockstep() {
-    SyntheticCpu ref, native;
+bool runDynamicRegisterBitfieldLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
     installDynamicBitfieldLoop(ref, false);
     installDynamicBitfieldLoop(native, false);
     resetCpu(ref);
@@ -1669,21 +1915,20 @@ bool runDynamicRegisterBitfieldLockstep() {
         }
     }
     const auto s = native.jit.stats().snapshot();
-    std::printf("    dynamic-register-bitfield compiled=%llu runs=%llu native=%llu slow=%llu\n",
+    std::printf("    dynamic-register-bitfield packed=%d compiled=%llu "
+                "runs=%llu native=%llu slow=%llu\n", int(packedCcr),
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    const bool nativeProduction =
-        (!std::strcmp(native.jit.backendName(), "aarch64") ||
-         !std::strcmp(native.jit.backendName(), "x86-64")) &&
-        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!nativeProduction || s.slowInstrs == 0);
+           validBitfieldResidency(native, s.slowInstrs);
 }
 
-bool runStaticBitfieldLockstep() {
-    SyntheticCpu ref, native;
+bool runStaticBitfieldLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
     installStaticBitfieldLoop(ref);
     installStaticBitfieldLoop(native);
     resetCpu(ref);
@@ -1702,23 +1947,22 @@ bool runStaticBitfieldLockstep() {
         }
     }
     const auto s = native.jit.stats().snapshot();
-    std::printf("    static-bitfield compiled=%llu runs=%llu native=%llu slow=%llu\n",
+    std::printf("    static-bitfield packed=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n", int(packedCcr),
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
     // Like the dedicated dynamic-register scenario above, this residency
     // claim holds on BOTH production generators (2026-08-30).
-    const bool nativeProduction =
-        (!std::strcmp(native.jit.backendName(), "aarch64") ||
-         !std::strcmp(native.jit.backendName(), "x86-64")) &&
-        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!nativeProduction || s.slowInstrs == 0);
+           validBitfieldResidency(native, s.slowInstrs);
 }
 
-bool runMemoryBitfieldLockstep() {
-    SyntheticCpu ref, native;
+bool runMemoryBitfieldLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
     installMemoryBitfieldLoop(ref);
     installMemoryBitfieldLoop(native);
     resetCpu(ref);
@@ -1744,21 +1988,20 @@ bool runMemoryBitfieldLockstep() {
         }
     }
     const auto s = native.jit.stats().snapshot();
-    std::printf("    memory-bitfield compiled=%llu runs=%llu native=%llu slow=%llu\n",
+    std::printf("    memory-bitfield packed=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n", int(packedCcr),
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    const bool nativeProduction =
-        (!std::strcmp(native.jit.backendName(), "aarch64") ||
-         !std::strcmp(native.jit.backendName(), "x86-64")) &&
-        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!nativeProduction || s.slowInstrs == 0);
+           validBitfieldResidency(native, s.slowInstrs);
 }
 
-bool runMemoryBitfieldWriteLockstep() {
-    SyntheticCpu ref, native;
+bool runMemoryBitfieldWriteLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
     installMemoryBitfieldWriteLoop(ref);
     installMemoryBitfieldWriteLoop(native);
     resetCpu(ref);
@@ -1781,17 +2024,121 @@ bool runMemoryBitfieldWriteLockstep() {
         }
     }
     const auto s = native.jit.stats().snapshot();
-    std::printf("    memory-bitfield-write compiled=%llu runs=%llu native=%llu slow=%llu\n",
+    std::printf("    memory-bitfield-write packed=%d compiled=%llu runs=%llu "
+                "native=%llu slow=%llu\n", int(packedCcr),
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
-    const bool nativeProduction =
-        (!std::strcmp(native.jit.backendName(), "aarch64") ||
-         !std::strcmp(native.jit.backendName(), "x86-64")) &&
-        !native.jit.config().packedCcr;
     return s.blocksCompiled != 0 && s.blocksRun != 0 &&
-           (!nativeProduction || s.slowInstrs == 0);
+           validBitfieldResidency(native, s.slowInstrs);
+}
+
+bool runMemoryBitfieldTailWriteLockstep(bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
+    installMemoryBitfieldTailWriteLoop(ref);
+    installMemoryBitfieldTailWriteLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setA(0, kData + 0x100);
+        c->setA(1, kData + 0x200);
+    }
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 47;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    memory-bitfield-tail-write divergence at "
+                        "checkpoint %d\n", step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    memory-bitfield-tail-write packed=%d compiled=%llu "
+                "runs=%llu native=%llu slow=%llu\n", int(packedCcr),
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           validBitfieldResidency(native, s.slowInstrs);
+}
+
+enum class BitfieldTailBoundary { Device, Fault };
+
+void prepareMemoryBitfieldTailBoundary(SyntheticCpu& c,
+                                       BitfieldTailBoundary boundary) {
+    c.setPC(kCode);
+    c.setPC0(kCode);
+    c.setIRD(0xEAD0);
+    c.setIRC(0x01C0);
+    c.setA(0, boundary == BitfieldTailBoundary::Device
+                  ? kTailDevice - 4 : kHole - 4);
+    c.setA(7, kStack);
+    c.setSR(0x271F);
+    c.setClock(0);
+    c.busFaults = 0;
+    c.deviceReads = 0;
+    c.deviceWrites = 0;
+    c.deviceValue = 0xA5;
+    put32(c, SyntheticCpu::bus(c.getA(0)), 0x1234'5678u);
+    clearRunFlags(c);
+}
+
+bool runMemoryBitfieldTailBoundary(BitfieldTailBoundary boundary,
+                                   bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.packedCcr = packedCcr;
+    SyntheticCpu ref(config), native(config);
+    installMemoryBitfieldTailBoundaryLoop(ref);
+    installMemoryBitfieldTailBoundaryLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+
+    native.setA(0, kData);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 512);
+    const auto trained = native.jit.stats().snapshot();
+    if (trained.blocksCompiled == 0) return false;
+
+    ref.mem = native.mem;
+    prepareMemoryBitfieldTailBoundary(ref, boundary);
+    prepareMemoryBitfieldTailBoundary(native, boundary);
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+
+    const bool same = sameCpu(ref, native, true) &&
+        sameMemory(ref, native, 0, kRamBytes, true);
+    const bool nativeEntry = after.blocksRun > before.blocksRun;
+    if (boundary == BitfieldTailBoundary::Device) {
+        std::printf("    memory-bitfield-tail MMIO packed=%d reads=%u/%u "
+                    "writes=%u/%u value=%02X/%02X slow=%llu\n",
+                    int(packedCcr), ref.deviceReads, native.deviceReads,
+                    ref.deviceWrites, native.deviceWrites,
+                    ref.deviceValue, native.deviceValue,
+                    (unsigned long long)(after.slowInstrs - before.slowInstrs));
+        return same && nativeEntry && ref.deviceReads == 1 &&
+               native.deviceReads == 1 && ref.deviceWrites == 1 &&
+               native.deviceWrites == 1 && ref.deviceValue == 0x5B &&
+               native.deviceValue == ref.deviceValue &&
+               after.slowInstrs == before.slowInstrs + 1;
+    }
+
+    const bool frame = ref.getA(7) == kStack - 60 &&
+        native.getA(7) == ref.getA(7) &&
+        sameMemory(ref, native, ref.getA(7), 60, true);
+    return same && frame && nativeEntry && ref.busFaults != 0 &&
+           native.busFaults != 0 && ref.deviceReads == 0 &&
+           native.deviceReads == 0 && ref.deviceWrites == 0 &&
+           native.deviceWrites == 0;
 }
 
 bool runWordMultiplyLockstep() {
@@ -2719,8 +3066,22 @@ int main() {
           "restart-read /BERR boundary and format-$7 frame match the interpreter");
     check(runExactSourceMove(),
           "exact MMIO source + preflighted RAM destination stays native and exact");
+    check(runAddressSourceAluLockstep(),
+          "ADD.L address-register source preserves value and flags natively");
     check(runBriefIndexedLockstep(),
           "brief indexed reads, Scc, PEA and LEA stay native and exact");
+    check(runIndexedMoveDestinationLockstep(false),
+          "brief-indexed MOVE destinations stay native across every memory protocol");
+    check(runIndexedMoveDestinationLockstep(true),
+          "packed CCR keeps indexed MOVE byte/word/long flags and writes exact");
+    check(runIndexedMoveBoundary(IndexedMoveBoundary::Device, false),
+          "indexed MOVE executes one exact MMIO write from canonical CCR code");
+    check(runIndexedMoveBoundary(IndexedMoveBoundary::Fault, false),
+          "indexed MOVE /BERR replays pristine and builds the exact format-$7 frame");
+    check(runIndexedMoveBoundary(IndexedMoveBoundary::Device, true),
+          "packed indexed MOVE executes one exact MMIO write");
+    check(runIndexedMoveBoundary(IndexedMoveBoundary::Fault, true),
+          "packed indexed MOVE preserves the /BERR result and frame");
     check(runFullDirectLeaLockstep(),
           "direct full-index LEA stays native across base/index suppression");
     check(runFullIndirectLeaLockstep(),
@@ -2745,16 +3106,38 @@ int main() {
           "TST immediate and CMPI PC-relative stay native and exact");
     check(runLegalReadOnlyEaLockstep(true),
           "legal read-only 020 EAs preserve packed X and publish exact NZVC");
-    check(runDynamicBitfieldLockstep(),
+    check(runDynamicBitfieldLockstep(false),
           "dynamic register and tailed memory bitfields stay native on BOTH generators");
-    check(runDynamicRegisterBitfieldLockstep(),
+    check(runDynamicBitfieldLockstep(true),
+          "dynamic and tailed memory bitfields publish packed CCR natively");
+    check(runDynamicRegisterBitfieldLockstep(false),
           "dynamic register bitfields stay native and exact on BOTH generators");
-    check(runStaticBitfieldLockstep(),
+    check(runDynamicRegisterBitfieldLockstep(true),
+          "dynamic register bitfields publish packed CCR natively");
+    check(runStaticBitfieldLockstep(false),
           "static register bitfields stay native and exact on BOTH generators");
-    check(runMemoryBitfieldLockstep(),
+    check(runStaticBitfieldLockstep(true),
+          "static register bitfields publish packed CCR natively");
+    check(runMemoryBitfieldLockstep(false),
           "tailless memory bitfield reads stay native and exact on BOTH generators");
-    check(runMemoryBitfieldWriteLockstep(),
+    check(runMemoryBitfieldLockstep(true),
+          "tailless memory bitfield reads publish packed CCR natively");
+    check(runMemoryBitfieldWriteLockstep(false),
           "tailless memory bitfield writes stay native and exact on BOTH generators");
+    check(runMemoryBitfieldWriteLockstep(true),
+          "tailless memory bitfield writes publish packed CCR natively");
+    check(runMemoryBitfieldTailWriteLockstep(false),
+          "crossing memory bitfield writes stay native and exact on BOTH generators");
+    check(runMemoryBitfieldTailWriteLockstep(true),
+          "crossing memory bitfield writes publish packed CCR natively");
+    check(runMemoryBitfieldTailBoundary(BitfieldTailBoundary::Device, false),
+          "crossing bitfield write refuses before tail MMIO then replays once");
+    check(runMemoryBitfieldTailBoundary(BitfieldTailBoundary::Device, true),
+          "packed crossing bitfield write replays tail MMIO exactly once");
+    check(runMemoryBitfieldTailBoundary(BitfieldTailBoundary::Fault, false),
+          "crossing bitfield tail /BERR preserves partial RAM and format-$7 frame");
+    check(runMemoryBitfieldTailBoundary(BitfieldTailBoundary::Fault, true),
+          "packed crossing bitfield tail preserves the exact /BERR result");
     check(runWordMultiplyLockstep(),
           "Speedometer MULU.W/MULS.W register, immediate and RAM forms stay native");
     check(runAddSubExtendLockstep(),

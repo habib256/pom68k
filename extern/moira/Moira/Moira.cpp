@@ -1277,6 +1277,8 @@ Moira::setIPL(u8 val)
 void
 Moira::pollIpl()
 {
+    if (pomJitTimingProbe) [[unlikely]] pomJitTiming.iplPolls++;
+
     // Feature OFF (défaut) : comportement Moira d'origine, byte-identique
     // (étalons 19/0 vérifiés). POLL_IPL ≡ reg.ipl = ipl.
     if (iplDelay4 == 0) { reg.ipl = ipl; return; }

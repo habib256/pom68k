@@ -2212,6 +2212,24 @@ Moira::pomJitCache040Publish(u32 logical, int bytes, bool write)
     (void)pageBase; (void)pageLen;
     if (unsigned(phys & 15) > 16u - unsigned(bytes)) return;
 
+    // A native cache-line hit bypasses mmu040AtcLookup. Record the entry the
+    // completed exact access just selected so generated code can prove that
+    // bypass would be a no-op for BOTH pieces of replacement state: last[]
+    // and the entry's MRU bit. If either later differs, replaying the exact
+    // access performs the required touch/global-MRU reset before republishing.
+    // Transparent and MMU-disabled translations have no ATC side effect.
+    u8 atcIndex = 0xFF;
+    const bool *atcMru = nullptr;
+    if (!mmu040MatchTTR(logical, bool(reg.sr.s), true) && mmu040Enabled()) {
+        const int idx = int(mmu040AtcLastD[write ? 1 : 0]);
+        if (idx < 0 || idx >= MMU040_ATC_ENTRIES) return;
+        const Mmu040AtcEntry &atc = mmu040AtcD[idx];
+        if (!atc.valid || (atc.logical & mmu040PageMaskI()) !=
+                          (logical & mmu040PageMaskI())) return;
+        atcIndex = u8(idx);
+        atcMru = &atc.mru;
+    }
+
     Cache040::Line *line = pomCache040D.lookup(phys);
     if (!line) return;                   // disabled/NC/WT write miss
 
@@ -2221,7 +2239,9 @@ Moira::pomJitCache040Publish(u32 logical, int bytes, bool write)
         e.tag = logicalTag;
         e.physicalTag = line->tag;
         e.generation = pomJitCache040Gen;
+        e.atcIndex = atcIndex;
         e.line = line;
+        e.atcMru = atcMru;
     };
     publish(pomJitCache040R.e[slot]);
 
@@ -2268,6 +2288,7 @@ Moira::pomJitLayout() const
     l.cache040R = at(&pomJitCache040R.e[0]);
     l.cache040W = at(&pomJitCache040W.e[0]);
     l.cache040Gen = at(&pomJitCache040Gen);
+    l.cache040AtcLastD = at(&mmu040AtcLastD[0]);
     l.cache040Hits = at(&pomCache040D.hits);
     l.cache040NativeReadHits = at(&pomJitCache040NativeReadHits);
     l.cache040NativeWriteHits = at(&pomJitCache040NativeWriteHits);

@@ -346,8 +346,9 @@ enum Flag : uint8_t {
 
 // ── Memory-access contract ──────────────────────────────────────────────
 // This is intentionally about guest-visible semantics, never host pointers
-// or registers. Two slots cover ordinary 68k instructions; MOVEM uses the
-// variable-count marker and describes the repeated access in slot zero.
+// or registers. Four slots cover the widest fixed instruction (a crossing
+// memory-bitfield mutation); MOVEM uses the variable-count marker and
+// describes the repeated access in slot zero.
 enum class MemoryDirection : uint8_t { Read, Write };
 enum class MemoryOperand : uint8_t {
     Source, Destination, Operand, Control, Stack, RegisterList
@@ -360,7 +361,10 @@ enum class EaCommit : uint8_t {
     None, BeforeAccess, AfterAccess, PerElement
 };
 enum class FaultPhase : uint8_t {
-    RestartInstruction, LastWrite, RestartableLastWrite
+    RestartInstruction,
+    PartialWriteCommitted, // a later access observes an earlier native write
+    LastWrite,
+    RestartableLastWrite
 };
 enum MemoryCache : uint8_t {
     MemoryCacheNone  = 0,
@@ -381,6 +385,7 @@ struct MemoryAccess {
 };
 
 struct MemoryContract {
+    static constexpr uint8_t MaxAccesses = 4;
     static constexpr uint8_t VariableCount = 0xFF;
     static constexpr uint8_t NoLastWrite = 0xFF;
     static constexpr uint8_t VariableLastWrite = 0xFE;
@@ -392,7 +397,7 @@ struct MemoryContract {
     // True only for memory-to-memory forms whose atomic two-line cache path
     // has its own fault/replay gate. Shape alone is not enough evidence.
     bool cachePairProved = false;
-    MemoryAccess access[2] = {};
+    MemoryAccess access[MaxAccesses] = {};
 };
 
 enum class MemoryProofProtocol : uint8_t {
@@ -451,7 +456,7 @@ struct MemoryAccessPlan {
     bool exactRequired = false;
     bool cache = false;
 
-    bool valid() const { return index < 2; }
+    bool valid() const { return index < MemoryContract::MaxAccesses; }
     uint8_t mask() const { return valid() ? uint8_t(1u << index) : 0; }
     bool single() const {
         return protocol == MemoryProofProtocol::SingleRead ||
@@ -1020,7 +1025,8 @@ inline MemoryProofPlan memoryProofPlan(const MemoryContract& c,
                                        const MemoryProofOptions& o) {
     MemoryProofPlan p;
     p.lastWrite = c.lastWrite;
-    p.lastWriteRestartable = c.lastWrite < 2 &&
+    p.lastWriteRestartable = c.lastWrite < c.count &&
+        c.lastWrite < MemoryContract::MaxAccesses &&
         c.access[c.lastWrite].fault == FaultPhase::RestartableLastWrite;
     if (!c.described) return p;
     if (c.count == 0) {
@@ -1032,7 +1038,39 @@ inline MemoryProofPlan memoryProofPlan(const MemoryContract& c,
         p.preflightMask = 1;
         return p;
     }
-    if (c.count > 2) return p;
+    if (c.count > MemoryContract::MaxAccesses) return p;
+    // Only the exact four-slot crossing-bitfield shape receives this
+    // plain-mapping protocol. Exact/MMIO thunks and live-cache accesses
+    // need an instruction-specific transaction and must keep falling back;
+    // an unrelated future three/four-access contract must earn its own gate.
+    if (c.count > 2) {
+        if (c.count != MemoryContract::MaxAccesses ||
+            c.order != MemoryOrder::Sequential || c.lastWrite != 3 ||
+            c.access[0].direction != MemoryDirection::Read ||
+            c.access[1].direction != MemoryDirection::Write ||
+            c.access[2].direction != MemoryDirection::Read ||
+            c.access[3].direction != MemoryDirection::Write ||
+            c.access[0].operand != MemoryOperand::Operand ||
+            c.access[1].operand != MemoryOperand::Operand ||
+            c.access[2].operand != MemoryOperand::Operand ||
+            c.access[3].operand != MemoryOperand::Operand ||
+            c.access[0].bytes != 4 || c.access[1].bytes != 4 ||
+            c.access[2].bytes != 1 || c.access[3].bytes != 1 ||
+            c.access[1].eaMode != c.access[0].eaMode ||
+            c.access[2].eaMode != c.access[0].eaMode ||
+            c.access[3].eaMode != c.access[0].eaMode ||
+            c.access[1].eaReg != c.access[0].eaReg ||
+            c.access[2].eaReg != c.access[0].eaReg ||
+            c.access[3].eaReg != c.access[0].eaReg ||
+            c.access[0].fault != FaultPhase::RestartInstruction ||
+            c.access[1].fault != FaultPhase::PartialWriteCommitted ||
+            c.access[2].fault != FaultPhase::PartialWriteCommitted ||
+            c.access[3].fault != FaultPhase::LastWrite)
+            return p;
+        p.protocol = MemoryProofProtocol::PreflightAll;
+        p.preflightMask = uint8_t((1u << c.count) - 1u);
+        return p;
+    }
 
     const auto thunkAllowed = [&](unsigned i) {
         const MemoryAccess& a = c.access[i];
@@ -1105,7 +1143,7 @@ inline MemoryAccessPlan memoryAccessPlan(const MemoryContract& c,
     if (!proof.valid() || c.count == 0) return result;
     const unsigned slots = c.count == MemoryContract::VariableCount
         ? 1u : unsigned(c.count);
-    if (slots > 2) return result;
+    if (slots > MemoryContract::MaxAccesses) return result;
     for (unsigned i = 0; i < slots; i++) {
         const MemoryAccess& a = c.access[i];
         if (a.direction != direction || a.operand != operand ||
@@ -1132,7 +1170,8 @@ inline MemoryAccessPlan memoryAccessPlan(const MemoryContract& c,
 inline uint8_t memoryContractMask(const MemoryContract& c) {
     if (c.count == 0) return 0;
     if (c.count == MemoryContract::VariableCount) return 1;
-    return c.count <= 2 ? uint8_t((1u << c.count) - 1u) : 0xFF;
+    return c.count <= MemoryContract::MaxAccesses
+        ? uint8_t((1u << c.count) - 1u) : 0xFF;
 }
 
 // Every emitted data access must be represented exactly once. This catches
@@ -1192,10 +1231,43 @@ inline bool memoryRmwAccessPair(const MemoryAccessPlan& read,
            uint8_t(read.mask() | write.mask()) == 3;
 }
 
+// The exact architectural order for a crossing memory-bitfield mutation is
+// read4/write4/read1/write1. All mappings must be proved before access zero;
+// no exact thunk or cache token is valid for this transaction yet.
+inline bool memoryRmwTailAccessSequence(const MemoryAccessPlan& readLong,
+                                        const MemoryAccessPlan& writeLong,
+                                        const MemoryAccessPlan& readTail,
+                                        const MemoryAccessPlan& writeTail) {
+    const MemoryAccessPlan* access[] = {
+        &readLong, &writeLong, &readTail, &writeTail
+    };
+    for (unsigned i = 0; i < MemoryContract::MaxAccesses; i++) {
+        if (!access[i]->valid() || access[i]->index != i ||
+            access[i]->protocol != MemoryProofProtocol::PreflightAll ||
+            !access[i]->preflight || access[i]->exactThunk ||
+            access[i]->cache)
+            return false;
+    }
+    return readLong.direction == MemoryDirection::Read &&
+           writeLong.direction == MemoryDirection::Write &&
+           readTail.direction == MemoryDirection::Read &&
+           writeTail.direction == MemoryDirection::Write &&
+           readLong.operand == MemoryOperand::Operand &&
+           writeLong.operand == readLong.operand &&
+           readTail.operand == readLong.operand &&
+           writeTail.operand == readLong.operand &&
+           readLong.bytes == 4 && writeLong.bytes == 4 &&
+           readTail.bytes == 1 && writeTail.bytes == 1 &&
+           readLong.fault == FaultPhase::RestartInstruction &&
+           writeLong.fault == FaultPhase::PartialWriteCommitted &&
+           readTail.fault == FaultPhase::PartialWriteCommitted &&
+           writeTail.fault == FaultPhase::LastWrite;
+}
+
 inline bool memoryRequiresExactAccess(const MemoryContract& contract) {
     const unsigned slots = contract.count == MemoryContract::VariableCount
         ? 1u : unsigned(contract.count);
-    if (slots > 2) return false;
+    if (slots > MemoryContract::MaxAccesses) return false;
     for (unsigned i = 0; i < slots; i++)
         if (contract.access[i].exactRequired) return true;
     return false;
@@ -1231,6 +1303,10 @@ struct Instr {
     uint16_t terminalIrd = 0;    // queue at that same boundary
     uint16_t terminalIrc = 0;
     bool terminalQueueValid = false;
+    // POLL_IPL sites observed while tracing this instruction. Mode-5
+    // 68030/040 instructions normally have one at the loop head; some
+    // handlers have a later sample around their data phase as well.
+    uint8_t iplPolls = 0;
     MemoryContract memory{};          // `{}`: filled after the aggregate
     InstructionSemantics semantics{}; // init, and -Wextra flags Instr{...}
 
@@ -1503,21 +1579,17 @@ inline void refineMemoryFromExtensions(Instr& in, bool is030) {
         const bool readOnly = s.action == 0 || s.action == 1 ||
                               s.action == 3 || s.action == 5;
         if (!readOnly) {
-            // The write actions (BFCHG/BFCLR/BFSET/BFINS) are a
-            // read-modify-write of ONE longword. The TAILLESS form fits the
-            // two-slot contract exactly — read4 then write4 at the same
-            // address, the write the only access allowed to fault late —
-            // and is published for both native emitters (2026-08-30). The
-            // five-byte tail
-            // form would need four slots, and there is no write analogue of
-            // the probed-before-read tail protocol — a first store that
-            // committed could not replay — so it stays undescribed and the
-            // instruction falls back whole.
-            if (!memoryBitfieldFitsLongword(ext)) { in.memory = {}; return; }
+            // The tailless write actions are read4/write4. A possible
+            // crossing publishes Moira's full read4/write4/read1/write1
+            // order. Native code may consume that shape only after proving
+            // every writable plain-RAM mapping before access zero; MMIO,
+            // faults and live-cache mappings therefore fall back untouched.
+            const bool possibleTail = !memoryBitfieldFitsLongword(ext);
             MemoryContract c;
             c.described = true;
-            c.count = 2;
-            c.order = MemoryOrder::ReadModifyWrite;
+            c.count = possibleTail ? 4 : 2;
+            c.order = possibleTail ? MemoryOrder::Sequential
+                                   : MemoryOrder::ReadModifyWrite;
             c.access[0] = memoryAccess(MemoryDirection::Read,
                                        MemoryOperand::Operand, 4,
                                        s.eaMode, s.eaReg, is030,
@@ -1525,8 +1597,20 @@ inline void refineMemoryFromExtensions(Instr& in, bool is030) {
             c.access[1] = memoryAccess(MemoryDirection::Write,
                                        MemoryOperand::Operand, 4,
                                        s.eaMode, s.eaReg, is030,
-                                       FaultPhase::LastWrite);
-            c.lastWrite = 1;
+                                       possibleTail
+                                           ? FaultPhase::PartialWriteCommitted
+                                           : FaultPhase::LastWrite);
+            if (possibleTail) {
+                c.access[2] = memoryAccess(MemoryDirection::Read,
+                                           MemoryOperand::Operand, 1,
+                                           s.eaMode, s.eaReg, is030,
+                                           FaultPhase::PartialWriteCommitted);
+                c.access[3] = memoryAccess(MemoryDirection::Write,
+                                           MemoryOperand::Operand, 1,
+                                           s.eaMode, s.eaReg, is030,
+                                           FaultPhase::LastWrite);
+            }
+            c.lastWrite = possibleTail ? 3 : 1;
             in.memory = c;
             return;
         }

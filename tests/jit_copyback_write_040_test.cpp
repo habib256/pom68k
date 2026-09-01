@@ -160,7 +160,7 @@ uint32_t get32(const GateCpu& c, uint32_t a) {
     return uint32_t(get16(c, a)) << 16 | get16(c, a + 2);
 }
 
-enum class Program { Write, RestartRead, Bsr, PairMove };
+enum class Program { Write, RestartRead, Bsr, PairMove, Jsr, PollRead };
 
 void install(GateCpu& c, Program p) {
     put32(c, 0, kStack);
@@ -181,11 +181,18 @@ void install(GateCpu& c, Program p) {
         put16(c, kCode + 4, 0x4E71); // padding
         put16(c, kCode + 6, 0x4E71);
         put16(c, kCode + 8, 0x4E75); // RTS
-    } else {
+    } else if (p == Program::PairMove) {
         put16(c, kCode + 0, 0x2F38); // MOVE.L $4000.W,-(A7)
         put16(c, kCode + 2, uint16_t(kAbs));
         put16(c, kCode + 4, 0x588F); // ADDQ.L #4,A7
         put16(c, kCode + 6, 0x60F8); // BRA.S kCode
+    } else if (p == Program::Jsr) {
+        put16(c, kCode + 0, 0x4E90); // JSR (A0)
+        put16(c, kCode + 2, 0x60FC); // BRA.S kCode
+        put16(c, kCode + 0x20, 0x4E75); // target: RTS (separate I-cache line)
+    } else {
+        put16(c, kCode + 0, 0xD050); // ADD.W (A0),D0 (late POLL_IPL)
+        put16(c, kCode + 2, 0x60FC); // BRA.S kCode
     }
     put16(c, kHandler, 0x4E71);
     put16(c, kHandler + 2, 0x60FC);
@@ -286,6 +293,116 @@ void checkPerformanceBudget() {
         int64_t(POM68K_PERF_COPYBACK_SLACK_US) * 1000;
     check(native.ns <= allowed,
           "native fixed-cycle loop stays within the versioned host budget");
+}
+
+void checkJsrTargetReadFallback() {
+    // A 68040 JSR performs an explicit program-space target-word read after
+    // its return-address push. With the architectural cache active this can
+    // fill a line and charge dynamic time, so a backend may not replace it
+    // with the queue word captured while recording the block.
+    GateCpu native;
+    configure(native, Program::Jsr);
+    native.setSR(0x0710);
+    native.setA(0, kCode + 0x20);
+    native.setA(7, kData + 8);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 512);
+    alignAtCode(native);
+    check(native.getPC() == kCode, "trained block aligned at selected JSR");
+
+    GateCpu ref;
+    configure(ref, Program::Jsr);
+    for (GateCpu* c : {&ref, &native}) {
+        c->setPC(kCode); c->setPC0(kCode);
+        c->setIRD(0x4E90); c->setIRC(0x60FC);
+        c->setSR(0x0710);
+        c->setA(0, kCode + 0x20);
+        c->setA(7, kData + 8);
+        c->setClock(0);
+        clearRunFlags(*c);
+        check(c->pomJitWriteData(kData + 4, 4, 0),
+              "JSR bootstrap made the stack copyback line resident");
+    }
+
+    // Give both CPUs identical cache contents, then force only the target
+    // word to miss. The source block remains resident and admissible.
+    ref.pomCache040Inst() = native.pomCache040Inst();
+    ref.pomCache040Data() = native.pomCache040Data();
+    ref.pomCache040Inst().invalidateLine(kCode + 0x20);
+    native.pomCache040Inst().invalidateLine(kCode + 0x20);
+    ref.setPomCache040Timing({0, 8, 2});
+    native.setPomCache040Timing({0, 8, 2});
+
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+    if (!(after.blocksRun == before.blocksRun &&
+          after.windowInstrs == before.windowInstrs + 1))
+        std::printf("    JSR stats: blocks=%llu->%llu slow=%llu->%llu "
+                    "window=%llu->%llu interp=%llu->%llu instrs=%llu->%llu\n",
+                    (unsigned long long)before.blocksRun,
+                    (unsigned long long)after.blocksRun,
+                    (unsigned long long)before.slowInstrs,
+                    (unsigned long long)after.slowInstrs,
+                    (unsigned long long)before.windowInstrs,
+                    (unsigned long long)after.windowInstrs,
+                    (unsigned long long)before.interpInstrs,
+                    (unsigned long long)after.interpInstrs,
+                    (unsigned long long)before.instrs,
+                    (unsigned long long)after.instrs);
+    check(after.blocksRun == before.blocksRun &&
+          after.windowInstrs == before.windowInstrs + 1,
+          "cache-active JSR stayed on the exact one-instruction window");
+    check(sameBoundary(ref, native),
+          "JSR target-line fill, push, queue and dynamic cycles stay exact");
+    check(native.getPC() == kCode + 0x20 && native.getA(7) == kData + 4,
+          "replayed JSR committed the target and return-address push once");
+}
+
+void checkPositionedIplPollFallback() {
+    // ADD.W (A0),D0 samples IPL after its operand read. A 040 cache fill can
+    // advance a peripheral between the loop-head sample and this second
+    // sample. Until the IR records the poll's exact access-relative position,
+    // cache-active code must execute this instruction through Moira.
+    GateCpu native;
+    configure(native, Program::PollRead);
+    put16(native, kData, 0x0123);
+    native.setSR(0x0710);
+    native.setA(0, kData);
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 512);
+    alignAtCode(native);
+    check(native.getPC() == kCode,
+          "trained block aligned at selected late-poll ADD.W");
+
+    GateCpu ref;
+    configure(ref, Program::PollRead);
+    put16(ref, kData, 0x0123);
+    for (GateCpu* c : {&ref, &native}) {
+        c->setPC(kCode); c->setPC0(kCode);
+        c->setIRD(0xD050); c->setIRC(0x60FC);
+        c->setSR(0x0710);
+        c->setD(0, 0x00000456);
+        c->setA(0, kData);
+        c->setClock(0);
+        clearRunFlags(*c);
+        uint32_t value = 0;
+        check(c->pomJitReadData(kData, 2, value) && value == 0x0123,
+              "late-poll bootstrap made the operand cache line resident");
+    }
+
+    const auto before = native.jit.stats().snapshot();
+    const uint64_t nativeReads = native.pomJitCache040NativeReads();
+    ref.executeUntil(ref.getClock() + 1);
+    native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+    check(after.blocksRun == before.blocksRun + 1 &&
+          after.slowInstrs == before.slowInstrs + 1 &&
+          native.pomJitCache040NativeReads() == nativeReads,
+          "cache-active memory+late-poll instruction used exact fallback");
+    check(sameBoundary(ref, native) && native.getD(0) == 0x00000579,
+          "late-poll fallback preserved result, flags, queue and cycles");
 }
 
 int runBsrGate() {
@@ -623,6 +740,10 @@ int main(int argc, char** argv) {
           "restart frame restores CCR, PC and predecrement A0");
     check(sameBoundary(restartRef, restartNative),
           "restart fault leaves identical architectural boundary state");
+
+    if (writeHitEnabled) checkPositionedIplPollFallback();
+
+    if (writeHitEnabled) checkJsrTargetReadFallback();
 
     if (writeHitEnabled) checkPerformanceBudget();
 

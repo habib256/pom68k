@@ -104,7 +104,7 @@ int main() {
     // the generated A64/x64 implementations of the same plans below.
     {
         std::printf("[jit_backend] IR semantic and memory protocols\n");
-        check(sizeof(jit::MemoryContract) <= 40,
+        check(sizeof(jit::MemoryContract) <= 56,
               "memory contract stays compact enough for every traced instruction");
         check(sizeof(jit::InstructionSemantics) <= 16,
               "instruction-semantics contract stays compact in every trace");
@@ -283,8 +283,28 @@ int main() {
         bfinsMemory.extensions[0] = 0x01C0; // offset 7, width 32: fifth byte
         bfinsMemory.memory = jit::describeMemory(bfinsMemory.opcode, true);
         jit::refineMemoryFromExtensions(bfinsMemory, true);
-        check(!bfinsMemory.memory.described,
-              "five-byte BFINS stays undescribed so a partial store cannot replay");
+        auto bfinsTailUse = jit::instructionMemoryPlan(bfinsMemory.memory,
+                                                       cache);
+        const auto bfinsLongRead = bfinsTailUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            4, 2, 1);
+        const auto bfinsLongWrite = bfinsTailUse.access(
+            jit::MemoryDirection::Write, jit::MemoryOperand::Operand,
+            4, 2, 1);
+        const auto bfinsTailRead = bfinsTailUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            1, 2, 1);
+        const auto bfinsTailWrite = bfinsTailUse.access(
+            jit::MemoryDirection::Write, jit::MemoryOperand::Operand,
+            1, 2, 1);
+        check(bfinsMemory.memory.described &&
+              bfinsMemory.memory.count == 4 &&
+              bfinsMemory.memory.lastWrite == 3 &&
+              jit::memoryRmwTailAccessSequence(
+                  bfinsLongRead, bfinsLongWrite,
+                  bfinsTailRead, bfinsTailWrite) &&
+              bfinsTailUse.complete(),
+              "five-byte BFINS publishes proved read4/write4/read1/write1");
 
         const auto write030 = jit::describeMemory(0x2140, true); // MOVE.L D0,d16(A0)
         jit::MemoryProofOptions proof030;
@@ -1086,7 +1106,7 @@ int main() {
         ir.code = {0x70FF, 0x40C1, 0x4E71, 0, 0}; // MOVEQ; MOVE SR,D1; NOP
         // Named jit::Instr{...} on purpose: g++ 13 rejects binding a
         // const Instr& parameter from a bare braced list because
-        // MemoryContract carries `MemoryAccess access[2] = {}` (a C array
+        // MemoryContract carries `MemoryAccess access[MaxAccesses] = {}` (a C array
         // with a default member initializer); direct-list-initialization
         // of the temporary is accepted.
         ir.instrs.push_back(jit::Instr{0x1000, 0x70FF, 1, jit::Kind::Move,
@@ -1214,6 +1234,12 @@ int main() {
         check(!b->canEmit(0x1008), "MOVE.B An,Dn is illegal");
         check(!b->canEmit(0x1040), "MOVEA.B Dn,An is illegal");
         check(b->canEmit(0x3040) == gen, "MOVEA.W Dn,An is legal");
+        check(b->canEmit(0x1180) == gen,
+              "MOVE.B D0,d8(A0,Dn) has a shared indexed-destination lowering");
+        check(b->canEmit(0x31BC) == gen,
+              "MOVE.W #imm,d8(A0,Dn) has a shared indexed-destination lowering");
+        check(b->canEmit(0x21B2) == gen,
+              "MOVE.L d8(A2,Dn),d8(A0,Dn) has a shared indexed pair lowering");
         check(b->canEmit(0x66F8) == gen, "BNE.S -8");
         check(b->canEmit(0x2ADC) == gen, "MOVE.L (A4)+,(A5)+");
         check(b->canEmit(0x7000) == gen, "MOVEQ #0,D0");

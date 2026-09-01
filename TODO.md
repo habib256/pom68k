@@ -745,10 +745,12 @@ Open, in ROI order:
   > profil temporel** — l'hypothèse des 64 tranches AppleTalk de § 0·A est
   > le premier candidat nommé.
 - **Champs de bits (`E9D0`/`EFD1`) — CLOS le 2026-08-30** : lectures et
-  écritures TAILLESS ainsi que les huit actions registre, offset/largeur
-  statiques ou dynamiques, sont natives sur A64 et x64 ; seules les queues
-  mémoire cinq-octets gardent leur frontière transactionnelle documentée.
-  `CHANGELOG.md` 2026-08-28 (eighth) et 2026-08-30 (second à fifth).
+  écritures tailless/cinq-octets ainsi que les huit actions registre,
+  offset/largeur statiques ou dynamiques, sont natives sur A64 et x64. Le
+  contrat quatre accès et les publications CCR canonique/compactée sont clos
+  par les oracles RAM, MMIO et faute 030/040 du 2026-09-01.
+  `CHANGELOG.md` 2026-08-28 (eighth), 2026-08-30 (second à fifth) et
+  2026-09-01 (second/third).
 - **Promotion applicative de la division SimCity — CLOSE le 2026-08-30** :
   le même exécutable, admission OFF/ON injectée, mesure **−1,453 %** en ABBA
   avec empreintes CPU/écran identiques, 2,55× le plancher nul. Les deux
@@ -1001,6 +1003,38 @@ Open, in ROI order:
   désormais le chemin non batché, un `sync()` par instruction ; le nouveau
   `jit_lockstep_030_x64_packed_ccr_test` verrouille 120 000 frontières LC II,
   et le même run compacté est vert manuellement sur A64.
+- **Publication bitfield en CCR compacté — CLOSE le 2026-09-01** : les
+  quatre sites registre/mémoire de chaque générateur publient N/Z, effacent
+  V/C et préservent X plus le compteur retiré sans matérialiser les octets
+  canoniques. Les six boucles bitfield, leurs jambes MMIO/faute et l'oracle
+  030 tournent désormais dans les deux dispositions avec zéro repli RAM.
+- **Lecture cible `JSR` avec cache 040 — CLOSE le 2026-09-01** : le lockstep
+  Q605 x64 large a nommé `$40809B6E` après 1 573 279 checkpoints. Moira pousse
+  puis lit explicitement le premier mot programme cible ; le corps généré
+  remplaçait cette lecture, potentiellement fautive/temporisée, par l'IRC
+  enregistré. Les deux backends gardent désormais le seul sous-ensemble
+  `JSR` 040 + cache architectural sur la fenêtre exacte ; l'oracle copyback
+  force un miss cible et verrouille pile, queue et cycles. Les JSR 040 sans
+  ce cache et les transactions 030 restent natifs.
+- **Poll IPL positionné après accès avec cache 040 — CLOSE le 2026-09-01** :
+  le replay Q605 suivant a nommé `BEAC` (`CMP.L 12(A4),D7`) à `$00094738`
+  après 4 664 060 checkpoints. Un miss cache peut lever l'IRQ entre le poll
+  de tête 040 et le second poll du handler. Le traceur compte désormais ces
+  sites dans l'IR ; tant que leur position relative aux accès n'est pas
+  décrite, les deux générateurs rejouent exactement le seul sous-ensemble
+  cache-actif qui combine mémoire et plus d'un poll. L'oracle copyback
+  verrouille `ADD.W (A0),D0` sur A64/x64 et le replay réel reste natif pour
+  les lectures/écritures cache non concernées.
+- **État d'instruction et remplacement ATC sur les accès cache 040 — CLOS le
+  2026-09-01** : le replay x64 compacté a nommé la boucle atomique de
+  `$0019833A` après 4 852 195 checkpoints. Le thunk d'accès d'un miss froid
+  héritait `mmu040Lrmw` du `CAS` précédent, faute de passer par
+  `mmu040InstrStart()`, et lisait la RAM derrière une ligne D-cache sale.
+  Tout miss cache-actif rejoue désormais l'instruction entière ; un hit natif
+  ne saute la recherche ATC que si le mémo directionnel et le bit MRU prouvent
+  que son remplacement serait sans effet. Le replay Q605 atteint 5 000 000
+  pas identiques avec 4 324 995 lectures et 611 088 écritures copy-back
+  natives.
 - [ ] **Queue de couverture Speedometer après `E291`** : `C029`
   reste premier mais son admission exact-thunk a échoué le vrai oracle
   (270 → 450 frames malgré le synthétique vert), donc ne pas la réintroduire
@@ -1009,12 +1043,14 @@ Open, in ROI order:
   familles sans nouveau corpus. `9611`, `C229`, `1411`, `1229` et `0811`
   montrent eux aussi 59–128 cycles de base sur des lectures fixes courtes :
   même preuve de phase périphérique manquante, donc rester sur Moira. `08D1`
-  est un BSET mémoire read-modify-write périphérique à coût variable et
-  `EFD4` un possible BFINS à écriture de cinq octets, contrat encore absent :
-  les garder interprétés. Le cache multi-version des shifts est clos ; le
-  prochain choix doit venir d'un profil temporel de la phase CPU, ou d'un
-  contrat transactionnel cinq-octets prouvé pour `EFD4`, pas du classement
-  brut des fallbacks.
+  est un BSET mémoire read-modify-write périphérique à coût variable : le
+  garder interprété. **Le contrat cinq-octets de `EFD4` est CLOS le
+  2026-09-01** : l'IR publie read4/write4/read1/write1, les deux générateurs
+  prévalident les deux mappings écrivables avant toute lecture, et les oracles
+  030/040 A64+x64 couvrent RAM native, queue MMIO unique et faute tardive avec
+  état partiel/trame exacts. Le cache multi-version des shifts est clos ; le
+  prochain choix doit venir d'un profil temporel de la phase CPU, pas du
+  classement brut des fallbacks.
   `6000`, `4EF9`, `E9D4`, les LEA `41F6`/`43F0`, les MOVE source
   full-indirects, les destinations brèves, `4C00 4004`, les MOVE A7
   dépendants, `4A76`, `49C7`, `61FF`, `4EB2/4EB4`, `4C2F 1C00` et `E291`
@@ -1731,19 +1767,19 @@ depuis (ABBA nul).
   `canEmit` x64 sur des encodages pour la plupart illégaux, que son émetteur
   refuse ensuite). Une ligne périmée fait AUSSI échouer le gate, pour qu'une
   exception ne survive pas à la correction qu'elle attendait.
-- [ ] **Ce qui reste de « porter les deltas »** : les lignes a64-only de la
-  table d'exceptions du gate sont le backlog exact du portage x64, en
-  rouge-immédiat si l'une bouge sans son jumeau. **Les shifts registre sont
-  PORTÉS le 2026-08-29 (sixth)** — le déroulé pas-à-pas d'a64 traduit, la
-  ligne d'exception retirée, 82,0 → 88,1 % natif au boot LC II, mur plat
-  (la leçon D1F0 tient une 2e fois). **JSR `$4EB0` est PORTÉ le
-  2026-08-31 (third)** : x64 partage maintenant le calcul pré/postindexé, le
-  coût et la transaction pointeur/pile d'a64. Les bitfields sont PORTÉS
-  depuis le 2026-08-30/31, `MOVE SR,Dn` depuis le 2026-08-31
-  (twenty-second), et les bit ops modifiants depuis le twenty-third : le gate
-  ne porte plus qu'un groupe a64-only, l'admission MOVE plus large. Sur la
-  photo historique, son témoin à reclasser par un census frais était les
-  destinations indexées de MOVE (`$2F70`, 391 k). Le témoin bit mémoire
+- [x] **« Porter les deltas » est CLOS le 2026-09-01.** Les lignes a64-only
+  de la table d'exceptions formaient le backlog exact du portage x64. Les
+  shifts registre ont été portés le 2026-08-29 (sixth), `JSR $4EB0`, les
+  bitfields, `MOVE SR,Dn` et les bit ops le 2026-08-30/31. Les neuf dernières
+  divergences x64-only étaient des sur-déclarations d'encodages illégaux ;
+  les masques EA dérivés de Moira les refusent maintenant des deux côtés tout
+  en admettant `TST #imm` et `CMPI <pc-ea>`. Le dernier groupe a64-only,
+  **1 400 opcodes MOVE à destination indexée**, venait de
+  `kMoveDst[EA_IX]=-1` malgré le coût `execMove6` de cinq cycles et des
+  protocoles 040 déjà communs. Le coût est partagé, la restriction 030 reste
+  locale aux familles prouvées, et le balayage 65 536 opcodes rend désormais
+  **zéro divergence / zéro exception**. Sur la photo historique, son témoin
+  à reclasser par un census frais était `$2F70` (391 k). Le témoin bit mémoire
   `$08A9` (332 k) est désormais porté pour la RAM ; les accès périphériques
   refusent toujours avant lecture et rejouent exactement dans Moira.
   **L'« ordre `(An)+` » (`$24D0`, 1,64 M) est SORTI de cette

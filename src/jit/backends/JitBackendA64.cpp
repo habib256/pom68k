@@ -57,7 +57,9 @@ MemoryProofOptions proofOptions(const Layout& L) {
 static_assert(sizeof(moira::Moira::PomJitCache040Entry) == 32);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, physicalTag) == 4);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, generation) == 8);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, atcIndex) == 12);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, line) == 16);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, atcMru) == 24);
 static_assert(offsetof(moira::Cache040::Line, tag) == 0);
 static_assert(offsetof(moira::Cache040::Line, valid) == 4);
 static_assert(offsetof(moira::Cache040::Line, dirty) == 5);
@@ -1038,6 +1040,35 @@ void emitLogicFlags(Asm& a, const Layout& L, unsigned result, int bits) {
     }
 }
 
+// Bitfields right-justify their selected field, so N comes from bit width-1
+// rather than bit 31. Callers pass that already-isolated boolean in `n` and
+// the value whose entirety determines Z. x18 is dedicated scratch here:
+// unlike setPackedCcrBits, this must not clobber x16 because BFFFO keeps the
+// uncropped offset live across flag publication.
+void emitBitfieldFlags(Asm& a, const Layout& L, unsigned value, unsigned n) {
+    if (gPackedCcr) {
+        a.lslW(n, n, 3);
+        a.cmpWZero(value);
+        a.csetW(18, Asm::EQ);
+        a.lslW(18, 18, 2);
+        a.orrW(n, n, 18);
+        a.movX(18, ~uint64_t(0x0F));
+        a.andX(26, 26, 18);                         // preserve X + count
+        a.orrX(26, 26, n);
+        return;
+    }
+    a.strB(n, 0, L.srN);
+    a.cmpWZero(value);
+    a.csetW(18, Asm::EQ);
+    a.strB(18, 0, L.srZ);
+    a.movW(18, 0);
+    if (L.srC == L.srV + 1) a.strH(18, 0, L.srV);
+    else {
+        a.strB(18, 0, L.srV);
+        a.strB(18, 0, L.srC);
+    }
+}
+
 // Produce a guest-width add/sub while leaving the host NZCV flags as the
 // exact 68k-width operation. For byte/word operations, shifting both inputs
 // to bit 31 makes AArch64's N, V and carry boundary coincide with the guest
@@ -1569,6 +1600,22 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
         a.ldrW(13, 0, L.cache040Gen);
         a.cmpW(12, 13); a.bCond(Asm::NE, cacheMiss);
 
+        // The interpreter touches the data ATC even when the D-cache line
+        // itself hits. Bypassing that lookup is exact only while its memo
+        // already selects this entry and its pseudo-LRU bit is already set.
+        // 0xFF denotes identity translation, which has no ATC state.
+        const int atcExact = a.label();
+        a.ldrB(12, 14, 12);
+        a.movW(13, 0xFF);
+        a.cmpW(12, 13); a.bCond(Asm::EQ, atcExact);
+        a.address(11, 0, L.cache040AtcLastD);
+        a.ldrB(13, 11, cacheWrite ? 1 : 0);
+        a.cmpW(12, 13); a.bCond(Asm::NE, cacheMiss);
+        a.ldrX(11, 14, 24);
+        a.ldrB(13, 11, 0);
+        a.cbzW(13, cacheMiss);
+        a.bind(atcExact);
+
         // The cache way is stable, its contents are not: validate both the
         // valid bit and physical tag before exposing its big-endian bytes.
         a.ldrW(13, 14, 4);
@@ -1698,7 +1745,11 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     if (!access.valid() || access.direction != MemoryDirection::Read ||
         access.bytes != unsigned(bits / 8)) { a.b(slow); return; }
     const bool cacheRead = access.cache;
-    const bool exactAccess = access.exactThunk;
+    // A cache-active 040 miss must replay the whole instruction so
+    // mmu040InstrStart performs its per-instruction MMU resets first. An
+    // access-only thunk could otherwise inherit mmu040Lrmw from a preceding
+    // CAS and turn this ordinary read into a locked, cache-bypassing one.
+    const bool exactAccess = access.exactThunk && !L.cache040Live;
     if (!exactAccess) {
         memProbe(a, L, super, bits / 8, false, slow, cacheRead);
         if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
@@ -2081,9 +2132,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // A postincrement source whose sole access uses the pre-update /
         // rollback helper is safe to validate against the split base cost.
         // Restartable writes consume it only for restartWrite030's injected-
-        // fault-proved family. Brief indexed destination calculation costs
-        // five base cycles; keep that admission local so memory-source MOVE
-        // forms do not ride on this sole-write proof.
+        // fault-proved family. The shared cost table owns the architectural
+        // five-cycle brief-indexed destination cell; the explicit 030 gate
+        // below keeps unproved families from riding on the 040 protocol.
         const bool indirectSource = src.fullFormat &&
                                     src.indirect != IndexIndirect::None;
         if (indirectSource && dst.memory) return false;
@@ -2123,9 +2174,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // still refused by decodeEa's default admission.
         const bool preflightIndexedPair = L.is030 && src.memory &&
                                           dst.idx == EA_IX;
-        const int dstCycles = (restartWrite || preflightIndexedPair) &&
-                              dst.idx == EA_IX
-            ? 5 : kMoveDst[dst.idx];
+        if (L.is030 && dst.idx == EA_IX &&
+            !restartWrite && !preflightIndexedPair)
+            return false;
+        const int dstCycles = kMoveDst[dst.idx];
         const int sourcePenalty = src.fullFormat ? fullIndexPenalty(src) : 0;
         const int cycles = kEaRead[src.idx][sz] + sourcePenalty + dstCycles;
         // The emitted i-cache model owns miss penalties. The restartable-
@@ -3420,10 +3472,6 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     }
 
     if (sem.operation == SemanticOp::Bitfield) {
-        // These uncommon forms publish several independently calculated
-        // flag bits. Until their packed lowering is proved, the exact
-        // per-instruction fallback is preferable to a second CCR format.
-        if (gPackedCcr) return false;
         const uint16_t ext = in.extensionWord(0);
         if ((ext & 0x0820) && !dynamicRegisterBitfieldEnabled()) return false;
         const int kind = sem.action;
@@ -3492,13 +3540,21 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                                       MemoryOperand::Operand, 4,
                                       sem.eaMode, sem.eaReg);
             MemoryAccessPlan tail;
-            if (readOnly && possibleTail)
+            if (possibleTail)
                 tail = memory.access(MemoryDirection::Read,
                                      MemoryOperand::Operand, 1,
                                      sem.eaMode, sem.eaReg);
-            if (!read.valid() || (!readOnly &&
-                                  (!memoryRmwAccessPair(read, write) ||
-                                   possibleTail)) ||
+            MemoryAccessPlan tailWrite;
+            if (!readOnly && possibleTail)
+                tailWrite = memory.access(MemoryDirection::Write,
+                                          MemoryOperand::Operand, 1,
+                                          sem.eaMode, sem.eaReg);
+            if (!read.valid() ||
+                (!readOnly && !possibleTail &&
+                 !memoryRmwAccessPair(read, write)) ||
+                (!readOnly && possibleTail &&
+                 !memoryRmwTailAccessSequence(read, write, tail,
+                                              tailWrite)) ||
                 (readOnly && possibleTail && !tail.valid()) ||
                 !memory.complete()) {
                 watchRefusal(L, ir, in, "bitfield-memory:contract");
@@ -3525,7 +3581,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.movW(16, (ext >> 6) & 31);
             a.asrW(12, 16, 3);                    // floor(rawOffset / 8)
             a.addW(9, 9, 12);                     // 32-bit guest wraparound
-            if (!readOnly) {
+            if (!readOnly && !possibleTail) {
                 // One writable proof serves the tailless read-modify-write.
                 // Save both the host pointer and the original longword:
                 // flag construction uses w14 for the bit offset and the
@@ -3539,9 +3595,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 memLoadGuest(a, L, ir.super, 32, 11, slow, read, &src);
             } else {
                 // Save all values that a DTLB fill helper may clobber. The
-                // first successful probe is not itself an observable read;
-                // the second mapping is therefore proved before either byte
-                // sequence can escape, preventing replay of a side effect.
+                // first successful probe is not itself an observable access;
+                // the tail mapping is therefore proved before either byte
+                // sequence can escape. Write forms use writable probes for
+                // both spans, so a refusal falls back before the long store.
                 a.strW(9, 1, 44);                 // adjusted guest address
                 a.strW(16, 1, 48);                // uncropped raw offset
                 if (ext & 0x0020)
@@ -3553,7 +3610,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.addImmW(17, 17, 1);
                 a.strW(17, 1, 76);                // normalized width
 
-                memProbe(a, L, ir.super, 4, false, slow);
+                memProbe(a, L, ir.super, 4, !readOnly, slow);
                 a.strX(14, 1, 120);               // first host pointer
 
                 const int noTail = a.label(), haveData = a.label();
@@ -3565,7 +3622,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.bCond(Asm::LS, noTail);
 
                 a.ldrW(9, 1, 44); a.addImmW(9, 9, 4);
-                memProbe(a, L, ir.super, 1, false, slow);
+                memProbe(a, L, ir.super, 1, !readOnly, slow);
+                if (!readOnly) a.strX(14, 1, 96); // tail host pointer
                 loadGuest(a, 8, 10);
                 a.ldrX(14, 1, 120); loadGuest(a, 32, 11);
                 a.b(haveData);
@@ -3574,6 +3632,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.movW(10, 0);
                 a.ldrX(14, 1, 120); loadGuest(a, 32, 11);
                 a.bind(haveData);
+                if (!readOnly) {
+                    commitEaBeforeAccess(a, L, src, 32, read);
+                    a.strW(11, 1, 72);             // pristine longword
+                    a.strW(10, 1, 76);             // pristine tail byte
+                }
             }
 
             // A DTLB fill may call C++, so rebuild all extension-derived
@@ -3601,10 +3664,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             a.lsrVarW(11, 11, 13);                 // selected field
 
             if (kind != 7) {                       // BFINS uses source flags
-                emitNz(a, L, 11, 32);
                 a.subImmW(12, 17, 1);
-                a.lsrVarW(12, 11, 12); a.strB(12, 0, L.srN);
-                a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+                a.lsrVarW(12, 11, 12);
+                emitBitfieldFlags(a, L, 11, 12);
             }
             if (readOnly) {
                 if (kind == 0) return true;         // BFTST
@@ -3628,9 +3690,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             if (kind == 7) {
                 a.ldrW(11, 0, L.d + out * 4);
                 a.lslVarW(11, 11, 13);             // crop + top-align source
-                emitNz(a, L, 11, 32);
-                a.lsrW(12, 11, 31); a.strB(12, 0, L.srN);
-                a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+                a.lsrW(12, 11, 31);
+                emitBitfieldFlags(a, L, 11, 12);
                 a.lsrVarW(11, 11, 14);             // align inside longword
             }
             a.movW(12, 0xFFFFFFFFu);
@@ -3644,6 +3705,47 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
             a.ldrX(14, 1, 120);
             storeGuest(a, 32, 9);
+            if (possibleTail) {
+                // The longword is stored first. Only the runtime-crossing
+                // arm then mutates the already-proved tail byte. On plain
+                // RAM the reordered read4/read1/write4/write1 accesses are
+                // effect-equivalent to Moira's architectural sequence and
+                // introduce no late failure point.
+                if (ext & 0x0800)
+                    loadGuestRegister(a, L, 16, false, (ext >> 6) & 7);
+                else
+                    a.movW(16, (ext >> 6) & 31);
+                a.movW(12, 7); a.andW(14, 16, 12);
+                if (ext & 0x0020)
+                    loadGuestRegister(a, L, 17, false, ext & 7);
+                else
+                    a.movW(17, ext & 31);
+                a.subImmW(17, 17, 1);
+                a.movW(12, 31); a.andW(17, 17, 12);
+                a.addImmW(17, 17, 1);
+                a.addW(17, 17, 14);                // offset + width
+                a.movW(13, 32); a.cmpW(17, 13);
+                const int noTailStore = a.label();
+                a.bCond(Asm::LS, noTailStore);
+                a.subImmW(17, 17, 32);             // crossing bits, 1..7
+                a.movW(13, 8); a.subW(13, 13, 17); // tail alignment shift
+                a.movW(12, 0xFF); a.lslVarW(12, 12, 13);
+                a.ldrW(10, 1, 76);
+                if (kind == 2) a.eorW(10, 10, 12);
+                else if (kind == 4) {
+                    a.mvnW(12, 12); a.andW(10, 10, 12);
+                } else if (kind == 6) {
+                    a.orrW(10, 10, 12);
+                } else {                           // BFINS
+                    a.mvnW(12, 12); a.andW(10, 10, 12);
+                    a.ldrW(11, 0, L.d + out * 4);
+                    a.lslVarW(11, 11, 13);
+                    a.orrW(10, 10, 11);
+                }
+                a.ldrX(14, 1, 96);
+                storeGuest(a, 8, 10);
+                a.bind(noTailStore);
+            }
             commitEaAfterAccess(a, L, src, 32, write);
             return true;
         }
@@ -3686,10 +3788,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         a.lsrVarW(11, 10, 13);                      // extracted field
 
         if (kind != 7) {                            // BFINS uses source flags
-            emitNz(a, L, 11, 32);
             a.subImmW(12, 17, 1);
-            a.lsrVarW(12, 11, 12); a.strB(12, 0, L.srN);
-            a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+            a.lsrVarW(12, 11, 12);
+            emitBitfieldFlags(a, L, 11, 12);
         }
 
         if (kind == 0) return true;                 // BFTST
@@ -3719,11 +3820,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         else {                                      // BFINS
             a.ldrW(11, 0, L.d + out * 4);
             a.lslVarW(11, 11, 13);                 // crop + top-align source
-            emitNz(a, L, 11, 32);
-            a.lsrW(12, 11, 31); a.strB(12, 0, L.srN);
-            a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+            a.lsrW(12, 11, 31);
+            emitBitfieldFlags(a, L, 11, 12);
             a.rorVarW(11, 11, 14);
-            // emitNz clobbers w12, so reconstruct the destination mask.
+            // Flag publication consumes w12, so reconstruct the mask.
             a.movW(12, 0xFFFFFFFFu);
             a.lslVarW(12, 12, 13);
             a.rorVarW(12, 12, 14);
@@ -4164,6 +4264,18 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         sem.operation == SemanticOp::Jump) {
         const bool jsr = sem.operation == SemanticOp::JumpSubroutine;
         if (!control.valid || control.pushesReturnAddress != jsr) { watchRefusal(L, ir, in, "jsr:control"); return false; }
+        // execJsr performs one explicit program-space word read at the
+        // target AFTER pushing the return address. With the architectural
+        // 040 cache live that read may fill/replace I-cache state, stall on
+        // the bus or fault. Reordering it before the push would change the
+        // observable transaction; doing it afterwards leaves no pristine
+        // instruction to replay on a fault. Keep only this cache-active JSR
+        // subset on Moira until it has a combined transactional helper.
+        // Cacheless 040 and the proved mode-5 030 lowering remain native.
+        if (jsr && !L.is030 && L.cache040Live) {
+            watchRefusal(L, ir, in, "jsr:cache040-target-read");
+            return false;
+        }
         Ea ea;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea, true, true) ||
             !ea.memory || ea.idx == EA_PI || ea.idx == EA_PD ||
@@ -4646,6 +4758,18 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         if (icache && !dbcc && !in.fetchWords) {
             watchRefusal(L, ir, in, "no-fetch-count");
             icacheShadow = {};
+            a.b(slowStatic[i]);
+            continue;
+        }
+        // A cache fill can advance peripherals between the 040 loop-head
+        // IPL sample and an opcode handler's later sample. The trace tells
+        // us which instructions have that second site, but not yet whether
+        // it precedes or follows each data access. Keep exactly that subset
+        // on Moira until the IR carries the poll position; a generic late
+        // sample would recognize some interrupts one instruction too soon.
+        if (!L.is030 && L.cache040Live && in.memory.count != 0 &&
+            in.iplPolls > 1) {
+            watchRefusal(L, ir, in, "cache040:positioned-ipl-poll");
             a.b(slowStatic[i]);
             continue;
         }

@@ -14,15 +14,16 @@
 // what lets an AArch64 machine hold the x64 backend to its word.
 //
 // Any (SemanticOp, direction) divergence group must appear in the dated
-// exception table below, with its reason. A new divergence — a lowering
-// added on one side only — fails RED here instead of becoming next month's
-// "port the deltas" debt.
+// exception table below, with its reason. The table is empty now: a new
+// lowering added on one side only fails RED here instead of becoming next
+// month's "port the deltas" debt.
 
 #include "jit/JitBackend.h"
 #include "jit/JitIr.h"
 #include "jit/backends/JitBackendA64.h"
 #include "jit/backends/JitBackendX64.h"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -75,28 +76,17 @@ const char* opName(SemanticOp op) {
     return "?";
 }
 
-// One tolerated divergence group: every opcode of this SemanticOp where one
+// A tolerated divergence group is every opcode of one SemanticOp where one
 // backend accepts and the other refuses, in the stated direction. Each row
-// is dated and carries the reason it is allowed to exist. Closing a row
-// means landing the missing lowering, then DELETING it here — the gate goes
-// red if a listed group disappears, so a stale exception cannot linger.
+// must be dated and carry the reason it is allowed to exist. The gate also
+// rejects stale rows once their lowering lands.
 struct AllowedDivergence {
     SemanticOp op;
     bool a64Only;       // true: a64 accepts, x64 refuses; false: the reverse
     const char* why;
 };
 
-const AllowedDivergence kAllowed[] = {
-    // ── real coverage gaps: lowerings a64 has and x64 lacks ──────────────
-    // (the three the 2026-08-28 review named, plus what this gate's first
-    // sweep added the same day; closing one = landing the x64 lowering)
-    // (2026-09-01: Bitfield, MOVE SR,Dn, classic Bit and every false
-    // opcode-level admission row are retired. Shared Moira-derived EA masks
-    // now leave only the real indexed-MOVE lowering gap.)
-    { SemanticOp::Move, true,
-      "2026-08-28: a64 admits indexed destinations x64's kMoveDst row "
-      "refuses — the 'port the a64 030 deltas' debt made visible" },
-};
+constexpr std::array<AllowedDivergence, 0> kAllowed{};
 
 int failures = 0;
 

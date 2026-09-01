@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 370 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 376 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why a cache-active 68040 cold JIT access must replay the instruction start, and when a native cache hit may skip the ATC lookup without changing replacement state** → [2026-09-01 (sixth) — Cold 040 cache misses…](#2026-09-01-jit-cache040-instruction-start)
+- **why a cache-active 68040 memory instruction may need a second, access-positioned IPL sample, and how the tracer prevents generated code from moving it** → [2026-09-01 (fifth) — Cache stalls preserve…](#2026-09-01-jit-cache040-ipl-polls)
+- **why a cache-active 68040 `JSR` cannot replace its ordered target-word read with recorded queue state, and which real x64 drift exposed it** → [2026-09-01 (fourth) — Cache-active 68040 JSR…](#2026-09-01-jit-cache040-jsr-target-read)
+- **how bitfields publish packed N/Z/V/C without corrupting X, the retired count or BFFFO's live offset** → [2026-09-01 (third) — Packed-CCR bitfields…](#2026-09-01-jit-packed-bitfields)
+- **how five-byte memory-bitfield writes can stay native without replaying a committed first store, and what proves the 030/040 late-tail faults** → [2026-09-01 (second) — Five-byte bitfield writes…](#2026-09-01-jit-bitfield-tail-writes)
+- **why the final 1,400-opcode backend-parity gap was a missing ISA cost rather than a missing host primitive, and what proves the now-empty exception table** → [2026-09-01 — The backend census reaches zero exceptions…](#2026-09-01-jit-parity-zero)
 - **how the classic bit family shares one legal-EA mask and makes a memory mutation transactional before its read** → [2026-08-31 (twenty-third) — x64 closes…](#2026-08-31-x64-classic-bit-rmw)
 - **how x64 reconstructs `MOVE SR,Dn` from canonical or packed CCR state while preserving Dn's upper word** → [2026-08-31 (twenty-second) — x64 closes…](#2026-08-31-x64-move-sr)
 - **how a count-changing Speedometer shift gets exact native code without a direct link bypassing its live-count selection, and why four versions were not enough** → [2026-08-31 (twenty-first) — Speedometer's dynamic shifts get a bounded multi-version cache…](#2026-08-31-speedometer-shift-multiversion)
@@ -377,6 +383,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-01 (sixth)** — [Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state](#2026-09-01-jit-cache040-instruction-start)
+- **2026-09-01 (fifth)** — [Cache-active 68040 memory instructions preserve access-positioned IPL samples](#2026-09-01-jit-cache040-ipl-polls)
+- **2026-09-01 (fourth)** — [Cache-active 68040 JSR preserves its ordered target-word read through exact replay](#2026-09-01-jit-cache040-jsr-target-read)
+- **2026-09-01 (third)** — [Packed-CCR bitfields become native across every register and memory path](#2026-09-01-jit-packed-bitfields)
+- **2026-09-01 (second)** — [Five-byte memory-bitfield writes gain a four-access transaction on both native generators](#2026-09-01-jit-bitfield-tail-writes)
+- **2026-09-01** — [The backend census reaches zero exceptions: legal EA masks and indexed MOVE converge](#2026-09-01-jit-parity-zero)
 - **2026-08-31 (twenty-third)** — [x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW](#2026-08-31-x64-classic-bit-rmw)
 - **2026-08-31 (twenty-second)** — [x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively](#2026-08-31-x64-move-sr)
 - **2026-08-31 (twenty-first)** — [Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain](#2026-08-31-speedometer-shift-multiversion)
@@ -749,6 +761,200 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-01-jit-cache040-instruction-start"></a>
+## 2026-09-01 (sixth) — Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state
+
+The packed/cache-on x64 Q605 replay advanced beyond the positioned-IPL fix,
+then diverged at checkpoint 4,852,195 in the atomic loop at `$0019833A`.
+The interpreted `MOVE.L (A0),D1` read zero from a dirty D-cache line; the JIT
+cold path read one from backing RAM, so the following `CAS.L` succeeded and
+charged 19 cycles instead of failing in 16. Cache contents, tags and ATCs
+matched before the instruction. The difference was private per-instruction
+MMU state: the preceding `CAS` had set `mmu040Lrmw`, and normal
+`mmu040InstrStart()` clears it before the next opcode. A generated cache miss
+entered an access-only exact thunk without that instruction-start reset, so
+an ordinary read inherited locked-RMW semantics and bypassed the dirty line.
+
+On a cache-active 68040, both native generators now send any cold line access
+to whole-instruction replay. That pristine path runs `mmu040InstrStart()` and
+all of Moira's other per-instruction setup before touching memory; cacheless
+040 and 68030 exact-access thunks keep their existing fast path. Native line
+hits remain generated, but their published proof now also carries the data
+ATC entry selected by the exact access. A hit may bypass `mmu040AtcLookup`
+only while its direction's `last` memo still names that entry and its MRU bit
+is already set—precisely when the skipped lookup cannot change replacement
+state. TTR and MMU-off identity translations have no such ATC side effect.
+
+The A64/x64 asset-free and copy-back oracles remain green. The original x64
+packed/cache-on Q605 replay is now identical for all **5,000,000** requested
+steps, past the old boundary, while exercising **4,324,995 native D-cache
+reads** and **611,088 native copy-back writes**.
+
+<a id="2026-09-01-jit-cache040-ipl-polls"></a>
+## 2026-09-01 (fifth) — Cache-active 68040 memory instructions preserve access-positioned IPL samples
+
+The corrected JSR carried the x64 cache-on Q605 lockstep to 4,664,060 coarse
+checkpoints, where canonical and packed CCR runs found the same new two-cycle
+drift with identical PC, SR, registers and RAM. The interrupt pin changed
+inside the generated loop at `$00094738`. Its first instruction was
+`CMP.L 12(A4),D7` (`BEAC`): the interpreter crossed two `POLL_IPL` sites,
+but the generated body reproduced only the 040 loop-head sample. A cache or
+exact-access stall can advance peripherals between those sites, so the
+missing second sample delayed IRQ recognition by one instruction and shifted
+the handler's final peripheral phase by two cycles.
+
+This is not safely repaired by polling at every generated tail. Moira places
+the extra sample before the data write in some handlers and after the data
+read in others; moving it across a cache fill can recognize an interrupt too
+early instead. The existing opt-in trace timing seam now counts the actual
+`POLL_IPL` sites and records the count in host-neutral IR. While the IR does
+not yet encode each poll's access-relative position, both generators refuse
+only the cache-active 040 subset that combines a memory contract with more
+than one observed poll. Register-only two-poll instructions remain native,
+as do cacheless instructions and memory forms with only the loop-head sample.
+
+The copyback oracle pins `ADD.W (A0),D0`, whose post-read poll is known, to
+one exact fallback with identical result, flags, queue and cycles on A64 and
+x64. The original real block now traces `iplPolls=2`, the canonical replay is
+identical past the old checkpoint with native cache reads/writes still live,
+and the full packed/cache-on five-million replay is the release-depth proof.
+
+<a id="2026-09-01-jit-cache040-jsr-target-read"></a>
+## 2026-09-01 (fourth) — Cache-active 68040 JSR preserves its ordered target-word read through exact replay
+
+The x64 cache-on Q605 lockstep first diverged after 1,573,279 coarse
+checkpoints with identical PC/SR/RAM but an eight-core-cycle deficit. The
+path narrowed to the interrupt handler's `$40809B6E`, `JSR (A3)`: its IR
+recorded and charged the fixed four-cycle AI cell, while interpreted Moira
+reached `$40809BC0` eight cycles later. Disabling packed CCR, links, dynamic
+bitfields and every bitfield lowering left the same boundary, so this was not
+the feature being developed.
+
+`execJsr` supplies the missing contract. On a 68040 it pushes the return
+address and then explicitly reads one program-space word at the target. With
+the architectural cache active, that read may fill/replace the I-cache,
+stall on the external bus or fault. The native bodies used the queue word
+captured while tracing instead: normally invisible, but wrong when that late
+read carried the four-cycle wait seen by the real handler. Reading first is
+not equivalent because it reverses D-cache/I-cache/bus order; reading after a
+native push cannot replay pristine state if the target faults.
+
+Both A64 and x64 now leave only the cache-active 040 JSR subset on Moira's
+one-instruction window. Cacheless 040 JSR and the separately proved 030
+push/target transaction remain native. The copyback oracle trains a JSR,
+keeps its source line resident, forces the target line cold, and proves the
+single exact execution's stack, queue, target and dynamic cycles against the
+interpreter. The original x64/Rosetta checkpoint is green past the former
+boundary while native D-cache reads and writes remain enabled. The deeper
+cache/IPL interaction exposed afterwards is recorded separately in the next
+entry above rather than being hidden inside this JSR fix.
+
+<a id="2026-09-01-jit-packed-bitfields"></a>
+## 2026-09-01 (third) — Packed-CCR bitfields become native across every register and memory path
+
+The packed-CCR prototype still rejected every bitfield even though all eight
+actions already had native canonical-flag bodies. The result value and its
+right-justified field sign are sufficient: insert N/Z into packed bits 3/2,
+clear V/C, and preserve X plus the retired-instruction count above the low
+byte. A64 uses x18 for the pack scratch because x16 still carries `BFFFO`'s
+raw dynamic offset; x64 uses RAX only after every memory host pointer has
+been saved. The canonical x64 branch keeps its historical `CMP value,0`
+sequence, so enabling the packed path does not perturb ordinary code layout.
+
+The blanket refusal is gone from both generators. Register bitfields,
+read-only memory fields, tailless mutations and the new four-access crossing
+writes now publish either CCR representation from the same semantic result.
+The six asset-free loops run twice per host: dynamic mixed 1,215, dynamic
+register 1,538, static 1,332, memory read 922, tailless write 704 and crossing
+write 1,024 native instructions, every run with zero slow instructions.
+Both layouts also prove the one-read/one-write tail MMIO transition
+`A5 -> 5B` and the complete format-$7 fault state. The independent 68030
+oracle repeats 704/1,024 native-zero-slow, MMIO and complete format-$B proof
+under canonical and packed CCR.
+
+The real x64 packed LC II gate remains green for 120,000 boundaries. Fine
+five-million Q605 replays are identical under canonical and packed CCR on
+x64, and the A64 packed run is identical at the same depth. Packed bitfields
+therefore cease to be a documented fallback; packed CCR remains opt-in only
+because its earlier A64 wall-time measurement was negative, not because its
+architectural publication is incomplete.
+
+<a id="2026-09-01-jit-bitfield-tail-writes"></a>
+## 2026-09-01 (second) — Five-byte memory-bitfield writes gain a four-access transaction on both native generators
+
+The last shared bitfield boundary was not a missing host instruction. Moira's
+crossing `BFCHG`/`BFCLR`/`BFSET`/`BFINS` sequence is
+read4/write4/read1/write1: if the tail access faults, the first longword store
+is already architectural and a generated late refusal cannot restart safely.
+The two-slot `MemoryContract` therefore described only tailless writes, and
+both A64 and x64 replayed possible five-byte forms such as Speedometer's
+`EFD4` whole.
+
+The fixed contract now has four slots and names the partially committed
+phase. Its new maximum-path lowering is deliberately narrow:
+`PreflightAll`, all four slots consumed, no exact-thunk token and no cache
+token. Both emitters prove the longword and tail mappings writable before
+either read, retain both host pointers, then branch around the tail when a
+dynamic offset/width fits at run time. Once both mappings are proved plain
+RAM, read4/read1/write4/write1 is effect-equivalent in the single-threaded
+guest; MMIO, a faulting page, code protection or a live 040 D-cache refuses
+before access zero and pristine Moira retains the architectural
+partial-write/fault order. Packed-CCR bitfields remain an explicit fallback.
+
+The shared 040 loop exercises all four mutations plus a dynamic no-tail arm:
+A64 and x64 each retire 1,024 native instructions with zero slow
+instructions. A trained tail-MMIO leg observes exactly one byte read and one
+byte write (`A5 → 5B`), and the tail-fault leg matches CPU, complete RAM
+(including the already-mutated longword) and all 60 bytes of the format-$7
+frame. The independent 68030 gate repeats the 1,024/zero result on both hosts,
+then proves one MMIO transaction and the complete 92-byte format-$B frame.
+The IR unit test pins the four ordered capabilities and `lastWrite = 3`;
+backend parity remains zero. This closes TODO's `EFD4` transaction target;
+no speed claim is made without a new real-workload profile.
+
+<a id="2026-09-01-jit-parity-zero"></a>
+## 2026-09-01 — The backend census reaches zero exceptions: legal EA masks and indexed MOVE converge
+
+After the classic bit port, the 65,536-opcode parity sweep still carried ten
+exceptions. Nine were not lowerings at all: x64's cheap predicate advertised
+illegal An, PC-relative or immediate destinations that its emitter later
+refused. Shared predicates copied from Moira's handler masks now define MOVE,
+immediate ALU, ADDQ/SUBQ, register-to-EA ALU, TST, unary modifiers and PEA for
+both generators. This also opens the two legal 68020+ read-only forms hidden
+inside the drift, `TST #imm` and `CMPI <pc-ea>`. Moira charges all three TST
+immediate sizes six cycles, so the shared cost model records that exception
+instead of treating byte/word immediates as ordinary four-cycle reads.
+
+The new read-only-EA lockstep retires exactly 2,047 native instructions with
+zero replay under canonical and packed CCR on both hosts. It exposed a packed
+A64 bug unrelated to admission: sign-extended byte/word values were shifted
+wholesale into N, leaking their upper ones into the retired count stored above
+XNZVC. Extracting exactly one guest sign bit fixes the flags and keeps the
+instruction count isolated.
+
+The last exception was 1,400 legal MOVE opcodes with a brief-indexed
+destination. It looked like an A64-only lowering because x64's `canEmit()`
+consulted `kMoveDst[EA_IX]`, still `-1`; the actual emitters already shared
+indexed address formation, SingleWrite, PreflightAll and atomic cache-pair
+bodies. Moira's `execMove6` table gives every 68020 source row the same
+five-cycle destination surcharge. `kMoveDst` now records that architectural
+cell. Both emitters consume it for the 68040, while an explicit local guard
+keeps the 68030 limited to its separately proved restartable-write and
+two-memory Speedometer families; full-format destinations remain refused by
+extension decode.
+
+The 040 oracle crosses byte, word and long MOVE destinations from register,
+immediate, direct-memory and indexed-memory sources. A64 and x64 each retire
+1,537 generated instructions with zero slow instructions in both CCR layouts.
+Trained MMIO legs perform exactly one device write, and `/BERR` legs match the
+interpreter's CPU boundary, RAM and complete format-$7 frame. The parity gate
+now reports **zero divergence groups and zero failures**, its dated exception
+table is empty, and representative indexed destinations are pinned by the
+backend admission test. This closes architectural codegen debt; no workload
+speedup is claimed without a new profile. The real Quadra 605 lockstep also
+remains identical for 5,000,000 instruction boundaries on each native host
+(17.34 s A64, 28.36 s x64 on the reference Apple Silicon runner).
 
 <a id="2026-08-31-x64-classic-bit-rmw"></a>
 ## 2026-08-31 (twenty-third) — x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW

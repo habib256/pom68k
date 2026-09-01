@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 370 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 376 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 65 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 37 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 66 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 40 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 27 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
-| [Cross-cutting](#cross-cutting) | 67 |
+| [Cross-cutting](#cross-cutting) | 69 |
 
 ---
 
@@ -91,6 +91,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (third)** — [Speedometer's indexed indirect `JSR` becomes transactional on A64 and x64, removing its largest static CPU fallback](CHANGELOG.md#2026-08-31-speedometer-jsr-full-indirect)
 - **2026-08-31 (twenty-second)** — [x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively](CHANGELOG.md#2026-08-31-x64-move-sr)
 - **2026-08-31 (twenty-third)** — [x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW](CHANGELOG.md#2026-08-31-x64-classic-bit-rmw)
+- **2026-09-01** — [The backend census reaches zero exceptions: legal EA masks and indexed MOVE converge](CHANGELOG.md#2026-09-01-jit-parity-zero)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -131,6 +132,9 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-22 (fourth)** — [The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever](CHANGELOG.md#2026-08-22-slice-index-leak)
 - **2026-08-31** — [Speedometer's three hot word multiplies become native on both generators, with fixed 68030 timing and exact MMIO](CHANGELOG.md#2026-08-31-speedometer-word-multiply)
 - **2026-08-31 (sixth)** — [Speedometer's wide unconditional branches and simple jumps become native through an exact 68030 linear-fetch proof](CHANGELOG.md#2026-08-31-speedometer-linear-transfers)
+- **2026-09-01 (fifth)** — [Cache-active 68040 memory instructions preserve access-positioned IPL samples](CHANGELOG.md#2026-09-01-jit-cache040-ipl-polls)
+- **2026-09-01 (fourth)** — [Cache-active 68040 JSR preserves its ordered target-word read through exact replay](CHANGELOG.md#2026-09-01-jit-cache040-jsr-target-read)
+- **2026-09-01 (sixth)** — [Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state](CHANGELOG.md#2026-09-01-jit-cache040-instruction-start)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -432,4 +436,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (thirteenth)** — [Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators](CHANGELOG.md#2026-08-31-speedometer-dependent-move)
 - **2026-08-31 (twentieth)** — [Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body](CHANGELOG.md#2026-08-31-speedometer-roxr-long)
 - **2026-08-31 (twenty-first)** — [Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain](CHANGELOG.md#2026-08-31-speedometer-shift-multiversion)
+- **2026-09-01 (second)** — [Five-byte memory-bitfield writes gain a four-access transaction on both native generators](CHANGELOG.md#2026-09-01-jit-bitfield-tail-writes)
+- **2026-09-01 (third)** — [Packed-CCR bitfields become native across every register and memory path](CHANGELOG.md#2026-09-01-jit-packed-bitfields)
 

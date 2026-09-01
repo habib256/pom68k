@@ -53,9 +53,10 @@ public:
         int64_t clock = 0;
     };
 
-    FaultCpu()
+    explicit FaultCpu(const jit::ResolvedConfig& config =
+                          injectedJitConfig())
         : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68030,
-                                injectedJitConfig()) {
+                                config) {
         setModel(moira::Model::M68030);
     }
 
@@ -413,6 +414,45 @@ void installBitfieldWriteLoop(FaultCpu& c) {
     put32(c, kBitfieldData + 0x00, 0xA55A3CC3);
     put32(c, kBitfieldData + 0x04, 0x5AA5C33C);
     put32(c, kBitfieldData + 0x08, 0x89ABCDEF);
+}
+
+void installBitfieldTailWriteLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x7207);    // MOVEQ #7,D1
+    put16(c, kCode + 0x02, 0x7420);    // MOVEQ #32,D2
+    put16(c, kCode + 0x04, 0x203C);    // MOVE.L #$13579BDF,D0
+    put32(c, kCode + 0x06, 0x13579BDF);
+    put16(c, kCode + 0x0A, 0xEAD0);    // BFCHG (A0){D1:D2}
+    put16(c, kCode + 0x0C, 0x0862);
+    put16(c, kCode + 0x0E, 0xECE9);    // BFCLR 4(A1){2:31}, 1 tail bit
+    put16(c, kCode + 0x10, 0x009F);
+    put16(c, kCode + 0x12, 0x0004);
+    put16(c, kCode + 0x14, 0xEED0);    // BFSET (A0){5:31}, 4 tail bits
+    put16(c, kCode + 0x16, 0x015F);
+    put16(c, kCode + 0x18, 0xEFE9);    // BFINS D0,4(A1){7:27}, 2 tail bits
+    put16(c, kCode + 0x1A, 0x01DB);
+    put16(c, kCode + 0x1C, 0x0004);
+    put16(c, kCode + 0x1E, 0x7408);    // runtime no-tail arm
+    put16(c, kCode + 0x20, 0xEAD0);    // BFCHG (A0){D1:D2}
+    put16(c, kCode + 0x22, 0x0862);
+    put16(c, kCode + 0x24, 0x60DA);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+    put32(c, kBitfieldData + 0x100, 0xA55A3CC3);
+    put32(c, kBitfieldData + 0x104, 0x5AA5C33C);
+    put32(c, kBitfieldData + 0x204, 0x89ABCDEF);
+    put32(c, kBitfieldData + 0x208, 0x76543210);
+}
+
+void installBitfieldTailBoundaryLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0xEAD0);    // BFCHG (A0){7:32}
+    put16(c, kCode + 0x02, 0x01C0);
+    put16(c, kCode + 0x04, 0x60FA);    // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
 }
 
 void installSpeedometerBitfieldTailLoop(FaultCpu& c) {
@@ -1690,10 +1730,16 @@ int main() {
     }
 
     // The 030 admission is a separate policy switch from the 040 emitter.
+    // Exercise the bitfield write protocols under both CCR layouts so their
+    // residency and restart proof cannot be inherited from the 040 fixture.
+    for (bool packedCcr : {false, true}) {
+        jit::ResolvedConfig bitfieldConfig = injectedJitConfig();
+        bitfieldConfig.packedCcr = packedCcr;
+
     // Exercise the four tailless memory-write actions directly so the hot
     // EFD1 path cannot be declared from a 040-only synthetic proof.
     {
-        FaultCpu bfRef, bfNative;
+        FaultCpu bfRef(bitfieldConfig), bfNative(bitfieldConfig);
         installBitfieldWriteLoop(bfRef); installBitfieldWriteLoop(bfNative);
         bfRef.reset(); bfNative.reset();
         bfRef.setTC(12u << 20); bfNative.setTC(12u << 20);
@@ -1727,16 +1773,174 @@ int main() {
         const auto bfStats = bfNative.jit.stats().snapshot();
         const bool nativeProduction =
             (!std::strcmp(bfNative.jit.backendName(), "aarch64") ||
-             !std::strcmp(bfNative.jit.backendName(), "x86-64")) &&
-            !bfNative.jit.config().packedCcr;
-        std::printf("    030 bitfield-write compiled=%llu runs=%llu native=%llu slow=%llu\n",
+             !std::strcmp(bfNative.jit.backendName(), "x86-64"));
+        std::printf("    030 bitfield-write packed=%d compiled=%llu runs=%llu "
+                    "native=%llu slow=%llu\n", int(packedCcr),
                     (unsigned long long)bfStats.blocksCompiled,
                     (unsigned long long)bfStats.blocksRun,
                     (unsigned long long)bfStats.instrs,
                     (unsigned long long)bfStats.slowInstrs);
         check(same && bfStats.blocksCompiled != 0 && bfStats.blocksRun != 0 &&
-              (!nativeProduction || bfStats.slowInstrs == 0),
+              (!nativeProduction || (bfStats.instrs == 704 &&
+                                     bfStats.slowInstrs == 0)),
               "tailless memory bitfield writes stay native and exact on native 030");
+    }
+
+    // The same 68030 admission now consumes the four-slot crossing contract.
+    // Exercise every mutating action plus the runtime no-tail arm so this
+    // proof cannot be inherited accidentally from the 68040 fixture.
+    {
+        FaultCpu bfRef(bitfieldConfig), bfNative(bitfieldConfig);
+        installBitfieldTailWriteLoop(bfRef);
+        installBitfieldTailWriteLoop(bfNative);
+        bfRef.reset(); bfNative.reset();
+        bfRef.setTC(12u << 20); bfNative.setTC(12u << 20);
+        for (FaultCpu* c : {&bfRef, &bfNative}) {
+            c->setA(0, kBitfieldData + 0x100);
+            c->setA(1, kBitfieldData + 0x200);
+        }
+        bfNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 256 && same; step++) {
+            const int64_t target = bfRef.getClock() + 47;
+            bfRef.executeUntil(target);
+            bfNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && bfRef.getD(r) == bfNative.getD(r) &&
+                       bfRef.getA(r) == bfNative.getA(r);
+            same = same && bfRef.getPC() == bfNative.getPC() &&
+                   bfRef.getPC0() == bfNative.getPC0() &&
+                   bfRef.getIRD() == bfNative.getIRD() &&
+                   bfRef.getIRC() == bfNative.getIRC() &&
+                   bfRef.getSR() == bfNative.getSR() &&
+                   bfRef.getClock() == bfNative.getClock() &&
+                   std::memcmp(bfRef.mem.data() + kBitfieldData + 0xF0,
+                               bfNative.mem.data() + kBitfieldData + 0xF0,
+                               0x130) == 0;
+            if (!same)
+                std::printf("    030 bitfield-tail-write divergence at "
+                            "checkpoint %d\n", step);
+        }
+        const auto bfStats = bfNative.jit.stats().snapshot();
+        const bool nativeProduction =
+            (!std::strcmp(bfNative.jit.backendName(), "aarch64") ||
+             !std::strcmp(bfNative.jit.backendName(), "x86-64"));
+        std::printf("    030 bitfield-tail-write packed=%d compiled=%llu "
+                    "runs=%llu native=%llu slow=%llu\n", int(packedCcr),
+                    (unsigned long long)bfStats.blocksCompiled,
+                    (unsigned long long)bfStats.blocksRun,
+                    (unsigned long long)bfStats.instrs,
+                    (unsigned long long)bfStats.slowInstrs);
+        check(same && bfStats.blocksCompiled != 0 && bfStats.blocksRun != 0 &&
+              (!nativeProduction || (bfStats.instrs == 1024 &&
+                                     (packedCcr || bfStats.slowInstrs == 0))),
+              "crossing memory bitfield writes stay native and exact on native 030");
+    }
+
+    // A tail MMIO/fault mapping must be rejected by the generated preflight
+    // before its longword read. Moira then owns the architectural partial
+    // longword write, the one tail callback and the 030 format-$B frame.
+    {
+        FaultCpu bfRef(bitfieldConfig), bfNative(bitfieldConfig);
+        installBitfieldTailBoundaryLoop(bfRef);
+        installBitfieldTailBoundaryLoop(bfNative);
+        bfRef.reset(); bfNative.reset();
+        bfRef.setTC(12u << 20); bfNative.setTC(12u << 20);
+        bfNative.setA(0, kBitfieldData);
+        bfNative.jit.setEnabled(true);
+        bfNative.jit.executeUntil(bfNative.getClock() + 256);
+        const auto trained = bfNative.jit.stats().snapshot();
+        bfRef.mem = bfNative.mem;
+
+        const auto prepareTail = [](FaultCpu& c, uint32_t address) {
+            put32(c, address, 0x12345678);
+            c.setPC(kCode); c.setPC0(kCode);
+            c.setIRD(0xEAD0); c.setIRC(0x01C0);
+            c.setA(0, address); c.setA(7, kStack);
+            c.setSR(0x271F); c.setClock(0);
+            c.writeFaults = c.readFaults = c.mmioReads = 0;
+            c.observedWrite = {};
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        const auto sameBoundary = [&]() {
+            bool same = true;
+            for (int r = 0; r < 8; r++)
+                same = same && bfRef.getD(r) == bfNative.getD(r) &&
+                       bfRef.getA(r) == bfNative.getA(r);
+            return same && bfRef.getPC() == bfNative.getPC() &&
+                   bfRef.getPC0() == bfNative.getPC0() &&
+                   bfRef.getIRD() == bfNative.getIRD() &&
+                   bfRef.getIRC() == bfNative.getIRC() &&
+                   bfRef.getSR() == bfNative.getSR() &&
+                   bfRef.getClock() == bfNative.getClock();
+        };
+
+        prepareTail(bfRef, kMmio - 4);
+        prepareTail(bfNative, kMmio - 4);
+        bfRef.mem[kMmio] = bfNative.mem[kMmio] = 0xA5;
+        const auto beforeMmio = bfNative.jit.stats().snapshot();
+        bfRef.executeUntil(1);
+        bfNative.jit.executeUntil(1);
+        const auto afterMmio = bfNative.jit.stats().snapshot();
+        check(trained.blocksCompiled != 0 && sameBoundary() &&
+              std::memcmp(bfRef.mem.data(), bfNative.mem.data(),
+                          bfRef.mem.size()) == 0 &&
+              bfRef.mmioReads == 1 && bfNative.mmioReads == 1 &&
+              bfRef.observedWrite.count == 1 &&
+              bfNative.observedWrite.count == 1 &&
+              bfRef.observedWrite.address == kMmio &&
+              bfNative.observedWrite.address == kMmio &&
+              bfRef.observedWrite.value == 0x5B &&
+              bfNative.observedWrite.value == 0x5B &&
+              afterMmio.blocksRun > beforeMmio.blocksRun &&
+              afterMmio.slowInstrs == beforeMmio.slowInstrs + 1,
+              "crossing bitfield tail MMIO replays exactly once on native 030");
+
+        prepareTail(bfRef, kHole - 4);
+        prepareTail(bfNative, kHole - 4);
+        const auto beforeFault = bfNative.jit.stats().snapshot();
+        bfRef.executeUntil(1);
+        bfNative.jit.executeUntil(1);
+        const auto afterFault = bfNative.jit.stats().snapshot();
+        constexpr uint32_t kTailFaultFrameBytes = 92;
+        const uint32_t refSp = bfRef.getA(7), nativeSp = bfNative.getA(7);
+        const bool tailFaultSame = sameBoundary() && bfRef.readFaults == 1 &&
+              bfNative.readFaults == 1 && bfRef.writeFaults == 0 &&
+              bfNative.writeFaults == 0 &&
+              refSp == kStack - kTailFaultFrameBytes && nativeSp == refSp &&
+              std::memcmp(bfRef.mem.data() + refSp,
+                          bfNative.mem.data() + nativeSp,
+                          kTailFaultFrameBytes) == 0 &&
+              std::memcmp(bfRef.mem.data(), bfNative.mem.data(),
+                          bfRef.mem.size()) == 0 &&
+              afterFault.blocksRun > beforeFault.blocksRun &&
+              // A faulting replay does not retire, so it is not attributed
+              // to the retired-slow counter on either native backend.
+              afterFault.slowInstrs == beforeFault.slowInstrs;
+        if (!tailFaultSame)
+            std::printf("    tail /BERR read=%d/%d write=%d/%d "
+                        "sp=%08X/%08X fmt=%04X/%04X runs=%llu->%llu "
+                        "slow=%llu->%llu boundary=%d mem=%d\n",
+                        bfRef.readFaults, bfNative.readFaults,
+                        bfRef.writeFaults, bfNative.writeFaults,
+                        refSp, nativeSp,
+                        refSp + 8 <= bfRef.mem.size()
+                            ? get16(bfRef, refSp + 6) : 0,
+                        nativeSp + 8 <= bfNative.mem.size()
+                            ? get16(bfNative, nativeSp + 6) : 0,
+                        (unsigned long long)beforeFault.blocksRun,
+                        (unsigned long long)afterFault.blocksRun,
+                        (unsigned long long)beforeFault.slowInstrs,
+                        (unsigned long long)afterFault.slowInstrs,
+                        int(sameBoundary()),
+                        int(std::memcmp(bfRef.mem.data(), bfNative.mem.data(),
+                                        bfRef.mem.size()) == 0));
+        check(tailFaultSame,
+              "crossing bitfield tail /BERR preserves partial RAM and format-$B");
+    }
     }
 
     // Speedometer's E9D4 uses a dynamic offset and width that may require a

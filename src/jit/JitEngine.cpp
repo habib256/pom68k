@@ -1034,6 +1034,9 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         const uint8_t fetchWords = uint8_t(
             timing.fetchWords > 0 && timing.fetchWords < 256
                 ? timing.fetchWords : 0);
+        const uint8_t iplPolls = uint8_t(
+            timing.iplPolls > 0 && timing.iplPolls < 256
+                ? timing.iplPolls : 0);
         const uint32_t observedNextPc = cpu_.getPC();
         const uint16_t terminalIrd = cpu_.getIRD();
         const uint16_t terminalIrc = cpu_.getIRC();
@@ -1048,6 +1051,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
             ir.instrs.back().memory =
                 describeMemory(op, guestFamily_ == kGuest68030);
             ir.instrs.back().semantics = describeInstruction(op);
+            ir.instrs.back().iplPolls = iplPolls;
             at += words * 2;
             why = EndReason::ControlFlow;
             break;
@@ -1066,6 +1070,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
             ir.instrs.back().memory =
                 describeMemory(op, guestFamily_ == kGuest68030);
             ir.instrs.back().semantics = describeInstruction(op);
+            ir.instrs.back().iplPolls = iplPolls;
             why = EndReason::Discontinuity;
             break;
         }
@@ -1079,6 +1084,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         ir.instrs.back().memory =
             describeMemory(op, guestFamily_ == kGuest68030);
         ir.instrs.back().semantics = describeInstruction(op);
+        ir.instrs.back().iplPolls = iplPolls;
         at = next;
 
         if (versionedShift) { why = EndReason::LengthLimit; break; }
@@ -1156,7 +1162,13 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     // recorded. The instrument that settled the 2026-08-29 ±2: a counter
     // divergence blamed on an emitter turned out to be a TRACED FIELD, and
     // nothing else could show what the tracer had captured for one pc.
-    if (config_.traceBlockPc && pc == config_.traceBlockPc) [[unlikely]] {
+    bool traceBlock = false;
+    if (config_.traceBlockPc) {
+        for (const Instr& in : it->second.ir.instrs) {
+            if (in.pc == config_.traceBlockPc) { traceBlock = true; break; }
+        }
+    }
+    if (traceBlock) [[unlikely]] {
         const BlockIr& ir2 = it->second.ir;
         std::fprintf(stderr,
                      "[jit] block $%08X recorded: %zu instr(s), end=%d\n",
@@ -1164,11 +1176,13 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         for (const Instr& in : ir2.instrs)
             std::fprintf(stderr,
                          "  pc=$%08X op=%04X words=%u fetchWords=%u cycles=%u "
-                         "base=%u icache=%u nextPc=$%08X ird=%04X irc=%04X "
+                         "base=%u icache=%u iplPolls=%u nextPc=$%08X "
+                         "ird=%04X irc=%04X "
                          "ext0=%04X\n",
                          in.pc, in.opcode, unsigned(in.words),
                          unsigned(in.fetchWords), unsigned(in.cycles),
                          unsigned(in.baseCycles), unsigned(in.icacheCycles),
+                         unsigned(in.iplPolls),
                          in.observedNextPc, in.terminalIrd, in.terminalIrc,
                          in.extensionCount ? in.extensionWord(0) : 0);
     }

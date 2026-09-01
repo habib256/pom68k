@@ -794,9 +794,10 @@ subset. X64 now mirrors the two-probe transaction: it proves both possible
 mappings before the first load, skips the second probe when runtime
 offset+width ends at bit 32, and combines the optional byte only on the tail
 path. Its memory-bitfield body also cross-checks the fixed action/EA timing
-table instead of accepting an arbitrary traced cost. Five-byte writes remain
-undescribed because a first committed store could not be replayed after a
-late tail failure.
+table instead of accepting an arbitrary traced cost. Since 2026-09-01 its
+write twin publishes and consumes a four-slot transaction; both writable
+mappings are proved before the first read, so a late-tail MMIO/fault mapping
+still replays pristine while plain RAM may complete both stores directly.
 
 The 030 admission is now on by default on both generators; explicit
 `POM68K_JIT_030_MEMBF=0` remains the attribution/veto arm. The directed gate
@@ -1079,6 +1080,16 @@ twice, each time for a measured reason recorded in `JitIr.h`:
 | `JSR <ea>`, `RTS` | 2026-07-28 | 7 % of a real Mac OS workload, and every one of them was both an interpreter round trip AND a block boundary the linker could not cross |
 | `JMP <ea>` | 2026-07-30 | 0.66 % of the idle Finder in the census; a terminator simpler than `JSR` (no stack push). **Plain EA modes only** — `(An)`, `d16(An)`, `(xxx).W/.L`, `d16(PC)`. Indexed data EAs are now lowered, but indexed control flow stays `Unsafe` until its dynamic target/queue contract has a dedicated proof |
 
+The `JSR` row has one model-specific guard. With the architectural 68040
+I/D cache active, Moira pushes the return address and then performs an
+explicit program-space word read at the target. That second access may fill
+or replace I-cache state, stall or fault. It cannot be moved before the push
+without changing bus/cache order, and it cannot be attempted afterwards by
+a generated body that has no way to roll the push back on a fault. Both
+native generators therefore keep cache-active 040 `JSR` on the exact
+one-instruction window. Cacheless 040 and the separately transactional 030
+forms remain native.
+
 `LINK`, `UNLK` and `NOP` are carved out of `$4Exx` as ordinary
 straight-line `AddrCalc`: they transfer no control and touch no SR/MMU/cache
 state, they are 3.6 % of a real Mac OS workload, and they sit at every
@@ -1236,7 +1247,7 @@ do not affect an injected session.
 | `POM68K_JIT_PACKED_CCR` | `0` | conformant deferred-CCR prototype (§ 3.8): keep `XNZVC` beside the generated retired count and materialise it at helper/exit boundaries. Emitted and asset-free-lockstep-proved on A64/x64; the real 120k LC II replay is a permanent x64 gate. A64 measured **5.8 % slower**, so not a production default |
 | `POM68K_JIT_REG_CACHE` | `0` | A64 per-block cache of up to two read-only Dn/An values in x27/x28. Linked targets reload from canonical guest state and all blocks share the option-selected frame ABI. Lockstep-proved, performance-neutral, hence opt-in |
 | `POM68K_JIT_EDGE_CELLS` | `0` | constant branches use exact stable dependency cells rather than the colliding direct table; target publication/invalidation updates the cell in O(1). It removes 202,293 outer block runs on the fixed Q605 workload but measures 0.5 % slower; dynamic targets retain the table |
-| `POM68K_JIT_DYNAMIC_BITFIELD` | `1` | production admission on both native generators for register bitfields and TAILLESS memory forms whose offset and/or width come from Dn; `0` is the exact attribution control. Rogue's measured mask loop is dominated by this form; `jit_backend_test` locks the resolved default and the asset-free oracle locks all eight dynamic register actions to zero fallback on A64/x64 |
+| `POM68K_JIT_DYNAMIC_BITFIELD` | `1` | production admission on both native generators for register bitfields and memory forms whose offset and/or width come from Dn, including the possible fifth-byte read/write path; `0` is the exact attribution control. Rogue's measured mask loop is dominated by this form; `jit_backend_test` locks the resolved default and the asset-free oracles lock all eight dynamic register actions plus tail/no-tail memory paths to zero fallback on A64/x64 |
 | `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
 | `POM68K_Q605_EVENT_SCC` | `1` | Q605 carries serialized SCC time debt to its exact event/MMIO boundary; `0` restores per-`tick` stepping for A/B attribution |
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
@@ -1256,7 +1267,7 @@ do not affect an injected session.
 | `POM68K_JIT_PROFIT_SCORE` | `0` | experimental native compile gate; 0 preserves the current policy. Otherwise a recorded block must satisfy `visits × potentially native instructions >= score` in addition to `POM68K_JIT_HOT`. This lets long/native loops compile before short single-pass blocks; it is a measurement knob until repeated 1 000/3 000/6 000-frame ABBA evidence earns a default |
 | `POM68K_JIT_RESTART_BASE` | per-backend | admission (030): the restartable-write family on the split BASE cost instead of the traced total. Its historical coarse-budget divergence was the peripheral-phase class, CLOSED 2026-08-21 by the access-thunk clock bias (JIT_BRINGUP § C.4nonies). **Default follows the backend's `caps().accessClockBias` declaration — ON under x64 since 2026-08-22 (−4.3 % alone, −8.0 % with BSR.W at 6000 frames, fp identical) and under a64 since the same afternoon (its thunks carry the bias, replacing the `guardIcacheHits` replay); `threaded` declares none and needs none**; an explicit 0/1 wins either way. Both emitters consult it since the evening of 2026-08-22 (a64 had the total-cost rule hard-wired, refusing every push traced on an i-cache miss — native share 49 → 71 % at 30 000 frames once wired). `jit_lockstep_030_x64_alignment_test` / `jit_lockstep_030_a64_alignment_test` pin both admissions at 120k; `jit_backend_test` pins the declaration coupling |
 | `POM68K_JIT_BSRW` | per-backend | admission for BSR.W (`$6100`) into the armed-charge exemption. Charge proved correct (`fetchWords=2`); its step-16 097 divergence was the same peripheral-phase class, closed by the same fix. Same per-backend default and same gates as `POM68K_JIT_RESTART_BASE` (−2.3 % alone at 6000 frames) |
-| `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. TAILLESS BFCHG/BFCLR/BFSET/BFINS consume the shared read4/write4 RMW proof and a writable translation before the read; five-byte writes remain undescribed everywhere. A mispriced form refuses. Promoted 2026-08-31 after native A64+x64 tail/no-tail oracles, four real 030 locksteps and the exact Speedometer census; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
+| `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. Mutating forms consume read4/write4 when tailless or the shared read4/write4/read1/write1 maximum-path contract when crossing; both writable mappings are proved before access zero. MMIO/fault tails replay in Moira, preserving the partial longword and format-$B frame. A mispriced form refuses. Promoted for reads on 2026-08-31 and for crossing writes on 2026-09-01 after native A64+x64 tail/no-tail, MMIO and fault oracles; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
 | `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on the V8, whose store inventory is proved complete (`V8Memory::kJitStoreInventoryComplete` — every store into RAM passes `CodeGuard::note()`, pseudo-DMA included), honoured on VASP/RBV/MSC, whose inventories are not. `1` forces the hint back ON (prices it on a proven board: −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF — read by the V8 wrapper only (`Cpu030.cpp:85`): VASP/RBV/MSC always flush on the CI/CEI strobes and ignore the knob, so their unproven inventories cannot be un-flushed from the environment. Compare fingerprints on both sides or the number means nothing |
 | `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
 | `POM68K_JIT_WATCH_OPCODE` | unset | diagnosis (a64): `<hex>[,<hex>…]`, up to four opcodes — when the compile loop hands one to the fallback stub, print its admission inputs (trace/base/i-cache cycles, fetch count, terminal queue, semantics, memory proof plan) once per pc, tagged with the stage or the emitter check that refused it (`jsr:queue`, `movem:cost`, …). Turns a fallback-census row into WHICH check, without guessing from the source (2026-08-23) |
@@ -1312,11 +1323,12 @@ come from.
 
 `Instr::memory` is filled by `describeMemory()` when a traced instruction is
 committed to a block. Ordinary instructions carry zero, one or two explicit
-accesses; MOVEM carries a variable ordered span. Each access records its
+accesses; a crossing memory-bitfield mutation carries four, and MOVEM carries
+a variable ordered span. Each access records its
 direction and operand role, width, encoded EA, the model-correct EA commit
 point (`(An)+` is before the access on 030 and after on 040), fault phase
-(`RestartInstruction`, `LastWrite`, `RestartableLastWrite`) and cache-line
-eligibility.
+(`RestartInstruction`, `PartialWriteCommitted`, `LastWrite`,
+`RestartableLastWrite`) and cache-line eligibility.
 
 `memoryProofPlan()` is a pure lowering shared by the backends. A sole read or
 write may use its exact thunk and one published 040 line. A memory-to-memory
@@ -1329,11 +1341,16 @@ the two-slot RMW contract — read4 then write4 at one address,
 preflight before the read, on 040 and 030 by default. Read-only bitfields
 that may reach a fifth byte publish read4+read1 under `PreflightAll`; both
 generators prove the two mappings before access zero and branch around the
-tail probe when the runtime field fits one longword. The five-byte WRITE form
-would need four slots and has no analogue of that probes-before-load protocol
-— a committed first store could not replay — so it stays undescribed and
-falls back whole. `POM68K_JIT_030_MEMBF=0` vetoes the 030 admission for
-attribution. This makes a widening reviewable in one
+tail probe when the runtime field fits one longword. Since 2026-09-01 the
+crossing WRITE form publishes Moira's maximum read4/write4/read1/write1
+shape, `lastWrite = 3`. Its four-slot `PreflightAll` proof deliberately mints
+neither exact-thunk nor cache tokens. A64 and x64 prove the long and tail
+writable mappings before either read, retain both host pointers and branch
+around the runtime no-tail arm. On proved plain RAM, their reordered direct
+accesses are effect-equivalent; an MMIO, faulting or live-040-cache mapping
+refuses before access zero and pristine Moira preserves the architectural
+partial-write/fault sequence exactly. `POM68K_JIT_030_MEMBF=0` vetoes the 030
+admission for attribution. This makes a widening reviewable in one
 place: change the contract or planner, then make the pure IR assertions and
 the generated A64/x64 gate agree.
 
@@ -1532,33 +1549,57 @@ conformant `sync()` path after each instruction; otherwise the LC II poll at
 `jit_lockstep_030_x64_packed_ccr_test` pins 120,000 real LC II boundaries.
 Canonical x64/030 and packed x64/040 retain inline pacing.
 
+Bitfields now publish packed flags directly too. All register and memory
+forms insert N/Z into bits 3/2, clear V/C and preserve X plus the retired
+count; the A64 path deliberately uses x18 rather than the live raw-offset
+scratch used by `BFFFO`, while x64 keeps the historical canonical `CMP`
+sequence unchanged. The six asset-free bitfield loops run in both CCR
+layouts on each host with zero slow instructions; their MMIO and fault legs,
+and the independent 030 format-$B oracle, repeat the same two-layout proof.
+
 **Backend admission remains explicit even where the sets have converged.**
 Immediate and guarded register-count line-$E shifts/rotates, `MOVE SR,Dn`,
 all legal classic bit operations, brief-indexed reads/RMW, `Scc`, `PEA` and
 `LEA`, plus `EXG`,
 distinct-register `CMPM`, memory-bitfield reads (including the optional
-fifth byte), TAILLESS memory-bitfield writes and all eight register-bitfield
-actions are now on both generators. The x64 static bitfield body
+fifth byte), tailless and crossing memory-bitfield writes and all eight
+register-bitfield actions are now on both generators. The x64 static bitfield body
 folds the rotate, extraction shift and destination mask into immediates; its
 dynamic body uses CL-counted shifts, with both `BFFFO` paths branching around
 x86's undefined `BSR`-of-zero. The two
 backends admit the bitfield family with the same `canEmit` rule, so the
 parity gate carries no Bitfield exception row any more. Five-byte memory
-writes remain undescribed for both backends; they are a shared transaction
-gap, not an x64 parity exception. The shared synthetic
-040 oracle demands brief An/PC reads and `LEA`, indexed `Scc`/`PEA`, complete
-CPU/RAM lockstep and zero slow instructions. Its direct-full `LEA` twin must
-also stay native through base/index suppression and 9/11/15-cycle forms,
+writes use the shared four-access transaction on both backends; only a live
+040 D-cache remains an explicit fallback for that four-access memory shape.
+Packed CCR is native for every register, read-only memory, tailless-write and
+crossing-write bitfield path. The shared synthetic 040 oracle demands
+brief An/PC reads and `LEA`, indexed `Scc`/`PEA`, complete CPU/RAM lockstep
+and zero slow instructions. Its indexed-destination MOVE leg crosses
+byte/word/long register, immediate, direct-memory and indexed-memory sources
+under canonical and packed CCR: both hosts retire 1,537 native instructions
+with zero replay. Separate trained MMIO and `/BERR` legs prove one exact
+device write and the complete format-$7 frame. Its direct-full `LEA` twin
+must also stay native through base/index suppression and 9/11/15-cycle forms,
 while memory-indirect LEA/JSR/MOVE/CMP twins must remain exact and native on
 A64. The 030 oracle separately pins native signed/scaled reads plus
 brief/direct-full `LEA`, the direct-RAM full-indirect `LEA` transaction on
-both hosts, and the restartable indexed-MOVE format-$A fault frame;
-indexed `Scc` there remains conservatively replayed by the trace-cost guard.
-Each backend's
-`canEmit()` remains the source of truth, and `jit_backend_test` pins the
-remaining keyed difference (the broader A64 indexed-MOVE admission), plus the
-indexed control-flow refusal, so a coverage change is also a gate change. The
-full sweep currently carries ten dated divergence groups and none for `Bit`.
+both hosts, and the restartable indexed-MOVE format-$A fault frame; indexed
+`Scc` there remains conservatively replayed by the trace-cost guard.
+The crossing-bitfield twin retires 1,024 instructions with zero replay on
+each 040 and 030 native host, covers all four mutations plus a runtime
+no-tail arm, performs one tail MMIO read/write after pristine fallback, and
+matches partial RAM plus the complete format-$7 (040) or 92-byte format-$B
+(030) fault frame.
+
+Each backend's `canEmit()` remains the source of truth, while shared
+Moira-derived predicates reject illegal An, PC and immediate destinations and
+admit the legal 68020+ `TST #imm`/`CMPI <pc-ea>` forms on both sides.
+`jit_backend_test` pins those masks and representative indexed MOVE
+destinations. `kMoveDst[EA_IX]` now records `execMove6`'s architectural
+five-cycle surcharge; emitter-local gates still restrict the 68030 to its
+separately proved restartable-write and two-memory families. The complete
+65,536-opcode parity sweep now reports **zero divergence groups**, and its
+dated exception table is empty.
 
 ### What it is worth
 
@@ -1721,6 +1762,58 @@ must produce the same result with no native pair hits. On the fixed Q605 run,
 the pair converts **7,523,969** more fallbacks and averages **46.92 ->
 46.63 s** over two order-reversed pairs (-0.62 %), with identical fingerprint,
 PC and SCSI progress.
+
+One cache-on control transfer deliberately does not consume those native
+line tokens. `execJsr` performs its target program-word read after the stack
+push; replacing it with the queue value captured while recording omitted a
+possible I-cache fill and bus wait. The x64 Q605 coarse lockstep exposed that
+as an eight-core-cycle drift at `$40809B6E` (`JSR (A3)`) after 1,573,279
+checkpoints. Both backends now reject cache-active 040 `JSR` before emission.
+The asset-free copyback gate forces a cold target line and pins exact push,
+queue and dynamic-cycle state; cacheless 040 and 030 JSR coverage is
+unchanged.
+
+Cache-active memory instructions carry one further boundary proof. The 040
+loop head always samples IPL, and selected Moira handlers sample it again at
+a precise point around their operand access. A cache fill can advance the
+peripherals between the two. After the JSR fix, the x64 coarse Q605 replay
+exposed the missing sample at checkpoint 4,664,060 in `$00094738`'s
+`CMP.L 12(A4),D7` (`BEAC`): PC/register/RAM state still matched, but delayed
+IRQ recognition left the generated machine two cycles behind. A generic
+end-of-instruction poll is not conformant because some handlers poll before a
+write and others after a read.
+
+`PomJitTiming` therefore counts the actual `POLL_IPL` sites while tracing and
+`Instr::iplPolls` carries that fact to either host backend. Until the IR also
+records the sample's access-relative position, A64 and x64 refuse exactly the
+cache-active 040 instructions that have both a memory contract and more than
+one observed poll. Register-only two-poll forms cannot advance peripheral
+time before their final charge and stay native; cacheless forms and
+single-poll memory instructions are unchanged. The copyback gate pins
+`ADD.W (A0),D0` to one exact fallback with interpreter-identical result,
+flags, queue and cycles on both hosts. The original canonical replay is green
+past the failing checkpoint with native cache-line traffic still enabled;
+the packed five-million replay supplies the release-depth check.
+
+The exact-access door has one stricter rule with the architectural 040 cache
+live: a native line **miss replays the whole instruction**, not just its data
+access. Moira's `mmu040InstrStart()` resets private state at every opcode,
+including `mmu040Lrmw`; a `CAS` sets that latch for its own locked transaction.
+An access-only thunk after a generated cache miss used to inherit the latch
+from the preceding `CAS`, bypass a dirty D-cache line and read stale backing
+RAM. The packed x64 Q605 replay exposed this at checkpoint 4,852,195 in the
+loop at `$0019833A`. Whole-instruction replay restores the pristine boundary;
+68030 and cacheless-040 access thunks are unchanged.
+
+A generated line hit also skips the interpreter's `mmu040AtcLookup`, whose
+translation result is not its only effect: it updates the per-direction
+`last` entry and pseudo-LRU state. Each published cache-line proof therefore
+records the selected data-ATC row. Both emitters accept the hit only if the
+matching `last` memo already selects it and its MRU bit is already set, making
+the omitted lookup a state-preserving no-op. Identity translations through a
+TTR or disabled MMU carry no ATC condition. With these two contracts, the
+x64 packed/cache-on replay reaches all 5,000,000 requested steps identically
+while retaining 4,324,995 native reads and 611,088 native copy-back writes.
 
 The permanent native gates run this mode, not just the cacheless DTLB:
 `jit_lockstep_a64_coarse_test` and `jit_lockstep_x64_test` arm the cache and

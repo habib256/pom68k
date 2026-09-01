@@ -85,10 +85,12 @@ inline int eaRmwCost(int m, int szIdx) {
     return (m == EA_DN || m == EA_AN) ? 2 : r + 2;
 }
 
-// MOVE's destination surcharge (execMove0/2/3/4/5/7/8, 68020 column). The
-// `(xxx).W` cell is 2 for the same prefetch-queue reason as kEaRead's.
+// MOVE's destination surcharge (execMove0/2/3/4/5/6/7/8, 68020 column). The
+// `(xxx).W` cell is 2 for the same prefetch-queue reason as kEaRead's. A
+// brief indexed destination is five cycles in every execMove6 source row;
+// full-format admission remains an emitter decision after extension decode.
 inline constexpr int8_t kMoveDst[EA_MODE_COUNT] =
-    { 0, 0, 2, 2, 3, 3, -1, 2, 4, -1, -1, -1 };
+    { 0, 0, 2, 2, 3, 3, 5, 2, 4, -1, -1, -1 };
 
 // CMPA's surcharge over ADDA/SUBA. execAdda's 020 column IS kEaRead; CMPA
 // is kEaRead + 2 in every mode, byte, word and long alike — it holds a

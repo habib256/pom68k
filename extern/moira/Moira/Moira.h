@@ -448,6 +448,12 @@ public:
         i64 baseCycles = 0;
         i64 icacheCycles = 0;
         i64 postExceptionCycles = 0;
+        // Number of architectural POLL_IPL sites crossed by the traced
+        // instruction. 68030/040 loop heads contribute the first one;
+        // selected handlers contribute another around their data phase.
+        // A cache-active native backend needs this distinction because a
+        // data-cache stall can change the pin between those two sites.
+        i64 iplPolls = 0;
         // Instruction-stream words the run fetched through mmuFetchWord
         // (pomIcache.fetches delta; the counter runs whenever armed, cache
         // enabled or not). NOT derivable from the instruction length: a
@@ -565,6 +571,9 @@ public:
     // Generated code trusts none of it blindly. Every hit compares:
     //   * logical line + privilege (tag),
     //   * the current data-ATC epoch (generation),
+    //   * that the interpreter's per-direction ATC memo and pseudo-LRU bit
+    //     already describe this entry (so bypassing mmu040AtcLookup is a
+    //     state-preserving no-op),
     //   * line.valid and the line's current physical tag.
     // A cache eviction/reallocation therefore misses by physical tag; a
     // CINV/CPUSH misses by valid; an ATC eviction or map/control change
@@ -574,9 +583,10 @@ public:
         u32 tag = 0xFFFFFFFF;            // (logical >> 4) | supervisor bit
         u32 physicalTag = 0;             // Cache040::Line::tag at publication
         u32 generation = 0;              // pomJitCache040Gen at publication
-        u32 pad = 0;
+        u8 atcIndex = 0xFF;              // 0xFF for TTR/MMU-off identity
+        u8 pad[3] {};
         Cache040::Line *line = nullptr;
-        u64 reserved = 0;                // force a shift-friendly 32 bytes
+        const bool *atcMru = nullptr;     // stable Mmu040AtcEntry::mru address
     };
     struct PomJitCache040Table {
         static constexpr u32 kEntries = 256;
@@ -849,9 +859,9 @@ public:
         u32 ird, irc;
         u32 dtlbR, dtlbW;               // base of each PomJitDtlb::e[]
         // 68040 D-cache windows. A generated hit still validates the logical
-        // tag, ATC epoch, physical tag and live cache line; write hits use
-        // the stronger W publication and update dirty-longword state.
-        u32 cache040R, cache040W, cache040Gen, cache040Hits;
+        // tag, ATC epoch/replacement state, physical tag and live cache line;
+        // write hits use the stronger W publication and update dirty state.
+        u32 cache040R, cache040W, cache040Gen, cache040AtcLastD, cache040Hits;
         u32 cache040NativeReadHits, cache040NativeWriteHits;
         bool cache040Live;
         // POM68K JIT: the 68040 MOVEM restart latch. Armed between a
