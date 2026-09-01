@@ -7,7 +7,7 @@
 // the flattened per-instruction view of it — its own `struct Ea` and its own
 // admission wrapper, drifting field by field (a64 carried memory
 // indirection, x64 did not). Both objects model the 68k, not the host
-// (TODO.md § 10, finding 2), so they are written once here. Backends keep
+// (CHANGELOG.md 2026-08-28 third), so they are written once here. Backends keep
 // only emission: how an admitted plan turns into host instructions.
 
 #pragma once

@@ -240,7 +240,7 @@ constexpr Reg kClk = R13;
 // The EaCostIndex enum, kEaRead/kMoveDst/eaRmwCost columns, the CMPA
 // surcharge and the EaPlan struct live in JitCost.h / JitEaPlan.h — they
 // model the 68k, not this host, and the a64 backend reads the SAME tables
-// (TODO.md § 10 wave 2, 2026-08-28). The `(xxx).W` off-by-one that was
+// (CHANGELOG.md 2026-08-28 third). The `(xxx).W` off-by-one that was
 // 47.4 % of all block fallbacks here (2026-08-09) is the reason the cells
 // are written once: its a64 twin paid the same toll silently for three days.
 using Ea = EaPlan;

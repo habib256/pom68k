@@ -44,7 +44,7 @@ CMAKE_ARCH_ARG=()
 # NATIVE=OFF; since 2026-08-17 the default is ON, and letting it flip here
 # would silently change what the released .dmg contains. LTO for the macOS
 # package is open work with its own reason for being open — the universal-2
-# lipo path is unexercised (TODO.md § 3). Turn it on when that is done.
+# lipo path is unexercised (TODO.md § 10). Turn it on when that is done.
 cmake -S . -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release \
     -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF -DPOM68K_TESTS=OFF \
     -DPOM68K_VERSION="${VERSION}" \

@@ -26,7 +26,7 @@
 //  11. startup follows ProcessEnvironment -> RuntimeConfig -> Factory ->
 //      Session -> GUI runtime, whose shared lifecycles stay outside main.cpp
 //  12. GUI and gate media lookup share immutable-reference preference
-//  13. TODO.md's active-work gate-registry headline matches CTest
+//  13. TODO.md stays an open-only backlog and delegates registry facts
 //  14. CMake registrations, dev tools and registry policy stay modular
 //  15. leaf devices consume subsystem config views, never the whole core bag
 //  16. STATUS.md — the registry as a GENERATED artifact (tools/status_md.py)
@@ -1511,36 +1511,27 @@ int main() {
     };
     const int totalGates = int(gates.size() + absent.size());
 
-    // TODO.md is the active backlog and its first paragraph is routinely used
-    // to quote the size of the validation surface.  The README/CLAUDE checks
-    // below did not cover it, so its registry headline stayed one gate behind
-    // while this test remained green.  Scope the parser to the union sentence:
-    // later historical measurements intentionally contain older totals.
+    // TODO.md is the active backlog, not a second registry or a historical
+    // journal. STATUS.md is generated from the manifests and owns the gate
+    // figures checked in section 16 below. Keep this file to unchecked work:
+    // a completed or partially completed checkbox belongs in CHANGELOG.md.
     {
         const std::string todoPath = testasset::find("TODO.md");
         check(!todoPath.empty(), "TODO.md active backlog located");
         const std::string todo = slurp(todoPath);
-        const size_t begin = todo.find("The documented registry");
-        const size_t end = begin == std::string::npos
-            ? std::string::npos : todo.find("Six are host-conditional", begin);
-        check(begin != std::string::npos && end != std::string::npos,
-              "TODO.md carries a bounded gate-registry headline");
-        if (begin != std::string::npos && end != std::string::npos) {
-            const std::string claim = todo.substr(begin, end - begin);
-            const auto totals = numbersBefore(claim, " gates");
-            check(totals.size() == 1 && totals.front() == totalGates,
-                  "TODO.md registry total matches the configured union");
-            for (const char* label : {
-                     "unit", "asset-none", "smoke", "jit", "m040", "m030",
-                     "etalon", "etalon-core" }) {
-                const auto statedCounts =
-                    numbersBefore(claim, std::string("`") + label + "`");
-                const int have = countLabel(label);
-                check(statedCounts.size() == 1 && statedCounts.front() == have,
-                      std::string("TODO.md registry `") + label +
-                          "` count matches CTest");
-            }
+        check(todo.find("uniquement du travail ouvert") != std::string::npos &&
+                  todo.find("`STATUS.md` est généré") != std::string::npos &&
+                  todo.find("source de vérité") != std::string::npos,
+              "TODO.md delegates generated gate facts to STATUS.md");
+        int openItems = 0;
+        std::stringstream todoLines(todo);
+        for (std::string line; std::getline(todoLines, line); ) {
+            if (line.rfind("- [", 0) != 0) continue;
+            check(line.rfind("- [ ] ", 0) == 0,
+                  "TODO.md contains only unchecked task markers");
+            if (line.rfind("- [ ] ", 0) == 0) openItems++;
         }
+        check(openItems > 0, "TODO.md contains actionable open work");
     }
 
     std::vector<std::string> unlabelled;
@@ -1726,7 +1717,7 @@ int main() {
     }
 
     // ── 16. STATUS.md is the registry's generated artifact ───────────────
-    // TODO.md § 10 wave 3: the totals above exist in prose because the prose
+    // CHANGELOG 2026-08-29 (ninth): the totals once existed in prose because it
     // came first; STATUS.md is written by `tools/status_md.py` from the same
     // configure-time files this gate reads, so here the whole artifact is
     // re-derived and compared. Division of labour as in check 5bis: the
@@ -2016,7 +2007,7 @@ int main() {
               std::string(relative) + " has no opcode-local exact-access exception");
         check(source.find(".semantics") != std::string::npos,
               std::string(relative) + " consumes Instr::semantics");
-        // Since the 2026-08-28 extraction (TODO.md § 10 wave 2) the EA
+        // Since the 2026-08-28 extraction (CHANGELOG third) the EA
         // admission wrapper and the 68k cycle-cost model live in
         // JitEaPlan.h / JitCost.h. A backend consumes them; the bug these
         // lines would catch is the one the D1F0 prototype nearly shipped —

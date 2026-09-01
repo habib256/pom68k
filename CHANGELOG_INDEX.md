@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 376 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 378 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 66 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 67 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 40 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
@@ -19,7 +19,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Machine bring-ups](#machine-bring-ups) | 46 |
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 27 |
-| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 8 |
+| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 69 |
 
 ---
@@ -92,6 +92,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (twenty-second)** — [x64 closes the `MOVE SR,Dn` parity gap with both CCR layouts proved natively](CHANGELOG.md#2026-08-31-x64-move-sr)
 - **2026-08-31 (twenty-third)** — [x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW](CHANGELOG.md#2026-08-31-x64-classic-bit-rmw)
 - **2026-09-01** — [The backend census reaches zero exceptions: legal EA masks and indexed MOVE converge](CHANGELOG.md#2026-09-01-jit-parity-zero)
+- **2026-09-01 (seventh)** — [The active backlog is reconciled with the compiled JIT policy and closed work leaves TODO](CHANGELOG.md#2026-09-01-todo-code-audit)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -366,6 +367,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-25 (third)** — [Environment-knob audit: 188 exact lifecycle contracts, zero wildcard decisions](CHANGELOG.md#2026-08-25-config-knob-registry)
 - **2026-08-26 (later)** — [An outside review of the working tree becomes six backlog items, and TODO § 0 loses 155 lines of changelog](CHANGELOG.md#2026-08-26-review-backlog)
 - **2026-08-28 (third)** — [Wave 2 lands: the 68k cost/EA model is written once, and the first parity sweep found 15 divergence groups where the review saw 3](CHANGELOG.md#2026-08-28-wave2-extraction)
+- **2026-09-01 (eighth)** — [README, DEV and CLAUDE stop competing for the same facts](CHANGELOG.md#2026-09-01-doc-ownership)
 
 ## Cross-cutting
 

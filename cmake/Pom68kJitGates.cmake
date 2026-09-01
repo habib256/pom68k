@@ -163,9 +163,10 @@ add_executable(jit_backend_test tests/jit_backend_test.cpp)
 target_link_libraries(jit_backend_test PRIVATE pom68k_core)
 add_test(NAME jit_backend_test COMMAND jit_backend_test)
 
-# Backend acceptance parity over the whole opcode space (TODO.md § 10
-# wave 2). Both generators compile on ANY host ISA — they only emit bytes
-# into buffers, and this gate never executes them — so the sweep runs
+# Backend acceptance parity over the whole opcode space (CHANGELOG.md
+# 2026-08-28 third / 2026-09-01). Both generators compile on ANY host ISA —
+# they only emit bytes into buffers, and this gate never executes them — so
+# the sweep runs
 # everywhere. The core library already holds this host's native backend;
 # only the missing translation unit(s) are added here, or the factories
 # would be defined twice.
@@ -599,4 +600,3 @@ add_test(NAME jit_classic_boot_etalon COMMAND compact_boot_etalon
 set_tests_properties(jit_classic_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=classic;POM68K_CPU_ENGINE=jit"
                      TIMEOUT 3600)
-

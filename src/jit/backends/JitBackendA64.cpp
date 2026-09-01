@@ -1185,7 +1185,7 @@ void emitAddSubExtend(Asm& a, const Layout& L,
 
 // The EA cost index, the 68020 cycle columns and the EaPlan struct live in
 // JitCost.h / JitEaPlan.h — they model the 68k, not this host, and the x64
-// backend reads the SAME tables (TODO.md § 10 wave 2, 2026-08-28). This
+// backend reads the SAME tables (CHANGELOG.md 2026-08-28 third). This
 // file keeps only a bits-flavoured wrapper: its call sites speak 8/16/32.
 using Ea = EaPlan;
 

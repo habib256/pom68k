@@ -7,7 +7,7 @@
 // None of it depends on the host ISA, which is why it must not live in a
 // `backends/` file: each backend that re-transcribed a column by hand
 // created a twin to be maintained in the other one, and the standing "port
-// the a64 030 deltas to x86-64" item was the bill (TODO.md § 10, finding 2).
+// the a64 030 deltas to x86-64" item was the bill (CHANGELOG 2026-08-28 third).
 // Backends keep only emission; they READ this model.
 //
 // The tables are cross-checked at admission time against the tracer's own

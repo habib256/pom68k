@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 376 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 378 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -109,6 +109,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **what remains after the conformant-codegen pass, which 68030 backend `auto` really selects on each host, and why the TODO no longer carries its closed implementation diary** → [2026-09-01 (seventh) — The active backlog is reconciled…](#2026-09-01-todo-code-audit)
 - **why a cache-active 68040 cold JIT access must replay the instruction start, and when a native cache hit may skip the ATC lookup without changing replacement state** → [2026-09-01 (sixth) — Cold 040 cache misses…](#2026-09-01-jit-cache040-instruction-start)
 - **why a cache-active 68040 memory instruction may need a second, access-positioned IPL sample, and how the tracer prevents generated code from moving it** → [2026-09-01 (fifth) — Cache stalls preserve…](#2026-09-01-jit-cache040-ipl-polls)
 - **why a cache-active 68040 `JSR` cannot replace its ordered target-word read with recorded queue state, and which real x64 drift exposed it** → [2026-09-01 (fourth) — Cache-active 68040 JSR…](#2026-09-01-jit-cache040-jsr-target-read)
@@ -349,6 +350,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **which document owns user setup, developer internals, live gate state, open work and dated history — and how did that split expose the stale x64/030 `auto` claim?** → [2026-09-01 (eighth) — README, DEV and CLAUDE stop competing…](#2026-09-01-doc-ownership)
 - **where do GUI host I/O, typed machine construction and rendering live, and where are their environment options captured?** → [2026-08-26 — The 2,683-line GUI runtime becomes three injected responsibilities…](#2026-08-26-gui-runtime-split)
 - **did the Duo really need a synthetic command-level ADB bus to boot, or were its built-in matrix and trackball already the whole product path?** → [2026-08-25 (sixth) — The Duo's synthetic ADB bus was not load-bearing…](#2026-08-25-pge-adb-retired)
 - **does one CB1 interrupt per completed PG&E SPI byte fix the Duo transport, or is it the same dead branch at a different cadence?** → [2026-08-25 (fifth) — The last SPI/CB1 alternative gets its verdict…](#2026-08-25-pge-cb1byte-retired)
@@ -383,6 +385,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-01 (eighth)** — [README, DEV and CLAUDE stop competing for the same facts](#2026-09-01-doc-ownership)
+- **2026-09-01 (seventh)** — [The active backlog is reconciled with the compiled JIT policy and closed work leaves TODO](#2026-09-01-todo-code-audit)
 - **2026-09-01 (sixth)** — [Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state](#2026-09-01-jit-cache040-instruction-start)
 - **2026-09-01 (fifth)** — [Cache-active 68040 memory instructions preserve access-positioned IPL samples](#2026-09-01-jit-cache040-ipl-polls)
 - **2026-09-01 (fourth)** — [Cache-active 68040 JSR preserves its ordered target-word read through exact replay](#2026-09-01-jit-cache040-jsr-target-read)
@@ -761,6 +765,78 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-01-doc-ownership"></a>
+## 2026-09-01 (eighth) — README, DEV and CLAUDE stop competing for the same facts
+
+The three entry documents had acquired the same status report at different
+ages. `README.md` opened with the complete gate registry and implementation
+policy before showing how to launch the emulator; its JIT summary still said
+that x86-64 `auto` selected native code for a 68030, contradicting
+`JitBackendX64::caps().autoFamilies`. `CLAUDE.md` called itself a one-minute
+orientation index but spent 413 lines preserving dated reds, measurements,
+machine gates and subsystem histories already owned by `STATUS.md`,
+`CHANGELOG.md` and `DEV.md`. The detailed `DEV.md` had no short developer
+entry path or explicit source-of-truth table.
+
+The ownership boundary is now visible from every entry point. The 402-line
+README is a user guide: packages, data directories, ROM/profile routing,
+media, controls, networking, a code-derived JIT policy table and a concise
+build/test section. The 2,101-line `DEV.md` keeps the implementation
+deep-dives, adds a developer quick start plus the authoritative owner for
+catalogue, startup, JIT, gate, backlog and history facts, and replaces copied
+gate totals with durable tier semantics. `CLAUDE.md` falls from 413 to 227
+lines and becomes the promised repository map: composition flow, the 12
+platform owners, subsystem routing, stable invariants and the completion
+checklist. Generated counts stay in `STATUS.md`; open work stays in `TODO.md`;
+dated evidence stays here.
+
+The corrected current JIT policy is explicit in both short documents: the
+accelerated engine defaults on for 68030/68040, AArch64 `auto` chooses native
+code for both, non-Windows x86-64 chooses native only for 68040 and uses
+`threaded` for 68030, and Windows automatic builds use `threaded`. Both native
+builds' `docs_test` pass after the rewrite, including catalogue-count, named
+gate and file-citation checks; `git diff --check` is clean.
+
+<a id="2026-09-01-todo-code-audit"></a>
+## 2026-09-01 (seventh) — The active backlog is reconciled with the compiled JIT policy and closed work leaves TODO
+
+`TODO.md` promised "Active work only" while carrying 1,816 lines, including
+the complete 68030 bring-up investigation, twenty-plus dated Speedometer
+closures, the finished backend-parity wave and generated gate counts copied
+from `STATUS.md`. That made its summary stale in exactly the way its own house
+rule warned about: it still named application division promotion and backend
+opcode parity as future work after both had closed, and a reader had to cross
+hundreds of historical lines to find the next executable action.
+
+The source audit uses declarations, not prose. Both native backends advertise
+68030+68040 correctness in `guestFamilies`; A64 advertises both in
+`autoFamilies` with profit score 64, while x64 advertises only 68040 and caps
+68030 exact-access thunks at mode 1. `threaded` advertises every guest as the
+portable floor. Both generators declare the access-clock bias. The Windows
+auto build excludes the System-V x64 emitter and its `usable()` door refuses
+`_WIN32`. The 65,536-opcode parity gate reports zero divergence groups, while
+the current cache-active 040 source deliberately retains two conformant
+coverage exits: ordered-target `JSR` and memory instructions whose extra IPL
+poll is not yet positioned in the IR. Cold 040 cache misses also replay the
+whole instruction so `mmu040InstrStart()` owns its private reset state.
+
+The backlog is now 357 lines and 89 unchecked, actionable items. Stable
+section numbers 0 through 10 remain for external links, but closed bullets,
+dated measurements and architectural narratives have left the file. The JIT
+section now separates zero opcode-parity debt from the real open work:
+current-tree ABBA/profile measurements, x64/030 re-promotion evidence,
+per-board CACR/SMC store inventories, 030 timing/admission convergence and the
+two explicit cache-active 040 transactions. Registry totals are referenced
+only through generated `STATUS.md`; platform, LLE, networking and machine
+sections likewise retain only work with a concrete next action.
+
+The documentation gate now enforces that contract instead of requiring a
+second hand-written registry headline: `TODO.md` must delegate generated gate
+facts to `STATUS.md`, contain actionable work, and every task marker must be
+exactly unchecked. The regenerated changelog index counts 377 dated entries.
+`docs_test`, `jit_backend_test` and the zero-exception parity sweep pass in
+both the native-A64 and forced-x64 builds; `git diff --check` is clean.
 
 <a id="2026-09-01-jit-cache040-instruction-start"></a>
 ## 2026-09-01 (sixth) — Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state

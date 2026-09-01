@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// JIT gate: backend acceptance parity, asset-free (TODO.md § 10 wave 2).
+// JIT gate: backend acceptance parity, asset-free (CHANGELOG 2026-09-01).
 //
 // The 2026-08-28 architecture review found the two native code generators
 // had drifted into two projects: `Op::Bitfield`, `Op::MoveSrToReg` and

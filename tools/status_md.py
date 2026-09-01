@@ -7,7 +7,7 @@ The registry's sizes used to be hand-typed into four documents, and on
 2026-08-28 all four carried a wrong per-host total while the per-label
 figures beside them were right (`CHANGELOG.md` 2026-08-28 (eleventh)).
 `docs_test` could hold the prose to the roster, but holding is not the same
-as writing: TODO.md § 10 wave 3 names the fix — generate the numbers once,
+as writing: CHANGELOG.md 2026-08-29 (ninth) names the fix — generate once,
 from the files CMake already writes at configure time, and let `docs_test`
 verify the artifact instead of chasing sentences.
 

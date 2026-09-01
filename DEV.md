@@ -1,4 +1,4 @@
-# DEV.md — implementation deep-dives
+# DEV.md — developer guide and implementation deep-dives
 
 **What this file is.** The index to the non-obvious internals: the facts a
 port depends on, and the *reason* each one is the way it is. The code is
@@ -7,11 +7,53 @@ line and stops. When a section and the code disagree, **the code wins**;
 fix the section.
 
 **What lives elsewhere.** Per-machine bring-up narratives (what broke, in
-what order) → `CHANGELOG.md`. Machine roster and one-line status →
-`CLAUDE.md`. Backlog → `TODO.md`. User-facing walkthrough → `README.md`.
-JIT design → `src/jit/POM68K_JIT.md`. Moira's local changes →
+what order) → `CHANGELOG.md`. The compiled machine roster →
+`src/MachineCatalog.h`; the generated gate state → `STATUS.md`; the
+high-level repository map → `CLAUDE.md`. Open work only → `TODO.md`.
+User-facing setup and operation → `README.md`. JIT design →
+`src/jit/POM68K_JIT.md`. Moira's local changes →
 `extern/moira/POM68K_VENDOR.md`. LC II research, AppleTalk, HLE inventory
 and the LC 520 bring-up → `docs/`.
+
+## Developer quick start
+
+The normal local loop builds the GUI and the asset-free verification tier:
+
+```bash
+./setup_imgui.sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build --parallel
+ctest --test-dir build -L asset-none --output-on-failure
+git diff --check
+```
+
+`setup_imgui.sh` fetches the pinned Dear ImGui docking release. A headless
+configuration may omit `imgui/`: `pom68k_core` and the test targets still
+build, while the `POM68K` GUI target is not declared. Tests are enabled by
+default; use `-DPOM68K_TESTS=OFF` only for a deliberate package-only build.
+
+Private ROMs, firmware and disk images are not needed for `asset-none`.
+Machine and full-system gates soft-skip when their declared assets are absent;
+never report a green soft-skip as executed coverage. `STATUS.md`, generated
+from the configured manifests, owns the current totals and recorded execution
+census. Section 6 below explains the labels and asset contracts.
+
+### Sources of truth before editing
+
+| Question | Authoritative source |
+|---|---|
+| Which machine profiles exist? | `src/MachineCatalog.h` (`kMachineProfiles`) |
+| How are startup options parsed? | `src/StartupOptions.h`, then the `RuntimeConfig*` decoders |
+| Which CPU/JIT backend is selected? | `src/jit/JitEngine.cpp` and each backend's `caps()` declaration |
+| Which gates exist on this host? | CMake's generated `pom68k_gates*.tsv` and `pom68k_gate_manifest.tsv` |
+| What is the published gate state? | generated `STATUS.md` |
+| What work remains? | `TODO.md`, which contains unchecked open work only |
+| Why was a decision made? | newest applicable entry in `CHANGELOG.md` |
+| Which environment options exist? | `src/StartupOptions.h` and generated `config_knobs.tsv`; §5 explains them |
+
+When prose and code differ, correct the prose and add or strengthen the gate
+that would have caught the drift. Do not copy generated gate counts into a
+hand-maintained backlog or overview.
 
 ---
 
@@ -19,6 +61,8 @@ and the LC 520 bring-up → `docs/`.
 
 | Looking for | Go to |
 |---|---|
+| First build and verification loop | [Developer quick start](#developer-quick-start) |
+| Which file owns a fact | [Sources of truth](#sources-of-truth-before-editing) |
 | Why a change to the CPU clock broke a *device* | [§1.2 Bus time is machine cycles](#12-family-wide-invariants) |
 | Why unmapped I/O must read 0, not `$FF` | [§1.2](#12-family-wide-invariants) |
 | Which pseudo-VIA flavour a machine gets | [§1.2](#12-family-wide-invariants) |
@@ -1430,20 +1474,11 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   calls `jitMapChanged()` directly, [§1.2](#12-family-wide-invariants));
   and a change of translation (`Moira::pomJitMmuGen`, bumped by every ATC
   flush and TTR write).
-- **Gates (`ctest -L jit`: 37 on an AArch64 host, 35 elsewhere)**:
-  nine asset-free protocol gates — `jit_backend_test`,
-  `jit_asset_free_lockstep_test`, `jit_restart_write_030_test`,
-  `jit_store_guard_a64_test` and the five `jit_copyback_*` registrations —,
-  **twelve** `jit_lockstep_*` flavours (68000 / 030 / 040 each plain and
-  `_blocks`, plus `_x64`, `_x64_fine`, `_noaccess`, the x86-64-only
-  `_030_x64_experimental`, and two registered only when the a64 backend is
-  built — `_a64_coarse` and `_030_a64_experimental`; `POM68K_JIT.md` § 5
-  says what each covers), and
-  **fifteen** `jit_*_boot_etalon` twins (q605, centris650, q630, q700, lcii,
-  mactv, lc3, iivx, iisi, lc, macii, se30, system, classic, iifx) — the same
-  etalon executables re-run with `POM68K_CPU_ENGINE=jit`
-  (`cmake/Pom68kJitGates.cmake:159-454`, plus
-  `jit_classic_boot_etalon` at `cmake/Pom68kJitGates.cmake:548-551`).
+- **Gates.** `ctest -L jit` combines asset-free protocol/lockstep coverage
+  with machine boot twins running under the accelerated engine. Native-only
+  locksteps register only on the host that can execute their backend. The
+  exact roster and current host split are generated in `STATUS.md`;
+  `src/jit/POM68K_JIT.md` §5 explains what each gate proves.
 
 ---
 
@@ -1740,18 +1775,11 @@ hide a lifecycle decision because the registry side accepts exact names only.
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`** — because of what
-they cost you per edit, not because they are unsafe. `ctest -j` was called
-unsafe here until 2026-08-27 ("the boot etalons are contention-sensitive");
-three whole-registry runs at `-j16` that day returned 228/228 — 18 min 02 s
-and 18 min 10 s under the assumed one-slot budgets, then **30 min 04 s** once
-this host's measured RAM rows landed, because CTest reserves a gate's peak for
-its whole life and the widest gate is 12 of the 16 slots `-j16` offers. The
-binding resource is RAM, which `gate_resource_budgets.tsv` now describes per
-host, and `-j` is that budget in 256 MiB units rather than a CPU count — give
-it the machine's RAM and the calibrated run costs 2 minutes over the
-uncalibrated one instead of 12: **`-j64` runs the same 228 in 20 min 12 s**. A bare `make` still relinks ~90 binaries under tree-wide LTO, and a
-full `ctest` still costs 18 minutes you do not need to spend on a one-line
-change.
+they cost per edit, not because they are unsafe. Choose the smallest label
+that proves the change, then widen before handoff. Parallelism is primarily a
+RAM budget: `gate_resource_budgets.tsv` records each gate's slots per host and
+CTest reserves a slot as 256 MiB. `STATUS.md` owns measured whole-registry
+runs; do not turn one workstation's elapsed time into permanent tier policy.
 
 ```bash
 cmake --build build -j4 --target jitfast
@@ -1768,37 +1796,27 @@ The same lockstep binary writes `pom68k.jit.metrics.v1`; the Linux x86-64 and
 macOS AArch64 jobs validate and archive identical fields (backend, guest/host,
 cycles, wall time, block/native/fallback counters and native share).
 
-`jitdev` (`cmake/Pom68kGatePolicy.cmake:304-306`) builds exactly the **three** binaries
-`-L smoke` needs — `jit_backend_test`, `jit_lockstep_test`,
-`q605_boot_etalon`; the remaining smoke registrations re-run those same
-three under different environments.
+`jitdev` builds only the binaries selected by the smoke working loop; its
+registrations re-run those binaries under several environments.
 
-| command | gates | when |
-|---|---|---|
-| `ctest -L smoke` | 9 | the working loop — one machine, both engines |
-| `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
-| `ctest -L unit` | 114 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
-| `ctest -L asset-none` | 88 | manifest-declared asset-free daily tier |
-| `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
-| `ctest -L jit` | 42 | before proposing a JIT change (`jit-fast` matches this regex too) |
-| `ctest -L m040` | 54 | the 68040 family on the default engine plus explicit interpreter references |
-| `ctest -L m030` | 56 | the 68030 family, same shape (since 2026-08-18) |
-| `ctest -L etalon` | 124 (4 h 33 serial-equivalent) | every profile — the release gate, not a pre-commit check |
-| `ctest -j64` | 239 (**20 min** with this host's RAM rows; 30 min at `-j16`, 18 min uncalibrated, 4 h 46 serial) | documented host-union; use `ctest -N` for this host |
+| command | use |
+|---|---|
+| `ctest -L smoke` | working loop: one representative machine and both engines |
+| `ctest -L jit-fast` | native lockstep/IR/protocol plus docs/configuration, without private assets |
+| `ctest -L unit` | legacy non-etalon classification; this does not imply asset-free |
+| `ctest -L asset-none` | manifest-declared asset-free daily tier |
+| `ctest -L etalon-core` | one representative profile per platform |
+| `ctest -L jit` | complete registered JIT family for this host |
+| `ctest -L m040` | machines selected by this family label and their interpreter references |
+| `ctest -L m030` | machines selected by this family label and their interpreter references |
+| `ctest -L etalon` | every registered machine/system etalon for this host |
+| `ctest -N` | configured roster on the current host; compare with `STATUS.md` |
 
-**The totals are host-dependent**, which is why `ctest -N` and not this table
-is the authority. Six gates are host-conditional: the AArch64 trio
-`jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
-+ `jit_lockstep_030_a64_alignment_test` and the x86-64-only
-`jit_lockstep_030_x64_experimental_test` +
-`jit_lockstep_030_x64_packed_ccr_test` +
-`jit_lockstep_030_x64_alignment_test`. The AArch64 configure sees **236**,
-and the x86-64 configure sees **236**, both with 111 `unit`; x64 has 8
-`smoke`/39 `jit`, AArch64 9/39
-(`m040` and `etalon` are host-independent). Eight more
-appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
-which also requires AArch64 and hard-fails on a missing asset instead of
-skipping.
+Native-backend locksteps appear only on a host that can build and execute the
+corresponding generator. Product LLE gates appear only under the OFF-by-default
+`POM68K_PRODUCT_LLE_GATES` option, require AArch64, and hard-fail on missing
+assets instead of skipping. The generated manifest and `STATUS.md` are the
+only maintained rosters.
 
 Labels are **derived from the test name** in one final policy module
 (`cmake/Pom68kGatePolicy.cmake:58-110`): name ends in `etalon` → `etalon` (+
