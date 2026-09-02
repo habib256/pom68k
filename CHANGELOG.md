@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 391 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 392 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (twelfth)** — [The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit](#2026-09-02-blockcache-extracted)
 - **2026-09-02 (eleventh)** — [Two locked reference identities surface on the August backup: the "tree that never existed here" is found](#2026-09-02-backup-harvest)
 - **2026-09-02 (tenth)** — [The proof floor is architecture-asymmetric and the CI signal is ten days dead: an audit, and the backlog reordered on it](#2026-09-02-proof-asymmetry)
 - **2026-09-02 (ninth)** — [The dispatch cache and cold-block eviction land in the tree; the host froze before their tier, so the proof is owed](#2026-09-02-dispatch-cache-lands)
@@ -779,6 +780,52 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-blockcache-extracted"></a>
+## 2026-09-02 (twelfth) — The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit
+
+The (ninth) dispatch-cache commit pushed `src/jit/JitEngine.cpp` to 1702
+lines against its 1639 ceiling, and `file_size_budget_test` went red —
+unread, like the rest of the CI, until the (tenth) audit. The ratchet's
+own comment says what the red means: the moment to ask whether the new
+code belongs in a new translation unit. It did.
+
+The seam is the one the (ninth) work created: the engine TU had grown
+two tangled halves — *what to run* (arm window, trace, dispatch,
+compile, execute) and *which blocks stay resident* (capacity eviction,
+guard-driven eviction, and the physical-footprint index that makes an
+eviction exact). The residency half is a single contract — a block
+leaving `blocks_` must also lose its published link, its generated code,
+its slice marks, its shift version and its dispatch-cache slot — and it
+moved out verbatim:
+
+- **`src/jit/JitBlockCache.cpp`** (188 lines): `evictColdBlocks`,
+  `serviceGuard`, `recomputeSliceMark`, `unmarkPages`, `markPages` —
+  the `JitEngineCensus.cpp` idiom, Engine members defined in a sibling
+  TU.
+- **`src/jit/JitDispatchCache.h`** (86 lines): the 65 536-slot
+  direct-mapped table becomes a `DispatchCache<Block>` owner class —
+  entry, lookup/fill/evict/clear, the three census counters — the
+  `ShiftVersionCache` idiom, one helper owning one finite domain.
+  Templated only because `Engine::Block` is private.
+
+`JitEngine.cpp` reads 1530 (ceiling lowered 1639 → 1530, the win
+recorded), `JitEngine.h` 559 → 530. One rename forced by the move:
+`dcEvictions_` → `coldEvictions_`, since it always tallied cold
+evictions and now lives beside the true dispatch-cache counters; its
+printed label was already "cold-evicted" and every `censusPhase()`
+format string is byte-identical. One doc citation retargeted
+(`POM68K_VENDOR.md`, a line range that pointed into the moved
+`serviceGuard`). Not moved, deliberately: `record()`, the
+`executeUntil` dispatch loop, `dumpHisto`, `armWindow`, `fillDtlb`,
+`flushAll`, the link tables — admission and execution are the engine's
+own concern.
+
+Proof: cold build exit 0 with zero warnings, `jit-fast` 7/7,
+`jit_asset_free_lockstep_test` green (the 384-eviction erase-coherence
+scenario walks every moved path), `docs_test` green, the ratchet no
+longer names the file. The A.4 proof debt (real-guest locksteps, etalon
+tier, Rogue ABBA) is unchanged by this refactor and stays open.
 
 <a id="2026-09-02-backup-harvest"></a>
 ## 2026-09-02 (eleventh) — Two locked reference identities surface on the August backup: the "tree that never existed here" is found

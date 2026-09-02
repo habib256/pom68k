@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 391 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 392 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 9 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 28 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 73 |
+| [Cross-cutting](#cross-cutting) | 74 |
 
 ---
 
@@ -453,4 +453,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (eleventh)** — [Two locked reference identities surface on the August backup: the "tree that never existed here" is found](CHANGELOG.md#2026-09-02-backup-harvest)
 - **2026-09-02 (ninth)** — [The dispatch cache and cold-block eviction land in the tree; the host froze before their tier, so the proof is owed](CHANGELOG.md#2026-09-02-dispatch-cache-lands)
 - **2026-09-02 (third)** — [The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact](CHANGELOG.md#2026-09-02-werror-armed)
+- **2026-09-02 (twelfth)** — [The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit](CHANGELOG.md#2026-09-02-blockcache-extracted)
 

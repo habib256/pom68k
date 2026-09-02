@@ -612,36 +612,6 @@ void Engine::ring(uint8_t kind, uint32_t pc, int64_t target,
     if (dispatchCount_ < kDispatchRing) dispatchCount_++;
 }
 
-// Capacity eviction: erase every block not dispatched since the previous
-// saturation, with ALL the duties an erase owes (the guard-service path
-// is the model): retract its published link, release its code, unmark its
-// pages, forget its shift version, drop its dispatch-cache slot, prune
-// the version bookkeeping. Advances the epoch so the next saturation
-// measures a fresh generation.
-void Engine::evictColdBlocks() {
-    size_t evicted = 0;
-    for (auto it = blocks_.begin(); it != blocks_.end();) {
-        Block& b = it->second;
-        if (b.epoch == blockEpoch_) { ++it; continue; }
-        const uint64_t blockKey = it->first;
-        if (b.code && b.shiftVersion == 0xFF)
-            retractLink(b.ir.entryPc, b.ir.super);
-        if (b.code) backend_->release(b.code);
-        uint32_t lo = 0, len = 0;
-        blockSpan(b.ir, lo, len);
-        unmarkPages(blockKey, lo, len);
-        shiftVersions_.forget(blockKey);
-        it = blocks_.erase(it);
-        dispatchCacheEvict(blockKey);
-        shiftVersions_.prune(
-            blockKey, blocks_.contains(ShiftVersionCache::baseKey(blockKey)));
-        evicted++;
-    }
-    blockEpoch_++;
-    stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
-    dcEvictions_ += evicted;
-}
-
 void Engine::flushAll(Flush cause) {
     // RE-ENTRANCY. This is reachable from INSIDE a running block: a guest
     // MOVEC to CACR reaches Moira::setCACR -> Cpu040::didChangeCACR ->
@@ -668,7 +638,7 @@ void Engine::flushAll(Flush cause) {
 
     for (auto& kv : blocks_) if (kv.second.code) backend_->release(kv.second.code);
     blocks_.clear();
-    dispatchCacheClear();
+    dispatchCache_.clear();
     shiftVersions_.clear();
     sliceIndex_.clear();
     clearLinks();
@@ -688,139 +658,6 @@ void Engine::flushAll(Flush cause) {
 void Engine::disarmWindow() {
     cpu_.pomJitDisarm();
     winPhys_ = winLen_ = 0;
-}
-
-// A write landed in memory some cached block was translated from. J1 dropped
-// the whole cache here, on the reasoning that writes into live code are rare
-// and a recorded IR is cheap to rebuild. Both halves of that turned out to
-// be wrong once the cache held GENERATED CODE: the writes are not rare (68k
-// code and its data share memory closely), and what gets thrown away is no
-// longer cheap. So evict precisely, and keep the flush for the two cases
-// that genuinely leave nothing to salvage.
-void Engine::serviceGuard() {
-    if (!guard_.tripped()) return;
-    stats_.add(stats_.invalidations);
-
-    if (guard_.mustFlush() || blocks_.empty()) { flushAll(Flush::Guard); return; }
-
-    for (int k = 0; k < guard_.nHits; k++) {
-        const CodeGuard::Hit& h = guard_.hits[k];
-        // note() only records a hit when the write covers a sub-slice some
-        // block has bytes in, so nearly every trip names a real victim; the
-        // per-block intersection below is what makes it exact. Walk a copy:
-        // unmarkPages() edits the vector being walked.
-        std::vector<uint64_t> keys;
-        if (auto indexed = sliceIndex_.find(h.slice); indexed != sliceIndex_.end())
-            keys = indexed->second;
-        for (uint64_t blockKey : keys) {
-            auto b = blocks_.find(blockKey);
-            if (b == blocks_.end()) continue;
-            const BlockIr& ir = b->second.ir;
-            uint32_t lo = 0, len = 0;
-            blockSpan(ir, lo, len);
-            if (!len || h.hi < lo || h.lo > lo + len - 1) continue;
-            if (b->second.code && b->second.shiftVersion == 0xFF) {
-                retractLink(ir.entryPc, ir.super);
-            }
-            if (b->second.code) backend_->release(b->second.code);
-            unmarkPages(blockKey, lo, len);
-            shiftVersions_.forget(blockKey);
-            blocks_.erase(b);
-            dispatchCacheEvict(blockKey);
-            shiftVersions_.prune(
-                blockKey,
-                blocks_.contains(ShiftVersionCache::baseKey(blockKey)));
-            stats_.add(stats_.evictions);
-        }
-    }
-    guard_.clear();
-    stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
-}
-
-void Engine::recomputeSliceMark(uint32_t slice) {
-    if (slice >= pageMap_.size()) return;
-    uint8_t mask = 0;
-    if (auto it = sliceIndex_.find(slice); it != sliceIndex_.end()) {
-        const uint32_t sliceLo = slice << CodeGuard::kShift;
-        const uint32_t sliceHi = sliceLo + CodeGuard::kUnit - 1;
-        for (uint64_t key : it->second) {
-            auto b = blocks_.find(key);
-            if (b == blocks_.end()) continue;
-            uint32_t lo = 0, len = 0;
-            blockSpan(b->second.ir, lo, len);
-            if (!len) continue;
-            const uint32_t hi = lo + len - 1;
-            if (hi < sliceLo || lo > sliceHi) continue;
-            mask |= CodeGuard::subMask(lo > sliceLo ? lo : sliceLo,
-                                       hi < sliceHi ? hi : sliceHi);
-        }
-    }
-    pageMap_[slice] = mask;
-    if (mask) return;
-
-    // codePage_ answers the same question at the 4 KB granularity the
-    // data TLB hands out, so it may only be cleared once no slice in the
-    // page is marked any more.
-    const uint32_t page = (slice << CodeGuard::kShift) >> 12;
-    if (page >= codePage_.size() || !codePage_[page]) return;
-    const uint32_t first = (page << 12) >> CodeGuard::kShift;
-    const uint32_t count = 4096 >> CodeGuard::kShift;
-    for (uint32_t i = first; i < first + count && i < pageMap_.size(); i++)
-        if (pageMap_[i]) return;
-    codePage_[page] = 0;
-    cpu_.pomJitDtlbFlush();
-}
-
-void Engine::unmarkPages(uint64_t blockKey, uint32_t lo, uint32_t len) {
-    if (pageMap_.empty() || !len) return;
-    uint32_t p = lo >> CodeGuard::kShift;
-    const uint32_t last = (lo + len - 1) >> CodeGuard::kShift;
-    for (; p <= last && p < pageMap_.size(); p++) {
-        auto it = sliceIndex_.find(p);
-        if (it == sliceIndex_.end()) continue;
-        std::vector<uint64_t>& keys = it->second;
-        keys.erase(std::remove(keys.begin(), keys.end(), blockKey), keys.end());
-        if (keys.empty()) sliceIndex_.erase(it);
-        recomputeSliceMark(p);
-    }
-}
-
-void Engine::markPages(uint64_t blockKey, uint32_t lo, uint32_t len) {
-    if (pageMap_.empty() || !len) return;
-    const uint32_t hi = lo + len - 1;
-    uint32_t p = lo >> CodeGuard::kShift;
-    const uint32_t last = hi >> CodeGuard::kShift;
-    bool gained = false;
-    for (; p <= last && p < pageMap_.size(); p++) {
-        const uint32_t sliceLo = p << CodeGuard::kShift;
-        const uint32_t sliceHi = sliceLo + CodeGuard::kUnit - 1;
-        if (!pageMap_[p]) gained = true;
-        pageMap_[p] |= CodeGuard::subMask(lo > sliceLo ? lo : sliceLo,
-                                          hi < sliceHi ? hi : sliceHi);
-        sliceIndex_[p].push_back(blockKey);
-    }
-    uint32_t q = lo >> 12;
-    const uint32_t qlast = hi >> 12;
-    for (; q <= qlast && q < codePage_.size(); q++) codePage_[q] = 1;
-
-    // ── the INVALIDATION this function owes, and never paid ──────────────
-    // A data-TLB write entry filled for a page BEFORE it held any translated
-    // code points straight at the host bytes and carries an empty code mask.
-    // A store through it bypasses the memory map, so the write guard never
-    // sees it and the block the page now carries is never evicted:
-    // self-modifying code, undetected. POM68K_JIT.md § 8's invalidation
-    // table has claimed since it was written that "markPages() flushes when
-    // it marks"; it did not — only the 1 -> 0 direction in serviceGuard()
-    // ever flushed (found and fixed 2026-08-10).
-    //
-    // The flush is on the 0 -> 1 TRANSITION of a SLICE, which is both what
-    // makes the mask sound and what keeps this cheap: the engine compiles
-    // tens of thousands of blocks per boot but they come from far fewer
-    // distinct slices, and the count falls to nothing once the working set
-    // is translated. An UNCONDITIONAL flush here would be the same 8 KB
-    // memset whose arm-time cousin cost -23 to -33 % of wall clock (§ 8,
-    // "the arm-time flush that owned nothing"). Do not promote it to one.
-    if (gained) cpu_.pomJitDtlbFlush();
 }
 
 bool Engine::armWindow(uint32_t pc, bool super) {
@@ -980,7 +817,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     }
     const ShiftVersionCache::Admission shiftAdmission = shiftVersions_.admit(
         baseKey, entryOpcode, liveShiftCount, versionedEntry, !histo_.empty());
-    if (versionedEntry) dispatchCacheEvict(baseKey);
+    if (versionedEntry) dispatchCache_.evict(baseKey);
     if (!shiftAdmission.accepted) return nullptr;
     const uint64_t cacheKey = shiftAdmission.cacheKey;
 
@@ -1449,16 +1286,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             stats_.bump(Flush::MmuGen);
         }
 
-        Block* bp = nullptr;
-        {
-            const uint64_t plainKey = key(pc, super);
-            const DispatchCacheEntry& dce =
-                dispatchCache_[dispatchCacheIndex(pc, super)];
-            if (dce.key == plainKey) {
-                if (dce.block->gen == blocksGen_) { bp = dce.block; dcHits_++; }
-                else dcGenMiss_++;
-            } else dcMiss_++;
-        }
+        Block* bp = dispatchCache_.lookup(key(pc, super), blocksGen_);
         if (bp == nullptr) {
         const uint64_t blockKey = dispatchBlockKey(pc, super);
         auto it = blocks_.find(blockKey);
@@ -1484,7 +1312,7 @@ void Engine::executeUntil(int64_t clockTarget) {
                 shiftVersions_.forget(it->first);
                 const uint64_t erasedKey = it->first;
                 blocks_.erase(it);
-                dispatchCacheEvict(erasedKey);
+                dispatchCache_.evict(erasedKey);
                 shiftVersions_.prune(
                     erasedKey,
                     blocks_.contains(ShiftVersionCache::baseKey(erasedKey)));
@@ -1515,7 +1343,7 @@ void Engine::executeUntil(int64_t clockTarget) {
         // depends on a live register and must go through dispatchBlockKey
         // every time.
         if (blockKey == key(pc, super) && !shiftVersions_.knows(blockKey))
-            dispatchCache_[dispatchCacheIndex(pc, super)] = { blockKey, bp };
+            dispatchCache_.fill(blockKey, bp);
         }
 
         Block& b = *bp;

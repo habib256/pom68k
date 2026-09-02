@@ -48,13 +48,6 @@ Règles de travail :
 
 ### A.1 Rendre la CI verte, et la garder verte
 
-- [ ] **Trancher le sort de `src/jit/JitEngine.cpp`.** Le ratchet est rouge :
-  1702 lignes contre le plafond de 1639 inscrit dans
-  `tools/file_size_budget.txt`, franchi par le cache de dispatch sans que le
-  budget soit édité dans le même commit. Le mécanisme pose exactement la
-  question pour laquelle il existe — extraire la couche dispatch/éviction dans
-  sa propre unité de traduction, ou relever le plafond en écrivant pourquoi.
-  Relever par défaut désarme le ratchet.
 - [ ] **Réparer l'étape census de `.github/workflows/ci.yml:104-110`.**
   `--fail-on-skip` a été calibré sur l'hôte de développement, qui porte les
   assets privés. Sur un runner nu, `ncr5380_test`, `cuda_restart_test` et

@@ -1535,7 +1535,7 @@ accounting at all.
     tracer, split three ways: `baseCycles` (handler, data bus included),
     `icacheCycles` (the `PomIcache` overlay's contribution, excluded from
     the base) and `postExceptionCycles` (exception/trace work after the
-    handler stopped). Read by `JitEngine.cpp:717-719` when it decides what a
+    handler stopped). Read by `JitEngine.cpp:886-889` when it decides what a
     compiled block owes `pomJitSync`.
 
     Opt-in on purpose, and only on the **68030** branch of `pomJitExecOne`

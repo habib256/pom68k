@@ -50,17 +50,18 @@ void Engine::censusPhase(const char* label) {
     std::fprintf(stderr, "\n[jit] ════ census phase '%s' ════\n", label);
     std::fprintf(stderr,
                  "[jit] dispatch cache: %llu hits, %llu gen-miss, %llu miss\n",
-                 (unsigned long long)dcHits_, (unsigned long long)dcGenMiss_,
-                 (unsigned long long)dcMiss_);
-    dcHits_ = dcGenMiss_ = dcMiss_ = 0;
+                 (unsigned long long)dispatchCache_.hits(),
+                 (unsigned long long)dispatchCache_.genMiss(),
+                 (unsigned long long)dispatchCache_.miss());
+    dispatchCache_.resetPhase();
     std::fprintf(stderr, "[jit] flushes:");
     for (int f = 0; f < int(Flush::Count); f++)
         std::fprintf(stderr, " %s=%llu", flushName(Flush(f)),
                      (unsigned long long)stats_.flushCauses[f].load(
                          std::memory_order_relaxed));
     std::fprintf(stderr, "  blocks live=%zu, cold-evicted=%llu\n",
-                 blocks_.size(), (unsigned long long)dcEvictions_);
-    dcEvictions_ = 0;
+                 blocks_.size(), (unsigned long long)coldEvictions_);
+    coldEvictions_ = 0;
     dumpHisto();
     std::fill(histo_.begin(), histo_.end(), 0);
     std::fill(slowStaticHisto_.begin(), slowStaticHisto_.end(), 0);
