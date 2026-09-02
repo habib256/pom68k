@@ -86,30 +86,18 @@ Règles de travail :
   la fusion des labels, le backend A64 effectivement sélectionné et le census
   exécutés/soft-skips.
 
-### A.4 Prouver ou retirer le cache de dispatch 68040
-
-- [ ] **Prouver le cache de dispatch et l'éviction générationnelle posés le
-  2026-09-02.** L'implémentation est dans l'arbre (`CHANGELOG` 2026-09-02
-  (ninth) : cache direct-mapped de 65 536 slots devant le hashtable, éviction
-  des blocs froids à saturation, compteurs dans `censusPhase()`). Seul vert
-  acquis : `jit_asset_free_lockstep_test` sur x86-64 — lockstep 040
-  synthétique, slow=0, scénario de 384 évictions inclus. Restent exigés avant
-  toute revendication de gain : locksteps 030/040 sous invités réels, tier
-  etalon complet sous défauts, ABBA sur le run Rogue. Les chiffres 3,3 % et
-  992 M contre 34 M viennent d'un stderr non conservé. C'est du code
-  d'éviction non prouvé : il ne survit pas à un échec de mesure.
-
-### A.5 Fermer le palier
+### A.4 Fermer le palier
 
 - [ ] **Décider explicitement la fermeture de la fenêtre de consolidation.**
-  Attendre les critères de sortie de A.1 à A.4, consigner la décision produit,
+  Attendre les critères de sortie de A.1 à A.3, consigner la décision produit,
   puis autoriser le travail des paliers C et D sans affaiblir les preuves
   acquises. Les 37 profils actuels ne sont pas un plafond : ce palier rend
   leur socle mesurable.
 
 **Critère de sortie du palier A :** la CI et la nightly sont vertes et
-redeviennent bloquantes, les runs complets AArch64 et x86-64 sont propres et
-archivés, et le cache de dispatch est prouvé ou retiré.
+redeviennent bloquantes, et les runs complets AArch64 et x86-64 sont propres
+et archivés. (Le cache de dispatch est prouvé — CHANGELOG 2026-09-02
+(sixteenth) : −29,6 % sur le run Rogue, tiers m030/m040 sans rouge moteur.)
 
 ---
 
@@ -130,9 +118,10 @@ causes de fallback.
 
 Le profil (`CHANGELOG` 2026-09-02 (eighth)) attribue 45,4 % du run Rogue au
 runtime moteur pour 7,6 % de corps générés, dont environ un tiers du run passé
-à chercher des blocs. Après A.4, l'autre moitié du levier est
-l'allongement des fenêtres : c'est le seul chantier de performance qui ait
-cette masse derrière lui.
+à chercher des blocs. Le cache de dispatch a rendu −29,6 % (CHANGELOG
+2026-09-02 (sixteenth)) ; l'autre moitié du levier est l'allongement des
+fenêtres : c'est le seul chantier de performance qui ait cette masse
+derrière lui.
 
 - [ ] **Encoder la position des polls IPL 68040 dans l'IR.** Remplacer le
   fallback conservateur des instructions mémoire à plusieurs polls par une

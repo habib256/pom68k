@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 395 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 396 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 49 |
 | [Build, packaging and release](#build-packaging-and-release) | 9 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 28 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 29 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 77 |
 
@@ -365,6 +365,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-29 (ninth)** — [The registry's numbers stop being typed: `STATUS.md` is generated from the configure-time roster, and `docs_test` verifies the artifact instead of only chasing prose](CHANGELOG.md#2026-08-29-status-md-generated)
 - **2026-08-31 (twelfth)** — [Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed](CHANGELOG.md#2026-08-31-speedometer-roxr)
 - **2026-09-02 (second)** — [The implicit MacPack preference falls: a small clean 7.5 reference, and the flush lessons its gates paid](CHANGELOG.md#2026-09-02-macpack-preference)
+- **2026-09-02 (sixteenth)** — [The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates](CHANGELOG.md#2026-09-02-dispatch-cache-proved)
 
 ## Documentation, audits and reviews
 

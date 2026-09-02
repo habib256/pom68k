@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 395 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 396 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (sixteenth)** — [The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates](#2026-09-02-dispatch-cache-proved)
 - **2026-09-02 (fifteenth)** — [The save-state path moves behind the slot's mutex: the nightly's TSan race was the smoke bypassing the channel](#2026-09-02-savestate-path-mutex)
 - **2026-09-02 (fourteenth)** — [The catalogue's density check stops forming a pointer, and the ASan nightly can compile again](#2026-09-02-catalog-consteval)
 - **2026-09-02 (thirteenth)** — [The asset-none tier becomes a claim a bare runner can keep: four labels were the lie, not the census](#2026-09-02-census-honest)
@@ -783,6 +784,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-dispatch-cache-proved"></a>
+## 2026-09-02 (sixteenth) — The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates
+
+The (ninth) handover listed exactly what the dispatch-cache commit
+(62c9c63) still owed: locksteps under real guests, the family tiers
+under shipping defaults, and an ABBA on the Rogue run whose only prior
+figures came from an unpreserved stderr. All three are now measured on
+the Apple M4 (AArch64, a64 native backend via `auto`, Release build):
+
+**Family tiers, shipping defaults** — `ctest -L m040`: **54/54 green**,
+46 asset-required gates executed. `ctest -L m030`: 52/56, and each of
+the four reds carries the signature of a divergent A.3 reference
+volume, not of the engine: `sonora_soak`/`sonora_persist` boot the
+stale `System 7.5 HD.dsk` (`b0bf5589…` where the lock wants
+`32a0735…` — the clean image the x86-64 host created on 2026-09-02
+(second) and its gates were recalibrated against), and
+`mactv_boot`/`jit_mactv_boot` boot the local `GISTPERSO-boot.vhd` whose
+own log names the cause (`drVolAtrb bit 8 clear: not cleanly
+unmounted` — the lock wants the guest-flushed `73bf9d2…`). The
+interp/JIT pair failing IDENTICALLY on the dirty volume is itself
+evidence: both engines see the same world. Every lockstep and every
+`jit`-labeled gate in both tiers is green with the cache active.
+
+**The ABBA** — `q605_rogue_census` (fixed frame budgets, boot → Rogue
+gameplay), HEAD against a worktree at 91d09ab, the cache commit's
+parent; 3 pairs in AB/BA/AB order, `/usr/bin/time` on the whole run:
+
+| arm | runs (s) | median |
+|---|---|---|
+| cache (HEAD) | 40.94 · 40.26 · 40.92 | **40.92** |
+| no cache (91d09ab) | 59.03 · 57.67 · 58.14 | **58.14** |
+
+**−29.6 % wall time (×1.42)**, worst intra-arm spread 2.3 % — an order
+of magnitude above any floor this tree records. Workload identity: all
+six runs print byte-identical
+`gameplay: 446/468 keys repainted, cumulative delta 5.18, halted=0`,
+and the cache arm's gameplay-phase counters are identical across its
+three runs — **54 825 200 hits / 0 gen-miss / 8 520 518 miss**, an
+86.5 % answer rate against the (eighth) profile's diagnosis that a
+third of the run was spent finding blocks. The stderr figures the
+(ninth) entry refused to trust are hereby replaced by preserved runs
+(`scratchpad/2026-09-02-night/`, kept out of the repository with the
+other measurement logs).
+
+One stated deviation from MEASURING.md R1: the two arms are two
+binaries from two commits — a code-layer comparison cannot share one
+process. The AB/BA/AB counterbalance, the identical workload line and
+the tight spreads carry the burden instead, and the trees differ
+functionally only by the engine layer under test (the day's other
+commits touch labels, a consteval spelling and a GUI-thread seam none
+of which the census exercises).
+
+Still open, now under its own flags: the full-registry AArch64 run
+(blocked by the four A.3 volumes) and the PRODUCT_LLE day run that
+follows tonight.
 
 <a id="2026-09-02-savestate-path-mutex"></a>
 ## 2026-09-02 (fifteenth) — The save-state path moves behind the slot's mutex: the nightly's TSan race was the smoke bypassing the channel
