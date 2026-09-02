@@ -104,8 +104,24 @@ jobs:
       - name: Every gate in that tier actually RAN
         # `--fail-on-skip` because this tier's whole claim is that it needs no
         # private asset: a soft-skip in it is either a missing tool the job
-        # should install, or a gate that does not belong in the tier. Measured
-        # on the dev host 2026-08-27: 86 executed, 0 skipped.
+        # should install, or a gate that does not belong in the tier.
+        #
+        # The figure this step is held to must be a BARE-RUNNER figure. The
+        # old one (86 executed, 0 skipped) was measured on the dev host,
+        # which carries the private ROMs and disk images — so it was
+        # unreachable here by construction, and this step was red on every
+        # push from 2026-08-27 to 2026-09-02. Four gates in the tier
+        # abstained on a runner that owns no assets: `ncr5380_test`
+        # (hdv/HD20SC.vhd), `cuda_restart_test` and `m68hc05_test` (the Cuda
+        # MCU dump), and `jit_store_guard_a64_test` (no AArch64 backend on
+        # x86-64). The fix was in the registry, not here: the first three are
+        # `asset-optional` and the fourth registers only on AArch64, so none
+        # of them is in this tier any more. --fail-on-skip stays exactly as
+        # strict — it now has a claim it can actually keep.
+        #
+        # Expected on this x86-64 runner: 84 executed, 0 soft-skipped
+        # (`ctest -L asset-none` selects 84 of the 235 gates an x86-64
+        # configure registers; see STATUS.md).
         if: always()
         run: python3 tools/gate_execution_census.py --build-dir build --fail-on-skip
 

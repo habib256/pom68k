@@ -48,14 +48,6 @@ Règles de travail :
 
 ### A.1 Rendre la CI verte, et la garder verte
 
-- [ ] **Réparer l'étape census de `.github/workflows/ci.yml:104-110`.**
-  `--fail-on-skip` a été calibré sur l'hôte de développement, qui porte les
-  assets privés. Sur un runner nu, `ncr5380_test`, `cuda_restart_test` et
-  `m68hc05_test` soft-skippent sur des assets alors qu'ils sont enregistrés
-  `asset-none`, et `jit_store_guard_a64_test` soft-skippe sur l'ISA hôte : le
-  compte ne peut jamais valoir zéro. Le défaut est l'étiquette, pas le
-  runner — reclasser ces gates en assets optionnels, puis exiger zéro
-  soft-skip inattendu.
 - [ ] **Faire de la CI verte une condition de push.** Une fois les deux points
   ci-dessus fermés, tout rouge redevient une découverte à traiter le jour
   même. Dix jours de rouge ont enterré deux régressions réelles.

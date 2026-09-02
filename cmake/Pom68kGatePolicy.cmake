@@ -214,10 +214,23 @@ endforeach()
 # but CI and tooling now consume these orthogonal, exhaustive dimensions.
 # The short exception list names component gates whose useful path needs a
 # user-provided corpus, firmware or disk despite not being an etalon.
+#
+# A gate belongs here the moment its useful path reads a private byte —
+# `asset-none` is a CLAIM the CI holds to account with
+# `tools/gate_execution_census.py --fail-on-skip`, not a default. Three
+# gates carried the wrong claim until 2026-09-02 and made that step
+# unsatisfiable on any host without the private inputs: `ncr5380_test`
+# needs `hdv/HD20SC.vhd`, and `cuda_restart_test`/`m68hc05_test` need the
+# Cuda MCU dump `roms/cuda/341s0788.bin`. Each soft-skipped loudly on a
+# bare GitHub runner while sitting in the tier that forbids soft-skips, so
+# the Linux job had been red on every push since 2026-08-27. The defect was
+# the label, never the runner: a gate that needs a private asset is not
+# asset-free, and the census was right to refuse.
 set(POM68K_OPTIONAL_ASSET_GATES
     sst68000 sst68030 sst68040
-    cuda_lle_test egret_lle_test
-    scsi_disk_test ncr53c96_test scsi_pdma_test scsi_hfs_facade_test sound_test
+    cuda_lle_test egret_lle_test m68hc05_test cuda_restart_test
+    scsi_disk_test ncr5380_test ncr53c96_test scsi_pdma_test
+    scsi_hfs_facade_test sound_test
     savestate_030_test savestate_68k_test)
 # ── What a gate COSTS, so `ctest -j` can schedule the suite ──────────
 # Same shape as performance_budgets.tsv: a versioned, per-host, reviewed

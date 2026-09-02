@@ -127,12 +127,23 @@ set_tests_properties(jit_copyback_pair_040_control_test PROPERTIES
 # AArch64 68040 gate for opcode-local removal of the conservative store
 # fallback. It proves both halves of the contract: mask-null ordinary RAM
 # is direct, while a true overlap with translated code is observed by the
-# memory map and precisely invalidates the cached block. Soft-skips away
-# from AArch64.
+# memory map and precisely invalidates the cached block.
+#
+# The binary is compiled everywhere — the emitter seam it drives must keep
+# building on x86-64 — but the GATE is host-conditional, exactly like the
+# native-backend locksteps below. Registering it on an x86-64 host bought
+# nothing: its first act is `POM68K_JIT_BACKEND=a64`, which no x86-64 build
+# can honour, so it printed `SKIP: AArch64 backend unavailable` and exited
+# 0. That soft-skip sat inside `asset-none`, whose census forbids them, and
+# the Linux CI could therefore never go green (2026-09-02). A gate whose
+# subject does not exist on this host is ABSENT here, not green here — the
+# same ruling the a64/x64 lockstep pairs already carry.
 add_executable(jit_store_guard_a64_test tests/jit_store_guard_a64_test.cpp)
 target_link_libraries(jit_store_guard_a64_test PRIVATE pom68k_core)
-add_test(NAME jit_store_guard_a64_test COMMAND jit_store_guard_a64_test)
-set_tests_properties(jit_store_guard_a64_test PROPERTIES LABELS "jit;unit")
+if(POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
+    add_test(NAME jit_store_guard_a64_test COMMAND jit_store_guard_a64_test)
+    set_tests_properties(jit_store_guard_a64_test PROPERTIES LABELS "jit;unit")
+endif()
 
 # M1-M3 gate (docs/CACHE_040.md): 68040 cache geometry and line data,
 # CACR/CM/TTR policy, copyback/CPUSH/CINV, snooping and hit/fill timing.
@@ -324,16 +335,19 @@ if(POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
                          ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000;POM68K_JIT_RESTART_BASE=1;POM68K_JIT_BSRW=1;POM68K_JIT_030_MEMBF=1"
                          TIMEOUT 1800)
 else()
-    # The a64 pair are host-conditional gates: the registry has more
-    # than one size and the docs cannot state one number. Record what
-    # this host is missing, with the labels the derivation loop below
-    # would have given them (both: `unit` + `jit`; the coarse one also
-    # takes `smoke` explicitly), so `docs_test` can hold the documented
-    # totals to account on any host instead of failing everywhere else.
-    # Adding another conditional gate means adding it here — and
-    # docs_test says so in its own failure text. (2026-08-12)
+    # The a64 gates are host-conditional: the registry has more than one
+    # size and the docs cannot state one number. Record what this host is
+    # missing, with the labels the derivation loop below would have given
+    # them (all: `unit` + `jit`; the coarse lockstep also takes `smoke`
+    # explicitly), so `docs_test` can hold the documented totals to account
+    # on any host instead of failing everywhere else. Adding another
+    # conditional gate means adding it here — and docs_test says so in its
+    # own failure text. (2026-08-12)
+    # `jit_store_guard_a64_test` joined them on 2026-09-02: it is declared
+    # far above, next to the emitter seam it belongs to, but its absence is
+    # recorded HERE because this is the one branch that owns the roster.
     set(pom68k_absent_gates
-        "jit_lockstep_a64_coarse_test\tunit,jit,smoke\njit_lockstep_030_a64_experimental_test\tunit,jit\njit_lockstep_030_a64_alignment_test\tunit,jit\n")
+        "jit_lockstep_a64_coarse_test\tunit,jit,smoke\njit_lockstep_030_a64_experimental_test\tunit,jit\njit_lockstep_030_a64_alignment_test\tunit,jit\njit_store_guard_a64_test\tunit,jit\n")
 endif()
 
 # The x86-64 twin of the 030 experimental gate — first green 2026-08-18,

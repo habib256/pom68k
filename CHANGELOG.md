@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 392 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 393 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (thirteenth)** — [The asset-none tier becomes a claim a bare runner can keep: four labels were the lie, not the census](#2026-09-02-census-honest)
 - **2026-09-02 (twelfth)** — [The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit](#2026-09-02-blockcache-extracted)
 - **2026-09-02 (eleventh)** — [Two locked reference identities surface on the August backup: the "tree that never existed here" is found](#2026-09-02-backup-harvest)
 - **2026-09-02 (tenth)** — [The proof floor is architecture-asymmetric and the CI signal is ten days dead: an audit, and the backlog reordered on it](#2026-09-02-proof-asymmetry)
@@ -780,6 +781,55 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-census-honest"></a>
+## 2026-09-02 (thirteenth) — The asset-none tier becomes a claim a bare runner can keep: four labels were the lie, not the census
+
+The (tenth) audit's first CI cause closes in the registry, exactly
+where the defect lived. Since f9eb653 (2026-08-27) the Linux job's
+"Every gate in that tier actually RAN" step held `ctest -L asset-none`
+to `--fail-on-skip` against a figure measured on the dev host — the
+host that carries the private assets — so a bare GitHub runner, where
+four gates abstain, could never satisfy it. Every push since was red.
+
+Three gates carried the wrong claim: `ncr5380_test` reads
+`hdv/HD20SC.vhd`, `cuda_restart_test` and `m68hc05_test` read the Cuda
+MCU dump. A gate whose useful path reads a private byte is not
+asset-free; all three join `POM68K_OPTIONAL_ASSET_GATES` — the
+existing, single mechanism — beside their natural peers
+(`ncr53c96_test`, `cuda_lle_test`, `egret_lle_test`), becoming
+asset-optional/tier-full with no hand-set labels.
+
+The fourth, `jit_store_guard_a64_test`, was a different species: its
+first act is `POM68K_JIT_BACKEND=a64`, which no x86-64 build can
+honour, so on that host it printed its SKIP and exited 0 — proving
+nothing while counting green. It is now host-conditional: the
+executable still compiles everywhere (the emitter seam must keep
+building on x86-64, the `jit_lockstep_030_test` shape), but the GATE
+registers only under `POM68K_JIT_NATIVE_BACKEND STREQUAL "a64"` and
+joins `pom68k_absent_gates` on other hosts — the branch the a64
+lockstep pair already owns, which `docs_test` names in its own failure
+text. An expected-skip allowlist was considered and rejected: it would
+teach the CI to tolerate the lie instead of removing it.
+
+Registry effect: union unchanged at 239; x86-64 registers 235 (absent
+roster 4), aarch64 236; the asset-none tier reads 85 here, 84 on a bare
+x86-64 runner. `STATUS.md` regenerated for BOTH host sections — the
+x86_64 one through a cross-configure proxy
+(`CMAKE_SYSTEM_PROCESSOR=x86_64`, the path `status_md.py` supports)
+validated by first reproducing the committed section exactly. The
+ci.yml and nightly.yml comments now state the bare-runner truth;
+`--fail-on-skip` is exactly as strict as before. Census on this host:
+83 executed / **0 soft-skipped** / 2 failed, both failures the day's
+known reds. An audit of the remaining 84 gates found no other hidden
+asset dependence.
+
+Two ratchet ceilings rise in this change (`Pom68kGatePolicy.cmake`
+363 → 376, `Pom68kJitGates.cmake` 602 → 616): the growth is the
+registration commentary above, reviewed here as the mechanism intends.
+Recorded for later, out of scope today: `declrom_test` silently drops
+three assertions when its ROM is absent while still counting as
+executed — the same class of defect, invisible to the census.
 
 <a id="2026-09-02-blockcache-extracted"></a>
 ## 2026-09-02 (twelfth) — The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit

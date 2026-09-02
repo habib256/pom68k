@@ -227,6 +227,16 @@ jobs:
       - name: Which gates actually ran
         # A soft-skipped gate exits 0 and is counted green, so the tally alone
         # cannot say whether the sanitizer exercised anything.
+        #
+        # The asan-ubsan leg runs `-L asset-none` and holds it to
+        # --fail-on-skip, so it carried the same defect ci.yml did: four
+        # gates needing a private asset or an AArch64 host sat in the
+        # asset-free tier and abstained here. Both were fixed in the registry
+        # on 2026-09-02 (cmake/Pom68kGatePolicy.cmake's optional-asset list
+        # and the host-conditional a64 registration) rather than by weakening
+        # the flag. Expected on these x86-64 runners: 84 executed,
+        # 0 soft-skipped. The tsan leg selects two gates by name instead, so
+        # it censuses without the flag.
         if: always()
         run: |
           if [ "${{ matrix.name }}" = "tsan" ]; then
