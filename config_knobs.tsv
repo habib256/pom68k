@@ -148,6 +148,7 @@ POM68K_MACII_MODEL	product	gate:macii_boot_etalon,iix_boot_etalon
 POM68K_MACIP_DEBUG	diagnostic	owner:src/StartupOptions.h
 POM68K_MMU040_WALK	diagnostic	owner:src/StartupOptions.h
 POM68K_MONITOR	product	gate:raster_equiv_test
+POM68K_MATRIX_FRAMES	test	owner:tests/finder_boot_matrix.cpp
 POM68K_MX	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_MY	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_NOFPU	product	gate:fpu_sanity

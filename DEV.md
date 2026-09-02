@@ -1692,7 +1692,9 @@ Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
 gate against a volume its own list does not name — every "same machine,
 other System" control needs it), `POM68K_HALT`, `POM68K_DUMP`,
-`POM68K_FRAMES`, `POM68K_BENCH_*`, `POM68K_PROBE*`,
+`POM68K_FRAMES`, `POM68K_MATRIX_FRAMES` (finder_boot_matrix: widen the
+Plus cell's System-6 budget for a System 7 image), `POM68K_BENCH_*`,
+`POM68K_PROBE*`,
 `POM68K_INPUT_ANYPATH`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_IIFX_SHOT`
 (debug PPM out of `iifx_boot_etalon`), `POM68K_IIFX_POST_CYCLES`,
 `POM68K_CD_HOT` (`q605_cdrom_etalon`: insert the disc AFTER the Finder is

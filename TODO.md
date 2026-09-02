@@ -66,9 +66,6 @@ mesures courantes sont archivées et chaque couple hôte/CPU a une décision
   `cd/MacOS_86.iso` reste le nom préféré). Reste à constater l'équivalent
   sur l'hôte AArch64 et, si souhaité, recréer la venv pour réparer les
   shebangs.
-- [ ] **Recalibrer `finder_boot_matrix`.** Exécuter le sweep sur toutes les
-  images visées, remplacer le seuil SCSI brut du Mac II par
-  `FinderSignature`, puis seulement enregistrer les cellules stables.
 - [ ] **Exécuter une journée avec
   `-DPOM68K_PRODUCT_LLE_GATES=ON`.** Vérifier notamment la fusion des labels,
   le backend A64 effectivement sélectionné et le census exécutés/soft-skips.
@@ -94,11 +91,11 @@ causes de fallback.
 
 ### 2.1 Ligne de base courante
 
-- [ ] **Rebaseliner le commit courant avec une ABBA complète.** Mesurer
-  interpréteur, `threaded` et codegen sur Q605 ainsi que LC II, à budget fixe
-  et empreinte identique. Publier séparément A64 et x64 ; les chiffres
-  antérieurs aux gardes cache 040 du 2026-09-01 ne représentent pas l'arbre
-  courant.
+- [ ] **Rebaseliner la jambe A64 sur l'hôte AArch64.** La jambe x64 est
+  publiée (CHANGELOG 2026-09-02 (fifth) : Q605 ×0,96/×1,88/×6,29, LC II
+  ×1,96/×2,20/×6,22, empreintes identiques, plancher NULL 0,1 %) ; rejouer
+  le même protocole ABBA sur l'autre poste avant toute comparaison
+  inter-architectures.
 - [ ] **Produire un profil temporel sous charge applicative.** Utiliser
   SimCity/Speedometer et attribuer le temps aux corps générés, fenêtres,
   moteur, thunks, MMU/cache et LLE. Ne plus ordonner le travail par histogramme

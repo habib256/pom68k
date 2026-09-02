@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 383 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 385 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (fifth)** — [The x64 baseline is re-recorded at the current tree: the 030 generator gained 17 % since August 30](#2026-09-02-x64-rebaseline)
+- **2026-09-02 (fourth)** — [The boot matrix asks the guest who is in front, and ten cells are recorded against the clean references](#2026-09-02-matrix-recalibrated)
 - **2026-09-02 (third)** — [The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact](#2026-09-02-werror-armed)
 - **2026-09-02 (second)** — [The implicit MacPack preference falls: a small clean 7.5 reference, and the flush lessons its gates paid](#2026-09-02-macpack-preference)
 - **2026-09-02** — [Two consecutive all-green registry runs: milestone 1's exit criterion lands on x86-64](#2026-09-02-two-green-runs)
@@ -771,6 +773,56 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-x64-rebaseline"></a>
+## 2026-09-02 (fifth) — The x64 baseline is re-recorded at the current tree: the 030 generator gained 17 % since August 30
+
+The milestone-2 rebaseline, x64 leg, at f5e2e60 + the day's gate work —
+fixed budgets, identical fingerprints across all three engines per
+machine (`bbf4a937c93e669d` on the Q605's three runs, `cfb184b6faddabec`
+on the LC II's), a measured NULL floor of 0.1 % against the recorded
+1.0 % policy, five ABBA repeats per comparison, and the busy-host refusal
+never fired:
+
+- **Q605 / 68040**: interp ×0.96 real time (52.10 s for 50 s of guest),
+  threaded ×1.88 (−48.8 % vs interp, ABBA), native x64 ×6.29 (7.95 s,
+  −84.5 %, native share 99.4 %, 16 433 blocks compiled).
+- **LC II / 68030**: interp ×1.96, threaded ×2.20 (−9.7 %), native x64
+  ×6.22 (15.72 s median, −69.1 %, native share 94.6 %, 23 796 blocks).
+
+Against the 2026-08-30 baseline (interp ×0.96/×1.94, threaded
+×1.86/×2.16, x64 ×6.08/×5.3): the 68040 column is unchanged to slightly
+better — the 2026-09-01 cache-active guards and access-clock work cost
+nothing measurable — and the 68030 generator moved from ×5.3 to ×6.22,
++17 %, the bitfield/MOVE SR/packed-CCR wave landing as wall time. The
+A64 column of this item belongs to the AArch64 host.
+
+<a id="2026-09-02-matrix-recalibrated"></a>
+## 2026-09-02 (fourth) — The boot matrix asks the guest who is in front, and ten cells are recorded against the clean references
+
+`finder_boot_matrix`'s Mac II leg asserted `scsi().commands > 500` — a raw
+activity floor that cannot tell a Finder from anything else that touches
+the disk. It now requires the guest's own `CurApName == "Finder"` beside
+the two luminance ratios, and the sweep proved the point on its first
+pass: macii × 7.5.5 reads SCSI=3508 — the OLD criterion's PASS — with
+`front="Stickies"`, the same Startup-Items trap the beyond gates learned
+machine by machine. That cell is recorded as UNSTABLE with its cause,
+not as green.
+
+Two Plus cells failed frozen (desk 0.16/0.23 and SCSI byte-identical
+across a 3x budget — a parked startup alert, not a slow boot; the same
+volume boots the Plus in compact_beyond, whose adaptive taps dismiss it),
+so the Plus leg received the macii leg's stall→Return and both went
+green. `POM68K_MATRIX_FRAMES` widens the fixed Plus budget when a cell
+needs it.
+
+The recorded matrix, on the qualified `hdv/ref/` identities at f5e2e60:
+plus × HD20SC / 7.1 / 7.5 PASS; macii × HD20SC / 7.0 / 7.1 PASS —
+**the clean 7.1 now boots the Mac II to the Finder**, confirming that
+"the Mac II reaches no Finder on it" was the LOCKED-DIRTY bit all along
+(macii_beyond_etalon's 2026-08 comment, now history); lcii × MacPack /
+7.1 / 7.5 PASS; q605 × 8.1 PASS; macii × 7.5.5 unstable (Stickies
+frontmost — an image trait, visible because the criterion finally looks).
 
 <a id="2026-09-02-werror-armed"></a>
 ## 2026-09-02 (third) — The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact

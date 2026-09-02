@@ -3,6 +3,7 @@
 // Exit 0 = Finder signature, 1 = fail, 2 = bad usage.
 
 #include "Cpu68k.h"
+#include "FinderSignature.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
 #include "MacFrame.h"
@@ -142,7 +143,30 @@ static int bootPlus(const std::vector<uint8_t>& rom, const char* disk) {
     if (!mem.attachScsi(disk)) return 1;
     MacFrameClock fc;
     fc.resync(cpu);
-    for (long f = 0; f < 5400 && !cpu.isHalted(); f++) fc.runFrame(cpu, mem);
+    // 5400 frames fit System 6; a System 7 boot on an 8 MHz Plus is still
+    // drawing its desktop there (desk 0.16-0.23, SCSI climbing — measured
+    // 2026-09-02). POM68K_MATRIX_FRAMES widens the budget for those cells.
+    long budget = 5400;
+    if (const char* v = std::getenv("POM68K_MATRIX_FRAMES")) budget = std::atol(v);
+    // The macii leg's stall->Return, on the Plus too: a System 7 boot can
+    // park behind a startup alert (SCSI frozen at 2103/3276 across a 3x
+    // budget, desk stuck light — 2026-09-02), and compact_beyond boots the
+    // same volume fine because its adaptive taps dismiss it.
+    long stall = 0, stallCmds = -1;
+    int keyUpIn = 0, cool = 0;
+    for (long f = 0; f < budget && !cpu.isHalted(); f++) {
+        fc.runFrame(cpu, mem);
+        if (keyUpIn && !--keyUpIn) mem.keyEvent(0x24, false);
+        if (cool > 0) { cool--; continue; }
+        const long cmds = mem.scsi().commands;
+        stall = (cmds == stallCmds && cmds > 200) ? stall + 1 : 0;
+        stallCmds = cmds;
+        if (stall >= 120) {
+            mem.keyEvent(0x24, true);
+            keyUpIn = 10;
+            cool = 240; stall = 0;
+        }
+    }
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: halted\n"); return 1; }
     MacVideo video;
     const uint32_t* fb = video.render(mem);
@@ -203,9 +227,15 @@ static int bootMacII(const std::vector<uint8_t>& rom, const char* disk, long fra
     int W = tv->hres(), H = tv->vres();
     double menu = blackRatio(fb.data(), W, 0, W, 2, 20);
     double desk = blackRatio(fb.data(), W, W / 2, W, 40, H - 40);
-    std::printf("macii menu=%.2f desk=%.2f SCSI=%ld %dx%d PC=$%08X frames=%ld\n",
-                menu, desk, mem.scsi().commands, W, H, cpu.getPC(), frames);
-    bool ok = menu < 0.35 && desk > 0.20 && desk < 0.70 && mem.scsi().commands > 500;
+    // The guest's own word, not a raw SCSI floor: `commands > 500` passed a
+    // System 6 volume that never reached a Finder and failed a System 7 one
+    // that had (TODO § 1.2). Physical peek is right on a stock Mac II.
+    const std::string front = findersig::curApName(mem);
+    std::printf("macii menu=%.2f desk=%.2f SCSI=%ld front=\"%s\" %dx%d "
+                "PC=$%08X frames=%ld\n",
+                menu, desk, mem.scsi().commands, front.c_str(), W, H,
+                cpu.getPC(), frames);
+    bool ok = menu < 0.35 && desk > 0.20 && desk < 0.70 && front == "Finder";
     std::printf("%s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
