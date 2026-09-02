@@ -11,7 +11,7 @@ CMakeLists.txt                           559
 cmake/Pom68kComponentGates.cmake         437
 cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             381
-cmake/Pom68kJitGates.cmake               632
+cmake/Pom68kJitGates.cmake               637
 cmake/Pom68kMachineGates.cmake           740
 src/AfpServer.cpp                        1129
 src/GuiHostServices.cpp                  177

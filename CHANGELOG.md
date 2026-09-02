@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 399 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 400 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (third)** — [The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout](#2026-09-03-asan-timeout)
 - **2026-09-03 (second)** — [The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64](#2026-09-03-lle-day)
 - **2026-09-03** — [The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's](#2026-09-03-a64-rebaseline)
 - **2026-09-02 (seventeenth)** — [The nightly's first light: TSan proves the race fix, GCC-13 ASan compiles, and its first-ever run finds additive stacks](#2026-09-02-nightly-first-light)
@@ -787,6 +788,22 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-asan-timeout"></a>
+## 2026-09-03 (third) — The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout
+
+The re-dispatched nightly (33671674528) proves the (seventeenth)
+`ulimit` fix: the three stack-overflows are gone, the ASan leg reads
+**83 executed / 0 soft-skipped / 1 failed** of 84, TSan green again,
+LTO and Coverage green. The one red is `jit_asset_free_lockstep_test`
+— **Timeout at 45.04 s**, the CTest default bound the gate never set.
+The measured truth: ~6 s native on the M4, 38.7 s under AppleClang
+ASan locally, past 45 s under GCC ASan on a GitHub runner — the
+instrumentation's honest ×7-8, not a hang. The gate now carries
+TIMEOUT 300 with the arithmetic beside it; a bound an instrumented run
+sits ON is the iivx lesson of 2026-08-30, relearned smaller. The
+leak-census artifact is still unpublished (its step follows a green
+Run); the third dispatch of the night carries that hope.
 
 <a id="2026-09-03-lle-day"></a>
 ## 2026-09-03 (second) — The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64

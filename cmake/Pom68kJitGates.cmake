@@ -81,7 +81,12 @@ pom68k_perf_budget(jit_asset_free_lockstep_test
     synthetic_68040_lockstep 68040 max_slow_instrs
     POM68K_PERF_MAX_SLOW_INSTRUCTIONS)
 add_test(NAME jit_asset_free_lockstep_test COMMAND jit_asset_free_lockstep_test)
-set_tests_properties(jit_asset_free_lockstep_test PROPERTIES LABELS "jit;unit")
+# TIMEOUT 300, not the 45 s default: the gate runs ~6 s native but ~39 s
+# under AppleClang ASan and past 45 s under GCC ASan on a CI runner
+# (nightly 33671674528 timed it out at 45.04 s — the only red of that
+# leg's second-ever run). A bound a sanitizer sits ON is the iivx lesson.
+set_tests_properties(jit_asset_free_lockstep_test PROPERTIES LABELS "jit;unit"
+                     TIMEOUT 300)
 
 # J4 write half: one generated copyback hit must publish the precise
 # dirty-longword mask, while misses retain the 68040 format-$7
