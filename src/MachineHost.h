@@ -561,7 +561,7 @@ protected:
         if (path.empty()) {
             // Menu path: derive from the state file so recordings sit beside
             // their boot volume, stamped so none overwrites another.
-            std::string base = state.path;
+            std::string base = state.path();
             const std::string ext = ".pomss";
             if (base.size() > ext.size() &&
                 base.compare(base.size() - ext.size(), ext.size(), ext) == 0)

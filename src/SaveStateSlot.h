@@ -29,7 +29,24 @@
 // like the .pram file, so states pair with their boot volume).
 struct SaveStateSlot {
     pom68k::SnapMachine kind{};        // 0 = profile not wired
-    std::string path;
+
+    // The state-file path travels under the slot's own mutex, the
+    // `requestInsertFloppy` convention of `MachineHost.h`: the machine thread
+    // must never read a std::string the GUI thread may still be assigning.
+    // It was a plain public member until TSan caught the GUI frame
+    // re-assigning it inside `gui_smoke_test` while the machine thread was in
+    // apply() (nightly run 33605191940, 2026-09-02). DEV.md § 6: GUI → machine
+    // state crosses the boundary by value with the request, never as a shared
+    // mutable member. The lock is taken once per request and once per tick
+    // that has one, never inside a quantum.
+    void setPath(std::string p) {
+        std::lock_guard<std::mutex> l(mu_);
+        path_ = std::move(p);
+    }
+    std::string path() {
+        std::lock_guard<std::mutex> l(mu_);
+        return path_;
+    }
 
     void request(bool load) {
         std::lock_guard<std::mutex> l(mu_);
@@ -47,7 +64,13 @@ struct SaveStateSlot {
     template <class Mem, class Cpu>
     int apply(Mem& mem, Cpu& cpu) {
         int p;
-        { std::lock_guard<std::mutex> l(mu_); p = pending_; pending_ = 0; }
+        std::string path;                  // snapshot: the GUI owns the member
+        {
+            std::lock_guard<std::mutex> l(mu_);
+            p = pending_;
+            pending_ = 0;
+            path = path_;
+        }
         if (!p) return 0;
         int done = 0;
         if (kind == pom68k::SnapMachine{} || path.empty()) {
@@ -132,4 +155,5 @@ private:
     std::mutex mu_;
     int pending_ = 0;                  // bit 0 = save, bit 1 = load
     std::string message_;
+    std::string path_;
 };

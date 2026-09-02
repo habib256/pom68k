@@ -54,13 +54,6 @@ Règles de travail :
 
 ### A.2 Rendre la nightly lisible
 
-- [ ] **Fermer la course de données `gui_smoke_test` sous TSan.** La preuve
-  attendue existe, chaque nuit, et ce n'est pas le flake de renommage :
-  `src/GuiSmokeScenario.cpp:22` réassigne une `std::string` du `SaveStateSlot`
-  sur le fil GUI pendant que le fil machine la lit dans
-  `src/SaveStateSlot.h:59` via `src/MachineHost.h:506`. C'est le contrat de
-  propriété GUI/machine de `DEV.md` § 6, violé, avec sa pile conservée dans
-  les artefacts nightly.
 - [ ] **Lire le premier artefact `pom68k-leak-census`, puis retirer
   `continue-on-error`.** L'étape publie son rapport ; la lecture reste due. La
   jambe ASan compile à nouveau depuis le correctif `MachineCatalog.h` du

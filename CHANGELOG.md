@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 394 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 395 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (fifteenth)** — [The save-state path moves behind the slot's mutex: the nightly's TSan race was the smoke bypassing the channel](#2026-09-02-savestate-path-mutex)
 - **2026-09-02 (fourteenth)** — [The catalogue's density check stops forming a pointer, and the ASan nightly can compile again](#2026-09-02-catalog-consteval)
 - **2026-09-02 (thirteenth)** — [The asset-none tier becomes a claim a bare runner can keep: four labels were the lie, not the census](#2026-09-02-census-honest)
 - **2026-09-02 (twelfth)** — [The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit](#2026-09-02-blockcache-extracted)
@@ -782,6 +783,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-savestate-path-mutex"></a>
+## 2026-09-02 (fifteenth) — The save-state path moves behind the slot's mutex: the nightly's TSan race was the smoke bypassing the channel
+
+The (tenth) audit's other nightly finding closes. `gui_smoke_test` had
+failed the TSan leg every night with a preserved pair of stacks: the
+main thread move-assigning a `std::string` in
+`GuiSmokeScenario::frame()` while the machine thread read it in
+`SaveStateSlot::apply()` under `MachineHost::applyCmds()`.
+
+The diagnosis clears production and blames the bypass — with a
+structural lesson. `SaveStateSlot::path` was a plain public member.
+Every production runner (`GuiRunnerToby/V8/Sonora/Dafb/Duo`,
+`PlatformCompact`) assigns it exactly once during composition, BEFORE
+`machine.start()` spawns the machine thread, and afterwards touches the
+slot only through `request()`/`message()`, both under the slot's mutex
+— so the shipped paths never race. The smoke scenario alone re-assigned
+the member on every GUI frame, including frames concurrent with
+`apply()`. But nothing stopped a future runner from doing the same, so
+the fix removes the bare field instead of just fixing the caller:
+`setPath()`/`path()` under the slot's own mutex (the
+`requestInsertFloppy` convention), and `apply()` snapshots the path
+into a local inside the lock scope it already takes for `pending_` — no
+new lock, nothing locked inside a quantum, the save/load visitor
+unchanged. The smoke sets its path once, on frame 1.
+
+Verification, caveat first: the race never reproduced on macOS — 25
+unfixed-tree TSan runs clean, even with amplifying sleeps. What was
+established here instead: a control race planted in the same two code
+regions IS reported with the nightly's exact stack shapes (so the
+instrumentation works and the regions genuinely run concurrently on
+this host), and a standalone model of the slot reproduces the race in
+the nightly's shape and goes clean once the path is behind the mutex.
+After the fix: 10/10 `gui_smoke_test` TSan runs and `machinehost_test`
+clean under `halt_on_error=1`; unsanitized `gui_smoke_test`,
+`machinehost_test`, `docs_test` green. The reproduction therefore
+rests on the nightly, whose next TSan leg is this entry's proof — the
+same standing as the (fourteenth) GCC-13 fix.
 
 <a id="2026-09-02-catalog-consteval"></a>
 ## 2026-09-02 (fourteenth) — The catalogue's density check stops forming a pointer, and the ASan nightly can compile again

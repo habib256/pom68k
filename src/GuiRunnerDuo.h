@@ -85,8 +85,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     MachineT& machine = services.template own<MachineT>(
         mem, cpu, audioHost, services);
     machine.state.kind = spec.snap;
-    machine.state.path =
-        pramPath.substr(0, pramPath.size() - 5) + ".pomss";
+    machine.state.setPath(pramPath.substr(0, pramPath.size() - 5) + ".pomss");
     services.armInputRecording(machine, spec.pramTag, romName, media);
     services.shell().bindCpuMenu(machine, cpu);
     machine.publish(true);

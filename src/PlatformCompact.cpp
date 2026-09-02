@@ -153,9 +153,9 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
         compactModel == MacMemory::Model::SEFDHD  ? pom68k::SnapMachine::SEFDHD :
         compactModel == MacMemory::Model::Classic ? pom68k::SnapMachine::Classic
                                                   : pom68k::SnapMachine::Plus;
-    machine.state.path = (hddPath.empty() ? std::string(compactTag)
-                                           : hddPath + "." + compactTag) +
-                         ".pomss";
+    machine.state.setPath((hddPath.empty() ? std::string(compactTag)
+                                            : hddPath + "." + compactTag) +
+                          ".pomss");
     services.armInputRecording(machine, compactTag, matched, media);
     machine.setFloppyInserted(diskOk, diskOk ? diskPath : std::string());
     return pom68k::gui::runCompactGui(

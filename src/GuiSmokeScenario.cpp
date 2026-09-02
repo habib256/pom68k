@@ -19,7 +19,12 @@ void GuiSmokeScenario::frame(GuiSessionState& session, GLFWwindow* window,
     if (!enabled()) return;
     ++frames_;
     std::fprintf(stderr, "gui-smoke: frame %d\n", frames_);
-    saveState.path = *report_ + ".pomss";
+    // Once, and through the slot's own setter. Re-assigning a shared member
+    // every frame let the GUI thread rewrite the string while the machine
+    // thread was reading it inside apply() — the TSan report of nightly run
+    // 33605191940 (2026-09-02). DEV.md § 6: the machine thread is reached by
+    // the queue and by the slot's locked requests, never by a bare field.
+    if (frames_ == 1) saveState.setPath(*report_ + ".pomss");
 
     if (!engineRequested_ && session.cpu.setCpuEngine &&
         session.cpu.getCpuEngine) {

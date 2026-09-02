@@ -413,7 +413,7 @@ int main() {
     {
         MonoMachine m(mem, cpu, audio);
         m.state.kind = pom68k::SnapMachine::Q605;
-        m.state.path = "machinehost_test.base.pomss";
+        m.state.setPath("machinehost_test.base.pomss");
         m.requestRecordingStart();                 // no path: the menu form
         m.stepTick();
         check(m.recordingActive(), "recording: the menu form arms too");

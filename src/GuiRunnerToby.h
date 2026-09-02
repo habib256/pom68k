@@ -101,9 +101,9 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         mem, cpu, audioHost, services);
     services.shell().bindCpuMenu(machine, cpu);
     machine.state.kind = spec.snap;
-    machine.state.path =
+    machine.state.setPath(
         (hddPath.empty() ? spec.snapshotTag
-                         : hddPath + "." + spec.snapshotTag) + ".pomss";
+                         : hddPath + "." + spec.snapshotTag) + ".pomss");
     services.armInputRecording(machine, spec.snapshotTag, romName, media);
     machine.publish(true);
 
