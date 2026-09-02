@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 400 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 401 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 72 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 73 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 41 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
@@ -97,6 +97,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (fifth)** — [The x64 baseline is re-recorded at the current tree: the 030 generator gained 17 % since August 30](CHANGELOG.md#2026-09-02-x64-rebaseline)
 - **2026-09-02 (seventh)** — [The x86-64 `accessClockBias` proof completes on the two all-green runs, and the pinning check finds no impostor](CHANGELOG.md#2026-09-02-bias-proof-x64)
 - **2026-09-03** — [The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's](CHANGELOG.md#2026-09-03-a64-rebaseline)
+- **2026-09-03 (fourth)** — [The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again](CHANGELOG.md#2026-09-03-timeout-stomped)
 - **2026-09-03 (second)** — [The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64](CHANGELOG.md#2026-09-03-lle-day)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 400 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 401 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (fourth)** — [The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again](#2026-09-03-timeout-stomped)
 - **2026-09-03 (third)** — [The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout](#2026-09-03-asan-timeout)
 - **2026-09-03 (second)** — [The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64](#2026-09-03-lle-day)
 - **2026-09-03** — [The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's](#2026-09-03-a64-rebaseline)
@@ -788,6 +789,25 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-timeout-stomped"></a>
+## 2026-09-03 (fourth) — The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again
+
+A same-night correction of the (third) entry's fix, which was right
+about everything except where to write it. Nightly 33683370177 — at
+28372af, TIMEOUT 300 committed — timed the same gate out at the same
+45.04 s. The generated `CTestTestfile.cmake` said why: the jit-fast
+tier's blanket `set_tests_properties(... PROPERTIES TIMEOUT 45)` in
+`Pom68kGatePolicy.cmake` runs AFTER `Pom68kJitGates.cmake`'s add-time
+property and silently overwrites it — a lesson about this registry
+worth the entry: a per-gate property set at registration is not final,
+and the proof of any timeout fix is the generated file, not the source
+that intended it. The exception now lives directly below the blanket
+that owns the last word, with the measured arithmetic (6 s native,
+38.7 s AppleClang ASan, >45 s GCC ASan); the JitGates registration
+keeps a pointer instead of a dead property. Verified this time in
+`build/CTestTestfile.cmake`: `TIMEOUT "300"`. The night's fourth
+dispatch carries the leak-census hope forward.
 
 <a id="2026-09-03-asan-timeout"></a>
 ## 2026-09-03 (third) — The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout

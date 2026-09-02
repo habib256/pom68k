@@ -163,6 +163,14 @@ set_tests_properties(jit_backend_test
                      jit_copyback_pair_040_test
                      docs_test config_test
                      PROPERTIES TIMEOUT 45)
+# One measured exception, set AFTER the blanket that would overwrite it
+# (a TIMEOUT set at add_test time in Pom68kJitGates.cmake was silently
+# stomped here — nightly 33683370177 timed the gate out at 45.04 s
+# TWICE): the full synthetic lockstep runs ~6 s native but 38.7 s under
+# AppleClang ASan and past 45 s under GCC ASan on a CI runner. 300 is
+# the instrumentation's honest ×7-8 with margin, not a loosened budget
+# for the native tier, whose other gates stay within the blanket.
+set_tests_properties(jit_asset_free_lockstep_test PROPERTIES TIMEOUT 300)
 
 # ── Every gate is BOUNDED, declared or derived ───────────────────────
 # A gate with no TIMEOUT is not a gate, it is a bet — and CTest takes no
