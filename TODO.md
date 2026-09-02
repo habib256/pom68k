@@ -96,13 +96,12 @@ causes de fallback.
   ×1,96/×2,20/×6,22, empreintes identiques, plancher NULL 0,1 %) ; rejouer
   le même protocole ABBA sur l'autre poste avant toute comparaison
   inter-architectures.
-- [ ] **Produire un profil temporel sous charge applicative.** Utiliser
-  SimCity/Speedometer et attribuer le temps aux corps générés, fenêtres,
-  moteur, thunks, MMU/cache et LLE. Ne plus ordonner le travail par histogramme
-  brut de fallbacks.
-- [ ] **Re-mesurer la densité du code généré avant toute action.** Si elle
-  redevient dominante, évaluer stubs froids partagés et branches courtes ;
-  sinon laisser ce travail derrière les coûts MMU/cache/LLE observés.
+- [ ] **Attaquer le poste n°1 du profil temporel : la traduction.**
+  `tools/profile_census.py` sur SimCity/Speedometer (CHANGELOG 2026-09-02
+  (sixth)) attribue ~30-34 % du temps à Moira translate + thunks mémoire,
+  ~2 % au hashtable de dispatch et ~5,7 % au M68HC05 seul ; la densité du
+  code généré n'est PAS dominante (compilation 0,2 %) et reste parquée.
+  Toute optimisation part de ces chiffres, pas d'un histogramme.
 
 ### 2.2 Matériel cible et variables produit
 

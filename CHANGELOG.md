@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 385 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 386 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (sixth)** — [The first application-load TIME profile: translation is the biggest post, and code density is not](#2026-09-02-time-profile)
 - **2026-09-02 (fifth)** — [The x64 baseline is re-recorded at the current tree: the 030 generator gained 17 % since August 30](#2026-09-02-x64-rebaseline)
 - **2026-09-02 (fourth)** — [The boot matrix asks the guest who is in front, and ten cells are recorded against the clean references](#2026-09-02-matrix-recalibrated)
 - **2026-09-02 (third)** — [The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact](#2026-09-02-werror-armed)
@@ -773,6 +774,51 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-time-profile"></a>
+## 2026-09-02 (sixth) — The first application-load TIME profile: translation is the biggest post, and code density is not
+
+Milestone 2's second deliverable — attribute wall time to generated
+bodies, engine, thunks, MMU/cache and LLE under a REAL load, instead of
+ordering work by a fallback histogram. The instrument is
+`tools/profile_census.py` over a gperftools sampling profile (500 Hz,
+leaf-PC attribution; anonymous exec pages ARE the generated-code bucket),
+run against a dedicated no-LTO RelWithDebInfo build after the LTO build's
+identical-code folding produced a report that confidently lied (8.7 % in
+`dumpHisto`; same guest fingerprint on both builds, so the workload is
+identical — the no-LTO wall cost is ~4 %). Three symbolization traps are
+now written into the tool: Ubuntu's gperftools ignores `CPUPROFILE`
+without an explicit `ProfilerStart` (a 6-line LD_PRELOAD shim provides
+it), the profile lands in `CPUPROFILE_<pid>`, and the exec segment's ELF
+vaddr is 0x7000 — a slide of plain `map_start` shifts every symbol one
+neighbourhood over and invents a plausible-looking, entirely wrong
+report.
+
+Both LC II censuses, pinned x64, whole run boot→load:
+
+| bucket | SimCity 2000 (144 s CPU) | Speedometer (90 s CPU) |
+|---|---|---|
+| MMU/cache (Moira translate) | **22.8 %** | 19.3 % |
+| moteur — runtime/fenêtres | 22.4 % | 22.8 % |
+| corps générés (x64) | 21.5 % | **24.5 %** |
+| carte mémoire/thunks | 11.3 % | 11.2 % |
+| LLE/périphériques | 11.2 % | 12.2 % |
+| interpréteur (fallback) | 7.4 % | 6.4 % |
+| compilation | 0.2 % | 0.2 % |
+
+What the profile orders, that the histogram never could: translation plus
+the memory-map thunks are ~30-34 % of everything — `mmuFetchWord` 6.1 %,
+`mmuRead<2/4>` 8.1 %, `V8Memory::read16/write16` 5.7 % on SimCity — twice
+the weight of the interpreter fallback the histograms kept pointing at.
+Inside the engine bucket, the block hashtable costs ~2.1 % (a dispatch
+cache candidate) and the peripheral pump (`flushTicks` +
+`schedulePeriphDeadline`) ~3.5 %; the Egret's M68HC05 LLE alone is ~5.7 %.
+And the standing question "is generated-code density dominant again?"
+closes by measurement: compilation is 0.2 % and the bodies bucket sits at
+the same weight as translation — density work stays parked behind
+MMU/cache/LLE, exactly as the TODO item conditioned. (Honesty note: the
+Speedometer census's cpu-test leg reports done=0 in its budget; its
+profile covers boot, launch and the partial test.)
 
 <a id="2026-09-02-x64-rebaseline"></a>
 ## 2026-09-02 (fifth) — The x64 baseline is re-recorded at the current tree: the 030 generator gained 17 % since August 30
