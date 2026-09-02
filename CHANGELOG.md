@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 397 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 398 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03** — [The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's](#2026-09-03-a64-rebaseline)
 - **2026-09-02 (seventeenth)** — [The nightly's first light: TSan proves the race fix, GCC-13 ASan compiles, and its first-ever run finds additive stacks](#2026-09-02-nightly-first-light)
 - **2026-09-02 (sixteenth)** — [The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates](#2026-09-02-dispatch-cache-proved)
 - **2026-09-02 (fifteenth)** — [The save-state path moves behind the slot's mutex: the nightly's TSan race was the smoke bypassing the channel](#2026-09-02-savestate-path-mutex)
@@ -785,6 +786,64 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-a64-rebaseline"></a>
+## 2026-09-03 — The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's
+
+Milestone-2's other leg, measured overnight on the quiet Apple M4 at
+dde8f89 (Release, no LTO, `POM68K_FAST_LINK=ON`), the x64 leg's exact
+protocol (2026-09-02 (fifth)): fixed guest budgets, NULL floor first,
+then interp-anchored ABBA per engine, 5 repeats, the harness printing
+fingerprint, build stamp, load and knobs beside every number
+(`scratchpad/2026-09-02-night/pom68k_bench_driver.log`).
+
+**Q605 / 68040, 3000 frames (50 s of guest time):**
+
+| engine | median | vs interp |
+|---|---|---|
+| interp | 28.28 s | — |
+| threaded | 15.68 s | **−44.2 %** |
+| native a64 | 3.44 s | **−87.8 %** (×14.5 real time) |
+
+**LC II / 68030, 6000 frames:**
+
+| engine | median | vs interp |
+|---|---|---|
+| interp | 23.67 s | — |
+| threaded | 20.74 s | **−11.3 %** |
+| native a64 | 8.84 s | **−62.7 %** |
+
+Every arm of every comparison finished at one fingerprint per machine
+— and the LC II's is `cfb184b6faddabec`, **byte-identical to the x64
+leg's**, so the two hosts measured the same guest and their deltas may
+be compared: a64 −62.7 % against x64's −69.1 %. The Q605 legs are NOT
+cross-comparable — `778dd7ad558108fd` here against `bbf4a937c93e669d`
+there — because the two hosts' 8.1 boot volumes have diverged (the A.3
+transport item again, seen from a third angle). Intra-host, the Q605
+column stands on its own; its native median of 3.44 s sits 6 % above
+the 2026-08-23 reference (3.24 s, same fingerprint, same host family)
+— build-flag and tree differences unattributed, noted rather than
+chased tonight.
+
+**The § B.3 question is answered emphatically.** The a64/68030
+generator that measured −5.3 % over `threaded` on 2026-08-20 now
+measures 8.84 s against 20.74 s — **−57.4 %, ×2.35** — the
+August Speedometer wave (bitfields, packed CCR, MOVE SR, the
+2026-09-01 EA-legality convergence) plus the dispatch cache, arrived
+as wall time. The profit score 64 survives its floor by two orders of
+magnitude; `autoFamilies` keeps 030 on AArch64, unchanged.
+
+**The recorded AArch64 noise floor was the M1's, not this host's.**
+Both NULL experiments failed the policy check exactly as
+`MEASURING.md` § R2 warned they might ("re-measure on any other ARM
+host before trusting it there"): measured 0.5 % (Q605) and 1.1 %
+(LC II) against the recorded 0.2 % — taken on the 2026-08-22 M1, and
+sat on by every A64 claim since. `performance_budgets.tsv` now records
+**11 permille**, the worse of the two measurements, with tonight's
+mild background load (~1.8 average — the night's own watchdogs) as the
+stated condition; a stiller session may lower it, by measurement only.
+Nothing tonight rests on the floor: the smallest delta above is ten
+times it.
 
 <a id="2026-09-02-nightly-first-light"></a>
 ## 2026-09-02 (seventeenth) — The nightly's first light: TSan proves the race fix, GCC-13 ASan compiles, and its first-ever run finds additive stacks

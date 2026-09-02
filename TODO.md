@@ -149,10 +149,6 @@ derrière lui.
 
 ### B.3 Qualification 68030 par hôte
 
-- [ ] **Revalider le chemin A64/68030 sur l'arbre courant.** Rejouer le tier
-  natif complet et une ABBA sur hôte silencieux après les changements de garde
-  de slices ; conserver le score de profit 64 seulement si le gain dépasse le
-  plancher de bruit.
 - [ ] **Décider la re-promotion x64/68030.** Comparer les modes d'accès 1 et 2
   dans le même binaire, puis exiger les locksteps natifs, `ctest -L m030` et
   le tier etalon complet sur x86-64 avant d'ajouter 030 à
@@ -183,15 +179,6 @@ derrière lui.
 - [ ] **Profiler puis isoler les stores à masque nul.** N'ouvrir une
   spécialisation conforme qu'après un profil temporel et des preuves
   empreinte/compteurs/gates identiques.
-
-### B.5 Ligne de base courante
-
-- [ ] **Rebaseliner la jambe A64 sur l'hôte AArch64.** La jambe x64 est
-  publiée (`CHANGELOG` 2026-09-02 (fifth) : Q605 ×0,96/×1,88/×6,29, LC II
-  ×1,96/×2,20/×6,22, empreintes identiques, plancher NULL 0,1 %) ; rejouer le
-  même protocole ABBA sur l'autre poste avant toute comparaison
-  inter-architectures. Dépend de A.3 : sans références identiques, les deux
-  jambes ne mesurent pas le même invité.
 
 **Critère de sortie du palier B :** les fallbacks cache-actifs 040 encore
 identifiés sont fermés ou justifiés, chaque coût important est attribuable
