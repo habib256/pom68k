@@ -48,6 +48,19 @@ void Engine::recordIndexForms(const BlockIr& ir) {
 void Engine::censusPhase(const char* label) {
     if (histo_.empty()) return;
     std::fprintf(stderr, "\n[jit] ════ census phase '%s' ════\n", label);
+    std::fprintf(stderr,
+                 "[jit] dispatch cache: %llu hits, %llu gen-miss, %llu miss\n",
+                 (unsigned long long)dcHits_, (unsigned long long)dcGenMiss_,
+                 (unsigned long long)dcMiss_);
+    dcHits_ = dcGenMiss_ = dcMiss_ = 0;
+    std::fprintf(stderr, "[jit] flushes:");
+    for (int f = 0; f < int(Flush::Count); f++)
+        std::fprintf(stderr, " %s=%llu", flushName(Flush(f)),
+                     (unsigned long long)stats_.flushCauses[f].load(
+                         std::memory_order_relaxed));
+    std::fprintf(stderr, "  blocks live=%zu, cold-evicted=%llu\n",
+                 blocks_.size(), (unsigned long long)dcEvictions_);
+    dcEvictions_ = 0;
     dumpHisto();
     std::fill(histo_.begin(), histo_.end(), 0);
     std::fill(slowStaticHisto_.begin(), slowStaticHisto_.end(), 0);

@@ -155,12 +155,18 @@ empreintes identiques et gain supérieur au bruit de mesure.
 - [ ] **Étudier `PFLUSHA` et le retry d'armement seulement après profil.**
   Toute réduction des bumps ou du backoff doit garder les locksteps 030/040 :
   le moment où une fenêtre s'arme est observable sur 68040.
-- [ ] **Poser un cache de dispatch devant le hashtable des blocs.** Le
+- [ ] **Prouver le cache de dispatch et l'éviction générationnelle posés
+  le 2026-09-02.** L'implémentation est dans l'arbre (CHANGELOG
+  2026-09-02 (ninth) : cache direct-mapped 65 536 slots devant le
+  hashtable + éviction des blocs froids à saturation, compteurs dans
+  `censusPhase()`), mais la session s'est terminée par un gel de l'hôte
+  AVANT la validation. RESTE EXIGÉ avant toute revendication de gain :
+  locksteps 030/040, tier etalon complet sous défauts, ABBA sur le run
+  Rogue (les chiffres 3,3 % / 992 M vs 34 M viennent du stderr de la
+  session, pas d'un artefact conservé — re-mesurer). Contexte : le
   profil 040 (CHANGELOG 2026-09-02 (eighth)) attribue ~34,5 % du run
   Rogue à executeUntil + hashtable + dispatchBlockKey + armWindow pour
-  7,6 % de corps générés ; un cache PC→bloc invalidé par la mécanique
-  CodeGuard/fenêtres existante est le levier n°1 mesuré du 68040, devant
-  l'allongement des fenêtres (§ 3.1). Locksteps + etalon + ABBA exigés.
+  7,6 % de corps générés.
 - [ ] **Compacter `mmu040InstrStart`.** Mesuré à 3,26 % du run Rogue 040
   (le plafond du gain est connu) ; voir si les remises à zéro adjacentes
   et le pack CCR peuvent devenir un ou deux stores larges sans changer

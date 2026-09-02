@@ -196,6 +196,12 @@ private:
         // direct-link targets: the engine must select their count first.
         uint8_t   shiftVersion = 0xFF;
         bool      rejected = false;      // the backend declined it; do not retry
+        // Generational use stamp for capacity eviction: the dispatch loop
+        // stamps every block it runs with the current epoch, and a FULL
+        // cache evicts only blocks not touched since the previous
+        // saturation (see record()'s capacity note — both failure modes
+        // of the two simpler policies are measured and dated).
+        uint32_t  epoch = 0;
     };
 
     // Runs instructions with the window armed but without recording or
@@ -391,6 +397,45 @@ private:
     bool maskAware_ = false;
 
     std::unordered_map<uint64_t, Block> blocks_;
+
+    // Direct-mapped dispatch cache in FRONT of blocks_. The 68040 time
+    // profile (CHANGELOG 2026-09-02 (eighth)) attributed ~34 % of a Rogue
+    // run to executeUntil + the block hashtable + dispatchBlockKey for
+    // 7.6 % of generated code: the cache-active 040's short windows make
+    // FINDING a block cost more than running it. One entry per (pc, super)
+    // slot; only plain base-keyed blocks enter — never a shift-versioned
+    // site, whose dispatch key depends on a live data register — and the
+    // hit path additionally requires the block's proved MMU generation, so
+    // a stale-generation block still takes the slow path that re-proves or
+    // evicts it. Coherence contract: every path that erases from blocks_
+    // calls dispatchCacheEvict() with the erased key (the same discipline
+    // unmarkPages already imposes), flushAll() clears the table, and
+    // record() evicts the base slot of any site the shift-version cache
+    // admits. Block pointers are stable across rehash (node-based map).
+    struct DispatchCacheEntry { uint64_t key = 0; Block* block = nullptr; };
+    // Census visibility: how often the fast slot answered, how often the
+    // MMU generation forced the slow path anyway, how often the slot was
+    // cold. Printed by censusPhase(); the 040 diagnosis depends on the
+    // gen-miss column.
+    uint64_t dcHits_ = 0, dcGenMiss_ = 0, dcMiss_ = 0, dcEvictions_ = 0;
+    // 65536 slots (1 MB): the Rogue gameplay working set is ~16k live
+    // blocks and a 4096-slot table measured 3.3 % hits from pure
+    // direct-map collision thrash (2026-09-02, the counters above).
+    static constexpr uint32_t kDispatchCacheSize = 65536;
+    std::array<DispatchCacheEntry, kDispatchCacheSize> dispatchCache_{};
+
+    static uint32_t dispatchCacheIndex(uint32_t pc, bool super) {
+        return ((pc >> 1) ^ (uint32_t(super) << 11)) &
+               (kDispatchCacheSize - 1);
+    }
+    void dispatchCacheEvict(uint64_t blockKey) {
+        if (ShiftVersionCache::isVersionKey(blockKey)) return;
+        DispatchCacheEntry& e = dispatchCache_[dispatchCacheIndex(
+            uint32_t(blockKey), ((blockKey >> 32) & 1) != 0)];
+        if (e.key == blockKey) e = {};
+    }
+    void dispatchCacheClear() { dispatchCache_.fill({}); }
+
     ShiftVersionCache shiftVersions_;
     // slice -> the blocks translated from it. Servicing a guard trip by
     // scanning the whole cache is O(blocks) per write, and the writes are
@@ -448,6 +493,8 @@ private:
     bool paranoid_ = false;      // POM68K_JIT_PARANOID: revalidate every step
     int  maxInstrs_ = 64;
     int  maxBlocks_ = 16384;
+    uint32_t blockEpoch_ = 1;            // 0 = never dispatched, evictable
+    void evictColdBlocks();
     int  hotAt_ = 8;             // POM68K_JIT_HOT: visits before compiling
     int  profitScore_ = 0;        // visits × potential native instructions
 

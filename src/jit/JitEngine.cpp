@@ -612,6 +612,36 @@ void Engine::ring(uint8_t kind, uint32_t pc, int64_t target,
     if (dispatchCount_ < kDispatchRing) dispatchCount_++;
 }
 
+// Capacity eviction: erase every block not dispatched since the previous
+// saturation, with ALL the duties an erase owes (the guard-service path
+// is the model): retract its published link, release its code, unmark its
+// pages, forget its shift version, drop its dispatch-cache slot, prune
+// the version bookkeeping. Advances the epoch so the next saturation
+// measures a fresh generation.
+void Engine::evictColdBlocks() {
+    size_t evicted = 0;
+    for (auto it = blocks_.begin(); it != blocks_.end();) {
+        Block& b = it->second;
+        if (b.epoch == blockEpoch_) { ++it; continue; }
+        const uint64_t blockKey = it->first;
+        if (b.code && b.shiftVersion == 0xFF)
+            retractLink(b.ir.entryPc, b.ir.super);
+        if (b.code) backend_->release(b.code);
+        uint32_t lo = 0, len = 0;
+        blockSpan(b.ir, lo, len);
+        unmarkPages(blockKey, lo, len);
+        shiftVersions_.forget(blockKey);
+        it = blocks_.erase(it);
+        dispatchCacheEvict(blockKey);
+        shiftVersions_.prune(
+            blockKey, blocks_.contains(ShiftVersionCache::baseKey(blockKey)));
+        evicted++;
+    }
+    blockEpoch_++;
+    stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
+    dcEvictions_ += evicted;
+}
+
 void Engine::flushAll(Flush cause) {
     // RE-ENTRANCY. This is reachable from INSIDE a running block: a guest
     // MOVEC to CACR reaches Moira::setCACR -> Cpu040::didChangeCACR ->
@@ -638,6 +668,7 @@ void Engine::flushAll(Flush cause) {
 
     for (auto& kv : blocks_) if (kv.second.code) backend_->release(kv.second.code);
     blocks_.clear();
+    dispatchCacheClear();
     shiftVersions_.clear();
     sliceIndex_.clear();
     clearLinks();
@@ -695,6 +726,7 @@ void Engine::serviceGuard() {
             unmarkPages(blockKey, lo, len);
             shiftVersions_.forget(blockKey);
             blocks_.erase(b);
+            dispatchCacheEvict(blockKey);
             shiftVersions_.prune(
                 blockKey,
                 blocks_.contains(ShiftVersionCache::baseKey(blockKey)));
@@ -915,14 +947,23 @@ void Engine::runWindow(int64_t clockTarget) {
 }
 
 Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
-    // Full cache: STOP RECORDING, do not throw the cache away. Flushing
-    // here is what a code generator cannot afford — a Mac OS 8.1 boot
-    // touches far more hot code than any cache holds, and dropping the lot
-    // on every overflow had the engine recompile 1.8 million blocks in one
-    // boot, which cost more than everything translation saved. Whatever is
-    // not cached simply runs on the fetch-window path, which is what the
-    // engine would have done anyway.
-    if (int(blocks_.size()) >= maxBlocks_) return nullptr;
+    // Full cache: evict what went COLD, never the lot and never nothing.
+    // Both simpler policies are measured failures. Dropping everything on
+    // overflow had the engine recompile 1.8 million blocks in one Mac OS
+    // 8.1 boot (the original note here). Pure stop-recording — this line's
+    // behaviour until 2026-09-02 — starved the steady state instead: the
+    // 8.1 boot alone saturates all 65 536 slots, Rogue gameplay then ran
+    // 992 M dispatches against 34 M cache answers because no
+    // post-saturation pc could EVER earn a block, and re-tracing the same
+    // lines forever was the real bulk of the 68040 profile's 45 % engine
+    // bucket. Generational eviction keeps both truths: a block touched
+    // since the previous saturation survives, boot's touch-once code is
+    // reclaimed, and a genuinely oversized working set degrades to the
+    // old stop-recording behaviour.
+    if (int(blocks_.size()) >= maxBlocks_) {
+        evictColdBlocks();
+        if (int(blocks_.size()) >= maxBlocks_) return nullptr;
+    }
 
     const uint64_t baseKey = key(pc, super);
     const uint16_t entryOpcode = cpu_.pomJitPeek(pc);
@@ -939,6 +980,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     }
     const ShiftVersionCache::Admission shiftAdmission = shiftVersions_.admit(
         baseKey, entryOpcode, liveShiftCount, versionedEntry, !histo_.empty());
+    if (versionedEntry) dispatchCacheEvict(baseKey);
     if (!shiftAdmission.accepted) return nullptr;
     const uint64_t cacheKey = shiftAdmission.cacheKey;
 
@@ -1407,6 +1449,17 @@ void Engine::executeUntil(int64_t clockTarget) {
             stats_.bump(Flush::MmuGen);
         }
 
+        Block* bp = nullptr;
+        {
+            const uint64_t plainKey = key(pc, super);
+            const DispatchCacheEntry& dce =
+                dispatchCache_[dispatchCacheIndex(pc, super)];
+            if (dce.key == plainKey) {
+                if (dce.block->gen == blocksGen_) { bp = dce.block; dcHits_++; }
+                else dcGenMiss_++;
+            } else dcMiss_++;
+        }
+        if (bp == nullptr) {
         const uint64_t blockKey = dispatchBlockKey(pc, super);
         auto it = blocks_.find(blockKey);
         if (it != blocks_.end() && it->second.gen != blocksGen_) {
@@ -1431,6 +1484,7 @@ void Engine::executeUntil(int64_t clockTarget) {
                 shiftVersions_.forget(it->first);
                 const uint64_t erasedKey = it->first;
                 blocks_.erase(it);
+                dispatchCacheEvict(erasedKey);
                 shiftVersions_.prune(
                     erasedKey,
                     blocks_.contains(ShiftVersionCache::baseKey(erasedKey)));
@@ -1456,7 +1510,16 @@ void Engine::executeUntil(int64_t clockTarget) {
             continue;
         }
 
-        Block& b = it->second;
+        bp = &it->second;
+        // Fill only a plain base-keyed slot: a shift-versioned site's key
+        // depends on a live register and must go through dispatchBlockKey
+        // every time.
+        if (blockKey == key(pc, super) && !shiftVersions_.knows(blockKey))
+            dispatchCache_[dispatchCacheIndex(pc, super)] = { blockKey, bp };
+        }
+
+        Block& b = *bp;
+        b.epoch = blockEpoch_;
         if (!b.code) {
             // Not (yet) translated. Run the window path — which is what the
             // engine would do anyway — and let the block earn its code by

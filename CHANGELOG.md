@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 388 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 389 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (ninth)** — [The dispatch cache and cold-block eviction land in the tree; the host froze before their tier, so the proof is owed](#2026-09-02-dispatch-cache-lands)
 - **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](#2026-09-02-040-dispatch-profile)
 - **2026-09-02 (seventh)** — [The x86-64 `accessClockBias` proof completes on the two all-green runs, and the pinning check finds no impostor](#2026-09-02-bias-proof-x64)
 - **2026-09-02 (sixth)** — [The first application-load TIME profile: translation is the biggest post, and code density is not](#2026-09-02-time-profile)
@@ -776,6 +777,56 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-dispatch-cache-lands"></a>
+## 2026-09-02 (ninth) — The dispatch cache and cold-block eviction land in the tree; the host froze before their tier, so the proof is owed
+
+The (eighth) profile's ranked lever was implemented the same afternoon,
+in two coupled pieces. The working session ended in a host freeze before
+the required validation ran, so this entry is a handover record: it
+states exactly which evidence exists and which is owed, and the commit
+it documents is deliberately made before the tier rather than after.
+
+**A direct-mapped dispatch cache in front of `blocks_`**
+(`JitEngine.h`, `executeUntil`): 65 536 slots of (key, `Block*`),
+indexed from pc/super. Only plain base-keyed blocks may enter — a
+shift-versioned site's dispatch key depends on a live data register and
+keeps paying `dispatchBlockKey` — and a hit still requires the block's
+proved MMU generation, so a stale-generation block takes the slow path
+that re-proves or evicts it. Coherence is one discipline, the same one
+`unmarkPages` already imposes: every path that erases from `blocks_`
+calls `dispatchCacheEvict()` with the erased key (guard service,
+MMU-generation eviction, cold eviction), `flushAll()` clears the table,
+and `record()` evicts the base slot of any site the shift-version cache
+admits as versioned. The session's in-flight counters (now printed by
+`censusPhase()`: hits / gen-miss / miss) sized the table: 4 096 slots
+answered only 3.3 % of dispatches against Rogue's ~16 k live blocks —
+pure direct-map collision thrash — hence 65 536.
+
+**Generational cold-block eviction at capacity** (`record()`,
+`evictColdBlocks()`): the stop-recording policy that guarded this line
+until today — keep the cache, refuse new blocks — starved the steady
+state. A Mac OS 8.1 boot alone saturates all 65 536 block slots
+(`JitConfig.h` default) with touch-once code, and the session's counters
+then showed Rogue gameplay running 992 M dispatches against 34 M cache
+answers, because no post-saturation pc could ever earn a block; that
+endless re-tracing was the real bulk of the (eighth) profile's 45 %
+engine bucket. The replacement keeps both measured truths at once: on
+saturation, evict only blocks not dispatched since the *previous*
+saturation (an `epoch` stamp written on the dispatch path), with every
+duty an erase owes (link retraction, code release, page unmarking,
+shift-version pruning, dispatch-cache eviction). Boot's dead code is
+reclaimed, a hot working set survives, and a genuinely oversized working
+set degrades to the old stop-recording behaviour instead of thrashing.
+
+**What is owed** — TODO § 3.2 keeps the item open with its clause
+intact: the layer compiles (the `pom68k_core` objects postdate the
+sources), but the 030/040 locksteps, the full etalon tier under
+shipping defaults and an ABBA on the Rogue run never executed, and the
+counter figures above were read from the session's stderr, not from a
+preserved artifact — the next session re-measures before claiming a
+win. Nothing here touches defaults, gates or backends; it is engine
+layer 1 only.
 
 <a id="2026-09-02-040-dispatch-profile"></a>
 ## 2026-09-02 (eighth) — The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them
