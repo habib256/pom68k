@@ -147,10 +147,6 @@ empreintes identiques et gain supérieur au bruit de mesure.
 
 ### 3.2 Gardes, mémoire et coût partagé
 
-- [ ] **Achever la preuve `accessClockBias` sur x86-64.** Rejouer le tier
-  etalon interrompu avec les admissions par défaut, enregistrer
-  exécutés/soft-skips et vérifier que les gates épinglent réellement le
-  générateur attendu.
 - [ ] **Retirer conformément le hint CACR/SMC sur VASP, RBV et MSC.** Prouver
   pour chaque carte que toute écriture RAM — CPU, pseudo-DMA et périphériques
   — traverse `CodeGuard::note()`, ajouter le gate d'inventaire, puis retirer
@@ -159,9 +155,16 @@ empreintes identiques et gain supérieur au bruit de mesure.
 - [ ] **Étudier `PFLUSHA` et le retry d'armement seulement après profil.**
   Toute réduction des bumps ou du backoff doit garder les locksteps 030/040 :
   le moment où une fenêtre s'arme est observable sur 68040.
-- [ ] **Compacter `mmu040InstrStart`.** Mesurer si les remises à zéro
-  adjacentes et le pack CCR peuvent devenir un ou deux stores larges sans
-  changer l'état privé vérifié par les locksteps.
+- [ ] **Poser un cache de dispatch devant le hashtable des blocs.** Le
+  profil 040 (CHANGELOG 2026-09-02 (eighth)) attribue ~34,5 % du run
+  Rogue à executeUntil + hashtable + dispatchBlockKey + armWindow pour
+  7,6 % de corps générés ; un cache PC→bloc invalidé par la mécanique
+  CodeGuard/fenêtres existante est le levier n°1 mesuré du 68040, devant
+  l'allongement des fenêtres (§ 3.1). Locksteps + etalon + ABBA exigés.
+- [ ] **Compacter `mmu040InstrStart`.** Mesuré à 3,26 % du run Rogue 040
+  (le plafond du gain est connu) ; voir si les remises à zéro adjacentes
+  et le pack CCR peuvent devenir un ou deux stores larges sans changer
+  l'état privé vérifié par les locksteps.
 - [ ] **Profiler puis isoler les stores à masque nul.** N'ouvrir une
   spécialisation conforme qu'après un profil temporel et des preuves
   empreinte/compteurs/gates identiques.

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 386 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 388 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](#2026-09-02-040-dispatch-profile)
+- **2026-09-02 (seventh)** — [The x86-64 `accessClockBias` proof completes on the two all-green runs, and the pinning check finds no impostor](#2026-09-02-bias-proof-x64)
 - **2026-09-02 (sixth)** — [The first application-load TIME profile: translation is the biggest post, and code density is not](#2026-09-02-time-profile)
 - **2026-09-02 (fifth)** — [The x64 baseline is re-recorded at the current tree: the 030 generator gained 17 % since August 30](#2026-09-02-x64-rebaseline)
 - **2026-09-02 (fourth)** — [The boot matrix asks the guest who is in front, and ten cells are recorded against the clean references](#2026-09-02-matrix-recalibrated)
@@ -774,6 +776,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-040-dispatch-profile"></a>
+## 2026-09-02 (eighth) — The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them
+
+The same instrument pointed at the other family: `q605_rogue_census`
+(Rogue gameplay on the Q605's 68040, pinned x64, 202 s CPU attributed,
+100 927 samples) draws a landscape NOTHING like the LC II's. Where the
+030 spent 21-25 % in generated bodies and ~20 % in translation, the 040
+spends **45.4 % in the engine runtime** and only **7.6 % in the generated
+code itself** — and the engine bucket decomposes into
+`Engine::executeUntil` 12.9 %, the block **hashtable** 12.1 %,
+`dispatchBlockKey` 7.0 %, `armWindow` 2.5 %: roughly a third of the whole
+run is spent FINDING blocks, not executing them. On the LC II the same
+hashtable costs 2.1 %. The cache-active 040's conformant coverage exits
+(ordered-target JSR, multi-poll memory instructions — 2026-09-01) keep
+its windows short, so every few guest instructions the engine pays a full
+hash lookup for a body that runs for less time than the lookup took.
+
+The § 3.2 items get their numbers on the same run: `mmu040InstrStart` is
+3.26 % (real, and now bounded — the compaction item knows its ceiling),
+the whole MMU/cache bucket 14.5 % (`mmu040AtcLookup` 3.0 %,
+`mmu040Translate` 2.2 %, `mmu040MatchTTR` 2.0 %), LLE 11.3 %, DAFB's
+tick/deadline pump 6.2 %, compilation 0.1 %. The ranked next lever for
+the 68040 is therefore a dispatch cache in front of the hashtable
+(PC→block, invalidated with the existing CodeGuard/window machinery) and
+the § 3.1 window-lengthening work itself — both now ordered by measured
+time, not by opcode counts.
+
+<a id="2026-09-02-bias-proof-x64"></a>
+## 2026-09-02 (seventh) — The x86-64 `accessClockBias` proof completes on the two all-green runs, and the pinning check finds no impostor
+
+The § 3.2 debt was cut mid-flight on 2026-08-22: the per-backend flip
+landed (both emitters declare `accessClockBias = true` —
+`JitBackendX64.cpp:5133`, `JitBackendA64.cpp:4581` — feeding the
+restartable-write and BSR-wide admissions), but the etalon tier under the
+default admissions stopped at 47/106 green when the session ended. The
+two consecutive all-green registry runs close it wholesale: the full
+124-gate etalon tier executed twice under the shipping defaults, census
+235 executed / 1 expected soft-skip both times, recorded in `STATUS.md`.
+
+The remaining clause — "vérifier que les gates épinglent réellement le
+générateur attendu" — is answered from the preserved logs, after a
+detour worth writing down: a `grep -B40` attributed the
+`[jit] unknown backend 'a64' — falling back to 'auto'` warning to
+`sst68030`, which would have been exactly the impostor the clause fears
+(a gate silently proving `auto` while claiming a64). A per-test-section
+attribution shows all three warnings belong where they should:
+two to `jit_store_guard_a64_test`, which then soft-skips loudly
+("SKIP: AArch64 backend unavailable"), and one to `jit_backend_test`'s
+deliberate `no-such-backend` fallback probe. The locksteps print the
+generator they actually ran — `backend=x86-64` on the 030 legs,
+`threaded` on the 68000 — matching their registrations. No gate on this
+host runs a generator other than the one its name claims.
 
 <a id="2026-09-02-time-profile"></a>
 ## 2026-09-02 (sixth) — The first application-load TIME profile: translation is the biggest post, and code density is not

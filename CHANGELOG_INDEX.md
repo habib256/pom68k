@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 386 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 388 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 69 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 40 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 70 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 41 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
@@ -95,6 +95,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-01 (seventh)** — [The active backlog is reconciled with the compiled JIT policy and closed work leaves TODO](CHANGELOG.md#2026-09-01-todo-code-audit)
 - **2026-09-02** — [Two consecutive all-green registry runs: milestone 1's exit criterion lands on x86-64](CHANGELOG.md#2026-09-02-two-green-runs)
 - **2026-09-02 (fifth)** — [The x64 baseline is re-recorded at the current tree: the 030 generator gained 17 % since August 30](CHANGELOG.md#2026-09-02-x64-rebaseline)
+- **2026-09-02 (seventh)** — [The x86-64 `accessClockBias` proof completes on the two all-green runs, and the pinning check finds no impostor](CHANGELOG.md#2026-09-02-bias-proof-x64)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -138,6 +139,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-01 (fifth)** — [Cache-active 68040 memory instructions preserve access-positioned IPL samples](CHANGELOG.md#2026-09-01-jit-cache040-ipl-polls)
 - **2026-09-01 (fourth)** — [Cache-active 68040 JSR preserves its ordered target-word read through exact replay](CHANGELOG.md#2026-09-01-jit-cache040-jsr-target-read)
 - **2026-09-01 (sixth)** — [Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state](CHANGELOG.md#2026-09-01-jit-cache040-instruction-start)
+- **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](CHANGELOG.md#2026-09-02-040-dispatch-profile)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
