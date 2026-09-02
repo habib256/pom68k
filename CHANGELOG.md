@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 389 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 391 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (eleventh)** — [Two locked reference identities surface on the August backup: the "tree that never existed here" is found](#2026-09-02-backup-harvest)
+- **2026-09-02 (tenth)** — [The proof floor is architecture-asymmetric and the CI signal is ten days dead: an audit, and the backlog reordered on it](#2026-09-02-proof-asymmetry)
 - **2026-09-02 (ninth)** — [The dispatch cache and cold-block eviction land in the tree; the host froze before their tier, so the proof is owed](#2026-09-02-dispatch-cache-lands)
 - **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](#2026-09-02-040-dispatch-profile)
 - **2026-09-02 (seventh)** — [The x86-64 `accessClockBias` proof completes on the two all-green runs, and the pinning check finds no impostor](#2026-09-02-bias-proof-x64)
@@ -777,6 +779,125 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-backup-harvest"></a>
+## 2026-09-02 (eleventh) — Two locked reference identities surface on the August backup: the "tree that never existed here" is found
+
+The (tenth) audit left the AArch64 proof floor blocked on `assets.lock`
+identities that seemed to live only on the x86-64 host. A user-supplied
+external backup (`/Volumes/TEST/pom68K`, images dated July-August) was
+hashed against the lock and settled more than expected:
+
+- **`HD20SC.vhd` on the backup carries the LOCKED identity exactly**
+  (`b15efc29…`). The 2026-09-01 (ninth) entry recorded that the lock's
+  reference-disk hashes "were recorded on 2026-08-25 from a `hdv/ref/`
+  tree that never existed here" — that tree was this backup. Installed
+  into `hdv/ref/`.
+- **`System 7.5.5 HD.dsk` matches its locked identity too**
+  (`9abafc2e…`). Installed. The two `hdv/ref/` copies replaced were
+  byte-identical duplicates of the working `hdv/` images — nothing lost.
+- The host had **no `cd/` directory at all**;
+  `cd/MAC_OS_8-1_RETAIL_0.ISO` from the backup is exactly the fallback
+  `q605_cdrom_etalon` names, so the optional-asset CD gate becomes
+  executable on this host (TODO § A.3's census item).
+
+`asset_lock_test` moves from 5 failures to 3. What remains is now
+precisely characterized, not mysterious: `GISTPERSO-boot.vhd`,
+`MacOS-8.1-boot.vhd` and `System 7.1 HD.dsk` diverge, and
+`System 7.5 HD.dsk` is absent — all four locked identities were produced
+by GUEST-side flushes or creation on the x86-64 host on 2026-09-01/02
+(the (ninth) and (tenth) 09-01 entries, the (second) 09-02 one), so no
+backup from August can hold them and a local re-flush would not
+reproduce their bytes. The A.3 decision reduces to a transport gesture:
+copy those four files (~660 MB) from the x86-64 host's `hdv/ref/`, or
+adopt a per-host lock.
+
+<a id="2026-09-02-proof-asymmetry"></a>
+## 2026-09-02 (tenth) — The proof floor is architecture-asymmetric and the CI signal is ten days dead: an audit, and the backlog reordered on it
+
+A status audit rather than a change: no production line was touched. What
+it found is that the project's own quality mechanisms had stopped being
+read, and that milestone 1 cannot be closed on the second architecture
+for a reason nobody had written down.
+
+**The CI job has been red since 2026-08-23** — some forty consecutive
+pushes, `macOS` green throughout, which is why nothing looked wrong. Two
+independent causes:
+
+1. **Structurally impossible since 2026-08-27** (f9eb653). The step
+   "Every gate in that tier actually RAN"
+   (`.github/workflows/ci.yml:104-110`) uses `--fail-on-skip`, and its own
+   comment records the calibration: "Measured on the dev host 2026-08-27:
+   86 executed, 0 skipped" — on the host that *carries the private
+   assets*. On a bare runner the tier reads 84 executed / 4 soft-skipped
+   and can never read 0: `ncr5380_test` wants `hdv/HD20SC.vhd`,
+   `cuda_restart_test` and `m68hc05_test` want
+   `roms/cuda/341s0788.bin`, and all three are registered `asset-none`;
+   `jit_store_guard_a64_test` soft-skips on the host ISA. The defect is
+   the label, not the runner — a gate that needs an asset is not
+   asset-free — and the census is right to refuse it.
+2. **Since today.** `file_size_budget_test`: `src/jit/JitEngine.cpp` is
+   1702 lines against a 1639 ceiling (+63), crossed by the (ninth)
+   dispatch-cache commit without the budget being edited in the same
+   change. The ratchet did exactly what it was built for; nobody was
+   watching it either.
+
+**The nightly is red too**, at least since 2026-08-29, and both legs
+carry findings that were waiting to be read:
+
+- **`asan-ubsan` does not compile.** `src/MachineCatalog.h:141` is
+  rejected as "not a constant expression" by GCC 13 under the sanitizer
+  flags. The ASan leg has therefore never exercised anything — which is
+  the real precondition of the standing "ASan on three real boots" item,
+  and of the leak-census flip that waits on an artifact this job cannot
+  produce.
+- **`gui_smoke_test` fails TSan on a real data race, every night.** The
+  backlog was holding a slot for "the next `gui_smoke_test` failure" and
+  expected the rename flake; this is not that. `GuiSmokeScenario::frame`
+  (`src/GuiSmokeScenario.cpp:22`) move-assigns a `std::string` inside the
+  `SaveStateSlot` on the GUI thread while the machine thread reads it in
+  `SaveStateSlot::apply` (`src/SaveStateSlot.h:59`) from
+  `MachineHost::applyCmds` (`src/MachineHost.h:506`). That is the
+  `DEV.md` § 6 GUI/machine ownership contract, broken, with its stack
+  preserved in the nightly artifacts.
+
+**`assets.lock` is a single-host artifact, and that is what blocks
+milestone 1's AArch64 leg.** On the AArch64 host `asset_lock_test` reads
+37 present, 5 failures: six of the seven declared `reference-disk`
+identities do not match and `hdv/ref/System 7.5 HD.dsk` is absent —
+only `System 7.0` agrees. The sizes match and the digests do not, which
+names the cause exactly: the 2026-09-01 (ninth) materialization
+re-recorded 7.5.5 and 8.1 *on the x86-64 host* and pushed those
+identities into the lock, but `hdv/ref/` is a private input and does not
+travel with the repository. So the A64 leg is not "a run to relaunch":
+no clean full run can exist here until the images travel, the lock
+becomes per-host, or the references become reproducible from a recipe.
+Every cross-architecture comparison published before that is unfounded.
+
+**Measured here today**, at 21203fe on the Apple M4: the tree had not
+been rebuilt since 2026-09-01 and the (ninth) engine work had never
+been compiled on this host — it builds clean. `ctest -L asset-none -j8`
+reads 86/88 in 36.9 s, and the two reds are `file_size_budget_test` and
+`asset_lock_test`, both above. No unexplained red.
+
+**Zero tags, zero releases**, while `README.md` advertises a Releases
+page and `release.yml` is complete. This also settles a standing
+backlog item by dependency: the first MSVC run of `asset-none` lives in
+`release.yml`'s `windows` job, so it cannot happen before a release is
+published. The two are one item.
+
+**The backlog is reordered on the thing that has the right to order
+it** — the (sixth) and (eighth) time profiles. Ten milestones become
+four tiers: **A** repair the proof floor (CI, nightly, the asset
+transport, and the unproved dispatch cache), **B** finish the engine
+ordered by measured time (the 68040's dispatch/window third, the
+68030's translation-and-thunks 30-34 %, the per-host `auto`
+decisions), **C** make it a product (beyond-boot scenarios, portable
+proof, a published version), **D** explicitly not now (deeper LLE,
+network, optical media, new machines, the non-conformant overlay). One
+item keeps its evidence rather than its assumption: both recorded
+`pi400.yml` dispatches (2026-08-08) ran `MCPU: cortex-a72`, so the
+Cortex-A76 leg that item asks for has still never been produced.
 
 <a id="2026-09-02-dispatch-cache-lands"></a>
 ## 2026-09-02 (ninth) — The dispatch cache and cold-block eviction land in the tree; the host froze before their tier, so the proof is owed
