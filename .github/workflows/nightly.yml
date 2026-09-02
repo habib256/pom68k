@@ -182,6 +182,16 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           TSAN_OPTIONS: halt_on_error=1
         run: |
+          # GCC's ASan disables stack-slot reuse, so a test whose call tree
+          # holds several ~1.1 MB CPU wrappers (Moira's opcode tables) adds
+          # its frames instead of sharing them: savestate_040_test's five
+          # inlined family rigs reached ~16 MB against the 8 MB default and
+          # died as stack-overflow the first night this leg ever RAN
+          # (2026-09-02, run 33659529760 — with jit_restart_write_030_test
+          # and jit_asset_free_lockstep_test, same shape). The binaries are
+          # sound under the normal limit in every other job; only the
+          # instrumented leg gets the wider stack.
+          ulimit -s 65532
           if [ "${{ matrix.name }}" = "tsan" ]; then
             ctest --test-dir build -R "machinehost_test|gui_smoke_test" \
                   --output-on-failure
@@ -210,6 +220,7 @@ jobs:
           LSAN_OPTIONS: print_suppressions=0
         run: |
           set -o pipefail
+          ulimit -s 65532        # same additive-frame arithmetic as Run above
           ctest --test-dir build -L asset-none -j "$(nproc)" \
                 --output-on-failure 2>&1 \
             | tee "${{ runner.temp }}/leak-census.log"

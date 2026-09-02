@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 396 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 397 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (seventeenth)** — [The nightly's first light: TSan proves the race fix, GCC-13 ASan compiles, and its first-ever run finds additive stacks](#2026-09-02-nightly-first-light)
 - **2026-09-02 (sixteenth)** — [The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates](#2026-09-02-dispatch-cache-proved)
 - **2026-09-02 (fifteenth)** — [The save-state path moves behind the slot's mutex: the nightly's TSan race was the smoke bypassing the channel](#2026-09-02-savestate-path-mutex)
 - **2026-09-02 (fourteenth)** — [The catalogue's density check stops forming a pointer, and the ASan nightly can compile again](#2026-09-02-catalog-consteval)
@@ -784,6 +785,42 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-nightly-first-light"></a>
+## 2026-09-02 (seventeenth) — The nightly's first light: TSan proves the race fix, GCC-13 ASan compiles, and its first-ever run finds additive stacks
+
+The manually dispatched nightly (run 33659529760) returns the two
+proofs the (fourteenth) and (fifteenth) entries were owed, and one new
+finding of its own:
+
+- **TSan: green.** `gui_smoke_test` + `machinehost_test` pass on the
+  platform that had reported the `SaveStateSlot` race every night — the
+  mutex fix is proved where the defect lived.
+- **ASan: the build is fixed** — the leg compiles under GCC 13 for the
+  first time since at least 2026-08-29, closing the (fourteenth)
+  entry's owed proof — **and its Run executed 84 gates for the first
+  time ever**: 81 green, 0 soft-skipped, 3 failed.
+- The three failures are one finding, not three:
+  `AddressSanitizer: stack-overflow` at `main` in `savestate_040_test`,
+  `jit_restart_write_030_test` and `jit_asset_free_lockstep_test`. The
+  arithmetic: a CPU wrapper carries Moira's opcode tables — 1.1 MB by
+  value (`sizeof(Cpu040)` = 1 110 KB) — and GCC's ASan disables
+  stack-slot reuse, so `savestate_040_test`'s five inlined family rigs
+  ADD their frames instead of sharing them: bp−sp read ~16.7 MB
+  against the 8 MB default. The binaries are sound under the normal
+  limit — the same three gates pass under AppleClang ASan locally and
+  in every non-instrumented job — so the fix is
+  `ulimit -s 65532` in the sanitizer leg's Run and leak-census steps,
+  with the arithmetic written beside it, rather than a rewrite of
+  three test harnesses to heap-allocate what only this instrumentation
+  cannot hold.
+- **The leak-census artifact does not exist yet** (its step sits after
+  Run's failure), so TODO § A.2's read-then-arm item stays open and
+  waits on the re-dispatched nightly.
+
+LTO core (both arches) and Coverage: green. The remaining red in the
+whole nightly is the stack limit above — re-dispatched the same
+evening to prove it.
 
 <a id="2026-09-02-dispatch-cache-proved"></a>
 ## 2026-09-02 (sixteenth) — The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates

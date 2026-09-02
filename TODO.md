@@ -55,10 +55,11 @@ Règles de travail :
 ### A.2 Rendre la nightly lisible
 
 - [ ] **Lire le premier artefact `pom68k-leak-census`, puis retirer
-  `continue-on-error`.** L'étape publie son rapport ; la lecture reste due. La
-  jambe ASan compile à nouveau depuis le correctif `MachineCatalog.h` du
-  2026-09-02 (fourteenth) — dont la prochaine nightly est aussi la preuve
-  GCC 13 — donc le premier artefact réel arrive avec elle.
+  `continue-on-error`.** La nightly du 2026-09-02 (seventeenth) a prouvé les
+  correctifs TSan et GCC 13/ASan et sa jambe ASan a exécuté 84 gates pour la
+  première fois ; ses trois stack-overflows (frames additives sous ASan GCC)
+  sont réglés par `ulimit -s` dans le job. L'artefact leak-census arrivera
+  avec la première jambe ASan entièrement verte — le lire, puis armer.
 
 ### A.3 Rendre la preuve reproductible sur les deux architectures
 
