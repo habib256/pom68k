@@ -828,6 +828,19 @@ preserved artifact — the next session re-measures before claiming a
 win. Nothing here touches defaults, gates or backends; it is engine
 layer 1 only.
 
+*Post-commit addendum, same day:* the handover session relinked
+`pom68k_core` + `jit_asset_free_lockstep_test` at `-j4` (one LTO link,
+no freeze) and the test **passes** on x86-64 — the full synthetic 68040
+lockstep against the x64 generator, slow=0 throughout, including the
+384-eviction mark/unmark-inverse scenario that walks the new
+erase-coherence path. One asset-free smoke gate, not the tier: the
+locksteps under real guests, the etalon run and the ABBA remain owed
+exactly as stated above. Housekeeping recorded here so nobody re-does
+it: every local branch was fully merged and is deleted, and a
+`fetch --prune` confirmed the remote carries only `main` — the stale
+`origin/a64-instr-brace-init` ref pointed at a branch GitHub had
+already dropped.
+
 <a id="2026-09-02-040-dispatch-profile"></a>
 ## 2026-09-02 (eighth) — The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them
 

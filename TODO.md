@@ -160,10 +160,13 @@ empreintes identiques et gain supérieur au bruit de mesure.
   2026-09-02 (ninth) : cache direct-mapped 65 536 slots devant le
   hashtable + éviction des blocs froids à saturation, compteurs dans
   `censusPhase()`), mais la session s'est terminée par un gel de l'hôte
-  AVANT la validation. RESTE EXIGÉ avant toute revendication de gain :
-  locksteps 030/040, tier etalon complet sous défauts, ABBA sur le run
-  Rogue (les chiffres 3,3 % / 992 M vs 34 M viennent du stderr de la
-  session, pas d'un artefact conservé — re-mesurer). Contexte : le
+  AVANT la validation. Seul smoke vert depuis :
+  `jit_asset_free_lockstep_test` passe post-commit sur x86-64 (lockstep
+  040 synthétique, slow=0, scénario 384 évictions). RESTE EXIGÉ avant
+  toute revendication de gain : locksteps 030/040 sous invités réels,
+  tier etalon complet sous défauts, ABBA sur le run Rogue (les chiffres
+  3,3 % / 992 M vs 34 M viennent du stderr de la session, pas d'un
+  artefact conservé — re-mesurer). Contexte : le
   profil 040 (CHANGELOG 2026-09-02 (eighth)) attribue ~34,5 % du run
   Rogue à executeUntil + hashtable + dispatchBlockKey + armWindow pour
   7,6 % de corps générés.
