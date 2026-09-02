@@ -54,11 +54,6 @@ Règles de travail :
 
 ### A.2 Rendre la nightly lisible
 
-- [ ] **Réparer la compilation ASan.** `src/MachineCatalog.h:141` est refusé
-  comme « not a constant expression » par GCC 13 sous les drapeaux sanitizer :
-  la jambe `asan-ubsan` ne construit pas et n'a donc jamais rien exercé. C'est
-  le préalable réel de « ASan sur trois boots » (C.4) et du basculement de la
-  leak census.
 - [ ] **Fermer la course de données `gui_smoke_test` sous TSan.** La preuve
   attendue existe, chaque nuit, et ce n'est pas le flake de renommage :
   `src/GuiSmokeScenario.cpp:22` réassigne une `std::string` du `SaveStateSlot`
@@ -67,8 +62,10 @@ Règles de travail :
   propriété GUI/machine de `DEV.md` § 6, violé, avec sa pile conservée dans
   les artefacts nightly.
 - [ ] **Lire le premier artefact `pom68k-leak-census`, puis retirer
-  `continue-on-error`.** L'étape publie son rapport ; la lecture reste due, et
-  dépend de la jambe ASan ci-dessus.
+  `continue-on-error`.** L'étape publie son rapport ; la lecture reste due. La
+  jambe ASan compile à nouveau depuis le correctif `MachineCatalog.h` du
+  2026-09-02 (fourteenth) — dont la prochaine nightly est aussi la preuve
+  GCC 13 — donc le premier artefact réel arrive avec elle.
 
 ### A.3 Rendre la preuve reproductible sur les deux architectures
 

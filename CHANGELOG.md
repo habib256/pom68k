@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 393 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 394 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (fourteenth)** — [The catalogue's density check stops forming a pointer, and the ASan nightly can compile again](#2026-09-02-catalog-consteval)
 - **2026-09-02 (thirteenth)** — [The asset-none tier becomes a claim a bare runner can keep: four labels were the lie, not the census](#2026-09-02-census-honest)
 - **2026-09-02 (twelfth)** — [The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit](#2026-09-02-blockcache-extracted)
 - **2026-09-02 (eleventh)** — [Two locked reference identities surface on the August backup: the "tree that never existed here" is found](#2026-09-02-backup-harvest)
@@ -781,6 +782,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-catalog-consteval"></a>
+## 2026-09-02 (fourteenth) — The catalogue's density check stops forming a pointer, and the ASan nightly can compile again
+
+The (tenth) audit's second nightly finding closes: the `asan-ubsan` leg
+had failed at BUILD since at least 2026-08-29 — so the sanitizer had
+never exercised anything — on GCC 13 rejecting
+`src/MachineCatalog.h:141` as "not a constant expression".
+
+The root cause is instructive enough to keep. `validMachineCatalog()`'s
+density loop proved "every snapshot id in 1..N is claimed" by calling
+`machineProfile(id)` and testing the returned pointer — a pointer INTO
+`kMachineProfiles`. Under `-fsanitize=address` GCC redzone-pads the
+instrumented global, and its constant evaluator can then only express
+the address of element 12 as a byte reinterpretation of the padded
+object — precisely what the diagnostic prints
+(`(char*)&kMachineProfiles[12] + offsetof(...)` cast back) — which
+[expr.const] forbids in a constant expression. The corroborating
+detail: GCC flagged line 141 and not line 131, i.e. plain
+`kMachineProfiles[i].member` reads were fine; only forming and testing
+the pointer failed. (The redzone attribution is inference from the
+diagnostic text; this host has no GCC to confirm it directly.)
+
+The rewrite walks `kMachineProfiles[i].snapshot` by ordinary member
+access — no pointer into the table is ever formed, so the rejected
+construct no longer exists to be folded. The invariant is unchanged
+(non-null fields, unique ids, unique slugs, ids a dense permutation of
+1..37) and was proved by four deliberate breakages on a scratch copy —
+id gap, duplicate id, duplicate slug, null slug — each firing the
+static_assert, then a clean restore. Every other `machineProfile()`
+caller is runtime-only; the helper is untouched, and the catalogue's
+content is byte-identical.
+
+Verified on AppleClang 21 only: a TU at
+`-std=c++20 -fsanitize=address,undefined -Werror -pedantic`, the whole
+tree at the nightly's exact configure, smoke 9/9 plus
+`config_test`/`machinehost_test`/`docs_test` green under ASan+UBSan.
+AppleClang accepts both spellings, so these runs prove no regression,
+not the cure — the GCC-13 proof comes from the next nightly, and the
+leak-census flip (TODO § A.2) now waits only on that artifact.
 
 <a id="2026-09-02-census-honest"></a>
 ## 2026-09-02 (thirteenth) — The asset-none tier becomes a claim a bare runner can keep: four labels were the lie, not the census

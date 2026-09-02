@@ -137,8 +137,19 @@ consteval bool validMachineCatalog() {
     }
     // Snapshot ids are append-only and currently dense: a new id without a
     // catalogue row, or a row without an id, must fail the build immediately.
-    for (std::uint32_t id = 1; id <= kMachineProfileCount; ++id)
-        if (!machineProfile(static_cast<SnapMachine>(id))) return false;
+    //
+    // Deliberately spelled with plain member access instead of calling
+    // machineProfile(): that helper yields a pointer INTO kMachineProfiles,
+    // and under GCC 13 with -fsanitize=address,undefined the instrumented
+    // global forces the evaluator to express such a pointer as a byte-offset
+    // reinterpretation of the table, which [expr.const] forbids in a constant
+    // expression. Comparing scalar members never forms that pointer.
+    for (std::uint32_t id = 1; id <= kMachineProfileCount; ++id) {
+        bool present = false;
+        for (std::size_t i = 0; i < kMachineProfileCount && !present; ++i)
+            present = static_cast<std::uint32_t>(kMachineProfiles[i].snapshot) == id;
+        if (!present) return false;
+    }
     return true;
 }
 
