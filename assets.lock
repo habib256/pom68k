@@ -36,9 +36,10 @@ machine-rom | PowerBook Duo ECFA989B | 1048576 | a5cbde0f1fe905f05592e181685df79
 declaration-rom | Toby video 342-0008-a | 4096 | 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc | roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin | macii,iifx
 declaration-rom | Macintosh SE/30 video UK6 | 8192 | 8af892fd7fff89c2151bb3027f3dc61e531f24e4adb0e3face95c90daece4409 | roms/se30/se30vrom.uk6 | se30
 
-reference-disk | GIST PERSO System 7.5 | 262193152 | ea6138848399d42ba8a3a6d07234b2a7bc31b6bb4186904045091193bcb0692b | hdv/ref/GISTPERSO-boot.vhd | lc3,lc520,lc550,cclassic2,iivx,iivi,iisi,iici,iifx
-reference-disk | HD20SC System 6 | 21037056 | 1d404901173f2833f6cccbb4ac5e1b392c5bc18d93cfa2399898b380dec65114 | hdv/ref/HD20SC.vhd | plus,macii,iix,iicx,se30
-reference-disk | Mac OS 8.1 | 314621952 | 0bc6cf145533e89ca45fb9e9ebc2e788a2ae783ec40d9e36df9306e055f9cf91 | hdv/ref/MacOS-8.1-boot.vhd | lc475,lc575,q605,c610,c650,q610,q650,q800,q700,q900,q950,q630,lc580
+reference-disk | GIST PERSO System 7.5 | 262193152 | 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b | hdv/ref/GISTPERSO-boot.vhd | lc3,lc520,lc550,cclassic2,iivx,iivi,iisi,iici,iifx
+reference-disk | HD20SC System 6 | 21037056 | b15efc29bd65736ab205caba7ea30eabd691ac554999ce0058dc7ff48dd94105 | hdv/ref/HD20SC.vhd | plus,macii,iix,iicx,se30
+reference-disk | Mac OS 8.1 | 314621952 | 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc | hdv/ref/MacOS-8.1-boot.vhd | lc475,lc575,q605,c610,c650,q610,q650,q800,q700,q900,q950,q630,lc580
 reference-disk | System 7.0 | 41943040 | 0d6729bf5bb72f4aac3ec7fb87194ebba6b68733c9a2a9f02c56fae0505e386c | hdv/ref/System 7.0 HD.dsk | macii
-reference-disk | System 7.1 | 41943040 | ec304acb8c62d589a780eed5969fa054b1474a756ff08a7fd7408d041f24afd5 | hdv/ref/System 7.1 HD.dsk | plus,lcii
-reference-disk | System 7.5.5 | 83886080 | 9a384f0b084a4d622ac4e82474c88db7355bf183dbc3a9ae54883e679855d0ee | hdv/ref/System 7.5.5 HD.dsk | duo230
+reference-disk | System 7.1 | 41943040 | 81f1b16c7ff6bb9c28b3ab928d2b91a9be3d1e923795e0eef39a3f8252394ae2 | hdv/ref/System 7.1 HD.dsk | plus,lcii
+reference-disk | System 7.5 | 41943040 | 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382 | hdv/ref/System 7.5 HD.dsk | lc,lc3,lc3plus,classic2,cclassic
+reference-disk | System 7.5.5 | 83886080 | 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f | hdv/ref/System 7.5.5 HD.dsk | duo230

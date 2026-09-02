@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 378 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 383 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -234,6 +234,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Storage — SCSI, IWM/SWIM, media
 
+- **how does a dirty reference volume get its clean-unmount bit back honestly — and why can no host-side tool do it?** → [2026-09-01 (ninth) — The proof floor's two red fixtures close…](#2026-09-01-fixture-floor)
 - **which exact private ROMs and boot volumes define the green corpus, and how is a mutable `hdv/` image kept out of that set?** → [2026-08-25 (later) — The green gate corpus chooses its bytes…](#2026-08-25-asset-lock-complete)
 - **when does `hdv/ref/System.vhd` actually win over the mutable `hdv/System.vhd`, and where does the GUI write?** → [2026-08-24 (seventh) — Reference fixtures become the default lookup…](#2026-08-24-reference-fixture-routing)
 - **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
@@ -385,6 +386,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-02 (third)** — [The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact](#2026-09-02-werror-armed)
+- **2026-09-02 (second)** — [The implicit MacPack preference falls: a small clean 7.5 reference, and the flush lessons its gates paid](#2026-09-02-macpack-preference)
+- **2026-09-02** — [Two consecutive all-green registry runs: milestone 1's exit criterion lands on x86-64](#2026-09-02-two-green-runs)
+- **2026-09-01 (tenth)** — [The whole lock goes strict-green: an 030 guest flushes GISTPERSO and 7.1, and the iivx bound was contention](#2026-09-01-lock-complete)
+- **2026-09-01 (ninth)** — [The proof floor's two red fixtures close: `hdv/ref/` is materialized and the guest sets its own clean bit](#2026-09-01-fixture-floor)
 - **2026-09-01 (eighth)** — [README, DEV and CLAUDE stop competing for the same facts](#2026-09-01-doc-ownership)
 - **2026-09-01 (seventh)** — [The active backlog is reconciled with the compiled JIT policy and closed work leaves TODO](#2026-09-01-todo-code-audit)
 - **2026-09-01 (sixth)** — [Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state](#2026-09-01-jit-cache040-instruction-start)
@@ -765,6 +771,224 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-02-werror-armed"></a>
+## 2026-09-02 (third) — The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact
+
+The 2026-09-01 full build's warning inventory read 37, in five families,
+and every one is now closed. The bulk — 23 `-Wstringop-overflow` at LTO
+link plus the same class's non-LTO spelling `-Warray-bounds` — was ONE
+analysis artifact: GCC 13 merges `sav::Reader::one()`'s failure branch
+with the past-the-end state of an enclosing fixed-array loop and reports
+the dead zero-store as an overflow of size 0 (Egret `deviceMap_[2]`,
+AdbLine `buffer_[8]`, Swim2 `params_[4]`, CudaLle), with EtherLink's
+6-byte MAC copy into a freshly sized vector read the same way. Both sites
+carry a scoped, GCC-only, cited pragma rather than a global switch, so a
+real overflow elsewhere still fires. The rest were real code smells:
+`if (*p=='"') ++p; eat(p,':');` on one line in the three sst parsers, four
+range-for loops binding `const std::string&` to `const char*` temporaries
+and one genuinely dangling-looking `const auto&` on `selectProfile` in
+docs_test, one dead `macTime()` in the hot-floppy probe, one vacuous
+`busId_ >= 0` on a `uint8_t` in the 53C96, and two one-line `if … break;`
+switch cases plus a pair copied per iteration in the a64 emitter.
+
+The CI recipe was then replayed EXACTLY (Release, `POM68K_NATIVE=OFF`,
+`POM68K_LTO=OFF`, g++ 13.3): census zero; and the proof run the TODO item
+asked for — a full clean rebuild with `-DPOM68K_WERROR=ON`, 163 targets —
+exits 0. `ci.yml`'s x86-64 job now configures with the flag: a new g++
+warning is a red build, not a line in a report. The nightly's leak census
+(already `detect_leaks=1` + `continue-on-error`) now `tee`s its output and
+uploads it as the `pom68k-leak-census` artifact — reading that artifact
+once is the stated precondition for dropping `continue-on-error`.
+`CLAUDE.md` also joins the size ratchet (ceiling 250, currently 227): the
+checker's scan list and always-budgeted set both carry it now.
+
+<a id="2026-09-02-macpack-preference"></a>
+## 2026-09-02 (second) — The implicit MacPack preference falls: a small clean 7.5 reference, and the flush lessons its gates paid
+
+The audit measured what TODO § 1.2 suspected: of the thirty-nine files
+whose fallback chains mention `hdv/boot.vhd`, THIRTEEN actually resolve to
+it on this host — and none of the per-machine names they list first
+(`lc3-boot.vhd`, `iisi-boot.vhd`…) has ever existed here. Three classes
+came out of the replays, each with its own fix:
+
+1. **The genuinely MacPack-calibrated stay on MacPack, explicitly.** The
+   LC II family's launch clicks (`POM68K_MX/MY` = the Games window) and
+   512×384 signature are measured on that volume, and GISTPERSO's desktop
+   pattern reads 0.75-0.93 where their thresholds expect a plain desktop —
+   so `lcii_boot`, `lcii_savestate` and `lcii_beyond` DROP their
+   foreign-signature fallbacks (soft-skip beats a mystery red;
+   `POM68K_BEYOND_IMG` stays the explicit override), and the instruments
+   (`jit_bench_lcii`, `jit_lockstep_030`, `lcii_sony_trace`) keep their
+   chains — differential fingerprints do not care which volume boots.
+2. **The 1bpp generic-signature gates get the SMALL clean reference.**
+   `lc`, `lc3`, `lc3plus`, `cclassic`, `classic2` boots and both
+   `sonora_beyond` legs re-pointed at GISTPERSO first and six of seven
+   went red on its pattern; re-pointed at `System 7.5 HD.dsk` — 40 MB,
+   plain grey desktop — all pass. The volume shipped with its System
+   Folder WINDOW open (the Finder reopens at boot whatever was open at
+   shutdown), a permanent 357-px light run the roster's dialog detector
+   rightly rejects — so `lcii_shutdown_flush` grew
+   `POM68K_SHUTDOWN_CLOSEWIN` (Cmd-W before Shut Down), the flushed
+   window-free copy is the new `hdv/ref/System 7.5 HD.dsk`, and the lock
+   carries it as its SEVENTH reference identity (38/38 strict).
+   `mactv_boot` alone is happy on GISTPERSO (its TV decode reads the
+   pattern differently) and keeps it.
+3. **The LC III persist was hiding two known traps behind the red.** With
+   the boot fixed, Cmd-N went to a quiet Finder and STILL wrote nothing:
+   the gesture dump shows the folder created on the desktop and the
+   volume never flushed — the Duo's 2026-08-14 finding on its third
+   machine, and the Mac II's 4 MB remedy was tried and measured useless
+   here (no write at either RAM size). So `sonora_beyond` received the
+   Duo's answer, a `stir` that ends the session through Special → Shut
+   Down — mouse-driven, press-DRAG-release (System 7 menus are not Mac
+   OS 8's sticky menus), pointer read through the PMMU walk — plus the
+   `frontApp`/`focusFinder` hooks (Cmd-Q) and the KeyMap probe, since the
+   clean 7.5 reference carries Startup Items (a Stickies note sits on the
+   desktop) that a plain gate boot runs. Both legs green: first write 600
+   frames after the commit, folder survives the reboot.
+
+The consumer proof for the day: lc 86 s, classic2 147 s, cclassic 152 s,
+lc3 216 s, lc3plus 276 s, sonora soak 400 s / persist 508 s, lcii_boot
+128 s, lcii_savestate 146 s, lcii_persist 280 s, mactv 248 s — every
+ASSET line naming the intended volume, none MacPack but the three that
+mean it.
+
+<a id="2026-09-02-two-green-runs"></a>
+## 2026-09-02 — Two consecutive all-green registry runs: milestone 1's exit criterion lands on x86-64
+
+The first: 236/236 in 3313 s. The second, same tree, straight after:
+236/236 in 3316 s. Census identical both times — 235 executed, 1 expected
+soft-skip (`jit_store_guard_a64_test`, AArch64-only), 0 failed — and both
+are recorded in `STATUS.md`. No full registry run had ever come back
+all-green on this host (2026-08-30: 233/235 then 232/235, the two fixture
+reds plus the iivx bound); the difference is yesterday's floor — clean
+`hdv/ref/` fixtures throughout, and the iivx TIMEOUT sitting above its
+measured contention instead of on it. TODO § 1's exit criterion asks for
+exactly this pair per architecture: the x86-64 half is met, and the
+AArch64 half is what the other proof host owes.
+
+<a id="2026-09-01-lock-complete"></a>
+## 2026-09-01 (tenth) — The whole lock goes strict-green: an 030 guest flushes GISTPERSO and 7.1, and the iivx bound was contention
+
+The rest of § 1.1 falls the same evening. `verify_assets.py --strict` now
+reads 37/37 with zero failures on the x86-64 proof host: `HD20SC.vhd`
+(clean, drifted) is re-recorded as found, and the two volumes that needed a
+guest — `GISTPERSO-boot.vhd` (dirty + drifted) and the LOCKED-DIRTY System
+7.1 — were flushed by a new 030 sibling of the Q605 tool,
+`lcii_shutdown_flush`, on the LC II.
+
+Three findings paid for that tool:
+
+1. **The Egret holds the CPU at power-on** — `lcii_simcity_census` wrote
+   that lesson down ("runs forever without issuing ONE SCSI command") and
+   this tool re-learned it verbatim: forty-two thousand frames, zero disk
+   reads, a flat grey screen, on every image including MacPack. The same
+   missing release is why the first 7.1 probe read "unbootable": the
+   locked reference boots the LC II fine (801 SCSI commands to the
+   Finder), it had simply never been asked by a rig that let the CPU go.
+2. **System 7 menus are not Mac OS 8's sticky menus.** The first walk
+   press-clicked "Spécial" and the menu closed on release before the
+   phase-1 dump: choosing an item on 7.x is press on the title, DRAG with
+   the button held, release on the row ("Éteindre" at (340,141) on the
+   French GISTPERSO 7.5; "Shut Down" at (215,139) on the 7.1). The Q605
+   tool's click-click walk stays correct — 8.1's menus stay open.
+3. **The anti-race Shift arms on the boot ROM's own SCSI reads.** GISTPERSO
+   auto-launches SimCity 2000 from Startup Items and that launch races
+   Finder init (the known 2026-07-18 hang): without Shift even the proven
+   `lcii_beyond_etalon` binary never reaches this volume's Finder. A Shift
+   pressed at a fixed early frame is swallowed before the ADB link lives;
+   pressed once `readCommands > 50` (frame ~480) it is honored, Startup
+   Items are skipped, and the Finder comes up quiet and frontmost.
+
+The flushed copies land in `hdv/ref/` read-only, the lock re-records their
+identities, and the eleven-gate consumer replay comes back green, all
+executed, none soft-skipped (se30/iix/iicx boots 92-100 s, compact 16 s,
+iici soak 314 s, iisi 338 s, iifx 21 s, lc520 548 s, cclassic2 312 s,
+sonora 490 s, lc3plus 301 s) plus the three 7.1 consumers
+(`llap_two_system` 4 s, `macii_sys7_boot` 81 s, `lcii_sys7_boot` 230 s).
+The ASSET lines correct the first summary of that batch: only 5 of the 11
+ran the new GISTPERSO reference and 3 the new HD20SC — `compact_persist`
+resolved the 7.1 reference, and `sonora_persist` + `lc3plus_boot` resolved
+`hdv/boot.vhd` (MacPack), because their fallback chains list it BEFORE
+GISTPERSO. Their green is real but proves the wrong volume — exactly
+TODO § 1.2's "implicit MacPack preference", now measured.
+
+Two § 1.2 "missing assets" turn out present: `machfs` 1.3 was installed
+all along — the venv's console-script shebangs died when the tree was
+renamed `POM68K`→`pom68k`, but the gate wrapper calls
+`.venv-tools/bin/python tools/dir2hfs.py` and never noticed —
+`dir2hfs_selftest` passes; and `q605_cdrom_etalon` runs 65 s green on its
+`cd/MAC_OS_8-1_RETAIL_0.ISO` fallback, incidentally re-proving the fresh
+8.1 reference on a second gate. What remains of both items is an AArch64
+census, not an install.
+
+Last, the `iivx_persist_etalon` bound: 591 s ISOLATED on the clean
+reference against 1795.94 s green / 1800.05 s Timeout in the 2026-08-30
+`ctest -j64` runs — the gate sat on its bound because 64 jobs on 16 cores
+triple its wall time, not because it grew. It stays the registry's slowest
+persist (iisi runs 338 s on the same engine), and its TIMEOUT moves to
+2700 so the bound absorbs legitimate contention instead of measuring it.
+
+<a id="2026-09-01-fixture-floor"></a>
+## 2026-09-01 (ninth) — The proof floor's two red fixtures close: `hdv/ref/` is materialized and the guest sets its own clean bit
+
+The 2026-08-30 full runs left two deterministic reds attributed to fixtures
+(`macii_persist_etalon`, `q605_afp_live_etalon`) and a plan: restore the
+`assets.lock` identities, or deliberately record new ones (TODO § 1.1). On
+this host restoration was impossible — the lock's reference-disk hashes were
+recorded on 2026-08-25 from a `hdv/ref/` tree that never existed here (every
+image mtime predates the lock), and no pristine copy matches. So the second
+road was taken: `hdv/ref/` now exists with four read-only fixtures — 7.0 and
+7.1 byte-identical to their locked identities, 7.5.5 and 8.1 **re-recorded**.
+`FixtureStore.h`'s additive routing then re-points every gate at the
+immutable copies with no test change.
+
+The 8.1 image was DIRTY on top of drifted, and no host-side tool can set an
+HFS clean-unmount bit honestly. A new dev tool, `q605_shutdown_flush`
+(EXCLUDE_FROM_ALL), boots the volume to the Finder, walks the guest through
+Special → Shut Down with the AFP gate's own steering, watches `drAtrb` bit 8
+in the in-memory image (the Cuda power-down is ack-only here, so the bit is
+the only honest observable — it lands 60 frames after the gesture), and
+writes the flushed copy. The ADB power key was tried first and is inert: a
+single-key press reports `FF 7F` where a real keyboard sends `7F 7F`.
+
+The replays then found the reds were never *only* image drift — three gate
+defects had been hiding behind it:
+
+1. **The Mac II reached the Duo's Stickies trap.** The drifted 7.5.5 volume
+   fronts Stickies from Startup Items on this machine too; thirteen sticky
+   notes stood where thirteen "untitled folder"s were expected, and the gate
+   had no `frontApp`/`focusFinder` hooks to notice (the 2026-08-15 lesson,
+   wired in only for the Duo). The Mac II cannot use the Duo's desktop-click
+   focus — its PIC LLE mouse drains ~15 px per 800 frames — so its
+   `focusFinder` quits the startup app over the proven keyboard channel
+   (Cmd-Q, held past Slow Keys) and re-asks `CurApName`.
+2. **The AFP gate's boot detector fires before the Finder exists on a CLEAN
+   volume.** Without the dirty-mount disk check the luminance signature
+   matches the menu bar over the default desktop pattern; every calibrated
+   click then landed inside Finder startup. Phase 0 now waits for the
+   guest's own `CurApName == "Finder"` plus a right-strip that stopped
+   redrawing, and phase 1 verifies the Apple menu actually dropped —
+   where the first probe read an open menu as a desktop because platinum
+   menu paper is (231,231,231) and the white cut sat at >232, one point
+   too high. Repeated unverified clicks had been *toggling* the menu.
+3. **The mounted volume must be opened through the Finder's own selection.**
+   Two icon-diff schemes both mis-clicked (densest changed cell: a
+   displaced "Monitors & Sound"; topmost cluster: the boot volume's own
+   redraw). The Finder selects a freshly mounted volume itself, so phase 7
+   is now Cmd-O — no pixel hunt at all.
+
+With those three closed, both gates run green against the read-only
+references — `macii_persist_etalon` 100 s (folder created, flushed at
+0 frames, survives reboot), `q605_afp_live_etalon` 82 s, its first green
+ever: boot → Chooser → NBP (20 lookups) → guest login (1 AFP session) →
+mount → Cmd-O → Cmd-N → "untitled folder" in the host share. `assets.lock`
+carries the two new identities; `verify_assets.py` reads 35/37 present, 0
+failures. Still open, recorded in TODO § 1.1: `HD20SC.vhd` (clean, drifted)
+and `GISTPERSO-boot.vhd` (dirty + drifted) remain flat and off-lock, and the
+locked 7.1 identity itself carries bit 8 clear — the Mac II comment says the
+machine reaches no Finder on it.
 
 <a id="2026-09-01-doc-ownership"></a>
 ## 2026-09-01 (eighth) — README, DEV and CLAUDE stop competing for the same facts

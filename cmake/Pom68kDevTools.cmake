@@ -125,6 +125,18 @@ target_link_libraries(adb_key_probe PRIVATE pom68k_core)
 add_executable(macii_hmmu_trace EXCLUDE_FROM_ALL tests/macii_hmmu_trace.cpp)
 target_link_libraries(macii_hmmu_trace PRIVATE pom68k_core)
 
+# Dev tool (not a gate): guest-driven Shut Down of a Q605 boot volume, so a
+# reference fixture can be recorded with its clean-unmount bit set by the
+# guest itself (TODO § 1.1). POM68K_SHUTDOWN_OUT names the flushed copy.
+add_executable(q605_shutdown_flush EXCLUDE_FROM_ALL tests/q605_shutdown_flush.cpp)
+target_link_libraries(q605_shutdown_flush PRIVATE pom68k_core)
+
+# Its 030 sibling on the LC II, for the references only 030-class machines
+# boot (GISTPERSO, System 7.1). Holds Shift through the boot by default —
+# GISTPERSO's Startup Items race Finder init.
+add_executable(lcii_shutdown_flush EXCLUDE_FROM_ALL tests/lcii_shutdown_flush.cpp)
+target_link_libraries(lcii_shutdown_flush PRIVATE pom68k_core)
+
 # Dev tool (not a gate): offline Mac ROM introspection (header,
 # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,
 # see docs/BASILISK_ROM_NOTES.md. Standalone, no emulator core.

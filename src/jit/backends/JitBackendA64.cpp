@@ -894,10 +894,12 @@ void chooseGuestRegisterCache(const BlockIr& ir) {
             case SemanticOp::AluRegToEa:
             case SemanticOp::AddSubExtend:
             case SemanticOp::MoveQuick:
-                if (s.registerIndex < 8) score[s.registerIndex] += 2; break;
+                if (s.registerIndex < 8) score[s.registerIndex] += 2;
+                break;
             case SemanticOp::AddressAlu:
             case SemanticOp::Lea:
-                if (s.registerIndex < 8) score[8 + s.registerIndex] += 2; break;
+                if (s.registerIndex < 8) score[8 + s.registerIndex] += 2;
+                break;
             case SemanticOp::Bit:
                 if (s.dynamic && s.registerIndex < 8)
                     score[s.registerIndex] += 2;
@@ -4960,7 +4962,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     a.b(epilogue);
 
     for (size_t i = 0; i < exits.size(); i++) {
-        for (const auto [label, why] : {
+        for (const auto& [label, why] : {
                  std::pair{exits[i].budget, Exit::ClockBudget},
                  std::pair{exits[i].flags, Exit::CpuFlags}}) {
             a.bind(label);

@@ -78,10 +78,10 @@ Scheduling cost if every gate ran at once: 463 slots of 256 MiB (`slots_src` say
 | tier | daily | 88 |
 | tier | full | 136 |
 | tier | platform | 12 |
-| slots_src | assumed | 120 |
-| slots_src | measured | 116 |
+| slots_src | assumed | 123 |
+| slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 463 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 595 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Recorded runs
 
@@ -93,3 +93,5 @@ overwrites it, including a one-gate `ctest -R`.
 |---|---|---|---|---|---|---|
 | Aug 29 23:58 +04 | x86_64 | 235 | 232 | 1 | 2 | first FULL registry run on an x86-64 host carrying the assets; ctest -j64, 3134 s wall; the two reds land on dirty/drifted reference volumes (check_volume_state.py) |
 | Aug 30 01:24 +04 | x86_64 | 235 | 231 | 1 | 3 | stability repeat, ctest -j64, 3271 s wall; same two fixture reds, plus iivx_persist_etalon Timeout at 1800 s after passing run 1 at 1795.94 s — a gate sitting ON its bound here |
+| Sep 01 22:49 +04 | x86_64 | 236 | 235 | 1 | 0 | first ALL-GREEN full registry run on the x86-64 proof host: 236/236 in 3313 s, ctest -j64; census 235 executed / 1 expected soft-skip (jit_store_guard_a64); clean hdv/ref fixtures, iivx TIMEOUT 2700 |
+| Sep 01 23:45 +04 | x86_64 | 236 | 235 | 1 | 0 | consecutive ALL-GREEN repeat on the same tree: 236/236 in 3316 s, ctest -j64, census identical (235/1/0) — milestone-1 exit criterion met for x86-64 |

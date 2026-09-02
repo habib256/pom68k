@@ -11,11 +11,13 @@
 
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
+#include "FinderSignature.h"
 #include "Mmu030Peek.h"
 #include "SonoraCpu.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -29,9 +31,12 @@ int main() {
         rom = testasset::find("roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM");
     std::string img = testasset::overrideImage();
     if (img.empty()) img = testasset::find("hdv/lc3-boot.vhd");
-    if (img.empty()) img = testasset::find("hdv/boot.vhd");
-    if (img.empty()) img = testasset::find("hdv/GISTPERSO-boot.vhd");
+    // The SMALL clean reference for this 1bpp signature family: the plain
+    // grey System 7.5 desktop. GISTPERSO's desktop pattern reads ~0.93
+    // here and rejects a live Finder (measured 2026-09-02), so it is NOT
+    // in this chain; MacPack stays as the compatible last resort.
     if (img.empty()) img = testasset::find("hdv/System 7.5 HD.dsk");
+    if (img.empty()) img = testasset::find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 1 MB LC III ROM + a bootable hdv/ image\n");
         return 0;
@@ -46,6 +51,12 @@ int main() {
         return 1;
     }
 
+    // 8 MB, and the persist leg still flushes: the Mac II's 4 MB remedy was
+    // TRIED here on 2026-09-02 and measured useless — folder created
+    // (gesture dump: icon selected on the desktop), then not one write in
+    // two emulated minutes at either RAM size. This machine is the Duo's
+    // case, and the stir hook below ends the session through Special →
+    // Shut Down instead.
     SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(2);                  // 512×384 12" RGB — the etalon frame
@@ -113,7 +124,17 @@ int main() {
         return !cpu.isHalted() && finderUp();
     };
 
-    if (!boot()) { std::fprintf(stderr, "FAIL: no Finder after boot\n"); return 1; }
+    if (!boot()) {
+        {   // what the detector rejected, for eyes (POM68K_DUMP)
+            SonoraVideo video(mem);
+            std::vector<uint32_t> fb;
+            video.decode(fb);
+            video.size(W, H);
+            beyondboot::dumpPpm("sonora_beyond_bootfail.ppm", fb, W, H);
+        }
+        std::fprintf(stderr, "FAIL: no Finder after boot\n");
+        return 1;
+    }
     std::printf("Finder up %dx%d, TC=$%08X, ADB %s, SCSI %ld\n", W, H,
                 cpu.getTC(), mem.egretLleActive() ? "LLE" : "HLE",
                 mem.scsi().commands);
@@ -140,6 +161,97 @@ int main() {
     h.key = [&](uint8_t code, bool down) { mem.keyEvent(code, down); };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
     h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
+    // Who is in front — the Stickies trap's THIRD machine (Duo 2026-08-15,
+    // Mac II 2026-09-01, here 2026-09-02): the clean 7.5 reference carries
+    // Startup Items that the flush tool skipped with a held Shift but a
+    // plain gate boot runs, and Cmd-N then feeds whatever they left
+    // frontmost. The walk, not peek8: this System lives behind the PMMU.
+    auto walk8 = [&](uint32_t a) -> int {
+        uint32_t phys = 0;
+        if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
+                                   a, 5,
+                                   [&](uint32_t x) { return mem.peek8(x); },
+                                   &phys))
+            return -1;
+        return int(mem.peek8(phys));
+    };
+    h.frontApp = [&]() { return findersig::curApNameAt(walk8); };
+    // The LC III will not flush its volume any other way — 4 MB or 8, two
+    // emulated minutes after Cmd-N there is NOT ONE write (the Duo's
+    // 2026-08-14 finding, on its third machine 2026-09-02). So the stir is
+    // the Duo's: end the session the way a user would, Special → Shut
+    // Down, which flushes every volume on the way out. System 7 menus need
+    // press-DRAG-release (lcii_shutdown_flush's lesson), and the pointer
+    // reads through the PMMU walk like every other low-mem global here.
+    auto pointer = [&](int& x, int& y) {
+        const int xh = walk8(0x832), xl = walk8(0x833);
+        const int yh = walk8(0x830), yl = walk8(0x831);
+        if (xh < 0 || xl < 0 || yh < 0 || yl < 0) return false;
+        x = int16_t(uint16_t(xh) << 8 | uint16_t(xl));
+        y = int16_t(uint16_t(yh) << 8 | uint16_t(yl));
+        return true;
+    };
+    auto steer = [&](int tx, int ty, int tol) {
+        int px = 0, py = 0;
+        for (int it = 0; it < 400; it++) {
+            if (!pointer(px, py)) return false;
+            const int dx = tx - px, dy = ty - py;
+            if (std::abs(dx) <= tol && std::abs(dy) <= tol) return true;
+            auto step = [](int d) {
+                int v = d / 2;
+                if (!v) return 0;
+                if (std::abs(v) < 2) v = d > 0 ? 2 : -2;
+                return std::max(-8, std::min(8, v));
+            };
+            mem.mouseMove(step(dx), step(dy));
+            frames(2);
+        }
+        std::fprintf(stderr, "stir steer: wanted (%d,%d), reached (%d,%d)\n",
+                     tx, ty, px, py);
+        return false;
+    };
+    h.stir = [&]() {
+        beyondboot::mark("stir: Special -> Shut Down");
+        if (!steer(232, 8, 3)) return;         // the "Special" title
+        mem.mouseButton(true);
+        frames(18);
+        if (!steer(242, 141, 4)) {             // drag onto "Shut Down"
+            mem.mouseButton(false);
+            return;
+        }
+        frames(12);
+        mem.mouseButton(false);
+        frames(120);
+        if (h.dump) h.dump("stir");
+    };
+    h.probe = [&]() {
+        std::fprintf(stderr, "[scsi] write cmds %ld blocks %ld\n",
+                     mem.scsiDisk().writeCommands, mem.scsiDisk().writeBlocks);
+        std::fprintf(stderr, "[keymap]");
+        for (uint32_t a = 0x174; a < 0x17C; a++) {
+            const int b = walk8(a);
+            std::fprintf(stderr, " %02X", b < 0 ? 0xEE : unsigned(b));
+        }
+        std::fprintf(stderr, "  (want Cmd+N bits live)\n");
+    };
+    // Keyboard, not a desktop click: the proven channel on every machine
+    // that reached this trap, and quitting the startup app leaves the
+    // Finder as what remains (macii_beyond_etalon's reasoning).
+    h.focusFinder = [&]() {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (findersig::curApNameAt(walk8) == "Finder") return;
+            beyondboot::mark("focus: Cmd-Q the startup application");
+            mem.keyEvent(0x37, true);          // Cmd down
+            frames(6);
+            mem.keyEvent(0x0C, true);          // 'q', held past Slow Keys
+            frames(150);
+            mem.keyEvent(0x0C, false);
+            frames(6);
+            mem.keyEvent(0x37, false);
+            frames(900);
+            if (h.dump) h.dump("focus");
+        }
+    };
     h.reboot = [&]() { cpu.hardReset(); return boot(); };
     h.dump = [&](const char* mode) {
         SonoraVideo video(mem);

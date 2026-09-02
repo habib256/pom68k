@@ -25,6 +25,7 @@
 #include "AssetFingerprint.h"
 #include "AtalkHub.h"
 #include "Cpu040.h"
+#include "FinderSignature.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
 
@@ -293,18 +294,83 @@ int main() {
                      cpu.isHalted(), mem.scsi().commands);
         return 1;
     }
+    // The luminance match fires on the FIRST frame that looks like a
+    // desktop — on a CLEAN volume (no dirty-mount disk check slowing the
+    // boot) that is the menu bar over the default pattern, before the
+    // wallpaper, the icons or even the Finder process itself (measured
+    // 2026-09-01: every calibrated click then landed inside Finder
+    // startup and nothing opened). So wait for the guest's own word that
+    // the Finder is current, then for the desktop's right-hand strip —
+    // the volume-icon column phase 7 diffs against — to stop redrawing.
+    for (int poll = 0; poll < 60 && !cpu.isHalted(); poll++) {
+        const std::string app = findersig::curApName(mem);
+        if (app == "Finder") {
+            Screen a = decodeScreen(mem);
+            frames(120);
+            Screen b = decodeScreen(mem);
+            if (!a.pixels.empty() && a.width == 640 && b.width == 640) {
+                bool stable = true;
+                for (int y = 30; stable && y < 460; y++)
+                    for (int x = 480; x < 640; x++)
+                        if (a.pixels[size_t(y) * 640 + x] !=
+                            b.pixels[size_t(y) * 640 + x]) { stable = false; break; }
+                if (stable) break;
+            }
+        } else {
+            frames(120);
+        }
+    }
     frames(300);
     Screen desk0 = snap("afp_live_0_finder.ppm");
-    std::printf("phase 0: Finder up, SCSI=%ld\n", mem.scsi().commands);
+    std::printf("phase 0: Finder up, SCSI=%ld, front \"%s\"\n",
+                mem.scsi().commands, findersig::curApName(mem).c_str());
     std::fflush(stdout);
     if (stopPhase <= 0) return 0;
 
     // ── Phase 1: Apple menu → Chooser ────────────────────────────────────
     // Positions calibrated on this image's 8.1 (see header). The Apple menu
-    // drops from (10,8); the Chooser item is clicked by its row.
-    if (!click(10, 8)) { std::fprintf(stderr, "FAIL: apple menu\n"); return 1; }
-    frames(30);
+    // drops from (10,8); the Chooser item is clicked by its row. The drop
+    // is VERIFIED, not assumed: the open menu is a white panel with black
+    // item text where the wallpaper has neither, and a click that lands
+    // during a late Finder redraw simply gets retried.
+    auto menuDropped = [&]() {
+        Screen s = decodeScreen(mem);
+        if (s.pixels.empty()) return false;
+        long white = 0, dark = 0, total = 0;
+        for (int y = 24; y < 130 && y < s.height; y++)
+            for (int x = 4; x < 130 && x < s.width; x++) {
+                uint32_t p = s.pixels[size_t(y) * s.width + x];
+                double lum = ((p >> 16) * 54 + ((p >> 8) & 0xFF) * 183 +
+                              (p & 0xFF) * 19) / 256.0;
+                // Platinum menu paper is (231,231,231) — a 0xE8 cut missed
+                // every panel pixel by ONE luminance point and read an open
+                // menu as a desktop (2026-09-01). The wallpaper's brightest
+                // sky is ~210, so 0xE0 separates cleanly.
+                if (lum >= 0xE0) white++;
+                else if (lum < 0x30) dark++;
+                total++;
+            }
+        std::fprintf(stderr, "menu probe: white %ld dark %ld of %ld\n",
+                     white, dark, total);
+        return total > 0 && white > total * 55 / 100 && dark > total / 100;
+    };
+    bool appleOpen = false;
+    for (int attempt = 0; attempt < 6 && !appleOpen; attempt++) {
+        if (!click(10, 8)) { std::fprintf(stderr, "FAIL: apple menu\n"); return 1; }
+        frames(60);
+        appleOpen = menuDropped();
+        if (!appleOpen) {
+            char name[64];
+            std::snprintf(name, sizeof name, "afp_live_1_attempt%d.ppm", attempt);
+            snap(name);
+            frames(540);
+        }
+    }
     snap("afp_live_1_applemenu.ppm");
+    if (!appleOpen) {
+        std::fprintf(stderr, "FAIL: the Apple menu never dropped\n");
+        return 1;
+    }
     if (stopPhase <= 1) return 0;
     // Chooser row (calibrated): itemY below. A miss leaves the menu open,
     // which the phase-2 dump makes obvious.
@@ -373,33 +439,21 @@ int main() {
     std::fflush(stdout);
     if (stopPhase <= 6) return 0;
 
-    // ── Phase 7: find the volume icon by DIFF and open it ────────────────
-    // The mounted volume is whatever changed on the right-hand desktop
-    // strip between the pre-Chooser screen and now — self-calibrating, so
-    // the icon's exact slot never needs a constant.
-    int ix = -1, iy = -1;
-    {
-        long bestCount = 0;
-        // Scan 32x32 cells over the right strip, pick the densest change.
-        for (int cy = 30; cy + 32 <= 460; cy += 16)
-            for (int cx = 480; cx + 32 <= 640; cx += 16) {
-                long count = 0;
-                for (int y = cy; y < cy + 32; y++)
-                    for (int x = cx; x < cx + 32; x++)
-                        if (desk0.pixels[size_t(y) * 640 + x] !=
-                            desk1.pixels[size_t(y) * 640 + x]) count++;
-                if (count > bestCount) { bestCount = count; ix = cx + 16; iy = cy + 16; }
-            }
-        std::printf("phase 7: volume icon diff at (%d,%d), %ld px\n",
-                    ix, iy, bestCount);
-        if (bestCount < 100) {
-            std::fprintf(stderr, "FAIL: no new desktop icon after mount\n");
-            return 1;
-        }
-    }
-    if (!click(ix, iy, 2)) { std::fprintf(stderr, "FAIL: open volume\n"); return 1; }
+    // ── Phase 7: open the mounted volume — it is already SELECTED ────────
+    // The Finder selects a freshly mounted volume (desk1 shows "Echange"
+    // inverted), so Cmd-O opens it without any pixel hunt. Two icon-diff
+    // schemes were tried first and both mis-clicked (densest cell:
+    // "Monitors & Sound", displaced; topmost cluster: the boot volume's
+    // own redraw) — the guest's selection is the one pointer the Finder
+    // maintains for us. desk0/desk1 stay captured for the dumps.
+    (void)desk0; (void)desk1;
+    mem.keyEvent(0x37, true);                 // Cmd
+    frames(12);
+    key(0x1F, 75, 12);                        // O (held past Slow Keys)
+    mem.keyEvent(0x37, false);
     frames(900);                              // enumerate over AFP, draw window
     snap("afp_live_7_window.ppm");
+    std::printf("phase 7: Cmd-O on the selected volume\n");
     std::fflush(stdout);
     if (stopPhase <= 7) return 0;
 

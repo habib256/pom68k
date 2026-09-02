@@ -590,7 +590,8 @@ void Ncr53c96::startCommand(uint8_t c) {
 void Ncr53c96::selectTarget(bool withAtn, bool stopAfterMsg) {
     selects++;
     seq_ = 0;
-    ScsiTarget* t = (busId_ >= 0 && busId_ < 7) ? targets_[busId_] : nullptr;
+    // busId_ is unsigned: < 7 alone is the whole bounds check.
+    ScsiTarget* t = busId_ < 7 ? targets_[busId_] : nullptr;
     if (!t || !t->present()) {
         // Selection timeout: the target never asserted BSY → disconnect.
         phase_ = BUS_FREE; disk_ = nullptr;

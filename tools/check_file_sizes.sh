@@ -43,13 +43,13 @@ list_sources() {
     {
         find src -type f \( -name '*.cpp' -o -name '*.h' \)
         find cmake -maxdepth 1 -type f -name 'Pom68k*.cmake'
-        printf '%s\n' CMakeLists.txt
+        printf '%s\n' CMakeLists.txt CLAUDE.md
     } | sort
 }
 
 is_always_budgeted() {
     case "$1" in
-        CMakeLists.txt|cmake/Pom68k*.cmake|src/main.cpp|\
+        CLAUDE.md|CMakeLists.txt|cmake/Pom68k*.cmake|src/main.cpp|\
         src/GuiMachineRuntime.cpp|src/GuiHostServices.cpp|\
         src/GuiShell.cpp|src/GuiShellCommon.h|src/GuiRunner*.h|\
         src/GuiTobyStatus.h|\

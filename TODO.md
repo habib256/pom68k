@@ -52,27 +52,20 @@ mesures courantes sont archivées et chaque couple hôte/CPU a une décision
 
 ### 1.1 Régressions et fixtures connues
 
-- [ ] **Réparer les fixtures de `macii_persist_etalon` et
-  `q605_afp_live_etalon`.** Restaurer les deux images à leurs identités
-  `assets.lock` — ou enregistrer délibérément de nouvelles références —,
-  vérifier le bit de volume propre, puis rejouer les deux gates avant toute
-  chasse dans le code.
-- [ ] **Donner une marge mesurée à `iivx_persist_etalon`.** Refaire un run
-  isolé, expliquer son coût relatif ou relever son `TIMEOUT` avec la même
-  politique que les autres persists.
 - [ ] **Conserver le prochain échec de `gui_smoke_test` comme preuve.** Si le
   flake de renommage revient, capturer les chemins et l'`errno` désormais
   imprimés avant d'envisager un retry.
 
 ### 1.2 Assets et gates reproductibles
 
-- [ ] **Éliminer la préférence implicite pour `hdv/boot.vhd` dans les gates
-  et outils concernés.** Identifier ceux réellement calibrés sur « MacPack » ;
-  pour les autres, préférer une petite référence versionnée et propre. Ajouter
-  une référence propre dédiée lorsque les signatures sont image-spécifiques.
-- [ ] **Installer ou documenter les deux assets absents du poste de preuve.**
-  Fournir `cd/MacOS_86.iso` et le module `machfs` de `.venv-tools`, puis
-  enregistrer un census sans soft-skip correspondant.
+- [ ] **Enregistrer un census AArch64 sans soft-skip pour les gates à
+  assets optionnels.** Sur le poste x86-64 les deux gates s'exécutent
+  (machfs était déjà dans `.venv-tools` — seuls les shebangs des scripts
+  console sont morts depuis le renommage `POM68K`→`pom68k` ;
+  `q605_cdrom_etalon` court sur `cd/MAC_OS_8-1_RETAIL_0.ISO` en fallback,
+  `cd/MacOS_86.iso` reste le nom préféré). Reste à constater l'équivalent
+  sur l'hôte AArch64 et, si souhaité, recréer la venv pour réparer les
+  shebangs.
 - [ ] **Recalibrer `finder_boot_matrix`.** Exécuter le sweep sur toutes les
   images visées, remplacer le seuil SCSI brut du Mac II par
   `FinderSignature`, puis seulement enregistrer les cellules stables.
@@ -82,17 +75,9 @@ mesures courantes sont archivées et chaque couple hôte/CPU a une décision
 
 ### 1.3 Toolchains et hygiène bloquante
 
-- [ ] **Nettoyer le recensement GCC et armer `-Werror`.** Corriger les sites
-  encore signalés par g++ 13, faire reconnaître les diagnostics tels que
-  `[-Warray-bounds=]`, relancer la recette CI exacte, puis activer
-  `-DPOM68K_WERROR=ON` dans le job GCC.
-- [ ] **Lire le premier rapport de fuites Linux et rendre la nightly
-  bloquante.** Conserver `detect_leaks=1`, publier le rapport comme artefact et
-  ne rendre l'étape obligatoire qu'après une première lecture réelle.
-- [ ] **Appliquer à `CLAUDE.md` sa propre limite de taille.** Ajouter un budget
-  dans `tools/file_size_budget.txt`, déplacer les données générables vers
-  `STATUS.md` et les détails internes vers `DEV.md`, puis garder `docs_test`
-  vert.
+- [ ] **Lire le premier artefact `pom68k-leak-census` et rendre la nightly
+  bloquante.** L'étape publie désormais son rapport ; après une première
+  lecture réelle, retirer `continue-on-error`.
 
 **Critère de sortie :** deux runs complets consécutifs par architecture, sans
 fixture sale, timeout posé sur sa limite, rouge inexpliqué ni soft-skip masqué.

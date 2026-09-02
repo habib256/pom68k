@@ -1705,8 +1705,17 @@ settle before judging the mount), `POM68K_AFP_PHASE` +
 (`q605_afp_live_etalon`: stop after phase N, and the nine mouse coordinates
 its Chooser walk clicks — a scripted GUI drive fails at a pixel far more
 often than at a protocol, so each click is a knob and the phase stop is how
-one gets re-measured without paying for the mount again)) are documented in
-their own file headers.
+one gets re-measured without paying for the mount again),
+`POM68K_SHUTDOWN_OUT`, `POM68K_SHUTDOWN_IMG`, `POM68K_SHUTDOWN_MODE`,
+`POM68K_SHUTDOWN_PHASE`, `POM68K_SHUTDOWN_SPECIAL_X`,
+`POM68K_SHUTDOWN_ITEM_Y`, `POM68K_SHUTDOWN_SLICED`, `POM68K_SHUTDOWN_HUB`,
+`POM68K_SHUTDOWN_SHIFT`, `POM68K_SHUTDOWN_CLOSEWIN`
+(`q605_shutdown_flush` / `lcii_shutdown_flush`, the dev tools that record a
+reference fixture with its clean-unmount bit set by the guest's own Shut
+Down: where the flushed copy lands, which image, power-key vs menu walk,
+the calibration stop and click targets, two rig-difference probes, and the
+LC II's Shift-held boot past GISTPERSO's racing Startup Items)) are
+documented in their own file headers.
 
 **Bring-up probes** — added to this list 2026-08-09, when `config_test`
 first ran and found twelve knobs the code reads that no document mentioned.

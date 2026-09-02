@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 378 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 383 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 67 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 68 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 40 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
@@ -16,11 +16,11 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 46 |
+| [Machine bring-ups](#machine-bring-ups) | 47 |
 | [Build, packaging and release](#build-packaging-and-release) | 8 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 27 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 28 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 69 |
+| [Cross-cutting](#cross-cutting) | 71 |
 
 ---
 
@@ -93,6 +93,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (twenty-third)** — [x64 closes the classic modifying-bit gap with one shared legal-EA mask and a preflighted RMW](CHANGELOG.md#2026-08-31-x64-classic-bit-rmw)
 - **2026-09-01** — [The backend census reaches zero exceptions: legal EA masks and indexed MOVE converge](CHANGELOG.md#2026-09-01-jit-parity-zero)
 - **2026-09-01 (seventh)** — [The active backlog is reconciled with the compiled JIT policy and closed work leaves TODO](CHANGELOG.md#2026-09-01-todo-code-audit)
+- **2026-09-02** — [Two consecutive all-green registry runs: milestone 1's exit criterion lands on x86-64](CHANGELOG.md#2026-09-02-two-green-runs)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -315,6 +316,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-27 (fourteenth)** — [The Quadra 605 gets its third beyond-boot leg, and it is keyboard-only on purpose](CHANGELOG.md#2026-08-27-q605-launch)
 - **2026-08-28 (seventh)** — [The D1F0 ABBA reads +0.02 % on a 0.6 % floor: the fallback histogram is not a time profile](CHANGELOG.md#2026-08-28-d1f0-abba-null)
 - **2026-08-29 (eleventh)** — [Recording moves onto the Machine menu: start/stop are queued like a save-state request, performed between two quanta, and the tick follows the machine](CHANGELOG.md#2026-08-29-recording-menu)
+- **2026-09-01 (tenth)** — [The whole lock goes strict-green: an 030 guest flushes GISTPERSO and 7.1, and the iivx bound was contention](CHANGELOG.md#2026-09-01-lock-complete)
 
 ## Build, packaging and release
 
@@ -356,6 +358,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-28 (twelfth)** — [The tree did not compile on g++, one gate cited evidence that cannot exist on this host, and the first real GCC census is 17 warnings](CHANGELOG.md#2026-08-28-x64-host-first-run)
 - **2026-08-29 (ninth)** — [The registry's numbers stop being typed: `STATUS.md` is generated from the configure-time roster, and `docs_test` verifies the artifact instead of only chasing prose](CHANGELOG.md#2026-08-29-status-md-generated)
 - **2026-08-31 (twelfth)** — [Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed](CHANGELOG.md#2026-08-31-speedometer-roxr)
+- **2026-09-02 (second)** — [The implicit MacPack preference falls: a small clean 7.5 reference, and the flush lessons its gates paid](CHANGELOG.md#2026-09-02-macpack-preference)
 
 ## Documentation, audits and reviews
 
@@ -438,6 +441,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (thirteenth)** — [Speedometer's dependent `(A7)+` stack MOVEs become transactional on both generators](CHANGELOG.md#2026-08-31-speedometer-dependent-move)
 - **2026-08-31 (twentieth)** — [Speedometer's fixed `ROXR.L #1,D1` becomes native through the existing step-exact rotate body](CHANGELOG.md#2026-08-31-speedometer-roxr-long)
 - **2026-08-31 (twenty-first)** — [Speedometer's dynamic shifts get a bounded multi-version cache over the complete 0..31 count domain](CHANGELOG.md#2026-08-31-speedometer-shift-multiversion)
+- **2026-09-01 (ninth)** — [The proof floor's two red fixtures close: `hdv/ref/` is materialized and the guest sets its own clean bit](CHANGELOG.md#2026-09-01-fixture-floor)
 - **2026-09-01 (second)** — [Five-byte memory-bitfield writes gain a four-access transaction on both native generators](CHANGELOG.md#2026-09-01-jit-bitfield-tail-writes)
 - **2026-09-01 (third)** — [Packed-CCR bitfields become native across every register and memory path](CHANGELOG.md#2026-09-01-jit-packed-bitfields)
+- **2026-09-02 (third)** — [The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact](CHANGELOG.md#2026-09-02-werror-armed)
 

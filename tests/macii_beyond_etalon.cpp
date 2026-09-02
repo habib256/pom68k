@@ -11,9 +11,11 @@
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
 #include "Cpu020.h"
+#include "FinderSignature.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -182,6 +184,33 @@ int main() {
     };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
     h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
+    // Who is in front — the Duo's 2026-08-15 lesson, reached by this
+    // machine on 2026-09-01: the drifted 7.5.5 volume launches Stickies
+    // from Startup Items on the Mac II too, and thirteen Cmd-N sticky
+    // notes later the gate printed "image UNCHANGED". Physical peek is
+    // right here (no PMMU under a stock Mac II System).
+    h.frontApp = [&]() { return findersig::curApName(mem); };
+    // The Duo focuses the Finder by clicking the desktop; this machine
+    // cannot — the PIC LLE mouse drains a handful of pixels per second
+    // (measured 2026-09-01: 15 px in 800 frames), so a steer never
+    // arrives. The keyboard is this gate's proven channel (KeyMap showed
+    // Cmd+N live while Stickies ate it), and quitting the startup app is
+    // the same end state: the Finder is what remains.
+    h.focusFinder = [&]() {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (findersig::curApName(mem) == "Finder") return;
+            beyondboot::mark("focus: Cmd-Q the startup application");
+            mem.keyEvent(0x37, true);          // Cmd down
+            frames(6);
+            mem.keyEvent(0x0C, true);          // 'q', held past Slow Keys
+            frames(150);
+            mem.keyEvent(0x0C, false);
+            frames(6);
+            mem.keyEvent(0x37, false);
+            frames(900);                       // the app tears down, Finder redraws
+            if (h.dump) h.dump("focus");
+        }
+    };
     h.reboot = [&]() { cpu.hardReset(); return boot(); };
     h.dump = [&](const char* mode) {
         TobyVideo* tv = mem.toby();

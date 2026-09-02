@@ -6,12 +6,13 @@
 #
 # Regenerate with: tools/check_file_sizes.sh --update
 
+CLAUDE.md                                250
 CMakeLists.txt                           559
 cmake/Pom68kComponentGates.cmake         437
-cmake/Pom68kDevTools.cmake               131
+cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             363
 cmake/Pom68kJitGates.cmake               602
-cmake/Pom68kMachineGates.cmake           735
+cmake/Pom68kMachineGates.cmake           740
 src/AfpServer.cpp                        1129
 src/GuiHostServices.cpp                  177
 src/GuiMachineRuntime.cpp                47
@@ -24,7 +25,7 @@ src/GuiRunnerV8.h                        310
 src/GuiShellCommon.h                     366
 src/GuiShell.cpp                         389
 src/GuiTobyStatus.h                      41
-src/jit/backends/JitBackendA64.cpp       5076
+src/jit/backends/JitBackendA64.cpp       5078
 src/jit/backends/JitBackendX64.cpp       5366
 src/jit/JitConfig.h                      536
 src/jit/JitEngine.cpp                    1639

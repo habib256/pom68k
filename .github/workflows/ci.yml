@@ -37,7 +37,7 @@ jobs:
         # the LTO configurations are proved.
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF
+          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF -DPOM68K_WERROR=ON
 
       - name: Fast native JIT proof (x86-64, asset-free)
         env:
@@ -63,11 +63,12 @@ jobs:
           if-no-files-found: error
 
       - name: Build POM68K + all tests
-        # POM68K_WARNINGS is ON by default since 2026-08-27, so this build is
-        # also the GCC half of the warning inventory: clang reported zero on
-        # the whole tree, and g++ 13 does not warn about the same things.
-        # Census, never a gate — the -Werror flip waits on a clean run here
-        # (TODO.md § 0·B item 1).
+        # POM68K_WARNINGS is ON by default since 2026-08-27, and since
+        # 2026-09-02 this job builds with -DPOM68K_WERROR=ON: the g++ 13
+        # census reached zero on this exact recipe (37 warnings closed —
+        # CHANGELOG 2026-09-02), so a new warning is now a red build, not a
+        # line in a report. The census step below stays as the inventory's
+        # eyes for the day something fires.
         run: |
           set -o pipefail
           cmake --build build -j"$(nproc)" 2>&1 | tee "${{ runner.temp }}/build.log"

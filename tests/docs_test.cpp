@@ -1047,7 +1047,7 @@ int main() {
             pom68k::SnapMachine& observed;
             bool& destroyed;
         };
-        const auto& iifx = pom68k::app::MachineFactory::selectProfile(
+        const auto iifx = pom68k::app::MachineFactory::selectProfile(
             parsed, syntheticRom(512u << 10, 0x4147DD77));
         {
             pom68k::app::MachineSession selectedSession(
@@ -1401,13 +1401,13 @@ int main() {
         }
     }
     std::set<std::string> requiredBudgets;
-    for (const std::string& host : {"aarch64", "x86_64", "any"}) {
-        for (const std::string& metric : {"min_blocks_compiled", "min_blocks_run",
+    for (const std::string host : {"aarch64", "x86_64", "any"}) {
+        for (const std::string metric : {"min_blocks_compiled", "min_blocks_run",
                                           "min_native_share_permille",
                                           "max_slow_instrs"})
             requiredBudgets.insert("synthetic_68040_lockstep/68040/" + host +
                                    "/" + metric);
-        for (const std::string& metric : {"max_slow_instrs",
+        for (const std::string metric : {"max_slow_instrs",
                                           "max_native_ratio_permille",
                                           "native_slack_microseconds"})
             requiredBudgets.insert("synthetic_68040_copyback/68040/" + host +

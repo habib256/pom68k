@@ -307,12 +307,17 @@ set_tests_properties(q605_hotfloppy_etalon PROPERTIES TIMEOUT 1800)
 # through peek8 — see the header of iivx_beyond_etalon.cpp.
 add_executable(iivx_beyond_etalon tests/iivx_beyond_etalon.cpp)
 target_link_libraries(iivx_beyond_etalon PRIVATE pom68k_core)
+# TIMEOUT 2700, not the family's 1800: the slowest persist in the registry
+# — 591 s ISOLATED on the x86-64 proof host (2026-09-01, clean GISTPERSO
+# reference) — and a full `ctest -j64` run multiplies that by ~3
+# (1795.94 s green then Timeout 1800.05, 2026-08-30). The bound must
+# absorb legitimate contention; 1800 sat ON the measurement.
 foreach(scenario soak persist)
     add_test(NAME iivx_${scenario}_etalon COMMAND iivx_beyond_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(iivx_${scenario}_etalon PROPERTIES
                          ENVIRONMENT "POM68K_BEYOND=${scenario}"
-                         TIMEOUT 1800)
+                         TIMEOUT 2700)
 endforeach()
 
 # Beyond-boot on the FOURTH machine, and the first RAM-based-video one:

@@ -35,6 +35,14 @@ void EtherLink::attach() {
     });
 }
 
+// GCC 13's LTO -Wstringop-overflow pass loses the vector's fresh
+// kEthHdr+n allocation and reports the 6-byte MAC copy as writing into
+// size 0 — the SaveState.h false-positive class (2026-09-01 census).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
 void EtherLink::sendToGuest(const std::array<std::uint8_t, 6>& dst,
                             std::uint16_t ethType,
                             const std::uint8_t* payload, std::size_t n) {
@@ -45,6 +53,9 @@ void EtherLink::sendToGuest(const std::array<std::uint8_t, 6>& dst,
     if (n) std::memcpy(f.data() + kEthHdr, payload, n);
     nic_.receiveFrame(f.data(), f.size());
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 void EtherLink::onGuestFrame(const std::uint8_t* d, std::size_t n) {
     if (!d || n < kEthHdr) return;

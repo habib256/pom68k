@@ -59,10 +59,6 @@ uint32_t peek32(uint32_t addr) {
            gMem->peek8(addr + 3);
 }
 
-// Low-memory Time global ($20C, seconds since 1904) — proves the one-
-// second chain (VIA → Cuda RTC → Time Manager) stays alive.
-uint32_t macTime() { return peek32(0x20C); }
-
 struct Screen {
     int width = 0, height = 0, depth = 0;
     uint32_t stride = 0, offset = 0;

@@ -64,9 +64,12 @@ int main() {
     // "MacPack") is the reference; the user's own volumes can be wrapped
     // bootable with tools/wrap_hfs.py and dropped in as hdv/lcii-boot.vhd.
     std::string img = find("hdv/lcii-boot.vhd");
+    // MacPack IS this gate's calibration (the boot signature and every
+    // click target were measured on it, and GISTPERSO's desktop pattern
+    // reads 0.75 where the thresholds expect a plain desktop): no silent
+    // fallback onto a foreign-signature volume — soft-skip instead, and
+    // POM68K_BEYOND_IMG stays the explicit override for other images.
     if (img.empty()) img = find("hdv/boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
-    if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");
         return 0;

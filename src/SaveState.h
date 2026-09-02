@@ -41,6 +41,20 @@
 #include <type_traits>
 #include <vector>
 
+// GCC 13's -Wstringop-overflow value-range analysis, re-run at LTO link
+// time, merges one()'s failure branch with the past-the-end state of an
+// enclosing fixed-array loop and reports the DEAD zero-store as an
+// overflow of size 0 (23 spurious sites over Egret/AdbLine/Swim2/CudaLle
+// in the 2026-09-01 warning census, none reachable). Scoped to this
+// header so a real overflow elsewhere still fires; drop when the GCC
+// analysis learns the pattern. (clang has no such group and reports zero
+// warnings on this tree, hence the guard.)
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
+
 namespace sav {
 
 using u8  = std::uint8_t;
@@ -301,3 +315,7 @@ u64 hash(const void* p, std::size_t n) noexcept;
 inline u64 hash(const std::vector<u8>& v) noexcept { return hash(v.data(), v.size()); }
 
 } // namespace sav
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif

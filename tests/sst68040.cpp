@@ -144,7 +144,8 @@ void parseState(const char*& p, CpuState& st) {
         if (*p=='}'){++p;break;}
         if (*p=='"') {
             ++p; const char* k=p; while (*p&&*p!='"') ++p; const size_t kl=size_t(p-k);
-            if (*p=='"') ++p; eat(p,':');
+            if (*p=='"') ++p;
+            eat(p,':');
             auto key = [&](const char* s){ return kl==std::strlen(s) && !std::strncmp(k,s,kl); };
             if      (kl==2 && k[0]=='d' && k[1]>='0'&&k[1]<='7') st.d[k[1]-'0'] = uint32_t(parseUint(p));
             else if (kl==2 && k[0]=='a' && k[1]>='0'&&k[1]<='7') st.a[k[1]-'0'] = uint32_t(parseUint(p));
@@ -193,7 +194,8 @@ bool parseVector(const char*& p, Vector& v) {
         if (*p=='}'){++p;break;}
         if (*p=='"') {
             ++p; const char* k=p; while (*p&&*p!='"') ++p; const size_t kl=size_t(p-k); const char* key=k;
-            if (*p=='"') ++p; eat(p,':');
+            if (*p=='"') ++p;
+            eat(p,':');
             if (kl==4 && !std::strncmp(key,"name",4)) { skipWs(p); if (*p=='"'){++p;const char* s=p;while(*p&&*p!='"')++p;v.name.assign(s,size_t(p-s));if(*p=='"')++p;} }
             else if (kl==7 && !std::strncmp(key,"initial",7)) parseState(p, v.initial);
             else if (kl==5 && !std::strncmp(key,"final",5))   parseState(p, v.fin);

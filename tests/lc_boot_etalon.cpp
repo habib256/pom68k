@@ -47,9 +47,12 @@ int main() {
     std::string rom = find("roms/512KB ROMs/1990-10 - 350EACF0 - Mac LC.ROM");
     std::string img = find("hdv/lc-boot.vhd");
     if (img.empty()) img = find("hdv/lcii-boot.vhd");
-    if (img.empty()) img = find("hdv/boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    // The SMALL clean reference for this 1bpp signature family: the plain
+    // grey System 7.5 desktop. GISTPERSO's desktop pattern reads ~0.93
+    // here and rejects a live Finder (measured 2026-09-02), so it is NOT
+    // in this chain; MacPack stays as the compatible last resort.
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
+    if (img.empty()) img = find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 512 KB Mac LC ROM + a bootable hdv/ image\n");
         return 0;

@@ -208,7 +208,21 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1
           LSAN_OPTIONS: print_suppressions=0
-        run: ctest --test-dir build -L asset-none -j "$(nproc)" --output-on-failure
+        run: |
+          set -o pipefail
+          ctest --test-dir build -L asset-none -j "$(nproc)" \
+                --output-on-failure 2>&1 \
+            | tee "${{ runner.temp }}/leak-census.log"
+
+      - name: Archive the leak census
+        # The report the TODO § 1.3 flip waits on: reading THIS artifact once
+        # is the precondition for dropping continue-on-error above.
+        if: always() && matrix.name == 'asan-ubsan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pom68k-leak-census
+          path: ${{ runner.temp }}/leak-census.log
+          if-no-files-found: warn
 
       - name: Which gates actually ran
         # A soft-skipped gate exits 0 and is counted green, so the tally alone
