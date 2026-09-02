@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 398 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 399 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (second)** — [The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64](#2026-09-03-lle-day)
 - **2026-09-03** — [The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's](#2026-09-03-a64-rebaseline)
 - **2026-09-02 (seventeenth)** — [The nightly's first light: TSan proves the race fix, GCC-13 ASan compiles, and its first-ever run finds additive stacks](#2026-09-02-nightly-first-light)
 - **2026-09-02 (sixteenth)** — [The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates](#2026-09-02-dispatch-cache-proved)
@@ -786,6 +787,51 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-lle-day"></a>
+## 2026-09-03 (second) — The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64
+
+The § A.3 item executed overnight: `build-product-lle` reconfigured at
+HEAD with `-DPOM68K_PRODUCT_LLE_GATES=ON` and the complete registry run
+under it — 244 gates, census **238 executed / 0 soft-skipped / 6
+failed** (`/tmp` log archived to `scratchpad/2026-09-02-night/`). Five
+of the six reds are the day's known A.3 attributions (`asset_lock_test`
+plus the two System-7.5 Sonora gates and the two dirty-GISTPERSO Mac TV
+gates). The label fusion is clean, and the backend audit reads exactly
+what the registrations claim: `backend=aarch64` on the 030/040
+locksteps, `threaded` on the 68000 leg. Earlier the same evening the
+optional-asset census closed on this host too: `dir2hfs_selftest` and
+`q605_cdrom_etalon` both EXECUTED (2/2, 0 soft-skip) — the venv's
+shebangs were already healthy here, and the CD gate ran for the first
+time on this machine, on the ISO recovered from the August backup
+((eleventh)).
+
+The sixth red is the day's first finding: **`docs_test` is right to
+fail under this configure.** With the LLE gates on, the registry reads
+244 registered / union 247 (+8 gates labeled `lle`/`product`/
+`a64-oracle`), a THIRD registry size that the generated `STATUS.md`
+does not model — its per-host sections describe the default configure
+only. That is now a recorded design decision to make (TODO § A.3):
+either `status_md.py` learns the PRODUCT_LLE dimension, or a
+PRODUCT_LLE tree is documented as exempt from the registry checks.
+
+The second finding came from the backend grep: six
+`[jit] unknown backend 'x64' — falling back to 'auto'` lines, all from
+`jit_lockstep_x64_test` and `jit_lockstep_x64_fine_test` — two gates
+that NAME x64, registered on a host whose build carries no x64 emitter,
+pinning a backend the runtime does not know and silently green-lighting
+**a64** twice. The exact impostor the 2026-09-02 (seventh) audit
+feared and the (thirteenth) fix removed for `jit_store_guard_a64_test`,
+mirrored. Same remedy, applied: the pair is host-conditional on
+`POM68K_JIT_NATIVE_BACKEND STREQUAL "x64"` and joins the absent roster
+elsewhere with its labels (`unit,jit,smoke`); the smoke-label block in
+`Pom68kGatePolicy.cmake` becomes conditional with it (a `set_property`
+on an unregistered TEST is a configure error — found the honest way).
+AArch64 now registers 234 gates, absent roster 5; the union holds at
+239; `STATUS.md` regenerated; `docs_test` and the smoke tier green on
+the reconfigured tree. Two ratchet ceilings rise for the registration
+commentary (`Pom68kGatePolicy` 376 → 381, `Pom68kJitGates` 616 → 632),
+reviewed here.
 
 <a id="2026-09-03-a64-rebaseline"></a>
 ## 2026-09-03 — The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's

@@ -409,18 +409,34 @@ endif()
 # a green light.
 # The wide x64 variant carries the same cache-on native-line proof; the
 # fine and no-access variants below retain the default cacheless paths.
-add_test(NAME jit_lockstep_x64_test COMMAND jit_lockstep_test 1000000
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(jit_lockstep_x64_test PROPERTIES
-                     ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_040_DCACHE=1;POM68K_JIT_040_LINE_STATS=1"
-                     TIMEOUT 1800)
+#
+# Host-conditional since 2026-09-03: on a host without the x64 emitter
+# the pinned POM68K_JIT_BACKEND=x64 printed "unknown backend 'x64' —
+# falling back to 'auto'" and the pair silently proved a64 twice under
+# a name that claims x64 — found by the PRODUCT_LLE day run's backend
+# audit, the same impostor class as jit_store_guard_a64_test
+# (2026-09-02 (thirteenth)). Absent gates are recorded in the else()
+# with the labels the derivation loop would have given them, so
+# docs_test holds the union to account on every host.
+if(POM68K_JIT_NATIVE_BACKEND STREQUAL "x64")
+    add_test(NAME jit_lockstep_x64_test COMMAND jit_lockstep_test 1000000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_x64_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_040_DCACHE=1;POM68K_JIT_040_LINE_STATS=1"
+                         TIMEOUT 1800)
 
-# The same, one cycle at a time: the sharpest check there is, and the
-# one that catches a wrong flag or a wrong cycle count immediately.
-add_test(NAME jit_lockstep_x64_fine_test COMMAND jit_lockstep_test 200000
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(jit_lockstep_x64_fine_test PROPERTIES
-                     ENVIRONMENT "POM68K_JIT_BACKEND=x64" TIMEOUT 1800)
+    # The same, one cycle at a time: the sharpest check there is, and the
+    # one that catches a wrong flag or a wrong cycle count immediately.
+    add_test(NAME jit_lockstep_x64_fine_test COMMAND jit_lockstep_test 200000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_x64_fine_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=x64" TIMEOUT 1800)
+else()
+    string(APPEND pom68k_absent_gates
+        "jit_lockstep_x64_test\tunit,jit,smoke\n")
+    string(APPEND pom68k_absent_gates
+        "jit_lockstep_x64_fine_test\tunit,jit,smoke\n")
+endif()
 
 # The conservative data path: no per-access thunk, so every address the
 # inline TLB cannot serve hands the whole instruction back to Moira.

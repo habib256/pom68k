@@ -128,11 +128,16 @@ endforeach()
 # boundary — and the two q605 etalons show the machine still reaches the
 # Finder on the accelerated DEFAULT and the explicit interpreter oracle.
 # Anything a JIT/default-policy change can break shows up here.
-set_property(TEST jit_backend_test jit_lockstep_test jit_lockstep_blocks_test
-                  jit_lockstep_x64_test jit_lockstep_x64_fine_test
-                  jit_lockstep_noaccess_test
-                  q605_boot_etalon interp_q605_boot_etalon
-             APPEND PROPERTY LABELS smoke)
+# The x64-pinned lockstep pair is host-conditional (2026-09-03, the
+# PRODUCT_LLE impostor audit) — on other hosts it lives in the absent
+# roster, and a set_property on an unregistered TEST is a configure error.
+set(pom68k_smoke_gates jit_backend_test jit_lockstep_test
+    jit_lockstep_blocks_test jit_lockstep_noaccess_test
+    q605_boot_etalon interp_q605_boot_etalon)
+if(POM68K_JIT_NATIVE_BACKEND STREQUAL "x64")
+    list(APPEND pom68k_smoke_gates jit_lockstep_x64_test jit_lockstep_x64_fine_test)
+endif()
+set_property(TEST ${pom68k_smoke_gates} APPEND PROPERTY LABELS smoke)
 if(TEST jit_lockstep_a64_coarse_test)
     set_property(TEST jit_lockstep_a64_coarse_test APPEND PROPERTY LABELS smoke)
 endif()

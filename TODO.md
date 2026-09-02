@@ -76,16 +76,14 @@ Règles de travail :
   protocole que la jambe x86-64 (`CHANGELOG` 2026-09-02) : aucune fixture
   sale, aucun timeout posé sur sa borne, aucun rouge inexpliqué, et le couple
   exécutés / soft-skips consigné dans `STATUS.md`.
-- [ ] **Enregistrer un census AArch64 sans soft-skip pour les gates à assets
-  optionnels.** Sur l'hôte x86-64 les deux gates s'exécutent (`machfs` était
-  déjà dans `.venv-tools` — seuls les shebangs des scripts console sont morts
-  depuis le renommage `POM68K`→`pom68k` ; `q605_cdrom_etalon` court sur
-  `cd/MAC_OS_8-1_RETAIL_0.ISO` en fallback, `cd/MacOS_86.iso` reste le nom
-  préféré). Reste à constater l'équivalent ici et, si souhaité, recréer la
-  venv pour réparer les shebangs.
-- [ ] **Exécuter une journée avec `-DPOM68K_PRODUCT_LLE_GATES=ON`.** Vérifier
-  la fusion des labels, le backend A64 effectivement sélectionné et le census
-  exécutés/soft-skips.
+- [ ] **Décider comment `STATUS.md` modélise le registre `PRODUCT_LLE`.** La
+  journée du 2026-09-03 (second) est exécutée : fusion des labels propre,
+  backend a64 vérifié sur les locksteps, census 238/0/6. Mais sous ce
+  configure le registre lit 244 enregistrés / union 247 (+8 gates
+  `lle`/`product`/`a64-oracle`) — une troisième taille que `STATUS.md` ne
+  décrit pas, et `docs_test` refuse à bon droit. Soit `status_md.py` apprend
+  cette dimension, soit un arbre `PRODUCT_LLE` est documenté comme exempté
+  des vérifications de registre.
 
 ### A.4 Fermer le palier
 
