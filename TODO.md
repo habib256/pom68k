@@ -52,15 +52,6 @@ Règles de travail :
   ci-dessus fermés, tout rouge redevient une découverte à traiter le jour
   même. Dix jours de rouge ont enterré deux régressions réelles.
 
-### A.2 Rendre la nightly lisible
-
-- [ ] **Lire le premier artefact `pom68k-leak-census`, puis retirer
-  `continue-on-error`.** La nightly du 2026-09-02 (seventeenth) a prouvé les
-  correctifs TSan et GCC 13/ASan et sa jambe ASan a exécuté 84 gates pour la
-  première fois ; ses trois stack-overflows (frames additives sous ASan GCC)
-  sont réglés par `ulimit -s` dans le job. L'artefact leak-census arrivera
-  avec la première jambe ASan entièrement verte — le lire, puis armer.
-
 ### A.3 Rendre la preuve reproductible sur les deux architectures
 
 - [ ] **Transporter les quatre références nées sur l'hôte x86-64.** La récolte

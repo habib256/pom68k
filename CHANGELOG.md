@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 401 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 402 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (fifth)** — [The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking](#2026-09-03-leak-census-armed)
 - **2026-09-03 (fourth)** — [The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again](#2026-09-03-timeout-stomped)
 - **2026-09-03 (third)** — [The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout](#2026-09-03-asan-timeout)
 - **2026-09-03 (second)** — [The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64](#2026-09-03-lle-day)
@@ -789,6 +790,31 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-leak-census-armed"></a>
+## 2026-09-03 (fifth) — The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking
+
+The fourth dispatch (33686489995, at 6444983) returns what three tries
+earned: **Sanitizer (asan-ubsan) = success** — the leg's first fully
+green run since it was written. The relocated TIMEOUT held (the
+(fourth) lesson), the (seventeenth) `ulimit` held, the (fourteenth)
+consteval fix held, and the leak-census step therefore executed for the
+first time and published its artifact.
+
+**The report** (archived beside the night's other logs): the complete
+asset-free tier under `detect_leaks=1` reads **84/84 passed, 88 s, and
+not one LeakSanitizer line** — glibc's runtime agrees with what macOS
+`leaks --atExit` said on 2026-08-27. The artifact has been read, which
+was the recorded precondition: `continue-on-error` is removed and the
+census is blocking from tonight, the one-word flip the step's comment
+promised. TSan and Coverage green on the same run; the two LTO legs
+were still running at read time (green on every completed run this
+week). TODO § A.2 is empty.
+
+With this, the 2026-09-02 (tenth) audit's A.2 section closes end to
+end, one night later: TSan race — fixed and proved; GCC-13 ASan build
+— fixed and proved; sanitizer stack and timeout — measured and fixed
+where the registry actually listens; leak census — read and armed.
 
 <a id="2026-09-03-timeout-stomped"></a>
 ## 2026-09-03 (fourth) — The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again

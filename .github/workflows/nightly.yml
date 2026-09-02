@@ -200,7 +200,7 @@ jobs:
                   --output-on-failure
           fi
 
-      - name: Leak census (non-blocking until it has been read once)
+      - name: Leak census
         # LeakSanitizer is on by default with ASan on Linux and ABSENT on
         # macOS/arm64, so the dev host could never run this leg. What it CAN
         # run is the platform's own tool, and it did (2026-08-27):
@@ -209,12 +209,11 @@ jobs:
         # Apple's -- NSXPCConnection root cycles from AppIntents/LinkServices,
         # with not one POM68K frame in any stack.
         #
-        # So this step exists to learn what a DIFFERENT runtime says, not
-        # because our code is suspected. It stays non-blocking until its first
-        # report has been read; flipping it is then one word, exactly like
-        # -Werror in ci.yml.
+        # The first Linux report was read on 2026-09-03 (run 33686489995,
+        # the ASan leg's first fully green night): 84/84 under
+        # detect_leaks=1, not one LeakSanitizer line. Blocking since, as
+        # promised — the flip was one word, exactly like -Werror in ci.yml.
         if: matrix.name == 'asan-ubsan'
-        continue-on-error: true
         env:
           ASAN_OPTIONS: detect_leaks=1
           LSAN_OPTIONS: print_suppressions=0

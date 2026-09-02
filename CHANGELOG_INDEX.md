@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 401 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 402 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 9 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 30 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 78 |
+| [Cross-cutting](#cross-cutting) | 79 |
 
 ---
 
@@ -463,4 +463,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (third)** — [The GCC census reaches zero and `-Werror` arms; the leak census gets its artifact](CHANGELOG.md#2026-09-02-werror-armed)
 - **2026-09-02 (thirteenth)** — [The asset-none tier becomes a claim a bare runner can keep: four labels were the lie, not the census](CHANGELOG.md#2026-09-02-census-honest)
 - **2026-09-02 (twelfth)** — [The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit](CHANGELOG.md#2026-09-02-blockcache-extracted)
+- **2026-09-03 (fifth)** — [The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking](CHANGELOG.md#2026-09-03-leak-census-armed)
 
