@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (tenth)** — [RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci](#2026-09-03-rbv-inventory)
 - **2026-09-03 (ninth)** — [B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires](#2026-09-03-vasp-inventory)
 - **2026-09-03 (eighth)** — [Green CI becomes a push condition a hook enforces, not a rule a tired session remembers](#2026-09-03-push-gate)
 - **2026-09-03 (seventh)** — [B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed](#2026-09-03-positioned-polls)
@@ -794,6 +795,37 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-rbv-inventory"></a>
+## 2026-09-03 (tenth) — RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci
+
+The same walk as the VASP's, on the RBV's own source: two `ram_` store
+sites (write8/write16), both calling `CodeGuard::note()` first; the
+5380's pseudo-DMA port read and written by guest MOVEs; SWIM1, SCC and
+the Egret behind the VIA shift register all polled; the ASC on its own
+FIFO; and the board's one specificity — RBV video scans the
+framebuffer OUT of system RAM — goes through a const pointer and never
+writes. No IIsi/IIci device masters the bus.
+`RbvMemory::kJitStoreInventoryComplete` lands on that audit,
+`store_inventory_test` gains the RBV row on its proven side (and drops
+it from the must-still-flush side, where MSC and Sonora remain), and
+`RbvCpu::didChangeCACR` consults the constant with the same
+three-valued `POM68K_JIT_030_CACR_FLUSH` contract as V8 and VASP. The
+knob's own table row catches up here too — the (ninth) commit staged
+everything but the paragraph, so this one carries both boards' side of
+it — and so does `STATUS.md`'s x86_64 section, whose registered count
+the (ninth) left at 235 while the new gate registers everywhere: the
+first push through the new hook came back with CI's `docs_test` naming
+exactly that drift, the deltas are the generator's own from the
+aarch64 regen, and the Linux configure re-judges the hand-applied
+numbers on this very push.
+
+Family proof, on the fully rebuilt tree: the eight IIsi/IIci gates
+green under the retired default, and `iisi_boot_etalon` under the
+native engine byte-identical between `POM68K_JIT_030_CACR_FLUSH=1` and
+the board default. § B.4's remaining rows are MSC — whose PG&E and
+expansion bay want a real audit — and Sonora, which was not in the
+original list but carries the same hint.
 
 <a id="2026-09-03-vasp-inventory"></a>
 ## 2026-09-03 (ninth) — B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires

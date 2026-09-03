@@ -98,6 +98,22 @@ public:
     // refused; a store to ROM is refused.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    // Every path that can deposit code in guest RAM on an RBV board passes
+    // CodeGuard::note(): the only two `ram_` store sites are write8/write16
+    // and both note() before storing; the 5380's pseudo-DMA port is
+    // read/written by guest MOVEs (scsiDma_/scsiDmaW_ touch the device,
+    // never RAM); SWIM1/SonyDrive and the SCC are polled; the Egret MCU
+    // sits behind the VIA shift register; the ASC plays from its own FIFO;
+    // and the RBV's own video reads the framebuffer out of system RAM
+    // through a const pointer — it never writes. Generated-code stores
+    // cross the DTLB codeMask into pomJitWrite → write8/16, and dataSpan()
+    // hands the write window out only under that same engine-side codeMask.
+    // No device on the IIsi/IIci masters the bus. `store_inventory_test`
+    // pins each of these source properties; a board that grows a bus
+    // master (a NuBus card with DMA) must flip this back and take the CACR
+    // SMC flush with it (RbvCpu::didChangeCACR).
+    static constexpr bool kJitStoreInventoryComplete = true;
+
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
     uint32_t ramBytes() const { return totalRam_; }
     void jitMapChanged();

@@ -25,6 +25,8 @@ RbvCpu::RbvCpu(RbvMemory& mem, const jit::ResolvedConfig& jitConfig,
     boost_ = cacheBoost_;
     if (cpuConfig.floppyBoostGate)
         floppyGate_ = *cpuConfig.floppyBoostGate;
+    if (cpuConfig.cacr030Flush)
+        cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
     armIcacheOverlay(icacheMiss_);
 }
 
@@ -38,9 +40,14 @@ void RbvCpu::hardReset() {
 
 void RbvCpu::didChangeCACR(moira::u32 value) {
     pomInvalidateIcache030(value);         // CI whole / CEI selected longword
-    // SMC hint — but only the INSTRUCTION-cache strobes are one. See
-    // Cpu030::didChangeCACR for the measurement that narrowed this.
-    if (value & 0x0C) jit_.flushAll();
+    // The CACR SMC hint, retired behind this board's own audited store
+    // inventory (RbvMemory::kJitStoreInventoryComplete, pinned by
+    // store_inventory_test): every RAM store already crosses
+    // CodeGuard::note(), so the drop-all flush protected nothing.
+    // POM68K_JIT_030_CACR_FLUSH keeps its three values as on V8/VASP.
+    const bool flush = cacrFlushPolicy_ < 0
+        ? !RbvMemory::kJitStoreInventoryComplete : cacrFlushPolicy_ != 0;
+    if ((value & 0x0C) && flush) jit_.flushAll();
 }
 
 void RbvCpu::runCycles(moira::i64 n) {

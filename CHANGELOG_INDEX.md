@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 406 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 407 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 49 |
+| [Machine bring-ups](#machine-bring-ups) | 50 |
 | [Build, packaging and release](#build-packaging-and-release) | 10 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -326,6 +326,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-01 (tenth)** — [The whole lock goes strict-green: an 030 guest flushes GISTPERSO and 7.1, and the iivx bound was contention](CHANGELOG.md#2026-09-01-lock-complete)
 - **2026-09-02 (fourth)** — [The boot matrix asks the guest who is in front, and ten cells are recorded against the clean references](CHANGELOG.md#2026-09-02-matrix-recalibrated)
 - **2026-09-02 (sixth)** — [The first application-load TIME profile: translation is the biggest post, and code density is not](CHANGELOG.md#2026-09-02-time-profile)
+- **2026-09-03 (tenth)** — [RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci](CHANGELOG.md#2026-09-03-rbv-inventory)
 
 ## Build, packaging and release
 

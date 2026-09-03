@@ -154,13 +154,15 @@ désormais la masse mesurée.
 
 ### B.4 Gardes, mémoire et coût partagé
 
-- [ ] **Retirer conformément le hint CACR/SMC sur RBV puis MSC.** Le VASP est
-  fait (`CHANGELOG` 2026-09-03 (ninth)) et `store_inventory_test` pinne
-  désormais chaque inventaire revendiqué au niveau source — et tient RBV,
-  MSC et Sonora à leur flush tant qu'ils n'ont pas leur propre audit.
-  Prouver carte par carte que toute écriture RAM — CPU, pseudo-DMA et
-  périphériques — traverse `CodeGuard::note()`, ajouter la ligne au gate,
-  puis retirer le flush. Ne pas extrapoler la preuve d'une autre carte.
+- [ ] **Retirer conformément le hint CACR/SMC sur MSC, et statuer sur
+  Sonora.** VASP et RBV sont faits (`CHANGELOG` 2026-09-03 (ninth) et
+  (tenth)) et `store_inventory_test` pinne chaque inventaire revendiqué au
+  niveau source — et tient MSC et Sonora à leur flush tant qu'ils n'ont pas
+  leur propre audit. Le MSC a le PG&E et la baie d'extension à auditer ;
+  Sonora n'était pas dans la liste d'origine mais porte le même hint.
+  Prouver que toute écriture RAM — CPU, pseudo-DMA et périphériques —
+  traverse `CodeGuard::note()`, ajouter la ligne au gate, puis retirer le
+  flush. Ne pas extrapoler la preuve d'une autre carte.
 - [ ] **Étudier `PFLUSHA` et le retry d'armement seulement après profil.**
   Toute réduction des bumps ou du backoff doit garder les locksteps 030/040 :
   le moment où une fenêtre s'arme est observable sur 68040.

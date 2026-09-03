@@ -22,7 +22,7 @@
 //
 // TODO § B.4 rule: do not extrapolate one board's proof to another. Each
 // claiming pair below was audited individually (V8: 2026-08-19 §
-// C.4quinquies; VASP: 2026-09-03 (ninth)).
+// C.4quinquies; VASP: 2026-09-03 (ninth); RBV: 2026-09-03 (tenth)).
 
 #include "AssetFingerprint.h"
 
@@ -103,6 +103,7 @@ int main() {
     const Board proven[] = {
         {"V8", "src/V8Memory.h", "src/V8Memory.cpp", "src/Cpu030.cpp"},
         {"VASP", "src/VaspMemory.h", "src/VaspMemory.cpp", "src/VaspCpu.cpp"},
+        {"RBV", "src/RbvMemory.h", "src/RbvMemory.cpp", "src/RbvCpu.cpp"},
     };
     for (const Board& b : proven) {
         const std::string header = slurp(testasset::find(b.header));
@@ -118,7 +119,6 @@ int main() {
     // ── The boards that have NOT earned the claim keep the flush ─────────
     struct Unproven { const char* name, *header, *wrapper; };
     const Unproven pending[] = {
-        {"RBV", "src/RbvMemory.h", "src/RbvCpu.cpp"},
         {"MSC", "src/MscMemory.h", "src/MscCpu.cpp"},
         {"Sonora", "src/SonoraMemory.h", "src/SonoraCpu.cpp"},
     };
