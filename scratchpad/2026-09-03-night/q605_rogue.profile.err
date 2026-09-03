@@ -1,0 +1,2 @@
+run rc=0  stdout=scratchpad/2026-09-03-night/q605_rogue.sample.txt.out  stderr=scratchpad/2026-09-03-night/q605_rogue.sample.txt.err
+       39,49 real        36,88 user         1,74 sys

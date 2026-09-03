@@ -1,0 +1,13 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0bc6cf145533e89ca45fb9e9ebc2e788a2ae783ec40d9e36df9306e055f9cf91  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+ASSET floppy "disks35/Rogue.dsk" 819200 B sha256 fce3edd55a62450c3e11f22e5c760fd7d46d259c97de38ad6d202b5f104cf3a5  HFS "Rogue" drVolAtrb $0100 clean
+q605_rogue_census — engine jit, backend aarch64
+Finder up (SCSI 5176)
+mount: screen delta 0.0055 after insert
+  Cmd-O (open volume): KeyMap saw Cmd=1 key=1
+open: screen delta 0.3248 after Cmd-O
+select: screen delta 0.0028 after typing in the window (want >0 — the icon highlights)
+  Cmd-O (launch): KeyMap saw Cmd=1 key=1
+launch: screen delta 0.7011
+gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+PASS: censuses dumped per phase above (stderr)

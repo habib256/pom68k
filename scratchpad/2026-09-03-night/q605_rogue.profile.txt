@@ -1,0 +1,59 @@
+33215 samples, 33215 on-CPU (100.0 %), 0 parked in wait syscalls
+
+── buckets (% of on-CPU) ──
+  corps générés (natif)             36.33 %  (12068)
+  LLE/périphériques                 18.63 %  (6188)
+  carte mémoire/thunks              13.86 %  (4603)
+  moteur — runtime/fenêtres         12.35 %  (4102)
+  MMU/cache                          9.75 %  (3240)
+  hôte/harnais                       5.68 %  (1885)
+  interpréteur (fallback)            2.87 %  (952)
+  moteur — compilation               0.32 %  (106)
+  autre                              0.21 %  (71)
+
+── top 45 self symbols ──
+   36.33 %  [GENERATED CODE]
+    8.00 %  Q605Memory::tick(int)
+    6.79 %  M68hc05::run(int)
+    5.13 %  moira::Moira::mmu040Translate<(moira::Core)2>(unsigned int, unsigned int, bool, bool, bool, int)
+    4.30 %  Scc8530::tick(int)
+    4.06 %  jit::Engine::executeUntil(long long)
+    4.04 %  Q605Memory::cyclesToNextEvent() const
+    2.43 %  [dyld]
+    2.21 %  Dafb::tick(int)
+    1.89 %  testasset::detail::Sha256::compress(unsigned char const*)
+    1.77 %  moira::Moira::pomCache040ReadValue(unsigned int, bool, int)
+    1.77 %  moira::Moira::pomJitProbeCode(unsigned int, bool, unsigned int&, unsigned int&, unsigned int&) const
+    1.59 %  Scc8530::cyclesToNextEvent() const
+    1.31 %  Cpu040::flushTicks()
+    0.96 %  Q605Memory::read16(unsigned int)
+    0.91 %  Cpu040::Cpu040(Q605Memory&, jit::ResolvedConfig const&, pom68k::CoreCpuConfig const&, pom68k::CoreDiagnosticConfig const&)::$_0::__invoke(moira::Moira*)
+    0.86 %  Via6522::tick(int)
+    0.66 %  moira::Moira::mmu040Read<(moira::Core)2, 2>(unsigned int, bool)
+    0.63 %  moira::Moira::mmu040InstrStart<(moira::Core)2>()
+    0.62 %  pom68k::MoiraCpu<Cpu040, Q605Memory>::sync(int)
+    0.59 %  M68hc05::aluOp(int, unsigned short, bool)
+    0.56 %  AscIosb::tick(int)
+    0.48 %  moira::Moira::pomJitProbeData(unsigned int, bool, bool, unsigned int&, unsigned int&, unsigned int&, bool) const
+    0.48 %  std::__function::__func<CudaLle::CudaLle(Via6522&, long long, CudaLle::Flavor)::$_2, void (int)>::operator()(int&&)
+    0.46 %  moira::Moira::mmu040Write<(moira::Core)2, 2>(unsigned int, unsigned int, bool)
+    0.45 %  (anonymous namespace)::decodeScreen(Q605Memory const&)
+    0.42 %  moira::Moira::pomCache040WriteValue(unsigned int, unsigned int, bool, int)
+    0.42 %  jit::(anonymous namespace)::A64Backend::run(jit::Compiled*, jit::Context&)
+    0.39 %  moira::Moira::pomJitExecOne()
+    0.38 %  moira::Moira::mmu040Read<(moira::Core)2, 4>(unsigned int, bool)
+    0.37 %  SonyDrive::nextFluxAfter(long long, bool)
+    0.32 %  [libsystem_platform.dylib]
+    0.31 %  moira::Moira::pomJitCache040Publish(unsigned int, int, bool)
+    0.31 %  moira::Moira::execute()
+    0.30 %  Q605Memory::write16(unsigned int, unsigned short)
+    0.27 %  Q605Memory::read8(unsigned int)
+    0.25 %  jit::Engine::serviceGuard()
+    0.24 %  jit::Engine::dispatchBlockKey(unsigned int, bool)
+    0.23 %  moira::Moira::pomJitCache040Match(unsigned int, unsigned int) const
+    0.23 %  [libsystem_malloc.dylib]
+    0.22 %  [libsystem_kernel.dylib]
+    0.21 %  std::__function::__func<CudaLle::CudaLle(Via6522&, long long, CudaLle::Flavor)::$_0, unsigned char (int)>::operator()(int&&)
+    0.20 %  moira::Moira::pomJitDataSlow(unsigned int, unsigned int, bool)
+    0.20 %  moira::Moira::execShiftRg<(moira::Core)2, (moira::Instr)11, (moira::Mode)0, 4>(unsigned short)
+    0.20 %  jit::CodeGuard::note(unsigned int, unsigned int)

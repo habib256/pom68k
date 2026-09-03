@@ -1,0 +1,17 @@
+q605 engine=jit    cycles=1250001000 machine (5000019686 core, boost ×4.0)  wall=14.93s for 50.00s of guest time  ×3.35 real time  334.9 core MHz  fp=e5ef507ef9ff86ab
+  backend=aarch64  retired=643268628  43.1 Minstr/s  blocks 13257 compiled / 33833532 run (18.7 instr/run)
+  compile: 13654 attempt(s), 397 rejected (2.9%), 38.87 ms total (2.8 us/attempt)
+    accepted 13257 in 38.39 ms (2.9 us/accepted) · context/IR 8/0.00 ms · coverage 389/0.48 ms
+  native 311778129 (48.5%) · block fallback 315618153 (49.1%) · window/interp 15807696 (2.5%) · tracing 64650 (0.0%)
+  identity: buckets 311778129+315618153+5398617+10409079+64650 = 643268628 vs retired 643268628 · misses 15872346 vs attributed 15872346 · OK
+  window 1050696 armed / 281452 refused · dtlb 0 filled / 441429 refused · 9 flush(es), 1223 from a write into translated code
+  flush causes:  wrapper hint/reset 7  translation moved 34502  write into code 2
+  not-native causes (instrs):  cpu flags 299603 (0.0%)  window refused 281452 (0.0%)  arm backoff 9006464 (1.4%)  tracing 885790 (0.1%)  not hot yet 3109652 (0.5%)  backend declined 395003 (0.1%)  040 line absent 1893962 (0.3%)  guard replay 420 (0.0%)
+  exit block end          33824755  (1 per 19.0 instr)
+  exit cpu flags            327674  (1 per 1963.1 instr)
+  exit window lost          214827  (1 per 2994.4 instr)
+  exit clock budget           2752  (1 per 233745.9 instr)
+  exit not compilable       821152  (1 per 783.4 instr)
+  exits total        35191160  (1 per 18.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"q605_jit","cpu_family":"68040","host_arch":"aarch64","host_profile":"aarch64","backend":"aarch64","engine":"jit","status":"pass","machine_cycles":1250001000,"core_cycles":5000019686,"wall_ns":14929175500,"fingerprint":"e5ef507ef9ff86ab","blocks_compiled":13257,"blocks_run":33833532,"jit_instrs":632859549,"native_instrs":311778129,"interp_instrs":10409079,"slow_instrs":315618153,"window_instrs":5398617,"native_share_permille":484,"realtime_permille":3349}
+  SCSI=1062  pc=$00198344  running

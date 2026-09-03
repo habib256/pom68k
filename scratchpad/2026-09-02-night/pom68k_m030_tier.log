@@ -1,0 +1,197 @@
+Test project /Users/mercure/src/pom68k/build
+      Start 114: sonora_soak_etalon
+ 1/56 Test #114: sonora_soak_etalon ...............***Failed  200.39 sec
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/System 7.5 HD.dsk" 41943040 B sha256 b0bf55891e10c0c31c7457bcb7127582572a12f9800a7d31b4c9037e93828c0e  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+[finder] menu 0.05 desk 0.45 run 382
+[finder] menu 0.05 desk 0.49 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+FAIL: no Finder after boot
+
+      Start 110: iivx_persist_etalon
+      Start 132: lc520_persist_etalon
+ 2/56 Test #132: lc520_persist_etalon .............   Passed  189.60 sec
+      Start 123: duo_persist_etalon
+ 3/56 Test #110: iivx_persist_etalon ..............   Passed  196.85 sec
+      Start 109: iivx_soak_etalon
+      Start 131: lc520_soak_etalon
+ 4/56 Test #123: duo_persist_etalon ...............   Passed  102.46 sec
+      Start 122: duo_soak_etalon
+ 5/56 Test #131: lc520_soak_etalon ................   Passed  147.73 sec
+      Start 102: lcii_sys7_boot_etalon
+ 6/56 Test #109: iivx_soak_etalon .................   Passed  153.86 sec
+      Start 231: interp_iivx_boot_etalon
+ 7/56 Test #122: duo_soak_etalon ..................   Passed   80.37 sec
+      Start 234: interp_duo230_boot_etalon
+ 8/56 Test #102: lcii_sys7_boot_etalon ............   Passed   46.38 sec
+      Start 185: duo230_boot_etalon
+ 9/56 Test #234: interp_duo230_boot_etalon ........   Passed   56.58 sec
+      Start  84: sonora_video_test
+10/56 Test  #84: sonora_video_test ................   Passed    0.02 sec
+      Start  58: msc_parity_test
+11/56 Test  #58: msc_parity_test ..................   Passed    0.03 sec
+12/56 Test #185: duo230_boot_etalon ...............   Passed   49.13 sec
+      Start 142: cclassic2_boot_etalon
+13/56 Test #231: interp_iivx_boot_etalon ..........   Passed  125.05 sec
+      Start 141: lc550_boot_etalon
+14/56 Test #142: cclassic2_boot_etalon ............   Passed  103.41 sec
+      Start 113: iici_soak_etalon
+15/56 Test #141: lc550_boot_etalon ................   Passed  103.23 sec
+      Start 143: iivx_boot_etalon
+16/56 Test #113: iici_soak_etalon .................   Passed   80.27 sec
+      Start 140: lc520_boot_etalon
+17/56 Test #143: iivx_boot_etalon .................   Passed   91.52 sec
+      Start 218: jit_iivx_boot_etalon
+18/56 Test #140: lc520_boot_etalon ................   Passed   83.25 sec
+      Start 232: interp_iisi_boot_etalon
+19/56 Test #218: jit_iivx_boot_etalon .............   Passed   91.64 sec
+      Start  66: iivx_input_etalon
+20/56 Test #232: interp_iisi_boot_etalon ..........   Passed   75.86 sec
+      Start 111: iisi_soak_etalon
+21/56 Test  #66: iivx_input_etalon ................   Passed   69.60 sec
+      Start  65: lc520_input_etalon
+22/56 Test #111: iisi_soak_etalon .................   Passed   72.49 sec
+      Start  64: lc3_input_etalon
+23/56 Test  #65: lc520_input_etalon ...............   Passed   63.22 sec
+      Start 144: iivi_boot_etalon
+24/56 Test  #64: lc3_input_etalon .................   Passed   63.56 sec
+      Start 149: iici_boot_etalon
+25/56 Test #144: iivi_boot_etalon .................   Passed   56.07 sec
+      Start 145: iisi_boot_etalon
+26/56 Test #149: iici_boot_etalon .................   Passed   49.28 sec
+      Start 219: jit_iisi_boot_etalon
+27/56 Test #145: iisi_boot_etalon .................   Passed   45.65 sec
+      Start  67: iisi_input_etalon
+28/56 Test #219: jit_iisi_boot_etalon .............   Passed   45.39 sec
+      Start 126: iifx_soak_etalon
+29/56 Test  #67: iisi_input_etalon ................   Passed   34.18 sec
+      Start 184: iifx_input_etalon
+30/56 Test #184: iifx_input_etalon ................   Passed    9.00 sec
+      Start 233: interp_iifx_boot_etalon
+31/56 Test #126: iifx_soak_etalon .................   Passed   26.78 sec
+      Start 183: iifx_boot_etalon
+32/56 Test #183: iifx_boot_etalon .................   Passed    2.17 sec
+      Start 224: jit_iifx_boot_etalon
+33/56 Test #233: interp_iifx_boot_etalon ..........   Passed    2.96 sec
+      Start 182: iifx_post_etalon
+34/56 Test #182: iifx_post_etalon .................   Passed    1.17 sec
+35/56 Test #224: jit_iifx_boot_etalon .............   Passed    2.15 sec
+      Start 115: sonora_persist_etalon
+36/56 Test #115: sonora_persist_etalon ............***Failed  200.48 sec
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/System 7.5 HD.dsk" 41943040 B sha256 b0bf55891e10c0c31c7457bcb7127582572a12f9800a7d31b4c9037e93828c0e  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+[finder] menu 0.05 desk 0.45 run 382
+[finder] menu 0.05 desk 0.49 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+[finder] menu 0.14 desk 0.50 run 357
+FAIL: no Finder after boot
+
+      Start 230: interp_lc3_boot_etalon
+37/56 Test #230: interp_lc3_boot_etalon ...........   Passed  124.98 sec
+      Start 139: lc3plus_boot_etalon
+38/56 Test #139: lc3plus_boot_etalon ..............   Passed  215.20 sec
+      Start 112: iisi_persist_etalon
+39/56 Test #112: iisi_persist_etalon ..............   Passed   96.58 sec
+      Start 217: jit_lc3_boot_etalon
+40/56 Test #217: jit_lc3_boot_etalon ..............   Passed  152.33 sec
+      Start 138: lc3_boot_etalon
+41/56 Test #138: lc3_boot_etalon ..................   Passed  152.39 sec
+      Start 229: interp_lcii_boot_etalon
+42/56 Test #229: interp_lcii_boot_etalon ..........   Passed   68.27 sec
+      Start 169: lcii_soak_etalon
+43/56 Test #169: lcii_soak_etalon .................   Passed   48.61 sec
+      Start 170: lcii_persist_etalon
+44/56 Test #170: lcii_persist_etalon ..............   Passed   59.34 sec
+      Start 150: mactv_boot_etalon
+45/56 Test #150: mactv_boot_etalon ................***Failed   41.57 sec
+ASSET rom    "roms/1MB ROMs/1994 - EAF1678D - Macintosh TV.ROM" 1048576 B sha256 2b4fbc3dae98cfd6cd58cd5edf6d7e629c93c46ca233e14ee31dcb9a9f7698e5
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 ea6138848399d42ba8a3a6d07234b2a7bc31b6bb4186904045091193bcb0692b  HFS "GIST PERSO" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+ADB: Cuda firmware LLE
+mode 640x480 vidcfg $33; menu bar dark 0.15 (want <0.30), desktop dither 0.14 / gray 0.35 (want alive), SCSI commands 2140
+FAILED
+
+      Start 216: jit_mactv_boot_etalon
+46/56 Test #216: jit_mactv_boot_etalon ............***Failed   41.08 sec
+ASSET rom    "roms/1MB ROMs/1994 - EAF1678D - Macintosh TV.ROM" 1048576 B sha256 2b4fbc3dae98cfd6cd58cd5edf6d7e629c93c46ca233e14ee31dcb9a9f7698e5
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 ea6138848399d42ba8a3a6d07234b2a7bc31b6bb4186904045091193bcb0692b  HFS "GIST PERSO" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+ADB: Cuda firmware LLE
+mode 640x480 vidcfg $33; menu bar dark 0.15 (want <0.30), desktop dither 0.14 / gray 0.35 (want alive), SCSI commands 2140
+FAILED
+
+      Start 171: lcii_launch_etalon
+47/56 Test #171: lcii_launch_etalon ...............   Passed   32.15 sec
+      Start 103: lcii_savestate_etalon
+48/56 Test #103: lcii_savestate_etalon ............   Passed   31.03 sec
+      Start 172: lcii_floppy_etalon
+49/56 Test #172: lcii_floppy_etalon ...............   Passed   31.11 sec
+      Start 137: cclassic_boot_etalon
+50/56 Test #137: cclassic_boot_etalon .............   Passed   33.98 sec
+      Start 136: classic2_boot_etalon
+51/56 Test #136: classic2_boot_etalon .............   Passed   31.76 sec
+      Start 215: jit_lcii_boot_etalon
+52/56 Test #215: jit_lcii_boot_etalon .............   Passed   27.05 sec
+      Start 101: lcii_boot_etalon
+53/56 Test #101: lcii_boot_etalon .................   Passed   27.15 sec
+      Start 127: iifx_persist_etalon
+54/56 Test #127: iifx_persist_etalon ..............   Passed   15.41 sec
+      Start 135: lc_boot_etalon
+55/56 Test #135: lc_boot_etalon ...................   Passed   49.48 sec
+      Start 220: jit_lc_boot_etalon
+56/56 Test #220: jit_lc_boot_etalon ...............   Passed   47.00 sec
+
+93% tests passed, 4 tests failed out of 56
+
+Label Time Summary:
+asset-none         =   0.05 sec*proc (2 tests)
+asset-required     = 15939.93 sec*proc (54 tests)
+etalon             = 15939.93 sec*proc (54 tests)
+etalon-core        = 1405.08 sec*proc (6 tests)
+host-any           = 15939.97 sec*proc (56 tests)
+jit                = 1883.03 sec*proc (7 tests)
+m030               = 15939.97 sec*proc (56 tests)
+scope-component    =   0.05 sec*proc (2 tests)
+scope-profile      = 15939.93 sec*proc (54 tests)
+tier-daily         =   0.05 sec*proc (2 tests)
+tier-full          = 14534.84 sec*proc (48 tests)
+tier-platform      = 1405.08 sec*proc (6 tests)
+unit               =   0.05 sec*proc (2 tests)
+
+Total Test time (real) = 2772.05 sec
+
+The following tests FAILED:
+	114 - sonora_soak_etalon (Failed)                       asset-required etalon host-any m030 scope-profile tier-full
+	115 - sonora_persist_etalon (Failed)                    asset-required etalon host-any m030 scope-profile tier-full
+	150 - mactv_boot_etalon (Failed)                        asset-required etalon host-any m030 scope-profile tier-full
+	216 - jit_mactv_boot_etalon (Failed)                    asset-required etalon host-any jit m030 scope-profile tier-full
+Errors while running CTest

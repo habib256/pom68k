@@ -1,0 +1,17 @@
+=== q605 rogue macOS profile leg 2026-09-03 06:17:55 ===
+tree: d72268b 3 dirty files
+build: build-profile RelWithDebInfo, -Wl,-no_deduplicate, POM68K_FAST_LINK=ON
+host before:  6:17  up 12:14, 2 users, load averages: 5,77 3,60 2,29
+host after:  6:18  up 12:14, 2 users, load averages: 3,82 3,37 2,27
+
+Captures:
+  q605_rogue.sample.txt            whole run, sample 1 ms, 33215 on-CPU samples, 39.49 s real
+  q605_rogue_gameplay.sample.txt   attached at rogue-title census dump, 10085 samples
+  jit_bench_a64.sample.txt         jit_bench native arm, one run (a look, not a claim)
+Workload identity: gameplay: 446/468 keys repainted, cumulative delta 5.18, halted=0
+  (byte-identical to the six runs of CHANGELOG 2026-09-02 (sixteenth))
+Reports: *.profile.txt beside each capture, tools/profile_census_macos.py at the
+  committed revision (buckets synced with the Linux leg the same day).
+Gameplay-phase ranking: generated 41.0 / LLE 21.2 / memory-map 14.8 /
+  engine runtime 11.6 / MMU-cache 7.1 / interp 2.5.
+Device tick+deadline pump aggregate (across buckets): ~36 % of gameplay phase.

@@ -1,0 +1,59 @@
+3070 samples, 3070 on-CPU (100.0 %), 0 parked in wait syscalls
+
+── buckets (% of on-CPU) ──
+  corps générés (natif)             25.83 %  (793)
+  LLE/périphériques                 25.73 %  (790)
+  hôte/harnais                      22.05 %  (677)
+  carte mémoire/thunks              16.87 %  (518)
+  moteur — runtime/fenêtres          4.92 %  (151)
+  MMU/cache                          3.03 %  (93)
+  interpréteur (fallback)            0.85 %  (26)
+  moteur — compilation               0.42 %  (13)
+  autre                              0.29 %  (9)
+
+── top 45 self symbols ──
+   25.83 %  [GENERATED CODE]
+   18.93 %  [dyld]
+    9.87 %  M68hc05::run(int)
+    9.12 %  Q605Memory::tick(int)
+    6.06 %  Q605Memory::cyclesToNextEvent() const
+    5.11 %  Scc8530::tick(int)
+    3.19 %  Dafb::tick(int)
+    2.57 %  Scc8530::cyclesToNextEvent() const
+    2.12 %  Cpu040::flushTicks()
+    1.37 %  [libsystem_kernel.dylib]
+    1.24 %  Via6522::tick(int)
+    1.24 %  moira::Moira::mmu040Translate<(moira::Core)2>(unsigned int, unsigned int, bool, bool, bool, int)
+    1.14 %  M68hc05::aluOp(int, unsigned short, bool)
+    1.04 %  [libsystem_platform.dylib]
+    0.94 %  Q605Memory::read8(unsigned int)
+    0.81 %  moira::Moira::pomCache040ReadValue(unsigned int, bool, int)
+    0.78 %  Cpu040::Cpu040(Q605Memory&, jit::ResolvedConfig const&, pom68k::CoreCpuConfig const&, pom68k::CoreDiagnosticConfig const&)::$_0::__invoke(moira::Moira*)
+    0.52 %  std::__function::__func<CudaLle::CudaLle(Via6522&, long long, CudaLle::Flavor)::$_2, void (int)>::operator()(int&&)
+    0.52 %  std::__function::__func<CudaLle::CudaLle(Via6522&, long long, CudaLle::Flavor)::$_0, unsigned char (int)>::operator()(int&&)
+    0.49 %  jit::Engine::executeUntil(long long)
+    0.49 %  AscIosb::read(unsigned int)
+    0.46 %  [libsystem_malloc.dylib]
+    0.42 %  M68hc05::write8(unsigned short, unsigned char)
+    0.39 %  moira::Moira::mmu040Read<(moira::Core)2, 1>(unsigned int, bool)
+    0.36 %  AscIosb::tick(int)
+    0.33 %  jit::(anonymous namespace)::A64Backend::compile(jit::BlockIr const&, jit::Context const&)
+    0.29 %  Q605Memory::read16(unsigned int)
+    0.23 %  Q605Memory::scsiDmaRead_()
+    0.20 %  moira::Moira::pomJitProbeCode(unsigned int, bool, unsigned int&, unsigned int&, unsigned int&) const
+    0.16 %  moira::Moira::pomJitCache040Publish(unsigned int, int, bool)
+    0.16 %  moira::Moira::pomCache040WriteValue(unsigned int, unsigned int, bool, int)
+    0.16 %  moira::Moira::mmu040Read<(moira::Core)2, 4>(unsigned int, bool)
+    0.16 %  jit::Engine::dispatchBlockKey(unsigned int, bool)
+    0.13 %  std::__function::__func<CudaLle::CudaLle(Via6522&, long long, CudaLle::Flavor)::$_1, void (int, unsigned char)>::operator()(int&&, unsigned char&&)
+    0.13 %  moira::Moira::pomJitExecOne()
+    0.13 %  Q605Memory::viaAccess8(unsigned int, bool, unsigned char)
+    0.10 %  jit::(anonymous namespace)::Asm::movX(unsigned int, unsigned long long)
+    0.10 %  moira::Moira::mmu040InstrStart<(moira::Core)2>()
+    0.10 %  Cpu040::updateIpl()
+    0.10 %  Cpu040::stall(int)
+    0.10 %  moira::Moira::mmu040Read<(moira::Core)2, 2>(unsigned int, bool)
+    0.10 %  pom68k::MoiraCpu<Cpu040, Q605Memory>::sync(int)
+    0.10 %  jit::(anonymous namespace)::A64Backend::run(jit::Compiled*, jit::Context&)
+    0.10 %  [libsystem_c.dylib]
+    0.10 %  std::vector<unsigned char>::__init_with_sentinel[abi:nqe210106]<std::istreambuf_iterator<char>, std::istreambuf_iterator<char>>(std::istreambuf_iterator<char>, std::istreambuf_iterator<char>)

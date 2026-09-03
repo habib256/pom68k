@@ -1,0 +1,7 @@
+ASSET rom    "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM" 1048576 B sha256 a5cbde0f1fe905f05592e181685df79df4a4fd3d4bfb7fe3df2e45ac8601b59a
+ASSET rom    "roms/pge/pge_boot.bin" 512 B sha256 ab6348f7f71d97162d7e17813c46ff8e1d2213635099166809df3214725eb29b
+ASSET disk   "hdv/ref/System 7.5.5 HD.dsk" 83886080 B sha256 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 163840 = 163936 blocks)
+Duo 230: menu bar dark 0.04, desktop 0.43, SCSI commands 3393, GSC mode 2
+PASSED — booted to Finder

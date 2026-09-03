@@ -1,0 +1,17 @@
+q605 engine=jit    cycles=1250001000 machine (5000019564 core, boost ×4.0)  wall=3.11s for 50.00s of guest time  ×16.09 real time  1609.2 core MHz  fp=778dd7ad558108fd
+  backend=aarch64  retired=649372093  209.0 Minstr/s  blocks 18065 compiled / 1013386 run (639.3 instr/run)
+  compile: 18104 attempt(s), 39 rejected (0.2%), 53.16 ms total (2.9 us/attempt)
+    accepted 18065 in 53.13 ms (2.9 us/accepted) · context/IR 23/0.00 ms · coverage 16/0.03 ms
+  native 647254528 (99.7%) · block fallback 316330 (0.0%) · window/interp 1688068 (0.3%) · tracing 113167 (0.0%)
+  identity: buckets 647254528+316330+218710+1469358+113167 = 649372093 vs retired 649372093 · misses 1801235 vs attributed 1801235 · OK
+  window 598186 armed / 13340 refused · dtlb 277296 filled / 2953 refused · 8 flush(es), 15867 from a write into translated code
+  flush causes:  wrapper hint/reset 7  translation moved 7  write into code 1
+  not-native causes (instrs):  cpu flags 364446 (0.1%)  window refused 13340 (0.0%)  arm backoff 426880 (0.1%)  tracing 766502 (0.1%)  backend declined 218710 (0.0%)  guard replay 11357 (0.0%)
+  exit block end            924643  (1 per 702.3 instr)
+  exit cpu flags            395957  (1 per 1640.0 instr)
+  exit window lost           77123  (1 per 8420.0 instr)
+  exit clock budget           2981  (1 per 217837.0 instr)
+  exit not compilable       653348  (1 per 993.9 instr)
+  exits total         2054052  (1 per 316.1 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"q605_jit","cpu_family":"68040","host_arch":"aarch64","host_profile":"aarch64","backend":"aarch64","engine":"jit","status":"pass","machine_cycles":1250001000,"core_cycles":5000019564,"wall_ns":3107089875,"fingerprint":"778dd7ad558108fd","blocks_compiled":18065,"blocks_run":1013386,"jit_instrs":647902735,"native_instrs":647254528,"interp_instrs":1469358,"slow_instrs":316330,"window_instrs":218710,"native_share_permille":996,"realtime_permille":16092}
+  SCSI=1324  pc=$0002528A  running

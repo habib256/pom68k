@@ -1,0 +1,135 @@
+=== abba driver start 22:10:53 ===
+=== tiers done, building arms 22:10:53 ===
+[  6%] Built target softfloat68k
+[  6%] Built target moira
+[100%] Built target pom68k_core
+[100%] Building CXX object CMakeFiles/q605_rogue_census.dir/tests/q605_rogue_census.cpp.o
+[100%] Linking CXX executable q605_rogue_census
+[100%] Built target q605_rogue_census
+Preparing worktree (detached HEAD 91d09ab)
+HEAD is now at 91d09ab Close the x64 bias proof and profile the 68040: dispatch is the thief
+[  0%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat.c.o
+[  0%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat_decimal.c.o
+[  0%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat_fpsp.c.o
+[  6%] Linking C static library libsoftfloat68k.a
+[  6%] Built target softfloat68k
+[  6%] Building CXX object CMakeFiles/moira.dir/extern/moira/Moira/MoiraDebugger.cpp.o
+[  6%] Building CXX object CMakeFiles/moira.dir/extern/moira/Moira/Moira.cpp.o
+[  6%] Linking CXX static library libmoira.a
+[  6%] Built target moira
+[  6%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitEngine.cpp.o
+[  6%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitShiftVersions.cpp.o
+[  6%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/backends/JitBackendThreaded.cpp.o
+[  6%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitCodeBuffer.cpp.o
+[  6%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitBackend.cpp.o
+[ 12%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitEngineCensus.cpp.o
+[ 18%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/backends/JitBackendA64.cpp.o
+[ 18%] Building CXX object CMakeFiles/pom68k_core.dir/src/SaveState.cpp.o
+[ 18%] Building CXX object CMakeFiles/pom68k_core.dir/src/SaveStateMachines.cpp.o
+[ 18%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu68k.cpp.o
+[ 25%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacMemory.cpp.o
+[ 25%] Building CXX object CMakeFiles/pom68k_core.dir/src/Via6522.cpp.o
+[ 25%] Building CXX object CMakeFiles/pom68k_core.dir/src/Rtc.cpp.o
+[ 25%] Building CXX object CMakeFiles/pom68k_core.dir/src/Iwm.cpp.o
+[ 25%] Building CXX object CMakeFiles/pom68k_core.dir/src/SonyDrive.cpp.o
+[ 31%] Building CXX object CMakeFiles/pom68k_core.dir/src/Scc8530.cpp.o
+[ 31%] Building CXX object CMakeFiles/pom68k_core.dir/src/M68hc05.cpp.o
+[ 31%] Building CXX object CMakeFiles/pom68k_core.dir/src/ApplePic.cpp.o
+[ 31%] Building CXX object CMakeFiles/pom68k_core.dir/src/R65c02.cpp.o
+[ 31%] Building CXX object CMakeFiles/pom68k_core.dir/src/IIfxMemory.cpp.o
+[ 37%] Building CXX object CMakeFiles/pom68k_core.dir/src/IIfxCpu.cpp.o
+[ 37%] Building CXX object CMakeFiles/pom68k_core.dir/src/CudaLle.cpp.o
+[ 37%] Building CXX object CMakeFiles/pom68k_core.dir/src/LtoUdp.cpp.o
+[ 37%] Building CXX object CMakeFiles/pom68k_core.dir/src/AtalkStack.cpp.o
+[ 37%] Building CXX object CMakeFiles/pom68k_core.dir/src/AfpServer.cpp.o
+[ 43%] Building CXX object CMakeFiles/pom68k_core.dir/src/PapServer.cpp.o
+[ 43%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacIpGateway.cpp.o
+[ 43%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacInput.cpp.o
+[ 43%] Building CXX object CMakeFiles/pom68k_core.dir/src/ScsiDisk.cpp.o
+[ 50%] Building CXX object CMakeFiles/pom68k_core.dir/src/DaynaPort.cpp.o
+[ 50%] Building CXX object CMakeFiles/pom68k_core.dir/src/EtherLink.cpp.o
+[ 50%] Building CXX object CMakeFiles/pom68k_core.dir/src/Ncr5380.cpp.o
+[ 50%] Building CXX object CMakeFiles/pom68k_core.dir/src/Ncr53c96.cpp.o
+[ 50%] Building CXX object CMakeFiles/pom68k_core.dir/src/PseudoVia.cpp.o
+[ 56%] Building CXX object CMakeFiles/pom68k_core.dir/src/V8Memory.cpp.o
+[ 56%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu030.cpp.o
+[ 56%] Building CXX object CMakeFiles/pom68k_core.dir/src/Egret.cpp.o
+[ 56%] Building CXX object CMakeFiles/pom68k_core.dir/src/AdbBus.cpp.o
+[ 56%] Building CXX object CMakeFiles/pom68k_core.dir/src/Asc.cpp.o
+[ 62%] Building CXX object CMakeFiles/pom68k_core.dir/src/Swim1.cpp.o
+[ 62%] Building CXX object CMakeFiles/pom68k_core.dir/src/SonoraMemory.cpp.o
+[ 62%] Building CXX object CMakeFiles/pom68k_core.dir/src/Swim2.cpp.o
+[ 62%] Building CXX object CMakeFiles/pom68k_core.dir/src/SonoraCpu.cpp.o
+[ 62%] Building CXX object CMakeFiles/pom68k_core.dir/src/VaspMemory.cpp.o
+[ 68%] Building CXX object CMakeFiles/pom68k_core.dir/src/VaspCpu.cpp.o
+[ 68%] Building CXX object CMakeFiles/pom68k_core.dir/src/MscMemory.cpp.o
+[ 68%] Building CXX object CMakeFiles/pom68k_core.dir/src/MscCpu.cpp.o
+[ 68%] Building CXX object CMakeFiles/pom68k_core.dir/src/M68hc05Pge.cpp.o
+[ 68%] Building CXX object CMakeFiles/pom68k_core.dir/src/PgePmu.cpp.o
+[ 75%] Building CXX object CMakeFiles/pom68k_core.dir/src/RbvMemory.cpp.o
+[ 75%] Building CXX object CMakeFiles/pom68k_core.dir/src/RbvCpu.cpp.o
+[ 75%] Building CXX object CMakeFiles/pom68k_core.dir/src/CentrisMemory.cpp.o
+[ 75%] Building CXX object CMakeFiles/pom68k_core.dir/src/CentrisCpu.cpp.o
+[ 81%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q630Memory.cpp.o
+[ 81%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q630Cpu.cpp.o
+[ 81%] Building CXX object CMakeFiles/pom68k_core.dir/src/Valkyrie.cpp.o
+[ 81%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q700Memory.cpp.o
+[ 81%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q700Cpu.cpp.o
+[ 87%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q605Memory.cpp.o
+[ 87%] Building CXX object CMakeFiles/pom68k_core.dir/src/Dafb.cpp.o
+[ 87%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu040.cpp.o
+[ 87%] Building CXX object CMakeFiles/pom68k_core.dir/src/DeclRom.cpp.o
+[ 87%] Building CXX object CMakeFiles/pom68k_core.dir/src/NuBus.cpp.o
+[ 93%] Building CXX object CMakeFiles/pom68k_core.dir/src/TobyVideo.cpp.o
+[ 93%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacIIMemory.cpp.o
+[ 93%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu020.cpp.o
+[ 93%] Building CXX object CMakeFiles/pom68k_core.dir/src/AdbVia.cpp.o
+[ 93%] Building CXX object CMakeFiles/pom68k_core.dir/src/Pic1654s.cpp.o
+[100%] Building CXX object CMakeFiles/pom68k_core.dir/src/AdbLine.cpp.o
+[100%] Linking CXX static library libpom68k_core.a
+[100%] Built target pom68k_core
+[100%] Building CXX object CMakeFiles/q605_rogue_census.dir/tests/q605_rogue_census.cpp.o
+[100%] Linking CXX executable q605_rogue_census
+[100%] Built target q605_rogue_census
+=== ABBA: 3 pairs, alternating order 22:11:52 ===
+--- run 1 [cache] 22:11:52 ---
+real 40,94
+gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+PASS: censuses dumped per phase above (stderr)
+[jit] dispatch cache: 54825200 hits, 0 gen-miss, 8520518 miss
+rc=0
+--- run 2 [nocache] 22:12:33 ---
+real 59,03
+gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+PASS: censuses dumped per phase above (stderr)
+rc=0
+--- run 3 [nocache] 22:13:32 ---
+real 57,67
+gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+PASS: censuses dumped per phase above (stderr)
+rc=0
+--- run 4 [cache] 22:14:30 ---
+real 40,26
+gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+PASS: censuses dumped per phase above (stderr)
+[jit] dispatch cache: 54825200 hits, 0 gen-miss, 8520518 miss
+rc=0
+--- run 5 [cache] 22:15:10 ---
+real 40,92
+gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+PASS: censuses dumped per phase above (stderr)
+[jit] dispatch cache: 54825200 hits, 0 gen-miss, 8520518 miss
+rc=0
+--- run 6 [nocache] 22:15:51 ---
+real 58,14
+gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+PASS: censuses dumped per phase above (stderr)
+rc=0
+=== summary ===
+1 cache real=40,94 gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+2 nocache real=59,03 gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+3 nocache real=57,67 gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+4 cache real=40,26 gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+5 cache real=40,92 gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+6 nocache real=58,14 gameplay: 446/468 keys repainted (want >=25%), cumulative delta 5.18, halted=0
+=== abba driver end 22:16:49 ===

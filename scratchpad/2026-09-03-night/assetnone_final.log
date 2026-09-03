@@ -1,0 +1,201 @@
+Test project /Users/mercure/src/pom68k/build
+      Start   1: gui_smoke_test
+ 1/86 Test   #1: gui_smoke_test ........................   Passed    0.89 sec
+      Start   2: cpu_smoke
+ 2/86 Test   #2: cpu_smoke .............................   Passed    0.48 sec
+      Start   3: demo_screenshot
+ 3/86 Test   #3: demo_screenshot .......................   Passed    0.50 sec
+      Start   4: contention_test
+ 4/86 Test   #4: contention_test .......................   Passed    0.30 sec
+      Start   6: gcr_test
+ 5/86 Test   #6: gcr_test ..............................   Passed    0.31 sec
+      Start   7: iwm_write_test
+ 6/86 Test   #7: iwm_write_test ........................   Passed    0.30 sec
+      Start   8: iwm_read_test
+ 7/86 Test   #8: iwm_read_test .........................   Passed    0.32 sec
+      Start   9: swim1_test
+ 8/86 Test   #9: swim1_test ............................   Passed    0.30 sec
+      Start  10: savestate_test
+ 9/86 Test  #10: savestate_test ........................   Passed    0.29 sec
+      Start  11: savestate_v8_test
+10/86 Test  #11: savestate_v8_test .....................   Passed    0.54 sec
+      Start  13: savestate_040_test
+11/86 Test  #13: savestate_040_test ....................   Passed    0.67 sec
+      Start  19: scsi_target_test
+12/86 Test  #19: scsi_target_test ......................   Passed    0.28 sec
+      Start  25: dir2hfs_selftest
+13/86 Test  #25: dir2hfs_selftest ......................   Passed    0.04 sec
+      Start  27: scc_ext_test
+14/86 Test  #27: scc_ext_test ..........................   Passed    0.48 sec
+      Start  28: llap_loop_test
+15/86 Test  #28: llap_loop_test ........................   Passed    0.30 sec
+      Start  29: ltoudp_test
+16/86 Test  #29: ltoudp_test ...........................   Passed    0.30 sec
+      Start  30: atalk_stack_test
+17/86 Test  #30: atalk_stack_test ......................   Passed    0.29 sec
+      Start  31: afp_server_test
+18/86 Test  #31: afp_server_test .......................   Passed    0.30 sec
+      Start  32: pap_server_test
+19/86 Test  #32: pap_server_test .......................   Passed    0.29 sec
+      Start  33: macip_gw_test
+20/86 Test  #33: macip_gw_test .........................   Passed    0.32 sec
+      Start  34: daynaport_test
+21/86 Test  #34: daynaport_test ........................   Passed    0.29 sec
+      Start  35: asset_fingerprint_test
+22/86 Test  #35: asset_fingerprint_test ................   Passed    0.01 sec
+      Start  36: fixture_store_test
+23/86 Test  #36: fixture_store_test ....................   Passed    0.00 sec
+      Start  37: asset_lock_test
+24/86 Test  #37: asset_lock_test .......................***Failed    0.36 sec
+      Start  38: machinehost_test
+25/86 Test  #38: machinehost_test ......................   Passed    0.51 sec
+      Start  39: input_journal_test
+26/86 Test  #39: input_journal_test ....................   Passed    0.49 sec
+      Start  40: docs_test
+27/86 Test  #40: docs_test .............................   Passed    0.22 sec
+      Start  41: config_test
+28/86 Test  #41: config_test ...........................   Passed    0.05 sec
+      Start  42: store_inventory_test
+29/86 Test  #42: store_inventory_test ..................   Passed    0.01 sec
+      Start  43: folderprobe_test
+30/86 Test  #43: folderprobe_test ......................   Passed    0.00 sec
+      Start  44: peripheral_lle_test
+31/86 Test  #44: peripheral_lle_test ...................   Passed    0.30 sec
+      Start  49: cpu_wrapper_smoke
+32/86 Test  #49: cpu_wrapper_smoke .....................   Passed    0.48 sec
+      Start  50: pseudovia_test
+33/86 Test  #50: pseudovia_test ........................   Passed    0.31 sec
+      Start  51: v8_ramsize
+34/86 Test  #51: v8_ramsize ............................   Passed    0.48 sec
+      Start  52: flux_pll_test
+35/86 Test  #52: flux_pll_test .........................   Passed    0.30 sec
+      Start  53: valkyrie_i2c_test
+36/86 Test  #53: valkyrie_i2c_test .....................   Passed    0.74 sec
+      Start  54: valkyrie_test
+37/86 Test  #54: valkyrie_test .........................   Passed    0.30 sec
+      Start  55: scc_int_test
+38/86 Test  #55: scc_int_test ..........................   Passed    0.29 sec
+      Start  56: via6522_parity_test
+39/86 Test  #56: via6522_parity_test ...................   Passed    0.28 sec
+      Start  57: rtc_pram_test
+40/86 Test  #57: rtc_pram_test .........................   Passed    0.51 sec
+      Start  58: ncr53c96_queue_test
+41/86 Test  #58: ncr53c96_queue_test ...................   Passed    0.31 sec
+      Start  59: msc_parity_test
+42/86 Test  #59: msc_parity_test .......................   Passed    0.46 sec
+      Start  60: asc_easc_test
+43/86 Test  #60: asc_easc_test .........................   Passed    0.29 sec
+      Start  61: q700_turboscsi_test
+44/86 Test  #61: q700_turboscsi_test ...................   Passed    0.51 sec
+      Start  62: asc_test
+45/86 Test  #62: asc_test ..............................   Passed    0.30 sec
+      Start  63: q605_asc_test
+46/86 Test  #63: q605_asc_test .........................   Passed    0.50 sec
+      Start  75: swim2_test
+47/86 Test  #75: swim2_test ............................   Passed    0.46 sec
+      Start  76: swim2_media_test
+48/86 Test  #76: swim2_media_test ......................   Passed    0.43 sec
+      Start  77: floppy_sound_test
+49/86 Test  #77: floppy_sound_test .....................   Passed    0.29 sec
+      Start  79: egret_test
+50/86 Test  #79: egret_test ............................   Passed    0.29 sec
+      Start  80: pic1654s_test
+51/86 Test  #80: pic1654s_test .........................   Passed    0.29 sec
+      Start  81: adbline_test
+52/86 Test  #81: adbline_test ..........................   Passed    0.29 sec
+      Start  82: video_beam_test
+53/86 Test  #82: video_beam_test .......................   Passed    0.29 sec
+      Start  83: v8_video_test
+54/86 Test  #83: v8_video_test .........................   Passed    0.52 sec
+      Start  85: sonora_video_test
+55/86 Test  #85: sonora_video_test .....................   Passed    0.48 sec
+      Start  86: raster_equiv_test
+56/86 Test  #86: raster_equiv_test .....................   Passed    0.46 sec
+      Start  87: v8_raster_test
+57/86 Test  #87: v8_raster_test ........................   Passed    0.50 sec
+      Start  88: q605_dafb_test
+58/86 Test  #88: q605_dafb_test ........................   Passed    0.50 sec
+      Start  89: q605_event_scheduler_test
+59/86 Test  #89: q605_event_scheduler_test .............   Passed    0.50 sec
+      Start  90: quadra_event_scheduler_test
+60/86 Test  #90: quadra_event_scheduler_test ...........   Passed    0.52 sec
+      Start  91: q605_turboscsi_test
+61/86 Test  #91: q605_turboscsi_test ...................   Passed    0.47 sec
+      Start  92: scc_baud_test
+62/86 Test  #92: scc_baud_test .........................   Passed    0.30 sec
+      Start  93: scc_engine_test
+63/86 Test  #93: scc_engine_test .......................   Passed    0.28 sec
+      Start  94: r65c02_test
+64/86 Test  #94: r65c02_test ...........................   Passed    0.81 sec
+      Start  95: applepic_test
+65/86 Test  #95: applepic_test .........................   Passed    0.31 sec
+      Start 168: scsi_cdrom_test
+66/86 Test #168: scsi_cdrom_test .......................   Passed    0.29 sec
+      Start 169: floppy_persist_test
+67/86 Test #169: floppy_persist_test ...................   Passed    0.32 sec
+      Start 174: berr030_test
+68/86 Test #174: berr030_test ..........................   Passed    0.03 sec
+      Start 175: jit_restart_write_030_test
+69/86 Test #175: jit_restart_write_030_test ............   Passed    0.65 sec
+      Start 176: declrom_test
+70/86 Test #176: declrom_test ..........................   Passed    0.31 sec
+      Start 177: nubus_test
+71/86 Test #177: nubus_test ............................   Passed    0.30 sec
+      Start 178: toby_test
+72/86 Test #178: toby_test .............................   Passed    0.29 sec
+      Start 187: jit_asset_free_lockstep_test
+73/86 Test #187: jit_asset_free_lockstep_test ..........   Passed    5.85 sec
+      Start 188: jit_copyback_write_040_test
+74/86 Test #188: jit_copyback_write_040_test ...........   Passed    0.50 sec
+      Start 189: jit_copyback_write_040_control_test
+75/86 Test #189: jit_copyback_write_040_control_test ...   Passed    0.02 sec
+      Start 190: jit_copyback_bsr_040_test
+76/86 Test #190: jit_copyback_bsr_040_test .............   Passed    0.02 sec
+      Start 191: jit_copyback_pair_040_test
+77/86 Test #191: jit_copyback_pair_040_test ............   Passed    0.02 sec
+      Start 192: jit_copyback_pair_040_control_test
+78/86 Test #192: jit_copyback_pair_040_control_test ....   Passed    0.02 sec
+      Start 193: jit_store_guard_a64_test
+79/86 Test #193: jit_store_guard_a64_test ..............   Passed    0.47 sec
+      Start 194: cache040_test
+80/86 Test #194: cache040_test .........................   Passed    0.02 sec
+      Start 195: fpu_sanity
+81/86 Test #195: fpu_sanity ............................   Passed    0.03 sec
+      Start 196: fpu040_test
+82/86 Test #196: fpu040_test ...........................   Passed    0.02 sec
+      Start 197: callm_rtm_test
+83/86 Test #197: callm_rtm_test ........................   Passed    0.02 sec
+      Start 198: jit_backend_test
+84/86 Test #198: jit_backend_test ......................   Passed    0.46 sec
+      Start 199: jit_backend_parity_test
+85/86 Test #199: jit_backend_parity_test ...............   Passed    0.46 sec
+      Start 235: file_size_budget_test
+86/86 Test #235: file_size_budget_test .................***Failed    0.47 sec
+
+98% tests passed, 2 tests failed out of 86
+
+Label Time Summary:
+asset-none          =  34.37 sec*proc (86 tests)
+gui                 =   0.89 sec*proc (1 test)
+host-a64            =   0.47 sec*proc (1 test)
+host-any            =  27.46 sec*proc (79 tests)
+host-native         =   6.44 sec*proc (6 tests)
+jit                 =   8.48 sec*proc (10 tests)
+jit-fast            =   7.13 sec*proc (8 tests)
+m030                =   0.94 sec*proc (2 tests)
+m040                =   3.90 sec*proc (8 tests)
+scope-component     =  25.61 sec*proc (73 tests)
+scope-engine        =   8.48 sec*proc (10 tests)
+scope-repository    =   0.28 sec*proc (3 tests)
+smoke               =   0.46 sec*proc (1 test)
+tier-daily          =  34.37 sec*proc (86 tests)
+unit                =  33.48 sec*proc (85 tests)
+
+Total Test time (real) =  34.40 sec
+
+The following tests FAILED:
+	 37 - asset_lock_test (Failed)                          asset-none host-any scope-component tier-daily unit
+	235 - file_size_budget_test (Failed)                    asset-none host-any scope-component tier-daily unit
+Errors while running CTest
+Output from these tests are in: /Users/mercure/src/pom68k/build/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.

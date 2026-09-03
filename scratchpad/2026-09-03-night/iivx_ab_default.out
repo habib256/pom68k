@@ -1,0 +1,6 @@
+ASSET rom    "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM" 1048576 B sha256 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 ea6138848399d42ba8a3a6d07234b2a7bc31b6bb4186904045091193bcb0692b  HFS "GIST PERSO" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+model ID $A55A2015 (want $A55A2015)
+ADB: Egret firmware LLE
+mode 640x480 depth 3; menu bar dark 0.15 (want <0.30), desktop 0.62 (want 0.35-0.85), SCSI commands 2121
+PASSED — Macintosh IIvx booted to the Finder

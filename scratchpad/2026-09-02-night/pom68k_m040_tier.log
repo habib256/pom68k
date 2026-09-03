@@ -1,0 +1,129 @@
+Test project /Users/mercure/src/pom68k/build
+      Start 228: interp_q700_boot_etalon
+      Start 226: interp_centris650_boot_etalon
+ 1/54 Test #226: interp_centris650_boot_etalon ....   Passed  194.19 sec
+      Start 227: interp_q630_boot_etalon
+ 2/54 Test #228: interp_q700_boot_etalon ..........   Passed  196.14 sec
+      Start 108: q605_hotfloppy_etalon
+      Start 130: q605_afp_live_etalon
+ 3/54 Test #130: q605_afp_live_etalon .............   Passed   35.40 sec
+      Start 107: q605_launch_etalon
+ 4/54 Test #107: q605_launch_etalon ...............   Passed   13.54 sec
+      Start  77: q605_floppy_boot_etalon
+ 5/54 Test  #77: q605_floppy_boot_etalon ..........   Passed    1.85 sec
+      Start  62: q605_asc_test
+ 6/54 Test  #62: q605_asc_test ....................   Passed    0.02 sec
+      Start  74: swim2_test
+ 7/54 Test  #74: swim2_test .......................   Passed    0.02 sec
+      Start  75: swim2_media_test
+ 8/54 Test  #75: swim2_media_test .................   Passed    0.03 sec
+      Start  60: q700_turboscsi_test
+ 9/54 Test  #60: q700_turboscsi_test ..............   Passed    0.02 sec
+      Start  90: q605_turboscsi_test
+10/54 Test  #90: q605_turboscsi_test ..............   Passed    0.02 sec
+      Start  88: q605_event_scheduler_test
+11/54 Test  #88: q605_event_scheduler_test ........   Passed    0.02 sec
+      Start  87: q605_dafb_test
+12/54 Test  #87: q605_dafb_test ...................   Passed    0.02 sec
+      Start  89: quadra_event_scheduler_test
+13/54 Test  #89: quadra_event_scheduler_test ......   Passed    0.02 sec
+      Start 164: q605_cdrom_etalon
+14/54 Test #227: interp_q630_boot_etalon ..........   Passed   54.44 sec
+      Start 225: interp_q605_boot_etalon
+15/54 Test #108: q605_hotfloppy_etalon ............   Passed   56.91 sec
+      Start 165: q605_cdboot_etalon
+16/54 Test #164: q605_cdrom_etalon ................   Passed   23.67 sec
+      Start 166: q605_cdhot_etalon
+17/54 Test #165: q605_cdboot_etalon ...............   Passed   21.81 sec
+18/54 Test #225: interp_q605_boot_etalon ..........   Passed   42.21 sec
+      Start 133: q900_soak_etalon
+19/54 Test #166: q605_cdhot_etalon ................   Passed   44.29 sec
+20/54 Test #133: q900_soak_etalon .................   Passed  113.29 sec
+      Start 134: q900_persist_etalon
+21/54 Test #134: q900_persist_etalon ..............   Passed  147.78 sec
+      Start 121: q630_persist_etalon
+22/54 Test #121: q630_persist_etalon ..............   Passed  116.27 sec
+      Start 120: q630_soak_etalon
+23/54 Test #120: q630_soak_etalon .................   Passed   77.33 sec
+      Start 117: centris_persist_etalon
+24/54 Test #117: centris_persist_etalon ...........   Passed   88.23 sec
+      Start 119: q700_persist_etalon
+25/54 Test #119: q700_persist_etalon ..............   Passed  103.86 sec
+      Start 116: centris_soak_etalon
+26/54 Test #116: centris_soak_etalon ..............   Passed   60.34 sec
+      Start 162: q950_boot_etalon
+27/54 Test #162: q950_boot_etalon .................   Passed   68.46 sec
+      Start 118: q700_soak_etalon
+28/54 Test #118: q700_soak_etalon .................   Passed   86.77 sec
+      Start 106: q605_persist_etalon
+29/54 Test #106: q605_persist_etalon ..............   Passed   85.14 sec
+      Start 161: q900_boot_etalon
+30/54 Test #161: q900_boot_etalon .................   Passed   61.40 sec
+      Start  68: q900_input_etalon
+31/54 Test  #68: q900_input_etalon ................   Passed   63.13 sec
+      Start 153: quadra650_boot_etalon
+32/54 Test #153: quadra650_boot_etalon ............   Passed   41.11 sec
+      Start 163: quadra800_boot_etalon
+33/54 Test #163: quadra800_boot_etalon ............   Passed   41.24 sec
+      Start 154: quadra610_boot_etalon
+34/54 Test #154: quadra610_boot_etalon ............   Passed   34.11 sec
+      Start 105: q605_soak_etalon
+35/54 Test #105: q605_soak_etalon .................   Passed   36.09 sec
+      Start 152: centris610_boot_etalon
+36/54 Test #152: centris610_boot_etalon ...........   Passed   30.70 sec
+      Start 214: jit_q700_boot_etalon
+37/54 Test #214: jit_q700_boot_etalon .............   Passed   36.97 sec
+      Start 212: jit_centris650_boot_etalon
+38/54 Test #212: jit_centris650_boot_etalon .......   Passed   34.41 sec
+      Start 160: q700_boot_etalon
+39/54 Test #160: q700_boot_etalon .................   Passed   37.14 sec
+      Start  15: q605_cudalle_key_etalon
+40/54 Test  #15: q605_cudalle_key_etalon ..........   Passed   33.76 sec
+      Start  98: q605_cudalle_mouse_etalon
+41/54 Test  #98: q605_cudalle_mouse_etalon ........   Passed   31.54 sec
+      Start 151: centris650_boot_etalon
+42/54 Test #151: centris650_boot_etalon ...........   Passed   34.87 sec
+      Start 104: q605_savestate_etalon
+43/54 Test #104: q605_savestate_etalon ............   Passed   16.14 sec
+      Start 155: q630_boot_etalon
+44/54 Test #155: q630_boot_etalon .................   Passed    9.46 sec
+      Start 213: jit_q630_boot_etalon
+45/54 Test #213: jit_q630_boot_etalon .............   Passed    9.44 sec
+      Start 156: lc580_boot_etalon
+46/54 Test #156: lc580_boot_etalon ................   Passed    9.49 sec
+      Start  70: q605_nofpu_boot_etalon
+47/54 Test  #70: q605_nofpu_boot_etalon ...........   Passed    7.53 sec
+      Start  73: lc575_boot_etalon
+48/54 Test  #73: lc575_boot_etalon ................   Passed    7.44 sec
+      Start  72: lc475_boot_etalon
+49/54 Test  #72: lc475_boot_etalon ................   Passed    7.50 sec
+      Start  71: q605_barefpu_boot_etalon
+50/54 Test  #71: q605_barefpu_boot_etalon .........   Passed    7.38 sec
+      Start  97: q605_cudalle_boot_etalon
+51/54 Test  #97: q605_cudalle_boot_etalon .........   Passed    8.24 sec
+      Start  69: q605_ot_bind_etalon
+52/54 Test  #69: q605_ot_bind_etalon ..............   Passed    5.37 sec
+      Start  63: q605_boot_etalon
+53/54 Test  #63: q605_boot_etalon .................   Passed    6.99 sec
+      Start 211: jit_q605_boot_etalon
+54/54 Test #211: jit_q605_boot_etalon .............   Passed    7.01 sec
+
+100% tests passed out of 54
+
+Label Time Summary:
+asset-none         =   0.16 sec*proc (8 tests)
+asset-required     = 6405.15 sec*proc (46 tests)
+etalon             = 6405.15 sec*proc (46 tests)
+etalon-core        = 265.37 sec*proc (4 tests)
+host-any           = 6405.31 sec*proc (54 tests)
+jit                = 263.49 sec*proc (4 tests)
+m040               = 6405.31 sec*proc (54 tests)
+scope-component    =   0.16 sec*proc (8 tests)
+scope-profile      = 6405.15 sec*proc (46 tests)
+smoke              = 105.39 sec*proc (2 tests)
+tier-daily         =   0.16 sec*proc (8 tests)
+tier-full          = 6139.78 sec*proc (42 tests)
+tier-platform      = 265.37 sec*proc (4 tests)
+unit               =   0.16 sec*proc (8 tests)
+
+Total Test time (real) = 1856.80 sec

@@ -1,0 +1,117 @@
+=== bench driver start 22:10:53 ===
+=== host quiet, building benches 23:50:54 ===
+[  6%] Built target softfloat68k
+[  6%] Built target moira
+[100%] Built target pom68k_core
+[100%] Building CXX object CMakeFiles/jit_bench.dir/tests/jit_bench.cpp.o
+[100%] Linking CXX executable jit_bench
+[100%] Built target jit_bench
+[  5%] Built target softfloat68k
+[  5%] Built target moira
+[ 94%] Built target pom68k_core
+[100%] Building CXX object CMakeFiles/jit_bench_lcii.dir/tests/jit_bench_lcii.cpp.o
+[100%] Linking CXX executable jit_bench_lcii
+[100%] Built target jit_bench_lcii
+23:50  up  5:47, 2 users, load averages: 1,91 1,99 1,92
+
+──── Q605 NULL floor (a64 vs a64) 23:50:56 ────
+q605 NULL experiment (A vs A), 3 repeats x 2 arms ABBA, 3000 frames per run, built Sep  2 2026 23:50:54
+  q605 warmup pair 1 discarded
+  q605 pair1  interp    28.21s   null(A)   28.24s   (interp first)
+  q605 pair2  interp    28.16s   null(A)   28.15s   (null(A) first)
+  q605 pair3  interp    28.16s   null(A)   28.09s   (interp first)
+
+  interp   median  28.16s  (28.16-28.21, spread 0.2%)
+  null(A)  median  28.15s  (28.09-28.24, spread 0.5%)
+  delta -0.0%  ·  floor 0.5% (arm spreads 0.2/0.5%, host 0.2%)  ·  3 repeats ABBA
+  fp=778dd7ad558108fd  ·  built Sep  2 2026 23:50:54  ·  load 1.42 1.84 1.87 -> load 1.68 1.82 1.86
+  knobs: POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=3
+  NULL EXPERIMENT: nothing differed between the arms, so 0.5% is this host's MEASURED floor,
+  not a result. Record 6 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 0.2%).
+  HOST NOISIER THAN POLICY: 0.5% measured against a recorded 0.2%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+──── end (rc=1) ────
+
+──── Q605 interp vs threaded 23:54:42 ────
+q605 interleaved A/B, 5 repeats x 2 arms ABBA, 3000 frames per run, built Sep  2 2026 23:50:54
+  q605 warmup pair 1 discarded
+  q605 pair1  interp    28.12s   jit       15.67s   (interp first)
+  q605 pair2  interp    28.14s   jit       15.71s   (jit first)
+  q605 pair3  interp    28.23s   jit       15.71s   (interp first)
+  q605 pair4  interp    28.07s   jit       15.68s   (jit first)
+  q605 pair5  interp    27.99s   jit       15.67s   (interp first)
+
+  interp   median  28.12s  (27.99-28.23, spread 0.9%)
+  jit      median  15.68s  (15.67-15.71, spread 0.2%)
+  delta -44.2%  ·  floor 0.9% (arm spreads 0.9/0.2%, host 0.2%)  ·  5 repeats ABBA
+  fp=778dd7ad558108fd  ·  built Sep  2 2026 23:50:54  ·  load 1.63 1.80 1.84 -> load 1.74 1.73 1.80
+  knobs: POM68K_BENCH_COMPARE=5  POM68K_JIT_BACKEND=threaded
+──── end (rc=0) ────
+
+──── Q605 interp vs native a64 23:59:06 ────
+q605 interleaved A/B, 5 repeats x 2 arms ABBA, 3000 frames per run, built Sep  2 2026 23:50:54
+  q605 warmup pair 1 discarded
+  q605 pair1  interp    28.33s   jit        3.45s   (interp first)
+  q605 pair2  interp    28.21s   jit        3.45s   (jit first)
+  q605 pair3  interp    28.28s   jit        3.44s   (interp first)
+  q605 pair4  interp    28.19s   jit        3.44s   (jit first)
+  q605 pair5  interp    28.31s   jit        3.44s   (interp first)
+
+  interp   median  28.28s  (28.19-28.33, spread 0.5%)
+  jit      median   3.44s  (3.44-3.45, spread 0.2%)
+  delta -87.8%  ·  floor 0.5% (arm spreads 0.5/0.2%, host 0.2%)  ·  5 repeats ABBA
+  fp=778dd7ad558108fd  ·  built Sep  2 2026 23:50:54  ·  load 1.83 1.75 1.80 -> load 1.84 1.79 1.81
+  knobs: POM68K_BENCH_COMPARE=5  POM68K_JIT_BACKEND=a64
+──── end (rc=0) ────
+
+──── LCII NULL floor 00:02:17 ────
+lcii NULL experiment (A vs A), 3 repeats x 2 arms ABBA, 6000 frames per run, built Sep  2 2026 23:50:55
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    23.66s   null(A)   23.65s   (interp first)
+  lcii pair2  interp    23.40s   null(A)   23.51s   (null(A) first)
+  lcii pair3  interp    23.51s   null(A)   23.50s   (interp first)
+
+  interp   median  23.51s  (23.40-23.66, spread 1.1%)
+  null(A)  median  23.51s  (23.50-23.65, spread 0.7%)
+  delta +0.0%  ·  floor 1.1% (arm spreads 1.1/0.7%, host 0.2%)  ·  3 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  2 2026 23:50:55  ·  load 1.61 1.74 1.79 -> load 1.82 1.73 1.77
+  knobs: POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=3
+  NULL EXPERIMENT: nothing differed between the arms, so 1.1% is this host's MEASURED floor,
+  not a result. Record 11 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 0.2%).
+  HOST NOISIER THAN POLICY: 1.1% measured against a recorded 0.2%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+──── end (rc=1) ────
+
+──── LCII interp vs threaded 00:05:27 ────
+lcii interleaved A/B, 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  2 2026 23:50:55
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    23.36s   jit       20.70s   (interp first)
+  lcii pair2  interp    23.34s   jit       20.75s   (jit first)
+  lcii pair3  interp    23.46s   jit       20.72s   (interp first)
+  lcii pair4  interp    23.37s   jit       20.74s   (jit first)
+  lcii pair5  interp    23.46s   jit       20.77s   (interp first)
+
+  interp   median  23.37s  (23.34-23.46, spread 0.5%)
+  jit      median  20.74s  (20.70-20.77, spread 0.4%)
+  delta -11.3%  ·  floor 0.5% (arm spreads 0.5/0.4%, host 0.2%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  2 2026 23:50:55  ·  load 1.61 1.69 1.75 -> load 1.63 1.64 1.71
+  knobs: POM68K_BENCH_COMPARE=5  POM68K_JIT_BACKEND=threaded
+──── end (rc=0) ────
+
+──── LCII interp vs native a64 00:09:55 ────
+lcii interleaved A/B, 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  2 2026 23:50:55
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    23.75s   jit        8.91s   (interp first)
+  lcii pair2  interp    23.60s   jit        8.84s   (jit first)
+  lcii pair3  interp    23.67s   jit        8.82s   (interp first)
+  lcii pair4  interp    23.69s   jit        8.83s   (jit first)
+  lcii pair5  interp    23.58s   jit        8.84s   (interp first)
+
+  interp   median  23.67s  (23.58-23.75, spread 0.7%)
+  jit      median   8.84s  (8.82-8.91, spread 1.0%)
+  delta -62.7%  ·  floor 1.0% (arm spreads 0.7/1.0%, host 0.2%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  2 2026 23:50:55  ·  load 1.58 1.62 1.70 -> load 1.61 1.67 1.71
+  knobs: POM68K_BENCH_COMPARE=5  POM68K_JIT_BACKEND=a64
+──── end (rc=0) ────
+ 0:13  up  6:09, 2 users, load averages: 1,61 1,67 1,71
+=== bench driver end 00:13:12 ===

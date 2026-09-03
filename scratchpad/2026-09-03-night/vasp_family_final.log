@@ -1,0 +1,30 @@
+Test project /Users/mercure/src/pom68k/build
+    Start  67: iivx_input_etalon
+1/7 Test  #67: iivx_input_etalon ................   Passed   56.03 sec
+    Start 110: iivx_soak_etalon
+2/7 Test #110: iivx_soak_etalon .................   Passed  125.32 sec
+    Start 111: iivx_persist_etalon
+3/7 Test #111: iivx_persist_etalon ..............   Passed  158.07 sec
+    Start 144: iivx_boot_etalon
+4/7 Test #144: iivx_boot_etalon .................   Passed   75.57 sec
+    Start 145: iivi_boot_etalon
+5/7 Test #145: iivi_boot_etalon .................   Passed   41.58 sec
+    Start 217: jit_iivx_boot_etalon
+6/7 Test #217: jit_iivx_boot_etalon .............   Passed   75.10 sec
+    Start 230: interp_iivx_boot_etalon
+7/7 Test #230: interp_iivx_boot_etalon ..........   Passed  122.86 sec
+
+100% tests passed out of 7
+
+Label Time Summary:
+asset-required    = 1467.14 sec*proc (7 tests)
+etalon            = 1467.14 sec*proc (7 tests)
+etalon-core       = 151.15 sec*proc (1 test)
+host-any          = 1467.14 sec*proc (7 tests)
+jit               = 150.21 sec*proc (1 test)
+m030              = 1467.14 sec*proc (7 tests)
+scope-profile     = 1467.14 sec*proc (7 tests)
+tier-full         = 1316.00 sec*proc (6 tests)
+tier-platform     = 151.15 sec*proc (1 test)
+
+Total Test time (real) = 654.54 sec

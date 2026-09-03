@@ -1,0 +1,23 @@
+Test project /Users/mercure/src/pom68k/build
+    Start 123: duo_soak_etalon
+1/4 Test #123: duo_soak_etalon ..................   Passed   35.74 sec
+    Start 124: duo_persist_etalon
+2/4 Test #124: duo_persist_etalon ...............   Passed   50.18 sec
+    Start 186: duo230_boot_etalon
+3/4 Test #186: duo230_boot_etalon ...............   Passed   21.50 sec
+    Start 233: interp_duo230_boot_etalon
+4/4 Test #233: interp_duo230_boot_etalon ........   Passed   51.91 sec
+
+100% tests passed out of 4
+
+Label Time Summary:
+asset-required    = 159.32 sec*proc (4 tests)
+etalon            = 159.32 sec*proc (4 tests)
+etalon-core       =  21.50 sec*proc (1 test)
+host-any          = 159.32 sec*proc (4 tests)
+m030              = 159.32 sec*proc (4 tests)
+scope-profile     = 159.32 sec*proc (4 tests)
+tier-full         = 137.82 sec*proc (3 tests)
+tier-platform     =  21.50 sec*proc (1 test)
+
+Total Test time (real) = 159.32 sec
