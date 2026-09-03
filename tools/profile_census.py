@@ -41,13 +41,13 @@ from collections import Counter
 
 BUCKETS = [
     ('corps générés (natif)', r'^\[GENERATED CODE\]$'),
-    ('moteur — compilation', r'Emitter|x64::Asm|a64::Asm|decodeEaPlan|EaPlan|::emit|compileBlock|Encoder'),
-    ('moteur — runtime/fenêtres', r'jit::Engine|jit::.*(dispatch|Window|window|census|Histo|histo)|pomJit|describeInstruction|Cpu0[0-9]+::|pom68kJitSync|MoiraCpu'),
+    ('moteur — compilation', r'Emitter|x64::Asm|a64::Asm|decodeEaPlan|EaPlan|::emit|compileBlock|Encoder|Backend::compile|jit::classify'),
+    ('moteur — runtime/fenêtres', r'jit::Engine|jit::.*(dispatch|Window|window|census|Histo|histo)|pomJit|describeInstruction|Cpu0[0-9]+::|pom68kJitSync|MoiraCpu|Backend::run|pom68kA64|pom68kX64|CodeGuard'),
     ('MMU/cache', r'moira::.*(mmu|Mmu|Cache040|pomCache|Atc)'),
-    ('LLE/périphériques', r'CudaLle|Egret|AdbLine|AdbBus|AdbVia|M68hc05|M68HC05|Mcu|Swim|Sony|Scc|Ncr5|ScsiDisk|Via6522|Asc|Rtc|Dfac|Iwm|ApplePic|Pge'),
-    ('carte mémoire/thunks', r'Memory::|::peek|::poke'),
+    ('LLE/périphériques', r'CudaLle|Egret|AdbLine|AdbBus|AdbVia|M68hc05|M68HC05|Mcu|Swim|Sony|Scc|Ncr5|ScsiDisk|Via6522|Asc|Rtc|Dfac|Iwm|ApplePic|Pge|Dafb'),
+    ('carte mémoire/thunks', r'Memory::|::peek|::poke|makeJitMemoryHooks'),
     ('interpréteur (fallback)', r'moira::'),
-    ('hôte/harnais', r'^\[lib|^main$|testasset|Sha256|writableFixture|V8Video|TobyVideo|SonoraVideo|dumpPpm|std::|__gnu'),
+    ('hôte/harnais', r'^\[lib|^main$|testasset|Sha256|writableFixture|V8Video|TobyVideo|SonoraVideo|dumpPpm|decodeScreen|std::|__gnu'),
 ]
 
 

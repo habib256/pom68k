@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](#2026-09-03-profile-macos-leg)
 - **2026-09-03 (fifth)** — [The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking](#2026-09-03-leak-census-armed)
 - **2026-09-03 (fourth)** — [The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again](#2026-09-03-timeout-stomped)
 - **2026-09-03 (third)** — [The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout](#2026-09-03-asan-timeout)
@@ -790,6 +791,67 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-profile-macos-leg"></a>
+## 2026-09-03 (sixth) — The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one
+
+The (eighth) profile that ordered the 68040 backlog is obsolete by its
+own success — the dispatch cache erased its number-one post
+((sixteenth), −29.6 %) — and the instrument that produced it is
+Linux-only. `tools/profile_census_macos.py` is the missing leg: it
+launches the workload, drives `/usr/bin/sample` at 1 ms for the whole
+run and decodes the call graph into the same TIME buckets as
+`tools/profile_census.py`. Two macOS rules are load-bearing: stacks
+whose leaf is a wait syscall are split out (`sample` snapshots blocked
+threads where gperftools charges CPU time only), and a capture where
+ld64's ICF (`<deduplicated_symbol>`) holds over 0.5 % of on-CPU time
+is refused — the same class of symbol lie LTO folding told the Linux
+leg. Both legs' bucket regexes were tightened together (Dafb,
+decodeScreen, `Backend::run`/`compile`, CodeGuard,
+makeJitMemoryHooks): the residual `autre` bucket fell from 5.4 % to
+0.07 %.
+
+**The post-cache 68040 landscape** — `q605_rogue_census` on the M4 at
+d72268b, `build-profile` (RelWithDebInfo, `-Wl,-no_deduplicate`,
+`POM68K_FAST_LINK=ON`), `auto`→a64, workload identity byte-identical
+to the (sixteenth)'s six runs (`gameplay: 446/468 keys repainted,
+cumulative delta 5.18, halted=0`); raw captures, reports and host
+conditions in `scratchpad/2026-09-03-night/`. The whole run gives
+33 215 on-CPU samples; a second capture attached at the `rogue-title`
+census dump isolates the gameplay phase (10 085 samples):
+
+| gameplay-phase bucket | % on-CPU |
+|---|---|
+| corps générés (natif) | 41.0 % |
+| LLE/périphériques | 21.2 % |
+| carte mémoire/thunks | 14.8 % |
+| moteur — runtime/fenêtres | 11.6 % |
+| MMU/cache | 7.1 % |
+| interpréteur (fallback) | 2.5 % |
+
+Where the (eighth) charged 45.4 % to the engine runtime with 12.1 % in
+the block hashtable alone, the hashtable is out of the top-45 and
+`dispatchBlockKey` reads **0.24 %** — the cache closed that account.
+The number-one non-generated aggregate is now the **device
+tick/deadline pump**, spread across two buckets: `Q605Memory::tick`
+9.0 % + `cyclesToNextEvent` 4.5 % + `M68hc05::run` 8.1 % + SCC
+tick/deadline 7.1 % + DAFB 2.9 % + VIA/ASC/`flushTicks` — about
+**36 % of the gameplay phase**. The cache-active-window lever (engine
+runtime + interpreter fallback + probes) is real but bounded near
+14 points. TODO § B.1's framing is rewritten on these numbers: the
+ordered-poll and transactional-JSR slices keep their conformance
+value and stay open, and the third item — the Q605 event scheduler —
+now carries the measured mass.
+
+**The +6 % bench delta is bounded, not attributed.** The same
+instrument pointed once at `jit_bench`'s native arm (one sampled run —
+a look, not a claim) shows the arm dominated by the same pump (~39 %)
+with generated code at 26 %, and 18.9 % of process samples inside
+dyld — startup, outside the harness's internal clock, so not the
+delta's home. Whatever grew since 2026-08-23 most plausibly grew in
+the device pump, whose share dwarfs the generator's; attributing it
+would need the reference tree rebuilt under the same sampler, which
+tonight does not buy.
 
 <a id="2026-09-03-leak-census-armed"></a>
 ## 2026-09-03 (fifth) — The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking

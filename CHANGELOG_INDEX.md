@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 402 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 403 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 73 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 41 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 42 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
@@ -143,6 +143,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-01 (fourth)** — [Cache-active 68040 JSR preserves its ordered target-word read through exact replay](CHANGELOG.md#2026-09-01-jit-cache040-jsr-target-read)
 - **2026-09-01 (sixth)** — [Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state](CHANGELOG.md#2026-09-01-jit-cache040-instruction-start)
 - **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](CHANGELOG.md#2026-09-02-040-dispatch-profile)
+- **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](CHANGELOG.md#2026-09-03-profile-macos-leg)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

@@ -104,14 +104,16 @@ chronomètre. Le résultat archivé distingue moteur demandé/réel, temps mur,
 cycles invités, corps générés, fenêtres, moteur, thunks, MMU/cache, LLE et
 causes de fallback.
 
-### B.1 Le poste n°1 du 68040 : trouver les blocs, pas les exécuter
+### B.1 Le poste n°1 du 68040 : la pompe d'échéancier, et finir les fenêtres
 
-Le profil (`CHANGELOG` 2026-09-02 (eighth)) attribue 45,4 % du run Rogue au
-runtime moteur pour 7,6 % de corps générés, dont environ un tiers du run passé
-à chercher des blocs. Le cache de dispatch a rendu −29,6 % (CHANGELOG
-2026-09-02 (sixteenth)) ; l'autre moitié du levier est l'allongement des
-fenêtres : c'est le seul chantier de performance qui ait cette masse
-derrière lui.
+Le profil post-cache (`CHANGELOG` 2026-09-03 (sixth), jambe macOS de
+l'instrument) re-classe le poste : le runtime moteur est retombé à 11,6 % de
+la phase gameplay (hashtable hors top-45, `dispatchBlockKey` 0,24 %), les
+corps générés montent à 41 %, et le premier agrégat hors corps générés est la
+pompe tick/échéancier des périphériques (~36 %). L'allongement des fenêtres
+cache-actives reste un chantier de conformité réel, mais son levier temps est
+borné à ~14 points ; l'échéancier événementiel — troisième item — porte
+désormais la masse mesurée.
 
 - [ ] **Encoder la position des polls IPL 68040 dans l'IR.** Remplacer le
   fallback conservateur des instructions mémoire à plusieurs polls par une
