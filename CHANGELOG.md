@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (eleventh)** — [The MSC closes B.4's original list: the PG&E owns no bus, and the Duo's CACR flush retires](#2026-09-03-msc-inventory)
 - **2026-09-03 (tenth)** — [RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci](#2026-09-03-rbv-inventory)
 - **2026-09-03 (ninth)** — [B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires](#2026-09-03-vasp-inventory)
 - **2026-09-03 (eighth)** — [Green CI becomes a push condition a hook enforces, not a rule a tired session remembers](#2026-09-03-push-gate)
@@ -795,6 +796,30 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-msc-inventory"></a>
+## 2026-09-03 (eleventh) — The MSC closes B.4's original list: the PG&E owns no bus, and the Duo's CACR flush retires
+
+The board the (tenth) entry flagged as wanting a real audit turns out
+clean on inspection: the question was the PG&E power manager, and
+`PgePmu` touches no guest memory at all — it is an MCU polled through
+the VIA/PseudoVia interface, exactly the Egret's posture on the other
+boards. Beyond it the MSC walk matches its siblings: two noted `ram_`
+store sites, the 5380's pseudo-DMA moved by guest MOVEs, a polled SCC,
+the ASC on its own FIFO, and the Duo's LCD scanning `vram_` — a
+separate array behind a const accessor. No modeled Duo device masters
+the bus; the header states that a dock DMA engine, when one is
+modeled, must flip the constant back.
+`MscMemory::kJitStoreInventoryComplete` lands,
+`MscCpu::didChangeCACR` consults it under the shared three-valued
+knob, and `store_inventory_test`'s pending side narrows to Sonora
+alone — the board that was never in § B.4's list but carries the same
+hint, now the item's whole remainder.
+
+Family proof on the fully rebuilt tree: the four Duo gates green under
+the retired default, and `duo230_boot_etalon` under the JIT
+byte-identical between `POM68K_JIT_030_CACR_FLUSH=1` and the board
+default.
 
 <a id="2026-09-03-rbv-inventory"></a>
 ## 2026-09-03 (tenth) — RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 407 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 408 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -10,7 +10,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 73 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 42 |
-| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
+| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 31 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
@@ -177,6 +177,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](CHANGELOG.md#2026-08-14-eclipse-egret-lle)
 - **2026-08-25** — [The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally](CHANGELOG.md#2026-08-25-iivx-command-settle)
 - **2026-08-25 (sixth)** — [The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot](CHANGELOG.md#2026-08-25-pge-adb-retired)
+- **2026-09-03 (eleventh)** — [The MSC closes B.4's original list: the PG&E owns no bus, and the Duo's CACR flush retires](CHANGELOG.md#2026-09-03-msc-inventory)
 
 ## Storage — SCSI, IWM, SWIM, media
 

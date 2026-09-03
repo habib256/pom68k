@@ -87,6 +87,22 @@ public:
     // ── JIT hooks (VaspMemory contract) ────────────────────────────────
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    // Every path that can deposit code in guest RAM on the MSC passes
+    // CodeGuard::note(): the only two `ram_` store sites are write8/write16
+    // and both note() before storing; the 5380's pseudo-DMA port is
+    // read/written by guest MOVEs (scsiDma_/scsiDmaW_ touch the device,
+    // never RAM); the PG&E power manager is an MCU polled through the
+    // VIA/PseudoVia interface and owns no bus access at all; the SCC is
+    // polled; the ASC plays from its own FIFO; and the LCD scans vram_,
+    // a separate array reachable read-only through a const accessor.
+    // Generated-code stores cross the DTLB codeMask into pomJitWrite →
+    // write8/16, and dataSpan() hands the write window out only under the
+    // engine-side codeMask. No modeled Duo device masters the bus — a
+    // dock DMA engine, when one is modeled, must flip this back and take
+    // the CACR SMC flush with it (MscCpu::didChangeCACR).
+    // `store_inventory_test` pins each of these source properties.
+    static constexpr bool kJitStoreInventoryComplete = true;
+
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
     uint32_t ramBytes() const { return totalRam_; }
     void jitMapChanged();

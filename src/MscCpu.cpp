@@ -13,6 +13,8 @@ MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
     if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     eventDriven_ = cpuConfig.duoEventDriven;
+    if (cpuConfig.cacr030Flush)
+        cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
     armIcacheOverlay(icacheMiss_);
 }
 
@@ -26,9 +28,14 @@ void MscCpu::hardReset() {
 
 void MscCpu::didChangeCACR(moira::u32 value) {
     pomInvalidateIcache030(value);
-    // SMC hint — but only the INSTRUCTION-cache strobes are one. See
-    // Cpu030::didChangeCACR for the measurement that narrowed this.
-    if (value & 0x0C) jit_.flushAll();
+    // The CACR SMC hint, retired behind this board's own audited store
+    // inventory (MscMemory::kJitStoreInventoryComplete, pinned by
+    // store_inventory_test): every RAM store already crosses
+    // CodeGuard::note(). POM68K_JIT_030_CACR_FLUSH keeps its three
+    // values as on V8/VASP/RBV.
+    const bool flush = cacrFlushPolicy_ < 0
+        ? !MscMemory::kJitStoreInventoryComplete : cacrFlushPolicy_ != 0;
+    if ((value & 0x0C) && flush) jit_.flushAll();
 }
 
 void MscCpu::runCycles(moira::i64 n) {
