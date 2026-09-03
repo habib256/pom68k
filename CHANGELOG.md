@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (ninth)** — [B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires](#2026-09-03-vasp-inventory)
 - **2026-09-03 (eighth)** — [Green CI becomes a push condition a hook enforces, not a rule a tired session remembers](#2026-09-03-push-gate)
 - **2026-09-03 (seventh)** — [B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed](#2026-09-03-positioned-polls)
 - **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](#2026-09-03-profile-macos-leg)
@@ -793,6 +794,39 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-vasp-inventory"></a>
+## 2026-09-03 (ninth) — B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires
+
+The V8 retired its CACR SMC hint on 2026-08-19 behind a documented
+constant; the § B.4 rule said no other board may inherit that proof.
+The VASP now carries its own: the audit finds exactly two `ram_` store
+sites in `VaspMemory.cpp` (write8/write16), both calling
+`CodeGuard::note()` first; the 5380's pseudo-DMA port moves data
+through guest MOVEs (`scsiDma_`/`scsiDmaW_` touch the device, never
+RAM); SWIM1/SonyDrive and the SCC are polled, the Egret sits behind
+the VIA shift register, the ASC plays from its own FIFO, and no device
+on the IIvx/IIvi masters the bus. `VaspMemory.h` declares
+`kJitStoreInventoryComplete = true` on that audit and
+`VaspCpu::didChangeCACR` stops dropping the whole generated-code cache
+on the CI/CEI strobes — `POM68K_JIT_030_CACR_FLUSH` keeps its three
+values here exactly as on the V8.
+
+What is genuinely new is the gate the TODO asked for:
+`store_inventory_test` (jit-fast, repository scope) pins the claim at
+the source level for EVERY claiming board — each `ram_[...] =` within
+twelve lines of a `note()`, no bulk copy into `ram_`, raw
+`ram_.data()` escaping only through the engine-guarded span accessors,
+the wrapper consulting the constant — and holds the unproven boards to
+their flush: RBV, MSC and Sonora must NOT declare the constant and
+their wrappers must still contain the strobe `flushAll`. The V8's
+previously comment-only proof is now pinned by the same checks.
+
+Family proof: the seven IIvx/IIvi gates green under the retired
+default, `jit_iivx_boot_etalon` bit-identical under
+`POM68K_JIT_030_CACR_FLUSH=1` against the board default, and the
+asset-free tier including the new gate. RBV and MSC remain open § B.4
+items, each awaiting its own audit and its own row in the gate.
 
 <a id="2026-09-03-push-gate"></a>
 ## 2026-09-03 (eighth) — Green CI becomes a push condition a hook enforces, not a rule a tired session remembers

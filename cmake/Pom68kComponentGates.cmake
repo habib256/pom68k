@@ -300,6 +300,15 @@ target_compile_definitions(config_test PRIVATE
     POM68K_GATE_ROSTER_ABSENT="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv")
 add_test(NAME config_test COMMAND config_test)
 
+# The JIT store-inventory contract (TODO § B.4): a board claiming
+# `kJitStoreInventoryComplete` gets its claim pinned at the source level —
+# every ram_ store noted, no bulk copies, raw pointers only through the
+# engine-guarded spans, the wrapper consulting the constant — and a board
+# without the claim is held to its CACR flush. Walks the source tree like
+# docs_test; links nothing.
+add_executable(store_inventory_test tests/store_inventory_test.cpp)
+add_test(NAME store_inventory_test COMMAND store_inventory_test)
+
 # tests/FolderProbe.h — "did the guest create a folder?", the observable
 # the three beyond-boot persist gates judge PASS/FAIL on. Gated here
 # rather than through three six-minute machine runs, and because the

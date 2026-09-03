@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 405 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 406 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 49 |
 | [Build, packaging and release](#build-packaging-and-release) | 10 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 30 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 80 |
 
@@ -371,6 +371,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (twelfth)** — [Speedometer's exact `ROXR.B #2,D0` becomes native while the count-24–31 unroll experiment is measured and removed](CHANGELOG.md#2026-08-31-speedometer-roxr)
 - **2026-09-02 (second)** — [The implicit MacPack preference falls: a small clean 7.5 reference, and the flush lessons its gates paid](CHANGELOG.md#2026-09-02-macpack-preference)
 - **2026-09-02 (sixteenth)** — [The dispatch cache's owed proof lands: −29.6 % on the Rogue run, and no unexplained red in 110 family gates](CHANGELOG.md#2026-09-02-dispatch-cache-proved)
+- **2026-09-03 (ninth)** — [B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires](CHANGELOG.md#2026-09-03-vasp-inventory)
 - **2026-09-03 (third)** — [The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout](CHANGELOG.md#2026-09-03-asan-timeout)
 
 ## Documentation, audits and reviews

@@ -154,14 +154,14 @@ set_property(TEST jit_backend_test
                   jit_copyback_write_040_test
                   jit_copyback_bsr_040_test
                   jit_copyback_pair_040_test
-                  docs_test config_test
+                  docs_test config_test store_inventory_test
              APPEND PROPERTY LABELS jit-fast)
 set_tests_properties(jit_backend_test
                      jit_asset_free_lockstep_test
                      jit_copyback_write_040_test
                      jit_copyback_bsr_040_test
                      jit_copyback_pair_040_test
-                     docs_test config_test
+                     docs_test config_test store_inventory_test
                      PROPERTIES TIMEOUT 45)
 # One measured exception, set AFTER the blanket that would overwrite it
 # (a TIMEOUT set at add_test time in Pom68kJitGates.cmake was silently
@@ -305,7 +305,8 @@ foreach(t IN LISTS pom68k_tests)
     get_test_property(${t} LABELS gate_contract_labels)
     if(t MATCHES "etalon$")
         set(gate_scope profile)
-    elseif(t STREQUAL "docs_test" OR t STREQUAL "config_test")
+    elseif(t STREQUAL "docs_test" OR t STREQUAL "config_test" OR
+           t STREQUAL "store_inventory_test")
         set(gate_scope repository)
     elseif(t MATCHES "^jit_")
         set(gate_scope engine)
@@ -380,10 +381,10 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv
 add_custom_target(jitdev DEPENDS
                   jit_backend_test jit_lockstep_test q605_boot_etalon)
 
-# Pair with `ctest -L jit-fast`: seven registrations, five small binaries,
+# Pair with `ctest -L jit-fast`: eight registrations, six small binaries,
 # no ROM/disk/SST corpus and no GUI dependency.
 add_custom_target(jitfast DEPENDS
                   jit_backend_test jit_asset_free_lockstep_test
                   jit_copyback_write_040_test
-                  docs_test config_test)
+                  docs_test config_test store_inventory_test)
 

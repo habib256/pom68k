@@ -1810,7 +1810,8 @@ make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
 `jit-fast` is the no-asset A64/x64 CI floor: IR memory-contract/profile
 checks, 768 deterministic interpreter/native checkpoints, restart and
 last-write fault frames, generated copyback write/BSR/pair protocols,
-45-second test budgets, and `docs_test` + `config_test`. CI requires a native
+45-second test budgets, and the three source-contract checkers
+(`docs_test`, `config_test`, `store_inventory_test`). CI requires a native
 backend, so this tier cannot pass by selecting `threaded` or soft-skipping.
 The same lockstep binary writes `pom68k.jit.metrics.v1`; the Linux x86-64 and
 macOS AArch64 jobs validate and archive identical fields (backend, guest/host,

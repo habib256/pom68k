@@ -80,6 +80,21 @@ public:
     // refused; a store to ROM is refused.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    // Every path that can deposit code in guest RAM on a VASP board passes
+    // CodeGuard::note(): the only two `ram_` store sites are write8/write16
+    // and both note() before storing; SCSI is a 5380 whose pseudo-DMA port
+    // is READ/WRITTEN by guest MOVEs (scsiDma_/scsiDmaW_ touch the device,
+    // never RAM — the RAM half of the transfer is an ordinary CPU store);
+    // the SWIM1/SonyDrive pair is polled; the Egret MCU sits behind the VIA
+    // shift register; the ASC plays from its own FIFO; the SCC is polled.
+    // Generated-code stores cross the DTLB codeMask into pomJitWrite →
+    // write8/16, and dataSpan() hands the write window out only under that
+    // same engine-side codeMask. No device on the IIvx/IIvi masters the
+    // bus. `store_inventory_test` pins each of these source properties; a
+    // board that grows a bus master must flip this back and take the CACR
+    // SMC flush with it (VaspCpu::didChangeCACR).
+    static constexpr bool kJitStoreInventoryComplete = true;
+
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
     uint32_t ramBytes() const { return totalRam_; }
     void jitMapChanged();

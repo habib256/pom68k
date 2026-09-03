@@ -16,6 +16,8 @@ VaspCpu::VaspCpu(VaspMemory& mem, const jit::ResolvedConfig& jitConfig,
     boost_ = cacheBoost_;
     if (cpuConfig.floppyBoostGate)
         floppyGate_ = *cpuConfig.floppyBoostGate;
+    if (cpuConfig.cacr030Flush)
+        cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
     armIcacheOverlay(icacheMiss_);
 }
 
@@ -29,9 +31,17 @@ void VaspCpu::hardReset() {
 
 void VaspCpu::didChangeCACR(moira::u32 value) {
     pomInvalidateIcache030(value);         // CI whole / CEI selected longword
-    // SMC hint — but only the INSTRUCTION-cache strobes are one. See
-    // Cpu030::didChangeCACR for the measurement that narrowed this.
-    if (value & 0x0C) jit_.flushAll();
+    // The CACR SMC hint, retired on this board the way the V8 retired it:
+    // VaspMemory::kJitStoreInventoryComplete documents (and
+    // store_inventory_test pins) that every store into RAM passes
+    // CodeGuard::note(), so the drop-all-generated-code flush on the CI/CEI
+    // strobes protected nothing CodeGuard does not already catch precisely.
+    // POM68K_JIT_030_CACR_FLUSH keeps its three values here as on the V8:
+    // unset = the board's own answer, 1 = force the hint back on (the
+    // measurement instrument), 0 = force it off.
+    const bool flush = cacrFlushPolicy_ < 0
+        ? !VaspMemory::kJitStoreInventoryComplete : cacrFlushPolicy_ != 0;
+    if ((value & 0x0C) && flush) jit_.flushAll();
 }
 
 void VaspCpu::runCycles(moira::i64 n) {

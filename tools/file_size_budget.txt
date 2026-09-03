@@ -8,9 +8,9 @@
 
 CLAUDE.md                                250
 CMakeLists.txt                           559
-cmake/Pom68kComponentGates.cmake         437
+cmake/Pom68kComponentGates.cmake         446
 cmake/Pom68kDevTools.cmake               143
-cmake/Pom68kGatePolicy.cmake             389
+cmake/Pom68kGatePolicy.cmake             390
 cmake/Pom68kJitGates.cmake               635
 cmake/Pom68kMachineGates.cmake           740
 src/AfpServer.cpp                        1129

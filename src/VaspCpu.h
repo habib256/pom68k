@@ -50,6 +50,10 @@ public:
 private:
     friend pom68k::MoiraCpu<VaspCpu, VaspMemory>;
     void didChangeCACR(moira::u32 value) override;
+
+    // POM68K_JIT_030_CACR_FLUSH: -1 = board default (retired here), 0/1 =
+    // forced by the knob — Cpu030's exact contract.
+    int cacrFlushPolicy_ = -1;
     void catchUp();
     void schedulePeriphDeadline();
 
