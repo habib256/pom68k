@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (eighth)** — [Green CI becomes a push condition a hook enforces, not a rule a tired session remembers](#2026-09-03-push-gate)
 - **2026-09-03 (seventh)** — [B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed](#2026-09-03-positioned-polls)
 - **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](#2026-09-03-profile-macos-leg)
 - **2026-09-03 (fifth)** — [The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking](#2026-09-03-leak-census-armed)
@@ -792,6 +793,21 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-push-gate"></a>
+## 2026-09-03 (eighth) — Green CI becomes a push condition a hook enforces, not a rule a tired session remembers
+
+The last open A.1 item asked for the rule to be made durable.
+`tools/githooks/pre-push` now asks `gh` for the last COMPLETED run of
+the CI, macOS and Nightly workflows on `main` and refuses the push
+while any concluded red — with `git push --no-verify` as the conscious
+bypass that turns the red into the day's first task. Unknown is not
+red: no `gh`, offline, or a workflow with no completed run warns and
+lets the push through, so the gate can never strand a machine that
+cannot ask. Installation is one versioned line
+(`git config core.hooksPath tools/githooks`), now part of the DEV.md
+quick start and installed on this clone; the hook passed its first
+live check against tonight's green runs. A.1 closes with it.
 
 <a id="2026-09-03-positioned-polls"></a>
 ## 2026-09-03 (seventh) — B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed

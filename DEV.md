@@ -21,11 +21,20 @@ The normal local loop builds the GUI and the asset-free verification tier:
 
 ```bash
 ./setup_imgui.sh
+git config core.hooksPath tools/githooks   # once per clone: the pre-push CI gate
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build --parallel
 ctest --test-dir build -L asset-none --output-on-failure
 git diff --check
 ```
+
+**Green CI is a push condition.** `tools/githooks/pre-push` asks `gh` for
+the last completed run of the CI, macOS and Nightly workflows on `main` and
+refuses the push while any of them concluded red — ten days of unread red
+buried two real regressions once (CHANGELOG 2026-09-02 (tenth)). Unknown is
+not red: without `gh` or offline the push proceeds with a warning. The
+conscious bypass is `git push --no-verify`, and the red becomes the day's
+first task, not a queue entry.
 
 `setup_imgui.sh` fetches the pinned Dear ImGui docking release. A headless
 configuration may omit `imgui/`: `pom68k_core` and the test targets still

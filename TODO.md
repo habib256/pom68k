@@ -46,12 +46,6 @@ Règles de travail :
 
 ## A — P0 — réparer le socle de preuve
 
-### A.1 Rendre la CI verte, et la garder verte
-
-- [ ] **Faire de la CI verte une condition de push.** Une fois les deux points
-  ci-dessus fermés, tout rouge redevient une découverte à traiter le jour
-  même. Dix jours de rouge ont enterré deux régressions réelles.
-
 ### A.3 Rendre la preuve reproductible sur les deux architectures
 
 - [ ] **Transporter les quatre références nées sur l'hôte x86-64.** La récolte

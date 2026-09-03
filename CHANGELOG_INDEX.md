@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 404 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 405 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 49 |
-| [Build, packaging and release](#build-packaging-and-release) | 9 |
+| [Build, packaging and release](#build-packaging-and-release) | 10 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 30 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 80 |
@@ -338,6 +338,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-19 (second)** — [A full-parallel LTO make froze the host: with LTO the memory spike is the LINK, and an interrupted make leaves binaries that lie](CHANGELOG.md#2026-08-19-make-lto-freeze)
 - **2026-08-28** — [An architecture pass reads the repository instead of its documentation, and finds a shipped Windows binary that cannot work](CHANGELOG.md#2026-08-28-architecture-review)
 - **2026-09-02 (tenth)** — [The proof floor is architecture-asymmetric and the CI signal is ten days dead: an audit, and the backlog reordered on it](CHANGELOG.md#2026-09-02-proof-asymmetry)
+- **2026-09-03 (eighth)** — [Green CI becomes a push condition a hook enforces, not a rule a tired session remembers](CHANGELOG.md#2026-09-03-push-gate)
 
 ## Tests, gates and measurement
 

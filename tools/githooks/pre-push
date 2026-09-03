@@ -1,0 +1,43 @@
+#!/bin/sh
+# POM68K — green CI is a push condition (DEV.md § quick start).
+#
+# Ten days of red CI buried two real regressions (CHANGELOG 2026-09-02
+# (tenth)). This hook turns red into a same-day discovery: the last
+# COMPLETED run of each required workflow on main must have concluded
+# `success` before a push leaves this machine. A conscious bypass is
+# `git push --no-verify` — and the red becomes the day's first task.
+#
+# Unknown is not red: without `gh`, or offline, or before a workflow's
+# first run, the push proceeds with a warning. The gate blocks on known
+# failure only, so it can never strand a laptop that cannot ask.
+#
+# Install (versioned, once per clone):  git config core.hooksPath tools/githooks
+
+command -v gh >/dev/null 2>&1 || {
+    echo "[pre-push] gh not found — CI status unknown, push allowed" >&2
+    exit 0
+}
+
+fail=0
+for wf in CI macOS Nightly; do
+    st=$(gh run list --workflow "$wf" --branch main --status completed \
+             --limit 1 --json conclusion --jq '.[0].conclusion' 2>/dev/null)
+    case "$st" in
+        "")
+            echo "[pre-push] $wf: no completed run visible — push allowed" >&2
+            ;;
+        success)
+            ;;
+        *)
+            echo "[pre-push] $wf: last completed run on main concluded '$st'" >&2
+            fail=1
+            ;;
+    esac
+done
+
+if [ "$fail" = 1 ]; then
+    echo "[pre-push] red is a discovery, not a queue: fix it today, or bypass" >&2
+    echo "[pre-push] consciously with \`git push --no-verify\`." >&2
+    exit 1
+fi
+exit 0
