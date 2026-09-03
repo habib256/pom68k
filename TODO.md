@@ -115,10 +115,15 @@ cache-actives reste un chantier de conformité réel, mais son levier temps est
 borné à ~14 points ; l'échéancier événementiel — troisième item — porte
 désormais la masse mesurée.
 
-- [ ] **Encoder la position des polls IPL 68040 dans l'IR.** Remplacer le
-  fallback conservateur des instructions mémoire à plusieurs polls par une
-  séquence ordonnée accès/poll/faute/validation, prouvée sur A64 et x64 avec
-  cache actif et livraison périphérique comparée.
+- [ ] **Décider le sort de l'admission late-poll : x64 et rentabilité.** La
+  position des polls est dans l'IR et l'admission A64
+  (accès/poll/faute/validation) est prouvée conforme — mais mesurée −6,3 %
+  sur le bench cache-actif, car la classe admise est les boucles de poll
+  chaudes du boot (`CHANGELOG` 2026-09-03 (seventh)). Le knob
+  `POM68K_JIT_040_LATE_POLL` reste opt-in. Reste : rejouer les locksteps
+  x64 sur l'hôte x86-64 avant toute admission x64, et ne rouvrir le défaut
+  que si un workload cache-actif montre le gain — ou après une dé-admission
+  adaptative des sites qui manquent chroniquement.
 - [ ] **Rendre le `JSR` cache-actif 68040 transactionnel.** Modéliser lecture
   du mot cible, push, faute et effets I-cache dans leur ordre architectural
   afin de récupérer le chemin natif sans rendre le replay non pristine.

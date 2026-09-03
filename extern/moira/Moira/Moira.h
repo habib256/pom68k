@@ -454,6 +454,16 @@ public:
         // A cache-active native backend needs this distinction because a
         // data-cache stall can change the pin between those two sites.
         i64 iplPolls = 0;
+        // Where those polls sat relative to the instruction's DATA
+        // accesses: dataAccesses counts completed mmu040Read/mmu040Write
+        // calls with data == true, and each POLL_IPL packs that count
+        // (saturated at 15) into its own nibble of iplPollPositions —
+        // first eight polls only. Position 0 is the loop head or any
+        // pre-access site; position k is a poll that fired after the k-th
+        // data access. 040-only by construction: the 030's later polls
+        // ride INSIDE mmuRead/mmuWrite and are not separable this way.
+        i64 dataAccesses = 0;
+        u32 iplPollPositions = 0;
         // Instruction-stream words the run fetched through mmuFetchWord
         // (pomIcache.fetches delta; the counter runs whenever armed, cache
         // enabled or not). NOT derivable from the instruction length: a

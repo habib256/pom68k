@@ -4764,16 +4764,28 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             continue;
         }
         // A cache fill can advance peripherals between the 040 loop-head
-        // IPL sample and an opcode handler's later sample. The trace tells
-        // us which instructions have that second site, but not yet whether
-        // it precedes or follows each data access. Keep exactly that subset
-        // on Moira until the IR carries the poll position; a generic late
-        // sample would recognize some interrupts one instruction too soon.
+        // IPL sample and an opcode handler's later sample. The IR carries
+        // each poll's access-relative position (Instr::iplPollMask): when
+        // every non-head poll fired after the instruction's FINAL data
+        // access, the body stays native and re-samples the pin once at
+        // the end of the body — the same architectural point, since no
+        // emitted code moves peripheral time between the last access
+        // thunk and the boundary. Any other placement — between two
+        // accesses, or a position the trace could not separate — keeps
+        // the exact interpreter path.
+        bool lateIplPoll = false;
         if (!L.is030 && L.cache040Live && in.memory.count != 0 &&
             in.iplPolls > 1) {
-            watchRefusal(L, ir, in, "cache040:positioned-ipl-poll");
-            a.b(slowStatic[i]);
-            continue;
+            const uint8_t n = in.memory.count;
+            lateIplPoll = cache040LatePollEnabled() &&
+                in.iplPollPosValid &&
+                n >= 1 && n <= MemoryContract::MaxAccesses &&
+                in.iplPollMask == uint8_t(1u << (n - 1));
+            if (!lateIplPoll) {
+                watchRefusal(L, ir, in, "cache040:positioned-ipl-poll");
+                a.b(slowStatic[i]);
+                continue;
+            }
         }
         // A successful exact MMIO thunk may call Cpu030::stall/catchUp from
         // inside the operand access, and post-success charging would
@@ -4818,6 +4830,17 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         }
         nativeCount++;
         if (in.kind == Kind::Branch) continue;
+
+        if (lateIplPoll) {
+            // The traced handler's post-access POLL_IPL, emitted at its
+            // architectural position: every access of this body — and any
+            // peripheral time an exact thunk advanced — is done, and the
+            // trailing cycle charge at the boundary moves no device time
+            // before the next loop head. reg.ipl therefore matches the
+            // interpreter's sample bit for bit.
+            a.ldrB(11, 0, L.iplPin);
+            a.strB(11, 0, L.regIpl);
+        }
 
         // Charge only after the instruction body has crossed its last
         // runtime-bail edge. A refused re-run can then never leave cache

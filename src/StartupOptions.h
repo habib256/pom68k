@@ -270,6 +270,8 @@ concept IntegerStartupOption =
       startup_policy::JitBoolean)                                            \
     X(Jit040LineStats, "POM68K_JIT_040_LINE_STATS", StartupDomain::Jit,    \
       startup_policy::JitBoolean)                                            \
+    X(Jit040LatePoll, "POM68K_JIT_040_LATE_POLL", StartupDomain::Jit,      \
+      startup_policy::JitBoolean)                                            \
     X(JitLinks, "POM68K_JIT_LINKS", StartupDomain::Jit,                    \
       startup_policy::JitBoolean)                                            \
     X(JitPackedCcr, "POM68K_JIT_PACKED_CCR", StartupDomain::Jit,           \

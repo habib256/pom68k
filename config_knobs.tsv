@@ -84,6 +84,7 @@ POM68K_INPUT_ANYPATH	test	owner:tests/family_input_etalon.cpp
 POM68K_INPUT_RECORD	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_030_CACR_FLUSH	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_030_MEMBF	product	gate:jit_restart_write_030_test
+POM68K_JIT_040_LATE_POLL	chantier	expiry:src/jit/POM68K_JIT.md#positioned-ipl-polls
 POM68K_JIT_040_LINE_PAIR	product	gate:jit_copyback_pair_040_test
 POM68K_JIT_040_LINE_READ	product	gate:jit_copyback_write_040_test
 POM68K_JIT_040_LINE_STATS	diagnostic	owner:src/StartupOptions.h

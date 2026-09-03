@@ -69,6 +69,7 @@ struct ResolvedConfig {
     bool cache040LineWrites = true;
     bool cache040LinePairs = true;
     bool cache040LineReadStats = false;
+    bool cache040LatePoll = false;
     bool links = true;
     // Keep XNZVC in the low five bits of the generated backend's retired
     // counter register.  Architectural flag bytes are materialised only at
@@ -210,6 +211,13 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     c.cache040LineWrites = envBool(option::Jit040LineWrite, !conservative);
     c.cache040LinePairs = envBool(option::Jit040LinePair, !conservative);
     c.cache040LineReadStats = envBool(option::Jit040LineStats, instrumented);
+    // Opt-in: the cache-active 040 late-IPL-poll admission. Conformant
+    // (locksteps identical with it on) but measured −6.3 % wall on the
+    // cache-on fixed-budget Q605 bench (2026-09-03): the admitted class is
+    // the boot's hot poll loops, whose native line path loses to the fetch
+    // window. Off until a workload shows the win the window-lengthening
+    // argument predicts.
+    c.cache040LatePoll = envBool(option::Jit040LatePoll, false);
     c.links = envBool(option::JitLinks, production);
     c.packedCcr = envBool(option::JitPackedCcr, false);
     c.regCache = envBool(option::JitRegisterCache, false);
@@ -397,6 +405,13 @@ inline bool cache040LinePairsEnabled() {
 }
 inline bool cache040LineReadStatsEnabled() {
     return detail::activeConfig ? detail::activeConfig->cache040LineReadStats : false;
+}
+// B.1 slice 1 (2026-09-03): admit cache-active 040 memory instructions whose
+// traced non-head POLL_IPL sits after their final data access, with an
+// end-of-body re-sample. Proved conformant, measured slower on the only
+// cache-on workload available — see POM68K_JIT.md § positioned polls.
+inline bool cache040LatePollEnabled() {
+    return detail::activeConfig ? detail::activeConfig->cache040LatePoll : false;
 }
 
 inline bool linksEnabled() {

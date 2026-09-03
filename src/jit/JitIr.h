@@ -1307,6 +1307,16 @@ struct Instr {
     // 68030/040 instructions normally have one at the loop head; some
     // handlers have a later sample around their data phase as well.
     uint8_t iplPolls = 0;
+    // Access-relative positions of those polls, when the trace could
+    // separate them (68040 traces only). Bit k-1 of iplPollMask records a
+    // poll that fired after the instruction's k-th data access had
+    // completed (k = 1..8); pre-access polls — the loop head — set no
+    // bit. Meaningful only while iplPollPosValid: a trace with more than
+    // eight polls or an access beyond the eighth refuses rather than
+    // truncates, and a 68030 trace never claims validity (its later
+    // polls sit inside the access, not around it).
+    uint8_t iplPollMask = 0;
+    bool iplPollPosValid = false;
     MemoryContract memory{};          // `{}`: filled after the aggregate
     InstructionSemantics semantics{}; // init, and -Wextra flags Instr{...}
 

@@ -916,6 +916,24 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         const uint8_t iplPolls = uint8_t(
             timing.iplPolls > 0 && timing.iplPolls < 256
                 ? timing.iplPolls : 0);
+        // Decode the traced poll positions (nibble per poll) into the IR's
+        // per-access mask. Only a 68040 trace separates polls from their
+        // accesses; anything the encoding cannot carry exactly — more
+        // than eight polls, a poll after more than eight accesses —
+        // invalidates the mask instead of truncating it.
+        uint8_t iplPollMask = 0;
+        bool iplPollPosValid = false;
+        if (guestFamily_ == kGuest68040 && timing.iplPolls > 0 &&
+            timing.iplPolls <= 8) {
+            iplPollPosValid = true;
+            for (int p = 0; p < int(timing.iplPolls); p++) {
+                const uint32_t pos =
+                    (timing.iplPollPositions >> (4 * p)) & 0xFu;
+                if (pos == 0) continue;
+                if (pos > 8) { iplPollPosValid = false; break; }
+                iplPollMask |= uint8_t(1u << (pos - 1));
+            }
+        }
         const uint32_t observedNextPc = cpu_.getPC();
         const uint16_t terminalIrd = cpu_.getIRD();
         const uint16_t terminalIrc = cpu_.getIRC();
@@ -931,6 +949,8 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                 describeMemory(op, guestFamily_ == kGuest68030);
             ir.instrs.back().semantics = describeInstruction(op);
             ir.instrs.back().iplPolls = iplPolls;
+            ir.instrs.back().iplPollMask = iplPollMask;
+            ir.instrs.back().iplPollPosValid = iplPollPosValid;
             at += words * 2;
             why = EndReason::ControlFlow;
             break;
@@ -950,6 +970,8 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                 describeMemory(op, guestFamily_ == kGuest68030);
             ir.instrs.back().semantics = describeInstruction(op);
             ir.instrs.back().iplPolls = iplPolls;
+            ir.instrs.back().iplPollMask = iplPollMask;
+            ir.instrs.back().iplPollPosValid = iplPollPosValid;
             why = EndReason::Discontinuity;
             break;
         }
@@ -964,6 +986,8 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
             describeMemory(op, guestFamily_ == kGuest68030);
         ir.instrs.back().semantics = describeInstruction(op);
         ir.instrs.back().iplPolls = iplPolls;
+        ir.instrs.back().iplPollMask = iplPollMask;
+        ir.instrs.back().iplPollPosValid = iplPollPosValid;
         at = next;
 
         if (versionedShift) { why = EndReason::LengthLimit; break; }

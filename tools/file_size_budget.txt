@@ -25,11 +25,11 @@ src/GuiRunnerV8.h                        310
 src/GuiShellCommon.h                     366
 src/GuiShell.cpp                         389
 src/GuiTobyStatus.h                      41
-src/jit/backends/JitBackendA64.cpp       5078
-src/jit/backends/JitBackendX64.cpp       5366
-src/jit/JitConfig.h                      536
-src/jit/JitEngine.cpp                    1530
-src/jit/JitIr.h                          2148
+src/jit/backends/JitBackendA64.cpp       5101
+src/jit/backends/JitBackendX64.cpp       5371
+src/jit/JitConfig.h                      549
+src/jit/JitEngine.cpp                    1554
+src/jit/JitIr.h                          2158
 src/main.cpp                             31
 src/PlatformCompact.cpp                  172
 src/PlatformComposers.cpp                46
@@ -49,7 +49,7 @@ src/Scc8530.cpp                          1071
 src/ScsiDisk.cpp                         1221
 src/SonyDrive.cpp                        1292
 src/StartupDomainView.h                  73
-src/StartupOptions.h                     378
+src/StartupOptions.h                     380
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88

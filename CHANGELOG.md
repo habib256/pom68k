@@ -386,6 +386,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (seventh)** — [B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed](#2026-09-03-positioned-polls)
 - **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](#2026-09-03-profile-macos-leg)
 - **2026-09-03 (fifth)** — [The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking](#2026-09-03-leak-census-armed)
 - **2026-09-03 (fourth)** — [The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again](#2026-09-03-timeout-stomped)
@@ -791,6 +792,50 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-positioned-polls"></a>
+## 2026-09-03 (seventh) — B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed
+
+The cache-active 040's biggest conservative fallback was the multi-poll
+memory class: `PomJitTiming` counted an instruction's `POLL_IPL` sites
+but not their position, so A64 and x64 refused every cache-active 040
+memory instruction with more than one observed poll (2026-09-01). The
+position is now traced — `PomJitTiming.dataAccesses` counts completed
+`mmu040Read/Write` data calls, each poll packs that count into a nibble,
+and the engine folds the result into `Instr::iplPollMask` /
+`iplPollPosValid`. On that evidence the A64 backend admits the
+poll-after-final-access class (the ALU-mem→Rg family: `CMP.L 12(A4),D7`,
+`B0B8`, `C0AB`…), emitting the ordinary body plus one end-of-body
+`reg.ipl = ipl` re-sample — the same architectural point, since nothing
+after the last access thunk moves peripheral time before the boundary.
+
+**The conformance proof landed; the performance proof said no.** With
+the admission on, the coarse cache-armed A64 lockstep stays identical
+over 5,000,000 steps with the class demonstrably native (blocks 1879 →
+1890, native line reads 1,623,841 → 1,631,338), and the cache-on
+fixed-budget Q605 bench keeps its fingerprint (`e5ef507ef9ff86ab`)
+while +130 blocks and +652 k instructions leave the fetch window for
+native bodies. But the same bench, AB/BA/AB with a warm-up pair against
+a cfd5da5 worktree, reads **16.30 s against 15.34 s — +6.3 % wall**
+(spreads 0.4 %, floor 11 ‰): the admitted class IS the boot's hot poll
+loops (`B0B8` alone is 17 % of the cache-on run), and their native
+line-validation path loses to the fetch window that ran them before.
+Raising `POM68K_JIT_MIN_NATIVE` to 55/60 does not recover the time, so
+the cost sits in the admitted executions, not in marginal-block
+admission.
+
+So the slice ships with the door built and closed: the trace, IR and
+emission are in the tree, the admission is opt-in
+(`POM68K_JIT_040_LATE_POLL=1`, `chantier` knob), the default is proved
+byte-inert (every cache-on bench counter identical to the pre-slice
+arm, 13,127 blocks), and x64 keeps its full refusal until its
+locksteps re-run on an x86-64 host. All 11 locksteps, the complete
+`m040` tier (54/54), `docs_test` and
+`config_test` are green on the rebuilt binaries — rebuilt being the
+operative word: the first "11/11 green" of the night had tested a
+2026-09-02 binary against 2026-09-03 sources, and only the identical
+pre/post counters gave it away. Runs and logs in
+`scratchpad/2026-09-03-night/`.
 
 <a id="2026-09-03-profile-macos-leg"></a>
 ## 2026-09-03 (sixth) — The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one

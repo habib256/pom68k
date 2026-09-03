@@ -1277,7 +1277,15 @@ Moira::setIPL(u8 val)
 void
 Moira::pollIpl()
 {
-    if (pomJitTimingProbe) [[unlikely]] pomJitTiming.iplPolls++;
+    if (pomJitTimingProbe) [[unlikely]] {
+        if (pomJitTiming.iplPolls < 8) {
+            const u32 pos = pomJitTiming.dataAccesses > 15
+                ? 15u : u32(pomJitTiming.dataAccesses);
+            pomJitTiming.iplPollPositions |=
+                pos << (4 * pomJitTiming.iplPolls);
+        }
+        pomJitTiming.iplPolls++;
+    }
 
     // Feature OFF (défaut) : comportement Moira d'origine, byte-identique
     // (étalons 19/0 vérifiés). POLL_IPL ≡ reg.ipl = ipl.

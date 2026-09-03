@@ -2960,6 +2960,12 @@ Moira::mmu040Read(u32 addr, bool data)
         didReachWatchpoint(addr & addrMask<C>());
     }
 
+    // JIT trace: one architectural data access, whatever its internal
+    // page/alignment split. Its completion count positions any later
+    // POLL_IPL (PomJitTiming.iplPollPositions); no poll fires inside
+    // this call, so counting on entry equals counting on return.
+    if (data && pomJitTimingProbe) [[unlikely]] pomJitTiming.dataAccesses++;
+
     // POM68K J3 — the data window (Moira.h § pomJitData). A hit is plain
     // guest memory behind a resident, permitted translation: no fault is
     // possible, so the in-flight access context is not stamped — the same
@@ -3043,6 +3049,9 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
         didReachWatchpoint(addr & addrMask<C>());
     }
+
+    // JIT trace: see mmu040Read — one data access per call.
+    if (data && pomJitTimingProbe) [[unlikely]] pomJitTiming.dataAccesses++;
 
     // POM68K J3 — the data window, write side. The last-write marker is
     // replicated bit for bit from the long path below: a LATER access in

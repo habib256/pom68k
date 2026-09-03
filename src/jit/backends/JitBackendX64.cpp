@@ -4811,10 +4811,15 @@ bool Emitter::emit() {
         // peripherals in the middle of the instruction. Some Moira handlers
         // then cross a second POLL_IPL site, while others deliberately do
         // not; moving that sample to a generic generated boundary would be
-        // wrong for both the before-write and after-read variants. Until the
-        // IR records its position, replay only this proved two-poll + data
-        // subset through the exact interpreter path. Register-only two-poll
-        // forms cannot advance the clock before their final cycle charge.
+        // wrong for both the before-write and after-read variants. The IR
+        // now records each poll's access-relative position
+        // (Instr::iplPollMask) and the A64 backend admits the
+        // poll-after-final-access class with an end-of-body re-sample;
+        // this backend keeps the exact interpreter path until the same
+        // admission is proved on an x86-64 host — its locksteps cannot
+        // execute on the machine that carried the A64 proof. Register-only
+        // two-poll forms cannot advance the clock before their final
+        // cycle charge.
         if (!L_.is030 && L_.cache040Live &&
             ir_.instrs[i].memory.count != 0 && ir_.instrs[i].iplPolls > 1) {
             a_.jmp(staticStub(i));

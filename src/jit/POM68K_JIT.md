@@ -1784,10 +1784,28 @@ end-of-instruction poll is not conformant because some handlers poll before a
 write and others after a read.
 
 `PomJitTiming` therefore counts the actual `POLL_IPL` sites while tracing and
-`Instr::iplPolls` carries that fact to either host backend. Until the IR also
-records the sample's access-relative position, A64 and x64 refuse exactly the
-cache-active 040 instructions that have both a memory contract and more than
-one observed poll. Register-only two-poll forms cannot advance peripheral
+`Instr::iplPolls` carries that fact to either host backend.
+
+**Positioned polls (2026-09-03).** The trace now also records WHERE each
+poll sat: `PomJitTiming.dataAccesses` counts completed `mmu040Read/Write`
+data calls and every poll packs that count into its own nibble, which the
+engine folds into `Instr::iplPollMask`/`iplPollPosValid` (bit k−1 = a poll
+after the k-th access; head/pre-access polls set no bit). On that evidence
+the A64 backend can admit the poll-after-final-access class — the
+ALU-mem→Rg family, `CMP.L 12(A4),D7` included — emitting the body as usual
+plus one end-of-body `reg.ipl = ipl` re-sample, which is the same
+architectural point because nothing after the last access thunk moves
+peripheral time before the boundary. The admission is **opt-in**
+(`POM68K_JIT_040_LATE_POLL=1`, default off): with it on, the coarse
+cache-armed A64 lockstep stays identical over 5,000,000 steps and the
+admitted class demonstrably goes native (+130 blocks, +652 k native
+instructions on the cache-on fixed-budget bench, fingerprint unchanged) —
+but the same bench measures **+6.3 % wall time** (AB/BA/AB, spreads 0.4 %,
+floor 1.1 %): the admitted instructions are the boot's hot poll loops, and
+their native line-validation path loses to the fetch window that ran them
+before. The knob stays off until a workload shows the win, and x64 keeps
+the full refusal until its locksteps re-run on an x86-64 host.
+Register-only two-poll forms cannot advance peripheral
 time before their final charge and stay native; cacheless forms and
 single-poll memory instructions are unchanged. The copyback gate pins
 `ADD.W (A0),D0` to one exact fallback with interpreter-identical result,
