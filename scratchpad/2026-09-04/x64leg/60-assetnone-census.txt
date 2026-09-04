@@ -1,0 +1,9 @@
+FAIL     store_inventory_test
+FAIL     jit_restart_write_030_test
+FAIL     jit_copyback_write_040_test
+FAIL     jit_copyback_write_040_control_test
+FAIL     jit_copyback_bsr_040_test
+FAIL     jit_copyback_pair_040_test
+FAIL     jit_copyback_pair_040_control_test
+
+78 executed, 0 soft-skipped, 7 failed, 85 gates in the log

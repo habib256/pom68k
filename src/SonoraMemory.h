@@ -106,6 +106,29 @@ public:
     // refused; a store to ROM is refused.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    // Every path that can deposit code in guest RAM on a Sonora board
+    // passes CodeGuard::note(): the only two `ram_` store sites are
+    // write8/write16 and both note() before storing; the 5380's pseudo-DMA
+    // port is read/written by guest MOVEs (scsiDma_/scsiDmaW_ touch the
+    // device, never RAM); the INTEGRATED SWIM2 has no DMA client to feed
+    // on any swim2 board (Swim2.h's DAT1BYTE note — an IOP or DMA engine
+    // is what would need one) and SonyDrive works on its host image; the
+    // SCC is polled (WR14 bit 2 turns /DTR into a DMA request pin that
+    // drives no controller here); the Egret — and the AIO family's Cuda,
+    // LC 520/550/Color Classic II — is an MCU behind the VIA shift
+    // register owning only PRAM and its own MCU RAM; the ASC plays from
+    // its own FIFO; and Sonora video scans the DEDICATED 1 MB `vram_` at
+    // $60000000 through a const accessor (SonoraVideo.h) for all five
+    // profiles, never system RAM — codeSpan() also refuses that select, so
+    // no generated code can live there. Generated-code stores cross the
+    // DTLB codeMask into pomJitWrite → write8/16, and dataSpan() hands the
+    // write window out only under that same engine-side codeMask. No
+    // device on the LC III/III+/520/550/CC II masters the bus.
+    // `store_inventory_test` pins each of these source properties; a board
+    // that grows a bus master (a PDS card with DMA) must flip this back
+    // and take the CACR SMC flush with it (SonoraCpu::didChangeCACR).
+    static constexpr bool kJitStoreInventoryComplete = true;
+
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
     uint32_t ramBytes() const { return totalRam_; }
     void jitMapChanged();

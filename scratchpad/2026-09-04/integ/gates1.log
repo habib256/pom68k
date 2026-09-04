@@ -1,0 +1,42 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/build
+Test project /home/gistarcade/src/pom68k/build
+      Start  40: docs_test
+ 1/12 Test  #40: docs_test .............................   Passed    0.13 sec
+      Start  41: config_test
+ 2/12 Test  #41: config_test ...........................   Passed    0.03 sec
+      Start  42: store_inventory_test
+ 3/12 Test  #42: store_inventory_test ..................   Passed    0.01 sec
+      Start 175: jit_restart_write_030_test
+ 4/12 Test #175: jit_restart_write_030_test ............   Passed    1.00 sec
+      Start 187: jit_asset_free_lockstep_test
+ 5/12 Test #187: jit_asset_free_lockstep_test ..........   Passed    8.93 sec
+      Start 188: jit_copyback_write_040_test
+ 6/12 Test #188: jit_copyback_write_040_test ...........   Passed    0.15 sec
+      Start 189: jit_copyback_write_040_control_test
+ 7/12 Test #189: jit_copyback_write_040_control_test ...   Passed    0.04 sec
+      Start 190: jit_copyback_bsr_040_test
+ 8/12 Test #190: jit_copyback_bsr_040_test .............   Passed    0.02 sec
+      Start 191: jit_copyback_pair_040_test
+ 9/12 Test #191: jit_copyback_pair_040_test ............   Passed    0.02 sec
+      Start 192: jit_copyback_pair_040_control_test
+10/12 Test #192: jit_copyback_pair_040_control_test ....   Passed    0.02 sec
+      Start 198: jit_backend_parity_test
+11/12 Test #198: jit_backend_parity_test ...............   Passed    0.00 sec
+      Start 236: file_size_budget_test
+12/12 Test #236: file_size_budget_test .................   Passed    1.07 sec
+
+100% tests passed, 0 tests failed out of 12
+
+Label Time Summary:
+asset-none          =  11.41 sec*proc (12 tests)
+host-any            =   2.24 sec*proc (6 tests)
+host-native         =   9.17 sec*proc (6 tests)
+jit                 =  10.17 sec*proc (8 tests)
+jit-fast            =   9.28 sec*proc (7 tests)
+scope-component     =   1.07 sec*proc (1 test)
+scope-engine        =  10.17 sec*proc (8 tests)
+scope-repository    =   0.17 sec*proc (3 tests)
+tier-daily          =  11.41 sec*proc (12 tests)
+unit                =  11.41 sec*proc (12 tests)
+
+Total Test time (real) =  11.42 sec

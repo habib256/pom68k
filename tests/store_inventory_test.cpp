@@ -18,15 +18,20 @@
 //      (the codeSpan/dataSpan windows, which the engine's codeMask guards);
 //   4. the board's wrapper actually consults the constant;
 //   5. a board that has NOT declared the constant keeps flushing: its
-//      wrapper's didChangeCACR still contains the unconditional flushAll.
+//      wrapper's didChangeCACR still contains the unconditional flushAll;
+//   6. and no header in src/ declares the constant without a row here — the
+//      only remaining way to inherit a proof instead of earning one.
 //
 // TODO § B.4 rule: do not extrapolate one board's proof to another. Each
 // claiming pair below was audited individually (V8: 2026-08-19 §
-// C.4quinquies; VASP: 2026-09-03 (ninth); RBV: 2026-09-03 (tenth); MSC: 2026-09-03 (eleventh)).
+// C.4quinquies; VASP: 2026-09-03 (ninth); RBV: 2026-09-03 (tenth); MSC: 2026-09-03 (eleventh);
+// Sonora: 2026-09-04).
 
 #include "AssetFingerprint.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -105,6 +110,8 @@ int main() {
         {"VASP", "src/VaspMemory.h", "src/VaspMemory.cpp", "src/VaspCpu.cpp"},
         {"RBV", "src/RbvMemory.h", "src/RbvMemory.cpp", "src/RbvCpu.cpp"},
         {"MSC", "src/MscMemory.h", "src/MscMemory.cpp", "src/MscCpu.cpp"},
+        {"Sonora", "src/SonoraMemory.h", "src/SonoraMemory.cpp",
+         "src/SonoraCpu.cpp"},
     };
     for (const Board& b : proven) {
         const std::string header = slurp(testasset::find(b.header));
@@ -118,10 +125,14 @@ int main() {
     }
 
     // ── The boards that have NOT earned the claim keep the flush ─────────
+    // The table is EMPTY, and that is the state itself: Sonora was § B.4's
+    // last row, so every 68030 board in the tree now carries its own audit
+    // above. It stays wired because it is the holding pen a NEW 030 board
+    // lands in — one whose store inventory nobody has walked yet — and the
+    // loop is what pins that board to its flush until it earns a row on the
+    // proven side. Deleting it would silently make rule 5 unenforceable.
     struct Unproven { const char* name, *header, *wrapper; };
-    const Unproven pending[] = {
-        {"Sonora", "src/SonoraMemory.h", "src/SonoraCpu.cpp"},
-    };
+    const std::vector<Unproven> pending = {};
     for (const Unproven& b : pending) {
         const std::string header = slurp(testasset::find(b.header));
         check(header.find("kJitStoreInventoryComplete") == std::string::npos,
@@ -130,6 +141,36 @@ int main() {
         const std::string wrapper = slurp(testasset::find(b.wrapper));
         check(wrapper.find("flushAll") != std::string::npos,
               std::string(b.name) + ": wrapper still flushes on the strobes");
+    }
+
+    // ── Rule 6: the § B.4 rule itself, made mechanical ───────────────────
+    // With the pending table empty, "declare the constant and no gate row
+    // notices" is the way a board would inherit a proof it never earned.
+    // So sweep the source directory: EVERY header carrying the claim must
+    // be one of the rows above, whose .cpp was just walked.
+    const std::string anchor = testasset::find(proven[0].header);
+    check(!anchor.empty(), "the source directory is reachable from the gate");
+    if (!anchor.empty()) {
+        const std::filesystem::path dir =
+            std::filesystem::path(anchor).parent_path();
+        // directory_iterator order is unspecified; sort so the gate's own
+        // output is reproducible run to run.
+        std::vector<std::string> claiming;
+        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            if (entry.path().extension() != ".h") continue;
+            if (slurp(entry.path().string())
+                    .find("kJitStoreInventoryComplete = true") !=
+                std::string::npos)
+                claiming.push_back(entry.path().filename().string());
+        }
+        std::sort(claiming.begin(), claiming.end());
+        for (const std::string& header : claiming) {
+            bool listed = false;
+            for (const Board& b : proven)
+                if (std::filesystem::path(b.header).filename() == header)
+                    listed = true;
+            check(listed, header + ": claims the inventory and has a gate row");
+        }
     }
 
     if (failures) {

@@ -1,0 +1,5 @@
+default exit=0
+forced exit=0
+BYTE-IDENTICAL: lc3_product
+9f5a89d870964e15f0473502fccab7f094af0ef2fc5d932c937b87454904ceaf  /tmp/claude-1000/-home-gistarcade-src-pom68k/742ac6a0-9a99-4ebe-8701-713deafa5293/scratchpad/sonora/lc3_product_default.out
+9f5a89d870964e15f0473502fccab7f094af0ef2fc5d932c937b87454904ceaf  /tmp/claude-1000/-home-gistarcade-src-pom68k/742ac6a0-9a99-4ebe-8701-713deafa5293/scratchpad/sonora/lc3_product_forced.out

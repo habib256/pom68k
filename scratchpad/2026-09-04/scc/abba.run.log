@@ -1,0 +1,38 @@
+=== SCC deadline hand-off ABBA — 2026-09-04 16:07:27 ===
+host: Linux x86_64  load: 1.89 1.88 2.76
+arms: A=/home/gistarcade/src/pom68k/.claude/worktrees/agent-a5a3ffaf74087926b/build-base/jit_bench
+      B=/home/gistarcade/src/pom68k/.claude/worktrees/agent-a5a3ffaf74087926b/build-new/jit_bench
+workload: jit_bench, POM68K_BENCH_FRAMES=6000, cwd=/home/gistarcade/src/pom68k/.claude/worktrees/agent-a5a3ffaf74087926b
+rom:  roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM
+disk: hdv/ref/MacOS-8.1-boot.vhd
+
+--- warm-up pair (printed, NOT counted) ---
+16:07:55 old warmup  wall=28.62s  real=28.81s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+16:08:24 new warmup  wall=28.51s  real=28.70s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+
+--- pair 1: old new new old ---
+16:08:53 old p1.1  wall=28.62s  real=28.82s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+16:09:22 new p1.2  wall=28.63s  real=28.83s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+16:09:51 new p1.3  wall=29.05s  real=29.25s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+16:10:20 old p1.4  wall=28.92s  real=29.12s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+
+--- pair 2 (order reversed): new old old new ---
+16:10:48 new p2.1  wall=27.95s  real=28.16s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+16:11:17 old p2.2  wall=28.80s  real=29.03s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+16:11:50 old p2.3  wall=32.46s  real=32.72s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+16:12:24 new p2.4  wall=33.89s  real=34.15s  machine=2500002000  core=10000039216  fp=1fe3fabf0b913545
+
+--- identity precondition (must be ONE distinct triple) ---
+  new 2500002000 10000039216 1fe3fabf0b913545
+  old 2500002000 10000039216 1fe3fabf0b913545
+
+--- summary ---
+new  n=4  runs=28.63/29.05/27.95/33.89  min=27.95  max=33.89  mean=29.880 s
+old  n=4  runs=28.62/28.92/28.80/32.46  min=28.62  max=32.46  mean=29.700 s
+delta = +0.61 % (new against old); ranges OVERLAP — under the noise, no claim
+
+noise floor: performance_budgets.tsv, host_wallclock/any/<host>/noise_floor_permille
+=== end 16:12:24 ===
+
+written: /tmp/claude-1000/-home-gistarcade-src-pom68k/742ac6a0-9a99-4ebe-8701-713deafa5293/scratchpad/scc/abba.times
+exit=0

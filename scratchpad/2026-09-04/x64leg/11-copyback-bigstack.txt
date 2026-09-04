@@ -1,0 +1,125 @@
+=== ARGS: '<none>' ===
+jit_copyback_write_040_test — dirty longword + format-$7 gate (native write hit)
+  copyback MOVE loop compiled                                            ok
+  trained block aligned at selected MOVE                                 ok
+  exact bootstrap write completed before the selected native hit         ok
+  exact bootstrap published a write-authorized copyback line             ok
+  selected MOVE executed one native copyback write hit                   ok
+  misaligned long publishes exactly dirty longwords 0 and 1              ok
+  native hit stored the four big-endian bytes in the cache line          ok
+  copyback hit left backing RAM stale                                    ok
+  native hit bypassed the external memory-map write callbacks            ok
+  last-write fault entered the already-compiled native block             ok
+  both engines stacked one 60-byte format-$7 frame                       ok
+  native-miss and interpreter last-write frames are byte-identical       ok
+  last-write frame keeps final CCR and stacks the next PC                ok
+  format-$7 WB3D carries the pending longword                            ok
+  last-write fault leaves identical architectural boundary state         ok
+  restart-read loop compiled                                             ok
+  restart-side format-$7 frames are byte-identical                       ok
+  restart frame restores CCR, PC and predecrement A0                     ok
+  restart fault leaves identical architectural boundary state            ok
+  trained block aligned at selected late-poll ADD.W                      ok
+  late-poll bootstrap made the operand cache line resident               ok
+  late-poll bootstrap made the operand cache line resident               ok
+  cache-active memory+late-poll instruction used exact fallback          ok
+  late-poll fallback preserved result, flags, queue and cycles           ok
+  trained block aligned at selected JSR                                  ok
+  JSR bootstrap made the stack copyback line resident                    ok
+  JSR bootstrap made the stack copyback line resident                    ok
+  cache-active JSR used the native ordered transaction                   ok
+  JSR target-line fill, push, queue and dynamic cycles stay exact        ok
+  native JSR publishes the interpreter's terminal queue                  ok
+  native JSR committed the target and return-address push once           ok
+  fault gate aligned at the compiled JSR                                 ok
+  fault gate made the user stack line resident                           ok
+  fault gate made the user stack line resident                           ok
+  post-push target fault exited native code without replay               ok
+  post-push target faults build byte-identical format-$7 frames          ok
+  target fault preserves the exact pushed copyback line                  ok
+  faulted JSR committed its return address exactly once                  ok
+  post-push fault leaves identical boundary and queue state              ok
+  asset-free perf budget: interp=53.718 ms native=2.465 ms ratio=0.046 blocks=2 slow=1
+  performance budget executed cached native blocks                       ok
+  performance budget stayed within the versioned fallback ceiling        ok
+  native fixed-cycle loop stays within the versioned host budget         ok
+PASSED
+EXIT=0
+=== ARGS: '--disabled' ===
+jit_copyback_write_040_test — dirty longword + format-$7 gate (exact-write control)
+  copyback MOVE loop compiled                                            ok
+  trained block aligned at selected MOVE                                 ok
+  exact bootstrap write completed before the selected native hit         ok
+  exact bootstrap published a write-authorized copyback line             ok
+  disabled gate executed no native copyback write hit                    ok
+  misaligned long publishes exactly dirty longwords 0 and 1              ok
+  exact control stored the four big-endian bytes in the cache line       ok
+  exact copyback control left backing RAM stale                          ok
+  exact cache hit bypassed the external memory-map callbacks             ok
+  last-write fault entered the already-compiled native block             ok
+  both engines stacked one 60-byte format-$7 frame                       ok
+  native-miss and interpreter last-write frames are byte-identical       ok
+  last-write frame keeps final CCR and stacks the next PC                ok
+  format-$7 WB3D carries the pending longword                            ok
+  last-write fault leaves identical architectural boundary state         ok
+  restart-read loop compiled                                             ok
+  restart-side format-$7 frames are byte-identical                       ok
+  restart frame restores CCR, PC and predecrement A0                     ok
+  restart fault leaves identical architectural boundary state            ok
+PASSED
+EXIT=0
+=== ARGS: '--bsr' ===
+jit_copyback_bsr_040_test — native return-address push gate
+  BSR/RTS copyback loop compiled                                         ok
+  trained block aligned at selected BSR                                  ok
+  exact bootstrap published the stack's write-authorized line            ok
+  bootstrap left the copyback line resident                              ok
+  selected BSR executed one native copyback stack push                   ok
+  BSR publishes exactly the pushed return-address longword               ok
+  BSR stored the big-endian return address in the cache line             ok
+  native BSR push left copyback backing RAM stale                        ok
+  native BSR push bypassed external memory-map write callbacks           ok
+  native BSR committed A7 and the branch target after the push           ok
+  faulting BSR entered the already-compiled native block                 ok
+  BSR cache miss and interpreter fault frames are byte-identical         ok
+  faulting BSR leaves identical architectural boundary state             ok
+PASSED
+EXIT=0
+=== ARGS: '--pair' ===
+jit_copyback_pair_040_test — dual-line MOVE proof gate (native pair)
+  abs.W-to-stack MOVE loop compiled                                      ok
+  trained block aligned at selected MOVE                                 ok
+  exact bootstrap published the destination write line                   ok
+  exact bootstrap published the source read line                         ok
+  both physical cache lines are resident independently                   ok
+  selected MOVE committed one native R+W line pair                       ok
+  paired MOVE dirtied exactly the pushed destination longword            ok
+  paired MOVE copied the big-endian longword between cache lines         ok
+  paired copyback write left destination RAM stale                       ok
+  paired native MOVE bypassed external write callbacks                   ok
+  paired MOVE committed predecrement A7 and exact logical flags          ok
+  second-line fault entered the already-compiled native block            ok
+  second-line miss and interpreter fault frames are byte-identical       ok
+  faulting paired MOVE leaves identical architectural state              ok
+PASSED
+EXIT=0
+=== ARGS: '--pair-disabled' ===
+jit_copyback_pair_040_test — dual-line MOVE proof gate (exact-pair control)
+  abs.W-to-stack MOVE loop compiled                                      ok
+  trained block aligned at selected MOVE                                 ok
+  exact bootstrap published the destination write line                   ok
+  exact bootstrap published the source read line                         ok
+  both physical cache lines are resident independently                   ok
+    pair hits: R=0->0 W=0->0
+    pair fallback: 23->24
+  disabled pair used the exact path with no native hits                  ok
+  paired MOVE dirtied exactly the pushed destination longword            ok
+  paired MOVE copied the big-endian longword between cache lines         ok
+  paired copyback write left destination RAM stale                       ok
+  paired native MOVE bypassed external write callbacks                   ok
+  paired MOVE committed predecrement A7 and exact logical flags          ok
+  second-line fault entered the already-compiled native block            ok
+  second-line miss and interpreter fault frames are byte-identical       ok
+  faulting paired MOVE leaves identical architectural state              ok
+PASSED
+EXIT=0

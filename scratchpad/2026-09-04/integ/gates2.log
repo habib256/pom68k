@@ -1,0 +1,45 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/build
+Test project /home/gistarcade/src/pom68k/build
+      Start  11: savestate_v8_test
+ 1/10 Test  #11: savestate_v8_test .....................   Passed    0.14 sec
+      Start  12: savestate_030_test
+ 2/10 Test  #12: savestate_030_test ....................   Passed    0.58 sec
+      Start  13: savestate_040_test
+ 3/10 Test  #13: savestate_040_test ....................   Passed    0.39 sec
+      Start  14: savestate_68k_test
+ 4/10 Test  #14: savestate_68k_test ....................   Passed    0.17 sec
+      Start 102: lcii_boot_etalon
+ 5/10 Test #102: lcii_boot_etalon ......................   Passed  128.22 sec
+      Start 139: lc3_boot_etalon
+ 6/10 Test #139: lc3_boot_etalon .......................   Passed  220.53 sec
+      Start 203: jit_lockstep_030_test
+ 7/10 Test #203: jit_lockstep_030_test .................   Passed   48.18 sec
+      Start 207: jit_lockstep_030_x64_alignment_test
+ 8/10 Test #207: jit_lockstep_030_x64_alignment_test ...   Passed   48.26 sec
+      Start 208: jit_lockstep_x64_test
+ 9/10 Test #208: jit_lockstep_x64_test .................   Passed   22.17 sec
+      Start 217: jit_lc3_boot_etalon
+10/10 Test #217: jit_lc3_boot_etalon ...................   Passed  109.21 sec
+
+100% tests passed, 0 tests failed out of 10
+
+Label Time Summary:
+asset-none         =   0.53 sec*proc (2 tests)
+asset-optional     =   0.75 sec*proc (2 tests)
+asset-required     = 2866.41 sec*proc (6 tests)
+etalon             = 2747.79 sec*proc (3 tests)
+etalon-core        = 2092.55 sec*proc (2 tests)
+host-any           = 2797.25 sec*proc (8 tests)
+host-x64           =  70.44 sec*proc (2 tests)
+jit                = 773.86 sec*proc (4 tests)
+m030               = 2747.79 sec*proc (3 tests)
+scope-component    =   1.27 sec*proc (4 tests)
+scope-engine       = 118.62 sec*proc (3 tests)
+scope-profile      = 2747.79 sec*proc (3 tests)
+smoke              =  22.17 sec*proc (1 test)
+tier-daily         =   0.53 sec*proc (2 tests)
+tier-full          = 774.61 sec*proc (6 tests)
+tier-platform      = 2092.55 sec*proc (2 tests)
+unit               = 119.89 sec*proc (7 tests)
+
+Total Test time (real) = 577.86 sec

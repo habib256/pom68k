@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,7 @@ size_t cpuPayloadStart(const Blob& b) {
     return 0;
 }
 
+// Heap-owned, never a local: see the GateCpu note in tests/jit_copyback_write_040_test.cpp.
 struct Q605Rig {
     Q605Memory mem{pom68k::defaultCoreConfig()};
     Cpu040 cpu;
@@ -155,7 +157,8 @@ uint32_t counterOf(const Rig& r) {
 template <class Rig>
 void testFamily(const char* family, const std::vector<uint8_t>& rom) {
     // ── 1. Re-save byte-identity ────────────────────────────────────────
-    Rig m(rom);
+    const auto mOwner = std::make_unique<Rig>(rom);
+    Rig& m = *mOwner;
     m.cpu.runCycles(200000);
     check(!m.mem.overlay(), family, "setup: the stub cleared the boot overlay");
     const uint32_t atSnapshot = counterOf(m);
@@ -178,13 +181,15 @@ void testFamily(const char* family, const std::vector<uint8_t>& rom) {
     check(saveOf(m) == snapshot, family, "load→save is byte-identical");
 
     // ── 2. Determinism across a restore ─────────────────────────────────
-    Rig a(rom);
+    const auto aOwner = std::make_unique<Rig>(rom);
+    Rig& a = *aOwner;
     a.cpu.runCycles(200000);
     const Blob start = saveOf(a);
     a.cpu.runCycles(150000);
     const Blob direct = saveOf(a);
 
-    Rig b(rom);
+    const auto bOwner = std::make_unique<Rig>(rom);
+    Rig& b = *bOwner;
     b.cpu.runCycles(200000);            // any state; the restore overwrites it
     std::string e2;
     check(pom68k::load(b.mem, b.cpu, Rig::kKind,
@@ -220,7 +225,8 @@ int main() {
     // Product-conformance stamp: a strict qualified state reloads, an HLE
     // state is explicitly refused, and the CPU engine cannot be switched
     // back to the interpreter after qualification.
-    Q605Rig strict(rom);
+    const auto strictOwner = std::make_unique<Q605Rig>(rom);
+    Q605Rig& strict = *strictOwner;
     pom68k::lle::beginSession(true);
     pom68k::lle::setQualified(true);
     strict.cpu.setEngine(1);

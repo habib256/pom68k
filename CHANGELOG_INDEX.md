@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 413 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 419 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,19 +8,19 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 73 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 75 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 43 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 42 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 43 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 6 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 50 |
 | [Build, packaging and release](#build-packaging-and-release) | 10 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 82 |
+| [Cross-cutting](#cross-cutting) | 83 |
 
 ---
 
@@ -99,6 +99,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03** — [The A64 leg is re-recorded on the M4: the 030 generator's month lands as ×2.3 over threaded, and the M1's noise floor was never this host's](CHANGELOG.md#2026-09-03-a64-rebaseline)
 - **2026-09-03 (fourth)** — [The 300 never took: the jit-fast blanket stomps add-time timeouts, and the third nightly proved it at 45.04 s again](CHANGELOG.md#2026-09-03-timeout-stomped)
 - **2026-09-03 (second)** — [The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64](CHANGELOG.md#2026-09-03-lle-day)
+- **2026-09-04 (second)** — [The five copyback 040 gates never ran on x86-64: a 1 MB dispatch cache × eight stack fixtures](CHANGELOG.md#2026-09-04-copyback-stack-frame)
+- **2026-09-04 (sixth)** — [The x86-64 leg replays the 040 JSR transaction green, every x64 lockstep and both CPU tiers execute without a soft-skip, and the late-poll knob is proved inert on x64](CHANGELOG.md#2026-09-04-x86-64-leg-replay)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -225,6 +227,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-28 (sixth)** — [The AIO family gets its beyond-boot pair, and the reference volume's French layout ate the first close-all](CHANGELOG.md#2026-08-28-aio-beyond-boot)
 - **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](CHANGELOG.md#2026-08-31-speedometer-jsr-absolute-long)
 - **2026-09-03 (fifteenth)** — [The stale third-peripheral task exposes a real regression: promoted Q605 SCC/53C96 scheduling had silently become opt-in](CHANGELOG.md#2026-09-03-q605-scheduler-default-restored)
+- **2026-09-04** — [Sonora closes § B.4's last row: its video never touches system RAM, no swim2 board owns a DMA client, and the CACR flush retires](CHANGELOG.md#2026-09-04-sonora-inventory)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -244,6 +247,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-23 (fifth)** — [The four DAFB GUI runners were one function copied four times: 1433 lines → 568, and the three drift bugs the copies had grown](CHANGELOG.md#2026-08-23-dafb-runner)
 - **2026-08-24 (fourth)** — [Mac II and IIfx share the Toby/NuBus lifecycle: nine wrappers behind one seam, 3923 → 3460 lines](CHANGELOG.md#2026-08-24-toby-gui-extraction)
 - **2026-08-24 (later)** — [The DAFB GUI lifecycle left `main.cpp` behind twelve explicit services: 4641 → 4243 lines](CHANGELOG.md#2026-08-24-gui-runner-extraction)
+- **2026-09-04 (fourth)** — [The LC II's framebuffer was refused by the data TLB on a stale premise, and every QuickDraw store from generated code paid a whole interpreted instruction — 4.75 million of them in one SimCity session, and not one measurable second](CHANGELOG.md#2026-09-04-v8-vram-dataspan)
 
 ## Sound
 
@@ -268,6 +272,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-24** — [AppleTalk moves in-process: node/router + AppleShare + LaserWriter + MacIP, one GUI window](CHANGELOG.md#2026-07-24--appletalk-moves-in-process-noderouter--appleshare--laserwriter--macip-one-gui-window)
 - **2026-08-23 (eleventh)** — [Rogue's old 29 % indexed lead collapsed to 6.37 %; measured bitfields and full indirection cut all gameplay fallbacks 99.48 %](CHANGELOG.md#2026-08-23-rogue-re-census)
 - **2026-08-28 (ninth)** — [Nominal mode never held ×1: the pacer slept relative to emulation cost alone, and AppleTalk had been taking the blame](CHANGELOG.md#2026-08-28-pacing-absolute-deadline)
+- **2026-09-04 (fifth)** — [The Q605's second SCC deadline query is real, the hand-off that removes it is bit-identical, and two ABBAs read it under the noise — so it is withdrawn](CHANGELOG.md#2026-09-04-scc-deadline-handoff-refused)
 
 ## Save states
 
@@ -475,4 +480,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03 (seventh)** — [B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed](CHANGELOG.md#2026-09-03-positioned-polls)
 - **2026-09-03 (thirteenth)** — [The unrecoverable four-image proof gap stops sequencing work, without becoming green evidence](CHANGELOG.md#2026-09-03-proof-gap-accepted)
 - **2026-09-03 (twelfth)** — [PRODUCT_LLE becomes a first-class registry: default remains 240, product is 248, and both configurations prove the same STATUS](CHANGELOG.md#2026-09-03-product-lle-registry)
+- **2026-09-04 (third)** — [The V8 word paths decoded the address twice for a pair the map cannot split](CHANGELOG.md#2026-09-04-v8-word-decode)
 

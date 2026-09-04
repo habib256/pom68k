@@ -1,0 +1,94 @@
+diff --git a/src/Q605Memory.cpp b/src/Q605Memory.cpp
+index e313032..d417889 100644
+--- a/src/Q605Memory.cpp
++++ b/src/Q605Memory.cpp
+@@ -153,6 +153,7 @@ void Q605Memory::reset() {
+     cudaLle_.reset();
+     scc_.reset();
+     sccDebt_ = 0;
++    sccNextFromTickValid_ = false;   // the chip is new; nothing to hand on
+     scsi_.reset();
+     scsiDebt_ = 0;
+     asc_.reset();
+@@ -787,7 +788,25 @@ void Q605Memory::tick(int cpuCycles) {
+     // call flushScc(), so no observer can see state older than its access.
+     if (sccEventDriven_) {
+         sccDebt_ += cpuCycles;
+-        if (scc_.cyclesToNextEvent() <= sccDebt_) flushScc();
++        // One interrogation per scheduling step, not two. The bound derived
++        // for the flush decision below is the same bound the re-arm that
++        // immediately follows needs: Cpu040::flushTicks() calls tick() and
++        // then schedulePeriphDeadline() with nothing in between, and nothing
++        // after this block enters the SCC. Publishing it here lets
++        // cyclesToNextEvent() consume it instead of asking the device again;
++        // a flush moved the device, so that step publishes nothing and the
++        // re-arm recomputes exactly as before. Every door that can move the
++        // deadline drops the hand-off — flushScc() (which the SCC MMIO paths
++        // and the public scc() accessor call before touching the chip),
++        // reset() and a save-state load. Gates: q605_event_scheduler_test
++        // (the flush doors) and jit_lockstep_test (the Q605 boundary).
++        const int sccNext = scc_.cyclesToNextEvent();
++        if (sccNext <= sccDebt_) {
++            flushScc();
++        } else {
++            sccNextFromTick_ = sccNext;
++            sccNextFromTickValid_ = true;
++        }
+     } else {
+         scc_.tick(cpuCycles);
+         if (sccIrq_ != scc_.irqAsserted()) {
+@@ -836,7 +855,10 @@ int Q605Memory::cyclesToNextEvent() const {
+     int best = cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 1;
+     best = std::min(best, viaEClock_.cyclesToNext(kCpuHz));
+     if (sccEventDriven_) {
+-        const int sccNext = scc_.cyclesToNextEvent();
++        // The bound tick() published, when it still stands (§ tick above);
++        // otherwise the device answers, exactly as it always did.
++        const int sccNext = sccNextFromTickValid_ ? sccNextFromTick_
++                                                  : scc_.cyclesToNextEvent();
+         if (sccNext != 0x7fffffff) {
+             const int64_t left = int64_t(sccNext) - sccDebt_;
+             best = std::min(best, int(std::max<int64_t>(left, 1)));
+@@ -869,6 +891,12 @@ int Q605Memory::cyclesToNextEvent() const {
+ }
+ 
+ void Q605Memory::flushScc() {
++    // The single door to the chip: every SCC MMIO access and the public
++    // scc() accessor call this before touching it, so dropping the
++    // published deadline here covers every mutation that could move it —
++    // a register write, an ext/status ack, an injected Rx frame, a wire
++    // pacing change. Only tick() republishes.
++    sccNextFromTickValid_ = false;
+     // Normally bounded by cyclesToNextEvent(). Chunking also makes a long
+     // idle snapshot safe: an SCC with no armed event may accumulate more
+     // than tick(int) can represent before a later MMIO/wire access.
+diff --git a/src/Q605Memory.h b/src/Q605Memory.h
+index 89a2144..2d53a8c 100644
+--- a/src/Q605Memory.h
++++ b/src/Q605Memory.h
+@@ -312,6 +312,9 @@ public:
+            sccDebt_, scsiDebt_, restartPending_);
+         if constexpr (Ar::loading) {
+             if (jitGuard_) jitGuard_->invalidate();
++            // scc_ was just replaced wholesale: any bound tick() published
++            // before the load describes a device that no longer exists.
++            sccNextFromTickValid_ = false;
+         }
+     }
+ 
+@@ -344,6 +347,15 @@ private:
+     // cache this is observable device time: save/load must preserve it.
+     int64_t sccDebt_ = 0;
+     bool sccEventDriven_ = true; // host tuning, fixed at construction
++    // The SCC-local next-event bound `tick()` derived for its own flush
++    // decision, handed to the re-arm that immediately follows it instead of
++    // interrogating the device a second time per scheduling step. It is a
++    // hand-off, not a memo: only tick() publishes it, and flushScc(),
++    // reset() and a save-state load drop it, so it can never outlive the
++    // device state it was derived from. Derived host state — unlike
++    // sccDebt_, which is observable device time, it is NOT serialized.
++    bool sccNextFromTickValid_ = false;
++    int sccNextFromTick_ = 0;
+     void flushScc();
+     // PrimeTime's IOSB audio cell at $50014000: $BB version, stereo FIFO A/B,
+     // 22.257 kHz at C15M (15.6672 MHz), level IRQ on pseudo-VIA2 bit 4.

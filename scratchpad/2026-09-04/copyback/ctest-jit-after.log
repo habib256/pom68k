@@ -1,0 +1,96 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/build
+Test project /home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/build
+      Start 175: jit_restart_write_030_test
+ 1/36 Test #175: jit_restart_write_030_test ...............   Passed    1.14 sec
+      Start 187: jit_asset_free_lockstep_test
+ 2/36 Test #187: jit_asset_free_lockstep_test .............   Passed    8.20 sec
+      Start 188: jit_copyback_write_040_test
+ 3/36 Test #188: jit_copyback_write_040_test ..............   Passed    0.16 sec
+      Start 189: jit_copyback_write_040_control_test
+ 4/36 Test #189: jit_copyback_write_040_control_test ......   Passed    0.04 sec
+      Start 190: jit_copyback_bsr_040_test
+ 5/36 Test #190: jit_copyback_bsr_040_test ................   Passed    0.02 sec
+      Start 191: jit_copyback_pair_040_test
+ 6/36 Test #191: jit_copyback_pair_040_test ...............   Passed    0.02 sec
+      Start 192: jit_copyback_pair_040_control_test
+ 7/36 Test #192: jit_copyback_pair_040_control_test .......   Passed    0.02 sec
+      Start 197: jit_backend_test
+ 8/36 Test #197: jit_backend_test .........................   Passed    0.02 sec
+      Start 198: jit_backend_parity_test
+ 9/36 Test #198: jit_backend_parity_test ..................   Passed    0.00 sec
+      Start 199: jit_lockstep_test
+10/36 Test #199: jit_lockstep_test ........................   Passed   31.39 sec
+      Start 200: jit_lockstep_blocks_test
+11/36 Test #200: jit_lockstep_blocks_test .................   Passed   31.88 sec
+      Start 201: jit_lockstep_68000_test
+12/36 Test #201: jit_lockstep_68000_test ..................   Passed   25.82 sec
+      Start 202: jit_lockstep_68000_blocks_test
+13/36 Test #202: jit_lockstep_68000_blocks_test ...........   Passed   26.71 sec
+      Start 203: jit_lockstep_030_test
+14/36 Test #203: jit_lockstep_030_test ....................   Passed   69.07 sec
+      Start 204: jit_lockstep_030_blocks_test
+15/36 Test #204: jit_lockstep_030_blocks_test .............   Passed   86.46 sec
+      Start 205: jit_lockstep_030_x64_experimental_test
+16/36 Test #205: jit_lockstep_030_x64_experimental_test ...   Passed   68.55 sec
+      Start 206: jit_lockstep_030_x64_packed_ccr_test
+17/36 Test #206: jit_lockstep_030_x64_packed_ccr_test .....   Passed   72.43 sec
+      Start 207: jit_lockstep_030_x64_alignment_test
+18/36 Test #207: jit_lockstep_030_x64_alignment_test ......   Passed   68.30 sec
+      Start 208: jit_lockstep_x64_test
+19/36 Test #208: jit_lockstep_x64_test ....................   Passed   30.66 sec
+      Start 209: jit_lockstep_x64_fine_test
+20/36 Test #209: jit_lockstep_x64_fine_test ...............   Passed    1.44 sec
+      Start 210: jit_lockstep_noaccess_test
+21/36 Test #210: jit_lockstep_noaccess_test ...............   Passed    8.93 sec
+      Start 211: jit_q605_boot_etalon
+22/36 Test #211: jit_q605_boot_etalon .....................   Passed    0.00 sec
+      Start 212: jit_centris650_boot_etalon
+23/36 Test #212: jit_centris650_boot_etalon ...............   Passed    0.00 sec
+      Start 213: jit_q630_boot_etalon
+24/36 Test #213: jit_q630_boot_etalon .....................   Passed    0.00 sec
+      Start 214: jit_q700_boot_etalon
+25/36 Test #214: jit_q700_boot_etalon .....................   Passed    0.00 sec
+      Start 215: jit_lcii_boot_etalon
+26/36 Test #215: jit_lcii_boot_etalon .....................   Passed    0.00 sec
+      Start 216: jit_mactv_boot_etalon
+27/36 Test #216: jit_mactv_boot_etalon ....................   Passed    0.00 sec
+      Start 217: jit_lc3_boot_etalon
+28/36 Test #217: jit_lc3_boot_etalon ......................   Passed    0.00 sec
+      Start 218: jit_iivx_boot_etalon
+29/36 Test #218: jit_iivx_boot_etalon .....................   Passed    0.00 sec
+      Start 219: jit_iisi_boot_etalon
+30/36 Test #219: jit_iisi_boot_etalon .....................   Passed    0.00 sec
+      Start 220: jit_lc_boot_etalon
+31/36 Test #220: jit_lc_boot_etalon .......................   Passed    0.00 sec
+      Start 221: jit_macii_boot_etalon
+32/36 Test #221: jit_macii_boot_etalon ....................   Passed    0.00 sec
+      Start 222: jit_se30_boot_etalon
+33/36 Test #222: jit_se30_boot_etalon .....................   Passed    0.00 sec
+      Start 223: jit_system_boot_etalon
+34/36 Test #223: jit_system_boot_etalon ...................   Passed    0.00 sec
+      Start 224: jit_iifx_boot_etalon
+35/36 Test #224: jit_iifx_boot_etalon .....................   Passed    0.00 sec
+      Start 235: jit_classic_boot_etalon
+36/36 Test #235: jit_classic_boot_etalon ..................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 36
+
+Label Time Summary:
+asset-none        =   9.62 sec*proc (9 tests)
+asset-required    = 521.72 sec*proc (27 tests)
+etalon            =   0.08 sec*proc (15 tests)
+host-any          = 281.50 sec*proc (25 tests)
+host-native       =   8.45 sec*proc (6 tests)
+host-x64          = 241.39 sec*proc (5 tests)
+jit               = 531.34 sec*proc (36 tests)
+jit-fast          =   8.42 sec*proc (5 tests)
+m030              =   0.05 sec*proc (7 tests)
+m040              =   0.02 sec*proc (4 tests)
+scope-engine      = 531.27 sec*proc (21 tests)
+scope-profile     =   0.08 sec*proc (15 tests)
+smoke             = 104.33 sec*proc (6 tests)
+tier-daily        =   9.62 sec*proc (9 tests)
+tier-full         = 521.72 sec*proc (27 tests)
+unit              = 531.27 sec*proc (21 tests)
+
+Total Test time (real) = 531.30 sec

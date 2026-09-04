@@ -126,6 +126,28 @@ uint32_t ramDiff(const V8Memory& a, const V8Memory& b,
     return 0xFFFFFFFF;
 }
 
+// The framebuffer is the one architectural surface ramDiff cannot reach:
+// it walks the RAM bus, and on an LC II / LC / Color Classic / Mac TV the
+// screen lives in the separate VRAM aperture $F40000-$FC0000 instead. That
+// was harmless while V8Memory::dataSpan refused the aperture — every screen
+// access went through the memory map, where the two engines are compared by
+// construction — and stopped being harmless the moment the data TLB started
+// serving it as plain host bytes: a generated store that lands one byte
+// wrong would then reach nothing this gate looks at, and would surface only
+// as a boot etalon's screen hash thousands of frames later.
+//
+// memcmp first, because the answer is "identical" at every one of the
+// 120 000 boundaries and the byte walk is only owed once something already
+// differs. (The Classic II scans out of MAIN RAM at $1F9A80, which ramDiff
+// already covers, so this leg is simply always identical on that model.)
+uint32_t vramDiff(const V8Memory& a, const V8Memory& b) {
+    if (std::memcmp(a.vram(), b.vram(), V8Memory::kVramSize) == 0)
+        return 0xFFFFFFFF;
+    for (uint32_t i = 0; i < V8Memory::kVramSize; i++)
+        if (a.vram()[i] != b.vram()[i]) return i;
+    return 0xFFFFFFFF;
+}
+
 using PeriphTrace = std::vector<Cpu030::PeriphTracePoint>;
 
 // Where each interrupt LANDED (the pc the handler will RTE back to). The
@@ -512,6 +534,10 @@ int main(int argc, char** argv) {
         uint32_t bad = (fullRamAt >= 0 && i >= fullRamAt)
             ? ramDiff(memRef, memJit, 0x00A00000)
             : ramDiff(memRef, memJit);
+        // The VRAM aperture, at EVERY boundary and not behind a knob: the
+        // data TLB serves it as plain host bytes, so it is a store target
+        // generated code reaches without passing the memory map.
+        const uint32_t badVram = vramDiff(memRef, memJit);
         const Cpu030::ICacheStats icr = cpuRef.icacheStats();
         const Cpu030::ICacheStats icj = cpuJit.icacheStats();
         // POM68K_JIT_LOCKSTEP_ICTRACE=1 — an INSTRUMENT, not a relaxation:
@@ -546,7 +572,8 @@ int main(int argc, char** argv) {
                         sizeof(cpuRef.icacheState().tag)) == 0 &&
             std::memcmp(cpuRef.icacheState().valid, cpuJit.icacheState().valid,
                         sizeof(cpuRef.icacheState().valid)) == 0;
-        if (same(r, j) && bad == 0xFFFFFFFF && same(icr, icj) && icStateSame)
+        if (same(r, j) && bad == 0xFFFFFFFF && badVram == 0xFFFFFFFF &&
+            same(icr, icj) && icStateSame)
             continue;
 
         // Once another observable has tripped, walking the complete LC II
@@ -582,6 +609,11 @@ int main(int argc, char** argv) {
         if (bad != 0xFFFFFFFF)
             std::printf("[jit_lockstep_030] RAM differs at $%08X: interp=%02X jit=%02X\n",
                         bad, memRef.peek8(bad), memJit.peek8(bad));
+        if (badVram != 0xFFFFFFFF)
+            std::printf("[jit_lockstep_030] VRAM differs at +$%05X (bus $%08X):"
+                        " interp=%02X jit=%02X\n",
+                        badVram, 0xF40000u + badVram,
+                        memRef.vram()[badVram], memJit.vram()[badVram]);
 
         {
             unsigned n = 0, head = 0;

@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -37,6 +38,13 @@ const jit::ResolvedConfig& injectedJitConfig() {
     return config;
 }
 
+// A fixture embeds a whole jit::Engine, whose direct-mapped dispatch cache
+// alone is 1 MB (jit::DispatchCache::kSize), so one GateCpu is ~1.1 MB.
+// Several fixtures are live at once here and the compiler inlines the check
+// bodies into main(), which sums their frames: automatic storage puts main's
+// own frame past the 8 MB default stack limit and every registration of this
+// gate dies in main's stack-clash probe before its first check runs. Fixtures
+// therefore live in dynamic storage — never as locals.
 class GateCpu final : public moira::Moira {
 public:
     GateCpu()
@@ -247,7 +255,8 @@ struct TimedRun {
 };
 
 TimedRun timeWriteLoop(bool useJit) {
-    GateCpu cpu;
+    const auto cpuOwner = std::make_unique<GateCpu>();
+    GateCpu& cpu = *cpuOwner;
     configure(cpu, Program::Write);
     cpu.setA(0, kData);
     cpu.setD(0, 0x12345678);
@@ -300,7 +309,8 @@ void checkJsrTargetReadTransaction() {
     // its return-address push. With the architectural cache active this can
     // fill a line and charge dynamic time, so a backend may not replace it
     // with the queue word captured while recording the block.
-    GateCpu native;
+    const auto nativeOwner = std::make_unique<GateCpu>();
+    GateCpu& native = *nativeOwner;
     configure(native, Program::Jsr);
     native.setSR(0x0710);
     native.setA(0, kCode + 0x20);
@@ -310,7 +320,8 @@ void checkJsrTargetReadTransaction() {
     alignAtCode(native);
     check(native.getPC() == kCode, "trained block aligned at selected JSR");
 
-    GateCpu ref;
+    const auto refOwner = std::make_unique<GateCpu>();
+    GateCpu& ref = *refOwner;
     configure(ref, Program::Jsr);
     for (GateCpu* c : {&ref, &native}) {
         c->setPC(kCode); c->setPC0(kCode);
@@ -367,7 +378,10 @@ void checkJsrTargetReadTransaction() {
     // the copyback push, and stack the same format-$7 frame as Moira. A
     // pristine fallback here would execute the push twice or lose its cache
     // state, which is the transaction this gate exists to prevent.
-    GateCpu faultRef, faultNative;
+    const auto faultRefOwner = std::make_unique<GateCpu>();
+    GateCpu& faultRef = *faultRefOwner;
+    const auto faultNativeOwner = std::make_unique<GateCpu>();
+    GateCpu& faultNative = *faultNativeOwner;
     configure(faultRef, Program::Jsr);
     configure(faultNative, Program::Jsr);
     faultNative.setSR(0x0710);
@@ -429,7 +443,8 @@ void checkPositionedIplPollFallback() {
     // advance a peripheral between the loop-head sample and this second
     // sample. Until the IR records the poll's exact access-relative position,
     // cache-active code must execute this instruction through Moira.
-    GateCpu native;
+    const auto nativeOwner = std::make_unique<GateCpu>();
+    GateCpu& native = *nativeOwner;
     configure(native, Program::PollRead);
     put16(native, kData, 0x0123);
     native.setSR(0x0710);
@@ -440,7 +455,8 @@ void checkPositionedIplPollFallback() {
     check(native.getPC() == kCode,
           "trained block aligned at selected late-poll ADD.W");
 
-    GateCpu ref;
+    const auto refOwner = std::make_unique<GateCpu>();
+    GateCpu& ref = *refOwner;
     configure(ref, Program::PollRead);
     put16(ref, kData, 0x0123);
     for (GateCpu* c : {&ref, &native}) {
@@ -471,7 +487,8 @@ void checkPositionedIplPollFallback() {
 
 int runBsrGate() {
     std::printf("jit_copyback_bsr_040_test — native return-address push gate\n");
-    GateCpu native;
+    const auto nativeOwner = std::make_unique<GateCpu>();
+    GateCpu& native = *nativeOwner;
     configure(native, Program::Bsr);
     if (!native.jit.nativeBackend()) {
         return unavailableNative(native);
@@ -517,7 +534,8 @@ int runBsrGate() {
 
     // A W-table miss must occur before A7 or the branch boundary changes.
     // Aim the already compiled push at /BERR and compare the complete frame.
-    GateCpu ref;
+    const auto refOwner = std::make_unique<GateCpu>();
+    GateCpu& ref = *refOwner;
     configure(ref, Program::Bsr);
     for (GateCpu* c : {&ref, &native}) {
         c->setPC(kCode); c->setPC0(kCode);
@@ -547,7 +565,8 @@ int runBsrGate() {
 int runPairMoveGate(bool pairEnabled) {
     std::printf("jit_copyback_pair_040_test — dual-line MOVE proof gate (%s)\n",
                 pairEnabled ? "native pair" : "exact-pair control");
-    GateCpu native;
+    const auto nativeOwner = std::make_unique<GateCpu>();
+    GateCpu& native = *nativeOwner;
     configure(native, Program::PairMove);
     if (!native.jit.nativeBackend()) {
         return unavailableNative(native);
@@ -639,7 +658,8 @@ int runPairMoveGate(bool pairEnabled) {
     // The second proof must miss before the first read becomes observable.
     // Keep the source line hot, redirect only -(A7) to /BERR, and compare
     // the complete fault frame with an interpreter executing the same MOVE.
-    GateCpu ref;
+    const auto refOwner = std::make_unique<GateCpu>();
+    GateCpu& ref = *refOwner;
     configure(ref, Program::PairMove);
     put32(ref, kAbs, value); put32(native, kAbs, value);
     for (GateCpu* c : {&ref, &native}) {
@@ -690,7 +710,8 @@ int main(int argc, char** argv) {
     std::printf("jit_copyback_write_040_test — dirty longword + format-$7 gate (%s)\n",
                 writeHitEnabled ? "native write hit" : "exact-write control");
 
-    GateCpu native;
+    const auto nativeOwner = std::make_unique<GateCpu>();
+    GateCpu& native = *nativeOwner;
     configure(native, Program::Write);
     if (!native.jit.nativeBackend()) {
         return unavailableNative(native);
@@ -755,7 +776,8 @@ int main(int argc, char** argv) {
               ? "native hit bypassed the external memory-map write callbacks"
               : "exact cache hit bypassed the external memory-map callbacks");
 
-    GateCpu writeRef;
+    const auto writeRefOwner = std::make_unique<GateCpu>();
+    GateCpu& writeRef = *writeRefOwner;
     configure(writeRef, Program::Write);
     prepareFault(writeRef, Program::Write);
     prepareFault(native, Program::Write);
@@ -780,7 +802,10 @@ int main(int argc, char** argv) {
     check(sameBoundary(writeRef, native),
           "last-write fault leaves identical architectural boundary state");
 
-    GateCpu restartRef, restartNative;
+    const auto restartRefOwner = std::make_unique<GateCpu>();
+    GateCpu& restartRef = *restartRefOwner;
+    const auto restartNativeOwner = std::make_unique<GateCpu>();
+    GateCpu& restartNative = *restartNativeOwner;
     configure(restartRef, Program::RestartRead);
     configure(restartNative, Program::RestartRead);
     restartNative.setA(0, kData + 0x1000);

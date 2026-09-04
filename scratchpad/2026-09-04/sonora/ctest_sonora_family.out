@@ -1,0 +1,48 @@
+Test project /home/gistarcade/src/pom68k/.claude/worktrees/agent-a56c2e7843281856d/build
+      Start  85: sonora_video_test
+      Start  65: lc3_input_etalon
+      Start 132: lc520_soak_etalon
+ 1/14 Test  #85: sonora_video_test ................   Passed    0.04 sec
+      Start 133: lc520_persist_etalon
+ 2/14 Test  #65: lc3_input_etalon .................   Passed  619.69 sec
+      Start  66: lc520_input_etalon
+ 3/14 Test  #66: lc520_input_etalon ...............   Passed  342.81 sec
+      Start 141: lc520_boot_etalon
+ 4/14 Test #132: lc520_soak_etalon ................   Passed  1056.83 sec
+      Start 230: interp_lc3_boot_etalon
+ 5/14 Test #133: lc520_persist_etalon .............   Passed  1185.76 sec
+ 6/14 Test #141: lc520_boot_etalon ................   Passed  290.44 sec
+      Start 142: lc550_boot_etalon
+ 7/14 Test #230: interp_lc3_boot_etalon ...........   Passed  284.99 sec
+      Start 143: cclassic2_boot_etalon
+ 8/14 Test #142: lc550_boot_etalon ................   Passed  366.39 sec
+ 9/14 Test #143: cclassic2_boot_etalon ............   Passed  367.33 sec
+      Start 115: sonora_soak_etalon
+10/14 Test #115: sonora_soak_etalon ...............   Passed  467.40 sec
+      Start 116: sonora_persist_etalon
+11/14 Test #116: sonora_persist_etalon ............   Passed  600.20 sec
+      Start 139: lc3_boot_etalon
+12/14 Test #139: lc3_boot_etalon ..................   Passed  246.39 sec
+      Start 140: lc3plus_boot_etalon
+13/14 Test #140: lc3plus_boot_etalon ..............   Passed  317.60 sec
+      Start 217: jit_lc3_boot_etalon
+14/14 Test #217: jit_lc3_boot_etalon ..............   Passed  120.83 sec
+
+100% tests passed, 0 tests failed out of 14
+
+Label Time Summary:
+asset-none         =   0.04 sec*proc (1 test)
+asset-required     = 20616.60 sec*proc (13 tests)
+etalon             = 20616.60 sec*proc (13 tests)
+etalon-core        = 1478.33 sec*proc (1 test)
+host-any           = 20616.64 sec*proc (14 tests)
+jit                = 724.97 sec*proc (1 test)
+m030               = 20616.64 sec*proc (14 tests)
+scope-component    =   0.04 sec*proc (1 test)
+scope-profile      = 20616.60 sec*proc (13 tests)
+tier-daily         =   0.04 sec*proc (1 test)
+tier-full          = 19138.27 sec*proc (12 tests)
+tier-platform      = 1478.33 sec*proc (1 test)
+unit               =   0.04 sec*proc (1 test)
+
+Total Test time (real) = 3461.63 sec

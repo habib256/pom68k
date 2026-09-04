@@ -129,9 +129,13 @@ public:
     // overlay is down); everything with a read side effect — the whole map
     // while the overlay is up (clearing it IS a read side effect here),
     // VRAM's pull on the video timing, all of $F00000+ — is refused.
-    // dataSpan is the write-aware twin; the 030 has no data window today,
-    // but the engine's fillDtlb probes through it and simply never fills
-    // (pomJitProbeData is 040-only), so it stays cheap and honest.
+    // dataSpan is the write-aware twin, and it publishes the VRAM aperture
+    // as well: a framebuffer access is a plain array access with no latch,
+    // no auto-increment and no dirty tracking (read8 decodes
+    // $F40000-$FC0000 before flushTicks()), and refusing it turned every
+    // QuickDraw store into a runtime replay. The 68030 DOES reach the data
+    // window: pomJitProbeData has an M68030 branch (MoiraExecMMU_cpp.h,
+    // patch 31), so this door is load-bearing here, not decoration.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
     uint32_t jitAliasCodeMask(uint32_t physSlice, const uint8_t* pageMap,
@@ -417,6 +421,29 @@ private:
         if (simmMapped_ && addr - simmLoc_ < simmPhys_)  // simmLoc_ = 0 on V8
             return simmOff_ + (addr - simmLoc_);
         return 0xFFFFFFFF;
+    }
+    // The SECOND byte index of a word access, without decoding the map a
+    // second time. ramIndex() is a piecewise decode and every boundary of
+    // the pieces is an EVEN address — the fixed 2 MB alias wrap, $800000,
+    // mbLoc_ and mbLoc_+mbSize_, simmLoc_ and simmLoc_+simmPhys_ (and the
+    // holes between them, which the same boundaries delimit). So an even
+    // pair can never straddle a seam: both bytes decode through the same
+    // arm and the second index is the first plus one, or the same hole.
+    //
+    // Anything else — an odd word, which the 68030 permits, or a geometry
+    // whose parity this cannot certify — pays the full second decode. This
+    // is a shortcut past a repeated computation, never a second model of
+    // the map: the fallback IS ramIndex().
+    //
+    // The geometry is read LIVE on every call and must never be cached:
+    // applyRamConfig() rewrites all four fields whenever the pseudo-VIA
+    // remaps the banks, and a save-state load replaces them wholesale.
+    // Gate: identical jit_bench_lcii fp= on interp/threaded/x64 and the
+    // lcii / cclassic / cclassic2 / classic2 / mactv boot etalons.
+    uint32_t ramIndexNext(uint32_t addr, uint32_t i0) const {
+        if ((addr | mbLoc_ | mbSize_ | simmLoc_ | simmPhys_) & 1)
+            return ramIndex(addr + 1);
+        return i0 == 0xFFFFFFFF ? 0xFFFFFFFF : i0 + 1;
     }
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     [[noreturn]] void busError() const;

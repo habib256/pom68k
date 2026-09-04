@@ -1,0 +1,81 @@
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.ubuntu.com>
+Enable debuginfod for this session? (y or [n]) [answered N; input not from terminal]
+Debuginfod has been disabled.
+To make this setting permanent, add 'set debuginfod enabled off' to .gdbinit.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+
+Program received signal SIGSEGV, Segmentation fault.
+0x000055555555aff0 in main ()
+
+===== BACKTRACE =====
+#0  0x000055555555aff0 in main ()
+
+===== FULL FRAME 0 =====
+Stack level 0, frame at 0x7fffffffd900:
+ rip = 0x55555555aff0 in main; saved rip = 0x7ffff782a1ca
+ Arglist at 0x7fffffffd8f0, args: 
+ Locals at 0x7fffffffd8f0, Previous frame's sp is 0x7fffffffd900
+ Saved registers:
+  rbp at 0x7fffffffd8f0, rip at 0x7fffffffd8f8
+
+===== REGISTERS =====
+rax            0x55555555afd0      93824992260048
+rbx            0x7fffffffda18      140737488345624
+rcx            0x555555bcb1d8      93824999010776
+rdx            0x7fffffffda28      140737488345640
+rsi            0x7fffffffda18      140737488345624
+rdi            0x1                 1
+rbp            0x7fffffffd8f0      0x7fffffffd8f0
+rsp            0x7fffff7fe8c8      0x7fffff7fe8c8
+r8             0x0                 0
+r9             0x7ffff7fca380      140737353917312
+r10            0x1                 1
+r11            0x7fffff74f8c8      140737479243976
+r12            0x1                 1
+r13            0x0                 0
+r14            0x555555bcb1d8      93824999010776
+r15            0x7ffff7ffd000      140737354125312
+rip            0x55555555aff0      0x55555555aff0 <main+32>
+eflags         0x10202             [ IF RF ]
+cs             0x33                51
+ss             0x2b                43
+ds             0x0                 0
+es             0x0                 0
+fs             0x0                 0
+gs             0x0                 0
+fs_base        0x7ffff7bfb740      140737349924672
+gs_base        0x0                 0
+
+===== DISASM AT PC =====
+   0x55555555afd0 <main>:	endbr64
+   0x55555555afd4 <main+4>:	push   %rbp
+   0x55555555afd5 <main+5>:	mov    %rsp,%rbp
+   0x55555555afd8 <main+8>:	push   %r15
+   0x55555555afda <main+10>:	push   %r14
+   0x55555555afdc <main+12>:	push   %r13
+   0x55555555afde <main+14>:	push   %r12
+   0x55555555afe0 <main+16>:	push   %rbx
+   0x55555555afe1 <main+17>:	lea    -0x8ae000(%rsp),%r11
+   0x55555555afe9 <main+25>:	sub    $0x1000,%rsp
+=> 0x55555555aff0 <main+32>:	orq    $0x0,(%rsp)
+   0x55555555aff5 <main+37>:	cmp    %r11,%rsp
+   0x55555555aff8 <main+40>:	jne    0x55555555afe9 <main+25>
+   0x55555555affa <main+42>:	sub    $0xce8,%rsp
+   0x55555555b001 <main+49>:	mov    %fs:0x28,%rax
+   0x55555555b00a <main+58>:	mov    %rax,-0x38(%rbp)
+   0x55555555b00e <main+62>:	xor    %eax,%eax
+   0x55555555b010 <main+64>:	cmp    $0x1,%edi
+   0x55555555b013 <main+67>:	jle    0x55555555bd0d <main+3389>
+   0x55555555b019 <main+73>:	mov    0x8(%rsi),%rbx
+   0x55555555b01d <main+77>:	lea    0x5ca07c(%rip),%rsi        # 0x555555b250a0
+   0x55555555b024 <main+84>:	lea    0x5cb2d2(%rip),%r12        # 0x555555b262fd
+   0x55555555b02b <main+91>:	lea    0x5cb022(%rip),%r15        # 0x555555b26054
+   0x55555555b032 <main+98>:	mov    %rbx,%rdi
+
+===== MAPPING =====
+main + 32 in section .text of /home/gistarcade/src/pom68k/.claude/worktrees/agent-a5a3ffaf74087926b/build-base/jit_copyback_write_040_test
+
+===== DONE =====

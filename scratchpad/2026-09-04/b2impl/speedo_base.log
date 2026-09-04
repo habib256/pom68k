@@ -1,0 +1,1809 @@
+    0.004 ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+    0.801 ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+    0.809 [jit] profile=production backend=x86-64 (native code generation) window=1 blocks=1 max=64 ram=10MB
+    0.809 [jit] engine ON
+    0.920 [jit] block $00A03CF6  4 instr,  4 native, 2458 bytes  branch->INTERNAL  [1083/4c 1083/4c 1083/4c 51CA/6c ]
+    0.920 [jit] block $00A02F58  3 instr,  3 native, 1820 bytes  [2049/2c D1D9/6c 2468/7c ]
+    0.921 [jit] block $00A03124  5 instr,  3 native, 2152 bytes  [4A32/9c 1212/70c E159/8c 50C1/4c 1481/68c ]
+    0.921 [jit] block $00A03134  2 instr,  2 native, 1131 bytes  branch->exit  [D201/2c 670C/4c ]
+    0.921 [jit] block $00A03138  3 instr,  3 native, 1776 bytes  branch->exit  [4401/2c B232/9c 6604/6c ]
+    0.921 [jit] block $00A03144  2 instr,  1 native, 902 bytes  [E059/8c 14BC/130c ]
+    0.921 [jit] block $00A0314E  1 instr,  1 native, 676 bytes  branch->exit  [4ED6/4c ]
+    0.921 [jit] block $00A03140  2 instr,  1 native, 886 bytes  branch->exit  [B212/74c 67EC/6c ]
+    0.921 [jit] block $00A03130  2 instr,  1 native, 777 bytes  [4401/2c 1481/68c ]
+    0.921 [jit] block $00A02F80  3 instr,  3 native, 1753 bytes  branch->exit  [43F0/9c B429/7c 66F2/6c ]
+    0.921 [jit] block $00A02F7C  2 instr,  2 native, 1359 bytes  branch->exit  [2018/6c 67D2/4c ]
+    0.921 [jit] block $00A46240  2 instr,  2 native, 1103 bytes  branch->exit  [0807/4c 6704/4c ]
+    0.921 [jit] block $00A46246  2 instr,  2 native, 981 bytes  branch->exit  [2E4D/2c 4ED6/4c ]
+    0.921 [jit] block $00A02F18  4 instr,  4 native, 1840 bytes  branch->exit  [08C7/4c 2A4F/2c 4A02/2c 6730/6c ]
+    0.921 [jit] block $00A02F2C  3 instr,  3 native, 1766 bytes  branch->exit  [43F0/9c B469/7c 66F0/6c ]
+    0.921 [jit] block $00A02F26  3 instr,  3 native, 1746 bytes  branch->exit  [5848/2c 2010/6c 6726/4c ]
+    0.921 [jit] block $00A02F36  6 instr,  6 native, 3060 bytes  branch->exit  [4E71/2c 4E71/2c 2051/6c D1C9/2c 2029/7c 6754/4c ]
+    0.921 [jit] block $00A02F44  2 instr,  2 native, 1217 bytes  branch->exit  [2429/7c 6000/10c ]
+    0.921 [jit] block $00A03AA4  2 instr,  2 native, 1226 bytes  branch->exit  [0802/4c 6700/6c ]
+    0.921 [jit] block $00A03AAC  3 instr,  3 native, 1352 bytes  branch->exit  [244E/2c 4DFA/7c 4EFA/5c ]
+    0.921 [jit] block $00A03A82  1 instr,  1 native, 683 bytes  [123C/4c ]
+    0.921 [jit] block $00A03A92  2 instr,  2 native, 1012 bytes  branch->exit  [B201/2c 4ED6/4c ]
+    0.921 [jit] block $00A03AB6  1 instr,  1 native, 790 bytes  branch->exit  [6704/6c ]
+    0.921 [jit] block $00A03ABC  2 instr,  2 native, 957 bytes  branch->exit  [2C4A/2c 6000/10c ]
+    0.921 [jit] block $00A03054  2 instr,  2 native, 1355 bytes  branch->exit  [2229/7c 6604/6c ]
+    0.921 [jit] block $00A0305E  2 instr,  2 native, 1093 bytes  branch->exit  [0887/4c 4ED6/4c ]
+    0.921 [jit] block $00A02F22  4 instr,  4 native, 2144 bytes  branch->exit  [41FA/7c 5848/2c 2010/6c 6726/4c ]
+    0.921 [jit] block $00A14E9C  2 instr,  2 native, 1169 bytes  branch->INTERNAL  [4A11/70c 51CB/6c ]
+    0.921 [jit] block $00A14E98  3 instr,  3 native, 1599 bytes  branch->INTERNAL  [363C/12c 4A11/126c 51CB/10c ]
+    0.921 [jit] block $00A14EA2  1 instr,  1 native, 676 bytes  branch->exit  [4ED5/8c ]
+    0.921 [jit] block $00A14C62  1 instr,  1 native, 801 bytes  branch->exit  [51C8/10c ]
+    0.921 [jit] block $00A14C5A  2 instr,  2 native, 1047 bytes  branch->exit  [4BFA/7c 4EFA/5c ]
+    0.921 [jit] block $00A14E9E  1 instr,  1 native, 801 bytes  branch->exit  [51CB/6c ]
+    0.922 [jit] block $00A14DC4  1 instr,  1 native, 707 bytes  branch->exit  [51CC/6c ]
+    0.922 [jit] block $00A14DBC  2 instr,  2 native, 1274 bytes  branch->exit  [0829/65c 6620/4c ]
+    0.922 [jit] block $00A14DF0  2 instr,  2 native, 1169 bytes  branch->INTERNAL  [4A11/70c 51CB/6c ]
+    0.922 [jit] block $00A14E58  2 instr,  2 native, 1241 bytes  branch->INTERNAL  [0829/69c 67F8/6c ]
+    0.922 [jit] block $00A14E4A  5 instr,  2 native, 1717 bytes  branch->INTERNAL  [08E9/201c 1340/73c 08D1/164c 0829/81c 67F8/10c ]
+    0.922 [jit]   ^ REFUSED(coverage)
+    0.922 [jit] block $00A14E6A  2 instr,  2 native, 1241 bytes  branch->INTERNAL  [0829/141c 67F8/6c ]
+    0.922 [jit] block $00A14E7E  2 instr,  2 native, 1169 bytes  branch->INTERNAL  [4A11/74c 51CB/6c ]
+    1.427 [jit]   no emitter for $00A41A5E 480C: traced semantics op=0 (canEmit=0)
+    1.498 [jit]   no emitter for $00A5192E 01C8: traced semantics op=0 (canEmit=0)
+    1.498 [jit]   no emitter for $00A51932 01C8: traced semantics op=0 (canEmit=0)
+    3.107 [jit]   no emitter for $00A79E20 CB05: traced semantics op=0 (canEmit=0)
+    3.107 [jit]   no emitter for $00A79E22 C904: traced semantics op=0 (canEmit=0)
+    3.107 [jit]   no emitter for $00A79E24 C703: traced semantics op=0 (canEmit=0)
+    3.107 [jit]   no emitter for $00A79E26 C502: traced semantics op=0 (canEmit=0)
+    3.107 [jit]   no emitter for $00A79E28 C301: traced semantics op=0 (canEmit=0)
+    3.381 [jit]   no emitter for $00A79E26 C502: traced semantics op=0 (canEmit=0)
+    3.381 [jit]   no emitter for $00A79E28 C301: traced semantics op=0 (canEmit=0)
+   44.016 [jit]   no emitter for $00A79E20 CB05: traced semantics op=0 (canEmit=0)
+   44.016 [jit]   no emitter for $00A79E22 C904: traced semantics op=0 (canEmit=0)
+   44.016 [jit]   no emitter for $00A79E24 C703: traced semantics op=0 (canEmit=0)
+   44.016 [jit]   no emitter for $00A79E26 C502: traced semantics op=0 (canEmit=0)
+   44.016 [jit]   no emitter for $00A79E28 C301: traced semantics op=0 (canEmit=0)
+   44.519 [jit]   no emitter for $00A79E28 C301: traced semantics op=0 (canEmit=0)
+   45.368 [jit]   no emitter for $00A79E24 C703: traced semantics op=0 (canEmit=0)
+   45.368 [jit]   no emitter for $00A79E26 C502: traced semantics op=0 (canEmit=0)
+   45.368 [jit]   no emitter for $00A79E28 C301: traced semantics op=0 (canEmit=0)
+   46.534 boot: Finder up, SCSI 1751 commands
+   46.534 
+   46.534 [jit] ════ census phase 'boot' ════
+   46.534 [jit] dispatch cache: 34184900 hits, 1064095 gen-miss, 37284331 miss
+   46.534 [jit] flushes: wrapper hint/reset=1 translation moved=7451 write into code=8 deferred=0 code cache full=0  blocks live=28951, cold-evicted=0
+   46.534 
+   46.534 [jit] opcode census — 2715177 instructions, 528 distinct
+   46.534   move           817390   30.1%
+   46.534   alu            555248   20.4%
+   46.534   shift           22911    0.8%
+   46.534   bitop          204639    7.5%
+   46.534   muldiv              1    0.0%
+   46.534   addr            83339    3.1%
+   46.534   multi           53271    2.0%
+   46.534   cond                8    0.0%
+   46.534   branch         953589   35.1%
+   46.534   UNSAFE          24781    0.9%
+   46.534   native        2647354   97.5%  (backend 'x86-64')
+   46.534   ── top 60 opcodes ──
+   46.534   4E75 branch *     134877   4.97%  cum   5.0%
+   46.534   4A11 alu    *     121010   4.46%  cum   9.4%
+   46.534   51C9 branch *     119912   4.42%  cum  13.8%
+   46.534   0829 bitop  *     114640   4.22%  cum  18.1%
+   46.534   2078 move   *      77274   2.85%  cum  20.9%
+   46.534   2050 move   *      73558   2.71%  cum  23.6%
+   46.534   67F8 branch *      70755   2.61%  cum  26.2%
+   46.534   6704 branch *      69672   2.57%  cum  28.8%
+   46.534   670A branch *      59380   2.19%  cum  31.0%
+   46.534   6100 branch *      56507   2.08%  cum  33.1%
+   46.534   0812 bitop  *      54285   2.00%  cum  35.1%
+   46.534   60F6 branch *      54183   2.00%  cum  37.1%
+   46.534   6144 branch *      54067   1.99%  cum  39.0%
+   46.534   40C0 alu    *      54023   1.99%  cum  41.0%
+   46.534   0240 alu    *      53979   1.99%  cum  43.0%
+   46.534   6702 branch *      52648   1.94%  cum  45.0%
+   46.534   206E move   *      36393   1.34%  cum  46.3%
+   46.534   1169 move   *      27640   1.02%  cum  47.3%
+   46.534   4CDF multi  *      26397   0.97%  cum  48.3%
+   46.534   7000 move   *      25796   0.95%  cum  49.2%
+   46.534   22D8 move   *      25128   0.93%  cum  50.2%
+   46.534   225F move   *      24810   0.91%  cum  51.1%
+   46.534   2068 move   *      24736   0.91%  cum  52.0%
+   46.534   3028 move   *      24702   0.91%  cum  52.9%
+   46.534   4A28 alu    *      22836   0.84%  cum  53.7%
+   46.534   2040 move   *      21638   0.80%  cum  54.5%
+   46.534   0C68 alu    *      20753   0.76%  cum  55.3%
+   46.534   6700 branch *      18762   0.69%  cum  56.0%
+   46.534   2278 move   *      18593   0.68%  cum  56.7%
+   46.534   20A9 move   *      18194   0.67%  cum  57.3%
+   46.534   2251 move   *      18063   0.67%  cum  58.0%
+   46.534   4841 addr   *      17717   0.65%  cum  58.7%
+   46.534   4A38 alu    *      16722   0.62%  cum  59.3%
+   46.534   6000 branch *      16699   0.62%  cum  59.9%
+   46.534   4A68 alu    *      16176   0.60%  cum  60.5%
+   46.534   2255 move   *      15944   0.59%  cum  61.1%
+   46.534   2011 move   *      15938   0.59%  cum  61.7%
+   46.534   672A branch *      15931   0.59%  cum  62.3%
+   46.534   2029 move   *      15906   0.59%  cum  62.8%
+   46.534   6A0C branch *      15867   0.58%  cum  63.4%
+   46.534   2070 move   *      15853   0.58%  cum  64.0%
+   46.534   B090 alu    *      15831   0.58%  cum  64.6%
+   46.534   6708 branch *      15700   0.58%  cum  65.2%
+   46.534   42A8 alu    *      15436   0.57%  cum  65.7%
+   46.534   2601 move   *      15115   0.56%  cum  66.3%
+   46.534   4E5E addr   *      14942   0.55%  cum  66.8%
+   46.534   6600 branch *      14767   0.54%  cum  67.4%
+   46.534   2055 move   *      14711   0.54%  cum  67.9%
+   46.534   2F09 move   *      14642   0.54%  cum  68.5%
+   46.534   082A bitop  *      13729   0.51%  cum  69.0%
+   46.534   51CA branch *      12722   0.47%  cum  69.4%
+   46.534   672E branch *      12143   0.45%  cum  69.9%
+   46.534   4A29 alu    *      10840   0.40%  cum  70.3%
+   46.534   4A80 alu    *      10102   0.37%  cum  70.7%
+   46.534   4A90 alu    *       9633   0.35%  cum  71.0%
+   46.534   584F alu    *       9407   0.35%  cum  71.4%
+   46.534   664A branch *       9373   0.35%  cum  71.7%
+   46.534   21D0 move   *       9312   0.34%  cum  72.1%
+   46.534   50F8 UNSAFE         9306   0.34%  cum  72.4%
+   46.534   205F move   *       9303   0.34%  cum  72.7%
+   46.534 
+   46.534 [jit] block fallback census — 5106871 unsupported + 2994554 runtime guard/access = 8101425
+   46.534   2F70 move        4891731 unsupported          2 runtime  60.38%  idx(A0) -> d16(A7)
+   46.534   2089 move              0 unsupported    1167208 runtime  14.41%  A1 -> (A0)
+   46.534   24D0 move              0 unsupported     568183 runtime   7.01%  (A0) -> (A2)+
+   46.534   B592 alu               0 unsupported     262142 runtime   3.24%
+   46.534   B1A2 alu               0 unsupported     261970 runtime   3.23%
+   46.534   4A12 alu           96228 unsupported          0 runtime   1.19%
+   46.534   14D0 move              0 unsupported      84794 runtime   1.05%  (A0) -> (A2)+
+   46.534   22D8 move              0 unsupported      69872 runtime   0.86%  (A0)+ -> (A1)+
+   46.534   C029 alu           63647 unsupported          0 runtime   0.79%
+   46.534   177C move              0 unsupported      50450 runtime   0.62%  imm -> d16(A3)
+   46.534   137C move              1 unsupported      46335 runtime   0.57%  imm -> d16(A1)
+   46.534   1747 move              0 unsupported      34845 runtime   0.43%  D7 -> d16(A3)
+   46.534   48E2 multi             0 unsupported      21830 runtime   0.27%  EA=-(A2)
+   46.534   12DC move              0 unsupported      21048 runtime   0.26%  (A4)+ -> (A1)+
+   46.534   48EA multi             0 unsupported      18840 runtime   0.23%  EA=d16(A2)
+   46.534   082A bitop         18769 unsupported          0 runtime   0.23%
+   46.534   1D40 move              0 unsupported      18754 runtime   0.23%  D0 -> d16(A6)
+   46.534   1C80 move              0 unsupported      18749 runtime   0.23%  D0 -> (A6)
+   46.534   169A move              0 unsupported      17474 runtime   0.22%  (A2)+ -> (A3)
+   46.534   10D9 move              0 unsupported      15742 runtime   0.19%  (A1)+ -> (A0)+
+   46.534   2AC6 move              0 unsupported      14670 runtime   0.18%  D6 -> (A5)+
+   46.534   2F68 move              0 unsupported      14092 runtime   0.17%  d16(A0) -> d16(A7)
+   46.534   3151 move              0 unsupported      13062 runtime   0.16%  (A1) -> d16(A0)
+   46.534   12E8 move              0 unsupported      12339 runtime   0.15%  d16(A0) -> (A1)+
+   46.534   24F0 move              0 unsupported      11606 runtime   0.14%  idx(A0) -> (A2)+
+   46.534   22E8 move              0 unsupported      11363 runtime   0.14%  d16(A0) -> (A1)+
+   46.534   32FC move              0 unsupported       9583 runtime   0.12%  imm -> (A1)+
+   46.534   2081 move              0 unsupported       8815 runtime   0.11%  D1 -> (A0)
+   46.534   117C move              3 unsupported       8783 runtime   0.11%  imm -> d16(A0)
+   46.534   20C5 move              0 unsupported       6924 runtime   0.09%  D5 -> (A0)+
+   46.534   21ED move              0 unsupported       6666 runtime   0.08%  d16(A5) -> abs.W
+   46.534   22C3 move              0 unsupported       6512 runtime   0.08%  D3 -> (A1)+
+   46.534   20C3 move              0 unsupported       6140 runtime   0.08%  D3 -> (A0)+
+   46.534   2A82 move              0 unsupported       6125 runtime   0.08%  D2 -> (A5)
+   46.534   2338 move              0 unsupported       6096 runtime   0.08%  abs.W -> -(A1)
+   46.534   2950 move              0 unsupported       5985 runtime   0.07%  (A0) -> d16(A4)
+   46.535   9611 alu            5905 unsupported          0 runtime   0.07%
+   46.535   4250 alu               0 unsupported       5804 runtime   0.07%
+   46.535   4EAD branch            0 unsupported       5801 runtime   0.07%
+   46.535   17BC move              0 unsupported       5514 runtime   0.07%  imm -> idx(A3)
+   46.535   2D1F move              0 unsupported       5469 runtime   0.07%  (A7)+ -> -(A6)
+   46.535   48E6 multi             0 unsupported       5450 runtime   0.07%  EA=-(A6)
+   46.535   B189 alu               0 unsupported       5383 runtime   0.07%
+   46.535   1084 move              0 unsupported       5257 runtime   0.06%  D4 -> (A0)
+   46.535   48D2 multi             0 unsupported       4711 runtime   0.06%  EA=(A2)
+   46.535   2AC0 move              0 unsupported       4533 runtime   0.06%  D0 -> (A5)+
+   46.535   2F30 move           1464 unsupported       2854 runtime   0.05%  idx(A0) -> -(A7)
+   46.535   1782 move              0 unsupported       4103 runtime   0.05%  D2 -> idx(A3)
+   46.535   2080 move              0 unsupported       3973 runtime   0.05%  D0 -> (A0)
+   46.535   0811 bitop          3942 unsupported          0 runtime   0.05%
+   46.535   4269 alu               0 unsupported       3664 runtime   0.05%
+   46.535   1740 move              0 unsupported       3496 runtime   0.04%  D0 -> d16(A3)
+   46.535   2348 move              0 unsupported       3417 runtime   0.04%  A0 -> d16(A1)
+   46.535   16AC move              0 unsupported       3407 runtime   0.04%  d16(A4) -> (A3)
+   46.535   4210 alu               0 unsupported       3284 runtime   0.04%
+   46.535   3338 move              0 unsupported       3241 runtime   0.04%  abs.W -> -(A1)
+   46.535   08D1 bitop          2692 unsupported        494 runtime   0.04%
+   46.535   2F0C move              0 unsupported       3128 runtime   0.04%  A4 -> -(A7)
+   46.535   276E move              0 unsupported       3086 runtime   0.04%  d16(A6) -> d16(A3)
+   46.535   1229 move           3035 unsupported          0 runtime   0.04%  d16(A1) -> D1
+   46.535 
+   46.535 [jit] bounded shift versions — 8 sites, 79 live, 0 saturated
+   46.535   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   46.535   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   46.535   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   46.535   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   46.535 
+   46.535 [jit] runtime fallback causes
+   46.535   fill/tag MMU                0    0.00%
+   46.535   non-plain/MMIO              0    0.00%
+   46.535   codeMask                    0    0.00%
+   46.535   cross-page                  0    0.00%
+   46.535   other guard                 0    0.00%
+   46.535   attributed                  0 /      2994554 runtime  MISMATCH
+   46.535 
+   46.535 [jit] fallback addressing — MOVE source
+   46.535   idx(An)       4893588 unsupported        15163 runtime
+   46.535   An                 52 unsupported      1183287 runtime
+   46.535   (An)             3011 unsupported       674471 runtime
+   46.535   Dn                269 unsupported       161202 runtime
+   46.535   (An)+               0 unsupported       134135 runtime
+   46.535   imm                18 unsupported       125822 runtime
+   46.535   d16(An)          3176 unsupported        55730 runtime
+   46.535   abs.W               0 unsupported        11865 runtime
+   46.535   -(An)            1026 unsupported          199 runtime
+   46.535   d16(PC)             0 unsupported          836 runtime
+   46.535   idx(PC)            30 unsupported           23 runtime
+   46.535 
+   46.535 [jit] fallback addressing — MOVE destination
+   46.535   d16(An)       4892995 unsupported       211563 runtime
+   46.535   (An)              439 unsupported      1248034 runtime
+   46.535   (An)+               0 unsupported       852478 runtime
+   46.535   -(An)            1465 unsupported        27574 runtime
+   46.535   idx(An)            52 unsupported        12992 runtime
+   46.535   abs.W               0 unsupported         9448 runtime
+   46.535   Dn               6219 unsupported          623 runtime
+   46.535   An                  0 unsupported           21 runtime
+   46.535 
+   46.535 [jit] fallback addressing — MOVEM operand
+   46.535   -(An)               0 unsupported        29508 runtime
+   46.535   d16(An)             0 unsupported        19150 runtime
+   46.535   (An)                0 unsupported         4743 runtime
+   46.535   (An)+               0 unsupported         3455 runtime
+   46.535   idx(PC)             2 unsupported            0 runtime
+   46.535 
+   46.535 [jit] indexed-mode fallbacks by extension form — 4925136 attributed (of 8101425 total fallbacks)
+   46.535   brief (d8,An/PC,Xn)        24805    0.5%
+   46.535   full 68020 format           1855    0.0%
+   46.535   mixed (both seen)        4898476   99.5%
+   46.535   compiled slots: 1009 brief, 360 full (cumulative over the run, not per phase)
+   46.535   brief share if mixed is apportioned by slot ratio:  40.3%  (ESTIMATE)
+   46.535 
+   46.535 [jit] fallback addressing — top MOVE source -> destination pairs
+   46.535   idx(An)  -> d16(An)       4891745 unsupported           30 runtime
+   46.535   An       -> (An)                0 unsupported      1170537 runtime
+   46.535   (An)     -> (An)+               0 unsupported       653318 runtime
+   46.535   (An)+    -> (An)+               0 unsupported       110227 runtime
+   46.535   imm      -> d16(An)             5 unsupported       105731 runtime
+   46.535   Dn       -> d16(An)           195 unsupported        59541 runtime
+   46.535   Dn       -> (An)               74 unsupported        50401 runtime
+   46.535   Dn       -> (An)+               0 unsupported        43394 runtime
+   46.535   d16(An)  -> (An)+               0 unsupported        23803 runtime
+   46.535   (An)     -> d16(An)            24 unsupported        19381 runtime
+   46.535   d16(An)  -> d16(An)             0 unsupported        18635 runtime
+   46.535   (An)+    -> (An)                0 unsupported        17795 runtime
+   46.535   idx(An)  -> (An)+               0 unsupported        11606 runtime
+   46.535   abs.W    -> -(An)               0 unsupported        10637 runtime
+   46.535   imm      -> (An)+               0 unsupported         9606 runtime
+   46.535   d16(An)  -> abs.W               0 unsupported         8062 runtime
+   46.535   Dn       -> idx(An)             0 unsupported         7201 runtime
+   46.535   An       -> d16(An)             0 unsupported         6929 runtime
+   46.535   (An)+    -> -(An)               0 unsupported         5809 runtime
+   46.535   imm      -> idx(An)             0 unsupported         5517 runtime
+   46.535   An       -> -(An)               0 unsupported         5455 runtime
+   46.535   imm      -> (An)               13 unsupported         4938 runtime
+   46.535   idx(An)  -> -(An)            1464 unsupported         2880 runtime
+   46.535   d16(An)  -> (An)                0 unsupported         4027 runtime
+   49.167 
+   49.167 [jit] ════ census phase 'open-root' ════
+   49.167 [jit] dispatch cache: 2080750 hits, 76189 gen-miss, 2266425 miss
+   49.167 [jit] flushes: wrapper hint/reset=1 translation moved=7834 write into code=8 deferred=0 code cache full=0  blocks live=29337, cold-evicted=0
+   49.167 
+   49.167 [jit] opcode census — 110183 instructions, 253 distinct
+   49.167   move            50435   45.8%
+   49.167   alu             21107   19.2%
+   49.167   shift            1369    1.2%
+   49.167   bitop             560    0.5%
+   49.167   addr             5224    4.7%
+   49.167   multi            3331    3.0%
+   49.167   branch          26684   24.2%
+   49.167   UNSAFE           1473    1.3%
+   49.167   native         105830   96.0%  (backend 'x86-64')
+   49.167   ── top 60 opcodes ──
+   49.167   2078 move   *       4810   4.37%  cum   4.4%
+   49.167   2050 move   *       4541   4.12%  cum   8.5%
+   49.167   4E75 branch *       4333   3.93%  cum  12.4%
+   49.167   6100 branch *       3406   3.09%  cum  15.5%
+   49.167   206E move   *       2309   2.10%  cum  17.6%
+   49.167   1169 move   *       1750   1.59%  cum  19.2%
+   49.167   225F move   *       1570   1.42%  cum  20.6%
+   49.167   22D8 move   *       1559   1.41%  cum  22.0%
+   49.167   7000 move   *       1554   1.41%  cum  23.4%
+   49.167   3028 move   *       1549   1.41%  cum  24.9%
+   49.167   2068 move   *       1540   1.40%  cum  26.2%
+   49.167   4CDF multi  *       1507   1.37%  cum  27.6%
+   49.167   4A28 alu    *       1429   1.30%  cum  28.9%
+   49.167   4A11 alu    *       1404   1.27%  cum  30.2%
+   49.167   51C9 branch *       1393   1.26%  cum  31.5%
+   49.167   2040 move   *       1343   1.22%  cum  32.7%
+   49.167   0C68 alu    *       1284   1.17%  cum  33.8%
+   49.167   6700 branch *       1206   1.09%  cum  34.9%
+   49.167   2278 move   *       1178   1.07%  cum  36.0%
+   49.167   20A9 move   *       1159   1.05%  cum  37.1%
+   49.167   2251 move   *       1147   1.04%  cum  38.1%
+   49.167   4841 addr   *       1118   1.01%  cum  39.1%
+   49.167   2601 move   *       1058   0.96%  cum  40.1%
+   49.167   4A68 alu    *       1018   0.92%  cum  41.0%
+   49.167   672A branch *       1003   0.91%  cum  41.9%
+   49.167   2070 move   *       1001   0.91%  cum  42.8%
+   49.167   2029 move   *       1001   0.91%  cum  43.7%
+   49.167   2255 move   *       1001   0.91%  cum  44.6%
+   49.167   2011 move   *       1001   0.91%  cum  45.5%
+   49.167   6A0C branch *       1001   0.91%  cum  46.4%
+   49.167   4A38 alu    *        996   0.90%  cum  47.3%
+   49.167   B090 alu    *        990   0.90%  cum  48.2%
+   49.167   6708 branch *        980   0.89%  cum  49.1%
+   49.167   42A8 alu    *        973   0.88%  cum  50.0%
+   49.167   6704 branch *        972   0.88%  cum  50.9%
+   49.167   4E5E addr   *        934   0.85%  cum  51.7%
+   49.167   2055 move   *        914   0.83%  cum  52.6%
+   49.167   2F09 move   *        909   0.82%  cum  53.4%
+   49.167   6600 branch *        891   0.81%  cum  54.2%
+   49.167   51CA branch *        817   0.74%  cum  55.0%
+   49.167   6000 branch *        767   0.70%  cum  55.6%
+   49.167   672E branch *        739   0.67%  cum  56.3%
+   49.167   4A29 alu    *        655   0.59%  cum  56.9%
+   49.167   4A90 alu    *        617   0.56%  cum  57.5%
+   49.167   664A branch *        600   0.54%  cum  58.0%
+   49.167   21D0 move   *        595   0.54%  cum  58.6%
+   49.167   50F8 UNSAFE          594   0.54%  cum  59.1%
+   49.167   2054 move   *        593   0.54%  cum  59.6%
+   49.167   584F alu    *        593   0.54%  cum  60.2%
+   49.167   2949 move   *        593   0.54%  cum  60.7%
+   49.168   4ED0 branch *        593   0.54%  cum  61.3%
+   49.168   205F move   *        593   0.54%  cum  61.8%
+   49.168   E980 shift  *        589   0.53%  cum  62.3%
+   49.168   6A08 branch *        589   0.53%  cum  62.9%
+   49.168   48C0 multi  *        589   0.53%  cum  63.4%
+   49.168   D0A8 alu    *        588   0.53%  cum  63.9%
+   49.168   4A80 alu    *        588   0.53%  cum  64.5%
+   49.168   4290 alu    *        587   0.53%  cum  65.0%
+   49.168   2D40 move   *        587   0.53%  cum  65.5%
+   49.168   7200 move   *        587   0.53%  cum  66.1%
+   49.168 
+   49.168 [jit] block fallback census — 304559 unsupported + 95963 runtime guard/access = 400522
+   49.168   2F70 move         299576 unsupported          0 runtime  74.80%  idx(A0) -> d16(A7)
+   49.168   2089 move              0 unsupported      72331 runtime  18.06%  A1 -> (A0)
+   49.168   22D8 move              0 unsupported       7116 runtime   1.78%  (A0)+ -> (A1)+
+   49.168   C029 alu            3535 unsupported          0 runtime   0.88%
+   49.168   137C move              0 unsupported       2786 runtime   0.70%  imm -> d16(A1)
+   49.168   2A82 move              0 unsupported       1186 runtime   0.30%  D2 -> (A5)
+   49.168   2081 move              0 unsupported       1172 runtime   0.29%  D1 -> (A0)
+   49.168   2F68 move              0 unsupported        863 runtime   0.22%  d16(A0) -> d16(A7)
+   49.168   3151 move              0 unsupported        816 runtime   0.20%  (A1) -> d16(A0)
+   49.168   12E8 move              0 unsupported        762 runtime   0.19%  d16(A0) -> (A1)+
+   49.168   22E8 move              0 unsupported        751 runtime   0.19%  d16(A0) -> (A1)+
+   49.168   24D0 move              0 unsupported        505 runtime   0.13%  (A0) -> (A2)+
+   49.168   2AC6 move              0 unsupported        502 runtime   0.13%  D6 -> (A5)+
+   49.168   2AC0 move              0 unsupported        388 runtime   0.10%  D0 -> (A5)+
+   49.168   21ED move              0 unsupported        387 runtime   0.10%  d16(A5) -> abs.W
+   49.168   2950 move              0 unsupported        387 runtime   0.10%  (A0) -> d16(A4)
+   49.168   4250 alu               0 unsupported        372 runtime   0.09%
+   49.168   9611 alu             356 unsupported          0 runtime   0.09%
+   49.168   2338 move              0 unsupported        356 runtime   0.09%  abs.W -> -(A1)
+   49.168   4EAD branch            0 unsupported        354 runtime   0.09%
+   49.168   2ADC move              0 unsupported        320 runtime   0.08%  (A4)+ -> (A5)+
+   49.168   B189 alu               0 unsupported        298 runtime   0.07%
+   49.168   8195 alu               0 unsupported        289 runtime   0.07%
+   49.168   2378 move              0 unsupported        222 runtime   0.06%  abs.W -> d16(A1)
+   49.168   D07B alu             213 unsupported          0 runtime   0.05%
+   49.168   276E move              0 unsupported        196 runtime   0.05%  d16(A6) -> d16(A3)
+   49.168   2F0C move              0 unsupported        189 runtime   0.05%  A4 -> -(A7)
+   49.168   3338 move              0 unsupported        189 runtime   0.05%  abs.W -> -(A1)
+   49.168   28C1 move              0 unsupported        187 runtime   0.05%  D1 -> (A4)+
+   49.168   30BC move              0 unsupported        186 runtime   0.05%  imm -> (A0)
+   49.168   1229 move            184 unsupported          0 runtime   0.05%  d16(A1) -> D1
+   49.168   C229 alu             184 unsupported          0 runtime   0.05%
+   49.168   1411 move            184 unsupported          0 runtime   0.05%  (A1) -> D2
+   49.168   2080 move              0 unsupported        178 runtime   0.04%  D0 -> (A0)
+   49.168   B2B0 alu             178 unsupported          0 runtime   0.04%
+   49.168   31E8 move              0 unsupported        154 runtime   0.04%  d16(A0) -> abs.W
+   49.168   48E7 multi             0 unsupported        131 runtime   0.03%  EA=-(A7)
+   49.168   12DC move              0 unsupported        115 runtime   0.03%  (A4)+ -> (A1)+
+   49.168   177C move              0 unsupported        112 runtime   0.03%  imm -> d16(A3)
+   49.168   2486 move              0 unsupported        109 runtime   0.03%  D6 -> (A2)
+   49.168   4CDF multi             0 unsupported         98 runtime   0.02%  EA=(A7)+
+   49.168   2F30 move              0 unsupported         79 runtime   0.02%  idx(A0) -> -(A7)
+   49.168   1747 move              0 unsupported         78 runtime   0.02%  D7 -> d16(A3)
+   49.168   21D0 move              0 unsupported         74 runtime   0.02%  (A0) -> abs.W
+   49.168   2F38 move              0 unsupported         71 runtime   0.02%  abs.W -> -(A7)
+   49.168   2964 move             69 unsupported          0 runtime   0.02%  -(A4) -> d16(A4)
+   49.168   24C6 move              0 unsupported         64 runtime   0.02%  D6 -> (A2)+
+   49.168   2F08 move              0 unsupported         64 runtime   0.02%  A0 -> -(A7)
+   49.168   2D68 move              0 unsupported         56 runtime   0.01%  d16(A0) -> d16(A6)
+   49.168   2F0B move              0 unsupported         56 runtime   0.01%  A3 -> -(A7)
+   49.168   32FC move              0 unsupported         55 runtime   0.01%  imm -> (A1)+
+   49.168   11D0 move              0 unsupported         51 runtime   0.01%  (A0) -> abs.W
+   49.168   2F2D move              0 unsupported         48 runtime   0.01%  d16(A5) -> -(A7)
+   49.168   819D alu               0 unsupported         46 runtime   0.01%
+   49.168   08E8 bitop             0 unsupported         45 runtime   0.01%
+   49.168   2C36 move              0 unsupported         45 runtime   0.01%  idx(A6) -> D6
+   49.168   12D8 move              0 unsupported         42 runtime   0.01%  (A0)+ -> (A1)+
+   49.168   08D1 bitop            24 unsupported         17 runtime   0.01%
+   49.168   2230 move              0 unsupported         41 runtime   0.01%  idx(A0) -> D1
+   49.168   169A move              0 unsupported         40 runtime   0.01%  (A2)+ -> (A3)
+   49.168 
+   49.168 [jit] bounded shift versions — 8 sites, 80 live, 0 saturated
+   49.168   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   49.168   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   49.168   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   49.168   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   49.168 
+   49.168 [jit] runtime fallback causes
+   49.168   fill/tag MMU                0    0.00%
+   49.168   non-plain/MMIO              0    0.00%
+   49.168   codeMask                    0    0.00%
+   49.168   cross-page                  0    0.00%
+   49.168   other guard                 0    0.00%
+   49.168   attributed                  0 /        95963 runtime  MISMATCH
+   49.168 
+   49.168 [jit] fallback addressing — MOVE source
+   49.168   idx(An)        299576 unsupported          168 runtime
+   49.168   An                  0 unsupported        72762 runtime
+   49.168   (An)+               0 unsupported         7761 runtime
+   49.168   Dn                  4 unsupported         4078 runtime
+   49.168   d16(An)           184 unsupported         3269 runtime
+   49.168   imm                 0 unsupported         3184 runtime
+   49.168   (An)              184 unsupported         1895 runtime
+   49.168   abs.W               0 unsupported          854 runtime
+   49.168   -(An)              69 unsupported            3 runtime
+   49.168   d16(PC)             0 unsupported           25 runtime
+   49.168 
+   49.168 [jit] fallback addressing — MOVE destination
+   49.168   d16(An)        299645 unsupported         5715 runtime
+   49.168   (An)                4 unsupported        75365 runtime
+   49.168   (An)+               0 unsupported        10977 runtime
+   49.168   -(An)               0 unsupported         1146 runtime
+   49.168   abs.W               0 unsupported          667 runtime
+   49.168   Dn                368 unsupported           86 runtime
+   49.168   idx(An)             0 unsupported           42 runtime
+   49.168   An                  0 unsupported            1 runtime
+   49.168 
+   49.168 [jit] fallback addressing — MOVEM operand
+   49.168   -(An)               0 unsupported          164 runtime
+   49.168   (An)+               0 unsupported          104 runtime
+   49.168   d16(An)             0 unsupported            9 runtime
+   49.168 
+   49.168 [jit] indexed-mode fallbacks by extension form — 300197 attributed (of 400522 total fallbacks)
+   49.168   brief (d8,An/PC,Xn)            7    0.0%
+   49.168   full 68020 format            279    0.1%
+   49.168   mixed (both seen)         299911   99.9%
+   49.168   compiled slots: 1026 brief, 364 full (cumulative over the run, not per phase)
+   49.168   brief share if mixed is apportioned by slot ratio:  40.0%  (ESTIMATE)
+   49.168 
+   49.168 [jit] fallback addressing — top MOVE source -> destination pairs
+   49.168   idx(An)  -> d16(An)        299576 unsupported            0 runtime
+   49.168   An       -> (An)                0 unsupported        72356 runtime
+   49.168   (An)+    -> (An)+               0 unsupported         7672 runtime
+   49.168   imm      -> d16(An)             0 unsupported         2937 runtime
+   49.168   Dn       -> (An)                4 unsupported         2745 runtime
+   49.168   d16(An)  -> (An)+               0 unsupported         1514 runtime
+   49.168   (An)     -> d16(An)             0 unsupported         1232 runtime
+   49.168   Dn       -> (An)+               0 unsupported         1195 runtime
+   49.168   d16(An)  -> d16(An)             0 unsupported         1123 runtime
+   49.168   abs.W    -> -(An)               0 unsupported          616 runtime
+   49.168   d16(An)  -> abs.W               0 unsupported          541 runtime
+   49.168   (An)     -> (An)+               0 unsupported          537 runtime
+   49.168   An       -> -(An)               0 unsupported          313 runtime
+   49.168   abs.W    -> d16(An)             0 unsupported          238 runtime
+   49.168   imm      -> (An)                0 unsupported          190 runtime
+   49.168   d16(An)  -> Dn                184 unsupported            0 runtime
+   49.168   (An)     -> Dn                184 unsupported            0 runtime
+   49.168   (An)     -> abs.W               0 unsupported          125 runtime
+   49.168   Dn       -> d16(An)             0 unsupported          113 runtime
+   49.168   idx(An)  -> Dn                  0 unsupported           86 runtime
+   49.168   idx(An)  -> -(An)               0 unsupported           81 runtime
+   49.168   d16(An)  -> -(An)               0 unsupported           74 runtime
+   49.168   -(An)    -> d16(An)            69 unsupported            0 runtime
+   49.168   (An)+    -> (An)                0 unsupported           56 runtime
+   52.187 
+   52.187 [jit] ════ census phase 'open-software' ════
+   52.187 [jit] dispatch cache: 2377055 hits, 115343 gen-miss, 2534439 miss
+   52.187 [jit] flushes: wrapper hint/reset=1 translation moved=8552 write into code=8 deferred=0 code cache full=0  blocks live=29825, cold-evicted=0
+   52.187 
+   52.187 [jit] opcode census — 130886 instructions, 284 distinct
+   52.187   move            57970   44.3%
+   52.187   alu             26075   19.9%
+   52.187   shift            1736    1.3%
+   52.187   bitop             977    0.7%
+   52.187   addr             5892    4.5%
+   52.187   multi            3640    2.8%
+   52.187   cond                6    0.0%
+   52.187   branch          32895   25.1%
+   52.187   UNSAFE           1695    1.3%
+   52.187   native         126164   96.4%  (backend 'x86-64')
+   52.187   ── top 60 opcodes ──
+   52.187   2078 move   *       5454   4.17%  cum   4.2%
+   52.187   2050 move   *       5169   3.95%  cum   8.1%
+   52.187   4E75 branch *       5007   3.83%  cum  11.9%
+   52.187   6100 branch *       3897   2.98%  cum  14.9%
+   52.187   4A11 alu    *       2980   2.28%  cum  17.2%
+   52.187   51C9 branch *       2962   2.26%  cum  19.5%
+   52.187   206E move   *       2633   2.01%  cum  21.5%
+   52.187   1169 move   *       1983   1.52%  cum  23.0%
+   52.187   2068 move   *       1770   1.35%  cum  24.3%
+   52.187   225F move   *       1767   1.35%  cum  25.7%
+   52.187   7000 move   *       1765   1.35%  cum  27.0%
+   52.187   3028 move   *       1761   1.35%  cum  28.4%
+   52.187   22D8 move   *       1722   1.32%  cum  29.7%
+   52.187   4CDF multi  *       1717   1.31%  cum  31.0%
+   52.187   4A28 alu    *       1618   1.24%  cum  32.2%
+   52.187   2601 move   *       1567   1.20%  cum  33.4%
+   52.187   6700 branch *       1552   1.19%  cum  34.6%
+   52.187   2040 move   *       1515   1.16%  cum  35.8%
+   52.187   0C68 alu    *       1452   1.11%  cum  36.9%
+   52.187   2278 move   *       1345   1.03%  cum  37.9%
+   52.187   20A9 move   *       1320   1.01%  cum  38.9%
+   52.187   2251 move   *       1309   1.00%  cum  39.9%
+   52.187   4841 addr   *       1287   0.98%  cum  40.9%
+   52.187   4A68 alu    *       1145   0.87%  cum  41.8%
+   52.187   672A branch *       1141   0.87%  cum  42.7%
+   52.187   4A38 alu    *       1134   0.87%  cum  43.5%
+   52.187   2255 move   *       1133   0.87%  cum  44.4%
+   52.187   2011 move   *       1132   0.86%  cum  45.3%
+   52.187   2029 move   *       1129   0.86%  cum  46.1%
+   52.187   51CA branch *       1124   0.86%  cum  47.0%
+   52.187   6A0C branch *       1124   0.86%  cum  47.8%
+   52.187   2070 move   *       1122   0.86%  cum  48.7%
+   52.187   B090 alu    *       1119   0.85%  cum  49.6%
+   52.187   6708 branch *       1115   0.85%  cum  50.4%
+   52.187   42A8 alu    *       1092   0.83%  cum  51.2%
+   52.187   6704 branch *       1087   0.83%  cum  52.1%
+   52.187   4E5E addr   *       1064   0.81%  cum  52.9%
+   52.187   2055 move   *       1037   0.79%  cum  53.7%
+   52.187   2F09 move   *       1034   0.79%  cum  54.5%
+   52.188   6600 branch *       1026   0.78%  cum  55.2%
+   52.188   6000 branch *        941   0.72%  cum  56.0%
+   52.188   6900 branch *        920   0.70%  cum  56.7%
+   52.188   672E branch *        828   0.63%  cum  57.3%
+   52.188   4A29 alu    *        746   0.57%  cum  57.9%
+   52.188   4A90 alu    *        696   0.53%  cum  58.4%
+   52.188   664A branch *        679   0.52%  cum  58.9%
+   52.188   2054 move   *        678   0.52%  cum  59.4%
+   52.188   584F alu    *        674   0.51%  cum  60.0%
+   52.188   4ED0 branch *        674   0.51%  cum  60.5%
+   52.188   205F move   *        674   0.51%  cum  61.0%
+   52.188   50F8 UNSAFE          674   0.51%  cum  61.5%
+   52.188   21D0 move   *        674   0.51%  cum  62.0%
+   52.188   2949 move   *        672   0.51%  cum  62.5%
+   52.188   6A08 branch *        671   0.51%  cum  63.0%
+   52.188   4A80 alu    *        667   0.51%  cum  63.5%
+   52.188   D0A8 alu    *        667   0.51%  cum  64.1%
+   52.188   E980 shift  *        667   0.51%  cum  64.6%
+   52.188   48C0 multi  *        667   0.51%  cum  65.1%
+   52.188   2D40 move   *        666   0.51%  cum  65.6%
+   52.188   4290 alu    *        665   0.51%  cum  66.1%
+   52.188 
+   52.188 [jit] block fallback census — 403612 unsupported + 152944 runtime guard/access = 556556
+   52.188   2F70 move         397606 unsupported          0 runtime  71.44%  idx(A0) -> d16(A7)
+   52.188   2089 move              0 unsupported      95567 runtime  17.17%  A1 -> (A0)
+   52.188   22D8 move              0 unsupported      21872 runtime   3.93%  (A0)+ -> (A1)+
+   52.188   C029 alu            4255 unsupported          0 runtime   0.76%
+   52.188   137C move              0 unsupported       3105 runtime   0.56%  imm -> d16(A1)
+   52.188   24D0 move              0 unsupported       3064 runtime   0.55%  (A0) -> (A2)+
+   52.188   2AC6 move              0 unsupported       2863 runtime   0.51%  D6 -> (A5)+
+   52.188   2081 move              0 unsupported       2740 runtime   0.49%  D1 -> (A0)
+   52.188   BD95 alu               0 unsupported       1980 runtime   0.36%
+   52.188   2A82 move              0 unsupported       1612 runtime   0.29%  D2 -> (A5)
+   52.188   22E8 move              0 unsupported       1408 runtime   0.25%  d16(A0) -> (A1)+
+   52.188   2F68 move              0 unsupported       1129 runtime   0.20%  d16(A0) -> d16(A7)
+   52.188   2950 move              0 unsupported        994 runtime   0.18%  (A0) -> d16(A4)
+   52.188   5368 alu               0 unsupported        991 runtime   0.18%
+   52.188   3151 move              0 unsupported        978 runtime   0.18%  (A1) -> d16(A0)
+   52.188   28C1 move              0 unsupported        947 runtime   0.17%  D1 -> (A4)+
+   52.188   12E8 move              0 unsupported        823 runtime   0.15%  d16(A0) -> (A1)+
+   52.188   8195 alu               0 unsupported        806 runtime   0.14%
+   52.188   2AC0 move              0 unsupported        782 runtime   0.14%  D0 -> (A5)+
+   52.188   177C move              0 unsupported        686 runtime   0.12%  imm -> d16(A3)
+   52.188   12DC move              0 unsupported        482 runtime   0.09%  (A4)+ -> (A1)+
+   52.188   1747 move              0 unsupported        475 runtime   0.09%  D7 -> d16(A3)
+   52.188   4250 alu               0 unsupported        455 runtime   0.08%
+   52.188   B189 alu               0 unsupported        439 runtime   0.08%
+   52.188   21ED move              0 unsupported        421 runtime   0.08%  d16(A5) -> abs.W
+   52.188   2338 move              0 unsupported        410 runtime   0.07%  abs.W -> -(A1)
+   52.188   9611 alu             390 unsupported          0 runtime   0.07%
+   52.188   D07B alu             375 unsupported          0 runtime   0.07%
+   52.188   31E8 move              0 unsupported        374 runtime   0.07%  d16(A0) -> abs.W
+   52.188   4EAD branch            0 unsupported        366 runtime   0.07%
+   52.188   10D9 move              0 unsupported        318 runtime   0.06%  (A1)+ -> (A0)+
+   52.188   2378 move              0 unsupported        281 runtime   0.05%  abs.W -> d16(A1)
+   52.188   276E move              0 unsupported        241 runtime   0.04%  d16(A6) -> d16(A3)
+   52.188   169A move              0 unsupported        240 runtime   0.04%  (A2)+ -> (A3)
+   52.188   3338 move              0 unsupported        221 runtime   0.04%  abs.W -> -(A1)
+   52.188   32FC move              0 unsupported        210 runtime   0.04%  imm -> (A1)+
+   52.188   2F0C move              0 unsupported        205 runtime   0.04%  A4 -> -(A7)
+   52.188   30BC move              0 unsupported        204 runtime   0.04%  imm -> (A0)
+   52.188   1411 move            201 unsupported          0 runtime   0.04%  (A1) -> D2
+   52.188   1229 move            201 unsupported          0 runtime   0.04%  d16(A1) -> D1
+   52.188   C229 alu             201 unsupported          0 runtime   0.04%
+   52.188   2080 move              0 unsupported        192 runtime   0.03%  D0 -> (A0)
+   52.188   2F30 move              0 unsupported        192 runtime   0.03%  idx(A0) -> -(A7)
+   52.188   21D0 move              0 unsupported        183 runtime   0.03%  (A0) -> abs.W
+   52.188   48E6 multi             0 unsupported        175 runtime   0.03%  EA=-(A6)
+   52.188   3884 move              0 unsupported        165 runtime   0.03%  D4 -> (A4)
+   52.188   2D68 move              0 unsupported        159 runtime   0.03%  d16(A0) -> d16(A6)
+   52.188   2D1F move              0 unsupported        155 runtime   0.03%  (A7)+ -> -(A6)
+   52.188   2F3A move              0 unsupported        154 runtime   0.03%  d16(PC) -> -(A7)
+   52.188   08D1 bitop            67 unsupported         86 runtime   0.03%
+   52.188   B2B0 alu             134 unsupported          0 runtime   0.02%
+   52.188   4CDF multi             0 unsupported        130 runtime   0.02%  EA=(A7)+
+   52.188   2A80 move              0 unsupported        129 runtime   0.02%  D0 -> (A5)
+   52.188   117C move              0 unsupported        122 runtime   0.02%  imm -> d16(A0)
+   52.188   317C move              0 unsupported        120 runtime   0.02%  imm -> d16(A0)
+   52.188   48E7 multi             0 unsupported        119 runtime   0.02%  EA=-(A7)
+   52.188   5228 alu               0 unsupported        118 runtime   0.02%
+   52.188   2AC1 move              0 unsupported        112 runtime   0.02%  D1 -> (A5)+
+   52.188   819D alu               0 unsupported        106 runtime   0.02%
+   52.188   2F2D move              0 unsupported         97 runtime   0.02%  d16(A5) -> -(A7)
+   52.188 
+   52.188 [jit] bounded shift versions — 8 sites, 81 live, 0 saturated
+   52.188   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   52.188   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   52.188   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   52.188   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   52.188 
+   52.188 [jit] runtime fallback causes
+   52.188   fill/tag MMU                0    0.00%
+   52.188   non-plain/MMIO              0    0.00%
+   52.188   codeMask                    0    0.00%
+   52.188   cross-page                  0    0.00%
+   52.188   other guard                 0    0.00%
+   52.188   attributed                  0 /       152944 runtime  MISMATCH
+   52.188 
+   52.188 [jit] fallback addressing — MOVE source
+   52.188   idx(An)        397606 unsupported          309 runtime
+   52.188   An                  0 unsupported        96233 runtime
+   52.188   (An)+               0 unsupported        23417 runtime
+   52.188   Dn                  2 unsupported        10300 runtime
+   52.188   (An)              201 unsupported         5445 runtime
+   52.188   d16(An)           201 unsupported         4826 runtime
+   52.188   imm                 0 unsupported         4476 runtime
+   52.188   abs.W               0 unsupported         1010 runtime
+   52.188   d16(PC)             0 unsupported          162 runtime
+   52.188   -(An)              77 unsupported            3 runtime
+   52.188 
+   52.188 [jit] fallback addressing — MOVE destination
+   52.188   d16(An)        397683 unsupported         8687 runtime
+   52.188   (An)                2 unsupported       101292 runtime
+   52.188   (An)+               0 unsupported        33254 runtime
+   52.188   -(An)               0 unsupported         1738 runtime
+   52.188   abs.W               0 unsupported         1046 runtime
+   52.188   Dn                402 unsupported           95 runtime
+   52.188   idx(An)             0 unsupported           61 runtime
+   52.188   An                  0 unsupported            8 runtime
+   52.188 
+   52.188 [jit] fallback addressing — MOVEM operand
+   52.188   -(An)               0 unsupported          294 runtime
+   52.188   (An)+               0 unsupported          171 runtime
+   52.188   d16(An)             0 unsupported           10 runtime
+   52.188 
+   52.188 [jit] indexed-mode fallbacks by extension form — 398525 attributed (of 556556 total fallbacks)
+   52.188   brief (d8,An/PC,Xn)           28    0.0%
+   52.188   full 68020 format            468    0.1%
+   52.188   mixed (both seen)         398029   99.9%
+   52.188   compiled slots: 1042 brief, 372 full (cumulative over the run, not per phase)
+   52.188   brief share if mixed is apportioned by slot ratio:  39.9%  (ESTIMATE)
+   52.188 
+   52.188 [jit] fallback addressing — top MOVE source -> destination pairs
+   52.188   idx(An)  -> d16(An)        397606 unsupported            0 runtime
+   52.188   An       -> (An)                0 unsupported        95675 runtime
+   52.188   (An)+    -> (An)+               0 unsupported        22934 runtime
+   52.188   Dn       -> (An)                2 unsupported         5004 runtime
+   52.188   Dn       -> (An)+               0 unsupported         4711 runtime
+   52.188   imm      -> d16(An)             0 unsupported         4033 runtime
+   52.188   (An)     -> (An)+               0 unsupported         3160 runtime
+   52.188   d16(An)  -> (An)+               0 unsupported         2233 runtime
+   52.188   (An)     -> d16(An)             0 unsupported         2026 runtime
+   52.188   d16(An)  -> d16(An)             0 unsupported         1548 runtime
+   52.188   d16(An)  -> abs.W               0 unsupported          803 runtime
+   52.188   abs.W    -> -(An)               0 unsupported          714 runtime
+   52.188   Dn       -> d16(An)             0 unsupported          576 runtime
+   52.188   An       -> -(An)               0 unsupported          311 runtime
+   52.188   (An)+    -> (An)                0 unsupported          311 runtime
+   52.188   abs.W    -> d16(An)             0 unsupported          296 runtime
+   52.188   (An)     -> abs.W               0 unsupported          241 runtime
+   52.188   imm      -> (An)                0 unsupported          231 runtime
+   52.188   imm      -> (An)+               0 unsupported          210 runtime
+   52.188   idx(An)  -> -(An)               0 unsupported          203 runtime
+   52.188   d16(An)  -> Dn                201 unsupported            0 runtime
+   52.188   (An)     -> Dn                201 unsupported            0 runtime
+   52.188   An       -> d16(An)             0 unsupported          197 runtime
+   52.188   d16(An)  -> -(An)               0 unsupported          190 runtime
+   56.724 
+   56.725 [jit] ════ census phase 'open-folder' ════
+   56.725 [jit] dispatch cache: 2338873 hits, 160491 gen-miss, 1581269 miss
+   56.725 [jit] flushes: wrapper hint/reset=1 translation moved=10095 write into code=8 deferred=0 code cache full=0  blocks live=34663, cold-evicted=0
+   56.725 
+   56.725 [jit] opcode census — 201142 instructions, 399 distinct
+   56.725   move            49452   24.6%
+   56.725   alu             39135   19.5%
+   56.725   shift            3879    1.9%
+   56.725   bitop             622    0.3%
+   56.725   addr            32788   16.3%
+   56.725   multi           30501   15.2%
+   56.725   cond               19    0.0%
+   56.725   branch          43362   21.6%
+   56.725   UNSAFE           1384    0.7%
+   56.725   native         196366   97.6%  (backend 'x86-64')
+   56.725   ── top 60 opcodes ──
+   56.725   48E7 multi  *      28334  14.09%  cum  14.1%
+   56.725   4E56 addr   *      28280  14.06%  cum  28.1%
+   56.725   2601 move   *       5720   2.84%  cum  31.0%
+   56.725   6900 branch *       5222   2.60%  cum  33.6%
+   56.725   51C9 branch *       5067   2.52%  cum  36.1%
+   56.725   4E75 branch *       4153   2.06%  cum  38.2%
+   56.725   6700 branch *       3329   1.66%  cum  39.8%
+   56.725   7000 move   *       3316   1.65%  cum  41.5%
+   56.725   51CA branch *       3189   1.59%  cum  43.1%
+   56.725   4A11 alu    *       2906   1.44%  cum  44.5%
+   56.725   670A branch *       2864   1.42%  cum  45.9%
+   56.725   2078 move   *       2819   1.40%  cum  47.3%
+   56.725   0C40 alu    *       2713   1.35%  cum  48.7%
+   56.725   4240 alu    *       2701   1.34%  cum  50.0%
+   56.725   4AAE alu    *       2701   1.34%  cum  51.4%
+   56.725   1018 move   *       2701   1.34%  cum  52.7%
+   56.725   E548 shift  *       2697   1.34%  cum  54.0%
+   56.725   D2B1 alu    *       2695   1.34%  cum  55.4%
+   56.725   D2AE alu    *       2527   1.26%  cum  56.6%
+   56.725   2050 move   *       2266   1.13%  cum  57.8%
+   56.725   4A80 alu    *       2259   1.12%  cum  58.9%
+   56.725   6604 branch *       2210   1.10%  cum  60.0%
+   56.725   3619 move   *       2195   1.09%  cum  61.1%
+   56.725   0C43 alu    *       2194   1.09%  cum  62.2%
+   56.725   20C0 move   *       2182   1.08%  cum  63.3%
+   56.725   206E move   *       2017   1.00%  cum  64.3%
+   56.725   4840 addr   *       1777   0.88%  cum  65.1%
+   56.725   6718 branch *       1749   0.87%  cum  66.0%
+   56.725   1003 move   *       1734   0.86%  cum  66.9%
+   56.725   61CE branch *       1734   0.86%  cum  67.7%
+   56.725   4A05 alu    *       1712   0.85%  cum  68.6%
+   56.725   D086 alu    *       1712   0.85%  cum  69.4%
+   56.725   6712 branch *       1711   0.85%  cum  70.3%
+   56.725   1169 move   *       1520   0.76%  cum  71.0%
+   56.725   6100 branch *       1426   0.71%  cum  71.8%
+   56.725   4A28 alu    *       1303   0.65%  cum  72.4%
+   56.725   3028 move   *       1129   0.56%  cum  73.0%
+   56.725   225F move   *       1081   0.54%  cum  73.5%
+   56.725   4CDF multi  *       1045   0.52%  cum  74.0%
+   56.725   2278 move   *       1035   0.51%  cum  74.5%
+   56.725   2251 move   *       1007   0.50%  cum  75.0%
+   56.725   20A9 move   *       1005   0.50%  cum  75.5%
+   56.725   2068 move   *       1000   0.50%  cum  76.0%
+   56.725   4841 addr   *        982   0.49%  cum  76.5%
+   56.725   D080 alu    *        693   0.34%  cum  76.9%
+   56.725   C904 alu             672   0.33%  cum  77.2%
+   56.725   C703 alu             672   0.33%  cum  77.5%
+   56.725   CB05 alu             672   0.33%  cum  77.9%
+   56.725   C502 alu             672   0.33%  cum  78.2%
+   56.725   C301 alu             672   0.33%  cum  78.5%
+   56.725   51CE branch *        671   0.33%  cum  78.9%
+   56.725   2040 move   *        623   0.31%  cum  79.2%
+   56.725   0C68 alu    *        612   0.30%  cum  79.5%
+   56.725   672A branch *        594   0.30%  cum  79.8%
+   56.725   4A68 alu    *        592   0.29%  cum  80.1%
+   56.725   2255 move   *        588   0.29%  cum  80.4%
+   56.725   2011 move   *        588   0.29%  cum  80.7%
+   56.725   2029 move   *        587   0.29%  cum  81.0%
+   56.725   6A0C branch *        585   0.29%  cum  81.2%
+   56.725   B090 alu    *        585   0.29%  cum  81.5%
+   56.725 
+   56.725 [jit] block fallback census — 886542 unsupported + 356904 runtime guard/access = 1243446
+   56.725   2F70 move         878994 unsupported          0 runtime  70.69%  idx(A0) -> d16(A7)
+   56.725   2A81 move              0 unsupported      51541 runtime   4.15%  D1 -> (A5)
+   56.725   24D0 move              0 unsupported      41202 runtime   3.31%  (A0) -> (A2)+
+   56.725   2D68 move              0 unsupported      36484 runtime   2.93%  d16(A0) -> d16(A6)
+   56.725   2378 move              0 unsupported      32194 runtime   2.59%  abs.W -> d16(A1)
+   56.725   22D8 move              0 unsupported      28554 runtime   2.30%  (A0)+ -> (A1)+
+   56.725   4250 alu               0 unsupported      19211 runtime   1.54%
+   56.725   4254 alu               0 unsupported      18115 runtime   1.46%
+   56.725   2F68 move              0 unsupported      17154 runtime   1.38%  d16(A0) -> d16(A7)
+   56.725   2089 move              0 unsupported      10768 runtime   0.87%  A1 -> (A0)
+   56.725   2290 move              0 unsupported       9946 runtime   0.80%  (A0) -> (A1)
+   56.725   276E move              0 unsupported       9666 runtime   0.78%  d16(A6) -> d16(A3)
+   56.725   2F30 move              0 unsupported       8413 runtime   0.68%  idx(A0) -> -(A7)
+   56.725   177C move              0 unsupported       5014 runtime   0.40%  imm -> d16(A3)
+   56.725   BD95 alu               0 unsupported       4945 runtime   0.40%
+   56.725   2A82 move              0 unsupported       4502 runtime   0.36%  D2 -> (A5)
+   56.725   C029 alu            4105 unsupported          0 runtime   0.33%
+   56.725   2AC6 move              0 unsupported       3895 runtime   0.31%  D6 -> (A5)+
+   56.725   12DC move              0 unsupported       3670 runtime   0.30%  (A4)+ -> (A1)+
+   56.725   14D0 move              0 unsupported       3525 runtime   0.28%  (A0) -> (A2)+
+   56.725   1747 move              0 unsupported       3477 runtime   0.28%  D7 -> d16(A3)
+   56.725   137C move              0 unsupported       2996 runtime   0.24%  imm -> d16(A1)
+   56.725   317C move              0 unsupported       2659 runtime   0.21%  imm -> d16(A0)
+   56.725   10D9 move              0 unsupported       2600 runtime   0.21%  (A1)+ -> (A0)+
+   56.725   5368 alu               0 unsupported       2112 runtime   0.17%
+   56.725   2081 move              0 unsupported       2021 runtime   0.16%  D1 -> (A0)
+   56.725   32FC move              0 unsupported       1782 runtime   0.14%  imm -> (A1)+
+   56.725   169A move              0 unsupported       1750 runtime   0.14%  (A2)+ -> (A3)
+   56.725   2AC0 move              0 unsupported       1738 runtime   0.14%  D0 -> (A5)+
+   56.725   2ADC move              0 unsupported       1600 runtime   0.13%  (A4)+ -> (A5)+
+   56.725   4269 alu               0 unsupported       1372 runtime   0.11%
+   56.725   2D1F move              0 unsupported       1255 runtime   0.10%  (A7)+ -> -(A6)
+   56.725   48E6 multi             0 unsupported       1230 runtime   0.10%  EA=-(A6)
+   56.725   D07B alu            1221 unsupported          0 runtime   0.10%
+   56.725   8195 alu               0 unsupported       1168 runtime   0.09%
+   56.725   2348 move              0 unsupported       1119 runtime   0.09%  A0 -> d16(A1)
+   56.725   209A move              0 unsupported        997 runtime   0.08%  (A2)+ -> (A0)
+   56.725   234C move              0 unsupported        904 runtime   0.07%  A4 -> d16(A1)
+   56.725   117C move              0 unsupported        892 runtime   0.07%  imm -> d16(A0)
+   56.725   208C move              0 unsupported        876 runtime   0.07%  A4 -> (A0)
+   56.725   22C0 move              0 unsupported        788 runtime   0.06%  D0 -> (A1)+
+   56.725   50E9 cond              0 unsupported        773 runtime   0.06%
+   56.725   B2B0 alu             746 unsupported          0 runtime   0.06%
+   56.725   1084 move              0 unsupported        525 runtime   0.04%  D4 -> (A0)
+   56.725   22C5 move              0 unsupported        455 runtime   0.04%  D5 -> (A1)+
+   56.725   8594 alu               0 unsupported        415 runtime   0.03%
+   56.725   C594 alu               0 unsupported        390 runtime   0.03%
+   56.725   9611 alu             382 unsupported          0 runtime   0.03%
+   56.725   2F3A move              0 unsupported        377 runtime   0.03%  d16(PC) -> -(A7)
+   56.725   B308 alu               0 unsupported        371 runtime   0.03%
+   56.725   3146 move              0 unsupported        355 runtime   0.03%  D6 -> d16(A0)
+   56.725   1740 move              0 unsupported        350 runtime   0.03%  D0 -> d16(A3)
+   56.725   16AC move              0 unsupported        336 runtime   0.03%  d16(A4) -> (A3)
+   56.725   4210 alu               0 unsupported        334 runtime   0.03%
+   56.725   3884 move              0 unsupported        319 runtime   0.03%  D4 -> (A4)
+   56.725   2AC1 move              0 unsupported        302 runtime   0.02%  D1 -> (A5)+
+   56.725   5351 alu               0 unsupported        293 runtime   0.02%
+   56.725   BD9D alu               0 unsupported        284 runtime   0.02%
+   56.725   B189 alu               0 unsupported        276 runtime   0.02%
+   56.725   2080 move              0 unsupported        272 runtime   0.02%  D0 -> (A0)
+   56.725 
+   56.725 [jit] bounded shift versions — 8 sites, 105 live, 0 saturated
+   56.725   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   56.725   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   56.725   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   56.725   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   56.725 
+   56.725 [jit] runtime fallback causes
+   56.725   fill/tag MMU                0    0.00%
+   56.725   non-plain/MMIO              0    0.00%
+   56.725   codeMask                    0    0.00%
+   56.725   cross-page                  0    0.00%
+   56.725   other guard                 0    0.00%
+   56.725   attributed                  0 /       356904 runtime  MISMATCH
+   56.725 
+   56.725 [jit] fallback addressing — MOVE source
+   56.725   idx(An)        878996 unsupported         8764 runtime
+   56.725   Dn                  7 unsupported        71986 runtime
+   56.725   d16(An)           177 unsupported        64960 runtime
+   56.725   (An)              183 unsupported        55149 runtime
+   56.725   (An)+               1 unsupported        41033 runtime
+   56.725   abs.W               0 unsupported        32314 runtime
+   56.725   An                  0 unsupported        14011 runtime
+   56.725   imm                 0 unsupported        13571 runtime
+   56.725   d16(PC)             0 unsupported          413 runtime
+   56.725   -(An)              27 unsupported          113 runtime
+   56.725 
+   56.725 [jit] fallback addressing — MOVE destination
+   56.725   d16(An)        879026 unsupported       114229 runtime
+   56.725   (An)+               0 unsupported        91273 runtime
+   56.725   (An)                7 unsupported        84950 runtime
+   56.726   -(An)               0 unsupported        10964 runtime
+   56.726   Dn                357 unsupported          317 runtime
+   56.726   abs.W               0 unsupported          463 runtime
+   56.726   idx(An)             0 unsupported           91 runtime
+   56.726   An                  1 unsupported           27 runtime
+   56.726 
+   56.726 [jit] fallback addressing — MOVEM operand
+   56.726   -(An)               0 unsupported         1436 runtime
+   56.726   (An)+               0 unsupported          377 runtime
+   56.726   (An)                0 unsupported          178 runtime
+   56.726   d16(An)             0 unsupported           26 runtime
+   56.726 
+   56.726 [jit] indexed-mode fallbacks by extension form — 889893 attributed (of 1243446 total fallbacks)
+   56.726   brief (d8,An/PC,Xn)          100    0.0%
+   56.726   full 68020 format           1434    0.2%
+   56.726   mixed (both seen)         888359   99.8%
+   56.726   compiled slots: 1216 brief, 419 full (cumulative over the run, not per phase)
+   56.726   brief share if mixed is apportioned by slot ratio:  39.8%  (ESTIMATE)
+   56.726 
+   56.726 [jit] fallback addressing — top MOVE source -> destination pairs
+   56.726   idx(An)  -> d16(An)        878994 unsupported            0 runtime
+   56.726   d16(An)  -> d16(An)             0 unsupported        63410 runtime
+   56.726   Dn       -> (An)                7 unsupported        59764 runtime
+   56.726   (An)     -> (An)+               0 unsupported        44742 runtime
+   56.726   (An)+    -> (An)+               0 unsupported        36873 runtime
+   56.726   abs.W    -> d16(An)             0 unsupported        32203 runtime
+   56.726   An       -> (An)                0 unsupported        11750 runtime
+   56.726   imm      -> d16(An)             0 unsupported        11573 runtime
+   56.726   (An)     -> (An)                0 unsupported         9955 runtime
+   56.726   idx(An)  -> -(An)               0 unsupported         8416 runtime
+   56.726   Dn       -> (An)+               0 unsupported         7534 runtime
+   56.726   Dn       -> d16(An)             0 unsupported         4482 runtime
+   56.726   (An)+    -> (An)                0 unsupported         2852 runtime
+   56.726   An       -> d16(An)             0 unsupported         2128 runtime
+   56.726   imm      -> (An)+               0 unsupported         1786 runtime
+   56.726   (An)+    -> -(An)               0 unsupported         1270 runtime
+   56.726   d16(An)  -> -(An)               0 unsupported          506 runtime
+   56.726   d16(An)  -> (An)                0 unsupported          417 runtime
+   56.726   d16(An)  -> abs.W               0 unsupported          388 runtime
+   56.726   (An)     -> d16(An)             5 unsupported          376 runtime
+   56.726   d16(PC)  -> -(An)               0 unsupported          378 runtime
+   56.726   idx(An)  -> Dn                  2 unsupported          317 runtime
+   56.726   d16(An)  -> (An)+               0 unsupported          239 runtime
+   56.726   imm      -> (An)                0 unsupported          208 runtime
+   69.070 
+   69.070 [jit] ════ census phase 'launch-dialog' ════
+   69.070 [jit] dispatch cache: 4992718 hits, 107993 gen-miss, 3594665 miss
+   69.070 [jit] flushes: wrapper hint/reset=1 translation moved=10544 write into code=8 deferred=0 code cache full=0  blocks live=35128, cold-evicted=0
+   69.070 
+   69.070 [jit] opcode census — 269964 instructions, 334 distinct
+   69.070   move            18049    6.7%
+   69.070   alu             26729    9.9%
+   69.070   shift            2518    0.9%
+   69.070   bitop             820    0.3%
+   69.070   addr            99315   36.8%
+   69.070   multi           98077   36.3%
+   69.070   cond                6    0.0%
+   69.070   branch          23309    8.6%
+   69.070   UNSAFE           1141    0.4%
+   69.070   native         261943   97.0%  (backend 'x86-64')
+   69.070   ── top 60 opcodes ──
+   69.070   48E7 multi  *      97453  36.10%  cum  36.1%
+   69.070   4E56 addr   *      97445  36.10%  cum  72.2%
+   69.070   51C9 branch *       5747   2.13%  cum  74.3%
+   69.070   4A11 alu    *       4936   1.83%  cum  76.2%
+   69.070   4E75 branch *       2214   0.82%  cum  77.0%
+   69.070   2601 move   *       2163   0.80%  cum  77.8%
+   69.070   6900 branch *       2026   0.75%  cum  78.5%
+   69.070   670A branch *       1403   0.52%  cum  79.0%
+   69.070   D080 alu    *       1382   0.51%  cum  79.6%
+   69.070   C502 alu            1376   0.51%  cum  80.1%
+   69.070   CB05 alu            1376   0.51%  cum  80.6%
+   69.070   C904 alu            1376   0.51%  cum  81.1%
+   69.070   C301 alu            1376   0.51%  cum  81.6%
+   69.070   C703 alu            1376   0.51%  cum  82.1%
+   69.070   51CE branch *       1375   0.51%  cum  82.6%
+   69.070   6700 branch *       1233   0.46%  cum  83.1%
+   69.070   51CA branch *       1199   0.44%  cum  83.5%
+   69.070   7000 move   *       1155   0.43%  cum  83.9%
+   69.070   4240 alu    *       1066   0.39%  cum  84.3%
+   69.070   1018 move   *       1066   0.39%  cum  84.7%
+   69.070   4AAE alu    *       1065   0.39%  cum  85.1%
+   69.070   D2B1 alu    *       1064   0.39%  cum  85.5%
+   69.070   0C40 alu    *       1064   0.39%  cum  85.9%
+   69.070   E548 shift  *       1064   0.39%  cum  86.3%
+   69.070   D2AE alu    *        963   0.36%  cum  86.7%
+   69.070   4A28 alu    *        929   0.34%  cum  87.0%
+   69.070   6604 branch *        849   0.31%  cum  87.3%
+   69.070   4A80 alu    *        848   0.31%  cum  87.6%
+   69.070   3619 move   *        847   0.31%  cum  88.0%
+   69.070   0C43 alu    *        847   0.31%  cum  88.3%
+   69.070   2078 move   *        846   0.31%  cum  88.6%
+   69.070   20C0 move   *        841   0.31%  cum  88.9%
+   69.070   4840 addr   *        709   0.26%  cum  89.2%
+   69.070   6718 branch *        703   0.26%  cum  89.4%
+   69.070   1003 move   *        698   0.26%  cum  89.7%
+   69.070   61CE branch *        697   0.26%  cum  89.9%
+   69.070   4A05 alu    *        691   0.26%  cum  90.2%
+   69.070   D086 alu    *        691   0.26%  cum  90.4%
+   69.070   6712 branch *        691   0.26%  cum  90.7%
+   69.070   2050 move   *        634   0.23%  cum  90.9%
+   69.070   206E move   *        566   0.21%  cum  91.1%
+   69.070   46C3 UNSAFE          539   0.20%  cum  91.3%
+   69.070   6100 branch *        525   0.19%  cum  91.5%
+   69.070   1481 move   *        512   0.19%  cum  91.7%
+   69.070   1282 move   *        512   0.19%  cum  91.9%
+   69.070   E04A shift  *        511   0.19%  cum  92.1%
+   69.070   1482 move   *        511   0.19%  cum  92.3%
+   69.070   4843 addr   *        508   0.19%  cum  92.5%
+   69.070   1169 move   *        431   0.16%  cum  92.6%
+   69.070   4A46 alu    *        425   0.16%  cum  92.8%
+   69.070   6A06 branch *        425   0.16%  cum  93.0%
+   69.070   2278 move   *        358   0.13%  cum  93.1%
+   69.070   4A01 alu    *        350   0.13%  cum  93.2%
+   69.070   4A29 alu    *        327   0.12%  cum  93.3%
+   69.070   4CDF multi  *        315   0.12%  cum  93.5%
+   69.070   3028 move   *        311   0.12%  cum  93.6%
+   69.070   0891 bitop  *        308   0.11%  cum  93.7%
+   69.070   E208 shift  *        300   0.11%  cum  93.8%
+   69.070   225F move   *        298   0.11%  cum  93.9%
+   69.070   2068 move   *        294   0.11%  cum  94.0%
+   69.070 
+   69.070 [jit] block fallback census — 2392149 unsupported + 730728 runtime guard/access = 3122877
+   69.070   2F70 move        2379513 unsupported          0 runtime  76.20%  idx(A0) -> d16(A7)
+   69.070   2A81 move              0 unsupported     163068 runtime   5.22%  D1 -> (A5)
+   69.070   2D68 move              0 unsupported     118554 runtime   3.80%  d16(A0) -> d16(A6)
+   69.070   2378 move              0 unsupported     103029 runtime   3.30%  abs.W -> d16(A1)
+   69.070   4250 alu               0 unsupported      65713 runtime   2.10%
+   69.070   4254 alu               0 unsupported      58037 runtime   1.86%
+   69.070   2F68 move              0 unsupported      53559 runtime   1.72%  d16(A0) -> d16(A7)
+   69.070   22D8 move              0 unsupported      43067 runtime   1.38%  (A0)+ -> (A1)+
+   69.070   276E move              0 unsupported      33370 runtime   1.07%  d16(A6) -> d16(A3)
+   69.071   2F30 move              0 unsupported      29554 runtime   0.95%  idx(A0) -> -(A7)
+   69.071   2290 move              0 unsupported      27899 runtime   0.89%  (A0) -> (A1)
+   69.071   317C move              0 unsupported      10872 runtime   0.35%  imm -> d16(A0)
+   69.071   C029 alu            9655 unsupported          0 runtime   0.31%
+   69.071   137C move              0 unsupported       7501 runtime   0.24%  imm -> d16(A1)
+   69.071   5368 alu               0 unsupported       5268 runtime   0.17%
+   69.071   2AC0 move              0 unsupported       1637 runtime   0.05%  D0 -> (A5)+
+   69.071   B189 alu               0 unsupported       1107 runtime   0.04%
+   69.071   9611 alu             962 unsupported          0 runtime   0.03%
+   69.071   2AC6 move              0 unsupported        887 runtime   0.03%  D6 -> (A5)+
+   69.071   3F7A move              0 unsupported        738 runtime   0.02%  d16(PC) -> d16(A7)
+   69.071   2A82 move              0 unsupported        640 runtime   0.02%  D2 -> (A5)
+   69.071   3146 move              0 unsupported        582 runtime   0.02%  D6 -> d16(A0)
+   69.071   1411 move            476 unsupported          0 runtime   0.02%  (A1) -> D2
+   69.071   1229 move            476 unsupported          0 runtime   0.02%  d16(A1) -> D1
+   69.071   C229 alu             476 unsupported          0 runtime   0.02%
+   69.071   2080 move              0 unsupported        463 runtime   0.01%  D0 -> (A0)
+   69.071   22C0 move              0 unsupported        423 runtime   0.01%  D0 -> (A1)+
+   69.071   24D0 move              0 unsupported        385 runtime   0.01%  (A0) -> (A2)+
+   69.071   D07B alu             333 unsupported          0 runtime   0.01%
+   69.071   51D0 cond              0 unsupported        278 runtime   0.01%
+   69.071   48E7 multi             0 unsupported        253 runtime   0.01%  EA=-(A7)
+   69.071   2F28 move              0 unsupported        210 runtime   0.01%  d16(A0) -> -(A7)
+   69.071   8195 alu               0 unsupported        207 runtime   0.01%
+   69.071   4269 alu               0 unsupported        207 runtime   0.01%
+   69.071   526C alu               0 unsupported        202 runtime   0.01%
+   69.071   08D1 bitop            60 unsupported        139 runtime   0.01%
+   69.071   1541 move              0 unsupported        195 runtime   0.01%  D1 -> d16(A2)
+   69.071   117C move              0 unsupported        192 runtime   0.01%  imm -> d16(A0)
+   69.071   2F2B move              0 unsupported        141 runtime   0.00%  d16(A3) -> -(A7)
+   69.071   2348 move              0 unsupported        139 runtime   0.00%  A0 -> d16(A1)
+   69.071   234C move              0 unsupported        137 runtime   0.00%  A4 -> d16(A1)
+   69.071   50E9 cond              0 unsupported        135 runtime   0.00%
+   69.071   4EBA branch            0 unsupported        125 runtime   0.00%
+   69.071   208C move              0 unsupported        115 runtime   0.00%  A4 -> (A0)
+   69.071   229F move              0 unsupported        109 runtime   0.00%  (A7)+ -> (A1)
+   69.071   4E90 branch            0 unsupported        102 runtime   0.00%
+   69.071   329F move              0 unsupported         83 runtime   0.00%  (A7)+ -> (A1)
+   69.071   177C move              0 unsupported         83 runtime   0.00%  imm -> d16(A3)
+   69.071   48E6 multi             0 unsupported         78 runtime   0.00%  EA=-(A6)
+   69.071   0811 bitop            60 unsupported          0 runtime   0.00%
+   69.071   22C5 move              0 unsupported         60 runtime   0.00%  D5 -> (A1)+
+   69.071   0891 bitop             3 unsupported         57 runtime   0.00%
+   69.071   1747 move              0 unsupported         58 runtime   0.00%  D7 -> d16(A3)
+   69.071   B2B0 alu              47 unsupported          0 runtime   0.00%
+   69.071   08E8 bitop             0 unsupported         43 runtime   0.00%
+   69.071   4A28 alu              42 unsupported          0 runtime   0.00%
+   69.071   4C98 multi             0 unsupported         41 runtime   0.00%  EA=(A0)+
+   69.071   2F38 move              0 unsupported         36 runtime   0.00%  abs.W -> -(A7)
+   69.071   28C1 move              0 unsupported         33 runtime   0.00%  D1 -> (A4)+
+   69.071   2070 move              0 unsupported         33 runtime   0.00%  idx(A0) -> A0
+   69.071 
+   69.071 [jit] bounded shift versions — 8 sites, 105 live, 0 saturated
+   69.071   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   69.071   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   69.071   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   69.071   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   69.071 
+   69.071 [jit] runtime fallback causes
+   69.071   fill/tag MMU                0    0.00%
+   69.071   non-plain/MMIO              0    0.00%
+   69.071   codeMask                    0    0.00%
+   69.071   cross-page                  0    0.00%
+   69.071   other guard                 0    0.00%
+   69.071   attributed                  0 /       730728 runtime  MISMATCH
+   69.071 
+   69.071 [jit] fallback addressing — MOVE source
+   69.071   idx(An)       2379513 unsupported        29627 runtime
+   69.071   d16(An)           476 unsupported       205963 runtime
+   69.071   Dn                  1 unsupported       168297 runtime
+   69.071   abs.W               0 unsupported       103075 runtime
+   69.071   (An)+               0 unsupported        43363 runtime
+   69.071   (An)              476 unsupported        28328 runtime
+   69.071   imm                 0 unsupported        18663 runtime
+   69.071   d16(PC)             0 unsupported          757 runtime
+   69.071   An                  0 unsupported          453 runtime
+   69.071   -(An)               7 unsupported            0 runtime
+   69.071 
+   69.071 [jit] fallback addressing — MOVE destination
+   69.071   d16(An)       2379520 unsupported       329256 runtime
+   69.071   (An)                1 unsupported       192529 runtime
+   69.071   (An)+               0 unsupported        46585 runtime
+   69.071   -(An)               0 unsupported        30045 runtime
+   69.071   Dn                952 unsupported           40 runtime
+   69.071   abs.W               0 unsupported           38 runtime
+   69.071   An                  0 unsupported           33 runtime
+   69.071 
+   69.071 [jit] fallback addressing — MOVEM operand
+   69.071   -(An)               0 unsupported          331 runtime
+   69.071   (An)+               0 unsupported           53 runtime
+   69.071 
+   69.071 [jit] indexed-mode fallbacks by extension form — 2409528 attributed (of 3122877 total fallbacks)
+   69.071   brief (d8,An/PC,Xn)            0    0.0%
+   69.071   full 68020 format            360    0.0%
+   69.071   mixed (both seen)        2409168  100.0%
+   69.071   compiled slots: 1230 brief, 434 full (cumulative over the run, not per phase)
+   69.071   brief share if mixed is apportioned by slot ratio:  39.8%  (ESTIMATE)
+   69.071 
+   69.071 [jit] fallback addressing — top MOVE source -> destination pairs
+   69.071   idx(An)  -> d16(An)       2379513 unsupported            0 runtime
+   69.071   d16(An)  -> d16(An)             0 unsupported       205526 runtime
+   69.071   Dn       -> (An)                1 unsupported       164266 runtime
+   69.071   abs.W    -> d16(An)             0 unsupported       103039 runtime
+   69.071   (An)+    -> (An)+               0 unsupported        43109 runtime
+   69.071   idx(An)  -> -(An)               0 unsupported        29554 runtime
+   69.071   (An)     -> (An)                0 unsupported        27899 runtime
+   69.071   imm      -> d16(An)             0 unsupported        18650 runtime
+   69.071   Dn       -> (An)+               0 unsupported         3090 runtime
+   69.071   Dn       -> d16(An)             0 unsupported          935 runtime
+   69.071   d16(PC)  -> d16(An)             0 unsupported          738 runtime
+   69.071   d16(An)  -> Dn                476 unsupported            0 runtime
+   69.071   (An)     -> Dn                476 unsupported            0 runtime
+   69.071   d16(An)  -> -(An)               0 unsupported          395 runtime
+   69.071   (An)     -> (An)+               0 unsupported          385 runtime
+   69.071   An       -> d16(An)             0 unsupported          326 runtime
+   69.071   (An)+    -> (An)                0 unsupported          222 runtime
+   69.071   An       -> (An)                0 unsupported          125 runtime
+   69.071   (An)     -> d16(An)             0 unsupported           42 runtime
+   69.071   idx(An)  -> Dn                  0 unsupported           40 runtime
+   69.071   d16(An)  -> abs.W               0 unsupported           37 runtime
+   69.071   abs.W    -> -(An)               0 unsupported           36 runtime
+   69.071   idx(An)  -> An                  0 unsupported           33 runtime
+   69.071   (An)+    -> -(An)               0 unsupported           32 runtime
+   77.560 
+   77.560 [jit] ════ census phase 'ready' ════
+   77.560 [jit] dispatch cache: 3154381 hits, 275177 gen-miss, 2292188 miss
+   77.560 [jit] flushes: wrapper hint/reset=1 translation moved=11967 write into code=8 deferred=0 code cache full=0  blocks live=39020, cold-evicted=0
+   77.560 
+   77.560 [jit] opcode census — 309200 instructions, 345 distinct
+   77.560   move            75790   24.5%
+   77.560   alu             69936   22.6%
+   77.560   shift            9938    3.2%
+   77.560   bitop             428    0.1%
+   77.560   addr            38445   12.4%
+   77.560   multi           37814   12.2%
+   77.560   cond                4    0.0%
+   77.560   branch          74536   24.1%
+   77.560   UNSAFE           2309    0.7%
+   77.560   native         302253   97.8%  (backend 'x86-64')
+   77.560   ── top 60 opcodes ──
+   77.560   48E7 multi  *      35948  11.63%  cum  11.6%
+   77.560   4E56 addr   *      35557  11.50%  cum  23.1%
+   77.560   2601 move   *      16913   5.47%  cum  28.6%
+   77.560   6900 branch *      16478   5.33%  cum  33.9%
+   77.560   6700 branch *      10087   3.26%  cum  37.2%
+   77.560   51CA branch *       9041   2.92%  cum  40.1%
+   77.560   670A branch *       8848   2.86%  cum  43.0%
+   77.560   4240 alu    *       8649   2.80%  cum  45.8%
+   77.560   1018 move   *       8646   2.80%  cum  48.6%
+   77.560   4AAE alu    *       8639   2.79%  cum  51.4%
+   77.560   E548 shift  *       8633   2.79%  cum  54.2%
+   77.560   D2B1 alu    *       8631   2.79%  cum  56.9%
+   77.560   0C40 alu    *       8622   2.79%  cum  59.7%
+   77.560   D2AE alu    *       7859   2.54%  cum  62.3%
+   77.560   2078 move   *       6334   2.05%  cum  64.3%
+   77.560   4E75 branch *       5578   1.80%  cum  66.1%
+   77.560   2050 move   *       5008   1.62%  cum  67.7%
+   77.560   6100 branch *       3289   1.06%  cum  68.8%
+   77.560   51C9 branch *       2925   0.95%  cum  69.8%
+   77.560   4A11 alu    *       2461   0.80%  cum  70.6%
+   77.560   7000 move   *       2408   0.78%  cum  71.3%
+   77.560   4A28 alu    *       2210   0.71%  cum  72.0%
+   77.560   3028 move   *       1928   0.62%  cum  72.7%
+   77.560   2068 move   *       1874   0.61%  cum  73.3%
+   77.560   206E move   *       1798   0.58%  cum  73.9%
+   77.560   2040 move   *       1561   0.50%  cum  74.4%
+   77.560   4A68 alu    *       1510   0.49%  cum  74.8%
+   77.560   2255 move   *       1489   0.48%  cum  75.3%
+   77.561   672A branch *       1489   0.48%  cum  75.8%
+   77.561   2011 move   *       1485   0.48%  cum  76.3%
+   77.561   2029 move   *       1483   0.48%  cum  76.8%
+   77.561   6A0C branch *       1481   0.48%  cum  77.3%
+   77.561   2070 move   *       1477   0.48%  cum  77.7%
+   77.561   B090 alu    *       1472   0.48%  cum  78.2%
+   77.561   6708 branch *       1471   0.48%  cum  78.7%
+   77.561   6600 branch *       1436   0.46%  cum  79.1%
+   77.561   4A90 alu    *       1405   0.45%  cum  79.6%
+   77.561   2038 move   *       1374   0.44%  cum  80.0%
+   77.561   664A branch *       1373   0.44%  cum  80.5%
+   77.561   584F alu    *       1365   0.44%  cum  80.9%
+   77.561   205F move   *       1358   0.44%  cum  81.4%
+   77.561   4ED0 branch *       1357   0.44%  cum  81.8%
+   77.561   50F8 UNSAFE         1356   0.44%  cum  82.2%
+   77.561   21D0 move   *       1356   0.44%  cum  82.7%
+   77.561   1169 move   *       1349   0.44%  cum  83.1%
+   77.561   6720 branch *       1310   0.42%  cum  83.5%
+   77.561   B078 alu    *       1298   0.42%  cum  84.0%
+   77.561   B0A8 alu    *       1296   0.42%  cum  84.4%
+   77.561   2075 move   *       1295   0.42%  cum  84.8%
+   77.561   5538 alu    *       1291   0.42%  cum  85.2%
+   77.561   225F move   *        994   0.32%  cum  85.5%
+   77.561   2278 move   *        939   0.30%  cum  85.8%
+   77.561   D080 alu    *        932   0.30%  cum  86.1%
+   77.561   CB05 alu             928   0.30%  cum  86.4%
+   77.561   C904 alu             928   0.30%  cum  86.7%
+   77.561   C502 alu             928   0.30%  cum  87.0%
+   77.561   C703 alu             928   0.30%  cum  87.3%
+   77.561   51CE branch *        926   0.30%  cum  87.6%
+   77.561   C301 alu             926   0.30%  cum  87.9%
+   77.561   2251 move   *        899   0.29%  cum  88.2%
+   77.561 
+   77.561 [jit] block fallback census — 1750096 unsupported + 672601 runtime guard/access = 2422697
+   77.561   2F70 move        1725537 unsupported          0 runtime  71.22%  idx(A0) -> d16(A7)
+   77.561   3146 move              0 unsupported      54595 runtime   2.25%  D6 -> d16(A0)
+   77.561   4250 alu               0 unsupported      54595 runtime   2.25%
+   77.561   5368 alu               0 unsupported      53265 runtime   2.20%
+   77.561   2D68 move              0 unsupported      52654 runtime   2.17%  d16(A0) -> d16(A6)
+   77.561   38BC move              0 unsupported      52407 runtime   2.16%  imm -> (A4)
+   77.561   526C alu               0 unsupported      39833 runtime   1.64%
+   77.561   2378 move              0 unsupported      36702 runtime   1.51%  abs.W -> d16(A1)
+   77.561   5268 alu               0 unsupported      32561 runtime   1.34%
+   77.561   2230 move              0 unsupported      28125 runtime   1.16%  idx(A0) -> D1
+   77.561   276E move              0 unsupported      27557 runtime   1.14%  d16(A6) -> d16(A3)
+   77.561   30BC move              0 unsupported      27008 runtime   1.11%  imm -> (A0)
+   77.561   2940 move              0 unsupported      26573 runtime   1.10%  D0 -> d16(A4)
+   77.561   2AC6 move              0 unsupported      24713 runtime   1.02%  D6 -> (A5)+
+   77.561   2140 move              0 unsupported      22857 runtime   0.94%  D0 -> d16(A0)
+   77.561   24D0 move              0 unsupported      20994 runtime   0.87%  (A0) -> (A2)+
+   77.561   8195 alu               0 unsupported      18313 runtime   0.76%
+   77.561   22D8 move              0 unsupported      18250 runtime   0.75%  (A0)+ -> (A1)+
+   77.561   B2B0 alu           16112 unsupported          0 runtime   0.67%
+   77.561   2089 move              0 unsupported      11856 runtime   0.49%  A1 -> (A0)
+   77.561   2F30 move              0 unsupported       8867 runtime   0.37%  idx(A0) -> -(A7)
+   77.561   2F2D move              0 unsupported       5921 runtime   0.24%  d16(A5) -> -(A7)
+   77.561   C029 alu            5773 unsupported          0 runtime   0.24%
+   77.561   2147 move              0 unsupported       5644 runtime   0.23%  D7 -> d16(A0)
+   77.561   2AC0 move              0 unsupported       5170 runtime   0.21%  D0 -> (A5)+
+   77.561   137C move              0 unsupported       4552 runtime   0.19%  imm -> d16(A1)
+   77.561   3F28 move              0 unsupported       4170 runtime   0.17%  d16(A0) -> -(A7)
+   77.561   536C alu               0 unsupported       3666 runtime   0.15%
+   77.561   819D alu               0 unsupported       2868 runtime   0.12%
+   77.561   2A82 move              0 unsupported       2640 runtime   0.11%  D2 -> (A5)
+   77.561   177C move              0 unsupported       1727 runtime   0.07%  imm -> d16(A3)
+   77.561   209A move              0 unsupported       1518 runtime   0.06%  (A2)+ -> (A0)
+   77.561   D07B alu            1288 unsupported          0 runtime   0.05%
+   77.561   2A80 move              0 unsupported       1279 runtime   0.05%  D0 -> (A5)
+   77.561   1747 move              0 unsupported       1204 runtime   0.05%  D7 -> d16(A3)
+   77.561   BD95 alu               0 unsupported        992 runtime   0.04%
+   77.561   2081 move              0 unsupported        925 runtime   0.04%  D1 -> (A0)
+   77.561   2D51 move              0 unsupported        920 runtime   0.04%  (A1) -> d16(A6)
+   77.561   4269 alu               0 unsupported        895 runtime   0.04%
+   77.561   3F7A move              0 unsupported        841 runtime   0.03%  d16(PC) -> d16(A7)
+   77.561   48E7 multi             0 unsupported        719 runtime   0.03%  EA=-(A7)
+   77.561   2348 move              0 unsupported        712 runtime   0.03%  A0 -> d16(A1)
+   77.561   234C move              0 unsupported        635 runtime   0.03%  A4 -> d16(A1)
+   77.561   2ADC move              0 unsupported        627 runtime   0.03%  (A4)+ -> (A5)+
+   77.561   169A move              0 unsupported        610 runtime   0.03%  (A2)+ -> (A3)
+   77.561   2F28 move              0 unsupported        603 runtime   0.02%  d16(A0) -> -(A7)
+   77.561   48E6 multi             0 unsupported        584 runtime   0.02%  EA=-(A6)
+   77.561   50E9 cond              0 unsupported        582 runtime   0.02%
+   77.561   9611 alu             553 unsupported          0 runtime   0.02%
+   77.561   208C move              0 unsupported        546 runtime   0.02%  A4 -> (A0)
+   77.561   8594 alu               0 unsupported        516 runtime   0.02%
+   77.561   2D1F move              0 unsupported        436 runtime   0.02%  (A7)+ -> -(A6)
+   77.561   117C move              0 unsupported        413 runtime   0.02%  imm -> d16(A0)
+   77.561   24C5 move              0 unsupported        397 runtime   0.02%  D5 -> (A2)+
+   77.561   317C move              0 unsupported        344 runtime   0.01%  imm -> d16(A0)
+   77.561   24F0 move              0 unsupported        311 runtime   0.01%  idx(A0) -> (A2)+
+   77.561   2080 move              0 unsupported        306 runtime   0.01%  D0 -> (A0)
+   77.561   4CDF multi             0 unsupported        289 runtime   0.01%  EA=(A7)+
+   77.561   4CEE multi             0 unsupported        289 runtime   0.01%  EA=d16(A6)
+   77.561   12DC move              0 unsupported        278 runtime   0.01%  (A4)+ -> (A1)+
+   77.561 
+   77.561 [jit] bounded shift versions — 8 sites, 110 live, 0 saturated
+   77.561   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   77.561   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   77.561   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   77.561   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   77.561 
+   77.561 [jit] runtime fallback causes
+   77.561   fill/tag MMU                0    0.00%
+   77.561   non-plain/MMIO              0    0.00%
+   77.561   codeMask                    0    0.00%
+   77.561   cross-page                  0    0.00%
+   77.561   other guard                 0    0.00%
+   77.561   attributed                  0 /       672601 runtime  MISMATCH
+   77.561 
+   77.561 [jit] fallback addressing — MOVE source
+   77.561   idx(An)       1725537 unsupported        37538 runtime
+   77.561   Dn                  6 unsupported       147918 runtime
+   77.561   d16(An)           199 unsupported        92173 runtime
+   77.561   imm                 0 unsupported        86689 runtime
+   77.561   abs.W               0 unsupported        36896 runtime
+   77.561   (An)              199 unsupported        22483 runtime
+   77.561   (An)+               0 unsupported        22176 runtime
+   77.561   An                  0 unsupported        14122 runtime
+   77.561   d16(PC)             0 unsupported          990 runtime
+   77.561   -(An)              13 unsupported           25 runtime
+   77.561 
+   77.561 [jit] fallback addressing — MOVE destination
+   77.561   d16(An)       1725550 unsupported       239116 runtime
+   77.561   (An)                6 unsupported       100045 runtime
+   77.561   (An)+               0 unsupported        72251 runtime
+   77.561   Dn                398 unsupported        28338 runtime
+   77.561   -(An)               0 unsupported        20870 runtime
+   77.561   abs.W               0 unsupported          361 runtime
+   77.561   idx(An)             0 unsupported           19 runtime
+   77.561   An                  0 unsupported           10 runtime
+   77.561 
+   77.561 [jit] fallback addressing — MOVEM operand
+   77.561   -(An)               0 unsupported         1303 runtime
+   77.561   (An)+               0 unsupported          417 runtime
+   77.561   d16(An)             0 unsupported          289 runtime
+   77.561   idx(An)             1 unsupported            0 runtime
+   77.561 
+   77.561 [jit] indexed-mode fallbacks by extension form — 1780563 attributed (of 2422697 total fallbacks)
+   77.561   brief (d8,An/PC,Xn)          373    0.0%
+   77.561   full 68020 format           1542    0.1%
+   77.561   mixed (both seen)        1778648   99.9%
+   77.561   compiled slots: 1351 brief, 497 full (cumulative over the run, not per phase)
+   77.561   brief share if mixed is apportioned by slot ratio:  39.5%  (ESTIMATE)
+   77.561 
+   77.561 [jit] fallback addressing — top MOVE source -> destination pairs
+   77.561   idx(An)  -> d16(An)       1725537 unsupported            0 runtime
+   77.561   Dn       -> d16(An)             0 unsupported       111321 runtime
+   77.561   d16(An)  -> d16(An)             0 unsupported        80506 runtime
+   77.561   imm      -> (An)                0 unsupported        79478 runtime
+   77.561   abs.W    -> d16(An)             0 unsupported        36723 runtime
+   77.561   Dn       -> (An)+               0 unsupported        30911 runtime
+   77.561   idx(An)  -> Dn                  0 unsupported        28338 runtime
+   77.561   (An)     -> (An)+               0 unsupported        21060 runtime
+   77.561   (An)+    -> (An)+               0 unsupported        19495 runtime
+   77.561   An       -> (An)                0 unsupported        12458 runtime
+   77.561   d16(An)  -> -(An)               0 unsupported        10831 runtime
+   77.561   idx(An)  -> -(An)               0 unsupported         8870 runtime
+   77.561   imm      -> d16(An)             0 unsupported         7040 runtime
+   77.561   Dn       -> (An)                6 unsupported         5520 runtime
+   77.561   (An)+    -> (An)                0 unsupported         2228 runtime
+   77.561   An       -> d16(An)             0 unsupported         1431 runtime
+   77.561   (An)     -> d16(An)             0 unsupported         1250 runtime
+   77.561   d16(PC)  -> d16(An)             0 unsupported          841 runtime
+   77.561   (An)+    -> -(An)               0 unsupported          441 runtime
+   77.561   idx(An)  -> (An)+               0 unsupported          311 runtime
+   77.561   d16(An)  -> abs.W               0 unsupported          289 runtime
+   77.561   d16(An)  -> (An)+               0 unsupported          288 runtime
+   77.561   d16(An)  -> (An)                0 unsupported          259 runtime
+   77.561   An       -> -(An)               0 unsupported          230 runtime
+   83.988 
+   83.988 [jit] ════ census phase 'cpu-test-start' ════
+   83.988 [jit] dispatch cache: 2411809 hits, 202134 gen-miss, 1710770 miss
+   83.988 [jit] flushes: wrapper hint/reset=1 translation moved=13044 write into code=8 deferred=0 code cache full=0  blocks live=40354, cold-evicted=0
+   83.988 
+   83.988 [jit] opcode census — 279547 instructions, 281 distinct
+   83.988   move           104708   37.5%
+   83.988   alu             48055   17.2%
+   83.988   shift            3515    1.3%
+   83.988   bitop            1324    0.5%
+   83.988   addr            32177   11.5%
+   83.988   multi           32268   11.5%
+   83.988   branch          53935   19.3%
+   83.988   UNSAFE           3565    1.3%
+   83.988   native         272782   97.6%  (backend 'x86-64')
+   83.988   ── top 60 opcodes ──
+   83.988   48E7 multi  *      26822   9.59%  cum   9.6%
+   83.988   4E56 addr   *      26292   9.41%  cum  19.0%
+   83.988   2050 move   *       9611   3.44%  cum  22.4%
+   83.988   2078 move   *       8966   3.21%  cum  25.6%
+   83.988   3F2E move   *       7248   2.59%  cum  28.2%
+   83.988   4E75 branch *       6588   2.36%  cum  30.6%
+   83.988   4A11 alu    *       5994   2.14%  cum  32.7%
+   83.988   51C9 branch *       5954   2.13%  cum  34.9%
+   83.988   206E move   *       5371   1.92%  cum  36.8%
+   83.988   6100 branch *       4143   1.48%  cum  38.3%
+   83.988   1169 move   *       4044   1.45%  cum  39.7%
+   83.988   2601 move   *       3649   1.31%  cum  41.0%
+   83.988   4A28 alu    *       3460   1.24%  cum  42.3%
+   83.988   6700 branch *       3364   1.20%  cum  43.5%
+   83.988   7000 move   *       3282   1.17%  cum  44.6%
+   83.988   3028 move   *       3260   1.17%  cum  45.8%
+   83.988   2068 move   *       3240   1.16%  cum  47.0%
+   83.988   51CA branch *       2801   1.00%  cum  48.0%
+   83.988   225F move   *       2772   0.99%  cum  49.0%
+   83.988   2278 move   *       2710   0.97%  cum  49.9%
+   83.988   4CDF multi  *       2688   0.96%  cum  50.9%
+   83.988   20A9 move   *       2682   0.96%  cum  51.8%
+   83.988   2251 move   *       2682   0.96%  cum  52.8%
+   83.988   4841 addr   *       2641   0.94%  cum  53.8%
+   83.988   594F alu    *       2416   0.86%  cum  54.6%
+   83.988   2F2E move   *       2414   0.86%  cum  55.5%
+   83.988   4E90 branch *       2412   0.86%  cum  56.3%
+   83.988   6900 branch *       2318   0.83%  cum  57.2%
+   83.988   2040 move   *       1977   0.71%  cum  57.9%
+   83.988   672A branch *       1955   0.70%  cum  58.6%
+   83.988   4A68 alu    *       1941   0.69%  cum  59.3%
+   83.988   2255 move   *       1927   0.69%  cum  60.0%
+   83.988   2011 move   *       1926   0.69%  cum  60.7%
+   83.988   2029 move   *       1923   0.69%  cum  61.3%
+   83.988   6A0C branch *       1920   0.69%  cum  62.0%
+   83.988   2070 move   *       1919   0.69%  cum  62.7%
+   83.988   6708 branch *       1909   0.68%  cum  63.4%
+   83.988   B090 alu    *       1909   0.68%  cum  64.1%
+   83.988   6600 branch *       1875   0.67%  cum  64.7%
+   83.988   4A90 alu    *       1856   0.66%  cum  65.4%
+   83.988   2038 move   *       1836   0.66%  cum  66.1%
+   83.988   664A branch *       1833   0.66%  cum  66.7%
+   83.988   6720 branch *       1819   0.65%  cum  67.4%
+   83.988   21D0 move   *       1819   0.65%  cum  68.0%
+   83.988   50F8 UNSAFE         1816   0.65%  cum  68.7%
+   83.988   584F alu    *       1815   0.65%  cum  69.3%
+   83.988   205F move   *       1814   0.65%  cum  70.0%
+   83.988   4ED0 branch *       1814   0.65%  cum  70.6%
+   83.988   B078 alu    *       1786   0.64%  cum  71.3%
+   83.988   2075 move   *       1783   0.64%  cum  71.9%
+   83.988   B0A8 alu    *       1782   0.64%  cum  72.5%
+   83.988   5538 alu    *       1781   0.64%  cum  73.2%
+   83.988   670A branch *       1631   0.58%  cum  73.8%
+   83.988   4240 alu    *       1490   0.53%  cum  74.3%
+   83.988   1018 move   *       1490   0.53%  cum  74.8%
+   83.988   4AAE alu    *       1487   0.53%  cum  75.4%
+   83.988   E548 shift  *       1483   0.53%  cum  75.9%
+   83.988   D2B1 alu    *       1483   0.53%  cum  76.4%
+   83.988   0C40 alu    *       1478   0.53%  cum  76.9%
+   83.988   4A29 alu    *       1450   0.52%  cum  77.5%
+   83.988 
+   83.988 [jit] block fallback census — 1297123 unsupported + 436307 runtime guard/access = 1733430
+   83.988   2F70 move        1276101 unsupported          0 runtime  73.62%  idx(A0) -> d16(A7)
+   83.988   3146 move              0 unsupported      40144 runtime   2.32%  D6 -> d16(A0)
+   83.988   38BC move              0 unsupported      39784 runtime   2.30%  imm -> (A4)
+   83.988   2D68 move              0 unsupported      38885 runtime   2.24%  d16(A0) -> d16(A6)
+   83.988   4250 alu               0 unsupported      38382 runtime   2.21%
+   83.988   5368 alu               0 unsupported      36078 runtime   2.08%
+   83.988   526C alu               0 unsupported      29573 runtime   1.71%
+   83.988   2378 move              0 unsupported      24207 runtime   1.40%  abs.W -> d16(A1)
+   83.988   5268 alu               0 unsupported      23662 runtime   1.37%
+   83.988   2230 move              0 unsupported      21836 runtime   1.26%  idx(A0) -> D1
+   83.988   30BC move              0 unsupported      19634 runtime   1.13%  imm -> (A0)
+   83.988   276E move              0 unsupported      19363 runtime   1.12%  d16(A6) -> d16(A3)
+   83.989   2940 move              0 unsupported      17548 runtime   1.01%  D0 -> d16(A4)
+   83.989   2140 move              0 unsupported      15492 runtime   0.89%  D0 -> d16(A0)
+   83.989   B2B0 alu           11527 unsupported          0 runtime   0.66%
+   83.989   22D8 move              0 unsupported       9620 runtime   0.55%  (A0)+ -> (A1)+
+   83.989   2F30 move              0 unsupported       6269 runtime   0.36%  idx(A0) -> -(A7)
+   83.989   2F2D move              0 unsupported       5793 runtime   0.33%  d16(A5) -> -(A7)
+   83.989   C029 alu            5309 unsupported          0 runtime   0.31%
+   83.989   2147 move              0 unsupported       4991 runtime   0.29%  D7 -> d16(A0)
+   83.989   2ADC move              0 unsupported       4112 runtime   0.24%  (A4)+ -> (A5)+
+   83.989   536C alu               0 unsupported       3410 runtime   0.20%
+   83.989   137C move              0 unsupported       3320 runtime   0.19%  imm -> d16(A1)
+   83.989   08D1 bitop            28 unsupported       3049 runtime   0.18%
+   83.989   1140 move              0 unsupported       2620 runtime   0.15%  D0 -> d16(A0)
+   83.989   E411 shift          2583 unsupported          0 runtime   0.15%
+   83.989   3F28 move              0 unsupported       2501 runtime   0.14%  d16(A0) -> -(A7)
+   83.989   2089 move              0 unsupported       2444 runtime   0.14%  A1 -> (A0)
+   83.989   1280 move              0 unsupported       2430 runtime   0.14%  D0 -> (A1)
+   83.989   319F move              0 unsupported       2197 runtime   0.13%  (A7)+ -> idx(A0)
+   83.989   2AC0 move              0 unsupported       1861 runtime   0.11%  D0 -> (A5)+
+   83.989   2AC1 move              0 unsupported       1406 runtime   0.08%  D1 -> (A5)+
+   83.989   2AC6 move              0 unsupported       1398 runtime   0.08%  D6 -> (A5)+
+   83.989   08E8 bitop             0 unsupported       1364 runtime   0.08%
+   83.989   3151 move              0 unsupported       1240 runtime   0.07%  (A1) -> d16(A0)
+   83.989   2F7A move              0 unsupported       1049 runtime   0.06%  d16(PC) -> d16(A7)
+   83.989   8195 alu               0 unsupported       1027 runtime   0.06%
+   83.989   24D9 move              0 unsupported       1023 runtime   0.06%  (A1)+ -> (A2)+
+   83.989   BD95 alu               0 unsupported        672 runtime   0.04%
+   83.989   31E8 move              0 unsupported        655 runtime   0.04%  d16(A0) -> abs.W
+   83.989   10AE move              0 unsupported        648 runtime   0.04%  d16(A6) -> (A0)
+   83.989   2D51 move              0 unsupported        617 runtime   0.04%  (A1) -> d16(A6)
+   83.989   0891 bitop             7 unsupported        605 runtime   0.04%
+   83.989   2F68 move              0 unsupported        481 runtime   0.03%  d16(A0) -> d16(A7)
+   83.989   8594 alu               0 unsupported        451 runtime   0.03%
+   83.989   9611 alu             417 unsupported          0 runtime   0.02%
+   83.989   D07B alu             408 unsupported          0 runtime   0.02%
+   83.989   2D50 move              0 unsupported        387 runtime   0.02%  (A0) -> d16(A6)
+   83.989   2F28 move              0 unsupported        365 runtime   0.02%  d16(A0) -> -(A7)
+   83.989   3F7A move              0 unsupported        315 runtime   0.02%  d16(PC) -> d16(A7)
+   83.989   317C move              0 unsupported        277 runtime   0.02%  imm -> d16(A0)
+   83.989   2A82 move              0 unsupported        224 runtime   0.01%  D2 -> (A5)
+   83.989   2290 move              0 unsupported        193 runtime   0.01%  (A0) -> (A1)
+   83.989   2080 move              0 unsupported        191 runtime   0.01%  D0 -> (A0)
+   83.989   2A81 move              0 unsupported        159 runtime   0.01%  D1 -> (A5)
+   83.989   4CB3 multi           145 unsupported          0 runtime   0.01%  EA=idx(A3)
+   83.989   48E7 multi             0 unsupported        143 runtime   0.01%  EA=-(A7)
+   83.989   C229 alu             140 unsupported          0 runtime   0.01%
+   83.989   1229 move            140 unsupported          0 runtime   0.01%  d16(A1) -> D1
+   83.989   1411 move            140 unsupported          0 runtime   0.01%  (A1) -> D2
+   83.989 
+   83.989 [jit] bounded shift versions — 8 sites, 127 live, 0 saturated
+   83.989   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   83.989   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   83.989   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   83.989   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   83.989 
+   83.989 [jit] runtime fallback causes
+   83.989   fill/tag MMU                0    0.00%
+   83.989   non-plain/MMIO              0    0.00%
+   83.989   codeMask                    0    0.00%
+   83.989   cross-page                  0    0.00%
+   83.989   other guard                 0    0.00%
+   83.989   attributed                  0 /       436307 runtime  MISMATCH
+   83.989 
+   83.989 [jit] fallback addressing — MOVE source
+   83.989   idx(An)       1276101 unsupported        28200 runtime
+   83.989   Dn                  5 unsupported        88779 runtime
+   83.989   d16(An)           140 unsupported        69122 runtime
+   83.989   imm                 0 unsupported        63150 runtime
+   83.989   abs.W               0 unsupported        24286 runtime
+   83.989   (An)+               0 unsupported        17025 runtime
+   83.989   (An)              140 unsupported         2684 runtime
+   83.989   An                  0 unsupported         2568 runtime
+   83.989   d16(PC)             0 unsupported         1409 runtime
+   83.989   -(An)              10 unsupported            5 runtime
+   83.989 
+   83.989 [jit] fallback addressing — MOVE destination
+   83.989   d16(An)       1276111 unsupported       171548 runtime
+   83.989   (An)                5 unsupported        65893 runtime
+   83.989   Dn                280 unsupported        21909 runtime
+   83.989   (An)+               0 unsupported        19696 runtime
+   83.989   -(An)               0 unsupported        15242 runtime
+   83.989   idx(An)             0 unsupported         2198 runtime
+   83.989   abs.W               0 unsupported          726 runtime
+   83.989   An                  0 unsupported           16 runtime
+   83.989 
+   83.989 [jit] fallback addressing — MOVEM operand
+   83.989   -(An)               0 unsupported          154 runtime
+   83.989   idx(An)           145 unsupported            0 runtime
+   83.989   (An)+               0 unsupported           84 runtime
+   83.989   d16(An)             0 unsupported           68 runtime
+   83.989 
+   83.989 [jit] indexed-mode fallbacks by extension form — 1318602 attributed (of 1733430 total fallbacks)
+   83.989   brief (d8,An/PC,Xn)         2349    0.2%
+   83.989   full 68020 format            514    0.0%
+   83.989   mixed (both seen)        1315739   99.8%
+   83.989   compiled slots: 1387 brief, 503 full (cumulative over the run, not per phase)
+   83.989   brief share if mixed is apportioned by slot ratio:  39.6%  (ESTIMATE)
+   83.989 
+   83.989 [jit] fallback addressing — top MOVE source -> destination pairs
+   83.989   idx(An)  -> d16(An)       1276101 unsupported            0 runtime
+   83.989   Dn       -> d16(An)             0 unsupported        81068 runtime
+   83.989   imm      -> (An)                0 unsupported        59419 runtime
+   83.989   d16(An)  -> d16(An)             0 unsupported        58828 runtime
+   83.989   abs.W    -> d16(An)             0 unsupported        24211 runtime
+   83.989   idx(An)  -> Dn                  0 unsupported        21909 runtime
+   83.989   (An)+    -> (An)+               0 unsupported        14776 runtime
+   83.989   d16(An)  -> -(An)               0 unsupported         8790 runtime
+   83.989   idx(An)  -> -(An)               0 unsupported         6269 runtime
+   83.989   Dn       -> (An)+               0 unsupported         4682 runtime
+   83.989   imm      -> d16(An)             0 unsupported         3731 runtime
+   83.989   Dn       -> (An)                5 unsupported         3025 runtime
+   83.989   An       -> (An)                0 unsupported         2475 runtime
+   83.989   (An)     -> d16(An)             0 unsupported         2311 runtime
+   83.989   (An)+    -> idx(An)             0 unsupported         2197 runtime
+   83.989   d16(PC)  -> d16(An)             0 unsupported         1364 runtime
+   83.989   d16(An)  -> (An)                0 unsupported          723 runtime
+   83.989   d16(An)  -> abs.W               0 unsupported          675 runtime
+   83.989   (An)     -> (An)                0 unsupported          193 runtime
+   83.989   (An)     -> Dn                140 unsupported            0 runtime
+   83.989   d16(An)  -> Dn                140 unsupported            0 runtime
+   83.989   (An)     -> (An)+               0 unsupported          128 runtime
+   83.989   d16(An)  -> (An)+               0 unsupported          106 runtime
+   83.989   abs.W    -> -(An)               0 unsupported           62 runtime
+   87.489 cpu-test: done=0 frames=600 wall=3.498720s shape=0.086/0.068/0.104 fp=061bb77a5e7af55f screen=99d4ba2d9fb63723
+   87.489 
+   87.489 [jit] ════ census phase 'cpu-test' ════
+   87.489 [jit] dispatch cache: 1249632 hits, 91377 gen-miss, 834748 miss
+   87.489 [jit] flushes: wrapper hint/reset=1 translation moved=13479 write into code=8 deferred=0 code cache full=0  blocks live=40456, cold-evicted=0
+   87.489 
+   87.489 [jit] opcode census — 75744 instructions, 262 distinct
+   87.489   move            15311   20.2%
+   87.489   alu             15763   20.8%
+   87.489   shift            2318    3.1%
+   87.489   bitop             149    0.2%
+   87.489   addr            13048   17.2%
+   87.489   multi           13115   17.3%
+   87.489   branch          15542   20.5%
+   87.489   UNSAFE            498    0.7%
+   87.489   native          73486   97.0%  (backend 'x86-64')
+   87.489   ── top 60 opcodes ──
+   87.489   48E7 multi  *      12623  16.67%  cum  16.7%
+   87.489   4E56 addr   *      12353  16.31%  cum  33.0%
+   87.489   2601 move   *       3623   4.78%  cum  37.8%
+   87.489   6900 branch *       3510   4.63%  cum  42.4%
+   87.489   6700 branch *       2096   2.77%  cum  45.2%
+   87.489   51CA branch *       2000   2.64%  cum  47.8%
+   87.489   670A branch *       1975   2.61%  cum  50.4%
+   87.489   4240 alu    *       1895   2.50%  cum  52.9%
+   87.489   1018 move   *       1895   2.50%  cum  55.4%
+   87.489   4AAE alu    *       1893   2.50%  cum  57.9%
+   87.489   D2B1 alu    *       1892   2.50%  cum  60.4%
+   87.489   E548 shift  *       1892   2.50%  cum  62.9%
+   87.489   0C40 alu    *       1891   2.50%  cum  65.4%
+   87.489   D2AE alu    *       1620   2.14%  cum  67.5%
+   87.489   4A11 alu    *       1075   1.42%  cum  69.0%
+   87.489   51C9 branch *       1070   1.41%  cum  70.4%
+   87.489   2078 move   *        965   1.27%  cum  71.6%
+   87.489   4E75 branch *        895   1.18%  cum  72.8%
+   87.489   2050 move   *        805   1.06%  cum  73.9%
+   87.489   6100 branch *        529   0.70%  cum  74.6%
+   87.489   206E move   *        459   0.61%  cum  75.2%
+   87.489   4A28 alu    *        424   0.56%  cum  75.8%
+   87.489   D080 alu    *        352   0.46%  cum  76.2%
+   87.489   C703 alu             352   0.46%  cum  76.7%
+   87.489   CB05 alu             352   0.46%  cum  77.1%
+   87.489   C502 alu             352   0.46%  cum  77.6%
+   87.489   C904 alu             352   0.46%  cum  78.1%
+   87.489   51CE branch *        352   0.46%  cum  78.5%
+   87.489   C301 alu             352   0.46%  cum  79.0%
+   87.489   1169 move   *        342   0.45%  cum  79.5%
+   87.489   3028 move   *        322   0.43%  cum  79.9%
+   87.489   7000 move   *        322   0.43%  cum  80.3%
+   87.489   2068 move   *        321   0.42%  cum  80.7%
+   87.489   2F2D move   *        276   0.36%  cum  81.1%
+   87.489   2F08 move   *        274   0.36%  cum  81.5%
+   87.489   4EBA branch *        272   0.36%  cum  81.8%
+   87.489   225F move   *        254   0.34%  cum  82.2%
+   87.489   4CDF multi  *        243   0.32%  cum  82.5%
+   87.489   2278 move   *        243   0.32%  cum  82.8%
+   87.489   2040 move   *        233   0.31%  cum  83.1%
+   87.489   2251 move   *        230   0.30%  cum  83.4%
+   87.489   20A9 move   *        228   0.30%  cum  83.7%
+   87.489   4A68 alu    *        222   0.29%  cum  84.0%
+   87.489   4841 addr   *        218   0.29%  cum  84.3%
+   87.489   672A branch *        212   0.28%  cum  84.6%
+   87.489   2011 move   *        211   0.28%  cum  84.8%
+   87.489   2255 move   *        211   0.28%  cum  85.1%
+   87.489   2029 move   *        211   0.28%  cum  85.4%
+   87.489   6A0C branch *        208   0.27%  cum  85.7%
+   87.489   B090 alu    *        208   0.27%  cum  86.0%
+   87.489   2070 move   *        208   0.27%  cum  86.2%
+   87.489   6708 branch *        207   0.27%  cum  86.5%
+   87.489   4A90 alu    *        196   0.26%  cum  86.8%
+   87.489   6600 branch *        193   0.25%  cum  87.0%
+   87.489   664A branch *        185   0.24%  cum  87.3%
+   87.489   2038 move   *        182   0.24%  cum  87.5%
+   87.489   205F move   *        180   0.24%  cum  87.7%
+   87.489   4ED0 branch *        180   0.24%  cum  88.0%
+   87.489   50F8 UNSAFE          180   0.24%  cum  88.2%
+   87.489   21D0 move   *        180   0.24%  cum  88.5%
+   87.489 
+   87.489 [jit] block fallback census — 592001 unsupported + 218296 runtime guard/access = 810297
+   87.489   2F70 move         565419 unsupported          0 runtime  69.78%  idx(A0) -> d16(A7)
+   87.489   38BC move              0 unsupported      29937 runtime   3.69%  imm -> (A4)
+   87.489   1140 move              0 unsupported      15565 runtime   1.92%  D0 -> d16(A0)
+   87.489   E411 shift         15485 unsupported          0 runtime   1.91%
+   87.489   3146 move              0 unsupported      15425 runtime   1.90%  D6 -> d16(A0)
+   87.489   4250 alu               0 unsupported      15401 runtime   1.90%
+   87.489   2230 move              0 unsupported      15368 runtime   1.90%  idx(A0) -> D1
+   87.489   5268 alu               0 unsupported      15021 runtime   1.85%
+   87.489   2D68 move              0 unsupported      14585 runtime   1.80%  d16(A0) -> d16(A6)
+   87.489   526C alu               0 unsupported      14088 runtime   1.74%
+   87.489   30BC move              0 unsupported       9534 runtime   1.18%  imm -> (A0)
+   87.489   B2B0 alu            7961 unsupported          0 runtime   0.98%
+   87.489   08E8 bitop             0 unsupported       7793 runtime   0.96%
+   87.489   276E move              0 unsupported       7782 runtime   0.96%  d16(A6) -> d16(A3)
+   87.489   2147 move              0 unsupported       7780 runtime   0.96%  D7 -> d16(A0)
+   87.489   5368 alu               0 unsupported       7167 runtime   0.88%
+   87.489   2F2D move              0 unsupported       6862 runtime   0.85%  d16(A5) -> -(A7)
+   87.489   8195 alu               0 unsupported       6601 runtime   0.81%
+   87.489   2AC6 move              0 unsupported       5528 runtime   0.68%  D6 -> (A5)+
+   87.489   22D8 move              0 unsupported       5480 runtime   0.68%  (A0)+ -> (A1)+
+   87.489   2F30 move              0 unsupported       3181 runtime   0.39%  idx(A0) -> -(A7)
+   87.489   C029 alu            2268 unsupported          0 runtime   0.28%
+   87.489   137C move              0 unsupported       1803 runtime   0.22%  imm -> d16(A1)
+   87.489   2378 move              0 unsupported       1701 runtime   0.21%  abs.W -> d16(A1)
+   87.489   3F7A move              0 unsupported       1599 runtime   0.20%  d16(PC) -> d16(A7)
+   87.489   2AC0 move              0 unsupported       1256 runtime   0.16%  D0 -> (A5)+
+   87.489   2089 move              0 unsupported       1223 runtime   0.15%  A1 -> (A0)
+   87.489   819D alu               0 unsupported       1103 runtime   0.14%
+   87.489   536C alu               0 unsupported       1015 runtime   0.13%
+   87.489   2A82 move              0 unsupported        936 runtime   0.12%  D2 -> (A5)
+   87.489   2A80 move              0 unsupported        930 runtime   0.11%  D0 -> (A5)
+   87.489   2A81 move              0 unsupported        899 runtime   0.11%  D1 -> (A5)
+   87.489   2B40 move              0 unsupported        626 runtime   0.08%  D0 -> d16(A5)
+   87.489   D07B alu             394 unsupported          0 runtime   0.05%
+   87.489   BD95 alu               0 unsupported        384 runtime   0.05%
+   87.489   2D51 move              0 unsupported        284 runtime   0.04%  (A1) -> d16(A6)
+   87.489   9611 alu             220 unsupported          0 runtime   0.03%
+   87.489   31E8 move              0 unsupported        193 runtime   0.02%  d16(A0) -> abs.W
+   87.489   2140 move              0 unsupported        113 runtime   0.01%  D0 -> d16(A0)
+   87.489   2080 move              0 unsupported        106 runtime   0.01%  D0 -> (A0)
+   87.489   317C move              0 unsupported         75 runtime   0.01%  imm -> d16(A0)
+   87.489   3F28 move              0 unsupported         66 runtime   0.01%  d16(A0) -> -(A7)
+   87.489   2C36 move              0 unsupported         63 runtime   0.01%  idx(A6) -> D6
+   87.489   1229 move             62 unsupported          0 runtime   0.01%  d16(A1) -> D1
+   87.489   1411 move             62 unsupported          0 runtime   0.01%  (A1) -> D2
+   87.489   C229 alu              62 unsupported          0 runtime   0.01%
+   87.489   48E7 multi             0 unsupported         46 runtime   0.01%  EA=-(A7)
+   87.489   117C move              0 unsupported         43 runtime   0.01%  imm -> d16(A0)
+   87.489   6100 branch            0 unsupported         40 runtime   0.00%
+   87.489   4CEE multi             0 unsupported         40 runtime   0.00%  EA=d16(A6)
+   87.489   2146 move              0 unsupported         32 runtime   0.00%  D6 -> d16(A0)
+   87.489   4A28 alu              32 unsupported          0 runtime   0.00%
+   87.489   51D0 cond              0 unsupported         30 runtime   0.00%
+   87.489   12E8 move              0 unsupported         29 runtime   0.00%  d16(A0) -> (A1)+
+   87.489   2950 move              0 unsupported         28 runtime   0.00%  (A0) -> d16(A4)
+   87.489   1541 move              0 unsupported         27 runtime   0.00%  D1 -> d16(A2)
+   87.489   2F08 move              0 unsupported         26 runtime   0.00%  A0 -> -(A7)
+   87.489   2F38 move              0 unsupported         26 runtime   0.00%  abs.W -> -(A7)
+   87.489   2290 move              0 unsupported         25 runtime   0.00%  (A0) -> (A1)
+   87.489   24D9 move              0 unsupported         24 runtime   0.00%  (A1)+ -> (A2)+
+   87.489 
+   87.489 [jit] bounded shift versions — 8 sites, 127 live, 0 saturated
+   87.489   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.489   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.489   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.489   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.489 
+   87.489 [jit] runtime fallback causes
+   87.489   fill/tag MMU                0    0.00%
+   87.489   non-plain/MMIO              0    0.00%
+   87.490   codeMask                    0    0.00%
+   87.490   cross-page                  0    0.00%
+   87.490   other guard                 0    0.00%
+   87.490   attributed                  0 /       218296 runtime  MISMATCH
+   87.490 
+   87.490 [jit] fallback addressing — MOVE source
+   87.490   idx(An)        565419 unsupported        18613 runtime
+   87.490   Dn                  2 unsupported        49237 runtime
+   87.490   imm                 0 unsupported        41392 runtime
+   87.490   d16(An)            62 unsupported        29598 runtime
+   87.490   (An)+               0 unsupported         5530 runtime
+   87.490   abs.W               0 unsupported         1733 runtime
+   87.490   d16(PC)             0 unsupported         1604 runtime
+   87.490   An                  0 unsupported         1303 runtime
+   87.490   (An)               62 unsupported          388 runtime
+   87.490   -(An)               0 unsupported            7 runtime
+   87.490 
+   87.490 [jit] fallback addressing — MOVE destination
+   87.490   d16(An)        565419 unsupported        67584 runtime
+   87.490   (An)                2 unsupported        43627 runtime
+   87.490   Dn                124 unsupported        15431 runtime
+   87.490   (An)+               0 unsupported        12341 runtime
+   87.490   -(An)               0 unsupported        10197 runtime
+   87.490   abs.W               0 unsupported          225 runtime
+   87.490 
+   87.490 [jit] fallback addressing — MOVEM operand
+   87.490   -(An)               0 unsupported           58 runtime
+   87.490   d16(An)             0 unsupported           40 runtime
+   87.490   (An)+               0 unsupported           27 runtime
+   87.490 
+   87.490 [jit] indexed-mode fallbacks by extension form — 592389 attributed (of 810297 total fallbacks)
+   87.490   brief (d8,An/PC,Xn)            1    0.0%
+   87.490   full 68020 format            459    0.1%
+   87.490   mixed (both seen)         591929   99.9%
+   87.490   compiled slots: 1387 brief, 505 full (cumulative over the run, not per phase)
+   87.490   brief share if mixed is apportioned by slot ratio:  39.2%  (ESTIMATE)
+   87.490 
+   87.490 [jit] fallback addressing — top MOVE source -> destination pairs
+   87.490   idx(An)  -> d16(An)        565419 unsupported            1 runtime
+   87.490   Dn       -> d16(An)             0 unsupported        39577 runtime
+   87.490   imm      -> (An)                0 unsupported        39471 runtime
+   87.490   d16(An)  -> d16(An)             0 unsupported        22412 runtime
+   87.490   idx(An)  -> Dn                  0 unsupported        15431 runtime
+   87.490   d16(An)  -> -(An)               0 unsupported         6937 runtime
+   87.490   Dn       -> (An)+               0 unsupported         6785 runtime
+   87.490   (An)+    -> (An)+               0 unsupported         5511 runtime
+   87.490   idx(An)  -> -(An)               0 unsupported         3181 runtime
+   87.490   Dn       -> (An)                2 unsupported         2874 runtime
+   87.490   imm      -> d16(An)             0 unsupported         1921 runtime
+   87.490   abs.W    -> d16(An)             0 unsupported         1702 runtime
+   87.490   d16(PC)  -> d16(An)             0 unsupported         1600 runtime
+   87.490   An       -> (An)                0 unsupported         1244 runtime
+   87.490   (An)     -> d16(An)             0 unsupported          342 runtime
+   87.490   d16(An)  -> abs.W               0 unsupported          204 runtime
+   87.490   d16(An)  -> Dn                 62 unsupported            0 runtime
+   87.490   (An)     -> Dn                 62 unsupported            0 runtime
+   87.490   d16(An)  -> (An)+               0 unsupported           43 runtime
+   87.490   abs.W    -> -(An)               0 unsupported           30 runtime
+   87.490   An       -> -(An)               0 unsupported           30 runtime
+   87.490   An       -> d16(An)             0 unsupported           29 runtime
+   87.490   (An)     -> (An)                0 unsupported           25 runtime
+   87.490   (An)     -> abs.W               0 unsupported           21 runtime
+   87.490 FAIL: Speedometer CPU result never appeared
+   87.490 [jit] retired=2577773154 window=4091843 (0.2%) arms=87610416 failed=2342601 blocks run=54784639 compiled=42206 flushes=9
+   87.490 [jit] dtlb refusals: probe=7510074 pagelen=0 codepage=1794819 notram=111896 cache040=0
+   87.490 [jit] arm refusals: probe=2338624 notram=11 degenerate=0 pcatend=3964 uncovered=0 pipe=2
+   87.495 
+   87.495 [jit] opcode census — 0 instructions, 0 distinct
+   87.495   native              0   -nan%  (backend 'x86-64')
+   87.495   ── top 60 opcodes ──
+   87.495 
+   87.495 [jit] block fallback census — 0 unsupported + 0 runtime guard/access = 0
+   87.495 
+   87.495 [jit] bounded shift versions — 8 sites, 127 live, 0 saturated
+   87.495   E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.495   E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.495   E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.495   E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+   87.495 
+   87.495 [jit] runtime fallback causes
+   87.495   fill/tag MMU                0    0.00%
+   87.495   non-plain/MMIO              0    0.00%
+   87.495   codeMask                    0    0.00%
+   87.495   cross-page                  0    0.00%
+   87.495   other guard                 0    0.00%
+   87.495   attributed                  0 /            0 runtime  exact
+   87.495 
+   87.495 [jit] fallback addressing — MOVE source
+   87.495 
+   87.495 [jit] fallback addressing — MOVE destination
+   87.495 
+   87.495 [jit] fallback addressing — MOVEM operand
+   87.495 
+   87.495 [jit] indexed-mode fallbacks by extension form — 0 attributed (of 0 total fallbacks)
+   87.495   brief (d8,An/PC,Xn)            0    0.0%
+   87.495   full 68020 format              0    0.0%
+   87.495   mixed (both seen)              0    0.0%
+   87.495   compiled slots: 1387 brief, 505 full (cumulative over the run, not per phase)
+   87.495   brief share if mixed is apportioned by slot ratio:   0.0%  (ESTIMATE)
+   87.495 
+   87.495 [jit] fallback addressing — top MOVE source -> destination pairs

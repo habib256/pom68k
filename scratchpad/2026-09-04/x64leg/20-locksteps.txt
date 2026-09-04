@@ -1,0 +1,40 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/build
+Test project /home/gistarcade/src/pom68k/build
+      Start 199: jit_lockstep_test
+ 1/12 Test #199: jit_lockstep_test ........................   Passed    7.85 sec
+      Start 200: jit_lockstep_blocks_test
+ 2/12 Test #200: jit_lockstep_blocks_test .................   Passed    7.90 sec
+      Start 201: jit_lockstep_68000_test
+ 3/12 Test #201: jit_lockstep_68000_test ..................   Passed   18.09 sec
+      Start 202: jit_lockstep_68000_blocks_test
+ 4/12 Test #202: jit_lockstep_68000_blocks_test ...........   Passed   18.67 sec
+      Start 203: jit_lockstep_030_test
+ 5/12 Test #203: jit_lockstep_030_test ....................   Passed   56.59 sec
+      Start 204: jit_lockstep_030_blocks_test
+ 6/12 Test #204: jit_lockstep_030_blocks_test .............   Passed   74.64 sec
+      Start 205: jit_lockstep_030_x64_experimental_test
+ 7/12 Test #205: jit_lockstep_030_x64_experimental_test ...   Passed   50.10 sec
+      Start 206: jit_lockstep_030_x64_packed_ccr_test
+ 8/12 Test #206: jit_lockstep_030_x64_packed_ccr_test .....   Passed   52.82 sec
+      Start 207: jit_lockstep_030_x64_alignment_test
+ 9/12 Test #207: jit_lockstep_030_x64_alignment_test ......   Passed   50.06 sec
+      Start 208: jit_lockstep_x64_test
+10/12 Test #208: jit_lockstep_x64_test ....................   Passed   24.68 sec
+      Start 209: jit_lockstep_x64_fine_test
+11/12 Test #209: jit_lockstep_x64_fine_test ...............   Passed    1.68 sec
+      Start 210: jit_lockstep_noaccess_test
+12/12 Test #210: jit_lockstep_noaccess_test ...............   Passed    7.53 sec
+
+100% tests passed, 0 tests failed out of 12
+
+Label Time Summary:
+asset-required    = 370.61 sec*proc (12 tests)
+host-any          = 191.26 sec*proc (7 tests)
+host-x64          = 179.35 sec*proc (5 tests)
+jit               = 370.61 sec*proc (12 tests)
+scope-engine      = 370.61 sec*proc (12 tests)
+smoke             =  49.64 sec*proc (5 tests)
+tier-full         = 370.61 sec*proc (12 tests)
+unit              = 370.61 sec*proc (12 tests)
+
+Total Test time (real) = 370.62 sec

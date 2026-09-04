@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -168,6 +169,7 @@ const jit::ResolvedConfig& injectedJitConfig() {
     return config;
 }
 
+// Heap-owned, never a local: see the GateCpu note in tests/jit_copyback_write_040_test.cpp.
 class SyntheticCpu final : public moira::Moira {
 public:
     explicit SyntheticCpu(const jit::ResolvedConfig& config =
@@ -1184,7 +1186,10 @@ bool sameMemory(const SyntheticCpu& a, const SyntheticCpu& b,
 }
 
 bool runDeterministicLoop() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installLoop(ref);
     installLoop(native);
     resetCpu(ref);
@@ -1279,7 +1284,10 @@ void prepareFault(SyntheticCpu& c, FaultProgram p) {
 }
 
 bool runFaultLockstep(FaultProgram p) {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installFaultLoop(ref, p);
     installFaultLoop(native, p);
     resetCpu(ref);
@@ -1316,7 +1324,10 @@ bool runFaultLockstep(FaultProgram p) {
 }
 
 bool runExactSourceMove() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installExactSourceLoop(ref);
     installExactSourceLoop(native);
     resetCpu(ref);
@@ -1351,7 +1362,10 @@ bool runExactSourceMove() {
 }
 
 bool runAddressSourceAluLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installAddressSourceAluLoop(ref);
     installAddressSourceAluLoop(native);
     resetCpu(ref);
@@ -1384,7 +1398,10 @@ bool runAddressSourceAluLockstep() {
 }
 
 bool runBriefIndexedLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installBriefIndexedLoop(ref);
     installBriefIndexedLoop(native);
     resetCpu(ref);
@@ -1426,7 +1443,10 @@ bool runBriefIndexedLockstep() {
 bool runIndexedMoveDestinationLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installIndexedMoveDestinationLoop(ref);
     installIndexedMoveDestinationLoop(native);
     resetCpu(ref);
@@ -1493,7 +1513,10 @@ void prepareIndexedMoveBoundary(SyntheticCpu& c,
 bool runIndexedMoveBoundary(IndexedMoveBoundary boundary, bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installIndexedMoveBoundaryLoop(ref);
     installIndexedMoveBoundaryLoop(native);
     resetCpu(ref);
@@ -1545,7 +1568,10 @@ bool runIndexedMoveBoundary(IndexedMoveBoundary boundary, bool packedCcr) {
 }
 
 bool runFullDirectLeaLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installFullDirectLeaLoop(ref);
     installFullDirectLeaLoop(native);
     resetCpu(ref);
@@ -1591,7 +1617,10 @@ bool runFullDirectLeaLockstep() {
 }
 
 bool runFullIndirectLeaLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installFullIndirectFallbackLoop(ref);
     installFullIndirectFallbackLoop(native);
     resetCpu(ref);
@@ -1630,7 +1659,10 @@ bool runFullIndirectLeaLockstep() {
 }
 
 bool runFullIndirectJsrLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installFullIndirectJsrLoop(ref);
     installFullIndirectJsrLoop(native);
     resetCpu(ref);
@@ -1667,7 +1699,10 @@ bool runFullIndirectJsrLockstep() {
 }
 
 bool runDependentMoveLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installDependentMoveLoop(ref);
     installDependentMoveLoop(native);
     resetCpu(ref);
@@ -1703,7 +1738,10 @@ bool runDependentMoveLockstep() {
 bool runClassicBitLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installClassicBitLoop(ref);
     installClassicBitLoop(native);
     resetCpu(ref);
@@ -1739,7 +1777,10 @@ bool runClassicBitLockstep(bool packedCcr) {
 bool runLegalReadOnlyEaLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installLegalReadOnlyEaLoop(ref);
     installLegalReadOnlyEaLoop(native);
     resetCpu(ref);
@@ -1797,7 +1838,10 @@ void prepareBitRmwBoundary(SyntheticCpu& c, BitRmwBoundary boundary) {
 bool runBitRmwBoundary(BitRmwBoundary boundary, bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installBitRmwLoop(ref);
     installBitRmwLoop(native);
     resetCpu(ref);
@@ -1857,7 +1901,10 @@ bool validBitfieldResidency(const SyntheticCpu& cpu, uint64_t slowInstrs) {
 bool runDynamicBitfieldLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installDynamicBitfieldLoop(ref, true);
     installDynamicBitfieldLoop(native, true);
     resetCpu(ref);
@@ -1896,7 +1943,10 @@ bool runDynamicBitfieldLockstep(bool packedCcr) {
 bool runDynamicRegisterBitfieldLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installDynamicBitfieldLoop(ref, false);
     installDynamicBitfieldLoop(native, false);
     resetCpu(ref);
@@ -1928,7 +1978,10 @@ bool runDynamicRegisterBitfieldLockstep(bool packedCcr) {
 bool runStaticBitfieldLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installStaticBitfieldLoop(ref);
     installStaticBitfieldLoop(native);
     resetCpu(ref);
@@ -1962,7 +2015,10 @@ bool runStaticBitfieldLockstep(bool packedCcr) {
 bool runMemoryBitfieldLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installMemoryBitfieldLoop(ref);
     installMemoryBitfieldLoop(native);
     resetCpu(ref);
@@ -2001,7 +2057,10 @@ bool runMemoryBitfieldLockstep(bool packedCcr) {
 bool runMemoryBitfieldWriteLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installMemoryBitfieldWriteLoop(ref);
     installMemoryBitfieldWriteLoop(native);
     resetCpu(ref);
@@ -2037,7 +2096,10 @@ bool runMemoryBitfieldWriteLockstep(bool packedCcr) {
 bool runMemoryBitfieldTailWriteLockstep(bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installMemoryBitfieldTailWriteLoop(ref);
     installMemoryBitfieldTailWriteLoop(native);
     resetCpu(ref);
@@ -2095,7 +2157,10 @@ bool runMemoryBitfieldTailBoundary(BitfieldTailBoundary boundary,
                                    bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
-    SyntheticCpu ref(config), native(config);
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
     installMemoryBitfieldTailBoundaryLoop(ref);
     installMemoryBitfieldTailBoundaryLoop(native);
     resetCpu(ref);
@@ -2142,7 +2207,10 @@ bool runMemoryBitfieldTailBoundary(BitfieldTailBoundary boundary,
 }
 
 bool runWordMultiplyLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installWordMultiplyLoop(ref);
     installWordMultiplyLoop(native);
     resetCpu(ref);
@@ -2172,7 +2240,10 @@ bool runWordMultiplyLockstep() {
 }
 
 bool runAddSubExtendLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installAddSubExtendLoop(ref);
     installAddSubExtendLoop(native);
     resetCpu(ref);
@@ -2202,7 +2273,10 @@ bool runAddSubExtendLockstep() {
 }
 
 bool runExtendByteLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installExtendByteLoop(ref);
     installExtendByteLoop(native);
     resetCpu(ref);
@@ -2234,7 +2308,10 @@ bool runExtendByteLockstep() {
 }
 
 bool runMemoryMultiplyDeviceOnce() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installMemoryMultiplyDeviceLoop(ref);
     installMemoryMultiplyDeviceLoop(native);
     resetCpu(ref);
@@ -2281,7 +2358,10 @@ bool runMemoryMultiplyDeviceOnce() {
 enum class DivisionProgram { Success, Overflow, Zero };
 
 bool runWordDivisionLockstep(DivisionProgram program) {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     switch (program) {
         case DivisionProgram::Success:
             installWordDivisionLoop(ref);
@@ -2408,7 +2488,10 @@ bool runWordDivisionLockstep(DivisionProgram program) {
 }
 
 bool runLongDivisionLockstep(DivisionProgram program) {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     switch (program) {
         case DivisionProgram::Success:
             installLongDivisionLoop(ref);
@@ -2524,7 +2607,10 @@ bool runLongDivisionLockstep(DivisionProgram program) {
 }
 
 bool runMemoryDivisionLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installMemoryDivisionLoop(ref);
     installMemoryDivisionLoop(native);
     resetCpu(ref);
@@ -2554,7 +2640,10 @@ bool runMemoryDivisionLockstep() {
 }
 
 bool runMemoryDivisionOverflowLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installMemoryDivisionGuardLoop(ref);
     installMemoryDivisionGuardLoop(native);
     resetCpu(ref);
@@ -2609,7 +2698,10 @@ bool runMemoryDivisionOverflowLockstep() {
 }
 
 bool runMemoryLongDivisionZeroLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installMemoryLongDivisionZeroLoop(ref);
     installMemoryLongDivisionZeroLoop(native);
     resetCpu(ref);
@@ -2656,7 +2748,10 @@ bool runMemoryLongDivisionZeroLockstep() {
 }
 
 bool runMemoryDivisionDeviceOnce() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installMemoryDivisionDeviceLoop(ref);
     installMemoryDivisionDeviceLoop(native);
     resetCpu(ref);
@@ -2697,7 +2792,10 @@ bool runMemoryDivisionDeviceOnce() {
 }
 
 bool runCachedMemoryDivisionLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installCachedMemoryDivisionLoop(ref);
     installCachedMemoryDivisionLoop(native);
     resetCpu(ref);
@@ -2733,7 +2831,10 @@ bool runCachedMemoryDivisionLockstep() {
 }
 
 bool runGuardedDynamicShiftLockstep(uint8_t count) {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installGuardedDynamicShiftLoop(ref, count);
     installGuardedDynamicShiftLoop(native, count);
     resetCpu(ref);
@@ -2768,7 +2869,10 @@ bool runGuardedDynamicShiftLockstep(uint8_t count) {
 void positionAt(SyntheticCpu& c, uint32_t pc);
 
 bool runMultiVersionShiftLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installMultiVersionShiftLoop(ref);
     installMultiVersionShiftLoop(native);
     resetCpu(ref);
@@ -2807,7 +2911,10 @@ bool runMultiVersionShiftLockstep() {
 }
 
 bool runBoundedShiftVersionLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installBoundedShiftVersionLoop(ref);
     installBoundedShiftVersionLoop(native);
     resetCpu(ref);
@@ -2850,7 +2957,10 @@ bool runBoundedShiftVersionLockstep() {
 }
 
 bool runExactShiftVersionMatrixLockstep() {
-    SyntheticCpu ref, native;
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
     installExactShiftVersionMatrix(ref);
     installExactShiftVersionMatrix(native);
     resetCpu(ref);
@@ -2921,7 +3031,8 @@ void positionAt(SyntheticCpu& c, uint32_t pc) {
 }
 
 bool runGuardIndexInvariant() {
-    SyntheticCpu c;
+    const auto cOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& c = *cOwner;
     installGuardIndexLoops(c);
     resetCpu(c);
     c.jit.setEnabled(true);
@@ -3042,7 +3153,8 @@ int main() {
     setenv("POM68K_JIT_LINKS", "1", 1);
     setenv("POM68K_JIT_PARANOID", "0", 1);
 
-    SyntheticCpu probe;
+    const auto probeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& probe = *probeOwner;
     if (!probe.jit.nativeBackend()) {
         metrics.gate = "jit_asset_free_lockstep_test";
         metrics.workload = "synthetic_68040_lockstep";

@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,7 @@ bool corruptMachPayload(Blob& b) {
 
 // A machine brought up to a non-trivial state: booted past the overlay, with
 // input queued on the ADB path and the counter loop already spinning.
+// Heap-owned, never a local: see the GateCpu note in tests/jit_copyback_write_040_test.cpp.
 struct Machine {
     V8Memory mem{pom68k::defaultCoreConfig(), 0xA00000}; // 10 MB
     Cpu030   cpu{mem, jit::defaultResolvedConfig(),
@@ -114,7 +116,8 @@ int main() {
     // ── 1. Re-save byte-identity ────────────────────────────────────────
     Blob snapshot;
     {
-        Machine m(rom);
+        const auto mOwner = std::make_unique<Machine>(rom);
+        Machine& m = *mOwner;
         m.run(200000);                  // clear the overlay, spin the loop
         check(!m.mem.overlay(), "setup: the stub cleared the boot overlay");
         const uint32_t atSnapshot = m.counter();
@@ -143,13 +146,15 @@ int main() {
     // ── 2. Determinism across a restore ─────────────────────────────────
     // The strong property: same start, same cycles, same result.
     {
-        Machine a(rom);
+        const auto aOwner = std::make_unique<Machine>(rom);
+        Machine& a = *aOwner;
         a.run(200000);
         const Blob start = a.save();
         a.run(150000);
         const Blob direct = a.save();
 
-        Machine b(rom);
+        const auto bOwner = std::make_unique<Machine>(rom);
+        Machine& b = *bOwner;
         b.run(200000);                  // any state; the restore overwrites it
         std::string err;
         check(pom68k::load(b.mem, b.cpu, pom68k::SnapMachine::LcII,
@@ -177,7 +182,8 @@ int main() {
 
     // ── 3. A snapshot that does not belong is refused, cleanly ──────────
     {
-        Machine m(rom);
+        const auto mOwner = std::make_unique<Machine>(rom);
+        Machine& m = *mOwner;
         m.run(200000);
         const uint32_t before = m.counter();
         std::string err;
@@ -223,7 +229,8 @@ int main() {
         otherRom[0] = uint8_t(sum >> 24); otherRom[1] = uint8_t(sum >> 16);
         otherRom[2] = uint8_t(sum >> 8);  otherRom[3] = uint8_t(sum);
 
-        Machine other(otherRom);
+        const auto otherOwner = std::make_unique<Machine>(otherRom);
+        Machine& other = *otherOwner;
         other.run(1000);
         std::string e2;
         check(!pom68k::load(other.mem, other.cpu, pom68k::SnapMachine::LcII,

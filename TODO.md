@@ -68,33 +68,48 @@ cache-actives reste un chantier de conformité réel, mais son levier temps est
 borné à ~14 points ; l'échéancier événementiel — troisième item — porte
 désormais la masse mesurée.
 
-- [ ] **Décider le sort de l'admission late-poll : x64 et rentabilité.** La
+- [ ] **Décider le sort de l'admission late-poll : rentabilité seulement.** La
   position des polls est dans l'IR et l'admission A64
   (accès/poll/faute/validation) est prouvée conforme — mais mesurée −6,3 %
   sur le bench cache-actif, car la classe admise est les boucles de poll
   chaudes du boot (`CHANGELOG` 2026-09-03 (seventh)). Le knob
-  `POM68K_JIT_040_LATE_POLL` reste opt-in. Reste : rejouer les locksteps
-  x64 sur l'hôte x86-64 avant toute admission x64, et ne rouvrir le défaut
-  que si un workload cache-actif montre le gain — ou après une dé-admission
-  adaptative des sites qui manquent chroniquement.
-- [ ] **Décider la double interrogation d'échéance SCC.** Le profil après
-  fast-path ROM place `Scc8530::cyclesToNextEvent()` à 246/6 840 échantillons
-  exclusifs et le fan-out Q605 à 135. Instrumenter une variante qui réutilise
-  uniquement la borne déjà calculée entre `tick()` et le réarmement ; la
-  retirer si son A/B ne dépasse pas le bruit, comme le cache SCC général déjà
-  refusé.
+  `POM68K_JIT_040_LATE_POLL` reste opt-in. La jambe x86-64 a rejoué tous les
+  locksteps x64 et les deux tiers CPU sans soft-skip et prouvé le knob
+  inerte octet pour octet sur x64 (`CHANGELOG` 2026-09-04 (sixth)) : la
+  précondition de rejeu est levée. Ne rouvrir le défaut que si un workload
+  cache-actif montre le gain — ou après une dé-admission adaptative des
+  sites qui manquent chroniquement.
 
 ### B.2 Le poste n°1 du 68030 : la traduction, pas le générateur
 
-- [ ] **Attaquer la traduction et les thunks mémoire.**
-  `tools/profile_census.py` sur SimCity/Speedometer (`CHANGELOG` 2026-09-02
-  (sixth)) attribue ~30-34 % du temps à Moira translate + thunks mémoire
-  (`mmuFetchWord` 6,1 %, `mmuRead<2/4>` 8,1 %, `V8Memory::read16/write16`
-  5,7 %), ~2 % au hashtable de dispatch et ~5,7 % au M68HC05 seul. Les corps
-  générés pèsent 21-24 % et la compilation 0,2 % : le levier est du côté du
-  fork Moira et de la carte mémoire, pas du générateur. La densité du code
-  généré reste parquée, et cette ligne est la conséquence directe du profil —
-  pas un pressentiment.
+- [ ] **Attaquer la traduction et les thunks mémoire — par tranches
+  mesurées, pas par bucket de profil.** `tools/profile_census.py` sur
+  SimCity/Speedometer (`CHANGELOG` 2026-09-02 (sixth)) attribue ~30-34 % du
+  temps à Moira translate + thunks mémoire (`mmuFetchWord` 6,1 %,
+  `mmuRead<2/4>` 8,1 %, `V8Memory::read16/write16` 5,7 %). Le plan du
+  2026-09-04 (`scratchpad/2026-09-04/b2plan/PLAN.md`) classe six tranches ;
+  ses deux premières sont livrées (`CHANGELOG` 2026-09-04 (third) et
+  (fourth)) : fenêtre VRAM dans `V8Memory::dataSpan` et décodage unique de
+  `read16`/`write16`. Elles sont bit-identiques sur trois moteurs et
+  retirent 26,9 % des rejeux interprétés d'une session SimCity (famille
+  `MOVE.L (A0)+,(A2)+` disparue du census) — **sans gain mur mesurable**
+  (deux workloads, deux ABBA chacun, chaque phase sous le bruit) : un rejeu
+  coûte ~180 ns et la classe entière pèse < 1 %. Leçon à porter sur chaque
+  tranche restante : un bucket de profil ne se retire pas en entier quand
+  le générateur n'en possède que la moitié. Reste, dans l'ordre du plan :
+  (0) chiffrer les buckets avec les censuses (`RuntimeNonPlain` absent de la
+  table par adresse, census des causes non câblé sur x64) ; (3) le clamp
+  `maxAccessThunk030 = 1` sur x64 — même binaire, `POM68K_JIT_ACCESS_THUNK=1`
+  contre `2`, c'est aussi la première clause de B.3 ; (4) fusionner le
+  double `mmuFetchWord` de `mmuExecuteStart` comme le 040, plafond ~1,8 % et
+  conditionné par le ratio `icache fetches / retired` après (3) ; (5) la
+  fenêtre de données interpréteur 030 derrière `POM68K_DATA_WINDOW`, précédent
+  040 négatif, à mesurer sur le bras interpréteur seul.
+- [ ] **Chiffrer le coût réel de `mmuRead`/`mmuWrite` côté interpréteur.**
+  Le profil du 2026-09-02 ne sépare pas les accès mot de l'interpréteur (boot,
+  Memory Manager) de ceux du code généré ; la tranche VRAM a montré que la
+  seconde moitié vaut < 1 %. Avant toute tranche sur le fork Moira, un
+  profil qui distingue les deux appelants, sinon le plafond est inventé.
 
 ### B.3 Qualification 68030 par hôte
 
@@ -113,14 +128,6 @@ désormais la masse mesurée.
 
 ### B.4 Gardes, mémoire et coût partagé
 
-- [ ] **Statuer sur le hint CACR/SMC de Sonora.** VASP, RBV et MSC sont
-  faits (`CHANGELOG` 2026-09-03 (ninth), (tenth), (eleventh)) ;
-  `store_inventory_test` pinne chaque inventaire revendiqué au niveau
-  source et tient Sonora — hors liste d'origine mais porteur du même
-  hint — à son flush tant qu'il n'a pas son propre audit (SWIM2 intégré,
-  famille AIO). Même exigence : toute écriture RAM traverse
-  `CodeGuard::note()`, la ligne s'ajoute au gate, puis le flush se retire.
-  Ne pas extrapoler la preuve d'une autre carte.
 - [ ] **Étudier `PFLUSHA` et le retry d'armement seulement après profil.**
   Toute réduction des bumps ou du backoff doit garder les locksteps 030/040 :
   le moment où une fenêtre s'arme est observable sur 68040.

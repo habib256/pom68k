@@ -1,0 +1,49 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/.claude/worktrees/agent-aa9179cca4f63271d/build
+Test project /home/gistarcade/src/pom68k/.claude/worktrees/agent-aa9179cca4f63271d/build
+      Start 143: cclassic2_boot_etalon
+      Start 103: lcii_sys7_boot_etalon
+      Start 229: interp_lcii_boot_etalon
+ 1/16 Test #229: interp_lcii_boot_etalon ..........   Passed  157.48 sec
+ 2/16 Test #103: lcii_sys7_boot_etalon ............   Passed  254.16 sec
+ 3/16 Test #143: cclassic2_boot_etalon ............   Passed  344.54 sec
+      Start 171: lcii_persist_etalon
+ 4/16 Test #171: lcii_persist_etalon ..............   Passed  279.23 sec
+      Start 151: mactv_boot_etalon
+ 5/16 Test #151: mactv_boot_etalon ................   Passed  245.56 sec
+      Start 170: lcii_soak_etalon
+ 6/16 Test #170: lcii_soak_etalon .................   Passed  235.13 sec
+      Start 137: classic2_boot_etalon
+ 7/16 Test #137: classic2_boot_etalon .............   Passed  152.24 sec
+      Start 172: lcii_launch_etalon
+ 8/16 Test #172: lcii_launch_etalon ...............   Passed  165.73 sec
+      Start 138: cclassic_boot_etalon
+ 9/16 Test #138: cclassic_boot_etalon .............   Passed  156.28 sec
+      Start 104: lcii_savestate_etalon
+10/16 Test #104: lcii_savestate_etalon ............   Passed  152.75 sec
+      Start 102: lcii_boot_etalon
+11/16 Test #102: lcii_boot_etalon .................   Passed  134.80 sec
+      Start 136: lc_boot_etalon
+12/16 Test #136: lc_boot_etalon ...................   Passed   95.04 sec
+      Start 220: jit_lc_boot_etalon
+13/16 Test #220: jit_lc_boot_etalon ...............   Passed   91.95 sec
+      Start 173: lcii_floppy_etalon
+14/16 Test #173: lcii_floppy_etalon ...............   Passed  157.99 sec
+      Start 216: jit_mactv_boot_etalon
+15/16 Test #216: jit_mactv_boot_etalon ............   Passed   76.86 sec
+      Start 215: jit_lcii_boot_etalon
+16/16 Test #215: jit_lcii_boot_etalon .............   Passed   49.34 sec
+
+100% tests passed, 0 tests failed out of 16
+
+Label Time Summary:
+asset-required    = 15681.59 sec*proc (16 tests)
+etalon            = 15681.59 sec*proc (16 tests)
+etalon-core       = 808.83 sec*proc (1 test)
+host-any          = 15681.59 sec*proc (16 tests)
+jit               = 1308.90 sec*proc (3 tests)
+m030              = 15681.59 sec*proc (16 tests)
+scope-profile     = 15681.59 sec*proc (16 tests)
+tier-full         = 14872.76 sec*proc (15 tests)
+tier-platform     = 808.83 sec*proc (1 test)
+
+Total Test time (real) = 2337.47 sec

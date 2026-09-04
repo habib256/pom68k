@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -36,6 +37,7 @@ const jit::ResolvedConfig& injectedJitConfig() {
     return config;
 }
 
+// Heap-owned, never a local: see the GateCpu note in tests/jit_copyback_write_040_test.cpp.
 class FaultCpu final : public moira::Moira {
 public:
     struct WriteObservation {
@@ -713,7 +715,10 @@ int main() {
     // one contract.
     setenv("POM68K_JIT_ICACHE_EMIT", "1", 1);
 
-    FaultCpu ref, native;
+    const auto refOwner = std::make_unique<FaultCpu>();
+    FaultCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<FaultCpu>();
+    FaultCpu& native = *nativeOwner;
     install(ref); install(native);
     ref.reset(); native.reset();
     // TC.E stays clear (identity translation), but the page-size field still
@@ -736,7 +741,10 @@ int main() {
         };
         bool allSame = true;
         for (uint16_t operand : operands) {
-            FaultCpu cmpRef, cmpNative;
+            const auto cmpRefOwner = std::make_unique<FaultCpu>();
+            FaultCpu& cmpRef = *cmpRefOwner;
+            const auto cmpNativeOwner = std::make_unique<FaultCpu>();
+            FaultCpu& cmpNative = *cmpNativeOwner;
             installSpeedometerCmpiBranchLoop(cmpRef);
             installSpeedometerCmpiBranchLoop(cmpNative);
             cmpRef.reset(); cmpNative.reset();
@@ -785,7 +793,10 @@ int main() {
     // access in the exact thunk, charge only the fixed tail and never enter
     // the per-instruction interpreter fallback on a successful device read.
     {
-        FaultCpu pollRef, pollNative;
+        const auto pollRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& pollRef = *pollRefOwner;
+        const auto pollNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& pollNative = *pollNativeOwner;
         installSpeedometerPollLoop(pollRef);
         installSpeedometerPollLoop(pollNative);
         pollRef.reset(); pollNative.reset();
@@ -836,7 +847,10 @@ int main() {
     // boundary, execute exactly one delayed MMIO write, and charge only the
     // fixed seven-cycle MOVE tail.
     {
-        FaultCpu writeRef, writeNative;
+        const auto writeRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& writeRef = *writeRefOwner;
+        const auto writeNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& writeNative = *writeNativeOwner;
         installSpeedometerSelectorWriteLoop(writeRef);
         installSpeedometerSelectorWriteLoop(writeNative);
         writeRef.reset(); writeNative.reset();
@@ -924,7 +938,10 @@ int main() {
     // Both mappings stay direct in the native path; changing the resolved
     // operand to MMIO must replay the whole pristine instruction instead.
     {
-        FaultCpu moveRef, moveNative;
+        const auto moveRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveRef = *moveRefOwner;
+        const auto moveNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveNative = *moveNativeOwner;
         installSpeedometerIndirectMoveLoop(moveRef);
         installSpeedometerIndirectMoveLoop(moveNative);
         moveRef.reset(); moveNative.reset();
@@ -1002,7 +1019,10 @@ int main() {
     // one replayable transaction. Either MMIO position and a final /BERR
     // must remain wholly owned by untouched Moira replay.
     {
-        FaultCpu tstRef, tstNative;
+        const auto tstRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& tstRef = *tstRefOwner;
+        const auto tstNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& tstNative = *tstNativeOwner;
         installSpeedometerIndirectTstLoop(tstRef);
         installSpeedometerIndirectTstLoop(tstNative);
         tstRef.reset(); tstNative.reset();
@@ -1143,7 +1163,10 @@ int main() {
     // changing instead of converging to zero and crosses from V=0 to V=1;
     // X must survive while N/Z/V/C and the 030 boundary remain identical.
     {
-        FaultCpu mulRef, mulNative;
+        const auto mulRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& mulRef = *mulRefOwner;
+        const auto mulNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& mulNative = *mulNativeOwner;
         installSpeedometerMuluLongLoop(mulRef);
         installSpeedometerMuluLongLoop(mulNative);
         mulRef.reset(); mulNative.reset();
@@ -1208,7 +1231,10 @@ int main() {
     // a non-zero high half, so it pins source memory, signed widening,
     // low-then-high 030 register publication and 64-bit N/Z in one oracle.
     {
-        FaultCpu mulRef, mulNative;
+        const auto mulRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& mulRef = *mulRefOwner;
+        const auto mulNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& mulNative = *mulNativeOwner;
         installSpeedometerMulsLongMemoryLoop(mulRef);
         installSpeedometerMulsLongMemoryLoop(mulNative);
         mulRef.reset(); mulNative.reset();
@@ -1257,7 +1283,10 @@ int main() {
     // rotate X through a 9- or 33-bit ring, then make the last outgoing bit
     // both C and X while preserving the unused upper bits of byte D0.
     {
-        FaultCpu roxRef, roxNative;
+        const auto roxRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& roxRef = *roxRefOwner;
+        const auto roxNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& roxNative = *roxNativeOwner;
         installSpeedometerRoxrLoop(roxRef);
         installSpeedometerRoxrLoop(roxNative);
         roxRef.reset(); roxNative.reset();
@@ -1306,7 +1335,10 @@ int main() {
     // Each count owns a separate mono-instruction block; neither version is a
     // direct-link target, so dispatch selects it before its existing guard.
     {
-        FaultCpu shiftRef, shiftNative;
+        const auto shiftRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& shiftRef = *shiftRefOwner;
+        const auto shiftNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& shiftNative = *shiftNativeOwner;
         installSpeedometerMultiVersionShiftLoop(shiftRef);
         installSpeedometerMultiVersionShiftLoop(shiftNative);
         shiftRef.reset(); shiftNative.reset();
@@ -1352,7 +1384,10 @@ int main() {
     // proves the same generated arithmetic; this one additionally proves
     // the 030 base-cycle split used to recover and guard the live count.
     {
-        FaultCpu shiftRef, shiftNative;
+        const auto shiftRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& shiftRef = *shiftRefOwner;
+        const auto shiftNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& shiftNative = *shiftNativeOwner;
         installSpeedometerShiftVersionMatrix(shiftRef);
         installSpeedometerShiftVersionMatrix(shiftNative);
         shiftRef.reset(); shiftNative.reset();
@@ -1419,7 +1454,10 @@ int main() {
     // be proved before the first load; a refused write mapping then replays
     // without duplicating a read or publishing flags early.
     {
-        FaultCpu moveRef, moveNative;
+        const auto moveRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveRef = *moveRefOwner;
+        const auto moveNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveNative = *moveNativeOwner;
         installSpeedometerIndexedDestinationLoop(moveRef);
         installSpeedometerIndexedDestinationLoop(moveNative);
         moveRef.reset(); moveNative.reset();
@@ -1529,7 +1567,10 @@ int main() {
     for (const DependentMoveForm form : {
              DependentMoveForm{0x3F5F, 2, "3F5F MOVE.W (A7)+,4(A7)"},
              DependentMoveForm{0x2F5F, 4, "2F5F MOVE.L (A7)+,4(A7)"}}) {
-        FaultCpu moveRef, moveNative;
+        const auto moveRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveRef = *moveRefOwner;
+        const auto moveNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveNative = *moveNativeOwner;
         installSpeedometerDependentMoveLoop(moveRef, form.opcode);
         installSpeedometerDependentMoveLoop(moveNative, form.opcode);
         moveRef.reset(); moveNative.reset();
@@ -1689,7 +1730,10 @@ int main() {
     // index, scale and displacement must agree at every 030 queue/cycle
     // boundary and must never enter the per-instruction slow stub.
     {
-        FaultCpu readRef, readNative;
+        const auto readRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& readRef = *readRefOwner;
+        const auto readNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& readNative = *readNativeOwner;
         installIndexedReadLoop(readRef); installIndexedReadLoop(readNative);
         readRef.reset(); readNative.reset();
         readRef.setTC(12u << 20); readNative.setTC(12u << 20);
@@ -1739,7 +1783,10 @@ int main() {
     // Exercise the four tailless memory-write actions directly so the hot
     // EFD1 path cannot be declared from a 040-only synthetic proof.
     {
-        FaultCpu bfRef(bitfieldConfig), bfNative(bitfieldConfig);
+        const auto bfRefOwner = std::make_unique<FaultCpu>(bitfieldConfig);
+        FaultCpu& bfRef = *bfRefOwner;
+        const auto bfNativeOwner = std::make_unique<FaultCpu>(bitfieldConfig);
+        FaultCpu& bfNative = *bfNativeOwner;
         installBitfieldWriteLoop(bfRef); installBitfieldWriteLoop(bfNative);
         bfRef.reset(); bfNative.reset();
         bfRef.setTC(12u << 20); bfNative.setTC(12u << 20);
@@ -1790,7 +1837,10 @@ int main() {
     // Exercise every mutating action plus the runtime no-tail arm so this
     // proof cannot be inherited accidentally from the 68040 fixture.
     {
-        FaultCpu bfRef(bitfieldConfig), bfNative(bitfieldConfig);
+        const auto bfRefOwner = std::make_unique<FaultCpu>(bitfieldConfig);
+        FaultCpu& bfRef = *bfRefOwner;
+        const auto bfNativeOwner = std::make_unique<FaultCpu>(bitfieldConfig);
+        FaultCpu& bfNative = *bfNativeOwner;
         installBitfieldTailWriteLoop(bfRef);
         installBitfieldTailWriteLoop(bfNative);
         bfRef.reset(); bfNative.reset();
@@ -1842,7 +1892,10 @@ int main() {
     // before its longword read. Moira then owns the architectural partial
     // longword write, the one tail callback and the 030 format-$B frame.
     {
-        FaultCpu bfRef(bitfieldConfig), bfNative(bitfieldConfig);
+        const auto bfRefOwner = std::make_unique<FaultCpu>(bitfieldConfig);
+        FaultCpu& bfRef = *bfRefOwner;
+        const auto bfNativeOwner = std::make_unique<FaultCpu>(bitfieldConfig);
+        FaultCpu& bfNative = *bfNativeOwner;
         installBitfieldTailBoundaryLoop(bfRef);
         installBitfieldTailBoundaryLoop(bfNative);
         bfRef.reset(); bfNative.reset();
@@ -1947,7 +2000,10 @@ int main() {
     // fifth byte. Exercise two real tail paths plus the same compiled shape's
     // runtime no-tail arm; both mappings must be proved before the first load.
     {
-        FaultCpu bfRef, bfNative;
+        const auto bfRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& bfRef = *bfRefOwner;
+        const auto bfNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& bfNative = *bfNativeOwner;
         installSpeedometerBitfieldTailLoop(bfRef);
         installSpeedometerBitfieldTailLoop(bfNative);
         bfRef.reset(); bfNative.reset();
@@ -1988,7 +2044,10 @@ int main() {
     // pointer read followed by register-only address formation. A failed
     // mapping must replay before A0 changes; a proved mapping stays native.
     {
-        FaultCpu leaRef, leaNative;
+        const auto leaRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& leaRef = *leaRefOwner;
+        const auto leaNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& leaNative = *leaNativeOwner;
         installSpeedometerIndirectLeaLoop(leaRef);
         installSpeedometerIndirectLeaLoop(leaNative);
         leaRef.reset(); leaNative.reset();
@@ -2111,7 +2170,10 @@ int main() {
                                     uint16_t expectedIrc,
                                     int64_t expectedFetches,
                                     const char* name) {
-        FaultCpu queueRef, queueNative;
+        const auto queueRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& queueRef = *queueRefOwner;
+        const auto queueNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& queueNative = *queueNativeOwner;
         installQueueLoop(queueRef, transfer);
         installQueueLoop(queueNative, transfer);
         queueRef.reset(); queueNative.reset();
@@ -2176,7 +2238,10 @@ int main() {
                    "JMP (xxx).L exit");
 
     const auto checkSuccessfulPostincrement = [&](bool mmio, const char* name) {
-        FaultCpu successRef, successNative;
+        const auto successRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& successRef = *successRefOwner;
+        const auto successNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& successNative = *successNativeOwner;
         installWriteLoop(successRef, 0x1CC0, 0, false);
         installWriteLoop(successNative, 0x1CC0, 0, false);
         successRef.reset(); successNative.reset();
@@ -2258,7 +2323,10 @@ int main() {
     {
         constexpr uint32_t source = 0x006000;
         constexpr uint32_t destination = 0x007000;
-        FaultCpu moveRef, moveNative;
+        const auto moveRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveRef = *moveRefOwner;
+        const auto moveNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& moveNative = *moveNativeOwner;
         installWriteLoop(moveRef, 0x129F, 0, false); // MOVE.B (A7)+,(A1)
         installWriteLoop(moveNative, 0x129F, 0, false);
         moveRef.reset(); moveNative.reset();
@@ -2320,7 +2388,10 @@ int main() {
     }
 
     {
-        FaultCpu sccRef, sccNative;
+        const auto sccRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& sccRef = *sccRefOwner;
+        const auto sccNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& sccNative = *sccNativeOwner;
         installSccRegisterLoop(sccRef); installSccRegisterLoop(sccNative);
         sccRef.reset(); sccNative.reset();
         sccRef.setTC(12u << 20); sccNative.setTC(12u << 20);
@@ -2359,7 +2430,10 @@ int main() {
     // PEA was the remaining line-$4 AArch64 asymmetry. Keep its old-A7
     // source ordering and sole stack write under a direct native assertion.
     {
-        FaultCpu peaRef, peaNative;
+        const auto peaRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& peaRef = *peaRefOwner;
+        const auto peaNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& peaNative = *peaNativeOwner;
         installPeaLoop(peaRef); installPeaLoop(peaNative);
         peaRef.reset(); peaNative.reset();
         peaRef.setTC(12u << 20); peaNative.setTC(12u << 20);
@@ -2406,7 +2480,10 @@ int main() {
                                   bool hasExtension, uint32_t initialA6,
                                   uint32_t finalA6, bool exactNativeThunk,
                                   const char* name) {
-        FaultCpu eaRef, eaNative;
+        const auto eaRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& eaRef = *eaRefOwner;
+        const auto eaNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& eaNative = *eaNativeOwner;
         installWriteLoop(eaRef, opcode, extension, hasExtension);
         installWriteLoop(eaNative, opcode, extension, hasExtension);
         eaRef.reset(); eaNative.reset();
@@ -2474,7 +2551,10 @@ int main() {
     // Keep caller and callee on different code-guard slices, patch only the
     // callee, then demand an exact native/interpreter queue boundary.
     {
-        FaultCpu jsrRef, jsrNative;
+        const auto jsrRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& jsrRef = *jsrRefOwner;
+        const auto jsrNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& jsrNative = *jsrNativeOwner;
         installJsrLoop(jsrRef); installJsrLoop(jsrNative);
         jsrRef.reset(); jsrNative.reset();
         jsrRef.setTC(12u << 20); jsrNative.setTC(12u << 20);
@@ -2566,7 +2646,10 @@ int main() {
     // transactional escape: an unprovable MMIO pointer, a pointer-read bus
     // fault, and a stack/target alias whose push-before-read order matters.
     {
-        FaultCpu jsrRef, jsrNative;
+        const auto jsrRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& jsrRef = *jsrRefOwner;
+        const auto jsrNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& jsrNative = *jsrNativeOwner;
         installFullIndirectJsrLoop(jsrRef);
         installFullIndirectJsrLoop(jsrNative);
         jsrRef.reset(); jsrNative.reset();
@@ -2679,7 +2762,10 @@ int main() {
     // span, no partially committed format-$B restart state. Exercise both
     // register directions and the predecrement mask reversal in one loop.
     {
-        FaultCpu movemRef, movemNative;
+        const auto movemRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& movemRef = *movemRefOwner;
+        const auto movemNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& movemNative = *movemNativeOwner;
         installMovemLoop(movemRef); installMovemLoop(movemNative);
         movemRef.reset(); movemNative.reset();
         movemRef.setTC(12u << 20); movemNative.setTC(12u << 20);
@@ -2725,7 +2811,10 @@ int main() {
     // advanced. Both probes must now refuse before either EA is mutated.
     {
         constexpr uint32_t source = 0x006000;
-        FaultCpu mmRef, mmNative;
+        const auto mmRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& mmRef = *mmRefOwner;
+        const auto mmNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& mmNative = *mmNativeOwner;
         installWriteLoop(mmRef, 0x2CD8, 0, false);   // MOVE.L (A0)+,(A6)+
         installWriteLoop(mmNative, 0x2CD8, 0, false);
         put32(mmRef, source, 0x40A00000);

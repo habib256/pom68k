@@ -1,0 +1,19 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/build
+Test project /home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/build
+    Start 208: jit_lockstep_x64_test
+1/2 Test #208: jit_lockstep_x64_test ............   Passed   32.13 sec
+    Start 209: jit_lockstep_x64_fine_test
+2/2 Test #209: jit_lockstep_x64_fine_test .......   Passed    1.40 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+asset-required    =  33.52 sec*proc (2 tests)
+host-x64          =  33.52 sec*proc (2 tests)
+jit               =  33.52 sec*proc (2 tests)
+scope-engine      =  33.52 sec*proc (2 tests)
+smoke             =  33.52 sec*proc (2 tests)
+tier-full         =  33.52 sec*proc (2 tests)
+unit              =  33.52 sec*proc (2 tests)
+
+Total Test time (real) =  33.53 sec

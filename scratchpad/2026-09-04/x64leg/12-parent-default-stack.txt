@@ -1,0 +1,37 @@
+jit_copyback_write_040_test — dirty longword + format-$7 gate (native write hit)
+  copyback MOVE loop compiled                                            ok
+  trained block aligned at selected MOVE                                 ok
+  exact bootstrap write completed before the selected native hit         ok
+  exact bootstrap published a write-authorized copyback line             ok
+  selected MOVE executed one native copyback write hit                   ok
+  misaligned long publishes exactly dirty longwords 0 and 1              ok
+  native hit stored the four big-endian bytes in the cache line          ok
+  copyback hit left backing RAM stale                                    ok
+  native hit bypassed the external memory-map write callbacks            ok
+  last-write fault entered the already-compiled native block             ok
+  both engines stacked one 60-byte format-$7 frame                       ok
+  native-miss and interpreter last-write frames are byte-identical       ok
+  last-write frame keeps final CCR and stacks the next PC                ok
+  format-$7 WB3D carries the pending longword                            ok
+  last-write fault leaves identical architectural boundary state         ok
+  restart-read loop compiled                                             ok
+  restart-side format-$7 frames are byte-identical                       ok
+  restart frame restores CCR, PC and predecrement A0                     ok
+  restart fault leaves identical architectural boundary state            ok
+  trained block aligned at selected late-poll ADD.W                      ok
+  late-poll bootstrap made the operand cache line resident               ok
+  late-poll bootstrap made the operand cache line resident               ok
+  cache-active memory+late-poll instruction used exact fallback          ok
+  late-poll fallback preserved result, flags, queue and cycles           ok
+  trained block aligned at selected JSR                                  ok
+  JSR bootstrap made the stack copyback line resident                    ok
+  JSR bootstrap made the stack copyback line resident                    ok
+    JSR stats: blocks=62->63 slow=1->1 window=0->0 interp=1->1 instrs=65->66
+  cache-active JSR stayed on the exact one-instruction window            FAIL
+  JSR target-line fill, push, queue and dynamic cycles stay exact        ok
+  replayed JSR committed the target and return-address push once         ok
+  asset-free perf budget: interp=52.163 ms native=2.447 ms ratio=0.047 blocks=2 slow=1
+  performance budget executed cached native blocks                       ok
+  performance budget stayed within the versioned fallback ceiling        ok
+  native fixed-cycle loop stays within the versioned host budget         ok
+FAILED

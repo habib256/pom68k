@@ -1,0 +1,79 @@
+# lcii_simcity_census phase-wall ABBA — A = unmodified HEAD, B = slices 1+2
+# engine: jit/x64 blocks=1 hot=1, image hdv/ref/GISTPERSO-boot.vhd (locked reference, write-back OFF)
+# columns: phase	arm	tag	wall_s	fp	screen	load_before	load_after
+TOTAL	A	p0	144.948	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+boot	A	p0	44.694	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+idle_finder	A	p0	9.618	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+open_folder	A	p0	2.794	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+open_cities	A	p0	5.493	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+launch	A	p0	39.207	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+app_load	A	p0	43.091	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+app-load(own)	A	p0	43.090409	762e9d25153dd20e	b7904048ca2400ad	2.91	2.02
+TOTAL	B	p0	145.242	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+boot	B	p0	43.886	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+idle_finder	B	p0	9.483	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+open_folder	B	p0	2.789	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+open_cities	B	p0	5.472	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+launch	B	p0	40.173	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+app_load	B	p0	43.390	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+app-load(own)	B	p0	43.388677	762e9d25153dd20e	b7904048ca2400ad	2.02	2.39
+TOTAL	B	p1	149.741	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+boot	B	p1	46.741	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+idle_finder	B	p1	10.125	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+open_folder	B	p1	3.002	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+open_cities	B	p1	5.771	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+launch	B	p1	40.013	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+app_load	B	p1	44.028	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+app-load(own)	B	p1	44.026980	762e9d25153dd20e	b7904048ca2400ad	2.39	2.26
+TOTAL	A	p1	146.025	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+boot	A	p1	45.895	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+idle_finder	A	p1	9.929	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+open_folder	A	p1	2.924	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+open_cities	A	p1	5.757	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+launch	A	p1	39.661	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+app_load	A	p1	41.807	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+app-load(own)	A	p1	41.806403	762e9d25153dd20e	b7904048ca2400ad	2.26	1.86
+TOTAL	A	p2	149.487	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+boot	A	p2	46.433	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+idle_finder	A	p2	10.293	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+open_folder	A	p2	3.012	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+open_cities	A	p2	5.681	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+launch	A	p2	40.631	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+app_load	A	p2	43.385	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+app-load(own)	A	p2	43.384107	762e9d25153dd20e	b7904048ca2400ad	1.86	3.81
+TOTAL	B	p2	143.887	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+boot	B	p2	44.337	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+idle_finder	B	p2	9.366	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+open_folder	B	p2	2.748	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+open_cities	B	p2	5.436	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+launch	B	p2	39.515	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+app_load	B	p2	42.433	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+app-load(own)	B	p2	42.432340	762e9d25153dd20e	b7904048ca2400ad	3.81	2.01
+
+phase               A (s)    B (s)    delta %   sprd A ‰   sprd B ‰   verdict
+TOTAL              146.03   145.24      -0.54       31.1       40.3   NOT A CLAIM
+boot                45.90    44.34      -3.39       37.9       64.4   NOT A CLAIM
+idle_finder          9.93     9.48      -4.49       68.0       80.0   NOT A CLAIM
+open_folder          2.92     2.79      -4.62       74.6       91.1   NOT A CLAIM
+open_cities          5.68     5.47      -3.68       46.5       61.2   NOT A CLAIM
+launch              39.66    40.01      +0.89       35.9       16.4   NOT A CLAIM
+app_load            43.09    43.39      +0.69       36.6       36.8   NOT A CLAIM
+app-load(own)       43.09    43.39      +0.69       36.6       36.8   NOT A CLAIM
+
+fingerprints/screens seen: [('762e9d25153dd20e', 'b7904048ca2400ad')]
+(must be exactly ONE pair; a delta whose fingerprint moved is not a timing claim)
+floor: 10 permille (performance_budgets.tsv:67, x86_64); the verdict uses the widest of (spread A, spread B, floor)
+
+phase               A (s)    B (s)    delta %   sprd A ‰   sprd B ‰   verdict
+TOTAL              145.81   144.96      -0.58       42.7       40.4   NOT A CLAIM
+boot                45.94    44.49      -3.15       41.5       64.2   NOT A CLAIM
+idle_finder          9.93     9.63      -3.07       69.1       78.8   NOT A CLAIM
+open_folder          2.87     2.82      -1.74       75.9      135.4   NOT A CLAIM
+open_cities          5.52     5.63      +2.04       58.3       59.4   NOT A CLAIM
+launch              39.44    39.79      +0.87       43.4       28.1   NOT A CLAIM
+app_load            42.10    42.87      +1.83       37.5       42.8   NOT A CLAIM
+app-load(own)       42.10    42.87      +1.83       37.5       42.7   NOT A CLAIM
+
+fingerprints/screens seen: [('762e9d25153dd20e', 'b7904048ca2400ad')]
+(must be exactly ONE pair; a delta whose fingerprint moved is not a timing claim)
+floor: 10 permille (performance_budgets.tsv:67, x86_64); the verdict uses the widest of (spread A, spread B, floor)

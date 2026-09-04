@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -28,6 +29,7 @@ const jit::ResolvedConfig& injectedJitConfig() {
     return config;
 }
 
+// Heap-owned, never a local: see the GateCpu note in tests/jit_copyback_write_040_test.cpp.
 class GuardCpu final : public moira::Moira {
 public:
     GuardCpu()
@@ -157,7 +159,10 @@ int main() {
     setenv("POM68K_JIT_BLOCKS", "1", 1);
     setenv("POM68K_JIT_HOT", "1", 1);
 
-    GuardCpu ref, native;
+    const auto refOwner = std::make_unique<GuardCpu>();
+    GuardCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<GuardCpu>();
+    GuardCpu& native = *nativeOwner;
     install(ref); install(native);
     ref.reset(); native.reset();
     ref.setTC(0); native.setTC(0); // identity translation
@@ -229,7 +234,10 @@ int main() {
 
     // Repeat the complete contract for a read-modify-write form, so both a
     // sole store and a two-access store are covered by the global guard.
-    GuardCpu eorRef, eorNative;
+    const auto eorRefOwner = std::make_unique<GuardCpu>();
+    GuardCpu& eorRef = *eorRefOwner;
+    const auto eorNativeOwner = std::make_unique<GuardCpu>();
+    GuardCpu& eorNative = *eorNativeOwner;
     installEorLoop(eorRef); installEorLoop(eorNative);
     eorRef.reset(); eorNative.reset();
     eorRef.setTC(0); eorNative.setTC(0);

@@ -1,0 +1,43 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/build
+Test project /home/gistarcade/src/pom68k/build
+    Start 187: jit_asset_free_lockstep_test
+1/7 Test #187: jit_asset_free_lockstep_test ..........   Passed    8.47 sec
+    Start 188: jit_copyback_write_040_test
+2/7 Test #188: jit_copyback_write_040_test ...........***Exception: SegFault  1.11 sec
+
+    Start 189: jit_copyback_write_040_control_test
+3/7 Test #189: jit_copyback_write_040_control_test ...***Exception: SegFault  1.12 sec
+
+    Start 190: jit_copyback_bsr_040_test
+4/7 Test #190: jit_copyback_bsr_040_test .............***Exception: SegFault  1.11 sec
+
+    Start 191: jit_copyback_pair_040_test
+5/7 Test #191: jit_copyback_pair_040_test ............***Exception: SegFault  1.11 sec
+
+    Start 192: jit_copyback_pair_040_control_test
+6/7 Test #192: jit_copyback_pair_040_control_test ....***Exception: SegFault  1.11 sec
+
+    Start 198: jit_backend_parity_test
+7/7 Test #198: jit_backend_parity_test ...............   Passed    0.00 sec
+
+29% tests passed, 5 tests failed out of 7
+
+Label Time Summary:
+asset-none      =  14.02 sec*proc (7 tests)
+host-any        =   0.00 sec*proc (1 test)
+host-native     =  14.02 sec*proc (6 tests)
+jit             =  14.02 sec*proc (7 tests)
+jit-fast        =  11.80 sec*proc (4 tests)
+scope-engine    =  14.02 sec*proc (7 tests)
+tier-daily      =  14.02 sec*proc (7 tests)
+unit            =  14.02 sec*proc (7 tests)
+
+Total Test time (real) =  14.04 sec
+
+The following tests FAILED:
+	188 - jit_copyback_write_040_test (SEGFAULT)
+	189 - jit_copyback_write_040_control_test (SEGFAULT)
+	190 - jit_copyback_bsr_040_test (SEGFAULT)
+	191 - jit_copyback_pair_040_test (SEGFAULT)
+	192 - jit_copyback_pair_040_control_test (SEGFAULT)
+Errors while running CTest

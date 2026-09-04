@@ -1,0 +1,82 @@
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.ubuntu.com>
+Debuginfod has been disabled.
+To make this setting permanent, add 'set debuginfod enabled off' to .gdbinit.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000555555559ac0 in main (argc=1, argv=0x7fffffffda18) at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/tests/jit_copyback_write_040_test.cpp:671
+671	int main(int argc, char** argv) {
+
+===== BACKTRACE =====
+#0  0x0000555555559ac0 in main (argc=1, argv=0x7fffffffda18) at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/tests/jit_copyback_write_040_test.cpp:671
+
+===== FULL FRAME 0 =====
+Stack level 0, frame at 0x7fffffffd900:
+ rip = 0x555555559ac0 in main (/home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/tests/jit_copyback_write_040_test.cpp:671); saved rip = 0x7ffff782a1ca
+ source language c++.
+ Arglist at 0x7fffffffd8f0, args: argc=1, argv=0x7fffffffda18
+ Locals at 0x7fffffffd8f0, Previous frame's sp is 0x7fffffffd900
+ Saved registers:
+  rbp at 0x7fffffffd8f0, rip at 0x7fffffffd8f8
+
+===== REGISTERS =====
+rax            0x555555559aa0      93824992254624
+rbx            0x7fffffffda18      140737488345624
+rcx            0x5555559ff2d8      93824997126872
+rdx            0x7fffffffda28      140737488345640
+rsi            0x7fffffffda18      140737488345624
+rdi            0x1                 1
+rbp            0x7fffffffd8f0      0x7fffffffd8f0
+rsp            0x7fffff7fe8c8      0x7fffff7fe8c8
+r8             0x0                 0
+r9             0x7ffff7fca380      140737353917312
+r10            0x1                 1
+r11            0x7fffff74f8c8      140737479243976
+r12            0x1                 1
+r13            0x0                 0
+r14            0x5555559ff2d8      93824997126872
+r15            0x7ffff7ffd000      140737354125312
+rip            0x555555559ac0      0x555555559ac0 <main(int, char**)+32>
+eflags         0x10202             [ IF RF ]
+cs             0x33                51
+ss             0x2b                43
+ds             0x0                 0
+es             0x0                 0
+fs             0x0                 0
+gs             0x0                 0
+fs_base        0x7ffff7bfb740      140737349924672
+gs_base        0x0                 0
+
+===== DISASM AT PC =====
+   0x555555559aa0 <main(int, char**)>:	endbr64
+   0x555555559aa4 <main(int, char**)+4>:	push   %rbp
+   0x555555559aa5 <main(int, char**)+5>:	mov    %rsp,%rbp
+   0x555555559aa8 <main(int, char**)+8>:	push   %r15
+   0x555555559aaa <main(int, char**)+10>:	push   %r14
+   0x555555559aac <main(int, char**)+12>:	push   %r13
+   0x555555559aae <main(int, char**)+14>:	push   %r12
+   0x555555559ab0 <main(int, char**)+16>:	push   %rbx
+   0x555555559ab1 <main(int, char**)+17>:	lea    -0x8ae000(%rsp),%r11
+   0x555555559ab9 <main(int, char**)+25>:	sub    $0x1000,%rsp
+=> 0x555555559ac0 <main(int, char**)+32>:	orq    $0x0,(%rsp)
+   0x555555559ac5 <main(int, char**)+37>:	cmp    %r11,%rsp
+   0x555555559ac8 <main(int, char**)+40>:	jne    0x555555559ab9 <main(int, char**)+25>
+   0x555555559aca <main(int, char**)+42>:	sub    $0xd68,%rsp
+   0x555555559ad1 <main(int, char**)+49>:	mov    %fs:0x28,%rax
+   0x555555559ada <main(int, char**)+58>:	mov    %rax,-0x38(%rbp)
+   0x555555559ade <main(int, char**)+62>:	xor    %eax,%eax
+   0x555555559ae0 <main(int, char**)+64>:	cmp    $0x1,%edi
+   0x555555559ae3 <main(int, char**)+67>:	jle    0x55555555a6e9 <main(int, char**)+3145>
+   0x555555559ae9 <main(int, char**)+73>:	mov    0x8(%rsi),%rbx
+   0x555555559aed <main(int, char**)+77>:	lea    0x4085ac(%rip),%rsi        # 0x5555559620a0
+   0x555555559af4 <main(int, char**)+84>:	lea    0x409746(%rip),%r12        # 0x555555963241
+   0x555555559afb <main(int, char**)+91>:	lea    0x409555(%rip),%r15        # 0x555555963057
+   0x555555559b02 <main(int, char**)+98>:	mov    %rbx,%rdi
+
+===== MAPPING =====
+main + 32 in section .text of /home/gistarcade/src/pom68k/.claude/worktrees/agent-a360a5fb181d5ee26/build/jit_copyback_write_040_test
+
+===== DONE =====

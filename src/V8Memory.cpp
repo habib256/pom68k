@@ -616,6 +616,34 @@ uint8_t* V8Memory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
         len = romMask_ + 1 - o;
         return rom_.data() + o;
     }
+    // The framebuffer, for the same reason Q605Memory::dataSpan publishes
+    // its own: QuickDraw drawing a desktop is an enormous number of plain
+    // array accesses, and refusing them here costs far more than a call.
+    // On x86-64 the 68030 access-thunk clamp (BackendCaps
+    // maxAccessThunk030 = 1) sends a refused STORE to the runtime stub, so
+    // every screen word replayed a WHOLE interpreted instruction —
+    // mmuExecuteStart's two fetches, mmuWrite, mmuTranslateAccess and
+    // write16 — to reach what is one plain framebuffer byte store.
+    //
+    // It is plain memory for this door because the aperture is decoded in
+    // read8/write8 BEFORE `cpu_->flushTicks()` and returns there: no
+    // stall(), no viaSync(), no device state, no latch, no auto-increment
+    // and no dirty tracking — V8Video pulls vram_ at raster time. A
+    // host-pointer access is therefore byte-identical to the map's own and
+    // moves no peripheral flush, no IPL poll and no bus-time boundary.
+    // That decode order IS the contract: a future V8 revision that puts a
+    // REGISTER inside $F40000-$FC0000 has to take the window back out of
+    // here, not only out of read8.
+    //
+    // codeSpan deliberately keeps refusing the aperture, so no block is
+    // ever translated from VRAM, pageMap_/codePage_ never cover it, and a
+    // store owes no codeMask (jitAliasCodeMask states that bound).
+    // Gate: jit_lockstep_030_test's VRAM leg, plus the lcii / cclassic /
+    // mactv boot etalons, which compare the screen itself.
+    if (phys >= 0xF40000 && phys < 0xF40000 + kVramSize) {
+        len = 0xF40000 + kVramSize - phys;
+        return vram_.data() + (phys - 0xF40000);
+    }
     return nullptr;
 }
 
@@ -623,6 +651,14 @@ uint32_t V8Memory::jitAliasCodeMask(uint32_t physSlice,
                                     const uint8_t* pageMap,
                                     uint32_t pages) const {
     if (!pageMap || overlay_) return 0;
+    // Only RAM space carries the fixed 2 MB alias, so only RAM space can
+    // owe a mask bit for a SECOND bus view of one byte. Stated here rather
+    // than inherited: ramIndex()'s `addr >= $800000` arm is unbounded
+    // above and answers a valid-looking $140000 for the VRAM slice
+    // $F40000 that dataSpan now publishes — the two `bus < $A00000` bounds
+    // below happen to discard it, which is an accident, not a contract.
+    // Masked exactly as the loop masks each bus address.
+    if ((physSlice & addrMask_) >= 0xA00000) return 0;
     uint32_t mask = 0;
     constexpr uint32_t kShift = jit::CodeGuard::kShift;
     constexpr uint32_t kSlices = 4096u >> kShift;
@@ -767,7 +803,10 @@ uint16_t V8Memory::read16(uint32_t addr) {
     // read clears the overlay).
     if (addr < 0xA00000) [[likely]] {                    // RAM space
         if (!overlay_) {
-            uint32_t i0 = ramIndex(addr), i1 = ramIndex(addr + 1);
+            // One decode, not two: the pair is contiguous in ram_ unless it
+            // straddles a bank seam (V8Memory.h ramIndexNext).
+            const uint32_t i0 = ramIndex(addr);
+            const uint32_t i1 = ramIndexNext(addr, i0);
             return uint16_t(((i0 != 0xFFFFFFFF ? ram_[i0] : 0xFF) << 8)
                           |  (i1 != 0xFFFFFFFF ? ram_[i1] : 0xFF));
         }
@@ -809,8 +848,14 @@ void V8Memory::write16(uint32_t addr, uint16_t v) {
     // read16) — side-effect-free regions only.
     if (addr < 0xA00000) [[likely]] {                    // RAM space
         if (!overlay_) {
-            uint32_t i0 = ramIndex(addr), i1 = ramIndex(addr + 1);
-            if (jitGuard_) {
+            // One decode, not two (V8Memory.h ramIndexNext).
+            const uint32_t i0 = ramIndex(addr);
+            const uint32_t i1 = ramIndexNext(addr, i0);
+            // `pageMap` is note()'s own first test, hoisted: with no block
+            // map there is nothing to note and the alias arms below need
+            // not be evaluated at all. Exactly equivalent — note() records
+            // only through that pointer (jit/JitGuard.h § note).
+            if (jitGuard_ && jitGuard_->pageMap) {
                 // Both bus views of the byte pair, as in write8: the fixed
                 // 2 MB alias means one RAM byte carries two bus addresses.
                 jitGuard_->note(addr, 2);

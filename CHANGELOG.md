@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"publishing the LC II framebuffer to the data TLB is worth ≈ 8 %" — it removes 4.75 million interpreted replays per SimCity session and not one measurable second: one replay costs ~180 ns, and the ranking had priced a profile bucket the generator only half owns** → [2026-09-04 (fourth) — The LC II's framebuffer was refused by the data TLB…](#2026-09-04-v8-vram-dataspan)
 - **"extend the Q605 event scheduler to a third peripheral" — the ASC path had already passed seven gates and was withdrawn after two slower measurements; the follow-up audit instead found the promoted SCC/53C96 defaults accidentally disabled by startup-policy extraction** → [2026-09-03 (fifteenth) — The stale third-peripheral task…](#2026-09-03-q605-scheduler-default-restored)
 - **"native division makes SimCity 3.69 % slower" — two rebuilt-binary comparisons agreed and were both wrong; the same executable with an injected admission switch measures division 1.453 % faster, proving the apparent regression was code-layout noise** → [2026-08-30 (ninth) — The SimCity division promotion survives…](#2026-08-30-division-promotion)
 - **"patch 31 caused the 68030 wedge, because the `-L etalon` tier had run 118/118 green eight days earlier" — a dated green tier is not a control; both arms built from HEAD *without* the patch wedge identically, and the real finding is that no 68030 boots under the shipping default on x86-64** → [2026-08-29 — Moira patch 31…](#2026-08-29-patch31-and-the-withdrawal)
@@ -96,6 +97,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Timing — what an emulated cycle is charged against
 
+- **the Q605 asks the SCC for its deadline twice per step; the bit-identical hand-off that removes the second query measures under the noise twice and is withdrawn** → [2026-09-04 (fifth) — The Q605's second SCC deadline query is real…](#2026-09-04-scc-deadline-handoff-refused)
 - **why Q605/V8 wake peripherals from conservative event deadlines, and why the 6805 IRQ costs 11 again** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **why the VIA E clock is 783.36 kHz and not a divisor of the CPU** → [2026-08-02 (third) — Two rates that were rounded…](#2026-08-02-eclock-asc)
 - **why bus/peripheral time is charged in MACHINE cycles, never the boosted core clock** → [2026-07-25 — The i-cache boost was accelerating the VIA bus…](#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
@@ -110,6 +112,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why five asset-free gates segfaulted on x86-64 with no output — a 1 MB dispatch cache inline in `jit::Engine`, eight fixtures on the stack, and the sweep that found seven more binaries past half the limit** → [2026-09-04 (second) — The five copyback 040 gates never ran on x86-64…](#2026-09-04-copyback-stack-frame)
+- **the last 68030 board retires its CACR SMC flush, and the store-inventory gate learns to refuse any header that claims the constant without a row of its own** → [2026-09-04 — Sonora closes § B.4's last row…](#2026-09-04-sonora-inventory)
 - **what remains after the conformant-codegen pass, which 68030 backend `auto` really selects on each host, and why the TODO no longer carries its closed implementation diary** → [2026-09-01 (seventh) — The active backlog is reconciled…](#2026-09-01-todo-code-audit)
 - **why a cache-active 68040 cold JIT access must replay the instruction start, and when a native cache hit may skip the ATC lookup without changing replacement state** → [2026-09-01 (sixth) — Cold 040 cache misses…](#2026-09-01-jit-cache040-instruction-start)
 - **why a cache-active 68040 memory instruction may need a second, access-positioned IPL sample, and how the tracer prevents generated code from moving it** → [2026-09-01 (fifth) — Cache stalls preserve…](#2026-09-01-jit-cache040-ipl-polls)
@@ -391,6 +395,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-04 (sixth)** — [The x86-64 leg replays the 040 JSR transaction green, every x64 lockstep and both CPU tiers execute without a soft-skip, and the late-poll knob is proved inert on x64](#2026-09-04-x86-64-leg-replay)
+- **2026-09-04 (fifth)** — [The Q605's second SCC deadline query is real, the hand-off that removes it is bit-identical, and two ABBAs read it under the noise — so it is withdrawn](#2026-09-04-scc-deadline-handoff-refused)
+- **2026-09-04 (fourth)** — [The LC II's framebuffer was refused by the data TLB on a stale premise, and every QuickDraw store from generated code paid a whole interpreted instruction — 4.75 million of them in one SimCity session, and not one measurable second](#2026-09-04-v8-vram-dataspan)
+- **2026-09-04 (third)** — [The V8 word paths decoded the address twice for a pair the map cannot split](#2026-09-04-v8-word-decode)
+- **2026-09-04 (second)** — [The five copyback 040 gates never ran on x86-64: a 1 MB dispatch cache × eight stack fixtures](#2026-09-04-copyback-stack-frame)
+- **2026-09-04** — [Sonora closes § B.4's last row: its video never touches system RAM, no swim2 board owns a DMA client, and the CACR flush retires](#2026-09-04-sonora-inventory)
 - **2026-09-03 (sixteenth)** — [The 68HC05 ROM fetch stops crossing the whole internal map: −1.6 % on the measured Q605 pump workload](#2026-09-03-m68hc05-rom-fast-path)
 - **2026-09-03 (fifteenth)** — [The stale third-peripheral task exposes a real regression: promoted Q605 SCC/53C96 scheduling had silently become opt-in](#2026-09-03-q605-scheduler-default-restored)
 - **2026-09-03 (fourteenth)** — [Cache-active 68040 JSR becomes an ordered native transaction instead of a pristine replay](#2026-09-03-jit-cache040-jsr-transaction)
@@ -806,6 +816,420 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-04-x86-64-leg-replay"></a>
+## 2026-09-04 (sixth) — The x86-64 leg replays the 040 JSR transaction green, every x64 lockstep and both CPU tiers execute without a soft-skip, and the late-poll knob is proved inert on x64
+
+The 2026-09-03 (fourteenth) entry claimed only that the x64 translation
+unit compiled; executing its generated bytes was deferred to this host.
+It executes, and it is correct. On x86-64 (GCC 13.3, Release + LTO +
+`-march=native`, backend `x64`, all 158 gate binaries verified fresh
+against 8f74d42 by `tools/check_binaries_fresh.py` before and after the
+45-minute rebuild) the cache-active 040 JSR gate proves the same two
+sides the A64 host proved: the ordered native transaction runs
+(`cache-active JSR used the native ordered transaction`, target-line
+fill, push, queue and dynamic cycles exact, return address committed
+exactly once), and a post-push `/BERR` builds a byte-identical
+format-$7 frame that never reaches the interpreter fallback. The parent
+commit's own test, linked against this library, fails on exactly one
+assertion — `cache-active JSR stayed on the exact one-instruction
+window` — which is the old contract this change replaced: independent
+evidence that the x64 generator, not a fallback, took the new path.
+(That gate only ran once its stack fitted; the (second) entry owns that
+defect.)
+
+All 12 registered locksteps are identical over their full budgets, none
+soft-skipped: the Q605 boundary replay at 5 000 000 steps, the
+cache-armed x64 coarse replay at 1 000 000 (1 622 488 native 040
+D-cache line reads, 182 452 copyback writes), the cycle-exact 68000
+pair at 2 500 000 steps and 647 622 666 guest cycles, and the four
+120 000-step LC II 030 gates, all three x64 variants reporting the same
+icache triple 948 544 659 / 681 239 356 / 267 301 136. The 65 536-opcode
+backend sweep reports 0 divergence groups. `ctest -L m040` is 54/54
+executed in 5 279 s and `ctest -L m030` 56/56 in 11 125 s, both with
+zero soft-skips and zero failures, every asset identified by hash
+(`hdv/ref/MacOS-8.1-boot.vhd` `0a798fa4…`, HFS clean). A side note the
+tier wrote for free: `iivx_persist_etalon` passed in 607.54 s against
+its 1 800 s bound — the 2026-08-30 near-timeout at 1 795.94 s was the
+`ctest -j64` contention artifact the fixture-floor entry suspected, not
+the gate's own cost.
+
+The late-poll class is confirmed inert here rather than admitted.
+`JitBackendX64` never consults `cache040LatePollEnabled()`; its refusal
+on cache-active memory instructions with more than one poll is
+unconditional. Running the cache-armed x64 coarse lockstep with
+`POM68K_JIT_040_LATE_POLL=1` produces byte-identical output to the
+default — same 130 868 956 instructions, 1 642 blocks, 1 622 488 line
+reads. The knob's x64 half is proved harmless, not proved profitable;
+the door stays closed, and § B.1's replay precondition is satisfied
+without supplying the profitability evidence the A64 leg failed to find
+(−6.3 % wall). Logs, censuses and `LastTest.log` copies in
+`scratchpad/2026-09-04/x64leg/`.
+
+<a id="2026-09-04-scc-deadline-handoff-refused"></a>
+## 2026-09-04 (fifth) — The Q605's second SCC deadline query is real, the hand-off that removes it is bit-identical, and two ABBAs read it under the noise — so it is withdrawn
+
+The § B.1 item asked whether `Scc8530::cyclesToNextEvent()` — 246 of
+6 840 exclusive samples in the post-fast-path profile (2026-09-03
+(sixteenth)) — was being asked twice per scheduling step. It is:
+once at `Q605Memory::tick` for the flush decision and once at
+`Q605Memory::cyclesToNextEvent` for the board's bound, and
+`Cpu040::flushTicks()` calls the two back to back with nothing between
+them, so on every step that does not flush the second call recomputes
+what the first already had.
+
+The variant is a hand-off, not the memo refused on 2026-08-12: `tick()`
+publishes the bound it derived, the re-arm consumes it, and every door
+that can move the deadline drops it — `flushScc()` (which every SCC
+MMIO path and the public `scc()` accessor call before touching the
+chip; the audit found no other route to the device and no stored
+reference to it), `reset()`, and a save-state load. On a flush step
+nothing is published and the re-arm recomputes, so device calls never
+rise. Derived host state, not serialized: no snapshot version moves.
+
+Bit-identical: `jit_bench` at 6 000 frames retires the same
+2 500 002 000 machine / 10 000 039 216 core cycles to the same
+fingerprint `1fe3fabf0b913545` on both arms, and the Rogue census reads
+443/468 keys repainted, delta 5.23, halted=0 on both. Eight SCC and
+scheduler gates, the five Q605 locksteps and the two Q605 etalons that
+touch the save/load path are green with it.
+
+**Measured twice, and neither time above the floor.** Two binary-
+alternated pairs at 6 000 fixed frames, order reversed for the second
+pair, one discarded warm-up per arm, old and new built from the same
+tree with only this change: the first run (host load ~2) gives new
+28.63/29.05/27.95/33.89 s against old 28.62/28.92/28.80/32.46 s —
++0.61 %, with its last pair visibly disturbed by a rising host load;
+the re-run at load ~1.9 gives new 28.50/27.90/27.55/27.78 s against old
+29.26/27.99/27.51/28.07 s — −0.97 %, ranges overlapping in both
+directions. The item's own rule was written for this outcome: "la
+retirer si son A/B ne dépasse pas le bruit, comme le cache SCC général
+déjà refusé". The change is therefore not merged; its patch, analysis
+and both `abba.times` are archived under `scratchpad/2026-09-04/scc/`,
+and the profile's 246 samples stay attributed to the query itself, not
+to its repetition. § B.1's second bullet closes as a measured refusal.
+
+<a id="2026-09-04-v8-vram-dataspan"></a>
+## 2026-09-04 (fourth) — The LC II's framebuffer was refused by the data TLB on a stale premise, and every QuickDraw store from generated code paid a whole interpreted instruction — 4.75 million of them in one SimCity session, and not one measurable second
+
+§ B.2 opened today with a read-only architecture pass over the 68030's
+number-one cost — Moira translation plus the memory thunks, 30-34 % of
+the SimCity/Speedometer profile (2026-09-02 (sixth)) — ranking six
+slices by ceiling, confidence and blast radius (`scratchpad/2026-09-04/
+b2plan/PLAN.md`; the ATC lookup, the arm backoff, `MIN_NATIVE`, the
+`(An)+` probe order and the RMW double translation are listed there as
+already done, refused or under the floor). Its first-ranked finding is
+this one.
+
+`V8Memory::dataSpan` published RAM and ROM and nothing else, so the VRAM
+aperture `$F40000-$FC0000` was refused by `Engine::fillDtlb`,
+remembered as a tagged-null entry and served forever through the
+runtime stub. On x86-64 the 030 clamp is `maxAccessThunk030 = 1`, so a
+refused STORE does not even take a thunk: `memStore` sends it to
+`runtimeStub` and the whole instruction replays interpreted —
+`mmuExecuteStart`'s two `mmuFetchWord`s, `mmuWrite`,
+`mmuTranslateAccess` and `V8Memory::write16` — per screen word.
+`Q605Memory::dataSpan` has published its own framebuffer since
+2026-07-28 for exactly this reason, with the measurement in its comment
+("made the code generator SLOWER than the interpreter for the whole
+Finder phase"). The V8 was the outlier.
+
+**It was never a decision.** The header comment beside `dataSpan` read
+*"the 030 has no data window today … `pomJitProbeData` is 040-only"*.
+That stopped being true on 2026-08-10, when the probe grew its M68030
+branch; `dataSpan` was written on 2026-07-28 under the premise the
+comment records. The comment is corrected in the same change.
+
+Why the aperture is plain memory for that door, and why nothing new has
+to be invalidated: `read8` decodes `$F40000-$FC0000` **before**
+`if (cpu_) cpu_->flushTicks()` and returns there, and no path in the
+window carries a `stall()`, a `viaSync()`, device state, a latch, an
+auto-increment or dirty tracking — `V8Video` pulls `vram_` at raster
+time, on all five V8 profiles. A host-pointer store is byte-identical to
+the map's own and moves no peripheral flush, no IPL poll and no
+bus-time boundary. `codeSpan` keeps refusing VRAM, so no block is ever
+translated from there, `pageMap_`/`codePage_` never cover it and no
+`codeMask` is owed. A 2-byte access at `$FBFFFF` cannot straddle out:
+`memProbe` refuses `off > 4096 - n` and `$FC0000` is 4 KB-aligned.
+Invalidation is inherited whole (`pomJitMapMoved`, `pomJitAtcEvict`,
+`V8Memory::jitMapChanged()`, privilege in DTLB tag bit 31).
+
+Two mechanical consequences, both in the same change. `jitAliasCodeMask`
+is now called with a VRAM slice, and was correct only **by accident**:
+`ramIndex($F40000)` answers a valid-looking `$140000` because its
+`$800000` arm is unbounded above, and only the two `bus < $A00000`
+bounds in the alias arms stopped a false mask bit. The bound is now
+stated — only RAM space carries the 2 MB alias. And the 030 lockstep's
+`ramDiff` walks the RAM bus, so the framebuffer was the one surface its
+oracle could not see; a `vramDiff` over `V8Memory::vram()` now joins it
+at every comparison boundary (and it compares live content: the same
+budget dumps a 640×480 desktop with two pixel values). Classic II is
+unaffected by construction — the Eagle scans out of MAIN RAM at
+`$1F9A80`, which `dataSpan` already published. `lcii`, `lc`, `cclassic`
+and `mactv` are the profiles that move.
+
+**Measured, and the honest answer is that the wall does not move.** Two
+workloads, two independent ABBAs each (counterbalanced pairs after a
+discarded warm-up pair, load stamped at both ends of every run, null
+experiment first, `docs/MEASURING.md` § 1 and § 4.1): `jit_bench_lcii`
+on x64 at 2 000 and 6 000 frames reads **+0.32 %** and **−1.27 %**
+against arm spreads of 2.9 % and 3.1 %, and the SimCity census — the
+workload whose profile named this refusal in the first place
+(2026-09-02 (sixth), app-load phase) — reads **NOT A CLAIM at every
+phase, twice**: whole run −0.63 % / −0.54 %, app-load +0.97 % / +0.69 %,
+against spreads of 1.0-4.0 %. One phase read a 5.35 % regression in the
+first pass and **−3.68 % in the second** — the `POM68K_JIT_ARM_BACKOFF`
+lesson of `docs/MEASURING.md` § 2 repeating itself on a 5-second phase
+at n=3, and the reason the second pass exists. Fingerprint
+`762e9d25153dd20e` and screen hash `b7904048ca2400ad` identical across
+all twenty census runs, on x64 and on the interpreter;
+`061bb77a5e7af55f` likewise on the Speedometer census.
+
+**What DID move is the fallback census, and it moved a great deal.**
+Runtime block fallbacks over one SimCity session — each of which is,
+under the x86-64 `maxAccessThunk030 = 1` clamp, a whole instruction
+replayed interpreted — fall **17 687 131 → 12 934 865 (−26.9 %)**: boot
+−21.1 %, open-cities −27.2 %, **launch −42.4 %**, app-load −12.8 %, and
+the `idle-finder` control — sixty emulated seconds of a Finder that
+draws nothing — **exactly unchanged, to the instruction**. `[jit] dtlb
+refusals` notram falls 217 475 → 151 594 (−30.3 %) with `probe`,
+`codepage`, `pagelen` and `cache040` unmoved, and `guard replay`
+unchanged at 31 189 on the bench, so no other surface shifted. The
+QuickDraw blit `24D8 MOVE.L (A0)+,(A2)+` — 2 362 908 replays in the
+launch phase alone, 17.5 % of that phase's whole fallback census —
+**disappears from the census entirely**, together with `28C0` and
+`2AC6`. That family is what 2026-08-29 (seventh) left open as "a
+direct-write path for refused-but-plain destinations with the guard
+observed inline, a design question, not an emitter port"; this is that
+path, and here the guard is not owed at all. The Speedometer census
+agrees at its own smaller scale (−13.4 % runtime fallbacks, notram
+−22.3 %), as a far less QuickDraw-bound load should.
+
+**So the ≈ 8 % ceiling this change was ranked on is retired by
+measurement, and the two results are consistent rather than
+contradictory.** −0.85 s of median wall over 4.75 M removed replays
+prices one replay at roughly 180 ns — one interpreted 68030
+instruction and its stub round trip — which puts the whole class under
+1 % of this workload, at or below the recorded floor (10 permille,
+x86_64). The census even over-weights it: it forces
+`POM68K_JIT_HISTO=1`, so every removed fallback also removes a
+histogram increment, and it still reads null. The ranking's error is
+identifiable — it priced `V8Memory::read16/write16`'s 5.7 % profile
+self-time as though this change removed it, when it removes only the
+generated-code half; the interpreter's own word accesses, which are
+most of that 5.7 %, are untouched. That correction is written back
+into the plan's remaining slices: the same over-pricing applies to
+anything that counts a profile bucket as if the generator owned all of
+it.
+
+**The change therefore ships as a conformance and instrument change,
+not as a speed-up**, and this entry says so rather than quoting a
+counter as if it were a second. What it is worth is stated plainly:
+the V8 now honours the `dataSpan` contract `src/jit/POM68K_JIT.md` § 8
+already documents and `Q605Memory` already implements; a standing
+design question closes by measurement instead of staying open; and
+the framebuffer — the one architectural surface the 68030 lockstep's
+`ramDiff` could not see — is inside the oracle from now on.
+
+Proof: fingerprint `3de5c5ab62b4eca8` and the `icache` triple
+`571 592 391 / 443 637 308 / 127 950 916` identical to HEAD on interp,
+threaded and x64; `jit_lockstep_030_test` + `_blocks_test` + the three
+x64 030 gates (120 000 steps identical each), the same lockstep at
+three fresh cadences (`BUDGET=4093/FINE_AT=57000`, `BUDGET=260480`
+real-frame, `BUDGET=1021`) and once on `threaded`, `ctest -L m030`
+56/56, and the screen-comparing etalons `lcii_boot`, `lcii_sys7_boot`,
+`lcii_{savestate,soak,persist,launch,floppy}`, `cclassic`, `classic2`,
+`cclassic2`, `mactv`, `lc` and the JIT/interp pairs — 16/16 executed,
+none soft-skipped. Evidence in `scratchpad/2026-09-04/b2impl/`.
+
+**Standing note, unchanged by this slice**: a direct DTLB store does not
+pass through `V8Memory::observeWrite`, so
+`POM68K_JIT_LOCKSTEP_WRITE_TRACE_AT` does not see it on x86-64 (a64
+emits the observer). That was already true of RAM; it is now also true
+of VRAM, and `vramDiff` is what covers it.
+
+<a id="2026-09-04-v8-word-decode"></a>
+## 2026-09-04 (third) — The V8 word paths decoded the address twice for a pair the map cannot split
+
+`V8Memory::read16`/`write16` are 5.7 % of an LC II SimCity run
+(2026-09-02 (sixth)), and both called `ramIndex(addr)` **and**
+`ramIndex(addr + 1)` — two complete piecewise bank decodes (fixed 2 MB
+alias, motherboard window, SIMM) for a byte pair the map cannot
+separate.
+
+It cannot separate it because every boundary of that map is an **even**
+address: the alias wrap, `$800000`, `mbLoc_`/`mbLoc_+mbSize_`,
+`simmLoc_`/`simmLoc_+simmPhys_`, and the holes the same boundaries
+delimit. So an even pair always decodes through one arm and the second
+index is the first plus one — or the same hole. `ramIndexNext()` states
+that and derives it; an odd word (the 68030 permits one) and any
+geometry whose parity it cannot certify keep the full second decode, so
+the fallback IS `ramIndex`. The four geometry fields are read live on
+every call: `applyRamConfig()` rewrites them whenever the pseudo-VIA
+remaps the banks and a save-state load replaces them wholesale, and a
+cached parity would survive both.
+
+`write16` also evaluated its two alias arms and called
+`CodeGuard::note()` twice with no block map to note into. `note()`'s own
+first test is `pageMap`; hoisted to the head of the block it skips the
+arms as well.
+
+**Zero architectural surface, and that is an argument, not a hope.** The
+change returns the same bytes from the same `ram_` indices, calls the
+same device functions in the same order, and lives entirely inside one
+`read16`/`write16` invocation — it crosses no IPL poll and no
+`flushTicks()` boundary, because the RAM arm reaches neither. The
+derivation was checked exhaustively against `ramIndex(addr + 1)` over
+every model × RAM size × all 256 pseudo-VIA config bytes × every seam
+± 4 × stride and random sweeps, plus deliberately odd geometries:
+**283 059 840 comparisons, 0 mismatches** (`ramidx_check.cpp`, archived
+with the day's evidence).
+
+This slice is the first of the B.2 plan of the same day (`(fourth)`
+carries the plan and the framebuffer slice); it competes with that
+slice for the same samples, so it was never timed on its own, and the
+pair's ABBA reads null on both workloads (see (fourth)). It stands on
+zero architectural surface and the 283-million-comparison equivalence
+proof, not on a number, and it is not credited with one.
+
+Proof: fingerprint `3de5c5ab62b4eca8` and the `icache` triple identical
+to HEAD on interp, threaded and x64 at 2 000 frames;
+`jit_lockstep_030_test` + `_blocks_test` + the three x64 030 lockstep
+gates; `sst68030`; `lcii_boot_etalon`, `classic2_boot_etalon`,
+`cclassic_boot_etalon`, `cclassic2_boot_etalon`, `mactv_boot_etalon`;
+`docs_test`, `config_test` — 13/13, all executed.
+
+<a id="2026-09-04-copyback-stack-frame"></a>
+## 2026-09-04 (second) — The five copyback 040 gates never ran on x86-64: a 1 MB dispatch cache × eight stack fixtures
+
+`ctest -L asset-none` on this x86-64 host reported `jit_copyback_write_040_test`
+and its four sibling registrations (`--disabled`, `--bsr`, `--pair`,
+`--pair-disabled`) as SegFault, each in a constant 1.21 s and with no output at
+all. The constancy was the clue: `user 0m0,001s sys 0m0,003s` — the second is
+the kernel writing the core dump, and the crash itself is instantaneous.
+
+gdb puts it at `main+32`, in GCC's `-fstack-clash-protection` probe loop, on
+`lea -0x8ae000(%rsp),%r11`: `main`'s own frame is 9 104 744 bytes against an
+8 388 608-byte `ulimit -s`. The fault precedes the argv dispatch, which is why
+the two controls die identically, and stdout is block-buffered under ctest, so
+the banner never escaped the buffer either. Nothing generated, no thunk, no
+`jit::Engine` — the process died before constructing one.
+
+`sizeof(GateCpu)` is 1 137 568 bytes, of which `sizeof(jit::Engine)` is
+1 050 408: 8 × 1 137 568 + 768 = 0x8ae000 exactly. `main` keeps four fixtures
+live and the compiler inlines `checkPositionedIplPollFallback` and
+`checkJsrTargetReadTransaction` into it, summing four more into the same frame.
+
+The frame is a compile-time property of one translation unit, so the two
+hosts of the day could bisect it independently and disagree only on where
+the limit was crossed: under the product `Release` + LTO + `-march=native`
+build, the parent commit's test source links to a 6.51 MiB `main` and runs,
+and the two fixtures the (fourteenth) JSR gate added push it to 8.68 MiB;
+under `RelWithDebInfo` without LTO the inliner already sums eight fixtures at
+the parent. Both readings have the same cause, and neither is the JSR code.
+Bisected by compiling that one translation unit at each commit and reading the
+probe constant back: `f5e2e60` and `91d09ab` (2026-09-02) give 0xae000 —
+712 KB — and `62c9c63` "Land the 040 dispatch cache and cold-block eviction
+ahead of their proof" gives 0x8ae000. That commit put
+`DispatchCache<Block> dispatchCache_` — a `std::array<Entry, 65536>`, one
+megabyte inline — into `jit::Engine`, and eight stack-resident fixtures turned
+it into eight. **The 2026-09-03 (fourteenth) x64 JSR-040 transaction did not
+cause this**: the parent's test source gives the same 0x8ae000, and the two
+fixtures that entry added change nothing, GCC reusing slots the other inlined
+bodies already claimed. `62c9c63`'s own message recorded "VALIDATION OWED: the
+working session ended in a host freeze before the 030/040 locksteps, the etalon
+tier and the ABBA ran"; the last full green x86-64 run predates it.
+
+Fixed in the gate, not in the engine: all fifteen `GateCpu` fixtures move to
+dynamic storage behind a reference binding, so no use site changes and no
+assertion moves. `main`'s frame drops to nothing. Trimming the 1 MB out of
+`jit::Engine` would cure every fixture at once but sits on the 040 dispatch hot
+path landed for measured speed, and re-shaping it is a separate admission that
+owes its own measurement.
+
+With the gates finally executing, the x64 leg of the cache-active 040 JSR
+transaction is green on its first real run here — including the half that had
+only ever been reasoned about on AArch64: the post-push `/BERR` target fault
+exits native code without replay, builds a byte-identical format-$7 frame,
+preserves the pushed copyback line and commits the return address exactly once.
+
+Evidence: 5/5 copyback gates, 36/36 `^jit_`, `jit_lockstep_x64_test` 30.66 s
+and `jit_lockstep_x64_fine_test` 1.44 s executed against the Q605 ROM,
+`ctest -L asset-none` 85/85 with `gate_execution_census.py` reporting
+84 executed / 1 soft-skipped (`dir2hfs_selftest`, machfs absent) / 0 failed —
+up from 79 executed / 5 failed.
+
+The same measurement was then run over the whole built tree rather than left as
+a warning, because the copyback gate was not the only binary the dispatch cache
+had quietly loaded: disassembling every test and etalon for its largest
+stack-clash probe found seven more holding two to four fixtures at once —
+`jit_restart_write_030_test` 4 554 752 bytes, `jit_store_guard_a64_test`
+4 550 656, `savestate_040_test` 3 780 608, `savestate_030_test` 3 702 784,
+`savestate_68k_test` 3 497 984, `jit_asset_free_lockstep_test` 3 411 968,
+`savestate_v8_test` 2 416 640 — every one of them past half the limit and one
+fixture from the same death, none of them saying so. Their 154 fixtures (58, 4,
+74 `…Cpu`, plus 18 save-state `Rig`/`Machine`) take the same reference binding,
+so again no use site, assertion or address-of moves; the contract paragraph
+stays on `GateCpu` and the other seven files carry a one-line pointer to it.
+Re-scanned, no binary holds more than one fixture in automatic storage and the
+seven are gone from the ≥ 1 MB list (74 frames → 67, and the 67 that remain are
+the single-machine boot etalons at 1.14–1.26 MB, 15 % of the limit). Evidence
+after the sweep: `ctest -L asset-none` 85/85, census 84 executed / 1
+soft-skipped / 0 failed; `^jit_` 36/36 with `jit_restart_write_030_test` 1.14 s
+and `jit_asset_free_lockstep_test` 8.20 s both executed; the four save-state
+gates executed, `savestate_030_test` fully — including its Duo leg — once the
+ECFA989B ROM and `roms/pge/pge_boot.bin` were present. `jit_store_guard_a64_test`
+is not registered on x86-64 and soft-skips when run by hand, so its half of the
+sweep is compile-verified here and owes an AArch64 run.
+
+<a id="2026-09-04-sonora-inventory"></a>
+## 2026-09-04 — Sonora closes § B.4's last row: its video never touches system RAM, no swim2 board owns a DMA client, and the CACR flush retires
+
+Sonora was the item's whole remainder — never on the original list, but
+carrying the same hint, and named for the two things its siblings could
+not answer for it: the INTEGRATED SWIM2 and the AIO family. Both come
+back clean on its own source. The floppy controller is a `Swim2`, and
+`Swim2.h` already records why no swim2 board in the tree models the
+DAT1BYTE line: none of them owns an IOP or a DMA client to feed — the
+only two wirings in the whole tree are Swim1 consumers (IIfx, Quadra
+700). The AIO family turns out not to be a second video path at all:
+the LC 520, LC 550 and Color Classic II compose the SAME `SonoraMemory`
+and the same `SonoraVideo` as the LC III, differing in the Cuda MCU, the
+model longword and the monitor sense. And the Sonora's video is the one
+thing this board does better than the RBV it sat beside on that list: it
+scans a dedicated 1 MB `vram_` at $60000000 through a const accessor,
+never system RAM — and `codeSpan()` refuses that select, so no generated
+code can live behind those stores either.
+
+The rest of the walk matches its siblings: two `ram_` store sites
+(write8/write16), both calling `CodeGuard::note()` first; the 5380's
+pseudo-DMA port read and written by guest MOVEs; a polled SCC whose
+WR14-bit-2 DMA-request pin drives no controller here; the Egret — and
+the AIOs' Cuda — behind the VIA shift register, owning PRAM and its own
+MCU RAM; the ASC on its own FIFO; and no NuBus or PDS device modelled at
+all. `SonoraMemory::kJitStoreInventoryComplete` lands on that audit and
+`SonoraCpu::didChangeCACR` consults it under the same three-valued
+`POM68K_JIT_030_CACR_FLUSH` contract as V8, VASP, RBV and MSC. § B.4's
+list is now empty: every 68030 board in the tree carries its own proof.
+
+That emptiness is itself a hazard, and the gate absorbs it.
+`store_inventory_test`'s pending table would have gone from one row to
+none, quietly making its rule 5 — an unproven board keeps its flush —
+unenforceable. The table stays (it is the holding pen a new 030 board
+lands in) and a rule 6 takes over the load it dropped: the gate sweeps
+`src/` and fails any header declaring the constant without a row of its
+own. § B.4's "do not extrapolate one board's proof to another" stops
+being a rule a session must remember.
+
+Family proof on the fully rebuilt tree (x86-64, RelWithDebInfo, native
+x64 backend): the fourteen Sonora gates green under the retired default
+— the five boot etalons, the video unit, both soak/persist pairs, both
+input etalons and the JIT/interp oracle pair, census 14 executed /
+0 soft-skipped / 0 failed, 3461 s — and `lc3_boot_etalon` byte-identical
+between `POM68K_JIT_030_CACR_FLUSH=1` and the board default under BOTH
+the native x64 engine and the product default (one sha256 across all
+four runs, `9f5a89d8…`). Audit and gate logs in
+`scratchpad/2026-09-04/sonora/`.
 
 <a id="2026-09-03-m68hc05-rom-fast-path"></a>
 ## 2026-09-03 (sixteenth) — The 68HC05 ROM fetch stops crossing the whole internal map: −1.6 % on the measured Q605 pump workload

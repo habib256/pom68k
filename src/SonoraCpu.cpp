@@ -12,6 +12,8 @@ SonoraCpu::SonoraCpu(SonoraMemory& mem, const jit::ResolvedConfig& jitConfig,
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
     if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
+    if (cpuConfig.cacr030Flush)
+        cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
     armIcacheOverlay(icacheMiss_);
 }
 
@@ -25,7 +27,17 @@ void SonoraCpu::hardReset() {
 
 void SonoraCpu::didChangeCACR(moira::u32 value) {
     pomInvalidateIcache030(value);         // CI whole / CEI selected longword
-    jit_.flushAll();                       // SMC hint, as on every wrapper
+    // The CACR SMC hint, retired on this board the way the V8 retired it:
+    // SonoraMemory::kJitStoreInventoryComplete documents (and
+    // store_inventory_test pins) that every store into RAM passes
+    // CodeGuard::note(), so the drop-all-generated-code flush on the CI/CEI
+    // strobes protected nothing CodeGuard does not already catch precisely.
+    // POM68K_JIT_030_CACR_FLUSH keeps its three values here as on the V8:
+    // unset = the board's own answer, 1 = force the hint back on (the
+    // measurement instrument), 0 = force it off.
+    const bool flush = cacrFlushPolicy_ < 0
+        ? !SonoraMemory::kJitStoreInventoryComplete : cacrFlushPolicy_ != 0;
+    if ((value & 0x0C) && flush) jit_.flushAll();
 }
 
 void SonoraCpu::runCycles(moira::i64 n) {

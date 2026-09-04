@@ -1,0 +1,9 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+[jit_lockstep] disk=hdv/ref/MacOS-8.1-boot.vhd
+[jit_lockstep] rom=roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM backend=x86-64 steps=1000000
+[jit_lockstep] budget=256 cycle(s) per comparison
+[jit_lockstep] OK — 1000000 steps identical
+  jit instrs 130868956 · interp fallback 1140636 · blocks 1642 compiled / 14816130 replayed · window 155074 armed (29535 refused) · dtlb 0 filled
+  native 040 D-cache line reads 1622488
+  native 040 D-cache copyback writes 182452

@@ -1,0 +1,7 @@
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /home/gistarcade/src/pom68k/.claude/worktrees/agent-a56c2e7843281856d/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+mode 512x384 depth 3; menu bar black 0.05 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2036
+PASSED — Macintosh LC III booted to the Finder

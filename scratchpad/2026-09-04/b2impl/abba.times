@@ -1,0 +1,68 @@
+# POM68K B.2 slices 1+2 A/B — 2026-09-04T20:07:00+04:00
+# host: Linux 6.14.0-37-generic x86_64  threads=16  load1(start)=1.16
+# A = base (unmodified HEAD): /tmp/claude-1000/-home-gistarcade-src-pom68k/742ac6a0-9a99-4ebe-8701-713deafa5293/scratchpad/b2impl/base-src/build-base/jit_bench_lcii
+# B = new  (slices 1+2):      /home/gistarcade/src/pom68k/.claude/worktrees/agent-aa9179cca4f63271d/build/jit_bench_lcii
+# engine: POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=x64 BLOCKS=1 HOT=1
+
+== budget 2000 frames ==
+-- null experiment (POM68K_BENCH_NULL=1, COMPARE=5) --
+    interp   median  17.63s  (17.59-17.66, spread 0.4%)
+    null(A)  median  17.62s  (17.61-17.73, spread 0.7%)
+    delta -0.0%  ·  floor 1.0% (arm spreads 0.4/0.7%, host 1.0%)  ·  5 repeats ABBA
+    fp=3de5c5ab62b4eca8  ·  built Sep  4 2026 15:50:21  ·  load 1.75 1.27 1.48 -> load 2.49 1.74 1.62
+    NULL EXPERIMENT: nothing differed between the arms, so 0.7% is this host's MEASURED floor,
+    not a result. Record 7 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+2000	A	warmup	6.16	3de5c5ab62b4eca8
+2000	B	warmup	6.22	3de5c5ab62b4eca8
+-- ABBA (5 pairs, warm-up pair discarded) --
+2000	A	p0	6.14	3de5c5ab62b4eca8
+2000	B	p0	6.14	3de5c5ab62b4eca8
+2000	B	p1	6.24	3de5c5ab62b4eca8
+2000	A	p1	6.17	3de5c5ab62b4eca8
+2000	A	p2	6.17	3de5c5ab62b4eca8
+2000	B	p2	6.24	3de5c5ab62b4eca8
+2000	B	p3	6.19	3de5c5ab62b4eca8
+2000	A	p3	6.24	3de5c5ab62b4eca8
+2000	A	p4	6.32	3de5c5ab62b4eca8
+2000	B	p4	6.19	3de5c5ab62b4eca8
+
+== budget 6000 frames ==
+-- null experiment (POM68K_BENCH_NULL=1, COMPARE=5) --
+    interp   median  53.02s  (52.74-54.42, spread 3.2%)
+    null(A)  median  52.95s  (52.71-55.14, spread 4.6%)
+    delta -0.1%  ·  floor 4.6% (arm spreads 3.2/4.6%, host 1.0%)  ·  5 repeats ABBA
+    fp=cfb184b6faddabec  ·  built Sep  4 2026 15:50:21  ·  load 2.07 1.89 1.71 -> load 2.92 2.37 2.03
+    NULL EXPERIMENT: nothing differed between the arms, so 4.6% is this host's MEASURED floor,
+    not a result. Record 46 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+    HOST NOISIER THAN POLICY: 4.6% measured against a recorded 1.0%. Either this host is busy (see the load above)
+    or the recorded floor is stale — do not measure anything else until that is settled.
+6000	A	warmup	17.21	cfb184b6faddabec
+6000	B	warmup	17.05	cfb184b6faddabec
+-- ABBA (5 pairs, warm-up pair discarded) --
+6000	A	p0	17.16	cfb184b6faddabec
+6000	B	p0	17.36	cfb184b6faddabec
+6000	B	p1	16.95	cfb184b6faddabec
+6000	A	p1	17.38	cfb184b6faddabec
+6000	A	p2	17.37	cfb184b6faddabec
+6000	B	p2	17.27	cfb184b6faddabec
+6000	B	p3	16.99	cfb184b6faddabec
+6000	A	p3	17.69	cfb184b6faddabec
+6000	A	p4	17.69	cfb184b6faddabec
+6000	B	p4	17.16	cfb184b6faddabec
+# load1(end)=2.54
+
+=== medians (warm-up pair excluded) ===
+6000|A  n=5  median=17.38s  [17.16-17.69]  spread=30.5 permille
+6000|B  n=5  median=17.16s  [16.95-17.36]  spread=23.9 permille
+2000|A  n=5  median=6.17s  [6.14-6.32]  spread=29.2 permille
+2000|B  n=5  median=6.19s  [6.14-6.24]  spread=16.2 permille
+
+=== delta (B = slices 1+2, A = unmodified HEAD) ===
+frames=6000  A=17.38s  B=17.16s  delta=-12.7 permille (-1.27 %)  widest noise=30.5 permille  ->  NOT A CLAIM
+frames=2000  A=6.17s  B=6.19s  delta=+3.2 permille (+0.32 %)  widest noise=29.2 permille  ->  NOT A CLAIM
+
+=== fingerprints (must be ONE value per budget, both arms) ===
+6000|A: cfb184b6faddabec
+6000|B: cfb184b6faddabec
+2000|A: 3de5c5ab62b4eca8
+2000|B: 3de5c5ab62b4eca8
