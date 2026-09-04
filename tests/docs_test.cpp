@@ -757,8 +757,19 @@ int main() {
             1, av, emptyValues);
         check(emptySpelling.network().appleTalk &&
                   emptySpelling.devices().audio &&
-                  emptySpelling.devices().driveSounds,
+                  emptySpelling.devices().driveSounds &&
+                  emptySpelling.core().bus.q605SccEventDriven &&
+                  emptySpelling.core().bus.q605ScsiEventDriven,
               "typed configuration preserves empty-value default-on semantics");
+
+        pom68k::StartupSnapshot disabledQ605Scheduler{
+            {"POM68K_Q605_EVENT_SCC", "0"},
+            {"POM68K_Q605_EVENT_SCSI", "0"}};
+        auto schedulerOptOut = pom68k::app::RuntimeConfig::parse(
+            1, av, disabledQ605Scheduler);
+        check(!schedulerOptOut.core().bus.q605SccEventDriven &&
+                  !schedulerOptOut.core().bus.q605ScsiEventDriven,
+              "Q605 scheduler defaults remain explicitly reversible");
 
         const auto savedEnvironment = [](const char* key) {
             const char* value = std::getenv(key);
@@ -1311,19 +1322,21 @@ int main() {
         std::ifstream f(manifest);
         std::string line;
         std::getline(f, line); // header
-        // Seven columns since 2026-08-17: `slots` and `slots_src` carry what
-        // a gate COSTS to run, so `ctest -j` can schedule the suite instead
-        // of it being sequential because nobody knows.
-        check(line == "name\tassets\thost\tscope\ttier\tslots\tslots_src",
-              "gate manifest has the versioned seven-column schema");
+        // Eight columns since 2026-09-03: configuration membership is a
+        // manifest fact, not something inferred from the current gate count.
+        // This lets a PRODUCT_LLE configure prove its larger registry while
+        // still deriving the default registry documented everywhere else.
+        check(line == "name\tassets\thost\tscope\ttier\tconfig\tslots\tslots_src",
+              "gate manifest has the versioned eight-column schema");
         while (std::getline(f, line)) {
             std::vector<std::string> cells;
             std::stringstream ss(line);
             std::string cell;
             while (std::getline(ss, cell, '\t')) cells.push_back(cell);
-            if (cells.size() == 7)
+            if (cells.size() == 8)
                 gateManifest[cells[0]] = {cells[1], cells[2], cells[3],
-                                          cells[4], cells[5], cells[6]};
+                                          cells[4], cells[5], cells[6],
+                                          cells[7]};
         }
     }
     check(gateManifest.size() == gates.size(),
@@ -1332,6 +1345,7 @@ int main() {
     const std::set<std::string> hostKinds{"any", "native", "a64", "x64"};
     const std::set<std::string> scopeKinds{"component", "engine", "profile", "repository"};
     const std::set<std::string> tierKinds{"daily", "platform", "full"};
+    const std::set<std::string> configKinds{"all", "product-lle"};
     // `assumed` means nobody has measured this gate on this host, and it is
     // scheduled as one slot. It must therefore NEVER carry more than one:
     // a multi-slot claim that came from nowhere would quietly serialize the
@@ -1339,20 +1353,20 @@ int main() {
     const std::set<std::string> slotSources{"measured", "assumed"};
     std::vector<std::string> invalidManifest;
     for (const auto& [name, cells] : gateManifest) {
-        if (!gates.count(name) || cells.size() != 6 ||
+        if (!gates.count(name) || cells.size() != 7 ||
             !assetKinds.count(cells[0]) || !hostKinds.count(cells[1]) ||
             !scopeKinds.count(cells[2]) || !tierKinds.count(cells[3]) ||
-            !slotSources.count(cells[5])) {
+            !configKinds.count(cells[4]) || !slotSources.count(cells[6])) {
             invalidManifest.push_back(name);
             continue;
         }
-        const int slots = std::atoi(cells[4].c_str());
-        if (slots < 1 || (cells[5] == "assumed" && slots != 1))
+        const int slots = std::atoi(cells[5].c_str());
+        if (slots < 1 || (cells[6] == "assumed" && slots != 1))
             invalidManifest.push_back(name);
     }
     check(invalidManifest.empty(),
           invalidManifest.empty()
-              ? "every gate manifest row has valid assets/host/scope/tier/slots"
+              ? "every gate manifest row has valid assets/host/scope/tier/config/slots"
               : "invalid gate manifest rows: " + [&] {
                     std::string out;
                     for (const auto& name : invalidManifest) out += name + " ";
@@ -1492,6 +1506,41 @@ int main() {
                     "the documented union totals are held to account\n",
                     absent.size());
 
+    // PRODUCT_LLE is an opt-in superset, not a replacement definition of the
+    // repository's default registry. Its manifest marks the eight gates that
+    // exist only in that configure. The shared oracle/boot gates also gain
+    // qualification labels there; remove those labels from the derived
+    // default view before checking the project-wide documentation.
+    const bool productLleConfigure = std::any_of(
+        gateManifest.begin(), gateManifest.end(), [](const auto& entry) {
+            return entry.second.size() == 7 &&
+                   entry.second[4] == "product-lle";
+        });
+    std::map<std::string, std::string> registryGates = gates;
+    std::map<std::string, std::vector<std::string>> registryManifest =
+        gateManifest;
+    for (const auto& [name, cells] : gateManifest) {
+        if (cells[4] == "product-lle") {
+            registryGates.erase(name);
+            registryManifest.erase(name);
+        }
+    }
+    if (productLleConfigure) {
+        for (auto& [name, labels] : registryGates) {
+            (void)name;
+            std::stringstream in(labels);
+            std::string label, cleaned;
+            while (std::getline(in, label, ',')) {
+                if (label == "product" || label == "lle" ||
+                    label == "a64-oracle")
+                    continue;
+                if (!cleaned.empty()) cleaned += ',';
+                cleaned += label;
+            }
+            labels = cleaned;
+        }
+    }
+
     // How many gates `ctest -L <label>` selects, counting the ones this host
     // cannot register. -L is a REGEX over each label, not an equality test:
     // `jit` therefore also selects `jit-fast`. The old whole-field compare
@@ -1505,11 +1554,14 @@ int main() {
             while (std::getline(ss, one, ','))
                 if (one.find(label) != std::string::npos) { n++; return; }
         };
-        for (const auto& [name, labels] : gates) { (void)name; scan(labels); }
+        for (const auto& [name, labels] : registryGates) {
+            (void)name;
+            scan(labels);
+        }
         for (const auto& [name, labels] : absent) { (void)name; scan(labels); }
         return n;
     };
-    const int totalGates = int(gates.size() + absent.size());
+    const int totalGates = int(registryGates.size() + absent.size());
 
     // TODO.md is the active backlog, not a second registry or a historical
     // journal. STATUS.md is generated from the manifests and owns the gate
@@ -1620,7 +1672,7 @@ int main() {
         check(hostPhrase != nullptr,
               std::string("the docs state a registry total for ") + hostName);
         if (hostPhrase) {
-            const int here = int(gates.size());
+            const int here = int(registryGates.size());
             for (const char* file : { "CLAUDE.md", "TODO.md", "README.md",
                                       "DEV.md" }) {
                 const std::string path = testasset::find(file);
@@ -1762,7 +1814,10 @@ int main() {
                 expectedUnion[one] = 0;
             }
         };
-        for (const auto& [name, labels] : gates) { (void)name; collectBase(labels); }
+        for (const auto& [name, labels] : registryGates) {
+            (void)name;
+            collectBase(labels);
+        }
         for (const auto& [name, labels] : absent) { (void)name; collectBase(labels); }
         for (auto& [label, n] : expectedUnion) n = countLabel(label);
 
@@ -1822,25 +1877,25 @@ int main() {
         } else if (h != std::string::npos) {
             const auto registered = numbersBefore(hostSec, " gates registered");
             check(registered.size() == 1 &&
-                      registered.front() == int(gates.size()),
+                      registered.front() == int(registryGates.size()),
                   "STATUS.md says " +
                       (registered.empty() ? std::string("?")
                                           : std::to_string(registered.front())) +
                       " gates registered on " + statusHost + "; ctest has " +
-                      std::to_string(gates.size()));
+                      std::to_string(registryGates.size()));
             const auto missing = numbersBefore(hostSec, " union gates");
             check(missing.size() == 1 && missing.front() == int(absent.size()),
                   "STATUS.md absent-here count matches the absent roster");
 
             // Dimension rows, "| dim | value | N |", against the manifest.
             std::map<std::string, int> expectedDims, statedDims;
-            for (const auto& [name, cells] : gateManifest) {
+            for (const auto& [name, cells] : registryManifest) {
                 (void)name;
                 expectedDims["assets|" + cells[0]]++;
                 expectedDims["host|" + cells[1]]++;
                 expectedDims["scope|" + cells[2]]++;
                 expectedDims["tier|" + cells[3]]++;
-                expectedDims["slots_src|" + cells[5]]++;
+                expectedDims["slots_src|" + cells[6]]++;
             }
             std::stringstream ss(hostSec);
             std::string line;
@@ -1867,6 +1922,128 @@ int main() {
                       : "STATUS.md " + std::string(statusHost) +
                             " dimension table drifted from the manifest — "
                             "rerun tools/status_md.py");
+        }
+
+        // The opt-in product configure owns one additional section. A normal
+        // configure preserves it; PRODUCT_LLE re-derives and checks every
+        // count from its full roster, including the explicit config column.
+        const std::string productHead = "## PRODUCT_LLE on aarch64";
+        const size_t p = status.find(productHead);
+        check(p != std::string::npos,
+              "STATUS.md carries the PRODUCT_LLE registry section");
+        const size_t pEnd = status.find("\n## ",
+                                        p == std::string::npos ? 0 : p);
+        const std::string productSec = p == std::string::npos ? "" :
+            status.substr(p, pEnd == std::string::npos ? std::string::npos
+                                                       : pEnd - p);
+        check(productSec.find("_Not yet generated") == std::string::npos,
+              "STATUS.md PRODUCT_LLE registry has been materialized");
+        if (productLleConfigure && p != std::string::npos) {
+            const int productTotal = int(gates.size() + absent.size());
+            const auto productUnionTotal =
+                numbersBefore(productSec, " gates.");
+            check(productUnionTotal.size() == 1 &&
+                      productUnionTotal.front() == productTotal,
+                  "STATUS.md PRODUCT_LLE union total matches its configure");
+            const auto productRegistered =
+                numbersBefore(productSec, " gates registered");
+            check(productRegistered.size() == 1 &&
+                      productRegistered.front() == int(gates.size()),
+                  "STATUS.md PRODUCT_LLE registered total matches its configure");
+
+            auto productCountLabel = [&](const std::string& wanted) {
+                int n = 0;
+                auto scan = [&](const std::string& labels) {
+                    std::stringstream ss(labels);
+                    for (std::string one; std::getline(ss, one, ','); ) {
+                        if (one.find(wanted) != std::string::npos) {
+                            ++n;
+                            return;
+                        }
+                    }
+                };
+                for (const auto& [name, labels] : gates) {
+                    (void)name;
+                    scan(labels);
+                }
+                for (const auto& [name, labels] : absent) {
+                    (void)name;
+                    scan(labels);
+                }
+                return n;
+            };
+            std::map<std::string, int> expectedProductUnion;
+            auto collectProduct = [&](const std::string& labels) {
+                std::stringstream ss(labels);
+                for (std::string one; std::getline(ss, one, ','); ) {
+                    if (one.empty() || one.rfind("asset-", 0) == 0 ||
+                        one.rfind("host-", 0) == 0 ||
+                        one.rfind("scope-", 0) == 0 ||
+                        one.rfind("tier-", 0) == 0)
+                        continue;
+                    expectedProductUnion[one] = 0;
+                }
+            };
+            for (const auto& [name, labels] : gates) {
+                (void)name;
+                collectProduct(labels);
+            }
+            for (const auto& [name, labels] : absent) {
+                (void)name;
+                collectProduct(labels);
+            }
+            for (auto& [label, n] : expectedProductUnion)
+                n = productCountLabel(label);
+
+            std::map<std::string, int> statedProductUnion;
+            std::stringstream productLines(productSec);
+            for (std::string line; std::getline(productLines, line); ) {
+                if (line.rfind("| `", 0) != 0) continue;
+                const size_t endLabel = line.find('`', 3);
+                if (endLabel == std::string::npos) continue;
+                const std::string label = line.substr(3, endLabel - 3);
+                if (label == "ctest -L") continue;
+                const size_t digit = line.find_first_of("0123456789", endLabel);
+                if (digit != std::string::npos)
+                    statedProductUnion[label] =
+                        std::atoi(line.c_str() + digit);
+            }
+            check(statedProductUnion == expectedProductUnion,
+                  "STATUS.md PRODUCT_LLE label table matches its configure");
+
+            std::map<std::string, int> expectedProductDims,
+                                             statedProductDims;
+            for (const auto& [name, cells] : gateManifest) {
+                (void)name;
+                expectedProductDims["assets|" + cells[0]]++;
+                expectedProductDims["host|" + cells[1]]++;
+                expectedProductDims["scope|" + cells[2]]++;
+                expectedProductDims["tier|" + cells[3]]++;
+                expectedProductDims["config|" + cells[4]]++;
+                expectedProductDims["slots_src|" + cells[6]]++;
+            }
+            std::stringstream productRows(productSec);
+            for (std::string line; std::getline(productRows, line); ) {
+                if (line.rfind("| ", 0) != 0 ||
+                    line.find("| dimension") == 0)
+                    continue;
+                std::vector<std::string> cells;
+                std::stringstream row(line);
+                for (std::string cell; std::getline(row, cell, '|'); ) {
+                    while (!cell.empty() && cell.front() == ' ')
+                        cell.erase(0, 1);
+                    while (!cell.empty() && cell.back() == ' ')
+                        cell.pop_back();
+                    if (!cell.empty()) cells.push_back(cell);
+                }
+                if (cells.size() != 3 || cells[0] == "dimension" ||
+                    cells[0].find_first_not_of("- ") == std::string::npos)
+                    continue;
+                statedProductDims[cells[0] + "|" + cells[1]] =
+                    std::atoi(cells[2].c_str());
+            }
+            check(statedProductDims == expectedProductDims,
+                  "STATUS.md PRODUCT_LLE dimension table matches its manifest");
         }
     }
 

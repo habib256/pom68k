@@ -13,9 +13,9 @@
 //    information for bytes we emitted ourselves, so a Moira fault thrown
 //    through a JIT frame would reach std::terminate, not a handler. Every
 //    call out of generated code therefore goes to a `noexcept` thunk that
-//    reports failure as a return value, and every failure is taken at an
-//    instruction boundary with NOTHING committed — the interpreter then
-//    re-runs that instruction and faults exactly as it always did.
+//    reports failure as a return value. Ordinary failures replay from a
+//    boundary with NOTHING committed. Cache-active 040 JSR is the exception:
+//    its thunk processes the post-push fault and takes the non-replay exit.
 //
 // 2. GUEST REGISTERS STAY IN MEMORY. The 68k's byte and word operations
 //    leave the upper bits of the destination alone; x86's 8- and 16-bit
@@ -45,6 +45,7 @@
 #include "../JitConfig.h"
 #include "../JitCost.h"
 #include "../JitEaPlan.h"
+#include "../JitRuntime.h"
 #include "X64Asm.h"
 
 #include "Moira.h"
@@ -459,6 +460,7 @@ private:
     // instructions — still nothing against returning to the engine.
     void leaveToDynamic();
     bool emitSubroutine(size_t i);   // JSR / BSR / RTS
+    void emitJsr040Transaction(size_t, uint16_t, unsigned, bool, const ControlFlowPlan&);
     void chargeCycles(int cycles);
     uint64_t accessPcWords(size_t i) const;
     void spillClock() { a_.movMR(Sz::Q, at(L_.clock), kClk); }
@@ -1066,16 +1068,6 @@ bool Emitter::emitSubroutine(size_t i) {
 
     if (sem.operation != SemanticOp::JumpSubroutine || !control.valid ||
         !control.pushesReturnAddress) return false;
-    // execJsr performs one explicit program-space word read at the target
-    // AFTER pushing the return address. With the architectural 040 cache
-    // live that read may fill/replace I-cache state, stall on the bus or
-    // fault. A generated push followed by a fallible helper cannot replay
-    // the pristine instruction, while moving the read before the push would
-    // change the observable cache/bus order. Keep this cache-active subset
-    // on Moira until the two-access transaction has an exact commit door.
-    // The cacheless production path and the proved 030 transactional path
-    // retain their native JSR coverage.
-    if (!L_.is030 && L_.cache040Live) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     const int mode = sem.eaMode, reg = sem.eaReg;
     Ea ea;
@@ -1131,6 +1123,12 @@ bool Emitter::emitSubroutine(size_t i) {
     if (!constant) {
         a_.testRI(Sz::L, RAX, 1);
         a_.jcc(Cc::NE, runtimeStub(i));
+    }
+
+    if (!L_.is030 && L_.cache040Live) {
+        if (fullIndirect) return false;
+        emitJsr040Transaction(i, op, opCost, constant, control);
+        return true;
     }
 
     if (L_.is030) {
@@ -1224,6 +1222,8 @@ bool Emitter::emitSubroutine(size_t i) {
     else          leaveToDynamic();
     return true;
 }
+
+#include "JitBackendX64Jsr040.inl"
 
 void Emitter::call(void* fn) {
     // Helpers execute against the canonical Moira object. Publish a deferred

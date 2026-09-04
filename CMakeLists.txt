@@ -302,7 +302,7 @@ set_property(CACHE POM68K_JIT_BACKENDS PROPERTY STRINGS auto threaded x64 a64)
 set(POM68K_JIT_SOURCES
     src/jit/JitEngine.cpp src/jit/JitEngineCensus.cpp src/jit/JitBlockCache.cpp src/jit/JitShiftVersions.cpp # layer 1
     src/jit/JitBackend.cpp       # layer 2 — backend registry and selection
-    src/jit/JitCodeBuffer.cpp    # portable W^X memory for code generators
+    src/jit/JitCodeBuffer.cpp src/jit/JitRuntime.cpp # W^X + shared runtime doors
     src/jit/backends/JitBackendThreaded.cpp   # the portable floor
 )
 set(POM68K_JIT_DEFS "")

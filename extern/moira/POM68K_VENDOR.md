@@ -22,7 +22,7 @@ memory-contract work and the peripheral-phase alignment pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **88** (56 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| distinct `pom*` extension identifiers | **89** (57 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **398** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
 | patch groups in the inventory below | **32** | this file |
@@ -1400,6 +1400,10 @@ marked `POM68K JIT`, all inert until armed.
    040, full-index memory-indirect JSR/JMP use the ordinary
    `read<PROG, Word>` funnel so ITT/ATC/cache/fault behaviour stays the
    interpreter's rather than becoming a backend approximation.
+   `pomJitJsr040(instructionPc, returnAddress, target, opcode)`
+   (2026-09-03) owns the cache-active JSR's ordered push plus target read.
+   A target fault is processed inside that door because the completed push
+   makes pristine replay architecturally impossible.
 
 10. **`Moira.h` — `pomJitLayout()`, `pomJitSync(int)`, `pomJitSimpleIpl()`.**
     The register file stays private; `pomJitLayout()` hands back the byte

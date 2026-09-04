@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 408 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 413 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,9 +9,9 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 73 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 42 |
-| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 31 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 41 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 43 |
+| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 42 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 12 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 10 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 80 |
+| [Cross-cutting](#cross-cutting) | 82 |
 
 ---
 
@@ -143,6 +143,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-01 (fourth)** — [Cache-active 68040 JSR preserves its ordered target-word read through exact replay](CHANGELOG.md#2026-09-01-jit-cache040-jsr-target-read)
 - **2026-09-01 (sixth)** — [Cold 040 cache misses replay the instruction start, and native hits preserve ATC replacement state](CHANGELOG.md#2026-09-01-jit-cache040-instruction-start)
 - **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](CHANGELOG.md#2026-09-02-040-dispatch-profile)
+- **2026-09-03 (fourteenth)** — [Cache-active 68040 JSR becomes an ordered native transaction instead of a pristine replay](CHANGELOG.md#2026-09-03-jit-cache040-jsr-transaction)
 - **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](CHANGELOG.md#2026-09-03-profile-macos-leg)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
@@ -178,6 +179,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-25** — [The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally](CHANGELOG.md#2026-08-25-iivx-command-settle)
 - **2026-08-25 (sixth)** — [The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot](CHANGELOG.md#2026-08-25-pge-adb-retired)
 - **2026-09-03 (eleventh)** — [The MSC closes B.4's original list: the PG&E owns no bus, and the Duo's CACR flush retires](CHANGELOG.md#2026-09-03-msc-inventory)
+- **2026-09-03 (sixteenth)** — [The 68HC05 ROM fetch stops crossing the whole internal map: −1.6 % on the measured Q605 pump workload](CHANGELOG.md#2026-09-03-m68hc05-rom-fast-path)
 
 ## Storage — SCSI, IWM, SWIM, media
 
@@ -222,6 +224,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-27 (sixteenth)** — ["7.5.5 refuses a hot GCR floppy on SWIM2" was a modal alert nobody had dismissed](CHANGELOG.md#2026-08-27-hotfloppy)
 - **2026-08-28 (sixth)** — [The AIO family gets its beyond-boot pair, and the reference volume's French layout ate the first close-all](CHANGELOG.md#2026-08-28-aio-beyond-boot)
 - **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](CHANGELOG.md#2026-08-31-speedometer-jsr-absolute-long)
+- **2026-09-03 (fifteenth)** — [The stale third-peripheral task exposes a real regression: promoted Q605 SCC/53C96 scheduling had silently become opt-in](CHANGELOG.md#2026-09-03-q605-scheduler-default-restored)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -470,4 +473,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (twelfth)** — [The ratchet's question is answered: block residency leaves JitEngine.cpp as its own unit](CHANGELOG.md#2026-09-02-blockcache-extracted)
 - **2026-09-03 (fifth)** — [The ASan leg's first all-green night, the first leak census is read clean, and the step goes blocking](CHANGELOG.md#2026-09-03-leak-census-armed)
 - **2026-09-03 (seventh)** — [B.1 slice 1: the IR learns where the 040's polls sit, the late-poll class goes native — and measures slower, so the door ships closed](CHANGELOG.md#2026-09-03-positioned-polls)
+- **2026-09-03 (thirteenth)** — [The unrecoverable four-image proof gap stops sequencing work, without becoming green evidence](CHANGELOG.md#2026-09-03-proof-gap-accepted)
+- **2026-09-03 (twelfth)** — [PRODUCT_LLE becomes a first-class registry: default remains 240, product is 248, and both configurations prove the same STATUS](CHANGELOG.md#2026-09-03-product-lle-registry)
 

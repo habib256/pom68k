@@ -723,6 +723,14 @@ public:
     // terminal irc holds). A native JSR reproduces it at run time through
     // this door, exactly as read<PROG> would; false = it would fault.
     bool pomJitReadProg(u32 addr, u16 &out) noexcept;
+    // Cache-active 68040 JSR commit door. The target has already been
+    // computed by generated code, but the return-address push and the
+    // subsequent program-space target read are one ordered transaction:
+    // a target fault observes the completed push and must be processed here,
+    // never replayed from a pristine JIT boundary. Returns false only after
+    // the architectural exception has been fully processed.
+    bool pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
+                      u16 opcode) noexcept;
     void pomJitCache040Publish(u32 logical, int bytes, bool write);
 
     // Charges `cycles` to the clock THROUGH the machine's sync(), which is

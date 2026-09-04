@@ -14,7 +14,7 @@ verify the artifact instead of chasing sentences.
 Inputs (all written by CMake into the build directory):
   pom68k_gates.tsv          registered gates + their labels, this host
   pom68k_gates_absent.tsv   union gates this host cannot register
-  pom68k_gate_manifest.tsv  assets/host/scope/tier/slots per gate, this host
+  pom68k_gate_manifest.tsv  assets/host/scope/tier/config/slots per gate
 
 The registry has MORE THAN ONE size (the native-backend locksteps register
 only on their own host), so STATUS.md is split the same way the checks are:
@@ -24,6 +24,9 @@ only on their own host), so STATUS.md is split the same way the checks are:
   * each `## Registered on <host>` section is owned by the host it names
     and preserved verbatim when another host regenerates — the same
     division of labour as `gate_resource_budgets.tsv`.
+  * the PRODUCT_LLE section is regenerated only from that opt-in configure;
+    its manifest marks the eight extra gates, so the default view can still
+    be derived and checked from the larger registry.
 
 Runs are recorded, never derived: `--record-run` appends one row from a
 `LastTest.log` using `gate_execution_census.py`'s executed/soft-skipped
@@ -54,6 +57,10 @@ POLICY_PREFIXES = ("asset-", "host-", "scope-", "tier-")
 # The two hosts that carry the project's proof today. A third architecture
 # gets its section the first time the tool runs there.
 KNOWN_HOSTS = ("aarch64", "x86_64")
+
+# PRODUCT_LLE adds these labels to shared default gates as qualification
+# metadata. Remove them when deriving the default view from that configure.
+PRODUCT_QUALIFICATION_LABELS = {"product", "lle", "a64-oracle"}
 
 
 def normalize_host(build_dir=None):
@@ -102,7 +109,7 @@ def read_labelled(path):
 
 
 def read_manifest(path):
-    """name -> {assets, host, scope, tier, slots, slots_src}."""
+    """name -> {assets, host, scope, tier, config, slots, slots_src}."""
     out = {}
     with open(path, encoding="utf-8") as f:
         header = f.readline().rstrip("\n").split("\t")
@@ -127,7 +134,7 @@ def union_table(union):
     return "\n".join(["| `ctest -L` | selects |", "|---|---|"] + rows)
 
 
-def host_section(host, gates, absent, manifest):
+def host_section(host, gates, absent, manifest, include_config=False):
     absent_names = ", ".join(f"`{n}`" for n in sorted(absent)) or "—"
     lines = [
         f"{len(gates)} gates registered; {len(absent)} union gates cannot "
@@ -136,7 +143,11 @@ def host_section(host, gates, absent, manifest):
         "| dimension | value | gates |",
         "|---|---|---|",
     ]
-    for dim in ("assets", "host", "scope", "tier", "slots_src"):
+    dimensions = ["assets", "host", "scope", "tier"]
+    if include_config:
+        dimensions.append("config")
+    dimensions.append("slots_src")
+    for dim in dimensions:
         counts = {}
         for cells in manifest.values():
             counts[cells[dim]] = counts.get(cells[dim], 0) + 1
@@ -150,6 +161,35 @@ def host_section(host, gates, absent, manifest):
         "gate is scheduled as one slot because nobody has measured it here).",
     ]
     return "\n".join(lines)
+
+
+def default_view(gates, manifest):
+    """Derive the normal registry from either a normal or PRODUCT_LLE build."""
+    product_lle = any(cells.get("config") == "product-lle"
+                      for cells in manifest.values())
+    names = {name for name, cells in manifest.items()
+             if cells.get("config") != "product-lle"}
+    default_gates = {
+        name: [label for label in labels
+               if not product_lle or
+               label not in PRODUCT_QUALIFICATION_LABELS]
+        for name, labels in gates.items() if name in names
+    }
+    default_manifest = {name: cells for name, cells in manifest.items()
+                        if name in names}
+    return default_gates, default_manifest
+
+
+def product_section(host, gates, absent, manifest):
+    union = dict(gates)
+    union.update(absent)
+    return "\n".join([
+        f"Configuration union across hosts: {len(union)} gates.",
+        "",
+        union_table(union),
+        "",
+        host_section(host, gates, absent, manifest, include_config=True),
+    ])
 
 
 def parse_sections(text):
@@ -168,18 +208,28 @@ def parse_sections(text):
     return sections
 
 
-RUN_HEADER = "| start | host | in log | executed | soft-skipped | failed | note |"
+RUN_HEADER = ("| start | host | configuration | in log | executed | "
+              "soft-skipped | failed | note |")
 
 
 def existing_run_rows(sections):
     body = sections.get("Recorded runs", "")
     rows = [l for l in body.splitlines()
-            if l.startswith("| ") and l != RUN_HEADER
+            if l.startswith("| ") and not l.startswith("| start | host |")
             and not re.match(r"^\|[-| ]+\|$", l)]
-    return rows
+    migrated = []
+    for row in rows:
+        # The configuration column became explicit on 2026-09-03. Historical
+        # rows all predate PRODUCT_LLE recording and therefore mean default.
+        parts = row.split(" | ", 3)
+        if len(parts) == 4 and parts[2] not in ("default", "product-lle"):
+            row = (f"{parts[0]} | {parts[1]} | default | {parts[2]} | "
+                   f"{parts[3]}")
+        migrated.append(row)
+    return migrated
 
 
-def record_run(log_path, host, note):
+def record_run(log_path, host, configuration, note):
     with open(log_path, encoding="utf-8", errors="replace") as f:
         text = f.read()
     rows = census(text)
@@ -194,8 +244,8 @@ def record_run(log_path, host, note):
     skipped = sum(1 for r in rows if r[1] == "skipped")
     failed = sum(1 for r in rows if r[1] == "failed")
     note = note.replace("|", "\\|")  # a bare pipe would split the table row
-    return (f"| {start} | {host} | {len(rows)} | {executed} | {skipped} "
-            f"| {failed} | {note} |")
+    return (f"| {start} | {host} | {configuration} | {len(rows)} | "
+            f"{executed} | {skipped} | {failed} | {note} |")
 
 
 def main():
@@ -225,7 +275,11 @@ def main():
     if set(manifest) != set(gates):
         sys.exit("error: manifest and roster disagree on the gate set — "
                  "stale configure?")
-    union = dict(gates)
+    product_lle = any(cells.get("config") == "product-lle"
+                      for cells in manifest.values())
+    configuration = "product-lle" if product_lle else "default"
+    default_gates, default_manifest = default_view(gates, manifest)
+    union = dict(default_gates)
     union.update(absent)
 
     old = {}
@@ -237,14 +291,14 @@ def main():
     if args.record_run:
         log = args.log or os.path.join(args.build_dir, "Testing",
                                        "Temporary", "LastTest.log")
-        run_rows.append(record_run(log, host, args.note))
+        run_rows.append(record_run(log, host, configuration, args.note))
 
     hosts = sorted(set(KNOWN_HOSTS) | {host})
     host_bodies = []
     for h in hosts:
         heading = f"Registered on {h}"
         if h == host:
-            body = host_section(h, gates, absent, manifest)
+            body = host_section(h, default_gates, absent, default_manifest)
         elif heading in old:
             body = old[heading]
         else:
@@ -252,7 +306,17 @@ def main():
                     f"`tools/status_md.py` there._")
         host_bodies.append(f"## {heading}\n\n{body}")
 
-    runs = "\n".join([RUN_HEADER, "|---|---|---|---|---|---|---|"] + run_rows)
+    product_heading = "PRODUCT_LLE on aarch64"
+    if product_lle:
+        product_body = product_section(host, gates, absent, manifest)
+    elif product_heading in old:
+        product_body = old[product_heading]
+    else:
+        product_body = ("_Not yet generated from a PRODUCT_LLE configure — run "
+                        "`tools/status_md.py --build-dir build-product-lle`._")
+
+    runs = "\n".join([RUN_HEADER,
+                       "|---|---|---|---|---|---|---|---|"] + run_rows)
     if not run_rows:
         runs += "\n\n_(no run recorded yet)_"
 
@@ -264,12 +328,14 @@ def main():
      pom68k_gate_manifest.tsv); `docs_test` fails when this file and the
      configured registry disagree. -->
 
-The registry has more than one size: the native-backend locksteps register
-only on the host they exercise. The union below is derivable identically on
-every host (the absent roster is added back); each *Registered on* section
-is owned by the host it names and regenerated there — the same division of
-labour as `gate_resource_budgets.tsv`. Recorded runs carry
-`tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
+The default registry has more than one size: the native-backend locksteps
+register only on the host they exercise. Its union below is derivable
+identically on every host (the absent roster is added back); each *Registered
+on* section is owned by the host it names and regenerated there — the same
+division of labour as `gate_resource_budgets.tsv`. `PRODUCT_LLE` is a distinct,
+opt-in configuration: its section records both the shared gates it qualifies
+and the gates it alone registers. Recorded runs name their configuration and
+carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
@@ -283,6 +349,10 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 {(chr(10) + chr(10)).join(host_bodies)}
 
+## {product_heading}
+
+{product_body}
+
 ## Recorded runs
 
 Appended by `tools/status_md.py --record-run [--log FILE] [--note TEXT]`.
@@ -293,8 +363,10 @@ overwrites it, including a one-gate `ctest -R`.
 """
     with open(args.output, "w", encoding="utf-8") as f:
         f.write(out)
-    print(f"wrote {args.output}: union {len(union)}, {len(gates)} registered "
-          f"on {host}, {len(run_rows)} recorded run(s)")
+    print(f"wrote {args.output}: default union {len(union)}, "
+          f"{len(default_gates)} default gates registered on {host}, "
+          f"configuration {configuration} has {len(gates)}; "
+          f"{len(run_rows)} recorded run(s)")
     return 0
 
 

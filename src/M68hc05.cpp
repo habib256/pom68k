@@ -65,6 +65,11 @@ void M68hc05::setIrqLine(bool asserted) {
 // ── E1 on-chip bus (m68hc05e1.cpp:225-236 m68hc05e1_map) ───────────────
 uint8_t M68hc05::read8(uint16_t addr) {
     addr &= 0x1FFF;
+    // Instruction and extension-word fetches dominate the real Egret/Cuda
+    // workload, and their PC normally lives in this fixed ROM window. Keep
+    // the fallback map below for legal RAM execution, but do not make every
+    // firmware byte cross the complete peripheral/RAM decoder first.
+    if (addr >= 0x0F00) return rom_[addr - 0x0F00];
     if (addr <= 0x0002) {                            // ports (ports_r :107)
         uint8_t in = readPort ? readPort(addr) : 0xFF;
         in &= uint8_t(~ddrs_[addr]);
@@ -77,7 +82,6 @@ uint8_t M68hc05::read8(uint16_t addr) {
     if (addr == 0x0009) return uint8_t((cycles_ / 4) & 0xFF);  // free-running
     if (addr == 0x0012) return onesec_;
     if (addr >= 0x0090 && addr <= 0x01FF) return ram_[addr];
-    if (addr >= 0x0F00) return rom_[addr - 0x0F00];
     return 0;                                        // unmapped reads 0
 }
 

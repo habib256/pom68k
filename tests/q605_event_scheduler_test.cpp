@@ -11,14 +11,14 @@
 
 int main() {
     pom68k::CoreConfig core;
-    core.bus.q605SccEventDriven = true;
-    core.bus.q605ScsiEventDriven = true;
     int failures = 0;
     const auto check = [&](bool ok, const char* what) {
         std::printf("  %-62s %s\n", what, ok ? "ok" : "FAIL");
         if (!ok) failures++;
     };
 
+    check(core.bus.q605SccEventDriven && core.bus.q605ScsiEventDriven,
+          "component default keeps both promoted schedulers enabled");
     Q605Memory mem(core, 1u << 20);
     mem.reset();
     check(mem.deferredSccCycles() == 0, "reset clears serialized SCC debt");
@@ -54,6 +54,15 @@ int main() {
     check(mem.deferredSccCycles() == 19,
           "53C96 MMIO does not consume the SCC debt");
 
+    pom68k::CoreConfig disabledCore;
+    disabledCore.bus.q605SccEventDriven = false;
+    disabledCore.bus.q605ScsiEventDriven = false;
+    Q605Memory disabled(disabledCore, 1u << 20);
+    disabled.reset();
+    disabled.tick(23);
+    check(disabled.deferredSccCycles() == 0 &&
+              disabled.deferredScsiCycles() == 0,
+          "explicit opt-out restores per-tick SCC and 53C96 stepping");
 
     std::printf("q605_event_scheduler_test: %s\n",
                 failures ? "FAIL" : "OK");

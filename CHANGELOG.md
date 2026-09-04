@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 402 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists every dated entry in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"extend the Q605 event scheduler to a third peripheral" — the ASC path had already passed seven gates and was withdrawn after two slower measurements; the follow-up audit instead found the promoted SCC/53C96 defaults accidentally disabled by startup-policy extraction** → [2026-09-03 (fifteenth) — The stale third-peripheral task…](#2026-09-03-q605-scheduler-default-restored)
 - **"native division makes SimCity 3.69 % slower" — two rebuilt-binary comparisons agreed and were both wrong; the same executable with an injected admission switch measures division 1.453 % faster, proving the apparent regression was code-layout noise** → [2026-08-30 (ninth) — The SimCity division promotion survives…](#2026-08-30-division-promotion)
 - **"patch 31 caused the 68030 wedge, because the `-L etalon` tier had run 118/118 green eight days earlier" — a dated green tier is not a control; both arms built from HEAD *without* the patch wedge identically, and the real finding is that no 68030 boots under the shipping default on x86-64** → [2026-08-29 — Moira patch 31…](#2026-08-29-patch31-and-the-withdrawal)
 - **"the x64 030 generator refuses 100 % of its code windows" — both backends refuse identically at the same step, and the cause is a one-byte page from an unprogrammed TC, bounded to the pre-MMU boot** → [2026-08-28 (fourteenth) — The 100 % window refusal…](#2026-08-28-030-degenerate-page)
@@ -113,6 +114,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **why a cache-active 68040 cold JIT access must replay the instruction start, and when a native cache hit may skip the ATC lookup without changing replacement state** → [2026-09-01 (sixth) — Cold 040 cache misses…](#2026-09-01-jit-cache040-instruction-start)
 - **why a cache-active 68040 memory instruction may need a second, access-positioned IPL sample, and how the tracer prevents generated code from moving it** → [2026-09-01 (fifth) — Cache stalls preserve…](#2026-09-01-jit-cache040-ipl-polls)
 - **why a cache-active 68040 `JSR` cannot replace its ordered target-word read with recorded queue state, and which real x64 drift exposed it** → [2026-09-01 (fourth) — Cache-active 68040 JSR…](#2026-09-01-jit-cache040-jsr-target-read)
+- **how cache-active 68040 `JSR` re-enters a native block without replaying a post-push fault, and what owns the ordered I-cache transaction** → [2026-09-03 (fourteenth) — Cache-active 68040 JSR…](#2026-09-03-jit-cache040-jsr-transaction)
+- **why four host-born disk images no longer block local work, without pretending the cross-host proof is green** → [2026-09-03 (thirteenth) — The unrecoverable four-image proof gap…](#2026-09-03-proof-gap-accepted)
 - **how bitfields publish packed N/Z/V/C without corrupting X, the retired count or BFFFO's live offset** → [2026-09-01 (third) — Packed-CCR bitfields…](#2026-09-01-jit-packed-bitfields)
 - **how five-byte memory-bitfield writes can stay native without replaying a committed first store, and what proves the 030/040 late-tail faults** → [2026-09-01 (second) — Five-byte bitfield writes…](#2026-09-01-jit-bitfield-tail-writes)
 - **why the final 1,400-opcode backend-parity gap was a missing ISA cost rather than a missing host primitive, and what proves the now-empty exception table** → [2026-09-01 — The backend census reaches zero exceptions…](#2026-09-01-jit-parity-zero)
@@ -207,6 +210,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
+- **why does the 68HC05 memory decoder test ROM last when almost every instruction fetch comes from ROM, and what does reversing that order buy on the measured Q605 pump?** → [2026-09-03 (sixteenth) — The 68HC05 ROM fetch stops crossing…](#2026-09-03-m68hc05-rom-fast-path)
 - **the last unconditional HLE in the tree retires: the Eclipse towers get the real 341S0851 — and which wire a Quadra 900's ADB devices actually hang off** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **why a PG&E that has already run will not cold-boot again (the `$91` power flag), and why its trackball register has to be LATCHED rather than drained on read** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **the 11-cycle 6805 IRQ restored; second mouse button and right modifiers reach the GUI path** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
@@ -351,6 +355,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **why does a PRODUCT_LLE configure have a larger registry without changing the default STATUS totals?** → [2026-09-03 (twelfth) — PRODUCT_LLE becomes a first-class registry…](#2026-09-03-product-lle-registry)
 - **which document owns user setup, developer internals, live gate state, open work and dated history — and how did that split expose the stale x64/030 `auto` claim?** → [2026-09-01 (eighth) — README, DEV and CLAUDE stop competing…](#2026-09-01-doc-ownership)
 - **where do GUI host I/O, typed machine construction and rendering live, and where are their environment options captured?** → [2026-08-26 — The 2,683-line GUI runtime becomes three injected responsibilities…](#2026-08-26-gui-runtime-split)
 - **did the Duo really need a synthetic command-level ADB bus to boot, or were its built-in matrix and trackball already the whole product path?** → [2026-08-25 (sixth) — The Duo's synthetic ADB bus was not load-bearing…](#2026-08-25-pge-adb-retired)
@@ -386,6 +391,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-03 (sixteenth)** — [The 68HC05 ROM fetch stops crossing the whole internal map: −1.6 % on the measured Q605 pump workload](#2026-09-03-m68hc05-rom-fast-path)
+- **2026-09-03 (fifteenth)** — [The stale third-peripheral task exposes a real regression: promoted Q605 SCC/53C96 scheduling had silently become opt-in](#2026-09-03-q605-scheduler-default-restored)
+- **2026-09-03 (fourteenth)** — [Cache-active 68040 JSR becomes an ordered native transaction instead of a pristine replay](#2026-09-03-jit-cache040-jsr-transaction)
+- **2026-09-03 (thirteenth)** — [The unrecoverable four-image proof gap stops sequencing work, without becoming green evidence](#2026-09-03-proof-gap-accepted)
+- **2026-09-03 (twelfth)** — [PRODUCT_LLE becomes a first-class registry: default remains 240, product is 248, and both configurations prove the same STATUS](#2026-09-03-product-lle-registry)
 - **2026-09-03 (eleventh)** — [The MSC closes B.4's original list: the PG&E owns no bus, and the Duo's CACR flush retires](#2026-09-03-msc-inventory)
 - **2026-09-03 (tenth)** — [RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci](#2026-09-03-rbv-inventory)
 - **2026-09-03 (ninth)** — [B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires](#2026-09-03-vasp-inventory)
@@ -796,6 +806,145 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-03-m68hc05-rom-fast-path"></a>
+## 2026-09-03 (sixteenth) — The 68HC05 ROM fetch stops crossing the whole internal map: −1.6 % on the measured Q605 pump workload
+
+The post-cache profile put `M68hc05::run` at 8.1 % of Rogue's gameplay phase.
+Its hottest primitive was simpler than another scheduler: `read8` tested ports,
+DDR, PLL, timers and RAM before the ROM window, even though each opcode and
+extension fetch of the real Egret/Cuda firmware normally lands in
+`$0F00-$1FFF`. The decoder now checks that fixed ROM window first. Execution
+from the legal RAM window and every peripheral address retain the same
+fallback map; no cycle, timer or wire boundary moved.
+
+Two binary-alternated A/B pairs at 6 000 fixed frames on this AArch64 host,
+with order reversed for the second pair, give old **11.69/11.60/11.52/11.44 s**
+against new **11.38/11.41/11.38/11.34 s**: means 11.56 → 11.38 s,
+**−1.6 %**, with non-overlapping printed ranges. Every arm retires exactly
+2 500 002 000 machine cycles / 10 000 038 800 core cycles and ends at the
+same fingerprint `13784659462b9d78`. The shorter 3 000-frame ABBA agrees
+(3.41/3.44/3.38/3.40 → 3.36/3.35/3.34/3.34 s, −1.8 %).
+
+`m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, the Q605 scheduler gate and
+both 68040 locksteps remain green. This promotes only the address-decode
+fast-path; it does not revive the slower ASC deadline or the inconclusive SCC
+deadline cache. An immediate eight-second sample of the new binary during an
+18 000-frame run (6 840 samples, same completed fingerprint
+`04e19d5380245bd5`) re-ranks the exclusive leaves: `Q605Memory::tick` 392,
+`M68hc05::execOne` 273, `Scc8530::cyclesToNextEvent` 246 and the remaining
+`Q605Memory::cyclesToNextEvent` fan-out 135. That is a new signal for the SCC
+query, not yet evidence that memoising it is faster; the next backlog item is
+bounded accordingly.
+
+<a id="2026-09-03-q605-scheduler-default-restored"></a>
+## 2026-09-03 (fifteenth) — The stale third-peripheral task exposes a real regression: promoted Q605 SCC/53C96 scheduling had silently become opt-in
+
+The next B.1 bullet was already history: the Q605 ASC had been wired to the
+deadline scheduler, passed seven gates, then removed after two measurements
+were slower (2026-08-12, archived under "Event deadline on the ASC"). Adding
+the same debt again would knowingly restore a measured regression. The active
+backlog now names the measured pump itself — `M68hc05::run`, SCC and the
+`cyclesToNextEvent()` fan-out — and requires a reproducible A/B rather than a
+third debt by enumeration.
+
+Following that path found an actual policy regression. SCC and 53C96 were
+promoted on 2026-08-12 and the public knob table still says default `1`, but
+the 2026-08-26 typed-startup extraction initialized both `CoreBusConfig`
+fields to false and passed false as the absent-value fallback. Product Q605
+runs had therefore returned to per-tick stepping silently. The scheduler gate
+did not see it because it forced both fields true; the sibling Quadra gate
+constructs boards whose schedulers are unconditional and cannot cover Q605's
+startup policy.
+
+The component and typed-runtime defaults are restored to true. Explicit
+`POM68K_Q605_EVENT_SCC=0` and `POM68K_Q605_EVENT_SCSI=0` remain the exact A/B
+escape hatch. `q605_event_scheduler_test` now consumes the component default
+and separately proves the opt-out leaves both debts at zero; `docs_test`
+locks the absent-value product default and the two explicit zeros. This is a
+restoration of the already measured promotion, not a new throughput claim.
+
+<a id="2026-09-03-jit-cache040-jsr-transaction"></a>
+## 2026-09-03 (fourteenth) — Cache-active 68040 JSR becomes an ordered native transaction instead of a pristine replay
+
+The remaining B.1 JSR item was not an opcode-emission problem. `execJsr`
+computes its target, pushes the return address, then reads a program word at
+that target. With the 68040 caches active, the last read owns live ITT/ATC,
+I-cache replacement, bus delay and fault behaviour. The 2026-09-01 fix
+correctly replayed the whole instruction, but no ordinary access thunk could
+recover native execution: reading first reverses the bus/cache order, while a
+failure after a generated push no longer has pristine state to replay.
+
+`Moira::pomJitJsr040` is the narrow commit door shared by A64 and x64. The
+generators still compute and validate the plain EA before committing. The
+helper then recreates the 040 instruction-start fault bookkeeping, publishes
+the running PC/opcode, performs `push<Long>` followed by the exact
+`read<PROG,Word>`, and lets the normal 040 prefetch boundary stand. Success
+returns to the generated terminal, which charges only the fixed opcode tail;
+a thrown access fault is processed inside Moira and returns directly to
+`Exit::Fault`. It never reaches the interpreter fallback, so a successful
+copyback push is neither lost nor executed twice. Cache-active full-indirect
+040 JSR remains deliberately refused; this change does not overstate that
+unproved sub-form.
+
+The asset-free copyback gate now proves two sides of the transaction. A cold
+successful target line produces the same I-cache fill, clock, target, A7 and
+terminal queue as the interpreter while `blocksRun` advances and
+`slowInstrs` does not. A target `/BERR` after a resident copyback-stack push
+produces a byte-identical 60-byte format-$7 frame, identical terminal state
+and queue, and an identical dirty cache line containing exactly one return
+address. On this AArch64 host, `jit_copyback_write_040_test`, the 65,536-opcode
+backend-parity sweep, the asset-free lockstep, the Q605 boundary lockstep and
+the coarse A64 Q605 lockstep are green. The x64 translation unit compiles and
+has zero admission divergence here; executing the x64 generated bytes still
+belongs to the x86-64 host leg, so no cross-host runtime claim is inferred.
+
+<a id="2026-09-03-proof-gap-accepted"></a>
+## 2026-09-03 (thirteenth) — The unrecoverable four-image proof gap stops sequencing work, without becoming green evidence
+
+The USB search found names corresponding to the four remaining host-born
+references — `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`, `System 7.1 HD.dsk`
+and `System 7.5 HD.dsk` — but none matched the identities locked by the
+x86-64 runs. These are guest-mutated volumes, not source assets that can be
+recreated deterministically from the current checkout. Re-copying a
+same-named image or re-flushing it locally would only replace a known missing
+proof with a false one.
+
+The product decision is therefore to continue with locally provable B work
+and remove the impossible transfer/re-run bullets from the active backlog.
+This is a waiver of sequencing, not closure of the evidence gap: the default
+and PRODUCT_LLE registries continue to expose absent/asset-bound gates, no
+soft-skip is reclassified as a pass, and no statement may claim two complete
+cross-host runs from these files. If the exact x86-64 references reappear,
+they can restore the missing leg without changing the technical acceptance
+criteria.
+
+<a id="2026-09-03-product-lle-registry"></a>
+## 2026-09-03 (twelfth) — PRODUCT_LLE becomes a first-class registry: default remains 240, product is 248, and both configurations prove the same STATUS
+
+`PRODUCT_LLE` no longer overwrites the one registry that every document
+means. The gate manifest gains an explicit `config` dimension: `all` for the
+235 normal AArch64 registrations and `product-lle` for the eight preflight or
+refusal gates which exist only under the opt-in configure. A fresh configure
+also corrects the day's stale `244/247` snapshot: the current product tree is
+**243 registered + 5 host-absent = union 248**, while the default remains
+**235 + 5 = union 240**.
+
+`status_md.py` can now derive that default view even while reading the larger
+product tree: it removes the eight exclusive rows and the `product`/`lle`/
+`a64-oracle` qualification labels added to ten shared gates. `STATUS.md`
+therefore retains its default union and per-host sections and carries a
+separate, generated `PRODUCT_LLE on aarch64` section with the complete label,
+manifest-dimension and scheduling counts. Recorded-run rows gain a
+`configuration` column so a future product result cannot masquerade as a
+default run; the four older rows migrate explicitly to `default`.
+
+`docs_test` consumes the eight-column manifest and enforces both views. The
+normal configure proves the default artifact; the product configure proves
+that same derived default plus its full 248-gate section. Both variants build
+and pass their dedicated `docs_test`. The A.3 modelling decision is closed;
+the two full AArch64 runs remain blocked only by the four exact x86-created
+reference volumes.
 
 <a id="2026-09-03-msc-inventory"></a>
 ## 2026-09-03 (eleventh) — The MSC closes B.4's original list: the PG&E owns no bus, and the Duo's CACR flush retires

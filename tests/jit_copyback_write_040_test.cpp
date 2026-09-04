@@ -295,7 +295,7 @@ void checkPerformanceBudget() {
           "native fixed-cycle loop stays within the versioned host budget");
 }
 
-void checkJsrTargetReadFallback() {
+void checkJsrTargetReadTransaction() {
     // A 68040 JSR performs an explicit program-space target-word read after
     // its return-address push. With the architectural cache active this can
     // fill a line and charge dynamic time, so a backend may not replace it
@@ -337,8 +337,8 @@ void checkJsrTargetReadFallback() {
     ref.executeUntil(ref.getClock() + 1);
     native.jit.executeUntil(native.getClock() + 1);
     const auto after = native.jit.stats().snapshot();
-    if (!(after.blocksRun == before.blocksRun &&
-          after.windowInstrs == before.windowInstrs + 1))
+    if (!(after.blocksRun == before.blocksRun + 1 &&
+          after.slowInstrs == before.slowInstrs))
         std::printf("    JSR stats: blocks=%llu->%llu slow=%llu->%llu "
                     "window=%llu->%llu interp=%llu->%llu instrs=%llu->%llu\n",
                     (unsigned long long)before.blocksRun,
@@ -351,13 +351,77 @@ void checkJsrTargetReadFallback() {
                     (unsigned long long)after.interpInstrs,
                     (unsigned long long)before.instrs,
                     (unsigned long long)after.instrs);
-    check(after.blocksRun == before.blocksRun &&
-          after.windowInstrs == before.windowInstrs + 1,
-          "cache-active JSR stayed on the exact one-instruction window");
+    check(after.blocksRun == before.blocksRun + 1 &&
+          after.slowInstrs == before.slowInstrs &&
+          after.windowInstrs == before.windowInstrs,
+          "cache-active JSR used the native ordered transaction");
     check(sameBoundary(ref, native),
           "JSR target-line fill, push, queue and dynamic cycles stay exact");
+    check(ref.getIRD() == native.getIRD() && ref.getIRC() == native.getIRC(),
+          "native JSR publishes the interpreter's terminal queue");
     check(native.getPC() == kCode + 0x20 && native.getA(7) == kData + 4,
-          "replayed JSR committed the target and return-address push once");
+          "native JSR committed the target and return-address push once");
+
+    // The target fetch is after the push. Aim an already-compiled JSR at a
+    // /BERR line: the native helper must process the fault in place, retain
+    // the copyback push, and stack the same format-$7 frame as Moira. A
+    // pristine fallback here would execute the push twice or lose its cache
+    // state, which is the transaction this gate exists to prevent.
+    GateCpu faultRef, faultNative;
+    configure(faultRef, Program::Jsr);
+    configure(faultNative, Program::Jsr);
+    faultNative.setSR(0x0710);
+    faultNative.setA(0, kCode + 0x20);
+    faultNative.setA(7, kData + 8);
+    faultNative.jit.setEnabled(true);
+    faultNative.jit.executeUntil(faultNative.getClock() + 512);
+    alignAtCode(faultNative);
+    check(faultNative.getPC() == kCode,
+          "fault gate aligned at the compiled JSR");
+
+    for (GateCpu* c : {&faultRef, &faultNative}) {
+        c->setPC(kCode); c->setPC0(kCode);
+        c->setIRD(0x4E90); c->setIRC(0x60FC);
+        c->setSR(0x071F);
+        c->setA(0, kHole);
+        c->setA(7, kData + 8);
+        c->setClock(0); c->faults = 0; clearRunFlags(*c);
+        check(c->pomJitWriteData(kData + 4, 4, 0),
+              "fault gate made the user stack line resident");
+    }
+    faultRef.pomCache040Inst() = faultNative.pomCache040Inst();
+    faultRef.pomCache040Data() = faultNative.pomCache040Data();
+    faultRef.pomCache040Inst().invalidateLine(kHole);
+    faultNative.pomCache040Inst().invalidateLine(kHole);
+
+    const auto faultBefore = faultNative.jit.stats().snapshot();
+    faultRef.executeUntil(faultRef.getClock() + 1);
+    faultNative.jit.executeUntil(faultNative.getClock() + 1);
+    const auto faultAfter = faultNative.jit.stats().snapshot();
+    check(faultAfter.blocksRun == faultBefore.blocksRun + 1 &&
+          faultAfter.slowInstrs == faultBefore.slowInstrs,
+          "post-push target fault exited native code without replay");
+    const uint32_t refSp = faultRef.getA(7), nativeSp = faultNative.getA(7);
+    check(refSp == kStack - 60 && nativeSp == refSp &&
+          std::memcmp(faultRef.mem.data() + refSp,
+                      faultNative.mem.data() + nativeSp, 60) == 0,
+          "post-push target faults build byte-identical format-$7 frames");
+    const auto* refLine = faultRef.pomCache040Data().lookup(kData + 4);
+    const auto* nativeLine = faultNative.pomCache040Data().lookup(kData + 4);
+    check(refLine && nativeLine && refLine->dirty == nativeLine->dirty &&
+          std::memcmp(refLine->data, nativeLine->data,
+                      sizeof(refLine->data)) == 0,
+          "target fault preserves the exact pushed copyback line");
+    check(nativeLine &&
+          (uint32_t(nativeLine->data[4]) << 24 |
+           uint32_t(nativeLine->data[5]) << 16 |
+           uint32_t(nativeLine->data[6]) << 8 | nativeLine->data[7]) ==
+              kCode + 2,
+          "faulted JSR committed its return address exactly once");
+    check(sameBoundary(faultRef, faultNative) &&
+          faultRef.getIRD() == faultNative.getIRD() &&
+          faultRef.getIRC() == faultNative.getIRC(),
+          "post-push fault leaves identical boundary and queue state");
 }
 
 void checkPositionedIplPollFallback() {
@@ -743,7 +807,7 @@ int main(int argc, char** argv) {
 
     if (writeHitEnabled) checkPositionedIplPollFallback();
 
-    if (writeHitEnabled) checkJsrTargetReadFallback();
+    if (writeHitEnabled) checkJsrTargetReadTransaction();
 
     if (writeHitEnabled) checkPerformanceBudget();
 

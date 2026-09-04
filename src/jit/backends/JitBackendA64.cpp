@@ -11,6 +11,7 @@
 #include "../JitConfig.h"
 #include "../JitCost.h"
 #include "../JitEaPlan.h"
+#include "../JitRuntime.h"
 #include "Moira.h"
 
 #include <algorithm>
@@ -4190,9 +4191,11 @@ void readProgWord(Asm& a, const Layout& L, int slow) {
     a.ldrW(11, 1, 72);
 }
 
+#include "JitBackendA64Jsr040.inl"
+
 bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
                      const Instr& in, const std::vector<int>& entries,
-                     int epilogue, int slow, bool paced, int batch,
+                     int epilogue, int slow, int fault, bool paced, int batch,
                      uint32_t linkMask, bool icache,
                      IcacheShadow& icacheShadow) {
     const uint16_t op = in.opcode;
@@ -4266,18 +4269,6 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         sem.operation == SemanticOp::Jump) {
         const bool jsr = sem.operation == SemanticOp::JumpSubroutine;
         if (!control.valid || control.pushesReturnAddress != jsr) { watchRefusal(L, ir, in, "jsr:control"); return false; }
-        // execJsr performs one explicit program-space word read at the
-        // target AFTER pushing the return address. With the architectural
-        // 040 cache live that read may fill/replace I-cache state, stall on
-        // the bus or fault. Reordering it before the push would change the
-        // observable transaction; doing it afterwards leaves no pristine
-        // instruction to replay on a fault. Keep only this cache-active JSR
-        // subset on Moira until it has a combined transactional helper.
-        // Cacheless 040 and the proved mode-5 030 lowering remain native.
-        if (jsr && !L.is030 && L.cache040Live) {
-            watchRefusal(L, ir, in, "jsr:cache040-target-read");
-            return false;
-        }
         Ea ea;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea, true, true) ||
             !ea.memory || ea.idx == EA_PI || ea.idx == EA_PD ||
@@ -4339,6 +4330,15 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         }
         a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.ubfxW(9, 9, 0, 1); a.cbnzW(9, slow);
+        if (jsr && !L.is030 && L.cache040Live) {
+            if (fullIndirect) {
+                watchRefusal(L, ir, in, "jsr:cache040-full-indirect");
+                return false;
+            }
+            emitJsr040Transaction(a, L, ir, in, op, control, opCost,
+                                  fault, epilogue, paced, batch, linkMask);
+            return true;
+        }
         if (fullIndirect && jsr) {
             // The transactional path reads the target word before making
             // the already-proved return-address store. Replay when those
@@ -4809,7 +4809,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         bool native = false;
         if (in.kind == Kind::Branch) {
             native = emitBranchInstr(a, L, ir, in, entries, epilogue,
-                                     slowRuntime[i],
+                                     slowRuntime[i], exitFault,
                                      paced, batch, linkMask, icache,
                                      icacheShadow);
         } else if (canEmit(in.opcode)) {

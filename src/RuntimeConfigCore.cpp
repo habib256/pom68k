@@ -84,9 +84,9 @@ pom68k::CoreConfig parseCoreStartup(
     if (const auto latency = values.integer(startup_option::ScsiLatency))
         options.bus.scsiLatency = *latency;
     options.bus.q605SccEventDriven =
-        values.boolean(startup_option::Q605EventScc, false);
+        values.boolean(startup_option::Q605EventScc, true);
     options.bus.q605ScsiEventDriven =
-        values.boolean(startup_option::Q605EventScsi, false);
+        values.boolean(startup_option::Q605EventScsi, true);
     options.bus.q605MachineId = values.hexadecimal(startup_option::Q605Id);
     options.bus.q630MachineId = values.hexadecimal(startup_option::Q630Id);
     if (const auto dayna = values.text(startup_option::DaynaPort);

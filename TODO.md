@@ -16,10 +16,11 @@ technique. Le classement date du 2026-09-02 et repose sur deux profils
 temporels (`CHANGELOG` 2026-09-02 (sixth) et (eighth)) et sur l'audit du même
 jour (`CHANGELOG` 2026-09-02 (tenth)).
 
-**A — réparer le socle de preuve.** Les mécanismes de qualité du projet sont
-en panne : CI rouge depuis le 2026-08-23, nightly rouge, et la preuve complète
-n'existe que sur une seule architecture. Rien de ce qui suit n'a de valeur
-vérifiable tant que ce palier reste ouvert.
+**A — limite externe acceptée, sans faux vert.** La CI et la nightly ont été
+réparées, mais quatre images créées sur l'ancien hôte x86-64 restent non
+reproductibles bit à bit. La décision du 2026-09-03 autorise la suite sans
+faire passer cette asymétrie de preuve pour une réussite ; elle est consignée
+dans le `CHANGELOG` et n'est plus une tâche locale exécutable.
 
 **B — terminer le moteur.** Le travail de performance et de conformité qui
 reste, ordonné par du temps mesuré et non par un nombre d'opcodes.
@@ -27,9 +28,8 @@ reste, ordonné par du temps mesuré et non par un nombre d'opcodes.
 **C — en faire un produit.** Les scénarios au-delà du boot, la portabilité de
 la preuve, le matériel cible et une première version publiée.
 
-**D — pas maintenant.** Du vrai travail, hors chemin critique. Y toucher avant
-la fermeture du palier A ajoute des gates à un registre qui ne tourne pas
-propre sur l'une de ses deux architectures.
+**D — pas maintenant.** Du vrai travail, hors chemin critique. Il ne passe
+pas devant les priorités moteur et produit des paliers B et C.
 
 Règles de travail :
 
@@ -41,47 +41,6 @@ Règles de travail :
 - l'interpréteur reste l'oracle et `threaded` le plancher portable ;
 - les critères de sortie d'un palier sont cumulatifs et doivent être consignés
   dans le `CHANGELOG`.
-
----
-
-## A — P0 — réparer le socle de preuve
-
-### A.3 Rendre la preuve reproductible sur les deux architectures
-
-- [ ] **Transporter les quatre références nées sur l'hôte x86-64.** La récolte
-  du 2026-09-02 sur la sauvegarde externe a fermé `HD20SC` et `7.5.5` aux
-  identités verrouillées exactes (`asset_lock_test` : 5 échecs → 3) et posé
-  `cd/MAC_OS_8-1_RETAIL_0.ISO` pour le gate CD optionnel. Le reliquat —
-  `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`, `System 7.1 HD.dsk` (divergents)
-  et `System 7.5 HD.dsk` (absent) — est constitué des volumes flushés ou créés
-  PAR L'INVITÉ sur l'hôte x86-64 les 2026-09-01/02 ; un re-flush local ne
-  redonnerait pas les mêmes octets. Copier ces quatre fichiers (~660 Mo)
-  depuis `hdv/ref/` de l'hôte x86-64, ou décider un lock par-hôte.
-- [ ] **Exécuter deux runs complets consécutifs sur l'hôte AArch64.** Même
-  protocole que la jambe x86-64 (`CHANGELOG` 2026-09-02) : aucune fixture
-  sale, aucun timeout posé sur sa borne, aucun rouge inexpliqué, et le couple
-  exécutés / soft-skips consigné dans `STATUS.md`.
-- [ ] **Décider comment `STATUS.md` modélise le registre `PRODUCT_LLE`.** La
-  journée du 2026-09-03 (second) est exécutée : fusion des labels propre,
-  backend a64 vérifié sur les locksteps, census 238/0/6. Mais sous ce
-  configure le registre lit 244 enregistrés / union 247 (+8 gates
-  `lle`/`product`/`a64-oracle`) — une troisième taille que `STATUS.md` ne
-  décrit pas, et `docs_test` refuse à bon droit. Soit `status_md.py` apprend
-  cette dimension, soit un arbre `PRODUCT_LLE` est documenté comme exempté
-  des vérifications de registre.
-
-### A.4 Fermer le palier
-
-- [ ] **Décider explicitement la fermeture de la fenêtre de consolidation.**
-  Attendre les critères de sortie de A.1 à A.3, consigner la décision produit,
-  puis autoriser le travail des paliers C et D sans affaiblir les preuves
-  acquises. Les 37 profils actuels ne sont pas un plafond : ce palier rend
-  leur socle mesurable.
-
-**Critère de sortie du palier A :** la CI et la nightly sont vertes et
-redeviennent bloquantes, et les runs complets AArch64 et x86-64 sont propres
-et archivés. (Le cache de dispatch est prouvé — CHANGELOG 2026-09-02
-(sixteenth) : −29,6 % sur le run Rogue, tiers m030/m040 sans rouge moteur.)
 
 ---
 
@@ -118,12 +77,12 @@ désormais la masse mesurée.
   x64 sur l'hôte x86-64 avant toute admission x64, et ne rouvrir le défaut
   que si un workload cache-actif montre le gain — ou après une dé-admission
   adaptative des sites qui manquent chroniquement.
-- [ ] **Rendre le `JSR` cache-actif 68040 transactionnel.** Modéliser lecture
-  du mot cible, push, faute et effets I-cache dans leur ordre architectural
-  afin de récupérer le chemin natif sans rendre le replay non pristine.
-- [ ] **Étendre l'échéancier événementiel Q605 à un troisième périphérique.**
-  Ajouter son flush MMIO, sa dette sérialisée et des gates de timing avant
-  toute activation par défaut.
+- [ ] **Décider la double interrogation d'échéance SCC.** Le profil après
+  fast-path ROM place `Scc8530::cyclesToNextEvent()` à 246/6 840 échantillons
+  exclusifs et le fan-out Q605 à 135. Instrumenter une variante qui réutilise
+  uniquement la borne déjà calculée entre `tick()` et le réarmement ; la
+  retirer si son A/B ne dépasse pas le bruit, comme le cache SCC général déjà
+  refusé.
 
 ### B.2 Le poste n°1 du 68030 : la traduction, pas le générateur
 
@@ -272,8 +231,8 @@ seulement un compteur interne.
 - [ ] **Publier une première version.** Zéro tag, zéro release, alors que
   `README.md` annonce une page Releases et que `.github/workflows/release.yml`
   est complet. Des utilisateurs sont le chercheur de bugs le moins cher
-  disponible, et il n'y en a aucun. À déclencher après la fermeture du
-  palier A.
+  disponible, et il n'y en a aucun. À déclencher après les preuves produit
+  minimales de C, sans attendre les quatre références externes de A.
 - [ ] **Lire la première exécution MSVC de `asset-none`.** Elle vit dans le
   job `windows` de `.github/workflows/release.yml` et ne peut donc pas exister
   avant une publication : traiter tout rouge comme une découverte de
@@ -291,9 +250,9 @@ assets, et une version est téléchargeable.
 ## D — P2 — pas maintenant
 
 Du travail réel, hors chemin critique. Chaque section garde ses items pour ne
-pas les reperdre, mais aucune ne s'ouvre avant la fermeture du palier A — et
-les nouvelles machines (D.4) attendent en plus le palier C, faute de quoi
-elles ajoutent des gates à un registre qui ne tourne pas propre partout.
+pas les reperdre, mais aucune ne passe devant les P0 de B et C — et les
+nouvelles machines (D.4) attendent en plus le palier C, faute de quoi elles
+ajoutent des gates sans approfondir les plateformes déjà annoncées.
 
 ### D.1 Fidélité matérielle et LLE
 

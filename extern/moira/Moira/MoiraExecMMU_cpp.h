@@ -2398,6 +2398,47 @@ Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
     }
 }
 
+// Complete the non-restartable half of a native cache-active 68040 JSR.
+// Generated code may compute the EA (and, for a future full-format
+// admission, perform its pointer read) while the instruction is pristine.
+// From the first stack mutation onward this helper owns the transaction so
+// that a later target fetch fault is handled with the push and I-cache state
+// exactly where the interpreter left them.
+bool
+Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
+                    u16 opcode) noexcept
+{
+    // The JIT normally relies on a pristine interpreter replay to establish
+    // mmu040InstrStart's bookkeeping. This path cannot replay after its
+    // push, so establish the same per-instruction state before any access.
+    mmu040EffAddr = 0;
+    mmu040AccFirst = true;
+    mmu040AccSplit = false;
+    mmu040LastWrite = false;
+    mmu040Moves = -1;
+    mmu040Lrmw = false;
+    mmuFixupReg[0] = mmuFixupReg[1] = 0;
+    mmu040CcrSave = u8(getCCR());
+
+    reg.pc0 = instructionPc;
+    reg.pc = returnAddress;
+    queue.ird = opcode;
+
+    try {
+        // execJsr's exact architectural order. push() deliberately leaves
+        // mmu040LastWrite armed: if the following instruction-space access
+        // faults, execMmu040BusError stacks the post-push/next-PC frame.
+        push<Core::C68020, Long, POLL>(returnAddress);
+        reg.pc = target;
+        queue.irc = u16(read<Core::C68020, AddrSpace::PROG, Word>(target));
+        prefetch<Core::C68020>();
+        return true;
+    } catch (const std::exception &exc) {
+        processException(exc);
+        return false;
+    }
+}
+
 int
 Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
 {

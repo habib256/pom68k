@@ -1080,15 +1080,16 @@ twice, each time for a measured reason recorded in `JitIr.h`:
 | `JSR <ea>`, `RTS` | 2026-07-28 | 7 % of a real Mac OS workload, and every one of them was both an interpreter round trip AND a block boundary the linker could not cross |
 | `JMP <ea>` | 2026-07-30 | 0.66 % of the idle Finder in the census; a terminator simpler than `JSR` (no stack push). **Plain EA modes only** — `(An)`, `d16(An)`, `(xxx).W/.L`, `d16(PC)`. Indexed data EAs are now lowered, but indexed control flow stays `Unsafe` until its dynamic target/queue contract has a dedicated proof |
 
-The `JSR` row has one model-specific guard. With the architectural 68040
-I/D cache active, Moira pushes the return address and then performs an
+The `JSR` row has one model-specific commit door. With the architectural
+68040 I/D cache active, Moira pushes the return address and then performs an
 explicit program-space word read at the target. That second access may fill
 or replace I-cache state, stall or fault. It cannot be moved before the push
-without changing bus/cache order, and it cannot be attempted afterwards by
-a generated body that has no way to roll the push back on a fault. Both
-native generators therefore keep cache-active 040 `JSR` on the exact
-one-instruction window. Cacheless 040 and the separately transactional 030
-forms remain native.
+without changing bus/cache order, and a target fault cannot replay the now
+modified instruction. For the plain EA forms, both native generators call
+`pomJitJsr040`: one helper owns push -> target read -> exception processing,
+then returns success to the generated terminal or failure directly to
+`Exit::Fault`. Cache-active full-indirect 040 JSR stays conservative;
+cacheless 040 and the separately transactional 030 forms are unchanged.
 
 `LINK`, `UNLK` and `NOP` are carved out of `$4Exx` as ordinary
 straight-line `AddrCalc`: they transfer no control and touch no SR/MMU/cache
@@ -1768,10 +1769,13 @@ line tokens. `execJsr` performs its target program-word read after the stack
 push; replacing it with the queue value captured while recording omitted a
 possible I-cache fill and bus wait. The x64 Q605 coarse lockstep exposed that
 as an eight-core-cycle drift at `$40809B6E` (`JSR (A3)`) after 1,573,279
-checkpoints. Both backends now reject cache-active 040 `JSR` before emission.
-The asset-free copyback gate forces a cold target line and pins exact push,
-queue and dynamic-cycle state; cacheless 040 and 030 JSR coverage is
-unchanged.
+checkpoints. Plain cache-active 040 JSR now reaches a helper-assisted native
+terminal: `pomJitJsr040` owns the ordered push and program read and processes
+a post-push fault before generated code leaves through `Exit::Fault`. The
+asset-free copyback gate forces both a cold successful target fill and a
+target `/BERR`; it pins queue, cycles, copyback line and the complete format-7
+frame against the interpreter. Cache-active full-indirect 040 JSR remains
+refused; cacheless 040 and 030 JSR coverage is unchanged.
 
 Cache-active memory instructions carry one further boundary proof. The 040
 loop head always samples IPL, and selected Moira handlers sample it again at

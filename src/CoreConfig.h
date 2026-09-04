@@ -47,8 +47,8 @@ struct CoreCpuConfig {
 
 struct CoreBusConfig {
     std::optional<int> scsiLatency;
-    bool q605SccEventDriven = false;
-    bool q605ScsiEventDriven = false;
+    bool q605SccEventDriven = true;
+    bool q605ScsiEventDriven = true;
     std::optional<std::uint32_t> q605MachineId;
     std::optional<std::uint32_t> q630MachineId;
     std::optional<int> daynaPortId;

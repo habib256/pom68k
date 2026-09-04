@@ -443,4 +443,4 @@ add_executable(q605_asc_test tests/q605_asc_test.cpp)
 target_link_libraries(q605_asc_test PRIVATE pom68k_core)
 add_test(NAME q605_asc_test COMMAND q605_asc_test)
 
-
+# ASC stays per-tick: its seven-gate deadline experiment measured slower.

@@ -1,6 +1,6 @@
 # CTest tier derivation, contract validation, manifests and convenience targets.
 # This must remain the final test module so it sees every registered gate.
-
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kProductRegistry.cmake)
 # ─── Test tiers (`ctest -L <label>`) ─────────────────────────────────
 # A bare `ctest` runs every gate and takes hours on a busy host — far too
 # slow to develop against, and the boot etalons are contention-sensitive
@@ -280,7 +280,7 @@ foreach(line IN LISTS pom68k_gate_budget_lines)
 endforeach()
 
 set(pom68k_gate_manifest
-    "name\tassets\thost\tscope\ttier\tslots\tslots_src\n")
+    "name\tassets\thost\tscope\ttier\tconfig\tslots\tslots_src\n")
 foreach(t IN LISTS pom68k_tests)
     if(t MATCHES "etalon$" OR
        (t MATCHES "^jit_lockstep" AND
@@ -321,6 +321,7 @@ foreach(t IN LISTS pom68k_tests)
         set(gate_tier full)
     endif()
 
+    pom68k_set_gate_configuration("${t}" gate_config)
     # Scheduling cost. Prefer this host's own measurement, fall back to
     # a host-agnostic row, and otherwise assume one slot.
     set(gate_ram_key "POM68K_GATE_RAM_${t}_${POM68K_PERF_HOST}")
@@ -351,7 +352,7 @@ foreach(t IN LISTS pom68k_tests)
     set_property(TEST ${t} PROPERTY POM68K_TIER ${gate_tier})
     set_property(TEST ${t} PROPERTY PROCESSORS ${gate_slots})
     string(APPEND pom68k_gate_manifest
-           "${t}\t${gate_assets}\t${gate_host}\t${gate_scope}\t${gate_tier}\t${gate_slots}\t${gate_slots_src}\n")
+           "${t}\t${gate_assets}\t${gate_host}\t${gate_scope}\t${gate_tier}\t${gate_config}\t${gate_slots}\t${gate_slots_src}\n")
 endforeach()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gate_manifest.tsv
      "${pom68k_gate_manifest}")
@@ -387,4 +388,3 @@ add_custom_target(jitfast DEPENDS
                   jit_backend_test jit_asset_free_lockstep_test
                   jit_copyback_write_040_test
                   docs_test config_test store_inventory_test)
-
