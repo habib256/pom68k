@@ -1,0 +1,5 @@
+ASSET rom    "roms/512KB ROMs/1989-09 - 368CADFE - Mac IIci.ROM" 524288 B sha256 0419966cfd7445680c0dd6ca78e8b1f4bc212e75caf56f4a5f523afa576ad3f2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: PIC1654S modem LLE
+mode 640x480 depth 0; menu bar dark 0.16 (want <0.30), desktop dither 0.25 / gray 0.36 (want alive), SCSI commands 1674
+PASSED — Macintosh IIci booted to the Finder

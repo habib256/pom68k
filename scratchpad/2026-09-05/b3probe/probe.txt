@@ -1,0 +1,11 @@
+classic2     PASS  
+cclassic     PASS  
+lc3plus      PASS  
+lc520        PASS  
+lc550        PASS  
+cclassic2    PASS  
+iivi         NO BINARY
+iici         PASS  
+duo230       PASS  
+lcii_sys7    PASS  
+PROBE COMPLETE

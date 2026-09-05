@@ -1,0 +1,6 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/ref/System 7.1 HD.dsk" 41943040 B sha256 81f1b16c7ff6bb9c28b3ab928d2b91a9be3d1e923795e0eef39a3f8252394ae2  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /home/gistarcade/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+menu bar black 0.06, desktop 0.46, SCSI commands 748
+PASSED — Sys7 Finder

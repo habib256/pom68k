@@ -97,14 +97,17 @@ bras qui expédie ; elle vaut −10 %.
 
 ### B.3 Qualification 68030 par hôte
 
-- [ ] **Décider la re-promotion x64/68030.** La première clause est close :
-  modes 1 et 2 comparés dans le même binaire le 2026-09-05, conformes,
-  mécanisme nommé, sans gain au mur — le clamp reste. Restent les locksteps
-  natifs, `ctest -L m030` et le tier etalon complet sur x86-64 avant
-  d'ajouter 030 à `X64Backend::caps().autoFamilies`. **Attention au contexte
-  que ce chantier a révélé :** tant que `autoFamilies` ne contient pas 030,
-  un LC II sur cet hôte tourne en `threaded`, donc toute mesure prise sous
-  `POM68K_JIT_BACKEND=x64` chiffre un override et non le produit.
+La re-promotion x64/68030 est **acquise le 2026-09-06** : `auto` résout de
+nouveau un 68030 vers le générateur natif sur x86-64, sur les trois
+admissions que le retrait du 2026-08-29 exigeait (`CHANGELOG` du jour).
+Corollaire à ne pas oublier en mesurant : `POM68K_JIT_BACKEND=x64` n'est
+plus un override diagnostique sur cet hôte, c'est le produit.
+
+- [ ] **Re-vérifier la promotion a64/68030 sur son propre hôte.**
+  `docs/JIT_BRINGUP.md` § C.5 le note depuis le 2026-08-29 et c'est toujours
+  vrai : le basculement AArch64 du 2026-08-20 n'a jamais eu de preuve plus
+  fraîche que celle que x86-64 a perdue neuf jours plus tard. Un tier 030
+  complet sur l'hôte A64 est dû avant qu'on lui fasse confiance.
 - [ ] **Exécuter `jit_store_guard_a64_test` sur un hôte AArch64.** Il n'est
   que *compilé* sur x86-64 — enregistré comme gate absent dans
   `Pom68kJitGates.cmake`, son sujet n'existe pas ici. À faire dans la session

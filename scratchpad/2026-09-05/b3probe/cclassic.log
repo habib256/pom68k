@@ -1,0 +1,7 @@
+ASSET rom    "roms/1MB ROMs/1993-02 - ECD99DC0 - Color Classic.ROM" 1048576 B sha256 645a193a7817988f54ef0ec90b6ad882b698457600a41ec8d280bee94288c534
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /home/gistarcade/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Cuda firmware LLE
+menu bar black 0.05 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2090
+PASSED — Macintosh Color Classic booted to the Finder

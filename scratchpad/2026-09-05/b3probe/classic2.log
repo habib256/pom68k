@@ -1,0 +1,7 @@
+ASSET rom    "roms/512KB ROMs/1991-10 - 3193670E - Classic II.ROM" 524288 B sha256 5e27acb45173a87e9dfd2c2a411f7cf521ff3cc8bfab083963cf4757d6ca289c
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /home/gistarcade/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+menu bar black 0.09 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2052
+PASSED — Classic II (Eagle) booted to the Finder

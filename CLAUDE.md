@@ -147,8 +147,9 @@ The engine and backend are separate decisions:
 - 68030 and 68040 guests default to the accelerated engine.
 - `threaded` is always compiled and is valid for every guest family.
 - AArch64 `auto` selects native `a64` for 68030 and 68040.
-- Non-Windows x86-64 `auto` selects native `x64` for 68040; a 68030 uses
-  `threaded` until the withdrawn x64 promotion is re-earned.
+- Non-Windows x86-64 `auto` selects native `x64` for 68040 and, since
+  2026-09-06, for 68030 again — the promotion withdrawn on 2026-08-29 was
+  re-earned on the terms that entry set.
 - Windows x64 automatic builds omit the System V emitter and use `threaded`.
 - Explicit `POM68K_CPU_ENGINE=interp|jit` and
   `POM68K_JIT_BACKEND=auto|threaded|x64|a64` remain diagnostic/user overrides.

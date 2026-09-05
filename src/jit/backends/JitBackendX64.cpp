@@ -5329,7 +5329,23 @@ public:
         // block at $00A416AE. Restore the 030 here only with a green m030
         // tier behind it, not with a bench number (CHANGELOG.md
         // 2026-08-29).
-        c.autoFamilies = kGuest68040;
+        //
+        // **68030 RESTORED 2026-09-05, on exactly the condition that entry
+        // set.** The wedge is gone: every 68030 machine in the catalogue
+        // reaches its etalon under this backend with
+        // POM68K_JIT_REQUIRE_NATIVE=1, so a silent fall back to `threaded`
+        // would have failed rather than passed — six pinned
+        // `jit_*_boot_etalon` gates plus a nine-machine probe (Classic II,
+        // Color Classic, LC III+, LC 520, LC 550, Color Classic II, IIci,
+        // Duo 230, LC II under System 7). The step-5956 i-cache divergence
+        // named above no longer reproduces: all six 030 lockstep gates run
+        // 120 000 steps identical. And the tier the withdrawal demanded is
+        // green under this line, not beside it. The speed that was never
+        // the argument is nevertheless the size of the prize on this host:
+        // `threaded` 17.45 s against x64 5.69 s at 2000 frames, a factor
+        // of three, which is why the 68030 spent five weeks on the slow
+        // path while two 5-10 % slices were being won on it.
+        c.autoFamilies = kGuest68040 | kGuest68030;
         // The access thunks bias the clock by the not-yet-charged i-cache
         // fetch penalty for the access alone (pom68kJitRead/Write, JIT_BRINGUP
         // § C.4nonies) — the declaration that turns the restart-base and

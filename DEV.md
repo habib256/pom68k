@@ -1380,13 +1380,16 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   The code generators declare the 68030 since the same day (lockstep-gated
   on both ISAs; explicit `POM68K_JIT_BACKEND=x64|a64` selects them, no
   unsafe override), and `auto` consults the separate
-  `BackendCaps::autoFamilies` SPEED mask (2026-08-19). It carries 040 on
-  both generators and 030 on **a64 only**: AArch64 was promoted 2026-08-20
-  (score 64), x86-64 on 2026-08-21 (−12.6 % over `threaded`) and
-  **withdrawn 2026-08-29**, when a whole-tier 030 run on an
-  x86-64 host hung every gate reaching the generator — a regression of the
-  eight days since the flip, proved by an A/B on `d4a18b6` rather than
-  attributed to that day's Moira patch (`CHANGELOG.md` 2026-08-29). An x86-64 030 therefore resolves to `threaded`.
+  `BackendCaps::autoFamilies` SPEED mask (2026-08-19). It carries 040 and 030 on
+  **both** generators again. AArch64 was promoted 2026-08-20 (score 64);
+  x86-64 on 2026-08-21 (−12.6 % over `threaded`), **withdrawn 2026-08-29**
+  when a whole-tier 030 run on an x86-64 host hung every gate reaching the
+  generator, and **restored 2026-09-06** on the three admissions that entry
+  demanded — `-L m030` 56/56 and `-L etalon` 124/124 under the restored
+  default, six 030 lockstep gates at 120 000 steps identical, and fifteen
+  68030 machines reaching their etalon with `POM68K_JIT_REQUIRE_NATIVE=1`
+  so a silent fall back to `threaded` would fail rather than pass
+  (`CHANGELOG.md` 2026-08-29 and 2026-09-06).
   68000 and 68020 still start on the interpreter.
   The GUI **CPU** menu switches it live (through the machine thread's command
   queue, so the swap lands between two instructions), and

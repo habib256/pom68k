@@ -1,0 +1,5 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM" 1048576 B sha256 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Cuda firmware LLE
+mode 512x384 depth 3; menu bar dark 0.17 (want <0.30), menu run 494 (want >=256), CurApName "Finder", desktop weave 0.28 (printed, not asserted), SCSI commands 1870
+PASSED — Macintosh Color Classic II booted to the Finder

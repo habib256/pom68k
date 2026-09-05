@@ -23,7 +23,7 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 
 | Fact | Where |
 |---|---|
-| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask, and the two **no longer agree**: a64 carries 68040+68030 since its independent 2026-08-20 promotion, x64 carries 68040 alone since its 030 promotion was **withdrawn on 2026-08-29** (§ C.5 box); `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
+| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask, and the two **agree again since 2026-09-06**: a64 carries 68040+68030 since its independent 2026-08-20 promotion, and x64 carries both again — its 030 promotion was **withdrawn on 2026-08-29** and **restored on 2026-09-06** on the tier evidence that entry demanded (§ C.5 box); `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
 | `threaded` declares `kGuestAny`; `auto` uses it for 000/020, while an 030 reaches the native generator on both ISAs | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
 | `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:1997-2033` |
@@ -133,7 +133,8 @@ fixed-budget win, while the long lockstep and native LLE platform gates stayed
 green. The final three-repeat ABBA is `threaded` 19.93 s versus a64 18.88 s
 (−5.3 %, 0.4/0.3 % arm spreads, fingerprint `cfb184b6faddabec`), beyond the
 3.0 % host floor. A64 `autoFamilies` now carries 040+030; x64 made the same
-promotion separately on 2026-08-21, on its own host's evidence (§ C.5).
+promotion separately on 2026-08-21, on its own host's evidence, lost it on
+2026-08-29 and re-earned it on 2026-09-06 (§ C.5).
 
 The 2026-08-21 exact-source MOVE extension exposed the boundary of this
 proof: granting its two-access exact token to the 030 moved two fetches at
@@ -943,6 +944,21 @@ correctness has a standing guard, so the two halves were separated:
 > **The a64 flip has no fresher evidence than this one had** — the AArch64
 > host must re-run its own 030 tier before that promotion is trusted.
 > `CHANGELOG.md` 2026-08-29.
+>
+> **RESTORED 2026-09-06, on this box's own terms.** "Restore the 030 only
+> with a green m030 tier behind it, not with a bench number" is what the
+> withdrawal asked for, and it is what was produced: `-L m030` **56/56** and
+> `-L etalon` **124/124** under the restored default, six 030 lockstep gates
+> at 120 000 steps identical (including the step-5956 i-cache divergence
+> named above, which no longer reproduces), and **fifteen** 68030 machines
+> reaching their etalon with `POM68K_JIT_REQUIRE_NATIVE=1` so a silent fall
+> back to `threaded` fails rather than passes. The wedge itself is gone —
+> what hung 23 gates in August boots every 030 machine now. Speed, which
+> was explicitly not the argument, is nevertheless the size of what the
+> withdrawal cost: `threaded` 17.45 s against x64 5.69 s at 2000 frames,
+> and the m030 tier 4830 s against 2648 s. `CHANGELOG.md` 2026-09-06.
+> The a64 caution above still stands: that host has still not re-run its
+> own 030 tier.
 
 * **Default: decided independently per backend — and BOTH have now fired.**
   The mechanism: `BackendCaps::autoFamilies` is the SPEED mask `auto`

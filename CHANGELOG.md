@@ -47,6 +47,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"publishing the LC II framebuffer to the data TLB is worth ≈ 8 %" — it removes 4.75 million interpreted replays per SimCity session and not one measurable second: one replay costs ~180 ns, and the ranking had priced a profile bucket the generator only half owns** → [2026-09-04 (fourth) — The LC II's framebuffer was refused by the data TLB…](#2026-09-04-v8-vram-dataspan)
 - **"extend the Q605 event scheduler to a third peripheral" — the ASC path had already passed seven gates and was withdrawn after two slower measurements; the follow-up audit instead found the promoted SCC/53C96 defaults accidentally disabled by startup-policy extraction** → [2026-09-03 (fifteenth) — The stale third-peripheral task…](#2026-09-03-q605-scheduler-default-restored)
 - **"native division makes SimCity 3.69 % slower" — two rebuilt-binary comparisons agreed and were both wrong; the same executable with an injected admission switch measures division 1.453 % faster, proving the apparent regression was code-layout noise** → [2026-08-30 (ninth) — The SimCity division promotion survives…](#2026-08-30-division-promotion)
+- **"no 68030 boots under the shipping default on x86-64, so the promotion is withdrawn" (2026-08-29) — the wedge is gone: fifteen 68030 machines reach their etalon natively, both tiers are green under the restored default, and the five withdrawn weeks cost a factor of three** → [2026-09-06 — The x86-64 68030 promotion is re-earned…](#2026-09-06-x64-030-restored)
 - **"patch 31 caused the 68030 wedge, because the `-L etalon` tier had run 118/118 green eight days earlier" — a dated green tier is not a control; both arms built from HEAD *without* the patch wedge identically, and the real finding is that no 68030 boots under the shipping default on x86-64** → [2026-08-29 — Moira patch 31…](#2026-08-29-patch31-and-the-withdrawal)
 - **"the x64 030 generator refuses 100 % of its code windows" — both backends refuse identically at the same step, and the cause is a one-byte page from an unprogrammed TC, bounded to the pre-MMU boot** → [2026-08-28 (fourteenth) — The 100 % window refusal…](#2026-08-28-030-degenerate-page)
 - **"the GUI speed gap is the per-slice AppleTalk path" (×9.235 off vs ×0.845 on, 2026-08-25) — its two arms match turbo-vs-paced, and the real thief was the pacer sleeping relative to emulation cost alone: every paced machine ran at ~×0.75 nominal** → [2026-08-28 (ninth) — Nominal mode never held ×1…](#2026-08-28-pacing-absolute-deadline)
@@ -399,6 +400,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-06** — [The x86-64 68030 promotion is re-earned on the terms its withdrawal set: two green tiers, not a bench number — and the five weeks it was withdrawn cost a factor of three](#2026-09-06-x64-030-restored)
 - **2026-09-05 (seventh)** — [Eighteen null experiments say the recorded x86-64 noise floor was right: the `POLICY TOO LOOSE` line that opened this item had been printed from a contaminated sample](#2026-09-05-noise-floor-upheld)
 - **2026-09-05 (sixth)** — [The caller profile re-taken on the arm that ships: the memory family is 19.2 % of the run instead of 10.0 %, and the generator owns none of it](#2026-09-05-threaded-caller-profile)
 - **2026-09-05 (fifth)** — [The 68030 interpreter data window becomes the default, which is the opposite of the 68040's, and the gate that keeps the long path alive is registered in the same commit](#2026-09-05-030-window-default-on)
@@ -825,6 +827,74 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-06-x64-030-restored"></a>
+## 2026-09-06 — The x86-64 68030 promotion is re-earned on the terms its withdrawal set: two green tiers, not a bench number — and the five weeks it was withdrawn cost a factor of three
+
+`X64Backend::caps().autoFamilies` dropped the 68030 on 2026-08-29, when a
+whole-tier 030 run on this host hung **every** gate that reached the
+generator — 23 `Timeout`, 20 more still running after eleven hours — and the
+product consequence was that no 68030 machine booted under the shipping
+default on x86-64. That entry set the condition for coming back in one
+sentence: *restore the 030 here only with a green m030 tier behind it, not
+with a bench number.*
+
+That is what this entry has.
+
+**The wedge is gone.** Every 68030 machine in the catalogue now reaches its
+etalon under the x86-64 generator with `POM68K_JIT_REQUIRE_NATIVE=1`, which
+makes a silent fall back to `threaded` a failure rather than a green — the
+"auto gate that quietly runs `threaded`" trap this tree names in
+`Pom68kJitGates.cmake`. Six pinned `jit_*_boot_etalon` gates (LC II, Mac TV,
+LC III, IIvx, IIsi, IIfx) plus a nine-machine probe run for this entry
+(Classic II, Color Classic, LC III+, LC 520, LC 550, Color Classic II, IIci,
+Duo 230, and the LC II under System 7): **fifteen of fifteen**. What hung 23
+gates in August boots every one of them now.
+
+**The lockstep divergence the withdrawal named is gone too.** That entry
+recorded "a deterministic i-cache-accounting divergence at step 5 956,
+localised to the block at `$00A416AE`". All six 030 lockstep gates —
+`jit_lockstep_030_test`, `_no_data_window_test`, `_blocks_test`,
+`_x64_experimental_test`, `_x64_packed_ccr_test`, `_x64_alignment_test` — run
+**120 000 steps identical**.
+
+**And the tiers are green under the restored line, not beside it.** The flip
+was applied first and both tiers run with `auto` actually resolving a 68030 to
+the native generator:
+
+| tier | gates | result | wall |
+|---|---|---|---|
+| `-L m030` | 56 | **56/56** | 2648 s |
+| `-L etalon` | 124 | **124/124** | 6228 s |
+
+Speed was explicitly not the argument — the withdrawal says so, and this entry
+does not rest on it. But it is the size of what the withdrawal cost, and it is
+larger than anything else measured this week: `threaded` 17.45 s against x64
+**5.69 s** at 2000 frames, a factor of **3.07**; and the m030 tier itself
+4830 s against **2648 s**, −45 %, which is a whole-tier wall clock rather than
+a microbenchmark. For five weeks a 68030 guest on this host ran on the slow
+path while 5-10 % slices were being won on that same path — the day before,
+this tree celebrated −10 % on `threaded` for folding the opcode fetch. Both
+results stand and both remain worth having; `threaded` is still the floor for
+every host without a native generator, and the fold helps the interpreter path
+wherever it runs. But the ranking lesson of the B.2 campaign has a second
+half: *check what the default actually selects before optimising it, and check
+whether the default itself is the finding.*
+
+Documentation brought into line, because four places asserted the withdrawal
+as current fact: `CLAUDE.md` § CPU and JIT policy, `DEV.md`,
+`docs/JIT_BRINGUP.md`'s facts table and its § C.5 box.
+
+**One caution is carried forward unchanged, and it is now the older of the
+two.** § C.5 has said since 2026-08-29 that the AArch64 promotion of
+2026-08-20 never had fresher evidence than the x86-64 one that failed nine
+days later, and that the A64 host owes its own full 030 tier before that
+promotion is trusted. x86-64 has now paid that bill twice; AArch64 still has
+not paid it once. It is filed in TODO § B.3.
+
+Evidence: `scratchpad/2026-09-05/b3probe/`.
 
 ---
 

@@ -989,9 +989,12 @@ int main() {
         check(!std::strcmp(on040->name(), "x86-64"),
               "…and still served for the 68040 it was written for");
         jit::Backend* auto030 = jit::selectBackend("auto", jit::kGuest68030);
-        check(!std::strcmp(auto030->name(), "threaded"),
-              "auto on a 68030 resolves to 'threaded' — the C.5 flip was "
-              "withdrawn on 2026-08-29 by the m030 tier");
+        check(!std::strcmp(auto030->name(), "x86-64"),
+              "auto on a 68030 resolves to the native generator again — "
+              "withdrawn 2026-08-29 by the m030 tier, RESTORED 2026-09-06 by "
+              "the same tier green (56/56) plus -L etalon 124/124, six 030 "
+              "locksteps at 120 000 steps identical, and fifteen machines "
+              "reaching their etalon under POM68K_JIT_REQUIRE_NATIVE=1");
         jit::Backend* auto040 = jit::selectBackend("auto", jit::kGuest68040);
         check(!std::strcmp(auto040->name(), "x86-64"),
               "auto on a 68040 still picks the native generator");
