@@ -85,24 +85,7 @@ désormais la masse mesurée.
 Les six tranches du plan (`scratchpad/2026-09-04/b2plan/PLAN.md`) sont
 traitées ; le récit et les mesures sont au `CHANGELOG` des 2026-09-04 et
 2026-09-05. Le tronc mesure **−9,5 / −9,9 %** contre l'état d'avant, à
-empreinte identique. Ce qui reste ouvert :
-
-- [ ] **Refaire le profil par appelant sur `threaded`.** Celui de la tranche 0
-  (`tools/profile_callers.py`) a été pris sur le bras x64 : il décrit un
-  override diagnostique. Sur `threaded` la part du générateur tombe à 0 %
-  dans chaque seau et le coût absolu monte — inférence depuis le code, pas
-  mesure. Le profil actuel dit : générateur **73,4 %** de `mmuRead<N>`,
-  **47,9 %** de `mmuWrite<N>` (dont 0 % de thunk : le clamp), **31,6 %** de
-  `mmuFetchWord`.
-- [ ] **Trancher le plancher de bruit inscrit.**
-  `performance_budgets.tsv:67` porte 10 pour mille pour x86_64. La campagne
-  du 2026-09-05, hôte réellement seul, mesure **2 pour mille à 2000 images**
-  (étendues de bras 0,2 %/0,1 %, le banc imprimant lui-même `POLICY TOO
-  LOOSE`) et **17 pour mille à 6000**. Une constante unique par hôte
-  n'exprime pas cet écart, et un plancher est une mesure, pas une marge de
-  sécurité : à 10 ‰ on enterre tout effet réel de 1 %, à 2 ‰ on revendiquera
-  du bruit à 6000 images. Trancher demande sa propre campagne (trois
-  expériences nulles par budget), pas une retouche au passage.
+empreinte identique. **Rien n'y reste ouvert.**
 
 **La leçon à ne pas reperdre :** ce n'était pas « un bucket de profil ne se
 retire qu'à moitié », c'était **le bras mesuré**. `X64Backend::caps()` ne

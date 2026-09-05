@@ -1,0 +1,52 @@
+9024 samples x 2000 us = 18.0 s CPU attributed
+stack depth (capped at 8): 6:0%  7:13%  8:87%
+
+== every sample, by CALLER ==
+   76.67%       6919  interpreter — instruction dispatch
+   20.77%       1874  unattributed (stack truncated)
+    2.24%        202  devices / peripheral pacing / harness
+    0.32%         29  generator — DTLB fill
+
+== the TODO § B.2 buckets, split by caller ==
+
+-- mmuFetchWord: 3.32% of the run (300 samples)
+     100.00% of bucket ( 3.32% of run)  interpreter — instruction dispatch
+
+-- mmuRead<N>: 8.19% of the run (739 samples)
+     100.00% of bucket ( 8.19% of run)  interpreter — instruction dispatch
+
+-- mmuWrite<N>: 3.92% of the run (354 samples)
+     100.00% of bucket ( 3.92% of run)  interpreter — instruction dispatch
+
+-- mmuAtcLookup/Fill: 0.10% of the run (9 samples)
+     100.00% of bucket ( 0.10% of run)  interpreter — instruction dispatch
+
+-- V8Memory::read16: 2.09% of the run (189 samples)
+     100.00% of bucket ( 2.09% of run)  interpreter — instruction dispatch
+
+-- V8Memory::write16: 1.71% of the run (154 samples)
+     100.00% of bucket ( 1.71% of run)  interpreter — instruction dispatch
+
+-- V8Memory::read8: 0.35% of the run (32 samples)
+     100.00% of bucket ( 0.35% of run)  interpreter — instruction dispatch
+
+-- V8Memory::write8: 0.03% of the run (3 samples)
+     100.00% of bucket ( 0.03% of run)  interpreter — instruction dispatch
+
+-- V8Memory::dataSpan: 0.14% of the run (13 samples)
+      30.77% of bucket ( 0.04% of run)  generator — DTLB fill
+      69.23% of bucket ( 0.10% of run)  unattributed (stack truncated)
+
+== top unattributed leaves (no recognised dispatch seam) ==
+   10.72%  jit::Engine::executeUntil(long)
+    5.76%  jit::(anonymous namespace)::ThreadedBackend::run(jit::Compiled*, jit::Context&)
+    1.91%  jit::Engine::armWindow(unsigned int, bool)
+    0.52%  moira::Moira::pomJitProbeCode(unsigned int, bool, unsigned int&, unsigned int&, unsigned int&) const
+    0.52%  std::_Hashtable<unsigned long, std::pair<unsigned long const, jit::Engine::Block>, std::allocator<std::pair<unsigned lon
+    0.50%  jit::Engine::record(unsigned int, bool, long)
+    0.16%  [libc.so.6]
+    0.10%  jit::classify(unsigned short)
+    0.08%  moira::Moira::mmuMatchTTAccess(unsigned int, unsigned char, bool) const
+    0.08%  jit::(anonymous namespace)::ThreadedBackend::caps() const
+    0.07%  jit::Engine::dispatchBlockKey(unsigned int, bool)
+    0.06%  jit::Engine::serviceGuard()

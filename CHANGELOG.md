@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"this host resolves 2 permille, so the recorded 10-permille floor is too loose" — that null was taken while three agents and a second project shared the machine; eighteen clean ones show a bimodal host that produces 1.8 % excursions with nothing changed, and the budget stays** → [2026-09-05 (seventh) — Eighteen null experiments…](#2026-09-05-noise-floor-upheld)
 - **"the fused 68030 opcode fetch is worth ≈1.8 %, at risk, and ranks fourth of five" — it is worth 10 %, and the ranking was wrong because every ceiling in the plan was priced on `POM68K_JIT_BACKEND=x64`, which `caps().autoFamilies` never selects for a 68030** → [2026-09-05 (third) — The 68030 fetched its two opcode words…](#2026-09-05-fused-030-fetch)
 - **"the interpreter data window is a net loss, so it stays opt-in" (68040, 2026-07-28) — on the 68030 the same feature measures −5.5 % on `threaded` and −5.7 % on the interpreter arm, which is where the 68040 lost** → [2026-09-05 (fourth) — `POM68K_DATA_WINDOW` was a dead path…](#2026-09-05-030-data-window)
 - **"access-thunk mode 2 is +3 % over mode 1" (one unpaired run, 2026-08-29) — it does not reproduce; the census shows the same lever converts 645 232 device-register stores and drops nineteen blocks out of native coverage, a gain and a cost in opposite directions** → [2026-09-05 (second) — Access-thunk mode 2…](#2026-09-05-thunk-mode2-priced)
@@ -398,6 +399,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-05 (seventh)** — [Eighteen null experiments say the recorded x86-64 noise floor was right: the `POLICY TOO LOOSE` line that opened this item had been printed from a contaminated sample](#2026-09-05-noise-floor-upheld)
+- **2026-09-05 (sixth)** — [The caller profile re-taken on the arm that ships: the memory family is 19.2 % of the run instead of 10.0 %, and the generator owns none of it](#2026-09-05-threaded-caller-profile)
 - **2026-09-05 (fifth)** — [The 68030 interpreter data window becomes the default, which is the opposite of the 68040's, and the gate that keeps the long path alive is registered in the same commit](#2026-09-05-030-window-default-on)
 - **2026-09-05 (fourth)** — [`POM68K_DATA_WINDOW` was a dead path on the 68030 for five weeks; wiring it found that `mmuRead` also serves program space, and the measured result is the opposite of the 68040 precedent that made it opt-in](#2026-09-05-030-data-window)
 - **2026-09-05 (third)** — [The 68030 fetched its two opcode words with two calls where the 68040 uses one; folding them is worth 10 % — and the reason nobody knew that is that every ceiling in the plan was priced on a backend this host does not select](#2026-09-05-fused-030-fetch)
@@ -822,6 +825,124 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-05-noise-floor-upheld"></a>
+## 2026-09-05 (seventh) — Eighteen null experiments say the recorded x86-64 noise floor was right: the `POLICY TOO LOOSE` line that opened this item had been printed from a contaminated sample
+
+The B.2 campaign left one item behind: the bench had repeatedly printed `HOST
+NOISIER THAN POLICY`, and on one 2000-frame null it computed a floor of 0.2 %
+and advised recording **2 permille** against the **10** in
+`performance_budgets.tsv:67`. Paired with a 1.7 % reading at 6000 frames, that
+looked like evidence both that the policy was too loose and that one constant
+could not express two budgets.
+
+Both readings were taken while three agents were reading the tree and a second
+project was compiling. `docs/MEASURING.md` § 4.1bis says a measurement taken
+while anything else runs is provisional whatever its spread says — and that
+applies to a **floor** exactly as it applies to a delta, which is the part
+this tree had not written down. A tight null taken under load is not evidence
+that the host is quiet; it is one sample from a distribution whose tail the
+load was producing elsewhere.
+
+Measured properly — eighteen nulls, three repeats × two budgets × three
+engines, nothing else on the machine (load 0.25 at the start, 1.01 at the
+end), every delta ±0.1 % as a null must be:
+
+| engine | 2000 frames | 6000 frames |
+|---|---:|---:|
+| `threaded` | 0.3 % | 0.2 % |
+| x64 | **1.8 %** | 0.9 % |
+| interpreter | **1.7 %** | 0.8 % |
+
+(worst arm spread over the three repeats)
+
+Thirteen of the eighteen read **≤ 0.3 %**; five read **0.8-1.8 %**. The
+distribution is bimodal: this host is usually very tight and occasionally
+produces a one-to-two-percent excursion with *nothing changed between the
+arms*.
+
+**Ruling: the floor stays at 10 permille.** The tempting reading — "thirteen
+of eighteen say 0.3 %, record 3" — is § R2's own retraction run backwards. The
+harness already applies the widest of (spread A, spread B, recorded floor), so
+the recorded constant's whole job is to catch the run whose own spreads happen
+to look tight while the host is in its excursion mode: exactly those five
+nulls. A recorded 2 or 3 permille would let a 1 % claim through on a host that
+demonstrably produces 1.8 % with nothing changed. Ten permille sits below the
+worst measured excursion rather than above it, which is the correct side.
+
+So the budget is unchanged and the correction is to the earlier reading, not
+to the number. There is no `POLICY TOO LOOSE` condition on this host measured
+properly; the bench printed that line from a contaminated sample, and the
+sample was contaminated by the very campaign that was reading it.
+
+This does not license claiming a 1 % effect here. The B.2 results that stand —
+−10 % for the fused fetch, −5.5 % for the interpreter data window — are five
+to ten times this floor and were never near it. It does mean a future 1-2 %
+idea on this host needs many more paired repeats or a same-process comparator,
+not a re-argued floor.
+
+Evidence: `scratchpad/2026-09-05/floor/`.
+
+---
+
+<a id="2026-09-05-threaded-caller-profile"></a>
+## 2026-09-05 (sixth) — The caller profile re-taken on the arm that ships: the memory family is 19.2 % of the run instead of 10.0 %, and the generator owns none of it
+
+The day's first entry produced the caller-separated profile TODO § B.2 asked
+for, and flagged its own caveat: it was captured under
+`POM68K_JIT_BACKEND=x64`, which `X64Backend::caps()` never selects for a
+68030, so it described a diagnostic override. The prediction from the code was
+that on `threaded` the generator's share of every bucket would fall to zero
+and the absolute cost would rise, because `JitBackendThreaded.cpp` runs every
+instruction through `pomJitExecOne()` → `mmuExecuteStart`. Both halves are now
+measured, on the same tree and the same binary, differing only by the backend
+variable:
+
+| bucket | x64, % of run | `threaded`, % of run | generator's share, x64 | `threaded` |
+|---|---:|---:|---:|---:|
+| `mmuFetchWord` | 1.50 | **3.32** | 19.6 % | **0 %** |
+| `mmuRead<N>` | 5.11 | **8.19** | 76.4 % | **0 %** |
+| `mmuWrite<N>` | 1.73 | **3.92** | 52.5 % | **0 %** |
+| `V8Memory::read16` | 1.41 | **2.09** | 41.7 % | **0 %** |
+| `V8Memory::write16` | 0.21 | **1.71** | 71.4 % | **0 %** |
+| **sum** | **9.96** | **19.23** | — | — |
+
+Whole-run caller shares tell the same story from the other side: interpreter
+dispatch is 10.4 % of the x64 arm and **76.7 %** of the `threaded` one, while
+the exact access thunk, the native block body and the whole-instruction replay
+— 47.6 % of the x64 arm between them — are **absent** from the shipping arm
+because there is no generator on it.
+
+That is the retrospective justification for the day's third and fourth
+entries, and the reason the plan's ranking was inverted: the two slices that
+attack the interpreter's memory path were priced against a bucket half the
+size, owned in majority by a generator that does not run here.
+
+Two honesty notes are part of the result. The `threaded` arm's "unattributed"
+20.8 % is not a hole in the attribution — its top leaves are
+`jit::Engine::executeUntil` (10.7 %), `ThreadedBackend::run` (5.8 %) and
+`Engine::armWindow` (1.9 %), engine-loop frames that *are* the dispatch rather
+than memory buckets whose caller went missing; every named bucket above
+attributes to 100 %. And the x64 column has moved since the day's first entry
+— `mmuFetchWord` 2.50 % → 1.50 %, `mmuWrite<N>` 2.32 % → 1.73 % — because the
+fused fetch and the data window landed in between. A bucket visibly shrinking
+after the change meant to shrink it is a corroboration, but it does mean the
+two dates are not interchangeable and only the two columns above should be
+compared with each other.
+
+Host load 2.12 → 1.87 across the captures, so these are **ratios**; no
+wall-clock figure is quoted or derivable. `build-profile` is RelWithDebInfo
+with LTO off and frame pointers kept, per `profile_census.py`'s header.
+
+The standing rule this leaves behind: price any future B.2-shaped idea on
+`threaded` until `X64Backend::caps().autoFamilies` gains `kGuest68030`
+(TODO § B.3). The x64 arm underestimates an interpreter-path change by roughly
+a factor of two on these buckets, and reports a generator share for work the
+generator does not do on this host.
+
+Evidence: `scratchpad/2026-09-05/b2profile/`.
 
 ---
 

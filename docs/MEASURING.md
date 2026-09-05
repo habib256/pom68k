@@ -61,6 +61,19 @@ harness. It is recorded per host in `performance_budgets.tsv`
 (`host_wallclock/any/<host>/noise_floor_permille`) and reaches the bench as a
 compile-time constant, like every other reviewed budget in this tree.
 
+> **A floor is provisional under load exactly as a delta is, and that had not
+> been written down.** On 2026-09-05 the bench advised recording 2 permille
+> from a 2000-frame null taken while three agents were reading the tree and a
+> second project was compiling. Eighteen nulls on a machine with nothing else
+> on it — three repeats, two budgets, three engines — read ≤ 0.3 % thirteen
+> times and 0.8-1.8 % five times: a bimodal host that occasionally produces a
+> one-to-two-percent excursion with nothing changed between the arms. The
+> recorded 10 permille sits below that worst excursion, which is the correct
+> side, and it stayed. § 4.1bis already refuses a *delta* measured under load;
+> a floor measured under load is the same mistake wearing the instrument's
+> clothes, and it is the more dangerous one because it silently re-scales
+> every verdict taken afterwards.
+
 > **The first floor in this file was wrong by 6×, and wrong in the expensive
 > direction.** It read: three interpreter runs spread 1.4 %, so nothing under
 > ~3 % is a claim. Those were three *separate invocations* — they priced

@@ -1,0 +1,320 @@
+----- arm=threaded frames=2000 rep=1
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.29s   null(A)   16.26s   (interp first)
+  lcii pair2  interp    16.25s   null(A)   16.25s   (null(A) first)
+  lcii pair3  interp    16.25s   null(A)   16.26s   (interp first)
+  lcii pair4  interp    16.25s   null(A)   16.25s   (null(A) first)
+  lcii pair5  interp    16.26s   null(A)   16.25s   (interp first)
+
+  interp   median  16.25s  (16.25-16.29, spread 0.3%)
+  null(A)  median  16.25s  (16.25-16.26, spread 0.1%)
+  delta +0.0%  ·  floor 1.0% (arm spreads 0.3/0.1%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 0.81 0.78 0.70 -> load 0.99 0.88 0.76
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=threaded  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.3% is this host's MEASURED floor,
+  not a result. Record 3 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.3%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=threaded frames=2000 rep=2
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.19s   null(A)   16.19s   (interp first)
+  lcii pair2  interp    16.19s   null(A)   16.19s   (null(A) first)
+  lcii pair3  interp    16.19s   null(A)   16.19s   (interp first)
+  lcii pair4  interp    16.19s   null(A)   16.19s   (null(A) first)
+  lcii pair5  interp    16.19s   null(A)   16.19s   (interp first)
+
+  interp   median  16.19s  (16.19-16.19, spread 0.1%)
+  null(A)  median  16.19s  (16.19-16.19, spread 0.0%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.1/0.0%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.00 0.90 0.77 -> load 1.00 0.95 0.82
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=threaded  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.1% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.1%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=threaded frames=2000 rep=3
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.17s   null(A)   16.17s   (interp first)
+  lcii pair2  interp    16.17s   null(A)   16.17s   (null(A) first)
+  lcii pair3  interp    16.17s   null(A)   16.17s   (interp first)
+  lcii pair4  interp    16.16s   null(A)   16.16s   (null(A) first)
+  lcii pair5  interp    16.16s   null(A)   16.17s   (interp first)
+
+  interp   median  16.17s  (16.16-16.17, spread 0.0%)
+  null(A)  median  16.17s  (16.16-16.17, spread 0.1%)
+  delta +0.0%  ·  floor 1.0% (arm spreads 0.0/0.1%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.00 0.95 0.82 -> load 1.02 1.00 0.86
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=threaded  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.1% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.1%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=threaded frames=6000 rep=1
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.39s   null(A)   48.37s   (interp first)
+  lcii pair2  interp    48.39s   null(A)   48.38s   (null(A) first)
+  lcii pair3  interp    48.37s   null(A)   48.37s   (interp first)
+  lcii pair4  interp    48.37s   null(A)   48.38s   (null(A) first)
+  lcii pair5  interp    48.37s   null(A)   48.36s   (interp first)
+
+  interp   median  48.37s  (48.37-48.39, spread 0.1%)
+  null(A)  median  48.37s  (48.36-48.38, spread 0.0%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.1/0.0%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.00 0.88 -> load 1.00 1.00 0.95
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=threaded  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.1% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.1%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=threaded frames=6000 rep=2
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.39s   null(A)   48.38s   (interp first)
+  lcii pair2  interp    48.38s   null(A)   48.38s   (null(A) first)
+  lcii pair3  interp    48.37s   null(A)   48.35s   (interp first)
+  lcii pair4  interp    48.35s   null(A)   48.34s   (null(A) first)
+  lcii pair5  interp    48.35s   null(A)   48.39s   (interp first)
+
+  interp   median  48.37s  (48.35-48.39, spread 0.1%)
+  null(A)  median  48.38s  (48.34-48.39, spread 0.1%)
+  delta +0.0%  ·  floor 1.0% (arm spreads 0.1/0.1%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.00 0.96 -> load 1.00 1.01 1.00
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=threaded  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.1% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.1%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=threaded frames=6000 rep=3
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.31s   null(A)   48.31s   (interp first)
+  lcii pair2  interp    48.32s   null(A)   48.31s   (null(A) first)
+  lcii pair3  interp    48.31s   null(A)   48.40s   (interp first)
+  lcii pair4  interp    48.30s   null(A)   48.30s   (null(A) first)
+  lcii pair5  interp    48.30s   null(A)   48.31s   (interp first)
+
+  interp   median  48.31s  (48.30-48.32, spread 0.0%)
+  null(A)  median  48.31s  (48.30-48.40, spread 0.2%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.2%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.02 1.01 1.00 -> load 1.00 1.00 1.00
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=threaded  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.2% is this host's MEASURED floor,
+  not a result. Record 3 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.2%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=x64 frames=2000 rep=1
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    15.95s   null(A)   15.95s   (interp first)
+  lcii pair2  interp    15.94s   null(A)   15.97s   (null(A) first)
+  lcii pair3  interp    15.95s   null(A)   15.95s   (interp first)
+  lcii pair4  interp    16.15s   null(A)   15.96s   (null(A) first)
+  lcii pair5  interp    16.24s   null(A)   16.24s   (interp first)
+
+  interp   median  15.95s  (15.94-16.24, spread 1.8%)
+  null(A)  median  15.96s  (15.95-16.24, spread 1.8%)
+  delta +0.1%  ·  floor 1.8% (arm spreads 1.8/1.8%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.00 1.00 -> load 1.00 1.00 1.00
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=x64  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 1.8% is this host's MEASURED floor,
+  not a result. Record 19 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  HOST NOISIER THAN POLICY: 1.8% measured against a recorded 1.0%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+----- arm=x64 frames=2000 rep=2
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.23s   null(A)   16.22s   (interp first)
+  lcii pair2  interp    16.22s   null(A)   16.21s   (null(A) first)
+  lcii pair3  interp    16.22s   null(A)   16.21s   (interp first)
+  lcii pair4  interp    16.21s   null(A)   16.21s   (null(A) first)
+  lcii pair5  interp    16.21s   null(A)   16.21s   (interp first)
+
+  interp   median  16.22s  (16.21-16.23, spread 0.1%)
+  null(A)  median  16.21s  (16.21-16.22, spread 0.1%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.1/0.1%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.00 1.00 -> load 1.07 1.03 1.00
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=x64  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.1% is this host's MEASURED floor,
+  not a result. Record 2 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.1%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=x64 frames=2000 rep=3
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.24s   null(A)   16.19s   (interp first)
+  lcii pair2  interp    16.20s   null(A)   16.21s   (null(A) first)
+  lcii pair3  interp    16.20s   null(A)   16.20s   (interp first)
+  lcii pair4  interp    16.21s   null(A)   16.20s   (null(A) first)
+  lcii pair5  interp    16.20s   null(A)   16.20s   (interp first)
+
+  interp   median  16.20s  (16.20-16.24, spread 0.3%)
+  null(A)  median  16.20s  (16.19-16.21, spread 0.1%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.3/0.1%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.04 1.02 1.00 -> load 1.09 1.04 1.01
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=x64  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.3% is this host's MEASURED floor,
+  not a result. Record 3 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.3%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=x64 frames=6000 rep=1
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.16s   null(A)   48.19s   (interp first)
+  lcii pair2  interp    48.37s   null(A)   48.17s   (null(A) first)
+  lcii pair3  interp    48.58s   null(A)   48.57s   (interp first)
+  lcii pair4  interp    48.58s   null(A)   48.57s   (null(A) first)
+  lcii pair5  interp    48.59s   null(A)   48.56s   (interp first)
+
+  interp   median  48.58s  (48.16-48.59, spread 0.9%)
+  null(A)  median  48.56s  (48.17-48.57, spread 0.8%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.9/0.8%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.02 1.02 1.00 -> load 1.04 1.04 1.00
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=x64  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.9% is this host's MEASURED floor,
+  not a result. Record 9 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+----- arm=x64 frames=6000 rep=2
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.26s   null(A)   48.26s   (interp first)
+  lcii pair2  interp    48.27s   null(A)   48.25s   (null(A) first)
+  lcii pair3  interp    48.27s   null(A)   48.25s   (interp first)
+  lcii pair4  interp    48.25s   null(A)   48.25s   (null(A) first)
+  lcii pair5  interp    48.26s   null(A)   48.27s   (interp first)
+
+  interp   median  48.26s  (48.25-48.27, spread 0.0%)
+  null(A)  median  48.25s  (48.25-48.27, spread 0.0%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.0%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.03 1.00 -> load 1.00 1.00 1.00
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=x64  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.0% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.0%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=x64 frames=6000 rep=3
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.42s   null(A)   48.43s   (interp first)
+  lcii pair2  interp    48.41s   null(A)   48.41s   (null(A) first)
+  lcii pair3  interp    48.41s   null(A)   48.43s   (interp first)
+  lcii pair4  interp    48.43s   null(A)   48.42s   (null(A) first)
+  lcii pair5  interp    48.42s   null(A)   48.42s   (interp first)
+
+  interp   median  48.42s  (48.41-48.43, spread 0.0%)
+  null(A)  median  48.42s  (48.41-48.43, spread 0.1%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.1%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.00 1.00 -> load 1.02 1.12 1.07
+  knobs: POM68K_CPU_ENGINE=jit  POM68K_JIT_BACKEND=x64  POM68K_JIT_BLOCKS=1  POM68K_JIT_HOT=1  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.1% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.1%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=interp frames=2000 rep=1
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.18s   null(A)   16.00s   (interp first)
+  lcii pair2  interp    15.91s   null(A)   15.94s   (null(A) first)
+  lcii pair3  interp    15.96s   null(A)   15.94s   (interp first)
+  lcii pair4  interp    15.92s   null(A)   15.94s   (null(A) first)
+  lcii pair5  interp    15.93s   null(A)   15.93s   (interp first)
+
+  interp   median  15.93s  (15.91-16.18, spread 1.6%)
+  null(A)  median  15.94s  (15.93-16.00, spread 0.4%)
+  delta +0.0%  ·  floor 1.6% (arm spreads 1.6/0.4%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.01 1.10 1.07 -> load 1.00 1.05 1.05
+  knobs: POM68K_CPU_ENGINE=interp  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 1.6% is this host's MEASURED floor,
+  not a result. Record 17 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  HOST NOISIER THAN POLICY: 1.6% measured against a recorded 1.0%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+----- arm=interp frames=2000 rep=2
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.16s   null(A)   16.16s   (interp first)
+  lcii pair2  interp    16.16s   null(A)   16.16s   (null(A) first)
+  lcii pair3  interp    16.16s   null(A)   16.16s   (interp first)
+  lcii pair4  interp    16.16s   null(A)   16.16s   (null(A) first)
+  lcii pair5  interp    16.16s   null(A)   16.16s   (interp first)
+
+  interp   median  16.16s  (16.16-16.16, spread 0.0%)
+  null(A)  median  16.16s  (16.16-16.16, spread 0.0%)
+  delta +0.0%  ·  floor 1.0% (arm spreads 0.0/0.0%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.05 1.05 -> load 1.00 1.02 1.03
+  knobs: POM68K_CPU_ENGINE=interp  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.0% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.0%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=interp frames=2000 rep=3
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.16s   null(A)   16.16s   (interp first)
+  lcii pair2  interp    16.16s   null(A)   16.16s   (null(A) first)
+  lcii pair3  interp    16.16s   null(A)   16.16s   (interp first)
+  lcii pair4  interp    16.16s   null(A)   16.16s   (null(A) first)
+  lcii pair5  interp    15.99s   null(A)   15.88s   (interp first)
+
+  interp   median  16.16s  (15.99-16.16, spread 1.1%)
+  null(A)  median  16.16s  (15.88-16.16, spread 1.7%)
+  delta +0.0%  ·  floor 1.7% (arm spreads 1.1/1.7%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  5 2026 19:36:24  ·  load 1.10 1.05 1.04 -> load 1.00 1.02 1.02
+  knobs: POM68K_CPU_ENGINE=interp  POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 1.7% is this host's MEASURED floor,
+  not a result. Record 18 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  HOST NOISIER THAN POLICY: 1.7% measured against a recorded 1.0%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+----- arm=interp frames=6000 rep=1
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.43s   null(A)   48.43s   (interp first)
+  lcii pair2  interp    48.43s   null(A)   48.44s   (null(A) first)
+  lcii pair3  interp    48.43s   null(A)   48.43s   (interp first)
+  lcii pair4  interp    48.42s   null(A)   48.43s   (null(A) first)
+  lcii pair5  interp    48.42s   null(A)   48.42s   (interp first)
+
+  interp   median  48.43s  (48.42-48.43, spread 0.0%)
+  null(A)  median  48.43s  (48.42-48.44, spread 0.0%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.0%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.00 1.01 1.01 -> load 1.04 1.01 1.00
+  knobs: POM68K_CPU_ENGINE=interp  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.0% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.0%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=interp frames=6000 rep=2
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    48.41s   null(A)   48.40s   (interp first)
+  lcii pair2  interp    48.40s   null(A)   48.40s   (null(A) first)
+  lcii pair3  interp    48.42s   null(A)   48.39s   (interp first)
+  lcii pair4  interp    48.41s   null(A)   48.42s   (null(A) first)
+  lcii pair5  interp    48.42s   null(A)   48.42s   (interp first)
+
+  interp   median  48.41s  (48.40-48.42, spread 0.0%)
+  null(A)  median  48.40s  (48.39-48.42, spread 0.1%)
+  delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.1%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.01 1.00 1.00 -> load 1.08 1.04 1.01
+  knobs: POM68K_CPU_ENGINE=interp  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.1% is this host's MEASURED floor,
+  not a result. Record 1 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  POLICY TOO LOOSE: the recorded 1.0% is more than twice what this host actually does (0.1%). It is burying
+  real effects between the two. Re-record it — a floor is a measurement, not a safety margin.
+----- arm=interp frames=6000 rep=3
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  5 2026 19:36:24
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    47.56s   null(A)   47.57s   (interp first)
+  lcii pair2  interp    47.57s   null(A)   47.59s   (null(A) first)
+  lcii pair3  interp    47.58s   null(A)   47.59s   (interp first)
+  lcii pair4  interp    47.57s   null(A)   47.57s   (null(A) first)
+  lcii pair5  interp    47.58s   null(A)   47.94s   (interp first)
+
+  interp   median  47.57s  (47.56-47.58, spread 0.1%)
+  null(A)  median  47.59s  (47.57-47.94, spread 0.8%)
+  delta +0.0%  ·  floor 1.0% (arm spreads 0.1/0.8%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  5 2026 19:36:24  ·  load 1.01 1.02 1.00 -> load 1.01 1.02 1.00
+  knobs: POM68K_CPU_ENGINE=interp  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 0.8% is this host's MEASURED floor,
+  not a result. Record 8 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).

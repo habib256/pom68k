@@ -1,0 +1,21 @@
+# noise-floor campaign 2026-09-05T19:56:06+04:00  host=Linux 6.14.0-37-generic x86_64 threads=16 load1=0.25
+threaded  2000  rep1    delta +0.0%  ·  floor 1.0% (arm spreads 0.3/0.1%, host 1.0%)  ·  5 repeats ABBA
+threaded  2000  rep2    delta -0.0%  ·  floor 1.0% (arm spreads 0.1/0.0%, host 1.0%)  ·  5 repeats ABBA
+threaded  2000  rep3    delta +0.0%  ·  floor 1.0% (arm spreads 0.0/0.1%, host 1.0%)  ·  5 repeats ABBA
+threaded  6000  rep1    delta -0.0%  ·  floor 1.0% (arm spreads 0.1/0.0%, host 1.0%)  ·  5 repeats ABBA
+threaded  6000  rep2    delta +0.0%  ·  floor 1.0% (arm spreads 0.1/0.1%, host 1.0%)  ·  5 repeats ABBA
+threaded  6000  rep3    delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.2%, host 1.0%)  ·  5 repeats ABBA
+x64       2000  rep1    delta +0.1%  ·  floor 1.8% (arm spreads 1.8/1.8%, host 1.0%)  ·  5 repeats ABBA
+x64       2000  rep2    delta -0.0%  ·  floor 1.0% (arm spreads 0.1/0.1%, host 1.0%)  ·  5 repeats ABBA
+x64       2000  rep3    delta -0.0%  ·  floor 1.0% (arm spreads 0.3/0.1%, host 1.0%)  ·  5 repeats ABBA
+x64       6000  rep1    delta -0.0%  ·  floor 1.0% (arm spreads 0.9/0.8%, host 1.0%)  ·  5 repeats ABBA
+x64       6000  rep2    delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.0%, host 1.0%)  ·  5 repeats ABBA
+x64       6000  rep3    delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.1%, host 1.0%)  ·  5 repeats ABBA
+interp    2000  rep1    delta +0.0%  ·  floor 1.6% (arm spreads 1.6/0.4%, host 1.0%)  ·  5 repeats ABBA
+interp    2000  rep2    delta +0.0%  ·  floor 1.0% (arm spreads 0.0/0.0%, host 1.0%)  ·  5 repeats ABBA
+interp    2000  rep3    delta +0.0%  ·  floor 1.7% (arm spreads 1.1/1.7%, host 1.0%)  ·  5 repeats ABBA
+interp    6000  rep1    delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.0%, host 1.0%)  ·  5 repeats ABBA
+interp    6000  rep2    delta -0.0%  ·  floor 1.0% (arm spreads 0.0/0.1%, host 1.0%)  ·  5 repeats ABBA
+interp    6000  rep3    delta +0.0%  ·  floor 1.0% (arm spreads 0.1/0.8%, host 1.0%)  ·  5 repeats ABBA
+# load1(end)=1.01
+FLOOR CAMPAIGN COMPLETE
