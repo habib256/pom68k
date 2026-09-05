@@ -1517,31 +1517,32 @@ void markRuntimeAccess(Asm& a, int bytes, bool write, bool clearMask) {
     a.strW(12, 1, 180);                 // Frame::runtimeWrite
 }
 
+// Emitted at every instruction entry. All four fields, not just `bytes`:
+// a guard bail that performed no access is now recorded too (see
+// observeRuntimeAddress), and a stale address left over from the previous
+// instruction would key it under an address it never touched.
 void clearRuntimeAccess(Asm& a) {
     if (!gRuntimeReasonHisto) return;
     a.movW(12, 0);
+    a.strW(12, 1, 168);                 // Frame::runtimeAddress
+    a.strW(12, 1, 172);                 // Frame::runtimeCodeMask
     a.strW(12, 1, 176);                 // zero bytes = no address detail
+    a.strW(12, 1, 180);                 // Frame::runtimeWrite
 }
 
+// Record every reason the printer has a per-address table for, which is
+// every reason except `RuntimeFillTag` (JitEngine.cpp — a transient probe
+// refusal is address-unbounded and stays an opcode-plane figure). Recording
+// `RuntimeOther` unconditionally, rather than only when an access was
+// marked, is what makes the printer's `observed == expected` self-check
+// meaningful on that row: it used to read `0 / N MISMATCH` by construction.
 void observeRuntimeAddress(Asm& a, const Layout& L, uint16_t opcode) {
     if (!gRuntimeReasonHisto) return;
-    const int record = a.label(), maybeOther = a.label(), done = a.label();
+    const int done = a.label();
     a.ldrW(9, 1, 144);                  // Frame::runtimeReason
-    a.movW(10, uint32_t(RuntimeCodeMask));
+    a.movW(10, uint32_t(RuntimeFillTag));
     a.cmpW(9, 10);
-    a.bCond(Asm::EQ, record);
-    a.movW(10, uint32_t(RuntimeCrossPage));
-    a.cmpW(9, 10);
-    a.bCond(Asm::NE, maybeOther);
-    a.b(record);
-    a.bind(maybeOther);
-    a.movW(10, uint32_t(RuntimeOther));
-    a.cmpW(9, 10);
-    a.bCond(Asm::NE, done);
-    a.ldrW(10, 1, 176);
-    a.cmpWZero(10);
     a.bCond(Asm::EQ, done);
-    a.bind(record);
     spillQueueLive(a, L);
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillPackedCcr(a, L);
@@ -1724,11 +1725,20 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
         markRuntimeReason(a, RuntimeCodeMask);
         a.b(miss);
         a.bind(nonPlainMiss);
+        // w9 still carries the guest address on this path, so the refusal
+        // can be NAMED and not merely counted — which address the remembered
+        // null covers is the whole question a data window has to answer.
+        markRuntimeAccess(a, bytes, write, true);
         markRuntimeReason(a, RuntimeNonPlain);
         a.b(miss);
         a.bind(fillMiss);
         // fillDtlb records why a null was returned. The pointer is present
-        // exactly when this diagnostic code was emitted.
+        // exactly when this diagnostic code was emitted. `ldrW 9,[x1,#40]`
+        // above restored the guest address before the null test, so the
+        // access detail is available here too — it matters because a fill
+        // refusal reports RuntimeNonPlain whenever the map, not the ATC,
+        // said no (JitEngine.cpp fillDtlb).
+        markRuntimeAccess(a, bytes, write, true);
         a.ldrX(15, 1, 136);             // Frame::dtlbFillReason
         a.ldrW(12, 15, 0);
         a.strW(12, 1, 144);

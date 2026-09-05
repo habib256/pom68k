@@ -1,0 +1,71 @@
+6206 samples x 2000 us = 12.4 s CPU attributed
+stack depth (capped at 8): 2:20%  3:3%  4:4%  5:8%  6:9%  7:14%  8:41%
+
+== every sample, by CALLER ==
+   22.83%       1417  devices / peripheral pacing / harness
+   22.03%       1367  generator — exact access thunk
+   21.06%       1307  generated — native block body
+   11.86%        736  unattributed (stack truncated)
+   10.88%        675  interpreter — instruction dispatch
+    9.31%        578  generator — whole-instruction replay
+    1.26%         78  interpreter — engine fetch window
+    0.77%         48  generator — DTLB fill
+
+== the TODO § B.2 buckets, split by caller ==
+
+-- mmuFetchWord: 2.50% of the run (155 samples)
+      31.61% of bucket ( 0.79% of run)  generator — whole-instruction replay
+       8.39% of bucket ( 0.21% of run)  interpreter — engine fetch window
+      60.00% of bucket ( 1.50% of run)  interpreter — instruction dispatch
+
+-- mmuRead<N>: 5.45% of the run (338 samples)
+      64.50% of bucket ( 3.51% of run)  generator — exact access thunk
+       8.88% of bucket ( 0.48% of run)  generator — whole-instruction replay
+       1.18% of bucket ( 0.06% of run)  interpreter — engine fetch window
+      25.44% of bucket ( 1.39% of run)  interpreter — instruction dispatch
+
+-- mmuWrite<N>: 2.32% of the run (144 samples)
+      47.92% of bucket ( 1.11% of run)  generator — whole-instruction replay
+       1.39% of bucket ( 0.03% of run)  interpreter — engine fetch window
+      50.69% of bucket ( 1.18% of run)  interpreter — instruction dispatch
+
+-- mmuAtcLookup/Fill: 0.21% of the run (13 samples)
+      46.15% of bucket ( 0.10% of run)  generator — exact access thunk
+      15.38% of bucket ( 0.03% of run)  generator — whole-instruction replay
+      38.46% of bucket ( 0.08% of run)  interpreter — instruction dispatch
+
+-- V8Memory::read16: 1.82% of the run (113 samples)
+      35.40% of bucket ( 0.64% of run)  generator — exact access thunk
+      15.93% of bucket ( 0.29% of run)  generator — whole-instruction replay
+       1.77% of bucket ( 0.03% of run)  interpreter — engine fetch window
+      46.90% of bucket ( 0.85% of run)  interpreter — instruction dispatch
+
+-- V8Memory::write16: 1.05% of the run (65 samples)
+      49.23% of bucket ( 0.52% of run)  generator — whole-instruction replay
+      50.77% of bucket ( 0.53% of run)  interpreter — instruction dispatch
+
+-- V8Memory::read8: 1.48% of the run (92 samples)
+      70.65% of bucket ( 1.05% of run)  generator — exact access thunk
+      28.26% of bucket ( 0.42% of run)  generator — whole-instruction replay
+       1.09% of bucket ( 0.02% of run)  interpreter — engine fetch window
+
+-- V8Memory::write8: 0.10% of the run (6 samples)
+     100.00% of bucket ( 0.10% of run)  generator — whole-instruction replay
+
+-- V8Memory::dataSpan: 0.27% of the run (17 samples)
+      29.41% of bucket ( 0.08% of run)  generator — DTLB fill
+      70.59% of bucket ( 0.19% of run)  unattributed (stack truncated)
+
+== top unattributed leaves (no recognised dispatch seam) ==
+    2.77%  jit::Engine::executeUntil(long)
+    1.56%  std::_Hashtable<unsigned long, std::pair<unsigned long const, jit::Engine::Block>, std::allocator<std::pair<unsigned lon
+    1.13%  [libc.so.6]
+    1.02%  jit::Engine::record(unsigned int, bool, long)
+    0.82%  jit::Engine::armWindow(unsigned int, bool)
+    0.61%  jit::Engine::dispatchBlockKey(unsigned int, bool)
+    0.47%  moira::Moira::pomJitProbeCode(unsigned int, bool, unsigned int&, unsigned int&, unsigned int&) const
+    0.26%  jit::Engine::serviceGuard()
+    0.26%  jit::(anonymous namespace)::X64Backend::run(jit::Compiled*, jit::Context&)
+    0.21%  jit::(anonymous namespace)::X64Backend::compile(jit::BlockIr const&, jit::Context const&)
+    0.21%  jit::classify(unsigned short)
+    0.16%  moira::Moira::mmuMatchTTAccess(unsigned int, unsigned char, bool) const

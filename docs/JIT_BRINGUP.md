@@ -263,6 +263,20 @@ and `:2287`. Three things about them that cost a round to learn:
   `mmuRead`/`mmuWrite`, so a run with that window on and off produces
   identical fingerprints and identical *zero* fills — a dead path, not a
   passing test.
+  **Closed 2026-09-04** (TODO § B.2 slice 5): `mmuRead`/`mmuWrite` now
+  consult `pomJitData` for naturally aligned Byte/Word/Long, so the 030 knob
+  is live and the C.2/C.3 probe and thunks finally have a direct
+  interpreter-side exercise. The 030's refusal set turned out **wider** than
+  the 040's: `mmuRead` serves program space too (`read<C, AddrSpace::PROG,
+  …>` — prefetch, JSR/JMP targets) where `mmu040Read` takes `data` as an
+  argument, and the DTLB is filled from a DATA-space probe whose `fc` the
+  030 ATC matches exactly, so `fcl != FC::USER_DATA` is refused alongside
+  `fcSource != 0` and `mmuRmw` (`Moira.h` § `pomJitData030Ok`).
+  `Moira::pomJitData030Hits`/`pomJitData030Refusals` are printed by
+  `jit_bench_lcii` and `jit_lockstep_030_test` so that "the knob is off" and
+  "the path is dead" can never again look the same. The knob remains **off
+  by default**: reach is not a speed admission, and the standing 68040
+  precedent (`POM68K_VENDOR.md` § J3 point 11) is a measured net loss.
 
 ### C.4 — the 030 semantic deltas in the emitters — **partial**
 

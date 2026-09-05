@@ -1,0 +1,20 @@
+=== 2000 frames ===
+head-interp-2000                   fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | 
+off-interp-2000                    fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | data window: 0 hits, 0 refusals  [POM68K_DATA_WINDOW off]
+on-interp-2000                     fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | data window: 87960249 hits, 13623614 refusals
+head-threaded-2000                 fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | 
+off-threaded-2000                  fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | data window: 0 hits, 0 refusals  [POM68K_DATA_WINDOW off]
+on-threaded-2000                   fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | data window: 87962700 hits, 13621163 refusals
+head-x64-2000                      fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | 
+off-x64-2000                       fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | data window: 0 hits, 0 refusals  [POM68K_DATA_WINDOW off]
+on-x64-2000                        fp=3de5c5ab62b4eca8 | icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit) | data window: 12885356 hits, 14202572 refusals
+=== 6000 frames ===
+head-interp-6000                   fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | 
+off-interp-6000                    fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | data window: 0 hits, 0 refusals  [POM68K_DATA_WINDOW off]
+on-interp-6000                     fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | data window: 210352943 hits, 13800817 refusals
+head-threaded-6000                 fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | 
+off-threaded-6000                  fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | data window: 0 hits, 0 refusals  [POM68K_DATA_WINDOW off]
+on-threaded-6000                   fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | data window: 210356575 hits, 13797185 refusals
+head-x64-6000                      fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | 
+off-x64-6000                       fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | data window: 0 hits, 0 refusals  [POM68K_DATA_WINDOW off]
+on-x64-6000                        fp=cfb184b6faddabec | icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit) | data window: 47172553 hits, 15645046 refusals

@@ -385,9 +385,19 @@ void Engine::dumpHisto() const {
                      attributed == runtimeTotal ? "  exact" : "  MISMATCH");
     }
 
+    // Per-ADDRESS detail for every reason a backend can name. `RuntimeFillTag`
+    // is deliberately absent and must stay absent: a probe refusal is
+    // TRANSIENT (fillDtlb:1147 — no ATC entry yet, or a write owing its M
+    // bit), so it fires on ordinary RAM operands and keying it per address
+    // would grow this map without bound. Its opcode plane above is the
+    // instrument for it. The other four are bounded by construction —
+    // MMIO registers, remembered refusals, code slices, straddling sites —
+    // and `observed == expected` below is what proves the emitted recording
+    // predicate and this list still agree.
     if (!runtimeAddressHisto_.empty()) {
         struct AddressRow { RuntimeAddressKey key; uint64_t n; };
-        for (uint32_t reason : {uint32_t(RuntimeCodeMask),
+        for (uint32_t reason : {uint32_t(RuntimeNonPlain),
+                                uint32_t(RuntimeCodeMask),
                                 uint32_t(RuntimeCrossPage),
                                 uint32_t(RuntimeOther)}) {
             std::vector<AddressRow> addressRows;
@@ -404,7 +414,8 @@ void Engine::dumpHisto() const {
                       [](const AddressRow& a, const AddressRow& b) {
                           return a.n > b.n;
                       });
-            const char* title = reason == RuntimeCodeMask ? "codeMask"
+            const char* title = reason == RuntimeNonPlain ? "non-plain/MMIO"
+                              : reason == RuntimeCodeMask ? "codeMask"
                               : reason == RuntimeCrossPage ? "cross-page"
                               : "other-runtime-access";
             std::fprintf(stderr, "\n[jit] exact %s addresses — %llu / %llu%s\n",

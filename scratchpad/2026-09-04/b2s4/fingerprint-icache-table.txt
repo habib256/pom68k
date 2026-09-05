@@ -1,0 +1,56 @@
+### HEAD   interp   frames=2000
+lcii engine=interp cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=16.92s for 33.25s of guest time  ×1.97 real time  123.2 core MHz  fp=3de5c5ab62b4eca8
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+### SLICE  interp   frames=2000
+lcii engine=interp cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=17.02s for 33.25s of guest time  ×1.95 real time  122.5 core MHz  fp=3de5c5ab62b4eca8
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+### HEAD   threaded frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=17.50s for 33.25s of guest time  ×1.90 real time  119.1 core MHz  fp=3de5c5ab62b4eca8
+  backend=threaded  retired=236821650  13.5 Minstr/s  blocks 23346 compiled / 80482575 run (2.9 instr/run)
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+### SLICE  threaded frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=15.74s for 33.25s of guest time  ×2.11 real time  132.4 core MHz  fp=3de5c5ab62b4eca8
+  backend=threaded  retired=236821650  15.0 Minstr/s  blocks 23346 compiled / 80482575 run (2.9 instr/run)
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+### HEAD   x64      frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.70s for 33.25s of guest time  ×5.83 real time  365.7 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.6 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+### SLICE  x64      frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.67s for 33.25s of guest time  ×5.87 real time  367.8 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.8 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+### HEAD   interp   frames=6000
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=49.63s for 99.75s of guest time  ×2.01 real time  126.0 core MHz  fp=cfb184b6faddabec
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+### SLICE  interp   frames=6000
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.61s for 99.75s of guest time  ×1.97 real time  123.5 core MHz  fp=cfb184b6faddabec
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+### HEAD   threaded frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=52.20s for 99.75s of guest time  ×1.91 real time  119.8 core MHz  fp=cfb184b6faddabec
+  backend=threaded  retired=661452534  12.7 Minstr/s  blocks 23550 compiled / 202365585 run (3.1 instr/run)
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+### SLICE  threaded frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=47.08s for 99.75s of guest time  ×2.12 real time  132.8 core MHz  fp=cfb184b6faddabec
+  backend=threaded  retired=661452534  14.0 Minstr/s  blocks 23550 compiled / 202365585 run (3.1 instr/run)
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+### HEAD   x64      frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.68s for 99.75s of guest time  ×6.36 real time  398.7 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  42.2 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+### SLICE  x64      frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.95s for 99.75s of guest time  ×6.26 real time  392.0 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  41.5 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)

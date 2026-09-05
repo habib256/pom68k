@@ -17,15 +17,17 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-08-21; earlier counts predated the 040 FPU/cache completion, the JIT
-memory-contract work and the peripheral-phase alignment pair):
+2026-09-05 with rows 33 and 34, the fused 68030 `ird`/`irc` fetch and the
+68030 interpreter data window; earlier counts predated the 040 FPU/cache
+completion, the JIT memory-contract work and the peripheral-phase alignment
+pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **89** (57 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **398** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **93** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **410** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **32** | this file |
+| patch groups in the inventory below | **34** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
 Twenty-nine patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -135,8 +137,11 @@ gate in the last column of each row.
 | 30 | **Saturating 68030 access-log counters** — `pomMmuBumpIdx`/`pomMmuBumpIdxDone` replace the raw `++` at all ten log sites | `Moira.h`, `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h` | `mmuIdx`/`mmuIdxDone` are per-INSTRUCTION state reset by `mmuExecuteStart()`; generated 68030 code enters through `pomJitWriteData`/`pomJitReadData` and never passes that loop head, so they grew without bound. Signed overflow is UB, and the store guard `mmuIdxDone < 10` is signed: at INT_MAX the counter wrapped to INT_MIN, the guard passed again and the next logged access wrote `mmuAd[-2147483648]` | `jit_lockstep_030_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_alignment_test` |
 | 31 | **Identity-sized probe bound on the 68030** — `pomIdentityProbeBound()`, applied in the TT-match and TC.E-off branches of `pomJitProbeCode` and `pomJitProbeData` | `Moira.h`, `MoiraExecMMU_cpp.h` | both branches answer *identity* and return before the ATC, but carried `pageLen` from TC.PS — 0 until the OS programs TC, and the legal values are 8..15. The engine was handed a **one-byte page** and refused every window arm: 965 013 refusals per LC II boot, 95.6 % of all of them, every one before the MMU is enabled. Interpreter untouched (it never calls a probe), ATC paths untouched (only reached with TC.E set). Measured on the 120 000-step lockstep: interpreter fallback 46.8 M → 15.0 M, refusals 1 009 036 → 44 024, degenerate → 0 | `jit_lockstep_030_blocks_test`, `sst68030`, `lcii_boot_etalon` |
 | 32 | **Post-PMOVE pipe visibility** — `pomMmuPipeLive()` accessor; the engine refuses to arm the code window while the pre-switch fetch pipe is live | `Moira.h` | mmuFetchWord serves pipe fetches BEFORE the i-cache overlay counters, so the interpreter counts nothing in a PMOVE's three-word shadow while a native block's folded charge counts its traced fetchWords — a +2 fetches/+2 hits/0 miss/0 cycle lockstep divergence in the System's self-patched MMU-init loop. The engine-side refusal (`ArmFail::Pipe`) makes both engines run the shadow interpreted, not-counting included | `jit_lockstep_030_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_alignment_test` |
+| 33 | **Fused 68030 `ird`/`irc` fetch** — `mmuExecuteStart` serves both opcode words from ONE `pomJitFetch(pc, 4)` with one pipe test and one in-flight stamp, and the i-cache overlay moves into `pomIcacheFetch<Words>`, the single body `mmuFetchWord` now calls too | `Moira.h`, `MoiraExecMMU_cpp.h` | the mode-5 loop head paid two full `mmuFetchWord` calls for a pair the window already covers, while `mmu040InstrStart` had done the fused thing since the seam was written; on x86-64 the 030's automatic backend is `threaded` (`X64Backend::caps().autoFamilies` carries 68040 only), so EVERY guest instruction paid the duplicated pipe test, four-store stamp, window probe and call. The fold is refused when the pre-switch pipe is live (row 32 — a shadow fetch must keep returning before the counters), when a watchpoint is armed, and when the window does not cover all four bytes: a word reaching `read16` can clear the ROM overlay or flush a device's ticks, and nothing may sit between the two i-cache charges. ONE overlay body is deliberate — a second copy of the tag/valid/line arithmetic is how the 2026-08-19 retained-cache divergence presented, agreeing counters over parted cache content | `jit_lockstep_030_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_x64_alignment_test` |
 
-Rows 2-21 and 25-32 are the accuracy work; rows 22-24 are pure seams (inert
+| 34 | **68030 interpreter data window** — `mmuRead`/`mmuWrite` consult `pomJitData` for naturally aligned Byte/Word/Long, behind `POM68K_DATA_WINDOW`; `pomJitData030Ok()` owns the refusals and `pomJitData030Hits`/`pomJitData030Refusals` the instrument | `Moira.h`, `MoiraExecMMU_cpp.h` | J3 (point 11) wired the window from `mmu040Read`/`mmu040Write` only, so the knob was a **dead path** on the 68030 — knob on and knob off produced identical fingerprints and identical *zero* fills (`docs/JIT_BRINGUP.md` § C.2), which also left the C.2/C.3 030 probe and thunks without a direct interpreter-side exercise. The 030 owes a **wider** refusal set than the 040: `mmuRead` serves program space as well (`read<C, AddrSpace::PROG, …>` — prefetch, JSR/JMP targets) where `mmu040Read` takes `data` as an argument, and the DTLB is filled from a DATA-space probe whose `fc` the 030 ATC matches exactly, so `fcl != FC::USER_DATA` is refused alongside `fcSource != 0` and `mmuRmw`. `POLL_IPL` is reproduced at each size's own position — before a byte, after a word, **between** the halves of an aligned long — or interrupt recognition moves; unaligned and straddling forms keep the long path because they are the only ones that touch `mmuState[1]`/`mmuDataBuffer`. No in-flight stamp on a hit, same argument as `mmu040Read`, exactness inherited from J3b. Opt-in: reach is not a speed admission and the 68040 precedent in point 11 is a measured net loss | `jit_lockstep_030_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_alignment_test` |
+
+Rows 2-21 and 25-34 are the accuracy work; rows 22-24 are pure seams (inert
 when nothing arms them). The twelve files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.*` (2), `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
@@ -1467,6 +1472,14 @@ marked `POM68K JIT`, all inert until armed.
     more than the remaining hits save. The x86-64 backend keeps its inline
     use of the same tables (same cap, but there it replaces a C++ call
     chain, not a hot MRU probe).
+
+    **68030, 2026-09-04 (patch 34).** `mmuRead`/`mmuWrite` now consult the
+    same two levels, so the knob is no longer inert on that family. The
+    refusal set is wider there (`pomJitData030Ok`) because `mmuRead` also
+    carries program-space accesses, and the counters
+    `pomJitData030Hits`/`pomJitData030Refusals` exist so that "the knob is
+    off" and "the path is dead" can never look the same again. Default
+    unchanged: still opt-in, on this same measured precedent.
 
 ### J3b (2026-07-28) — derived state dies with the ATC entry it derives from
 

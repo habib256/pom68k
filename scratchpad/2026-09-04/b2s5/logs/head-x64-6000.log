@@ -1,0 +1,19 @@
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.38s for 99.75s of guest time  ×6.49 real time  406.5 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  43.0 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  compile: 23852 attempt(s), 58 rejected (0.2%), 161.02 ms total (6.8 us/attempt)
+    accepted 23794 in 160.88 ms (6.8 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 626845746 (94.8%) · block fallback 6082194 (0.9%) · window/interp 28389207 (4.3%) · tracing 135387 (0.0%)
+  identity: buckets 626845746+6082194+751327+27637880+135387 = 661452534 vs retired 661452534 · misses 28524594 vs attributed 28524594 · OK
+  window 21532714 armed / 36897 refused · dtlb 3726096 filled / 32328 refused · 9 flush(es), 55954 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 36897 (0.0%)  arm backoff 1180704 (0.2%)  tracing 13397055 (2.0%)  backend declined 751327 (0.1%)  guard replay 47231 (0.0%)
+  exit block end          12141957  (1 per 54.5 instr)
+  exit cpu flags          13142756  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1763663  (1 per 375.0 instr)
+  exit clock budget         320355  (1 per 2064.7 instr)
+  exit not compilable     13261672  (1 per 49.9 instr)
+  exits total        40630404  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":15379189724,"fingerprint":"cfb184b6faddabec","blocks_compiled":23794,"blocks_run":14252458,"jit_instrs":633814654,"native_instrs":626845746,"interp_instrs":27637880,"slow_instrs":6082194,"window_instrs":751327,"native_share_permille":947,"realtime_permille":6486}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)

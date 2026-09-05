@@ -1,0 +1,521 @@
+# POM68K B.2 slice 3 A/B — 2026-09-04T23:08:36+04:00
+# host: Linux 6.14.0-37-generic x86_64  threads=16  load1(start)=1.33
+# binary: /home/gistarcade/src/pom68k/build/jit_bench_lcii  (346f084)
+# A: POM68K_JIT_ACCESS_THUNK=1     B: POM68K_JIT_ACCESS_THUNK=2
+# engine: POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=x64 BLOCKS=1 HOT=1
+----- NULL frames=2000
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 2000 frames per run, built Sep  4 2026 23:07:12
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    16.93s   null(A)   18.12s   (interp first)
+  lcii pair2  interp    17.12s   null(A)   17.18s   (null(A) first)
+  lcii pair3  interp    17.15s   null(A)   17.15s   (interp first)
+  lcii pair4  interp    17.17s   null(A)   17.20s   (null(A) first)
+  lcii pair5  interp    17.43s   null(A)   17.04s   (interp first)
+
+  interp   median  17.15s  (16.93-17.43, spread 2.9%)
+  null(A)  median  17.18s  (17.04-18.12, spread 6.3%)
+  delta +0.2%  ·  floor 6.3% (arm spreads 2.9/6.3%, host 1.0%)  ·  5 repeats ABBA
+  fp=3de5c5ab62b4eca8  ·  built Sep  4 2026 23:07:12  ·  load 1.28 0.94 3.62 -> load 2.04 1.46 3.34
+  knobs: POM68K_BENCH_FRAMES=2000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5  POM68K_JIT_HOT=1  POM68K_JIT_BLOCKS=1  POM68K_JIT_BACKEND=x64  POM68K_CPU_ENGINE=jit
+  NULL EXPERIMENT: nothing differed between the arms, so 6.3% is this host's MEASURED floor,
+  not a result. Record 63 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  HOST NOISIER THAN POLICY: 6.3% measured against a recorded 1.0%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+----- warmup arm=A POM68K_JIT_ACCESS_THUNK=1 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.71s for 33.25s of guest time  ×5.82 real time  365.0 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.5 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  compile: 23573 attempt(s), 58 rejected (0.2%), 163.37 ms total (6.9 us/attempt)
+    accepted 23515 in 163.23 ms (6.9 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 225574854 (95.3%) · block fallback 3511664 (1.5%) · window/interp 7601721 (3.2%) · tracing 133411 (0.1%)
+  identity: buckets 225574854+3511664+728374+6873347+133411 = 236821650 vs retired 236821650 · misses 7735132 vs attributed 7735132 · OK
+  window 4939057 armed / 21050 refused · dtlb 1086932 filled / 20328 refused · 9 flush(es), 39888 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 21050 (0.0%)  arm backoff 673600 (0.3%)  tracing 3317633 (1.4%)  backend declined 728374 (0.3%)  guard replay 31189 (0.0%)
+  exit block end           3308662  (1 per 71.6 instr)
+  exit cpu flags           2981458  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          459443  (1 per 515.5 instr)
+  exit clock budget         111377  (1 per 2126.3 instr)
+  exit not compilable      3184226  (1 per 74.4 instr)
+  exits total        10045167  (1 per 23.6 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5709533780,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23515,"blocks_run":3894057,"jit_instrs":229948303,"native_instrs":225574854,"interp_instrs":6873347,"slow_instrs":3511664,"window_instrs":728374,"native_share_permille":952,"realtime_permille":5823}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- warmup arm=B POM68K_JIT_ACCESS_THUNK=2 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.82s for 33.25s of guest time  ×5.72 real time  358.3 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  40.7 Minstr/s  blocks 23455 compiled / 3843096 run (59.9 instr/run)
+  compile: 23531 attempt(s), 76 rejected (0.3%), 168.53 ms total (7.2 us/attempt)
+    accepted 23455 in 168.27 ms (7.2 us/accepted) · context/IR 13/0.00 ms · coverage 63/0.25 ms
+  native 225966681 (95.4%) · block fallback 3013639 (1.3%) · window/interp 7707949 (3.3%) · tracing 133381 (0.1%)
+  identity: buckets 225966681+3013639+896656+6811293+133381 = 236821650 vs retired 236821650 · misses 7841330 vs attributed 7841330 · OK
+  window 4905832 armed / 19391 refused · dtlb 1083097 filled / 20202 refused · 9 flush(es), 44761 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 19391 (0.0%)  arm backoff 620512 (0.3%)  tracing 3310483 (1.4%)  backend declined 896656 (0.4%)  guard replay 31002 (0.0%)
+  exit block end           3299852  (1 per 71.8 instr)
+  exit cpu flags           2981503  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          418485  (1 per 565.9 instr)
+  exit clock budget         111339  (1 per 2127.0 instr)
+  exit not compilable      3177106  (1 per 74.5 instr)
+  exits total         9988286  (1 per 23.7 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5815181209,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23455,"blocks_run":3843096,"jit_instrs":230010357,"native_instrs":225966681,"interp_instrs":6811293,"slow_instrs":3013639,"window_instrs":896656,"native_share_permille":954,"realtime_permille":5718}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p0 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.73s for 33.25s of guest time  ×5.80 real time  363.4 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.3 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  compile: 23573 attempt(s), 58 rejected (0.2%), 161.59 ms total (6.9 us/attempt)
+    accepted 23515 in 161.44 ms (6.9 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 225574854 (95.3%) · block fallback 3511664 (1.5%) · window/interp 7601721 (3.2%) · tracing 133411 (0.1%)
+  identity: buckets 225574854+3511664+728374+6873347+133411 = 236821650 vs retired 236821650 · misses 7735132 vs attributed 7735132 · OK
+  window 4939057 armed / 21050 refused · dtlb 1086932 filled / 20328 refused · 9 flush(es), 39888 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 21050 (0.0%)  arm backoff 673600 (0.3%)  tracing 3317633 (1.4%)  backend declined 728374 (0.3%)  guard replay 31189 (0.0%)
+  exit block end           3308662  (1 per 71.6 instr)
+  exit cpu flags           2981458  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          459443  (1 per 515.5 instr)
+  exit clock budget         111377  (1 per 2126.3 instr)
+  exit not compilable      3184226  (1 per 74.4 instr)
+  exits total        10045167  (1 per 23.6 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5734754195,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23515,"blocks_run":3894057,"jit_instrs":229948303,"native_instrs":225574854,"interp_instrs":6873347,"slow_instrs":3511664,"window_instrs":728374,"native_share_permille":952,"realtime_permille":5798}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p0 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.84s for 33.25s of guest time  ×5.70 real time  357.1 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  40.6 Minstr/s  blocks 23455 compiled / 3843096 run (59.9 instr/run)
+  compile: 23531 attempt(s), 76 rejected (0.3%), 162.53 ms total (6.9 us/attempt)
+    accepted 23455 in 162.29 ms (6.9 us/accepted) · context/IR 13/0.00 ms · coverage 63/0.24 ms
+  native 225966681 (95.4%) · block fallback 3013639 (1.3%) · window/interp 7707949 (3.3%) · tracing 133381 (0.1%)
+  identity: buckets 225966681+3013639+896656+6811293+133381 = 236821650 vs retired 236821650 · misses 7841330 vs attributed 7841330 · OK
+  window 4905832 armed / 19391 refused · dtlb 1083097 filled / 20202 refused · 9 flush(es), 44761 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 19391 (0.0%)  arm backoff 620512 (0.3%)  tracing 3310483 (1.4%)  backend declined 896656 (0.4%)  guard replay 31002 (0.0%)
+  exit block end           3299852  (1 per 71.8 instr)
+  exit cpu flags           2981503  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          418485  (1 per 565.9 instr)
+  exit clock budget         111339  (1 per 2127.0 instr)
+  exit not compilable      3177106  (1 per 74.5 instr)
+  exits total         9988286  (1 per 23.7 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5836066407,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23455,"blocks_run":3843096,"jit_instrs":230010357,"native_instrs":225966681,"interp_instrs":6811293,"slow_instrs":3013639,"window_instrs":896656,"native_share_permille":954,"realtime_permille":5697}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p1 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.71s for 33.25s of guest time  ×5.82 real time  364.8 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.5 Minstr/s  blocks 23455 compiled / 3843096 run (59.9 instr/run)
+  compile: 23531 attempt(s), 76 rejected (0.3%), 162.10 ms total (6.9 us/attempt)
+    accepted 23455 in 161.85 ms (6.9 us/accepted) · context/IR 13/0.00 ms · coverage 63/0.25 ms
+  native 225966681 (95.4%) · block fallback 3013639 (1.3%) · window/interp 7707949 (3.3%) · tracing 133381 (0.1%)
+  identity: buckets 225966681+3013639+896656+6811293+133381 = 236821650 vs retired 236821650 · misses 7841330 vs attributed 7841330 · OK
+  window 4905832 armed / 19391 refused · dtlb 1083097 filled / 20202 refused · 9 flush(es), 44761 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 19391 (0.0%)  arm backoff 620512 (0.3%)  tracing 3310483 (1.4%)  backend declined 896656 (0.4%)  guard replay 31002 (0.0%)
+  exit block end           3299852  (1 per 71.8 instr)
+  exit cpu flags           2981503  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          418485  (1 per 565.9 instr)
+  exit clock budget         111339  (1 per 2127.0 instr)
+  exit not compilable      3177106  (1 per 74.5 instr)
+  exits total         9988286  (1 per 23.7 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5711991370,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23455,"blocks_run":3843096,"jit_instrs":230010357,"native_instrs":225966681,"interp_instrs":6811293,"slow_instrs":3013639,"window_instrs":896656,"native_share_permille":954,"realtime_permille":5821}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p1 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.87s for 33.25s of guest time  ×5.66 real time  354.8 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  40.3 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  compile: 23573 attempt(s), 58 rejected (0.2%), 164.06 ms total (7.0 us/attempt)
+    accepted 23515 in 163.90 ms (7.0 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.16 ms
+  native 225574854 (95.3%) · block fallback 3511664 (1.5%) · window/interp 7601721 (3.2%) · tracing 133411 (0.1%)
+  identity: buckets 225574854+3511664+728374+6873347+133411 = 236821650 vs retired 236821650 · misses 7735132 vs attributed 7735132 · OK
+  window 4939057 armed / 21050 refused · dtlb 1086932 filled / 20328 refused · 9 flush(es), 39888 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 21050 (0.0%)  arm backoff 673600 (0.3%)  tracing 3317633 (1.4%)  backend declined 728374 (0.3%)  guard replay 31189 (0.0%)
+  exit block end           3308662  (1 per 71.6 instr)
+  exit cpu flags           2981458  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          459443  (1 per 515.5 instr)
+  exit clock budget         111377  (1 per 2126.3 instr)
+  exit not compilable      3184226  (1 per 74.4 instr)
+  exits total        10045167  (1 per 23.6 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5873645929,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23515,"blocks_run":3894057,"jit_instrs":229948303,"native_instrs":225574854,"interp_instrs":6873347,"slow_instrs":3511664,"window_instrs":728374,"native_share_permille":952,"realtime_permille":5661}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p2 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.76s for 33.25s of guest time  ×5.77 real time  361.8 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.1 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  compile: 23573 attempt(s), 58 rejected (0.2%), 161.22 ms total (6.8 us/attempt)
+    accepted 23515 in 161.07 ms (6.8 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 225574854 (95.3%) · block fallback 3511664 (1.5%) · window/interp 7601721 (3.2%) · tracing 133411 (0.1%)
+  identity: buckets 225574854+3511664+728374+6873347+133411 = 236821650 vs retired 236821650 · misses 7735132 vs attributed 7735132 · OK
+  window 4939057 armed / 21050 refused · dtlb 1086932 filled / 20328 refused · 9 flush(es), 39888 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 21050 (0.0%)  arm backoff 673600 (0.3%)  tracing 3317633 (1.4%)  backend declined 728374 (0.3%)  guard replay 31189 (0.0%)
+  exit block end           3308662  (1 per 71.6 instr)
+  exit cpu flags           2981458  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          459443  (1 per 515.5 instr)
+  exit clock budget         111377  (1 per 2126.3 instr)
+  exit not compilable      3184226  (1 per 74.4 instr)
+  exits total        10045167  (1 per 23.6 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5759028704,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23515,"blocks_run":3894057,"jit_instrs":229948303,"native_instrs":225574854,"interp_instrs":6873347,"slow_instrs":3511664,"window_instrs":728374,"native_share_permille":952,"realtime_permille":5773}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p2 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.75s for 33.25s of guest time  ×5.79 real time  362.6 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.2 Minstr/s  blocks 23455 compiled / 3843096 run (59.9 instr/run)
+  compile: 23531 attempt(s), 76 rejected (0.3%), 164.36 ms total (7.0 us/attempt)
+    accepted 23455 in 164.12 ms (7.0 us/accepted) · context/IR 13/0.00 ms · coverage 63/0.25 ms
+  native 225966681 (95.4%) · block fallback 3013639 (1.3%) · window/interp 7707949 (3.3%) · tracing 133381 (0.1%)
+  identity: buckets 225966681+3013639+896656+6811293+133381 = 236821650 vs retired 236821650 · misses 7841330 vs attributed 7841330 · OK
+  window 4905832 armed / 19391 refused · dtlb 1083097 filled / 20202 refused · 9 flush(es), 44761 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 19391 (0.0%)  arm backoff 620512 (0.3%)  tracing 3310483 (1.4%)  backend declined 896656 (0.4%)  guard replay 31002 (0.0%)
+  exit block end           3299852  (1 per 71.8 instr)
+  exit cpu flags           2981503  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          418485  (1 per 565.9 instr)
+  exit clock budget         111339  (1 per 2127.0 instr)
+  exit not compilable      3177106  (1 per 74.5 instr)
+  exits total         9988286  (1 per 23.7 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5746804280,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23455,"blocks_run":3843096,"jit_instrs":230010357,"native_instrs":225966681,"interp_instrs":6811293,"slow_instrs":3013639,"window_instrs":896656,"native_share_permille":954,"realtime_permille":5786}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p3 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.87s for 33.25s of guest time  ×5.66 real time  354.7 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  40.3 Minstr/s  blocks 23455 compiled / 3843096 run (59.9 instr/run)
+  compile: 23531 attempt(s), 76 rejected (0.3%), 166.72 ms total (7.1 us/attempt)
+    accepted 23455 in 166.46 ms (7.1 us/accepted) · context/IR 13/0.00 ms · coverage 63/0.26 ms
+  native 225966681 (95.4%) · block fallback 3013639 (1.3%) · window/interp 7707949 (3.3%) · tracing 133381 (0.1%)
+  identity: buckets 225966681+3013639+896656+6811293+133381 = 236821650 vs retired 236821650 · misses 7841330 vs attributed 7841330 · OK
+  window 4905832 armed / 19391 refused · dtlb 1083097 filled / 20202 refused · 9 flush(es), 44761 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 19391 (0.0%)  arm backoff 620512 (0.3%)  tracing 3310483 (1.4%)  backend declined 896656 (0.4%)  guard replay 31002 (0.0%)
+  exit block end           3299852  (1 per 71.8 instr)
+  exit cpu flags           2981503  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          418485  (1 per 565.9 instr)
+  exit clock budget         111339  (1 per 2127.0 instr)
+  exit not compilable      3177106  (1 per 74.5 instr)
+  exits total         9988286  (1 per 23.7 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5874570848,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23455,"blocks_run":3843096,"jit_instrs":230010357,"native_instrs":225966681,"interp_instrs":6811293,"slow_instrs":3013639,"window_instrs":896656,"native_share_permille":954,"realtime_permille":5660}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p3 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.68s for 33.25s of guest time  ×5.86 real time  367.0 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.7 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  compile: 23573 attempt(s), 58 rejected (0.2%), 158.54 ms total (6.7 us/attempt)
+    accepted 23515 in 158.39 ms (6.7 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 225574854 (95.3%) · block fallback 3511664 (1.5%) · window/interp 7601721 (3.2%) · tracing 133411 (0.1%)
+  identity: buckets 225574854+3511664+728374+6873347+133411 = 236821650 vs retired 236821650 · misses 7735132 vs attributed 7735132 · OK
+  window 4939057 armed / 21050 refused · dtlb 1086932 filled / 20328 refused · 9 flush(es), 39888 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 21050 (0.0%)  arm backoff 673600 (0.3%)  tracing 3317633 (1.4%)  backend declined 728374 (0.3%)  guard replay 31189 (0.0%)
+  exit block end           3308662  (1 per 71.6 instr)
+  exit cpu flags           2981458  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          459443  (1 per 515.5 instr)
+  exit clock budget         111377  (1 per 2126.3 instr)
+  exit not compilable      3184226  (1 per 74.4 instr)
+  exits total        10045167  (1 per 23.6 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5677955458,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23515,"blocks_run":3894057,"jit_instrs":229948303,"native_instrs":225574854,"interp_instrs":6873347,"slow_instrs":3511664,"window_instrs":728374,"native_share_permille":952,"realtime_permille":5856}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p4 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.73s for 33.25s of guest time  ×5.81 real time  363.9 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.4 Minstr/s  blocks 23515 compiled / 3894057 run (59.1 instr/run)
+  compile: 23573 attempt(s), 58 rejected (0.2%), 162.45 ms total (6.9 us/attempt)
+    accepted 23515 in 162.30 ms (6.9 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 225574854 (95.3%) · block fallback 3511664 (1.5%) · window/interp 7601721 (3.2%) · tracing 133411 (0.1%)
+  identity: buckets 225574854+3511664+728374+6873347+133411 = 236821650 vs retired 236821650 · misses 7735132 vs attributed 7735132 · OK
+  window 4939057 armed / 21050 refused · dtlb 1086932 filled / 20328 refused · 9 flush(es), 39888 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 21050 (0.0%)  arm backoff 673600 (0.3%)  tracing 3317633 (1.4%)  backend declined 728374 (0.3%)  guard replay 31189 (0.0%)
+  exit block end           3308662  (1 per 71.6 instr)
+  exit cpu flags           2981458  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          459443  (1 per 515.5 instr)
+  exit clock budget         111377  (1 per 2126.3 instr)
+  exit not compilable      3184226  (1 per 74.4 instr)
+  exits total        10045167  (1 per 23.6 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5726895139,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23515,"blocks_run":3894057,"jit_instrs":229948303,"native_instrs":225574854,"interp_instrs":6873347,"slow_instrs":3511664,"window_instrs":728374,"native_share_permille":952,"realtime_permille":5806}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- p4 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=2000
+lcii engine=jit    cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=5.78s for 33.25s of guest time  ×5.75 real time  360.5 core MHz  fp=3de5c5ab62b4eca8
+  backend=x86-64  retired=236821650  41.0 Minstr/s  blocks 23455 compiled / 3843096 run (59.9 instr/run)
+  compile: 23531 attempt(s), 76 rejected (0.3%), 164.86 ms total (7.0 us/attempt)
+    accepted 23455 in 164.60 ms (7.0 us/accepted) · context/IR 13/0.00 ms · coverage 63/0.26 ms
+  native 225966681 (95.4%) · block fallback 3013639 (1.3%) · window/interp 7707949 (3.3%) · tracing 133381 (0.1%)
+  identity: buckets 225966681+3013639+896656+6811293+133381 = 236821650 vs retired 236821650 · misses 7841330 vs attributed 7841330 · OK
+  window 4905832 armed / 19391 refused · dtlb 1083097 filled / 20202 refused · 9 flush(es), 44761 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 2963286 (1.3%)  window refused 19391 (0.0%)  arm backoff 620512 (0.3%)  tracing 3310483 (1.4%)  backend declined 896656 (0.4%)  guard replay 31002 (0.0%)
+  exit block end           3299852  (1 per 71.8 instr)
+  exit cpu flags           2981503  (1 per 79.4 instr)
+  exit fault                     1  (1 per 236821650.0 instr)
+  exit window lost          418485  (1 per 565.9 instr)
+  exit clock budget         111339  (1 per 2127.0 instr)
+  exit not compilable      3177106  (1 per 74.5 instr)
+  exits total         9988286  (1 per 23.7 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":5781200255,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":23455,"blocks_run":3843096,"jit_instrs":230010357,"native_instrs":225966681,"interp_instrs":6811293,"slow_instrs":3013639,"window_instrs":896656,"native_share_permille":954,"realtime_permille":5751}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)
+----- NULL frames=6000
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  4 2026 23:07:12
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    51.12s   null(A)   51.33s   (interp first)
+  lcii pair2  interp    50.92s   null(A)   51.04s   (null(A) first)
+  lcii pair3  interp    51.21s   null(A)   50.80s   (interp first)
+  lcii pair4  interp    50.48s   null(A)   50.54s   (null(A) first)
+  lcii pair5  interp    50.53s   null(A)   50.57s   (interp first)
+
+  interp   median  50.92s  (50.48-51.21, spread 1.4%)
+  null(A)  median  50.80s  (50.54-51.33, spread 1.6%)
+  delta -0.2%  ·  floor 1.6% (arm spreads 1.4/1.6%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  4 2026 23:07:12  ·  load 2.17 1.58 3.03 -> load 1.23 1.55 2.44
+  knobs: POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5  POM68K_JIT_HOT=1  POM68K_JIT_BLOCKS=1  POM68K_JIT_BACKEND=x64  POM68K_CPU_ENGINE=jit
+  NULL EXPERIMENT: nothing differed between the arms, so 1.6% is this host's MEASURED floor,
+  not a result. Record 16 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  HOST NOISIER THAN POLICY: 1.6% measured against a recorded 1.0%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+----- warmup arm=A POM68K_JIT_ACCESS_THUNK=1 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=16.37s for 99.75s of guest time  ×6.10 real time  382.0 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  40.4 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  compile: 23852 attempt(s), 58 rejected (0.2%), 161.54 ms total (6.8 us/attempt)
+    accepted 23794 in 161.39 ms (6.8 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.14 ms
+  native 626845746 (94.8%) · block fallback 6082194 (0.9%) · window/interp 28389207 (4.3%) · tracing 135387 (0.0%)
+  identity: buckets 626845746+6082194+751327+27637880+135387 = 661452534 vs retired 661452534 · misses 28524594 vs attributed 28524594 · OK
+  window 21532714 armed / 36897 refused · dtlb 3726096 filled / 32328 refused · 9 flush(es), 55954 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 36897 (0.0%)  arm backoff 1180704 (0.2%)  tracing 13397055 (2.0%)  backend declined 751327 (0.1%)  guard replay 47231 (0.0%)
+  exit block end          12141957  (1 per 54.5 instr)
+  exit cpu flags          13142756  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1763663  (1 per 375.0 instr)
+  exit clock budget         320355  (1 per 2064.7 instr)
+  exit not compilable     13261672  (1 per 49.9 instr)
+  exits total        40630404  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":16366208029,"fingerprint":"cfb184b6faddabec","blocks_compiled":23794,"blocks_run":14252458,"jit_instrs":633814654,"native_instrs":626845746,"interp_instrs":27637880,"slow_instrs":6082194,"window_instrs":751327,"native_share_permille":947,"realtime_permille":6095}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- warmup arm=B POM68K_JIT_ACCESS_THUNK=2 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.72s for 99.75s of guest time  ×6.35 real time  397.8 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  42.1 Minstr/s  blocks 23705 compiled / 14190839 run (44.7 instr/run)
+  compile: 23782 attempt(s), 77 rejected (0.3%), 168.77 ms total (7.1 us/attempt)
+    accepted 23705 in 168.51 ms (7.1 us/accepted) · context/IR 14/0.00 ms · coverage 63/0.25 ms
+  native 627444008 (94.9%) · block fallback 5558149 (0.8%) · window/interp 28315097 (4.3%) · tracing 135280 (0.0%)
+  identity: buckets 627444008+5558149+919539+27395558+135280 = 661452534 vs retired 661452534 · misses 28450377 vs attributed 28450377 · OK
+  window 21488744 armed / 29734 refused · dtlb 3714944 filled / 31388 refused · 9 flush(es), 68893 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 29734 (0.0%)  arm backoff 951488 (0.1%)  tracing 13391197 (2.0%)  backend declined 919539 (0.1%)  guard replay 47039 (0.0%)
+  exit block end          12138820  (1 per 54.5 instr)
+  exit cpu flags          13142796  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1706287  (1 per 387.7 instr)
+  exit clock budget         320399  (1 per 2064.5 instr)
+  exit not compilable     13255921  (1 per 49.9 instr)
+  exits total        40564224  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":15715651073,"fingerprint":"cfb184b6faddabec","blocks_compiled":23705,"blocks_run":14190839,"jit_instrs":634056976,"native_instrs":627444008,"interp_instrs":27395558,"slow_instrs":5558149,"window_instrs":919539,"native_share_permille":948,"realtime_permille":6347}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p0 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=16.48s for 99.75s of guest time  ×6.05 real time  379.3 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  40.1 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  compile: 23852 attempt(s), 58 rejected (0.2%), 169.56 ms total (7.1 us/attempt)
+    accepted 23794 in 169.41 ms (7.1 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 626845746 (94.8%) · block fallback 6082194 (0.9%) · window/interp 28389207 (4.3%) · tracing 135387 (0.0%)
+  identity: buckets 626845746+6082194+751327+27637880+135387 = 661452534 vs retired 661452534 · misses 28524594 vs attributed 28524594 · OK
+  window 21532714 armed / 36897 refused · dtlb 3726096 filled / 32328 refused · 9 flush(es), 55954 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 36897 (0.0%)  arm backoff 1180704 (0.2%)  tracing 13397055 (2.0%)  backend declined 751327 (0.1%)  guard replay 47231 (0.0%)
+  exit block end          12141957  (1 per 54.5 instr)
+  exit cpu flags          13142756  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1763663  (1 per 375.0 instr)
+  exit clock budget         320355  (1 per 2064.7 instr)
+  exit not compilable     13261672  (1 per 49.9 instr)
+  exits total        40630404  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":16480339250,"fingerprint":"cfb184b6faddabec","blocks_compiled":23794,"blocks_run":14252458,"jit_instrs":633814654,"native_instrs":626845746,"interp_instrs":27637880,"slow_instrs":6082194,"window_instrs":751327,"native_share_permille":947,"realtime_permille":6052}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p0 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=16.17s for 99.75s of guest time  ×6.17 real time  386.5 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  40.9 Minstr/s  blocks 23705 compiled / 14190839 run (44.7 instr/run)
+  compile: 23782 attempt(s), 77 rejected (0.3%), 173.90 ms total (7.3 us/attempt)
+    accepted 23705 in 173.65 ms (7.3 us/accepted) · context/IR 14/0.00 ms · coverage 63/0.25 ms
+  native 627444008 (94.9%) · block fallback 5558149 (0.8%) · window/interp 28315097 (4.3%) · tracing 135280 (0.0%)
+  identity: buckets 627444008+5558149+919539+27395558+135280 = 661452534 vs retired 661452534 · misses 28450377 vs attributed 28450377 · OK
+  window 21488744 armed / 29734 refused · dtlb 3714944 filled / 31388 refused · 9 flush(es), 68893 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 29734 (0.0%)  arm backoff 951488 (0.1%)  tracing 13391197 (2.0%)  backend declined 919539 (0.1%)  guard replay 47039 (0.0%)
+  exit block end          12138820  (1 per 54.5 instr)
+  exit cpu flags          13142796  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1706287  (1 per 387.7 instr)
+  exit clock budget         320399  (1 per 2064.5 instr)
+  exit not compilable     13255921  (1 per 49.9 instr)
+  exits total        40564224  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":16174123807,"fingerprint":"cfb184b6faddabec","blocks_compiled":23705,"blocks_run":14190839,"jit_instrs":634056976,"native_instrs":627444008,"interp_instrs":27395558,"slow_instrs":5558149,"window_instrs":919539,"native_share_permille":948,"realtime_permille":6167}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p1 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.91s for 99.75s of guest time  ×6.27 real time  393.0 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  41.6 Minstr/s  blocks 23705 compiled / 14190839 run (44.7 instr/run)
+  compile: 23782 attempt(s), 77 rejected (0.3%), 168.37 ms total (7.1 us/attempt)
+    accepted 23705 in 168.12 ms (7.1 us/accepted) · context/IR 14/0.00 ms · coverage 63/0.25 ms
+  native 627444008 (94.9%) · block fallback 5558149 (0.8%) · window/interp 28315097 (4.3%) · tracing 135280 (0.0%)
+  identity: buckets 627444008+5558149+919539+27395558+135280 = 661452534 vs retired 661452534 · misses 28450377 vs attributed 28450377 · OK
+  window 21488744 armed / 29734 refused · dtlb 3714944 filled / 31388 refused · 9 flush(es), 68893 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 29734 (0.0%)  arm backoff 951488 (0.1%)  tracing 13391197 (2.0%)  backend declined 919539 (0.1%)  guard replay 47039 (0.0%)
+  exit block end          12138820  (1 per 54.5 instr)
+  exit cpu flags          13142796  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1706287  (1 per 387.7 instr)
+  exit clock budget         320399  (1 per 2064.5 instr)
+  exit not compilable     13255921  (1 per 49.9 instr)
+  exits total        40564224  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":15908231887,"fingerprint":"cfb184b6faddabec","blocks_compiled":23705,"blocks_run":14190839,"jit_instrs":634056976,"native_instrs":627444008,"interp_instrs":27395558,"slow_instrs":5558149,"window_instrs":919539,"native_share_permille":948,"realtime_permille":6270}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p1 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.75s for 99.75s of guest time  ×6.33 real time  396.9 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  42.0 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  compile: 23852 attempt(s), 58 rejected (0.2%), 169.48 ms total (7.1 us/attempt)
+    accepted 23794 in 169.31 ms (7.1 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.18 ms
+  native 626845746 (94.8%) · block fallback 6082194 (0.9%) · window/interp 28389207 (4.3%) · tracing 135387 (0.0%)
+  identity: buckets 626845746+6082194+751327+27637880+135387 = 661452534 vs retired 661452534 · misses 28524594 vs attributed 28524594 · OK
+  window 21532714 armed / 36897 refused · dtlb 3726096 filled / 32328 refused · 9 flush(es), 55954 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 36897 (0.0%)  arm backoff 1180704 (0.2%)  tracing 13397055 (2.0%)  backend declined 751327 (0.1%)  guard replay 47231 (0.0%)
+  exit block end          12141957  (1 per 54.5 instr)
+  exit cpu flags          13142756  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1763663  (1 per 375.0 instr)
+  exit clock budget         320355  (1 per 2064.7 instr)
+  exit not compilable     13261672  (1 per 49.9 instr)
+  exits total        40630404  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":15752254811,"fingerprint":"cfb184b6faddabec","blocks_compiled":23794,"blocks_run":14252458,"jit_instrs":633814654,"native_instrs":626845746,"interp_instrs":27637880,"slow_instrs":6082194,"window_instrs":751327,"native_share_permille":947,"realtime_permille":6332}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p2 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.95s for 99.75s of guest time  ×6.26 real time  392.0 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  41.5 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  compile: 23852 attempt(s), 58 rejected (0.2%), 162.31 ms total (6.8 us/attempt)
+    accepted 23794 in 162.17 ms (6.8 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.14 ms
+  native 626845746 (94.8%) · block fallback 6082194 (0.9%) · window/interp 28389207 (4.3%) · tracing 135387 (0.0%)
+  identity: buckets 626845746+6082194+751327+27637880+135387 = 661452534 vs retired 661452534 · misses 28524594 vs attributed 28524594 · OK
+  window 21532714 armed / 36897 refused · dtlb 3726096 filled / 32328 refused · 9 flush(es), 55954 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 36897 (0.0%)  arm backoff 1180704 (0.2%)  tracing 13397055 (2.0%)  backend declined 751327 (0.1%)  guard replay 47231 (0.0%)
+  exit block end          12141957  (1 per 54.5 instr)
+  exit cpu flags          13142756  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1763663  (1 per 375.0 instr)
+  exit clock budget         320355  (1 per 2064.7 instr)
+  exit not compilable     13261672  (1 per 49.9 instr)
+  exits total        40630404  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":15946508339,"fingerprint":"cfb184b6faddabec","blocks_compiled":23794,"blocks_run":14252458,"jit_instrs":633814654,"native_instrs":626845746,"interp_instrs":27637880,"slow_instrs":6082194,"window_instrs":751327,"native_share_permille":947,"realtime_permille":6255}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p2 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=16.24s for 99.75s of guest time  ×6.14 real time  385.0 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  40.7 Minstr/s  blocks 23705 compiled / 14190839 run (44.7 instr/run)
+  compile: 23782 attempt(s), 77 rejected (0.3%), 177.44 ms total (7.5 us/attempt)
+    accepted 23705 in 177.18 ms (7.5 us/accepted) · context/IR 14/0.00 ms · coverage 63/0.26 ms
+  native 627444008 (94.9%) · block fallback 5558149 (0.8%) · window/interp 28315097 (4.3%) · tracing 135280 (0.0%)
+  identity: buckets 627444008+5558149+919539+27395558+135280 = 661452534 vs retired 661452534 · misses 28450377 vs attributed 28450377 · OK
+  window 21488744 armed / 29734 refused · dtlb 3714944 filled / 31388 refused · 9 flush(es), 68893 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 29734 (0.0%)  arm backoff 951488 (0.1%)  tracing 13391197 (2.0%)  backend declined 919539 (0.1%)  guard replay 47039 (0.0%)
+  exit block end          12138820  (1 per 54.5 instr)
+  exit cpu flags          13142796  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1706287  (1 per 387.7 instr)
+  exit clock budget         320399  (1 per 2064.5 instr)
+  exit not compilable     13255921  (1 per 49.9 instr)
+  exits total        40564224  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":16236382509,"fingerprint":"cfb184b6faddabec","blocks_compiled":23705,"blocks_run":14190839,"jit_instrs":634056976,"native_instrs":627444008,"interp_instrs":27395558,"slow_instrs":5558149,"window_instrs":919539,"native_share_permille":948,"realtime_permille":6143}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p3 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.97s for 99.75s of guest time  ×6.24 real time  391.3 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  41.4 Minstr/s  blocks 23705 compiled / 14190839 run (44.7 instr/run)
+  compile: 23782 attempt(s), 77 rejected (0.3%), 172.66 ms total (7.3 us/attempt)
+    accepted 23705 in 172.40 ms (7.3 us/accepted) · context/IR 14/0.00 ms · coverage 63/0.26 ms
+  native 627444008 (94.9%) · block fallback 5558149 (0.8%) · window/interp 28315097 (4.3%) · tracing 135280 (0.0%)
+  identity: buckets 627444008+5558149+919539+27395558+135280 = 661452534 vs retired 661452534 · misses 28450377 vs attributed 28450377 · OK
+  window 21488744 armed / 29734 refused · dtlb 3714944 filled / 31388 refused · 9 flush(es), 68893 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 29734 (0.0%)  arm backoff 951488 (0.1%)  tracing 13391197 (2.0%)  backend declined 919539 (0.1%)  guard replay 47039 (0.0%)
+  exit block end          12138820  (1 per 54.5 instr)
+  exit cpu flags          13142796  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1706287  (1 per 387.7 instr)
+  exit clock budget         320399  (1 per 2064.5 instr)
+  exit not compilable     13255921  (1 per 49.9 instr)
+  exits total        40564224  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":15974783925,"fingerprint":"cfb184b6faddabec","blocks_compiled":23705,"blocks_run":14190839,"jit_instrs":634056976,"native_instrs":627444008,"interp_instrs":27395558,"slow_instrs":5558149,"window_instrs":919539,"native_share_permille":948,"realtime_permille":6244}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p3 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=15.48s for 99.75s of guest time  ×6.45 real time  403.9 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  42.7 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  compile: 23852 attempt(s), 58 rejected (0.2%), 166.03 ms total (7.0 us/attempt)
+    accepted 23794 in 165.88 ms (7.0 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 626845746 (94.8%) · block fallback 6082194 (0.9%) · window/interp 28389207 (4.3%) · tracing 135387 (0.0%)
+  identity: buckets 626845746+6082194+751327+27637880+135387 = 661452534 vs retired 661452534 · misses 28524594 vs attributed 28524594 · OK
+  window 21532714 armed / 36897 refused · dtlb 3726096 filled / 32328 refused · 9 flush(es), 55954 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 36897 (0.0%)  arm backoff 1180704 (0.2%)  tracing 13397055 (2.0%)  backend declined 751327 (0.1%)  guard replay 47231 (0.0%)
+  exit block end          12141957  (1 per 54.5 instr)
+  exit cpu flags          13142756  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1763663  (1 per 375.0 instr)
+  exit clock budget         320355  (1 per 2064.7 instr)
+  exit not compilable     13261672  (1 per 49.9 instr)
+  exits total        40630404  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":15476831089,"fingerprint":"cfb184b6faddabec","blocks_compiled":23794,"blocks_run":14252458,"jit_instrs":633814654,"native_instrs":626845746,"interp_instrs":27637880,"slow_instrs":6082194,"window_instrs":751327,"native_share_permille":947,"realtime_permille":6445}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p4 arm=A POM68K_JIT_ACCESS_THUNK=1 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=16.13s for 99.75s of guest time  ×6.18 real time  387.5 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  41.0 Minstr/s  blocks 23794 compiled / 14252458 run (44.5 instr/run)
+  compile: 23852 attempt(s), 58 rejected (0.2%), 166.34 ms total (7.0 us/attempt)
+    accepted 23794 in 166.20 ms (7.0 us/accepted) · context/IR 16/0.00 ms · coverage 42/0.15 ms
+  native 626845746 (94.8%) · block fallback 6082194 (0.9%) · window/interp 28389207 (4.3%) · tracing 135387 (0.0%)
+  identity: buckets 626845746+6082194+751327+27637880+135387 = 661452534 vs retired 661452534 · misses 28524594 vs attributed 28524594 · OK
+  window 21532714 armed / 36897 refused · dtlb 3726096 filled / 32328 refused · 9 flush(es), 55954 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 36897 (0.0%)  arm backoff 1180704 (0.2%)  tracing 13397055 (2.0%)  backend declined 751327 (0.1%)  guard replay 47231 (0.0%)
+  exit block end          12141957  (1 per 54.5 instr)
+  exit cpu flags          13142756  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1763663  (1 per 375.0 instr)
+  exit clock budget         320355  (1 per 2064.7 instr)
+  exit not compilable     13261672  (1 per 49.9 instr)
+  exits total        40630404  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":16134963698,"fingerprint":"cfb184b6faddabec","blocks_compiled":23794,"blocks_run":14252458,"jit_instrs":633814654,"native_instrs":626845746,"interp_instrs":27637880,"slow_instrs":6082194,"window_instrs":751327,"native_share_permille":947,"realtime_permille":6182}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p4 arm=B POM68K_JIT_ACCESS_THUNK=2 frames=6000
+lcii engine=jit    cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=16.01s for 99.75s of guest time  ×6.23 real time  390.5 core MHz  fp=cfb184b6faddabec
+  backend=x86-64  retired=661452534  41.3 Minstr/s  blocks 23705 compiled / 14190839 run (44.7 instr/run)
+  compile: 23782 attempt(s), 77 rejected (0.3%), 169.90 ms total (7.1 us/attempt)
+    accepted 23705 in 169.65 ms (7.2 us/accepted) · context/IR 14/0.00 ms · coverage 63/0.25 ms
+  native 627444008 (94.9%) · block fallback 5558149 (0.8%) · window/interp 28315097 (4.3%) · tracing 135280 (0.0%)
+  identity: buckets 627444008+5558149+919539+27395558+135280 = 661452534 vs retired 661452534 · misses 28450377 vs attributed 28450377 · OK
+  window 21488744 armed / 29734 refused · dtlb 3714944 filled / 31388 refused · 9 flush(es), 68893 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4530  write into code 8
+  not-native causes (instrs):  cpu flags 13111380 (2.0%)  window refused 29734 (0.0%)  arm backoff 951488 (0.1%)  tracing 13391197 (2.0%)  backend declined 919539 (0.1%)  guard replay 47039 (0.0%)
+  exit block end          12138820  (1 per 54.5 instr)
+  exit cpu flags          13142796  (1 per 50.3 instr)
+  exit fault                     1  (1 per 661452534.0 instr)
+  exit window lost         1706287  (1 per 387.7 instr)
+  exit clock budget         320399  (1 per 2064.5 instr)
+  exit not compilable     13255921  (1 per 49.9 instr)
+  exits total        40564224  (1 per 16.3 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":16010155824,"fingerprint":"cfb184b6faddabec","blocks_compiled":23705,"blocks_run":14190839,"jit_instrs":634056976,"native_instrs":627444008,"interp_instrs":27395558,"slow_instrs":5558149,"window_instrs":919539,"native_share_permille":948,"realtime_permille":6230}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)

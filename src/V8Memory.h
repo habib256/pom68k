@@ -134,8 +134,13 @@ public:
     // no auto-increment and no dirty tracking (read8 decodes
     // $F40000-$FC0000 before flushTicks()), and refusing it turned every
     // QuickDraw store into a runtime replay. The 68030 DOES reach the data
-    // window: pomJitProbeData has an M68030 branch (MoiraExecMMU_cpp.h,
-    // patch 31), so this door is load-bearing here, not decoration.
+    // window, through BOTH consumers, so this door is load-bearing here and
+    // not decoration: generated code since pomJitProbeData grew its M68030
+    // branch (2026-08-10, docs/JIT_BRINGUP.md § C.2), and the INTERPRETER
+    // since mmuRead/mmuWrite began consulting pomJitData under
+    // POM68K_DATA_WINDOW (2026-09-04, POM68K_VENDOR.md patch 34) — which
+    // until then reached pomJitData only from mmu040Read/mmu040Write and was
+    // therefore a dead path on this family.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
     uint32_t jitAliasCodeMask(uint32_t physSlice, const uint8_t* pageMap,

@@ -1,0 +1,42 @@
+# POM68K B.2 — s5_interp — 2026-09-05T10:45:21+04:00
+# host: Linux 6.14.0-37-generic x86_64  threads=16  load1(start)=1.00
+# engine: POM68K_CPU_ENGINE=interp
+# binary: /home/gistarcade/src/pom68k/.claude/worktrees/agent-af30bba2444f67915/build/jit_bench_lcii
+# A: POM68K_DATA_WINDOW=0     B: POM68K_DATA_WINDOW=1
+
+== budget 6000 frames ==
+-- null experiment (POM68K_BENCH_NULL=1, COMPARE=5) --
+    interp   median  50.16s  (50.15-50.28, spread 0.3%)
+    null(A)  median  50.16s  (50.13-50.44, spread 0.6%)
+    delta -0.0%  ·  floor 1.0% (arm spreads 0.3/0.6%, host 1.0%)  ·  5 repeats ABBA
+    fp=cfb184b6faddabec  ·  built Sep  4 2026 23:50:35  ·  load 1.00 1.00 1.00 -> load 1.00 1.00 1.00
+    NULL EXPERIMENT: nothing differed between the arms, so 0.6% is this host's MEASURED floor,
+    not a result. Record 7 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+6000	A	warmup	51.17	cfb184b6faddabec
+6000	B	warmup	48.23	cfb184b6faddabec
+-- ABBA (5 pairs, warm-up pair discarded) --
+6000	A	p0	51.20	cfb184b6faddabec
+6000	B	p0	48.32	cfb184b6faddabec
+6000	B	p1	48.17	cfb184b6faddabec
+6000	A	p1	50.95	cfb184b6faddabec
+6000	A	p2	51.09	cfb184b6faddabec
+6000	B	p2	48.39	cfb184b6faddabec
+6000	B	p3	48.04	cfb184b6faddabec
+6000	A	p3	51.08	cfb184b6faddabec
+6000	A	p4	50.13	cfb184b6faddabec
+6000	B	p4	47.43	cfb184b6faddabec
+# load1(end)=1.20
+
+=== medians (warm-up pair excluded) ===
+6000|A  n=5  median=51.08s  [50.13-51.20]  spread=20.9 permille
+6000|B  n=5  median=48.17s  [47.43-48.39]  spread=19.9 permille
+
+=== delta (B relative to A) ===
+frames=6000  A=51.08s  B=48.17s  delta=-57.0 permille (-5.70 %)  widest noise=20.9 permille  ->  CLAIM
+
+=== paired differences (B-A within each ABBA pair; drift cancels) ===
+frames=6000  n=5  mean paired delta=-55.4 permille  sd=2.6  se=1.2  95%CI=[-58.7, -52.2] permille  ->  sign resolved
+
+=== fingerprints (must be ONE value per budget, both arms) ===
+6000|A: cfb184b6faddabec
+6000|B: cfb184b6faddabec

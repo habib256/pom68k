@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 419 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 423 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 75 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 43 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 77 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 44 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 43 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 10 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 83 |
+| [Cross-cutting](#cross-cutting) | 84 |
 
 ---
 
@@ -101,6 +101,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03 (second)** — [The PRODUCT_LLE day runs: labels merge, the backend is the one claimed — and the audit catches two x64-named gates proving a64](CHANGELOG.md#2026-09-03-lle-day)
 - **2026-09-04 (second)** — [The five copyback 040 gates never ran on x86-64: a 1 MB dispatch cache × eight stack fixtures](CHANGELOG.md#2026-09-04-copyback-stack-frame)
 - **2026-09-04 (sixth)** — [The x86-64 leg replays the 040 JSR transaction green, every x64 lockstep and both CPU tiers execute without a soft-skip, and the late-poll knob is proved inert on x64](CHANGELOG.md#2026-09-04-x86-64-leg-replay)
+- **2026-09-05** — [The runtime-fallback census was wired on one backend only, so the x86-64 leg printed five zeros and a `MISMATCH` — and the profile it enabled shows the generator owns two thirds of the read path and none of the write path](CHANGELOG.md#2026-09-05-x64-census-wired)
+- **2026-09-05 (third)** — [The 68030 fetched its two opcode words with two calls where the 68040 uses one; folding them is worth 10 % — and the reason nobody knew that is that every ceiling in the plan was priced on a backend this host does not select](CHANGELOG.md#2026-09-05-fused-030-fetch)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -147,6 +149,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](CHANGELOG.md#2026-09-02-040-dispatch-profile)
 - **2026-09-03 (fourteenth)** — [Cache-active 68040 JSR becomes an ordered native transaction instead of a pristine replay](CHANGELOG.md#2026-09-03-jit-cache040-jsr-transaction)
 - **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](CHANGELOG.md#2026-09-03-profile-macos-leg)
+- **2026-09-05 (fourth)** — [`POM68K_DATA_WINDOW` was a dead path on the 68030 for five weeks; wiring it found that `mmuRead` also serves program space, and the measured result is the opposite of the 68040 precedent that made it opt-in](CHANGELOG.md#2026-09-05-030-data-window)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -481,4 +484,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03 (thirteenth)** — [The unrecoverable four-image proof gap stops sequencing work, without becoming green evidence](CHANGELOG.md#2026-09-03-proof-gap-accepted)
 - **2026-09-03 (twelfth)** — [PRODUCT_LLE becomes a first-class registry: default remains 240, product is 248, and both configurations prove the same STATUS](CHANGELOG.md#2026-09-03-product-lle-registry)
 - **2026-09-04 (third)** — [The V8 word paths decoded the address twice for a pair the map cannot split](CHANGELOG.md#2026-09-04-v8-word-decode)
+- **2026-09-05 (second)** — [Access-thunk mode 2 converts device-register byte stores into single accesses and drops nineteen blocks out of native code: one lever, a gain and a cost, which is why the stopwatch never sees it](CHANGELOG.md#2026-09-05-thunk-mode2-priced)
 

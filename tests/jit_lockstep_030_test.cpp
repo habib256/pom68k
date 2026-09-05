@@ -693,6 +693,20 @@ int main(int argc, char** argv) {
                 (unsigned long long)s.armFails[int(jit::ArmFail::Pipe)]);
     std::printf("  icache %lld fetches / %lld hits / %lld misses (identical on both)\n",
                 (long long)ic.fetches, (long long)ic.hits, (long long)ic.misses);
+    // The interpreter data window (POM68K_DATA_WINDOW, Moira.h § pomJitData).
+    // Both CPUs are reported because both consult it — the reference one is
+    // the pure interpreter, and it is the arm that says whether a knob-on run
+    // exercised the path at all. Until 2026-09-04 the window was unreachable
+    // on the 68030, so a knob-on run was indistinguishable from a knob-off
+    // one (docs/JIT_BRINGUP.md § C.2); zero hits with the knob on means this
+    // gate proved nothing about it.
+    std::printf("  data window: interp %llu hits / %llu refusals · jit %llu"
+                " hits / %llu refusals%s\n",
+                (unsigned long long)cpuRef.pomJitData030Hits,
+                (unsigned long long)cpuRef.pomJitData030Refusals,
+                (unsigned long long)cpuJit.pomJitData030Hits,
+                (unsigned long long)cpuJit.pomJitData030Refusals,
+                cpuRef.pomJitDtlbFillFn ? "" : "  [POM68K_DATA_WINDOW off]");
     if (s.instrs == 0) {
         std::printf("[jit_lockstep_030] FAIL: the JIT never retired an instruction "
                     "— this gate proved nothing\n");

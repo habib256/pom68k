@@ -1661,6 +1661,21 @@ single-entry level-0 caches first (`pomJitDataR1`/`W1`, then
 measured ~10 % SLOWER, because streaming guest data evicted their own cache
 lines.
 
+That window was **68040-only until 2026-09-04**: `mmu040Read`/`mmu040Write`
+consulted `pomJitData`, the 68030's `mmuRead`/`mmuWrite` did not, so on an
+030 the knob changed nothing at all — the dead path `docs/JIT_BRINGUP.md`
+§ C.2 records ("identical fingerprints and identical *zero* fills — a dead
+path, not a passing test"). TODO § B.2 slice 5 wired it, with a refusal set
+**wider** than the 040's, because `mmuRead` serves program space as well as
+data space where `mmu040Read` takes `data` as an argument
+(`Moira.h` § `pomJitData030Ok`). `Moira::pomJitData030Hits` /
+`pomJitData030Refusals` make the difference between "off" and "dead"
+visible: `jit_bench_lcii` and `jit_lockstep_030_test` print them, and a
+knob-on 68030 run with zero hits is a regression rather than a pass. The
+knob stays **off by default** — the standing 68040 measurement
+(`POM68K_VENDOR.md` § J3 point 11) is a net loss, and the 030's automatic
+policy is decided on its own measurement, not on reach.
+
 `jit::Engine::fillDtlb` is the ONLY door into that cache, and the refusals
 are the safety argument for the whole path:
 

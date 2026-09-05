@@ -1,0 +1,10 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+[jit_lockstep_030] disk=hdv/boot.vhd
+[jit_lockstep_030] rom=roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM backend=x86-64 steps=120000
+[jit_lockstep_030] budget=6144 cycle(s) per comparison, 64 from step 73331
+[jit_lockstep_030] OK — 120000 steps identical
+  jit instrs 203903925 · interp fallback 5524258 · blocks 23854 compiled / 3316691 replayed · window 3882481 armed (19688 refused) · dtlb 1023063 filled
+  arm refusals: probe 19462 · notram 11 · degenerate 0 · pc-at-end 214 · uncovered 0 · pipe 1
+  icache 505086165 fetches / 401712082 hits / 103369916 misses (identical on both)
+  data window: interp 80059089 hits / 13612003 refusals · jit 10667684 hits / 14108863 refusals

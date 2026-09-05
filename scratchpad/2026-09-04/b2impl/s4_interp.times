@@ -1,0 +1,44 @@
+# POM68K B.2 — s4_interp — 2026-09-05T11:23:54+04:00
+# host: Linux 6.14.0-37-generic x86_64  threads=16  load1(start)=1.02
+# engine: POM68K_CPU_ENGINE=interp
+# A binary: /tmp/claude-1000/-home-gistarcade-src-pom68k/32720be6-713f-4e54-992f-24c30097af56/scratchpad/headbin/jit_bench_lcii.HEAD-346f084
+# B binary: /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build/jit_bench_lcii
+
+== budget 6000 frames ==
+-- null experiment (POM68K_BENCH_NULL=1, COMPARE=5) --
+    interp   median  49.58s  (49.57-50.22, spread 1.3%)
+    null(A)  median  49.85s  (49.57-50.24, spread 1.3%)
+    delta +0.5%  ·  floor 1.3% (arm spreads 1.3/1.3%, host 1.0%)  ·  5 repeats ABBA
+    fp=cfb184b6faddabec  ·  built Sep  4 2026 23:07:12  ·  load 1.00 1.00 1.00 -> load 1.00 1.00 1.00
+    NULL EXPERIMENT: nothing differed between the arms, so 1.3% is this host's MEASURED floor,
+    not a result. Record 14 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+    HOST NOISIER THAN POLICY: 1.3% measured against a recorded 1.0%. Either this host is busy (see the load above)
+    or the recorded floor is stale — do not measure anything else until that is settled.
+6000	A	warmup	50.57	cfb184b6faddabec
+6000	B	warmup	49.77	cfb184b6faddabec
+-- ABBA (5 pairs, warm-up pair discarded) --
+6000	A	p0	50.46	cfb184b6faddabec
+6000	B	p0	49.60	cfb184b6faddabec
+6000	B	p1	49.77	cfb184b6faddabec
+6000	A	p1	50.49	cfb184b6faddabec
+6000	A	p2	50.43	cfb184b6faddabec
+6000	B	p2	50.55	cfb184b6faddabec
+6000	B	p3	50.56	cfb184b6faddabec
+6000	A	p3	50.55	cfb184b6faddabec
+6000	A	p4	50.65	cfb184b6faddabec
+6000	B	p4	49.93	cfb184b6faddabec
+# load1(end)=1.01
+
+=== medians (warm-up pair excluded) ===
+6000|A  n=5  median=50.49s  [50.43-50.65]  spread=4.4 permille
+6000|B  n=5  median=49.93s  [49.60-50.56]  spread=19.2 permille
+
+=== delta (B relative to A) ===
+frames=6000  A=50.49s  B=49.93s  delta=-11.1 permille (-1.11 %)  widest noise=19.2 permille  ->  NOT A CLAIM
+
+=== paired differences (B-A within each ABBA pair; drift cancels) ===
+frames=6000  n=5  mean paired delta=-8.6 permille  sd=9.1  se=4.1  95%CI=[-19.9, +2.8] permille  ->  sign UNRESOLVED
+
+=== fingerprints (must be ONE value per budget, both arms) ===
+6000|A: cfb184b6faddabec
+6000|B: cfb184b6faddabec

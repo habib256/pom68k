@@ -1,0 +1,1481 @@
+make : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[1] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  1%] Building CXX object CMakeFiles/pom68k_app.dir/src/ProcessEnvironment.cpp.o
+[  1%] Built target softfloat68k
+[  1%] Building CXX object CMakeFiles/asset_fingerprint_test.dir/tests/asset_fingerprint_test.cpp.o
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  1%] Building CXX object CMakeFiles/fixture_store_test.dir/tests/fixture_store_test.cpp.o
+[  1%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfig.cpp.o
+[  1%] Linking CXX executable fixture_store_test
+[  1%] Linking CXX executable asset_fingerprint_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  1%] Built target fixture_store_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  1%] Building CXX object CMakeFiles/config_test.dir/tests/config_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  1%] Built target asset_fingerprint_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  1%] Building CXX object CMakeFiles/store_inventory_test.dir/tests/store_inventory_test.cpp.o
+[  1%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfigProduct.cpp.o
+[  2%] Linking CXX executable config_test
+[  2%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfigCore.cpp.o
+[  2%] Linking CXX executable store_inventory_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  2%] Built target config_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  2%] Building CXX object CMakeFiles/folderprobe_test.dir/tests/folderprobe_test.cpp.o
+[  3%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfigMachine.cpp.o
+[  3%] Linking CXX executable folderprobe_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  3%] Built target folderprobe_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[  4%] Built target moira
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 22%] Built target pom68k_core
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 22%] Building CXX object CMakeFiles/sst68000.dir/tests/sst68000.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 22%] Built target store_inventory_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 22%] Building CXX object CMakeFiles/sst68030.dir/tests/sst68030.cpp.o
+[ 22%] Building CXX object CMakeFiles/pom68k_app.dir/src/MachineFactory.cpp.o
+[ 22%] Linking CXX executable sst68000
+[ 22%] Linking CXX executable sst68030
+[ 22%] Building CXX object CMakeFiles/pom68k_app.dir/src/MachineSession.cpp.o
+[ 22%] Linking CXX static library libpom68k_app.a
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 22%] Built target pom68k_app
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 23%] Building CXX object CMakeFiles/sst68040.dir/tests/sst68040.cpp.o
+[ 23%] Linking CXX executable sst68040
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 23%] Built target sst68000
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 23%] Building CXX object CMakeFiles/cpu_wrapper_smoke.dir/tests/cpu_wrapper_smoke.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 23%] Built target sst68030
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 23%] Building CXX object CMakeFiles/pseudovia_test.dir/tests/pseudovia_test.cpp.o
+[ 23%] Linking CXX executable pseudovia_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 23%] Built target pseudovia_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 25%] Building CXX object CMakeFiles/v8_ramsize.dir/tests/v8_ramsize.cpp.o
+[ 25%] Built target sst68040
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 25%] Building CXX object CMakeFiles/flux_pll_test.dir/tests/flux_pll_test.cpp.o
+[ 26%] Linking CXX executable flux_pll_test
+[ 26%] Linking CXX executable cpu_wrapper_smoke
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 26%] Built target flux_pll_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 26%] Building CXX object CMakeFiles/valkyrie_i2c_test.dir/tests/valkyrie_i2c_test.cpp.o
+[ 26%] Linking CXX executable valkyrie_i2c_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 26%] Built target valkyrie_i2c_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 26%] Building CXX object CMakeFiles/valkyrie_test.dir/tests/valkyrie_test.cpp.o
+[ 26%] Linking CXX executable v8_ramsize
+[ 27%] Linking CXX executable valkyrie_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 27%] Built target valkyrie_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 28%] Building CXX object CMakeFiles/scc_int_test.dir/tests/scc_int_test.cpp.o
+[ 28%] Linking CXX executable scc_int_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 28%] Built target scc_int_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 28%] Building CXX object CMakeFiles/via6522_parity_test.dir/tests/via6522_parity_test.cpp.o
+[ 28%] Linking CXX executable via6522_parity_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 28%] Built target via6522_parity_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 29%] Building CXX object CMakeFiles/rtc_pram_test.dir/tests/rtc_pram_test.cpp.o
+[ 29%] Linking CXX executable rtc_pram_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 29%] Built target rtc_pram_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 29%] Building CXX object CMakeFiles/ncr53c96_queue_test.dir/tests/ncr53c96_queue_test.cpp.o
+[ 29%] Linking CXX executable ncr53c96_queue_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 29%] Built target ncr53c96_queue_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 29%] Building CXX object CMakeFiles/msc_parity_test.dir/tests/msc_parity_test.cpp.o
+[ 30%] Linking CXX executable msc_parity_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 30%] Built target msc_parity_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 30%] Building CXX object CMakeFiles/asc_easc_test.dir/tests/asc_easc_test.cpp.o
+[ 30%] Linking CXX executable asc_easc_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 30%] Built target asc_easc_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 30%] Building CXX object CMakeFiles/q700_turboscsi_test.dir/tests/q700_turboscsi_test.cpp.o
+[ 30%] Linking CXX executable q700_turboscsi_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 30%] Built target q700_turboscsi_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 30%] Building CXX object CMakeFiles/asc_test.dir/tests/asc_test.cpp.o
+[ 31%] Linking CXX executable asc_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 31%] Built target asc_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 31%] Building CXX object CMakeFiles/q605_asc_test.dir/tests/q605_asc_test.cpp.o
+[ 31%] Linking CXX executable q605_asc_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 31%] Built target q605_asc_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 31%] Building CXX object CMakeFiles/q605_boot_etalon.dir/tests/q605_boot_etalon.cpp.o
+[ 32%] Linking CXX executable q605_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 32%] Built target cpu_wrapper_smoke
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 32%] Building CXX object CMakeFiles/family_input_etalon.dir/tests/family_input_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 32%] Built target v8_ramsize
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 32%] Building CXX object CMakeFiles/q605_ot_bind_etalon.dir/tests/q605_ot_bind_etalon.cpp.o
+[ 32%] Linking CXX executable family_input_etalon
+[ 32%] Linking CXX executable q605_ot_bind_etalon
+In function ‘memcpy’,
+    inlined from ‘sendToGuest’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/EtherLink.cpp:51:16:
+/usr/include/x86_64-linux-gnu/bits/string_fortified.h:29:33: warning: ‘__builtin_memcpy’ writing 6 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]
+   29 |   return __builtin___memcpy_chk (__dest, __src, __len,
+      |                                 ^
+In member function ‘sendToGuest’:
+lto1: note: destination object is likely at address zero
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 32%] Built target q605_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 32%] Building CXX object CMakeFiles/q605_nofpu_boot_etalon.dir/tests/q605_nofpu_boot_etalon.cpp.o
+[ 34%] Linking CXX executable q605_nofpu_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 34%] Built target family_input_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 35%] Building CXX object CMakeFiles/q605_barefpu_boot_etalon.dir/tests/q605_barefpu_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 35%] Built target q605_ot_bind_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 36%] Building CXX object CMakeFiles/lc475_boot_etalon.dir/tests/lc475_boot_etalon.cpp.o
+[ 36%] Linking CXX executable lc475_boot_etalon
+[ 36%] Linking CXX executable q605_barefpu_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 36%] Built target q605_nofpu_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 36%] Building CXX object CMakeFiles/lc575_boot_etalon.dir/tests/lc575_boot_etalon.cpp.o
+[ 36%] Linking CXX executable lc575_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 36%] Built target q605_barefpu_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 36%] Building CXX object CMakeFiles/swim2_test.dir/tests/swim2_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 36%] Built target lc475_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 36%] Building CXX object CMakeFiles/swim2_media_test.dir/tests/swim2_media_test.cpp.o
+[ 36%] Linking CXX executable swim2_media_test
+[ 37%] Linking CXX executable swim2_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 37%] Built target swim2_media_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 38%] Building CXX object CMakeFiles/floppy_sound_test.dir/tests/floppy_sound_test.cpp.o
+[ 38%] Building CXX object CMakeFiles/floppy_sound_test.dir/src/FloppySound.cpp.o
+[ 38%] Building CXX object CMakeFiles/floppy_sound_test.dir/src/miniaudio_impl.cpp.o
+[ 38%] Linking CXX executable floppy_sound_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 38%] Built target lc575_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 39%] Building CXX object CMakeFiles/q605_floppy_boot_etalon.dir/tests/q605_floppy_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 39%] Built target floppy_sound_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 39%] Building CXX object CMakeFiles/egret_test.dir/tests/egret_test.cpp.o
+[ 40%] Linking CXX executable egret_test
+[ 40%] Linking CXX executable q605_floppy_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 40%] Built target egret_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 40%] Building CXX object CMakeFiles/pic1654s_test.dir/tests/pic1654s_test.cpp.o
+[ 42%] Linking CXX executable pic1654s_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 42%] Built target pic1654s_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 42%] Building CXX object CMakeFiles/adbline_test.dir/tests/adbline_test.cpp.o
+[ 42%] Linking CXX executable adbline_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 42%] Built target adbline_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 42%] Building CXX object CMakeFiles/video_beam_test.dir/tests/video_beam_test.cpp.o
+[ 43%] Linking CXX executable video_beam_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 43%] Built target video_beam_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 44%] Building CXX object CMakeFiles/v8_video_test.dir/tests/v8_video_test.cpp.o
+[ 44%] Linking CXX executable v8_video_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 44%] Built target v8_video_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 45%] Building CXX object CMakeFiles/cuda_restart_test.dir/tests/cuda_restart_test.cpp.o
+[ 45%] Linking CXX executable cuda_restart_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 45%] Built target swim2_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 45%] Building CXX object CMakeFiles/sonora_video_test.dir/tests/sonora_video_test.cpp.o
+[ 46%] Linking CXX executable sonora_video_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 46%] Built target sonora_video_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 47%] Building CXX object CMakeFiles/raster_equiv_test.dir/tests/raster_equiv_test.cpp.o
+[ 47%] Linking CXX executable raster_equiv_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 47%] Built target raster_equiv_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 47%] Building CXX object CMakeFiles/v8_raster_test.dir/tests/v8_raster_test.cpp.o
+[ 47%] Linking CXX executable v8_raster_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 47%] Built target v8_raster_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 48%] Building CXX object CMakeFiles/q605_dafb_test.dir/tests/q605_dafb_test.cpp.o
+[ 48%] Linking CXX executable q605_dafb_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 48%] Built target q605_dafb_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 48%] Building CXX object CMakeFiles/q605_event_scheduler_test.dir/tests/q605_event_scheduler_test.cpp.o
+[ 48%] Linking CXX executable q605_event_scheduler_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 48%] Built target q605_floppy_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 50%] Building CXX object CMakeFiles/quadra_event_scheduler_test.dir/tests/quadra_event_scheduler_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 50%] Built target q605_event_scheduler_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 50%] Building CXX object CMakeFiles/q605_turboscsi_test.dir/tests/q605_turboscsi_test.cpp.o
+[ 50%] Linking CXX executable quadra_event_scheduler_test
+[ 50%] Linking CXX executable q605_turboscsi_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 50%] Built target quadra_event_scheduler_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 50%] Building CXX object CMakeFiles/scc_baud_test.dir/tests/scc_baud_test.cpp.o
+[ 51%] Linking CXX executable scc_baud_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Built target scc_baud_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Building CXX object CMakeFiles/scc_engine_test.dir/tests/scc_engine_test.cpp.o
+[ 51%] Linking CXX executable scc_engine_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Built target scc_engine_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Building CXX object CMakeFiles/r65c02_test.dir/tests/r65c02_test.cpp.o
+[ 51%] Linking CXX executable r65c02_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Built target cuda_restart_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Building CXX object CMakeFiles/applepic_test.dir/tests/applepic_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Built target r65c02_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 51%] Building CXX object CMakeFiles/m68hc05_test.dir/tests/m68hc05_test.cpp.o
+[ 52%] Linking CXX executable applepic_test
+[ 53%] Linking CXX executable m68hc05_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 53%] Built target applepic_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 53%] Building CXX object CMakeFiles/cuda_lle_test.dir/tests/cuda_lle_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 53%] Built target m68hc05_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 53%] Building CXX object CMakeFiles/q605_cudalle_boot_etalon.dir/tests/q605_cudalle_boot_etalon.cpp.o
+[ 53%] Linking CXX executable cuda_lle_test
+[ 54%] Linking CXX executable q605_cudalle_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Built target cuda_lle_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Building CXX object CMakeFiles/q605_cudalle_mouse_etalon.dir/tests/q605_cudalle_mouse_etalon.cpp.o
+[ 54%] Linking CXX executable q605_cudalle_mouse_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Built target q605_turboscsi_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Building CXX object CMakeFiles/egret_lle_test.dir/tests/egret_lle_test.cpp.o
+[ 54%] Linking CXX executable egret_lle_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Built target egret_lle_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Building CXX object CMakeFiles/scsi_pdma_test.dir/tests/scsi_pdma_test.cpp.o
+[ 54%] Linking CXX executable scsi_pdma_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Built target q605_cudalle_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Building CXX object CMakeFiles/lcii_boot_etalon.dir/tests/lcii_boot_etalon.cpp.o
+[ 54%] Linking CXX executable lcii_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Built target q605_cudalle_mouse_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Building CXX object CMakeFiles/lcii_sys7_boot_etalon.dir/tests/lcii_sys7_boot_etalon.cpp.o
+[ 54%] Linking CXX executable lcii_sys7_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Built target scsi_pdma_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Building CXX object CMakeFiles/lcii_savestate_etalon.dir/tests/lcii_savestate_etalon.cpp.o
+[ 54%] Linking CXX executable lcii_savestate_etalon
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:75:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/CudaLle.h:146:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+  119 |     uint8_t  buffer_[8] = {};
+      |              ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:113:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+  166 |     uint8_t deviceMap_[2] = { 0, 0 };    // pseudo cmd $19/$1A
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:67:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h: In member function ‘operator()’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+  113 |     uint8_t params_[4] = {};
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 54%] Built target lcii_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Building CXX object CMakeFiles/q605_savestate_etalon.dir/tests/q605_savestate_etalon.cpp.o
+[ 55%] Linking CXX executable q605_savestate_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Built target lcii_sys7_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Building CXX object CMakeFiles/q605_beyond_etalon.dir/tests/q605_beyond_etalon.cpp.o
+[ 55%] Linking CXX executable q605_beyond_etalon
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:113:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+  166 |     uint8_t deviceMap_[2] = { 0, 0 };    // pseudo cmd $19/$1A
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Built target lcii_savestate_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Building CXX object CMakeFiles/q605_hotfloppy_etalon.dir/tests/q605_hotfloppy_probe.cpp.o
+[ 55%] Linking CXX executable q605_hotfloppy_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Built target q605_savestate_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Building CXX object CMakeFiles/iivx_beyond_etalon.dir/tests/iivx_beyond_etalon.cpp.o
+[ 55%] Linking CXX executable iivx_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Built target q605_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Building CXX object CMakeFiles/rbv_beyond_etalon.dir/tests/rbv_beyond_etalon.cpp.o
+[ 55%] Linking CXX executable rbv_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Built target q605_hotfloppy_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Building CXX object CMakeFiles/sonora_beyond_etalon.dir/tests/sonora_beyond_etalon.cpp.o
+[ 55%] Linking CXX executable sonora_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 55%] Built target rbv_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 56%] Building CXX object CMakeFiles/centris_beyond_etalon.dir/tests/centris_beyond_etalon.cpp.o
+[ 56%] Linking CXX executable centris_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 56%] Built target iivx_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 56%] Building CXX object CMakeFiles/q700_beyond_etalon.dir/tests/q700_beyond_etalon.cpp.o
+[ 57%] Linking CXX executable q700_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 57%] Built target sonora_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 57%] Building CXX object CMakeFiles/q630_beyond_etalon.dir/tests/q630_beyond_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 57%] Built target centris_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 57%] Building CXX object CMakeFiles/duo_beyond_etalon.dir/tests/duo_beyond_etalon.cpp.o
+[ 59%] Linking CXX executable q630_beyond_etalon
+[ 59%] Linking CXX executable duo_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 59%] Built target q700_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 59%] Building CXX object CMakeFiles/macii_beyond_etalon.dir/tests/macii_beyond_etalon.cpp.o
+[ 60%] Linking CXX executable macii_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 60%] Built target q630_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 60%] Building CXX object CMakeFiles/iifx_beyond_etalon.dir/tests/iifx_beyond_etalon.cpp.o
+[ 60%] Linking CXX executable iifx_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 60%] Built target duo_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 61%] Building CXX object CMakeFiles/compact_beyond_etalon.dir/tests/compact_beyond_etalon.cpp.o
+[ 61%] Linking CXX executable compact_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 61%] Built target macii_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 62%] Building CXX object CMakeFiles/q605_afp_live_etalon.dir/tests/q605_afp_live_etalon.cpp.o
+[ 62%] Linking CXX executable q605_afp_live_etalon
+In function ‘memcpy’,
+    inlined from ‘sendToGuest’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/EtherLink.cpp:51:16:
+/usr/include/x86_64-linux-gnu/bits/string_fortified.h:29:33: warning: ‘__builtin_memcpy’ writing 6 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]
+   29 |   return __builtin___memcpy_chk (__dest, __src, __len,
+      |                                 ^
+In member function ‘sendToGuest’:
+lto1: note: destination object is likely at address zero
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 62%] Built target iifx_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 62%] Building CXX object CMakeFiles/aio_beyond_etalon.dir/tests/aio_beyond_etalon.cpp.o
+[ 62%] Linking CXX executable aio_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 62%] Built target compact_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 62%] Building CXX object CMakeFiles/lc_boot_etalon.dir/tests/lc_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 62%] Built target q605_afp_live_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 62%] Building CXX object CMakeFiles/classic2_boot_etalon.dir/tests/classic2_boot_etalon.cpp.o
+[ 63%] Linking CXX executable lc_boot_etalon
+[ 63%] Linking CXX executable classic2_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 63%] Built target aio_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 63%] Building CXX object CMakeFiles/cclassic_boot_etalon.dir/tests/cclassic_boot_etalon.cpp.o
+[ 63%] Linking CXX executable cclassic_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 63%] Built target lc_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Building CXX object CMakeFiles/lc3_boot_etalon.dir/tests/lc3_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Built target classic2_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Building CXX object CMakeFiles/lc3plus_boot_etalon.dir/tests/lc3plus_boot_etalon.cpp.o
+[ 64%] Linking CXX executable lc3_boot_etalon
+[ 64%] Linking CXX executable lc3plus_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Built target cclassic_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Building CXX object CMakeFiles/lc520_boot_etalon.dir/tests/lc520_boot_etalon.cpp.o
+[ 64%] Linking CXX executable lc520_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Built target lc3_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Building CXX object CMakeFiles/lc550_boot_etalon.dir/tests/lc550_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Built target lc3plus_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 64%] Building CXX object CMakeFiles/cclassic2_boot_etalon.dir/tests/cclassic2_boot_etalon.cpp.o
+[ 65%] Linking CXX executable lc550_boot_etalon
+[ 67%] Linking CXX executable cclassic2_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 67%] Built target lc520_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 67%] Building CXX object CMakeFiles/iivx_boot_etalon.dir/tests/iivx_boot_etalon.cpp.o
+[ 67%] Linking CXX executable iivx_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 67%] Built target cclassic2_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 67%] Building CXX object CMakeFiles/iisi_boot_etalon.dir/tests/iisi_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 67%] Built target lc550_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 68%] Building CXX object CMakeFiles/iix_boot_etalon.dir/tests/iix_boot_etalon.cpp.o
+[ 69%] Linking CXX executable iisi_boot_etalon
+[ 69%] Linking CXX executable iix_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 69%] Built target iivx_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 70%] Building CXX object CMakeFiles/se30_boot_etalon.dir/tests/se30_boot_etalon.cpp.o
+[ 70%] Linking CXX executable se30_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 70%] Built target iisi_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/iici_boot_etalon.dir/tests/iici_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Built target iix_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/mactv_boot_etalon.dir/tests/mactv_boot_etalon.cpp.o
+[ 71%] Linking CXX executable iici_boot_etalon
+[ 71%] Linking CXX executable mactv_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Built target se30_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/centris650_boot_etalon.dir/tests/centris650_boot_etalon.cpp.o
+[ 71%] Linking CXX executable centris650_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Built target mactv_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/q630_boot_etalon.dir/tests/q630_boot_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Built target iici_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/compact_boot_etalon.dir/tests/compact_boot_etalon.cpp.o
+[ 71%] Linking CXX executable q630_boot_etalon
+[ 71%] Linking CXX executable compact_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Built target centris650_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/q700_boot_etalon.dir/tests/q700_boot_etalon.cpp.o
+[ 71%] Linking CXX executable q700_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Built target q630_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/q605_cdrom_etalon.dir/tests/q605_cdrom_etalon.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Built target compact_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 71%] Building CXX object CMakeFiles/scsi_cdrom_test.dir/tests/scsi_cdrom_test.cpp.o
+[ 72%] Linking CXX executable scsi_cdrom_test
+[ 72%] Linking CXX executable q605_cdrom_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 72%] Built target scsi_cdrom_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 72%] Building CXX object CMakeFiles/floppy_persist_test.dir/tests/floppy_persist_test.cpp.o
+[ 72%] Linking CXX executable floppy_persist_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 72%] Built target floppy_persist_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 72%] Building CXX object CMakeFiles/lcii_beyond_etalon.dir/tests/lcii_beyond_etalon.cpp.o
+[ 72%] Linking CXX executable lcii_beyond_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 72%] Built target q700_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Building CXX object CMakeFiles/berr030_test.dir/tests/berr030_test.cpp.o
+[ 73%] Linking CXX executable berr030_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Built target q605_cdrom_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Building CXX object CMakeFiles/jit_restart_write_030_test.dir/tests/jit_restart_write_030_test.cpp.o
+[ 73%] Linking CXX executable jit_restart_write_030_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Built target lcii_beyond_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Building CXX object CMakeFiles/declrom_test.dir/tests/declrom_test.cpp.o
+[ 73%] Linking CXX executable declrom_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Built target declrom_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Building CXX object CMakeFiles/nubus_test.dir/tests/nubus_test.cpp.o
+[ 73%] Linking CXX executable nubus_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Built target nubus_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Building CXX object CMakeFiles/toby_test.dir/tests/toby_test.cpp.o
+[ 73%] Linking CXX executable toby_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Built target toby_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 73%] Building CXX object CMakeFiles/macii_post_etalon.dir/tests/macii_post_etalon.cpp.o
+[ 75%] Linking CXX executable macii_post_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Built target berr030_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Building CXX object CMakeFiles/macii_boot_etalon.dir/tests/macii_boot_etalon.cpp.o
+[ 75%] Linking CXX executable macii_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Built target jit_restart_write_030_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Building CXX object CMakeFiles/macii_sys7_boot_etalon.dir/tests/macii_sys7_boot_etalon.cpp.o
+[ 75%] Linking CXX executable macii_sys7_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Built target macii_post_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Building CXX object CMakeFiles/macii_mouse_trace.dir/tests/macii_mouse_trace.cpp.o
+[ 75%] Linking CXX executable macii_mouse_trace
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Built target macii_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 75%] Building CXX object CMakeFiles/iifx_post_etalon.dir/tests/iifx_post_etalon.cpp.o
+[ 76%] Linking CXX executable iifx_post_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 76%] Built target macii_sys7_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 77%] Building CXX object CMakeFiles/iifx_boot_etalon.dir/tests/iifx_boot_etalon.cpp.o
+[ 77%] Linking CXX executable iifx_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 77%] Built target macii_mouse_trace
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 77%] Building CXX object CMakeFiles/iifx_input_etalon.dir/tests/iifx_input_etalon.cpp.o
+[ 77%] Linking CXX executable iifx_input_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 77%] Built target iifx_post_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Building CXX object CMakeFiles/duo230_boot_etalon.dir/tests/duo230_boot_etalon.cpp.o
+[ 78%] Linking CXX executable duo230_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Built target iifx_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Building CXX object CMakeFiles/jit_asset_free_lockstep_test.dir/tests/jit_asset_free_lockstep_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Built target iifx_input_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Building CXX object CMakeFiles/jit_copyback_write_040_test.dir/tests/jit_copyback_write_040_test.cpp.o
+[ 78%] Linking CXX executable jit_asset_free_lockstep_test
+[ 78%] Linking CXX executable jit_copyback_write_040_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Built target duo230_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Building CXX object CMakeFiles/jit_store_guard_a64_test.dir/tests/jit_store_guard_a64_test.cpp.o
+[ 78%] Linking CXX executable jit_store_guard_a64_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 78%] Built target jit_asset_free_lockstep_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 79%] Building CXX object CMakeFiles/cache040_test.dir/tests/cache040_test.cpp.o
+[ 79%] Linking CXX executable cache040_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 79%] Built target jit_copyback_write_040_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 79%] Building CXX object CMakeFiles/fpu_sanity.dir/tests/fpu_sanity.cpp.o
+[ 79%] Linking CXX executable fpu_sanity
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 79%] Built target jit_store_guard_a64_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 79%] Building CXX object CMakeFiles/fpu040_test.dir/tests/fpu040_test.cpp.o
+[ 80%] Linking CXX executable fpu040_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 80%] Built target cache040_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 80%] Building CXX object CMakeFiles/callm_rtm_test.dir/tests/callm_rtm_test.cpp.o
+[ 80%] Linking CXX executable callm_rtm_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 80%] Built target fpu_sanity
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 80%] Building CXX object CMakeFiles/jit_backend_test.dir/tests/jit_backend_test.cpp.o
+[ 80%] Linking CXX executable jit_backend_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 80%] Built target fpu040_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 80%] Building CXX object CMakeFiles/jit_backend_parity_test.dir/tests/jit_backend_parity_test.cpp.o
+[ 80%] Building CXX object CMakeFiles/jit_backend_parity_test.dir/src/jit/backends/JitBackendA64.cpp.o
+[ 81%] Linking CXX executable jit_backend_parity_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 81%] Built target jit_backend_parity_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 81%] Building CXX object CMakeFiles/jit_lockstep_test.dir/tests/jit_lockstep_test.cpp.o
+[ 82%] Linking CXX executable jit_lockstep_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 82%] Built target jit_backend_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 82%] Building CXX object CMakeFiles/jit_lockstep_68000_test.dir/tests/jit_lockstep_68000_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 82%] Built target callm_rtm_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 84%] Built target jit_lockstep_030_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 84%] Building CXX object CMakeFiles/cpu_smoke.dir/tests/cpu_smoke.cpp.o
+[ 84%] Linking CXX executable jit_lockstep_68000_test
+[ 85%] Linking CXX executable cpu_smoke
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 85%] Built target jit_lockstep_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 85%] Building CXX object CMakeFiles/demo_screenshot.dir/tests/demo_screenshot.cpp.o
+[ 86%] Linking CXX executable demo_screenshot
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Built target cpu_smoke
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Built target jit_lockstep_68000_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Building CXX object CMakeFiles/contention_test.dir/tests/contention_test.cpp.o
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Building CXX object CMakeFiles/rom_boot_etalon.dir/tests/rom_boot_etalon.cpp.o
+[ 86%] Linking CXX executable contention_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Built target contention_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Building CXX object CMakeFiles/gcr_test.dir/tests/gcr_test.cpp.o
+[ 86%] Linking CXX executable rom_boot_etalon
+[ 86%] Linking CXX executable gcr_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Built target gcr_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 86%] Building CXX object CMakeFiles/iwm_write_test.dir/tests/iwm_write_test.cpp.o
+[ 87%] Linking CXX executable iwm_write_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 87%] Built target iwm_write_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 87%] Building CXX object CMakeFiles/iwm_read_test.dir/tests/iwm_read_test.cpp.o
+[ 87%] Linking CXX executable iwm_read_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 87%] Built target iwm_read_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 87%] Building CXX object CMakeFiles/swim1_test.dir/tests/swim1_test.cpp.o
+[ 88%] Linking CXX executable swim1_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 88%] Built target swim1_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 88%] Building CXX object CMakeFiles/savestate_test.dir/tests/savestate_test.cpp.o
+[ 89%] Linking CXX executable savestate_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 89%] Built target savestate_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 89%] Building CXX object CMakeFiles/savestate_v8_test.dir/tests/savestate_v8_test.cpp.o
+[ 89%] Linking CXX executable savestate_v8_test
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:67:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h: In member function ‘operator()’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+  113 |     uint8_t params_[4] = {};
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:75:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/CudaLle.h:146:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+  119 |     uint8_t  buffer_[8] = {};
+      |              ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:113:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+  166 |     uint8_t deviceMap_[2] = { 0, 0 };    // pseudo cmd $19/$1A
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 89%] Built target demo_screenshot
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 89%] Building CXX object CMakeFiles/savestate_030_test.dir/tests/savestate_030_test.cpp.o
+[ 89%] Linking CXX executable savestate_030_test
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:113:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+  166 |     uint8_t deviceMap_[2] = { 0, 0 };    // pseudo cmd $19/$1A
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:75:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+  119 |     uint8_t  buffer_[8] = {};
+      |              ^
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 89%] Built target rom_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/savestate_040_test.dir/tests/savestate_040_test.cpp.o
+[ 90%] Linking CXX executable savestate_040_test
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:87:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Q700Memory.h:309:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘loadT.constprop’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveStateMachines.cpp:257:8:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h: In function ‘loadT.constprop’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: at offset 2 into destination object ‘correction_’ of size 2
+  163 |     uint8_t correction_[2] = {};         // u8 on purpose — the |256 window
+      |             ^
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:87:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Q700Memory.h:309:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘loadT.constprop’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveStateMachines.cpp:257:8:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h: In function ‘loadT.constprop’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: at offset 2 into destination object ‘correction_’ of size 2
+  163 |     uint8_t correction_[2] = {};         // u8 on purpose — the |256 window
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim1.h:163:13: note: destination object ‘correction_’ of size 2
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:75:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+  119 |     uint8_t  buffer_[8] = {};
+      |              ^
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:113:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+  166 |     uint8_t deviceMap_[2] = { 0, 0 };    // pseudo cmd $19/$1A
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Built target savestate_v8_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/savestate_68k_test.dir/tests/savestate_68k_test.cpp.o
+[ 90%] Linking CXX executable savestate_68k_test
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:75:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbVia.h:85:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+  119 |     uint8_t  buffer_[8] = {};
+      |              ^
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Built target savestate_030_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/q605_cudalle_key_etalon.dir/tests/q605_cudalle_key_etalon.cpp.o
+[ 90%] Linking CXX executable q605_cudalle_key_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Built target savestate_040_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/disk_boot_etalon.dir/tests/disk_boot_etalon.cpp.o
+[ 90%] Linking CXX executable disk_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Built target savestate_68k_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/system_boot_etalon.dir/tests/system_boot_etalon.cpp.o
+[ 90%] Linking CXX executable system_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Built target q605_cudalle_key_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/scsi_disk_test.dir/tests/scsi_disk_test.cpp.o
+[ 90%] Linking CXX executable scsi_disk_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Built target scsi_disk_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/scsi_target_test.dir/tests/scsi_target_test.cpp.o
+[ 90%] Linking CXX executable scsi_target_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Built target scsi_target_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 90%] Building CXX object CMakeFiles/sound_test.dir/tests/sound_test.cpp.o
+[ 92%] Linking CXX executable sound_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 92%] Built target disk_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 92%] Building CXX object CMakeFiles/ncr5380_test.dir/tests/ncr5380_test.cpp.o
+[ 92%] Linking CXX executable ncr5380_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 92%] Built target ncr5380_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 93%] Building CXX object CMakeFiles/ncr53c96_test.dir/tests/ncr53c96_test.cpp.o
+[ 93%] Linking CXX executable ncr53c96_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 93%] Built target ncr53c96_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 93%] Building CXX object CMakeFiles/scsi_boot_etalon.dir/tests/scsi_boot_etalon.cpp.o
+[ 93%] Linking CXX executable scsi_boot_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 93%] Built target system_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 93%] Building CXX object CMakeFiles/scsi_hfs_facade_test.dir/tests/scsi_hfs_facade_test.cpp.o
+[ 94%] Linking CXX executable scsi_hfs_facade_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Built target scsi_hfs_facade_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Building CXX object CMakeFiles/input_etalon.dir/tests/input_etalon.cpp.o
+[ 94%] Linking CXX executable input_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Built target sound_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Building CXX object CMakeFiles/scc_ext_test.dir/tests/scc_ext_test.cpp.o
+[ 94%] Linking CXX executable scc_ext_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Built target scc_ext_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Building CXX object CMakeFiles/llap_loop_test.dir/tests/llap_loop_test.cpp.o
+[ 94%] Linking CXX executable llap_loop_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Built target llap_loop_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Building CXX object CMakeFiles/ltoudp_test.dir/tests/ltoudp_test.cpp.o
+[ 94%] Linking CXX executable ltoudp_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Built target ltoudp_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Building CXX object CMakeFiles/atalk_stack_test.dir/tests/atalk_stack_test.cpp.o
+[ 94%] Linking CXX executable atalk_stack_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 94%] Built target atalk_stack_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 95%] Building CXX object CMakeFiles/afp_server_test.dir/tests/afp_server_test.cpp.o
+[ 95%] Linking CXX executable afp_server_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 95%] Built target afp_server_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 96%] Building CXX object CMakeFiles/pap_server_test.dir/tests/pap_server_test.cpp.o
+[ 96%] Linking CXX executable pap_server_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 96%] Built target pap_server_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 96%] Building CXX object CMakeFiles/macip_gw_test.dir/tests/macip_gw_test.cpp.o
+[ 96%] Linking CXX executable macip_gw_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 96%] Built target macip_gw_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 97%] Building CXX object CMakeFiles/daynaport_test.dir/tests/daynaport_test.cpp.o
+[ 97%] Linking CXX executable daynaport_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 97%] Built target daynaport_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 97%] Building CXX object CMakeFiles/machinehost_test.dir/tests/machinehost_test.cpp.o
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 97%] Built target scsi_boot_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 97%] Building CXX object CMakeFiles/input_journal_test.dir/tests/input_journal_test.cpp.o
+[ 97%] Linking CXX executable machinehost_test
+[ 98%] Linking CXX executable input_journal_test
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:67:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h: In member function ‘operator()’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+  113 |     uint8_t params_[4] = {};
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Swim2.h:113:13: note: at offset 4 into destination object ‘params_’ of size 4
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:75:11,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:178:20,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/CudaLle.h:146:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+  119 |     uint8_t  buffer_[8] = {};
+      |              ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/AdbLine.h:119:14: note: at offset 8 into destination object ‘buffer_’ of size 8
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:113:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+  166 |     uint8_t deviceMap_[2] = { 0, 0 };    // pseudo cmd $19/$1A
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+In member function ‘one’,
+    inlined from ‘one’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:198:34,
+    inlined from ‘operator()’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:153:61,
+    inlined from ‘visit’ at /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:113:11:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/SaveState.h:192:39: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  192 |             if (!take(sizeof(T))) { x = T{}; return; }
+      |                                       ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h: In member function ‘visit’:
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+  166 |     uint8_t deviceMap_[2] = { 0, 0 };    // pseudo cmd $19/$1A
+      |             ^
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+/home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/src/Egret.h:166:13: note: at offset 2 into destination object ‘deviceMap_’ of size 2
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 98%] Built target input_etalon
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 98%] Building CXX object CMakeFiles/docs_test.dir/tests/docs_test.cpp.o
+[ 98%] Linking CXX executable docs_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 98%] Built target docs_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 98%] Building CXX object CMakeFiles/peripheral_lle_test.dir/tests/peripheral_lle_test.cpp.o
+[ 98%] Linking CXX executable peripheral_lle_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[ 98%] Built target peripheral_lle_test
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make[2] : on entre dans le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[100%] Building CXX object CMakeFiles/llap_two_system_etalon.dir/tests/llap_two_system_etalon.cpp.o
+[100%] Linking CXX executable llap_two_system_etalon
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[100%] Built target machinehost_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[100%] Built target input_journal_test
+make[2] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+[100%] Built target llap_two_system_etalon
+make[1] : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »
+make : on quitte le répertoire « /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build »

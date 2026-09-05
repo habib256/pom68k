@@ -1,0 +1,478 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/.claude/worktrees/agent-af30bba2444f67915/build
+Test project /home/gistarcade/src/pom68k/.claude/worktrees/agent-af30bba2444f67915/build
+      Start   1: gui_smoke_test
+ 1/85 Test   #1: gui_smoke_test ........................***Skipped   0.00 sec
+      Start   2: cpu_smoke
+ 2/85 Test   #2: cpu_smoke .............................   Passed    0.02 sec
+      Start   3: demo_screenshot
+ 3/85 Test   #3: demo_screenshot .......................   Passed    0.05 sec
+      Start   4: contention_test
+ 4/85 Test   #4: contention_test .......................   Passed    0.00 sec
+      Start   6: gcr_test
+ 5/85 Test   #6: gcr_test ..............................   Passed    0.03 sec
+      Start   7: iwm_write_test
+ 6/85 Test   #7: iwm_write_test ........................   Passed    0.01 sec
+      Start   8: iwm_read_test
+ 7/85 Test   #8: iwm_read_test .........................   Passed    0.08 sec
+      Start   9: swim1_test
+ 8/85 Test   #9: swim1_test ............................   Passed    0.04 sec
+      Start  10: savestate_test
+ 9/85 Test  #10: savestate_test ........................   Passed    0.00 sec
+      Start  11: savestate_v8_test
+10/85 Test  #11: savestate_v8_test .....................   Passed    0.13 sec
+      Start  13: savestate_040_test
+11/85 Test  #13: savestate_040_test ....................   Passed    0.38 sec
+      Start  19: scsi_target_test
+12/85 Test  #19: scsi_target_test ......................   Passed    0.00 sec
+      Start  25: dir2hfs_selftest
+13/85 Test  #25: dir2hfs_selftest ......................   Passed    0.03 sec
+      Start  27: scc_ext_test
+14/85 Test  #27: scc_ext_test ..........................   Passed    0.00 sec
+      Start  28: llap_loop_test
+15/85 Test  #28: llap_loop_test ........................   Passed    0.00 sec
+      Start  29: ltoudp_test
+16/85 Test  #29: ltoudp_test ...........................   Passed    0.00 sec
+      Start  30: atalk_stack_test
+17/85 Test  #30: atalk_stack_test ......................   Passed    0.00 sec
+      Start  31: afp_server_test
+18/85 Test  #31: afp_server_test .......................   Passed    0.00 sec
+      Start  32: pap_server_test
+19/85 Test  #32: pap_server_test .......................   Passed    0.00 sec
+      Start  33: macip_gw_test
+20/85 Test  #33: macip_gw_test .........................   Passed    0.01 sec
+      Start  34: daynaport_test
+21/85 Test  #34: daynaport_test ........................   Passed    0.00 sec
+      Start  35: asset_fingerprint_test
+22/85 Test  #35: asset_fingerprint_test ................   Passed    0.01 sec
+      Start  36: fixture_store_test
+23/85 Test  #36: fixture_store_test ....................   Passed    0.00 sec
+      Start  37: asset_lock_test
+24/85 Test  #37: asset_lock_test .......................   Passed    1.49 sec
+      Start  38: machinehost_test
+25/85 Test  #38: machinehost_test ......................   Passed    0.07 sec
+      Start  39: input_journal_test
+26/85 Test  #39: input_journal_test ....................   Passed    0.09 sec
+      Start  40: docs_test
+27/85 Test  #40: docs_test .............................***Failed    0.13 sec
+ok   Machine menu consumes the compiled profile catalogue
+ok   snapshot ids live beside the profile catalogue
+ok   compiled machine catalogue is non-empty
+ok   CLAUDE.md states a profile count somewhere
+ok   CLAUDE.md profile count 37 == 37 in the code
+ok   headless application architecture files are present
+ok   leaf devices consume subsystem views instead of the CoreConfig bag
+ok   board composition roots require explicit CoreConfig injection
+ok   LLE qualification state is a type, not loose globals
+ok   a MachineSession owns its LLE registry
+ok   devices receive their LLE registry through the core policy
+ok   configured CPU leaves require explicit CoreCpuConfig injection
+ok   core policy has one explicit fixture default and no section fallbacks
+ok   main injects ProcessEnvironment into RuntimeConfig before composition
+ok   RuntimeConfig composes typed domains without legacy knob spellings
+ok   startup decoding has separate compatibility, product, core and machine owners
+ok   startup options have one unique typed schema consumed by decoders
+ok   all startup options declare a value policy; only five stay custom
+ok   typed boolean policies preserve all legacy empty and false forms
+ok   typed integer policies own radix and bounds
+ok   StartupSnapshot rejects unknown names and publishes immutable typed values
+ok   the unified startup schema owns all 40 typed JIT options
+ok   each startup decoder is compile-time restricted to its option domain
+ok   main is a cold composition root with no concrete GUI dependency
+ok   MachineSession type-erases the concrete core/host/UI runtime
+ok   MachineSession owns the concrete runtime with RAII
+ok   GUI runtime owns decomposed host/UI process state with RAII
+ok   machines receive host services directly without a reverse pointer
+ok   GUI window, ImGui backend and texture handles have one RAII owner
+ok   ROM identity dispatch belongs to MachineFactory, not main.cpp
+ok   profile routing consumes typed selections and retains no raw map
+ok   Machine menu marks the actual typed snapshot as current
+ok   Machine menu relaunch is typed and never mutates process policy
+ok   Peripheral relaunch carries typed firmware policy without env mutation
+ok   RuntimeConfig parses typed ROM/media and exact relaunch inputs
+ok   RuntimeConfig injects product, JIT and core policy aggregates
+ok   typed configuration preserves empty-value default-on semantics
+ok   Q605 scheduler defaults remain explicitly reversible
+ok   RuntimeConfig preserves 0/1 environment semantics for strict mode
+ok   typed profile option overrides inherited identity and FPU policy
+ok   typed Q605 relaunch restores integrated 68040 FPU policy
+ok   typed relaunch replaces stale profile arguments without moving media
+ok   typed ADB policy overrides inherited mode and clears its path
+ok   typed Egret mode stays distinct and preserves colons in paths
+ok   typed Cuda policy overrides inherited HLE and path independently
+ok   typed firmware relaunch replaces stale policy without moving media
+ok   unrelated relaunch retains the current typed firmware policy
+ok   MachineFactory maps every platform's default ROM identity
+ok   MachineFactory routes every catalogue profile, including variants
+ok   typed relaunch option round-trips every shared-ROM profile
+ok   strict AArch64 mode accepts only qualified 1 MB 68040 ROMs
+ok   MachineSession retains and delegates once to its runtime
+ok   MachineSession destroys its owned runtime at session teardown
+ok   GUI session objects are destroyed in reverse dependency order
+ok   GuiShell, GuiHostServices and PlatformComposers are present
+ok   GUI runtime only owns and connects the three responsibilities
+ok   GuiHostServices owns network, audio, relaunch and diagnostics only
+ok   GuiShell owns windows, menus and six family render-loop units
+ok   PlatformComposers performs typed family construction without rendering
+ok   GUI shell loops use typed media and session-owned mutable state
+ok   GuiShell owns shared screen and ADB input mechanics
+ok   the GUI runtime consumes injected configuration without getenv
+ok   only ProcessEnvironment may read process-global configuration in src
+ok   ProcessEnvironment derives the sole process capture from option schemas
+ok   domain decoders use typed options instead of raw key strings
+ok   RuntimeConfig decoders have explicit inputs and no process-reading API
+ok   standalone JIT gates inject their own test-boundary snapshot
+ok   Duo shell preserves no-floppy and staged-CD capabilities
+ok   CMake root composes five ordered test responsibilities
+ok   CMake gates, dev tools and registry policy stay separated
+ok   GUI and gate locators both prefer hdv/ref fixtures
+ok   reference lookup and writable ref-to-work routing stay paired
+ok   all gate-local asset resolvers delegate to the ref-aware helper
+ok   pom68k_gates.tsv located (CMake writes it at configure time)
+ok   gate roster read from pom68k_gates.tsv
+ok   gate manifest has the versioned eight-column schema
+ok   gate manifest covers every registered gate exactly once
+ok   every gate manifest row has valid assets/host/scope/tier/config/slots
+ok   performance budget manifest has valid workload/family/host rows
+ok   performance policy separates daily hosts and pins measured Macintosh baselines
+ok   JIT metrics schema is explicit and versioned
+ok   x86-64 CI validates and archives structured JIT metrics
+ok   AArch64 CI validates and archives structured JIT metrics
+note: 4 host-conditional gate(s) not registered here; the documented union totals are held to account
+ok   TODO.md active backlog located
+ok   TODO.md delegates generated gate facts to STATUS.md
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains actionable open work
+ok   every registered gate carries at least one label
+ok   CLAUDE.md names gates by their full name
+ok   CLAUDE.md names `docs_test` — registered here or declared host-conditional
+ok   CLAUDE.md names `file_size_budget_test` — registered here or declared host-conditional
+ok   the docs state a registry total for x86-64
+ok   CLAUDE.md splits the registry by host and states the x86-64 total
+ok   TODO.md splits the registry by host and states the x86-64 total
+ok   README.md splits the registry by host and states the x86-64 total
+ok   DEV.md splits the registry by host and states the x86-64 total
+ok   STATUS.md generated registry located
+ok   STATUS.md declares itself generated
+ok   STATUS.md carries the union section
+ok   STATUS.md union total 240 == configured union 240
+ok   STATUS.md union label table matches the roster
+ok   STATUS.md carries a section for x86_64
+ok   STATUS.md says 236 gates registered on x86_64; ctest has 236
+ok   STATUS.md absent-here count matches the absent roster
+ok   STATUS.md x86_64 dimension table matches the manifest
+ok   STATUS.md carries the PRODUCT_LLE registry section
+ok   STATUS.md PRODUCT_LLE registry has been materialized
+ok   Moira fork design record located
+ok   Moira source inventory traversed
+ok   every source file exposing a pom* extension carries a POM68K marker
+ok   Moira local-patch inventory table parsed
+ok   Moira inventory names marked source `MoiraExecMMU_cpp.h`
+ok   Moira inventory names marked source `MoiraExceptions_cpp.h`
+ok   Moira inventory names marked source `MoiraExecFPU_cpp.h`
+ok   Moira inventory names marked source `MoiraExec_cpp.h`
+ok   Moira inventory names marked source `MoiraTypes.h`
+ok   Moira inventory names marked source `MoiraALU_cpp.h`
+ok   Moira inventory names marked source `MoiraConfig.h`
+ok   Moira inventory names marked source `MoiraCache040.h`
+ok   Moira inventory names marked source `Moira.cpp`
+ok   Moira inventory names marked source `MoiraInit_cpp.h`
+ok   Moira inventory names marked source `MoiraDataflow.h`
+ok   Moira inventory names marked source `Moira.h`
+ok   Moira inventory names marked source `MoiraDataflow_cpp.h`
+FAIL Moira document states the computed pom* identifier count
+FAIL Moira document states the computed POM68K-marked line count
+ok   Moira document states the computed marked/source file count
+FAIL Moira document states the computed patch-group count
+ok   CHANGELOG_INDEX.md lists 419 of the 419 dated entries — regenerate with tools/changelog_index.py
+ok   src/jit/backends/JitBackendA64.cpp located
+ok   src/jit/backends/JitBackendA64.cpp consumes Instr::memory plans
+ok   src/jit/backends/JitBackendA64.cpp does not decode memory semantics
+ok   src/jit/backends/JitBackendA64.cpp has no opcode-local sole-access guess
+ok   src/jit/backends/JitBackendA64.cpp has no opcode-local exact-access exception
+ok   src/jit/backends/JitBackendA64.cpp consumes Instr::semantics
+ok   src/jit/backends/JitBackendA64.cpp consumes the shared EA plan
+ok   src/jit/backends/JitBackendA64.cpp does not re-decode effective addresses
+ok   src/jit/backends/JitBackendA64.cpp consumes Instr control-flow plans
+ok   src/jit/backends/JitBackendA64.cpp does not decode branch extensions
+ok   src/jit/backends/JitBackendA64.cpp reads the shared cost columns and defines none
+ok   src/jit/backends/JitBackendA64.cpp reads the shared full-format cost, not a local twin
+ok   src/jit/backends/JitBackendA64.cpp never re-decodes BlockIr extension words
+ok   src/jit/backends/JitBackendA64.cpp shares raw-opcode census semantics
+ok   src/jit/backends/JitBackendA64.cpp has no opcode-line dispatch decoder
+ok   src/jit/backends/JitBackendA64.cpp has no private ALU semantic decoder
+ok   src/jit/backends/JitBackendA64.cpp has no private live environment policy
+ok   src/jit/backends/JitBackendX64.cpp located
+ok   src/jit/backends/JitBackendX64.cpp consumes Instr::memory plans
+ok   src/jit/backends/JitBackendX64.cpp does not decode memory semantics
+ok   src/jit/backends/JitBackendX64.cpp has no opcode-local sole-access guess
+ok   src/jit/backends/JitBackendX64.cpp has no opcode-local exact-access exception
+ok   src/jit/backends/JitBackendX64.cpp consumes Instr::semantics
+ok   src/jit/backends/JitBackendX64.cpp consumes the shared EA plan
+ok   src/jit/backends/JitBackendX64.cpp does not re-decode effective addresses
+ok   src/jit/backends/JitBackendX64.cpp consumes Instr control-flow plans
+ok   src/jit/backends/JitBackendX64.cpp does not decode branch extensions
+ok   src/jit/backends/JitBackendX64.cpp reads the shared cost columns and defines none
+ok   src/jit/backends/JitBackendX64.cpp reads the shared full-format cost, not a local twin
+ok   src/jit/backends/JitBackendX64.cpp never re-decodes BlockIr extension words
+ok   src/jit/backends/JitBackendX64.cpp shares raw-opcode census semantics
+ok   src/jit/backends/JitBackendX64.cpp has no opcode-line dispatch decoder
+ok   src/jit/backends/JitBackendX64.cpp has no private ALU semantic decoder
+ok   src/jit/backends/JitBackendX64.cpp has no private live environment policy
+ok   JitEaPlan.h owns the shared EA admission wrapper
+ok   JitEaPlan.h keeps full-format admission opt-in per caller
+ok   JitCost.h owns the 68020 cycle columns
+ok   JitCost.h owns the D1F0 full-format sub-form predicate
+ok   JitCost.h owns the CMPA surcharge
+ok   citation lookup preserves filename case on every host
+ok   CLAUDE.md: every in-tree file:line citation lands inside its file
+ok   README.md: every in-tree file:line citation lands inside its file
+ok   DEV.md: every in-tree file:line citation lands inside its file
+ok   TODO.md: every in-tree file:line citation lands inside its file
+ok   src/jit/POM68K_JIT.md: every in-tree file:line citation lands inside its file
+ok   extern/moira/POM68K_VENDOR.md: every in-tree file:line citation lands inside its file
+ok   docs/68K_FAMILY_SCOPE.md: every in-tree file:line citation lands inside its file
+ok   docs/APPLETALK.md: every in-tree file:line citation lands inside its file
+ok   docs/BASILISK_ROM_NOTES.md: every in-tree file:line citation lands inside its file
+ok   docs/CACHE_040.md: every in-tree file:line citation lands inside its file
+ok   docs/DUO_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/HLE_OVERLAY.md: every in-tree file:line citation lands inside its file
+ok   docs/IOP_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/JIT_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/LC520_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/LCII_HARDWARE.md: every in-tree file:line citation lands inside its file
+ok   docs/LLE_VS_HLE.md: every in-tree file:line citation lands inside its file
+ok   docs/MAME_PARITY_AUDIT.md: every in-tree file:line citation lands inside its file
+ok   docs/MEASURING.md: every in-tree file:line citation lands inside its file
+ok   docs/RASPBERRY_PI.md: every in-tree file:line citation lands inside its file
+ok   docs/SIMPLIFICATIONS_REVIEW.md: every in-tree file:line citation lands inside its file
+ok   in-tree file:line citations judged (376)
+ok   each JIT Engine requires one explicitly injected snapshot
+ok   src/Cpu68k.h requires non-null JIT configuration injection
+ok   src/IIfxCpu.h requires non-null JIT configuration injection
+ok   src/Cpu020.h requires non-null JIT configuration injection
+ok   src/Cpu030.h requires non-null JIT configuration injection
+ok   src/Cpu040.h requires non-null JIT configuration injection
+ok   src/MscCpu.h requires non-null JIT configuration injection
+ok   src/CentrisCpu.h requires non-null JIT configuration injection
+ok   src/Q630Cpu.h requires non-null JIT configuration injection
+ok   src/Q700Cpu.h requires non-null JIT configuration injection
+ok   src/SonoraCpu.h requires non-null JIT configuration injection
+ok   src/VaspCpu.h requires non-null JIT configuration injection
+ok   src/RbvCpu.h requires non-null JIT configuration injection
+FAILED
+
+      Start  41: config_test
+28/85 Test  #41: config_test ...........................   Passed    0.03 sec
+      Start  42: store_inventory_test
+29/85 Test  #42: store_inventory_test ..................   Passed    0.01 sec
+      Start  43: folderprobe_test
+30/85 Test  #43: folderprobe_test ......................   Passed    0.00 sec
+      Start  44: peripheral_lle_test
+31/85 Test  #44: peripheral_lle_test ...................   Passed    0.00 sec
+      Start  49: cpu_wrapper_smoke
+32/85 Test  #49: cpu_wrapper_smoke .....................   Passed    0.05 sec
+      Start  50: pseudovia_test
+33/85 Test  #50: pseudovia_test ........................   Passed    0.00 sec
+      Start  51: v8_ramsize
+34/85 Test  #51: v8_ramsize ............................   Passed    0.04 sec
+      Start  52: flux_pll_test
+35/85 Test  #52: flux_pll_test .........................   Passed    0.00 sec
+      Start  53: valkyrie_i2c_test
+36/85 Test  #53: valkyrie_i2c_test .....................   Passed    0.00 sec
+      Start  54: valkyrie_test
+37/85 Test  #54: valkyrie_test .........................   Passed    0.01 sec
+      Start  55: scc_int_test
+38/85 Test  #55: scc_int_test ..........................   Passed    0.00 sec
+      Start  56: via6522_parity_test
+39/85 Test  #56: via6522_parity_test ...................   Passed    0.00 sec
+      Start  57: rtc_pram_test
+40/85 Test  #57: rtc_pram_test .........................   Passed    0.01 sec
+      Start  58: ncr53c96_queue_test
+41/85 Test  #58: ncr53c96_queue_test ...................   Passed    0.00 sec
+      Start  59: msc_parity_test
+42/85 Test  #59: msc_parity_test .......................   Passed    0.01 sec
+      Start  60: asc_easc_test
+43/85 Test  #60: asc_easc_test .........................   Passed    0.00 sec
+      Start  61: q700_turboscsi_test
+44/85 Test  #61: q700_turboscsi_test ...................   Passed    0.01 sec
+      Start  62: asc_test
+45/85 Test  #62: asc_test ..............................   Passed    0.00 sec
+      Start  63: q605_asc_test
+46/85 Test  #63: q605_asc_test .........................   Passed    0.00 sec
+      Start  75: swim2_test
+47/85 Test  #75: swim2_test ............................   Passed    0.01 sec
+      Start  76: swim2_media_test
+48/85 Test  #76: swim2_media_test ......................   Passed    0.08 sec
+      Start  77: floppy_sound_test
+49/85 Test  #77: floppy_sound_test .....................   Passed    0.00 sec
+      Start  79: egret_test
+50/85 Test  #79: egret_test ............................   Passed    0.00 sec
+      Start  80: pic1654s_test
+51/85 Test  #80: pic1654s_test .........................   Passed    0.00 sec
+      Start  81: adbline_test
+52/85 Test  #81: adbline_test ..........................   Passed    0.00 sec
+      Start  82: video_beam_test
+53/85 Test  #82: video_beam_test .......................   Passed    0.00 sec
+      Start  83: v8_video_test
+54/85 Test  #83: v8_video_test .........................   Passed    0.01 sec
+      Start  85: sonora_video_test
+55/85 Test  #85: sonora_video_test .....................   Passed    0.01 sec
+      Start  86: raster_equiv_test
+56/85 Test  #86: raster_equiv_test .....................   Passed    0.03 sec
+      Start  87: v8_raster_test
+57/85 Test  #87: v8_raster_test ........................   Passed    0.01 sec
+      Start  88: q605_dafb_test
+58/85 Test  #88: q605_dafb_test ........................   Passed    0.00 sec
+      Start  89: q605_event_scheduler_test
+59/85 Test  #89: q605_event_scheduler_test .............   Passed    0.00 sec
+      Start  90: quadra_event_scheduler_test
+60/85 Test  #90: quadra_event_scheduler_test ...........   Passed    0.00 sec
+      Start  91: q605_turboscsi_test
+61/85 Test  #91: q605_turboscsi_test ...................   Passed    0.01 sec
+      Start  92: scc_baud_test
+62/85 Test  #92: scc_baud_test .........................   Passed    0.00 sec
+      Start  93: scc_engine_test
+63/85 Test  #93: scc_engine_test .......................   Passed    0.00 sec
+      Start  94: r65c02_test
+64/85 Test  #94: r65c02_test ...........................   Passed    0.62 sec
+      Start  95: applepic_test
+65/85 Test  #95: applepic_test .........................   Passed    0.00 sec
+      Start 168: scsi_cdrom_test
+66/85 Test #168: scsi_cdrom_test .......................   Passed    0.00 sec
+      Start 169: floppy_persist_test
+67/85 Test #169: floppy_persist_test ...................   Passed    0.02 sec
+      Start 174: berr030_test
+68/85 Test #174: berr030_test ..........................   Passed    0.03 sec
+      Start 175: jit_restart_write_030_test
+69/85 Test #175: jit_restart_write_030_test ............   Passed    1.05 sec
+      Start 176: declrom_test
+70/85 Test #176: declrom_test ..........................   Passed    0.00 sec
+      Start 177: nubus_test
+71/85 Test #177: nubus_test ............................   Passed    0.00 sec
+      Start 178: toby_test
+72/85 Test #178: toby_test .............................   Passed    0.00 sec
+      Start 187: jit_asset_free_lockstep_test
+73/85 Test #187: jit_asset_free_lockstep_test ..........   Passed    8.96 sec
+      Start 188: jit_copyback_write_040_test
+74/85 Test #188: jit_copyback_write_040_test ...........   Passed    0.15 sec
+      Start 189: jit_copyback_write_040_control_test
+75/85 Test #189: jit_copyback_write_040_control_test ...   Passed    0.04 sec
+      Start 190: jit_copyback_bsr_040_test
+76/85 Test #190: jit_copyback_bsr_040_test .............   Passed    0.02 sec
+      Start 191: jit_copyback_pair_040_test
+77/85 Test #191: jit_copyback_pair_040_test ............   Passed    0.02 sec
+      Start 192: jit_copyback_pair_040_control_test
+78/85 Test #192: jit_copyback_pair_040_control_test ....   Passed    0.02 sec
+      Start 193: cache040_test
+79/85 Test #193: cache040_test .........................   Passed    0.02 sec
+      Start 194: fpu_sanity
+80/85 Test #194: fpu_sanity ............................   Passed    0.02 sec
+      Start 195: fpu040_test
+81/85 Test #195: fpu040_test ...........................   Passed    0.01 sec
+      Start 196: callm_rtm_test
+82/85 Test #196: callm_rtm_test ........................   Passed    0.00 sec
+      Start 197: jit_backend_test
+83/85 Test #197: jit_backend_test ......................   Passed    0.02 sec
+      Start 198: jit_backend_parity_test
+84/85 Test #198: jit_backend_parity_test ...............   Passed    0.00 sec
+      Start 236: file_size_budget_test
+85/85 Test #236: file_size_budget_test .................   Passed    1.08 sec
+
+99% tests passed, 1 tests failed out of 85
+
+Label Time Summary:
+asset-none          =  15.02 sec*proc (85 tests)
+gui                 =   0.00 sec*proc (1 test)
+host-any            =   5.82 sec*proc (79 tests)
+host-native         =   9.20 sec*proc (6 tests)
+jit                 =  10.28 sec*proc (9 tests)
+jit-fast            =   9.32 sec*proc (8 tests)
+m030                =   0.01 sec*proc (2 tests)
+m040                =   0.12 sec*proc (8 tests)
+scope-component     =   4.59 sec*proc (73 tests)
+scope-engine        =  10.28 sec*proc (9 tests)
+scope-repository    =   0.16 sec*proc (3 tests)
+smoke               =   0.02 sec*proc (1 test)
+tier-daily          =  15.02 sec*proc (85 tests)
+unit                =  15.02 sec*proc (84 tests)
+
+Total Test time (real) =  15.05 sec
+
+The following tests did not run:
+	  1 - gui_smoke_test (Skipped)
+
+The following tests FAILED:
+	 40 - docs_test (Failed)
+Errors while running CTest

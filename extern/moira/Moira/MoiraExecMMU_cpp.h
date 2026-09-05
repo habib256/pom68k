@@ -421,22 +421,9 @@ Moira::mmuFetchWord(u32 addr)
     // POM68K: 68030 i-cache overlay — every instruction-word fetch, LOGICAL
     // address (the 030 caches are logical), before translation. Inline
     // (was a virtual hook — Moira.h § PomIcache); model rationale in Cpu030.h.
-    if (pomIcache.armed) {
-        pomIcache.fetches++;
-        if (reg.cacr & 0x1) {                   // System enables the i-cache
-            u32 t    = (addr >> 8) | (reg.sr.s ? 0x80000000u : 0u);
-            int line = int((addr >> 4) & 15);
-            u8  bit  = u8(1u << ((addr >> 2) & 3));
-            if (pomIcache.tag[line] == t && (pomIcache.valid[line] & bit)) {
-                pomIcache.hits++;
-            } else {                            // direct-mapped: evict on tag change
-                if (pomIcache.tag[line] != t) { pomIcache.tag[line] = t; pomIcache.valid[line] = 0; }
-                pomIcache.valid[line] |= bit;
-                pomIcache.misses++;
-                clock += pomIcache.missPenalty; // a miss pays the fetch bus cycles
-            }
-        }
-    }
+    // The model itself lives in Moira.h pomIcacheFetch<>, shared verbatim
+    // with mmuExecuteStart's fused ird/irc fetch so it exists exactly once.
+    pomIcacheFetch<1>(addr);
 
     // POM68K O6: recorded here too — with TC.E off mmuTranslateAccess is
     // bypassed, but an unmapped fetch must still be extBusError()-able
@@ -526,6 +513,40 @@ Moira::mmuExecuteStart()
     mmuLogging = true;
     mmuRmw = false;
     mmuOpcodeV = 0xFFFFFFFF;
+
+    // POM68K JIT code window, 030 flavour (B.2 slice 4) — the shape
+    // mmu040InstrStart already uses below. Placed AFTER the POLL_IPL and the
+    // per-instruction MMU resets above, which feed execMmuBusError and may
+    // never be skipped. Three conditions, in this order:
+    //  (i)   no pre-switch fetch pipe is live. mmuFetchWord serves pipe words
+    //        BEFORE the i-cache counters, and pomMmuPipeLive() is what
+    //        promises the engine that a PMOVE's shadow counts nothing
+    //        (POM68K_VENDOR.md row 32) — so a live pipe takes the old path.
+    //  (ii)  no watchpoint is armed. pomJitFetch repeats this test; it is
+    //        stated here because the fused path skips two mmuFetchWord bodies.
+    //  (iii) the window covers all FOUR bytes. Were only two covered, the
+    //        second word would reach read16 — which can clear the ROM overlay
+    //        or flush a device's ticks — between the two i-cache charges, and
+    //        folding them would stop being exact.
+    // What the fused path reproduces byte for byte: the overlay for BOTH
+    // words in address order (fetches += 2, and word 1's miss penalty charged
+    // before word 2 is looked up — legal only because no bus access, no SYNC
+    // (empty on Core::C68020) and no POLL_IPL separates them on this path),
+    // and the in-flight access context the SECOND mmuFetchWord would have
+    // left, which is the only one extBusError() can ever read back.
+    if (!pomMmuPipeLive() && !(flags & State::CHECK_WP)) {
+        if (const u8 *p; pomJitFetch(reg.pc, 4, p)) {
+            pomIcacheFetch<2>(reg.pc);
+            mmuAccAddr  = reg.pc + 2;
+            mmuAccSsw   = 0x0020;
+            mmuAccFc    = u8((reg.sr.s ? 4 : 0) | 2);
+            mmuAccWrite = false;
+            queue.ird = u16(u16(p[0]) << 8 | p[1]);
+            queue.irc = u16(u16(p[2]) << 8 | p[3]);
+            mmuOpcodeV = queue.ird;
+            return true;
+        }
+    }
 
     try {
 
@@ -1018,6 +1039,64 @@ Moira::mmuRead(u32 addr)
         return v;
     }
 
+    // POM68K B.2 slice 5 (2026-09-04) — the J3 data window, read side, on
+    // the 68030. mmu040Read has consulted pomJitData since J3; mmuRead never
+    // did, which is why docs/JIT_BRINGUP.md § C.2 could only record
+    // POM68K_DATA_WINDOW as a DEAD path on this family. Moira.h
+    // § pomJitData030Ok owns the refusals this core owes on top of
+    // pomJitData's own (space, fcSource, mmuRmw, and the knob itself).
+    //
+    // NATURALLY ALIGNED forms only. The unaligned and page-straddling
+    // branches below are the only ones that touch mmuState[1] and
+    // mmuDataBuffer, and a fast path may not skip that partial-completion
+    // bookkeeping — a later fault in the same instruction stacks it.
+    //
+    // POLL_IPL is reproduced at ITS SIZE'S position, not at a convenient
+    // one: the long path polls BEFORE a byte, AFTER a word and BETWEEN the
+    // two halves of an aligned long. Moving it would move interrupt
+    // recognition. SYNC(x) expands to nothing on Core::C68020
+    // (MoiraMacros.h § SYNC), so no cycle accounting is skipped either.
+    //
+    // The in-flight access context (mmuAccAddr & co., stamped inside
+    // mmuTranslateAccess) is deliberately NOT written on a hit — the same
+    // argument as mmu040Read: a hit is plain guest memory behind a resident,
+    // permitted translation, so no fault is possible here, and the next slow
+    // access stamps its own before extBusError() can read it. Exactness is
+    // inherited from J3b: pomJitAtcEvict kills the derived slice on every
+    // 030 eviction site (mmuAtcLookup, mmuAtcFill), so a hit implies the
+    // interpreter's own ATC would have hit and no descriptor U-bit write is
+    // skipped. Gate: jit_lockstep_030_test and its x64/a64 twins, run with
+    // fresh seeds under POM68K_DATA_WINDOW=1.
+    // (The size guard is a safety net, not a live case: Quad/Extended FPU
+    // operands are assembled from Long reads and never reach this funnel.)
+    if constexpr (S == Byte || S == Word || S == Long) {
+        constexpr u32 alignMask = S == Byte ? 0u : S == Word ? 1u : 3u;
+        if (!(addr & alignMask) && pomJitData030Ok()) {
+            constexpr int n = S == Byte ? 1 : S == Word ? 2 : 4;
+            if (const u8 *p = pomJitData<n, false>(addr)) {
+                pomJitData030Hits++;
+                u32 w;
+                if constexpr (S == Byte) {
+                    if (F & POLL) POLL_IPL;
+                    w = p[0];
+                } else if constexpr (S == Word) {
+                    w = u32(p[0]) << 8 | p[1];
+                    if (F & POLL) POLL_IPL;
+                } else {
+                    w = u32(p[0]) << 24 | u32(p[1]) << 16;
+                    if (F & POLL) POLL_IPL;
+                    w |= u32(p[2]) << 8 | p[3];
+                }
+                if (log) {
+                    if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = w;
+                    pomMmuBumpIdxDone();
+                }
+                return w;
+            }
+            pomJitData030Refusals++;
+        }
+    }
+
     const u8 fc = readFC();
     const u32 rm = (mmuRmw && (fc & 1)) ? 0x0080 : 0;
     u32 v;
@@ -1125,6 +1204,46 @@ Moira::mmuWrite(u32 addr, u32 val)
             pomMmuBumpIdxDone();
         }
         return;
+    }
+
+    // POM68K B.2 slice 5 (2026-09-04) — the J3 data window, write side, on
+    // the 68030. Everything mmuRead's twin comment above establishes applies
+    // unchanged: aligned forms only (the unaligned branches below own
+    // mmuState[1]/mmuDataBuffer), POLL_IPL reproduced at its size's position
+    // (before a byte, after a word, between the halves of an aligned long),
+    // no in-flight stamp on a hit, refusals in Moira.h § pomJitData030Ok.
+    //
+    // The write guard is not bypassed: a write entry over a 4 KB slice
+    // holding translated code carries a non-zero PomJitDtlbEntry::codeMask,
+    // and pomJitDataSlow refuses such an entry outright at level 0 — the
+    // level-0 page has no room for the per-slice mask, so this window keeps
+    // the older, coarser whole-page rule that generated code has since
+    // replaced (Moira.cpp § pomJitDataSlow).
+    if constexpr (S == Byte || S == Word || S == Long) {
+        constexpr u32 alignMask = S == Byte ? 0u : S == Word ? 1u : 3u;
+        if (!(addr & alignMask) && pomJitData030Ok()) {
+            constexpr int n = S == Byte ? 1 : S == Word ? 2 : 4;
+            if (u8 *p = pomJitData<n, true>(addr)) {
+                pomJitData030Hits++;
+                if constexpr (S == Byte) {
+                    if (F & POLL) POLL_IPL;
+                    p[0] = u8(val);
+                } else if constexpr (S == Word) {
+                    p[0] = u8(val >> 8); p[1] = u8(val);
+                    if (F & POLL) POLL_IPL;
+                } else {
+                    p[0] = u8(val >> 24); p[1] = u8(val >> 16);
+                    if (F & POLL) POLL_IPL;
+                    p[2] = u8(val >> 8);  p[3] = u8(val);
+                }
+                if (log) {
+                    if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuDataBuffer;
+                    pomMmuBumpIdxDone();
+                }
+                return;
+            }
+            pomJitData030Refusals++;
+        }
     }
 
     const u8 fc = readFC();

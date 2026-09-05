@@ -1,0 +1,20 @@
+V8: no MCU firmware dump found — running the NON-CONFORMANT HLE substitute (docs/LLE_VS_HLE.md §2)
+lcii engine=jit    cycles=1562880000 machine (6251554282 core, boost ×4.0)  wall=11.22s for 99.75s of guest time  ×8.89 real time  557.2 core MHz  fp=6ecfc4478c0da591
+  backend=x86-64  retired=659780193  58.8 Minstr/s  blocks 23836 compiled / 12905964 run (49.0 instr/run)
+  compile: 23892 attempt(s), 56 rejected (0.2%), 163.02 ms total (6.8 us/attempt)
+    accepted 23836 in 162.88 ms (6.8 us/accepted) · context/IR 11/0.00 ms · coverage 45/0.14 ms
+  native 626560402 (95.0%) · block fallback 4513722 (0.7%) · window/interp 28569559 (4.3%) · tracing 136510 (0.0%)
+  identity: buckets 626560402+4513722+564338+28005221+136510 = 659780193 vs retired 659780193 · misses 28706069 vs attributed 28706069 · OK
+  window 20426706 armed / 30191 refused · dtlb 3782697 filled / 31893 refused · 9 flush(es), 57497 from a write into translated code
+  flush causes:  wrapper hint/reset 1  translation moved 4526  write into code 8
+  not-native causes (instrs):  cpu flags 13402382 (2.0%)  window refused 30191 (0.0%)  arm backoff 966112 (0.1%)  tracing 13694436 (2.1%)  backend declined 564338 (0.1%)  guard replay 48610 (0.0%)
+  exit block end          12376505  (1 per 53.3 instr)
+  exit cpu flags          13431954  (1 per 49.1 instr)
+  exit fault                     1  (1 per 659780193.0 instr)
+  exit window lost          186609  (1 per 3535.6 instr)
+  exit clock budget         322157  (1 per 2048.0 instr)
+  exit not compilable     13557930  (1 per 48.7 instr)
+  exits total        39875156  (1 per 16.5 instr)
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_native_experimental","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"x86-64","engine":"jit","status":"pass","machine_cycles":1562880000,"core_cycles":6251554282,"wall_ns":11218986985,"fingerprint":"6ecfc4478c0da591","blocks_compiled":23836,"blocks_run":12905964,"jit_instrs":631774972,"native_instrs":626560402,"interp_instrs":28005221,"slow_instrs":4513722,"window_instrs":564338,"native_share_permille":949,"realtime_permille":8891}
+  SCSI=9616  pc=$0003125C  running
+  icache: 1591446991 fetches, 1071495933 hits, 519946891 misses (67.33% hit)

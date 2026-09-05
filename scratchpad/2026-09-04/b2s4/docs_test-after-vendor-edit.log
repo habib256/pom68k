@@ -1,0 +1,16 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build
+Test project /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build
+    Start 40: docs_test
+1/1 Test #40: docs_test ........................   Passed    0.66 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+asset-none          =   0.66 sec*proc (1 test)
+host-any            =   0.66 sec*proc (1 test)
+jit-fast            =   0.66 sec*proc (1 test)
+scope-repository    =   0.66 sec*proc (1 test)
+tier-daily          =   0.66 sec*proc (1 test)
+unit                =   0.66 sec*proc (1 test)
+
+Total Test time (real) =   0.68 sec

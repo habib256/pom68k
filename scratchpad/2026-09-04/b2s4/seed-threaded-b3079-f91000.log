@@ -1,0 +1,11 @@
+V8: no MCU firmware dump found — running the NON-CONFORMANT HLE substitute (docs/LLE_VS_HLE.md §2)
+V8: no MCU firmware dump found — running the NON-CONFORMANT HLE substitute (docs/LLE_VS_HLE.md §2)
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+[jit_lockstep_030] disk=hdv/boot.vhd
+[jit_lockstep_030] rom=roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM backend=threaded steps=120000
+[jit_lockstep_030] budget=3079 cycle(s) per comparison, 64 from step 91000
+[jit_lockstep_030] OK — 120000 steps identical
+  jit instrs 134887666 · interp fallback 3010969 · blocks 23099 compiled / 48991155 replayed · window 2744586 armed (27657 refused) · dtlb 0 filled
+  arm refusals: probe 27448 · notram 11 · degenerate 0 · pc-at-end 197 · uncovered 0 · pipe 1
+  icache 324447725 fetches / 272787230 hits / 51656328 misses (identical on both)

@@ -194,6 +194,33 @@ struct Frame {
     uint64_t* slowRuntimeHisto;  // +88
     uint8_t*  progHost;          // +96 proven JSR push pointer across target read
     uint8_t*  pointerHost;       // +104 full-index pointer across stack probe
+    // ── the runtime-fallback CAUSE census, POM68K_JIT_HISTO only ─────────
+    // Everything below is null/dead with the census off and nothing is
+    // emitted for it, exactly like the two opcode planes above.
+    //
+    // This half existed on a64 alone from the day it was written, so on
+    // x86-64 `[jit] runtime fallback causes` printed five zeros and
+    // `attributed 0 / N runtime MISMATCH` for as long as it has existed —
+    // docs/MEASURING.md § 3's own trap, "an instrument wired on one backend
+    // reports success on the backend that is not looking", with the reader
+    // on the backend that was not looking. Wired here 2026-09-04 because
+    // TODO § B.2 cannot price a bucket it cannot attribute.
+    //
+    // `runtimeReason` is the current instruction's reason, written by the
+    // probe's diagnostic miss stubs and reset to `RuntimeOther` at every
+    // instruction entry; the runtime door indexes a flat [reason][opcode]
+    // table with it. The four `runtimeAccess*` fields carry the refused
+    // access itself to the address observer.
+    uint64_t* slowRuntimeReasonHisto;              // +112 [reason][opcode]
+    const uint32_t* dtlbFillReason;                // +120 last fillDtlb refusal
+    RuntimeAddressObserver runtimeAddressObserver; // +128
+    void*     runtimeAddressSelf;                  // +136
+    uint32_t  runtimeReason;                       // +144
+    uint32_t  runtimeAddress;                      // +148
+    uint32_t  runtimeCodeMask;                     // +152
+    uint32_t  runtimeBytes;                        // +156  0 = no access
+    uint32_t  runtimeWrite;                        // +160
+    uint32_t  pad3;                                // +164
 };
 constexpr int32_t kFClockTarget = 0, kFInstrs = 8, kFExit = 12;
 constexpr int32_t kFDtlbSelf = 16, kFDtlbFill = 24, kFGuard = 32;
@@ -201,10 +228,26 @@ constexpr int32_t kFScratch = 40, kFSaveA = 44, kFSaveV = 48;
 constexpr int32_t kFSlow = 52, kFPeriph = 56, kFLinkTab = 64, kFValue = 72;
 constexpr int32_t kFHistoStatic = 80, kFHistoRuntime = 88;
 constexpr int32_t kFProgHost = 96, kFPointerHost = 104;
+constexpr int32_t kFReasonHisto = 112, kFFillReason = 120;
+constexpr int32_t kFObserver = 128, kFObserverSelf = 136;
+constexpr int32_t kFReason = 144, kFAddress = 148, kFCodeMask = 152;
+constexpr int32_t kFBytes = 156, kFWrite = 160;
 static_assert(offsetof(Frame, slowStaticHisto) == kFHistoStatic);
 static_assert(offsetof(Frame, slowRuntimeHisto) == kFHistoRuntime);
 static_assert(offsetof(Frame, progHost) == kFProgHost);
 static_assert(offsetof(Frame, pointerHost) == kFPointerHost);
+static_assert(offsetof(Frame, slowRuntimeReasonHisto) == kFReasonHisto);
+static_assert(offsetof(Frame, dtlbFillReason) == kFFillReason);
+static_assert(offsetof(Frame, runtimeAddressObserver) == kFObserver);
+static_assert(offsetof(Frame, runtimeAddressSelf) == kFObserverSelf);
+static_assert(offsetof(Frame, runtimeReason) == kFReason);
+static_assert(offsetof(Frame, runtimeAddress) == kFAddress);
+static_assert(offsetof(Frame, runtimeCodeMask) == kFCodeMask);
+static_assert(offsetof(Frame, runtimeBytes) == kFBytes);
+static_assert(offsetof(Frame, runtimeWrite) == kFWrite);
+// One reason plane is 65536 entries of 8 bytes, hence the shift the runtime
+// door uses to turn a reason into a byte offset (mirrors JitBackendA64.cpp).
+constexpr uint8_t kReasonPlaneShift = 19;
 
 // Sizes. A 64-instruction block of memory-touching forms tops out around
 // 12 KB with its cold half; the code buffer holds thousands of blocks and
@@ -296,6 +339,8 @@ public:
                  !(L.is030 && packedCcrEnabled())),
           batch_(ctx.periphBatch),
           histo_(ctx.slowStaticHisto != nullptr),
+          reasonHisto_(ctx.slowRuntimeReasonHisto != nullptr),
+          addressObserver_(ctx.runtimeAddressObserver != nullptr),
           packedCcr_(packedCcrEnabled()),
           ic_(L.icLive && icacheEmitEnabled()) {}
 
@@ -448,6 +493,36 @@ private:
                  packedCcr_ ? kRetireUnit : 1);
     }
     void spillRetiredCount();
+    // ── runtime-fallback cause census (POM68K_JIT_HISTO) ─────────────────
+    // Every one of these folds to nothing with the census off. They write
+    // Frame slots only — no guest state, no clock, no flags — so an
+    // instruction's architectural behaviour is identical either way, which
+    // is what `jit_bench_lcii`'s fingerprint is asked to prove.
+    void markRuntimeReason(RuntimeFallbackReason reason) {
+        if (!reasonHisto_) return;
+        a_.movMI(Sz::L, F(kFReason), int32_t(reason));
+    }
+    // `addr` is the guest address of the refused access; it is RAX at every
+    // memProbe call site and live at all four of its miss sites.
+    void markRuntimeAccess(Reg addr, int bytes, bool write, bool clearMask) {
+        if (!addressObserver_) return;
+        a_.movMR(Sz::L, F(kFAddress), addr);
+        if (clearMask) a_.movMI(Sz::L, F(kFCodeMask), 0);
+        a_.movMI(Sz::L, F(kFBytes), int32_t(bytes));
+        a_.movMI(Sz::L, F(kFWrite), write ? 1 : 0);
+    }
+    // Emitted at every instruction entry: all four fields, because a guard
+    // bail that performed no access is recorded too and a stale address from
+    // the previous instruction would key it under an address it never
+    // touched (mirrors JitBackendA64.cpp clearRuntimeAccess).
+    void clearRuntimeAccess() {
+        if (!addressObserver_) return;
+        a_.movMI(Sz::L, F(kFAddress), 0);
+        a_.movMI(Sz::L, F(kFCodeMask), 0);
+        a_.movMI(Sz::L, F(kFBytes), 0);
+        a_.movMI(Sz::L, F(kFWrite), 0);
+    }
+    void emitObserveRuntimeAddress(uint16_t opcode);
     // Leaves the block for `pc`. With a link table available this is a tag
     // compare and an indirect jump straight into the next compiled block —
     // no return to the engine, no hash lookup, no frame set-up. Only exits
@@ -578,6 +653,11 @@ private:
     size_t cur_ = 0;                 // instruction being emitted
     uint16_t instructionCycles_ = 0; // fixed cost after exact-read splitting
     bool histo_ = false;             // POM68K_JIT_HISTO
+    // The cause half of the same census. Separate flags because the Context
+    // exposes the three pointers separately and an engine may fill the
+    // opcode planes without the cause ones.
+    bool reasonHisto_ = false;       // Context::slowRuntimeReasonHisto
+    bool addressObserver_ = false;   // Context::runtimeAddressObserver
     bool packedCcr_ = false;
     // 68030 i-cache overlay (Layout::icLive). When set, every NATIVELY
     // emitted instruction charges the model for the words it fetches; the
@@ -604,7 +684,9 @@ private:
     // The runtime door needs a body of its own only for the census
     // counters now: since 2026-08-19 the i-cache charge sits after the
     // body, so a runtime bail has nothing to undo on its way out.
-    bool needRuntimeDoor() const { return histo_; }
+    bool needRuntimeDoor() const {
+        return histo_ || reasonHisto_ || addressObserver_;
+    }
     Label& runtimeStub(size_t i) {
         return needRuntimeDoor() ? *slowRuntime_[i] : *slow_[i];
     }
@@ -1243,6 +1325,46 @@ void Emitter::call(void* fn) {
     }
 }
 
+// Hand the refused access to the engine's per-address census. Emitted at the
+// runtime door only, which is cold by construction, and only with
+// POM68K_JIT_HISTO on.
+//
+// It does NOT go through Emitter::call(): that helper exists to publish and
+// re-read the deferred CCR around helpers that observe Moira, and this
+// observer touches nothing but an std::unordered_map on the engine. Every
+// register this backend keeps live across a block — kCpu, kFrm, kTgt, kCnt
+// (packed CCR + retired count), kPer, kClk — is callee-saved under System V,
+// so a plain call preserves the whole generated-code state and the caller-
+// saved registers are all dead at a bail-out.
+//
+// The observer takes SEVEN integer arguments, one past the six System V
+// passes in registers, so `codeMask` travels on the stack. Two pushes, not
+// one: rsp is 16-byte aligned at every call site in this backend (see the
+// prologue) and one push would break that for the callee.
+void Emitter::emitObserveRuntimeAddress(uint16_t opcode) {
+    if (!addressObserver_) return;
+    // RuntimeFillTag is the one reason with no per-address table — a probe
+    // refusal is transient and fires on ordinary RAM operands, so recording
+    // it per address would grow the map without bound (JitEngine.cpp). This
+    // test is what keeps `observed == expected` true for the four that do.
+    Label& skip = *a_.fresh();
+    a_.aluMI(Asm::Op::CMP, Sz::L, F(kFReason), int32_t(RuntimeFillTag));
+    a_.jcc(Cc::E, skip);
+    a_.movRM(Sz::L, RAX, F(kFCodeMask));
+    a_.push(RAX);                     // 7th argument, at [rsp] on entry
+    a_.push(RAX);                     // …and the 16-byte alignment pad
+    a_.movRM(Sz::Q, RDI, F(kFObserverSelf));
+    a_.movRM(Sz::L, RSI, F(kFReason));
+    a_.movRI(RDX, opcode);
+    a_.movRM(Sz::L, RCX, F(kFAddress));
+    a_.movRM(Sz::L, R8, F(kFBytes));
+    a_.movRM(Sz::L, R9, F(kFWrite));
+    a_.movRM(Sz::Q, RAX, F(kFObserver));
+    a_.callR(RAX);
+    a_.aluRI(Asm::Op::ADD, Sz::Q, RSP, 16);
+    a_.bind(skip);
+}
+
 void Emitter::loadPackedCcr() {
     // Preserve the accumulated count and replace only XNZVC. All flag bytes
     // are canonical booleans, so zero-extension plus a shift is sufficient.
@@ -1659,6 +1781,23 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
     Label& fill = *a_.fresh();
     Label& done = *a_.fresh();
 
+    // ── the census's four diagnostic doors ───────────────────────────────
+    // With the cause census off these ARE `miss`, so not one byte of the
+    // probe changes. With it on, each of the four ways this probe can refuse
+    // gets a cold stub that names itself before joining the same `miss`.
+    //
+    // The order the tests appear in is this backend's, not a64's: x64 reads
+    // the host pointer and tests it for null BEFORE the page-straddle test,
+    // a64 the reverse. An access that is both remembered-null and straddling
+    // is therefore attributed differently on the two backends. That is a
+    // property of the generated code, not of the instrument, and moving
+    // either test to make the two agree would change the hot path.
+    const bool census = reasonHisto_ || addressObserver_;
+    Label& crossMiss   = census ? *a_.fresh() : miss;
+    Label& maskMiss    = census ? *a_.fresh() : miss;
+    Label& nonPlainMiss = census ? *a_.fresh() : miss;
+    Label& fillMiss    = census ? *a_.fresh() : miss;
+
     const bool cacheWrite = write && cacheWriteHit != nullptr;
     if (((cacheRead && !write && cache040LineReadsEnabled()) || cacheWrite) &&
         L_.cache040Live) {
@@ -1763,14 +1902,14 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
     // code. Asking again would cost a call per access, and a hardware poll
     // loop asks on every iteration.
     a_.testRR(Sz::Q, RSI, RSI);
-    a_.jcc(Cc::E, miss);               // ditto — the thunk is cold
+    a_.jcc(Cc::E, nonPlainMiss);       // ditto — the thunk is cold
     a_.movRR(Sz::L, RDX, addr);
     a_.aluRI(Asm::Op::AND, Sz::L, RDX, 4095);
     if (n > 1) {
         // An access straddling two pages needs two translations. Rare
         // enough to be someone else's problem.
         a_.aluRI(Asm::Op::CMP, Sz::L, RDX, 4096 - n);
-        a_.jcc(Cc::A, miss);
+        a_.jcc(Cc::A, crossMiss);
     }
     // ── the per-slice code mask, writes only (Moira.h § PomJitDtlbEntry) ──
     // An entry maps 4 KB; CodeGuard works at 256 bytes. A store into a slice
@@ -1793,7 +1932,7 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
         // (a full MOVEM burst) and a slice is 256 bytes, so an access spans
         // at most two of them — first and last, tested separately rather
         // than as a range, which needs no mask construction.
-        cold_.push_back([this, &maskCold, &maskOk, &miss, n] {
+        cold_.push_back([this, &maskCold, &maskOk, &maskMiss, n] {
             a_.bind(maskCold);
             a_.movRM(Sz::L, R8, mem(RCX, 4));          // the mask
             for (int end = 0; end < (n > 1 ? 2 : 1); end++) {
@@ -1803,7 +1942,7 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
                 a_.movRI(R9, 1);
                 a_.shiftRCl(Sz::L, R9, 4);             // 1 << slice
                 a_.testRR(Sz::L, R8, R9);
-                a_.jcc(Cc::NE, miss);
+                a_.jcc(Cc::NE, maskMiss);
             }
             a_.jmp(maskOk);
         });
@@ -1817,7 +1956,7 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
     // trust rather than re-probed, because fillDtlb wrote exactly the entry
     // this address indexes. Re-probing would risk a loop that never
     // terminates if the two ever disagreed.
-    cold_.push_back([this, &fill, &have, &miss, addr, write, entryPtr] {
+    cold_.push_back([this, &fill, &have, &fillMiss, addr, write, entryPtr] {
         a_.bind(fill);
         spillClock();
         a_.movMR(Sz::L, F(kFScratch), addr);
@@ -1831,10 +1970,50 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
         a_.testRR(Sz::Q, RAX, RAX);
         a_.movRM(Sz::L, addr, F(kFScratch));
         fillClock();
-        a_.jcc(Cc::E, miss);
+        a_.jcc(Cc::E, fillMiss);
         entryPtr();
         a_.jmp(have);
     });
+
+    // The four census doors, all cold. Each names its refusal in the Frame
+    // and joins the untouched `miss` path; the guest-visible behaviour of
+    // every one of them is `jmp miss`, which is what it was before.
+    if (census) {
+        cold_.push_back([this, &crossMiss, &maskMiss, &nonPlainMiss,
+                         &fillMiss, &miss, addr, n, write] {
+            a_.bind(crossMiss);
+            markRuntimeAccess(addr, n, write, /*clearMask=*/true);
+            markRuntimeReason(RuntimeCrossPage);
+            a_.jmp(miss);
+            // Reached only from the cold mask loop above, which leaves the
+            // entry's codeMask in R8 — the one door with a live register
+            // operand, and the reason this stub cannot be shared.
+            a_.bind(maskMiss);
+            if (addressObserver_) a_.movMR(Sz::L, F(kFCodeMask), R8);
+            markRuntimeAccess(addr, n, write, /*clearMask=*/false);
+            markRuntimeReason(RuntimeCodeMask);
+            a_.jmp(miss);
+            // A tagged entry with a null host: MMIO, a ROM window seen by a
+            // store, or a page fillDtlb refused and remembered. Naming the
+            // ADDRESS is what separates genuine device traffic from a
+            // refusal a data window could have served (TODO § B.2).
+            a_.bind(nonPlainMiss);
+            markRuntimeAccess(addr, n, write, /*clearMask=*/true);
+            markRuntimeReason(RuntimeNonPlain);
+            a_.jmp(miss);
+            // fillDtlb wrote why it returned null: a transient ATC probe
+            // refusal (RuntimeFillTag) or the memory map saying no
+            // (RuntimeNonPlain). `addr` was restored before the null test.
+            a_.bind(fillMiss);
+            markRuntimeAccess(addr, n, write, /*clearMask=*/true);
+            if (reasonHisto_) {
+                a_.movRM(Sz::Q, RCX, F(kFFillReason));
+                a_.movRM(Sz::L, RCX, mem(RCX, 0));
+                a_.movMR(Sz::L, F(kFReason), RCX);
+            }
+            a_.jmp(miss);
+        });
+    }
     a_.bind(done);
 }
 
@@ -1896,6 +2075,10 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
         a_.jcc(Cc::E, runtimeStub(idx));       // it faulted: nothing was committed
+        // The probe's refusal was HANDLED by the thunk, so it is not this
+        // instruction's fallback cause. Anything that bails after this point
+        // is a guard, not an access (mirrors JitBackendA64.cpp).
+        markRuntimeReason(RuntimeOther);
         a_.movRM(Sz::L, dst, F(kFValue)); // already host-ordered
         a_.jmp(done);
     });
@@ -2011,6 +2194,8 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
         // they were already correct here, because the PREVIOUS instruction
         // had written them. Deferring them turned that into an exit at a pc
         // several instructions stale, and the engine re-entered there.
+        // Handled by the thunk: not this instruction's fallback cause.
+        markRuntimeReason(RuntimeOther);
         Label& ok = *a_.fresh();
         a_.movRM(Sz::Q, RAX, F(kFGuard));
         a_.aluMI(Asm::Op::CMP, Sz::B, mem(RAX, 0), 0);
@@ -4740,6 +4925,12 @@ bool Emitter::emit() {
     for (size_t i = 0; i < n; i++) {
         cur_ = i;
         a_.bind(*entry_[i]);
+        // The census's per-instruction default: any bail-out that is not one
+        // of memProbe's four named refusals is a CPU/queue/branch guard, and
+        // this is where that is declared (mirrors JitBackendA64.cpp's
+        // instruction entry). Nothing is emitted with the census off.
+        markRuntimeReason(RuntimeOther);
+        clearRuntimeAccess();
         guards(i);
 
         // A 68030 branch longer than one word fetches a DIFFERENT number of
@@ -4944,11 +5135,24 @@ bool Emitter::emit() {
         }
         if (needRuntimeDoor()) {
             a_.bind(*slowRuntime_[i]);
+            const int32_t off = int32_t(ir_.instrs[i].opcode) * 8;
             if (histo_) {
-                const int32_t off = int32_t(ir_.instrs[i].opcode) * 8;
                 a_.movRM(Sz::Q, RAX, F(kFHistoRuntime));
                 a_.aluMI(Asm::Op::ADD, Sz::Q, mem(RAX, off), 1);
             }
+            if (reasonHisto_) {
+                // Flat [reason][opcode]: one reason plane is 65536 slots of
+                // 8 bytes, so the reason becomes a byte offset with one
+                // shift. These two tables must sum to each other, and the
+                // printer's `attributed N / N runtime exact` line is the
+                // assertion that says so.
+                a_.movRM(Sz::Q, RAX, F(kFReasonHisto));
+                a_.movRM(Sz::L, RCX, F(kFReason));
+                a_.shiftRI(Sz::L, RCX, 4, kReasonPlaneShift);
+                a_.aluRR(Asm::Op::ADD, Sz::Q, RAX, RCX);
+                a_.aluMI(Asm::Op::ADD, Sz::Q, mem(RAX, off), 1);
+            }
+            emitObserveRuntimeAddress(ir_.instrs[i].opcode);
         }
         a_.bind(*slow_[i]);
         emitBoundary(ir_.instrs[i].pc, int(i) == loopTarget ? -1 : int(i) - 1);
@@ -5350,6 +5554,10 @@ RunResult X64Backend::run(Compiled* c, Context& ctx) {
     f.linkTable = ctx.linkTable;
     f.slowStaticHisto = ctx.slowStaticHisto;
     f.slowRuntimeHisto = ctx.slowRuntimeHisto;
+    f.slowRuntimeReasonHisto = ctx.slowRuntimeReasonHisto;
+    f.dtlbFillReason = ctx.dtlbFillReason;
+    f.runtimeAddressObserver = ctx.runtimeAddressObserver;
+    f.runtimeAddressSelf = ctx.runtimeAddressSelf;
 
     using Fn = void (*)(moira::Moira*, Frame*);
     reinterpret_cast<Fn>(static_cast<X64Compiled*>(c)->entry)(ctx.cpu, &f);

@@ -1,0 +1,4 @@
+lcii engine=interp cycles=520960000 machine (2083853503 core, boost ×4.0)  wall=16.95s for 33.25s of guest time  ×1.96 real time  122.9 core MHz  fp=3de5c5ab62b4eca8
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":520960000,"core_cycles":2083853503,"wall_ns":16950132109,"fingerprint":"3de5c5ab62b4eca8","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1961}
+  SCSI=9618  pc=$0006B2E2  running
+  icache: 571592391 fetches, 443637308 hits, 127950916 misses (77.61% hit)

@@ -344,6 +344,18 @@ int main() {
                 (long long)ic.fetches, (long long)ic.hits, (long long)ic.misses,
                 hitPct, cpu.icacheEnabled() ? "" : "  [CACR bit 0 clear]");
 
+    // The interpreter data window (POM68K_DATA_WINDOW, Moira.h § pomJitData).
+    // Printed unconditionally because its predecessor was invisible: until
+    // 2026-09-04 the window was unreachable on the 68030 and a knob-on run
+    // was indistinguishable from a knob-off one — "identical fingerprints and
+    // identical ZERO fills, a dead path, not a passing test"
+    // (docs/JIT_BRINGUP.md § C.2). Zero hits with the knob on is the
+    // regression this line exists to make visible.
+    std::printf("  data window: %llu hits, %llu refusals%s\n",
+                (unsigned long long)cpu.pomJitData030Hits,
+                (unsigned long long)cpu.pomJitData030Refusals,
+                cpu.pomJitDtlbFillFn ? "" : "  [POM68K_DATA_WINDOW off]");
+
     if (const char* ppm = std::getenv("POM68K_BENCH_PPM")) dumpPpm(mem, ppm);
     return 0;
 }

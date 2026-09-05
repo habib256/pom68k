@@ -641,6 +641,20 @@ public:
     struct PomJitDataPage { u32 tag = 0xFFFFFFFF; u8 *host = nullptr; };
     PomJitDataPage pomJitDataR1, pomJitDataW1;
 
+    // POM68K B.2 slice 5 (2026-09-04): the 68030 half of this window is
+    // instrumented because its predecessor could not be. docs/JIT_BRINGUP.md
+    // § C.2 could only record that POM68K_DATA_WINDOW was a DEAD path on the
+    // 030 — "identical fingerprints and identical zero fills" — so a green
+    // run proved nothing either way. These two counters make the question
+    // answerable by measurement instead of by inspection: jit_bench_lcii and
+    // jit_lockstep_030_test print them, and a knob-on 68030 run whose hits
+    // are zero is a regression, not a pass. They count ACCESSES that reached
+    // pomJitData — not instructions, and not fetches, which use the separate
+    // fetch window. One increment per attempt, and the whole attempt already
+    // sits inside the knob's own branch.
+    u64 pomJitData030Hits {0};
+    u64 pomJitData030Refusals {0};
+
     void pomJitDtlbFlush() {
         pomJitDtlbR.clear(); pomJitDtlbW.clear();
         pomJitDataR1 = {}; pomJitDataW1 = {};
@@ -703,6 +717,34 @@ public:
         // nothing ever fills, so the level-0 tag never matches.
         u8 *base = pomJitDataSlow(addr, want, W);
         return base ? base + off : nullptr;
+    }
+
+    // POM68K B.2 slice 5 — may an M68030 access consult pomJitData at all?
+    // The 040 answers this with mmu040Read's `data` argument and the two
+    // 040-only latches pomJitData already tests; the 030 owes a WIDER set,
+    // and every one of these is a correctness refusal, not a heuristic:
+    //
+    //  * `pomJitDtlbFillFn` — the knob. Null unless jit::Engine bound it
+    //    under POM68K_DATA_WINDOW=1 (JitEngine.cpp § dataWindow). Tested
+    //    first and by hand rather than left to pomJitDataSlow's own null
+    //    test, so that with the knob OFF an 030 access pays one predictable
+    //    branch instead of an out-of-line call it can only be refused by.
+    //  * the SPACE. mmuRead/mmuWrite serve BOTH data and program accesses —
+    //    read<C, AddrSpace::PROG, ...> reaches them (prefetch, the JSR/JMP
+    //    target read, MoiraDataflow_cpp.h § read) — where mmu040Read takes
+    //    `data` as an argument. The DTLB is filled from pomJitProbeData's
+    //    DATA-space probe (fc = 1/5) and the 68030 ATC matches an entry's fc
+    //    EXACTLY (MmuAtcEntry::fc), so a program-space access served from
+    //    this table would have been translated in the wrong space.
+    //  * `fcSource` — MOVES and SFC/DFC redirect readFC() to an alternate
+    //    space; the same rule pomJitReadData already applies.
+    //  * `mmuRmw` — a locked RMW READ probes the ATC as a WRITE
+    //    (mmuTranslateAccess § lookupWrite), so the read table's permission
+    //    answer is the wrong one. Refused in both directions rather than
+    //    reasoned about per direction: TAS/CAS are rare.
+    bool pomJitData030Ok() const {
+        return pomJitDtlbFillFn && fcSource == 0 && fcl == FC::USER_DATA
+               && !mmuRmw;
     }
 
     // The other half of the data path: what generated code calls when the
@@ -1167,6 +1209,51 @@ protected:
         }
     };
     PomIcache pomIcache;
+
+    // POM68K B.2 slice 4: the i-cache overlay itself, for `Words` CONSECUTIVE
+    // instruction words starting at `pc`, applied in address order. ONE body
+    // serves both the single-word mmuFetchWord path and mmuExecuteStart's
+    // fused ird/irc fetch, so the tag/valid/line arithmetic exists exactly
+    // once — a second copy of it is how the 2026-08-19 retained-cache
+    // divergence presented (agreeing counters over parted cache content).
+    // Shape borrowed from pomJitIcachePeekPenalty: a sequential walk with a
+    // one-line local override. An instruction's words are consecutive, so an
+    // earlier word's install can only be hit by a later word on the SAME
+    // line and lines advance monotonically; the line arrays are therefore
+    // read and written once per line rather than once per word, and the
+    // result is bit-identical to the per-word form (down to leaving a pure
+    // hit's tag/valid untouched — the `dirty` flag).
+    // Each word's miss penalty is charged where the per-word form charged
+    // it — word 1's before word 2 is looked up. That ordering is observable
+    // only through `clock`, and `Words > 1` is used solely where the JIT code
+    // window serves every byte, so no bus access, no SYNC (empty on
+    // Core::C68020) and no POLL_IPL can sit between the two charges.
+    // Gate: jit_lockstep_030_test compares fetches/hits/misses AND
+    // tag[]/valid[]; POM68K_JIT_LOCKSTEP_ICTRACE=1 names the diverging step.
+    template <int Words> void pomIcacheFetch(u32 pc) {
+        if (!pomIcache.armed) return;
+        pomIcache.fetches += Words;         // counted whether or not CACR.EI is on
+        if (!(reg.cacr & 0x1)) return;      // System enables the i-cache
+        const u32 sup = reg.sr.s ? 0x80000000u : 0u;
+        int line = -1; u32 curTag = 0; u8 curValid = 0; bool dirty = false;
+        for (int w = 0; w < Words; w++) {
+            const u32 addr = pc + u32(w) * 2;
+            const int l    = int((addr >> 4) & 15);
+            const u32 tag  = (addr >> 8) | sup;
+            const u8  bit  = u8(1u << ((addr >> 2) & 3));
+            if (l != line) {                // crossed into the next line
+                if (dirty) { pomIcache.tag[line] = curTag; pomIcache.valid[line] = curValid; }
+                line = l; curTag = pomIcache.tag[l]; curValid = pomIcache.valid[l];
+                dirty = false;
+            }
+            if (curTag == tag && (curValid & bit)) { pomIcache.hits++; continue; }
+            if (curTag != tag) { curTag = tag; curValid = 0; }  // direct-mapped: evict on tag change
+            curValid |= bit; dirty = true;
+            pomIcache.misses++;
+            clock += pomIcache.missPenalty; // a miss pays the fetch bus cycles
+        }
+        if (dirty) { pomIcache.tag[line] = curTag; pomIcache.valid[line] = curValid; }
+    }
 
     // CACR clear bits are write-only command strobes, so wrappers receive
     // the raw MOVEC value in didChangeCACR(). CI has priority when both are

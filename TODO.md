@@ -82,41 +82,59 @@ désormais la masse mesurée.
 
 ### B.2 Le poste n°1 du 68030 : la traduction, pas le générateur
 
-- [ ] **Attaquer la traduction et les thunks mémoire — par tranches
-  mesurées, pas par bucket de profil.** `tools/profile_census.py` sur
-  SimCity/Speedometer (`CHANGELOG` 2026-09-02 (sixth)) attribue ~30-34 % du
-  temps à Moira translate + thunks mémoire (`mmuFetchWord` 6,1 %,
-  `mmuRead<2/4>` 8,1 %, `V8Memory::read16/write16` 5,7 %). Le plan du
-  2026-09-04 (`scratchpad/2026-09-04/b2plan/PLAN.md`) classe six tranches ;
-  ses deux premières sont livrées (`CHANGELOG` 2026-09-04 (third) et
-  (fourth)) : fenêtre VRAM dans `V8Memory::dataSpan` et décodage unique de
-  `read16`/`write16`. Elles sont bit-identiques sur trois moteurs et
-  retirent 26,9 % des rejeux interprétés d'une session SimCity (famille
-  `MOVE.L (A0)+,(A2)+` disparue du census) — **sans gain mur mesurable**
-  (deux workloads, deux ABBA chacun, chaque phase sous le bruit) : un rejeu
-  coûte ~180 ns et la classe entière pèse < 1 %. Leçon à porter sur chaque
-  tranche restante : un bucket de profil ne se retire pas en entier quand
-  le générateur n'en possède que la moitié. Reste, dans l'ordre du plan :
-  (0) chiffrer les buckets avec les censuses (`RuntimeNonPlain` absent de la
-  table par adresse, census des causes non câblé sur x64) ; (3) le clamp
-  `maxAccessThunk030 = 1` sur x64 — même binaire, `POM68K_JIT_ACCESS_THUNK=1`
-  contre `2`, c'est aussi la première clause de B.3 ; (4) fusionner le
-  double `mmuFetchWord` de `mmuExecuteStart` comme le 040, plafond ~1,8 % et
-  conditionné par le ratio `icache fetches / retired` après (3) ; (5) la
-  fenêtre de données interpréteur 030 derrière `POM68K_DATA_WINDOW`, précédent
-  040 négatif, à mesurer sur le bras interpréteur seul.
-- [ ] **Chiffrer le coût réel de `mmuRead`/`mmuWrite` côté interpréteur.**
-  Le profil du 2026-09-02 ne sépare pas les accès mot de l'interpréteur (boot,
-  Memory Manager) de ceux du code généré ; la tranche VRAM a montré que la
-  seconde moitié vaut < 1 %. Avant toute tranche sur le fork Moira, un
-  profil qui distingue les deux appelants, sinon le plafond est inventé.
+Les six tranches du plan (`scratchpad/2026-09-04/b2plan/PLAN.md`) sont
+traitées ; le récit et les mesures sont au `CHANGELOG` des 2026-09-04 et
+2026-09-05. Le tronc mesure **−9,5 / −9,9 %** contre l'état d'avant, à
+empreinte identique. Ce qui reste ouvert :
+
+- [ ] **Décider le défaut de `POM68K_DATA_WINDOW` sur 68030.** La fenêtre de
+  données interpréteur est conforme (matrice d'identité 18 courses, 20
+  locksteps à 120 000 pas, graines fraîches, ICTRACE muet) et mesurée
+  gagnante sur les deux bras — **−5,5 % sur `threaded`, −5,7 % sur
+  l'interpréteur** — là même où le précédent 68040 avait perdu
+  (`POM68K_VENDOR.md` § J3 point 11 : 73 s contre 42 s). Ce qui manque avant
+  de retourner le défaut est l'admission indépendante que ce dépôt exige :
+  un tier `-L m030` complet **avec le knob allumé**. Tant qu'il n'a pas
+  tourné, la fenêtre reste opt-in.
+- [ ] **Refaire le profil par appelant sur `threaded`.** Celui de la tranche 0
+  (`tools/profile_callers.py`) a été pris sur le bras x64 : il décrit un
+  override diagnostique. Sur `threaded` la part du générateur tombe à 0 %
+  dans chaque seau et le coût absolu monte — inférence depuis le code, pas
+  mesure. Le profil actuel dit : générateur **73,4 %** de `mmuRead<N>`,
+  **47,9 %** de `mmuWrite<N>` (dont 0 % de thunk : le clamp), **31,6 %** de
+  `mmuFetchWord`.
+- [ ] **Trancher le plancher de bruit inscrit.**
+  `performance_budgets.tsv:67` porte 10 pour mille pour x86_64. La campagne
+  du 2026-09-05, hôte réellement seul, mesure **2 pour mille à 2000 images**
+  (étendues de bras 0,2 %/0,1 %, le banc imprimant lui-même `POLICY TOO
+  LOOSE`) et **17 pour mille à 6000**. Une constante unique par hôte
+  n'exprime pas cet écart, et un plancher est une mesure, pas une marge de
+  sécurité : à 10 ‰ on enterre tout effet réel de 1 %, à 2 ‰ on revendiquera
+  du bruit à 6000 images. Trancher demande sa propre campagne (trois
+  expériences nulles par budget), pas une retouche au passage.
+
+**La leçon à ne pas reperdre :** ce n'était pas « un bucket de profil ne se
+retire qu'à moitié », c'était **le bras mesuré**. `X64Backend::caps()` ne
+déclare `autoFamilies = kGuest68040`, donc un invité 68030 sur x86-64 résout
+vers `threaded`, qui passe *chaque* instruction par `mmuExecuteStart`. Le plan
+chiffrait ses six tranches sur le profil x64-natif — un override diagnostique
+— et classait 4ᵉ sur 5 la seule tranche dont la valeur est concentrée sur le
+bras qui expédie ; elle vaut −10 %.
 
 ### B.3 Qualification 68030 par hôte
 
-- [ ] **Décider la re-promotion x64/68030.** Comparer les modes d'accès 1 et 2
-  dans le même binaire, puis exiger les locksteps natifs, `ctest -L m030` et
-  le tier etalon complet sur x86-64 avant d'ajouter 030 à
-  `X64Backend::caps().autoFamilies`.
+- [ ] **Décider la re-promotion x64/68030.** La première clause est close :
+  modes 1 et 2 comparés dans le même binaire le 2026-09-05, conformes,
+  mécanisme nommé, sans gain au mur — le clamp reste. Restent les locksteps
+  natifs, `ctest -L m030` et le tier etalon complet sur x86-64 avant
+  d'ajouter 030 à `X64Backend::caps().autoFamilies`. **Attention au contexte
+  que ce chantier a révélé :** tant que `autoFamilies` ne contient pas 030,
+  un LC II sur cet hôte tourne en `threaded`, donc toute mesure prise sous
+  `POM68K_JIT_BACKEND=x64` chiffre un override et non le produit.
+- [ ] **Exécuter `jit_store_guard_a64_test` sur un hôte AArch64.** Il n'est
+  que *compilé* sur x86-64 — enregistré comme gate absent dans
+  `Pom68kJitGates.cmake`, son sujet n'existe pas ici. À faire dans la session
+  A64, à côté du portage du biais d'horloge par backend.
 - [ ] **Fermer l'écart de timing/admission 68030 entre A64 et x64.** La parité
   opcode est déjà zéro ; le travail restant concerne les pénalités i-cache,
   les positions d'accès et les sous-familles PI/PD encore refusées. Toute

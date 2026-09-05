@@ -40,6 +40,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the fused 68030 opcode fetch is worth ≈1.8 %, at risk, and ranks fourth of five" — it is worth 10 %, and the ranking was wrong because every ceiling in the plan was priced on `POM68K_JIT_BACKEND=x64`, which `caps().autoFamilies` never selects for a 68030** → [2026-09-05 (third) — The 68030 fetched its two opcode words…](#2026-09-05-fused-030-fetch)
+- **"the interpreter data window is a net loss, so it stays opt-in" (68040, 2026-07-28) — on the 68030 the same feature measures −5.5 % on `threaded` and −5.7 % on the interpreter arm, which is where the 68040 lost** → [2026-09-05 (fourth) — `POM68K_DATA_WINDOW` was a dead path…](#2026-09-05-030-data-window)
+- **"access-thunk mode 2 is +3 % over mode 1" (one unpaired run, 2026-08-29) — it does not reproduce; the census shows the same lever converts 645 232 device-register stores and drops nineteen blocks out of native coverage, a gain and a cost in opposite directions** → [2026-09-05 (second) — Access-thunk mode 2…](#2026-09-05-thunk-mode2-priced)
 - **"publishing the LC II framebuffer to the data TLB is worth ≈ 8 %" — it removes 4.75 million interpreted replays per SimCity session and not one measurable second: one replay costs ~180 ns, and the ranking had priced a profile bucket the generator only half owns** → [2026-09-04 (fourth) — The LC II's framebuffer was refused by the data TLB…](#2026-09-04-v8-vram-dataspan)
 - **"extend the Q605 event scheduler to a third peripheral" — the ASC path had already passed seven gates and was withdrawn after two slower measurements; the follow-up audit instead found the promoted SCC/53C96 defaults accidentally disabled by startup-policy extraction** → [2026-09-03 (fifteenth) — The stale third-peripheral task…](#2026-09-03-q605-scheduler-default-restored)
 - **"native division makes SimCity 3.69 % slower" — two rebuilt-binary comparisons agreed and were both wrong; the same executable with an injected admission switch measures division 1.453 % faster, proving the apparent regression was code-layout noise** → [2026-08-30 (ninth) — The SimCity division promotion survives…](#2026-08-30-division-promotion)
@@ -395,6 +398,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-05 (fourth)** — [`POM68K_DATA_WINDOW` was a dead path on the 68030 for five weeks; wiring it found that `mmuRead` also serves program space, and the measured result is the opposite of the 68040 precedent that made it opt-in](#2026-09-05-030-data-window)
+- **2026-09-05 (third)** — [The 68030 fetched its two opcode words with two calls where the 68040 uses one; folding them is worth 10 % — and the reason nobody knew that is that every ceiling in the plan was priced on a backend this host does not select](#2026-09-05-fused-030-fetch)
+- **2026-09-05 (second)** — [Access-thunk mode 2 converts device-register byte stores into single accesses and drops nineteen blocks out of native code: one lever, a gain and a cost, which is why the stopwatch never sees it](#2026-09-05-thunk-mode2-priced)
+- **2026-09-05** — [The runtime-fallback census was wired on one backend only, so the x86-64 leg printed five zeros and a `MISMATCH` — and the profile it enabled shows the generator owns two thirds of the read path and none of the write path](#2026-09-05-x64-census-wired)
 - **2026-09-04 (sixth)** — [The x86-64 leg replays the 040 JSR transaction green, every x64 lockstep and both CPU tiers execute without a soft-skip, and the late-poll knob is proved inert on x64](#2026-09-04-x86-64-leg-replay)
 - **2026-09-04 (fifth)** — [The Q605's second SCC deadline query is real, the hand-off that removes it is bit-identical, and two ABBAs read it under the noise — so it is withdrawn](#2026-09-04-scc-deadline-handoff-refused)
 - **2026-09-04 (fourth)** — [The LC II's framebuffer was refused by the data TLB on a stale premise, and every QuickDraw store from generated code paid a whole interpreted instruction — 4.75 million of them in one SimCity session, and not one measurable second](#2026-09-04-v8-vram-dataspan)
@@ -814,6 +821,360 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-05-030-data-window"></a>
+## 2026-09-05 (fourth) — `POM68K_DATA_WINDOW` was a dead path on the 68030 for five weeks; wiring it found that `mmuRead` also serves program space, and the measured result is the opposite of the 68040 precedent that made it opt-in
+
+`mmu040Read`/`mmu040Write` have consulted `pomJitData` since J3. `mmuRead`/
+`mmuWrite` never did. `docs/JIT_BRINGUP.md` § C.2 recorded the consequence
+without being able to fix it: on a 68030 the knob produced *identical
+fingerprints and identical zero fills* — "a dead path, not a passing test".
+It is wired now, for naturally aligned Byte/Word/Long, after the watchpoint
+hook, the `mmuLogging` entry bookkeeping and the `mmuRteSubst` check, and it
+finishes the call's existing logging tail unchanged. Unaligned and
+page-straddling forms keep the long path verbatim: they are the only ones that
+touch `mmuState[1]` and `mmuDataBuffer`, and a fast path may not skip
+partial-completion bookkeeping a later fault in the same instruction stacks.
+
+**The refusal set the 68030 owes is wider than the 68040's, and the extra one
+is load-bearing.** `mmuRead`/`mmuWrite` serve **program-space** accesses as
+well as data ones — `Moira::read<C, AddrSpace::PROG, S, F>` funnels into them
+exactly as the DATA form does, and it is not a rare path: `prefetch`, the
+queue refills and the JSR/JMP target read all arrive there. `mmu040Read` never
+had the problem because it takes `data` as an explicit argument. Meanwhile the
+DTLB is filled from `pomJitProbeData`'s **data-space** probe (`fc = 1/5`) and
+the 68030 ATC matches an entry's `fc` *exactly*, so a program-space access
+served from that table would have been translated in the wrong space. The
+guard is `fcSource == 0 && fcl == FC::USER_DATA && !mmuRmw`, with the knob
+tested first and by hand rather than left to `pomJitDataSlow`'s own null test,
+so that a knob-off access pays one predictable branch and the `=0` arm stays
+comparable to HEAD.
+
+`POLL_IPL` is reproduced at each size's own position — **before** the access
+for a byte, **after** it for a word, **between the two halves** of an aligned
+long — because that placement is what decides interrupt recognition. The
+in-flight access context is deliberately not stamped on a hit, the same
+argument `mmu040Read` makes: a hit is plain guest memory behind a resident,
+permitted translation, no fault is possible, and the next slow access stamps
+its own before `extBusError()` could read it. Exactness is inherited whole
+from J3b — `pomJitAtcEvict` already kills the derived slice per page and per
+space on both 030 eviction sites, so a hit implies the interpreter's own ATC
+would have hit and no descriptor U-bit write is skipped.
+
+**Conformance.** An 18-run identity matrix — {HEAD, knob off, knob on} ×
+{interp, threaded, x64} × {2000, 6000 frames} — gives one fingerprint per
+budget, `3de5c5ab62b4eca8` and `cfb184b6faddabec`, with identical `icache:`
+triples in all eighteen: knob-off is byte-identical to HEAD *and* knob-on is
+byte-identical to both. Twenty lockstep runs, all five registered 030 gates ×
+four rounds, each `120000 steps identical`: knob-on at seed 6144/73331;
+knob-on at 12288/95003 with `FULL_RAM_AT=119000` comparing the whole 10 MB
+store; knob-on under `ICTRACE=1` printing **zero** trace lines on every gate;
+and a knob-off control reading `0 hits / 0 refusals`, which is what proves the
+branch is genuinely dead when the knob is off.
+
+**The dead path is closed, with numbers.** Knob on, 6000 frames:
+210 352 943 hits / 13 800 817 refusals on the interpreter arm, 47 172 553 /
+15 645 046 on the x64 arm. Unpredicted datum worth keeping: the refusals are
+almost entirely a boot transient — 13.62 M at 2000 frames against 13.80 M at
+6000, i.e. 177 k new refusals against 122 M new hits.
+
+**And the measurement contradicts the precedent that made this feature
+opt-in.** `POM68K_VENDOR.md` § J3 point 11 records the 68040 result: once J3b
+capped the window at ATC residency, the eviction/refill churn under Mac OS VM
+cost more than the surviving hits saved — 73 s against 42 s, a net loss, and
+the knob went opt-in on that evidence. On the 68030, on a quiet host, ABBA,
+warm-up pair discarded, fingerprints identical in both arms:
+
+| arm | budget | `=0` | `=1` | delta | paired 95 % CI |
+|---|---|---|---|---|---|
+| `threaded` | 2000 | 17.45 s | 16.33 s | **−6.4 %** | [−68.5, −60.9] ‰ |
+| `threaded` | 6000 | 52.00 s | 49.16 s | **−5.5 %** | [−64.4, −39.9] ‰ |
+| interpreter | 6000 | 51.08 s | 48.17 s | **−5.7 %** | [−58.7, −52.2] ‰ |
+
+The interpreter arm is where the 68040 lost, and it is where the 68030 wins.
+The two differences the plan named as reasons to *measure* rather than to
+hope both hold: the 030's ATC has 22 entries against the 040's 32, but its
+page size on an LC II is far larger, so per-entry coverage is much wider; and
+the 030's `mmuRead` is also the exact-thunk target from generated code, where
+a hit replaces a full C++ chain rather than a hot MRU probe.
+
+**The default does not move on this entry.** Reach and a bit-identical
+fingerprint are not a shipping admission on their own — the tree's own rule is
+that conformance, whole-tier stability and performance are independent
+admissions. What is owed before flipping `POM68K_DATA_WINDOW` on for the
+68030 is a full `-L m030` tier with the knob on. Until then it ships opt-in,
+as on the 68040, and this entry is the measured case for opening that door.
+
+`POM68K_VENDOR.md` gains patch row 34 and a paragraph under § J3 point 11.
+Two documentation defects closed on the way: `src/V8Memory.h`'s comment
+credited the 030 branch of `pomJitProbeData` to "patch 31", which is
+`pomIdentityProbeBound`; and `src/jit/POM68K_JIT.md` § 8 described the
+interpreter window without saying it was unreachable on the 68030, while
+`docs/JIT_BRINGUP.md` § C.2 did — the two now point at each other.
+
+Evidence: `scratchpad/2026-09-04/b2s5/`, `scratchpad/2026-09-04/b2impl/s5_*.times`.
+
+---
+
+<a id="2026-09-05-fused-030-fetch"></a>
+## 2026-09-05 (third) — The 68030 fetched its two opcode words with two calls where the 68040 uses one; folding them is worth 10 % — and the reason nobody knew that is that every ceiling in the plan was priced on a backend this host does not select
+
+`mmuExecuteStart` called `mmuFetchWord` twice, once per opcode word. Each call
+paid, in order: the post-PMOVE pipe test, the 68030 i-cache overlay with its
+`clock += missPenalty`, the in-flight access stamp, then the `pomJitFetch`
+code-window hook. `mmu040InstrStart`, in the same file, already fetched *both*
+words with one `pomJitFetch(reg.pc, 4, p)` and one stamp. The 030 now takes
+that shape.
+
+`Moira::pomIcacheFetch<Words>(pc)` is the one MC68030UM § 6 overlay body:
+`mmuFetchWord` calls it with `Words=1`, the fused path with `Words=2`. It is a
+sequential walk with a one-line local override — an instruction's words are
+consecutive, so an earlier word's install can only be hit by a later word on
+the same line, and lines advance monotonically — writing a line array back
+only when a line was actually installed, so a pure hit leaves `tag[]`/`valid[]`
+untouched exactly as the per-word form did. Each word's miss penalty is
+charged before the next word is looked up. **Factoring rather than copying is
+the whole point:** a second copy of the tag/valid/line arithmetic is precisely
+how the 2026-08-19 retained-cache divergence presented — agreeing counters
+over parted cache content.
+
+The refusal order in `mmuExecuteStart` is load-bearing. `!pomMmuPipeLive()`
+comes **first**, so a fetch in a PMOVE's shadow keeps returning before the
+counters exactly as vendor row 32 promises the engine; then
+`!(flags & State::CHECK_WP)`; then a four-byte window hit. That third
+condition is the safety argument, not a convenience: with only two bytes
+covered, the second word would reach `read16` — which can clear the ROM
+overlay or `flushTicks()` a device — *between* the two i-cache charges. On
+the fused path nothing separates them: the window serves both, `SYNC` expands
+to nothing on `Core::C68020`, nothing reads `clock`, and `POLL_IPL` sits above
+both fetches.
+
+**Two defects in the 2026-09-04 plan, and the second one is the expensive
+one.**
+
+*The gate metric was broken.* The plan asserts `pomIcache.fetches` is the
+count of `mmuFetchWord` calls reaching the overlay, so that `fetches / retired`
+prices this slice directly. Under the JIT it is not: the lowering publishes
+the counter's **address** to generated code (`l.icFetches =
+at(&pomIcache.fetches)`), by design, because `JIT_BRINGUP` § B requires the
+i-cache triple to be engine-invariant. Measured at HEAD the ratio is 2.414 at
+2000 frames and 2.423 at 6000 — roughly one per *retired* instruction, every
+instruction, not the 5 % that run interpreted. The metric that does price it
+is `interp + block-fallback + window`: 11 113 385 of 236 821 650 retired
+(4.69 %) at 2000 frames, 34 471 401 of 661 452 534 (5.21 %) at 6000.
+
+*The arm was wrong, and every slice in the plan inherited it.*
+`X64Backend::caps()` declares `guestFamilies = 68040|68030` but
+**`autoFamilies = kGuest68040` only**. A 68030 guest on x86-64 therefore
+resolves automatically to **`threaded`**, and `JitBackendThreaded.cpp` runs
+*every* instruction through `pomJitExecOne()` → `mmuExecuteStart`.
+`POM68K_JIT_BACKEND=x64` is a diagnostic override. The plan priced all six of
+its slices on the x64-native profile and ranked this one **fourth of five**,
+with a ceiling of "≈1.8 %, at risk"; on the arm that actually ships for the
+LC II here it is worth five times that. The half-owned profile bucket of
+2026-09-04 (fourth) was a real lesson, but this is the larger one: measuring
+the wrong arm costs more than mis-attributing a bucket.
+
+**Measured**, quiet host, ABBA, warm-up pair discarded, fingerprints identical
+in every arm:
+
+| arm | budget | HEAD | fused | delta | paired 95 % CI |
+|---|---|---|---|---|---|
+| `threaded` | 2000 | 17.48 s | 15.70 s | **−10.2 %** | [−115.2, −88.0] ‰ |
+| `threaded` | 6000 | 52.25 s | 47.04 s | **−10.0 %** | [−118.8, −92.2] ‰ |
+| interpreter | 6000 | 50.49 s | 49.93 s | −1.1 % | [−19.9, +2.8] ‰, sign unresolved |
+
+The interpreter row is not a disappointment, it is the mechanism confirming
+itself: the fused path requires `pomJitFetch` to succeed, i.e. the **code
+window to be armed**, and only the JIT engine arms it. The fold accelerates
+the 68030 path that ships; it leaves the accuracy oracle alone, which is
+exactly the right shape for a change to the vendored fork.
+
+**Conformance.** `POM68K_JIT_LOCKSTEP_ICTRACE=1` over a full 120 000-comparison
+run printed **zero** lines, `OK — 120000 steps identical`, with the i-cache
+triple `948 544 659 / 681 239 356 / 267 301 136` identical on both CPUs, and
+`arm refusals: … pipe 1` proving the row-32 shadow path was actually
+exercised rather than merely believed. Five registered 030 lockstep gates
+5/5, executed with assets present rather than soft-skipped. Five fresh seeds —
+`x64 4093/57000`, `x64 1021` with no fine phase, `x64` at a 260 480 real-frame
+cadence, the alignment knobs at that cadence, and `threaded 3079/91000` —
+5/5 identical with zero trace lines each. Fingerprint and `icache:` triple
+against the HEAD binary across interp/threaded/x64 × 2000/6000: **12/12
+identical**. `ctest -L asset-none` exit 0.
+
+**What ships.** The merged tree — this fold, the day's other two entries, and
+`POM68K_DATA_WINDOW` at its default of off — measured against HEAD on
+`threaded`: 17.51 s → 15.84 s at 2000 frames (**−9.5 %**) and 52.26 s →
+47.10 s at 6000 (**−9.9 %**), fingerprints identical in both arms at both
+budgets. That is this fold's gain arriving intact through integration, and it
+is the number a user of an LC II on x86-64 gets.
+
+A trap worth recording, because it nearly published a phantom: the first
+attempt at that combined A/B read **+0.2 %, NOT A CLAIM**, which contradicted
+the per-lever results. The cause was not the code. `jit_bench_lcii` is outside
+the default `all` target, so `make -C build` had left the previous night's
+binary in place and the "merged" arm was HEAD running against itself — an
+accidental null experiment, which is exactly what +0.2 % against a 1 % floor
+looks like. Contradiction between two measurements is a fact about the
+measurement until proven otherwise.
+
+`POM68K_VENDOR.md` gains patch row 33.
+
+Evidence: `scratchpad/2026-09-04/b2s4/`, `scratchpad/2026-09-04/b2impl/s4_*.times`,
+`all_threaded.times`.
+
+---
+
+<a id="2026-09-05-thunk-mode2-priced"></a>
+## 2026-09-05 (second) — Access-thunk mode 2 converts device-register byte stores into single accesses and drops nineteen blocks out of native code: one lever, a gain and a cost, which is why the stopwatch never sees it
+
+`X64Backend::caps()` clamps `maxAccessThunk030 = 1`, and TODO § B.3's first
+clause asks for the comparison that would justify or retire it. It is easy to
+do right, because the knob is explicit-wins: both arms are the **same
+binary**, `POM68K_JIT_ACCESS_THUNK=1` against `=2`.
+
+**Conformant.** Fingerprints identical in both arms at both budgets
+(`3de5c5ab62b4eca8` at 2000 frames, `cfb184b6faddabec` at 6000) and the three
+`PomIcache` counters identical to the digit. `Miss::GuardReplay` reads
+31 189 → 31 002 at 2000 frames and 47 231 → 47 039 at 6000: **bounded, and
+not growing with the budget** — the 2026-08-29 (late night) storm fix holding
+under a budget change, which is more than that entry could claim at the time.
+
+**What mode 2 actually does, named for the first time.** The x64
+runtime-reason census — wired the same night, see the day's first entry,
+because it had never existed on this backend — attributes the whole gain to
+**one cause**: `non-plain/MMIO`, 2 503 605 → 1 858 373, **−645 232 (−25.8 %)**.
+No other cause moves. The per-address table names the opcodes that leave the
+plane:
+
+| opcode | form | mode 1 | mode 2 |
+|---|---|---:|---:|
+| `177C` | `MOVE.B #imm,d16(An)` → `$50F10010/20/30` | 275 031 | gone |
+| `1747` | `MOVE.B D7,d16(An)` → `$50F10010/20/30/40/70` | 185 902 | gone |
+| `117C` | `MOVE.B #imm,d16(An)` → `$50F27A03/7C13` | 46 716 | gone |
+| `1084` | `MOVE.B D4,(An)` → `$50F10010` | 28 858 | gone |
+| `1740` | `MOVE.B D0,d16(An)` → `$50F10010` | 19 225 | gone |
+
+Every one is a byte **store into a device register** — `$50F10000+` is the
+53C80 SCSI register file, `$50F26`/`$50F27` the VIA space. That is exactly
+what `exactWrites` buys: a store the DTLB refuses stops replaying the whole
+instruction through `mmuExecuteStart` and takes `pom68kJitWrite` instead.
+
+**And what it costs, from the same lever.** `backend declined` rises by
+168 282 at 2000 frames and 168 212 at 6000 — the same absolute count at both
+budgets, therefore a compile-time effect rather than an execution-time one.
+The cause is `coverage` rejects, **42 → 63**: `exactWrites` demotes stores out
+of native coverage until the block falls under threshold. Nineteen blocks stop
+being compiled at all. A gain and a cost, in opposite directions, from one
+switch — which is the mechanical reason the wall clock reads nothing, and the
+kind of answer a census gives that a stopwatch cannot.
+
+Net effect on the run: block fallback 3 511 664 → 3 013 639 (−14.2 %) at 2000
+frames and 6 082 194 → 5 558 149 (−8.6 %) at 6000, moving the native share
+from 94.8 % to **94.9 %**.
+
+**Measured**, quiet host, same binary, ABBA, warm-up pair discarded: +0.9 % at
+2000 frames and 0.0 % at 6000, both with the paired sign unresolved. The
+2026-08-29 (late night) entry's **+3 %** for mode 2 — one unpaired run, and
+that entry already refused to move the default on it — does not reproduce.
+
+**Ruling: `maxAccessThunk030` stays at 1.** Not because mode 2 is unsafe — it
+is conformant here and its storm is closed — but because it is measured, and
+what it buys is a tenth of a point of native share and no resolvable wall
+change at either budget. Closed as *measured, not worth the default*; the
+explicit knob remains for diagnosis. TODO § B.3's first clause is answered.
+
+One stale comment corrected at the clamp site: it still said "the mechanism of
+the mode-2 storm is NOT yet run to ground". It was run to ground and repaired
+on 2026-08-29 (late night).
+
+A third instrument corroborates all of this independently: the caller-split
+profile in the day's first entry finds `mmuWrite<N>` is **47.9 % whole-
+instruction replay and 0 % access thunk** — the clamp visible as time rather
+than as counters.
+
+Evidence: `scratchpad/2026-09-04/b2s3/`, `scratchpad/2026-09-04/b2s0/thunk_1v2_causes.md`,
+`scratchpad/2026-09-04/b2impl/s3_x64_clean.times`.
+
+---
+
+<a id="2026-09-05-x64-census-wired"></a>
+## 2026-09-05 — The runtime-fallback census was wired on one backend only, so the x86-64 leg printed five zeros and a `MISMATCH` — and the profile it enabled shows the generator owns two thirds of the read path and none of the write path
+
+`docs/MEASURING.md` § 3 states the trap in this tree's own words: *an
+instrument wired on one backend reports success on the backend that is not
+looking.* It was true of this tree. `JitBackendA64.cpp` filled
+`slowRuntimeReasonHisto` and called `runtimeAddressObserver`;
+`JitBackendX64.cpp` did neither. On x86-64 the `[jit] runtime fallback causes`
+table therefore printed five zero rows and `attributed 0 / 5 608 573
+MISMATCH` — a census unable to answer a single question about the backend
+this host runs, printed without complaint for as long as it has existed.
+
+Now wired, with the frame field and the flat `[reason][opcode]` indexing
+mirrored from the a64 emitter. All five self-checks read `exact` on x64:
+`attributed 3 340 498 / 3 340 498`, non-plain 2 491 619, codeMask 785 998,
+cross-page 40 550, other 1. A second defect surfaced on the way and was older
+and quieter: a64's `other-runtime-access` address row read `0 / N MISMATCH`
+**by construction on every run ever taken**, because `RuntimeNonPlain` was
+absent from the per-address reason list while its expectation counted it.
+That row reads `exact` now too. With the census off, fingerprints and every
+counter are identical to HEAD at both budgets.
+
+**The profile the instrument was for.** TODO § B.2's second bullet asked for a
+profile separating the generator's memory accesses from the interpreter's, on
+the explicit grounds that without one every remaining ceiling in the plan is
+invented. `tools/profile_callers.py` answers it. Generated code is
+unwind-opaque, but it does not need to be walked: every re-entry into C++
+passes one *named* seam that does carry unwind info —
+`pom68kJitRead`/`pom68kJitWrite` (exact access thunk), `pom68kJitStep`
+(whole-instruction replay), `Engine::fillDtlb`, `Engine::runWindow`,
+`Moira::execute`/`pomJitExecOne` — and the first match down that ordered list
+wins. `build-profile` (RelWithDebInfo, **LTO off** — identical-code folding
+reassigns samples and the report lies), 2000 frames, x64 arm, 6206 samples,
+host **not** quiet, so these are ratios and no time is quoted:
+
+| bucket | % of run | generator owns | interpreter owns |
+|---|---:|---:|---:|
+| `mmuFetchWord` | 2.50 % | 31.6 % | 68.4 % |
+| `mmuRead<N>` | 5.45 % | **73.4 %** | 26.6 % |
+| `mmuWrite<N>` | 2.32 % | 47.9 % | 52.1 % |
+| `V8Memory::read16` | 1.82 % | 51.3 % | 48.7 % |
+| `V8Memory::write16` | 1.05 % | 49.2 % | 50.8 % |
+| `V8Memory::read8` | 1.48 % | 98.9 % | 1.1 % |
+
+Three cells carry the story. `mmuRead<N>` is **64.5 % exact access thunk** —
+two thirds of the read path is generated code calling back in for one refused
+access. `mmuWrite<N>` is **47.9 % whole-instruction replay and 0 % thunk**,
+because `maxAccessThunk030 = 1` clamps stores to the replay path: the day's
+second entry measures that clamp from counters, and this is the same fact seen
+as time. And `mmuFetchWord` is the one bucket the generator does *not*
+dominate — which is exactly the bucket the day's third entry attacks, and the
+first hint that the plan's ranking was inverted.
+
+Two classifier defects were found and fixed before any of this was quoted:
+`Cpu030::runCycles` is the whole-machine entry rather than an interpreter
+seam, and using it inflated `mmuFetchWord`'s interpreter share from 8 % to
+60 %; and `[GENERATED CODE]` leaves were falling into "unattributed", which is
+21 % of the run — a leaf in generated code is an attribution, not a gap.
+
+**A caveat that is part of the result.** This profile was taken on
+`POM68K_JIT_BACKEND=x64`, and `X64Backend::caps()` declares
+`autoFamilies = kGuest68040` only — so it describes a diagnostic override,
+not the backend an LC II selects here. On `threaded` the generator's share of
+every bucket goes to zero and the absolute cost rises. That is inference from
+the code, not measurement; a `threaded` capture is owed and is recorded as
+open work.
+
+The three files this touched grew past the file-size ratchet
+(`JitBackendX64.cpp` +208 lines), and the ceilings were raised deliberately
+rather than by regeneration: the census emits x86 instructions **at the
+emitter's own fallback sites**, so it cannot live in another translation unit
+without exposing the emitter's internals. That is the question the ratchet
+exists to force, asked and answered.
+
+Evidence: `scratchpad/2026-09-04/b2s0/`.
 
 ---
 

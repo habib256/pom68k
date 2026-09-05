@@ -1,0 +1,83 @@
+# POM68K B.2 — s4_interp — 2026-09-05T11:23:54+04:00
+# host: Linux 6.14.0-37-generic x86_64  threads=16  load1(start)=1.02
+# engine: POM68K_CPU_ENGINE=interp
+# A binary: /tmp/claude-1000/-home-gistarcade-src-pom68k/32720be6-713f-4e54-992f-24c30097af56/scratchpad/headbin/jit_bench_lcii.HEAD-346f084
+# B binary: /home/gistarcade/src/pom68k/.claude/worktrees/agent-a41945e984124a4b6/build/jit_bench_lcii
+----- NULL frames=6000
+lcii NULL experiment (A vs A), 5 repeats x 2 arms ABBA, 6000 frames per run, built Sep  4 2026 23:07:12
+  lcii warmup pair 1 discarded
+  lcii pair1  interp    49.57s   null(A)   49.58s   (interp first)
+  lcii pair2  interp    49.58s   null(A)   49.57s   (null(A) first)
+  lcii pair3  interp    49.57s   null(A)   49.85s   (interp first)
+  lcii pair4  interp    50.21s   null(A)   50.24s   (null(A) first)
+  lcii pair5  interp    50.22s   null(A)   50.22s   (interp first)
+
+  interp   median  49.58s  (49.57-50.22, spread 1.3%)
+  null(A)  median  49.85s  (49.57-50.24, spread 1.3%)
+  delta +0.5%  ·  floor 1.3% (arm spreads 1.3/1.3%, host 1.0%)  ·  5 repeats ABBA
+  fp=cfb184b6faddabec  ·  built Sep  4 2026 23:07:12  ·  load 1.00 1.00 1.00 -> load 1.00 1.00 1.00
+  knobs: POM68K_CPU_ENGINE=interp  POM68K_BENCH_FRAMES=6000  POM68K_BENCH_NULL=1  POM68K_BENCH_COMPARE=5
+  NULL EXPERIMENT: nothing differed between the arms, so 1.3% is this host's MEASURED floor,
+  not a result. Record 14 permille as host_wallclock/any/<host>/noise_floor_permille (policy says 1.0%).
+  HOST NOISIER THAN POLICY: 1.3% measured against a recorded 1.0%. Either this host is busy (see the load above)
+  or the recorded floor is stale — do not measure anything else until that is settled.
+----- warmup arm=A frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.57s for 99.75s of guest time  ×1.97 real time  123.6 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50569517350,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1972}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- warmup arm=B frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=49.77s for 99.75s of guest time  ×2.00 real time  125.6 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":49774429617,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":2004}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p0 arm=A frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.46s for 99.75s of guest time  ×1.98 real time  123.9 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50458540620,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1976}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p0 arm=B frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=49.60s for 99.75s of guest time  ×2.01 real time  126.0 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":49600997721,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":2011}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p1 arm=B frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=49.77s for 99.75s of guest time  ×2.00 real time  125.6 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":49770866695,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":2004}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p1 arm=A frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.49s for 99.75s of guest time  ×1.98 real time  123.8 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50493168867,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1975}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p2 arm=A frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.43s for 99.75s of guest time  ×1.98 real time  124.0 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50434280506,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1977}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p2 arm=B frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.55s for 99.75s of guest time  ×1.97 real time  123.7 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50552659275,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1973}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p3 arm=B frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.56s for 99.75s of guest time  ×1.97 real time  123.7 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50555335436,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1973}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p3 arm=A frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.55s for 99.75s of guest time  ×1.97 real time  123.7 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50547916862,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1973}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p4 arm=A frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=50.65s for 99.75s of guest time  ×1.97 real time  123.4 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":50648506727,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1969}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
+----- p4 arm=B frames=6000 
+lcii engine=interp cycles=1562880000 machine (6251555892 core, boost ×4.0)  wall=49.93s for 99.75s of guest time  ×2.00 real time  125.2 core MHz  fp=cfb184b6faddabec
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_fixed_cycle_bench","workload":"lcii_interp","cpu_family":"68030","host_arch":"x86_64","host_profile":"x86_64","backend":"interpreter","engine":"interp","status":"pass","machine_cycles":1562880000,"core_cycles":6251555892,"wall_ns":49930432390,"fingerprint":"cfb184b6faddabec","blocks_compiled":0,"blocks_run":0,"jit_instrs":0,"native_instrs":0,"interp_instrs":0,"slow_instrs":0,"window_instrs":0,"native_share_permille":0,"realtime_permille":1997}
+  SCSI=9618  pc=$0005CB10  running
+  icache: 1602507733 fetches, 1093456393 hits, 509047173 misses (68.23% hit)
