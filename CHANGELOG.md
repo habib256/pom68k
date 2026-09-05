@@ -398,6 +398,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-05 (fifth)** — [The 68030 interpreter data window becomes the default, which is the opposite of the 68040's, and the gate that keeps the long path alive is registered in the same commit](#2026-09-05-030-window-default-on)
 - **2026-09-05 (fourth)** — [`POM68K_DATA_WINDOW` was a dead path on the 68030 for five weeks; wiring it found that `mmuRead` also serves program space, and the measured result is the opposite of the 68040 precedent that made it opt-in](#2026-09-05-030-data-window)
 - **2026-09-05 (third)** — [The 68030 fetched its two opcode words with two calls where the 68040 uses one; folding them is worth 10 % — and the reason nobody knew that is that every ceiling in the plan was priced on a backend this host does not select](#2026-09-05-fused-030-fetch)
 - **2026-09-05 (second)** — [Access-thunk mode 2 converts device-register byte stores into single accesses and drops nineteen blocks out of native code: one lever, a gain and a cost, which is why the stopwatch never sees it](#2026-09-05-thunk-mode2-priced)
@@ -821,6 +822,58 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-05-030-window-default-on"></a>
+## 2026-09-05 (fifth) — The 68030 interpreter data window becomes the default, which is the opposite of the 68040's, and the gate that keeps the long path alive is registered in the same commit
+
+The day's fourth entry measured the window and deliberately left the default
+alone: reach and a bit-identical fingerprint are not a shipping admission on
+their own in this tree. The missing one has now run.
+
+**`ctest -L m030` with `POM68K_DATA_WINDOW=1`: 56/56 in 4705 s**, against
+56/56 in 4830 s with it off. Every asset-required boot etalon executed rather
+than soft-skipped. That is the third independent admission — conformance
+(18-run identity matrix, 20 lockstep runs at 120 000 steps with fresh seeds,
+ICTRACE silent), whole-tier stability, and performance (−5.5 % on `threaded`,
+−5.7 % on the interpreter arm) — so the default moves.
+
+It moves **per guest family**, using the explicit-wins shape `profitScore` and
+`accessThunk` already use: `dataWindowExplicit` records whether the operator
+said anything, and a 68030 that has not been told otherwise turns the window
+on. The 68040 keeps the opposite default on its own measurement — a net loss
+of 73 s against 42 s once J3b capped the window at ATC residency
+(`POM68K_VENDOR.md` § J3 point 11). Two families, one feature, opposite
+answers, and now opposite defaults, each carrying its own evidence. Two
+differences carry the reversal: the 030's ATC has 22 entries against the 040's
+32 but a far larger page on an LC II, so per-entry coverage is much wider; and
+the 030's `mmuRead` is also the exact-thunk target from generated code, where
+a hit replaces a whole C++ chain rather than a hot MRU probe.
+
+**And a gate arrives with it, for a structural reason rather than a
+suspicion.** `jit::Engine` is a member of every CPU wrapper and is constructed
+even under `POM68K_CPU_ENGINE=interp`, so this default puts the **accuracy
+oracle itself** on the fast path. Every existing 030 lockstep compares
+interpreter against JIT, and with both sides on the window a shared defect
+would cancel and read green — the comparison would still be exact and would
+have stopped meaning what it used to mean. What protected the change while it
+was being developed was the knob-off arm measured against HEAD; once off is no
+longer the default, that arm is exactly the one that rots.
+`jit_lockstep_030_no_data_window_test` is therefore registered alongside the
+flip: same executable, same budget, same pinned backend as
+`jit_lockstep_030_test`, `POM68K_DATA_WINDOW=0` its only difference. It keeps
+"identical" meaning identical to the pre-window interpreter rather than merely
+to itself.
+
+Verified after the flip: with no variable set the window serves 18 712 149
+accesses, `POM68K_DATA_WINDOW=0` still returns 0 hits / 0 refusals, and all
+three configurations print `fp=0685879ca2d506fd`. Six 030 lockstep gates 6/6,
+`ctest -L asset-none` 85/85. `STATUS.md` regenerated for the new gate; the
+file-size ceilings for `JitConfig.h`, `JitEngine.cpp` and
+`Pom68kJitGates.cmake` raised for the flip and the registration.
+
+Evidence: `scratchpad/2026-09-04/b2impl/ctest_m030_datawindow_on.log`.
 
 ---
 

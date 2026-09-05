@@ -1,0 +1,133 @@
+Internal ctest changing into directory: /home/gistarcade/src/pom68k/build
+Test project /home/gistarcade/src/pom68k/build
+      Start 133: lc520_persist_etalon
+      Start 132: lc520_soak_etalon
+      Start 111: iivx_persist_etalon
+      Start 114: iici_soak_etalon
+      Start 110: iivx_soak_etalon
+ 1/56 Test #114: iici_soak_etalon .................   Passed  297.00 sec
+      Start 231: interp_iivx_boot_etalon
+ 2/56 Test #132: lc520_soak_etalon ................   Passed  446.04 sec
+      Start 230: interp_lc3_boot_etalon
+ 3/56 Test #110: iivx_soak_etalon .................   Passed  506.63 sec
+      Start 112: iisi_soak_etalon
+ 4/56 Test #133: lc520_persist_etalon .............   Passed  559.38 sec
+      Start 229: interp_lcii_boot_etalon
+ 5/56 Test #231: interp_iivx_boot_etalon ..........   Passed  317.53 sec
+      Start 232: interp_iisi_boot_etalon
+ 6/56 Test #111: iivx_persist_etalon ..............   Passed  633.32 sec
+      Start 113: iisi_persist_etalon
+ 7/56 Test #230: interp_lc3_boot_etalon ...........   Passed  266.18 sec
+      Start 124: duo_persist_etalon
+ 8/56 Test #229: interp_lcii_boot_etalon ..........   Passed  156.43 sec
+      Start 123: duo_soak_etalon
+ 9/56 Test #112: iisi_soak_etalon .................   Passed  261.21 sec
+      Start 143: cclassic2_boot_etalon
+10/56 Test #232: interp_iisi_boot_etalon ..........   Passed  174.60 sec
+      Start 234: interp_duo230_boot_etalon
+11/56 Test #123: duo_soak_etalon ..................   Passed  159.19 sec
+      Start 103: lcii_sys7_boot_etalon
+12/56 Test #234: interp_duo230_boot_etalon ........   Passed  117.72 sec
+      Start 186: duo230_boot_etalon
+13/56 Test #124: duo_persist_etalon ...............   Passed  205.06 sec
+      Start 233: interp_iifx_boot_etalon
+14/56 Test #233: interp_iifx_boot_etalon ..........   Passed    4.83 sec
+      Start  59: msc_parity_test
+15/56 Test  #59: msc_parity_test ..................   Passed    0.01 sec
+      Start  85: sonora_video_test
+16/56 Test  #85: sonora_video_test ................   Passed    0.01 sec
+17/56 Test #113: iisi_persist_etalon ..............   Passed  336.81 sec
+      Start 142: lc550_boot_etalon
+      Start  67: iivx_input_etalon
+18/56 Test #186: duo230_boot_etalon ...............   Passed   80.32 sec
+19/56 Test #103: lcii_sys7_boot_etalon ............   Passed  222.81 sec
+      Start 141: lc520_boot_etalon
+20/56 Test #143: cclassic2_boot_etalon ............   Passed  339.69 sec
+      Start  66: lc520_input_etalon
+21/56 Test  #67: iivx_input_etalon ................   Passed  230.06 sec
+      Start 144: iivx_boot_etalon
+22/56 Test  #66: lc520_input_etalon ...............   Passed  188.13 sec
+      Start  65: lc3_input_etalon
+23/56 Test #142: lc550_boot_etalon ................   Passed  331.13 sec
+      Start 150: iici_boot_etalon
+24/56 Test #141: lc520_boot_etalon ................   Passed  253.42 sec
+      Start 145: iivi_boot_etalon
+25/56 Test  #65: lc3_input_etalon .................   Passed  177.29 sec
+      Start  68: iisi_input_etalon
+26/56 Test #150: iici_boot_etalon .................   Passed  181.08 sec
+      Start 127: iifx_soak_etalon
+27/56 Test #144: iivx_boot_etalon .................   Passed  297.80 sec
+      Start 218: jit_iivx_boot_etalon
+28/56 Test #145: iivi_boot_etalon .................   Passed  155.10 sec
+      Start 146: iisi_boot_etalon
+29/56 Test #127: iifx_soak_etalon .................   Passed   89.00 sec
+      Start 219: jit_iisi_boot_etalon
+30/56 Test  #68: iisi_input_etalon ................   Passed  116.81 sec
+      Start 185: iifx_input_etalon
+31/56 Test #185: iifx_input_etalon ................   Passed   23.21 sec
+      Start 224: jit_iifx_boot_etalon
+32/56 Test #224: jit_iifx_boot_etalon .............   Passed    4.50 sec
+      Start 184: iifx_boot_etalon
+33/56 Test #184: iifx_boot_etalon .................   Passed    3.65 sec
+      Start 183: iifx_post_etalon
+34/56 Test #183: iifx_post_etalon .................   Passed    1.97 sec
+35/56 Test #219: jit_iisi_boot_etalon .............   Passed   61.04 sec
+      Start 128: iifx_persist_etalon
+36/56 Test #146: iisi_boot_etalon .................   Passed  141.34 sec
+37/56 Test #128: iifx_persist_etalon ..............   Passed   22.12 sec
+      Start 115: sonora_soak_etalon
+38/56 Test #218: jit_iivx_boot_etalon .............   Passed  177.44 sec
+39/56 Test #115: sonora_soak_etalon ...............   Passed  368.98 sec
+      Start 116: sonora_persist_etalon
+40/56 Test #116: sonora_persist_etalon ............   Passed  465.71 sec
+      Start 171: lcii_persist_etalon
+41/56 Test #171: lcii_persist_etalon ..............   Passed  237.64 sec
+      Start 140: lc3plus_boot_etalon
+42/56 Test #140: lc3plus_boot_etalon ..............   Passed  259.35 sec
+      Start 170: lcii_soak_etalon
+43/56 Test #170: lcii_soak_etalon .................   Passed  201.26 sec
+      Start 151: mactv_boot_etalon
+44/56 Test #151: mactv_boot_etalon ................   Passed  194.46 sec
+      Start 172: lcii_launch_etalon
+45/56 Test #172: lcii_launch_etalon ...............   Passed  138.56 sec
+      Start 104: lcii_savestate_etalon
+46/56 Test #104: lcii_savestate_etalon ............   Passed  133.14 sec
+      Start 139: lc3_boot_etalon
+47/56 Test #139: lc3_boot_etalon ..................   Passed  184.59 sec
+      Start 137: classic2_boot_etalon
+48/56 Test #137: classic2_boot_etalon .............   Passed  121.40 sec
+      Start 173: lcii_floppy_etalon
+49/56 Test #173: lcii_floppy_etalon ...............   Passed  131.07 sec
+      Start 138: cclassic_boot_etalon
+50/56 Test #138: cclassic_boot_etalon .............   Passed  128.55 sec
+      Start 217: jit_lc3_boot_etalon
+51/56 Test #217: jit_lc3_boot_etalon ..............   Passed  108.86 sec
+      Start 136: lc_boot_etalon
+52/56 Test #136: lc_boot_etalon ...................   Passed   82.71 sec
+      Start 220: jit_lc_boot_etalon
+53/56 Test #220: jit_lc_boot_etalon ...............   Passed   84.17 sec
+      Start 216: jit_mactv_boot_etalon
+54/56 Test #216: jit_mactv_boot_etalon ............   Passed   62.20 sec
+      Start 215: jit_lcii_boot_etalon
+55/56 Test #215: jit_lcii_boot_etalon .............   Passed   42.49 sec
+      Start 102: lcii_boot_etalon
+56/56 Test #102: lcii_boot_etalon .................   Passed  105.68 sec
+
+100% tests passed, 0 tests failed out of 56
+
+Label Time Summary:
+asset-none         =   0.02 sec*proc (2 tests)
+asset-required     = 36376.25 sec*proc (54 tests)
+etalon             = 36376.25 sec*proc (54 tests)
+etalon-core        = 2707.49 sec*proc (6 tests)
+host-any           = 36376.27 sec*proc (56 tests)
+jit                = 2272.24 sec*proc (7 tests)
+m030               = 36376.27 sec*proc (56 tests)
+scope-component    =   0.02 sec*proc (2 tests)
+scope-profile      = 36376.25 sec*proc (54 tests)
+tier-daily         =   0.02 sec*proc (2 tests)
+tier-full          = 33668.76 sec*proc (48 tests)
+tier-platform      = 2707.49 sec*proc (6 tests)
+unit               =   0.02 sec*proc (2 tests)
+
+Total Test time (real) = 4705.34 sec

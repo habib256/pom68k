@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 423 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 424 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 77 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 44 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 45 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 43 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
@@ -149,6 +149,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (eighth)** — [The 68040's time profile is a dispatch story: a third of the run looks blocks up instead of running them](CHANGELOG.md#2026-09-02-040-dispatch-profile)
 - **2026-09-03 (fourteenth)** — [Cache-active 68040 JSR becomes an ordered native transaction instead of a pristine replay](CHANGELOG.md#2026-09-03-jit-cache040-jsr-transaction)
 - **2026-09-03 (sixth)** — [The profile instrument grows a macOS leg, and the post-cache 68040 re-ranks: the event pump is the new number one](CHANGELOG.md#2026-09-03-profile-macos-leg)
+- **2026-09-05 (fifth)** — [The 68030 interpreter data window becomes the default, which is the opposite of the 68040's, and the gate that keeps the long path alive is registered in the same commit](CHANGELOG.md#2026-09-05-030-window-default-on)
 - **2026-09-05 (fourth)** — [`POM68K_DATA_WINDOW` was a dead path on the 68030 for five weeks; wiring it found that `mmuRead` also serves program space, and the measured result is the opposite of the 68040 precedent that made it opt-in](CHANGELOG.md#2026-09-05-030-data-window)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E

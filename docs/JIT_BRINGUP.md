@@ -263,7 +263,13 @@ and `:2287`. Three things about them that cost a round to learn:
   `mmuRead`/`mmuWrite`, so a run with that window on and off produces
   identical fingerprints and identical *zero* fills — a dead path, not a
   passing test.
-  **Closed 2026-09-04** (TODO § B.2 slice 5): `mmuRead`/`mmuWrite` now
+  **Closed 2026-09-04, and the default flipped 2026-09-05** (TODO § B.2
+  slice 5): the window is now ON by default for a 68030 guest — measured
+  −5.5 % on `threaded` and −5.7 % on the interpreter arm, `-L m030` green
+  56/56 with it on, fingerprints bit-identical either way. The 68040 keeps
+  the opposite default on its own measurement (`POM68K_VENDOR.md` § J3
+  point 11), and `jit_lockstep_030_no_data_window_test` keeps the knob-OFF
+  path exercised. `mmuRead`/`mmuWrite` now
   consult `pomJitData` for naturally aligned Byte/Word/Long, so the 030 knob
   is live and the C.2/C.3 probe and thunks finally have a direct
   interpreter-side exercise. The 030's refusal set turned out **wider** than

@@ -99,6 +99,10 @@ struct ResolvedConfig {
     bool profitScoreExplicit = false;
     int armBackoff = 32;
     bool dataWindow = false;
+    // Explicit-wins, like profitScore and accessThunk: the DEFAULT is
+    // per guest family (JitEngine.cpp), because the 68030 and the 68040
+    // measured opposite answers for the same feature.
+    bool dataWindowExplicit = false;
     // The § C.4nonies admissions: the 030 restartable-write family on the
     // split BASE cost, and BSR.W ($6100) into the armed-charge exemption.
     // Their default is PER-BACKEND, resolved by applyBackendDefaults from
@@ -236,6 +240,7 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     c.profitScoreExplicit = present(option::JitProfitScore);
     c.profitScore = envInt(option::JitProfitScore, 0);
     c.armBackoff = envInt(option::JitArmBackoff, 32);
+    c.dataWindowExplicit = present(option::DataWindow);
     c.dataWindow = envBool(option::DataWindow, false);
     c.restartBaseExplicit = present(option::JitRestartBase);
     c.restartBaseAdmission = envBool(option::JitRestartBase, false);

@@ -87,15 +87,6 @@ traitées ; le récit et les mesures sont au `CHANGELOG` des 2026-09-04 et
 2026-09-05. Le tronc mesure **−9,5 / −9,9 %** contre l'état d'avant, à
 empreinte identique. Ce qui reste ouvert :
 
-- [ ] **Décider le défaut de `POM68K_DATA_WINDOW` sur 68030.** La fenêtre de
-  données interpréteur est conforme (matrice d'identité 18 courses, 20
-  locksteps à 120 000 pas, graines fraîches, ICTRACE muet) et mesurée
-  gagnante sur les deux bras — **−5,5 % sur `threaded`, −5,7 % sur
-  l'interpréteur** — là même où le précédent 68040 avait perdu
-  (`POM68K_VENDOR.md` § J3 point 11 : 73 s contre 42 s). Ce qui manque avant
-  de retourner le défaut est l'admission indépendante que ce dépôt exige :
-  un tier `-L m030` complet **avec le knob allumé**. Tant qu'il n'a pas
-  tourné, la fenêtre reste opt-in.
 - [ ] **Refaire le profil par appelant sur `threaded`.** Celui de la tranche 0
   (`tools/profile_callers.py`) a été pris sur le bras x64 : il décrit un
   override diagnostique. Sur `threaded` la part du générateur tombe à 0 %

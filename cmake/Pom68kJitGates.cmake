@@ -286,6 +286,23 @@ set_tests_properties(jit_lockstep_030_test PROPERTIES
                      ENVIRONMENT "${pom68k_lockstep_030_backend}POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                      TIMEOUT 1800)
 
+# The knob-OFF control, and it exists for a structural reason rather than a
+# suspicion. `POM68K_DATA_WINDOW` became the 68030 DEFAULT on 2026-09-05
+# (JitEngine.cpp), and `jit::Engine` is a member of every CPU wrapper, so the
+# window is live even under POM68K_CPU_ENGINE=interp — i.e. the accuracy
+# oracle itself now takes the fast path. Every other 030 lockstep compares
+# interpreter against JIT with BOTH sides on the window, where a shared defect
+# would cancel and read green. This gate is the arm that keeps the long path
+# running, so "identical" keeps meaning identical to the pre-window
+# interpreter and not merely to itself. Same budget and backend as
+# `jit_lockstep_030_test`; the only difference is the knob.
+add_test(NAME jit_lockstep_030_no_data_window_test
+         COMMAND jit_lockstep_030_test 120000
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(jit_lockstep_030_no_data_window_test PROPERTIES
+                     ENVIRONMENT "${pom68k_lockstep_030_backend}POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000;POM68K_DATA_WINDOW=0"
+                     TIMEOUT 1800)
+
 # …and with the block path forced on, same argument as the 68000 pair
 # above: `threaded` replays through pomJitExecOne(), so it charges
 # Moira's own cycles and the i-cache along with them. A future 030 code

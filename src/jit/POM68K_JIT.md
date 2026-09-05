@@ -1665,7 +1665,9 @@ That window was **68040-only until 2026-09-04**: `mmu040Read`/`mmu040Write`
 consulted `pomJitData`, the 68030's `mmuRead`/`mmuWrite` did not, so on an
 030 the knob changed nothing at all — the dead path `docs/JIT_BRINGUP.md`
 § C.2 records ("identical fingerprints and identical *zero* fills — a dead
-path, not a passing test"). TODO § B.2 slice 5 wired it, with a refusal set
+path, not a passing test"). TODO § B.2 slice 5 wired it — and on 2026-09-05
+made it the 68030 DEFAULT, which is the opposite of the 68040's, decided
+per guest family in `JitEngine.cpp` on that family's own measurement. With a refusal set
 **wider** than the 040's, because `mmuRead` serves program space as well as
 data space where `mmu040Read` takes `data` as an argument
 (`Moira.h` § `pomJitData030Ok`). `Moira::pomJitData030Hits` /

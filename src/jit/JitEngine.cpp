@@ -100,6 +100,22 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
         guestFamily_ == kGuest68030 &&
         config_.accessThunk > caps.maxAccessThunk030)
         config_.accessThunk = caps.maxAccessThunk030;
+    // The interpreter data window's default is per GUEST FAMILY, because the
+    // two families measured opposite answers for one feature. On the 68040 it
+    // was a net loss once J3b capped it at ATC residency — 73 s against 42 s,
+    // the eviction/refill churn under Mac OS VM outweighing the surviving
+    // hits (POM68K_VENDOR.md § J3 point 11) — and it stays opt-in there. On
+    // the 68030 it is a win on every arm measured (2026-09-05: −5.5 % on
+    // `threaded`, −5.7 % on the interpreter), because that family's ATC page
+    // is far larger on an LC II and `mmuRead` is also the exact-thunk target
+    // from generated code, where a hit replaces a C++ chain rather than a hot
+    // MRU probe. Admitted on three independent grounds, as this tree
+    // requires: bit-identical fingerprints knob on and off across three
+    // engines and two budgets, `-L m030` green 56/56 with the window on, and
+    // the measurement above. `jit_lockstep_030_no_data_window_test` keeps the
+    // knob-OFF path exercised now that it is no longer the default.
+    if (!config_.dataWindowExplicit && guestFamily_ == kGuest68030)
+        config_.dataWindow = true;
     windowKill_ = killCountdown_ = config_.windowKill;
     armBackoff_steps_ = config_.armBackoff;
     // The virgin table must read as EMPTY (kNoLink), not as value-zero:
