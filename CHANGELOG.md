@@ -400,6 +400,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-06 (later)** — [One MOVE form is 70 % of everything the 68030 generator cannot compile, and it is worth 0.87 % — under this host's floor, so it stays uncompiled](#2026-09-06-030-admission-gap-priced)
 - **2026-09-06** — [The x86-64 68030 promotion is re-earned on the terms its withdrawal set: two green tiers, not a bench number — and the five weeks it was withdrawn cost a factor of three](#2026-09-06-x64-030-restored)
 - **2026-09-05 (seventh)** — [Eighteen null experiments say the recorded x86-64 noise floor was right: the `POLICY TOO LOOSE` line that opened this item had been printed from a contaminated sample](#2026-09-05-noise-floor-upheld)
 - **2026-09-05 (sixth)** — [The caller profile re-taken on the arm that ships: the memory family is 19.2 % of the run instead of 10.0 %, and the generator owns none of it](#2026-09-05-threaded-caller-profile)
@@ -827,6 +828,75 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-06-030-admission-gap-priced"></a>
+## 2026-09-06 (later) — One MOVE form is 70 % of everything the 68030 generator cannot compile, and it is worth 0.87 % — under this host's floor, so it stays uncompiled
+
+With the 68030 back on the native generator, every form that generator refuses
+is a fallback on the path that ships rather than on a diagnostic override. So
+the admission gap was worth pricing properly, and TODO § B.3 asked for exactly
+that.
+
+**Opcode parity is zero, and gated.** `jit_backend_parity_test` reports 0
+divergence groups: whatever x64 refuses on a 68030, a64 refuses too. The gap
+is therefore not an a64-versus-x64 asymmetry at all — it is one shared
+coverage gap, and closing it would be one piece of IR work serving both
+emitters, which is what § B.3's own rule requires.
+
+**What is refused**, `POM68K_JIT_HISTO=1` at 2000 frames on the shipping
+configuration: 562 194 unsupported instructions against 3 342 967 runtime
+guard/access ones. And it is concentrated to a degree that invites a mistake:
+
+| opcode | form | unsupported | share of census |
+|---|---|---:|---:|
+| `2F70` | `MOVE.L idx(A0) → d16(A7)` | 391 197 | **10.04 %** |
+| `4A12` | `TST.B (A2)` | 95 711 | 2.45 % |
+| `E3B8` | shift | 19 384 | 0.50 % |
+| `082A` | bitop | 18 357 | 0.47 % |
+| `C029` | alu | 11 150 | 0.29 % |
+
+One form is 70 % of everything the generator cannot compile. The temptation is
+obvious, and this tree has already paid for it: 2026-08-28 (seventh) opened
+"eliminating the biggest fallback family will buy wall time", measured
+**+0.02 % on a 0.6 % floor**, and concluded that *the fallback histogram is
+not a time profile*.
+
+**So it was priced in time.** The caller profile taken on this same tree puts
+whole-instruction replay — `pom68kJitStep`, the path every unsupported
+instruction takes — at **8.64 % of the run**. Against the census shares:
+
+| candidate | temporal ceiling |
+|---|---:|
+| `2F70` alone | **0.87 %** |
+| every unsupported form together | **1.24 %** |
+
+Both are ceilings that assume the lowering is *free*, which it is not: a
+compiled form still costs its emitted code, and the block it unblocks still
+pays every other guard in it. Against a recorded floor of 10 permille —
+upheld the previous day against eighteen null experiments showing excursions
+to 1.8 % with nothing changed — `2F70` sits **below** the floor and the whole
+gap barely above it.
+
+**Ruling: do not open it.** The 68030 admission gap is now measured, named per
+opcode, and worth less than this host's noise. `C029` was in any case already
+spoken for: § B.3 keeps it in Moira until a phase contract is demonstrated.
+
+The timing half of the same item closed differently, and by evidence produced
+earlier the same day rather than by argument: the promotion ran `-L m030`
+56/56 and `-L etalon` 124/124 with `auto` resolving a 68030 to this generator,
+plus six 030 lockstep gates at 120 000 steps identical — and that lockstep
+compares the three `PomIcache` counters *and* the cache content, which is
+precisely the i-cache-penalty and access-position contract the item named. The
+step-5956 divergence recorded by the 2026-08-29 withdrawal no longer
+reproduces.
+
+What is left of § B.3's item is therefore a standing convention rather than a
+defect — a common 68k rule belongs in the IR and the shared cost model, never
+in an emitter — plus the a64 half, which only an AArch64 host can run.
+
+Evidence: `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`.
 
 ---
 

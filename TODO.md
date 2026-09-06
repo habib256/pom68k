@@ -112,10 +112,19 @@ plus un override diagnostique sur cet hôte, c'est le produit.
   que *compilé* sur x86-64 — enregistré comme gate absent dans
   `Pom68kJitGates.cmake`, son sujet n'existe pas ici. À faire dans la session
   A64, à côté du portage du biais d'horloge par backend.
-- [ ] **Fermer l'écart de timing/admission 68030 entre A64 et x64.** La parité
-  opcode est déjà zéro ; le travail restant concerne les pénalités i-cache,
-  les positions d'accès et les sous-familles PI/PD encore refusées. Toute
-  règle 68k commune doit vivre dans l'IR/coût partagé, pas dans un emitter.
+- [ ] **Ne pas rouvrir l'écart d'admission 68030 sans profil temporel neuf.**
+  Chiffré le 2026-09-06 sur le chemin qui expédie et **refusé** : la parité
+  opcode est zéro et gatée (`jit_backend_parity_test`), donc les refus sont
+  communs aux deux générateurs, pas un écart a64/x64. Le seau non supporté
+  vaut 562 194 instructions dont `2F70` (`MOVE.L idx(A0) → d16(A7)`) fait
+  70 % ; rapporté au 8,64 % de rejeu d'instruction entière du profil, son
+  plafond est **0,87 %** et celui de *tout* le seau **1,24 %**, contre un
+  plancher de 10 ‰. La moitié timing de l'item est close autrement : les deux
+  tiers verts sous le défaut restauré et six locksteps à 120 000 pas
+  comparent précisément les compteurs i-cache et les positions d'accès.
+  Reste la convention, pas un défaut : une règle 68k commune vit dans
+  l'IR/coût partagé, jamais dans un emitter.
+  Évidence : `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`.
 - [ ] **Promouvoir la suite Speedometer uniquement depuis un profil
   temporel.** Garder `C029`, `08D1` et les lectures périphériques variables
   dans Moira tant qu'un contrat de phase n'est pas démontré ; ne pas créer des
