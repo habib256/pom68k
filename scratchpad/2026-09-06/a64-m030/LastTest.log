@@ -1,0 +1,1470 @@
+Start testing: Sep 06 21:03 +04
+----------------------------------------------------------
+59/236 Testing: msc_parity_test
+59/236 Test: msc_parity_test
+Command: "/Users/mercure/src/pom68k/build/msc_parity_test"
+Directory: /Users/mercure/src/pom68k/build
+"msc_parity_test" start time: Sep 06 21:03 +04
+Output:
+----------------------------------------------------------
+ok: sound ctrl starts clear
+ok: ASC byte write sets SOUND_BUSY bit 6
+ok: bit 0 stays clear (old wrong bit)
+ok: read clears SOUND_BUSY
+ok: ASC word write sets bit 6
+ok: reg-2 write read back whole
+ok: read-clear removed only bit 6
+ok: ASC reports version $E9 (ASC_MSC)
+ok: MODE stays forced to 1 (FIFO), V8-style
+ok: CONTROL reads the V8 constant 1
+ok: FIFO MODE reads the V8 constant 1
+ok: FIFO window reads 0, not classic RAM
+ok: synthetic PG&E boot ROM loads
+ok: power-on: 68030 held
+ok: final bit-2 high releases the CPU
+ok: onCpuReset fired on each rising edge (2)
+ok: MscMemory wires pmu.onCpuReset
+ok: overlay off after ROM-space access
+ok: onCpuReset re-arms the ROM overlay
+ok: onCpuReset latches the CPU reset
+ok: wake-reset latch is one-shot
+ok: port-H boot ROM loads
+ok: port-H program ran to completion
+ok: port H reads the $00 latch at reset, not open-bus $FF
+ok: port H reads back the driven value
+ok: /PMU_ACK level follows the bit-6 write
+ok: ACK edges: fall on DDR drive, rise on $40
+ok: PMU RTC is seeded (not the 1904 epoch)
+ok: PMU RTC is past 2020 (host-time seed)
+ok: seed survives machine reset
+ok: setRtcSeconds forwards
+ok: port J/K/L boot ROM loads
+ok: port J/K/L program reached the marker
+ok: port J unwired inputs read $FF (MAME: $00)
+ok: port K unwired inputs read $FF (MAME: $00)
+ok: port L unwired inputs read $FF (MAME: $00)
+ok: DDRJ=$D0 mixed read is $FF here, $D0 under MAME's rule
+ok: STOP ($8E) is a decoded opcode, not undefined
+ok: STOP parks the core in the WAIT state
+ok: STOP did not fall through
+ok: PRAM file = MAME layout ($3C0 + $8000) + 4-byte seconds tail
+ok: saved image keeps the power flag as-is
+ok: loadPram accepts the saved image
+ok: internal RAM first byte restored
+ok: internal RAM last byte ($3FF) restored
+ok: SRAM first byte restored
+ok: SRAM interior byte restored
+ok: SRAM last byte ($FFFF) restored
+ok: power flag $91 scrubbed to 0 on load (MAME m68hc05pge.cpp:959)
+ok: RTC seconds tail restored over the seed
+ok: tail-less (MAME) image loads
+ok: tail-less image restores both ranges
+ok: no tail → the clock is left as it was
+ok: loadPram(missing) returns false
+ok: loadPram(missing) left the PG&E untouched
+ok: loadPram(short file) returns false
+ok: loadPram(short file) left the PG&E untouched
+PASSED
+<end of output>
+Test time =   0.52 sec
+----------------------------------------------------------
+Test Passed.
+"msc_parity_test" end time: Sep 06 21:03 +04
+"msc_parity_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+65/236 Testing: lc3_input_etalon
+65/236 Test: lc3_input_etalon
+Command: "/Users/mercure/src/pom68k/build/family_input_etalon" "lc3"
+Directory: /Users/mercure/src/pom68k
+"lc3_input_etalon" start time: Sep 06 21:03 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADBBase=$00005158 (ADB Manager up)
+post-boot: RawMouse=(15,15) Mouse=(15,15) SCSI=1842
+mouse: Raw (15,15)->(99,71); Mouse (15,15)->(99,71) MOVED
+button: MBState 80 -> 00 (click seen)
+keymap: bit seen
+PASSED — LC III (Egret 341s0851) mouse+key on the MCU firmware wire
+<end of output>
+Test time =  48.22 sec
+----------------------------------------------------------
+Test Passed.
+"lc3_input_etalon" end time: Sep 06 21:03 +04
+"lc3_input_etalon" time elapsed: 00:00:48
+----------------------------------------------------------
+
+66/236 Testing: lc520_input_etalon
+66/236 Test: lc520_input_etalon
+Command: "/Users/mercure/src/pom68k/build/family_input_etalon" "lc520"
+Directory: /Users/mercure/src/pom68k
+"lc520_input_etalon" start time: Sep 06 21:03 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM" 1048576 B sha256 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADBBase=$0000523C (ADB Manager up)
+post-boot: RawMouse=(15,15) Mouse=(15,15) SCSI=1811
+mouse: Raw (15,15)->(16,15); Mouse (15,15)->(16,15) MOVED
+button: MBState 80 -> 00 (click seen)
+keymap: bit seen
+PASSED — LC 520 (Cuda 341s0060) mouse+key on the MCU firmware wire
+<end of output>
+Test time =  49.72 sec
+----------------------------------------------------------
+Test Passed.
+"lc520_input_etalon" end time: Sep 06 21:04 +04
+"lc520_input_etalon" time elapsed: 00:00:49
+----------------------------------------------------------
+
+67/236 Testing: iivx_input_etalon
+67/236 Test: iivx_input_etalon
+Command: "/Users/mercure/src/pom68k/build/family_input_etalon" "iivx"
+Directory: /Users/mercure/src/pom68k
+"iivx_input_etalon" start time: Sep 06 21:04 +04
+Output:
+----------------------------------------------------------
+ADBBase=$00005E08 (ADB Manager up)
+post-boot: RawMouse=(15,15) Mouse=(15,15) SCSI=1789
+mouse: Raw (15,15)->(445,302); Mouse (15,15)->(445,302) MOVED
+button: MBState 80 -> 00 (click seen)
+keymap: bit seen
+PASSED — Mac IIvx (Egret 341s0851, VASP) mouse+key on the MCU firmware wire
+<end of output>
+Test time =  60.03 sec
+----------------------------------------------------------
+Test Passed.
+"iivx_input_etalon" end time: Sep 06 21:05 +04
+"iivx_input_etalon" time elapsed: 00:01:00
+----------------------------------------------------------
+
+68/236 Testing: iisi_input_etalon
+68/236 Test: iisi_input_etalon
+Command: "/Users/mercure/src/pom68k/build/family_input_etalon" "iisi"
+Directory: /Users/mercure/src/pom68k
+"iisi_input_etalon" start time: Sep 06 21:05 +04
+Output:
+----------------------------------------------------------
+cursor: idle diff 0 px, after motion 46 px
+PASSED — Mac IIsi (Egret 344s0100, RBV) mouse on the MCU firmware wire (screen-observed)
+<end of output>
+Test time =  23.21 sec
+----------------------------------------------------------
+Test Passed.
+"iisi_input_etalon" end time: Sep 06 21:06 +04
+"iisi_input_etalon" time elapsed: 00:00:23
+----------------------------------------------------------
+
+85/236 Testing: sonora_video_test
+85/236 Test: sonora_video_test
+Command: "/Users/mercure/src/pom68k/build/sonora_video_test"
+Directory: /Users/mercure/src/pom68k/build
+"sonora_video_test" start time: Sep 06 21:06 +04
+Output:
+----------------------------------------------------------
+sonora_video_test — CLUT blue gun + modeline geometry
+  13" RGB: pen keeps R, G and B                                  ok
+  15" Portrait: blue gun drives R, G and B                       ok
+  15" Portrait: white R/G with blue 0 is black                   ok
+  15" Portrait: blue $FF is white                                ok
+  control: the same writes stay yellow/blue in colour            ok
+  DAC: one address write feeds consecutive pens                  ok
+  size(): the modeline wins over the sense                       ok
+  size(): 12" RGB modeline is 512×384                           ok
+  decode(): surface is hres × vres                              ok
+  decode(): a set 1 bpp pixel renders the replicated blue        ok
+  decode(): the next pixel is the clear pen                      ok
+sonora_video_test: OK
+<end of output>
+Test time =   0.98 sec
+----------------------------------------------------------
+Test Passed.
+"sonora_video_test" end time: Sep 06 21:06 +04
+"sonora_video_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+102/236 Testing: lcii_boot_etalon
+102/236 Test: lcii_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"lcii_boot_etalon" start time: Sep 06 21:06 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+menu bar black 0.09 (want <0.30), desktop 0.48 (want 0.35-0.65), SCSI commands 9618
+PASSED — booted to the Finder
+<end of output>
+Test time =  25.16 sec
+----------------------------------------------------------
+Test Passed.
+"lcii_boot_etalon" end time: Sep 06 21:06 +04
+"lcii_boot_etalon" time elapsed: 00:00:25
+----------------------------------------------------------
+
+103/236 Testing: lcii_sys7_boot_etalon
+103/236 Test: lcii_sys7_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_sys7_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"lcii_sys7_boot_etalon" start time: Sep 06 21:06 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/ref/System 7.1 HD.dsk" 41943040 B sha256 81f1b16c7ff6bb9c28b3ab928d2b91a9be3d1e923795e0eef39a3f8252394ae2  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+menu bar black 0.06, desktop 0.46, SCSI commands 748
+PASSED — Sys7 Finder
+<end of output>
+Test time =  41.86 sec
+----------------------------------------------------------
+Test Passed.
+"lcii_sys7_boot_etalon" end time: Sep 06 21:07 +04
+"lcii_sys7_boot_etalon" time elapsed: 00:00:41
+----------------------------------------------------------
+
+104/236 Testing: lcii_savestate_etalon
+104/236 Test: lcii_savestate_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_savestate_etalon"
+Directory: /Users/mercure/src/pom68k
+"lcii_savestate_etalon" start time: Sep 06 21:07 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+boot: menu bar 0.09, desktop 0.48, SCSI commands 9618
+snapshot: 10876513 bytes, 3 dirty SCSI block(s)
+restore: load→save byte-identical
+determinism: direct 10875061 bytes (hash ec8bc7a39e66386c), restored 10875061 bytes (hash ec8bc7a39e66386c)
+PASSED — restore is bit-deterministic under the Finder
+<end of output>
+Test time =  29.04 sec
+----------------------------------------------------------
+Test Passed.
+"lcii_savestate_etalon" end time: Sep 06 21:07 +04
+"lcii_savestate_etalon" time elapsed: 00:00:29
+----------------------------------------------------------
+
+110/236 Testing: iivx_soak_etalon
+110/236 Test: iivx_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/iivx_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"iivx_soak_etalon" start time: Sep 06 21:07 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM" 1048576 B sha256 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[soak] mcu cycles 377488375 over 180 s
+ADB: Egret firmware LLE
+Finder up 640x480 depth 3 (SCSI 1789)
+soak: 180 s elapsed on the Mac clock (want 135-225), halted=0, Finder still up
+PASSED — Macintosh IIvx soak
+<end of output>
+Test time = 133.95 sec
+----------------------------------------------------------
+Test Passed.
+"iivx_soak_etalon" end time: Sep 06 21:09 +04
+"iivx_soak_etalon" time elapsed: 00:02:13
+----------------------------------------------------------
+
+111/236 Testing: iivx_persist_etalon
+111/236 Test: iivx_persist_etalon
+Command: "/Users/mercure/src/pom68k/build/iivx_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"iivx_persist_etalon" start time: Sep 06 21:09 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM" 1048576 B sha256 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[keymap] 00 00 00 00 00 20 80 00  (want Cmd+N bits live)
+ADB: Egret firmware LLE
+Finder up 640x480 depth 3 (SCSI 1789)
+persist: frontmost application "Finder"
+  [before] 'untitled folder' x10
+  [before] 'Nouveau dossier' x51
+  [before] 'Dossier sans titre' x10
+  [before] 'Empty Folder' x3
+  [before] 'Dossier vide' x20
+persist: first write 0 frames after the commit
+  [after] 'untitled folder' x10
+  [after] 'Nouveau dossier' x51
+  [after] 'Dossier sans titre' x12
+  [after] 'Empty Folder' x3
+  [after] 'Dossier vide' x20
+persist: 'Dossier sans titre' 10 -> 12, image modified
+  [reboot] 'untitled folder' x10
+  [reboot] 'Nouveau dossier' x51
+  [reboot] 'Dossier sans titre' x12
+  [reboot] 'Empty Folder' x3
+  [reboot] 'Dossier vide' x20
+persist: reboot reached the Finder, folder survived
+PASSED — Macintosh IIvx persist
+<end of output>
+Test time = 169.48 sec
+----------------------------------------------------------
+Test Passed.
+"iivx_persist_etalon" end time: Sep 06 21:12 +04
+"iivx_persist_etalon" time elapsed: 00:02:49
+----------------------------------------------------------
+
+112/236 Testing: iisi_soak_etalon
+112/236 Test: iisi_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/rbv_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"iisi_soak_etalon" start time: Sep 06 21:12 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM" 524288 B sha256 b8b04d1478a609de89dd62e51165cc7ca5757f6f881e9770621d09af82890feb
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[soak] mcu cycles 377488569 over 180 s
+ADB: Egret firmware LLE
+Finder up 640x480, TC=$80F84500 (PMMU on), SCSI 1691
+soak: 180 s elapsed on the Mac clock (want 135-225), halted=0, Finder still up
+PASSED — Macintosh IIsi soak
+<end of output>
+Test time =  51.58 sec
+----------------------------------------------------------
+Test Passed.
+"iisi_soak_etalon" end time: Sep 06 21:13 +04
+"iisi_soak_etalon" time elapsed: 00:00:51
+----------------------------------------------------------
+
+113/236 Testing: iisi_persist_etalon
+113/236 Test: iisi_persist_etalon
+Command: "/Users/mercure/src/pom68k/build/rbv_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"iisi_persist_etalon" start time: Sep 06 21:13 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM" 524288 B sha256 b8b04d1478a609de89dd62e51165cc7ca5757f6f881e9770621d09af82890feb
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Egret firmware LLE
+Finder up 640x480, TC=$80F84500 (PMMU on), SCSI 1691
+persist: frontmost application "Finder"
+  [before] 'untitled folder' x10
+  [before] 'Nouveau dossier' x51
+  [before] 'Dossier sans titre' x10
+  [before] 'Empty Folder' x3
+  [before] 'Dossier vide' x20
+persist: first write 600 frames after the commit
+  [after] 'untitled folder' x10
+  [after] 'Nouveau dossier' x51
+  [after] 'Dossier sans titre' x12
+  [after] 'Empty Folder' x3
+  [after] 'Dossier vide' x20
+persist: 'Dossier sans titre' 10 -> 12, image modified
+  [reboot] 'untitled folder' x10
+  [reboot] 'Nouveau dossier' x51
+  [reboot] 'Dossier sans titre' x12
+  [reboot] 'Empty Folder' x3
+  [reboot] 'Dossier vide' x20
+persist: reboot reached the Finder, folder survived
+PASSED — Macintosh IIsi persist
+<end of output>
+Test time =  66.69 sec
+----------------------------------------------------------
+Test Passed.
+"iisi_persist_etalon" end time: Sep 06 21:14 +04
+"iisi_persist_etalon" time elapsed: 00:01:06
+----------------------------------------------------------
+
+114/236 Testing: iici_soak_etalon
+114/236 Test: iici_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/rbv_beyond_etalon" "iici"
+Directory: /Users/mercure/src/pom68k
+"iici_soak_etalon" start time: Sep 06 21:14 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1989-09 - 368CADFE - Mac IIci.ROM" 524288 B sha256 0419966cfd7445680c0dd6ca78e8b1f4bc212e75caf56f4a5f523afa576ad3f2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: PIC1654S modem LLE
+Finder up 640x480, TC=$80F05750 (PMMU on), SCSI 1674
+soak: 180 s elapsed on the Mac clock (want 135-225), halted=0, Finder still up
+PASSED — Macintosh IIci soak
+<end of output>
+Test time =  55.71 sec
+----------------------------------------------------------
+Test Passed.
+"iici_soak_etalon" end time: Sep 06 21:15 +04
+"iici_soak_etalon" time elapsed: 00:00:55
+----------------------------------------------------------
+
+115/236 Testing: sonora_soak_etalon
+115/236 Test: sonora_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/sonora_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"sonora_soak_etalon" start time: Sep 06 21:15 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+[finder] menu 0.05 desk 0.45 run 382
+[finder] menu 0.05 desk 0.48 run 306
+[finder] menu 0.12 desk 0.50 run 41
+[wake] videoMode=$02 before
+[wake] videoMode=$02 after
+[finder] menu 0.12 desk 0.50 run 41
+Finder up 512x384, TC=$80D86500, ADB LLE, SCSI 2326
+soak: 180 s elapsed on the Mac clock (want 135-225), halted=0, Finder still up
+PASSED — Macintosh LC III soak
+<end of output>
+Test time = 108.56 sec
+----------------------------------------------------------
+Test Passed.
+"sonora_soak_etalon" end time: Sep 06 21:17 +04
+"sonora_soak_etalon" time elapsed: 00:01:48
+----------------------------------------------------------
+
+116/236 Testing: sonora_persist_etalon
+116/236 Test: sonora_persist_etalon
+Command: "/Users/mercure/src/pom68k/build/sonora_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"sonora_persist_etalon" start time: Sep 06 21:17 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+[finder] menu 0.05 desk 0.45 run 382
+[finder] menu 0.05 desk 0.48 run 306
+[finder] menu 0.12 desk 0.50 run 41
+[scsi] write cmds 33 blocks 101
+[keymap] 00 00 00 00 00 20 80 00  (want Cmd+N bits live)
+[finder] menu 0.05 desk 0.43 run 382
+[finder] menu 0.05 desk 0.47 run 306
+[finder] menu 0.12 desk 0.48 run 69
+Finder up 512x384, TC=$80D86500, ADB LLE, SCSI 2326
+persist: frontmost application "Finder"
+  [before] 'untitled folder' x5
+  [before] 'Nouveau dossier' x0
+  [before] 'Dossier sans titre' x0
+  [before] 'Empty Folder' x0
+  [before] 'Dossier vide' x0
+persist: first write 600 frames after the commit
+  [after] 'untitled folder' x7
+  [after] 'Nouveau dossier' x0
+  [after] 'Dossier sans titre' x0
+  [after] 'Empty Folder' x0
+  [after] 'Dossier vide' x0
+persist: 'untitled folder' 5 -> 7, image modified
+  [reboot] 'untitled folder' x7
+  [reboot] 'Nouveau dossier' x0
+  [reboot] 'Dossier sans titre' x0
+  [reboot] 'Empty Folder' x0
+  [reboot] 'Dossier vide' x0
+persist: reboot reached the Finder, folder survived
+PASSED — Macintosh LC III persist
+<end of output>
+Test time = 136.03 sec
+----------------------------------------------------------
+Test Passed.
+"sonora_persist_etalon" end time: Sep 06 21:19 +04
+"sonora_persist_etalon" time elapsed: 00:02:16
+----------------------------------------------------------
+
+123/236 Testing: duo_soak_etalon
+123/236 Test: duo_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/duo_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"duo_soak_etalon" start time: Sep 06 21:19 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM" 1048576 B sha256 a5cbde0f1fe905f05592e181685df79df4a4fd3d4bfb7fe3df2e45ac8601b59a
+ASSET disk   "hdv/ref/System 7.5.5 HD.dsk" 83886080 B sha256 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 163840 = 163936 blocks)
+boot: PMU released the 68030 after 23341 ticks
+boot poll 0: menu 0.038 desk 0.431 run 381, front "Finder"
+Finder up 640x400, TC=$80D86500, front "Stickies", SCSI 3655
+soak: 180 s elapsed on the Mac clock (want 135-225), halted=0, Finder still up
+PASSED — PowerBook Duo 230 soak
+<end of output>
+Test time =  36.77 sec
+----------------------------------------------------------
+Test Passed.
+"duo_soak_etalon" end time: Sep 06 21:20 +04
+"duo_soak_etalon" time elapsed: 00:00:36
+----------------------------------------------------------
+
+124/236 Testing: duo_persist_etalon
+124/236 Test: duo_persist_etalon
+Command: "/Users/mercure/src/pom68k/build/duo_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"duo_persist_etalon" start time: Sep 06 21:20 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM" 1048576 B sha256 a5cbde0f1fe905f05592e181685df79df4a4fd3d4bfb7fe3df2e45ac8601b59a
+ASSET disk   "hdv/ref/System 7.5.5 HD.dsk" 83886080 B sha256 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 163840 = 163936 blocks)
+[scsi] write cmds 50 blocks 165, read cmds 3629
+[scsi] after Shut Down: write cmds 65, read cmds 3691
+boot: PMU released the 68030 after 23341 ticks
+boot poll 0: menu 0.038 desk 0.431 run 381, front "Finder"
+Finder up 640x400, TC=$80D86500, front "Stickies", SCSI 3655
+persist: frontmost application "Finder"
+  [before] 'untitled folder' x13
+  [before] 'Nouveau dossier' x0
+  [before] 'Dossier sans titre' x0
+  [before] 'Empty Folder' x0
+  [before] 'Dossier vide' x0
+persist: first write 600 frames after the commit
+  [after] 'untitled folder' x15
+  [after] 'Nouveau dossier' x0
+  [after] 'Dossier sans titre' x0
+  [after] 'Empty Folder' x0
+  [after] 'Dossier vide' x0
+persist: 'untitled folder' 13 -> 15, image modified
+boot: PMU released the 68030 after 48393 ticks
+boot poll 0: menu 0.039 desk 0.426 run 381, front "Finder"
+  [reboot] 'untitled folder' x15
+  [reboot] 'Nouveau dossier' x0
+  [reboot] 'Dossier sans titre' x0
+  [reboot] 'Empty Folder' x0
+  [reboot] 'Dossier vide' x0
+persist: reboot reached the Finder, folder survived
+PASSED — PowerBook Duo 230 persist
+<end of output>
+Test time =  49.59 sec
+----------------------------------------------------------
+Test Passed.
+"duo_persist_etalon" end time: Sep 06 21:21 +04
+"duo_persist_etalon" time elapsed: 00:00:49
+----------------------------------------------------------
+
+127/236 Testing: iifx_soak_etalon
+127/236 Test: iifx_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/iifx_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"iifx_soak_etalon" start time: Sep 06 21:21 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" 524288 B sha256 f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5
+ASSET declrom "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" 4096 B sha256 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[finder] menu 0.06 desk 0.80
+[finder] menu 0.06 desk 1.00
+[finder] menu 0.06 desk 1.00
+[finder] menu 0.16 desk 0.98
+[finder] menu 0.16 desk 0.86
+[finder] menu 0.16 desk 0.86
+Finder up, SCSI 1655
+soak: 180 s elapsed on the Mac clock (want 135-225), halted=0, Finder still up
+PASSED — Macintosh IIfx soak
+<end of output>
+Test time =  25.69 sec
+----------------------------------------------------------
+Test Passed.
+"iifx_soak_etalon" end time: Sep 06 21:21 +04
+"iifx_soak_etalon" time elapsed: 00:00:25
+----------------------------------------------------------
+
+128/236 Testing: iifx_persist_etalon
+128/236 Test: iifx_persist_etalon
+Command: "/Users/mercure/src/pom68k/build/iifx_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"iifx_persist_etalon" start time: Sep 06 21:21 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" 524288 B sha256 f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5
+ASSET declrom "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" 4096 B sha256 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[finder] menu 0.06 desk 0.80
+[finder] menu 0.06 desk 1.00
+[finder] menu 0.06 desk 1.00
+[finder] menu 0.16 desk 0.98
+[finder] menu 0.16 desk 0.86
+[finder] menu 0.50 desk 0.50
+[finder] menu 0.50 desk 0.50
+[finder] menu 0.50 desk 0.40
+[finder] menu 0.50 desk 0.50
+[finder] menu 0.06 desk 0.80
+[finder] menu 0.06 desk 1.00
+[finder] menu 0.16 desk 0.97
+[finder] menu 0.16 desk 0.86
+Finder up, SCSI 1655
+  [before] 'untitled folder' x10
+  [before] 'Nouveau dossier' x51
+  [before] 'Dossier sans titre' x10
+  [before] 'Empty Folder' x3
+  [before] 'Dossier vide' x20
+persist: first write 0 frames after the commit
+  [after] 'untitled folder' x10
+  [after] 'Nouveau dossier' x51
+  [after] 'Dossier sans titre' x12
+  [after] 'Empty Folder' x3
+  [after] 'Dossier vide' x20
+persist: 'Dossier sans titre' 10 -> 12, image modified
+  [reboot] 'untitled folder' x10
+  [reboot] 'Nouveau dossier' x51
+  [reboot] 'Dossier sans titre' x12
+  [reboot] 'Empty Folder' x3
+  [reboot] 'Dossier vide' x20
+persist: reboot reached the Finder, folder survived
+PASSED — Macintosh IIfx persist
+<end of output>
+Test time =  11.01 sec
+----------------------------------------------------------
+Test Passed.
+"iifx_persist_etalon" end time: Sep 06 21:21 +04
+"iifx_persist_etalon" time elapsed: 00:00:11
+----------------------------------------------------------
+
+132/236 Testing: lc520_soak_etalon
+132/236 Test: lc520_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/aio_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"lc520_soak_etalon" start time: Sep 06 21:21 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM" 1048576 B sha256 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[finder] menu 0.15 desk 0.62 run 402
+[finder] menu 0.12 desk 0.62 run 44
+[wake] videoMode=$06 before
+[wake] videoMode=$06 after
+[finder] menu 0.12 desk 0.62 run 44
+Finder up 640x480 depth 3, TC=$80D86500, ADB LLE, SCSI 1853
+soak: 179 s elapsed on the Mac clock (want 135-225), halted=0, Finder still up
+PASSED — Macintosh LC 520 soak
+<end of output>
+Test time = 110.11 sec
+----------------------------------------------------------
+Test Passed.
+"lc520_soak_etalon" end time: Sep 06 21:23 +04
+"lc520_soak_etalon" time elapsed: 00:01:50
+----------------------------------------------------------
+
+133/236 Testing: lc520_persist_etalon
+133/236 Test: lc520_persist_etalon
+Command: "/Users/mercure/src/pom68k/build/aio_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"lc520_persist_etalon" start time: Sep 06 21:23 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM" 1048576 B sha256 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[finder] menu 0.15 desk 0.62 run 402
+[finder] menu 0.12 desk 0.62 run 44
+[finder] menu 0.15 desk 0.60 run 402
+[finder] menu 0.12 desk 0.60 run 83
+Finder up 640x480 depth 3, TC=$80D86500, ADB LLE, SCSI 1853
+persist: frontmost application "Finder"
+  [before] 'untitled folder' x10
+  [before] 'Nouveau dossier' x51
+  [before] 'Dossier sans titre' x10
+  [before] 'Empty Folder' x3
+  [before] 'Dossier vide' x20
+persist: first write 0 frames after the commit
+  [after] 'untitled folder' x10
+  [after] 'Nouveau dossier' x51
+  [after] 'Dossier sans titre' x12
+  [after] 'Empty Folder' x3
+  [after] 'Dossier vide' x20
+persist: 'Dossier sans titre' 10 -> 12, image modified
+  [reboot] 'untitled folder' x10
+  [reboot] 'Nouveau dossier' x51
+  [reboot] 'Dossier sans titre' x12
+  [reboot] 'Empty Folder' x3
+  [reboot] 'Dossier vide' x20
+persist: reboot reached the Finder, folder survived
+PASSED — Macintosh LC 520 persist
+<end of output>
+Test time = 138.89 sec
+----------------------------------------------------------
+Test Passed.
+"lc520_persist_etalon" end time: Sep 06 21:25 +04
+"lc520_persist_etalon" time elapsed: 00:02:18
+----------------------------------------------------------
+
+136/236 Testing: lc_boot_etalon
+136/236 Test: lc_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"lc_boot_etalon" start time: Sep 06 21:25 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-10 - 350EACF0 - Mac LC.ROM" 524288 B sha256 129391cc72f84c2b321709cad8281e30a45e50b3cf6e7afe7434c4d32c7b9d5b
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+menu bar black 0.09 (want <0.30), desktop 0.46 (want 0.35-0.65), SCSI commands 2035
+PASSED — Macintosh LC (68020) booted to the Finder
+<end of output>
+Test time =  52.02 sec
+----------------------------------------------------------
+Test Passed.
+"lc_boot_etalon" end time: Sep 06 21:26 +04
+"lc_boot_etalon" time elapsed: 00:00:52
+----------------------------------------------------------
+
+137/236 Testing: classic2_boot_etalon
+137/236 Test: classic2_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/classic2_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"classic2_boot_etalon" start time: Sep 06 21:26 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1991-10 - 3193670E - Classic II.ROM" 524288 B sha256 5e27acb45173a87e9dfd2c2a411f7cf521ff3cc8bfab083963cf4757d6ca289c
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+menu bar black 0.09 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2052
+PASSED — Classic II (Eagle) booted to the Finder
+<end of output>
+Test time =  27.77 sec
+----------------------------------------------------------
+Test Passed.
+"classic2_boot_etalon" end time: Sep 06 21:27 +04
+"classic2_boot_etalon" time elapsed: 00:00:27
+----------------------------------------------------------
+
+138/236 Testing: cclassic_boot_etalon
+138/236 Test: cclassic_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/cclassic_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"cclassic_boot_etalon" start time: Sep 06 21:27 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECD99DC0 - Color Classic.ROM" 1048576 B sha256 645a193a7817988f54ef0ec90b6ad882b698457600a41ec8d280bee94288c534
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Cuda firmware LLE
+menu bar black 0.05 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2090
+PASSED — Macintosh Color Classic booted to the Finder
+<end of output>
+Test time =  29.81 sec
+----------------------------------------------------------
+Test Passed.
+"cclassic_boot_etalon" end time: Sep 06 21:27 +04
+"cclassic_boot_etalon" time elapsed: 00:00:29
+----------------------------------------------------------
+
+139/236 Testing: lc3_boot_etalon
+139/236 Test: lc3_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc3_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"lc3_boot_etalon" start time: Sep 06 21:27 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+mode 512x384 depth 3; menu bar black 0.05 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2036
+PASSED — Macintosh LC III booted to the Finder
+<end of output>
+Test time =  57.93 sec
+----------------------------------------------------------
+Test Passed.
+"lc3_boot_etalon" end time: Sep 06 21:28 +04
+"lc3_boot_etalon" time elapsed: 00:00:57
+----------------------------------------------------------
+
+140/236 Testing: lc3plus_boot_etalon
+140/236 Test: lc3plus_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc3plus_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"lc3plus_boot_etalon" start time: Sep 06 21:28 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+model ID $A55A0003 (want $A55A0003); ADB: Egret firmware LLE
+mode 512x384 depth 3; menu bar black 0.05 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2035
+PASSED — Macintosh LC III+ booted to the Finder
+<end of output>
+Test time =  75.67 sec
+----------------------------------------------------------
+Test Passed.
+"lc3plus_boot_etalon" end time: Sep 06 21:30 +04
+"lc3plus_boot_etalon" time elapsed: 00:01:15
+----------------------------------------------------------
+
+141/236 Testing: lc520_boot_etalon
+141/236 Test: lc520_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc520_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"lc520_boot_etalon" start time: Sep 06 21:30 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM" 1048576 B sha256 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+model ID $A55A0100 (want $A55A0100)
+ADB: Egret firmware LLE
+mode 640x480 depth 3; menu bar dark 0.15 (want <0.30), desktop 0.62 (want 0.35-0.80), SCSI commands 1811
+PASSED — Macintosh LC 520 booted to the Finder
+<end of output>
+Test time =  63.93 sec
+----------------------------------------------------------
+Test Passed.
+"lc520_boot_etalon" end time: Sep 06 21:31 +04
+"lc520_boot_etalon" time elapsed: 00:01:03
+----------------------------------------------------------
+
+142/236 Testing: lc550_boot_etalon
+142/236 Test: lc550_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc550_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"lc550_boot_etalon" start time: Sep 06 21:31 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM" 1048576 B sha256 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+model ID $A55A0101 (want $A55A0101)
+ADB: Cuda firmware LLE
+mode 640x480 depth 3; menu bar dark 0.15 (want <0.30), desktop 0.62 (want 0.35-0.80), SCSI commands 1811
+PASSED — Macintosh LC 550 booted to the Finder
+<end of output>
+Test time =  80.17 sec
+----------------------------------------------------------
+Test Passed.
+"lc550_boot_etalon" end time: Sep 06 21:32 +04
+"lc550_boot_etalon" time elapsed: 00:01:20
+----------------------------------------------------------
+
+143/236 Testing: cclassic2_boot_etalon
+143/236 Test: cclassic2_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/cclassic2_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"cclassic2_boot_etalon" start time: Sep 06 21:32 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM" 1048576 B sha256 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Cuda firmware LLE
+mode 512x384 depth 3; menu bar dark 0.17 (want <0.30), menu run 494 (want >=256), CurApName "Finder", desktop weave 0.28 (printed, not asserted), SCSI commands 1870
+PASSED — Macintosh Color Classic II booted to the Finder
+<end of output>
+Test time =  79.64 sec
+----------------------------------------------------------
+Test Passed.
+"cclassic2_boot_etalon" end time: Sep 06 21:33 +04
+"cclassic2_boot_etalon" time elapsed: 00:01:19
+----------------------------------------------------------
+
+144/236 Testing: iivx_boot_etalon
+144/236 Test: iivx_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iivx_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"iivx_boot_etalon" start time: Sep 06 21:33 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM" 1048576 B sha256 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+model ID $A55A2015 (want $A55A2015)
+ADB: Egret firmware LLE
+mode 640x480 depth 3; menu bar dark 0.15 (want <0.30), desktop 0.62 (want 0.35-0.85), SCSI commands 1789
+PASSED — Macintosh IIvx booted to the Finder
+<end of output>
+Test time =  80.87 sec
+----------------------------------------------------------
+Test Passed.
+"iivx_boot_etalon" end time: Sep 06 21:35 +04
+"iivx_boot_etalon" time elapsed: 00:01:20
+----------------------------------------------------------
+
+145/236 Testing: iivi_boot_etalon
+145/236 Test: iivi_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iivx_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"iivi_boot_etalon" start time: Sep 06 21:35 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM" 1048576 B sha256 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+model ID $A55A2016 (want $A55A2016)
+ADB: Egret firmware LLE
+mode 640x480 depth 3; menu bar dark 0.15 (want <0.30), desktop 0.62 (want 0.35-0.85), SCSI commands 1801
+PASSED — Macintosh IIvi booted to the Finder
+<end of output>
+Test time =  44.92 sec
+----------------------------------------------------------
+Test Passed.
+"iivi_boot_etalon" end time: Sep 06 21:35 +04
+"iivi_boot_etalon" time elapsed: 00:00:44
+----------------------------------------------------------
+
+146/236 Testing: iisi_boot_etalon
+146/236 Test: iisi_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iisi_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"iisi_boot_etalon" start time: Sep 06 21:35 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM" 524288 B sha256 b8b04d1478a609de89dd62e51165cc7ca5757f6f881e9770621d09af82890feb
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Egret firmware LLE
+mode 640x480 depth 0; menu bar dark 0.16 (want <0.30), desktop dither 0.25 / gray 0.36 (want alive), SCSI commands 1691
+PASSED — Macintosh IIsi booted to the Finder
+<end of output>
+Test time =  31.76 sec
+----------------------------------------------------------
+Test Passed.
+"iisi_boot_etalon" end time: Sep 06 21:36 +04
+"iisi_boot_etalon" time elapsed: 00:00:31
+----------------------------------------------------------
+
+150/236 Testing: iici_boot_etalon
+150/236 Test: iici_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iici_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"iici_boot_etalon" start time: Sep 06 21:36 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1989-09 - 368CADFE - Mac IIci.ROM" 524288 B sha256 0419966cfd7445680c0dd6ca78e8b1f4bc212e75caf56f4a5f523afa576ad3f2
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: PIC1654S modem LLE
+mode 640x480 depth 0; menu bar dark 0.16 (want <0.30), desktop dither 0.25 / gray 0.36 (want alive), SCSI commands 1674
+PASSED — Macintosh IIci booted to the Finder
+<end of output>
+Test time =  34.84 sec
+----------------------------------------------------------
+Test Passed.
+"iici_boot_etalon" end time: Sep 06 21:36 +04
+"iici_boot_etalon" time elapsed: 00:00:34
+----------------------------------------------------------
+
+151/236 Testing: mactv_boot_etalon
+151/236 Test: mactv_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/mactv_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"mactv_boot_etalon" start time: Sep 06 21:36 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1994 - EAF1678D - Macintosh TV.ROM" 1048576 B sha256 2b4fbc3dae98cfd6cd58cd5edf6d7e629c93c46ca233e14ee31dcb9a9f7698e5
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Cuda firmware LLE
+mode 640x480 vidcfg $33; menu bar dark 0.15 (want <0.30), desktop dither 0.20 / gray 0.48 (want alive), SCSI commands 1830
+PASSED — Macintosh TV booted to the Finder
+<end of output>
+Test time =  39.31 sec
+----------------------------------------------------------
+Test Passed.
+"mactv_boot_etalon" end time: Sep 06 21:37 +04
+"mactv_boot_etalon" time elapsed: 00:00:39
+----------------------------------------------------------
+
+170/236 Testing: lcii_soak_etalon
+170/236 Test: lcii_soak_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"lcii_soak_etalon" start time: Sep 06 21:37 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+[soak] mcu cycles 376564189 (expect ~377M for 180 s), pll=$4F
+Finder up (SCSI 9618)
+soak: 179 s elapsed on the Mac clock (want 135-225), halted=0
+PASSED — LC II beyond-boot soak
+<end of output>
+Test time =  45.34 sec
+----------------------------------------------------------
+Test Passed.
+"lcii_soak_etalon" end time: Sep 06 21:38 +04
+"lcii_soak_etalon" time elapsed: 00:00:45
+----------------------------------------------------------
+
+171/236 Testing: lcii_persist_etalon
+171/236 Test: lcii_persist_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"lcii_persist_etalon" start time: Sep 06 21:38 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+Finder up (SCSI 9618)
+  [before] 'untitled folder' x29
+  [before] 'Nouveau dossier' x0
+  [before] 'Dossier sans titre' x0
+  [before] 'Empty Folder' x43
+  [before] 'Dossier vide' x0
+  [after] 'untitled folder' x31
+  [after] 'Nouveau dossier' x0
+  [after] 'Dossier sans titre' x0
+  [after] 'Empty Folder' x43
+  [after] 'Dossier vide' x0
+persist: 'untitled folder' 29 -> 31, image modified
+  [reboot] 'untitled folder' x31
+  [reboot] 'Nouveau dossier' x0
+  [reboot] 'Dossier sans titre' x0
+  [reboot] 'Empty Folder' x43
+  [reboot] 'Dossier vide' x0
+persist: reboot reached the Finder, folder survived
+PASSED — LC II beyond-boot persist
+<end of output>
+Test time =  54.25 sec
+----------------------------------------------------------
+Test Passed.
+"lcii_persist_etalon" end time: Sep 06 21:39 +04
+"lcii_persist_etalon" time elapsed: 00:00:54
+----------------------------------------------------------
+
+172/236 Testing: lcii_launch_etalon
+172/236 Test: lcii_launch_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"lcii_launch_etalon" start time: Sep 06 21:39 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+Finder up (SCSI 9618)
+pointer at (42,78), target (42,78)
+launch: screen changed 0.12 (want >0.10), SCSI +26 (want >0), halted=0
+PASSED — LC II beyond-boot launch
+<end of output>
+Test time =  29.43 sec
+----------------------------------------------------------
+Test Passed.
+"lcii_launch_etalon" end time: Sep 06 21:39 +04
+"lcii_launch_etalon" time elapsed: 00:00:29
+----------------------------------------------------------
+
+173/236 Testing: lcii_floppy_etalon
+173/236 Test: lcii_floppy_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_beyond_etalon"
+Directory: /Users/mercure/src/pom68k
+"lcii_floppy_etalon" start time: Sep 06 21:39 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+Finder up (SCSI 9618)
+floppy: disks35/Disk605.dsk, 819200 bytes, HFS=1, drAtrb=$0100 at insert
+floppy: guest read 370531 nibbles off the medium
+floppy: SWIM1 personality=IWM mode=$00, head at track 0, motor off, sense CSTIN=0 TKO=0
+floppy: IWM re-reads of a latched byte: 556
+floppy: IWM polls 709025, hits 70041 (9.9%), overwritten 302201; last 512 consumed: 329 sync $FF, 3 address/data marks
+floppy: consumed tail: FF FF FF FF FF FF FF FF FF FF FF FF FF D5 AA 96 96 9F D6 D9 9D DE AA 96
+floppy: screen changed 0.123 after insert, Finder up
+floppy: changed region x 3..503, y 25..335 (24163 px)
+floppy: System responded: yes — centre white 0.91, icon strip Δ1375 px → volume icon appeared (MOUNTED)
+  [floppy/before] 'untitled folder' x0
+  [floppy/before] 'Nouveau dossier' x0
+  [floppy/before] 'Dossier sans titre' x0
+  [floppy/before] 'Empty Folder' x1
+  [floppy/before] 'Dossier vide' x0
+floppy: write-protect sense = 0
+floppy: KeyMap saw the gesture
+floppy: Cmd-N changed the screen by 3066 px (region x 17..503, y 52..170)
+floppy: hard disk image untouched by the Cmd-N (tells us which window was frontmost)
+floppy: guest wrote to the medium: yes (sectors committed)
+  [floppy/after] 'untitled folder' x0
+  [floppy/after] 'Nouveau dossier' x0
+  [floppy/after] 'Dossier sans titre' x0
+  [floppy/after] 'Empty Folder' x1
+  [floppy/after] 'Dossier vide' x0
+floppy: NO candidate folder name appeared in the host file
+floppy: host file modified, size kept, HFS sig intact, drAtrb $0100 → $0000
+floppy: re-insert OK
+PASSED — LC II beyond-boot floppy
+<end of output>
+Test time =  28.39 sec
+----------------------------------------------------------
+Test Passed.
+"lcii_floppy_etalon" end time: Sep 06 21:40 +04
+"lcii_floppy_etalon" time elapsed: 00:00:28
+----------------------------------------------------------
+
+183/236 Testing: iifx_post_etalon
+183/236 Test: iifx_post_etalon
+Command: "/Users/mercure/src/pom68k/build/iifx_post_etalon"
+Directory: /Users/mercure/src/pom68k
+"iifx_post_etalon" start time: Sep 06 21:40 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" 524288 B sha256 f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5
+ASSET declrom "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" 4096 B sha256 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc
+sccpic: reset vector $040E, firmware found at ROM+$5F471
+swimpic: reset vector $5000, firmware found at ROM+$5A7EE
+t=278316492 sccPic cyc=13529762 swimPic cyc=5907655 scsiSel=14 scsiCmds=1 vbl=418
+PASSED — POST complete, IOPs live, boot scan reached
+<end of output>
+Test time =   1.54 sec
+----------------------------------------------------------
+Test Passed.
+"iifx_post_etalon" end time: Sep 06 21:40 +04
+"iifx_post_etalon" time elapsed: 00:00:01
+----------------------------------------------------------
+
+184/236 Testing: iifx_boot_etalon
+184/236 Test: iifx_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iifx_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"iifx_boot_etalon" start time: Sep 06 21:40 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" 524288 B sha256 f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5
+ASSET declrom "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" 4096 B sha256 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+IIfx: f=539 menu bar black 0.06, desktop 0.80, SCSI commands 509
+PASSED — booted to Finder
+<end of output>
+Test time =   2.71 sec
+----------------------------------------------------------
+Test Passed.
+"iifx_boot_etalon" end time: Sep 06 21:40 +04
+"iifx_boot_etalon" time elapsed: 00:00:02
+----------------------------------------------------------
+
+185/236 Testing: iifx_input_etalon
+185/236 Test: iifx_input_etalon
+Command: "/Users/mercure/src/pom68k/build/iifx_input_etalon"
+Directory: /Users/mercure/src/pom68k
+"iifx_input_etalon" start time: Sep 06 21:40 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" 524288 B sha256 f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5
+ASSET declrom "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" 4096 B sha256 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+  boot: the Finder desktop is painted                      ok
+  boot: the System loaded off SCSI                         ok
+  idle diff 0 px, after motion 69 px, ADB host edges 131960
+  mouse: an idle Finder is pixel-stable                    ok
+  mouse: injected motion repaints the cursor               ok
+  ADB: the IOP firmware is driving the wire                ok
+  KeyMap bits idle=0 held=1 released=0 (TC=80F84500, PMMU ON)
+  keyboard: KeyMap is clear with no key down               ok
+  keyboard: the held key reaches KeyMap                    ok
+  keyboard: the release clears KeyMap                      ok
+PASSED — ADB input delivered through the IOP firmware
+<end of output>
+Test time =   8.75 sec
+----------------------------------------------------------
+Test Passed.
+"iifx_input_etalon" end time: Sep 06 21:40 +04
+"iifx_input_etalon" time elapsed: 00:00:08
+----------------------------------------------------------
+
+186/236 Testing: duo230_boot_etalon
+186/236 Test: duo230_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/duo230_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"duo230_boot_etalon" start time: Sep 06 21:40 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM" 1048576 B sha256 a5cbde0f1fe905f05592e181685df79df4a4fd3d4bfb7fe3df2e45ac8601b59a
+ASSET rom    "roms/pge/pge_boot.bin" 512 B sha256 ab6348f7f71d97162d7e17813c46ff8e1d2213635099166809df3214725eb29b
+ASSET disk   "hdv/ref/System 7.5.5 HD.dsk" 83886080 B sha256 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 163840 = 163936 blocks)
+Duo 230: menu bar dark 0.04, desktop 0.43, SCSI commands 3393, GSC mode 2
+PASSED — booted to Finder
+<end of output>
+Test time =  21.32 sec
+----------------------------------------------------------
+Test Passed.
+"duo230_boot_etalon" end time: Sep 06 21:40 +04
+"duo230_boot_etalon" time elapsed: 00:00:21
+----------------------------------------------------------
+
+215/236 Testing: jit_lcii_boot_etalon
+215/236 Test: jit_lcii_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"jit_lcii_boot_etalon" start time: Sep 06 21:40 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+menu bar black 0.09 (want <0.30), desktop 0.48 (want 0.35-0.65), SCSI commands 9618
+PASSED — booted to the Finder
+<end of output>
+Test time =  24.83 sec
+----------------------------------------------------------
+Test Passed.
+"jit_lcii_boot_etalon" end time: Sep 06 21:41 +04
+"jit_lcii_boot_etalon" time elapsed: 00:00:24
+----------------------------------------------------------
+
+216/236 Testing: jit_mactv_boot_etalon
+216/236 Test: jit_mactv_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/mactv_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"jit_mactv_boot_etalon" start time: Sep 06 21:41 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1994 - EAF1678D - Macintosh TV.ROM" 1048576 B sha256 2b4fbc3dae98cfd6cd58cd5edf6d7e629c93c46ca233e14ee31dcb9a9f7698e5
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Cuda firmware LLE
+mode 640x480 vidcfg $33; menu bar dark 0.15 (want <0.30), desktop dither 0.20 / gray 0.48 (want alive), SCSI commands 1830
+PASSED — Macintosh TV booted to the Finder
+<end of output>
+Test time =  38.13 sec
+----------------------------------------------------------
+Test Passed.
+"jit_mactv_boot_etalon" end time: Sep 06 21:41 +04
+"jit_mactv_boot_etalon" time elapsed: 00:00:38
+----------------------------------------------------------
+
+217/236 Testing: jit_lc3_boot_etalon
+217/236 Test: jit_lc3_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc3_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"jit_lc3_boot_etalon" start time: Sep 06 21:41 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+mode 512x384 depth 3; menu bar black 0.05 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2036
+PASSED — Macintosh LC III booted to the Finder
+<end of output>
+Test time =  58.07 sec
+----------------------------------------------------------
+Test Passed.
+"jit_lc3_boot_etalon" end time: Sep 06 21:42 +04
+"jit_lc3_boot_etalon" time elapsed: 00:00:58
+----------------------------------------------------------
+
+218/236 Testing: jit_iivx_boot_etalon
+218/236 Test: jit_iivx_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iivx_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"jit_iivx_boot_etalon" start time: Sep 06 21:42 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM" 1048576 B sha256 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+model ID $A55A2015 (want $A55A2015)
+ADB: Egret firmware LLE
+mode 640x480 depth 3; menu bar dark 0.15 (want <0.30), desktop 0.62 (want 0.35-0.85), SCSI commands 1789
+PASSED — Macintosh IIvx booted to the Finder
+<end of output>
+Test time =  80.05 sec
+----------------------------------------------------------
+Test Passed.
+"jit_iivx_boot_etalon" end time: Sep 06 21:44 +04
+"jit_iivx_boot_etalon" time elapsed: 00:01:20
+----------------------------------------------------------
+
+219/236 Testing: jit_iisi_boot_etalon
+219/236 Test: jit_iisi_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iisi_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"jit_iisi_boot_etalon" start time: Sep 06 21:44 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM" 524288 B sha256 b8b04d1478a609de89dd62e51165cc7ca5757f6f881e9770621d09af82890feb
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Egret firmware LLE
+mode 640x480 depth 0; menu bar dark 0.16 (want <0.30), desktop dither 0.25 / gray 0.36 (want alive), SCSI commands 1691
+PASSED — Macintosh IIsi booted to the Finder
+<end of output>
+Test time =  30.65 sec
+----------------------------------------------------------
+Test Passed.
+"jit_iisi_boot_etalon" end time: Sep 06 21:44 +04
+"jit_iisi_boot_etalon" time elapsed: 00:00:30
+----------------------------------------------------------
+
+220/236 Testing: jit_lc_boot_etalon
+220/236 Test: jit_lc_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"jit_lc_boot_etalon" start time: Sep 06 21:44 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-10 - 350EACF0 - Mac LC.ROM" 524288 B sha256 129391cc72f84c2b321709cad8281e30a45e50b3cf6e7afe7434c4d32c7b9d5b
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+menu bar black 0.09 (want <0.30), desktop 0.46 (want 0.35-0.65), SCSI commands 2035
+PASSED — Macintosh LC (68020) booted to the Finder
+<end of output>
+Test time =  48.94 sec
+----------------------------------------------------------
+Test Passed.
+"jit_lc_boot_etalon" end time: Sep 06 21:45 +04
+"jit_lc_boot_etalon" time elapsed: 00:00:48
+----------------------------------------------------------
+
+224/236 Testing: jit_iifx_boot_etalon
+224/236 Test: jit_iifx_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iifx_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"jit_iifx_boot_etalon" start time: Sep 06 21:45 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" 524288 B sha256 f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5
+ASSET declrom "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" 4096 B sha256 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+IIfx: f=539 menu bar black 0.06, desktop 0.80, SCSI commands 509
+PASSED — booted to Finder
+<end of output>
+Test time =   2.03 sec
+----------------------------------------------------------
+Test Passed.
+"jit_iifx_boot_etalon" end time: Sep 06 21:45 +04
+"jit_iifx_boot_etalon" time elapsed: 00:00:02
+----------------------------------------------------------
+
+229/236 Testing: interp_lcii_boot_etalon
+229/236 Test: interp_lcii_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lcii_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"interp_lcii_boot_etalon" start time: Sep 06 21:45 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+menu bar black 0.09 (want <0.30), desktop 0.48 (want 0.35-0.65), SCSI commands 9618
+PASSED — booted to the Finder
+<end of output>
+Test time =  64.13 sec
+----------------------------------------------------------
+Test Passed.
+"interp_lcii_boot_etalon" end time: Sep 06 21:46 +04
+"interp_lcii_boot_etalon" time elapsed: 00:01:04
+----------------------------------------------------------
+
+230/236 Testing: interp_lc3_boot_etalon
+230/236 Test: interp_lc3_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/lc3_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"interp_lc3_boot_etalon" start time: Sep 06 21:46 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM" 1048576 B sha256 b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e
+ASSET disk   "hdv/ref/System 7.5 HD.dsk" 41943040 B sha256 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+ADB: Egret firmware LLE
+mode 512x384 depth 3; menu bar black 0.05 (want <0.30), desktop 0.45 (want 0.35-0.65), SCSI commands 2036
+PASSED — Macintosh LC III booted to the Finder
+<end of output>
+Test time = 113.67 sec
+----------------------------------------------------------
+Test Passed.
+"interp_lc3_boot_etalon" end time: Sep 06 21:48 +04
+"interp_lc3_boot_etalon" time elapsed: 00:01:53
+----------------------------------------------------------
+
+231/236 Testing: interp_iivx_boot_etalon
+231/236 Test: interp_iivx_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iivx_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"interp_iivx_boot_etalon" start time: Sep 06 21:48 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM" 1048576 B sha256 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+model ID $A55A2015 (want $A55A2015)
+ADB: Egret firmware LLE
+mode 640x480 depth 3; menu bar dark 0.15 (want <0.30), desktop 0.62 (want 0.35-0.85), SCSI commands 1789
+PASSED — Macintosh IIvx booted to the Finder
+<end of output>
+Test time = 123.24 sec
+----------------------------------------------------------
+Test Passed.
+"interp_iivx_boot_etalon" end time: Sep 06 21:50 +04
+"interp_iivx_boot_etalon" time elapsed: 00:02:03
+----------------------------------------------------------
+
+232/236 Testing: interp_iisi_boot_etalon
+232/236 Test: interp_iisi_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iisi_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"interp_iisi_boot_etalon" start time: Sep 06 21:50 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM" 524288 B sha256 b8b04d1478a609de89dd62e51165cc7ca5757f6f881e9770621d09af82890feb
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+ADB: Egret firmware LLE
+mode 640x480 depth 0; menu bar dark 0.16 (want <0.30), desktop dither 0.25 / gray 0.36 (want alive), SCSI commands 1691
+PASSED — Macintosh IIsi booted to the Finder
+<end of output>
+Test time =  69.86 sec
+----------------------------------------------------------
+Test Passed.
+"interp_iisi_boot_etalon" end time: Sep 06 21:51 +04
+"interp_iisi_boot_etalon" time elapsed: 00:01:09
+----------------------------------------------------------
+
+233/236 Testing: interp_iifx_boot_etalon
+233/236 Test: interp_iifx_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/iifx_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"interp_iifx_boot_etalon" start time: Sep 06 21:51 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" 524288 B sha256 f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5
+ASSET declrom "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" 4096 B sha256 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+IIfx: f=539 menu bar black 0.06, desktop 0.80, SCSI commands 509
+PASSED — booted to Finder
+<end of output>
+Test time =   2.37 sec
+----------------------------------------------------------
+Test Passed.
+"interp_iifx_boot_etalon" end time: Sep 06 21:51 +04
+"interp_iifx_boot_etalon" time elapsed: 00:00:02
+----------------------------------------------------------
+
+234/236 Testing: interp_duo230_boot_etalon
+234/236 Test: interp_duo230_boot_etalon
+Command: "/Users/mercure/src/pom68k/build/duo230_boot_etalon"
+Directory: /Users/mercure/src/pom68k
+"interp_duo230_boot_etalon" start time: Sep 06 21:51 +04
+Output:
+----------------------------------------------------------
+ASSET rom    "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM" 1048576 B sha256 a5cbde0f1fe905f05592e181685df79df4a4fd3d4bfb7fe3df2e45ac8601b59a
+ASSET rom    "roms/pge/pge_boot.bin" 512 B sha256 ab6348f7f71d97162d7e17813c46ff8e1d2213635099166809df3214725eb29b
+ASSET disk   "hdv/ref/System 7.5.5 HD.dsk" 83886080 B sha256 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f  HFS "Macintosh HD" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 163840 = 163936 blocks)
+Duo 230: menu bar dark 0.04, desktop 0.43, SCSI commands 3393, GSC mode 2
+PASSED — booted to Finder
+<end of output>
+Test time =  51.46 sec
+----------------------------------------------------------
+Test Passed.
+"interp_duo230_boot_etalon" end time: Sep 06 21:52 +04
+"interp_duo230_boot_etalon" time elapsed: 00:00:51
+----------------------------------------------------------
+
+End testing: Sep 06 21:52 +04
+
+asset-none =   1.50 sec*proc
+
+asset-required = 11393.35 sec*proc
+
+etalon = 11393.35 sec*proc
+
+etalon-core = 750.54 sec*proc
+
+host-any = 11394.85 sec*proc
+
+jit = 1245.20 sec*proc
+
+m030 = 11394.85 sec*proc
+
+scope-component =   1.50 sec*proc
+
+scope-profile = 11393.35 sec*proc
+
+tier-daily =   1.50 sec*proc
+
+tier-full = 10642.81 sec*proc
+
+tier-platform = 750.54 sec*proc
+
+unit =   1.50 sec*proc
+

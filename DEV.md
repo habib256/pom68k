@@ -1704,9 +1704,15 @@ Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
 gate against a volume its own list does not name — every "same machine,
 other System" control needs it), `POM68K_HALT`, `POM68K_DUMP`,
-`POM68K_SPEEDO_FRAMES` / `POM68K_SPEEDO_TRACE` (`lcii_speedometer_census`: move the cpu-test frame cap, and print the
-sampled result shape per poll — the pair that tells a slow benchmark
+`POM68K_SPEEDO_FRAMES` / `POM68K_SPEEDO_TRACE`
+(`lcii_speedometer_census`: move the selected family's frame cap, and print
+the sampled result shape per poll — the pair that tells a slow benchmark
 apart from a screen with nothing running on it, 2026-09-06),
+`POM68K_SPEEDO_DISCOVER` (open, capture and cancel Speedometer's Benchmark
+Mix, FPU and Color QuickDraw dialogs before the ordinary CPU phase),
+`POM68K_SPEEDO_MODE` (`cpu` by default, or an individually attributable
+`mix`, `fpu` or `graphics` family; graphics selects all five advertised
+monochrome/2/4/8/16-bit rows),
 `POM68K_FRAMES`, `POM68K_MATRIX_FRAMES` (finder_boot_matrix: widen the
 Plus cell's System-6 budget for a System 7 image), `POM68K_BENCH_*`,
 `POM68K_PROBE*`,

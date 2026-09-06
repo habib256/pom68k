@@ -1,0 +1,56 @@
+Start testing: Sep 06 21:55 +04
+----------------------------------------------------------
+193/236 Testing: jit_store_guard_a64_test
+193/236 Test: jit_store_guard_a64_test
+Command: "/Users/mercure/src/pom68k/build/jit_store_guard_a64_test"
+Directory: /Users/mercure/src/pom68k/build
+"jit_store_guard_a64_test" start time: Sep 06 21:55 +04
+Output:
+----------------------------------------------------------
+jit_store_guard_a64_test — exact zero-mask + SMC gate
+  2F40 loop compiled before guard tests                                ok
+  training marks the translated code slice                             ok
+  cached 2F40 block ran against ordinary RAM                           ok
+  ordinary direct stores retain the translated code slice              ok
+  zero-mask 2F40 used the direct store path                            ok
+  direct store preserved guest byte order and value                    ok
+  translated code slice is armed before self-modification              ok
+  cached loop is aligned at the direct store                           ok
+  true codeMask forced the store through the memory map                ok
+  self-modifying write caused one precise JIT invalidation             ok
+  self-modifying store updated all four code bytes                     ok
+  interpreter and isolated native path leave identical memory          ok
+  interpreter and isolated native path leave identical boundary state  ok
+  B592 loop compiled before guard tests                                ok
+  B592 training marks the translated code slice                        ok
+  cached B592 block ran against ordinary RAM                           ok
+  zero-mask B592 used the direct read-modify-write path                ok
+  cached B592 loop is aligned at EOR.L                                 ok
+  true codeMask forces B592 through the exact memory map               ok
+  B592 self-modification causes one precise invalidation               ok
+  B592 self-modification updates the complete instruction pair         ok
+  B592 interpreter and native paths leave identical memory             ok
+  B592 interpreter and native paths leave identical boundary state     ok
+PASSED
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"jit_store_guard_a64_test" end time: Sep 06 21:55 +04
+"jit_store_guard_a64_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 06 21:55 +04
+
+asset-none =   0.03 sec*proc
+
+host-a64 =   0.03 sec*proc
+
+jit =   0.03 sec*proc
+
+scope-engine =   0.03 sec*proc
+
+tier-daily =   0.03 sec*proc
+
+unit =   0.03 sec*proc
+

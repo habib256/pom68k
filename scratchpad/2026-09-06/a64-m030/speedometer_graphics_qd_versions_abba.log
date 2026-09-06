@@ -1,0 +1,16 @@
+arm=off
+speedometer-test: mode=graphics done=1 frames=2520 wall=3.629683s shape=0.055/0.138/1.000 fp=6988c7da30132770 screen=c5595ea4d99a8381
+session: 37.6% of the screen changed, SCSI +635, fp=db177ec6cea609b5 screen=f873ba738b751df3
+halted=0, SCSI 2386 commands total
+arm=on
+speedometer-test: mode=graphics done=1 frames=2520 wall=3.714827s shape=0.055/0.138/1.000 fp=6988c7da30132770 screen=c5595ea4d99a8381
+session: 37.6% of the screen changed, SCSI +635, fp=db177ec6cea609b5 screen=f873ba738b751df3
+halted=0, SCSI 2386 commands total
+arm=on
+speedometer-test: mode=graphics done=1 frames=2520 wall=3.717069s shape=0.055/0.138/1.000 fp=6988c7da30132770 screen=c5595ea4d99a8381
+session: 37.6% of the screen changed, SCSI +635, fp=db177ec6cea609b5 screen=f873ba738b751df3
+halted=0, SCSI 2386 commands total
+arm=off
+speedometer-test: mode=graphics done=1 frames=2520 wall=3.674648s shape=0.055/0.138/1.000 fp=6988c7da30132770 screen=c5595ea4d99a8381
+session: 37.6% of the screen changed, SCSI +635, fp=db177ec6cea609b5 screen=f873ba738b751df3
+halted=0, SCSI 2386 commands total

@@ -928,6 +928,46 @@ number is not attributable opcode-for-opcode. The CPU phase moves 45,926 →
 270 frames, 2,577 SCSI commands and halted=0 remain exact; 0.309202 →
 0.309541 s is deliberately not presented as a wall-time gain.
 
+**Revalidated on the repaired route, 2026-09-06.** A later Finder window-stack
+drift had made the census launch Prince of Persia's Read Me while naming the
+phase Speedometer. The harness now closes every Finder window and reopens GIST
+PERSO from the desktop; native A64 and `threaded` again reach the real CPU
+result at the same 270 frames with identical fingerprints. Three 1 ms macOS
+samples of the full corrected route are stable to 0.57% in total samples.
+Generated bodies hold a median 39.19% of on-CPU time; MMU/cache 16.14%, engine
+runtime 15.45%, LLE/peripherals 14.76%, memory map/thunks 6.30%, all
+interpreter fallback 5.62%, and compilation 0.25%. The CPU test is only
+0.274–0.277 s, under 1% of that route, so the profile promotes no opcode:
+`C029`, `08D1` and the variable peripheral reads stay interpreted until that
+phase is isolated or amplified. Full evidence is in
+`scratchpad/2026-09-06/a64-m030/SPEEDOMETER_TIME_PROFILE.md`.
+
+**The workload is no longer mislabeled as the whole Speedometer suite.** The
+same deterministic route now exposes four independently selectable families:
+Performance Rating / CPU; the ten-row Benchmark Mix; the three direct-FPU
+tests (Whetstone, Matrix Multiply and FFT); and Color QuickDraw with all five
+monochrome/2/4/8/16-bit rows selected. On the native A64 generator and the
+`threaded` reference they finish respectively at 270, 1590, 450 and 2520
+guest frames, with identical result/final CPU fingerprints, screen
+fingerprints and SCSI counts for every paired run. A family-neutral hash of
+the stable completion alert replaced the first graphics detector: black
+density alone falsely accepted a diagonal being drawn at frame 60. `Run All`
+is deliberately not the measurement route because it would erase the phase
+attribution this harness exists to provide. Inventory and paired evidence:
+`scratchpad/2026-09-06/a64-m030/SPEEDOMETER_SUITE.md`.
+
+The first family-specific census also vetoed an attractive QuickDraw change.
+Five live-count shifts produced 1.88 M runtime-guard replays; extending the
+existing count-version cache from its exact four-opcode set removed them and
+cut all phase fallbacks 2.668 M → 0.787 M, while expanded 68030/68040 matrices
+and the real application stayed exact. Yet a saved-binary ABBA measured
+3.652166 s OFF against 3.715948 s ON (**+1.75%**). The extension is removed:
+its extra block boundaries and version-cache work cost more than the avoided
+replays. Conversely the FPU phase exposes a real different ceiling: 438,964
+F-line instructions are `UNSAFE`, 15.2% of its 2.895 M instructions, while
+ordinary block fallbacks total only 15,885. Both are now temporal-profile
+questions, not licenses to chase the largest census row.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G

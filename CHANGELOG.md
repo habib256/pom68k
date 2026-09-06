@@ -40,6 +40,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"Speedometer" meant only Performance Rating / CPU in the repaired census — the application also has a ten-test integer/floating mix, three direct-FPU tests and five Color QuickDraw depths; all are now separate, paired A64/`threaded` phases** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
+- **"there is currently no valid Speedometer temporal profile" (earlier 2026-09-06) — three corrected, byte-identical whole-route samples now exist; they cap all fallback time near 5.6% but leave the 0.27 s CPU phase too small for opcode attribution** → [2026-09-06 (sixth) — Speedometer's first correct time profile…](#2026-09-06-speedometer-time-profile)
+- **"repairing the Speedometer navigation is filed rather than done" (earlier 2026-09-06) — the Finder scope is now reset from the desktop and the real CPU result is reached identically on A64 and `threaded`; only the temporal profile remains open** → [2026-09-06 (fifth) — Speedometer's census closes every Finder window…](#2026-09-06-speedometer-navigation-fixed)
 - **"the Speedometer census reports done=0, so its profile covers boot, launch and the partial test" (2026-09-02 honesty note) — it had launched a different program: the `cpu-test` phase is a SimpleText Read Me, and there is no valid Speedometer profile at all** → [2026-09-06 (third) — The Speedometer census was not profiling Speedometer…](#2026-09-06-speedometer-census-wrong-program)
 - **"this host resolves 2 permille, so the recorded 10-permille floor is too loose" — that null was taken while three agents and a second project shared the machine; eighteen clean ones show a bimodal host that produces 1.8 % excursions with nothing changed, and the budget stays** → [2026-09-05 (seventh) — Eighteen null experiments…](#2026-09-05-noise-floor-upheld)
 - **"the fused 68030 opcode fetch is worth ≈1.8 %, at risk, and ranks fourth of five" — it is worth 10 %, and the ranking was wrong because every ceiling in the plan was priced on `POM68K_JIT_BACKEND=x64`, which `caps().autoFamilies` never selects for a 68030** → [2026-09-05 (third) — The 68030 fetched its two opcode words…](#2026-09-05-fused-030-fetch)
@@ -118,6 +121,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **which Speedometer families exist beyond CPU, how the harness selects them independently, and whether FPU and five-depth QuickDraw stay exact between A64 and `threaded`** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
+- **where time goes on the corrected Speedometer route, why the 5.6% fallback ceiling promotes no opcode, and what must be amplified before an opcode can be priced** → [2026-09-06 (sixth) — Speedometer's first correct time profile…](#2026-09-06-speedometer-time-profile)
+- **how the Speedometer census establishes a deterministic Finder scope, and what proves it runs the same real CPU test on A64 and `threaded` without pretending those validation timings are a profile** → [2026-09-06 (fifth) — Speedometer's census closes every Finder window…](#2026-09-06-speedometer-navigation-fixed)
+- **what fresh host-local evidence makes the AArch64/68030 automatic promotion trustworthy after the x64 promotion lost that trust — and whether the A64-only store guard ever ran** → [2026-09-06 (fourth) — AArch64 requalifies its own 68030 promotion…](#2026-09-06-a64-030-requalified)
 - **why five asset-free gates segfaulted on x86-64 with no output — a 1 MB dispatch cache inline in `jit::Engine`, eight fixtures on the stack, and the sweep that found seven more binaries past half the limit** → [2026-09-04 (second) — The five copyback 040 gates never ran on x86-64…](#2026-09-04-copyback-stack-frame)
 - **the last 68030 board retires its CACR SMC flush, and the store-inventory gate learns to refuse any header that claims the constant without a row of its own** → [2026-09-04 — Sonora closes § B.4's last row…](#2026-09-04-sonora-inventory)
 - **what remains after the conformant-codegen pass, which 68030 backend `auto` really selects on each host, and why the TODO no longer carries its closed implementation diary** → [2026-09-01 (seventh) — The active backlog is reconciled…](#2026-09-01-todo-code-audit)
@@ -401,6 +408,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](#2026-09-06-speedometer-suite)
+- **2026-09-06 (sixth)** — [Speedometer's first correct time profile makes every fallback a 5.6% ceiling, not a target: the 0.27 s CPU phase must be isolated before any opcode is priced](#2026-09-06-speedometer-time-profile)
+- **2026-09-06 (fifth)** — [Speedometer's census closes every Finder window before choosing its volume: the real CPU test now finishes at frame 270 identically on A64 and `threaded`](#2026-09-06-speedometer-navigation-fixed)
+- **2026-09-06 (fourth)** — [The AArch64 host requalifies its own 68030 promotion: 56/56 executed with the private corpus, and the A64-only store guard finally runs where its subject exists](#2026-09-06-a64-030-requalified)
 - **2026-09-06 (third)** — [The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem](#2026-09-06-speedometer-census-wrong-program)
 - **2026-09-06 (later)** — [One MOVE form is 70 % of everything the 68030 generator cannot compile, and it is worth 0.87 % — under this host's floor, so it stays uncompiled](#2026-09-06-030-admission-gap-priced)
 - **2026-09-06** — [The x86-64 68030 promotion is re-earned on the terms its withdrawal set: two green tiers, not a bench number — and the five weeks it was withdrawn cost a factor of three](#2026-09-06-x64-030-restored)
@@ -833,8 +844,208 @@ Newest first.
 
 ---
 
+<a id="2026-09-06-speedometer-suite"></a>
+## 2026-09-06 (seventh) — Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`
+
+The repaired census was still too narrow: it called the selected Performance
+Rating / CPU subtest "Speedometer", although the application is a benchmark
+suite. The mounted USB `TEST` backup contains both the historical
+`Speedo402.sit` distribution and an Infinite Mac ZIP with intact resource
+forks. Those resources name ten Benchmark Mix rows, three tests that use the
+FPU directly, and Color QuickDraw at monochrome, 2, 4, 8 and 16 bits. The
+guest's Hardware Information screen identifies the attached coprocessor as an
+MC68882. These are asset facts, not test names inferred from coordinates.
+
+`lcii_speedometer_census` now accepts
+`POM68K_SPEEDO_MODE=cpu|mix|fpu|graphics` and places census boundaries around
+the selected family. CPU keeps the historical Performance Rating selection;
+Mix and FPU run every default row; Graphics actively checks the four colour
+depths that its dialog leaves off, so the mode covers all five rows. A
+discovery-only switch captures and cancels the three dialogs when their UI
+must be audited again.
+
+Completion needed a real correction, not another delay. The first generic
+black-density check mistook a QuickDraw diagonal for the final alert at frame
+60. Non-CPU families now hash the monochrome mask of the stable alert icon and
+opaque text; the family-specific window behind it is excluded. The complete
+graphics run now stops at frame 2520 and its visible result has non-zero values
+for all five depths.
+
+Native A64 and `threaded` paired runs finish at the same guest frame for every
+family: CPU 270, FPU 450, Mix 1590 and all-depth Graphics 2520. Within each
+pair the result and final CPU fingerprints, result and final screen
+fingerprints, SCSI delta and `halted=0` are exact. Graphics alone covers 635
+SCSI commands and ends at result fingerprint `6988c7da30132770`, screen
+`c5595ea4d99a8381`; the final values are `db177ec6cea609b5` and
+`f873ba738b751df3`. FPU and Mix have the same complete paired identity in the
+preserved table.
+
+The first per-family census immediately prevented another count-driven
+mistake. The FPU phase is only 84.7% native: 438,964 F-line instructions are
+`UNSAFE`, 15.2% of 2.895 M retired instructions, while its ordinary fallback
+table has just 15,885 entries. QuickDraw is 99.7% native but five
+register-count shifts generate 1.88 M guard replays. Extending the existing
+multi-version cache to those exact five forms passed expanded 9 × 32 matrices
+on the 68030 and 68040 and cut all QuickDraw fallbacks **2.668 M → 0.787 M**.
+It also made the real phase **1.75% slower** in a saved-binary ABBA (3.652166 s
+OFF, 3.715948 s ON). The extension was removed. Fewer fallbacks was not faster.
+
+No wall-time ratio is promoted from these validation runs. Nor does the
+existing boot-dominated temporal profile suddenly become opcode attribution.
+The suite expansion supplies the missing selectors for the next honest step:
+repeat one family in the guest or attach the sampler only at its phase.
+`Run All Tests` is deliberately not the profiling route because it would
+collapse the attribution just recovered. Asset hashes, full protocol, every
+paired observable and raw-log map:
+`scratchpad/2026-09-06/a64-m030/SPEEDOMETER_SUITE.md`.
+
+---
+
+<a id="2026-09-06-speedometer-time-profile"></a>
+## 2026-09-06 (sixth) — Speedometer's first correct time profile makes every fallback a 5.6% ceiling, not a target: the 0.27 s CPU phase must be isolated before any opcode is priced
+
+Repairing the Finder scope made the temporal-profile item actionable in the
+same session. The macOS sampler was run three times against a fresh native
+AArch64 `build-profile`: RelWithDebInfo, fast link, LTO absent and ld64
+deduplication explicitly disabled. `tools/profile_census_macos.py` sampled at
+1 ms and accepted all three captures — 33,449 / 33,512 / 33,322 on-CPU
+samples, no parked samples and no folded-symbol refusal.
+
+These are profiles of the intended route, not three repetitions of the old
+mistake. Every independent process reaches the real Performance Rating / CPU
+result at frame 270, with result shape `0.810/0.150/0.764`, CPU fingerprint
+`3f71466c4a59cc92`, result screen `7ff1fce65e502e83`, final fingerprint
+`e171e5e403d30748`, final screen `2496cd0688566441`, SCSI delta `+560`, and
+`halted=0`. The total sample-count spread is 0.57%.
+
+The bucket ranking is likewise stable:
+
+| on-CPU bucket | three runs | median |
+|---|---:|---:|
+| generated bodies | 38.96–39.57% | **39.19%** |
+| MMU/cache | 15.86–16.18% | **16.14%** |
+| engine runtime/windows | 15.33–16.23% | **15.45%** |
+| LLE/peripherals | 14.38–15.11% | **14.76%** |
+| memory map/thunks | 6.29–6.60% | **6.30%** |
+| interpreter fallback | 5.54–5.64% | **5.62%** |
+| compilation | 0.24–0.29% | **0.25%** |
+
+This corrects the 2026-09-02 whole-route profile, but it does not license the
+old opcode ordering. The complete CPU test lasts only 0.273603 / 0.275013 /
+0.277063 s — under 1% of this boot→launch→test→exit capture. Every interpreted
+fallback combined is a stable 5.6% ceiling; `C029`, `08D1` and the variable
+peripheral reads are unmeasured subsets, not 5.6% opportunities. Nor can a
+statistical sample prove the peripheral access phase whose absence made the
+old `C029` experiment change the visible result from 270 to 450 frames.
+
+The decision is therefore **no emitter change**. Compilation at a quarter of
+a percent remains parked; the complete-route profile points instead at the
+same broad MMU/runtime/peripheral costs as the other real applications. TODO
+§ B.3 is narrowed to the honest missing instrument: isolate or repeat the
+0.27 s CPU phase before pricing any Speedometer opcode. Full protocol, host,
+per-run table, raw captures and decoded reports:
+`scratchpad/2026-09-06/a64-m030/SPEEDOMETER_TIME_PROFILE.md`.
+
+---
+
+<a id="2026-09-06-speedometer-navigation-fixed"></a>
+## 2026-09-06 (fifth) — Speedometer's census closes every Finder window before choosing its volume: the real CPU test now finishes at frame 270 identically on A64 and `threaded`
+
+> **Superseded:** [the immediately following profile pass](#2026-09-06-speedometer-time-profile)
+> supplied the reproducible whole-route temporal profile this entry still
+> called missing. Its narrower conclusion remains: the CPU phase itself still
+> needs isolation or amplification before opcode-level attribution.
+
+The earlier repair guard proved that `lcii_speedometer_census` was spending its
+phase named `cpu-test` in Prince of Persia's SimpleText Read Me. The USB
+snapshot supplied both halves of the diagnosis: Speedometer 4.02 really is in
+`GISTPERSO-boot.vhd`, while the captured stage screens show several overlapping
+Finder windows and the selection drifting into JEUX before the application
+launch. The asset was present; the Finder scope was not deterministic.
+
+The old Cmd-Up tried to infer which window was frontmost. The harness now
+establishes the state it needs: Cmd-Option-W closes every Finder window, both
+physical W keycodes are sent to cover the image's French layout and a QWERTY
+layout, then `gist` is type-selected and opened from the desktop. Only after
+that known root exists does the existing sequence open `logiciels`,
+`Speedo402`, and Speedometer. The stage captures visibly progress from an empty
+desktop to the GIST PERSO root, the two folders, Speedometer's own menu bar and
+finally its **Performance Rating** dialog saying the tests are done.
+
+Three runs make that more than a lucky screenshot. A first native A64 probe
+with a 6000-frame ceiling, a second native A64 run with the shipping 600-frame
+ceiling, and a `threaded` run all finish at exactly **270 frames**. All three
+report result shape `0.810/0.150/0.764`, CPU fingerprint
+`3f71466c4a59cc92`, result screen `7ff1fce65e502e83`, SCSI delta `+560`, final
+fingerprint `e171e5e403d30748`, and final screen `2496cd0688566441`.
+The native runs take 0.287/0.288 s and `threaded` 0.911 s, but these are launch
+validations, not a controlled timing experiment; no promotion is inferred
+from them.
+
+The navigation item therefore leaves TODO § B.3. The temporal-profile item
+does not: the harness now measures the intended workload and can produce a
+trustworthy corpus, but it still needs a reproducible time profile before
+`C029`, `08D1`, variable peripheral reads, or any other family can justify an
+emitter change. Evidence:
+`scratchpad/2026-09-06/a64-m030/speedometer_navigation_probe.log`,
+`speedometer_navigation_a64_repeat.log`, and
+`speedometer_navigation_threaded.log` in the same directory.
+
+---
+
+<a id="2026-09-06-a64-030-requalified"></a>
+## 2026-09-06 (fourth) — The AArch64 host requalifies its own 68030 promotion: 56/56 executed with the private corpus, and the A64-only store guard finally runs where its subject exists
+
+The 68030 entered `A64Backend::caps().autoFamilies` on 2026-08-20. Nine days
+later the independently promoted x86-64 backend lost every generated 030 boot
+on its own host, and its promotion was withdrawn. That withdrawal left a
+specific warning behind: A64 had no evidence fresher than the evidence x64 had
+just invalidated, so it had to rerun its own complete 030 tier before the
+automatic choice could be trusted again. Backend symmetry was not evidence.
+
+This run supplies the missing host-local proof. The tree was rebuilt natively
+on AArch64 at `4c29ef8`; `tools/check_binaries_fresh.py` reports all 159 gate
+executables current. A serial `ctest -L m030` then finishes **56/56 in
+2970.62 s**. Its preserved `LastTest.log` census is **56 executed / 0
+soft-skipped / 0 failed**: 54 asset-required product gates actually ran, and
+the forced-JIT boots use `POM68K_JIT_REQUIRE_NATIVE=1`, so `threaded` cannot
+manufacture a green promotion. The interpreter reference legs also reach the
+same guest observables.
+
+The second A64-only debt ran separately rather than remaining compile-proof:
+`jit_store_guard_a64_test` passes **1/1 in 0.89 s**, all 23 assertions. It
+executes the real `aarch64` backend and covers both the ordinary zero-mask
+direct path and the exact self-modifying-code path for `2F40` and `B592`,
+including precise invalidation and interpreter/native boundary identity.
+
+The USB disk mattered. The first strict asset audit found three drifted
+reference volumes and one absent one. `TEST/pom68k-prive-20260906/hdv/ref`
+held all four exact identities from `assets.lock`; the drifted local copies
+were preserved outside `hdv/ref`, the locked copies restored, and the second
+audit reports **38/38 present, 0 failures**. The tier itself then names those
+hashes and clean HFS volumes in its log — this is not a green run built out of
+missing-asset abstentions.
+
+No backend policy line changes here: A64 was already automatic. What changes
+is the status of the claim. TODO § B.3's A64 requalification and host-only
+store-guard items leave the backlog, and the stale caution in
+`docs/JIT_BRINGUP.md` records its closure rather than continuing to distrust a
+proof that now exists. Evidence:
+`scratchpad/2026-09-06/a64-m030/LastTest.log`; the run census is also recorded
+in `STATUS.md`.
+The separate guard log is
+`scratchpad/2026-09-06/a64-m030/jit_store_guard_a64.LastTest.log`.
+
+---
+
 <a id="2026-09-06-speedometer-census-wrong-program"></a>
 ## 2026-09-06 (third) — The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem
+
+> **Superseded:** [later the same day](#2026-09-06-speedometer-navigation-fixed),
+> the harness began resetting Finder scope from the desktop and reached the
+> real Speedometer CPU result identically on A64 and `threaded`. This entry's
+> diagnosis remains historical; its statement that repair was only filed does
+> not.
 
 TODO § B.3 says to promote a Speedometer opcode only from a temporal profile.
 Producing that profile meant running `lcii_speedometer_census`, and it has been

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 429 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 433 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 79 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 82 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 46 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 43 |
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 52 |
+| [Machine bring-ups](#machine-bring-ups) | 53 |
 | [Build, packaging and release](#build-packaging-and-release) | 10 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -105,6 +105,9 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-05 (seventh)** — [Eighteen null experiments say the recorded x86-64 noise floor was right: the `POLICY TOO LOOSE` line that opened this item had been printed from a contaminated sample](CHANGELOG.md#2026-09-05-noise-floor-upheld)
 - **2026-09-05 (third)** — [The 68030 fetched its two opcode words with two calls where the 68040 uses one; folding them is worth 10 % — and the reason nobody knew that is that every ceiling in the plan was priced on a backend this host does not select](CHANGELOG.md#2026-09-05-fused-030-fetch)
 - **2026-09-06** — [The x86-64 68030 promotion is re-earned on the terms its withdrawal set: two green tiers, not a bench number — and the five weeks it was withdrawn cost a factor of three](CHANGELOG.md#2026-09-06-x64-030-restored)
+- **2026-09-06 (fifth)** — [Speedometer's census closes every Finder window before choosing its volume: the real CPU test now finishes at frame 270 identically on A64 and `threaded`](CHANGELOG.md#2026-09-06-speedometer-navigation-fixed)
+- **2026-09-06 (fourth)** — [The AArch64 host requalifies its own 68030 promotion: 56/56 executed with the private corpus, and the A64-only store guard finally runs where its subject exists](CHANGELOG.md#2026-09-06-a64-030-requalified)
+- **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](CHANGELOG.md#2026-09-06-speedometer-suite)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -344,6 +347,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (sixth)** — [The first application-load TIME profile: translation is the biggest post, and code density is not](CHANGELOG.md#2026-09-02-time-profile)
 - **2026-09-03 (tenth)** — [RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci](CHANGELOG.md#2026-09-03-rbv-inventory)
 - **2026-09-05 (sixth)** — [The caller profile re-taken on the arm that ships: the memory family is 19.2 % of the run instead of 10.0 %, and the generator owns none of it](CHANGELOG.md#2026-09-05-threaded-caller-profile)
+- **2026-09-06 (sixth)** — [Speedometer's first correct time profile makes every fallback a 5.6% ceiling, not a target: the 0.27 s CPU phase must be isolated before any opcode is priced](CHANGELOG.md#2026-09-06-speedometer-time-profile)
 - **2026-09-06 (third)** — [The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem](CHANGELOG.md#2026-09-06-speedometer-census-wrong-program)
 
 ## Build, packaging and release

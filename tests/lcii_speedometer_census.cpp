@@ -77,17 +77,31 @@ int main() {
     const long scsi0 = mem.scsi().commands;
     std::vector<uint32_t> beforeSession;
     screen(beforeSession);
-    // This image leaves the JEUX window active over the volume root. Finder's
-    // Cmd-Up opens the enclosing folder and deterministically makes GIST PERSO
-    // the type-select scope; without it "logiciels" silently selects a game
-    // in JEUX and the run ends in that application's Open dialog.
-    mem.keyEvent(0x37, true);                  // Cmd
-    runFrames(6);
-    keyHold(0x3E, 30);                        // Up Arrow: enclosing folder
-    mem.keyEvent(0x37, false);
-    runFrames(900);
-    dump("lcii_speedometer_root.ppm");
-    cpu.jit().censusPhase("open-root");
+    // This image auto-opens several overlapping Finder windows at boot. A
+    // Cmd-Up used to try to make GIST PERSO the type-select scope, but an
+    // already-open sibling can remain frontmost: the 2026-09-06 run selected
+    // Prince of Persia in JEUX and profiled its Read Me as "cpu-test".
+    //
+    // Reset the scope instead of inferring the window stack. Cmd-Option-W
+    // closes every Finder window, then type-selecting the volume icon on the
+    // desktop and Cmd-O establishes GIST PERSO as the one known root. ADB
+    // codes are physical and this volume uses a French layout, where W is
+    // code $06 rather than QWERTY's $0D; send both while the chord is held.
+    // The non-W key is Z on either layout, and Cmd-Option-Z is harmless in
+    // the Finder. This is the same guest-level reset used by the AIO gates on
+    // this exact volume.
+    for (uint8_t w : {uint8_t(0x06), uint8_t(0x0D)}) {
+        mem.keyEvent(0x37, true);              // Cmd
+        runFrames(12);
+        mem.keyEvent(0x3A, true);              // Option
+        runFrames(12);
+        keyHold(w, 75);                        // W (AZERTY, then QWERTY)
+        mem.keyEvent(0x3A, false);
+        mem.keyEvent(0x37, false);
+        runFrames(300);
+    }
+    dump("lcii_speedometer_desktop.ppm");
+    open("gist", 900, "open-root", "lcii_speedometer_root.ppm");
     open("logiciels", 900, "open-software", "lcii_speedometer_software.ppm");
     open("speedo", 900, "open-folder", "lcii_speedometer_folder.ppm");
     open("speedometer", 2400, "launch-dialog", "lcii_speedometer_launch.ppm");
@@ -137,6 +151,13 @@ int main() {
         mem.mouseButton(false);
         runFrames(30);
     };
+    auto command = [&](uint8_t shortcut, long settle) {
+        mem.keyEvent(0x37, true);              // Cmd
+        runFrames(6);
+        keyHold(shortcut, 30);
+        mem.keyEvent(0x37, false);
+        runFrames(settle);
+    };
     steer(130, 8);                             // Tests menu
     mem.mouseButton(true);
     runFrames(60);
@@ -144,24 +165,62 @@ int main() {
     mem.mouseButton(false);
     runFrames(60);
 
-    mem.keyEvent(0x37, true);                  // Cmd-R: Performance Rating
-    runFrames(6);
-    keyHold(0x0F, 30);
-    mem.keyEvent(0x37, false);
-    runFrames(900);
-    dump("lcii_speedometer_performance.ppm");
+    // Speedometer is a suite, not just the aggregate CPU rating. Keep a
+    // dump-only discovery pass for the other three test-family dialogs so a
+    // new phase can be automated from the guest's actual controls instead of
+    // guessed screen coordinates. Each dialog is cancelled before the next;
+    // normal census runs do not pay for or observe this branch.
+    if (std::getenv("POM68K_SPEEDO_DISCOVER")) {
+        auto inspectDialog = [&](uint8_t shortcut, const char* ppm) {
+            command(shortcut, 300);
+            dump(ppm);
+            keyHold(0x35, 30);                 // Escape: Cancel
+            runFrames(120);
+        };
+        inspectDialog(0x0B, "lcii_speedometer_benchmark_mix.ppm"); // Cmd-B
+        inspectDialog(0x03, "lcii_speedometer_fpu.ppm");           // Cmd-F
+        inspectDialog(0x05, "lcii_speedometer_graphics.ppm");      // Cmd-G
+    }
 
-    // Performance Rating defaults to the aggregate CPU+Graphics+Disk+Math
-    // score. Keep only CPU so the measured phase names one JIT workload and
-    // cannot be dominated by QuickDraw or SCSI service time.
-    click(194, 148);                           // Graphics off
-    click(194, 170);                           // Disk off
-    click(194, 190);                           // Math off
-    dump("lcii_speedometer_cpu_setup.ppm");
-    cpu.jit().censusPhase("cpu-test-start");
+    const std::string mode = std::getenv("POM68K_SPEEDO_MODE")
+                           ? std::getenv("POM68K_SPEEDO_MODE") : "cpu";
+    uint8_t shortcut = 0;
+    if (mode == "cpu") shortcut = 0x0F;        // Cmd-R: Performance Rating
+    else if (mode == "mix") shortcut = 0x0B;   // Cmd-B: Benchmark Mix
+    else if (mode == "fpu") shortcut = 0x03;   // Cmd-F: FPU Benchmarks
+    else if (mode == "graphics") shortcut = 0x05; // Cmd-G: Color QuickDraw
+    else {
+        std::fprintf(stderr,
+                     "FAIL: unknown POM68K_SPEEDO_MODE '%s' "
+                     "(want cpu, mix, fpu or graphics)\n", mode.c_str());
+        return 1;
+    }
+    command(shortcut, 900);
 
-    const auto cpuStart = std::chrono::steady_clock::now();
-    keyHold(0x24, 30);                         // default OK: run CPU test
+    if (mode == "cpu") {
+        dump("lcii_speedometer_performance.ppm");
+        // Performance Rating defaults to CPU+Graphics+Disk+Math. Keep only
+        // CPU so this phase cannot be dominated by QuickDraw or SCSI.
+        click(194, 148);                       // Graphics off
+        click(194, 170);                       // Disk off
+        click(194, 190);                       // Math off
+    } else if (mode == "graphics") {
+        // The Color QuickDraw dialog defaults to Monochrome only even on the
+        // LC II's 8-bit display. Its other tests create their own 2/4/8/16-bit
+        // drawing worlds, so select every advertised depth: a phase called
+        // "graphics" must not silently mean just the first of five rows.
+        click(183, 145);                       // 2 bits/pixel on
+        click(183, 166);                       // 4 bits/pixel on
+        click(183, 187);                       // 8 bits/pixel on
+        click(183, 208);                       // 16 bits/pixel on
+    }
+    const std::string setupPpm = "lcii_speedometer_" + mode + "_setup.ppm";
+    dump(setupPpm.c_str());
+    const std::string phaseStart = mode + "-test-start";
+    cpu.jit().censusPhase(phaseStart.c_str());
+
+    const auto testStart = std::chrono::steady_clock::now();
+    keyHold(0x24, 30);                         // default OK / Run Set
     auto resultShape = [&]() {
         std::vector<uint32_t> fb;
         screen(fb);
@@ -173,75 +232,101 @@ int main() {
         const double right = blackRatio(fb, 365, 450, 105, 205);
         return std::array<double, 3>{left, centre, right};
     };
-    // The cap was a flat 600 frames — 20 guest seconds — and the census had
-    // been reporting `done=0` against it since at least 2026-09-02, which
-    // makes its cpu-test phase a name for boot, launch and a PARTIAL test
+    // The historical CPU cap was a flat 600 frames — 20 guest seconds — and
+    // the census had been reporting `done=0` against it since at least
+    // 2026-09-02, which made its cpu-test phase a name for boot, launch and a PARTIAL test
     // (the 2026-09-02 (sixth) honesty note says so). Two different failures
     // hide behind one flag, so both are now observable: `POM68K_SPEEDO_FRAMES`
     // moves the cap, and the per-poll shape trace says whether the result
     // window is CONVERGING and merely slow, or whether the structural check
     // never matches at all.
-    const long cpuCap = std::getenv("POM68K_SPEEDO_FRAMES")
-                      ? std::strtol(std::getenv("POM68K_SPEEDO_FRAMES"), nullptr, 10)
-                      : 600;
+    const long testCap = std::getenv("POM68K_SPEEDO_FRAMES")
+                       ? std::strtol(std::getenv("POM68K_SPEEDO_FRAMES"), nullptr, 10)
+                       : (mode == "cpu" ? 600 : 6000);
     const bool shapeTrace = std::getenv("POM68K_SPEEDO_TRACE") != nullptr;
-    long cpuFrames = 0;
+    long testFrames = 0;
     std::array<double, 3> shape{};
     std::array<double, 3> firstShape{};
-    bool cpuDone = false, shapeMoved = false;
-    while (cpuFrames < cpuCap && !cpuDone) {
+    bool testDone = false, shapeMoved = false;
+    while (testFrames < testCap && !testDone) {
         runFrames(30);                          // poll twice per guest second
-        cpuFrames += 30;
-        shape = resultShape();
-        if (cpuFrames == 30) firstShape = shape;
+        testFrames += 30;
+        if (mode == "cpu") {
+            shape = resultShape();
+            testDone = shape[0] > 0.25 && shape[1] < 0.25 && shape[2] > 0.25;
+        } else {
+            std::vector<uint32_t> fb;
+            screen(fb);
+            // Every Speedometer family ends with the same centred
+            // "The tests are done!" alert. A black-density detector is not
+            // enough: Color QuickDraw's diagonal crossed the old OK-button
+            // rectangle at frame 60 and manufactured a false completion.
+            // Hash the monochrome mask of the alert's opaque icon/text area
+            // instead. It is byte-identical in the observed CPU and FPU
+            // results and excludes the family-specific result window behind
+            // it. The ratios remain in the trace only as drift diagnostics.
+            uint64_t alert = 1469598103934665603ull;
+            for (int y = 90; y < 140; y++) {
+                for (int x = 205; x < 350; x++) {
+                    const size_t i = size_t(y) * 512 + x;
+                    alert ^= i < fb.size() && (fb[i] & 0xFF) < 0x80;
+                    alert *= 1099511628211ull;
+                }
+            }
+            shape = {blackRatio(fb, 205, 350, 90, 140),
+                     blackRatio(fb, 154, 360, 82, 188),
+                     alert == 0x664dbcad34d11c29ull ? 1.0 : 0.0};
+            testDone = shape[2] == 1.0;
+        }
+        if (testFrames == 30) firstShape = shape;
         for (int i = 0; i < 3; i++)
             if (std::fabs(shape[i] - firstShape[i]) > 0.002) shapeMoved = true;
         if (shapeTrace)
-            std::printf("  [speedo] frames=%-6ld shape=%.3f/%.3f/%.3f\n",
-                        cpuFrames, shape[0], shape[1], shape[2]);
-        cpuDone = shape[0] > 0.25 && shape[1] < 0.25 && shape[2] > 0.25;
+            std::printf("  [speedo:%s] frames=%-6ld shape=%.3f/%.3f/%.3f\n",
+                        mode.c_str(), testFrames, shape[0], shape[1], shape[2]);
     }
-    const double cpuWall = std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - cpuStart).count();
-    dump("lcii_speedometer_cpu_result.ppm");
-    std::printf("cpu-test: done=%d frames=%ld wall=%.6fs "
+    const double testWall = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - testStart).count();
+    const std::string resultPpm = "lcii_speedometer_" + mode + "_result.ppm";
+    dump(resultPpm.c_str());
+    std::printf("speedometer-test: mode=%s done=%d frames=%ld wall=%.6fs "
                 "shape=%.3f/%.3f/%.3f fp=%016llx screen=%016llx\n",
-                cpuDone, cpuFrames, cpuWall, shape[0], shape[1], shape[2],
+                mode.c_str(), testDone, testFrames, testWall,
+                shape[0], shape[1], shape[2],
                 (unsigned long long)bench::fingerprint(cpu),
                 (unsigned long long)screenFingerprint());
-    cpu.jit().censusPhase("cpu-test");
-    if (!cpuDone) {
+    const std::string phaseDone = mode + "-test";
+    cpu.jit().censusPhase(phaseDone.c_str());
+    if (!testDone) {
         // Two different failures used to share one `done=0`, and the
         // difference decides whether any number this census produced is
         // usable. If the sampled regions never moved at all, the guest was
-        // not running a CPU benchmark: on 2026-09-06 the type-select
+        // not running the selected family: on 2026-09-06 the type-select
         // navigation landed in Prince of Persia's Read Me and this phase
         // profiled a SimpleText window for 200 guest seconds under the name
         // "cpu-test". Say which one happened, because a slow test is a
         // budget problem and a frozen screen is a lie.
         if (!shapeMoved)
             std::fprintf(stderr,
-                "FAIL: the cpu-test regions never changed in %ld frames — the "
-                "guest is not running Speedometer's CPU test, so this run's "
-                "'cpu-test' phase names some other program. Check the "
+                "FAIL: Speedometer '%s' regions never changed in %ld frames — "
+                "the guest is not running that test family, so this phase "
+                "names some other program. Check the "
                 "navigation (POM68K_DUMP=1) before trusting any phase here.\n",
-                cpuFrames);
+                mode.c_str(), testFrames);
         else
             std::fprintf(stderr,
-                "FAIL: Speedometer CPU result never appeared in %ld frames "
+                "FAIL: Speedometer '%s' result never appeared in %ld frames "
                 "(the screen did move, so this is a budget question — raise "
-                "POM68K_SPEEDO_FRAMES)\n", cpuFrames);
+                "POM68K_SPEEDO_FRAMES)\n", mode.c_str(), testFrames);
         return 1;
     }
 
     keyHold(0x24, 30);                         // dismiss "tests are done"
     runFrames(300);
-    mem.keyEvent(0x37, true);                  // Cmd-B: Benchmark Mix
-    runFrames(6);
-    keyHold(0x0B, 30);
-    mem.keyEvent(0x37, false);
-    runFrames(900);
-    dump("lcii_speedometer_mix.ppm");
+    if (mode == "cpu") {
+        command(0x0B, 900);                    // preserve historical end state
+        dump("lcii_speedometer_mix.ppm");
+    }
 
     std::vector<uint32_t> afterSession;
     screen(afterSession);

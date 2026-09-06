@@ -1,0 +1,59 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+boot: Finder up, SCSI 1751 commands
+  [speedo:mix] frames=30     shape=0.089/0.094/0.000
+  [speedo:mix] frames=60     shape=0.089/0.094/0.000
+  [speedo:mix] frames=90     shape=0.089/0.094/0.000
+  [speedo:mix] frames=120    shape=0.089/0.094/0.000
+  [speedo:mix] frames=150    shape=0.089/0.094/0.000
+  [speedo:mix] frames=180    shape=0.089/0.094/0.000
+  [speedo:mix] frames=210    shape=0.089/0.094/0.000
+  [speedo:mix] frames=240    shape=0.089/0.094/0.000
+  [speedo:mix] frames=270    shape=0.089/0.094/0.000
+  [speedo:mix] frames=300    shape=0.089/0.094/0.000
+  [speedo:mix] frames=330    shape=0.089/0.094/0.000
+  [speedo:mix] frames=360    shape=0.089/0.094/0.000
+  [speedo:mix] frames=390    shape=0.089/0.094/0.000
+  [speedo:mix] frames=420    shape=0.089/0.094/0.000
+  [speedo:mix] frames=450    shape=0.085/0.093/0.000
+  [speedo:mix] frames=480    shape=0.085/0.093/0.000
+  [speedo:mix] frames=510    shape=0.085/0.093/0.000
+  [speedo:mix] frames=540    shape=0.085/0.093/0.000
+  [speedo:mix] frames=570    shape=0.085/0.093/0.000
+  [speedo:mix] frames=600    shape=0.078/0.090/0.000
+  [speedo:mix] frames=630    shape=0.078/0.090/0.000
+  [speedo:mix] frames=660    shape=0.078/0.090/0.000
+  [speedo:mix] frames=690    shape=0.078/0.090/0.000
+  [speedo:mix] frames=720    shape=0.035/0.019/0.000
+  [speedo:mix] frames=750    shape=0.076/0.088/0.000
+  [speedo:mix] frames=780    shape=0.076/0.088/0.000
+  [speedo:mix] frames=810    shape=0.076/0.088/0.000
+  [speedo:mix] frames=840    shape=0.076/0.088/0.000
+  [speedo:mix] frames=870    shape=0.076/0.084/0.000
+  [speedo:mix] frames=900    shape=0.076/0.084/0.000
+  [speedo:mix] frames=930    shape=0.076/0.084/0.000
+  [speedo:mix] frames=960    shape=0.076/0.084/0.000
+  [speedo:mix] frames=990    shape=0.076/0.080/0.000
+  [speedo:mix] frames=1020   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1050   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1080   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1110   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1140   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1170   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1200   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1230   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1260   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1290   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1320   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1350   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1380   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1410   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1440   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1470   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1500   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1530   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1560   shape=0.076/0.080/0.000
+  [speedo:mix] frames=1590   shape=0.055/0.138/1.000
+speedometer-test: mode=mix done=1 frames=1590 wall=1.817091s shape=0.055/0.138/1.000 fp=71ee4dacad498a9b screen=227b973e7c332711
+session: 46.1% of the screen changed, SCSI +556, fp=0053d3570e0b471b screen=5508b6e9afbd6d91
+halted=0, SCSI 2307 commands total

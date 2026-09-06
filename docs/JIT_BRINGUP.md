@@ -941,9 +941,10 @@ correctness has a standing guard, so the two halves were separated:
 > `caps().autoFamilies` on x64 drops back to `kGuest68040`; `guestFamilies`
 > is untouched, so the pinned gates below keep pointing at the defect, and
 > the bisect between the flip commit and `d4a18b6` is the open work.
-> **The a64 flip has no fresher evidence than this one had** — the AArch64
-> host must re-run its own 030 tier before that promotion is trusted.
-> `CHANGELOG.md` 2026-08-29.
+> **The a64 flip had no fresher evidence than this one had.** That warning
+> remained valid until 2026-09-06, when the AArch64 host reran its own 030
+> tier: 56/56, census 56 executed / 0 soft-skipped / 0 failed, in 2970.62 s.
+> `CHANGELOG.md` 2026-08-29 and 2026-09-06.
 >
 > **RESTORED 2026-09-06, on this box's own terms.** "Restore the 030 only
 > with a green m030 tier behind it, not with a bench number" is what the
@@ -957,8 +958,12 @@ correctness has a standing guard, so the two halves were separated:
 > was explicitly not the argument, is nevertheless the size of what the
 > withdrawal cost: `threaded` 17.45 s against x64 5.69 s at 2000 frames,
 > and the m030 tier 4830 s against 2648 s. `CHANGELOG.md` 2026-09-06.
-> The a64 caution above still stands: that host has still not re-run its
-> own 030 tier.
+> **A64 REQUALIFIED 2026-09-06, independently.** The current AArch64-native
+> build passes `-L m030` 56/56 in 2970.62 s, with all 56 gates executed and
+> no soft-skip, after the private corpus passed `assets.lock --strict` 38/38.
+> The host-only `jit_store_guard_a64_test`, previously compile-only on x64,
+> also runs its 23 assertions green against the real A64 backend. This closes
+> the caution above without borrowing any x64 result.
 
 * **Default: decided independently per backend — and BOTH have now fired.**
   The mechanism: `BackendCaps::autoFamilies` is the SPEED mask `auto`

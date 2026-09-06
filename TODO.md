@@ -88,30 +88,26 @@ traitées ; le récit et les mesures sont au `CHANGELOG` des 2026-09-04 et
 empreinte identique. **Rien n'y reste ouvert.**
 
 **La leçon à ne pas reperdre :** ce n'était pas « un bucket de profil ne se
-retire qu'à moitié », c'était **le bras mesuré**. `X64Backend::caps()` ne
-déclare `autoFamilies = kGuest68040`, donc un invité 68030 sur x86-64 résout
-vers `threaded`, qui passe *chaque* instruction par `mmuExecuteStart`. Le plan
-chiffrait ses six tranches sur le profil x64-natif — un override diagnostique
-— et classait 4ᵉ sur 5 la seule tranche dont la valeur est concentrée sur le
-bras qui expédie ; elle vaut −10 %.
+retire qu'à moitié », c'était **le bras mesuré**. Jusqu'au 2026-09-06,
+`X64Backend::caps()` ne déclarait que `autoFamilies = kGuest68040`, donc un
+invité 68030 sur x86-64 se résolvait vers `threaded`, qui passe *chaque*
+instruction par `mmuExecuteStart`. Le plan chiffrait ses six tranches sur le
+profil x64-natif — alors un override diagnostique — et classait 4ᵉ sur 5 la
+seule tranche dont la valeur était concentrée sur le bras qui expédiait ; elle
+vaut −10 %.
 
 ### B.3 Qualification 68030 par hôte
 
-La re-promotion x64/68030 est **acquise le 2026-09-06** : `auto` résout de
-nouveau un 68030 vers le générateur natif sur x86-64, sur les trois
-admissions que le retrait du 2026-08-29 exigeait (`CHANGELOG` du jour).
-Corollaire à ne pas oublier en mesurant : `POM68K_JIT_BACKEND=x64` n'est
-plus un override diagnostique sur cet hôte, c'est le produit.
+Les deux promotions 68030 sont **acquises séparément le 2026-09-06**. Sur
+x86-64, `auto` résout de nouveau un 68030 vers le générateur natif sur les
+trois admissions que le retrait du 2026-08-29 exigeait. Sur AArch64 natif, le
+tier `m030` frais passe **56/56 en 2 970,62 s**, census **56 exécutés / 0
+soft-skip / 0 échec**, et `jit_store_guard_a64_test` passe ses 23 assertions
+sur le backend réel. Corollaire à ne pas oublier en mesurant :
+`POM68K_JIT_BACKEND=x64|a64` n'est plus un override diagnostique sur l'hôte
+correspondant, c'est le produit. Évidence : `CHANGELOG` du jour et
+`scratchpad/2026-09-06/a64-m030/LastTest.log`.
 
-- [ ] **Re-vérifier la promotion a64/68030 sur son propre hôte.**
-  `docs/JIT_BRINGUP.md` § C.5 le note depuis le 2026-08-29 et c'est toujours
-  vrai : le basculement AArch64 du 2026-08-20 n'a jamais eu de preuve plus
-  fraîche que celle que x86-64 a perdue neuf jours plus tard. Un tier 030
-  complet sur l'hôte A64 est dû avant qu'on lui fasse confiance.
-- [ ] **Exécuter `jit_store_guard_a64_test` sur un hôte AArch64.** Il n'est
-  que *compilé* sur x86-64 — enregistré comme gate absent dans
-  `Pom68kJitGates.cmake`, son sujet n'existe pas ici. À faire dans la session
-  A64, à côté du portage du biais d'horloge par backend.
 - [ ] **Ne pas rouvrir l'écart d'admission 68030 sans profil temporel neuf.**
   Chiffré le 2026-09-06 sur le chemin qui expédie et **refusé** : la parité
   opcode est zéro et gatée (`jit_backend_parity_test`), donc les refus sont
@@ -125,24 +121,25 @@ plus un override diagnostique sur cet hôte, c'est le produit.
   Reste la convention, pas un défaut : une règle 68k commune vit dans
   l'IR/coût partagé, jamais dans un emitter.
   Évidence : `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`.
-- [ ] **Réparer la navigation de `lcii_speedometer_census`.** Le 2026-09-06 :
-  il ne profilait pas Speedometer du tout — sa phase `cpu-test` passait
-  200 secondes invité sur une fenêtre « Read Me » de Prince of Persia, la
-  dérive commençant deux phases plus tôt (`open-software`). La sélection au
-  clavier n'a plus GIST PERSO pour portée, et le Cmd-Up censé l'y ramener ne
-  suffit pas quand plusieurs fenêtres du Finder sont ouvertes. Speedometer
-  4.02 **est** sur le volume : c'est la navigation, pas l'actif. Le garde
-  ajouté le même jour empêche désormais le mensonge silencieux (écran figé →
-  échec nommé, plus `POM68K_SPEEDO_FRAMES` et `POM68K_SPEEDO_TRACE`), mais le
-  census reste rouge tant que la navigation n'est pas déterministe.
-- [ ] **Promouvoir la suite Speedometer uniquement depuis un profil
-  temporel.** Garder `C029`, `08D1` et les lectures périphériques variables
-  dans Moira tant qu'un contrat de phase n'est pas démontré ; ne pas créer des
-  lowerings pour des familles absentes du corpus. **Le garde durcit au
-  2026-09-06 :** il n'existe aujourd'hui *aucun* profil temporel Speedometer
-  valide, le seul instrument qui prétendait en produire mesurait un autre
-  programme. Rien ne peut être promu depuis ce corpus tant que l'item
-  ci-dessus n'est pas fait.
+- [ ] **Isoler ou amplifier les familles Speedometer avant toute promotion.**
+  La navigation est réparée et le harnais sélectionne séparément CPU,
+  Benchmark Mix, FPU et Color QuickDraw (les cinq profondeurs). A64 et
+  `threaded` terminent chaque famille aux mêmes trames, empreintes, écrans et
+  comptes SCSI. Les trois profils temporels complets déjà capturés restent
+  toutefois dominés par le boot : 33 322–33 512 échantillons on-CPU, fallback
+  interprété stable à 5,54–5,64 %, mais seulement 0,274–0,277 s de CPU utile.
+  Les familles plus longues rendent enfin une capture attachée à la phase
+  praticable ; elles ne transforment pas le bucket whole-route en attribution.
+  Premier tri : FPU compte 438 964 instructions F-line `UNSAFE` (15,2 % de sa
+  phase), tandis que QuickDraw est natif à 99,7 % mais produit 1,88 M rejouements
+  de gardes de shifts. Étendre leur cache multi-version les retire et baisse
+  tous les fallbacks de 70,5 %, mais un ABBA donne **+1,75 % plus lent** :
+  candidat retiré, ne pas le ressusciter depuis le compteur seul.
+  Avant de rouvrir un lowering, répéter une famille dans l'invité ou
+  échantillonner sa phase seule. `C029`, `08D1` et les lectures périphériques
+  variables restent dans Moira jusque-là. Évidence :
+  `scratchpad/2026-09-06/a64-m030/SPEEDOMETER_TIME_PROFILE.md` et
+  `SPEEDOMETER_SUITE.md` dans le même répertoire.
 
 ### B.4 Gardes, mémoire et coût partagé
 
