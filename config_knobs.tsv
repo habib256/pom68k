@@ -210,6 +210,8 @@ POM68K_SHUTDOWN_PHASE	test	owner:tests/q605_shutdown_flush.cpp
 POM68K_SHUTDOWN_SHIFT	test	owner:tests/lcii_shutdown_flush.cpp
 POM68K_SHUTDOWN_SLICED	test	owner:tests/q605_shutdown_flush.cpp
 POM68K_SHUTDOWN_SPECIAL_X	test	owner:tests/q605_shutdown_flush.cpp
+POM68K_SPEEDO_FRAMES	test	owner:tests/lcii_speedometer_census.cpp
+POM68K_SPEEDO_TRACE	test	owner:tests/lcii_speedometer_census.cpp
 POM68K_SPEED_LOG	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_COUNT	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_SKIP	diagnostic	owner:src/StartupOptions.h

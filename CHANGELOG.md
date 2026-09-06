@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the Speedometer census reports done=0, so its profile covers boot, launch and the partial test" (2026-09-02 honesty note) — it had launched a different program: the `cpu-test` phase is a SimpleText Read Me, and there is no valid Speedometer profile at all** → [2026-09-06 (third) — The Speedometer census was not profiling Speedometer…](#2026-09-06-speedometer-census-wrong-program)
 - **"this host resolves 2 permille, so the recorded 10-permille floor is too loose" — that null was taken while three agents and a second project shared the machine; eighteen clean ones show a bimodal host that produces 1.8 % excursions with nothing changed, and the budget stays** → [2026-09-05 (seventh) — Eighteen null experiments…](#2026-09-05-noise-floor-upheld)
 - **"the fused 68030 opcode fetch is worth ≈1.8 %, at risk, and ranks fourth of five" — it is worth 10 %, and the ranking was wrong because every ceiling in the plan was priced on `POM68K_JIT_BACKEND=x64`, which `caps().autoFamilies` never selects for a 68030** → [2026-09-05 (third) — The 68030 fetched its two opcode words…](#2026-09-05-fused-030-fetch)
 - **"the interpreter data window is a net loss, so it stays opt-in" (68040, 2026-07-28) — on the 68030 the same feature measures −5.5 % on `threaded` and −5.7 % on the interpreter arm, which is where the 68040 lost** → [2026-09-05 (fourth) — `POM68K_DATA_WINDOW` was a dead path…](#2026-09-05-030-data-window)
@@ -400,6 +401,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-06 (third)** — [The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem](#2026-09-06-speedometer-census-wrong-program)
 - **2026-09-06 (later)** — [One MOVE form is 70 % of everything the 68030 generator cannot compile, and it is worth 0.87 % — under this host's floor, so it stays uncompiled](#2026-09-06-030-admission-gap-priced)
 - **2026-09-06** — [The x86-64 68030 promotion is re-earned on the terms its withdrawal set: two green tiers, not a bench number — and the five weeks it was withdrawn cost a factor of three](#2026-09-06-x64-030-restored)
 - **2026-09-05 (seventh)** — [Eighteen null experiments say the recorded x86-64 noise floor was right: the `POLICY TOO LOOSE` line that opened this item had been printed from a contaminated sample](#2026-09-05-noise-floor-upheld)
@@ -828,6 +830,70 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-06-speedometer-census-wrong-program"></a>
+## 2026-09-06 (third) — The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem
+
+TODO § B.3 says to promote a Speedometer opcode only from a temporal profile.
+Producing that profile meant running `lcii_speedometer_census`, and it has been
+reporting `cpu-test: done=0` since at least 2026-09-02 — recorded that day as
+an honesty note: *"its profile covers boot, launch and the partial test."*
+
+That note was too kind, and this entry corrects it. The census had not run a
+partial test. It had launched a different program.
+
+**What the screen actually showed.** With `POM68K_DUMP=1`, the phase named
+`cpu-test` is a **SimpleText window titled "Read Me", containing the release
+notes for Prince of Persia** — French Finder menus swapped for
+`Fichier / Édition / Polices / Corps / Style / Son`. The drift is visible two
+phases earlier: `open-software`, the step that should have opened the
+`logiciels` folder on GIST PERSO, has *Prince of Persia* frontmost instead.
+
+**Why the existing guard did not catch it.** The census navigates by
+type-select — type a prefix, press Cmd-O — and its own comment already names
+this failure: *"without it, 'logiciels' silently selects a game in JEUX and the
+run ends in that application's Open dialog."* The Cmd-Up meant to pin GIST
+PERSO as the type-select scope no longer pins it; the `open-root` screenshot
+shows three Finder windows open with SimCity2000 in front. And the only
+structural check, `resultShape()`, runs at the *end* — long after
+`censusPhase("cpu-test")` has already named the phase. The tool recorded its
+verdict before discovering it was in the wrong program.
+
+**Two failures wore one flag.** Raised to 6000 frames — 200 guest seconds —
+the three sampled regions read `0.086 / 0.068 / 0.104` at every single poll,
+identical to three decimals. That is not a slow benchmark; that is a screen
+with nothing running on it. `done=0` cannot tell those apart, and the
+difference decides whether any number the census produced is usable.
+
+**Fixed, in the tool rather than in the write-up.** The cpu-test loop now
+tracks whether the sampled shape *ever* moves, and the failure says which
+question is being asked: a frozen screen reports "the guest is not running
+Speedometer's CPU test, so this run's `cpu-test` phase names some other
+program", while a moving screen that never converges reports a budget problem
+and points at the new `POM68K_SPEEDO_FRAMES` cap. `POM68K_SPEEDO_TRACE=1`
+prints the shape per poll. A census may not name a phase after a program it
+cannot show it launched.
+
+**What this does not change.** Speedometer 4.02 *is* on the volume — its
+resources are in `GISTPERSO-boot.vhd`. The defect is navigation, not a missing
+asset, and repairing it is filed rather than done: making guest-UI type-select
+deterministic against a volume whose Finder window stack varies is its own
+piece of work.
+
+**What it does change.** There is currently **no valid Speedometer temporal
+profile**, so § B.3's guard hardens rather than relaxes: `C029`, `08D1` and the
+variable peripheral reads stay in Moira, and no lowering may be opened for
+that corpus, because the corpus has never actually been measured. The
+2026-09-02 (sixth) profile's Speedometer-derived figures should be read as
+covering boot and launch only.
+
+The same day's admission-gap entry priced the LC II corpus and refused it at
+1.24 %; this one says the other corpus has not been priced at all. Both point
+the same way — nothing here is worth an emitter change on present evidence.
+
+Evidence: `scratchpad/2026-09-06/speedometer/`.
 
 ---
 

@@ -125,10 +125,24 @@ plus un override diagnostique sur cet hôte, c'est le produit.
   Reste la convention, pas un défaut : une règle 68k commune vit dans
   l'IR/coût partagé, jamais dans un emitter.
   Évidence : `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`.
+- [ ] **Réparer la navigation de `lcii_speedometer_census`.** Le 2026-09-06 :
+  il ne profilait pas Speedometer du tout — sa phase `cpu-test` passait
+  200 secondes invité sur une fenêtre « Read Me » de Prince of Persia, la
+  dérive commençant deux phases plus tôt (`open-software`). La sélection au
+  clavier n'a plus GIST PERSO pour portée, et le Cmd-Up censé l'y ramener ne
+  suffit pas quand plusieurs fenêtres du Finder sont ouvertes. Speedometer
+  4.02 **est** sur le volume : c'est la navigation, pas l'actif. Le garde
+  ajouté le même jour empêche désormais le mensonge silencieux (écran figé →
+  échec nommé, plus `POM68K_SPEEDO_FRAMES` et `POM68K_SPEEDO_TRACE`), mais le
+  census reste rouge tant que la navigation n'est pas déterministe.
 - [ ] **Promouvoir la suite Speedometer uniquement depuis un profil
   temporel.** Garder `C029`, `08D1` et les lectures périphériques variables
   dans Moira tant qu'un contrat de phase n'est pas démontré ; ne pas créer des
-  lowerings pour des familles absentes du corpus.
+  lowerings pour des familles absentes du corpus. **Le garde durcit au
+  2026-09-06 :** il n'existe aujourd'hui *aucun* profil temporel Speedometer
+  valide, le seul instrument qui prétendait en produire mesurait un autre
+  programme. Rien ne peut être promu depuis ce corpus tant que l'item
+  ci-dessus n'est pas fait.
 
 ### B.4 Gardes, mémoire et coût partagé
 

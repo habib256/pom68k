@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 
 using namespace lciiapp;
 
@@ -172,13 +173,32 @@ int main() {
         const double right = blackRatio(fb, 365, 450, 105, 205);
         return std::array<double, 3>{left, centre, right};
     };
+    // The cap was a flat 600 frames — 20 guest seconds — and the census had
+    // been reporting `done=0` against it since at least 2026-09-02, which
+    // makes its cpu-test phase a name for boot, launch and a PARTIAL test
+    // (the 2026-09-02 (sixth) honesty note says so). Two different failures
+    // hide behind one flag, so both are now observable: `POM68K_SPEEDO_FRAMES`
+    // moves the cap, and the per-poll shape trace says whether the result
+    // window is CONVERGING and merely slow, or whether the structural check
+    // never matches at all.
+    const long cpuCap = std::getenv("POM68K_SPEEDO_FRAMES")
+                      ? std::strtol(std::getenv("POM68K_SPEEDO_FRAMES"), nullptr, 10)
+                      : 600;
+    const bool shapeTrace = std::getenv("POM68K_SPEEDO_TRACE") != nullptr;
     long cpuFrames = 0;
     std::array<double, 3> shape{};
-    bool cpuDone = false;
-    while (cpuFrames < 600 && !cpuDone) {
+    std::array<double, 3> firstShape{};
+    bool cpuDone = false, shapeMoved = false;
+    while (cpuFrames < cpuCap && !cpuDone) {
         runFrames(30);                          // poll twice per guest second
         cpuFrames += 30;
         shape = resultShape();
+        if (cpuFrames == 30) firstShape = shape;
+        for (int i = 0; i < 3; i++)
+            if (std::fabs(shape[i] - firstShape[i]) > 0.002) shapeMoved = true;
+        if (shapeTrace)
+            std::printf("  [speedo] frames=%-6ld shape=%.3f/%.3f/%.3f\n",
+                        cpuFrames, shape[0], shape[1], shape[2]);
         cpuDone = shape[0] > 0.25 && shape[1] < 0.25 && shape[2] > 0.25;
     }
     const double cpuWall = std::chrono::duration<double>(
@@ -191,7 +211,26 @@ int main() {
                 (unsigned long long)screenFingerprint());
     cpu.jit().censusPhase("cpu-test");
     if (!cpuDone) {
-        std::fprintf(stderr, "FAIL: Speedometer CPU result never appeared\n");
+        // Two different failures used to share one `done=0`, and the
+        // difference decides whether any number this census produced is
+        // usable. If the sampled regions never moved at all, the guest was
+        // not running a CPU benchmark: on 2026-09-06 the type-select
+        // navigation landed in Prince of Persia's Read Me and this phase
+        // profiled a SimpleText window for 200 guest seconds under the name
+        // "cpu-test". Say which one happened, because a slow test is a
+        // budget problem and a frozen screen is a lie.
+        if (!shapeMoved)
+            std::fprintf(stderr,
+                "FAIL: the cpu-test regions never changed in %ld frames — the "
+                "guest is not running Speedometer's CPU test, so this run's "
+                "'cpu-test' phase names some other program. Check the "
+                "navigation (POM68K_DUMP=1) before trusting any phase here.\n",
+                cpuFrames);
+        else
+            std::fprintf(stderr,
+                "FAIL: Speedometer CPU result never appeared in %ld frames "
+                "(the screen did move, so this is a budget question — raise "
+                "POM68K_SPEEDO_FRAMES)\n", cpuFrames);
         return 1;
     }
 

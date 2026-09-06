@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 428 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 429 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 51 |
+| [Machine bring-ups](#machine-bring-ups) | 52 |
 | [Build, packaging and release](#build-packaging-and-release) | 10 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -344,6 +344,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-02 (sixth)** — [The first application-load TIME profile: translation is the biggest post, and code density is not](CHANGELOG.md#2026-09-02-time-profile)
 - **2026-09-03 (tenth)** — [RBV takes the second B.4 row: its own audit, its own gate line, and the CACR flush retires on the IIsi/IIci](CHANGELOG.md#2026-09-03-rbv-inventory)
 - **2026-09-05 (sixth)** — [The caller profile re-taken on the arm that ships: the memory family is 19.2 % of the run instead of 10.0 %, and the generator owns none of it](CHANGELOG.md#2026-09-05-threaded-caller-profile)
+- **2026-09-06 (third)** — [The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem](CHANGELOG.md#2026-09-06-speedometer-census-wrong-program)
 
 ## Build, packaging and release
 
