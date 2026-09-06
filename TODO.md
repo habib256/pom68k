@@ -22,8 +22,10 @@ reproductibles bit à bit. La décision du 2026-09-03 autorise la suite sans
 faire passer cette asymétrie de preuve pour une réussite ; elle est consignée
 dans le `CHANGELOG` et n'est plus une tâche locale exécutable.
 
-**B — terminer le moteur.** Le travail de performance et de conformité qui
-reste, ordonné par du temps mesuré et non par un nombre d'opcodes.
+**B — terminer le moteur.** **Clos le 2026-09-07** : ses trois critères de
+sortie sont remplis et consignés (`CHANGELOG` 2026-09-07 (second)). Les
+études moteur encore conditionnées à un profil temporel vivent en D.6 ; elles
+ne sont plus sur le chemin critique.
 
 **C — en faire un produit.** Les scénarios au-delà du boot, la portabilité de
 la preuve, le matériel cible et une première version publiée.
@@ -44,128 +46,39 @@ Règles de travail :
 
 ---
 
-## B — P0 — terminer et qualifier le moteur
+## B — P0 — terminer et qualifier le moteur — CLOS
 
-Contrat à préserver : les générateurs déclarent la conformité 68030+68040 ;
-`auto` choisit A64 pour 030+040 et x64 pour 040 seulement. Un fallback Moira
-est conforme. Une promotion `auto` exige locksteps, tiers CPU, etalon complet,
-empreintes identiques et gain supérieur au bruit de mesure.
+Le codegen JIT conformant est terminé au sens que ce fichier lui donnait.
+Contrat en vigueur : les deux générateurs natifs déclarent la conformité
+68030+68040 (`guestFamilies`), la parité opcode est zéro et gatée
+(`jit_backend_parity_test`), `auto` choisit A64 pour 030+040 sur AArch64 et
+x64 pour 030+040 sur x86-64 non-Windows, chaque promotion portée par son
+propre tier vert et son propre census exécuté ; tout opcode non émis est un
+rejeu Moira exact — y compris, depuis le 2026-09-07, la fenêtre générale FPU
+à l'intérieur des blocs — et l'interpréteur reste l'oracle.
 
-Les mesures utilisent un budget invité fixe, des empreintes identiques et une
-alternance ABBA dans le même environnement. Aucun boot etalon ne sert de
-chronomètre. Le résultat archivé distingue moteur demandé/réel, temps mur,
-cycles invités, corps générés, fenêtres, moteur, thunks, MMU/cache, LLE et
-causes de fallback.
+Critère de sortie, rempli (`CHANGELOG` 2026-09-07 (second)) :
 
-### B.1 Le poste n°1 du 68040 : la pompe d'échéancier, et finir les fenêtres
+- les fallbacks cache-actifs 040 encore identifiés sont fermés ou justifiés :
+  JSR à lecture ordonnée, polls IPL positionnés (admission conforme, knob
+  opt-in mesuré −6,3 %), miss de ligne froid rejoué entier ;
+- chaque coût important est attribuable avant qu'une optimisation ne
+  s'ouvre : profils whole-route macOS/Linux, census par phase et sampler
+  attaché à la phase (`phase_sample.py`) ;
+- chaque couple hôte/CPU possède une décision `auto` séparée, étayée par
+  conformité produit et gain mesuré (x86-64/030 restauré le 2026-09-06,
+  AArch64/030 requalifié le même jour, 040 sur les deux hôtes).
 
-Le profil post-cache (`CHANGELOG` 2026-09-03 (sixth), jambe macOS de
-l'instrument) re-classe le poste : le runtime moteur est retombé à 11,6 % de
-la phase gameplay (hashtable hors top-45, `dispatchBlockKey` 0,24 %), les
-corps générés montent à 41 %, et le premier agrégat hors corps générés est la
-pompe tick/échéancier des périphériques (~36 %). L'allongement des fenêtres
-cache-actives reste un chantier de conformité réel, mais son levier temps est
-borné à ~14 points ; l'échéancier événementiel — troisième item — porte
-désormais la masse mesurée.
+Leçons conservées ici parce qu'elles gouvernent toute mesure future :
 
-- [ ] **Décider le sort de l'admission late-poll : rentabilité seulement.** La
-  position des polls est dans l'IR et l'admission A64
-  (accès/poll/faute/validation) est prouvée conforme — mais mesurée −6,3 %
-  sur le bench cache-actif, car la classe admise est les boucles de poll
-  chaudes du boot (`CHANGELOG` 2026-09-03 (seventh)). Le knob
-  `POM68K_JIT_040_LATE_POLL` reste opt-in. La jambe x86-64 a rejoué tous les
-  locksteps x64 et les deux tiers CPU sans soft-skip et prouvé le knob
-  inerte octet pour octet sur x64 (`CHANGELOG` 2026-09-04 (sixth)) : la
-  précondition de rejeu est levée. Ne rouvrir le défaut que si un workload
-  cache-actif montre le gain — ou après une dé-admission adaptative des
-  sites qui manquent chroniquement.
-
-### B.2 Le poste n°1 du 68030 : la traduction, pas le générateur
-
-Les six tranches du plan (`scratchpad/2026-09-04/b2plan/PLAN.md`) sont
-traitées ; le récit et les mesures sont au `CHANGELOG` des 2026-09-04 et
-2026-09-05. Le tronc mesure **−9,5 / −9,9 %** contre l'état d'avant, à
-empreinte identique. **Rien n'y reste ouvert.**
-
-**La leçon à ne pas reperdre :** ce n'était pas « un bucket de profil ne se
-retire qu'à moitié », c'était **le bras mesuré**. Jusqu'au 2026-09-06,
-`X64Backend::caps()` ne déclarait que `autoFamilies = kGuest68040`, donc un
-invité 68030 sur x86-64 se résolvait vers `threaded`, qui passe *chaque*
-instruction par `mmuExecuteStart`. Le plan chiffrait ses six tranches sur le
-profil x64-natif — alors un override diagnostique — et classait 4ᵉ sur 5 la
-seule tranche dont la valeur était concentrée sur le bras qui expédiait ; elle
-vaut −10 %.
-
-### B.3 Qualification 68030 par hôte
-
-Les deux promotions 68030 sont **acquises séparément le 2026-09-06**. Sur
-x86-64, `auto` résout de nouveau un 68030 vers le générateur natif sur les
-trois admissions que le retrait du 2026-08-29 exigeait. Sur AArch64 natif, le
-tier `m030` frais passe **56/56 en 2 970,62 s**, census **56 exécutés / 0
-soft-skip / 0 échec**, et `jit_store_guard_a64_test` passe ses 23 assertions
-sur le backend réel. Corollaire à ne pas oublier en mesurant :
-`POM68K_JIT_BACKEND=x64|a64` n'est plus un override diagnostique sur l'hôte
-correspondant, c'est le produit. Évidence : `CHANGELOG` du jour et
-`scratchpad/2026-09-06/a64-m030/LastTest.log`.
-
-- [ ] **Ne pas rouvrir l'écart d'admission 68030 sans profil temporel neuf.**
-  Chiffré le 2026-09-06 sur le chemin qui expédie et **refusé** : la parité
-  opcode est zéro et gatée (`jit_backend_parity_test`), donc les refus sont
-  communs aux deux générateurs, pas un écart a64/x64. Le seau non supporté
-  vaut 562 194 instructions dont `2F70` (`MOVE.L idx(A0) → d16(A7)`) fait
-  70 % ; rapporté au 8,64 % de rejeu d'instruction entière du profil, son
-  plafond est **0,87 %** et celui de *tout* le seau **1,24 %**, contre un
-  plancher de 10 ‰. La moitié timing de l'item est close autrement : les deux
-  tiers verts sous le défaut restauré et six locksteps à 120 000 pas
-  comparent précisément les compteurs i-cache et les positions d'accès.
-  Reste la convention, pas un défaut : une règle 68k commune vit dans
-  l'IR/coût partagé, jamais dans un emitter.
-  Évidence : `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`.
-- [ ] **Isoler ou amplifier les familles Speedometer avant toute promotion.**
-  La navigation est réparée et le harnais sélectionne séparément CPU,
-  Benchmark Mix, FPU et Color QuickDraw (les cinq profondeurs). A64 et
-  `threaded` terminent chaque famille aux mêmes trames, empreintes, écrans et
-  comptes SCSI. Les trois profils temporels complets déjà capturés restent
-  toutefois dominés par le boot : 33 322–33 512 échantillons on-CPU, fallback
-  interprété stable à 5,54–5,64 %, mais seulement 0,274–0,277 s de CPU utile.
-  Les familles plus longues rendent enfin une capture attachée à la phase
-  praticable ; elles ne transforment pas le bucket whole-route en attribution.
-  Premier tri : QuickDraw est natif à 99,7 % mais produit 1,88 M rejouements
-  de gardes de shifts. Étendre leur cache multi-version les retire et baisse
-  tous les fallbacks de 70,5 %, mais un ABBA donne **+1,75 % plus lent** :
-  candidat retiré, ne pas le ressusciter depuis le compteur seul. La ligne
-  FPU (438 964 instructions `UNSAFE`, 15,2 % de sa phase) est **fermée le
-  2026-09-07** : la fenêtre générale `$F200-$F23F` est membre de bloc rejoué
-  exactement, **−11,6 %** sur la phase FPU isolée et −2,3 % sur le Mix en
-  ABBA intra-binaire, empreintes identiques sur les quatre bras. Leçon à
-  garder : ne comparer que des bras du **même binaire** — une configuration
-  fraîche active LTO et `-mcpu=native`, `build/` non, et l'écart de 4–5 % qui
-  en résulte s'est d'abord lu comme une régression du knob.
-  Avant de rouvrir un lowering, répéter une famille dans l'invité ou
-  échantillonner sa phase seule (`phase_sample.py` attache `sample` à la
-  première trame de la phase). `C029`, `08D1` et les lectures périphériques
-  variables restent dans Moira jusque-là. Évidence :
-  `scratchpad/2026-09-06/a64-m030/SPEEDOMETER_TIME_PROFILE.md`,
-  `SPEEDOMETER_SUITE.md` dans le même répertoire et
-  `scratchpad/2026-09-06/fpu-member/FPU_MEMBER.md`.
-
-### B.4 Gardes, mémoire et coût partagé
-
-- [ ] **Étudier `PFLUSHA` et le retry d'armement seulement après profil.**
-  Toute réduction des bumps ou du backoff doit garder les locksteps 030/040 :
-  le moment où une fenêtre s'arme est observable sur 68040.
-- [ ] **Compacter `mmu040InstrStart`.** Mesuré à 3,26 % du run Rogue 040 — le
-  plafond du gain est donc connu et petit. Voir si les remises à zéro
-  adjacentes et le pack CCR peuvent devenir un ou deux stores larges sans
-  changer l'état privé vérifié par les locksteps. À faire après B.1.
-- [ ] **Profiler puis isoler les stores à masque nul.** N'ouvrir une
-  spécialisation conforme qu'après un profil temporel et des preuves
-  empreinte/compteurs/gates identiques.
-
-**Critère de sortie du palier B :** les fallbacks cache-actifs 040 encore
-identifiés sont fermés ou justifiés, chaque coût important est attribuable
-avant qu'une optimisation ne s'ouvre, et chaque couple hôte/CPU possède une
-décision `auto` séparée, étayée par conformité produit et gain mesuré.
+- **mesurer le bras qui expédie** — jusqu'au 2026-09-06 le plan B.2
+  chiffrait ses tranches sur `POM68K_JIT_BACKEND=x64`, alors override
+  diagnostique, et classait 4ᵉ sur 5 la tranche qui vaut −10 % ;
+- **ne comparer que des bras du même binaire** — une configuration fraîche
+  active LTO et `-mcpu=native`, `build/` non ; l'écart de 4–5 % s'est lu
+  comme une régression de knob avant d'être identifié ;
+- **un compteur de fallbacks n'est pas un gain** — l'extension QuickDraw des
+  versions de shift retirait 70,5 % des fallbacks et perdait 1,75 %.
 
 ---
 
@@ -395,6 +308,74 @@ de ces lignes ne s'ouvre avant que C.3 ait donné au Duo ses deux etalons.
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
 - [ ] **Ajouter le target ATA/IDE du Q630/LC580.** Brancher un disque et créer
   un gate de boot qui n'utilise pas SCSI.
+
+### D.6 Moteur — études conditionnées à un profil temporel
+
+Reliquat du palier B clos. Aucune de ces lignes n'est une lacune de
+conformité ; chacune n'ouvre qu'avec un profil temporel reproductible et se
+mesure en ABBA intra-binaire, empreintes identiques.
+
+- [ ] **Décider le sort de l'admission late-poll : rentabilité seulement.** La
+  position des polls est dans l'IR et l'admission A64
+  (accès/poll/faute/validation) est prouvée conforme — mais mesurée −6,3 %
+  sur le bench cache-actif, car la classe admise est les boucles de poll
+  chaudes du boot (`CHANGELOG` 2026-09-03 (seventh)). Le knob
+  `POM68K_JIT_040_LATE_POLL` reste opt-in. La jambe x86-64 a rejoué tous les
+  locksteps x64 et les deux tiers CPU sans soft-skip et prouvé le knob
+  inerte octet pour octet sur x64 (`CHANGELOG` 2026-09-04 (sixth)) : la
+  précondition de rejeu est levée. Ne rouvrir le défaut que si un workload
+  cache-actif montre le gain — ou après une dé-admission adaptative des
+  sites qui manquent chroniquement.
+- [ ] **Ne pas rouvrir l'écart d'admission 68030 sans profil temporel neuf.**
+  Chiffré le 2026-09-06 sur le chemin qui expédie et **refusé** : la parité
+  opcode est zéro et gatée (`jit_backend_parity_test`), donc les refus sont
+  communs aux deux générateurs, pas un écart a64/x64. Le seau non supporté
+  vaut 562 194 instructions dont `2F70` (`MOVE.L idx(A0) → d16(A7)`) fait
+  70 % ; rapporté au 8,64 % de rejeu d'instruction entière du profil, son
+  plafond est **0,87 %** et celui de *tout* le seau **1,24 %**, contre un
+  plancher de 10 ‰. La moitié timing de l'item est close autrement : les deux
+  tiers verts sous le défaut restauré et six locksteps à 120 000 pas
+  comparent précisément les compteurs i-cache et les positions d'accès.
+  Reste la convention, pas un défaut : une règle 68k commune vit dans
+  l'IR/coût partagé, jamais dans un emitter.
+  Évidence : `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`.
+- [ ] **Isoler ou amplifier les familles Speedometer avant toute promotion.**
+  La navigation est réparée et le harnais sélectionne séparément CPU,
+  Benchmark Mix, FPU et Color QuickDraw (les cinq profondeurs). A64 et
+  `threaded` terminent chaque famille aux mêmes trames, empreintes, écrans et
+  comptes SCSI. Les trois profils temporels complets déjà capturés restent
+  toutefois dominés par le boot : 33 322–33 512 échantillons on-CPU, fallback
+  interprété stable à 5,54–5,64 %, mais seulement 0,274–0,277 s de CPU utile.
+  Les familles plus longues rendent enfin une capture attachée à la phase
+  praticable ; elles ne transforment pas le bucket whole-route en attribution.
+  Premier tri : QuickDraw est natif à 99,7 % mais produit 1,88 M rejouements
+  de gardes de shifts. Étendre leur cache multi-version les retire et baisse
+  tous les fallbacks de 70,5 %, mais un ABBA donne **+1,75 % plus lent** :
+  candidat retiré, ne pas le ressusciter depuis le compteur seul. La ligne
+  FPU (438 964 instructions `UNSAFE`, 15,2 % de sa phase) est **fermée le
+  2026-09-07** : la fenêtre générale `$F200-$F23F` est membre de bloc rejoué
+  exactement, **−11,6 %** sur la phase FPU isolée et −2,3 % sur le Mix en
+  ABBA intra-binaire, empreintes identiques sur les quatre bras. Leçon à
+  garder : ne comparer que des bras du **même binaire** — une configuration
+  fraîche active LTO et `-mcpu=native`, `build/` non, et l'écart de 4–5 % qui
+  en résulte s'est d'abord lu comme une régression du knob.
+  Avant de rouvrir un lowering, répéter une famille dans l'invité ou
+  échantillonner sa phase seule (`phase_sample.py` attache `sample` à la
+  première trame de la phase). `C029`, `08D1` et les lectures périphériques
+  variables restent dans Moira jusque-là. Évidence :
+  `scratchpad/2026-09-06/a64-m030/SPEEDOMETER_TIME_PROFILE.md`,
+  `SPEEDOMETER_SUITE.md` dans le même répertoire et
+  `scratchpad/2026-09-06/fpu-member/FPU_MEMBER.md`.
+- [ ] **Étudier `PFLUSHA` et le retry d'armement seulement après profil.**
+  Toute réduction des bumps ou du backoff doit garder les locksteps 030/040 :
+  le moment où une fenêtre s'arme est observable sur 68040.
+- [ ] **Compacter `mmu040InstrStart`.** Mesuré à 3,26 % du run Rogue 040 — le
+  plafond du gain est donc connu et petit. Voir si les remises à zéro
+  adjacentes et le pack CCR peuvent devenir un ou deux stores larges sans
+  changer l'état privé vérifié par les locksteps. À faire après la décision late-poll ci-dessus.
+- [ ] **Profiler puis isoler les stores à masque nul.** N'ouvrir une
+  spécialisation conforme qu'après un profil temporel et des preuves
+  empreinte/compteurs/gates identiques.
 
 ### D.5 Recherche conditionnelle
 

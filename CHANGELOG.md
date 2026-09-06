@@ -122,6 +122,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **what "the conformant JIT code generator is finished" means in this tree — the three exit criteria of TODO tier B, the evidence behind each, and what remains as conditional study rather than open conformance work** → [2026-09-07 (second) — Tier B is closed…](#2026-09-07-tier-b-closed)
 - **why an FPU instruction no longer costs a dispatch, what keeps its Line-F / FPSP / enabled-exception vectors a boundary, how a trapping member stops retracing its prefix, and which same-binary ABBA measured it** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
 - **which Speedometer families exist beyond CPU, how the harness selects them independently, and whether FPU and five-depth QuickDraw stay exact between A64 and `threaded`** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
 - **where time goes on the corrected Speedometer route, why the 5.6% fallback ceiling promotes no opcode, and what must be amplified before an opcode can be priced** → [2026-09-06 (sixth) — Speedometer's first correct time profile…](#2026-09-06-speedometer-time-profile)
@@ -410,6 +411,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](#2026-09-07-tier-b-closed)
 - **2026-09-07** — [The FPU general window stops ending a block: exact Moira replay inside native blocks, −11.6 % on Speedometer's isolated FPU phase, and the cross-binary comparison that had to be thrown away](#2026-09-07-fpu-block-member)
 - **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](#2026-09-06-speedometer-suite)
 - **2026-09-06 (sixth)** — [Speedometer's first correct time profile makes every fallback a 5.6% ceiling, not a target: the 0.27 s CPU phase must be isolated before any opcode is priced](#2026-09-06-speedometer-time-profile)
@@ -844,6 +846,58 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-tier-b-closed"></a>
+## 2026-09-07 (second) — Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path
+
+`TODO.md` tier B — "finish and qualify the engine" — set a cumulative exit
+criterion on 2026-09-02 and required it to be recorded here. All three parts
+are now met by evidence already in this log, so the tier closes.
+
+**Cache-active 68040 fallbacks are closed or justified.** The three
+deliberate exits that remain are each a conformance decision with a gate:
+the ordered target-word read of a cache-active JSR replays exactly
+(2026-09-01 (fourth)); memory instructions with more than one positioned
+IPL poll stay on the exact path, with the poll-after-final-access admission
+proved conformant and kept opt-in because it measured −6.3 % on the only
+cache-on workload (2026-09-01 (fifth), 2026-09-03 (seventh)); a cold line
+miss replays the whole instruction so `mmu040InstrStart()` owns its private
+state (2026-09-01 (sixth)). Nothing else in the cache-active census is an
+unexplained fallback.
+
+**Every important cost is attributable before an optimization opens.** The
+instrument now has three legs: whole-route sampling on macOS and Linux with
+a stable bucket decomposition (2026-09-02, 2026-09-03 (sixth), 2026-09-06
+(sixth)); a per-phase engine census for the four Speedometer families
+(2026-09-06 (seventh)); and a sampler attached to one isolated phase, which
+attributed the FPU admission to the dispatch loop rather than to the FPU
+handlers (2026-09-07). The two negative results of the week — the QuickDraw
+shift-version extension at −70.5 % fallbacks and +1.75 % wall, the late-poll
+admission at −6.3 % — are what "attributable before it opens" buys.
+
+**Each host/CPU pair has its own automatic decision, backed by product
+conformance and measured gain.** 68040 is native on both hosts since
+2026-08-09/10. 68030 on x86-64 was withdrawn on 2026-08-29 and re-earned on
+2026-09-06 on the two green tiers the withdrawal demanded; 68030 on AArch64
+was requalified the same day on its own host, 56/56 executed with no
+soft-skip. `caps().autoFamilies` declares each answer and `jit_backend_test`
+pins it. The 68000/68020 families keep the interpreter by measurement
+(compacts ×1.03–1.08, Mac II ×1.21, § 3.1 of the JIT note).
+
+What the closure does not claim: that the engine is as fast as it can be.
+The late-poll decision, the `PFLUSHA`/arm-retry study, the
+`mmu040InstrStart` compaction and the null-mask store specialization move
+to `TODO.md` § D.6 as studies conditioned on a temporal profile, off the
+critical path; the 68030 admission-gap and Speedometer guards move with them
+as the rules under which any of it may reopen. The conformant code generator
+is finished in the sense this tree gave the words: both native generators
+declare 68030+68040 correctness, opcode parity is zero and gated, every
+opcode a generator does not emit is an exact Moira replay — since 2026-09-07
+including the FPU general window inside a block — and the interpreter
+remains the oracle every claim is measured against. The next tier is C: make
+it a product.
 
 ---
 

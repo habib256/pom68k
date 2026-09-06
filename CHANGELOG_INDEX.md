@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 434 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 435 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 82 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 83 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 43 |
@@ -108,6 +108,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-06 (fifth)** — [Speedometer's census closes every Finder window before choosing its volume: the real CPU test now finishes at frame 270 identically on A64 and `threaded`](CHANGELOG.md#2026-09-06-speedometer-navigation-fixed)
 - **2026-09-06 (fourth)** — [The AArch64 host requalifies its own 68030 promotion: 56/56 executed with the private corpus, and the A64-only store guard finally runs where its subject exists](CHANGELOG.md#2026-09-06-a64-030-requalified)
 - **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](CHANGELOG.md#2026-09-06-speedometer-suite)
+- **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](CHANGELOG.md#2026-09-07-tier-b-closed)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
