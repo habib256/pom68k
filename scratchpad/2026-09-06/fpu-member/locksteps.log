@@ -1,0 +1,26 @@
+Test project /Users/mercure/src/pom68k/build
+    Start 206: jit_lockstep_030_blocks_test
+    Start 204: jit_lockstep_030_test
+    Start 201: jit_lockstep_blocks_test
+1/6 Test #201: jit_lockstep_blocks_test ...............   Passed   22.46 sec
+    Start 200: jit_lockstep_test
+2/6 Test #204: jit_lockstep_030_test ..................   Passed   37.44 sec
+    Start 210: jit_lockstep_noaccess_test
+3/6 Test #200: jit_lockstep_test ......................   Passed   21.01 sec
+    Start 205: jit_lockstep_030_no_data_window_test
+4/6 Test #210: jit_lockstep_noaccess_test .............   Passed    6.27 sec
+5/6 Test #206: jit_lockstep_030_blocks_test ...........   Passed   46.43 sec
+6/6 Test #205: jit_lockstep_030_no_data_window_test ...   Passed   27.65 sec
+
+100% tests passed out of 6
+
+Label Time Summary:
+asset-required    = 161.26 sec*proc (6 tests)
+host-any          = 161.26 sec*proc (6 tests)
+jit               = 161.26 sec*proc (6 tests)
+scope-engine      = 161.26 sec*proc (6 tests)
+smoke             =  49.74 sec*proc (3 tests)
+tier-full         = 161.26 sec*proc (6 tests)
+unit              = 161.26 sec*proc (6 tests)
+
+Total Test time (real) =  71.13 sec

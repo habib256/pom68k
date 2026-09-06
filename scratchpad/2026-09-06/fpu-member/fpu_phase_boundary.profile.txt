@@ -1,0 +1,59 @@
+779 samples, 779 on-CPU (100.0 %), 0 parked in wait syscalls
+
+── buckets (% of on-CPU) ──
+  corps générés (natif)             24.13 %  (188)
+  moteur — runtime/fenêtres         21.18 %  (165)
+  interpréteur (fallback)           19.51 %  (152)
+  MMU/cache                         13.74 %  (107)
+  LLE/périphériques                 13.48 %  (105)
+  carte mémoire/thunks               3.59 %  (28)
+  autre                              2.57 %  (20)
+  hôte/harnais                       1.03 %  (8)
+  moteur — compilation               0.77 %  (6)
+
+── top 45 self symbols ──
+   24.13 %  [GENERATED CODE]
+    8.86 %  jit::Engine::executeUntil(long long)
+    6.80 %  M68hc05::run(int)
+    5.78 %  moira::Moira::mmuFetchWord(unsigned int)
+    4.11 %  moira::Moira::fpuRunBusy<(moira::Core)2>(int, unsigned short, unsigned short)
+    2.95 %  moira::Moira::pomIcacheFetch<2>(unsigned int)
+    2.70 %  moira::Moira::mmuExecuteStart<(moira::Core)2>()
+    2.31 %  pom68k::MoiraCpu<Cpu030, V8Memory>::sync(int)
+    2.31 %  jit::Engine::dispatchBlockKey(unsigned int, bool)
+    2.05 %  Cpu030::flushTicks()
+    2.05 %  moira::Moira::execFGen<(moira::Core)2, (moira::Instr)149, (moira::Mode)0, 0>(unsigned short)
+    1.93 %  moira::Moira::execFGen<(moira::Core)2, (moira::Instr)149, (moira::Mode)5, 0>(unsigned short)
+    1.67 %  V8Memory::tick(int)
+    1.54 %  AscV8::tick(int)
+    1.54 %  moira::Moira::readExt<(moira::Core)2>()
+    1.54 %  moira::Moira::mmuRead<(moira::Core)2, 4, 0ull>(unsigned int)
+    1.41 %  moira::Moira::fpuMakeStatus()
+    1.41 %  roundAndPackFloatx80
+    1.41 %  moira::Moira::pomJitExecOne()
+    1.28 %  Via6522::tick(int)
+    1.28 %  Cpu030::updateIpl()
+    1.28 %  Scc8530::tick(int)
+    1.28 %  V8Memory::read16(unsigned int)
+    1.28 %  moira::Moira::mmuRead<(moira::Core)2, 2, 0ull>(unsigned int)
+    1.16 %  moira::Moira::execFGen<(moira::Core)2, (moira::Instr)149, (moira::Mode)6, 0>(unsigned short)
+    1.16 %  M68hc05::aluOp(int, unsigned short, bool)
+    0.90 %  moira::Moira::mmuWrite<(moira::Core)2, 4, 0ull>(unsigned int, unsigned int)
+    0.77 %  moira::Moira::execFGen<(moira::Core)2, (moira::Instr)149, (moira::Mode)2, 0>(unsigned short)
+    0.64 %  Iwm::tick(int)
+    0.64 %  moira::Moira::read<(moira::Core)2, (moira::AddrSpace)1, 4, 0ull>(unsigned int)
+    0.51 %  floatx80_to_float32
+    0.51 %  moira::Moira::pomJitCache040Match(unsigned int, unsigned int) const
+    0.51 %  moira::Moira::execute()
+    0.51 %  moira::Moira::mmuAtcFill(unsigned int, unsigned char, bool)
+    0.51 %  jit::classify(unsigned short)
+    0.51 %  moira::Moira::pomJitProbeCode(unsigned int, bool, unsigned int&, unsigned int&, unsigned int&) const
+    0.39 %  [dyld]
+    0.39 %  V8Memory::write16(unsigned int, unsigned short)
+    0.39 %  moira::Moira::fpuCheckArithException(moira::FpuExtended const&, unsigned short, unsigned short, unsigned int, unsigned int)
+    0.39 %  std::__function::__func<CudaLle::CudaLle(Via6522&, long long, CudaLle::Flavor)::$_2, void (int)>::operator()(int&&)
+    0.39 %  moira::Moira::mmuWrite<(moira::Core)2, 2, 0ull>(unsigned int, unsigned int)
+    0.39 %  jit::Engine::fillDtlbThunk(void*, unsigned int, int)
+    0.26 %  floatx80_add
+    0.26 %  moira::Moira::computeEAdisp030<(moira::Core)2, (moira::Mode)6, 4, 0ull>(unsigned int)
+    0.26 %  moira::Moira::pomJitDataSlow(unsigned int, unsigned int, bool)

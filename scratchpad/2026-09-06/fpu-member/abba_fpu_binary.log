@@ -1,0 +1,12 @@
+before       wall=0.775772s frames=450 fp=7e5b156c7e7efdf1
+after        wall=0.766093s frames=450 fp=7e5b156c7e7efdf1
+after        wall=0.770173s frames=450 fp=7e5b156c7e7efdf1
+before       wall=0.785825s frames=450 fp=7e5b156c7e7efdf1
+before       wall=0.774530s frames=450 fp=7e5b156c7e7efdf1
+after        wall=0.772598s frames=450 fp=7e5b156c7e7efdf1
+after        wall=0.765503s frames=450 fp=7e5b156c7e7efdf1
+before       wall=0.782270s frames=450 fp=7e5b156c7e7efdf1
+identity ('fpu', '450', '7e5b156c7e7efdf1', 'e203493e22f88cf3')
+before       n=4 median=0.779021 min=0.774530 max=0.785825
+after        n=4 median=0.768133 min=0.765503 max=0.772598
+delta after vs before: -1.40 %

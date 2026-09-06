@@ -1,0 +1,44 @@
+Test project /Users/mercure/src/pom68k/build
+      Start 187: jit_asset_free_lockstep_test
+      Start 188: jit_copyback_write_040_test
+      Start 199: jit_backend_parity_test
+      Start 175: jit_restart_write_030_test
+ 1/13 Test #199: jit_backend_parity_test ...............   Passed    0.03 sec
+      Start 194: cache040_test
+ 2/13 Test #194: cache040_test .........................   Passed    0.02 sec
+      Start 196: fpu040_test
+ 3/13 Test #196: fpu040_test ...........................   Passed    0.03 sec
+      Start 195: fpu_sanity
+ 4/13 Test #188: jit_copyback_write_040_test ...........   Passed    0.10 sec
+      Start 198: jit_backend_test
+ 5/13 Test #195: fpu_sanity ............................   Passed    0.04 sec
+      Start 193: jit_store_guard_a64_test
+ 6/13 Test #198: jit_backend_test ......................   Passed    0.03 sec
+      Start 189: jit_copyback_write_040_control_test
+ 7/13 Test #193: jit_store_guard_a64_test ..............   Passed    0.04 sec
+      Start 192: jit_copyback_pair_040_control_test
+ 8/13 Test #189: jit_copyback_write_040_control_test ...   Passed    0.04 sec
+      Start 190: jit_copyback_bsr_040_test
+ 9/13 Test #192: jit_copyback_pair_040_control_test ....   Passed    0.03 sec
+      Start 191: jit_copyback_pair_040_test
+10/13 Test #190: jit_copyback_bsr_040_test .............   Passed    0.03 sec
+11/13 Test #191: jit_copyback_pair_040_test ............   Passed    0.03 sec
+12/13 Test #175: jit_restart_write_030_test ............   Passed    0.33 sec
+13/13 Test #187: jit_asset_free_lockstep_test ..........   Passed    8.31 sec
+
+100% tests passed out of 13
+
+Label Time Summary:
+asset-none         =   9.08 sec*proc (13 tests)
+host-a64           =   0.04 sec*proc (1 test)
+host-any           =   0.48 sec*proc (6 tests)
+host-native        =   8.55 sec*proc (6 tests)
+jit                =   8.98 sec*proc (10 tests)
+jit-fast           =   8.51 sec*proc (5 tests)
+scope-component    =   0.09 sec*proc (3 tests)
+scope-engine       =   8.98 sec*proc (10 tests)
+smoke              =   0.03 sec*proc (1 test)
+tier-daily         =   9.08 sec*proc (13 tests)
+unit               =   9.08 sec*proc (13 tests)
+
+Total Test time (real) =   8.32 sec

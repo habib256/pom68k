@@ -1,0 +1,12 @@
+before       wall=3.522700s frames=2520 fp=6988c7da30132770
+member0      wall=3.715540s frames=2520 fp=6988c7da30132770
+member0      wall=3.718962s frames=2520 fp=6988c7da30132770
+before       wall=3.543056s frames=2520 fp=6988c7da30132770
+before       wall=3.552898s frames=2520 fp=6988c7da30132770
+member0      wall=3.716833s frames=2520 fp=6988c7da30132770
+member0      wall=3.725976s frames=2520 fp=6988c7da30132770
+before       wall=3.557425s frames=2520 fp=6988c7da30132770
+identity ('graphics', '2520', '6988c7da30132770', 'c5595ea4d99a8381')
+before       n=4 median=3.547977 min=3.522700 max=3.557425
+member0      n=4 median=3.717897 min=3.715540 max=3.725976
+delta member0 vs before: +4.79 %

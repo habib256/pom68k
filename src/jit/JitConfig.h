@@ -70,6 +70,10 @@ struct ResolvedConfig {
     bool cache040LinePairs = true;
     bool cache040LineReadStats = false;
     bool cache040LatePoll = false;
+    // FPU general-window instructions ($F200-$F23F) are exact-replay block
+    // members instead of block boundaries (Kind::Fpu, 2026-09-06). Explicit
+    // 0 is the attribution/veto arm: every F-line form ends a block again.
+    bool fpuMember = true;
     bool links = true;
     // Keep XNZVC in the low five bits of the generated backend's retired
     // counter register.  Architectural flag bytes are materialised only at
@@ -222,6 +226,7 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     // window. Off until a workload shows the win the window-lengthening
     // argument predicts.
     c.cache040LatePoll = envBool(option::Jit040LatePoll, false);
+    c.fpuMember = envBool(option::JitFpuMember, true);
     c.links = envBool(option::JitLinks, production);
     c.packedCcr = envBool(option::JitPackedCcr, false);
     c.regCache = envBool(option::JitRegisterCache, false);

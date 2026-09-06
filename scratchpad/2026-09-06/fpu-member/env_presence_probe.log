@@ -1,0 +1,5 @@
+after_member1 speedometer-test: mode=fpu done=1 frames=450 wall=0.782260s shape=0.055/0.138/1.000 fp=7e5b156c7e7efdf1 screen=e203493e22f88cf3
+after_links1 speedometer-test: mode=fpu done=1 frames=450 wall=0.791300s shape=0.055/0.138/1.000 fp=7e5b156c7e7efdf1 screen=e203493e22f88cf3
+before_member0 speedometer-test: mode=fpu done=1 frames=450 wall=0.800576s shape=0.055/0.138/1.000 fp=7e5b156c7e7efdf1 screen=e203493e22f88cf3
+after_plain speedometer-test: mode=fpu done=1 frames=450 wall=0.791568s shape=0.055/0.138/1.000 fp=7e5b156c7e7efdf1 screen=e203493e22f88cf3
+after_member0 speedometer-test: mode=fpu done=1 frames=450 wall=0.876118s shape=0.055/0.138/1.000 fp=7e5b156c7e7efdf1 screen=e203493e22f88cf3

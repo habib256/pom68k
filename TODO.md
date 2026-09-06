@@ -130,16 +130,24 @@ correspondant, c'est le produit. Évidence : `CHANGELOG` du jour et
   interprété stable à 5,54–5,64 %, mais seulement 0,274–0,277 s de CPU utile.
   Les familles plus longues rendent enfin une capture attachée à la phase
   praticable ; elles ne transforment pas le bucket whole-route en attribution.
-  Premier tri : FPU compte 438 964 instructions F-line `UNSAFE` (15,2 % de sa
-  phase), tandis que QuickDraw est natif à 99,7 % mais produit 1,88 M rejouements
+  Premier tri : QuickDraw est natif à 99,7 % mais produit 1,88 M rejouements
   de gardes de shifts. Étendre leur cache multi-version les retire et baisse
   tous les fallbacks de 70,5 %, mais un ABBA donne **+1,75 % plus lent** :
-  candidat retiré, ne pas le ressusciter depuis le compteur seul.
+  candidat retiré, ne pas le ressusciter depuis le compteur seul. La ligne
+  FPU (438 964 instructions `UNSAFE`, 15,2 % de sa phase) est **fermée le
+  2026-09-07** : la fenêtre générale `$F200-$F23F` est membre de bloc rejoué
+  exactement, **−11,6 %** sur la phase FPU isolée et −2,3 % sur le Mix en
+  ABBA intra-binaire, empreintes identiques sur les quatre bras. Leçon à
+  garder : ne comparer que des bras du **même binaire** — une configuration
+  fraîche active LTO et `-mcpu=native`, `build/` non, et l'écart de 4–5 % qui
+  en résulte s'est d'abord lu comme une régression du knob.
   Avant de rouvrir un lowering, répéter une famille dans l'invité ou
-  échantillonner sa phase seule. `C029`, `08D1` et les lectures périphériques
+  échantillonner sa phase seule (`phase_sample.py` attache `sample` à la
+  première trame de la phase). `C029`, `08D1` et les lectures périphériques
   variables restent dans Moira jusque-là. Évidence :
-  `scratchpad/2026-09-06/a64-m030/SPEEDOMETER_TIME_PROFILE.md` et
-  `SPEEDOMETER_SUITE.md` dans le même répertoire.
+  `scratchpad/2026-09-06/a64-m030/SPEEDOMETER_TIME_PROFILE.md`,
+  `SPEEDOMETER_SUITE.md` dans le même répertoire et
+  `scratchpad/2026-09-06/fpu-member/FPU_MEMBER.md`.
 
 ### B.4 Gardes, mémoire et coût partagé
 
@@ -224,7 +232,10 @@ seulement un compteur interne.
   nouvelle `coverage-zero.txt` représentant le produit, pas seulement le
   palier CI.
 - [ ] **Activer LTO dans les artefacts.** Retirer le veto macOS après
-  validation `lipo` et ajouter `/GL` + `/LTCG` au build MSVC.
+  validation `lipo` et ajouter `/GL` + `/LTCG` au build MSVC. Donnée du
+  2026-09-07 (observation, pas mesure contrôlée) : sur l'hôte M4, un build
+  LTO+`-mcpu=native` est 4–5 % plus rapide que le binaire de mesure
+  OFF/OFF sur la phase Graphics et la route Speedometer entière.
 - [ ] **Décider le sort du JIT x64 sous Windows.** Soit documenter `threaded`
   comme solution permanente, soit porter prologue, registres non-volatils,
   appels de thunks et shadow space à l'ABI Win64 derrière le tier asset-free

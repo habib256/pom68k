@@ -294,7 +294,9 @@ void Engine::dumpHisto() const {
     std::fprintf(stderr, "\n[jit] opcode census — %llu instructions, %zu distinct\n",
                  (unsigned long long)total, rows.size());
     static const char* kKind[] = { "move", "alu", "shift", "bitop", "muldiv",
-                                   "addr", "multi", "cond", "branch", "UNSAFE" };
+                                   "addr", "multi", "cond", "branch", "fpu",
+                                   "UNSAFE" };
+    static_assert(sizeof(kKind) / sizeof(kKind[0]) == size_t(Kind::Count));
     for (int k = 0; k < int(Kind::Count); k++) {
         if (!byKind[k]) continue;
         std::fprintf(stderr, "  %-8s %12llu  %5.1f%%\n", kKind[k],
@@ -879,7 +881,10 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
             why = EndReason::LengthLimit;
             break;
         }
-        const Kind kind = classify(op);
+        Kind kind = classify(op);
+        // POM68K_JIT_FPU_MEMBER=0: the pre-2026-09-06 boundary, every
+        // F-line form ends the block before it. The attribution arm.
+        if (kind == Kind::Fpu && !config_.fpuMember) kind = Kind::Unsafe;
         if (endsBlock(kind)) { why = EndReason::Unsafe; break; }
 
         // A branch ENDS the block and is part of it. Its length cannot be
@@ -1028,6 +1033,19 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         // Counted apart so the report's native share stops absorbing the
         // tracer's interpretation (JitStats.h owns the why).
         stats_.add(stats_.traceInstrs, retired);
+    }
+
+    // A discontinuity after at least one retired straight-line instruction
+    // still describes a reusable prefix: everything before the instruction
+    // that transferred control. Keep that prefix and end the block in front
+    // of the offender, exactly as an Unsafe opcode would have. Until
+    // 2026-09-06 the whole trace was discarded, so a block whose member
+    // trapped on every visit — an FPU general-window instruction on a
+    // 68LC040, an enabled FPU arithmetic exception, a chronic DIV by zero
+    // — was retraced in full every time it ran.
+    if (why == EndReason::Discontinuity && ir.instrs.size() > 1) {
+        ir.instrs.pop_back();
+        why = EndReason::Unsafe;
     }
 
     // A single-instruction "block" that ended on a discontinuity or a fault

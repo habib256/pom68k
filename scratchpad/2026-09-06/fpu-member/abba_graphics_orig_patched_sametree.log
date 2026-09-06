@@ -1,0 +1,12 @@
+orig         wall=3.554662s frames=2520 fp=6988c7da30132770
+patched      wall=3.553055s frames=2520 fp=6988c7da30132770
+patched      wall=3.526031s frames=2520 fp=6988c7da30132770
+orig         wall=3.538326s frames=2520 fp=6988c7da30132770
+orig         wall=3.559343s frames=2520 fp=6988c7da30132770
+patched      wall=3.555434s frames=2520 fp=6988c7da30132770
+patched      wall=3.535152s frames=2520 fp=6988c7da30132770
+orig         wall=3.561214s frames=2520 fp=6988c7da30132770
+identity ('graphics', '2520', '6988c7da30132770', 'c5595ea4d99a8381')
+orig         n=4 median=3.557003 min=3.538326 max=3.561214
+patched      n=4 median=3.544104 min=3.526031 max=3.555434
+delta patched vs orig: -0.36 %

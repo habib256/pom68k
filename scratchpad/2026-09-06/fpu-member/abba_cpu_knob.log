@@ -1,0 +1,16 @@
+boundary     wall=0.289473s frames=270 fp=3f71466c4a59cc92
+member       wall=0.291355s frames=270 fp=3f71466c4a59cc92
+member       wall=0.291687s frames=270 fp=3f71466c4a59cc92
+boundary     wall=0.290369s frames=270 fp=3f71466c4a59cc92
+boundary     wall=0.301640s frames=270 fp=3f71466c4a59cc92
+member       wall=0.300909s frames=270 fp=3f71466c4a59cc92
+member       wall=0.299150s frames=270 fp=3f71466c4a59cc92
+boundary     wall=0.300088s frames=270 fp=3f71466c4a59cc92
+boundary     wall=0.301544s frames=270 fp=3f71466c4a59cc92
+member       wall=0.299542s frames=270 fp=3f71466c4a59cc92
+member       wall=0.301569s frames=270 fp=3f71466c4a59cc92
+boundary     wall=0.300928s frames=270 fp=3f71466c4a59cc92
+identity ('cpu', '270', '3f71466c4a59cc92', '7ff1fce65e502e83')
+boundary     n=6 median=0.300508 min=0.289473 max=0.301640
+member       n=6 median=0.299346 min=0.291355 max=0.301569
+delta member vs boundary: -0.39 %

@@ -1362,8 +1362,41 @@ int main() {
     checkUnsafe(0x484A, "BKPT");
     checkUnsafe(0x50FA, "TRAPcc");
     checkUnsafe(0xA000, "A-line");
-    checkUnsafe(0xF000, "F-line (MMU / CINV / MOVE16 / FPU)");
+    checkUnsafe(0xF000, "F-line PMMU (cpid 0)");
     checkUnsafe(0xF518, "CINV");
+    // The FPU general window is a block MEMBER since 2026-09-06: Moira
+    // replays it exactly inside the block, so a Speedometer FPU loop no
+    // longer pays one dispatch per F-line instruction. Everything else on
+    // the line keeps ending a block.
+    check(jit::classify(0xF200) == jit::Kind::Fpu,
+          "FMOVE.L D0,FP0 ($F200) is the FPU general window");
+    checkSafe(0xF200, "FPU general window (register EA) does not end a block");
+    checkSafe(0xF22E, "FPU general window d16(A6) does not end a block");
+    checkSafe(0xF232, "FPU general window d8(An,Xn) does not end a block");
+    checkSafe(0xF23C, "FPU general window immediate does not end a block");
+    check(jit::instrFlags(0xF200, jit::Kind::Fpu) & jit::FlagMayTrap,
+          "FPU general window carries FlagMayTrap (Line-F / FPSP / enabled DZ)");
+    checkUnsafe(0xF240, "FScc/FDBcc/FTRAPcc ($F240) stay a block boundary");
+    checkUnsafe(0xF27A, "FTRAPcc.W stays a block boundary");
+    checkUnsafe(0xF280, "FBcc.W stays a block boundary");
+    checkUnsafe(0xF2C0, "FBcc.L stays a block boundary");
+    checkUnsafe(0xF300, "FSAVE stays a block boundary");
+    checkUnsafe(0xF340, "FRESTORE stays a block boundary");
+    checkUnsafe(0xF620, "MOVE16 stays a block boundary");
+    checkUnsafe(0xF800, "unattached coprocessor id 4 stays a block boundary");
+    {
+        // POM68K_JIT_FPU_MEMBER=0 is the attribution arm: the engine turns
+        // Kind::Fpu back into a boundary at trace time (JitEngine.cpp), and
+        // the knob resolves through the typed startup snapshot only.
+        std::vector<pom68k::StartupSnapshot::Entry> on, off;
+        off.emplace_back("POM68K_JIT_FPU_MEMBER", "0");
+        check(jit::resolveConfig(pom68k::StartupSnapshot(std::move(on)))
+                  .fpuMember,
+              "FPU general-window membership is the default");
+        check(!jit::resolveConfig(pom68k::StartupSnapshot(std::move(off)))
+                   .fpuMember,
+              "POM68K_JIT_FPU_MEMBER=0 restores the F-line boundary");
+    }
 
     // These are ordinary straight-line code and must NOT end a block.
     checkSafe(0x2000, "MOVE.L D0,D0");

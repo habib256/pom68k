@@ -3143,6 +3143,123 @@ bool runGuardIndexInvariant() {
 
 }  // namespace
 
+// ── FPU general window as a block member (2026-09-06) ──────────────────
+// One loop, three regimes. Every F-line general form ($F200-$F23F) is a
+// Kind::Fpu block member: Moira replays it exactly and the block continues.
+// `Straight` proves register/FP/RAM identity with the FPU attached and no
+// exception enabled. `DivideByZero` enables DZ in FPCR so FDIV takes vector
+// 50 from INSIDE the block on every lap; `NoFpu` detaches the FPU so every
+// F-line form takes vector 11 (format $4). Both trapping regimes pin two
+// things: the FlagMayTrap continuation keeps Moira's vector boundary, and
+// the trace truncation keeps the retired prefix as a cached block instead
+// of retracing the whole loop on every visit.
+enum class FpuProgram { Straight, DivideByZero, NoFpu };
+
+void installFpuLoop(SyntheticCpu& c) {
+    installVectors(c);
+    seedData(c);
+    put32(c, 11 * 4, kHandler);         // vector 11: Line-F, format $4
+    put32(c, 50 * 4, kHandler);         // vector 50: FP divide by zero
+    put16(c, kHandler + 0, 0x4E73);     // RTE
+    put16(c, kHandler + 2, 0x4E71);     // prefetch padding
+    put16(c, kCode + 0x00, 0x7E1F);     // MOVEQ #31,D7
+    put16(c, kCode + 0x02, 0x207C);     // MOVEA.L #kData,A0
+    put32(c, kCode + 0x04, kData);
+    put16(c, kCode + 0x08, 0xF200);     // FMOVE.L D0,FP0
+    put16(c, kCode + 0x0A, 0x4000);
+    put16(c, kCode + 0x0C, 0xF218);     // FADD.L (A0)+,FP0
+    put16(c, kCode + 0x0E, 0x4022);
+    put16(c, kCode + 0x10, 0xF201);     // FDIV.L D1,FP0
+    put16(c, kCode + 0x12, 0x4020);
+    put16(c, kCode + 0x14, 0xF202);     // FMOVE.L FP0,D2
+    put16(c, kCode + 0x16, 0x6000);
+    put16(c, kCode + 0x18, 0xD682);     // ADD.L D2,D3
+    put16(c, kCode + 0x1A, 0x5280);     // ADDQ.L #1,D0
+    put16(c, kCode + 0x1C, 0x51CF);     // DBF D7,kCode+$08
+    put16(c, kCode + 0x1E, 0xFFEA);
+    put16(c, kCode + 0x20, 0x60DE);     // BRA.S kCode
+}
+
+bool sameFpu(const SyntheticCpu& a, const SyntheticCpu& b, bool diagnose) {
+    for (int n = 0; n < 8; n++) {
+        uint32_t wa[3], wb[3];
+        a.getFP(n, wa);
+        b.getFP(n, wb);
+        if (wa[0] != wb[0] || wa[1] != wb[1] || wa[2] != wb[2]) {
+            if (diagnose)
+                std::printf("    FP%d=%08X:%08X:%08X/%08X:%08X:%08X\n", n,
+                            wa[0], wa[1], wa[2], wb[0], wb[1], wb[2]);
+            return false;
+        }
+    }
+    const bool same = a.getFPCR() == b.getFPCR() &&
+        a.getFPSR() == b.getFPSR() && a.getFPIAR() == b.getFPIAR();
+    if (!same && diagnose)
+        std::printf("    FPCR=%08X/%08X FPSR=%08X/%08X FPIAR=%08X/%08X\n",
+                    a.getFPCR(), b.getFPCR(), a.getFPSR(), b.getFPSR(),
+                    a.getFPIAR(), b.getFPIAR());
+    return same;
+}
+
+bool runFpuMemberLockstep(FpuProgram program, bool member,
+                          jit::Stats::Snapshot* out = nullptr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    config.fpuMember = member;
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    SyntheticCpu& native = *nativeOwner;
+    installFpuLoop(ref);
+    installFpuLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        // A full 68040 always answers hasFPU(); the FPU-less regime is the
+        // 68LC040, the Quadra 605 / LC 475 die.
+        if (program == FpuProgram::NoFpu) {
+            c->setModel(moira::Model::M68LC040);
+            c->setFPUModel(moira::FPUModel::NONE);
+        } else {
+            c->setFPUModel(moira::FPUModel::M68040);
+        }
+        c->setFPCR(program == FpuProgram::DivideByZero ? 0x0400 : 0);
+        c->setD(1, program == FpuProgram::DivideByZero ? 0 : 3);
+    }
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 512; step++) {
+        const int64_t target = ref.getClock() + 67;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) || !sameFpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true)) {
+            std::printf("    fpu divergence program=%d member=%d checkpoint=%d\n",
+                        int(program), int(member), step);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    if (out) *out = s;
+    std::printf("    fpu program=%d member=%d compiled=%llu runs=%llu "
+                "instrs=%llu slow=%llu interp=%llu traced=%llu D0=%u D3=%08X\n",
+                int(program), int(member),
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs,
+                (unsigned long long)s.interpInstrs,
+                (unsigned long long)s.traceInstrs,
+                native.getD(0), native.getD(3));
+    // The loop must have made real progress on both regimes, and the block
+    // cache must have settled: a trapping member costs at most a one-
+    // instruction trace per visit, never a retrace of its prefix.
+    const bool progressed = native.getD(0) >= 64 &&
+        (program == FpuProgram::NoFpu || native.getD(3) != 0);
+    const bool settled = s.blocksCompiled != 0 && s.blocksCompiled <= 16 &&
+        s.blocksRun >= 64;
+    return progressed && settled;
+}
+
 int main() {
     std::printf("jit_asset_free_lockstep_test — deterministic native 68040 proof\n");
     unsetenv("POM68K_JIT_BACKEND");
@@ -3292,6 +3409,28 @@ int main() {
           "all four measured shifts stay exact and native for counts 0..31");
     check(runGuardIndexInvariant(),
           "mark/unmark inverse stays exact across 384 one/two-slice evictions");
+    {
+        jit::Stats::Snapshot member{}, boundary{};
+        check(runFpuMemberLockstep(FpuProgram::Straight, true, &member),
+              "FPU general-window members replay exactly inside native blocks");
+        check(runFpuMemberLockstep(FpuProgram::Straight, false, &boundary),
+              "POM68K_JIT_FPU_MEMBER=0 keeps every F-line form an exact boundary");
+        // Four F-line forms per lap: as members they are replayed by the
+        // block (slow instructions), as boundaries they run in the engine
+        // loop (interpreter instructions). The two arms must retire the
+        // same work through opposite counters.
+        check(member.slowInstrs > boundary.slowInstrs &&
+                  member.interpInstrs * 4 < boundary.interpInstrs,
+              "membership moves the FPU window from the dispatch loop into the block");
+        check(runFpuMemberLockstep(FpuProgram::DivideByZero, true),
+              "enabled FDIV divide-by-zero takes vector 50 from inside a block");
+        check(runFpuMemberLockstep(FpuProgram::DivideByZero, false),
+              "enabled FDIV divide-by-zero stays exact on the boundary arm");
+        check(runFpuMemberLockstep(FpuProgram::NoFpu, true),
+              "detached FPU takes format-$4 Line-F per member without a retrace storm");
+        check(runFpuMemberLockstep(FpuProgram::NoFpu, false),
+              "detached FPU stays exact on the boundary arm");
+    }
 
     metrics.status = failures ? "fail" : "pass";
     check(jit::emitMetrics(metrics, std::getenv("POM68K_JIT_METRICS_FILE"),

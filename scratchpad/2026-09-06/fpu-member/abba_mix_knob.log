@@ -1,0 +1,12 @@
+boundary     wall=1.856482s frames=1590 fp=71ee4dacad498a9b
+member       wall=1.812272s frames=1590 fp=71ee4dacad498a9b
+member       wall=1.816229s frames=1590 fp=71ee4dacad498a9b
+boundary     wall=1.856707s frames=1590 fp=71ee4dacad498a9b
+boundary     wall=1.856989s frames=1590 fp=71ee4dacad498a9b
+member       wall=1.804207s frames=1590 fp=71ee4dacad498a9b
+member       wall=1.823631s frames=1590 fp=71ee4dacad498a9b
+boundary     wall=1.856024s frames=1590 fp=71ee4dacad498a9b
+identity ('mix', '1590', '71ee4dacad498a9b', '227b973e7c332711')
+boundary     n=4 median=1.856594 min=1.856024 max=1.856989
+member       n=4 median=1.814250 min=1.804207 max=1.823631
+delta member vs boundary: -2.28 %

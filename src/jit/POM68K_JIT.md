@@ -968,6 +968,23 @@ F-line instructions are `UNSAFE`, 15.2% of its 2.895 M instructions, while
 ordinary block fallbacks total only 15,885. Both are now temporal-profile
 questions, not licenses to chase the largest census row.
 
+**The FPU row closed on 2026-09-07, from the isolated phase.** Those 438,964
+`UNSAFE` instructions were the FPU general window ending a block each time;
+`Kind::Fpu` (§ 4) keeps them as exact-replay members. A same-binary process
+A B B A on the idle host — `POM68K_JIT_FPU_MEMBER=0` against the default,
+frames and fingerprints checked on every run — measured the direct-FPU phase
+**0.868176 → 0.767134 s (−11.64 %**, n=6/6, within-arm spread 1.5 %), the
+Benchmark Mix **1.856594 → 1.814250 s (−2.28 %)** and the F-line-free CPU
+phase −0.39 % as the null. A 1 ms sample attached to the phase attributes
+the gain: the engine runtime bucket drops 21.2 → 14.2 % of on-CPU time and
+`Engine::executeUntil` 8.9 → 2.8 %, with the FPU handlers unchanged. All
+four families keep their fingerprints on the member arm, and the FPU family is exact on A64 member/boundary, `threaded`
+and the interpreter. A cross-binary "before" from a fresh worktree was
+discarded: a fresh configure defaults to LTO and `-mcpu=native`, the
+measurement directory has neither, and the 4–5 % that produced first read as
+a knob regression. Protocol, raw logs and the invalid series:
+`scratchpad/2026-09-06/fpu-member/FPU_MEMBER.md`.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
@@ -1098,8 +1115,36 @@ RTR, RESET, STOP, MOVE USP, MOVEC are all out); `MOVE`/`ANDI`/`ORI`/`EORI`
 to SR/CCR and `MOVE` **from** SR to memory; `MOVES`, `CAS`/`CAS2`,
 `CMP2`/`CHK2`; `TAS` (a locked RMW — it sets `mmu040Lrmw`, so its read
 translates with write semantics); `BKPT`; `TRAPcc`; the whole A-line; and
-the whole F-line (FPU, PFLUSH/PTEST, CINV/CPUSH, MOVE16). Everything else is
-already caught by the replay checks.
+the F-line minus its FPU general window (PFLUSH/PTEST, CINV/CPUSH, MOVE16,
+FScc/FDBcc/FTRAPcc, FBcc, FSAVE/FRESTORE and every unattached coprocessor
+id). Everything else is already caught by the replay checks.
+
+**`Fpu` is the F-line's one carve-out** (`JitIr.h`, 2026-09-06): the
+coprocessor-1 general window `$F200-$F23F` — FMOVE/FMOVEM/FMOVECR and every
+arithmetic form. It changes FPU state only, never a translation, a cache or
+the supervisor bit, so it is a block MEMBER that Moira replays exactly
+through the same cold per-instruction fallback every unsupported opcode
+uses; neither generator emits it. `FlagMayTrap` keeps its vectors a
+boundary: the Line-F / format-$4 trap of a 68LC040, an FPSP unimplemented
+trap and an enabled arithmetic exception are all raised inside the handler
+and redirect PC, and the replay continuation compares PC before running
+entry i+1. Before this, every one of Speedometer's 438,964 direct-FPU
+instructions ended its block and paid a dispatch — a failed cache lookup,
+a one-instruction trace that retired nothing, then `execute()` — 15.2 % of
+that phase (§ 3.5bis). `POM68K_JIT_FPU_MEMBER=0` restores the boundary and
+is the attribution arm; `jit_asset_free_lockstep_test` runs both arms
+through a straight loop, an enabled FDIV-by-zero (vector 50 from inside the
+block on every lap) and a detached-FPU 68LC040 (format $4 per member), and
+`jit_backend_test` pins the classification of every F-line sub-window.
+
+The same change made the tracer keep a **discontinuity prefix**: a block
+whose i-th member transferred control unexpectedly (a trap the classifier
+did not predict) now caches instructions 0..i−1 and ends in front of the
+offender, exactly as an Unsafe opcode would have. Until 2026-09-06 the whole
+trace was discarded, so a member that trapped on every visit — the
+detached-FPU case, a chronic DIV by zero — retraced its entire prefix each
+time it ran; the FPU-less regime of the gate above pins `compiled=3` over
+407 laps.
 
 **`MOVE SR,Dn` is the one carve-out out of that SR group** (`JitIr.h:1378-1381`,
 2026-08-12): on a 68010+ it is privileged, so a successful trace is
@@ -1309,6 +1354,7 @@ do not affect an injected session.
 | `POM68K_JIT_RESTART_BASE` | per-backend | admission (030): the restartable-write family on the split BASE cost instead of the traced total. Its historical coarse-budget divergence was the peripheral-phase class, CLOSED 2026-08-21 by the access-thunk clock bias (JIT_BRINGUP § C.4nonies). **Default follows the backend's `caps().accessClockBias` declaration — ON under x64 since 2026-08-22 (−4.3 % alone, −8.0 % with BSR.W at 6000 frames, fp identical) and under a64 since the same afternoon (its thunks carry the bias, replacing the `guardIcacheHits` replay); `threaded` declares none and needs none**; an explicit 0/1 wins either way. Both emitters consult it since the evening of 2026-08-22 (a64 had the total-cost rule hard-wired, refusing every push traced on an i-cache miss — native share 49 → 71 % at 30 000 frames once wired). `jit_lockstep_030_x64_alignment_test` / `jit_lockstep_030_a64_alignment_test` pin both admissions at 120k; `jit_backend_test` pins the declaration coupling |
 | `POM68K_JIT_BSRW` | per-backend | admission for BSR.W (`$6100`) into the armed-charge exemption. Charge proved correct (`fetchWords=2`); its step-16 097 divergence was the same peripheral-phase class, closed by the same fix. Same per-backend default and same gates as `POM68K_JIT_RESTART_BASE` (−2.3 % alone at 6000 frames) |
 | `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. Mutating forms consume read4/write4 when tailless or the shared read4/write4/read1/write1 maximum-path contract when crossing; both writable mappings are proved before access zero. MMIO/fault tails replay in Moira, preserving the partial longword and format-$B frame. A mispriced form refuses. Promoted for reads on 2026-08-31 and for crossing writes on 2026-09-01 after native A64+x64 tail/no-tail, MMIO and fault oracles; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
+| `POM68K_JIT_FPU_MEMBER` | `1` | the FPU general window `$F200-$F23F` is a block member replayed exactly by Moira (§ 4, `Kind::Fpu`); explicit `0` is the attribution/veto arm in which every F-line form ends the block before it, as before 2026-09-06. Conformance: `jit_asset_free_lockstep_test` (both arms; straight, enabled FDIV/0 vector 50, detached-FPU 68LC040 format $4), the 030/040 machine locksteps and Speedometer's four families at identical fingerprints on A64, `threaded` and the interpreter. Measured on the isolated Speedometer direct-FPU phase, § 3.5bis |
 | `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on the V8, on VASP, RBV and MSC (2026-09-03) and on Sonora (2026-09-04) — every 68030 board now proves its store inventory complete on its own audit (`kJitStoreInventoryComplete` in the board's memory header: every store into RAM passes `CodeGuard::note()`, pseudo-DMA included) and `store_inventory_test` pins the claim at the source level, refusing any header that declares the constant without a row of its own. `1` forces the hint back ON (prices it: −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF. A board that grows a bus master flips its constant back and returns to the flush — the knob is not the place to un-flush an unproved inventory. Compare fingerprints on both sides or the number means nothing |
 | `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
 | `POM68K_JIT_WATCH_OPCODE` | unset | diagnosis (a64): `<hex>[,<hex>…]`, up to four opcodes — when the compile loop hands one to the fallback stub, print its admission inputs (trace/base/i-cache cycles, fetch count, terminal queue, semantics, memory proof plan) once per pc, tagged with the stage or the emitter check that refused it (`jsr:queue`, `movem:cost`, …). Turns a fallback-census row into WHICH check, without guessing from the source (2026-08-23) |
@@ -2011,6 +2057,19 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
 
 ## 10. Journal
 
+* **2026-09-07 — the FPU general window becomes a block member.**
+  `$F200-$F23F` is `Kind::Fpu`: an exact Moira replay inside the block
+  through the existing cold fallback, `FlagMayTrap` guarding its Line-F /
+  FPSP / enabled-exception vectors; the rest of the F-line stays `Unsafe`.
+  The tracer now keeps a discontinuity prefix instead of discarding the whole
+  trace, so a member that traps on every visit (68LC040 without FPU) no longer
+  retraces its predecessors. Same-binary ABBA on Speedometer: direct-FPU phase
+  −11.64 %, Mix −2.28 %, CPU (no F-line) −0.39 %; fingerprints identical on
+  every arm and family. `jit_asset_free_lockstep_test` runs straight,
+  FDIV-by-zero (vector 50 in-block) and detached-FPU regimes on both knob
+  arms; six machine locksteps and thirteen asset-free JIT gates green;
+  forced-x64 build parity 0. `POM68K_JIT_FPU_MEMBER=0` is the veto arm
+  (§ 3.5bis, § 4, § 6).
 * **2026-08-21 — exact reads and the last inexpensive A64 fallbacks.** A sole
   040 read whose traced cost includes a live bus/device delay now calls the
   exact read seam and charges only the fixed opcode component. A two-EA MOVE

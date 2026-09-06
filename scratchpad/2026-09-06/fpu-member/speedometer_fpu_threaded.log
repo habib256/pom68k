@@ -1,0 +1,6 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+boot: Finder up, SCSI 1751 commands
+speedometer-test: mode=fpu done=1 frames=450 wall=1.105144s shape=0.055/0.138/1.000 fp=7e5b156c7e7efdf1 screen=e203493e22f88cf3
+session: 43.1% of the screen changed, SCSI +556, fp=294d8982ca4c20f1 screen=3cfeb28831043d23
+halted=0, SCSI 2307 commands total

@@ -103,6 +103,7 @@ POM68K_JIT_TRACE_BLOCK	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_DYNAMIC_BITFIELD	product	gate:jit_backend_test
 POM68K_JIT_EDGE_CELLS	chantier	expiry:src/jit/POM68K_JIT.md#measured-edge-cell-prototype
 POM68K_JIT_FETCH	product	gate:jit_backend_test
+POM68K_JIT_FPU_MEMBER	product	gate:jit_backend_test,jit_asset_free_lockstep_test
 POM68K_JIT_HISTO	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_HOT	product	gate:jit_backend_test
 POM68K_JIT_ICACHE_EMIT	chantier	expiry:docs/JIT_BRINGUP.md#68030-icache-attribution

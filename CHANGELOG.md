@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the whole F-line stays out of a block" — the FPU general window `$F200-$F23F` changes FPU state only; it is now an exact-replay block member, −11.6 % on Speedometer's isolated direct-FPU phase, and a cross-binary "before" that seemed to contradict the knob turned out to be a fresh configure's LTO+native defaults** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
 - **"Speedometer" meant only Performance Rating / CPU in the repaired census — the application also has a ten-test integer/floating mix, three direct-FPU tests and five Color QuickDraw depths; all are now separate, paired A64/`threaded` phases** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
 - **"there is currently no valid Speedometer temporal profile" (earlier 2026-09-06) — three corrected, byte-identical whole-route samples now exist; they cap all fallback time near 5.6% but leave the 0.27 s CPU phase too small for opcode attribution** → [2026-09-06 (sixth) — Speedometer's first correct time profile…](#2026-09-06-speedometer-time-profile)
 - **"repairing the Speedometer navigation is filed rather than done" (earlier 2026-09-06) — the Finder scope is now reset from the desktop and the real CPU result is reached identically on A64 and `threaded`; only the temporal profile remains open** → [2026-09-06 (fifth) — Speedometer's census closes every Finder window…](#2026-09-06-speedometer-navigation-fixed)
@@ -121,6 +122,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why an FPU instruction no longer costs a dispatch, what keeps its Line-F / FPSP / enabled-exception vectors a boundary, how a trapping member stops retracing its prefix, and which same-binary ABBA measured it** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
 - **which Speedometer families exist beyond CPU, how the harness selects them independently, and whether FPU and five-depth QuickDraw stay exact between A64 and `threaded`** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
 - **where time goes on the corrected Speedometer route, why the 5.6% fallback ceiling promotes no opcode, and what must be amplified before an opcode can be priced** → [2026-09-06 (sixth) — Speedometer's first correct time profile…](#2026-09-06-speedometer-time-profile)
 - **how the Speedometer census establishes a deterministic Finder scope, and what proves it runs the same real CPU test on A64 and `threaded` without pretending those validation timings are a profile** → [2026-09-06 (fifth) — Speedometer's census closes every Finder window…](#2026-09-06-speedometer-navigation-fixed)
@@ -408,6 +410,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07** — [The FPU general window stops ending a block: exact Moira replay inside native blocks, −11.6 % on Speedometer's isolated FPU phase, and the cross-binary comparison that had to be thrown away](#2026-09-07-fpu-block-member)
 - **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](#2026-09-06-speedometer-suite)
 - **2026-09-06 (sixth)** — [Speedometer's first correct time profile makes every fallback a 5.6% ceiling, not a target: the 0.27 s CPU phase must be isolated before any opcode is priced](#2026-09-06-speedometer-time-profile)
 - **2026-09-06 (fifth)** — [Speedometer's census closes every Finder window before choosing its volume: the real CPU test now finishes at frame 270 identically on A64 and `threaded`](#2026-09-06-speedometer-navigation-fixed)
@@ -841,6 +844,85 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-fpu-block-member"></a>
+## 2026-09-07 — The FPU general window stops ending a block: exact Moira replay inside native blocks, −11.6 % on Speedometer's isolated FPU phase, and the cross-binary comparison that had to be thrown away
+
+The family census of 2026-09-06 (seventh) left one row that was neither a
+lowering candidate nor noise: 438,964 of the direct-FPU phase's 2.895 M
+instructions — 15.2 % — were `UNSAFE`, because `classify()` sent the whole
+F-line out of a block. Every one of them ended its block, and the engine then
+paid the same three steps for it: a dispatch-cache miss at a pc that can never
+hold a block, a one-instruction trace that retired nothing, and
+`execute()`. The exit price measured in § 3.6 (about 120 ns native) made that
+worth pricing rather than filing.
+
+The general window `$F200-$F23F` — coprocessor 1, type 000: FMOVE, FMOVEM,
+FMOVECR and every arithmetic form — changes FPU state only. It cannot move a
+translation, a cache line or the supervisor bit, which is the whole reason the
+classifier refuses an opcode. So it is now `Kind::Fpu`, a block member that
+neither generator emits: it reaches the cold exact fallback every unsupported
+opcode already uses, and `FlagMayTrap` makes the continuation compare PC
+before entry i+1, because a 68LC040's format-$4 Line-F trap, an FPSP
+unimplemented trap and an enabled arithmetic exception are all raised inside
+the handler exactly as DIV by zero is. FScc/FDBcc/FTRAPcc, FBcc,
+FSAVE/FRESTORE, the PMMU, CINV/CPUSH, MOVE16 and unattached coprocessor ids
+remain `Unsafe`. `POM68K_JIT_FPU_MEMBER=0` restores the boundary and is the
+attribution arm; the x86-64 emitter needed no change and the parity gate still
+reports zero divergence groups.
+
+A trapping member exposed a second, older cost: the tracer discarded a whole
+trace on any discontinuity, so a block whose member trapped on every visit was
+retraced in full each time it ran. It now keeps the retired prefix and ends in
+front of the offender, as an `Unsafe` opcode would have. The asset-free
+lockstep pins both behaviours in one loop under three regimes: a straight
+68040 with FMOVE/FADD/FDIV memory and register forms, an enabled
+FDIV-by-zero taking vector 50 from inside the block on every lap, and a
+68LC040 with the FPU detached taking format $4 per member — `compiled=3` over
+407 laps where the old tracer would have retraced. Both knob arms run all
+three; the two arms must retire the same instructions through opposite
+counters (member `slow`, boundary `interp`).
+
+Conformance is complete on the terms this tree sets. The six 030/040 machine
+locksteps pass, the thirteen asset-free JIT gates pass, and Speedometer's FPU
+family finishes at 450 frames with the same result fingerprint
+`7e5b156c7e7efdf1`, final `294d8982ca4c20f1`, screens and SCSI +556 on the
+A64 member arm, the A64 boundary arm, `threaded` and the interpreter; CPU,
+Mix and five-depth Graphics keep the exact fingerprints of the (seventh)
+table on the member arm.
+
+The measurement is a same-binary, process-level A B B A on an idle host,
+refusing to summarise if any run's frames or fingerprints drift:
+
+| family | boundary median | member median | delta |
+|---|---:|---:|---:|
+| direct FPU (450 frames) | 0.868176 s (n=6, 0.8597–0.8727) | 0.767134 s (n=6, 0.7631–0.7698) | **−11.64 %** |
+| Benchmark Mix (1590 frames) | 1.856594 s (n=4) | 1.814250 s (n=4) | **−2.28 %** |
+| CPU (270 frames, no F-line) | 0.300508 s (n=6) | 0.299346 s (n=6) | −0.39 %, the null |
+
+The spread within arms is 1.5 % on FPU against an 11.6 % delta. A 1 ms
+sample attached to the phase itself says where the time went: the engine
+runtime bucket falls from 21.2 % to 14.2 % of on-CPU time, `executeUntil`
+from 8.9 % to 2.8 %, while the FPU handlers cost the same on both arms. This
+is the first Speedometer change admitted from a phase the harness can isolate, and
+it did not come from the largest census row alone: the QuickDraw shift
+extension of the previous entry removed more fallbacks and lost 1.75 %.
+
+**What had to be thrown away.** A "before" binary built from the parent
+commit in a fresh worktree measured the FPU phase at 0.779 s — faster than
+the new binary's own boundary arm at 0.868 s, although the instrumented
+dispatch, miss and block counters of the two were byte-identical. Graphics,
+which has no F-line traffic, was 4.79 % slower on the new binary too, and the
+whole route 37.9 s against 39.5–40.0 s. Probing showed the slowdown followed
+neither the knob's presence nor its value across binaries: a fresh configure
+defaults to `POM68K_LTO=ON` and `POM68K_NATIVE=ON` (`-flto=thin
+-mcpu=native`), while the measurement directory has both OFF. The
+cross-binary series is preserved as an invalid comparison; every number above
+is same-binary. The side observation — LTO+native is about 4–5 % faster on
+this host — belongs to TODO § C.4, not to this admission. Evidence, protocol
+and raw logs: `scratchpad/2026-09-06/fpu-member/FPU_MEMBER.md`.
 
 ---
 

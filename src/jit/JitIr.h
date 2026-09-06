@@ -53,6 +53,10 @@ enum class Kind : uint8_t {
     Multi,       // MOVEM / MOVEP
     Cond,        // Scc (sets a byte, does not branch)
     Branch,      // Bcc/BRA/DBcc — may end a block, never appear inside one
+    Fpu,         // F-line coprocessor-1 general window ($F200-$F23F): an
+                 // exact Moira replay INSIDE a block, never native. It
+                 // changes FPU state only, and FlagMayTrap keeps its
+                 // Line-F/FPSP/arithmetic vectors a block boundary.
     Unsafe,      // must end a block BEFORE it: control flow, SR/MMU/cache
     Count
 };
@@ -2047,7 +2051,20 @@ inline Kind classify(uint16_t op) {
         default:
             // F-line: FPU, MMU (PFLUSH/PTEST/PLPA), CINV/CPUSH, MOVE16.
             // The MMU and cache members of this group are exactly what the
-            // code window cannot survive, so the whole line stays out.
+            // code window cannot survive, so the line stays out — except
+            // its coprocessor-1 GENERAL window (cpid 1, type 000:
+            // FMOVE/FMOVEM/FMOVECR and every arithmetic form). Those touch
+            // FPU state only — never a translation, a cache or the
+            // supervisor bit — so since 2026-09-06 they are block members
+            // that Moira replays exactly (Kind::Fpu). Speedometer's direct
+            // FPU phase retired 15.2 % of its instructions through this
+            // window, each one ending a block and paying a dispatch
+            // (POM68K_JIT.md § 3.5bis). FScc/FDBcc/FTRAPcc ($F240),
+            // FBcc ($F280-$F2FF), FSAVE/FRESTORE ($F300-$F37F), the PMMU
+            // (cpid 0), CINV/CPUSH, MOVE16 and unattached coprocessor ids
+            // remain Unsafe: they branch, trap by design, are privileged
+            // frame traffic, or change what the window is built on.
+            if ((op & 0xFFC0) == 0xF200) return Kind::Fpu;
             return Kind::Unsafe;
     }
 }
@@ -2138,6 +2155,11 @@ inline bool provedLinearControlFetch030(const Instr& in) {
 // enough to keep MULU/MULS off the expensive post-fallback PC check while
 // DIV/CHK retain it; unknown members stay conservative.
 inline uint8_t instrFlags(uint16_t op, Kind k) {
+    // An FPU general-window member retires through Moira, which raises its
+    // Line-F (no FPU), FPSP unimplemented and enabled arithmetic vectors
+    // inside the handler exactly as DIV/CHK do: the replay continuation
+    // must compare PC before running entry i+1.
+    if (k == Kind::Fpu) return uint8_t(FlagMayTrap);
     if (k != Kind::Muldiv) return uint8_t(FlagNone);
     return describeInstruction(op).operation == SemanticOp::MultiplyWord
         ? uint8_t(FlagNone) : uint8_t(FlagMayTrap);
