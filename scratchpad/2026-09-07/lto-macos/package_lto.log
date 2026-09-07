@@ -1,0 +1,167 @@
+============================================
+ POM68K — macOS distribution package (v0.1.0)
+============================================
+-- The CXX compiler identification is AppleClang 21.0.0.21000101
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- The C compiler identification is AppleClang 21.0.0.21000101
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- POM68K JIT: threaded backend + aarch64 code generator
+-- Found OpenGL: /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework
+-- POM68K warnings: -Wall -Wextra (-Werror: OFF)
+-- Configuring done (0.7s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/mercure/src/pom68k/build-release-lto
+[  1%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat_fpsp.c.o
+[  2%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfigMachine.cpp.o
+[  4%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfigProduct.cpp.o
+[  4%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat.c.o
+[  5%] Building CXX object CMakeFiles/pom68k_app.dir/src/MachineSession.cpp.o
+[  5%] Building CXX object CMakeFiles/pom68k_app.dir/src/ProcessEnvironment.cpp.o
+[  6%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfigCore.cpp.o
+[  7%] Building CXX object CMakeFiles/pom68k_app.dir/src/RuntimeConfig.cpp.o
+[  8%] Building CXX object CMakeFiles/pom68k_app.dir/src/MachineFactory.cpp.o
+[  9%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat_decimal.c.o
+[ 10%] Linking C static library libsoftfloat68k.a
+[ 10%] Built target softfloat68k
+[ 11%] Building CXX object CMakeFiles/moira.dir/extern/moira/Moira/MoiraDebugger.cpp.o
+[ 12%] Building CXX object CMakeFiles/moira.dir/extern/moira/Moira/Moira.cpp.o
+[ 13%] Linking CXX static library libpom68k_app.a
+[ 13%] Built target pom68k_app
+[ 14%] Linking CXX static library libmoira.a
+[ 14%] Built target moira
+[ 14%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitEngineCensus.cpp.o
+[ 15%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/backends/JitBackendThreaded.cpp.o
+[ 16%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitBlockCache.cpp.o
+[ 17%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/backends/JitBackendA64.cpp.o
+[ 18%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitRuntime.cpp.o
+[ 20%] Building CXX object CMakeFiles/pom68k_core.dir/src/SaveState.cpp.o
+[ 20%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitShiftVersions.cpp.o
+[ 21%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitEngine.cpp.o
+[ 22%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitBackend.cpp.o
+[ 23%] Building CXX object CMakeFiles/pom68k_core.dir/src/jit/JitCodeBuffer.cpp.o
+[ 23%] Building CXX object CMakeFiles/pom68k_core.dir/src/SaveStateMachines.cpp.o
+[ 24%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu68k.cpp.o
+[ 25%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacMemory.cpp.o
+[ 26%] Building CXX object CMakeFiles/pom68k_core.dir/src/Via6522.cpp.o
+[ 27%] Building CXX object CMakeFiles/pom68k_core.dir/src/Rtc.cpp.o
+[ 28%] Building CXX object CMakeFiles/pom68k_core.dir/src/Iwm.cpp.o
+[ 29%] Building CXX object CMakeFiles/pom68k_core.dir/src/SonyDrive.cpp.o
+[ 30%] Building CXX object CMakeFiles/pom68k_core.dir/src/Scc8530.cpp.o
+[ 31%] Building CXX object CMakeFiles/pom68k_core.dir/src/M68hc05.cpp.o
+[ 32%] Building CXX object CMakeFiles/pom68k_core.dir/src/R65c02.cpp.o
+[ 32%] Building CXX object CMakeFiles/pom68k_core.dir/src/ApplePic.cpp.o
+[ 33%] Building CXX object CMakeFiles/pom68k_core.dir/src/IIfxMemory.cpp.o
+[ 34%] Building CXX object CMakeFiles/pom68k_core.dir/src/IIfxCpu.cpp.o
+[ 35%] Building CXX object CMakeFiles/pom68k_core.dir/src/LtoUdp.cpp.o
+[ 36%] Building CXX object CMakeFiles/pom68k_core.dir/src/CudaLle.cpp.o
+[ 37%] Building CXX object CMakeFiles/pom68k_core.dir/src/AtalkStack.cpp.o
+[ 38%] Building CXX object CMakeFiles/pom68k_core.dir/src/AfpServer.cpp.o
+[ 39%] Building CXX object CMakeFiles/pom68k_core.dir/src/PapServer.cpp.o
+[ 40%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacIpGateway.cpp.o
+[ 40%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacInput.cpp.o
+[ 41%] Building CXX object CMakeFiles/pom68k_core.dir/src/ScsiDisk.cpp.o
+[ 42%] Building CXX object CMakeFiles/pom68k_core.dir/src/DaynaPort.cpp.o
+[ 43%] Building CXX object CMakeFiles/pom68k_core.dir/src/EtherLink.cpp.o
+[ 44%] Building CXX object CMakeFiles/pom68k_core.dir/src/Ncr5380.cpp.o
+[ 45%] Building CXX object CMakeFiles/pom68k_core.dir/src/Ncr53c96.cpp.o
+[ 46%] Building CXX object CMakeFiles/pom68k_core.dir/src/PseudoVia.cpp.o
+[ 47%] Building CXX object CMakeFiles/pom68k_core.dir/src/V8Memory.cpp.o
+[ 48%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu030.cpp.o
+[ 48%] Building CXX object CMakeFiles/pom68k_core.dir/src/Egret.cpp.o
+[ 49%] Building CXX object CMakeFiles/pom68k_core.dir/src/AdbBus.cpp.o
+[ 50%] Building CXX object CMakeFiles/pom68k_core.dir/src/Asc.cpp.o
+[ 51%] Building CXX object CMakeFiles/pom68k_core.dir/src/Swim1.cpp.o
+[ 52%] Building CXX object CMakeFiles/pom68k_core.dir/src/Swim2.cpp.o
+[ 53%] Building CXX object CMakeFiles/pom68k_core.dir/src/SonoraMemory.cpp.o
+[ 54%] Building CXX object CMakeFiles/pom68k_core.dir/src/SonoraCpu.cpp.o
+[ 55%] Building CXX object CMakeFiles/pom68k_core.dir/src/VaspMemory.cpp.o
+[ 56%] Building CXX object CMakeFiles/pom68k_core.dir/src/VaspCpu.cpp.o
+[ 57%] Building CXX object CMakeFiles/pom68k_core.dir/src/MscMemory.cpp.o
+[ 57%] Building CXX object CMakeFiles/pom68k_core.dir/src/MscCpu.cpp.o
+[ 58%] Building CXX object CMakeFiles/pom68k_core.dir/src/M68hc05Pge.cpp.o
+[ 59%] Building CXX object CMakeFiles/pom68k_core.dir/src/PgePmu.cpp.o
+[ 60%] Building CXX object CMakeFiles/pom68k_core.dir/src/RbvMemory.cpp.o
+[ 61%] Building CXX object CMakeFiles/pom68k_core.dir/src/RbvCpu.cpp.o
+[ 62%] Building CXX object CMakeFiles/pom68k_core.dir/src/CentrisMemory.cpp.o
+[ 63%] Building CXX object CMakeFiles/pom68k_core.dir/src/CentrisCpu.cpp.o
+[ 64%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q630Memory.cpp.o
+[ 65%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q630Cpu.cpp.o
+[ 65%] Building CXX object CMakeFiles/pom68k_core.dir/src/Valkyrie.cpp.o
+[ 66%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q700Memory.cpp.o
+[ 67%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q700Cpu.cpp.o
+[ 68%] Building CXX object CMakeFiles/pom68k_core.dir/src/Q605Memory.cpp.o
+[ 69%] Building CXX object CMakeFiles/pom68k_core.dir/src/Dafb.cpp.o
+[ 70%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu040.cpp.o
+[ 71%] Building CXX object CMakeFiles/pom68k_core.dir/src/DeclRom.cpp.o
+[ 72%] Building CXX object CMakeFiles/pom68k_core.dir/src/NuBus.cpp.o
+[ 73%] Building CXX object CMakeFiles/pom68k_core.dir/src/TobyVideo.cpp.o
+[ 73%] Building CXX object CMakeFiles/pom68k_core.dir/src/MacIIMemory.cpp.o
+[ 74%] Building CXX object CMakeFiles/pom68k_core.dir/src/Cpu020.cpp.o
+[ 75%] Building CXX object CMakeFiles/pom68k_core.dir/src/AdbVia.cpp.o
+[ 76%] Building CXX object CMakeFiles/pom68k_core.dir/src/Pic1654s.cpp.o
+[ 77%] Building CXX object CMakeFiles/pom68k_core.dir/src/AdbLine.cpp.o
+[ 78%] Linking CXX static library libpom68k_core.a
+[ 78%] Built target pom68k_core
+[ 79%] Building CXX object CMakeFiles/POM68K.dir/src/GuiShell.cpp.o
+[ 80%] Building CXX object CMakeFiles/POM68K.dir/src/GuiSmokeScenario.cpp.o
+[ 81%] Building CXX object CMakeFiles/POM68K.dir/src/GuiMachineRuntime.cpp.o
+[ 82%] Building CXX object CMakeFiles/POM68K.dir/src/PlatformComposers.cpp.o
+[ 83%] Building CXX object CMakeFiles/POM68K.dir/src/PlatformToby.cpp.o
+[ 85%] Building CXX object CMakeFiles/POM68K.dir/src/PlatformCompact.cpp.o
+[ 85%] Building CXX object CMakeFiles/POM68K.dir/src/GuiHostServices.cpp.o
+[ 85%] Building CXX object CMakeFiles/POM68K.dir/src/main.cpp.o
+[ 86%] Building CXX object CMakeFiles/POM68K.dir/src/PlatformV8.cpp.o
+[ 86%] Building CXX object CMakeFiles/POM68K.dir/src/PlatformSonora.cpp.o
+[ 87%] Building CXX object CMakeFiles/POM68K.dir/src/PlatformDafb.cpp.o
+[ 88%] Building CXX object CMakeFiles/POM68K.dir/src/PlatformDuo.cpp.o
+[ 89%] Building CXX object CMakeFiles/POM68K.dir/src/miniaudio_impl.cpp.o
+[ 90%] Building CXX object CMakeFiles/POM68K.dir/src/FloppySound.cpp.o
+[ 91%] Building CXX object CMakeFiles/POM68K.dir/src/DiskBays.cpp.o
+[ 92%] Building CXX object CMakeFiles/POM68K.dir/src/PeripheralWindow.cpp.o
+[ 93%] Building CXX object CMakeFiles/POM68K.dir/src/DockLayout.cpp.o
+[ 94%] Building CXX object CMakeFiles/POM68K.dir/imgui/imgui.cpp.o
+[ 94%] Building CXX object CMakeFiles/POM68K.dir/imgui/imgui_demo.cpp.o
+[ 95%] Building CXX object CMakeFiles/POM68K.dir/imgui/imgui_draw.cpp.o
+[ 96%] Building CXX object CMakeFiles/POM68K.dir/imgui/imgui_tables.cpp.o
+[ 97%] Building CXX object CMakeFiles/POM68K.dir/imgui/imgui_widgets.cpp.o
+[ 98%] Building CXX object CMakeFiles/POM68K.dir/imgui/backends/imgui_impl_glfw.cpp.o
+[ 99%] Building CXX object CMakeFiles/POM68K.dir/imgui/backends/imgui_impl_opengl3.cpp.o
+[100%] Linking CXX executable POM68K
+[100%] Built target POM68K
+==> Staging dist/POM68K.app
+dist/POM68K.app/Contents/MacOS/POM68K-bin (architecture x86_64):
+	/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL (compatibility version 1.0.0, current version 1.0.0)
+	/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)
+	/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit (compatibility version 1.0.0, current version 275.0.0)
+	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 5026.5.4)
+	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+	/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.60.104)
+	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.5.1)
+	/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)
+	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 5026.5.4)
+	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+dist/POM68K.app/Contents/MacOS/POM68K-bin (architecture arm64):
+	/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL (compatibility version 1.0.0, current version 1.0.0)
+	/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa (compatibility version 1.0.0, current version 24.0.0)
+	/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit (compatibility version 1.0.0, current version 275.0.0)
+	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 5026.5.4)
+	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 2100.43.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
+	/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (compatibility version 45.0.0, current version 2685.60.104)
+	/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (compatibility version 64.0.0, current version 1965.5.1)
+	/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1226.0.0)
+	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 5026.5.4)
+	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+Architectures in the fat file: dist/POM68K.app/Contents/MacOS/POM68K-bin are: x86_64 arm64 
+OK: bundle binary is self-contained
+created: /Users/mercure/src/pom68k/dist/POM68K-macOS-v0.1.0.dmg
+OK: dist/POM68K-macOS-v0.1.0.dmg

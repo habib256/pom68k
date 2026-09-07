@@ -238,13 +238,13 @@ jobs:
       - name: Run the asset-free tier in the release configuration
         # TODO.md § 10 wave 0: nothing beyond --version ran on the release
         # path before 2026-08-28. Same knobs as the packaged binary
-        # (NATIVE=OFF, LTO=OFF), native arch only — the x86_64 slice stays
-        # covered by the packager's lipo gate. Runs after packaging so the
-        # imgui/ clone the packager makes is already there.
+        # (NATIVE=OFF, LTO=ON since 2026-09-07), native arch only — the
+        # x86_64 slice stays covered by the packager's lipo gate. Runs after
+        # packaging so the imgui/ clone the packager makes is already there.
         run: |
           set -euo pipefail
           cmake -S . -B build-tests -DCMAKE_BUILD_TYPE=Release \
-              -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF -DPOM68K_TESTS=ON
+              -DPOM68K_NATIVE=OFF -DPOM68K_LTO=ON -DPOM68K_TESTS=ON
           cmake --build build-tests -j"$(sysctl -n hw.ncpu)"
           ctest --test-dir build-tests -L asset-none -j 4 --output-on-failure
 
@@ -289,15 +289,15 @@ jobs:
         env:
           POM68K_VERSION: ${{ needs.version.outputs.pom68k_version }}
         run: |
-          # No -DPOM68K_LTO here on purpose: the whole optimization block in
-          # CMakeLists.txt is guarded `if(NOT MSVC AND NOT EMSCRIPTEN)`, so
-          # the knob is INERT on this job whatever its default. MSVC LTO
-          # would be /GL + /LTCG, which that block does not emit (TODO.md
-          # § 10). Passing OFF here would read as a decision; there is none
-          # to make until the flags exist.
+          # -DPOM68K_LTO=ON is stated: since 2026-09-07 CMakeLists.txt turns
+          # it into MSVC's /GL + /LTCG through the IPO property, probed with
+          # check_ipo_supported so a toolchain that cannot do it builds
+          # without rather than failing at link. Untested on a Windows host
+          # in this tree; the first tag build is the evidence (TODO § C.6).
           $cfg = @('-S', '.', '-B', 'build',
                    "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
                    '-DVCPKG_TARGET_TRIPLET=x64-windows-static',
+                   '-DPOM68K_LTO=ON',
                    '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
                    '-DPOM68K_NATIVE=OFF', '-DPOM68K_TESTS=ON')
           if ($env:POM68K_VERSION) { $cfg += "-DPOM68K_VERSION=$env:POM68K_VERSION" }

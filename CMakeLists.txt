@@ -59,6 +59,24 @@ set(POM68K_TUNE "" CACHE STRING
     "Tune for a named core without raising the ISA floor (e.g. cortex-a72)")
 option(POM68K_LTO "Link-time optimization" ON)
 
+# MSVC has no place in the flag block below (its probes are GCC/Clang
+# spellings), so its LTO is CMake's own IPO property, which emits /GL at
+# compile time and /LTCG at link time. Probed rather than assumed, like
+# everything else here: a toolchain that cannot do it says so at configure
+# and builds without, instead of failing at the first link. TODO § C.4
+# (2026-09-07); the release.yml windows job passes -DPOM68K_LTO=ON on purpose.
+if(MSVC AND POM68K_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT pom68k_msvc_ipo OUTPUT pom68k_msvc_ipo_why
+                        LANGUAGES CXX)
+    if(pom68k_msvc_ipo)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+        message(STATUS "POM68K: MSVC LTO on (/GL + /LTCG through IPO)")
+    else()
+        message(STATUS "POM68K: MSVC LTO unavailable — ${pom68k_msvc_ipo_why}")
+    endif()
+endif()
+
 if(NOT MSVC AND NOT EMSCRIPTEN)
     include(CheckCXXCompilerFlag)
     if(POM68K_NATIVE)

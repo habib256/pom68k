@@ -349,6 +349,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Product scenarios — applications, beyond-boot legs and persistence
 
+- **why the macOS package had LTO off, what exercised the universal-2 lipo path with it on, and how MSVC's /GL + /LTCG are requested without a Windows host to prove them** → [2026-09-07 (seventh) — LTO enters the artifacts…](#2026-09-07-lto-artifacts)
 - **what the product tier's coverage is against the asset-free tier's, which src/ files no gate reaches, whether the default engines survive ASan on real boots, and what the AppleTalk hub costs at equal arms** → [2026-09-07 (sixth) — Tier C's sweep…](#2026-09-07-tier-c-sweep)
 - **why a host-forced eject lost the folder the Finder had visibly created, how Put Away from the guest fixes it on SWIM1 and SWIM2, and what the 1.44 MB attempt on the LC II shows** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
 - **how a guest-initiated restart is driven and judged — the Shutdown Manager, the volume flush, the ROM warm start and a second boot that must read the disk again** → [2026-09-07 (fourth) — The guest restarts itself…](#2026-09-07-restart-etalon)
@@ -423,6 +424,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07 (seventh)** — [LTO enters the artifacts: the universal macOS package builds, passes lipo and runs with it, and MSVC gets /GL + /LTCG through CMake's IPO, probed rather than assumed](#2026-09-07-lto-artifacts)
 - **2026-09-07 (sixth)** — [Tier C's sweep: five more machines in the boot matrix, the Duo's input and the LC II's chime as gates, three real boots clean under ASan, the product tier's coverage, a Cortex-A76 package, a scriptable turbo and an AppleTalk hub that costs nothing measurable](#2026-09-07-tier-c-sweep)
 - **2026-09-07 (fifth)** — [The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded](#2026-09-07-floppy-guest-write)
 - **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](#2026-09-07-restart-etalon)
@@ -862,6 +864,34 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-lto-artifacts"></a>
+## 2026-09-07 (seventh) — LTO enters the artifacts: the universal macOS package builds, passes lipo and runs with it, and MSVC gets /GL + /LTCG through CMake's IPO, probed rather than assumed
+
+`package_macos_release.sh` stated `POM68K_LTO=OFF` since 2026-08-17 for one
+reason: the universal-2 lipo path had never been exercised with LTO, and a
+released .dmg must not change because a default moved. The run has now
+happened on the M4 with the same universal static GLFW the release job
+builds: `POM68K_MACOS_ARCHS=arm64;x86_64` with LTO on produces a fat
+`POM68K-bin` (`x86_64 arm64`), the packager's self-containment check and
+lipo gate pass, the .dmg is created and the arm64 slice prints its banner.
+A separate LTO tests tree (native arch, `POM68K_FAST_LINK=OFF`) runs the
+asset-free tier green. The packager's default is therefore ON and stated;
+`POM68K_LTO_PACKAGE=OFF` is the attribution arm, and the release job's own
+asset-free configure says LTO=ON to match what it ships.
+
+MSVC never saw the flag block — it is guarded `NOT MSVC` because its probes
+are GCC/Clang spellings — so its LTO is CMake's IPO property, which emits
+/GL at compile and /LTCG at link. It is requested only after
+`check_ipo_supported`, so a toolchain that cannot do it configures and
+builds without rather than failing at the first link, and the `windows`
+job now passes `-DPOM68K_LTO=ON` as a statement. No Windows host has
+compiled this tree; TODO § C.4 keeps the reading of that first build — a
+manual `release.yml` dispatch builds all four packages without publishing
+(`publish` runs only on a tag) — as the remaining evidence. Logs:
+`scratchpad/2026-09-07/lto-macos/`.
 
 ---
 

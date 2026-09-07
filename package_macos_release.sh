@@ -40,13 +40,14 @@ BUILD_DIR="${POM68K_BUILD_DIR:-build-release}"
 CMAKE_ARCH_ARG=()
 [ -n "${POM68K_MACOS_ARCHS:-}" ] && \
     CMAKE_ARCH_ARG=(-DCMAKE_OSX_ARCHITECTURES="${POM68K_MACOS_ARCHS}")
-# POM68K_LTO=OFF is stated, not inherited. It used to come free with
-# NATIVE=OFF; since 2026-08-17 the default is ON, and letting it flip here
-# would silently change what the released .dmg contains. LTO for the macOS
-# package is open work with its own reason for being open — the universal-2
-# lipo path is unexercised (TODO.md § 10). Turn it on when that is done.
+# LTO is ON and STATED, not inherited: the packaged .dmg must not change
+# because a CMake default moved. It was OFF from 2026-08-17 to 2026-09-07
+# because the universal-2 lipo path had never been exercised with LTO; that
+# run has now happened — arm64;x86_64 with LTO builds, passes the lipo gate
+# below, is self-contained and prints its banner (CHANGELOG 2026-09-07).
+# POM68K_LTO_PACKAGE=OFF is the attribution arm if a slice ever regresses.
 cmake -S . -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release \
-    -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF -DPOM68K_TESTS=OFF \
+    -DPOM68K_NATIVE=OFF -DPOM68K_LTO="${POM68K_LTO_PACKAGE:-ON}" -DPOM68K_TESTS=OFF \
     -DPOM68K_VERSION="${VERSION}" \
     "${CMAKE_ARCH_ARG[@]}"
 cmake --build "${BUILD_DIR}" -j"$(sysctl -n hw.ncpu)" --target POM68K

@@ -1,0 +1,44 @@
+glfw.tar.gz: OK
+-- The C compiler identification is AppleClang 21.0.0.21000101
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Using Cocoa for window creation
+-- Configuring done (0.8s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/mercure/src/pom68k/build-universal-deps/glfw-src/build
+[  6%] Building C object src/CMakeFiles/glfw.dir/context.c.o
+[ 12%] Building C object src/CMakeFiles/glfw.dir/init.c.o
+[ 18%] Building C object src/CMakeFiles/glfw.dir/input.c.o
+[ 25%] Building C object src/CMakeFiles/glfw.dir/monitor.c.o
+[ 31%] Building C object src/CMakeFiles/glfw.dir/cocoa_joystick.m.o
+[ 43%] Building C object src/CMakeFiles/glfw.dir/vulkan.c.o
+[ 43%] Building C object src/CMakeFiles/glfw.dir/window.c.o
+[ 50%] Building C object src/CMakeFiles/glfw.dir/cocoa_init.m.o
+[ 56%] Building C object src/CMakeFiles/glfw.dir/cocoa_window.m.o
+[ 62%] Building C object src/CMakeFiles/glfw.dir/cocoa_monitor.m.o
+[ 68%] Building C object src/CMakeFiles/glfw.dir/cocoa_time.c.o
+[ 75%] Building C object src/CMakeFiles/glfw.dir/posix_thread.c.o
+[ 81%] Building C object src/CMakeFiles/glfw.dir/nsgl_context.m.o
+[ 87%] Building C object src/CMakeFiles/glfw.dir/egl_context.c.o
+[ 93%] Building C object src/CMakeFiles/glfw.dir/osmesa_context.c.o
+[100%] Linking C static library libglfw3.a
+[100%] Built target glfw
+Install the project...
+-- Install configuration: "Release"
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/lib/libglfw3.a
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/include/GLFW
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/include/GLFW/glfw3.h
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/include/GLFW/glfw3native.h
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/lib/cmake/glfw3/glfw3Config.cmake
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/lib/cmake/glfw3/glfw3ConfigVersion.cmake
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/lib/cmake/glfw3/glfw3Targets.cmake
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/lib/cmake/glfw3/glfw3Targets-release.cmake
+-- Installing: /Users/mercure/src/pom68k/build-universal-deps/glfw/lib/pkgconfig/glfw3.pc
+Architectures in the fat file: /Users/mercure/src/pom68k/build-universal-deps/glfw/lib/libglfw3.a are: x86_64 arm64 
+OK: universal static GLFW at /Users/mercure/src/pom68k/build-universal-deps/glfw

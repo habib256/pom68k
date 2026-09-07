@@ -146,10 +146,14 @@ hauteur.
   `full` déclenchable par push et publier `LastTest.log` ainsi que le census
   exécutés/soft-skips. C'est ce qui transforme une preuve personnelle en
   preuve vérifiable par un tiers.
-- [ ] **Activer LTO dans les artefacts.** Retirer le veto macOS après
-  validation `lipo` et ajouter `/GL` + `/LTCG` au build MSVC. Donnée du
-  2026-09-07 (observation, pas mesure contrôlée) : sur l'hôte M4, un build
-  LTO+`-mcpu=native` est 4–5 % plus rapide que le binaire de mesure
+- [ ] **Lire le premier build MSVC avec `/GL` + `/LTCG`.** Le veto macOS est
+  levé le 2026-09-07 (paquet universel arm64;x86_64 avec LTO : porte `lipo`,
+  bundle autonome, bannière `--version`, tier `asset-none` vert en
+  configuration LTO) et `CMakeLists.txt` porte l'IPO MSVC derrière
+  `check_ipo_supported`, mais aucun hôte Windows n'a compilé cet arbre :
+  le job `windows` de `release.yml` (dispatch manuel sans publication, ou
+  premier tag) est la preuve à lire. Donnée annexe : sur l'hôte M4, un
+  build LTO+`-mcpu=native` est 4–5 % plus rapide que le binaire de mesure
   OFF/OFF sur la phase Graphics et la route Speedometer entière.
 
 ### C.5 Matériel cible Raspberry Pi
