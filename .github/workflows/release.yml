@@ -303,28 +303,39 @@ jobs:
           # -DPOM68K_LTO=ON is stated: since 2026-09-07 CMakeLists.txt turns
           # it into MSVC's /GL + /LTCG through the IPO property, probed with
           # check_ipo_supported so a toolchain that cannot do it builds
-          # without rather than failing at link. Untested on a Windows host
-          # in this tree; the first tag build is the evidence (TODO § C.6).
+          # without rather than failing at link. The 2026-09-07 dispatch
+          # (run 34143298273) built this target with it in six minutes.
+          # The shipped artifact is the ONLY thing in this tree: ~130 gate
+          # executables under /GL ran past the job's 90-minute budget on
+          # that same dispatch, so the gates get their own tree below.
           $cfg = @('-S', '.', '-B', 'build',
                    "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
                    '-DVCPKG_TARGET_TRIPLET=x64-windows-static',
                    '-DPOM68K_LTO=ON',
                    '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-                   '-DPOM68K_NATIVE=OFF', '-DPOM68K_TESTS=ON')
+                   '-DPOM68K_NATIVE=OFF', '-DPOM68K_TESTS=OFF')
           if ($env:POM68K_VERSION) { $cfg += "-DPOM68K_VERSION=$env:POM68K_VERSION" }
           cmake @cfg
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          # The shipped artifact first, the gate executables second: the
-          # test tree has never been compiled by MSVC, and a test-side
-          # compile failure must read as its own step, not bury the
-          # packaged binary it was added to vouch for.
           cmake --build build --config Release -j --target POM68K
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Build the gate executables (first MSVC compile of the test tree)
+        # Same toolchain, triplet and CRT as the shipped binary, LTO OFF:
+        # the test tree is not shipped, and its /GL build is what timed the
+        # job out. A test-side compile failure still reads as its own step
+        # rather than burying the packaged binary it vouches for.
         shell: pwsh
         run: |
-          cmake --build build --config Release -j
+          $cfg = @('-S', '.', '-B', 'build-tests',
+                   "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
+                   '-DVCPKG_TARGET_TRIPLET=x64-windows-static',
+                   '-DPOM68K_LTO=OFF',
+                   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+                   '-DPOM68K_NATIVE=OFF', '-DPOM68K_TESTS=ON')
+          cmake @cfg
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cmake --build build-tests --config Release -j
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Run the asset-free tier in the release configuration
@@ -336,7 +347,7 @@ jobs:
         # silence it.
         shell: pwsh
         run: |
-          ctest --test-dir build -C Release -L asset-none -j 4 --output-on-failure
+          ctest --test-dir build-tests -C Release -L asset-none -j 4 --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Package ZIP
