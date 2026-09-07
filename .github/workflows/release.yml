@@ -237,20 +237,27 @@ jobs:
 
       - name: Run the asset-free tier in the release configuration
         # TODO.md § 10 wave 0: nothing beyond --version ran on the release
-        # path before 2026-08-28. Same knobs as the packaged binary
-        # (NATIVE=OFF, LTO=ON since 2026-09-07), native arch only — the
-        # x86_64 slice stays covered by the packager's lipo gate. Runs after
-        # packaging so the imgui/ clone the packager makes is already there,
-        # and against the same universal GLFW: the runner image carries no
-        # glfw3 of its own (pkg-config found none on the 2026-09-07 dispatch).
+        # path before 2026-08-28. NATIVE=OFF like the packaged binary, native
+        # arch only — the x86_64 slice stays covered by the packager's lipo
+        # gate. LTO is deliberately OFF on this TESTS tree: the packaged
+        # binary carries LTO (package_macos_release.sh), the LTO asset-free
+        # proof is on record (CHANGELOG 2026-09-07 (seventh)), and an LTO
+        # build of ~130 gate executables took 47 minutes of this job's
+        # 90-minute budget on the 2026-09-07 dispatch. Runs after packaging
+        # so the imgui/ clone is there, against the same universal GLFW (the
+        # runner image carries no glfw3 of its own). Two gates are runner-
+        # environment probes, not release-configuration evidence, and are
+        # covered by the macOS CI workflow on the same runner label: the GUI
+        # smoke (headless NSGL pixel format) and LToUDP multicast.
         env:
           CMAKE_PREFIX_PATH: ${{ github.workspace }}/build-universal-deps/glfw
         run: |
           set -euo pipefail
           cmake -S . -B build-tests -DCMAKE_BUILD_TYPE=Release \
-              -DPOM68K_NATIVE=OFF -DPOM68K_LTO=ON -DPOM68K_TESTS=ON
+              -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF -DPOM68K_TESTS=ON
           cmake --build build-tests -j"$(sysctl -n hw.ncpu)"
-          ctest --test-dir build-tests -L asset-none -j 4 --output-on-failure
+          ctest --test-dir build-tests -L asset-none -j 4 --output-on-failure \
+              -E '^(gui_smoke_test|ltoudp_test)$'
 
       - name: Smoke-launch the packaged .app binary (--version)
         # Exercises the arm64 slice (the runner's arch); the x86_64 slice is
