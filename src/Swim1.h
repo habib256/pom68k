@@ -67,7 +67,21 @@ public:
 
     bool ism() const { return ismMode_; }
     uint8_t ismModeReg() const { return mode_; }
+    uint8_t ismSetupReg() const { return setup_; }
     int fifoCount() const { return fifoPos_; }
+    // Diagnostic counters for the ISM read engine (2026-09-07, the LC II
+    // 1.44 MB mount hunt): what the driver popped, what it saw as errors,
+    // and what the engine produced. Not hardware state; never serialized.
+    struct IsmStats {
+        long dataPops = 0;       // register 0/1 reads
+        long emptyPops = 0;      // …of an empty FIFO (underrun as seen by CPU)
+        long errorReads = 0;     // register 2 reads returning non-zero
+        long overruns = 0;       // engine pushed into a full FIFO
+        long marks = 0;          // MFM/GCR mark bytes produced
+        long syncs = 0;          // CSM reached SYNCHRONIZED
+        long bytes = 0;          // bytes the engine produced
+    };
+    const IsmStats& ismStats() const { return ismStats_; }
     Iwm& iwm() { return iwm_; }
 
     // ── Save states (SaveState.h) ───────────────────────────────────────
@@ -93,6 +107,7 @@ public:
     }
 
 private:
+    IsmStats ismStats_;
     // FIFO entry tags — MAME swim1.h M_MARK/M_CRC/M_CRC0
     enum : uint16_t { MARK = 0x100, CRC = 0x200, CRC0 = 0x400 };
     // 16-entry parameter RAM indices (swim1.h:67-70)

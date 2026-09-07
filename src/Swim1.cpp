@@ -8,6 +8,8 @@
 // SWIM generations stay diffable.
 
 #include "Swim1.h"
+#include <cstdio>
+#include <cstdlib>
 #include "SonyDrive.h"
 
 #include <algorithm>
@@ -116,7 +118,9 @@ void Swim1::fifoClear() {
 }
 
 bool Swim1::fifoPush(uint16_t value) {
-    if (fifoPos_ == 2) return true;
+    if (fifoPos_ == 2) { ismStats_.overruns++; return true; }
+    ismStats_.bytes++;
+    if (value & MARK) ismStats_.marks++;
     fifo_[fifoPos_++] = value;
     updateDat1Byte();
     return false;
@@ -192,6 +196,8 @@ uint8_t Swim1::ismRead(int reg) {
     switch (reg) {
     case 0: {                                    // data, marks are errors
         uint16_t value = fifoPop();
+        ismStats_.dataPops++;
+        if (value == 0xFFFF) ismStats_.emptyPops++;
         if (!error_) {
             if (value == 0xFFFF) error_ |= 0x04;
             else if (value & MARK) error_ |= 0x02;
@@ -200,11 +206,14 @@ uint8_t Swim1::ismRead(int reg) {
     }
     case 1: {                                    // mark/data, accepts either
         uint16_t value = fifoPop();
+        ismStats_.dataPops++;
+        if (value == 0xFFFF) ismStats_.emptyPops++;
         if (!error_ && value == 0xFFFF) error_ |= 0x04;
         return uint8_t(value);
     }
     case 2: {                                    // error, clear on read
         uint8_t value = error_;
+        if (value) ismStats_.errorReads++;
         error_ = 0;
         return value;
     }
@@ -579,6 +588,7 @@ void Swim1::tickRead(int cycles) {
                                     break;
                                 }
                                 csmState_ = CsmSynchronized;
+                                ismStats_.syncs++;
                             }
                             uint16_t val = tsmOut_;
                             if (tsmMark_) {

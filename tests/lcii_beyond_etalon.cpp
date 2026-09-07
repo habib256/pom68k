@@ -474,6 +474,18 @@ int main() {
                     mem.swim().ism() ? "ISM" : "IWM", mem.swim().ismModeReg(),
                     drv.currentTrack(), drv.motorOn() ? "on" : "off",
                     drv.sense(0x1), drv.sense(0x5));
+        if (mem.swim().ism()) {
+            // The ISM engine's own account of the read — what the driver
+            // popped, what it saw as errors, what the engine produced —
+            // because the IWM counters below do not describe this half.
+            const auto& st = mem.swim().ismStats();
+            std::printf("floppy: ISM engine produced %ld bytes (%ld marks, "
+                        "%ld syncs), driver popped %ld (%ld empty), saw %ld "
+                        "non-zero error reads, %ld FIFO overruns; setup=$%02X "
+                        "MFM=%d\n", st.bytes, st.marks, st.syncs, st.dataPops,
+                        st.emptyPops, st.errorReads, st.overruns,
+                        mem.swim().ismSetupReg(), drv.mfmMode() ? 1 : 0);
+        }
         // Did the driver actually GET the stream? `overwritten` counts
         // nibbles replaced before the CPU read them (polling too slow for
         // the pacing), dataHits/dataReads is the poll success rate, and

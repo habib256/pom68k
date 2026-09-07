@@ -260,6 +260,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Storage — SCSI, IWM/SWIM, media
 
+- **what the SWIM1's ISM engine actually delivers on a 1.44 MB disk, which strobe each of two .Sony drivers uses to enter MFM, and why the strobe table was not swapped on that evidence** → [2026-09-07 (eighth) — The SWIM1 decodes 1.44 MB MFM correctly…](#2026-09-07-swim1-mfm-hunt)
+
 - **how does a dirty reference volume get its clean-unmount bit back honestly — and why can no host-side tool do it?** → [2026-09-01 (ninth) — The proof floor's two red fixtures close…](#2026-09-01-fixture-floor)
 - **which exact private ROMs and boot volumes define the green corpus, and how is a mutable `hdv/` image kept out of that set?** → [2026-08-25 (later) — The green gate corpus chooses its bytes…](#2026-08-25-asset-lock-complete)
 - **when does `hdv/ref/System.vhd` actually win over the mutable `hdv/System.vhd`, and where does the GUI write?** → [2026-08-24 (seventh) — Reference fixtures become the default lookup…](#2026-08-24-reference-fixture-routing)
@@ -424,6 +426,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](#2026-09-07-swim1-mfm-hunt)
 - **2026-09-07 (seventh)** — [LTO enters the artifacts: the universal macOS package builds, passes lipo and runs with it, and MSVC gets /GL + /LTCG through CMake's IPO, probed rather than assumed](#2026-09-07-lto-artifacts)
 - **2026-09-07 (sixth)** — [Tier C's sweep: five more machines in the boot matrix, the Duo's input and the LC II's chime as gates, three real boots clean under ASan, the product tier's coverage, a Cortex-A76 package, a scriptable turbo and an AppleTalk hub that costs nothing measurable](#2026-09-07-tier-c-sweep)
 - **2026-09-07 (fifth)** — [The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded](#2026-09-07-floppy-guest-write)
@@ -864,6 +867,57 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-swim1-mfm-hunt"></a>
+## 2026-09-07 (eighth) — The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked
+
+The (fifth) entry left the LC II's 1.44 MB insert as "the MFM path is not
+feeding the driver". It is feeding it; the instrument was the IWM half's
+counters, which say nothing about the ISM. `Swim1::ismStats()` now counts
+what the engine produced (bytes, marks, CSM syncs, FIFO overruns) and what
+the driver popped (data reads, empty pops, non-zero error reads), and the
+floppy scenario prints them when the chip is in ISM mode.
+
+With that in view the first run read: engine 2 bytes, 0 syncs, driver 59
+pops of which 57 empty, setup `$20` (MFM decode) — and the drive in GCR
+mode. A trace of every ISM register access showed why: the ROM's .Sony
+identifies the chip (parameter RAM, phases and setup read-backs, a CRC
+pushed and popped through the FIFO), loads its MFM parameter table
+(`18 41 2E 2E 18 18 1B 1B 2F 2F 19 19 97 1B 57 3B`), strobes the drive on
+address (CA1,CA0,SEL)=011 with CA2=1, polls "MFM mode on?" — reads 0 — and
+strobes again, forever, without ever arming ACTION. Under the strobe table
+this tree took from MAME (`floppy.cpp:3369-3386`: reg $9 = MFM on, reg $D =
+GCR on) CA2=1 on that address is GCR on. Swapping the polarity on that CA
+path made the drive answer 1, and the same driver then programmed the ISM
+and read: 7 synchronisations, ID fields `A1 A1 A1 FE` with cylinder 0,
+head 0, sectors 5/1/2/3, size 2 and CRC0 on the last byte, data fields
+`A1 A1 A1 FB` of 512 bytes plus CRC — and the field it asked for as sector
+3 is, byte for byte, the image's LBA 2, the master directory block naming
+"Stuffit Expander 5.5". The ISM engine is correct. The System still
+painted neither icon nor dialog after that read.
+
+The Quadra 605 says the opposite. Through `commandSwim()` — the SWIM2
+path, MAME's table untouched — System 7.5.5's .Sony pairs its GCR setup
+(`$44`) with strobe `$D` and its MFM setup (`$20`) with strobe `$9`: MAME's
+polarity, exactly. On that machine the same image never mounts either,
+under either polarity: the head stays on track 0 and the System offers to
+initialise the disk as "Macintosh 800K" — while `q605_floppy_boot_etalon`
+boots a synthetic 1.44 MB image through the ROM on the same SWIM2. The
+"2M" sense bit (reg $F) is not what decides: inverting its polarity
+changed neither driver's behaviour nor the dialog's format.
+
+Two drivers, two answers, and a MAME table one of them agrees with: the
+table stays MAME's, `iwm_write_test` keeps pinning it, and the swap is
+recorded as an experiment rather than shipped. What reopens the item is
+the LC II's CA2 wiring checked against the schematic (a VIA/V8 inversion on
+that line would reconcile the two drivers without touching the table), then
+a trace of what the File Manager reads after the MDB. `q605_hotfloppy_probe`
+takes `POM68K_FLOPPY_IMG` so the same medium can be crossed against SWIM2;
+both scenarios trim the raw 1 474 560 + 84-byte image to the medium. Every
+trace, both polarity arms and both machines' dumps:
+`scratchpad/2026-09-07/floppy/`.
 
 ---
 

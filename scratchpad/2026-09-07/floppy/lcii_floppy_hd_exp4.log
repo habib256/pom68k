@@ -1,0 +1,1179 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+[swim1] phases=$F5
+[swim1] read reg 4 (mode $40, err $00, phases $F5)
+[swim1] phases=$F6
+[swim1] read reg 4 (mode $40, err $00, phases $F6)
+[swim1] phases=$F7
+[swim1] read reg 4 (mode $40, err $00, phases $F7)
+[swim1] phases=$FF
+[swim1] read reg 4 (mode $40, err $00, phases $FF)
+[swim1] phases=$FE
+[swim1] read reg 4 (mode $40, err $00, phases $FE)
+[swim1] phases=$FD
+[swim1] read reg 4 (mode $40, err $00, phases $FD)
+[swim1] phases=$FC
+[swim1] read reg 4 (mode $40, err $00, phases $FC)
+[swim1] phases=$FB
+[swim1] read reg 4 (mode $40, err $00, phases $FB)
+[swim1] phases=$FA
+[swim1] read reg 4 (mode $40, err $00, phases $FA)
+[swim1] phases=$F9
+[swim1] read reg 4 (mode $40, err $00, phases $F9)
+[swim1] phases=$F8
+[swim1] read reg 4 (mode $40, err $00, phases $F8)
+[swim1] phases=$F7
+[swim1] read reg 4 (mode $40, err $00, phases $F7)
+[swim1] phases=$F6
+[swim1] read reg 4 (mode $40, err $00, phases $F6)
+[swim1] phases=$F5
+[swim1] read reg 4 (mode $40, err $00, phases $F5)
+[swim1] phases=$F4
+[swim1] read reg 4 (mode $40, err $00, phases $F4)
+[swim1] phases=$F3
+[swim1] read reg 4 (mode $40, err $00, phases $F3)
+[swim1] phases=$F2
+[swim1] read reg 4 (mode $40, err $00, phases $F2)
+[swim1] phases=$F1
+[swim1] read reg 4 (mode $40, err $00, phases $F1)
+[swim1] phases=$F0
+[swim1] read reg 4 (mode $40, err $00, phases $F0)
+[swim1] read reg 5 (mode $40, err $00, phases $F0)
+[swim1] read reg 5 (mode $40, err $00, phases $F0)
+[swim1] setup=$00 drive=none mode=$40
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$00
+[swim1] param[2]=$00
+[swim1] param[3]=$00
+[swim1] param[4]=$00
+[swim1] param[5]=$00
+[swim1] param[6]=$00
+[swim1] param[7]=$00
+[swim1] param[8]=$00
+[swim1] param[9]=$00
+[swim1] param[10]=$00
+[swim1] param[11]=$00
+[swim1] param[12]=$00
+[swim1] param[13]=$00
+[swim1] param[14]=$00
+[swim1] param[15]=$00
+[swim1] setup=$00 drive=none mode=$40
+[swim1] mode clear $F8 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] phases=$F5
+[swim1] read reg 4 (mode $40, err $00, phases $F5)
+[swim1] phases=$F6
+[swim1] read reg 4 (mode $40, err $00, phases $F6)
+[swim1] phases=$F7
+[swim1] read reg 4 (mode $40, err $00, phases $F7)
+[swim1] mode clear $F8 (mode was $40, fifo 0, csm 0, bytes 0)
+[sony] sense F -> 0
+[sony] sense F -> 0
+[sony] sense A -> 1
+[sony] sense A -> 1
+[sony] sense B -> 1
+[sony] sense B -> 1
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM on (was 1, hd 1, super 1)
+[sony] sense B -> 1
+[sony] sense B -> 1
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM on (was 1, hd 1, super 1)
+[sony] sense F -> 1
+[sony] sense F -> 1
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] phases=$F5
+[swim1] read reg 4 (mode $40, err $00, phases $F5)
+[swim1] phases=$F6
+[swim1] read reg 4 (mode $40, err $00, phases $F6)
+[swim1] phases=$F7
+[swim1] read reg 4 (mode $40, err $00, phases $F7)
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] write reg 2 = $C0 (mode $40, fifo 0)
+[swim1] setup=$20 drive=none mode=$40
+[swim1] read reg 5 (mode $40, err $00, phases $F7)
+[swim1] mode clear $38 (mode was $40, fifo 1, csm 0, bytes 1)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] mode clear $38 (mode was $40, fifo 1, csm 0, bytes 1)
+[swim1] param[0]=$18
+[swim1] param[1]=$41
+[swim1] param[2]=$2E
+[swim1] param[3]=$2E
+[swim1] param[4]=$18
+[swim1] param[5]=$18
+[swim1] param[6]=$1B
+[swim1] param[7]=$1B
+[swim1] param[8]=$2F
+[swim1] param[9]=$2F
+[swim1] param[10]=$19
+[swim1] param[11]=$19
+[swim1] param[12]=$97
+[swim1] param[13]=$1B
+[swim1] param[14]=$57
+[swim1] param[15]=$3B
+[swim1] mode clear $38 (mode was $40, fifo 1, csm 0, bytes 1)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] read reg 3 (mode $40, err $00, phases $F7)
+[swim1] mode clear $04 (mode was $40, fifo 1, csm 0, bytes 1)
+[swim1] mode set $82 (mode was $40, fifo 1, csm 0, bytes 1)
+[swim1] phases=$F3
+[swim1] phases=$F5
+[swim1] handshake -> $8E (sense addr $5=1, drive sel, mode $C2, phases $F5, fifo 1, err $00)
+[swim1] phases=$F3
+[swim1] phases=$F1
+[swim1] read reg 4 (mode $C2, err $00, phases $F1)
+[swim1] phases=$F9
+[sony] commandSwim reg $1
+[swim1] phases=$F1
+[swim1] phases=$F3
+[swim1] phases=$F2
+[swim1] handshake -> $82 (sense addr $2=0, drive sel, mode $C2, phases $F2, fifo 1, err $00)
+[swim1] phases=$F3
+[swim1] phases=$F4
+[swim1] read reg 4 (mode $C2, err $00, phases $F4)
+[swim1] phases=$FC
+[sony] commandSwim reg $4
+[swim1] phases=$F4
+[swim1] phases=$F3
+[swim1] phases=$F2
+[swim1] handshake -> $82 (sense addr $2=0, drive sel, mode $C2, phases $F2, fifo 1, err $00)
+[swim1] phases=$F3
+[swim1] phases=$F4
+[swim1] read reg 2 (mode $C2, err $00, phases $F4)
+[swim1] mode clear $18 (mode was $C2, fifo 1, csm 0, bytes 1)
+[swim1] mode set $01 (mode was $C2, fifo 1, csm 0, bytes 1)
+[swim1] mode clear $01 (mode was $C3, fifo 0, csm 0, bytes 1)
+[swim1] read reg 2 (mode $C2, err $00, phases $F4)
+[swim1] mode set $08 (mode was $C2, fifo 0, csm 0, bytes 1)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=0
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=0
+[csm] countmin type=1 cyc=64 sct=1 lct=1 n=1
+[swim1] handshake -> $0C (sense addr $4=1, drive sel, mode $CA, phases $F4, fifo 0, err $00)
+[csm] countmin type=2 cyc=96 sct=2 lct=2 n=2
+[swim1] SYNC #1
+[swim1] mode clear $18 (mode was $CA, fifo 0, csm 4, bytes 11)
+[swim1] mode clear $04 (mode was $C2, fifo 0, csm 4, bytes 11)
+[swim1] mode set $82 (mode was $C2, fifo 0, csm 4, bytes 11)
+[sony] commandSwim reg $1
+[swim1] mode clear $18 (mode was $C2, fifo 0, csm 4, bytes 11)
+[swim1] mode set $01 (mode was $C2, fifo 0, csm 4, bytes 11)
+[swim1] mode clear $01 (mode was $C3, fifo 0, csm 4, bytes 11)
+[swim1] mode set $08 (mode was $C2, fifo 0, csm 4, bytes 11)
+[swim1] SYNC #2
+[swim1] mode clear $18 (mode was $CA, fifo 0, csm 4, bytes 21)
+[swim1] mode clear $18 (mode was $C2, fifo 0, csm 4, bytes 21)
+[swim1] mode set $01 (mode was $C2, fifo 0, csm 4, bytes 21)
+[swim1] mode clear $01 (mode was $C3, fifo 0, csm 4, bytes 21)
+[swim1] mode set $08 (mode was $C2, fifo 0, csm 4, bytes 21)
+[swim1] SYNC #3
+[swim1] mode clear $18 (mode was $CA, fifo 0, csm 4, bytes 25)
+[swim1] mode set $01 (mode was $C2, fifo 0, csm 4, bytes 25)
+[swim1] mode clear $01 (mode was $C3, fifo 0, csm 4, bytes 25)
+[swim1] mode set $08 (mode was $C2, fifo 0, csm 4, bytes 25)
+[swim1] SYNC #4
+[swim1] mode clear $18 (mode was $CA, fifo 0, csm 4, bytes 35)
+[swim1] mode clear $18 (mode was $C2, fifo 0, csm 4, bytes 35)
+[swim1] mode set $01 (mode was $C2, fifo 0, csm 4, bytes 35)
+[swim1] mode clear $01 (mode was $C3, fifo 0, csm 4, bytes 35)
+[swim1] mode set $08 (mode was $C2, fifo 0, csm 4, bytes 35)
+[swim1] SYNC #5
+[swim1] mode clear $18 (mode was $CA, fifo 0, csm 4, bytes 553)
+[swim1] mode clear $18 (mode was $C2, fifo 0, csm 4, bytes 553)
+[swim1] mode set $01 (mode was $C2, fifo 0, csm 4, bytes 553)
+[swim1] mode clear $01 (mode was $C3, fifo 0, csm 4, bytes 553)
+[swim1] mode set $08 (mode was $C2, fifo 0, csm 4, bytes 553)
+[swim1] SYNC #6
+[swim1] mode clear $18 (mode was $CA, fifo 0, csm 4, bytes 563)
+[swim1] mode clear $18 (mode was $C2, fifo 0, csm 4, bytes 563)
+[swim1] mode set $01 (mode was $C2, fifo 0, csm 4, bytes 563)
+[swim1] mode clear $01 (mode was $C3, fifo 0, csm 4, bytes 563)
+[swim1] mode set $08 (mode was $C2, fifo 0, csm 4, bytes 563)
+[swim1] SYNC #7
+[swim1] mode clear $18 (mode was $CA, fifo 0, csm 4, bytes 1081)
+[swim1] mode clear $38 (mode was $C2, fifo 0, csm 4, bytes 1081)
+[swim1] mode clear $38 (mode was $C2, fifo 0, csm 4, bytes 1081)
+[swim1] setup=$20 drive=sel mode=$C2
+[swim1] mode clear $38 (mode was $C2, fifo 1, csm 4, bytes 1082)
+[swim1] mode clear $04 (mode was $C2, fifo 1, csm 4, bytes 1082)
+[swim1] mode set $82 (mode was $C2, fifo 1, csm 4, bytes 1082)
+[swim1] mode clear $80 (mode was $C2, fifo 1, csm 4, bytes 1082)
+[swim1] mode clear $38 (mode was $42, fifo 0, csm 4, bytes 1082)
+[swim1] mode clear $38 (mode was $42, fifo 0, csm 4, bytes 1082)
+[swim1] setup=$20 drive=none mode=$42
+[swim1] mode clear $38 (mode was $42, fifo 1, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 1, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 1, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 1, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $04 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode set $82 (mode was $42, fifo 0, csm 4, bytes 1083)
+[swim1] mode clear $80 (mode was $C2, fifo 0, csm 4, bytes 1083)
+floppy: trimming a 1474644-byte raw image to the 1.44 MB medium
+Finder up (SCSI 9618)
+floppy: disks35/Stuffit_Expander_5.5.dsk, 1474560 bytes, HFS=1, drAtrb=$0100 at insert
+floppy: guest read 82095 nibbles off the medium
+floppy: SWIM1 personality=ISM mode=$42, head at track 0, motor on, sense CSTIN=0 TKO=0
+floppy: ISM engine produced 1083 bytes (21 marks, 7 syncs), driver popped 1136 (54 empty), saw 1 non-zero error reads, 0 FIFO overruns; setup=$20 MFM=1
+floppy: IWM re-reads of a latched byte: 279
+floppy: IWM polls 110179, hits 10789 (9.8%), overwritten 72694; last 512 consumed: 503 sync $FF, 0 address/data marks
+floppy: consumed tail: FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF
+floppy: screen changed 0.000 after insert, Finder up
+floppy: changed region x 512..-1, y 384..-1 (0 px)
+floppy: System responded: NO — centre white 0.65, icon strip Δ0 px → no window and no dialog
+  [floppy/before] 'untitled folder' x0
+  [floppy/before] 'Nouveau dossier' x0
+  [floppy/before] 'Dossier sans titre' x0
+  [floppy/before] 'Empty Folder' x0
+  [floppy/before] 'Dossier vide' x0
+floppy: write-protect sense = 0
+floppy: KeyMap saw the gesture
+floppy: Cmd-N changed the screen by 2691 px (region x 17..492, y 28..316)
+floppy: hard disk image CHANGED by the Cmd-N (tells us which window was frontmost)
+floppy: guest wrote to the medium: NO
+floppy: guest Put Away did NOT eject after 1800 frames
+  [floppy/after] 'untitled folder' x0
+  [floppy/after] 'Nouveau dossier' x0
+  [floppy/after] 'Dossier sans titre' x0
+  [floppy/after] 'Empty Folder' x0
+  [floppy/after] 'Dossier vide' x0
+floppy: NO candidate folder name appeared in the host file
+floppy: host file unchanged (no guest write yet), size kept, HFS sig intact, drAtrb $0100 → $0100
+floppy: re-insert OK
+FAILED — LC II beyond-boot floppy

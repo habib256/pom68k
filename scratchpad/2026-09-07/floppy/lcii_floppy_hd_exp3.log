@@ -1,0 +1,260 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+[swim1] phases=$F5
+[swim1] read reg 4 (mode $40, err $00, phases $F5)
+[swim1] phases=$F6
+[swim1] read reg 4 (mode $40, err $00, phases $F6)
+[swim1] phases=$F7
+[swim1] read reg 4 (mode $40, err $00, phases $F7)
+[swim1] phases=$FF
+[swim1] read reg 4 (mode $40, err $00, phases $FF)
+[swim1] phases=$FE
+[swim1] read reg 4 (mode $40, err $00, phases $FE)
+[swim1] phases=$FD
+[swim1] read reg 4 (mode $40, err $00, phases $FD)
+[swim1] phases=$FC
+[swim1] read reg 4 (mode $40, err $00, phases $FC)
+[swim1] phases=$FB
+[swim1] read reg 4 (mode $40, err $00, phases $FB)
+[swim1] phases=$FA
+[swim1] read reg 4 (mode $40, err $00, phases $FA)
+[swim1] phases=$F9
+[swim1] read reg 4 (mode $40, err $00, phases $F9)
+[swim1] phases=$F8
+[swim1] read reg 4 (mode $40, err $00, phases $F8)
+[swim1] phases=$F7
+[swim1] read reg 4 (mode $40, err $00, phases $F7)
+[swim1] phases=$F6
+[swim1] read reg 4 (mode $40, err $00, phases $F6)
+[swim1] phases=$F5
+[swim1] read reg 4 (mode $40, err $00, phases $F5)
+[swim1] phases=$F4
+[swim1] read reg 4 (mode $40, err $00, phases $F4)
+[swim1] phases=$F3
+[swim1] read reg 4 (mode $40, err $00, phases $F3)
+[swim1] phases=$F2
+[swim1] read reg 4 (mode $40, err $00, phases $F2)
+[swim1] phases=$F1
+[swim1] read reg 4 (mode $40, err $00, phases $F1)
+[swim1] phases=$F0
+[swim1] read reg 4 (mode $40, err $00, phases $F0)
+[swim1] read reg 5 (mode $40, err $00, phases $F0)
+[swim1] read reg 5 (mode $40, err $00, phases $F0)
+[swim1] setup=$00 drive=none mode=$40
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$11
+[swim1] param[2]=$22
+[swim1] param[3]=$33
+[swim1] param[4]=$44
+[swim1] param[5]=$55
+[swim1] param[6]=$66
+[swim1] param[7]=$77
+[swim1] param[8]=$88
+[swim1] param[9]=$99
+[swim1] param[10]=$AA
+[swim1] param[11]=$BB
+[swim1] param[12]=$CC
+[swim1] param[13]=$DD
+[swim1] param[14]=$EE
+[swim1] param[15]=$FF
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] read reg 3 (mode $40, err $00, phases $F0)
+[swim1] mode clear $38 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] param[0]=$00
+[swim1] param[1]=$00
+[swim1] param[2]=$00
+[swim1] param[3]=$00
+[swim1] param[4]=$00
+[swim1] param[5]=$00
+[swim1] param[6]=$00
+[swim1] param[7]=$00
+[swim1] param[8]=$00
+[swim1] param[9]=$00
+[swim1] param[10]=$00
+[swim1] param[11]=$00
+[swim1] param[12]=$00
+[swim1] param[13]=$00
+[swim1] param[14]=$00
+[swim1] param[15]=$00
+[swim1] setup=$00 drive=none mode=$40
+[swim1] mode clear $F8 (mode was $40, fifo 0, csm 0, bytes 0)
+[swim1] phases=$F5
+[swim1] read reg 4 (mode $40, err $00, phases $F5)
+[swim1] phases=$F6
+[swim1] read reg 4 (mode $40, err $00, phases $F6)
+[swim1] phases=$F7
+[swim1] read reg 4 (mode $40, err $00, phases $F7)
+[swim1] mode clear $F8 (mode was $40, fifo 0, csm 0, bytes 0)
+[sony] sense F -> 0
+[sony] sense F -> 0
+[sony] sense A -> 1
+[sony] sense A -> 1
+[sony] sense B -> 1
+[sony] sense B -> 1
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 1, hd 1, super 1)
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+[sony] sense F -> 1
+[sony] sense F -> 1
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+[sony] sense B -> 0
+[sony] sense B -> 0
+[sony] command(CA) 011 ca2=1
+[sony] strobe MFM off (was 0, hd 1, super 1)
+floppy: trimming a 1474644-byte raw image to the 1.44 MB medium
+Finder up (SCSI 9618)
+floppy: disks35/Stuffit_Expander_5.5.dsk, 1474560 bytes, HFS=1, drAtrb=$0100 at insert
+floppy: guest read 247656 nibbles off the medium
+floppy: SWIM1 personality=IWM mode=$00, head at track 0, motor off, sense CSTIN=0 TKO=0
+floppy: IWM re-reads of a latched byte: 312
+floppy: IWM polls 350889, hits 35085 (10.0%), overwritten 214072; last 512 consumed: 0 sync $FF, 0 address/data marks
+floppy: consumed tail: EB B6 96 F4 EB D9 96 F4 EB 9A 97 F5 EB 9A 9A F5 A7 F5 EB 9A DE AA 96 96
+floppy: screen changed 0.134 after insert, Finder up
+floppy: changed region x 3..494, y 2..240 (26352 px)
+floppy: System responded: yes — centre white 0.85, icon strip Δ0 px → INIT DIALOG (volume NOT mounted — the open SWIM1-IWM mount bug, TODO §1)
+  [floppy/before] 'untitled folder' x0
+  [floppy/before] 'Nouveau dossier' x0
+  [floppy/before] 'Dossier sans titre' x0
+  [floppy/before] 'Empty Folder' x0
+  [floppy/before] 'Dossier vide' x0
+floppy: write-protect sense = 0
+floppy: KeyMap saw the gesture
+floppy: Cmd-N changed the screen by 26352 px (region x 3..494, y 2..240)
+floppy: hard disk image untouched by the Cmd-N (tells us which window was frontmost)
+floppy: guest wrote to the medium: NO
+floppy: guest Put Away ejected the medium after 0 frames
+  [floppy/after] 'untitled folder' x0
+  [floppy/after] 'Nouveau dossier' x0
+  [floppy/after] 'Dossier sans titre' x0
+  [floppy/after] 'Empty Folder' x0
+  [floppy/after] 'Dossier vide' x0
+floppy: NO candidate folder name appeared in the host file
+floppy: host file unchanged (no guest write yet), size kept, HFS sig intact, drAtrb $0100 → $0100
+floppy: re-insert OK
+FAILED — LC II beyond-boot floppy

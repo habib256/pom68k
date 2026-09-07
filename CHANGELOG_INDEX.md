@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 440 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 441 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 84 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 45 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 46 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 7 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
@@ -241,6 +241,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](CHANGELOG.md#2026-08-31-speedometer-jsr-absolute-long)
 - **2026-09-03 (fifteenth)** — [The stale third-peripheral task exposes a real regression: promoted Q605 SCC/53C96 scheduling had silently become opt-in](CHANGELOG.md#2026-09-03-q605-scheduler-default-restored)
 - **2026-09-04** — [Sonora closes § B.4's last row: its video never touches system RAM, no swim2 board owns a DMA client, and the CACR flush retires](CHANGELOG.md#2026-09-04-sonora-inventory)
+- **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](CHANGELOG.md#2026-09-07-swim1-mfm-hunt)
 - **2026-09-07 (fifth)** — [The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded](CHANGELOG.md#2026-09-07-floppy-guest-write)
 - **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](CHANGELOG.md#2026-09-07-restart-etalon)
 

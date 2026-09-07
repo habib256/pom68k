@@ -6,6 +6,12 @@
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
+// windows.h defines min/max as macros unless told not to; every
+// `std::numeric_limits<T>::max()` in a file that includes this header then
+// fails with C2589 under MSVC (SonyDrive.cpp, release dispatch 2026-09-07).
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
 #endif
 

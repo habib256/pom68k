@@ -1236,6 +1236,16 @@ void SonyDrive::command(int addr) {
             // old code had GCR-on parked on 0b101 (MAME reg 0xA/0xE, both
             // unassigned). commandMfmMode() is the MAME-exact strobe table
             // and carries the re-encode.
+            // 2026-09-07, NOT a ruling: on this CA path the LC II ROM's
+            // .Sony strobes CA2=1 for an HD disk and then polls "MFM mode
+            // on?" until it reads 1 — under this table it never does, and
+            // with the polarity swapped it reads 1.44 MB sectors with valid
+            // CRCs (and still does not mount). System 7.5.5 on the Quadra
+            // 605, through commandSwim(), pairs its MFM setup with $9 and
+            // its GCR setup with $D — MAME's polarity. Two drivers, two
+            // answers; the table stays MAME's and TODO § C.2 carries both
+            // traces. Reopen with a real drive's strobe trace, or with the
+            // LC II VIA/CA2 wiring checked against the schematic.
             commandMfmMode(!ca2);
             break;
         default: break;

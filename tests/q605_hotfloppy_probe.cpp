@@ -189,9 +189,14 @@ int main() {
     // The volume the REPORT names, not the volume the gates use.
     const std::string disk = testasset::findAny({
         "hdv/System 7.5.5 HD.dsk", "hdv/ref/System 7.5.5 HD.dsk"});
-    const std::string floppy = testasset::findAny({
-        "disks35/Rogue.dsk", "disks35/Disk605.dsk",
-        "disks35/Stuffit_Expander_5.5.dsk"});
+    // POM68K_FLOPPY_IMG crosses image against machine, as on the LC II: the
+    // 2026-09-07 SWIM1 1.44 MB hunt needed the same medium through SWIM2.
+    std::string floppy;
+    if (const char* img = getenv("POM68K_FLOPPY_IMG")) floppy = testasset::find(img);
+    if (floppy.empty())
+        floppy = testasset::findAny({
+            "disks35/Rogue.dsk", "disks35/Disk605.dsk",
+            "disks35/Stuffit_Expander_5.5.dsk"});
     if (rom.empty() || disk.empty() || floppy.empty()) {
         std::printf("SKIP: needs the FF7439EE ROM, a 7.5.5 boot volume and an "
                     "800K GCR image in disks35/\n");
@@ -277,6 +282,11 @@ int main() {
         std::ifstream fin(floppy, std::ios::binary);
         floppyOrig.assign(std::istreambuf_iterator<char>(fin),
                           std::istreambuf_iterator<char>());
+        if (floppyOrig.size() > SonyDrive::kSize1440K &&
+            floppyOrig.size() < SonyDrive::kSize1440K + 512 &&
+            floppyOrig.size() >= 0x402 &&
+            floppyOrig[0x400] == 0x42 && floppyOrig[0x401] == 0x44)
+            floppyOrig.resize(SonyDrive::kSize1440K);   // raw image + trailer
         if (floppyOrig.size() >= 0x40C)
             floppyOrig[0x40A] = uint8_t(floppyOrig[0x40A] | 0x01);
     }

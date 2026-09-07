@@ -1,0 +1,25 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/System 7.5.5 HD.dsk" 83886080 B sha256 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f  HFS "Macintosh HD" drVolAtrb $0100 clean
+ASSET floppy "disks35/Rogue.dsk" 819200 B sha256 fce3edd55a62450c3e11f22e5c760fd7d46d259c97de38ad6d202b5f104cf3a5  HFS "Rogue" drVolAtrb $0100 clean
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/ref/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 163840 = 163936 blocks)
+desktop: 640x480 depth 8, SCSI 3619 commands
+insert: drive accepted the image
+after insert: 0.79% of the desktop changed, halted=0
+head: track 0 -> 4
+VERDICT: mounted — the guest stepped the head and the desktop gained an icon
+  [floppy/before] 'untitled folder' x0
+  [floppy/before] 'Nouveau dossier' x0
+  [floppy/before] 'Dossier sans titre' x0
+  [floppy/before] 'Empty Folder' x0
+  [floppy/before] 'Dossier vide' x0
+focus: front application 'Finder'
+write: guest committed sectors to the medium: yes
+eject: Put Away on 'Rogue' ejected the medium after 90 frames
+  [floppy/after] 'untitled folder' x2
+  [floppy/after] 'Nouveau dossier' x0
+  [floppy/after] 'Dossier sans titre' x0
+  [floppy/after] 'Empty Folder' x0
+  [floppy/after] 'Dossier vide' x0
+persist: 'untitled folder' 0 -> 2 in the host file, image modified, HFS intact, re-insert OK
+PASSED — Quadra 605 hot floppy: mount, guest write, Put Away

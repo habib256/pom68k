@@ -240,7 +240,11 @@ jobs:
         # path before 2026-08-28. Same knobs as the packaged binary
         # (NATIVE=OFF, LTO=ON since 2026-09-07), native arch only — the
         # x86_64 slice stays covered by the packager's lipo gate. Runs after
-        # packaging so the imgui/ clone the packager makes is already there.
+        # packaging so the imgui/ clone the packager makes is already there,
+        # and against the same universal GLFW: the runner image carries no
+        # glfw3 of its own (pkg-config found none on the 2026-09-07 dispatch).
+        env:
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}/build-universal-deps/glfw
         run: |
           set -euo pipefail
           cmake -S . -B build-tests -DCMAKE_BUILD_TYPE=Release \

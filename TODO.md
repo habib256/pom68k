@@ -113,16 +113,30 @@ retrouvent le nom dans le fichier hôte rouvert. La leçon : une éjection
 forcée par l'hôte est une disquette arrachée d'une machine qui tourne — le
 catalogue restait dans le cache invité.
 
-- [ ] **Monter une 1,44 Mo depuis le System sur LC II.** Reproducteur
-  déterministe : `POM68K_BEYOND=floppy
-  POM68K_FLOPPY_IMG=disks35/Stuffit_Expander_5.5.dsk lcii_beyond_etalon`
-  (l'image est une brute de 1 474 560 octets suivie de 84 octets, tronquée
-  dans la copie privée). Le SWIM1 passe en ISM (mode `$42`), le pilote lit
-  68 973 nibbles, la tête reste en piste 0 moteur allumé, et le System ne
-  peint ni icône ni dialogue : 9 156 lectures FIFO pour 2 002 réussies et
-  68 258 nibbles écrasés avant lecture. Le chemin MFM du SWIM1 n'alimente
-  pas le pilote au rythme attendu ; comparer au `swim1.cpp` de MAME avant
-  d'enregistrer le gate.
+- [ ] **Monter une 1,44 Mo depuis le System, sur LC II (SWIM1) et Q605
+  (SWIM2).** Reproducteurs : `POM68K_BEYOND=floppy
+  POM68K_FLOPPY_IMG=disks35/Stuffit_Expander_5.5.dsk lcii_beyond_etalon` et
+  `POM68K_FLOPPY_IMG=… q605_hotfloppy_etalon` (image brute de 1 474 560
+  octets + 84 de queue, tronquée dans la copie privée). Ce que la chasse
+  du 2026-09-07 a établi (`CHANGELOG` (eighth), traces dans
+  `scratchpad/2026-09-07/floppy/`) : l'engine ISM du SWIM1 décode le MFM
+  correctement — identifiants A1 A1 A1 FE, champs FB, CRC0 en place, et le
+  secteur 3 rendu au pilote est octet pour octet le MDB de l'image — mais
+  seulement une fois le lecteur en mode MFM, et c'est là que les deux
+  pilotes se contredisent : la ROM du LC II strobe `CA2=1` sur (0,1,1) puis
+  attend « MFM mode on » = 1 (sous la table de MAME ce strobe est *GCR on*
+  et le pilote boucle sans jamais armer ACTION), tandis que le .Sony de
+  7.5.5 sur Q605 associe son setup MFM à `$9` et son setup GCR à `$D` —
+  la polarité de MAME. Le bit F (« 2M ») n'est pas ce que les pilotes
+  consultent : inverser sa polarité ne change ni la décision LC II ni le
+  « Format : Macintosh 800K » du dialogue Q605. Avec la polarité inversée
+  sur le seul chemin CA, le LC II lit le MDB et ne monte pas ; le Q605,
+  chemin ROM (`q605_floppy_boot_etalon`) vert, échoue sous le pilote du
+  System avec le dialogue d'initialisation. Prochaine étape : vérifier le
+  câblage CA2 du LC II (VIA/V8) contre le schéma, puis tracer ce que le
+  File Manager lit après le MDB. La table reste celle de MAME
+  (`iwm_write_test` l'épingle) ; `Swim1::ismStats()` compte désormais ce
+  que le pilote dépile et ce que l'engine produit.
 - [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Bloqué par l'actif :
   `hdv/System 4.1.dsk` est une image SCSI de 1,5 Mo, pas une disquette ;
   aucune 800 K System 4.1 n'est présente. `bootPlus` reçoit son chemin
