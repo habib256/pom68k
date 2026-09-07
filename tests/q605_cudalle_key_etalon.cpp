@@ -24,6 +24,7 @@
 // KeyTime ($0186) is NOT a usable observable here: a Slow Keys periodic
 // task copies Ticks into it continuously, keystrokes or not.
 
+#include "PortableEnv.h"
 #include "AssetFingerprint.h"
 #include "Q605Memory.h"
 #include "Cpu040.h"

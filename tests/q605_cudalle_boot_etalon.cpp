@@ -6,6 +6,7 @@
 // absent. This exercises the 68040/MMU/FPU, MEMCjr/DAFB, Cuda/ADB,
 // PrimeTime IOSB ASC, pseudo-VIA2 and TurboSCSI machine path.
 
+#include "PortableEnv.h"
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"

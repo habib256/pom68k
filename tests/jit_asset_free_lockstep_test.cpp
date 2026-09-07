@@ -10,6 +10,7 @@
 // exact write-guard slice indexing. Classic bit operations additionally pin
 // the irregular legal-EA mask and the prove-write-before-read RMW protocol.
 
+#include "PortableEnv.h"
 #include "Moira.h"
 #include "jit/JitEngine.h"
 #include "JitTestConfig.h"

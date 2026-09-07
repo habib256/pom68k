@@ -11,6 +11,7 @@
 // hot return-address push, and a two-line read+write MOVE whose second proof
 // can fail only by replaying the complete untouched instruction.
 
+#include "PortableEnv.h"
 #include "Moira.h"
 #include "jit/JitEngine.h"
 #include "JitTestConfig.h"

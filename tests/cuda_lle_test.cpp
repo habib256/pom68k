@@ -8,6 +8,7 @@
 // staged battery PRAM into its internal RAM at $0100-$01FF, and idles
 // /TREQ high on VIA1 PB3. Soft-skips without the dump.
 
+#include "PortableEnv.h"
 #include "Q605Memory.h"
 #include <cstdio>
 #include <cstdlib>

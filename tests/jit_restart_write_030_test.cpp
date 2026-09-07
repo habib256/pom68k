@@ -9,6 +9,7 @@
 // hole. The successful (A6)+ path is additionally checked against complete
 // RAM and against the CPU state observable from an exact MMIO callback.
 
+#include "PortableEnv.h"
 #include "Moira.h"
 #include "jit/JitEngine.h"
 #include "JitTestConfig.h"

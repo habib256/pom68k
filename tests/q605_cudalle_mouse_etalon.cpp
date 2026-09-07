@@ -8,6 +8,7 @@
 // move — the whole chain: AdbLine wire → 341S0788 autopoll → VIA1 SR →
 // ADB Manager → mouse driver → jCrsrTask. Soft-skips without assets.
 
+#include "PortableEnv.h"
 #include "AssetFingerprint.h"
 #include "Q605Memory.h"
 #include "Cpu040.h"

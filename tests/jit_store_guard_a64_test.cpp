@@ -6,6 +6,7 @@
 // The cached block is then aimed at its own translated slice: that write must
 // take the exact memory-map path and evict the stale block.
 
+#include "PortableEnv.h"
 #include "Moira.h"
 #include "jit/JitEngine.h"
 #include "JitTestConfig.h"

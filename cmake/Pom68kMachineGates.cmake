@@ -78,7 +78,7 @@ add_test(NAME swim2_media_test COMMAND swim2_media_test)
 add_executable(floppy_sound_test tests/floppy_sound_test.cpp
     src/FloppySound.cpp src/miniaudio_impl.cpp)
 target_link_libraries(floppy_sound_test PRIVATE pom68k_core
-    ${CMAKE_DL_LIBS} pthread m)
+    ${CMAKE_DL_LIBS} $<$<NOT:$<PLATFORM_ID:Windows>>:pthread;m>)
 add_test(NAME floppy_sound_test COMMAND floppy_sound_test
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/floppy_samples)
 

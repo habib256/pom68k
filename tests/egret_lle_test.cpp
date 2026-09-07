@@ -7,6 +7,7 @@
 // E1's internal RAM, XCVR_SESSION idle on VIA1 PB3. Soft-skips without
 // the dump.
 
+#include "PortableEnv.h"
 #include "V8Memory.h"
 #include <cstdio>
 #include <cstdlib>

@@ -204,6 +204,12 @@ add_executable(atalk_stack_test tests/atalk_stack_test.cpp)
 target_link_libraries(atalk_stack_test PRIVATE pom68k_core)
 add_test(NAME atalk_stack_test COMMAND atalk_stack_test)
 
+# The three server-side network gates drive the host's POSIX socket API
+# directly (unistd.h, arpa/inet.h) and the first MSVC compile of the test
+# tree (release dispatch 34149915451, 2026-09-07) stopped on those includes.
+# The product's own network code is portable; these harnesses are not yet,
+# so Windows registers without them rather than not at all.
+if(NOT WIN32)
 add_executable(afp_server_test tests/afp_server_test.cpp)
 target_link_libraries(afp_server_test PRIVATE pom68k_core)
 add_test(NAME afp_server_test COMMAND afp_server_test)
@@ -215,6 +221,7 @@ add_test(NAME pap_server_test COMMAND pap_server_test)
 add_executable(macip_gw_test tests/macip_gw_test.cpp)
 target_link_libraries(macip_gw_test PRIVATE pom68k_core)
 add_test(NAME macip_gw_test COMMAND macip_gw_test)
+endif()
 
 # DaynaPort SCSI/Link (Ethernet as a SCSI target) + the EtherLink bridge
 # onto the same NAT the MacIP gateway uses.
