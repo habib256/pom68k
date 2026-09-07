@@ -16,6 +16,7 @@
 #include "AssetFingerprint.h"
 #include "Ncr53c96.h"
 #include "ScsiDisk.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <fstream>
@@ -227,6 +228,57 @@ int main() {
         (void)scsi.read(R::R_ISTAT);
         CHECK(finish(scsi, status, msg) == 0, "restore WRITE DMA");
         std::printf("  WRITE(10) polled LBA 1 (512 B via R_FIFO) OK\n");
+    }
+
+    // ── WRITE(6) 2 blocks, polled in 16-byte FIFO PRELOAD chunks ──
+    // Drive Setup 1.5's driver update (Mac OS 8.1 installer, 2026-09-08):
+    // the driver fills the 16-byte FIFO, THEN issues $10, waits for I_BUS,
+    // and repeats — 1024 times for a 16 KB driver. Every chunk must complete
+    // with exactly one bus-service interrupt raised BY the Transfer Info;
+    // the preload itself must raise nothing. Before the fix the second
+    // chunk's preload bytes each completed a zero-count transfer and the
+    // third chunk inherited a stale DMA count it could never drain — the
+    // installer sat polling R_STATUS forever.
+    {
+        std::vector<uint8_t> orig2, orig3;
+        CHECK(readBlock(scsi, 2, false, true, orig2) == 0, "seed READ(6) LBA 2");
+        CHECK(readBlock(scsi, 3, false, true, orig3) == 0, "seed READ(6) LBA 3");
+        std::vector<uint8_t> payload;
+        for (int i = 0; i < 1024; i++) payload.push_back(uint8_t(i * 7 + 3));
+        std::vector<uint8_t> cdb = { 0x0A, 0x00, 0x00, 0x02, 0x02, 0x00 };
+        selectAndCommand(scsi, cdb);
+        (void)scsi.read(R::R_ISTAT);              // clear select IRQ
+        for (int chunk = 0; chunk < 64; chunk++) {
+            for (int i = 0; i < 16; i++) scsi.write(R::R_FIFO, payload[size_t(chunk) * 16 + i]);
+            CHECK(!scsi.irq(), "chunk %d: a FIFO preload raises no interrupt", chunk);
+            scsi.write(R::R_COMMAND, R::CI_XFER);
+            CHECK(scsi.irq(), "chunk %d: polled XFER of the preload completes", chunk);
+            uint8_t ist = scsi.read(R::R_ISTAT);
+            CHECK(ist & R::I_BUS, "chunk %d: I_BUS (got %02X)", chunk, ist);
+        }
+        uint8_t status = 0xFF, msg = 0xFF;
+        CHECK(finish(scsi, status, msg) == 0, "chunked polled WRITE to bus-free");
+        CHECK(status == 0x00, "chunked polled WRITE GOOD status, got %02X", status);
+        std::vector<uint8_t> back2, back3;
+        CHECK(readBlock(scsi, 2, false, true, back2) == 0, "read back LBA 2");
+        CHECK(readBlock(scsi, 3, false, true, back3) == 0, "read back LBA 3");
+        CHECK(std::equal(back2.begin(), back2.end(), payload.begin()) &&
+              std::equal(back3.begin(), back3.end(), payload.begin() + 512),
+              "the 64 chunks landed as the 1024-byte payload");
+        // Restore both blocks.
+        for (int b = 0; b < 2; b++) {
+            std::vector<uint8_t> w = { 0x0A, 0x00, 0x00, uint8_t(2 + b), 0x01, 0x00 };
+            selectAndCommand(scsi, w);
+            (void)scsi.read(R::R_ISTAT);
+            scsi.write(R::R_TCLOW, 0x00);
+            scsi.write(R::R_TCMID, 0x02);
+            scsi.write(R::R_TCHIGH, 0);
+            scsi.write(R::R_COMMAND, R::CI_XFER | R::CMD_DMA);
+            for (uint8_t v : (b ? orig3 : orig2)) scsi.dmaWrite(v);
+            (void)scsi.read(R::R_ISTAT);
+            CHECK(finish(scsi, status, msg) == 0, "restore LBA %d", 2 + b);
+        }
+        std::printf("  WRITE(6) polled in 64 x 16-byte FIFO preload chunks OK\n");
     }
 
     std::printf("ncr53c96_test: full 53C96 transactions (polled + pseudo-DMA, "

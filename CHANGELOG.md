@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk and writes a bootable System, finding a 53C96 polled-write defect on the way](#2026-09-08-application-gates)
 - **2026-09-07 (tenth)** — [The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing](#2026-09-07-windows-green)
 - **2026-09-07 (ninth)** — [The first MSVC run of the asset-free tier: POM68K.exe builds with /GL + /LTCG in six minutes, the gate tree compiles once three POSIX-isms are shimmed or fenced, and 75 of 82 gates pass — the seven reds are configuration findings, read and filed](#2026-09-07-msvc-first-run)
 - **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](#2026-09-07-swim1-mfm-hunt)
@@ -873,6 +874,105 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-application-gates"></a>
+## 2026-09-08 — Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk and writes a bootable System, finding a 53C96 polled-write defect on the way
+
+Tier C's exit criterion asks each hardware family for a deterministic
+scenario beyond the boot, with the CPU-sensitive ones agreeing under the
+interpreter and the accelerated engine. The 68030 had `lcii_simcity_etalon`
+since yesterday; the 68000 and the 68040 had persist legs (a folder created
+by the Finder) and nothing that ran a program. Two gates close that, on the
+same contract as SimCity — launch proved by the guest, progression
+observed, a persistent artefact, two engines in one process compared:
+
+- **`compact_teachtext_etalon`** — Macintosh Plus, System 6.0.8
+  (`hdv/System 6.0.8 HD.dsk` through the bare-HFS façade). System 6's
+  Finder has no type-select, so the route is the mouse: the low-memory
+  `Mouse` global steers closed-loop, and the clicks land on positions read
+  off the volume's own saved window layout (three discovery dumps: the
+  desktop, the volume window, the `Sytem Additions` folder — sic — that
+  holds TeachText). Click + Cmd-O opens each, `CurApName` reads
+  `TeachText`, two typed sentences each change the window's mask
+  fingerprint, Cmd-S names and saves the document (`pom proof of plus`:
+  catalog ×0 → ×2, 8 blocks written), Cmd-Q hands the front back to the
+  Finder. Interpreter and `threaded` JIT: identical architectural
+  fingerprint, screen, SCSI counts. The first three discovery clicks on the
+  volume icon did nothing — not the button path (`MBState` toggled $80/$00
+  on cue, the File menu dropped on a held press, the Trash opened on
+  click + Cmd-O) but the hot spot: (470,45) is the icon's top edge, (470,50)
+  its body.
+- **`q605_simpletext_etalon`** — Quadra 605, Mac OS 8.1, keyboard route
+  (Cmd-Option-W, the volume by click, `applic` and `simplet` by
+  type-select), `CurApName` sampled every frame for a second, two typed
+  sentences, Cmd-S + a name (`pom proof of quadra`: catalog ×0 → ×6, 29
+  blocks), Cmd-Q. Interpreter and native `a64`: identical fingerprints.
+  Four findings paid for the route, each now a comment or a helper in
+  `tests/Q605ApplicationHarness.h`:
+  1. **Slow Keys is OFF on the 8.1 image today.** The 2026-07-31 entry read
+     ten months of red as this image's Easy Access Slow Keys rejecting
+     short key-downs; measured now, Escape reaches `KeyMap` two frames
+     after the press. The probe was worth writing because the toggle
+     works the other way: the eight-second Return hold the July entry
+     warned about turned Slow Keys ON, and the same probe then measured a
+     32–34-frame acceptance delay. The harness keeps `ensureFastKeys()` as
+     a measured probe, never an unconditional gesture. Control ($3B) is
+     unusable as the probe key — the ADB keyboard reports modifiers through
+     register 2 and the driver never sets their `KeyMap` bits.
+  2. **The US image types on a French layout.** The tricolour flag in its
+     menu bar means AZERTY: `mac-8` on US codes reached the Finder as
+     `,qc)!` and opened Mac OS Info Center, which launched Netscape; a
+     guessed AZERTY table then opened Mail. The letters are remapped (Q↔A,
+     W↔Z, M on the `;` key), digits and most punctuation are shifted there
+     and deliberately unsupported, so the gate types letters and spaces and
+     opens the volume — the one name that needs a hyphen — by click. The
+     guest's own KCHR would have been the honest table, but `$1B40` points
+     into System code on 8.1; the lookup was dropped rather than guessed.
+  3. **`CurApName` is who RUNS, not who is in front.** This volume carries
+     MyEyes, a faceless process that takes most idle time slices: a
+     majority vote over sixty samples elects it while the Finder owns the
+     menu bar. The observable a gate can rely on is "does this process run
+     at all", so the harness samples the name every frame and asks whether
+     `SimpleText` appears (launch) and disappears (quit).
+  4. **A held Return in a Standard File dialog auto-repeats into the
+     document behind it**: the first full run saved cleanly and then
+     answered Cmd-Q with "Save changes?" because the repeats had typed
+     newlines. Dialogs take a 3-frame tap.
+
+The installation-from-CD gate (`q605_cdinstall_etalon`, TODO § D.3) is
+scripted up to the installer's Start on a blank formatted disk the host
+builds (`tests/HfsBlankVolume.h`: MDB, bitmap, an empty extents tree, a
+catalog tree with the root record and its thread; `machfs` reads it back
+as an empty volume, and Mac OS 8.1 mounts it, sizes it — "249 MB
+available, 120 MB required" — and offers it as the destination). Its
+first run stalled at "Updating Apple hard disk drivers", the installer
+polling the 53C96 status register forever. The CDB trace showed the last
+target command as a WRITE(6) of 32 blocks at LBA 64 — Drive Setup 1.5
+writing the new driver into the Apple_Driver43 partition — and a
+register-level ring (the harness records the chip's last accesses) showed
+HOW: the driver fills the 16-byte FIFO, issues a polled Transfer
+Information ($10), waits for I_BUS, and repeats. The first chunk
+completed; the second chunk's preload bytes each completed a zero-count
+transfer (I_BUS per byte, harmless by luck); the third chunk inherited a
+stale DMA count of 512 and never completed. Root cause in
+`Ncr53c96::acceptDataOutByte_`: the DATA OUT gather stayed armed after a
+polled transfer finished, so the next preload bypassed the FIFO and was
+mistaken for payload of a transfer that was over. MAME's non-DMA DATA OUT
+ends when the FIFO empties and the next `$10` starts over; the model now
+disarms the gather at completion. `ncr53c96_test` gained the shape — a
+WRITE(6) of 1024 bytes in 64 preloaded 16-byte chunks, one bus-service
+interrupt per `$10`, none from the preload, payload read back — and fails
+without the fix. With it the installer proceeds past the driver update, copies
+the System (171 MB), and reaches "The installation process has finished":
+`q605_cdinstall_etalon` asserts the host-owned target now carries HFS boot
+blocks, a System and a Finder in its catalog, and quits the installer to the
+Finder — a guest-driven install of a **bootable** Mac OS 8.1 from CD onto a
+blank disk. Its last leg — Finder → Special → Restart, then a boot from the
+installed disk — is written but opt-in (`POM68K_CDINSTALL_REBOOT`): the CD
+Finder's Restart blanks the screen but no warm reset follows (CurApName stays
+"Finder", neither disk is read), so 8.1's Shutdown-Manager restart does not
+reach our Cuda RESET_SYSTEM the way `cuda_restart_test`'s synthetic $11 does.
+That is a separate finding, filed in TODO § D.3.
 
 <a id="2026-09-07-windows-green"></a>
 ## 2026-09-07 (tenth) — The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing

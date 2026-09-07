@@ -17,17 +17,17 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 245 gates
+## Union across hosts — 248 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 128 |
+| `etalon` | 131 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
 | `jit` | 44 |
 | `jit-fast` | 8 |
 | `m030` | 60 |
-| `m040` | 54 |
+| `m040` | 56 |
 | `smoke` | 9 |
 | `unit` | 116 |
 
@@ -37,27 +37,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-240 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+243 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 86 |
 | assets | optional | 15 |
-| assets | required | 139 |
+| assets | required | 142 |
 | host | a64 | 4 |
-| host | any | 230 |
+| host | any | 233 |
 | host | native | 6 |
 | scope | component | 88 |
 | scope | engine | 21 |
-| scope | profile | 128 |
+| scope | profile | 131 |
 | scope | repository | 3 |
 | tier | daily | 86 |
-| tier | full | 142 |
+| tier | full | 145 |
 | tier | platform | 12 |
-| slots_src | assumed | 124 |
+| slots_src | assumed | 127 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 467 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 470 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 

@@ -96,6 +96,15 @@ dans le même processus. Il marche aussi le chemin de la course de démarrage
 GISTPERSO de 2026-07-18 sans touche maintenue et atteint le Finder à chaque
 jambe : ce repro n'est plus une tâche ouverte, il est gaté.
 
+Les deux autres familles ont le même contrat depuis le 2026-09-08 :
+`compact_teachtext_etalon` (68000, Plus, System 6.0.8 — TeachText atteint à
+la souris, document tapé, sauvé, application quittée ; interpréteur et JIT
+`threaded` identiques) et `q605_simpletext_etalon` (68040, Mac OS 8.1 —
+SimpleText par type-select, mêmes observables ; interpréteur et `a64`
+identiques). Le harnais Q605 (`tests/Q605ApplicationHarness.h`) porte les
+constats payés en route : la disposition AZERTY de l'image US, la sonde Slow
+Keys mesurée, `CurApName` échantillonné comme « processus qui tourne ».
+
 - [ ] **Introduire Retro68 comme oracle invité différentiel.** Construire des
   sondes Toolbox/Device Manager/XPRAM et comparer les mêmes binaires sous MAME
   et POM68K.
@@ -284,8 +293,18 @@ de protocole observés, puis ajouter les extensions et les contrôles GUI.
 
 ### D.3 Médias optiques
 
-- [ ] **Automatiser une installation depuis CD.** Piloter l'Installer jusqu'au
-  disque cible, redémarrer dessus et vérifier le Finder.
+- [ ] **Faire redémarrer l'invité sur le disque fraîchement installé.**
+  L'installation elle-même est prouvée (`q605_cdinstall_etalon`, 2026-09-08 :
+  démarrage sur le CD 8.1, Installer piloté jusqu'à la copie complète sur un
+  disque vierge fabriqué par l'hôte via `tests/HfsBlankVolume.h`, artefact
+  bootable vérifié — blocs `LK`, System et Finder au catalogue, 171 Mo — et
+  Installer quitté au Finder). Reste le redémarrage : le
+  Redémarrer du Finder du CD 8.1 noircit l'écran mais aucun reset chaud ne
+  suit (CurApName reste « Finder », aucun disque n'est lu) : le chemin
+  Shutdown Manager de 8.1 n'atteint pas notre Cuda RESET_SYSTEM comme le fait
+  le `$11` synthétique de `cuda_restart_test`. Tracer la séquence Cuda que
+  8.1 émet pour Redémarrer et la router vers `hostReset`. La jambe est écrite
+  et opt-in dans le gate (`POM68K_CDINSTALL_REBOOT`).
 - [ ] **Établir la règle des images 512/2048 octets.** Comparer le comportement
   des hybrides et bare-HFS avec un vrai pilote/MAME avant de modifier le
   montage.

@@ -41,6 +41,10 @@ POM68K_BEYOND	test	owner:tests/BeyondBoot.h
 POM68K_BEYOND_IMG	test	owner:tests/AssetFingerprint.h
 POM68K_BOXID	test	owner:tests/iivx_boot_etalon.cpp
 POM68K_CACHE_BOOST	product	gate:lcii_boot_etalon
+POM68K_CDINSTALL_DISCOVER	test	owner:tests/q605_cdinstall_etalon.cpp
+POM68K_CDINSTALL_MENU	test	owner:tests/q605_cdinstall_etalon.cpp
+POM68K_CDINSTALL_REBOOT	test	owner:tests/q605_cdinstall_etalon.cpp
+POM68K_CDINSTALL_TRACE	test	owner:tests/q605_cdinstall_etalon.cpp
 POM68K_CD_BOOT	test	owner:tests/q605_cdrom_etalon.cpp
 POM68K_CD_HOT	test	owner:tests/q605_cdrom_etalon.cpp
 POM68K_CD_TRACE	diagnostic	owner:src/StartupOptions.h
@@ -100,7 +104,6 @@ POM68K_JIT_BSRW	product	gate:jit_backend_test
 POM68K_JIT_DENY_FROM	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_DENY_TO	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_DISPATCH_RING	diagnostic	owner:src/StartupOptions.h
-POM68K_JIT_TRACE_BLOCK	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_DYNAMIC_BITFIELD	product	gate:jit_backend_test
 POM68K_JIT_EDGE_CELLS	chantier	expiry:src/jit/POM68K_JIT.md#measured-edge-cell-prototype
 POM68K_JIT_FETCH	product	gate:jit_backend_test
@@ -111,10 +114,10 @@ POM68K_JIT_ICACHE_EMIT	chantier	expiry:docs/JIT_BRINGUP.md#68030-icache-attribut
 POM68K_JIT_LINKS	product	gate:jit_backend_test
 POM68K_JIT_LOCKSTEP_BUDGET	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FINE_AT	test	owner:tests/jit_lockstep_030_test.cpp
-POM68K_JIT_LOCKSTEP_ICTRACE	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FINE_BUDGET	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FULL_RAM_AT	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_HIDDEN	test	owner:tests/jit_lockstep_test.cpp
+POM68K_JIT_LOCKSTEP_ICTRACE	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_IRQ_TRACE_FROM	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_N	test	owner:tests/jit_lockstep_test.cpp
 POM68K_JIT_LOCKSTEP_PERIPH_DUMP	test	owner:tests/jit_lockstep_030_test.cpp
@@ -135,11 +138,13 @@ POM68K_JIT_REG_CACHE	chantier	expiry:src/jit/POM68K_JIT.md#measured-register-cac
 POM68K_JIT_REQUIRE_NATIVE	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_RESTART_BASE	product	gate:jit_backend_test,jit_restart_write_030_test
 POM68K_JIT_RING_CLK	test	owner:tests/jit_lockstep_030_test.cpp
+POM68K_JIT_TRACE_BLOCK	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_UNSAFE_BACKEND	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_VERBOSE	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_VERBOSE_BLOCKS	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_WATCH_OPCODE	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_WINDOW_KILL	diagnostic	owner:src/StartupOptions.h
+POM68K_KEYS_DEBUG	test	owner:tests/Q605ApplicationHarness.h
 POM68K_KEY_TRACE	diagnostic	owner:src/StartupOptions.h
 POM68K_LC3_PLUS	product	gate:lc3plus_boot_etalon
 POM68K_LLE_AARCH64_CHECK_ONLY	product	gate:peripheral_lle_test
@@ -149,9 +154,9 @@ POM68K_MACII_020	test	owner:tests/iix_boot_etalon.cpp
 POM68K_MACII_EVENT	chantier	expiry:docs/LLE_VS_HLE.md#peripheral-event-deadline-default
 POM68K_MACII_MODEL	product	gate:macii_boot_etalon,iix_boot_etalon
 POM68K_MACIP_DEBUG	diagnostic	owner:src/StartupOptions.h
+POM68K_MATRIX_FRAMES	test	owner:tests/finder_boot_matrix.cpp
 POM68K_MMU040_WALK	diagnostic	owner:src/StartupOptions.h
 POM68K_MONITOR	product	gate:raster_equiv_test
-POM68K_MATRIX_FRAMES	test	owner:tests/finder_boot_matrix.cpp
 POM68K_MX	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_MY	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_NOFPU	product	gate:fpu_sanity
@@ -220,7 +225,8 @@ POM68K_SPEEDO_TRACE	test	owner:tests/lcii_speedometer_census.cpp
 POM68K_SPEED_LOG	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_COUNT	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_SKIP	diagnostic	owner:src/StartupOptions.h
-POM68K_TURBO	product	gate:gui_smoke_test
+POM68K_TEACHTEXT_DISCOVER	test	owner:tests/compact_teachtext_etalon.cpp
 POM68K_TRAIL	test	owner:tests/centris650_boot_etalon.cpp
+POM68K_TURBO	product	gate:gui_smoke_test
 POM68K_V8_HOLEVAL	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole
 POM68K_V8_IOHOLE	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole

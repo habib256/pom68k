@@ -54,6 +54,18 @@ void Ncr53c96::acceptDataOutByte_(uint8_t v) {
     if (tcounter_ == 0 || dataOut_.size() >= dataOutExpected_) {
         if (dataOut_.size() >= dataOutExpected_)
             advanceToStatus();
+        // This Transfer Info is over: the next R_FIFO writes are a PRELOAD
+        // for the next one, not payload of this one, so they must land in
+        // the 16-byte FIFO again and be sized by the next $10. Leaving the
+        // gather armed made every preload byte a completed zero-count
+        // transfer (I_BUS per byte) and then let the third $10 inherit a
+        // stale DMA count it could never drain: Drive Setup 1.5's driver
+        // update — WRITE(6) 32 blocks in 16-byte polled chunks — stalled on
+        // the third chunk with the installer polling R_STATUS forever
+        // (q605_cdinstall_etalon, 2026-09-08). MAME's non-DMA DATA OUT
+        // ends when the FIFO empties (ncr53c90.cpp INIT_XFR_SEND_BYTE →
+        // bus_complete) and starts over with the next command.
+        dataXfer_ = false;
         raiseIrq(I_BUS);
     }
     updateDrq();

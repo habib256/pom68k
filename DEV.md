@@ -1719,6 +1719,19 @@ monochrome/2/4/8/16-bit rows),
 open and dump it instead of restarting, to read item rows off the guest's
 own screen), `POM68K_CHIME_FRAMES` (`lcii_asc_chime_etalon`: how many
 boot frames of ASC output to capture, default 900),
+`POM68K_TEACHTEXT_DISCOVER` (`compact_teachtext_etalon`: a `x,y;x,y` list
+of Finder points to click-and-open, dumping each screen, to read a System 6
+volume's window layout off the guest's own screen before scripting it),
+`POM68K_KEYS_DEBUG` (`Q605ApplicationHarness.h`: print KeyMap while the
+Slow Keys probe holds its key), `POM68K_CDINSTALL_DISCOVER` /
+`POM68K_CDINSTALL_TRACE` (`q605_cdinstall_etalon`: after the installer's
+Start, dump every 600 frames and press Return only when the screen has been
+still, for N steps; and keep the CDB trace plus the last 53C96 register
+accesses — the pair that read the Drive Setup stall of 2026-09-08),
+`POM68K_CDINSTALL_MENU` (dump the CD Finder's Special menu held open, to read
+the Restart row) and `POM68K_CDINSTALL_REBOOT` (run the opt-in restart leg
+whose warm boot from the installed disk is TODO § D.3, not yet the gate's
+verdict),
 `POM68K_FRAMES`, `POM68K_MATRIX_FRAMES` (finder_boot_matrix: widen the
 Plus cell's System-6 budget for a System 7 image), `POM68K_BENCH_*`,
 `POM68K_PROBE*`,

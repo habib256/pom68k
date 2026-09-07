@@ -667,6 +667,35 @@ add_test(NAME lcii_simcity_etalon COMMAND lcii_simcity_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(lcii_simcity_etalon PROPERTIES TIMEOUT 2700)
 
+# The 68040 application gate (2026-09-08): SimpleText on the Mac OS 8.1
+# volume — launched by Finder type-select after the Slow Keys probe/toggle
+# (Q605ApplicationHarness.h), a document typed, saved and the application
+# quit — under the interpreter AND the default engine in one process, the
+# two legs' fingerprints compared.
+add_executable(q605_simpletext_etalon tests/q605_simpletext_etalon.cpp)
+target_link_libraries(q605_simpletext_etalon PRIVATE pom68k_core)
+add_test(NAME q605_simpletext_etalon COMMAND q605_simpletext_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_simpletext_etalon PROPERTIES TIMEOUT 2700)
+
+# The 68000 application gate (2026-09-08): TeachText on System 6.0.8 on the
+# Macintosh Plus, reached by mouse (System 6 has no Finder type-select),
+# typed, saved and quit — interpreter then threaded JIT in one process.
+add_executable(compact_teachtext_etalon tests/compact_teachtext_etalon.cpp)
+target_link_libraries(compact_teachtext_etalon PRIVATE pom68k_core)
+add_test(NAME compact_teachtext_etalon COMMAND compact_teachtext_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(compact_teachtext_etalon PROPERTIES TIMEOUT 2700)
+
+# Installation from CD (TODO § D.3, 2026-09-08): a blank formatted disk
+# (HfsBlankVolume.h) and the Mac OS 8.1 retail CD; the guest boots the CD,
+# runs its installer onto the disk, restarts and must come up from the disk.
+add_executable(q605_cdinstall_etalon tests/q605_cdinstall_etalon.cpp)
+target_link_libraries(q605_cdinstall_etalon PRIVATE pom68k_core)
+add_test(NAME q605_cdinstall_etalon COMMAND q605_cdinstall_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_cdinstall_etalon PROPERTIES TIMEOUT 3600)
+
 # Guest-initiated restart (TODO § C.1, 2026-09-07): Finder → Spécial →
 # Redémarrer by mouse, then the machine must come back to the Finder through
 # the ROM's warm-start path with a full second SCSI boot.
