@@ -648,6 +648,26 @@ foreach(scenario soak persist launch floppy)
                          TIMEOUT 1800)
 endforeach()
 
+# The sustained application gate (TODO § C.1, 2026-09-07): SimCity 2000
+# launched by opening a saved city, simulated under a fixed guest budget,
+# saved — under the interpreter AND the default engine in one process, with
+# the two legs' fingerprints compared. Keyboard-only navigation after a
+# Finder-scope reset; the dev census `lcii_simcity_census` shares the route.
+add_executable(lcii_simcity_etalon tests/lcii_simcity_etalon.cpp)
+target_link_libraries(lcii_simcity_etalon PRIVATE pom68k_core)
+add_test(NAME lcii_simcity_etalon COMMAND lcii_simcity_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(lcii_simcity_etalon PROPERTIES TIMEOUT 2700)
+
+# Guest-initiated restart (TODO § C.1, 2026-09-07): Finder → Spécial →
+# Redémarrer by mouse, then the machine must come back to the Finder through
+# the ROM's warm-start path with a full second SCSI boot.
+add_executable(lcii_restart_etalon tests/lcii_restart_etalon.cpp)
+target_link_libraries(lcii_restart_etalon PRIVATE pom68k_core)
+add_test(NAME lcii_restart_etalon COMMAND lcii_restart_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(lcii_restart_etalon PROPERTIES TIMEOUT 1800)
+
 # O6 slice 1 gate: external /BERR + RTE $A/$B on the 68030 (the LC II
 # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).
 add_executable(berr030_test tests/berr030_test.cpp)

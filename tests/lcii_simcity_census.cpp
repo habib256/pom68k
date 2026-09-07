@@ -103,26 +103,23 @@ int main() {
     cpu.jit().censusPhase("idle-finder");
 
     // ── Phase 3: launch by type-select ───────────────────────────────────
-    // The Finder selects by typed prefix, then Cmd-O opens the selection.
+    // The Finder selects by typed prefix, then Cmd-O opens the selection —
+    // after the scope reset the Speedometer census had to learn on
+    // 2026-09-06 (LciiApplicationHarness.h: closeAllFinderWindows). Before
+    // it, the boot's own SimCity2000 window was frontmost, "sim" opened SIM
+    // VILLES from there, "sim v" matched nothing and selected its
+    // alphabetical neighbour TED CITY, and every census since 2026-08-27
+    // had been measuring that city instead of the one it named.
     std::vector<uint32_t> beforeLaunch;
     screen(beforeLaunch);
     const long scsi0 = mem.scsi().commands;
-    // Two hops, because that is where the game lives on this volume: "sim"
-    // selects the SimCity2000 FOLDER at the root, Cmd-O opens it; inside,
-    // "simc" is needed to pick the application over its "SIM VILLES" sibling
-    // (a prefix stopping at "sim" selects the wrong one — read off the window
-    // in lcii_simcity_folder.ppm rather than assumed).
-    auto open = [&](const char* prefix, long settle) {
-        typeText(prefix);
-        runFrames(30);
-        mem.keyEvent(0x37, true);              // Cmd
-        runFrames(6);
-        keyHold(0x1F, 60);                     // 'o' — Open
-        mem.keyEvent(0x37, false);
-        runFrames(settle);
-    };
-    // Three hops, each read off the previous phase's screenshot rather than
-    // guessed: the SimCity2000 folder at the volume root, its SIM VILLES
+    closeAllFinderWindows();
+    dump("lcii_simcity_desktop.ppm");
+    openBySelect("gist", 900);                 // GIST PERSO root
+    dump("lcii_simcity_root.ppm");
+    cpu.jit().censusPhase("open-root");
+    // Four hops, each read off the previous phase's screenshot rather than
+    // guessed: JEUX at the volume root, the SimCity2000 folder inside it, its SIM VILLES
     // folder of saved cities, then the city DOCUMENT — opening a document
     // launches the application and loads the save in one gesture, which is
     // both fewer keystrokes and the only deterministic way to reach the heavy
@@ -130,18 +127,22 @@ int main() {
     // black forest.rail; that city is the one CHANGELOG 2026-07-17 used to
     // size the adaptive cache boost, so it is the heaviest load this volume
     // can offer.
-    open("sim", 900);
+    openBySelect("jeux", 900);                 // the root has no SimCity folder
+    dump("lcii_simcity_games.ppm");
+    cpu.jit().censusPhase("open-games");
+    openBySelect("simcity", 900);
     dump("lcii_simcity_folder.ppm");
     cpu.jit().censusPhase("open-folder");
-    open("sim v", 900);
+    openBySelect("sim v", 900);
     dump("lcii_simcity_cities.ppm");
     cpu.jit().censusPhase("open-cities");
-    open("black forest m", 7200);              // launch + load the big city
+    openBySelect("black forest m", 7200);      // launch + load the big city
 
     std::vector<uint32_t> afterLaunch;
     screen(afterLaunch);
     const double moved = changed(beforeLaunch, afterLaunch);
-    std::printf("launch: %.1f%% of the screen changed, SCSI +%ld\n",
+    std::printf("launch: front app '%s', %.1f%% of the screen changed, "
+                "SCSI +%ld\n", frontApplication().c_str(),
                 moved * 100.0, mem.scsi().commands - scsi0);
     dump("lcii_simcity_launch.ppm");
     cpu.jit().censusPhase("launch");

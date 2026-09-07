@@ -1,0 +1,2747 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[screen] 196608 px, menu 0.18 desk 0.81
+
+[jit] ════ census phase 'boot' ════
+[jit] dispatch cache: 33985953 hits, 906370 gen-miss, 37082680 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=7453 write into code=11 deferred=0 code cache full=0  blocks live=21739, cold-evicted=0
+
+[jit] opcode census — 28447778 instructions, 6436 distinct
+  move          7196654   25.3%
+  alu           8679909   30.5%
+  shift          491690    1.7%
+  bitop          802190    2.8%
+  muldiv          43469    0.2%
+  addr           563811    2.0%
+  multi          671243    2.4%
+  cond            31664    0.1%
+  branch        9763696   34.3%
+  fpu                 7    0.0%
+  UNSAFE         203445    0.7%
+  native       28200753   99.1%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  51C8 branch *     970925   3.41%  cum   3.4%
+  4E75 branch *     819664   2.88%  cum   6.3%
+  4A11 alu    *     567308   1.99%  cum   8.3%
+  6706 branch *     453047   1.59%  cum   9.9%
+  6704 branch *     444439   1.56%  cum  11.4%
+  5380 alu    *     401191   1.41%  cum  12.9%
+  7000 move   *     358035   1.26%  cum  14.1%
+  B3D6 alu    *     313748   1.10%  cum  15.2%
+  6426 branch *     313227   1.10%  cum  16.3%
+  22D8 move   *     299138   1.05%  cum  17.4%
+  60F0 branch *     296478   1.04%  cum  18.4%
+  D3C1 alu    *     295839   1.04%  cum  19.4%
+  2211 move   *     281948   0.99%  cum  20.4%
+  C282 alu    *     278385   0.98%  cum  21.4%
+  241A move   *     277554   0.98%  cum  22.4%
+  B592 alu    *     277508   0.98%  cum  23.4%
+  51C9 branch *     269415   0.95%  cum  24.3%
+  66F8 branch *     260193   0.91%  cum  25.2%
+  082B bitop  *     237074   0.83%  cum  26.1%
+  6100 branch *     230968   0.81%  cum  26.9%
+  670A branch *     222547   0.78%  cum  27.7%
+  0C43 alu    *     205602   0.72%  cum  28.4%
+  66F6 branch *     201350   0.71%  cum  29.1%
+  6000 branch *     188258   0.66%  cum  29.8%
+  4CDF multi  *     166547   0.59%  cum  30.3%
+  48E7 multi  *     161430   0.57%  cum  30.9%
+  6604 branch *     151295   0.53%  cum  31.4%
+  1010 move   *     148235   0.52%  cum  32.0%
+  56C9 branch *     147635   0.52%  cum  32.5%
+  504A alu    *     145882   0.51%  cum  33.0%
+  10D9 move   *     144771   0.51%  cum  33.5%
+  6702 branch *     144486   0.51%  cum  34.0%
+  0829 bitop  *     135436   0.48%  cum  34.5%
+  D4C0 alu    *     133230   0.47%  cum  35.0%
+  4258 alu    *     133097   0.47%  cum  35.4%
+  51CC branch *     130713   0.46%  cum  35.9%
+  57CC branch *     129885   0.46%  cum  36.3%
+  0812 bitop  *     129453   0.46%  cum  36.8%
+  6EFA branch *     126784   0.45%  cum  37.2%
+  12DC move   *     124638   0.44%  cum  37.7%
+  6606 branch *     123056   0.43%  cum  38.1%
+  57CD branch *     117659   0.41%  cum  38.5%
+  2078 move   *     115300   0.41%  cum  38.9%
+  0240 alu    *     113144   0.40%  cum  39.3%
+  101C move   *     111169   0.39%  cum  39.7%
+  2040 move   *     109656   0.39%  cum  40.1%
+  B692 alu    *     105966   0.37%  cum  40.5%
+  24D0 move   *     105664   0.37%  cum  40.8%
+  C085 alu    *     104160   0.37%  cum  41.2%
+  67F8 branch *     103628   0.36%  cum  41.6%
+  B3DA alu    *     103141   0.36%  cum  41.9%
+  60F6 branch *     101677   0.36%  cum  42.3%
+  40C0 alu    *     100390   0.35%  cum  42.6%
+  6144 branch *     100227   0.35%  cum  43.0%
+  4A41 alu    *      99324   0.35%  cum  43.3%
+  102E move   *      97954   0.34%  cum  43.7%
+  E740 shift  *      97375   0.34%  cum  44.0%
+  4EF2 UNSAFE        97178   0.34%  cum  44.4%
+  0200 alu    *      97126   0.34%  cum  44.7%
+  48C0 multi  *      96231   0.34%  cum  45.1%
+
+[jit] block fallback census — 143925 unsupported + 727515 runtime guard/access = 871440
+  24D0 move              0 unsupported     463042 runtime  53.14%  (A0) -> (A2)+
+  C029 alu           62628 unsupported          0 runtime   7.19%
+  4A12 alu           49269 unsupported          0 runtime   5.65%
+  22D8 move              0 unsupported      48967 runtime   5.62%  (A0)+ -> (A1)+
+  14D0 move              0 unsupported      37625 runtime   4.32%  (A0) -> (A2)+
+  22E8 move              0 unsupported      20103 runtime   2.31%  d16(A0) -> (A1)+
+  3151 move              0 unsupported      15854 runtime   1.82%  (A1) -> d16(A0)
+  12E8 move              0 unsupported      11775 runtime   1.35%  d16(A0) -> (A1)+
+  2F68 move              0 unsupported      11087 runtime   1.27%  d16(A0) -> d16(A7)
+  169A move              0 unsupported       8931 runtime   1.02%  (A2)+ -> (A3)
+  B189 alu               0 unsupported       7106 runtime   0.82%
+  21ED move              0 unsupported       7082 runtime   0.81%  d16(A5) -> abs.W
+  2338 move              0 unsupported       5865 runtime   0.67%  abs.W -> -(A1)
+  4250 alu               0 unsupported       5755 runtime   0.66%
+  2950 move              0 unsupported       5661 runtime   0.65%  (A0) -> d16(A4)
+  4EAD branch            0 unsupported       5657 runtime   0.65%
+  9611 alu            5430 unsupported          0 runtime   0.62%
+  0811 bitop          5392 unsupported          0 runtime   0.62%
+  2178 move              0 unsupported       5389 runtime   0.62%  abs.W -> d16(A0)
+  2D1F move              0 unsupported       3891 runtime   0.45%  (A7)+ -> -(A6)
+  0891 bitop          3629 unsupported        208 runtime   0.44%
+  08D1 bitop          3640 unsupported        127 runtime   0.43%
+  2378 move              0 unsupported       3568 runtime   0.41%  abs.W -> d16(A1)
+  4269 alu               0 unsupported       3409 runtime   0.39%
+  2F70 move              0 unsupported       3397 runtime   0.39%  idx(A0) -> d16(A7)
+  3338 move              0 unsupported       3122 runtime   0.36%  abs.W -> -(A1)
+  C229 alu            3006 unsupported          0 runtime   0.34%
+  1229 move           2990 unsupported          0 runtime   0.34%  d16(A1) -> D1
+  48E6 multi             0 unsupported       2989 runtime   0.34%  EA=-(A6)
+  1411 move           2970 unsupported          0 runtime   0.34%  (A1) -> D2
+  4210 alu               0 unsupported       2944 runtime   0.34%
+  5368 alu               0 unsupported       2710 runtime   0.31%
+  5351 alu               0 unsupported       2701 runtime   0.31%
+  2F30 move            379 unsupported       2248 runtime   0.30%  idx(A0) -> -(A7)
+  276E move              0 unsupported       2602 runtime   0.30%  d16(A6) -> d16(A3)
+  4A29 alu            2579 unsupported          0 runtime   0.30%
+  5251 alu               0 unsupported       2196 runtime   0.25%
+  16AC move              0 unsupported       1797 runtime   0.21%  d16(A4) -> (A3)
+  48E7 multi             0 unsupported       1447 runtime   0.17%  EA=-(A7)
+  4CDF multi             0 unsupported       1440 runtime   0.17%  EA=(A7)+
+  4E90 branch            0 unsupported       1389 runtime   0.16%
+  50E9 cond              0 unsupported       1298 runtime   0.15%
+  08D0 bitop             0 unsupported       1280 runtime   0.15%
+  48EA multi             0 unsupported       1234 runtime   0.14%  EA=d16(A2)
+  31E8 move              0 unsupported       1168 runtime   0.13%  d16(A0) -> abs.W
+  4EB0 branch            0 unsupported       1123 runtime   0.13%
+  2070 move              0 unsupported       1115 runtime   0.13%  idx(A0) -> A0
+  4E56 addr              0 unsupported       1115 runtime   0.13%
+  2F38 move              0 unsupported       1107 runtime   0.13%  abs.W -> -(A7)
+  4CDE multi             0 unsupported        986 runtime   0.11%  EA=(A6)+
+  42A8 alu               0 unsupported        911 runtime   0.10%
+  2964 move            849 unsupported          0 runtime   0.10%  -(A4) -> d16(A4)
+  6100 branch            0 unsupported        729 runtime   0.08%
+  11D0 move              0 unsupported        613 runtime   0.07%  (A0) -> abs.W
+  536B alu               0 unsupported        566 runtime   0.06%
+  426E alu               0 unsupported        545 runtime   0.06%
+  12D8 move              0 unsupported        501 runtime   0.06%  (A0)+ -> (A1)+
+  2C36 move              0 unsupported        441 runtime   0.05%  idx(A6) -> D6
+  E0AC shift             0 unsupported        430 runtime   0.05%
+  EFD1 shift             0 unsupported        422 runtime   0.05%
+
+[jit] bounded shift versions — 6 sites, 45 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU           123424   16.97%  22E8:20103  3151:15854  12E8:11775  2F68:11087  B189:7106  21ED:7082  2950:5661  2178:5389
+  non-plain/MMIO         507190   69.72%  24D0:460727  14D0:37327  169A:8931  16AC:205
+  codeMask                85570   11.76%  22D8:44467  2338:5863  4250:5752  2D1F:3669  4269:3408  3338:3122  4210:2943  5351:2701
+  cross-page              10594    1.46%  4EAD:5551  48EA:1234  4CDF:1168  48E7:904  2F38:863  48D2:309  22D8:142  4E56:84
+  other guard               737    0.10%  E0AC:430  E16F:180  E538:126  E0AB:1
+  attributed             727515 /       727515 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 507190 / 507190 exact
+  op=24D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=4        460727
+  op=14D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=1         37327
+  op=169A W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1          8931
+  op=16AC W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1           205
+
+[jit] exact codeMask addresses — 85570 / 85570 exact
+  op=2338 W addr=$00972B2C page=$00972 slice=B mask=$0C00 bytes=4          5823
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2          5752
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=2          3408
+  op=3338 W addr=$00972B2A page=$00972 slice=B mask=$0C00 bytes=2          3080
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$2000 bytes=4          2602
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63FD bytes=1          1838
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63FD bytes=2          1817
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63FD bytes=2          1372
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=1          1280
+  op=2D1F W addr=$00015818 page=$00015 slice=8 mask=$0300 bytes=4          1113
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$63FD bytes=1           879
+  op=2D1F W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4           745
+  op=48E6 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=16           533
+  op=2D1F W addr=$00015860 page=$00015 slice=8 mask=$0300 bytes=4           459
+  op=2D1F W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4           458
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2           438
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1           435
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2           347
+  op=2D1F W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4           324
+  op=536B W addr=$009ECD90 page=$009EC slice=D mask=$2AC0 bytes=2           309
+  op=48E6 W addr=$000157F4 page=$00015 slice=7 mask=$0300 bytes=36           284
+  op=48E6 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=24           266
+  op=536B W addr=$009ECD90 page=$009EC slice=D mask=$22C0 bytes=2           257
+  op=48E6 W addr=$0001581C page=$00015 slice=8 mask=$0300 bytes=48           242
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$0038 bytes=2           229
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1           205
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$0078 bytes=1           168
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$0078 bytes=2           164
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$0038 bytes=2           157
+  op=48E6 W addr=$00015838 page=$00015 slice=8 mask=$0300 bytes=12           144
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$0078 bytes=2           143
+  op=48E6 W addr=$0001580C page=$00015 slice=8 mask=$0300 bytes=52           142
+  op=48E6 W addr=$000157E4 page=$00015 slice=7 mask=$0300 bytes=52           139
+  op=48E6 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=8           135
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$0038 bytes=1           126
+  op=2D1F W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4           125
+  op=0092 W addr=$000A64C4 page=$000A6 slice=4 mask=$001C bytes=4           125
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63F8 bytes=2           119
+  op=22C2 W addr=$00015846 page=$00015 slice=8 mask=$0300 bytes=4           114
+  op=2D1F W addr=$00015824 page=$00015 slice=8 mask=$0300 bytes=4           100
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63F8 bytes=2            98
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63F8 bytes=1            97
+  op=48E6 W addr=$00015834 page=$00015 slice=8 mask=$0300 bytes=36            88
+  op=48E6 W addr=$000157F4 page=$00015 slice=7 mask=$0300 bytes=32            86
+  op=4214 W addr=$0001581E page=$00015 slice=8 mask=$0300 bytes=1            84
+  op=48E6 W addr=$0001580E page=$00015 slice=8 mask=$0300 bytes=12            80
+  op=2D1F W addr=$0001581A page=$00015 slice=8 mask=$0300 bytes=4            80
+  op=EFD1 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=4            71
+  op=EFD1 W addr=$0001584A page=$00015 slice=8 mask=$0300 bytes=4            71
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$63F8 bytes=1            69
+  op=22E0 W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4            67
+  op=22C2 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=4            66
+  op=2D1F W addr=$0001583A page=$00015 slice=8 mask=$0300 bytes=4            65
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$0078 bytes=1            64
+  op=48E6 W addr=$00015830 page=$00015 slice=8 mask=$0300 bytes=16            61
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$0038 bytes=1            59
+  op=22D8 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=4            56
+  op=22D8 W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4            56
+  op=22D8 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=4            56
+  op=22D8 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4            56
+
+[jit] exact cross-page addresses — 10594 / 10594 exact
+  op=4EAD W addr=$009D7FFE page=$009D7 off=$FFE bytes=4          5551
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           863
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20           302
+  op=4CDF R addr=$009D7FD2 page=$009D7 off=$FD2 bytes=52           259
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28           235
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28           172
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20           172
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=24            85
+  op=4E56 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            84
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=24            74
+  op=4870 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            74
+  op=6100 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            70
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=44            54
+  op=4CDF R addr=$009D7FF8 page=$009D7 off=$FF8 bytes=20            44
+  op=48E7 W addr=$009D7FF8 page=$009D7 off=$FF8 bytes=12            32
+  op=4CDF R addr=$009D7FFE page=$009D7 off=$FFE bytes=28            24
+  op=4CEE R addr=$009D7FF8 page=$009D7 off=$FF8 bytes=12            23
+  op=48E7 W addr=$009D7FFE page=$009D7 off=$FFE bytes=8            22
+  op=2F2E W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            21
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=20            19
+  op=48E7 W addr=$009D7FF6 page=$009D7 off=$FF6 bytes=40            18
+  op=4CDF R addr=$009D7FFE page=$009D7 off=$FFE bytes=8            18
+  op=48E7 W addr=$009D7FEE page=$009D7 off=$FEE bytes=24            18
+  op=4CDF R addr=$009D7FEE page=$009D7 off=$FEE bytes=24            18
+  op=48E7 W addr=$009D7FF8 page=$009D7 off=$FF8 bytes=16            16
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=20            15
+  op=48E7 W addr=$009D7FFE page=$009D7 off=$FFE bytes=24            13
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=40            13
+  op=486D W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            12
+  op=22DF R addr=$009D7FFE page=$009D7 off=$FFE bytes=4            12
+  op=48E7 W addr=$009D7FFA page=$009D7 off=$FFA bytes=8            11
+  op=2F70 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            11
+  op=48E7 W addr=$009D7FEA page=$009D7 off=$FEA bytes=40            11
+  op=48D0 W addr=$009D7FDC page=$009D7 off=$FDC bytes=44            10
+  op=4EB0 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            10
+  op=2F2E R addr=$009D7FFE page=$009D7 off=$FFE bytes=4            10
+  op=4CDF R addr=$009D7FE4 page=$009D7 off=$FE4 bytes=40            10
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=16             9
+  op=48E7 W addr=$009D7FDC page=$009D7 off=$FDC bytes=40             9
+  op=48E7 W addr=$009D7FFA page=$009D7 off=$FFA bytes=16             9
+  op=48E7 W addr=$009D7FE4 page=$009D7 off=$FE4 bytes=40             9
+  op=487A W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             9
+  op=4CDF R addr=$009D7FFE page=$009D7 off=$FFE bytes=24             9
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=8             9
+  op=4CDF R addr=$009D7FE2 page=$009D7 off=$FE2 bytes=40             8
+  op=48E7 W addr=$009D7FFE page=$009D7 off=$FFE bytes=28             8
+  op=48E7 W addr=$009D7FF6 page=$009D7 off=$FF6 bytes=16             8
+  op=4CDF R addr=$009D7FEA page=$009D7 off=$FEA bytes=40             8
+  op=48E7 W addr=$009D7FE2 page=$009D7 off=$FE2 bytes=40             8
+  op=48E7 W addr=$009D7FFA page=$009D7 off=$FFA bytes=40             8
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=16             8
+  op=48E7 W addr=$009D7FD0 page=$009D7 off=$FD0 bytes=52             8
+  op=2F11 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             7
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=24             7
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=40             7
+  op=4CDF R addr=$009D7FD0 page=$009D7 off=$FD0 bytes=52             7
+  op=4CDF R addr=$009D7FF0 page=$009D7 off=$FF0 bytes=40             7
+  op=4CDF R addr=$009D7FFA page=$009D7 off=$FFA bytes=8             6
+  op=4CDF R addr=$009D7FFA page=$009D7 off=$FFA bytes=16             6
+  op=48E7 W addr=$009D7FF6 page=$009D7 off=$FF6 bytes=20             6
+
+[jit] exact other-runtime-access addresses — 737 / 737 exact
+  op=E0AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           430
+  op=E16F R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           180
+  op=E538 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           126
+  op=E0AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             1
+
+[jit] fallback addressing — MOVE source
+  (An)             2970 unsupported       524247 runtime
+  (An)+               0 unsupported        63020 runtime
+  d16(An)          2990 unsupported        57296 runtime
+  abs.W               0 unsupported        19133 runtime
+  idx(An)           519 unsupported         7270 runtime
+  -(An)             849 unsupported          138 runtime
+  d16(PC)             0 unsupported          577 runtime
+  Dn                158 unsupported          324 runtime
+  An                  0 unsupported           53 runtime
+  idx(PC)             0 unsupported            8 runtime
+  imm                 0 unsupported            5 runtime
+
+[jit] fallback addressing — MOVE destination
+  (An)+               0 unsupported       583379 runtime
+  d16(An)          1007 unsupported        48921 runtime
+  -(An)             379 unsupported        17580 runtime
+  (An)              140 unsupported        11243 runtime
+  abs.W               0 unsupported         9316 runtime
+  Dn               5960 unsupported          509 runtime
+  An                  0 unsupported         1116 runtime
+  idx(An)             0 unsupported            7 runtime
+
+[jit] fallback addressing — MOVEM operand
+  -(An)               0 unsupported         4436 runtime
+  (An)+               0 unsupported         2436 runtime
+  d16(An)             0 unsupported         1368 runtime
+  (An)                0 unsupported          321 runtime
+
+[jit] indexed-mode fallbacks by extension form — 9113 attributed (of 871440 total fallbacks)
+  brief (d8,An/PC,Xn)          187    2.1%
+  full 68020 format           1777   19.5%
+  mixed (both seen)           7149   78.4%
+  compiled slots: 353 brief, 117 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:  25.6%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  (An)     -> (An)+               0 unsupported       500815 runtime
+  (An)+    -> (An)+               0 unsupported        50140 runtime
+  d16(An)  -> (An)+               0 unsupported        31879 runtime
+  (An)     -> d16(An)             0 unsupported        22149 runtime
+  d16(An)  -> d16(An)             0 unsupported        14170 runtime
+  abs.W    -> -(An)               0 unsupported        10099 runtime
+  abs.W    -> d16(An)             0 unsupported         9009 runtime
+  (An)+    -> (An)                0 unsupported         8955 runtime
+  d16(An)  -> abs.W               0 unsupported         8314 runtime
+  (An)+    -> -(An)               0 unsupported         3896 runtime
+  idx(An)  -> d16(An)             0 unsupported         3397 runtime
+  d16(An)  -> Dn               2990 unsupported            0 runtime
+  (An)     -> Dn               2970 unsupported            0 runtime
+  idx(An)  -> -(An)             379 unsupported         2248 runtime
+  d16(An)  -> (An)                0 unsupported         2022 runtime
+  idx(An)  -> An                  0 unsupported         1116 runtime
+  (An)     -> abs.W               0 unsupported          995 runtime
+  d16(An)  -> -(An)               0 unsupported          911 runtime
+  -(An)    -> d16(An)           849 unsupported            0 runtime
+  idx(An)  -> Dn                  0 unsupported          509 runtime
+  d16(PC)  -> -(An)               0 unsupported          396 runtime
+  Dn       -> (An)+               0 unsupported          324 runtime
+  (An)     -> (An)                0 unsupported          266 runtime
+  d16(PC)  -> d16(An)             0 unsupported          181 runtime
+
+[jit] ════ census phase 'idle-finder' ════
+[jit] dispatch cache: 7883068 hits, 167747 gen-miss, 8702333 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=7993 write into code=11 deferred=0 code cache full=0  blocks live=21941, cold-evicted=0
+
+[jit] opcode census — 498996 instructions, 1839 distinct
+  move           133131   26.7%
+  alu            168634   33.8%
+  shift           10572    2.1%
+  bitop           11396    2.3%
+  muldiv             25    0.0%
+  addr             9631    1.9%
+  multi           16662    3.3%
+  cond              488    0.1%
+  branch         146023   29.3%
+  UNSAFE           2434    0.5%
+  native         486930   97.6%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  4A11 alu    *      12500   2.51%  cum   2.5%
+  6702 branch *      11032   2.21%  cum   4.7%
+  4E75 branch *      10759   2.16%  cum   6.9%
+  0812 bitop  *       7105   1.42%  cum   8.3%
+  B3D6 alu    *       6986   1.40%  cum   9.7%
+  6426 branch *       6986   1.40%  cum  11.1%
+  6604 branch *       6810   1.36%  cum  12.5%
+  6712 branch *       6746   1.35%  cum  13.8%
+  2040 move   *       6707   1.34%  cum  15.2%
+  D3C2 alu    *       6611   1.32%  cum  16.5%
+  60DA branch *       6587   1.32%  cum  17.8%
+  C4B8 alu    *       6545   1.31%  cum  19.1%
+  2411 move   *       6543   1.31%  cum  20.4%
+  6A16 branch *       6383   1.28%  cum  21.7%
+  6B0C branch *       6383   1.28%  cum  23.0%
+  D5CE alu    *       6353   1.27%  cum  24.3%
+  4A12 alu    *       6353   1.27%  cum  25.5%
+  2469 move   *       6353   1.27%  cum  26.8%
+  7008 move   *       6231   1.25%  cum  28.1%
+  48C0 multi  *       5948   1.19%  cum  29.2%
+  C085 alu    *       5747   1.15%  cum  30.4%
+  4880 multi  *       5646   1.13%  cum  31.5%
+  51C9 branch *       5578   1.12%  cum  32.6%
+  203C move   *       5549   1.11%  cum  33.8%
+  1010 move   *       5532   1.11%  cum  34.9%
+  D0AC alu    *       5495   1.10%  cum  36.0%
+  2078 move   *       5156   1.03%  cum  37.0%
+  7040 move   *       5119   1.03%  cum  38.0%
+  6706 branch *       5104   1.02%  cum  39.0%
+  C086 alu    *       4880   0.98%  cum  40.0%
+  6704 branch *       4678   0.94%  cum  41.0%
+  D282 alu    *       4341   0.87%  cum  41.8%
+  D9C6 alu    *       3673   0.74%  cum  42.6%
+  B9D0 alu    *       3672   0.74%  cum  43.3%
+  65AA branch *       3668   0.74%  cum  44.0%
+  1814 move   *       3664   0.73%  cum  44.8%
+  E88C shift  *       3659   0.73%  cum  45.5%
+  2C14 move   *       3658   0.73%  cum  46.2%
+  0284 alu    *       3658   0.73%  cum  47.0%
+  0286 alu    *       3655   0.73%  cum  47.7%
+  4A84 alu    *       3654   0.73%  cum  48.4%
+  4E5E addr   *       3622   0.73%  cum  49.2%
+  662A branch *       3607   0.72%  cum  49.9%
+  B084 alu    *       3579   0.72%  cum  50.6%
+  0287 alu    *       3504   0.70%  cum  51.3%
+  D9C7 alu    *       3496   0.70%  cum  52.0%
+  2E14 move   *       3493   0.70%  cum  52.7%
+  2038 move   *       3186   0.64%  cum  53.3%
+  2A00 move   *       3109   0.62%  cum  54.0%
+  B7CC alu    *       3059   0.61%  cum  54.6%
+  6608 branch *       2901   0.58%  cum  55.2%
+  660C branch *       2649   0.53%  cum  55.7%
+  2050 move   *       2623   0.53%  cum  56.2%
+  6628 branch *       2499   0.50%  cum  56.7%
+  2C00 move   *       2491   0.50%  cum  57.2%
+  4A85 alu    *       2476   0.50%  cum  57.7%
+  0285 alu    *       2462   0.49%  cum  58.2%
+  1A14 move   *       2461   0.49%  cum  58.7%
+  E88D shift  *       2461   0.49%  cum  59.2%
+  60AC branch *       2459   0.49%  cum  59.7%
+
+[jit] block fallback census — 17201 unsupported + 32914 runtime guard/access = 50115
+  C029 alu           13221 unsupported          0 runtime  26.38%
+  22E8 move              0 unsupported       4912 runtime   9.80%  d16(A0) -> (A1)+
+  3151 move              0 unsupported       3766 runtime   7.51%  (A1) -> d16(A0)
+  12E8 move              0 unsupported       2869 runtime   5.72%  d16(A0) -> (A1)+
+  2F68 move              0 unsupported       2285 runtime   4.56%  d16(A0) -> d16(A7)
+  B189 alu               0 unsupported       1975 runtime   3.94%
+  21ED move              0 unsupported       1596 runtime   3.18%  d16(A5) -> abs.W
+  2338 move              0 unsupported       1372 runtime   2.74%  abs.W -> -(A1)
+  4250 alu               0 unsupported       1366 runtime   2.73%
+  2178 move              0 unsupported       1341 runtime   2.68%  abs.W -> d16(A0)
+  2950 move              0 unsupported       1339 runtime   2.67%  (A0) -> d16(A4)
+  4EAD branch            0 unsupported       1339 runtime   2.67%
+  9611 alu            1327 unsupported          0 runtime   2.65%
+  2378 move              0 unsupported        883 runtime   1.76%  abs.W -> d16(A1)
+  22D8 move              0 unsupported        814 runtime   1.62%  (A0)+ -> (A1)+
+  2F70 move              0 unsupported        809 runtime   1.61%  idx(A0) -> d16(A7)
+  3338 move              0 unsupported        719 runtime   1.43%  abs.W -> -(A1)
+  276E move              0 unsupported        709 runtime   1.41%  d16(A6) -> d16(A3)
+  1411 move            693 unsupported          0 runtime   1.38%  (A1) -> D2
+  C229 alu             693 unsupported          0 runtime   1.38%
+  1229 move            690 unsupported          0 runtime   1.38%  d16(A1) -> D1
+  5368 alu               0 unsupported        653 runtime   1.30%
+  2F30 move              0 unsupported        488 runtime   0.97%  idx(A0) -> -(A7)
+  4E90 branch            0 unsupported        362 runtime   0.72%
+  2070 move              0 unsupported        318 runtime   0.63%  idx(A0) -> A0
+  42A8 alu               0 unsupported        256 runtime   0.51%
+  2964 move            235 unsupported          0 runtime   0.47%  -(A4) -> d16(A4)
+  2F38 move              0 unsupported        234 runtime   0.47%  abs.W -> -(A7)
+  48E7 multi             0 unsupported        215 runtime   0.43%  EA=-(A7)
+  4E56 addr              0 unsupported        214 runtime   0.43%
+  4EB0 branch            0 unsupported        209 runtime   0.42%
+  4CDF multi             0 unsupported        185 runtime   0.37%  EA=(A7)+
+  31E8 move              0 unsupported        185 runtime   0.37%  d16(A0) -> abs.W
+  6100 branch            0 unsupported        183 runtime   0.37%
+  11D0 move              0 unsupported        173 runtime   0.35%  (A0) -> abs.W
+  0811 bitop           141 unsupported          0 runtime   0.28%
+  0891 bitop            62 unsupported         53 runtime   0.23%
+  2D54 move              0 unsupported         95 runtime   0.19%  (A4) -> d16(A6)
+  22DF move              0 unsupported         93 runtime   0.19%  (A7)+ -> (A1)+
+  08D1 bitop            79 unsupported         11 runtime   0.18%
+  21D0 move              0 unsupported         89 runtime   0.18%  (A0) -> abs.W
+  426F alu               0 unsupported         62 runtime   0.12%
+  2169 move              0 unsupported         61 runtime   0.12%  d16(A1) -> d16(A0)
+  B388 alu               0 unsupported         59 runtime   0.12%
+  6106 branch            0 unsupported         56 runtime   0.11%
+  4269 alu               0 unsupported         48 runtime   0.10%
+  2F28 move              0 unsupported         47 runtime   0.09%  d16(A0) -> -(A7)
+  50E9 cond              0 unsupported         40 runtime   0.08%
+  1D68 move              0 unsupported         37 runtime   0.07%  d16(A0) -> d16(A6)
+  E4A1 shift            30 unsupported          0 runtime   0.06%
+  E2A0 shift            30 unsupported          0 runtime   0.06%
+  4CEE multi             0 unsupported         30 runtime   0.06%  EA=d16(A6)
+  48E6 multi             0 unsupported         30 runtime   0.06%  EA=-(A6)
+  4EBA branch            0 unsupported         25 runtime   0.05%
+  487A addr              0 unsupported         25 runtime   0.05%
+  619C branch            0 unsupported         23 runtime   0.05%
+  536C alu               0 unsupported         20 runtime   0.04%
+  2F2D move              0 unsupported         20 runtime   0.04%  d16(A5) -> -(A7)
+  2D1F move              0 unsupported         20 runtime   0.04%  (A7)+ -> -(A6)
+  08F8 bitop             0 unsupported         19 runtime   0.04%
+
+[jit] bounded shift versions — 6 sites, 45 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU            26714   81.16%  22E8:4912  3151:3766  12E8:2869  2F68:2285  B189:1975  21ED:1596  2178:1341  2950:1339
+  non-plain/MMIO              0    0.00%
+  codeMask                 4383   13.32%  2338:1372  4250:1365  3338:719  276E:709  22D8:50  4269:48  50E9:40  48E6:20
+  cross-page               1817    5.52%  4EAD:1331  2F38:202  4CDF:178  48E7:106
+  other guard                 0    0.00%
+  attributed              32914 /        32914 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 0 / 0 exact
+
+[jit] exact codeMask addresses — 4383 / 4383 exact
+  op=2338 W addr=$00972B2C page=$00972 slice=B mask=$0C00 bytes=4          1372
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2          1365
+  op=3338 W addr=$00972B2A page=$00972 slice=B mask=$0C00 bytes=2           719
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$2000 bytes=4           709
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=2            48
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=1            40
+  op=0891 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            10
+  op=08D1 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            10
+  op=48E6 W addr=$0001582A page=$00015 slice=8 mask=$0300 bytes=16            10
+  op=2D1F W addr=$0001583A page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=EFD1 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=22C2 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=22E0 W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=48E6 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=8            10
+  op=22D8 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=22D8 W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=22D8 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=22D8 W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=22D8 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4            10
+
+[jit] exact cross-page addresses — 1817 / 1817 exact
+  op=4EAD W addr=$009D7FFE page=$009D7 off=$FFE bytes=4          1331
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           202
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20            69
+  op=4CDF R addr=$009D7FD2 page=$009D7 off=$FD2 bytes=52            60
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            57
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            37
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20            37
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=44            10
+  op=4CDF R addr=$009D7FF8 page=$009D7 off=$FF8 bytes=20            10
+  op=4CDF R addr=$009D7FEA page=$009D7 off=$FEA bytes=32             2
+  op=4CDF R addr=$009D7FFA page=$009D7 off=$FFA bytes=32             2
+
+[jit] exact other-runtime-access addresses — 0 / 0 exact
+
+[jit] fallback addressing — MOVE source
+  d16(An)           690 unsupported        12751 runtime
+  (An)              693 unsupported         5473 runtime
+  abs.W               0 unsupported         4558 runtime
+  idx(An)             0 unsupported         1615 runtime
+  (An)+               0 unsupported          937 runtime
+  -(An)             235 unsupported           10 runtime
+  d16(PC)             0 unsupported           30 runtime
+  Dn                  0 unsupported           10 runtime
+
+[jit] fallback addressing — MOVE destination
+  d16(An)           235 unsupported        11367 runtime
+  (An)+               0 unsupported         8719 runtime
+  -(An)               0 unsupported         2926 runtime
+  abs.W               0 unsupported         2043 runtime
+  Dn               1383 unsupported            0 runtime
+  An                  0 unsupported          318 runtime
+  (An)                0 unsupported           11 runtime
+
+[jit] fallback addressing — MOVEM operand
+  -(An)               0 unsupported          245 runtime
+  (An)+               0 unsupported          185 runtime
+  d16(An)             0 unsupported           30 runtime
+
+[jit] indexed-mode fallbacks by extension form — 1846 attributed (of 50115 total fallbacks)
+  brief (d8,An/PC,Xn)           22    1.2%
+  full 68020 format            209   11.3%
+  mixed (both seen)           1615   87.5%
+  compiled slots: 357 brief, 117 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:  29.4%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  d16(An)  -> (An)+               0 unsupported         7782 runtime
+  (An)     -> d16(An)             0 unsupported         5211 runtime
+  d16(An)  -> d16(An)             0 unsupported         3100 runtime
+  abs.W    -> -(An)               0 unsupported         2325 runtime
+  abs.W    -> d16(An)             0 unsupported         2231 runtime
+  d16(An)  -> abs.W               0 unsupported         1781 runtime
+  (An)+    -> (An)+               0 unsupported          917 runtime
+  idx(An)  -> d16(An)             0 unsupported          809 runtime
+  (An)     -> Dn                693 unsupported            0 runtime
+  d16(An)  -> Dn                690 unsupported            0 runtime
+  idx(An)  -> -(An)               0 unsupported          488 runtime
+  idx(An)  -> An                  0 unsupported          318 runtime
+  (An)     -> abs.W               0 unsupported          262 runtime
+  -(An)    -> d16(An)           235 unsupported            0 runtime
+  d16(An)  -> -(An)               0 unsupported           79 runtime
+  (An)+    -> -(An)               0 unsupported           20 runtime
+  d16(PC)  -> d16(An)             0 unsupported           16 runtime
+  d16(PC)  -> -(An)               0 unsupported           14 runtime
+  Dn       -> (An)+               0 unsupported           10 runtime
+  -(An)    -> (An)+               0 unsupported           10 runtime
+  d16(An)  -> (An)                0 unsupported            9 runtime
+  abs.W    -> (An)                0 unsupported            2 runtime
+
+[jit] ════ census phase 'open-root' ════
+[jit] dispatch cache: 4395100 hits, 228900 gen-miss, 4610315 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=10769 write into code=11 deferred=0 code cache full=0  blocks live=23252, cold-evicted=0
+
+[jit] opcode census — 1292084 instructions, 4001 distinct
+  move           393230   30.4%
+  alu            402868   31.2%
+  shift           33816    2.6%
+  bitop           11710    0.9%
+  muldiv            718    0.1%
+  addr            42223    3.3%
+  multi           31072    2.4%
+  cond             4816    0.4%
+  branch         360520   27.9%
+  UNSAFE          11111    0.9%
+  native        1275523   98.7%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  4E75 branch *      31445   2.43%  cum   2.4%
+  7000 move   *      16068   1.24%  cum   3.7%
+  4A11 alu    *      14885   1.15%  cum   4.8%
+  206E move   *      13212   1.02%  cum   5.9%
+  51C8 branch *      12889   1.00%  cum   6.8%
+  5247 alu    *      12671   0.98%  cum   7.8%
+  4E5E addr   *      12662   0.98%  cum   8.8%
+  51CB branch *      12479   0.97%  cum   9.8%
+  6706 branch *      11457   0.89%  cum  10.7%
+  4EAD branch *      11262   0.87%  cum  11.5%
+  2050 move   *      11220   0.87%  cum  12.4%
+  B3D6 alu    *      10545   0.82%  cum  13.2%
+  6426 branch *      10530   0.81%  cum  14.0%
+  2F0C move   *       9793   0.76%  cum  14.8%
+  6602 branch *       9486   0.73%  cum  15.5%
+  DACB alu    *       8694   0.67%  cum  16.2%
+  4EBA branch *       8359   0.65%  cum  16.8%
+  D4C0 alu    *       8035   0.62%  cum  17.5%
+  2053 move   *       7980   0.62%  cum  18.1%
+  4E56 addr   *       7904   0.61%  cum  18.7%
+  0247 alu    *       7650   0.59%  cum  19.3%
+  CC81 alu    *       7472   0.58%  cum  19.9%
+  2054 move   *       7467   0.58%  cum  20.4%
+  6604 branch *       7440   0.58%  cum  21.0%
+  6000 branch *       7244   0.56%  cum  21.6%
+  BD95 alu    *       7236   0.56%  cum  22.1%
+  2C1A move   *       7235   0.56%  cum  22.7%
+  2211 move   *       7229   0.56%  cum  23.3%
+  60F0 branch *       7180   0.56%  cum  23.8%
+  2010 move   *       7121   0.55%  cum  24.4%
+  C282 alu    *       7117   0.55%  cum  24.9%
+  D3C1 alu    *       7115   0.55%  cum  25.5%
+  6702 branch *       7039   0.54%  cum  26.0%
+  6100 branch *       6767   0.52%  cum  26.5%
+  6704 branch *       6758   0.52%  cum  27.1%
+  670A branch *       6754   0.52%  cum  27.6%
+  4CEE multi  *       6451   0.50%  cum  28.1%
+  57CD branch *       6325   0.49%  cum  28.6%
+  B041 alu    *       6306   0.49%  cum  29.1%
+  B692 alu    *       6293   0.49%  cum  29.5%
+  202E move   *       6114   0.47%  cum  30.0%
+  203C move   *       5987   0.46%  cum  30.5%
+  2040 move   *       5891   0.46%  cum  30.9%
+  286E move   *       5751   0.45%  cum  31.4%
+  C086 alu    *       5746   0.44%  cum  31.8%
+  2F2E move   *       5596   0.43%  cum  32.3%
+  3018 move   *       5183   0.40%  cum  32.7%
+  4A80 alu    *       5180   0.40%  cum  33.1%
+  4A00 alu    *       5120   0.40%  cum  33.5%
+  48E7 multi  *       5039   0.39%  cum  33.9%
+  51C9 branch *       4790   0.37%  cum  34.2%
+  486E addr   *       4755   0.37%  cum  34.6%
+  0C40 alu    *       4659   0.36%  cum  35.0%
+  CC47 alu    *       4454   0.34%  cum  35.3%
+  7008 move   *       4396   0.34%  cum  35.6%
+  C087 alu    *       4340   0.34%  cum  36.0%
+  4A86 alu    *       4235   0.33%  cum  36.3%
+  48C0 multi  *       4159   0.32%  cum  36.6%
+  2078 move   *       4070   0.31%  cum  36.9%
+  0828 bitop  *       4048   0.31%  cum  37.2%
+
+[jit] block fallback census — 10049 unsupported + 59174 runtime guard/access = 69223
+  22D8 move              0 unsupported      33758 runtime  48.77%  (A0)+ -> (A1)+
+  C029 alu            7052 unsupported          0 runtime  10.19%
+  24D0 move              0 unsupported       2795 runtime   4.04%  (A0) -> (A2)+
+  3151 move              0 unsupported       2032 runtime   2.94%  (A1) -> d16(A0)
+  22E8 move              0 unsupported       1715 runtime   2.48%  d16(A0) -> (A1)+
+  5368 alu               0 unsupported       1568 runtime   2.27%
+  12E8 move              0 unsupported       1468 runtime   2.12%  d16(A0) -> (A1)+
+  2950 move              0 unsupported       1424 runtime   2.06%  (A0) -> d16(A4)
+  B189 alu               0 unsupported       1008 runtime   1.46%
+  4250 alu               0 unsupported        803 runtime   1.16%
+  21ED move              0 unsupported        780 runtime   1.13%  d16(A5) -> abs.W
+  31E8 move              0 unsupported        761 runtime   1.10%  d16(A0) -> abs.W
+  2F68 move              0 unsupported        730 runtime   1.05%  d16(A0) -> d16(A7)
+  2338 move              0 unsupported        694 runtime   1.00%  abs.W -> -(A1)
+  9611 alu             678 unsupported          0 runtime   0.98%
+  2378 move              0 unsupported        588 runtime   0.85%  abs.W -> d16(A1)
+  E4AD shift           495 unsupported          0 runtime   0.72%
+  E0AC shift             0 unsupported        489 runtime   0.71%
+  2F70 move              0 unsupported        455 runtime   0.66%  idx(A0) -> d16(A7)
+  21D0 move              0 unsupported        423 runtime   0.61%  (A0) -> abs.W
+  276E move              0 unsupported        413 runtime   0.60%  d16(A6) -> d16(A3)
+  2178 move              0 unsupported        403 runtime   0.58%  abs.W -> d16(A0)
+  3338 move              0 unsupported        373 runtime   0.54%  abs.W -> -(A1)
+  BD95 alu               0 unsupported        371 runtime   0.54%
+  1411 move            351 unsupported          0 runtime   0.51%  (A1) -> D2
+  C229 alu             351 unsupported          0 runtime   0.51%
+  1229 move            351 unsupported          0 runtime   0.51%  d16(A1) -> D1
+  3F29 move              0 unsupported        310 runtime   0.45%  d16(A1) -> -(A7)
+  4EAD branch            0 unsupported        304 runtime   0.44%
+  4EB0 branch            0 unsupported        298 runtime   0.43%
+  48E7 multi             0 unsupported        291 runtime   0.42%  EA=-(A7)
+  08D1 bitop           224 unsupported         53 runtime   0.40%
+  0811 bitop           276 unsupported          0 runtime   0.40%
+  2F30 move              0 unsupported        261 runtime   0.38%  idx(A0) -> -(A7)
+  4E90 branch            0 unsupported        244 runtime   0.35%
+  E16F shift             0 unsupported        235 runtime   0.34%
+  0891 bitop           141 unsupported         79 runtime   0.32%
+  2F3A move              0 unsupported        210 runtime   0.30%  d16(PC) -> -(A7)
+  169A move              0 unsupported        202 runtime   0.29%  (A2)+ -> (A3)
+  2F2D move              0 unsupported        191 runtime   0.28%  d16(A5) -> -(A7)
+  2070 move              0 unsupported        189 runtime   0.27%  idx(A0) -> A0
+  4CDF multi             0 unsupported        175 runtime   0.25%  EA=(A7)+
+  B19D alu               0 unsupported        155 runtime   0.22%
+  42A8 alu               0 unsupported        145 runtime   0.21%
+  4269 alu               0 unsupported        131 runtime   0.19%
+  14D0 move              0 unsupported        129 runtime   0.19%  (A0) -> (A2)+
+  2230 move              0 unsupported        119 runtime   0.17%  idx(A0) -> D1
+  2C36 move              0 unsupported        117 runtime   0.17%  idx(A6) -> D6
+  08E8 bitop             0 unsupported        117 runtime   0.17%
+  2F38 move              0 unsupported        116 runtime   0.17%  abs.W -> -(A7)
+  12D8 move              0 unsupported        115 runtime   0.17%  (A0)+ -> (A1)+
+  11D0 move              0 unsupported        112 runtime   0.16%  (A0) -> abs.W
+  E538 shift             0 unsupported        110 runtime   0.16%
+  48E6 multi             0 unsupported        100 runtime   0.14%  EA=-(A6)
+  6100 branch            0 unsupported        100 runtime   0.14%
+  2D51 move              0 unsupported         97 runtime   0.14%  (A1) -> d16(A6)
+  4EBA branch            0 unsupported         91 runtime   0.13%
+  2D68 move              0 unsupported         89 runtime   0.13%  d16(A0) -> d16(A6)
+  50E9 cond              0 unsupported         87 runtime   0.13%
+  2964 move             82 unsupported          0 runtime   0.12%  -(A4) -> d16(A4)
+
+[jit] bounded shift versions — 6 sites, 47 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU            17220   29.10%  3151:2032  22E8:1715  12E8:1468  2950:1424  B189:1008  21ED:780  31E8:761  2F68:730
+  non-plain/MMIO           3098    5.24%  24D0:2770  169A:202  14D0:124  16AC:2
+  codeMask                37028   62.57%  22D8:33098  5368:1002  4250:802  2338:694  276E:413  3338:373  4269:131  50E9:87
+  cross-page                992    1.68%  4EAD:303  48E7:164  4CDF:149  4EBA:76  4CEE:63  2F38:59  61C6:55  22D8:44
+  other guard               836    1.41%  E0AC:489  E16F:235  E538:110  E0AB:2
+  attributed              59174 /        59174 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 3098 / 3098 exact
+  op=24D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=4          2770
+  op=169A W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1           202
+  op=14D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=1           124
+  op=16AC W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1             2
+
+[jit] exact codeMask addresses — 37028 / 37028 exact
+  op=5368 W addr=$0000C1AE page=$0000C slice=1 mask=$1FF2 bytes=2          1002
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2           802
+  op=2338 W addr=$00972B2C page=$00972 slice=B mask=$0C00 bytes=4           682
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$2001 bytes=4           413
+  op=3338 W addr=$00972B2A page=$00972 slice=B mask=$0C00 bytes=2           361
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=2           131
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=1            87
+  op=0891 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            39
+  op=08D1 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            36
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2            32
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1            32
+  op=2D1F W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4            26
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2            19
+  op=48E6 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=16            19
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1            17
+  op=2D1F W addr=$00015818 page=$00015 slice=8 mask=$0300 bytes=4            14
+  op=2338 W addr=$0097886C page=$00978 slice=8 mask=$2B00 bytes=4            12
+  op=3338 W addr=$0097886A page=$00978 slice=8 mask=$2B00 bytes=2            12
+  op=48E6 W addr=$000157F4 page=$00015 slice=7 mask=$0300 bytes=32            11
+  op=22E0 W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4             8
+  op=48E6 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=8             8
+  op=2D1F W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=2D1F W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=22D8 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=22D8 W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=22D8 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=22D8 W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=22D8 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=2D1F W addr=$0001583A page=$00015 slice=8 mask=$0300 bytes=4             6
+  op=48E6 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=8             6
+  op=2D1F W addr=$00015860 page=$00015 slice=8 mask=$0300 bytes=4             5
+  op=48E6 W addr=$0001582A page=$00015 slice=8 mask=$0300 bytes=16             5
+  op=48E6 W addr=$0001581C page=$00015 slice=8 mask=$0300 bytes=48             5
+  op=22C2 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=4             5
+  op=EFD1 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=4             5
+  op=48E6 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=24             5
+  op=0210 W addr=$000901AC page=$00090 slice=1 mask=$00F6 bytes=1             4
+  op=4210 W addr=$000901AC page=$00090 slice=1 mask=$00F6 bytes=1             4
+  op=48E6 W addr=$00015838 page=$00015 slice=8 mask=$0300 bytes=12             4
+  op=48E6 W addr=$0001580C page=$00015 slice=8 mask=$0300 bytes=52             4
+  op=8310 W addr=$000901AC page=$00090 slice=1 mask=$00F6 bytes=1             4
+  op=22D8 W addr=$00932318 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=536B W addr=$009ECD90 page=$009EC slice=D mask=$2AC0 bytes=2             3
+  op=32D8 W addr=$0093232C page=$00932 slice=3 mask=$FE88 bytes=2             3
+  op=22D8 W addr=$00932328 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00932320 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$0093231C page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00932314 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00932310 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$0093230C page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00932308 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00932304 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00932300 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00932324 page=$00932 slice=3 mask=$FE88 bytes=4             3
+  op=22D8 W addr=$00935EDC page=$00935 slice=E mask=$610D bytes=4             2
+  op=22D8 W addr=$00935E70 page=$00935 slice=E mask=$610D bytes=4             2
+  op=22D8 W addr=$00935C00 page=$00935 slice=C mask=$7000 bytes=4             2
+  op=22D8 W addr=$00935C08 page=$00935 slice=C mask=$7000 bytes=4             2
+  op=22D8 W addr=$00935C10 page=$00935 slice=C mask=$7000 bytes=4             2
+  op=22D8 W addr=$00935C18 page=$00935 slice=C mask=$7000 bytes=4             2
+
+[jit] exact cross-page addresses — 992 / 992 exact
+  op=4EAD W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           303
+  op=4EBA W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            76
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            59
+  op=61C6 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            55
+  op=4CEE R addr=$009D7FFA page=$009D7 off=$FFA bytes=12            40
+  op=48E7 W addr=$009D7FFE page=$009D7 off=$FFE bytes=8            37
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20            36
+  op=4CDF R addr=$009D7FD2 page=$009D7 off=$FD2 bytes=52            31
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            30
+  op=2F3A W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            21
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            20
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20            20
+  op=48D0 W addr=$009D7FE4 page=$009D7 off=$FE4 bytes=44            18
+  op=48E7 W addr=$009D7FEC page=$009D7 off=$FEC bytes=28            16
+  op=4CDF R addr=$009D7FEC page=$009D7 off=$FEC bytes=28            16
+  op=4CEE R addr=$009D7FFE page=$009D7 off=$FFE bytes=8            15
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=44            11
+  op=4CDF R addr=$009D7FD6 page=$009D7 off=$FD6 bytes=44            11
+  op=58AC W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            11
+  op=4E56 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             8
+  op=48E7 W addr=$009D7FFA page=$009D7 off=$FFA bytes=12             8
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=8             7
+  op=2D5F W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             7
+  op=4CEE R addr=$009D7FFC page=$009D7 off=$FFC bytes=8             5
+  op=4CDF R addr=$009D7FF8 page=$009D7 off=$FF8 bytes=20             5
+  op=22D8 R addr=$400F5FFE page=$400F5 off=$FFE bytes=4             3
+  op=22D8 R addr=$40103FFE page=$40103 off=$FFE bytes=4             3
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=24             3
+  op=48E7 W addr=$009D7FF8 page=$009D7 off=$FF8 bytes=28             2
+  op=48E7 W addr=$009D7FF8 page=$009D7 off=$FF8 bytes=12             2
+  op=22D8 R addr=$40131FFE page=$40131 off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FD2 page=$009D7 off=$FD2 bytes=52             2
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             2
+  op=2F70 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             2
+  op=48D0 W addr=$009D7FDE page=$009D7 off=$FDE bytes=44             2
+  op=4CDF R addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             2
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=12             2
+  op=48E7 W addr=$009D7FEC page=$009D7 off=$FEC bytes=24             2
+  op=4CDF R addr=$009D7FEC page=$009D7 off=$FEC bytes=24             2
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=44             2
+  op=22D8 R addr=$4010DFFE page=$4010D off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=40             2
+  op=22DF R addr=$009D7FFE page=$009D7 off=$FFE bytes=4             2
+  op=22D8 R addr=$4010AFFE page=$4010A off=$FFE bytes=4             2
+  op=22D8 R addr=$40129FFE page=$40129 off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=44             2
+  op=48E7 W addr=$009D7FEC page=$009D7 off=$FEC bytes=40             2
+  op=4CDF R addr=$009D7FF2 page=$009D7 off=$FF2 bytes=20             2
+  op=48E7 W addr=$009D7FF2 page=$009D7 off=$FF2 bytes=20             2
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=16             2
+  op=48E7 W addr=$009D7FF6 page=$009D7 off=$FF6 bytes=16             2
+  op=22D8 R addr=$4010EFFE page=$4010E off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=44             2
+  op=4CDF R addr=$009D7FE8 page=$009D7 off=$FE8 bytes=40             2
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=24             2
+  op=22D8 R addr=$40105FFE page=$40105 off=$FFE bytes=4             2
+  op=22D8 R addr=$40109FFE page=$40109 off=$FFE bytes=4             2
+  op=22D8 R addr=$40122FFE page=$40122 off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FE8 page=$009D7 off=$FE8 bytes=40             2
+  op=486E W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             2
+
+[jit] exact other-runtime-access addresses — 836 / 836 exact
+  op=E0AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           489
+  op=E16F R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           235
+  op=E538 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           110
+  op=E0AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             2
+
+[jit] fallback addressing — MOVE source
+  (An)+               0 unsupported        34268 runtime
+  (An)              351 unsupported         7099 runtime
+  d16(An)           351 unsupported         6571 runtime
+  abs.W               0 unsupported         2226 runtime
+  idx(An)             0 unsupported         1149 runtime
+  d16(PC)             0 unsupported          212 runtime
+  -(An)              82 unsupported           12 runtime
+  Dn                 10 unsupported           16 runtime
+  An                  0 unsupported            2 runtime
+
+[jit] fallback addressing — MOVE destination
+  (An)+               0 unsupported        40097 runtime
+  d16(An)            82 unsupported         6369 runtime
+  -(An)               0 unsupported         2282 runtime
+  abs.W               0 unsupported         2111 runtime
+  Dn                702 unsupported          242 runtime
+  (An)               10 unsupported          246 runtime
+  An                  0 unsupported          191 runtime
+  idx(An)             0 unsupported           17 runtime
+
+[jit] fallback addressing — MOVEM operand
+  -(An)               0 unsupported          391 runtime
+  (An)+               0 unsupported          195 runtime
+  d16(An)             0 unsupported           77 runtime
+  (An)                0 unsupported           20 runtime
+
+[jit] indexed-mode fallbacks by extension form — 1488 attributed (of 69223 total fallbacks)
+  brief (d8,An/PC,Xn)           30    2.0%
+  full 68020 format            546   36.7%
+  mixed (both seen)            912   61.3%
+  compiled slots: 378 brief, 136 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:  22.3%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  (An)+    -> (An)+               0 unsupported        33959 runtime
+  (An)     -> d16(An)             0 unsupported         3620 runtime
+  d16(An)  -> (An)+               0 unsupported         3184 runtime
+  (An)     -> (An)+               0 unsupported         2924 runtime
+  d16(An)  -> abs.W               0 unsupported         1552 runtime
+  d16(An)  -> d16(An)             0 unsupported         1254 runtime
+  abs.W    -> -(An)               0 unsupported         1183 runtime
+  abs.W    -> d16(An)             0 unsupported         1024 runtime
+  d16(An)  -> -(An)               0 unsupported          545 runtime
+  (An)     -> abs.W               0 unsupported          535 runtime
+  idx(An)  -> d16(An)             0 unsupported          455 runtime
+  d16(An)  -> Dn                351 unsupported            0 runtime
+  (An)     -> Dn                351 unsupported            0 runtime
+  idx(An)  -> -(An)               0 unsupported          261 runtime
+  idx(An)  -> Dn                  0 unsupported          242 runtime
+  d16(PC)  -> -(An)               0 unsupported          210 runtime
+  (An)+    -> (An)                0 unsupported          203 runtime
+  idx(An)  -> An                  0 unsupported          191 runtime
+  -(An)    -> d16(An)            82 unsupported            0 runtime
+  (An)+    -> -(An)               0 unsupported           75 runtime
+  d16(An)  -> (An)                0 unsupported           36 runtime
+  abs.W    -> abs.W               0 unsupported           19 runtime
+  Dn       -> (An)+               0 unsupported           16 runtime
+  (An)+    -> d16(An)             0 unsupported           14 runtime
+
+[jit] ════ census phase 'open-games' ════
+[jit] dispatch cache: 2326476 hits, 101491 gen-miss, 2520062 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=11632 write into code=11 deferred=0 code cache full=0  blocks live=23529, cold-evicted=0
+
+[jit] opcode census — 480757 instructions, 3419 distinct
+  move           150731   31.4%
+  alu            143500   29.8%
+  shift           14029    2.9%
+  bitop            4062    0.8%
+  muldiv            247    0.1%
+  addr            17532    3.6%
+  multi           13855    2.9%
+  cond             1682    0.3%
+  branch         131213   27.3%
+  UNSAFE           3906    0.8%
+  native         473973   98.6%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  4E75 branch *      11412   2.37%  cum   2.4%
+  7000 move   *       6161   1.28%  cum   3.7%
+  4EAD branch *       6123   1.27%  cum   4.9%
+  4A11 alu    *       5911   1.23%  cum   6.2%
+  4E5E addr   *       5608   1.17%  cum   7.3%
+  206E move   *       5375   1.12%  cum   8.4%
+  C086 alu    *       4747   0.99%  cum   9.4%
+  2050 move   *       4599   0.96%  cum  10.4%
+  2F0C move   *       4501   0.94%  cum  11.3%
+  2054 move   *       4203   0.87%  cum  12.2%
+  6706 branch *       4137   0.86%  cum  13.1%
+  203C move   *       3883   0.81%  cum  13.9%
+  51C8 branch *       3852   0.80%  cum  14.7%
+  670A branch *       3849   0.80%  cum  15.5%
+  6426 branch *       3795   0.79%  cum  16.3%
+  B3D6 alu    *       3791   0.79%  cum  17.0%
+  6604 branch *       3746   0.78%  cum  17.8%
+  2040 move   *       3537   0.74%  cum  18.6%
+  4E56 addr   *       3498   0.73%  cum  19.3%
+  6702 branch *       3441   0.72%  cum  20.0%
+  4EBA branch *       3398   0.71%  cum  20.7%
+  202E move   *       3390   0.71%  cum  21.4%
+  C087 alu    *       3062   0.64%  cum  22.1%
+  4CEE multi  *       2819   0.59%  cum  22.6%
+  6704 branch *       2810   0.58%  cum  23.2%
+  2053 move   *       2774   0.58%  cum  23.8%
+  2211 move   *       2733   0.57%  cum  24.4%
+  60F0 branch *       2719   0.57%  cum  24.9%
+  C282 alu    *       2696   0.56%  cum  25.5%
+  D3C1 alu    *       2695   0.56%  cum  26.1%
+  2F2E move   *       2671   0.56%  cum  26.6%
+  4A86 alu    *       2453   0.51%  cum  27.1%
+  48C0 multi  *       2412   0.50%  cum  27.6%
+  486E addr   *       2412   0.50%  cum  28.1%
+  2010 move   *       2377   0.49%  cum  28.6%
+  6100 branch *       2270   0.47%  cum  29.1%
+  51C9 branch *       2256   0.47%  cum  29.6%
+  286E move   *       2248   0.47%  cum  30.0%
+  504F alu    *       2220   0.46%  cum  30.5%
+  5247 alu    *       2213   0.46%  cum  31.0%
+  E38E shift  *       2205   0.46%  cum  31.4%
+  D4C0 alu    *       2177   0.45%  cum  31.9%
+  7008 move   *       2171   0.45%  cum  32.3%
+  48E7 multi  *       2151   0.45%  cum  32.8%
+  6700 branch *       2132   0.44%  cum  33.2%
+  6000 branch *       2120   0.44%  cum  33.6%
+  4880 multi  *       2114   0.44%  cum  34.1%
+  4A80 alu    *       2083   0.43%  cum  34.5%
+  4A00 alu    *       2029   0.42%  cum  34.9%
+  1010 move   *       1984   0.41%  cum  35.4%
+  660C branch *       1976   0.41%  cum  35.8%
+  6608 branch *       1967   0.41%  cum  36.2%
+  2F0B move   *       1930   0.40%  cum  36.6%
+  D0AC alu    *       1927   0.40%  cum  37.0%
+  66D6 branch *       1903   0.40%  cum  37.4%
+  6612 branch *       1898   0.39%  cum  37.8%
+  7040 move   *       1884   0.39%  cum  38.2%
+  0C80 alu    *       1846   0.38%  cum  38.5%
+  57CD branch *       1801   0.37%  cum  38.9%
+  2E14 move   *       1796   0.37%  cum  39.3%
+
+[jit] block fallback census — 5480 unsupported + 33058 runtime guard/access = 38538
+  22D8 move              0 unsupported      19360 runtime  50.24%  (A0)+ -> (A1)+
+  C029 alu            3956 unsupported          0 runtime  10.27%
+  24D0 move              0 unsupported       1278 runtime   3.32%  (A0) -> (A2)+
+  3151 move              0 unsupported       1182 runtime   3.07%  (A1) -> d16(A0)
+  5368 alu               0 unsupported       1043 runtime   2.71%
+  22E8 move              0 unsupported        847 runtime   2.20%  d16(A0) -> (A1)+
+  12E8 move              0 unsupported        828 runtime   2.15%  d16(A0) -> (A1)+
+  2950 move              0 unsupported        574 runtime   1.49%  (A0) -> d16(A4)
+  B189 alu               0 unsupported        557 runtime   1.45%
+  2F68 move              0 unsupported        515 runtime   1.34%  d16(A0) -> d16(A7)
+  21ED move              0 unsupported        451 runtime   1.17%  d16(A5) -> abs.W
+  4250 alu               0 unsupported        428 runtime   1.11%
+  2338 move              0 unsupported        421 runtime   1.09%  abs.W -> -(A1)
+  2378 move              0 unsupported        390 runtime   1.01%  abs.W -> d16(A1)
+  9611 alu             376 unsupported          0 runtime   0.98%
+  31E8 move              0 unsupported        308 runtime   0.80%  d16(A0) -> abs.W
+  4258 alu               0 unsupported        302 runtime   0.78%
+  2178 move              0 unsupported        273 runtime   0.71%  abs.W -> d16(A0)
+  2070 move              0 unsupported        242 runtime   0.63%  idx(A0) -> A0
+  4EAD branch            0 unsupported        237 runtime   0.61%
+  2F70 move              0 unsupported        237 runtime   0.61%  idx(A0) -> d16(A7)
+  3338 move              0 unsupported        231 runtime   0.60%  abs.W -> -(A1)
+  276E move              0 unsupported        221 runtime   0.57%  d16(A6) -> d16(A3)
+  1411 move            198 unsupported          0 runtime   0.51%  (A1) -> D2
+  1229 move            198 unsupported          0 runtime   0.51%  d16(A1) -> D1
+  C229 alu             197 unsupported          0 runtime   0.51%
+  4E90 branch            0 unsupported        167 runtime   0.43%
+  2F30 move              0 unsupported        165 runtime   0.43%  idx(A0) -> -(A7)
+  0811 bitop           150 unsupported          0 runtime   0.39%
+  21D0 move              0 unsupported        148 runtime   0.38%  (A0) -> abs.W
+  E0AC shift             0 unsupported        146 runtime   0.38%
+  E4AD shift           146 unsupported          0 runtime   0.38%
+  08D1 bitop           121 unsupported         20 runtime   0.37%
+  4EB0 branch            0 unsupported        136 runtime   0.35%
+  BD95 alu               0 unsupported        136 runtime   0.35%
+  0891 bitop            76 unsupported         37 runtime   0.29%
+  4CDF multi             0 unsupported        113 runtime   0.29%  EA=(A7)+
+  2F3A move              0 unsupported        109 runtime   0.28%  d16(PC) -> -(A7)
+  48E7 multi             0 unsupported         96 runtime   0.25%  EA=-(A7)
+  42A8 alu               0 unsupported         91 runtime   0.24%
+  2D68 move              0 unsupported         89 runtime   0.23%  d16(A0) -> d16(A6)
+  169A move              0 unsupported         88 runtime   0.23%  (A2)+ -> (A3)
+  3F29 move              0 unsupported         85 runtime   0.22%  d16(A1) -> -(A7)
+  12D8 move              0 unsupported         78 runtime   0.20%  (A0)+ -> (A1)+
+  E16F shift             0 unsupported         74 runtime   0.19%
+  2F2D move              0 unsupported         74 runtime   0.19%  d16(A5) -> -(A7)
+  48E6 multi             0 unsupported         71 runtime   0.18%  EA=-(A6)
+  4269 alu               0 unsupported         59 runtime   0.15%
+  2F38 move              0 unsupported         56 runtime   0.15%  abs.W -> -(A7)
+  11D0 move              0 unsupported         56 runtime   0.15%  (A0) -> abs.W
+  6100 branch            0 unsupported         52 runtime   0.13%
+  2C36 move              0 unsupported         51 runtime   0.13%  idx(A6) -> D6
+  4E56 addr              0 unsupported         50 runtime   0.13%
+  2D51 move              0 unsupported         49 runtime   0.13%  (A1) -> d16(A6)
+  08E8 bitop             0 unsupported         47 runtime   0.12%
+  B19D alu               0 unsupported         45 runtime   0.12%
+  50E9 cond              0 unsupported         45 runtime   0.12%
+  2D54 move              0 unsupported         45 runtime   0.12%  (A4) -> d16(A6)
+  B388 alu               0 unsupported         42 runtime   0.11%
+  E538 shift             0 unsupported         40 runtime   0.10%
+
+[jit] bounded shift versions — 6 sites, 53 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU             9223   27.90%  3151:1182  22E8:847  12E8:828  2950:574  B189:557  2F68:515  21ED:451  2378:390
+  non-plain/MMIO           1384    4.19%  24D0:1265  169A:88  14D0:31
+  codeMask                21729   65.73%  22D8:19034  5368:718  4250:428  2338:421  4258:302  3338:231  276E:221  4269:59
+  cross-page                461    1.39%  4EAD:237  4CDF:75  48E7:41  2F38:33  61C6:28  22D8:23  6100:9  2F3A:8
+  other guard               261    0.79%  E0AC:146  E16F:74  E538:40  E0AB:1
+  attributed              33058 /        33058 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 1384 / 1384 exact
+  op=24D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=4          1265
+  op=169A W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1            88
+  op=14D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=1            31
+
+[jit] exact codeMask addresses — 21729 / 21729 exact
+  op=5368 W addr=$0000C1AE page=$0000C slice=1 mask=$1FF2 bytes=2           718
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2           428
+  op=2338 W addr=$00972B2C page=$00972 slice=B mask=$0C00 bytes=4           405
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$2001 bytes=4           221
+  op=3338 W addr=$00972B2A page=$00972 slice=B mask=$0C00 bytes=2           215
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=2            59
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=1            45
+  op=48E6 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=8            27
+  op=08D1 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            16
+  op=3338 W addr=$0097886A page=$00978 slice=8 mask=$2B00 bytes=2            16
+  op=2338 W addr=$0097886C page=$00978 slice=8 mask=$2B00 bytes=4            16
+  op=0891 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            16
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2            14
+  op=2D1F W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4            12
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1            12
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2            10
+  op=48E6 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=16             9
+  op=4258 W addr=$000EC552 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC526 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC558 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC556 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4210 W addr=$000EC500 page=$000EC slice=5 mask=$0023 bytes=1             5
+  op=4258 W addr=$000EC554 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC546 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC55E page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC550 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC548 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC54E page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC54A page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC530 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC52E page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=536B W addr=$009ECD90 page=$009EC slice=D mask=$2AC0 bytes=2             5
+  op=4258 W addr=$000EC54C page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC542 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC540 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC538 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC544 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC508 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC53E page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC53C page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC53A page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC536 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC534 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC532 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC52C page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC55C page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC52A page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC528 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC51E page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC520 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC522 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC524 page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC55A page=$000EC slice=5 mask=$0023 bytes=2             5
+  op=4258 W addr=$000EC51C page=$000EC slice=5 mask=$0023 bytes=2             4
+  op=4258 W addr=$000EC51A page=$000EC slice=5 mask=$0023 bytes=2             4
+  op=4258 W addr=$000EC516 page=$000EC slice=5 mask=$0023 bytes=2             4
+  op=4258 W addr=$000EC514 page=$000EC slice=5 mask=$0023 bytes=2             4
+  op=4258 W addr=$000EC512 page=$000EC slice=5 mask=$0023 bytes=2             4
+  op=4258 W addr=$000EC510 page=$000EC slice=5 mask=$0023 bytes=2             4
+  op=4258 W addr=$000EC50E page=$000EC slice=5 mask=$0023 bytes=2             4
+
+[jit] exact cross-page addresses — 461 / 461 exact
+  op=4EAD W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           237
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            33
+  op=61C6 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            28
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20            21
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            18
+  op=4CDF R addr=$009D7FD2 page=$009D7 off=$FD2 bytes=52            17
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=44            16
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            12
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20            12
+  op=6100 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             9
+  op=2F3A W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             8
+  op=4CDF R addr=$009D7FD6 page=$009D7 off=$FD6 bytes=44             4
+  op=4CDF R addr=$009D7FF8 page=$009D7 off=$FF8 bytes=20             3
+  op=6162 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             3
+  op=22D8 R addr=$4010EFFE page=$4010E off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=24             2
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=40             2
+  op=22D8 R addr=$4012CFFE page=$4012C off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=24             2
+  op=22D8 R addr=$400F8FFE page=$400F8 off=$FFE bytes=4             2
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=40             1
+  op=22D8 R addr=$400FEFFE page=$400FE off=$FFE bytes=4             1
+  op=22D8 R addr=$400F5FFE page=$400F5 off=$FFE bytes=4             1
+  op=4CEE R addr=$009D7FFC page=$009D7 off=$FFC bytes=8             1
+  op=4CDF R addr=$009D7FFE page=$009D7 off=$FFE bytes=36             1
+  op=22D8 R addr=$4010AFFE page=$4010A off=$FFE bytes=4             1
+  op=22D8 R addr=$40100FFE page=$40100 off=$FFE bytes=4             1
+  op=22D8 R addr=$400FCFFE page=$400FC off=$FFE bytes=4             1
+  op=22D8 R addr=$400FDFFE page=$400FD off=$FFE bytes=4             1
+  op=4CDF R addr=$009D7FE6 page=$009D7 off=$FE6 bytes=36             1
+  op=22D8 R addr=$4010FFFE page=$4010F off=$FFE bytes=4             1
+  op=22D8 R addr=$40112FFE page=$40112 off=$FFE bytes=4             1
+  op=4CDF R addr=$009D7FEC page=$009D7 off=$FEC bytes=24             1
+  op=48E7 W addr=$009D7FEC page=$009D7 off=$FEC bytes=24             1
+  op=4CDF R addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             1
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             1
+  op=4CEE R addr=$009D7FFC page=$009D7 off=$FFC bytes=24             1
+  op=22D8 R addr=$40120FFE page=$40120 off=$FFE bytes=4             1
+  op=22D8 R addr=$40102FFE page=$40102 off=$FFE bytes=4             1
+  op=22D8 R addr=$400F2FFE page=$400F2 off=$FFE bytes=4             1
+  op=4CEE R addr=$009D7FF0 page=$009D7 off=$FF0 bytes=24             1
+  op=22D8 R addr=$40132FFE page=$40132 off=$FFE bytes=4             1
+  op=22D8 R addr=$40129FFE page=$40129 off=$FFE bytes=4             1
+  op=22D8 R addr=$40104FFE page=$40104 off=$FFE bytes=4             1
+  op=24D9 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             1
+  op=22D8 R addr=$40107FFE page=$40107 off=$FFE bytes=4             1
+  op=22D8 R addr=$40130FFE page=$40130 off=$FFE bytes=4             1
+  op=22D8 R addr=$40111FFE page=$40111 off=$FFE bytes=4             1
+
+[jit] exact other-runtime-access addresses — 261 / 261 exact
+  op=E0AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           146
+  op=E16F R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            74
+  op=E538 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            40
+  op=E0AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             1
+
+[jit] fallback addressing — MOVE source
+  (An)+               0 unsupported        19624 runtime
+  d16(An)           198 unsupported         3471 runtime
+  (An)              198 unsupported         3372 runtime
+  abs.W               0 unsupported         1392 runtime
+  idx(An)             0 unsupported          739 runtime
+  d16(PC)             0 unsupported          111 runtime
+  -(An)              37 unsupported            6 runtime
+  Dn                  2 unsupported           22 runtime
+
+[jit] fallback addressing — MOVE destination
+  (An)+               0 unsupported        22513 runtime
+  d16(An)            37 unsupported         3599 runtime
+  -(An)               0 unsupported         1191 runtime
+  abs.W               0 unsupported          978 runtime
+  Dn                396 unsupported           90 runtime
+  An                  0 unsupported          244 runtime
+  (An)                2 unsupported          116 runtime
+  idx(An)             0 unsupported            6 runtime
+
+[jit] fallback addressing — MOVEM operand
+  -(An)               0 unsupported          167 runtime
+  (An)+               0 unsupported          130 runtime
+  d16(An)             0 unsupported           10 runtime
+
+[jit] indexed-mode fallbacks by extension form — 897 attributed (of 38538 total fallbacks)
+  brief (d8,An/PC,Xn)           23    2.6%
+  full 68020 format            230   25.6%
+  mixed (both seen)            644   71.8%
+  compiled slots: 381 brief, 138 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:  33.5%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  (An)+    -> (An)+               0 unsupported        19496 runtime
+  (An)     -> d16(An)             0 unsupported         1851 runtime
+  d16(An)  -> (An)+               0 unsupported         1675 runtime
+  (An)     -> (An)+               0 unsupported         1314 runtime
+  d16(An)  -> d16(An)             0 unsupported          835 runtime
+  d16(An)  -> abs.W               0 unsupported          763 runtime
+  abs.W    -> -(An)               0 unsupported          708 runtime
+  abs.W    -> d16(An)             0 unsupported          674 runtime
+  idx(An)  -> An                  0 unsupported          244 runtime
+  idx(An)  -> d16(An)             0 unsupported          237 runtime
+  (An)     -> abs.W               0 unsupported          204 runtime
+  d16(An)  -> Dn                198 unsupported            0 runtime
+  (An)     -> Dn                198 unsupported            0 runtime
+  d16(An)  -> -(An)               0 unsupported          178 runtime
+  idx(An)  -> -(An)               0 unsupported          165 runtime
+  d16(PC)  -> -(An)               0 unsupported          109 runtime
+  (An)+    -> (An)                0 unsupported           91 runtime
+  idx(An)  -> Dn                  0 unsupported           90 runtime
+  -(An)    -> d16(An)            37 unsupported            0 runtime
+  (An)+    -> -(An)               0 unsupported           31 runtime
+  Dn       -> (An)+               0 unsupported           22 runtime
+  d16(An)  -> (An)                0 unsupported           20 runtime
+  abs.W    -> abs.W               0 unsupported            9 runtime
+  -(An)    -> (An)+               0 unsupported            6 runtime
+
+[jit] ════ census phase 'open-folder' ════
+[jit] dispatch cache: 2364609 hits, 97156 gen-miss, 2544299 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=12426 write into code=11 deferred=0 code cache full=0  blocks live=23680, cold-evicted=0
+
+[jit] opcode census — 471621 instructions, 3331 distinct
+  move           139915   29.7%
+  alu            147593   31.3%
+  shift           11368    2.4%
+  bitop            3881    0.8%
+  muldiv            217    0.0%
+  addr            15780    3.3%
+  multi           11338    2.4%
+  cond             1318    0.3%
+  branch         136980   29.0%
+  UNSAFE           3231    0.7%
+  native         465523   98.7%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  4E75 branch *      10518   2.23%  cum   2.2%
+  4A11 alu    *       6543   1.39%  cum   3.6%
+  7000 move   *       5967   1.27%  cum   4.9%
+  4EAD branch *       5532   1.17%  cum   6.1%
+  670A branch *       4971   1.05%  cum   7.1%
+  4E5E addr   *       4884   1.04%  cum   8.1%
+  206E move   *       4263   0.90%  cum   9.0%
+  6706 branch *       3796   0.80%  cum   9.9%
+  C086 alu    *       3749   0.79%  cum  10.6%
+  2050 move   *       3727   0.79%  cum  11.4%
+  B3D6 alu    *       3625   0.77%  cum  12.2%
+  6426 branch *       3624   0.77%  cum  13.0%
+  6702 branch *       3589   0.76%  cum  13.7%
+  2F0C move   *       3467   0.74%  cum  14.5%
+  51C8 branch *       3419   0.72%  cum  15.2%
+  2054 move   *       3345   0.71%  cum  15.9%
+  B041 alu    *       3204   0.68%  cum  16.6%
+  203C move   *       3157   0.67%  cum  17.3%
+  6700 branch *       3094   0.66%  cum  17.9%
+  4E56 addr   *       3041   0.64%  cum  18.6%
+  4EBA branch *       3014   0.64%  cum  19.2%
+  C087 alu    *       2995   0.64%  cum  19.8%
+  202E move   *       2886   0.61%  cum  20.4%
+  C0B8 alu    *       2872   0.61%  cum  21.1%
+  4A13 alu    *       2804   0.59%  cum  21.6%
+  51C9 branch *       2785   0.59%  cum  22.2%
+  4A86 alu    *       2717   0.58%  cum  22.8%
+  4CEE multi  *       2637   0.56%  cum  23.4%
+  6604 branch *       2625   0.56%  cum  23.9%
+  3018 move   *       2563   0.54%  cum  24.5%
+  B7CA alu    *       2552   0.54%  cum  25.0%
+  642A branch *       2530   0.54%  cum  25.5%
+  2013 move   *       2526   0.54%  cum  26.1%
+  D7C0 alu    *       2513   0.53%  cum  26.6%
+  60EC branch *       2500   0.53%  cum  27.1%
+  486E addr   *       2463   0.52%  cum  27.7%
+  6704 branch *       2372   0.50%  cum  28.2%
+  2F2E move   *       2362   0.50%  cum  28.7%
+  2053 move   *       2342   0.50%  cum  29.2%
+  2211 move   *       2326   0.49%  cum  29.7%
+  6100 branch *       2304   0.49%  cum  30.2%
+  60F0 branch *       2301   0.49%  cum  30.6%
+  C282 alu    *       2279   0.48%  cum  31.1%
+  D3C1 alu    *       2278   0.48%  cum  31.6%
+  286E move   *       2256   0.48%  cum  32.1%
+  0C40 alu    *       2205   0.47%  cum  32.6%
+  48E7 multi  *       2196   0.47%  cum  33.0%
+  2040 move   *       2184   0.46%  cum  33.5%
+  2010 move   *       2139   0.45%  cum  33.9%
+  3219 move   *       2139   0.45%  cum  34.4%
+  E38E shift  *       1987   0.42%  cum  34.8%
+  67F2 branch *       1936   0.41%  cum  35.2%
+  66D6 branch *       1912   0.41%  cum  35.6%
+  6612 branch *       1876   0.40%  cum  36.0%
+  0C80 alu    *       1858   0.39%  cum  36.4%
+  E28F shift  *       1769   0.38%  cum  36.8%
+  D9C7 alu    *       1690   0.36%  cum  37.2%
+  0287 alu    *       1688   0.36%  cum  37.5%
+  2E14 move   *       1688   0.36%  cum  37.9%
+  48C0 multi  *       1641   0.35%  cum  38.2%
+
+[jit] block fallback census — 5819 unsupported + 34056 runtime guard/access = 39875
+  22D8 move              0 unsupported      20255 runtime  50.80%  (A0)+ -> (A1)+
+  C029 alu            4127 unsupported          0 runtime  10.35%
+  3151 move              0 unsupported       1214 runtime   3.04%  (A1) -> d16(A0)
+  5368 alu               0 unsupported       1059 runtime   2.66%
+  22E8 move              0 unsupported       1015 runtime   2.55%  d16(A0) -> (A1)+
+  12E8 move              0 unsupported        847 runtime   2.12%  d16(A0) -> (A1)+
+  2F68 move              0 unsupported        827 runtime   2.07%  d16(A0) -> d16(A7)
+  24D0 move              0 unsupported        773 runtime   1.94%  (A0) -> (A2)+
+  2950 move              0 unsupported        592 runtime   1.48%  (A0) -> d16(A4)
+  B189 alu               0 unsupported        592 runtime   1.48%
+  21ED move              0 unsupported        456 runtime   1.14%  d16(A5) -> abs.W
+  2378 move              0 unsupported        452 runtime   1.13%  abs.W -> d16(A1)
+  4250 alu               0 unsupported        444 runtime   1.11%
+  2178 move              0 unsupported        436 runtime   1.09%  abs.W -> d16(A0)
+  2338 move              0 unsupported        416 runtime   1.04%  abs.W -> -(A1)
+  9611 alu             388 unsupported          0 runtime   0.97%
+  31E8 move              0 unsupported        365 runtime   0.92%  d16(A0) -> abs.W
+  2F70 move              0 unsupported        283 runtime   0.71%  idx(A0) -> d16(A7)
+  4EAD branch            0 unsupported        268 runtime   0.67%
+  2070 move              0 unsupported        242 runtime   0.61%  idx(A0) -> A0
+  276E move              0 unsupported        231 runtime   0.58%  d16(A6) -> d16(A3)
+  3338 move              0 unsupported        224 runtime   0.56%  abs.W -> -(A1)
+  0811 bitop           206 unsupported          0 runtime   0.52%
+  1411 move            203 unsupported          0 runtime   0.51%  (A1) -> D2
+  1229 move            203 unsupported          0 runtime   0.51%  d16(A1) -> D1
+  C229 alu             203 unsupported          0 runtime   0.51%
+  08D1 bitop           169 unsupported         19 runtime   0.47%
+  21D0 move              0 unsupported        166 runtime   0.42%  (A0) -> abs.W
+  0891 bitop           107 unsupported         43 runtime   0.38%
+  E4AD shift           149 unsupported          0 runtime   0.37%
+  E0AC shift             0 unsupported        146 runtime   0.37%
+  2F30 move              0 unsupported        138 runtime   0.35%  idx(A0) -> -(A7)
+  4EB0 branch            0 unsupported        131 runtime   0.33%
+  BD95 alu               0 unsupported        120 runtime   0.30%
+  4E90 branch            0 unsupported        118 runtime   0.30%
+  2D68 move              0 unsupported        113 runtime   0.28%  d16(A0) -> d16(A6)
+  4CDF multi             0 unsupported        111 runtime   0.28%  EA=(A7)+
+  2F2D move              0 unsupported        101 runtime   0.25%  d16(A5) -> -(A7)
+  48E7 multi             0 unsupported        101 runtime   0.25%  EA=-(A7)
+  42A8 alu               0 unsupported         96 runtime   0.24%
+  3F29 move              0 unsupported         90 runtime   0.23%  d16(A1) -> -(A7)
+  4E56 addr              0 unsupported         87 runtime   0.22%
+  2F3A move              0 unsupported         84 runtime   0.21%  d16(PC) -> -(A7)
+  12D8 move              0 unsupported         82 runtime   0.21%  (A0)+ -> (A1)+
+  E538 shift             0 unsupported         70 runtime   0.18%
+  2D54 move              0 unsupported         70 runtime   0.18%  (A4) -> d16(A6)
+  6100 branch            0 unsupported         69 runtime   0.17%
+  E16F shift             0 unsupported         68 runtime   0.17%
+  169A move              0 unsupported         64 runtime   0.16%  (A2)+ -> (A3)
+  11D0 move              0 unsupported         56 runtime   0.14%  (A0) -> abs.W
+  2F38 move              0 unsupported         56 runtime   0.14%  abs.W -> -(A7)
+  48E6 multi             0 unsupported         55 runtime   0.14%  EA=-(A6)
+  2230 move              0 unsupported         55 runtime   0.14%  idx(A0) -> D1
+  2D51 move              0 unsupported         49 runtime   0.12%  (A1) -> d16(A6)
+  B19D alu               0 unsupported         47 runtime   0.12%
+  4269 alu               0 unsupported         47 runtime   0.12%
+  2C36 move              0 unsupported         45 runtime   0.11%  idx(A6) -> D6
+  08E8 bitop             0 unsupported         43 runtime   0.11%
+  50E9 cond              0 unsupported         38 runtime   0.10%
+  2964 move             37 unsupported          0 runtime   0.09%  -(A4) -> d16(A4)
+
+[jit] bounded shift versions — 6 sites, 53 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU            10305   30.26%  3151:1214  22E8:1015  12E8:847  2F68:827  B189:592  2950:592  21ED:456  2378:452
+  non-plain/MMIO            826    2.43%  24D0:762  169A:64
+  codeMask                22211   65.22%  22D8:19880  5368:697  4250:444  2338:416  276E:231  3338:224  4269:47  48E6:42
+  cross-page                429    1.26%  4EAD:255  4CDF:72  48E7:38  2F38:34  22D8:28  24D9:2
+  other guard               285    0.84%  E0AC:146  E538:70  E16F:68  E0AB:1
+  attributed              34056 /        34056 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 826 / 826 exact
+  op=24D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=4           762
+  op=169A W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1            64
+
+[jit] exact codeMask addresses — 22211 / 22211 exact
+  op=5368 W addr=$0000C1AE page=$0000C slice=1 mask=$1FF2 bytes=2           697
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2           444
+  op=2338 W addr=$00972B2C page=$00972 slice=B mask=$0C00 bytes=4           406
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$2001 bytes=4           231
+  op=3338 W addr=$00972B2A page=$00972 slice=B mask=$0C00 bytes=2           214
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=2            47
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=1            38
+  op=0891 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            19
+  op=08D1 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            17
+  op=48E6 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=8            16
+  op=48E6 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=16            10
+  op=2338 W addr=$0097886C page=$00978 slice=8 mask=$2B00 bytes=4            10
+  op=3338 W addr=$0097886A page=$00978 slice=8 mask=$2B00 bytes=2            10
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2            10
+  op=2D1F W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1             9
+  op=2D1F W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4             8
+  op=48E6 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=16             8
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2             7
+  op=536B W addr=$009ECD90 page=$009EC slice=D mask=$2AC0 bytes=2             5
+  op=22E0 W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4             4
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1             4
+  op=2D1F W addr=$0001583A page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=48E6 W addr=$0001582A page=$00015 slice=8 mask=$0300 bytes=16             3
+  op=22D8 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=48E6 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=8             3
+  op=EFD1 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22C2 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$0092E218 page=$0092E slice=2 mask=$1E04 bytes=4             2
+  op=22D8 W addr=$0093EDB4 page=$0093E slice=D mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E6D0 page=$0093E slice=6 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E6D8 page=$0093E slice=6 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E6E0 page=$0093E slice=6 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E6E8 page=$0093E slice=6 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E6F0 page=$0093E slice=6 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E6F8 page=$0093E slice=6 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E700 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E708 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E710 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E714 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E718 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E71C page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E720 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E724 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E728 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E72C page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E730 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E734 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E738 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E73C page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E740 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E744 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E748 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E750 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E754 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+  op=22D8 W addr=$0093E758 page=$0093E slice=7 mask=$E0C3 bytes=4             2
+
+[jit] exact cross-page addresses — 429 / 429 exact
+  op=4EAD W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           255
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            34
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20            21
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=44            19
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            18
+  op=4CDF R addr=$009D7FD2 page=$009D7 off=$FD2 bytes=52            16
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            12
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20            12
+  op=4CDF R addr=$009D7FF8 page=$009D7 off=$FF8 bytes=20             3
+  op=22D8 R addr=$4010EFFE page=$4010E off=$FFE bytes=4             2
+  op=22D8 R addr=$40122FFE page=$40122 off=$FFE bytes=4             2
+  op=24D9 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             2
+  op=22D8 R addr=$400FBFFE page=$400FB off=$FFE bytes=4             2
+  op=22D8 R addr=$400F2FFE page=$400F2 off=$FFE bytes=4             2
+  op=22D8 R addr=$40108FFE page=$40108 off=$FFE bytes=4             2
+  op=48E7 W addr=$009D7FEC page=$009D7 off=$FEC bytes=32             2
+  op=22D8 R addr=$40124FFE page=$40124 off=$FFE bytes=4             1
+  op=22D8 R addr=$400FEFFE page=$400FE off=$FFE bytes=4             1
+  op=4CDF R addr=$009D7FEC page=$009D7 off=$FEC bytes=32             1
+  op=22D8 R addr=$400F5FFE page=$400F5 off=$FFE bytes=4             1
+  op=22D8 R addr=$4010FFFE page=$4010F off=$FFE bytes=4             1
+  op=22D8 R addr=$40100FFE page=$40100 off=$FFE bytes=4             1
+  op=22D8 R addr=$40110FFE page=$40110 off=$FFE bytes=4             1
+  op=22D8 R addr=$40102FFE page=$40102 off=$FFE bytes=4             1
+  op=22D8 R addr=$40119FFE page=$40119 off=$FFE bytes=4             1
+  op=48E7 W addr=$009D7FEC page=$009D7 off=$FEC bytes=24             1
+  op=4CDF R addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             1
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             1
+  op=22D8 R addr=$40120FFE page=$40120 off=$FFE bytes=4             1
+  op=22D8 R addr=$40101FFE page=$40101 off=$FFE bytes=4             1
+  op=22D8 R addr=$4012CFFE page=$4012C off=$FFE bytes=4             1
+  op=22D8 R addr=$40129FFE page=$40129 off=$FFE bytes=4             1
+  op=22D8 R addr=$400F8FFE page=$400F8 off=$FFE bytes=4             1
+  op=22D8 R addr=$40105FFE page=$40105 off=$FFE bytes=4             1
+  op=4CDF R addr=$009D7FEC page=$009D7 off=$FEC bytes=24             1
+  op=22D8 R addr=$40132FFE page=$40132 off=$FFE bytes=4             1
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=16             1
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=16             1
+  op=22D8 R addr=$40117FFE page=$40117 off=$FFE bytes=4             1
+  op=22D8 R addr=$4012EFFE page=$4012E off=$FFE bytes=4             1
+  op=22D8 R addr=$4012FFFE page=$4012F off=$FFE bytes=4             1
+
+[jit] exact other-runtime-access addresses — 285 / 285 exact
+  op=E0AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           146
+  op=E538 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            70
+  op=E16F R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            68
+  op=E0AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             1
+
+[jit] fallback addressing — MOVE source
+  (An)+               0 unsupported        20490 runtime
+  d16(An)           203 unsupported         4110 runtime
+  (An)              203 unsupported         2931 runtime
+  abs.W               0 unsupported         1613 runtime
+  idx(An)             0 unsupported          780 runtime
+  d16(PC)             0 unsupported           84 runtime
+  -(An)              37 unsupported            4 runtime
+  Dn                  6 unsupported           14 runtime
+  imm                 0 unsupported            1 runtime
+
+[jit] fallback addressing — MOVE destination
+  (An)+               0 unsupported        23041 runtime
+  d16(An)            37 unsupported         4305 runtime
+  -(An)               0 unsupported         1169 runtime
+  abs.W               0 unsupported         1062 runtime
+  Dn                406 unsupported          101 runtime
+  An                  0 unsupported          243 runtime
+  (An)                6 unsupported          101 runtime
+  idx(An)             0 unsupported            5 runtime
+
+[jit] fallback addressing — MOVEM operand
+  -(An)               0 unsupported          156 runtime
+  (An)+               0 unsupported          123 runtime
+  d16(An)             0 unsupported           12 runtime
+
+[jit] indexed-mode fallbacks by extension form — 938 attributed (of 39875 total fallbacks)
+  brief (d8,An/PC,Xn)           36    3.8%
+  full 68020 format            238   25.4%
+  mixed (both seen)            664   70.8%
+  compiled slots: 386 brief, 141 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:  35.0%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  (An)+    -> (An)+               0 unsupported        20385 runtime
+  (An)     -> d16(An)             0 unsupported         1926 runtime
+  d16(An)  -> (An)+               0 unsupported         1863 runtime
+  d16(An)  -> d16(An)             0 unsupported         1192 runtime
+  abs.W    -> d16(An)             0 unsupported          901 runtime
+  d16(An)  -> abs.W               0 unsupported          827 runtime
+  (An)     -> (An)+               0 unsupported          774 runtime
+  abs.W    -> -(An)               0 unsupported          698 runtime
+  idx(An)  -> d16(An)             0 unsupported          283 runtime
+  idx(An)  -> An                  0 unsupported          243 runtime
+  (An)     -> abs.W               0 unsupported          222 runtime
+  d16(An)  -> -(An)               0 unsupported          211 runtime
+  d16(An)  -> Dn                203 unsupported            0 runtime
+  (An)     -> Dn                203 unsupported            0 runtime
+  idx(An)  -> -(An)               0 unsupported          138 runtime
+  idx(An)  -> Dn                  0 unsupported          101 runtime
+  d16(PC)  -> -(An)               0 unsupported           84 runtime
+  (An)+    -> (An)                0 unsupported           67 runtime
+  -(An)    -> d16(An)            37 unsupported            0 runtime
+  (An)+    -> -(An)               0 unsupported           29 runtime
+  d16(An)  -> (An)                0 unsupported           17 runtime
+  idx(An)  -> (An)                0 unsupported           15 runtime
+  Dn       -> (An)+               0 unsupported           14 runtime
+  abs.W    -> abs.W               0 unsupported           12 runtime
+
+[jit] ════ census phase 'open-cities' ════
+[jit] dispatch cache: 2298590 hits, 108957 gen-miss, 2508079 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=13423 write into code=11 deferred=0 code cache full=0  blocks live=23952, cold-evicted=0
+
+[jit] opcode census — 460084 instructions, 3469 distinct
+  move           138296   30.1%
+  alu            141849   30.8%
+  shift           11508    2.5%
+  bitop            4241    0.9%
+  muldiv            349    0.1%
+  addr            16462    3.6%
+  multi           11450    2.5%
+  cond             1386    0.3%
+  branch         131476   28.6%
+  UNSAFE           3067    0.7%
+  native         453989   98.7%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  4E75 branch *      11986   2.61%  cum   2.6%
+  4A11 alu    *       7586   1.65%  cum   4.3%
+  4EAD branch *       5648   1.23%  cum   5.5%
+  B3D6 alu    *       4977   1.08%  cum   6.6%
+  6426 branch *       4971   1.08%  cum   7.6%
+  4E5E addr   *       4838   1.05%  cum   8.7%
+  6706 branch *       4797   1.04%  cum   9.7%
+  7000 move   *       4586   1.00%  cum  10.7%
+  206E move   *       4349   0.95%  cum  11.7%
+  2050 move   *       3862   0.84%  cum  12.5%
+  2054 move   *       3756   0.82%  cum  13.3%
+  B041 alu    *       3688   0.80%  cum  14.1%
+  2F0C move   *       3609   0.78%  cum  14.9%
+  2211 move   *       3591   0.78%  cum  15.7%
+  60F0 branch *       3574   0.78%  cum  16.5%
+  C282 alu    *       3553   0.77%  cum  17.3%
+  D3C1 alu    *       3552   0.77%  cum  18.0%
+  4EBA branch *       3357   0.73%  cum  18.8%
+  6702 branch *       3238   0.70%  cum  19.5%
+  3018 move   *       3020   0.66%  cum  20.1%
+  4E56 addr   *       2913   0.63%  cum  20.7%
+  5247 alu    *       2896   0.63%  cum  21.4%
+  51C9 branch *       2814   0.61%  cum  22.0%
+  4CEE multi  *       2778   0.60%  cum  22.6%
+  2F2E move   *       2607   0.57%  cum  23.2%
+  486E addr   *       2556   0.56%  cum  23.7%
+  3219 move   *       2508   0.55%  cum  24.3%
+  0C40 alu    *       2488   0.54%  cum  24.8%
+  286E move   *       2435   0.53%  cum  25.3%
+  6604 branch *       2273   0.49%  cum  25.8%
+  2053 move   *       2248   0.49%  cum  26.3%
+  670A branch *       2244   0.49%  cum  26.8%
+  67F2 branch *       2231   0.48%  cum  27.3%
+  E9D4 shift  *       2148   0.47%  cum  27.8%
+  48E7 multi  *       2133   0.46%  cum  28.2%
+  202E move   *       2117   0.46%  cum  28.7%
+  203C move   *       2113   0.46%  cum  29.1%
+  302E move   *       2087   0.45%  cum  29.6%
+  2040 move   *       2063   0.45%  cum  30.0%
+  4A80 alu    *       2042   0.44%  cum  30.5%
+  C084 alu    *       2003   0.44%  cum  30.9%
+  C086 alu    *       1994   0.43%  cum  31.3%
+  6700 branch *       1967   0.43%  cum  31.8%
+  4A86 alu    *       1964   0.43%  cum  32.2%
+  51C8 branch *       1904   0.41%  cum  32.6%
+  2F0B move   *       1896   0.41%  cum  33.0%
+  6704 branch *       1892   0.41%  cum  33.4%
+  51CF branch *       1882   0.41%  cum  33.8%
+  6100 branch *       1829   0.40%  cum  34.2%
+  2010 move   *       1772   0.39%  cum  34.6%
+  8195 alu    *       1762   0.38%  cum  35.0%
+  DBCB alu    *       1732   0.38%  cum  35.4%
+  D9CA alu    *       1732   0.38%  cum  35.8%
+  504F alu    *       1715   0.37%  cum  36.1%
+  6606 branch *       1636   0.36%  cum  36.5%
+  4A00 alu    *       1615   0.35%  cum  36.8%
+  48C0 multi  *       1600   0.35%  cum  37.2%
+  6708 branch *       1542   0.34%  cum  37.5%
+  6712 branch *       1529   0.33%  cum  37.9%
+  6000 branch *       1525   0.33%  cum  38.2%
+
+[jit] block fallback census — 5568 unsupported + 36386 runtime guard/access = 41954
+  22D8 move              0 unsupported      20614 runtime  49.13%  (A0)+ -> (A1)+
+  C029 alu            4007 unsupported          0 runtime   9.55%
+  24D0 move              0 unsupported       1922 runtime   4.58%  (A0) -> (A2)+
+  2F68 move              0 unsupported       1362 runtime   3.25%  d16(A0) -> d16(A7)
+  3151 move              0 unsupported       1168 runtime   2.78%  (A1) -> d16(A0)
+  5368 alu               0 unsupported       1048 runtime   2.50%
+  22E8 move              0 unsupported       1045 runtime   2.49%  d16(A0) -> (A1)+
+  12E8 move              0 unsupported        823 runtime   1.96%  d16(A0) -> (A1)+
+  2950 move              0 unsupported        664 runtime   1.58%  (A0) -> d16(A4)
+  B189 alu               0 unsupported        538 runtime   1.28%
+  2378 move              0 unsupported        481 runtime   1.15%  abs.W -> d16(A1)
+  2178 move              0 unsupported        469 runtime   1.12%  abs.W -> d16(A0)
+  2338 move              0 unsupported        443 runtime   1.06%  abs.W -> -(A1)
+  21ED move              0 unsupported        443 runtime   1.06%  d16(A5) -> abs.W
+  4250 alu               0 unsupported        434 runtime   1.03%
+  9611 alu             381 unsupported          0 runtime   0.91%
+  31E8 move              0 unsupported        293 runtime   0.70%  d16(A0) -> abs.W
+  2F70 move              0 unsupported        287 runtime   0.68%  idx(A0) -> d16(A7)
+  3338 move              0 unsupported        241 runtime   0.57%  abs.W -> -(A1)
+  276E move              0 unsupported        225 runtime   0.54%  d16(A6) -> d16(A3)
+  2070 move              0 unsupported        219 runtime   0.52%  idx(A0) -> A0
+  1411 move            197 unsupported          0 runtime   0.47%  (A1) -> D2
+  1229 move            197 unsupported          0 runtime   0.47%  d16(A1) -> D1
+  C229 alu             197 unsupported          0 runtime   0.47%
+  4EAD branch            0 unsupported        184 runtime   0.44%
+  4EB0 branch            0 unsupported        181 runtime   0.43%
+  21D0 move              0 unsupported        172 runtime   0.41%  (A0) -> abs.W
+  169A move              0 unsupported        162 runtime   0.39%  (A2)+ -> (A3)
+  0811 bitop           158 unsupported          0 runtime   0.38%
+  E0AC shift             0 unsupported        158 runtime   0.38%
+  2D68 move              0 unsupported        152 runtime   0.36%  d16(A0) -> d16(A6)
+  E4AD shift           151 unsupported          0 runtime   0.36%
+  08D1 bitop           129 unsupported         20 runtime   0.36%
+  BD95 alu               0 unsupported        148 runtime   0.35%
+  2F30 move              0 unsupported        133 runtime   0.32%  idx(A0) -> -(A7)
+  0891 bitop            87 unsupported         31 runtime   0.28%
+  2F3A move              0 unsupported        114 runtime   0.27%  d16(PC) -> -(A7)
+  48E6 multi             0 unsupported        114 runtime   0.27%  EA=-(A6)
+  4E90 branch            0 unsupported        103 runtime   0.25%
+  2F2D move              0 unsupported        100 runtime   0.24%  d16(A5) -> -(A7)
+  48E7 multi             0 unsupported         91 runtime   0.22%  EA=-(A7)
+  3F29 move              0 unsupported         89 runtime   0.21%  d16(A1) -> -(A7)
+  4CDF multi             0 unsupported         86 runtime   0.20%  EA=(A7)+
+  4269 alu               0 unsupported         84 runtime   0.20%
+  E16F shift             0 unsupported         83 runtime   0.20%
+  4E56 addr              0 unsupported         74 runtime   0.18%
+  42A8 alu               0 unsupported         69 runtime   0.16%
+  12D8 move              0 unsupported         68 runtime   0.16%  (A0)+ -> (A1)+
+  2D1F move              0 unsupported         63 runtime   0.15%  (A7)+ -> -(A6)
+  08E8 bitop             0 unsupported         61 runtime   0.15%
+  6100 branch            0 unsupported         61 runtime   0.15%
+  2C36 move              0 unsupported         60 runtime   0.14%  idx(A6) -> D6
+  50E9 cond              0 unsupported         58 runtime   0.14%
+  11D0 move              0 unsupported         57 runtime   0.14%  (A0) -> abs.W
+  2F38 move              0 unsupported         55 runtime   0.13%  abs.W -> -(A7)
+  2D51 move              0 unsupported         49 runtime   0.12%  (A1) -> d16(A6)
+  B19D alu               0 unsupported         45 runtime   0.11%
+  2D54 move              0 unsupported         44 runtime   0.10%  (A4) -> d16(A6)
+  2964 move             40 unsupported          0 runtime   0.10%  -(A4) -> d16(A4)
+  2230 move              0 unsupported         36 runtime   0.09%  idx(A0) -> D1
+
+[jit] bounded shift versions — 6 sites, 54 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU            10909   29.98%  2F68:1362  3151:1168  22E8:1045  12E8:823  2950:664  B189:538  2378:481  2178:469
+  non-plain/MMIO           2093    5.75%  24D0:1899  169A:162  14D0:31  16AC:1
+  codeMask                22800   62.66%  22D8:20254  5368:727  2338:443  4250:432  3338:241  276E:225  48E6:95  4269:84
+  cross-page                324    0.89%  4EAD:166  4CDF:69  48E7:34  2F38:33  22D8:21  24D9:1
+  other guard               260    0.71%  E0AC:158  E16F:83  E538:18  E0AB:1
+  attributed              36386 /        36386 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 2093 / 2093 exact
+  op=24D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=4          1899
+  op=169A W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1           162
+  op=14D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=1            31
+  op=16AC W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1             1
+
+[jit] exact codeMask addresses — 22800 / 22800 exact
+  op=5368 W addr=$0000C1AE page=$0000C slice=1 mask=$1FF2 bytes=2           727
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2           432
+  op=2338 W addr=$00972B2C page=$00972 slice=B mask=$0C00 bytes=4           421
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$2001 bytes=4           225
+  op=3338 W addr=$00972B2A page=$00972 slice=B mask=$0C00 bytes=2           220
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=2            84
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=1            58
+  op=48E6 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=8            30
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2            28
+  op=2D1F W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4            25
+  op=2338 W addr=$0097886C page=$00978 slice=8 mask=$2B00 bytes=4            22
+  op=3338 W addr=$0097886A page=$00978 slice=8 mask=$2B00 bytes=2            21
+  op=48E6 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=16            21
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2            21
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1            21
+  op=0891 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            16
+  op=08D1 W addr=$0001456C page=$00014 slice=5 mask=$1FE0 bytes=1            13
+  op=536B W addr=$009ECD90 page=$009EC slice=D mask=$2AC0 bytes=2            12
+  op=2D1F W addr=$00015824 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=2D1F W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4            10
+  op=48E6 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=16             9
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1             8
+  op=48E6 W addr=$00015828 page=$00015 slice=8 mask=$0300 bytes=52             6
+  op=08D1 W addr=$00008D08 page=$00008 slice=D mask=$220E bytes=1             5
+  op=48E6 W addr=$0001581C page=$00015 slice=8 mask=$0300 bytes=8             5
+  op=48E6 W addr=$000157F0 page=$00015 slice=7 mask=$0300 bytes=52             5
+  op=48E6 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=8             4
+  op=2D1F W addr=$0001581A page=$00015 slice=8 mask=$0300 bytes=4             4
+  op=48E6 W addr=$00015834 page=$00015 slice=8 mask=$0300 bytes=36             4
+  op=4214 W addr=$0001581E page=$00015 slice=8 mask=$0300 bytes=1             4
+  op=48E6 W addr=$0001580E page=$00015 slice=8 mask=$0300 bytes=12             4
+  op=22E0 W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4             4
+  op=2D1F W addr=$0001583A page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=2D1F W addr=$0001580A page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=48E6 W addr=$0001582A page=$00015 slice=8 mask=$0300 bytes=16             3
+  op=22D8 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=EFD1 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22C2 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$0001585C page=$00015 slice=8 mask=$0300 bytes=4             3
+  op=22D8 W addr=$00943368 page=$00943 slice=3 mask=$003F bytes=4             2
+  op=22D8 W addr=$009432C4 page=$00943 slice=2 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943010 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943014 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943018 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$0094301C page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943020 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943024 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943028 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$0094302C page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943030 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943034 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943038 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$0094303C page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943040 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943044 page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$0094304C page=$00943 slice=0 mask=$003F bytes=4             2
+  op=22D8 W addr=$00943054 page=$00943 slice=0 mask=$003F bytes=4             2
+
+[jit] exact cross-page addresses — 324 / 324 exact
+  op=4EAD W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           166
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            33
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20            21
+  op=4CDF R addr=$009D7FD2 page=$009D7 off=$FD2 bytes=52            18
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            18
+  op=4CDF R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=44            16
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20            11
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            11
+  op=4CDF R addr=$009D7FF8 page=$009D7 off=$FF8 bytes=20             3
+  op=22D8 R addr=$40122FFE page=$40122 off=$FFE bytes=4             2
+  op=22D8 R addr=$400F2FFE page=$400F2 off=$FFE bytes=4             2
+  op=22D8 R addr=$40129FFE page=$40129 off=$FFE bytes=4             1
+  op=22D8 R addr=$400F5FFE page=$400F5 off=$FFE bytes=4             1
+  op=22D8 R addr=$400FBFFE page=$400FB off=$FFE bytes=4             1
+  op=22D8 R addr=$40110FFE page=$40110 off=$FFE bytes=4             1
+  op=22D8 R addr=$4010EFFE page=$4010E off=$FFE bytes=4             1
+  op=22D8 R addr=$400FCFFE page=$400FC off=$FFE bytes=4             1
+  op=22D8 R addr=$4010FFFE page=$4010F off=$FFE bytes=4             1
+  op=22D8 R addr=$4010DFFE page=$4010D off=$FFE bytes=4             1
+  op=22D8 R addr=$40109FFE page=$40109 off=$FFE bytes=4             1
+  op=4CDF R addr=$009D7FEC page=$009D7 off=$FEC bytes=24             1
+  op=4CDF R addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             1
+  op=48E7 W addr=$009D7FF0 page=$009D7 off=$FF0 bytes=28             1
+  op=22D8 R addr=$4011AFFE page=$4011A off=$FFE bytes=4             1
+  op=22D8 R addr=$4012CFFE page=$4012C off=$FFE bytes=4             1
+  op=22D8 R addr=$400F8FFE page=$400F8 off=$FFE bytes=4             1
+  op=22D8 R addr=$400F4FFE page=$400F4 off=$FFE bytes=4             1
+  op=24D9 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4             1
+  op=22D8 R addr=$40107FFE page=$40107 off=$FFE bytes=4             1
+  op=48E7 W addr=$009D7FEC page=$009D7 off=$FEC bytes=24             1
+  op=4CDF R addr=$009D7FEA page=$009D7 off=$FEA bytes=32             1
+  op=22D8 R addr=$40116FFE page=$40116 off=$FFE bytes=4             1
+  op=22D8 R addr=$400FEFFE page=$400FE off=$FFE bytes=4             1
+  op=22D8 R addr=$40124FFE page=$40124 off=$FFE bytes=4             1
+
+[jit] exact other-runtime-access addresses — 260 / 260 exact
+  op=E0AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           158
+  op=E16F R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            83
+  op=E538 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            18
+  op=E0AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             1
+
+[jit] fallback addressing — MOVE source
+  (An)+               0 unsupported        21011 runtime
+  d16(An)           197 unsupported         4641 runtime
+  (An)              197 unsupported         4150 runtime
+  abs.W               0 unsupported         1714 runtime
+  idx(An)             0 unsupported          737 runtime
+  d16(PC)             0 unsupported          118 runtime
+  -(An)              40 unsupported            7 runtime
+  Dn                  2 unsupported            9 runtime
+
+[jit] fallback addressing — MOVE destination
+  (An)+               0 unsupported        24606 runtime
+  d16(An)            40 unsupported         4984 runtime
+  -(An)               0 unsupported         1292 runtime
+  abs.W               0 unsupported          979 runtime
+  Dn                394 unsupported           96 runtime
+  An                  0 unsupported          219 runtime
+  (An)                2 unsupported          202 runtime
+  idx(An)             0 unsupported            9 runtime
+
+[jit] fallback addressing — MOVEM operand
+  -(An)               0 unsupported          205 runtime
+  (An)+               0 unsupported           99 runtime
+  d16(An)             0 unsupported           11 runtime
+
+[jit] indexed-mode fallbacks by extension form — 933 attributed (of 41954 total fallbacks)
+  brief (d8,An/PC,Xn)           14    1.5%
+  full 68020 format            280   30.0%
+  mixed (both seen)            639   68.5%
+  compiled slots: 392 brief, 146 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:  30.7%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  (An)+    -> (An)+               0 unsupported        20768 runtime
+  (An)     -> (An)+               0 unsupported         1954 runtime
+  (An)     -> d16(An)             0 unsupported         1926 runtime
+  d16(An)  -> (An)+               0 unsupported         1868 runtime
+  d16(An)  -> d16(An)             0 unsupported         1798 runtime
+  abs.W    -> d16(An)             0 unsupported          964 runtime
+  d16(An)  -> abs.W               0 unsupported          741 runtime
+  abs.W    -> -(An)               0 unsupported          740 runtime
+  idx(An)  -> d16(An)             0 unsupported          287 runtime
+  (An)     -> abs.W               0 unsupported          229 runtime
+  idx(An)  -> An                  0 unsupported          219 runtime
+  d16(An)  -> -(An)               0 unsupported          205 runtime
+  d16(An)  -> Dn                197 unsupported            0 runtime
+  (An)     -> Dn                197 unsupported            0 runtime
+  (An)+    -> (An)                0 unsupported          165 runtime
+  idx(An)  -> -(An)               0 unsupported          133 runtime
+  d16(PC)  -> -(An)               0 unsupported          114 runtime
+  idx(An)  -> Dn                  0 unsupported           96 runtime
+  (An)+    -> -(An)               0 unsupported           66 runtime
+  -(An)    -> d16(An)            40 unsupported            0 runtime
+  (An)     -> -(An)               0 unsupported           34 runtime
+  d16(An)  -> (An)                0 unsupported           29 runtime
+  Dn       -> (An)+               0 unsupported            9 runtime
+  abs.W    -> abs.W               0 unsupported            8 runtime
+
+[jit] ════ census phase 'launch' ════
+[jit] dispatch cache: 8258345 hits, 1435130 gen-miss, 4265334 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=30016 write into code=11 deferred=0 code cache full=0  blocks live=38568, cold-evicted=0
+
+[jit] opcode census — 90987553 instructions, 6336 distinct
+  move         33026981   36.3%
+  alu          29824828   32.8%
+  shift         2212560    2.4%
+  bitop         1897998    2.1%
+  muldiv         765039    0.8%
+  addr          3316332    3.6%
+  multi         1018065    1.1%
+  cond            49941    0.1%
+  branch       18738990   20.6%
+  fpu             21201    0.0%
+  UNSAFE         115618    0.1%
+  native       90704819   99.7%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  D1F0 alu    *    4084295   4.49%  cum   4.5%
+  306E move   *    2752853   3.03%  cum   7.5%
+  302E move   *    2373009   2.61%  cum  10.1%
+  3046 move   *    1578814   1.74%  cum  11.9%
+  0C00 alu    *    1041491   1.14%  cum  13.0%
+  0810 bitop  *     969233   1.07%  cum  14.1%
+  24D8 move   *     941098   1.03%  cum  15.1%
+  4E75 branch *     937022   1.03%  cum  16.1%
+  D1C8 alu    *     922166   1.01%  cum  17.1%
+  D642 alu    *     908056   1.00%  cum  18.1%
+  DB41 alu    *     908005   1.00%  cum  19.1%
+  12F2 move   *     864158   0.95%  cum  20.1%
+  4EBA branch *     825159   0.91%  cum  21.0%
+  0C6E alu    *     804649   0.88%  cum  21.9%
+  1832 move   *     795353   0.87%  cum  22.8%
+  4E56 addr   *     748089   0.82%  cum  23.6%
+  6600 branch *     735182   0.81%  cum  24.4%
+  4E5E addr   *     730244   0.80%  cum  25.2%
+  6700 branch *     700632   0.77%  cum  26.0%
+  7000 move   *     678083   0.75%  cum  26.7%
+  51C8 branch *     676533   0.74%  cum  27.4%
+  51C9 branch *     670578   0.74%  cum  28.2%
+  6D00 branch *     646341   0.71%  cum  28.9%
+  4E71 addr   *     638497   0.70%  cum  29.6%
+  6604 branch *     565086   0.62%  cum  30.2%
+  588F alu    *     561530   0.62%  cum  30.8%
+  4A6E alu    *     560839   0.62%  cum  31.5%
+  3039 move   *     556690   0.61%  cum  32.1%
+  3D40 move   *     533038   0.59%  cum  32.6%
+  0C46 alu    *     528151   0.58%  cum  33.2%
+  3C1C move   *     524830   0.58%  cum  33.8%
+  B083 alu    *     514653   0.57%  cum  34.4%
+  1006 move   *     513722   0.56%  cum  34.9%
+  7001 move   *     511655   0.56%  cum  35.5%
+  1010 move   *     509200   0.56%  cum  36.1%
+  4280 alu    *     505644   0.56%  cum  36.6%
+  6726 branch *     492105   0.54%  cum  37.2%
+  B079 alu    *     486652   0.53%  cum  37.7%
+  1018 move   *     471087   0.52%  cum  38.2%
+  0C45 alu    *     462520   0.51%  cum  38.7%
+  0241 alu    *     453879   0.50%  cum  39.2%
+  3044 move   *     447974   0.49%  cum  39.7%
+  6714 branch *     442750   0.49%  cum  40.2%
+  1A00 move   *     442674   0.49%  cum  40.7%
+  1035 move   *     442440   0.49%  cum  41.2%
+  E198 shift  *     442368   0.49%  cum  41.7%
+  0240 alu    *     439235   0.48%  cum  42.1%
+  2840 move   *     427616   0.47%  cum  42.6%
+  7600 move   *     425058   0.47%  cum  43.1%
+  1CD4 move   *     421743   0.46%  cum  43.5%
+  5246 alu    *     416644   0.46%  cum  44.0%
+  1610 move   *     401035   0.44%  cum  44.4%
+  0C47 alu    *     391568   0.43%  cum  44.9%
+  2008 move   *     391073   0.43%  cum  45.3%
+  3F00 move   *     376151   0.41%  cum  45.7%
+  D688 alu    *     375067   0.41%  cum  46.1%
+  6706 branch *     373853   0.41%  cum  46.5%
+  4844 addr   *     365584   0.40%  cum  46.9%
+  D958 alu    *     365398   0.40%  cum  47.3%
+  D998 alu    *     365221   0.40%  cum  47.7%
+
+[jit] block fallback census — 6231239 unsupported + 4236318 runtime guard/access = 10467557
+  20B0 move        2818771 unsupported          0 runtime  26.93%  idx(A0) -> (A0)
+  E368 shift             0 unsupported    1809915 runtime  17.29%
+  1DAE move        1258091 unsupported          0 runtime  12.02%  d16(A6) -> idx(A6)
+  1D85 move         661622 unsupported          0 runtime   6.32%  D5 -> idx(A6)
+  2499 move              0 unsupported     579968 runtime   5.54%  (A1)+ -> (A2)
+  1D86 move         543317 unsupported          0 runtime   5.19%  D6 -> idx(A6)
+  24D0 move              0 unsupported     531558 runtime   5.08%  (A0) -> (A2)+
+  E1AA shift             0 unsupported     463729 runtime   4.43%
+  2378 move              0 unsupported     339396 runtime   3.24%  abs.W -> d16(A1)
+  4C07 muldiv       191003 unsupported          0 runtime   1.82%
+  0C30 alu          182770 unsupported          0 runtime   1.75%
+  4A30 alu          120528 unsupported          0 runtime   1.15%
+  F200 fpu          100358 unsupported          0 runtime   0.96%
+  D1B0 alu           57858 unsupported          0 runtime   0.55%
+  22D8 move              0 unsupported      56586 runtime   0.54%  (A0)+ -> (A1)+
+  2D68 move              0 unsupported      55613 runtime   0.53%  d16(A0) -> d16(A6)
+  08D1 bitop           506 unsupported      52445 runtime   0.51%
+  F205 fpu           48102 unsupported          0 runtime   0.46%
+  4250 alu               0 unsupported      44779 runtime   0.43%
+  22F0 move          42566 unsupported          0 runtime   0.41%  idx(A0) -> (A1)+
+  3060 move          39441 unsupported          0 runtime   0.38%  -(A0) -> A0
+  14D0 move              0 unsupported      35904 runtime   0.34%  (A0) -> (A2)+
+  276E move              0 unsupported      28768 runtime   0.27%  d16(A6) -> d16(A3)
+  2D6D move              0 unsupported      27698 runtime   0.26%  d16(A5) -> d16(A6)
+  C029 alu           26782 unsupported          0 runtime   0.26%
+  F21F fpu           26115 unsupported          0 runtime   0.25%
+  F201 fpu           23977 unsupported          0 runtime   0.23%
+  4C2E muldiv        21657 unsupported          0 runtime   0.21%
+  5368 alu               0 unsupported      19105 runtime   0.18%
+  E252 shift         18071 unsupported          0 runtime   0.17%
+  F227 fpu           16876 unsupported          0 runtime   0.16%
+  D998 alu               0 unsupported      13705 runtime   0.13%
+  E1AC shift             0 unsupported      13693 runtime   0.13%
+  E1AD shift             0 unsupported      12211 runtime   0.12%
+  229F move              0 unsupported      12207 runtime   0.12%  (A7)+ -> (A1)
+  2953 move              0 unsupported      10924 runtime   0.10%  (A3) -> d16(A4)
+  52AB alu               0 unsupported       9392 runtime   0.09%
+  526C alu               0 unsupported       7629 runtime   0.07%
+  336E move              0 unsupported       7361 runtime   0.07%  d16(A6) -> d16(A1)
+  4C98 multi             0 unsupported       5500 runtime   0.05%  EA=(A0)+
+  026B alu               0 unsupported       4820 runtime   0.05%
+  169A move              0 unsupported       4599 runtime   0.04%  (A2)+ -> (A3)
+  536C alu               0 unsupported       4452 runtime   0.04%
+  F210 fpu            4431 unsupported          0 runtime   0.04%
+  F211 fpu            4238 unsupported          0 runtime   0.04%
+  4EB0 branch            0 unsupported       3182 runtime   0.03%
+  2D54 move              0 unsupported       3043 runtime   0.03%  (A4) -> d16(A6)
+  2D1F move              0 unsupported       2940 runtime   0.03%  (A7)+ -> -(A6)
+  E9A9 shift             0 unsupported       2664 runtime   0.03%
+  2F70 move              0 unsupported       2648 runtime   0.03%  idx(A0) -> d16(A7)
+  9611 alu            2610 unsupported          0 runtime   0.02%
+  48E6 multi             0 unsupported       2600 runtime   0.02%  EA=-(A6)
+  E169 shift             0 unsupported       2468 runtime   0.02%
+  2F30 move            201 unsupported       2161 runtime   0.02%  idx(A0) -> -(A7)
+  34DC move              0 unsupported       2331 runtime   0.02%  (A4)+ -> (A2)+
+  4269 alu               0 unsupported       2215 runtime   0.02%
+  4C05 muldiv         2183 unsupported          0 runtime   0.02%
+  E16B shift             0 unsupported       2134 runtime   0.02%
+  EBA9 shift             0 unsupported       2055 runtime   0.02%
+  08F8 bitop             0 unsupported       2032 runtime   0.02%
+
+[jit] bounded shift versions — 6 sites, 72 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU           237956    5.62%  2D68:55613  22D8:32996  2D6D:27698  2378:19166  5368:16281  229F:12166  52AB:8903  336E:7361
+  non-plain/MMIO        1151369   27.18%  2499:579966  24D0:530950  14D0:35792  169A:4599  16AC:54  08A8:8
+  codeMask               504354   11.91%  2378:320230  08D1:52307  4250:44761  276E:28768  22D8:23241  2953:10924  026B:4820  2D1F:2861
+  cross-page              25131    0.59%  D998:13705  4C98:5174  EFD1:956  24DC:896  E9D0:834  48E7:680  256E:454  4CDF:438
+  other guard           2317508   54.71%  E368:1809915  E1AA:463729  E1AC:13693  E1AD:12211  E9A9:2664  E169:2468  E16B:2134  EBA9:2055
+  attributed            4236318 /      4236318 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 1151369 / 1151369 exact
+  op=2499 W addr=$50F14000 page=$50F14 slice=0 mask=$0000 bytes=4        579966
+  op=24D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=4        530950
+  op=14D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=1         35792
+  op=169A W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1          4599
+  op=16AC W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1            54
+  op=08A8 W addr=$40A7DBB5 page=$40A7D slice=B mask=$0000 bytes=1             4
+  op=08A8 W addr=$40A7D125 page=$40A7D slice=1 mask=$0000 bytes=1             4
+
+[jit] exact codeMask addresses — 504354 / 504354 exact
+  op=2378 W addr=$00640416 page=$00640 slice=4 mask=$05B7 bytes=4        101191
+  op=2378 W addr=$00640424 page=$00640 slice=4 mask=$05B7 bytes=4         58801
+  op=2378 W addr=$0064041C page=$00640 slice=4 mask=$05B7 bytes=4         58784
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2         44761
+  op=2378 W addr=$00640416 page=$00640 slice=4 mask=$0010 bytes=4         42784
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$3001 bytes=4         28719
+  op=2378 W addr=$00640424 page=$00640 slice=4 mask=$0010 bytes=4         23183
+  op=2378 W addr=$0064041C page=$00640 slice=4 mask=$0010 bytes=4         23179
+  op=08D1 W addr=$00013C1C page=$00013 slice=C mask=$F03E bytes=1         17693
+  op=08D1 W addr=$00013C3C page=$00013 slice=C mask=$F03E bytes=1         17220
+  op=08D1 W addr=$00013C20 page=$00013 slice=C mask=$F03E bytes=1         16989
+  op=2953 W addr=$000B67E4 page=$000B6 slice=7 mask=$E0FF bytes=4         10924
+  op=2378 W addr=$00640416 page=$00640 slice=4 mask=$07B7 bytes=4          5442
+  op=026B W addr=$00013CC2 page=$00013 slice=C mask=$F03E bytes=2          4820
+  op=2378 W addr=$00640424 page=$00640 slice=4 mask=$07B7 bytes=4          3309
+  op=2378 W addr=$0064041C page=$00640 slice=4 mask=$07B7 bytes=4          3277
+  op=5368 W addr=$0000C1AE page=$0000C slice=1 mask=$5FF2 bytes=2          2546
+  op=526C W addr=$009287C6 page=$00928 slice=7 mask=$F8FF bytes=2          1552
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$2E00 bytes=2          1348
+  op=5351 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2           768
+  op=4210 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1           768
+  op=2D1F W addr=$00015818 page=$00015 slice=8 mask=$0300 bytes=4           721
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$2E00 bytes=1           711
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=2           674
+  op=2D1F W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4           581
+  op=5251 W addr=$0003C544 page=$0003C slice=5 mask=$63FF bytes=2           522
+  op=52AB W addr=$00013CB4 page=$00013 slice=C mask=$F03E bytes=4           489
+  op=2D1F W addr=$00015850 page=$00015 slice=8 mask=$0300 bytes=4           461
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0600 bytes=1           377
+  op=08D0 W addr=$0003C520 page=$0003C slice=5 mask=$63FF bytes=1           367
+  op=2D1F W addr=$00015860 page=$00015 slice=8 mask=$0300 bytes=4           319
+  op=536B W addr=$009ECD90 page=$009EC slice=D mask=$2AC0 bytes=2           304
+  op=5368 W addr=$0000C1AE page=$0000C slice=1 mask=$1FF2 bytes=2           262
+  op=48E6 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=16           259
+  op=2D1F W addr=$00015824 page=$00015 slice=8 mask=$0300 bytes=4           213
+  op=0891 W addr=$00013C1C page=$00013 slice=C mask=$F03E bytes=1           207
+  op=329F W addr=$00068DD0 page=$00068 slice=D mask=$FFC2 bytes=2           196
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$0E00 bytes=2           185
+  op=48E6 W addr=$0001581C page=$00015 slice=8 mask=$0300 bytes=48           183
+  op=129F W addr=$00013C1C page=$00013 slice=C mask=$F03E bytes=1           178
+  op=2D1F W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4           172
+  op=48E6 W addr=$000157E4 page=$00015 slice=7 mask=$0300 bytes=52           164
+  op=48E6 W addr=$000157F4 page=$00015 slice=7 mask=$0300 bytes=36           162
+  op=2D1F W addr=$00015858 page=$00015 slice=8 mask=$0300 bytes=4           155
+  op=48E6 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=24           129
+  op=48E6 W addr=$00015828 page=$00015 slice=8 mask=$0300 bytes=52           126
+  op=129F W addr=$00013C3C page=$00013 slice=C mask=$F03E bytes=1           125
+  op=0891 W addr=$00013C3C page=$00013 slice=C mask=$F03E bytes=1           125
+  op=2378 W addr=$00640416 page=$00640 slice=4 mask=$04B7 bytes=4           117
+  op=0092 W addr=$0063B1A0 page=$0063B slice=1 mask=$0003 bytes=4           115
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$0E00 bytes=1           101
+  op=48E6 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=16            98
+  op=08D1 W addr=$00008D08 page=$00008 slice=D mask=$220E bytes=1            98
+  op=48E6 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=8            86
+  op=129F W addr=$00013C54 page=$00013 slice=C mask=$F03E bytes=1            84
+  op=48E6 W addr=$0001581C page=$00015 slice=8 mask=$0300 bytes=8            82
+  op=2378 W addr=$00640424 page=$00640 slice=4 mask=$04B7 bytes=4            82
+  op=2378 W addr=$0064041C page=$00640 slice=4 mask=$04B7 bytes=4            81
+  op=48E6 W addr=$0001580C page=$00015 slice=8 mask=$0300 bytes=52            77
+  op=48E6 W addr=$00015838 page=$00015 slice=8 mask=$0300 bytes=12            75
+
+[jit] exact cross-page addresses — 25131 / 25131 exact
+  op=D998 W addr=$00829FFE page=$00829 off=$FFE bytes=4         13705
+  op=4C98 R addr=$00829FF8 page=$00829 off=$FF8 bytes=14          5101
+  op=256E R addr=$0091FFFE page=$0091F off=$FFE bytes=4           454
+  op=E9D0 R addr=$40A7DFFE page=$40A7D off=$FFE bytes=4           272
+  op=E9D0 R addr=$40A7DFFD page=$40A7D off=$FFD bytes=4           272
+  op=E9D0 R addr=$40A7DFFF page=$40A7D off=$FFF bytes=4           265
+  op=DFAE W addr=$0091FFFE page=$0091F off=$FFE bytes=4           239
+  op=D398 W addr=$00829FFE page=$00829 off=$FFE bytes=4           215
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           129
+  op=2D6B W addr=$0091FFFE page=$0091F off=$FFE bytes=4           100
+  op=48E7 W addr=$009D7FF6 page=$009D7 off=$FF6 bytes=12            90
+  op=34DC W addr=$006FDFFF page=$006FD off=$FFF bytes=2            86
+  op=34DC W addr=$006E7FFF page=$006E7 off=$FFF bytes=2            81
+  op=2F70 W addr=$0091FFFE page=$0091F off=$FFE bytes=4            79
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20            77
+  op=4C98 R addr=$00688FFC page=$00688 off=$FFC bytes=8            72
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            67
+  op=34DC W addr=$006FEFFF page=$006FE off=$FFF bytes=2            63
+  op=48E7 W addr=$009D7FFE page=$009D7 off=$FFE bytes=20            63
+  op=48E7 W addr=$009D7FF2 page=$009D7 off=$FF2 bytes=20            53
+  op=22D8 W addr=$0091FFFE page=$0091F off=$FFE bytes=4            49
+  op=34DC W addr=$006FCFFF page=$006FC off=$FFF bytes=2            47
+  op=48E7 W addr=$009D7FF6 page=$009D7 off=$FF6 bytes=16            46
+  op=24DC W addr=$006DFFFF page=$006DF off=$FFF bytes=4            45
+  op=48E7 W addr=$009D7FFE page=$009D7 off=$FFE bytes=8            45
+  op=34DC W addr=$006E5FFF page=$006E5 off=$FFF bytes=2            44
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            44
+  op=24DC W addr=$006DDFFE page=$006DD off=$FFE bytes=4            43
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20            42
+  op=58AC W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            42
+  op=48E7 W addr=$009D7FFA page=$009D7 off=$FFA bytes=8            38
+  op=4CDF R addr=$009D7FFA page=$009D7 off=$FFA bytes=8            38
+  op=6100 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            37
+  op=4CEE R addr=$009D7FF2 page=$009D7 off=$FF2 bytes=20            37
+  op=4E56 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            36
+  op=4CEE R addr=$009D7FF6 page=$009D7 off=$FF6 bytes=12            36
+  op=EFD1 W addr=$000BFFFF page=$000BF off=$FFF bytes=4            34
+  op=EFD1 W addr=$000BFFFE page=$000BF off=$FFE bytes=4            34
+  op=4CEE R addr=$009D7FFE page=$009D7 off=$FFE bytes=8            34
+  op=EFD1 W addr=$000BFFFD page=$000BF off=$FFD bytes=4            34
+  op=EFD1 W addr=$000C0FFD page=$000C0 off=$FFD bytes=4            33
+  op=EFD1 W addr=$000BEFFF page=$000BE off=$FFF bytes=4            33
+  op=EFD1 W addr=$000BEFFE page=$000BE off=$FFE bytes=4            33
+  op=4CDF R addr=$009D7FFE page=$009D7 off=$FFE bytes=20            33
+  op=EFD1 W addr=$000BEFFD page=$000BE off=$FFD bytes=4            33
+  op=EFD1 W addr=$000C0FFE page=$000C0 off=$FFE bytes=4            33
+  op=EFD1 W addr=$000C0FFF page=$000C0 off=$FFF bytes=4            33
+  op=EFD1 W addr=$000C1FFF page=$000C1 off=$FFF bytes=4            31
+  op=EFD1 W addr=$000C1FFE page=$000C1 off=$FFE bytes=4            31
+  op=EFD1 W addr=$000C1FFD page=$000C1 off=$FFD bytes=4            31
+  op=EFD1 W addr=$000C3FFE page=$000C3 off=$FFE bytes=4            29
+  op=EFD1 W addr=$000C4FFF page=$000C4 off=$FFF bytes=4            29
+  op=EFD1 W addr=$000C4FFE page=$000C4 off=$FFE bytes=4            29
+  op=EFD1 W addr=$000C3FFD page=$000C3 off=$FFD bytes=4            29
+  op=EFD1 W addr=$000C4FFD page=$000C4 off=$FFD bytes=4            29
+  op=EFD1 W addr=$000C3FFF page=$000C3 off=$FFF bytes=4            29
+  op=24DC W addr=$006FDFFD page=$006FD off=$FFD bytes=4            28
+  op=4870 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4            28
+  op=EFD1 W addr=$000C5FFD page=$000C5 off=$FFD bytes=4            27
+  op=EFD1 W addr=$000C5FFE page=$000C5 off=$FFE bytes=4            27
+
+[jit] exact other-runtime-access addresses — 2317508 / 2317508 exact
+  op=E368 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0       1809915
+  op=E1AA R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0        463729
+  op=E1AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0         13693
+  op=E1AD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0         12211
+  op=E9A9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          2664
+  op=E169 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          2468
+  op=E16B R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          2134
+  op=EBA9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          2055
+  op=E16A R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          1937
+  op=E0AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          1458
+  op=E16F R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          1116
+  op=E1A9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           624
+  op=EFA8 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           595
+  op=E538 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           541
+  op=EEAA R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           221
+  op=E96B R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           215
+  op=EEAD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           193
+  op=EF6E R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           192
+  op=EFA9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           192
+  op=E9AE R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           176
+  op=E2AD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           171
+  op=E8A0 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           168
+  op=E968 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           166
+  op=E1AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           161
+  op=E0AE R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           156
+  op=E8A9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           142
+  op=E0AD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           128
+  op=E7AA R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            26
+  op=E0AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            20
+  op=EF68 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            14
+  op=E2A8 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             9
+  op=E3A8 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             6
+  op=E069 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             6
+  op=EF6D R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             3
+  op=E9A8 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             2
+  op=EF6A R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0             1
+
+[jit] fallback addressing — MOVE source
+  idx(An)       2866575 unsupported        10981 runtime
+  d16(An)       1258663 unsupported       127683 runtime
+  Dn            1205284 unsupported          688 runtime
+  (An)+               0 unsupported       663809 runtime
+  (An)              592 unsupported       584269 runtime
+  abs.W               0 unsupported       340599 runtime
+  -(An)           39454 unsupported           42 runtime
+  d16(PC)             0 unsupported         1144 runtime
+  imm                54 unsupported           27 runtime
+  idx(PC)             0 unsupported           34 runtime
+  An                  0 unsupported           16 runtime
+
+[jit] fallback addressing — MOVE destination
+  (An)          2818786 unsupported       600390 runtime
+  idx(An)       2463942 unsupported          111 runtime
+  (An)+           42890 unsupported       633419 runtime
+  d16(An)          1233 unsupported       479839 runtime
+  An              40095 unsupported          542 runtime
+  -(An)             201 unsupported        10944 runtime
+  Dn               3475 unsupported         2751 runtime
+  abs.W               0 unsupported         1296 runtime
+
+[jit] fallback addressing — MOVEM operand
+  (An)+               0 unsupported         6829 runtime
+  -(An)               0 unsupported         3920 runtime
+  d16(An)             0 unsupported          302 runtime
+  (An)                0 unsupported           15 runtime
+
+[jit] indexed-mode fallbacks by extension form — 5712028 attributed (of 10467557 total fallbacks)
+  brief (d8,An/PC,Xn)         3643    0.1%
+  full 68020 format        5573799   97.6%
+  mixed (both seen)         134586    2.4%
+  compiled slots: 992 brief, 1310 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:   1.8%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  idx(An)  -> (An)          2818771 unsupported         1586 runtime
+  d16(An)  -> idx(An)       1258091 unsupported            1 runtime
+  Dn       -> idx(An)       1205269 unsupported            0 runtime
+  (An)+    -> (An)                0 unsupported       597711 runtime
+  (An)     -> (An)+               0 unsupported       567469 runtime
+  abs.W    -> d16(An)             0 unsupported       339658 runtime
+  d16(An)  -> d16(An)             0 unsupported       121012 runtime
+  (An)+    -> (An)+               0 unsupported        62854 runtime
+  idx(An)  -> (An)+           42890 unsupported         1291 runtime
+  -(An)    -> An              39441 unsupported            0 runtime
+  (An)     -> d16(An)             0 unsupported        16322 runtime
+  idx(An)  -> Dn               2328 unsupported         2751 runtime
+  idx(An)  -> d16(An)          1220 unsupported         2650 runtime
+  d16(An)  -> -(An)               0 unsupported         3838 runtime
+  (An)+    -> -(An)               0 unsupported         2973 runtime
+  idx(An)  -> -(An)             201 unsupported         2161 runtime
+  idx(An)  -> An                654 unsupported          542 runtime
+  d16(PC)  -> -(An)               0 unsupported         1118 runtime
+  d16(An)  -> (An)+               0 unsupported         1012 runtime
+  d16(An)  -> abs.W               0 unsupported          997 runtime
+  d16(An)  -> (An)                0 unsupported          823 runtime
+  abs.W    -> -(An)               0 unsupported          814 runtime
+  Dn       -> (An)+               0 unsupported          688 runtime
+  (An)     -> Dn                575 unsupported            0 runtime
+
+[jit] ════ census phase 'app-load' ════
+[jit] dispatch cache: 6940241 hits, 1962279 gen-miss, 3276309 miss
+[jit] flushes: wrapper hint/reset=1 translation moved=49121 write into code=11 deferred=0 code cache full=0  blocks live=40457, cold-evicted=0
+
+[jit] opcode census — 14191573 instructions, 4085 distinct
+  move          5579751   39.3%
+  alu           4426818   31.2%
+  shift          493377    3.5%
+  bitop          134950    1.0%
+  muldiv         206081    1.5%
+  addr           301438    2.1%
+  multi          151540    1.1%
+  cond             2834    0.0%
+  branch        2852258   20.1%
+  fpu             12303    0.1%
+  UNSAFE          30223    0.2%
+  native       14050526   99.0%  (backend 'aarch64')
+  ── top 60 opcodes ──
+  D1F0 alu    *     613448   4.32%  cum   4.3%
+  306E move   *     370314   2.61%  cum   6.9%
+  3046 move   *     347986   2.45%  cum   9.4%
+  302E move   *     263105   1.85%  cum  11.2%
+  D1C8 alu    *     222742   1.57%  cum  12.8%
+  7000 move   *     196387   1.38%  cum  14.2%
+  6604 branch *     165619   1.17%  cum  15.4%
+  1018 move   *     150944   1.06%  cum  16.4%
+  2840 move   *     144921   1.02%  cum  17.4%
+  1CD4 move   *     143112   1.01%  cum  18.5%
+  24D8 move   *     138263   0.97%  cum  19.4%
+  51C9 branch *     138236   0.97%  cum  20.4%
+  E08E shift  *     135334   0.95%  cum  21.4%
+  4E75 branch *     135223   0.95%  cum  22.3%
+  B083 alu    *     132685   0.93%  cum  23.2%
+  12F2 move   *     132216   0.93%  cum  24.2%
+  6D00 branch *     125754   0.89%  cum  25.1%
+  3D40 move   *     114816   0.81%  cum  25.9%
+  51CA branch *     112439   0.79%  cum  26.7%
+  2E2E move   *     108843   0.77%  cum  27.4%
+  D886 alu    *     108654   0.77%  cum  28.2%
+  280C move   *     108650   0.77%  cum  29.0%
+  0C46 alu    *     106626   0.75%  cum  29.7%
+  D688 alu    *     103262   0.73%  cum  30.4%
+  0C45 alu    *     101485   0.72%  cum  31.2%
+  7600 move   *     101281   0.71%  cum  31.9%
+  1A00 move   *     100904   0.71%  cum  32.6%
+  1035 move   *     100849   0.71%  cum  33.3%
+  E198 shift  *     100794   0.71%  cum  34.0%
+  0C47 alu    *      98607   0.69%  cum  34.7%
+  0C00 alu    *      98571   0.69%  cum  35.4%
+  5244 alu    *      92521   0.65%  cum  36.0%
+  1010 move   *      88363   0.62%  cum  36.7%
+  2008 move   *      87696   0.62%  cum  37.3%
+  0810 bitop  *      83588   0.59%  cum  37.9%
+  6700 branch *      81470   0.57%  cum  38.4%
+  81FC muldiv *      81367   0.57%  cum  39.0%
+  0C6E alu    *      80259   0.57%  cum  39.6%
+  0C43 alu    *      78872   0.56%  cum  40.1%
+  6600 branch *      76521   0.54%  cum  40.7%
+  51C8 branch *      76122   0.54%  cum  41.2%
+  5246 alu    *      73857   0.52%  cum  41.7%
+  1610 move   *      73842   0.52%  cum  42.3%
+  6706 branch *      71254   0.50%  cum  42.8%
+  7070 move   *      69602   0.49%  cum  43.2%
+  3050 move   *      68894   0.49%  cum  43.7%
+  0C83 alu    *      65252   0.46%  cum  44.2%
+  E290 shift         64770   0.46%  cum  44.6%
+  E289 shift  *      64568   0.45%  cum  45.1%
+  3044 move   *      61855   0.44%  cum  45.5%
+  4EBA branch *      59590   0.42%  cum  46.0%
+  2AC6 move   *      57687   0.41%  cum  46.4%
+  7005 move   *      57676   0.41%  cum  46.8%
+  4E5E addr   *      57360   0.40%  cum  47.2%
+  6712 branch *      55936   0.39%  cum  47.6%
+  4E56 addr   *      51904   0.37%  cum  47.9%
+  3619 move   *      51602   0.36%  cum  48.3%
+  20C0 move   *      51594   0.36%  cum  48.7%
+  3C1C move   *      50944   0.36%  cum  49.0%
+  4280 alu    *      49234   0.35%  cum  49.4%
+
+[jit] block fallback census — 7677809 unsupported + 3557520 runtime guard/access = 11235329
+  20B0 move        3620929 unsupported          0 runtime  32.23%  idx(A0) -> (A0)
+  E368 shift             0 unsupported    2155178 runtime  19.18%
+  1DAE move        1499986 unsupported          0 runtime  13.35%  d16(A6) -> idx(A6)
+  1D85 move         775806 unsupported          0 runtime   6.91%  D5 -> idx(A6)
+  2499 move              0 unsupported     654310 runtime   5.82%  (A1)+ -> (A2)
+  1D86 move         637157 unsupported          0 runtime   5.67%  D6 -> idx(A6)
+  E1AA shift             0 unsupported     540800 runtime   4.81%
+  4C07 muldiv       236009 unsupported          0 runtime   2.10%
+  0C30 alu          214996 unsupported          0 runtime   1.91%
+  4A30 alu          141310 unsupported          0 runtime   1.26%
+  F200 fpu          116955 unsupported          0 runtime   1.04%
+  3060 move          75990 unsupported          0 runtime   0.68%  -(A0) -> A0
+  D1B0 alu           68363 unsupported          0 runtime   0.61%
+  22F0 move          52949 unsupported          0 runtime   0.47%  idx(A0) -> (A1)+
+  F205 fpu           52907 unsupported          0 runtime   0.47%
+  4C2E muldiv        29071 unsupported          0 runtime   0.26%
+  F21F fpu           28977 unsupported          0 runtime   0.26%
+  C029 alu           27303 unsupported          0 runtime   0.24%
+  F201 fpu           26466 unsupported          0 runtime   0.24%
+  F227 fpu           20023 unsupported          0 runtime   0.18%
+  5368 alu               0 unsupported      18846 runtime   0.17%
+  E1AC shift             0 unsupported      16923 runtime   0.15%
+  2378 move              0 unsupported      16485 runtime   0.15%  abs.W -> d16(A1)
+  E1AD shift             0 unsupported      14944 runtime   0.13%
+  2953 move              0 unsupported      12752 runtime   0.11%  (A3) -> d16(A4)
+  4C98 multi             0 unsupported       9899 runtime   0.09%  EA=(A0)+
+  52AB alu               0 unsupported       9599 runtime   0.09%
+  336E move              0 unsupported       8899 runtime   0.08%  d16(A6) -> d16(A1)
+  24D0 move              0 unsupported       7103 runtime   0.06%  (A0) -> (A2)+
+  E290 shift          7055 unsupported          0 runtime   0.06%
+  F210 fpu            5942 unsupported          0 runtime   0.05%
+  1C30 move           5272 unsupported          0 runtime   0.05%  idx(A0) -> D6
+  026B alu               0 unsupported       5174 runtime   0.05%
+  F211 fpu            4925 unsupported          0 runtime   0.04%
+  12F2 move              0 unsupported       3767 runtime   0.03%  idx(A2) -> (A1)+
+  08D1 bitop          1377 unsupported       2331 runtime   0.03%
+  E9A9 shift             0 unsupported       3409 runtime   0.03%
+  34DC move              0 unsupported       3358 runtime   0.03%  (A4)+ -> (A2)+
+  4C05 muldiv         2776 unsupported          0 runtime   0.02%
+  4EB0 branch            0 unsupported       2531 runtime   0.02%
+  9611 alu            2387 unsupported          0 runtime   0.02%
+  EBA9 shift             0 unsupported       2323 runtime   0.02%
+  0891 bitop           711 unsupported       1541 runtime   0.02%
+  2C36 move              0 unsupported       2199 runtime   0.02%  idx(A6) -> D6
+  24DC move              0 unsupported       2143 runtime   0.02%  (A4)+ -> (A2)+
+  E9D0 shift             0 unsupported       2127 runtime   0.02%
+  E16B shift             0 unsupported       2122 runtime   0.02%
+  E169 shift             0 unsupported       2115 runtime   0.02%
+  EFD1 shift             0 unsupported       2051 runtime   0.02%
+  99B0 alu            1954 unsupported          0 runtime   0.02%
+  3F28 move              0 unsupported       1939 runtime   0.02%  d16(A0) -> -(A7)
+  24D8 move              0 unsupported       1923 runtime   0.02%  (A0)+ -> (A2)+
+  E16A shift             0 unsupported       1920 runtime   0.02%
+  14D0 move              0 unsupported       1844 runtime   0.02%  (A0) -> (A2)+
+  129F move              0 unsupported       1738 runtime   0.02%  (A7)+ -> (A1)
+  E0AC shift             0 unsupported       1701 runtime   0.02%
+  2230 move              0 unsupported       1686 runtime   0.02%  idx(A0) -> D1
+  4250 alu               0 unsupported       1671 runtime   0.01%
+  08E8 bitop             0 unsupported       1655 runtime   0.01%
+  526C alu               0 unsupported       1621 runtime   0.01%
+
+[jit] bounded shift versions — 6 sites, 72 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU            81335    2.29%  5368:16613  52AB:9452  336E:8899  12F2:3767  34DC:2867  4EB0:2531  2C36:2199  3F28:1939
+  non-plain/MMIO         663522   18.65%  2499:654302  24D0:7099  14D0:1841  08A8:217  169A:63
+  codeMask                46152    1.30%  2378:15153  2953:12752  026B:5174  5368:2233  08D1:2226  129F:1738  4250:1661  526C:1621
+  cross-page              17252    0.48%  4C98:9654  EFD1:1944  E9D0:1944  24DC:1105  256E:680  34DC:491  DFAE:366  2D6B:188
+  other guard           2749259   77.28%  E368:2155178  E1AA:540800  E1AC:16923  E1AD:14944  E9A9:3409  EBA9:2323  E16B:2122  E169:2115
+  attributed            3557520 /      3557520 runtime  exact
+
+[jit] exact non-plain/MMIO addresses — 663522 / 663522 exact
+  op=2499 W addr=$50F14000 page=$50F14 slice=0 mask=$0000 bytes=4        654302
+  op=24D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=4          7099
+  op=14D0 R addr=$50F06060 page=$50F06 slice=0 mask=$0000 bytes=1          1841
+  op=08A8 W addr=$40A7DBB5 page=$40A7D slice=B mask=$0000 bytes=1           162
+  op=169A W addr=$50F10000 page=$50F10 slice=0 mask=$0000 bytes=1            63
+  op=08A8 W addr=$40A7D125 page=$40A7D slice=1 mask=$0000 bytes=1            55
+
+[jit] exact codeMask addresses — 46152 / 46152 exact
+  op=2953 W addr=$000B67E4 page=$000B6 slice=7 mask=$E0FF bytes=4         12752
+  op=2378 W addr=$00640416 page=$00640 slice=4 mask=$07B7 bytes=4          6449
+  op=026B W addr=$00013CC2 page=$00013 slice=C mask=$F03E bytes=2          5174
+  op=2378 W addr=$00640424 page=$00640 slice=4 mask=$07B7 bytes=4          4372
+  op=2378 W addr=$0064041C page=$00640 slice=4 mask=$07B7 bytes=4          4332
+  op=5368 W addr=$0000C1AE page=$0000C slice=1 mask=$5FF2 bytes=2          2233
+  op=4250 W addr=$000AF278 page=$000AF slice=2 mask=$9A7C bytes=2          1661
+  op=526C W addr=$009287C6 page=$00928 slice=7 mask=$F8FF bytes=2          1621
+  op=276E W addr=$00003DFE page=$00003 slice=D mask=$3001 bytes=4           993
+  op=08D1 W addr=$00013C1C page=$00013 slice=C mask=$F03E bytes=1           797
+  op=08D1 W addr=$00013C3C page=$00013 slice=C mask=$F03E bytes=1           580
+  op=0891 W addr=$00013C1C page=$00013 slice=C mask=$F03E bytes=1           403
+  op=129F W addr=$00013C1C page=$00013 slice=C mask=$F03E bytes=1           388
+  op=0891 W addr=$00013C3C page=$00013 slice=C mask=$F03E bytes=1           360
+  op=08D1 W addr=$00013C20 page=$00013 slice=C mask=$F03E bytes=1           337
+  op=129F W addr=$00013C3C page=$00013 slice=C mask=$F03E bytes=1           331
+  op=0891 W addr=$00013C20 page=$00013 slice=C mask=$F03E bytes=1           191
+  op=22AE W addr=$00013C1C page=$00013 slice=C mask=$F03E bytes=4           184
+  op=129F W addr=$00013C20 page=$00013 slice=C mask=$F03E bytes=1           175
+  op=129F W addr=$00013C54 page=$00013 slice=C mask=$F03E bytes=1           168
+  op=129F W addr=$00013C58 page=$00013 slice=C mask=$F03E bytes=1           151
+  op=52AB W addr=$00013CB4 page=$00013 slice=C mask=$F03E bytes=4           147
+  op=129F W addr=$00013C34 page=$00013 slice=C mask=$F03E bytes=1           146
+  op=129F W addr=$00013C18 page=$00013 slice=C mask=$F03E bytes=1           145
+  op=129F W addr=$00013C4C page=$00013 slice=C mask=$F03E bytes=1           144
+  op=22AE W addr=$00013C3C page=$00013 slice=C mask=$F03E bytes=4           124
+  op=0891 W addr=$00013C18 page=$00013 slice=C mask=$F03E bytes=1           100
+  op=0891 W addr=$00013C58 page=$00013 slice=C mask=$F03E bytes=1            98
+  op=08D1 W addr=$00013C54 page=$00013 slice=C mask=$F03E bytes=1            90
+  op=0891 W addr=$00013C4C page=$00013 slice=C mask=$F03E bytes=1            89
+  op=0891 W addr=$00013C54 page=$00013 slice=C mask=$F03E bytes=1            88
+  op=4268 W addr=$00688FF8 page=$00688 slice=F mask=$F3E0 bytes=2            84
+  op=08D1 W addr=$00013C50 page=$00013 slice=C mask=$F03E bytes=1            81
+  op=22AE W addr=$00013C20 page=$00013 slice=C mask=$F03E bytes=4            81
+  op=4269 W addr=$0000E90A page=$0000E slice=9 mask=$2E00 bytes=2            78
+  op=0891 W addr=$00013C34 page=$00013 slice=C mask=$F03E bytes=1            74
+  op=08D1 W addr=$00013C18 page=$00013 slice=C mask=$F03E bytes=1            67
+  op=08D1 W addr=$00013C58 page=$00013 slice=C mask=$F03E bytes=1            66
+  op=08D1 W addr=$00013C4C page=$00013 slice=C mask=$F03E bytes=1            62
+  op=0891 W addr=$00643F50 page=$00643 slice=F mask=$8184 bytes=1            59
+  op=129F W addr=$00643F50 page=$00643 slice=F mask=$8184 bytes=1            59
+  op=50E9 W addr=$0000E90A page=$0000E slice=9 mask=$2E00 bytes=1            57
+  op=08D1 W addr=$00013C34 page=$00013 slice=C mask=$F03E bytes=1            55
+  op=D36B W addr=$00688FFA page=$00688 slice=F mask=$F3E0 bytes=2            53
+  op=0891 W addr=$00643F4C page=$00643 slice=F mask=$8184 bytes=1            31
+  op=08D1 W addr=$00643F4C page=$00643 slice=F mask=$8184 bytes=1            31
+  op=129F W addr=$00643F4C page=$00643 slice=F mask=$8184 bytes=1            31
+  op=0891 W addr=$00013C14 page=$00013 slice=C mask=$F03E bytes=1            31
+  op=08D1 W addr=$00013C14 page=$00013 slice=C mask=$F03E bytes=1            31
+  op=08D1 W addr=$00643F50 page=$00643 slice=F mask=$8184 bytes=1            29
+  op=2338 W addr=$00972B2C page=$00972 slice=B mask=$0C00 bytes=4            23
+  op=3338 W addr=$00972B2A page=$00972 slice=B mask=$0C00 bytes=2            23
+  op=22D8 W addr=$00015854 page=$00015 slice=8 mask=$0300 bytes=4            13
+  op=22D8 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=4            13
+  op=48E6 W addr=$0001582A page=$00015 slice=8 mask=$0300 bytes=16            13
+  op=2D1F W addr=$0001583A page=$00015 slice=8 mask=$0300 bytes=4            13
+  op=EFD1 W addr=$00015848 page=$00015 slice=8 mask=$0300 bytes=4            13
+  op=22C2 W addr=$00015844 page=$00015 slice=8 mask=$0300 bytes=4            13
+  op=22E0 W addr=$00015840 page=$00015 slice=8 mask=$0300 bytes=4            13
+  op=48E6 W addr=$0001584C page=$00015 slice=8 mask=$0300 bytes=8            13
+
+[jit] exact cross-page addresses — 17252 / 17252 exact
+  op=4C98 R addr=$00829FF8 page=$00829 off=$FF8 bytes=14          9532
+  op=256E R addr=$0091FFFE page=$0091F off=$FFE bytes=4           680
+  op=E9D0 R addr=$40A7DFFE page=$40A7D off=$FFE bytes=4           648
+  op=E9D0 R addr=$40A7DFFF page=$40A7D off=$FFF bytes=4           648
+  op=E9D0 R addr=$40A7DFFD page=$40A7D off=$FFD bytes=4           648
+  op=DFAE W addr=$0091FFFE page=$0091F off=$FFE bytes=4           366
+  op=2D6B W addr=$0091FFFE page=$0091F off=$FFE bytes=4           188
+  op=D998 W addr=$00829FFE page=$00829 off=$FFE bytes=4           161
+  op=2F38 W addr=$009D7FFE page=$009D7 off=$FFE bytes=4           149
+  op=4C98 R addr=$00688FFC page=$00688 off=$FFC bytes=8           122
+  op=34DC W addr=$006E7FFF page=$006E7 off=$FFF bytes=2           111
+  op=34DC W addr=$006FDFFF page=$006FD off=$FFF bytes=2           105
+  op=2F70 W addr=$0091FFFE page=$0091F off=$FFE bytes=4           103
+  op=48E7 W addr=$009D7FFC page=$009D7 off=$FFC bytes=20            90
+  op=EFD1 W addr=$000BFFFE page=$000BF off=$FFE bytes=4            81
+  op=EFD1 W addr=$000BFFFD page=$000BF off=$FFD bytes=4            81
+  op=EFD1 W addr=$000BFFFF page=$000BF off=$FFF bytes=4            81
+  op=EFD1 W addr=$000BEFFF page=$000BE off=$FFF bytes=4            81
+  op=EFD1 W addr=$000BEFFE page=$000BE off=$FFE bytes=4            81
+  op=EFD1 W addr=$000C0FFD page=$000C0 off=$FFD bytes=4            81
+  op=EFD1 W addr=$000C0FFE page=$000C0 off=$FFE bytes=4            81
+  op=EFD1 W addr=$000C0FFF page=$000C0 off=$FFF bytes=4            81
+  op=EFD1 W addr=$000BEFFD page=$000BE off=$FFD bytes=4            81
+  op=EFD1 W addr=$000C1FFD page=$000C1 off=$FFD bytes=4            81
+  op=EFD1 W addr=$000C1FFE page=$000C1 off=$FFE bytes=4            81
+  op=EFD1 W addr=$000C1FFF page=$000C1 off=$FFF bytes=4            81
+  op=34DC W addr=$006FEFFF page=$006FE off=$FFF bytes=2            81
+  op=4CDF R addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            74
+  op=EFD1 W addr=$000C6FFE page=$000C6 off=$FFE bytes=4            65
+  op=EFD1 W addr=$000C3FFF page=$000C3 off=$FFF bytes=4            65
+  op=EFD1 W addr=$000C3FFE page=$000C3 off=$FFE bytes=4            65
+  op=EFD1 W addr=$000C4FFD page=$000C4 off=$FFD bytes=4            65
+  op=EFD1 W addr=$000C3FFD page=$000C3 off=$FFD bytes=4            65
+  op=EFD1 W addr=$000C4FFE page=$000C4 off=$FFE bytes=4            65
+  op=EFD1 W addr=$000C4FFF page=$000C4 off=$FFF bytes=4            65
+  op=EFD1 W addr=$000C5FFD page=$000C5 off=$FFD bytes=4            65
+  op=EFD1 W addr=$000C5FFE page=$000C5 off=$FFE bytes=4            65
+  op=EFD1 W addr=$000C5FFF page=$000C5 off=$FFF bytes=4            65
+  op=EFD1 W addr=$000C6FFD page=$000C6 off=$FFD bytes=4            65
+  op=EFD1 W addr=$000C6FFF page=$000C6 off=$FFF bytes=4            65
+  op=24DC W addr=$006DDFFE page=$006DD off=$FFE bytes=4            56
+  op=22D8 W addr=$0091FFFE page=$0091F off=$FFE bytes=4            56
+  op=34DC W addr=$006FCFFF page=$006FC off=$FFF bytes=2            56
+  op=34DC W addr=$006E5FFF page=$006E5 off=$FFF bytes=2            55
+  op=24DC W addr=$006DFFFF page=$006DF off=$FFF bytes=4            55
+  op=48E7 W addr=$009D7FF4 page=$009D7 off=$FF4 bytes=28            50
+  op=4CDF R addr=$009D7FFC page=$009D7 off=$FFC bytes=20            50
+  op=24DC W addr=$006FDFFD page=$006FD off=$FFD bytes=4            35
+  op=24DC W addr=$006EBFFF page=$006EB off=$FFF bytes=4            32
+  op=24DC W addr=$006EEFFF page=$006EE off=$FFF bytes=4            32
+  op=24DC W addr=$006EEFFD page=$006EE off=$FFD bytes=4            31
+  op=24DC W addr=$006DAFFD page=$006DA off=$FFD bytes=4            29
+  op=24DC W addr=$006E4FFD page=$006E4 off=$FFD bytes=4            28
+  op=24DC W addr=$006F0FFD page=$006F0 off=$FFD bytes=4            28
+  op=24DC W addr=$006E2FFE page=$006E2 off=$FFE bytes=4            28
+  op=24DC W addr=$006E6FFD page=$006E6 off=$FFD bytes=4            28
+  op=24DC W addr=$006DAFFF page=$006DA off=$FFF bytes=4            28
+  op=24DC W addr=$006E5FFE page=$006E5 off=$FFE bytes=4            28
+  op=24DC W addr=$006DBFFE page=$006DB off=$FFE bytes=4            28
+  op=24DC W addr=$006E2FFF page=$006E2 off=$FFF bytes=4            28
+
+[jit] exact other-runtime-access addresses — 2749259 / 2749259 exact
+  op=E368 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0       2155178
+  op=E1AA R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0        540800
+  op=E1AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0         16923
+  op=E1AD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0         14944
+  op=E9A9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          3409
+  op=EBA9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          2323
+  op=E16B R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          2122
+  op=E169 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          2115
+  op=E16A R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          1920
+  op=E0AC R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          1701
+  op=E16F R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          1246
+  op=EFA8 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0          1104
+  op=E538 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           563
+  op=E2AD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           414
+  op=EEAA R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           388
+  op=EEAD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           387
+  op=EF6E R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           387
+  op=EFA9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           387
+  op=E968 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           384
+  op=E1A9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           325
+  op=E1AB R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           302
+  op=E8A0 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           301
+  op=E0AE R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           301
+  op=E0AD R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           274
+  op=E96B R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           224
+  op=E8A9 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           173
+  op=E9AE R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           148
+  op=E9A8 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           146
+  op=E8A1 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           137
+  op=EF6D R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           106
+  op=E7A8 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0           101
+  op=EF68 R addr=$00000000 page=$00000 slice=0 mask=$0000 bytes=0            26
+
+[jit] fallback addressing — MOVE source
+  idx(An)       3684954 unsupported        11887 runtime
+  d16(An)       1500331 unsupported        18172 runtime
+  Dn            1413523 unsupported          695 runtime
+  (An)+               0 unsupported       667908 runtime
+  -(An)           76476 unsupported           37 runtime
+  (An)              345 unsupported        25307 runtime
+  abs.W               0 unsupported        17497 runtime
+  d16(PC)             0 unsupported          400 runtime
+  imm               109 unsupported           38 runtime
+  idx(PC)             0 unsupported           86 runtime
+
+[jit] fallback addressing — MOVE destination
+  (An)          3620953 unsupported       657947 runtime
+  idx(An)       2914266 unsupported           89 runtime
+  (An)+           54367 unsupported        25742 runtime
+  An              76870 unsupported         1319 runtime
+  d16(An)          2011 unsupported        46218 runtime
+  Dn               7271 unsupported         3950 runtime
+  -(An)               0 unsupported         5841 runtime
+  abs.W               0 unsupported          921 runtime
+
+[jit] fallback addressing — MOVEM operand
+  (An)+               0 unsupported        10716 runtime
+  -(An)               0 unsupported          724 runtime
+  d16(An)             0 unsupported           88 runtime
+  (An)                0 unsupported           68 runtime
+
+[jit] indexed-mode fallbacks by extension form — 7045403 attributed (of 11235329 total fallbacks)
+  brief (d8,An/PC,Xn)         5936    0.1%
+  full 68020 format        6881176   97.7%
+  mixed (both seen)         158291    2.2%
+  compiled slots: 1183 brief, 1488 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:   1.7%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+  idx(An)  -> (An)          3620929 unsupported          978 runtime
+  d16(An)  -> idx(An)       1499986 unsupported            0 runtime
+  Dn       -> idx(An)       1413499 unsupported            0 runtime
+  (An)+    -> (An)                0 unsupported       656325 runtime
+  -(An)    -> An              75990 unsupported            0 runtime
+  idx(An)  -> (An)+           54367 unsupported         4108 runtime
+  abs.W    -> d16(An)             0 unsupported        16800 runtime
+  (An)     -> d16(An)             0 unsupported        15971 runtime
+  d16(An)  -> d16(An)             0 unsupported        12002 runtime
+  (An)+    -> (An)+               0 unsupported        11331 runtime
+  idx(An)  -> Dn               6581 unsupported         3950 runtime
+  (An)     -> (An)+               0 unsupported         8949 runtime
+  d16(An)  -> -(An)               0 unsupported         4486 runtime
+  idx(An)  -> d16(An)          1525 unsupported         1315 runtime
+  idx(An)  -> An                880 unsupported         1319 runtime
+  Dn       -> (An)+               0 unsupported          695 runtime
+  d16(An)  -> abs.W               0 unsupported          691 runtime
+  idx(An)  -> idx(An)           672 unsupported            0 runtime
+  abs.W    -> -(An)               0 unsupported          595 runtime
+  d16(An)  -> (An)+               0 unsupported          522 runtime
+  -(An)    -> d16(An)           486 unsupported            0 runtime
+  d16(An)  -> (An)                0 unsupported          471 runtime
+  d16(PC)  -> -(An)               0 unsupported          388 runtime
+  d16(An)  -> Dn                345 unsupported            0 runtime
+
+[jit] opcode census — 0 instructions, 0 distinct
+  native              0    nan%  (backend 'aarch64')
+  ── top 60 opcodes ──
+
+[jit] block fallback census — 0 unsupported + 0 runtime guard/access = 0
+
+[jit] bounded shift versions — 6 sites, 72 live, 0 saturated
+  E0A9          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AB          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E4A4          0 unsupported          0 runtime           0 cap-interp          0 count>31
+  E2AA          0 unsupported          0 runtime           0 cap-interp          0 count>31
+
+[jit] runtime fallback causes
+  fill/tag MMU                0    0.00%
+  non-plain/MMIO              0    0.00%
+  codeMask                    0    0.00%
+  cross-page                  0    0.00%
+  other guard                 0    0.00%
+  attributed                  0 /            0 runtime  exact
+
+[jit] fallback addressing — MOVE source
+
+[jit] fallback addressing — MOVE destination
+
+[jit] fallback addressing — MOVEM operand
+
+[jit] indexed-mode fallbacks by extension form — 0 attributed (of 0 total fallbacks)
+  brief (d8,An/PC,Xn)            0    0.0%
+  full 68020 format              0    0.0%
+  mixed (both seen)              0    0.0%
+  compiled slots: 1183 brief, 1488 full (cumulative over the run, not per phase)
+  brief share if mixed is apportioned by slot ratio:   0.0%  (ESTIMATE)
+
+[jit] fallback addressing — top MOVE source -> destination pairs
+boot: Finder up, SCSI 1751 commands
+launch: front app 'SimCity 2000 v1.1????? Fr', 92.6% of the screen changed, SCSI +498
+app-load: wall=7.872271s fp=4a10438e6aeb6298 screen=82e362f860eb1a21
+halted=0, SCSI 2255 commands total

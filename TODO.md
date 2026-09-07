@@ -89,16 +89,16 @@ seulement un compteur interne.
 
 ### C.1 Applications et oracles invités
 
-- [ ] **Créer un gate applicatif soutenu avec SimCity 2000.** Transformer le
-  census de développement en scénario reproductible qui lance réellement
-  l'application, simule une charge et vérifie CPU, écran, SCSI et progression
-  fonctionnelle sous interpréteur et moteur accéléré.
+`lcii_simcity_etalon` (2026-09-07) est le premier scénario applicatif
+soutenu : lancement prouvé par `CurApName`, simulation avancée sous budget
+invité fixe, sauvegarde écrite, et les deux jambes interpréteur/A64 comparées
+dans le même processus. Il marche aussi le chemin de la course de démarrage
+GISTPERSO de 2026-07-18 sans touche maintenue et atteint le Finder à chaque
+jambe : ce repro n'est plus une tâche ouverte, il est gaté.
+
 - [ ] **Introduire Retro68 comme oracle invité différentiel.** Construire des
   sondes Toolbox/Device Manager/XPRAM et comparer les mêmes binaires sous MAME
   et POM68K.
-- [ ] **Ajouter un etalon invité « Redémarrer ».** Déclencher Finder →
-  Redémarrer et vérifier un nouveau boot complet, afin de couvrir le chemin
-  Toolbox jusqu'au firmware.
 - [ ] **Faire une passe GUI réelle des save states.** Sauver/restaurer une
   machine bootée, vérifier les panneaux spécifiques et la reprise des
   périphériques host-backed.
@@ -127,9 +127,6 @@ seulement un compteur interne.
 - [ ] **Ajouter une preuve de rendu audio ASC.** Couvrir la sortie audible, le
   tempo et la variation de hauteur ; les tests de registres/IRQ ne suffisent
   pas.
-- [ ] **Rejouer le repro GISTPERSO/SimCity sur LC II.** Utiliser
-  `LCII_HOLD_KEYS`, confirmer que la course de démarrage a disparu ou rouvrir
-  le différentiel avec une image de référence propre.
 - [ ] **Vérifier le chemin LC II sans FPU.** Refaire le boot 68030 avec
   `POM68K_NOFPU` avant de modifier UniversalInfo/defaultRSRCs.
 

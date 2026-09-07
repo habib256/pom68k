@@ -6,6 +6,7 @@
 #include "AssetFingerprint.h"
 #include "BenchHarness.h"
 #include "Cpu030.h"
+#include "FinderSignature.h"
 #include "JitTestConfig.h"
 #include "V8Memory.h"
 #include "V8Video.h"
@@ -115,9 +116,35 @@ inline uint8_t adbFor(char c) {
     }
 }
 
+// GISTPERSO runs a French System with an AZERTY KCHR: the physical key that
+// is Q on a US keyboard types 'a', W types 'z', and the ';' key types 'm'.
+// ADB codes are physical, so a character must be sent on the key that
+// PRODUCES it under the guest's layout, or "black forest m" arrives as
+// "blqck forest ," and the Finder's type-select lands on the alphabetical
+// neighbour of THAT — DESAS CITY, on 2026-09-07. Every earlier hop on this
+// volume only worked because the mistyped characters happened to sort
+// before the intended item. Digits are shifted on AZERTY and deliberately
+// unsupported here.
+inline bool gAzertyGuest = true;
+
+inline uint8_t adbForGuest(char c) {
+    if (gAzertyGuest) {
+        switch (c) {
+            case 'a': return 0x0C;             // US Q key
+            case 'q': return 0x00;             // US A key
+            case 'z': return 0x0D;             // US W key
+            case 'w': return 0x06;             // US Z key
+            case 'm': return 0x29;             // US ; key
+            default: break;
+        }
+        if (c >= '0' && c <= '9') return 0xFF;
+    }
+    return adbFor(c);
+}
+
 inline void typeText(const char* value) {
     for (const char* p = value; *p; p++) {
-        const uint8_t code = adbFor(*p);
+        const uint8_t code = adbForGuest(*p);
         if (code == 0xFF) continue;
         gMem->keyEvent(code, true);
         runFrames(3);
@@ -152,6 +179,79 @@ inline uint64_t screenFingerprint() {
         }
     }
     return fp;
+}
+
+// FNV-1a over the monochrome mask of one screen rectangle: the way a gate
+// asks "did THIS region change" without caring about palette or about the
+// rest of the screen (a menu-bar clock, a blinking cursor elsewhere).
+inline uint64_t regionMaskFingerprint(int x0, int x1, int y0, int y1) {
+    std::vector<uint32_t> fb;
+    screen(fb);
+    uint64_t fp = 1469598103934665603ull;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            const size_t i = size_t(y) * 512 + x;
+            fp ^= i < fb.size() && (fb[i] & 0xFF) < 0x80;
+            fp *= 1099511628211ull;
+        }
+    return fp;
+}
+
+// Low memory is physical on the LC II (the V8 maps RAM at 0 with the PMMU
+// translating identity there), so the Mouse and CurApName globals read
+// straight through peek8 — the same read the Speedometer steering uses.
+// Non-ASCII bytes (MacRoman accents, the trademark sign) are shown as '?'
+// rather than voiding the name: an application called "SimCity 2000\xAA"
+// must still be recognisable as SimCity.
+inline std::string frontApplication() {
+    const int n = gMem->peek8(0x910);
+    const int len = n > 31 ? 31 : n;
+    std::string s;
+    for (int i = 0; i < len; i++) {
+        const int c = gMem->peek8(0x910 + 1 + uint32_t(i));
+        if (c < 0x20) return {};                // not a live Str31
+        s += c >= 0x7F ? '?' : char(c);
+    }
+    return s;
+}
+
+// ── Deterministic Finder navigation ─────────────────────────────────────
+// This volume auto-opens several overlapping Finder windows at boot, and a
+// type-select lands in whichever one is frontmost. On 2026-09-06 that put the
+// Speedometer census in Prince of Persia's Read Me, and the SimCity census
+// had been opening TED CITY — the alphabetical neighbour of a prefix with
+// no match in the wrong window — instead of the city it named. Reset the
+// scope rather than infer the window stack: Cmd-Option-W closes every
+// Finder window, then the desktop volume icon is the one known root.
+// ADB codes are physical and this volume uses a French layout, where W is
+// code $06 rather than QWERTY's $0D; send both while the chord is held. The
+// non-W key is Z on either layout, and Cmd-Option-Z is harmless in the
+// Finder.
+inline void closeAllFinderWindows() {
+    for (uint8_t w : {uint8_t(0x06), uint8_t(0x0D)}) {
+        gMem->keyEvent(0x37, true);            // Cmd
+        runFrames(12);
+        gMem->keyEvent(0x3A, true);            // Option
+        runFrames(12);
+        keyHold(w, 75);                        // W (AZERTY, then QWERTY)
+        gMem->keyEvent(0x3A, false);
+        gMem->keyEvent(0x37, false);
+        runFrames(300);
+    }
+}
+
+// Finder type-select by prefix, then Cmd-O opens the selection. The prefix
+// must stay inside Finder's roughly one-second type-select window, and it
+// must be unambiguous within the frontmost window — a prefix that matches
+// nothing selects the alphabetical neighbour, silently.
+inline void openBySelect(const char* prefix, long settle) {
+    typeText(prefix);
+    runFrames(30);
+    gMem->keyEvent(0x37, true);                // Cmd
+    runFrames(6);
+    keyHold(0x1F, 60);                         // 'o' — Open
+    gMem->keyEvent(0x37, false);
+    runFrames(settle);
 }
 
 }  // namespace lciiapp

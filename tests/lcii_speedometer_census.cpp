@@ -63,13 +63,7 @@ int main() {
 
     auto open = [&](const char* prefix, long settle, const char* phase,
                     const char* ppm) {
-        typeText(prefix);
-        runFrames(30);
-        mem.keyEvent(0x37, true);
-        runFrames(6);
-        keyHold(0x1F, 60);
-        mem.keyEvent(0x37, false);
-        runFrames(settle);
+        openBySelect(prefix, settle);
         dump(ppm);
         cpu.jit().censusPhase(phase);
     };
@@ -80,26 +74,10 @@ int main() {
     // This image auto-opens several overlapping Finder windows at boot. A
     // Cmd-Up used to try to make GIST PERSO the type-select scope, but an
     // already-open sibling can remain frontmost: the 2026-09-06 run selected
-    // Prince of Persia in JEUX and profiled its Read Me as "cpu-test".
-    //
-    // Reset the scope instead of inferring the window stack. Cmd-Option-W
-    // closes every Finder window, then type-selecting the volume icon on the
-    // desktop and Cmd-O establishes GIST PERSO as the one known root. ADB
-    // codes are physical and this volume uses a French layout, where W is
-    // code $06 rather than QWERTY's $0D; send both while the chord is held.
-    // The non-W key is Z on either layout, and Cmd-Option-Z is harmless in
-    // the Finder. This is the same guest-level reset used by the AIO gates on
-    // this exact volume.
-    for (uint8_t w : {uint8_t(0x06), uint8_t(0x0D)}) {
-        mem.keyEvent(0x37, true);              // Cmd
-        runFrames(12);
-        mem.keyEvent(0x3A, true);              // Option
-        runFrames(12);
-        keyHold(w, 75);                        // W (AZERTY, then QWERTY)
-        mem.keyEvent(0x3A, false);
-        mem.keyEvent(0x37, false);
-        runFrames(300);
-    }
+    // Prince of Persia in JEUX and profiled its Read Me as "cpu-test". The
+    // shared reset (LciiApplicationHarness.h) closes every Finder window and
+    // makes the desktop volume icon the one known root.
+    closeAllFinderWindows();
     dump("lcii_speedometer_desktop.ppm");
     open("gist", 900, "open-root", "lcii_speedometer_root.ppm");
     open("logiciels", 900, "open-software", "lcii_speedometer_software.ppm");

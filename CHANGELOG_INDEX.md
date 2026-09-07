@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 435 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 437 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,10 +8,10 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 83 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 84 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 32 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 43 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 44 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
@@ -109,6 +109,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-06 (fourth)** — [The AArch64 host requalifies its own 68030 promotion: 56/56 executed with the private corpus, and the A64-only store guard finally runs where its subject exists](CHANGELOG.md#2026-09-06-a64-030-requalified)
 - **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](CHANGELOG.md#2026-09-06-speedometer-suite)
 - **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](CHANGELOG.md#2026-09-07-tier-b-closed)
+- **2026-09-07 (third)** — [SimCity 2000 becomes a gate: launched by opening its heaviest city, simulated, saved — identically under the interpreter and the A64 generator, once the harness typed on the guest's own keyboard](CHANGELOG.md#2026-09-07-simcity-etalon)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -240,6 +241,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-31 (second)** — [Speedometer identifies one necessary SCSI replay and turns `JSR abs.l` native on both generators](CHANGELOG.md#2026-08-31-speedometer-jsr-absolute-long)
 - **2026-09-03 (fifteenth)** — [The stale third-peripheral task exposes a real regression: promoted Q605 SCC/53C96 scheduling had silently become opt-in](CHANGELOG.md#2026-09-03-q605-scheduler-default-restored)
 - **2026-09-04** — [Sonora closes § B.4's last row: its video never touches system RAM, no swim2 board owns a DMA client, and the CACR flush retires](CHANGELOG.md#2026-09-04-sonora-inventory)
+- **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](CHANGELOG.md#2026-09-07-restart-etalon)
 
 ## Video — decoders, the raster beam, DAFB
 

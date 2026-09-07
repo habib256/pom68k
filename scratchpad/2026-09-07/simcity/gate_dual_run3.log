@@ -1,0 +1,14 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+[interp] boot: Finder up, SCSI 1751, front app 'Finder'
+[interp] launch: front app 'SimCity 2000 v1.1????? Fr', 92.7% of the screen changed, SCSI +497
+[interp] simulation: title 7f1ea16cfd5083a7 -> d288a16ae206db6f (advanced), SCSI +10
+[interp] save: 224 blocks written, volume modified
+[interp] end: engine=interp halted=0 menu=up fp=d1147bb72c9c52e5 screen=56c9a917da7bb611 SCSI 2312 commands
+[default] boot: Finder up, SCSI 1751, front app 'Finder'
+[default] launch: front app 'SimCity 2000 v1.1????? Fr', 92.7% of the screen changed, SCSI +497
+[default] simulation: title 7f1ea16cfd5083a7 -> d288a16ae206db6f (advanced), SCSI +10
+[default] save: 224 blocks written, volume modified
+[default] end: engine=aarch64 halted=0 menu=up fp=d1147bb72c9c52e5 screen=56c9a917da7bb611 SCSI 2312 commands
+identity: interp vs aarch64 — IDENTICAL
+PASSED — LC II SimCity 2000 application etalon

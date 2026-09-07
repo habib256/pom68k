@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the SimCity census plays BLACK FOREST MONSTRE" (2026-08-27) — it had been playing TED CITY, the alphabetical neighbour of a prefix typed into the wrong window; and every LC II type-select on GISTPERSO had been sending QWERTY key codes to an AZERTY System, so "black forest m" arrived as "blqck forest ,"** → [2026-09-07 (third) — SimCity 2000 becomes a gate…](#2026-09-07-simcity-etalon)
 - **"the whole F-line stays out of a block" — the FPU general window `$F200-$F23F` changes FPU state only; it is now an exact-replay block member, −11.6 % on Speedometer's isolated direct-FPU phase, and a cross-binary "before" that seemed to contradict the knob turned out to be a fresh configure's LTO+native defaults** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
 - **"Speedometer" meant only Performance Rating / CPU in the repaired census — the application also has a ten-test integer/floating mix, three direct-FPU tests and five Color QuickDraw depths; all are now separate, paired A64/`threaded` phases** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
 - **"there is currently no valid Speedometer temporal profile" (earlier 2026-09-06) — three corrected, byte-identical whole-route samples now exist; they cap all fallback time near 5.6% but leave the 0.27 s CPU phase too small for opcode attribution** → [2026-09-06 (sixth) — Speedometer's first correct time profile…](#2026-09-06-speedometer-time-profile)
@@ -345,6 +346,14 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **inventory re-synced to the live tree** → [2026-07-22 — `docs/LLE_VS_HLE.md` third pass…](#2026-07-22--docslle_vs_hlemd-third-pass-inventory-re-synced-to-the-live-tree)
 - **…and again, with the CD/floppy work** → [2026-07-29 (later) — SCSI CD-ROM support, a guest-level floppy gate…](#2026-07-29-later--scsi-cd-rom-support-a-guest-level-floppy-gate-and-the-lle-inventory-re-synced)
 
+### Product scenarios — applications, beyond-boot legs and persistence
+
+- **how a guest-initiated restart is driven and judged — the Shutdown Manager, the volume flush, the ROM warm start and a second boot that must read the disk again** → [2026-09-07 (fourth) — The guest restarts itself…](#2026-09-07-restart-etalon)
+- **how SimCity 2000 is launched, simulated and saved as a gate, why `CurApName` and the city's own title bar are the observables, and how the interpreter and the A64 generator are compared in one process** → [2026-09-07 (third) — SimCity 2000 becomes a gate…](#2026-09-07-simcity-etalon)
+- **the first beyond-boot legs (soak, persist, launch) on the LC II** → [2026-07-24 — Beyond-boot gates on the LC II…](#2026-07-24--beyond-boot-gates-on-the-lc-ii-soak-persist-launch-3-ctest-gates-mcu-clock-drift-fix)
+- **when a second profile on an already-covered platform deserves its own beyond-boot pair** → [2026-08-14 (third) — The Eclipse gets a beyond-boot pair…](#2026-08-14-eclipse-beyond-boot)
+- **the all-in-one family's beyond-boot pair, and the French layout that ate the first close-all** → [2026-08-28 (sixth) — The AIO family gets its beyond-boot pair…](#2026-08-28-aio-beyond-boot)
+
 ### Machine bring-ups, in the order they landed
 
 - **Macintosh Plus — first real-ROM boot** → [2026-07-14 — M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
@@ -411,6 +420,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](#2026-09-07-restart-etalon)
+- **2026-09-07 (third)** — [SimCity 2000 becomes a gate: launched by opening its heaviest city, simulated, saved — identically under the interpreter and the A64 generator, once the harness typed on the guest's own keyboard](#2026-09-07-simcity-etalon)
 - **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](#2026-09-07-tier-b-closed)
 - **2026-09-07** — [The FPU general window stops ending a block: exact Moira replay inside native blocks, −11.6 % on Speedometer's isolated FPU phase, and the cross-binary comparison that had to be thrown away](#2026-09-07-fpu-block-member)
 - **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](#2026-09-06-speedometer-suite)
@@ -846,6 +857,83 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-restart-etalon"></a>
+## 2026-09-07 (fourth) — The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot
+
+Every boot etalon begins with a reset the host performs. A restart the
+guest asks for is a different path — the Finder's Shutdown Manager runs its
+procedures, the volumes are unmounted and flushed, the System calls the
+ROM's restart trap, and the machine must come back through the warm-start
+code with PRAM and the Egret intact, the SCSI bus re-enumerated and the
+volume remounted clean. `lcii_restart_etalon` covers it (TODO § C.1).
+
+Restart has no key equivalent in System 7.5, so the menu is pulled down with
+the mouse, steered closed-loop against the low-memory Mouse global the way
+the Speedometer census steers its dialogs. The item rows were read off the
+guest's own screen rather than assumed: a `POM68K_RESTART_DISCOVER=1` pass
+holds the Spécial menu open and dumps it — Ranger la fenêtre 27, Vider la
+Corbeille 43, Éjecter 73, Initialiser le disque 91, Redémarrer 121,
+Éteindre 139, the open menu spanning x 310–470.
+
+The gate asserts the sequence a user would see: the Finder leaves (its menu
+bar disappears, 30 frames after the release, with 78 SCSI commands spent on
+the flush), the second boot reaches the Finder without a halt, `CurApName`
+is `Finder` again, and the second boot issued **1693** SCSI commands against
+the first boot's 1751 — more than half, so the volume was read again from
+the driver descriptor up rather than the screen merely repainted. First run
+green on the default A64 engine, fingerprint `b4911ca16d04c5b2`. Registered
+as an asset-required `etalon`/`m030` gate. Discovery dump and run log:
+`scratchpad/2026-09-07/restart/`.
+
+---
+
+<a id="2026-09-07-simcity-etalon"></a>
+## 2026-09-07 (third) — SimCity 2000 becomes a gate: launched by opening its heaviest city, simulated, saved — identically under the interpreter and the A64 generator, once the harness typed on the guest's own keyboard
+
+Tier C's first item asked for a sustained application scenario that really
+launches the program, simulates a load and verifies CPU, screen, SCSI and
+functional progress under both engines. `lcii_simcity_etalon` is that gate.
+It boots `hdv/GISTPERSO-boot.vhd` on the LC II, resets the Finder scope the
+way the Speedometer census learned to on 2026-09-06, opens GIST PERSO →
+JEUX → SimCity2000 → SIM VILLES → BLACK FOREST MONSTRE by type-select and
+Cmd-O, and then asserts what a person would see: `CurApName` names
+SimCity 2000 (a screen-change ratio alone accepted Works 3.0 on the first
+try), 92.7 % of the screen changed and SCSI read 497 commands on launch;
+over 3600 guest frames of simulation with the mouse moving, the city's own
+title bar — month and funds — changed, so the simulation advanced rather
+than redrew; Cmd-S wrote 224 blocks and the host-owned volume differs from
+its pre-save bytes; the menu bar is up and the CPU never halted.
+
+Unless `POM68K_CPU_ENGINE` is explicit, the scenario runs twice in one
+process — interpreter, then the family's default engine — and the legs must
+agree. They do: fingerprint `d1147bb72c9c52e5`, screen `56c9a917da7bb611`,
+SCSI 2312 commands, the same title hashes and the same 224 written blocks
+on `interp` and `aarch64`. That is the CPU-sensitive contract tier C
+names, verified inside the gate rather than by reading two logs.
+
+Two corrections came out of making it deterministic. The 2026-08-27 census
+said it played BLACK FOREST MONSTRE; its phase screenshots show TED CITY at
+1911. The boot leaves the SimCity2000 window frontmost, "sim" opened SIM
+VILLES from there, "sim v" matched nothing and the Finder selected the
+alphabetical neighbour. And the reason "black forest m" then opened DESAS
+CITY is older than the census: GISTPERSO runs a French System with an
+AZERTY KCHR, and `typeText` sent QWERTY physical codes, so the string
+arrived as "blqck forest ," — every earlier type-select on this volume had
+worked only because its mistyped characters still sorted before the
+intended item. The shared harness now types on the guest's own layout
+(A/Q, Z/W and M moved; digits refused) and both censuses use the same
+`closeAllFinderWindows` / `openBySelect` route; the repaired SimCity census
+reaches BLACK FOREST MONSTRE at September 2549 with 5.77 M in funds.
+
+The gate is also the deterministic reproducer TODO § C.3 kept for the
+2026-07-18 GISTPERSO startup race: it boots that path without a held key,
+and six legs across three runs reached the Finder every time. The item
+leaves the backlog as gated rather than as a suspicion. Registered as an
+asset-required `etalon`/`m030` gate; `STATUS.md` regenerated. Evidence and
+phase screenshots: `scratchpad/2026-09-07/simcity/`.
 
 ---
 
