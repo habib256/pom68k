@@ -11,6 +11,19 @@
 
 #include <cstdlib>
 
+#include <string>
+
+// A scratch path the host can actually write: TMPDIR (POSIX), then TEMP/TMP
+// (Windows), then /tmp. Two gates wrote to a literal /tmp/… and the first
+// MSVC asset-none run found no such directory (2026-09-07).
+inline std::string pom68kTempPath(const char* leaf) {
+    for (const char* var : {"TMPDIR", "TEMP", "TMP"}) {
+        const char* dir = std::getenv(var);
+        if (dir && *dir) return std::string(dir) + "/" + leaf;
+    }
+    return std::string("/tmp/") + leaf;
+}
+
 #ifdef _WIN32
 inline int setenv(const char* name, const char* value, int overwrite) {
     if (!overwrite && std::getenv(name)) return 0;

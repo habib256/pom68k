@@ -373,6 +373,13 @@ endforeach()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv "${pom68k_gate_list}")
 # Empty on the AArch64 dev host, two rows anywhere else — see the guard
 # above. docs_test adds these back before comparing with the docs.
+# Windows also lacks the three POSIX-socket harnesses fenced in
+# Pom68kComponentGates.cmake; they stay part of the union (the knob
+# contract cites afp_server_test) and are recorded here as absent.
+if(WIN32)
+    string(APPEND pom68k_absent_gates
+        "afp_server_test\tunit\npap_server_test\tunit\nmacip_gw_test\tunit\n")
+endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv
      "${pom68k_absent_gates}")
 

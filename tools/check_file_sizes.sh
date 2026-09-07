@@ -106,7 +106,10 @@ while read -r path limit_value _rest; do
     budget_paths[$i]="$path"
     budget_caps[$i]="$limit_value"
     budget_seen[$i]=0
-done < "$BUDGET"
+done < <(tr -d '\r' < "$BUDGET")   # a CRLF checkout (Windows runner) must not
+                                   # turn every path into "path\r" — the first
+                                   # MSVC asset-none run (2026-09-07) read all
+                                   # of them as "no longer exists"
 
 fail=0
 slack_report=""

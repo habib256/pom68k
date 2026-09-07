@@ -1856,7 +1856,15 @@ int main() {
 
         // This host's own section. Same host vocabulary as status_md.py
         // (which mirrors Pom68kJitGates.cmake): aarch64 / x86_64 / other.
-#if defined(__aarch64__) || defined(_M_ARM64)
+// A Windows build is not the Linux x86_64 proof host even when it runs on
+// an x86_64 CPU: it registers neither the System V x64 lockstep gates nor
+// the POSIX-socket harnesses, so its roster cannot match the section the
+// Linux host owns. The first MSVC asset-none run (2026-09-07) read that as
+// "241 registered; ctest has 233". Windows names its own host; until a
+// Windows host generates its section, the absence is a note, not a red.
+#if defined(_WIN32)
+        const char* statusHost = "windows-x64";
+#elif defined(__aarch64__) || defined(_M_ARM64)
         const char* statusHost = "aarch64";
 #elif defined(__x86_64__) || defined(_M_X64)
         const char* statusHost = "x86_64";
@@ -1865,8 +1873,15 @@ int main() {
 #endif
         const std::string head = std::string("## Registered on ") + statusHost;
         const size_t h = status.find(head);
-        check(h != std::string::npos,
-              "STATUS.md carries a section for " + std::string(statusHost));
+        const bool proofHost = std::string(statusHost) == "aarch64" ||
+                               std::string(statusHost) == "x86_64";
+        if (proofHost)
+            check(h != std::string::npos,
+                  "STATUS.md carries a section for " + std::string(statusHost));
+        else if (h == std::string::npos)
+            std::printf("note: STATUS.md has no %s section — this host is not "
+                        "one of the two proof hosts; run tools/status_md.py "
+                        "here to add one\n", statusHost);
         const size_t hEnd = status.find("\n## ", h == std::string::npos ? 0 : h);
         const std::string hostSec = h == std::string::npos ? "" :
             status.substr(h, hEnd == std::string::npos ? std::string::npos

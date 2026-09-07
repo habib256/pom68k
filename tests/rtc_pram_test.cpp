@@ -22,6 +22,7 @@
 #include "MacIIMemory.h"
 #include "IIfxMemory.h"
 #include "RbvMemory.h"
+#include "PortableEnv.h"
 #include "Rtc.h"
 #include "Via6522.h"
 
@@ -40,8 +41,7 @@ void check(bool ok, const char* what) {
 
 // Scratch path: honour the harness' temp dir when it sets one.
 std::string tmpFile(const char* leaf) {
-    const char* dir = std::getenv("TMPDIR");
-    return std::string(dir && *dir ? dir : "/tmp") + "/pom68k_" + leaf;
+    return pom68kTempPath((std::string("pom68k_") + leaf).c_str());
 }
 
 // A recognisable, non-uniform image: byte i = i ^ 0x5A.

@@ -33,13 +33,25 @@ case "$(uname -s)" in
         ;;
 esac
 
+smoke_log="$report.log"
 if [ "${#runner[@]}" -gt 0 ]; then
-    "${runner[@]}" "$exe" "--gui-smoke=$report" "$missing_rom" "" ""
+    "${runner[@]}" "$exe" "--gui-smoke=$report" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
+    status=${PIPESTATUS[0]}
 else
-    "$exe" "--gui-smoke=$report" "$missing_rom" "" ""
+    "$exe" "--gui-smoke=$report" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
+    status=${PIPESTATUS[0]}
 fi
-status=$?
 if [ "$status" -ne 0 ]; then
+    # A runner with no display cannot open a GL window at all: GLFW reports
+    # "Failed to find a suitable pixel format" (NSGL 65545 on a headless
+    # macOS runner, the WGL twin on a Windows one). That is the runner's
+    # shape, not the GUI's lifecycle, and the first MSVC asset-none run
+    # (2026-09-07) read it as a red. Same verdict as the no-DISPLAY Linux
+    # case above: SKIP, loudly.
+    if grep -q "Failed to find a suitable pixel format" "$smoke_log"; then
+        echo "SKIP: no GL pixel format on this runner (headless) — the GUI smoke needs a display"
+        exit 77
+    fi
     echo "FAIL: POM68K GUI smoke scenario exited $status" >&2
     exit "$status"
 fi

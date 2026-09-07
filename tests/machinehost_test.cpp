@@ -20,6 +20,7 @@
 // visibility and teardown.
 
 #include "Cpu040.h"
+#include "PortableEnv.h"
 #include "GuiSpeedGauge.h"
 #include "MachineHost.h"
 #include "Q605Memory.h"
@@ -199,13 +200,13 @@ int main() {
         // Payload belongs to the command, not to the batch. The former
         // single floppyPending_ slot made both commands below use the second
         // path, so the valid first insert vanished entirely.
-        const std::string fifoDisk = "/tmp/pom68k_machinehost_fifo.dsk";
+        const std::string fifoDisk = pom68kTempPath("pom68k_machinehost_fifo.dsk");
         {
             std::ofstream f(fifoDisk, std::ios::binary | std::ios::trunc);
             f.seekp(409600 - 1); f.put('\0');
         }
         m.requestInsertFloppy(fifoDisk);
-        m.requestInsertFloppy("/tmp/pom68k_machinehost_missing.dsk");
+        m.requestInsertFloppy(pom68kTempPath("pom68k_machinehost_missing.dsk"));
         m.stepTick();
         check(m.floppyInserted() && mem.internalDrive().hasDisk(),
               "each batched floppy command keeps its own path");

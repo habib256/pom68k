@@ -1301,7 +1301,12 @@ int main() {
               "PEA d8(A0,Xn) follows active generator coverage");
         check(b->canEmit(0x41F0) == gen,
               "LEA d8(A0,Xn),A0 follows active generator coverage");
-        check(b->canEmit(0xCD4F),
+        // "Both generators" is a statement about the two emitters, not about
+        // the host: on Windows the x64 emitter is not usable by decision
+        // (POM68K_JIT.md § 7) and `auto` resolves to threaded, so these two
+        // follow the active generator like their neighbours — the first
+        // MSVC asset-none run (2026-09-07) read them as reds otherwise.
+        check(b->canEmit(0xCD4F) == gen,
               "EXG A6,A7 is native on both generators (x64 port 2026-08-21)");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
         check(b->canEmit(0x80C0) == gen, "DIVU.W D0,D0");
@@ -1323,7 +1328,7 @@ int main() {
               "MULS.W (A0),D0 follows active generator coverage");
         check(!b->canEmit(0xC1C8), "MULS.W An source is illegal");
         check(!b->canEmit(0xC101), "ABCD is not OR-to-ea");
-        check(b->canEmit(0xB308),
+        check(b->canEmit(0xB308) == gen,
               "distinct-register CMPM is native on both generators "
               "(x64 port 2026-08-21), never EOR-to-ea");
         check(!b->canEmit(0xB108),
