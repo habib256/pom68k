@@ -1,0 +1,4 @@
+=== lc ROM=roms/512KB ROMs/1990-10 - 350EACF0 - Mac LC.ROM (512 KB) disk=hdv/System 7.5 HD.dsk ===
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+lc: 512x384 menu 0.09 desk 0.46 SCSI 2076 -> PASS

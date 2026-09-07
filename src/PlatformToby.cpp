@@ -26,7 +26,8 @@ struct MacIiMachine
     GuiHostServices& services;
     MacIiMachine(MacIIMemory& m, Cpu020& c, MacAudioHost& a,
                  GuiHostServices& hostServices)
-        : Base(m, c, a, hostServices.config().diagnostics().keyTrace),
+        : Base(m, c, a, hostServices.config().diagnostics().keyTrace,
+               hostServices.config().devices().turbo),
           services(hostServices) {}
     static constexpr bool kStereo = false;
 
@@ -104,7 +105,8 @@ struct IIfxMachine
     GuiHostServices& services;
     IIfxMachine(IIfxMemory& m, IIfxCpu& c, MacAudioHost& a,
                 GuiHostServices& hostServices)
-        : Base(m, c, a, hostServices.config().diagnostics().keyTrace),
+        : Base(m, c, a, hostServices.config().diagnostics().keyTrace,
+               hostServices.config().devices().turbo),
           services(hostServices) {}
     static constexpr bool kStereo = false;
 

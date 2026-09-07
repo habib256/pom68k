@@ -359,6 +359,14 @@ foreach(machine sonora centris q700 q630 duo macii iifx compact)
     endforeach()
 endforeach()
 
+# The Duo's input etalon (TODO § C.3, 2026-09-07): keyboard matrix and
+# trackball judged at guest level — KeyMap and the Mouse global through the
+# PMMU walk — independently of the persist leg.
+add_test(NAME duo230_input_etalon COMMAND duo_beyond_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(duo230_input_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_BEYOND=input" TIMEOUT 1800)
+
 # The LIVE AppleShare exchange (2026-08-28, TODO § 6's named missing gate,
 # ordered by the user): a real 8.1 guest drives the Chooser, mounts the
 # in-process AFP share and creates a folder — the pass criterion is the
@@ -667,6 +675,15 @@ target_link_libraries(lcii_restart_etalon PRIVATE pom68k_core)
 add_test(NAME lcii_restart_etalon COMMAND lcii_restart_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(lcii_restart_etalon PROPERTIES TIMEOUT 1800)
+
+# The boot chime as sound (TODO § C.3, 2026-09-07): the ASC-V8's output ring
+# is pulled like the audio host pulls it and the rendered samples are judged
+# for audibility, duration and pitch. Register/IRQ semantics live in asc_test.
+add_executable(lcii_asc_chime_etalon tests/lcii_asc_chime_etalon.cpp)
+target_link_libraries(lcii_asc_chime_etalon PRIVATE pom68k_core)
+add_test(NAME lcii_asc_chime_etalon COMMAND lcii_asc_chime_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(lcii_asc_chime_etalon PROPERTIES TIMEOUT 900)
 
 # O6 slice 1 gate: external /BERR + RTE $A/$B on the 68030 (the LC II
 # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).

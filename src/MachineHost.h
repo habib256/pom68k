@@ -83,8 +83,12 @@ inline constexpr bool kGuiTurboDefault = false;
 template <class Derived, class Mem, class Cpu, class AudioHost>
 class MachineHost {
 public:
-    MachineHost(Mem& m, Cpu& c, AudioHost& a, bool traceKeys = false)
+    MachineHost(Mem& m, Cpu& c, AudioHost& a, bool traceKeys = false,
+                bool startTurbo = kGuiTurboDefault)
         : mem(m), cpu(c), audioHost(a), traceKeys_(traceKeys) {
+        // POM68K_TURBO: the same fast-forward the GUI menu toggles, armed
+        // before the first frame so two measured arms start alike.
+        turbo.store(startTurbo, std::memory_order_relaxed);
         // POM68K_CPU_ENGINE may have started us on the JIT; mirror whatever
         // the CPU actually built itself with so the menu tick is honest.
         stEngine_.store(cpu.engine(), std::memory_order_relaxed);

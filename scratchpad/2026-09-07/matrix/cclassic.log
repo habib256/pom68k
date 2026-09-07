@@ -1,0 +1,4 @@
+=== cclassic ROM=roms/1MB ROMs/1993-02 - ECD99DC0 - Color Classic.ROM (1024 KB) disk=hdv/System 7.5 HD.dsk ===
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+cclassic: 512x384 menu 0.05 desk 0.45 SCSI 2143 -> PASS

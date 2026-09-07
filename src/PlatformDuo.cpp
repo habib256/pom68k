@@ -29,7 +29,8 @@ struct MscMachine
     GuiHostServices& services;
     MscMachine(MscMemory& m, MscCpu& c, MacAudioHost& a,
                GuiHostServices& hostServices)
-        : Base(m, c, a, hostServices.config().diagnostics().keyTrace),
+        : Base(m, c, a, hostServices.config().diagnostics().keyTrace,
+               hostServices.config().devices().turbo),
           services(hostServices) {}
     static constexpr bool kStereo = false;
 

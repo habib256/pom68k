@@ -238,6 +238,19 @@ int main() {
         // nothing to write — which is exactly what made the first version
         // of this gate see zero writes. With the bit set, a read-write
         // mount MUST clear it, so the guest write is deterministic.
+        // A raw 1.44 MB image with a trailer: disks35/Stuffit_Expander_5.5.dsk
+        // is 1 474 560 data bytes plus 84 bytes of junk and no DiskCopy 4.2
+        // header (its header fields are zero). SonyDrive refuses a size it
+        // cannot name rather than guess, so the private copy is trimmed to
+        // the medium when the HFS MDB sits at $400 — the raw layout.
+        if (floppyOrig.size() > SonyDrive::kSize1440K &&
+            floppyOrig.size() < SonyDrive::kSize1440K + 512 &&
+            floppyOrig.size() >= 0x402 &&
+            floppyOrig[0x400] == 0x42 && floppyOrig[0x401] == 0x44) {
+            std::printf("floppy: trimming a %zu-byte raw image to the 1.44 MB "
+                        "medium\n", floppyOrig.size());
+            floppyOrig.resize(SonyDrive::kSize1440K);
+        }
         if (floppyOrig.size() >= 0x40C)
             floppyOrig[0x40A] = uint8_t(floppyOrig[0x40A] | 0x01);
         floppyCopy = "lcii_beyond_floppy.dsk";
@@ -615,8 +628,53 @@ int main() {
                     mem.scsiDisk().image() != hdSnap ? "CHANGED" : "untouched");
         std::printf("floppy: guest wrote to the medium: %s\n",
                     guestWrote ? "yes (sectors committed)" : "NO");
-        // Eject flushes the committed sectors to the host file (temp +
-        // rename) — the supported flush point, same as floppy_persist_test.
+        // Let the GUEST eject. Until 2026-09-07 the host forced the eject
+        // here, and the folder the Finder had visibly created (the Cmd-N
+        // dump shows "untitled folder" in the System Tools window) never
+        // reached the host file: the catalog write was still in the
+        // System's cache, and a host-side eject is a disk pulled out of a
+        // running machine. Put Away (Cmd-Y) on the volume's desktop icon
+        // is what flushes and unmounts it. Close the volume window first
+        // so the desktop takes the type-select; "system t" disambiguates
+        // the floppy from the System Folder alias also on this desktop.
+        // MacPack is an English System, so QWERTY codes are the guest's.
+        // Close EVERY Finder window (Cmd-Option-W), not just the floppy's:
+        // MacPack opens its Games window at boot, and with it frontmost
+        // the type-select below selected "Infocom+" in that window and Put
+        // Away had nothing to eject (2026-09-07 dump).
+        mem.keyEvent(0x37, true);            // Cmd
+        runFrames(12);
+        mem.keyEvent(0x3A, true);            // Option
+        runFrames(12);
+        mem.keyEvent(0x0D, true);            // 'w'
+        runFrames(75);
+        mem.keyEvent(0x0D, false);
+        mem.keyEvent(0x3A, false);
+        mem.keyEvent(0x37, false);
+        runFrames(300);
+        for (uint8_t code : {uint8_t(0x01), uint8_t(0x10), uint8_t(0x01),
+                             uint8_t(0x11), uint8_t(0x0E), uint8_t(0x2E),
+                             uint8_t(0x31), uint8_t(0x11)})
+            keyTap(code);                    // "system t"
+        runFrames(30);
+        mem.keyEvent(0x37, true);            // Cmd
+        runFrames(6);
+        keyTap(0x10);                        // 'y' — Put Away: flush + eject
+        mem.keyEvent(0x37, false);
+        long ejectFrames = 0;
+        for (; ejectFrames < 1800 && drv.hasDisk(); ejectFrames += 30)
+            runFrames(30);
+        const bool guestEjected = !drv.hasDisk();
+        std::printf("floppy: guest Put Away %s after %ld frames\n",
+                    guestEjected ? "ejected the medium" : "did NOT eject",
+                    ejectFrames);
+        {
+            std::vector<uint32_t> fb2;
+            screen(fb2);
+            dump("lcii_beyond_floppy_putaway.ppm", fb2);
+        }
+        // The host-side eject is now only the belt: on a medium the guest
+        // already ejected it flushes nothing new.
         drv.eject();
         std::ifstream back(floppyCopy, std::ios::binary);
         std::vector<uint8_t> after((std::istreambuf_iterator<char>(back)),
@@ -654,7 +712,11 @@ int main() {
         // reproduces it) and fails there — init dialog, no icon, no write.
         // `got` (the Cmd-N folder ON the floppy) stays printed-not-asserted:
         // the catalog write is a separate open question (TODO §2).
+        // Since 2026-09-07 the catalog write IS asserted: the folder the
+        // guest created must be in the host file after the guest's own Put
+        // Away, and the guest must have ejected the medium itself.
         ok = !cpu.isHalted() && responded && stripDelta >= 50 && guestWrote
+             && guestEjected && grewF < folderprobe::kCount
              && changed && sizeOk && stillHfs && reinsert;
         std::remove(floppyCopy.c_str());
     } else {

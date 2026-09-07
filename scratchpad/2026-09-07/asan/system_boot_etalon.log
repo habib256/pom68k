@@ -1,0 +1,5 @@
+ASSET rom    "roms/macplus.rom" 131072 B sha256 dd908e2b65772a6b1f0c859c24e9a0d3dcde17b1c6a24f4abd8955846d7895e7
+ASSET floppy "disks35/Disk605.dsk" 819200 B sha256 533a3e3045868b723ea78c74368e55f9b2602e0e537f6b56a299b6188bfad9e6  HFS "System Tools" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+menu bar black 0.08 (want <0.30), desktop 0.50 (want ~0.50), track 9
+IWM health: polls 2008084, hits 542317 (27.0%), overwritten 678906, nibbles 1217543
+system_boot_etalon: System booted to the Finder, gate passed

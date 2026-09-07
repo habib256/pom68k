@@ -30,7 +30,8 @@ struct CompactMachine
     CompactMachine(MacMemory& m, Cpu68k& c, MacVideo& v, MacAudio& sound,
                    MacAudioHost& host, GuiHostServices& hostServices)
         : Base(m, c, host,
-               hostServices.config().diagnostics().keyTrace),
+               hostServices.config().diagnostics().keyTrace,
+               hostServices.config().devices().turbo),
           video(v), audio(sound), services(hostServices) {}
 
     struct Status { uint32_t pc; long long clock; bool overlay; };

@@ -38,7 +38,8 @@ struct DafbMachine
     GuiHostServices& services;
     DafbMachine(Mem& m, Cpu& c, MacAudioHost& a,
                 GuiHostServices& hostServices)
-        : Base(m, c, a, hostServices.config().diagnostics().keyTrace),
+        : Base(m, c, a, hostServices.config().diagnostics().keyTrace,
+               hostServices.config().devices().turbo),
           services(hostServices),
           heartbeatEnabled_(hostServices.config().diagnostics().keyTrace),
           freezeProbeEnabled_(

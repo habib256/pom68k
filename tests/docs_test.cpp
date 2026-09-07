@@ -547,7 +547,7 @@ int main() {
                                           pom68k::StartupDomain::Jit))
             ++jitOptionCount;
     check(sizeof(pom68k::startup_option::kAll) /
-                  sizeof(pom68k::startup_option::kAll[0]) == 133 &&
+                  sizeof(pom68k::startup_option::kAll[0]) == 134 &&
               jitOptionCount == 41 &&
               jitDecoder.find("option::JitProfile") != std::string::npos &&
               jitDecoder.find("kConfigurationKeys") == std::string::npos &&

@@ -1,0 +1,4 @@
+=== lc3 ROM=roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM (1024 KB) disk=hdv/System 7.5 HD.dsk ===
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 81920 = 82016 blocks)
+lc3: 512x384 depth 3 menu 0.05 desk 0.45 SCSI 2079 -> PASS

@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <string>
@@ -385,5 +386,53 @@ int main() {
         beyondboot::dumpPpm((std::string("duo_beyond_") + mode + ".ppm").c_str(),
                             fb, W, H);
     };
+    // ── input: keyboard matrix + trackball at guest level (TODO § C.3) ──
+    // Independent of persist: nothing is created or flushed. The trackball
+    // is judged by the closed-loop steer itself — the guest's own Mouse
+    // global reached three targets — and the keyboard by KeyMap ($174),
+    // the System's map of keys currently down: a held key must set a bit
+    // while it is held and clear it when released. Both are read through
+    // the PMMU walk, like every other global on this machine.
+    if (const char* m = getenv("POM68K_BEYOND"); m && !std::strcmp(m, "input")) {
+        if (!boot()) { std::fprintf(stderr, "FAIL: no Finder\n"); return 1; }
+        h.focusFinder();
+        const std::string front = curApp();
+        std::printf("input: front application '%s'\n", front.c_str());
+        const bool reached = steer(120, 200, 30) && steer(500, 60, 30) &&
+                             steer(kDeskX, kDeskY, 30);
+        std::printf("input: trackball steer to three targets %s\n",
+                    reached ? "reached" : "FAILED");
+        auto keyMap = [&](uint8_t* out) {
+            for (int i = 0; i < 8; i++) {
+                uint32_t v = 0;
+                if (!peekLog(0x174 + uint32_t(i), 1, &v)) return false;
+                out[i] = uint8_t(v);
+            }
+            return true;
+        };
+        uint8_t idle[8] = {}, held[8] = {}, released[8] = {};
+        keyMap(idle);
+        // 'g' ($05): a plain letter, on the matrix and harmless on the
+        // desktop (a type-select with no match).
+        mem.keyEvent(0x05, true);
+        bool sawDown = false;
+        for (int f = 0; f < 90 && !sawDown; f++) {
+            frames(1);
+            if (keyMap(held))
+                for (int i = 0; i < 8; i++) if (held[i] != idle[i]) sawDown = true;
+        }
+        mem.keyEvent(0x05, false);
+        frames(60);
+        bool cleared = keyMap(released);
+        for (int i = 0; i < 8 && cleared; i++) if (released[i] != idle[i]) cleared = false;
+        std::printf("input: KeyMap %s the held key and %s on release\n",
+                    sawDown ? "showed" : "NEVER showed",
+                    cleared ? "cleared" : "did NOT clear");
+        if (h.dump) h.dump("input");
+        const bool ok = !cpu.isHalted() && front == "Finder" && reached &&
+                        sawDown && cleared;
+        std::printf("%s — PowerBook Duo 230 input etalon\n", ok ? "PASSED" : "FAILED");
+        return ok ? 0 : 1;
+    }
     return beyondboot::run(h);
 }

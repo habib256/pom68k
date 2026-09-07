@@ -97,6 +97,8 @@ concept IntegerStartupOption =
       startup_policy::Presence)                                              \
     X(SpeedLog, "POM68K_SPEED_LOG", StartupDomain::Product,                \
       startup_policy::EnabledBoolean)                                        \
+    X(Turbo, "POM68K_TURBO", StartupDomain::Product,                       \
+      startup_policy::EnabledBoolean)                                        \
     X(SpeedLogSkip, "POM68K_SPEED_LOG_SKIP", StartupDomain::Product,       \
       startup_policy::NonnegativeDecimalInteger)                             \
     X(SpeedLogCount, "POM68K_SPEED_LOG_COUNT", StartupDomain::Product,     \

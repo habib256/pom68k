@@ -1,0 +1,233 @@
+Test project /Users/mercure/src/pom68k/build
+      Start 240: file_size_budget_test
+      Start  39: input_journal_test
+      Start  33: macip_gw_test
+      Start   8: iwm_read_test
+      Start  94: r65c02_test
+      Start  77: floppy_sound_test
+      Start   7: iwm_write_test
+      Start   4: contention_test
+ 1/86 Test #240: file_size_budget_test .................***Failed    0.46 sec
+FAIL  cmake/Pom68kMachineGates.cmake:      777 lines, ceiling 740 (+37)
+FAIL  src/PlatformCompact.cpp:      173 lines, ceiling 172 (+1)
+FAIL  src/PlatformDafb.cpp:      599 lines, ceiling 598 (+1)
+FAIL  src/PlatformDuo.cpp:      142 lines, ceiling 141 (+1)
+FAIL  src/PlatformSonora.cpp:      289 lines, ceiling 288 (+1)
+FAIL  src/PlatformToby.cpp:      311 lines, ceiling 309 (+2)
+FAIL  src/PlatformV8.cpp:      205 lines, ceiling 204 (+1)
+FAIL  src/RuntimeConfigProduct.cpp:       53 lines, ceiling 52 (+1)
+
+The rule is CLAUDE.md's first convention: one concern per file.
+A new platform's GUI runner is a spec row, not another 350 lines.
+
+      Start  76: swim2_media_test
+ 2/86 Test  #33: macip_gw_test .........................   Passed    0.87 sec
+      Start  56: via6522_parity_test
+ 3/86 Test  #77: floppy_sound_test .....................   Passed    1.31 sec
+      Start  50: pseudovia_test
+ 4/86 Test  #39: input_journal_test ....................   Passed    1.88 sec
+      Start   2: cpu_smoke
+ 5/86 Test   #7: iwm_write_test ........................   Passed    2.66 sec
+      Start  91: q605_turboscsi_test
+ 6/86 Test  #94: r65c02_test ...........................   Passed    2.73 sec
+      Start  75: swim2_test
+ 7/86 Test   #8: iwm_read_test .........................   Passed    3.15 sec
+      Start  42: store_inventory_test
+ 8/86 Test   #4: contention_test .......................   Passed    3.51 sec
+      Start  30: atalk_stack_test
+ 9/86 Test  #76: swim2_media_test ......................   Passed    3.53 sec
+      Start  60: asc_easc_test
+10/86 Test  #56: via6522_parity_test ...................   Passed    3.48 sec
+      Start  93: scc_engine_test
+11/86 Test  #50: pseudovia_test ........................   Passed    3.53 sec
+      Start  34: daynaport_test
+12/86 Test   #2: cpu_smoke .............................   Passed    3.49 sec
+      Start  31: afp_server_test
+13/86 Test  #91: q605_turboscsi_test ...................   Passed    3.18 sec
+      Start  92: scc_baud_test
+14/86 Test  #75: swim2_test ............................   Passed    3.58 sec
+      Start  80: pic1654s_test
+15/86 Test  #42: store_inventory_test ..................   Passed    3.56 sec
+      Start  88: q605_dafb_test
+16/86 Test  #30: atalk_stack_test ......................   Passed    3.67 sec
+      Start  29: ltoudp_test
+17/86 Test  #60: asc_easc_test .........................   Passed    3.71 sec
+      Start  52: flux_pll_test
+18/86 Test  #93: scc_engine_test .......................   Passed    3.86 sec
+      Start 170: floppy_persist_test
+19/86 Test  #34: daynaport_test ........................   Passed    3.79 sec
+      Start  95: applepic_test
+20/86 Test  #31: afp_server_test .......................   Passed    3.67 sec
+      Start  10: savestate_test
+21/86 Test  #92: scc_baud_test .........................   Passed    3.60 sec
+      Start  32: pap_server_test
+22/86 Test  #80: pic1654s_test .........................   Passed    3.55 sec
+      Start  83: v8_video_test
+23/86 Test  #88: q605_dafb_test ........................   Passed    3.65 sec
+      Start   3: demo_screenshot
+24/86 Test  #29: ltoudp_test ...........................   Passed    3.55 sec
+      Start  58: ncr53c96_queue_test
+25/86 Test  #52: flux_pll_test .........................   Passed    3.46 sec
+      Start  19: scsi_target_test
+26/86 Test #170: floppy_persist_test ...................   Passed    3.44 sec
+      Start 169: scsi_cdrom_test
+27/86 Test  #95: applepic_test .........................   Passed    3.48 sec
+      Start  51: v8_ramsize
+28/86 Test  #10: savestate_test ........................   Passed    3.49 sec
+      Start  28: llap_loop_test
+29/86 Test  #32: pap_server_test .......................   Passed    3.58 sec
+      Start  87: v8_raster_test
+30/86 Test  #83: v8_video_test .........................   Passed    3.70 sec
+      Start  86: raster_equiv_test
+31/86 Test   #3: demo_screenshot .......................   Passed    3.71 sec
+      Start  61: q700_turboscsi_test
+32/86 Test  #58: ncr53c96_queue_test ...................   Passed    3.72 sec
+      Start 181: nubus_test
+33/86 Test  #19: scsi_target_test ......................   Passed    3.82 sec
+      Start  82: video_beam_test
+34/86 Test #169: scsi_cdrom_test .......................   Passed    3.75 sec
+      Start  63: q605_asc_test
+35/86 Test  #51: v8_ramsize ............................   Passed    3.79 sec
+      Start  55: scc_int_test
+36/86 Test  #28: llap_loop_test ........................   Passed    3.77 sec
+      Start  90: quadra_event_scheduler_test
+37/86 Test  #87: v8_raster_test ........................   Passed    3.79 sec
+      Start  79: egret_test
+38/86 Test  #86: raster_equiv_test .....................   Passed    3.74 sec
+      Start   6: gcr_test
+39/86 Test  #61: q700_turboscsi_test ...................   Passed    3.76 sec
+      Start  62: asc_test
+40/86 Test #181: nubus_test ............................   Passed    3.75 sec
+      Start  54: valkyrie_test
+41/86 Test  #82: video_beam_test .......................   Passed    3.67 sec
+      Start  53: valkyrie_i2c_test
+42/86 Test  #63: q605_asc_test .........................   Passed    3.86 sec
+      Start  11: savestate_v8_test
+43/86 Test  #55: scc_int_test ..........................   Passed    3.78 sec
+      Start  44: peripheral_lle_test
+44/86 Test  #90: quadra_event_scheduler_test ...........   Passed    3.98 sec
+      Start  57: rtc_pram_test
+45/86 Test  #79: egret_test ............................   Passed    3.83 sec
+      Start  49: cpu_wrapper_smoke
+46/86 Test   #6: gcr_test ..............................   Passed    3.80 sec
+      Start 180: declrom_test
+47/86 Test  #62: asc_test ..............................   Passed    3.62 sec
+      Start   9: swim1_test
+48/86 Test  #54: valkyrie_test .........................   Passed    3.73 sec
+      Start  81: adbline_test
+49/86 Test  #53: valkyrie_i2c_test .....................   Passed    3.79 sec
+      Start  85: sonora_video_test
+50/86 Test  #11: savestate_v8_test .....................   Passed    3.78 sec
+      Start  27: scc_ext_test
+51/86 Test  #44: peripheral_lle_test ...................   Passed    3.65 sec
+      Start  89: q605_event_scheduler_test
+52/86 Test  #57: rtc_pram_test .........................   Passed    3.56 sec
+      Start  59: msc_parity_test
+53/86 Test  #49: cpu_wrapper_smoke .....................   Passed    3.66 sec
+      Start 197: jit_store_guard_a64_test
+54/86 Test #180: declrom_test ..........................   Passed    3.59 sec
+      Start 179: jit_restart_write_030_test
+55/86 Test   #9: swim1_test ............................   Passed    3.67 sec
+      Start  38: machinehost_test
+56/86 Test  #81: adbline_test ..........................   Passed    3.58 sec
+      Start 192: jit_copyback_write_040_test
+57/86 Test  #85: sonora_video_test .....................   Passed    3.58 sec
+      Start 182: toby_test
+58/86 Test  #27: scc_ext_test ..........................   Passed    3.46 sec
+      Start 191: jit_asset_free_lockstep_test
+59/86 Test  #89: q605_event_scheduler_test .............   Passed    3.63 sec
+      Start  13: savestate_040_test
+60/86 Test  #59: msc_parity_test .......................   Passed    3.61 sec
+      Start 178: berr030_test
+61/86 Test #197: jit_store_guard_a64_test ..............   Passed    3.65 sec
+      Start  37: asset_lock_test
+62/86 Test  #37: asset_lock_test .......................   Passed    0.37 sec
+      Start 201: callm_rtm_test
+63/86 Test #179: jit_restart_write_030_test ............   Passed    3.93 sec
+      Start 198: cache040_test
+64/86 Test  #38: machinehost_test ......................   Passed    3.92 sec
+      Start 200: fpu040_test
+65/86 Test #192: jit_copyback_write_040_test ...........   Passed    3.97 sec
+      Start  43: folderprobe_test
+66/86 Test #182: toby_test .............................   Passed    3.90 sec
+      Start 199: fpu_sanity
+67/86 Test  #13: savestate_040_test ....................   Passed    4.08 sec
+      Start  36: fixture_store_test
+68/86 Test #178: berr030_test ..........................   Passed    3.87 sec
+      Start  35: asset_fingerprint_test
+69/86 Test #201: callm_rtm_test ........................   Passed    3.43 sec
+      Start  25: dir2hfs_selftest
+70/86 Test  #25: dir2hfs_selftest ......................   Passed    0.04 sec
+      Start 193: jit_copyback_write_040_control_test
+71/86 Test #193: jit_copyback_write_040_control_test ...   Passed    0.02 sec
+      Start  41: config_test
+72/86 Test #198: cache040_test .........................   Passed    3.61 sec
+      Start 196: jit_copyback_pair_040_control_test
+73/86 Test #196: jit_copyback_pair_040_control_test ....   Passed    0.02 sec
+      Start 194: jit_copyback_bsr_040_test
+74/86 Test #194: jit_copyback_bsr_040_test .............   Passed    0.02 sec
+      Start 195: jit_copyback_pair_040_test
+75/86 Test #195: jit_copyback_pair_040_test ............   Passed    0.02 sec
+      Start 203: jit_backend_parity_test
+76/86 Test #200: fpu040_test ...........................   Passed    3.66 sec
+      Start 202: jit_backend_test
+77/86 Test  #43: folderprobe_test ......................   Passed    3.68 sec
+      Start  40: docs_test
+78/86 Test  #40: docs_test .............................   Passed    0.20 sec
+79/86 Test #199: fpu_sanity ............................   Passed    3.75 sec
+80/86 Test  #36: fixture_store_test ....................   Passed    3.00 sec
+81/86 Test  #35: asset_fingerprint_test ................   Passed    3.11 sec
+82/86 Test  #41: config_test ...........................***Failed    3.13 sec
+ok   harvested the knob surface from the tree (222 names)
+ok   config_knobs.tsv has one exact row per harvested knob (222 rows)
+ok   configured gate roster is available to config_test
+note: 5 gate(s) exist only on the other host; a knob may cite them
+ok   all four lifecycle classes are represented (product=68, diagnostic=52, test=87, chantier=15)
+ok   DEV.md § 5 found
+ok   DEV.md § 5 + POM68K_JIT.md declare 207 names and 4 prefixes
+FAIL the code reads `POM68K_CHIME_FRAMES` and no document mentions it (DEV.md § 5)
+FAIL the code reads `POM68K_RESTART_DISCOVER` and no document mentions it (DEV.md § 5)
+FAIL every knob the code reads is documented (222 checked)
+FAIL DEV.md documents `POM68K_JIT_WIN32` but nothing in the tree reads it — remove it, or list it under **Retired** with the reason
+FAIL every documented knob exists in the code (207 checked, 8 retired)
+ok   retired knob `POM68K_PERIPH_BATCH` is absent from the tree
+ok   retired knob `POM68K_PGE_ADB` is absent from the tree
+ok   retired knob `POM68K_PGE_ADBMOUSE` is absent from the tree
+ok   retired knob `POM68K_PGE_ADBRX` is absent from the tree
+ok   retired knob `POM68K_PGE_CB1BYTE` is absent from the tree
+ok   retired knob `POM68K_PGE_CB1INT` is absent from the tree
+ok   retired knob `POM68K_PGE_CHARGER` is absent from the tree
+ok   retired knob `POM68K_Q900_ADB` is absent from the tree
+FAILED
+
+83/86 Test #203: jit_backend_parity_test ...............   Passed    3.11 sec
+84/86 Test #202: jit_backend_test ......................   Passed    3.13 sec
+85/86 Test #191: jit_asset_free_lockstep_test ..........   Passed   10.11 sec
+      Start   1: gui_smoke_test
+86/86 Test   #1: gui_smoke_test ........................   Passed    0.18 sec
+
+98% tests passed, 2 tests failed out of 86
+
+Label Time Summary:
+asset-none          = 278.46 sec*proc (86 tests)
+gui                 =   0.18 sec*proc (1 test)
+host-a64            =   3.65 sec*proc (1 test)
+host-any            = 260.63 sec*proc (79 tests)
+host-native         =  14.18 sec*proc (6 tests)
+jit                 =  28.00 sec*proc (10 tests)
+jit-fast            =  24.15 sec*proc (8 tests)
+m030                =   7.19 sec*proc (2 tests)
+m040                =  29.16 sec*proc (8 tests)
+scope-component     = 243.58 sec*proc (73 tests)
+scope-engine        =  28.00 sec*proc (10 tests)
+scope-repository    =   6.89 sec*proc (3 tests)
+smoke               =   3.13 sec*proc (1 test)
+tier-daily          = 278.46 sec*proc (86 tests)
+unit                = 278.28 sec*proc (85 tests)
+
+Total Test time (real) =  36.79 sec
+
+The following tests FAILED:
+	 41 - config_test (Failed)                              asset-none host-any jit-fast scope-repository tier-daily unit
+	240 - file_size_budget_test (Failed)                    asset-none host-any scope-component tier-daily unit
+Errors while running CTest

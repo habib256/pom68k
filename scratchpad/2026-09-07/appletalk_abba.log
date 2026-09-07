@@ -1,0 +1,8 @@
+hub-on  n=40 mean_ratio=8,7500
+hub-off n=40 mean_ratio=8,9000
+hub-off n=40 mean_ratio=8,1250
+hub-on  n=40 mean_ratio=8,0000
+hub-on  n=40 mean_ratio=8,3500
+hub-off n=40 mean_ratio=7,0000
+hub-off n=40 mean_ratio=8,7750
+hub-on  n=40 mean_ratio=8,0750

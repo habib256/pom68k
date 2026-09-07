@@ -1,0 +1,5 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+FAIL: could not insert lcii_beyond_floppy.dsk
+Finder up (SCSI 9618)
+floppy: disks35/Stuffit_Expander_5.5.dsk, 1474644 bytes, HFS=1, drAtrb=$0100 at insert

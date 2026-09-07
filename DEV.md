@@ -1669,7 +1669,9 @@ the `docs/CACHE_040.md` M0 probe),
 `POM68K_MACIP_DEBUG`, and the IIfx trio `POM68K_IIFX_IO_TRACE` (unknown
 I/O touches), `POM68K_IIFX_SCSI_TRACE` (5380/SCSIDMA registers with PC),
 `POM68K_IIFX_ADB_TRACE` (ADB line-state transitions + decoded commands).
-`POM68K_SPEED_LOG` = 1 prints the GUI menu's half-second real-time ratio;
+`POM68K_TURBO` = 1 starts the machine thread in the GUI's fast-forward (the
+menu still toggles it), so a measurement can start every arm the same way
+(2026-09-07). `POM68K_SPEED_LOG` = 1 prints the GUI menu's half-second real-time ratio;
 `POM68K_SPEED_LOG_SKIP` = N discards N updates and
 `POM68K_SPEED_LOG_COUNT` = N closes the GUI after N printed samples.
 `POM68K_INPUT_RECORD` = `<path>` starts the session with its input journal
@@ -1713,6 +1715,10 @@ Mix, FPU and Color QuickDraw dialogs before the ordinary CPU phase),
 `POM68K_SPEEDO_MODE` (`cpu` by default, or an individually attributable
 `mix`, `fpu` or `graphics` family; graphics selects all five advertised
 monochrome/2/4/8/16-bit rows),
+`POM68K_RESTART_DISCOVER` (`lcii_restart_etalon`: hold the Spécial menu
+open and dump it instead of restarting, to read item rows off the guest's
+own screen), `POM68K_CHIME_FRAMES` (`lcii_asc_chime_etalon`: how many
+boot frames of ASC output to capture, default 900),
 `POM68K_FRAMES`, `POM68K_MATRIX_FRAMES` (finder_boot_matrix: widen the
 Plus cell's System-6 budget for a System 7 image), `POM68K_BENCH_*`,
 `POM68K_PROBE*`,

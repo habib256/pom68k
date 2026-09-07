@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the Cmd-N folder ON the floppy stays printed-not-asserted" (lcii_floppy_etalon since 2026-08-05) — the Finder did create it every time; the gate's own host-forced eject discarded the catalog write still in the guest's cache** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
 - **"the SimCity census plays BLACK FOREST MONSTRE" (2026-08-27) — it had been playing TED CITY, the alphabetical neighbour of a prefix typed into the wrong window; and every LC II type-select on GISTPERSO had been sending QWERTY key codes to an AZERTY System, so "black forest m" arrived as "blqck forest ,"** → [2026-09-07 (third) — SimCity 2000 becomes a gate…](#2026-09-07-simcity-etalon)
 - **"the whole F-line stays out of a block" — the FPU general window `$F200-$F23F` changes FPU state only; it is now an exact-replay block member, −11.6 % on Speedometer's isolated direct-FPU phase, and a cross-binary "before" that seemed to contradict the knob turned out to be a fresh configure's LTO+native defaults** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
 - **"Speedometer" meant only Performance Rating / CPU in the repaired census — the application also has a ten-test integer/floating mix, three direct-FPU tests and five Color QuickDraw depths; all are now separate, paired A64/`threaded` phases** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
@@ -348,6 +349,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Product scenarios — applications, beyond-boot legs and persistence
 
+- **what the product tier's coverage is against the asset-free tier's, which src/ files no gate reaches, whether the default engines survive ASan on real boots, and what the AppleTalk hub costs at equal arms** → [2026-09-07 (sixth) — Tier C's sweep…](#2026-09-07-tier-c-sweep)
+- **why a host-forced eject lost the folder the Finder had visibly created, how Put Away from the guest fixes it on SWIM1 and SWIM2, and what the 1.44 MB attempt on the LC II shows** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
 - **how a guest-initiated restart is driven and judged — the Shutdown Manager, the volume flush, the ROM warm start and a second boot that must read the disk again** → [2026-09-07 (fourth) — The guest restarts itself…](#2026-09-07-restart-etalon)
 - **how SimCity 2000 is launched, simulated and saved as a gate, why `CurApName` and the city's own title bar are the observables, and how the interpreter and the A64 generator are compared in one process** → [2026-09-07 (third) — SimCity 2000 becomes a gate…](#2026-09-07-simcity-etalon)
 - **the first beyond-boot legs (soak, persist, launch) on the LC II** → [2026-07-24 — Beyond-boot gates on the LC II…](#2026-07-24--beyond-boot-gates-on-the-lc-ii-soak-persist-launch-3-ctest-gates-mcu-clock-drift-fix)
@@ -420,6 +423,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07 (sixth)** — [Tier C's sweep: five more machines in the boot matrix, the Duo's input and the LC II's chime as gates, three real boots clean under ASan, the product tier's coverage, a Cortex-A76 package, a scriptable turbo and an AppleTalk hub that costs nothing measurable](#2026-09-07-tier-c-sweep)
+- **2026-09-07 (fifth)** — [The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded](#2026-09-07-floppy-guest-write)
 - **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](#2026-09-07-restart-etalon)
 - **2026-09-07 (third)** — [SimCity 2000 becomes a gate: launched by opening its heaviest city, simulated, saved — identically under the interpreter and the A64 generator, once the harness typed on the guest's own keyboard](#2026-09-07-simcity-etalon)
 - **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](#2026-09-07-tier-b-closed)
@@ -857,6 +862,141 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-tier-c-sweep"></a>
+## 2026-09-07 (sixth) — Tier C's sweep: five more machines in the boot matrix, the Duo's input and the LC II's chime as gates, three real boots clean under ASan, the product tier's coverage, a Cortex-A76 package, a scriptable turbo and an AppleTalk hub that costs nothing measurable
+
+Eight tier-C items closed in one pass, each on its own observable.
+
+**`finder_boot_matrix` grows five cells.** Classic II, LC, Color Classic,
+LC III and the LC 520 all-in-one are constructed exactly as their boot
+etalons construct them — V8 model switch and the LC's 68020, Sonora with
+the AIO's Cuda, box id and 640×480 sense — and judged by those etalons'
+signatures. Classic II, LC, Color Classic and LC III boot `System 7.5
+HD.dsk` to the Finder (menu 0.05–0.09, desktop 0.45–0.46, 2 076–2 143 SCSI
+commands); the LC 520 boots GISTPERSO at 640×480×8 (menu 0.15, desktop
+0.62, 2 140 commands). One image across machines, one machine across
+images, from the command line.
+
+**`duo230_input_etalon`** judges the PowerBook's two input paths at guest
+level and independently of the persist leg: the closed-loop trackball
+steer reaches three targets by the guest's own Mouse global through the
+PMMU walk, and a held key appears in KeyMap (`$174`) while held and clears
+on release, with `CurApName == Finder` proved first — the Startup-Items
+Stickies lesson from 2026-08-15. Registered on `duo_beyond_etalon` as
+`POM68K_BEYOND=input`.
+
+**`lcii_asc_chime_etalon`** renders the boot chime the way the audio host
+does — the ASC-V8 output ring pulled every frame at 22 257 Hz — and judges
+the samples, not the registers. The first capture (`lcii_chime.wav`) shows
+one 1 160 ms span at RMS ≈ 13 000, whose first 340 ms sit on a DC level with
+no zero crossing before the chord starts; the zero-crossing estimator then
+reads 500–1 125 Hz, a chord's mixed crossings rather than one note. The
+gate pins what that instrument can honestly claim: at least 600 ms tonal
+(820 measured), no span over 3 s, pitch inside 300–1 500 Hz, spread of at
+least 100 Hz — audible, bounded, varied.
+
+**Three real boots under ASan/UBSan, default engines.** `build-asan`
+(RelWithDebInfo, address+undefined) rebuilt on the current tree: the Plus's
+System 6 floppy boot (`system_boot_etalon`, 68000 interpreter), the LC II
+(`lcii_boot_etalon`, 68030 on the native A64 generator) and the Quadra 605
+(`q605_boot_etalon`, 68040 native) each reach the Finder with **zero**
+sanitizer reports; `detect_leaks` is unsupported on this platform and was
+not requested. The interpreter oracle and both accelerated families walk a
+whole ROM boot clean.
+
+**Coverage with the assets.** A `POM68K_COVERAGE=ON` Debug tree ran the
+twelve-platform `etalon-core` tier (207 s) and the asset-free tier under
+the same instrumentation:
+
+| tier | lines executed | functions | src/ files never reached |
+|---|---:|---:|---:|
+| `etalon-core` (the product) | 24.94 % (19 620 / 78 671) | 28.42 % | 98 |
+| `asset-none` (the CI floor) | 3.85 % | 6.32 % | 180 |
+
+The 98-file zero list of the product tier is the honest inventory: the GUI
+and its composition (`RuntimeConfig*`, `ProcessEnvironment`, `Platform*`),
+save states, the AFP/AppleShare server and the network stack — code only a
+GUI session or the application/network gates exercise. Reports and both
+zero lists: `scratchpad/2026-09-07/coverage/`.
+
+**The Cortex-A76 package exists.** `pi400.yml` was dispatched with
+`mcpu=cortex-a76` (run 34079617764): the job logs `MCPU: cortex-a76`, the
+package README says `-mcpu=cortex-a76`, and the artifact's `usr/bin/POM68K`
+is an ELF aarch64 PIE (9 728 240 bytes, sha256 `03031549…`) distinct from
+the 2026-08-08 A72 binary (8 698 128 bytes, `00470e83…`). It cannot be
+executed on this Mac; the run is archived with both packages under
+`scratchpad/2026-09-07/pi400/` (packages not committed).
+
+**A scriptable turbo, and the hub measured at equal arms.** `POM68K_TURBO=1`
+is a product startup option (`DeviceConfig::turbo`) that arms the machine
+thread's fast-forward before its first frame, through every platform host;
+the menu still toggles it. With it, the AppleTalk hub was measured the way
+TODO § C.5 asked: same LC II, same GISTPERSO image, same turbo, same launch,
+`POM68K_SPEED_LOG` after 40 skipped samples, 40 samples per arm, A B B A
+twice. Hub on: 8.75 / 8.00 / 8.35 / 8.08 × real time; hub off: 8.90 / 8.13
+/ 7.00 / 8.78. The arms overlap entirely and the within-arm spread
+(7.0–8.9) is larger than any difference between them: at this gauge's
+resolution the hub costs nothing measurable. `POM68K_APPLETALK` stays on
+by default on that evidence.
+
+**Windows** is decided rather than pending: `threaded` is the Windows engine
+until a Windows host can run the locksteps (`POM68K_JIT.md` § 7,
+"Windows: `threaded` is the floor, by decision").
+
+What tier C still carries is external or bring-up: the SWIM1 1.44 MB mount
+(reproducer in § C.2), the Duo's full sleep/wake, a Retro68 differential
+oracle and a GUI save-state pass, the self-hosted runner, LTO in the macOS
+and MSVC artifacts, the physical Pi baseline, and the first release.
+
+---
+
+<a id="2026-09-07-floppy-guest-write"></a>
+## 2026-09-07 (fifth) — The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded
+
+`lcii_floppy_etalon` had asserted the mount, the guest's MDB write and the
+round trip since 2026-08-05, and printed the Cmd-N folder without asserting
+it — "the catalog write is a separate open question". It was not the
+Finder's question. The Cmd-N dump shows "untitled folder" in the System
+Tools window every time; what lost it was the gate's own `drv.eject()`, a
+disk pulled out of a running machine while the catalog node still sat in
+the System's cache. The guest now does the ejecting: every Finder window is
+closed (Cmd-Option-W — MacPack opens its Games window at boot, and with it
+frontmost the type-select selected "Infocom+" and Put Away had nothing to
+eject), the floppy's desktop icon is type-selected by its volume name
+("system t", to clear the System Folder alias on the same desktop), and
+Cmd-Y puts it away. The drive empties after 60 frames, the host file is
+rewritten from the flushed medium, and `'untitled folder' 0 → 2` is now an
+assertion. `floppy_persist_test` keeps the device-side plumbing.
+
+The Quadra 605's `q605_hotfloppy_etalon` gains the same leg on SWIM2, on a
+private write-back copy of `Rogue.dsk` normalised to cleanly unmounted.
+Its first run typed "rogue" into a Sticky: the 7.5.5 volume launches
+Stickies from Startup Items and Stickies was the front application, so
+Cmd-N opened a note and Put Away had no volume. The leg now clicks the
+empty lower-right desktop the way `BeyondBoot.h`'s `focusFinder` does and
+requires `CurApName == Finder` before the first gesture; then it opens the
+Rogue window from the desktop, creates the folder, closes all, selects
+"rogue" and puts it away — ejected after 60 frames, folder 0 → 2 in the
+host file, HFS intact, re-insert OK. Both gates pass under CTest.
+
+Two verifications close as recorded facts rather than as gates. The 1.44 MB
+mount on the LC II does not happen yet: `disks35/Stuffit_Expander_5.5.dsk`
+is a raw 1 474 560-byte image with 84 trailing bytes and no DiskCopy header,
+which `SonyDrive` rightly refuses; the private copy is trimmed to the
+medium, the SWIM1 switches to ISM (mode `$42`), the driver reads 68 973
+nibbles with the head on track 0 and the motor on — and the System paints
+neither an icon nor a dialog. Of 9 156 FIFO reads 2 002 hit and 68 258
+nibbles were overwritten before the CPU took them: the MFM path is not
+feeding the driver at the rate it expects. TODO § C.2 keeps the item with
+that reproducer. And the bare LC II: `lcii_boot_etalon` now honours
+`POM68K_NOFPU`, and without the 68882 the MacPack boot ends in a system
+error (menu bar 50 % black after 8 338 SCSI commands), as the gate's header
+has said since the 68882 was attached — UniversalInfo/defaultRSRCs need no
+change for the volumes this tree boots. Evidence:
+`scratchpad/2026-09-07/floppy/` and `scratchpad/2026-09-07/nofpu/`.
 
 ---
 

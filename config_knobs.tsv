@@ -49,6 +49,7 @@ POM68K_CENTRIS_BAREFPU	product	gate:centris650_boot_etalon
 POM68K_CENTRIS_CACHE_BOOST	product	gate:centris650_boot_etalon
 POM68K_CENTRIS_FPU	product	gate:fpu040_test,centris650_boot_etalon
 POM68K_CENTRIS_MODEL	product	gate:centris650_boot_etalon
+POM68K_CHIME_FRAMES	test	owner:tests/lcii_asc_chime_etalon.cpp
 POM68K_COMPACT_MODEL	test	owner:tests/compact_boot_etalon.cpp
 POM68K_CPU_ENGINE	product	gate:jit_backend_test
 POM68K_CUDA_FW	product	gate:peripheral_lle_test
@@ -194,6 +195,7 @@ POM68K_Q900_IOPBRK	diagnostic	owner:src/StartupOptions.h
 POM68K_Q900_IOPDUMP	test	owner:tests/q700_boot_etalon.cpp
 POM68K_Q900_IOPWATCH	diagnostic	owner:src/StartupOptions.h
 POM68K_Q900_IOP_TRACE	diagnostic	owner:src/StartupOptions.h
+POM68K_RESTART_DISCOVER	test	owner:tests/lcii_restart_etalon.cpp
 POM68K_SCSI_DDM_TEMPLATE	product	gate:scsi_hfs_facade_test
 POM68K_SCSI_INQUIRY	product	gate:scsi_disk_test
 POM68K_SCSI_LAT	diagnostic	owner:src/StartupOptions.h
@@ -218,6 +220,7 @@ POM68K_SPEEDO_TRACE	test	owner:tests/lcii_speedometer_census.cpp
 POM68K_SPEED_LOG	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_COUNT	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_SKIP	diagnostic	owner:src/StartupOptions.h
+POM68K_TURBO	product	gate:gui_smoke_test
 POM68K_TRAIL	test	owner:tests/centris650_boot_etalon.cpp
 POM68K_V8_HOLEVAL	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole
 POM68K_V8_IOHOLE	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole

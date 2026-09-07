@@ -87,8 +87,15 @@ int main() {
     V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    // POM68K_NOFPU=1 boots the bare LC II the way the product knob would
+    // (RuntimeConfigProduct: cpu.fpu = !present(NoFpu)). TODO § C.3 asked
+    // for this path to be walked before UniversalInfo/defaultRSRCs change:
+    // the 68882 is what the target volumes expect, and the gate's own header
+    // records the system-error-10 the bare machine takes on them.
+    const bool withFpu = std::getenv("POM68K_NOFPU") == nullptr;
     Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
-               /*withFpu=*/true, false);
+               withFpu, false);
+    if (!withFpu) std::printf("cpu: 68030 without the 68882 (POM68K_NOFPU)\n");
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }

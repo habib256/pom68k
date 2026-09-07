@@ -1731,6 +1731,45 @@ instruction is compiled at all.
 
 ---
 
+### Windows: `threaded` is the floor, by decision (2026-09-07)
+
+The x86-64 emitter speaks the System V ABI, and `X64Backend::usable()`
+answers false on a Windows build, so an automatic Windows build resolves
+every family to `threaded`. TODO § C.4 asked for a decision rather than a standing question,
+and the decision is: **`threaded` stays the Windows engine until a Win64 port
+is measured on a Windows host**, for three reasons that are about evidence,
+not effort.
+
+First, this project admits a native backend on three independent proofs —
+conformance locksteps, whole-tier stability and same-process performance —
+and none of them can be produced here: the proof hosts are an Apple-silicon
+Mac and an x86-64 Linux box, and the only Windows leg in the tree is the
+`windows` job of `release.yml`, which builds with MSVC and runs the
+asset-free tier. A Win64 emitter that compiles and passes `jit-fast` on a
+GitHub runner would have exactly the coverage-without-conformance status
+this file refuses to promote from (§ 2, invariant 3).
+
+Second, the port is real work with a real surface: the prologue/epilogue
+and the callee-saved set (RBX, RBP, RDI, RSI, R12–R15 and XMM6–XMM15 are
+non-volatile on Win64, RDI/RSI are scratch on System V), the 32-byte shadow
+space every thunk call must reserve, the RCX/RDX/R8/R9 argument order in
+every `pom68kJitStep`/access-thunk call site, and the unwind information a
+Windows process expects for generated code. Each is mechanical; none is
+free; all of it lands in the emitter whose parity with A64 is currently
+zero divergence groups, and would have to keep it there.
+
+Third, the Windows user is not losing conformance, only speed: `threaded`
+is the same exact-replay engine that is the portable floor everywhere, and
+`caps().autoFamilies = kGuestAny` on it guarantees `auto` always resolves.
+The 68030 window (`POM68K_JIT.md` § 3.4) measured `threaded` at 17.45 s
+against the native 5.69 s at 2000 frames on the LC II — a factor of three,
+and the size of what a Windows port would buy.
+
+The port reopens the day a Windows machine joins the proof hosts and can
+run `jit_lockstep_test` / `jit_lockstep_030_test` with the private assets.
+Until then the answer to "why is Windows slower" is this section, not a
+TODO line.
+
 ## 8. The data path: an inline TLB, and what it refuses
 
 Generated code cannot call `mmu040Read` (it throws). So a data address is

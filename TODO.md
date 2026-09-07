@@ -105,30 +105,40 @@ jambe : ce repro n'est plus une tâche ouverte, il est gaté.
 
 ### C.2 Médias et persistance invités
 
-- [ ] **Ajouter le beyond-boot floppy du Q605.** Monter le média depuis
-  l'invité, effectuer une action observable et vérifier l'état persistant.
-- [ ] **Ajouter une écriture floppy initiée par l'invité sur LC II.** Attendre
-  le montage réel, créer/modifier un fichier, éjecter, rouvrir l'image et
-  vérifier le contenu ; conserver `floppy_persist_test` comme garde device.
-- [ ] **Ajouter un etalon invité de montage/boot 1,44 Mo sur LC II.** Utiliser
-  `disks35/Stuffit_Expander_5.5.dsk` pour couvrir le SWIM1 depuis le système.
-- [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Étendre `bootPlus`
-  avec un chemin `insertDisk` distinct du boot SCSI.
+Les écritures floppy initiées par l'invité sont gatées depuis le 2026-09-07
+sur les deux contrôleurs : `lcii_floppy_etalon` (SWIM1) et
+`q605_hotfloppy_etalon` (SWIM2) créent un dossier sur la disquette montée, la
+rangent depuis le Finder (Cmd-Y, ce qui vide le cache et éjecte) et
+retrouvent le nom dans le fichier hôte rouvert. La leçon : une éjection
+forcée par l'hôte est une disquette arrachée d'une machine qui tourne — le
+catalogue restait dans le cache invité.
+
+- [ ] **Monter une 1,44 Mo depuis le System sur LC II.** Reproducteur
+  déterministe : `POM68K_BEYOND=floppy
+  POM68K_FLOPPY_IMG=disks35/Stuffit_Expander_5.5.dsk lcii_beyond_etalon`
+  (l'image est une brute de 1 474 560 octets suivie de 84 octets, tronquée
+  dans la copie privée). Le SWIM1 passe en ISM (mode `$42`), le pilote lit
+  68 973 nibbles, la tête reste en piste 0 moteur allumé, et le System ne
+  peint ni icône ni dialogue : 9 156 lectures FIFO pour 2 002 réussies et
+  68 258 nibbles écrasés avant lecture. Le chemin MFM du SWIM1 n'alimente
+  pas le pilote au rythme attendu ; comparer au `swim1.cpp` de MAME avant
+  d'enregistrer le gate.
+- [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Bloqué par l'actif :
+  `hdv/System 4.1.dsk` est une image SCSI de 1,5 Mo, pas une disquette ;
+  aucune 800 K System 4.1 n'est présente. `bootPlus` reçoit son chemin
+  `insertDisk` le jour où l'image existe.
 
 ### C.3 Matrice, entrée, audio et profils particuliers
 
-- [ ] **Élargir `finder_boot_matrix` aux profils récents.** Commencer par
-  Classic II, Macintosh LC, Color Classic, LC III et la famille AIO, avec une
-  cellule par image validée.
-- [ ] **Créer `duo230_input_etalon`.** Exercer clavier et trackball au niveau
-  invité, indépendamment du persist.
+Fermés le 2026-09-07 (`CHANGELOG` (sixth)) : `finder_boot_matrix` porte les
+cellules Classic II, LC, Color Classic, LC III (System 7.5) et LC 520
+(GISTPERSO) ; `duo230_input_etalon` juge clavier matriciel et trackball par
+KeyMap et le global Mouse ; `lcii_asc_chime_etalon` rend le chime de boot
+par le ring de sortie de l'ASC et en épingle durée, bande et variation de
+hauteur.
+
 - [ ] **Créer `duo230_sleep_etalon`.** Couvrir la préparation système,
   l'arrêt CPU au clamshell, le flush disque, puis un réveil complet.
-- [ ] **Ajouter une preuve de rendu audio ASC.** Couvrir la sortie audible, le
-  tempo et la variation de hauteur ; les tests de registres/IRQ ne suffisent
-  pas.
-- [ ] **Vérifier le chemin LC II sans FPU.** Refaire le boot 68030 avec
-  `POM68K_NOFPU` avant de modifier UniversalInfo/defaultRSRCs.
 
 ### C.4 Rendre la preuve portable et exploitable
 
@@ -136,22 +146,20 @@ jambe : ce repro n'est plus une tâche ouverte, il est gaté.
   `full` déclenchable par push et publier `LastTest.log` ainsi que le census
   exécutés/soft-skips. C'est ce qui transforme une preuve personnelle en
   preuve vérifiable par un tiers.
-- [ ] **Ajouter ASan sur trois boots réels.** Couvrir un 68000, un 68030 et un
-  68040 sans forcer artificiellement `POM68K_CPU_ENGINE`. Bloqué par A.2.
-- [ ] **Mesurer la couverture avec les assets.** Publier le rapport et une
-  nouvelle `coverage-zero.txt` représentant le produit, pas seulement le
-  palier CI.
 - [ ] **Activer LTO dans les artefacts.** Retirer le veto macOS après
   validation `lipo` et ajouter `/GL` + `/LTCG` au build MSVC. Donnée du
   2026-09-07 (observation, pas mesure contrôlée) : sur l'hôte M4, un build
   LTO+`-mcpu=native` est 4–5 % plus rapide que le binaire de mesure
   OFF/OFF sur la phase Graphics et la route Speedometer entière.
-- [ ] **Décider le sort du JIT x64 sous Windows.** Soit documenter `threaded`
-  comme solution permanente, soit porter prologue, registres non-volatils,
-  appels de thunks et shadow space à l'ABI Win64 derrière le tier asset-free
-  `jit-fast`.
 
 ### C.5 Matériel cible Raspberry Pi
+
+Fait le 2026-09-07 : `pi400.yml` dispatché pour `cortex-a76` (run
+34079617764, ELF aarch64 distinct de l'artefact A72 du 2026-08-08) ;
+`POM68K_TURBO` rend le turbo du GUI scriptable, et la mesure hub AppleTalk
+activé/désactivé à bras égaux ne montre aucun coût au-dessus de la
+dispersion de la jauge (`CHANGELOG` (sixth)). Ce qui reste exige un Pi
+physique.
 
 - [ ] **Établir la ligne de base POM68K sur un vrai Pi 400.** Utiliser
   `jit_bench` et `jit_bench_lcii` à budget invité fixe, archiver les
@@ -159,15 +167,6 @@ jambe : ce repro n'est plus une tâche ouverte, il est gaté.
 - [ ] **Rejouer sur ce Pi l'A/B release contre native/PGO/LTO.** Séparer
   `-mtune`, LTO et PGO, garder le même workload et exiger les mêmes empreintes
   entre les bras.
-- [ ] **Dispatcher `pi400.yml` une fois pour Cortex-A76/Pi 5.** Les deux
-  exécutions au dossier (2026-08-08) ont toutes deux tourné `MCPU:
-  cortex-a72` : la jambe A76 n'a jamais été produite. Vérifier que l'artefact
-  armv8.2-a est produit, exécutable et distinct du plancher A72 ; archiver le
-  run même si les extensions ISA ne changent pas le code généré.
-- [ ] **Rendre le turbo scriptable puis mesurer AppleTalk à bras égaux.**
-  Ajouter un réglage injecté équivalent au clic GUI, puis comparer hub
-  activé/désactivé avec `POM68K_SPEED_LOG`, même image, même mode turbo et
-  même lancement.
 
 ### C.6 Publier
 

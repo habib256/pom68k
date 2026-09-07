@@ -25,6 +25,7 @@ ProductStartupConfig parseProductStartup(
     if (const auto value = values.text(startup_option::ShareDirectory))
         config.network.shareDirectory = *value;
 
+    config.devices.turbo = values.boolean(startup_option::Turbo, false);
     config.devices.audio = values.boolean(startup_option::Audio, true);
     config.devices.driveSounds =
         values.boolean(startup_option::DriveSounds, true);

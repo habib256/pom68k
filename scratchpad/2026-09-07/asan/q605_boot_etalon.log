@@ -1,0 +1,4 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+640x480@8bpp base=$01000 stride=1024 DAFB-mode=3; menu mean/dev 203.5/71.3 desktop 145.9/64.8; SCSI=4551
+PASSED — Quadra 605 Finder in 256 colors

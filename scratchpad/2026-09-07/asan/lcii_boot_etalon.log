@@ -1,0 +1,4 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+menu bar black 0.09 (want <0.30), desktop 0.48 (want 0.35-0.65), SCSI commands 9618
+PASSED — booted to the Finder

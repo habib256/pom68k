@@ -27,13 +27,18 @@
 // POM68K_DUMP=1 writes q605_hotfloppy_*.ppm at each step.
 
 #include "AssetFingerprint.h"
+#include "FinderSignature.h"
+#include "FolderProbe.h"
 #include "Cpu040.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
 
 #include <cmath>
 #include <cstdint>
+#include <cctype>
+#include <algorithm>
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -263,7 +268,26 @@ int main() {
     // report describes. (A "present at power-on" control existed while this
     // was a probe; it answered its question -- the medium was never the
     // problem -- and left with the knob it needed.)
-    const bool accepted = mem.insertDisk(floppy);
+    // A PRIVATE copy with write-back, because the leg below makes the guest
+    // write to it (TODO § C.2, 2026-09-07): the asset must never be what
+    // changes. Normalised to cleanly-unmounted (MDB drAtrb bit 8) so the
+    // read-write mount has a deterministic first write, as on the LC II.
+    std::vector<uint8_t> floppyOrig;
+    {
+        std::ifstream fin(floppy, std::ios::binary);
+        floppyOrig.assign(std::istreambuf_iterator<char>(fin),
+                          std::istreambuf_iterator<char>());
+        if (floppyOrig.size() >= 0x40C)
+            floppyOrig[0x40A] = uint8_t(floppyOrig[0x40A] | 0x01);
+    }
+    const std::string floppyCopy = "q605_hotfloppy.dsk";
+    {
+        std::ofstream fout(floppyCopy, std::ios::binary | std::ios::trunc);
+        fout.write(reinterpret_cast<const char*>(floppyOrig.data()),
+                   std::streamsize(floppyOrig.size()));
+    }
+    mem.internalDrive().setWriteBack(true);
+    const bool accepted = mem.insertDisk(floppyCopy);
     std::printf("insert: drive %s the image\n",
                 accepted ? "accepted" : "REFUSED");
     runFrames(1800);                           // 30 s for .Sony to poll+mount
@@ -296,5 +320,141 @@ int main() {
     }
     std::printf("VERDICT: mounted — the guest stepped the head and the desktop "
                 "gained an icon\n");
-    return 0;
+
+    // ── The guest writes to the medium, and the write survives its own
+    //    eject (TODO § C.2) ──
+    // The mount opened the volume's window, so Cmd-N creates the folder ON
+    // the floppy; Return commits the name. Then close every Finder window
+    // (Cmd-Option-W), type-select the floppy's desktop icon by its volume
+    // name and Put Away (Cmd-Y): the System flushes the catalog and ejects.
+    // A host-forced eject is a disk pulled out of a running machine, and
+    // on the LC II it left the folder in the guest's cache and out of the
+    // file. This 7.5.5 volume is an English System: QWERTY codes are the
+    // guest's own.
+    long folderBefore[folderprobe::kCount];
+    folderprobe::sample(floppyOrig, folderBefore, "floppy/before");
+    auto tap = [&](uint8_t code) {
+        mem.keyEvent(code, true);
+        runFrames(4);
+        mem.keyEvent(code, false);
+        runFrames(4);
+    };
+    auto closeAll = [&]() {                    // Cmd-Option-W
+        mem.keyEvent(0x37, true);
+        runFrames(12);
+        mem.keyEvent(0x3A, true);
+        runFrames(12);
+        mem.keyEvent(0x0D, true);
+        runFrames(75);
+        mem.keyEvent(0x0D, false);
+        mem.keyEvent(0x3A, false);
+        mem.keyEvent(0x37, false);
+        runFrames(300);
+    };
+    // The volume name, read off the image's own MDB (Str27 at $424), typed
+    // as a type-select prefix on the desktop.
+    std::string volume;
+    if (floppyOrig.size() > 0x424 + 27)
+        volume.assign(reinterpret_cast<const char*>(&floppyOrig[0x425]),
+                      std::min<size_t>(floppyOrig[0x424], 27));
+    auto typeVolume = [&]() {
+        for (char c : volume) {
+            char lc = char(std::tolower(static_cast<unsigned char>(c)));
+            uint8_t code = 0xFF;
+            switch (lc) {
+                case 'a': code = 0x00; break; case 's': code = 0x01; break;
+                case 'd': code = 0x02; break; case 'f': code = 0x03; break;
+                case 'h': code = 0x04; break; case 'g': code = 0x05; break;
+                case 'z': code = 0x06; break; case 'x': code = 0x07; break;
+                case 'c': code = 0x08; break; case 'v': code = 0x09; break;
+                case 'b': code = 0x0B; break; case 'q': code = 0x0C; break;
+                case 'w': code = 0x0D; break; case 'e': code = 0x0E; break;
+                case 'r': code = 0x0F; break; case 'y': code = 0x10; break;
+                case 't': code = 0x11; break; case 'o': code = 0x1F; break;
+                case 'u': code = 0x20; break; case 'i': code = 0x22; break;
+                case 'p': code = 0x23; break; case 'l': code = 0x25; break;
+                case 'j': code = 0x26; break; case 'k': code = 0x28; break;
+                case 'n': code = 0x2D; break; case 'm': code = 0x2E; break;
+                case ' ': code = 0x31; break;
+                default: break;
+            }
+            if (code != 0xFF) tap(code);
+        }
+        runFrames(30);
+    };
+    auto command = [&](uint8_t code) {
+        mem.keyEvent(0x37, true);              // Cmd
+        runFrames(6);
+        tap(code);
+        mem.keyEvent(0x37, false);
+    };
+    // This 7.5.5 volume launches Stickies from its Startup Items, and
+    // Stickies was the front application on the first run: Cmd-N opened a
+    // note, "rogue" was typed INTO it and Put Away had nothing to eject
+    // (q605_hotfloppy_putaway.png, 2026-09-07). Bring the Finder to the
+    // front the way BeyondBoot.h's focusFinder does — click the empty
+    // lower-right desktop — and prove it with CurApName before any Finder
+    // gesture.
+    for (int i = 0; i < 120; i++) { mem.mouseMove(8, 6); runFrames(2); }
+    for (int i = 0; i < 10; i++) { mem.mouseMove(-6, -5); runFrames(2); }
+    mem.mouseButton(true);
+    runFrames(10);
+    mem.mouseButton(false);
+    runFrames(60);
+    const std::string frontApp = findersig::curApName(mem);
+    std::printf("focus: front application '%s'\n", frontApp.c_str());
+    // Open the floppy's window from the desktop so Cmd-N creates the folder
+    // ON the floppy, then commit the name.
+    closeAll();
+    typeVolume();
+    command(0x1F);                             // 'o' — Open
+    runFrames(300);
+    command(0x2D);                             // 'n' — New Folder
+    runFrames(120);
+    tap(0x24);                                 // Return — commit the name
+    runFrames(900);
+    dump("q605_hotfloppy_cmdn.ppm", decodeScreen(mem));
+    const bool guestWrote = mem.internalDrive().dirty();
+    std::printf("write: guest committed sectors to the medium: %s\n",
+                guestWrote ? "yes" : "NO");
+    closeAll();
+    typeVolume();
+    command(0x10);                             // 'y' — Put Away: flush + eject
+    long ejectFrames = 0;
+    for (; ejectFrames < 1800 && mem.internalDrive().hasDisk(); ejectFrames += 30)
+        runFrames(30);
+    const bool guestEjected = !mem.internalDrive().hasDisk();
+    std::printf("eject: Put Away on '%s' %s after %ld frames\n", volume.c_str(),
+                guestEjected ? "ejected the medium" : "did NOT eject",
+                ejectFrames);
+    dump("q605_hotfloppy_putaway.ppm", decodeScreen(mem));
+    mem.internalDrive().eject();               // belt: flushes nothing new
+    std::vector<uint8_t> hostAfter;
+    {
+        std::ifstream back(floppyCopy, std::ios::binary);
+        hostAfter.assign(std::istreambuf_iterator<char>(back),
+                     std::istreambuf_iterator<char>());
+    }
+    long got[folderprobe::kCount];
+    folderprobe::sample(hostAfter, got, "floppy/after");
+    const size_t grew = folderprobe::grew(folderBefore, got);
+    const bool stillHfs = hostAfter.size() == floppyOrig.size() &&
+        hostAfter.size() >= 0x402 && hostAfter[0x400] == 0x42 && hostAfter[0x401] == 0x44;
+    SonyDrive probe;
+    const bool reinsert = probe.insert(floppyCopy) && probe.hasDisk();
+    std::printf("persist: %s in the host file, image %s, HFS %s, re-insert %s\n",
+                grew < folderprobe::kCount
+                    ? (std::string("'") + folderprobe::kNames[grew] + "' " +
+                       std::to_string(folderBefore[grew]) + " -> " +
+                       std::to_string(got[grew])).c_str()
+                    : "NO candidate folder name appeared",
+                hostAfter != floppyOrig ? "modified" : "UNCHANGED",
+                stillHfs ? "intact" : "LOST", reinsert ? "OK" : "FAILED");
+    std::remove(floppyCopy.c_str());
+    const bool ok = !gCpu->isHalted() && frontApp == "Finder" && guestWrote &&
+                    guestEjected && grew < folderprobe::kCount && stillHfs &&
+                    reinsert;
+    std::printf("%s — Quadra 605 hot floppy: mount, guest write, Put Away\n",
+                ok ? "PASSED" : "FAILED");
+    return ok ? 0 : 1;
 }

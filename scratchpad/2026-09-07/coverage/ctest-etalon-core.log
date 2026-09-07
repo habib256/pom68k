@@ -1,0 +1,40 @@
+Test project /Users/mercure/src/pom68k/build-cov
+      Start  17: system_boot_etalon
+      Start  64: q605_boot_etalon
+      Start 102: lcii_boot_etalon
+ 1/12 Test  #17: system_boot_etalon ...............   Passed    6.68 sec
+      Start 182: macii_boot_etalon
+ 2/12 Test  #64: q605_boot_etalon .................   Passed   13.88 sec
+      Start 144: iivx_boot_etalon
+      Start 188: duo230_boot_etalon
+ 3/12 Test #102: lcii_boot_etalon .................   Passed   41.37 sec
+      Start 139: lc3_boot_etalon
+ 4/12 Test #188: duo230_boot_etalon ...............   Passed   35.74 sec
+ 5/12 Test #182: macii_boot_etalon ................   Passed   66.19 sec
+      Start 146: iisi_boot_etalon
+ 6/12 Test #146: iisi_boot_etalon .................   Passed   52.46 sec
+      Start 186: iifx_boot_etalon
+ 7/12 Test #186: iifx_boot_etalon .................   Passed    4.18 sec
+ 8/12 Test #139: lc3_boot_etalon ..................   Passed   96.95 sec
+      Start 152: centris650_boot_etalon
+      Start 156: q630_boot_etalon
+ 9/12 Test #156: q630_boot_etalon .................   Passed   14.47 sec
+      Start 161: q700_boot_etalon
+10/12 Test #144: iivx_boot_etalon .................   Passed  150.38 sec
+11/12 Test #152: centris650_boot_etalon ...........   Passed   51.26 sec
+12/12 Test #161: q700_boot_etalon .................   Passed   54.67 sec
+
+100% tests passed out of 12
+
+Label Time Summary:
+asset-required    = 1755.44 sec*proc (12 tests)
+etalon            = 1755.44 sec*proc (12 tests)
+etalon-core       = 1755.44 sec*proc (12 tests)
+host-any          = 1755.44 sec*proc (12 tests)
+m030              = 1279.72 sec*proc (6 tests)
+m040              = 402.86 sec*proc (4 tests)
+scope-profile     = 1755.44 sec*proc (12 tests)
+smoke             =  41.64 sec*proc (1 test)
+tier-platform     = 1755.44 sec*proc (12 tests)
+
+Total Test time (real) = 207.48 sec

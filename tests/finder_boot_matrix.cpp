@@ -1,5 +1,5 @@
 // POM68K — matrix Finder boot harness (not a CTest gate).
-// Usage: finder_boot_matrix <plus|macii|lcii|q605> <rom> <disk>
+// Usage: finder_boot_matrix <plus|macii|lcii|classic2|lc|cclassic|lc3|lc520|q605> <rom> <disk>
 // Exit 0 = Finder signature, 1 = fail, 2 = bad usage.
 
 #include "Cpu68k.h"
@@ -15,6 +15,10 @@
 #include "Cpu030.h"
 #include "Q605Memory.h"
 #include "Cpu040.h"
+#include "SonoraMemory.h"
+#include "SonoraVideo.h"
+#include "SonoraCpu.h"
+#include "JitTestConfig.h"
 
 #include <cmath>
 #include <cstdint>
@@ -266,6 +270,112 @@ static int bootLcII(const std::vector<uint8_t>& rom, const char* disk, long fram
     return ok ? 0 : 1;
 }
 
+// ── The five 2026-09-07 cells (TODO § C.3): Classic II, LC, Color Classic,
+// LC III and the LC 520 all-in-one, each constructed exactly as its own boot
+// etalon constructs it and judged by that etalon's Finder signature. The
+// matrix exists to run ONE image across machines and one machine across
+// images, so the cell keeps the etalon's construction and signature and
+// takes the image from the command line.
+static V8Memory::Model v8ModelFor(const char* machine) {
+    if (!std::strcmp(machine, "classic2")) return V8Memory::Model::ClassicII;
+    if (!std::strcmp(machine, "lc")) return V8Memory::Model::Lc;
+    if (!std::strcmp(machine, "cclassic")) return V8Memory::Model::ColorClassic;
+    return V8Memory::Model::LcII;
+}
+
+static int bootV8Sibling(const char* machine, const std::vector<uint8_t>& rom,
+                         const char* disk, long frames) {
+    // The Classic II, LC and Color Classic share the LC II's V8 with a model
+    // switch; the LC is a 68020 (as020) and every one of them is booted with
+    // the 68882 attached, as their etalons do.
+    V8Memory mem(pom68k::defaultCoreConfig(), 0xA00000, v8ModelFor(machine));
+    if (!mem.loadRom(rom)) { std::printf("FAIL: bad ROM\n"); return 1; }
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+               /*withFpu=*/true, /*as020=*/!std::strcmp(machine, "lc"));
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+    if (!mem.attachScsi(disk)) { std::printf("FAIL: bad disk\n"); return 1; }
+    ensureBootDriverType6A(mem.scsiDisk().image());
+    while (mem.cpuHeld()) mem.tick(1000);
+    const int64_t kFrame = 640 * 407;
+    for (long f = 0; f < frames && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+    if (cpu.isHalted()) { std::printf("FAIL: CPU halted\n"); return 1; }
+    V8Video video(mem);
+    std::vector<uint32_t> fb;
+    video.decode(fb);
+    const int W = 512;
+    // Eagle (Classic II) is a fixed 512×342 screen; the LC and Color Classic
+    // decode 512×384 at sense 2 like the LC II.
+    const int H = int(fb.size() / W);
+    const double menu = blackRatio(fb.data(), W, 0, W, 2, 16);
+    const double desk = blackRatio(fb.data(), W, 400, W, 40,
+                                   H >= 384 ? 340 : 300);
+    const bool ok = menu < 0.30 && desk > 0.35 && desk < 0.65 &&
+                    mem.scsi().commands > 50;
+    std::printf("%s: %dx%d menu %.2f desk %.2f SCSI %ld -> %s\n", machine, W, H,
+                menu, desk, mem.scsi().commands, ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
+static int bootSonora(const char* machine, const std::vector<uint8_t>& rom,
+                      const char* disk, long frames) {
+    const bool aio = !std::strcmp(machine, "lc520");
+    // The LC III is an Egret board on a 512×384 12" RGB (sense 2); the LC 520
+    // all-in-one carries a Cuda, its own box id and a built-in 640×480
+    // (sense 6) in 8-bit colour, which is why its signature is luminance
+    // rather than the blue channel (lc520_boot_etalon).
+    SonoraMemory mem = aio
+        ? SonoraMemory(pom68k::defaultCoreConfig(), 0x800000,
+                       SonoraMemory::kCpuHz, SonoraMemory::kIdLc520,
+                       /*cudaAdb=*/true)
+        : SonoraMemory(pom68k::defaultCoreConfig(), 0x800000);
+    if (!mem.loadRom(rom)) { std::printf("FAIL: bad ROM\n"); return 1; }
+    mem.setMonitorSense(aio ? 6 : 2);
+    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    SonoraCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
+                  /*withFpu=*/true);
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+    if (!mem.attachScsi(disk)) { std::printf("FAIL: bad disk\n"); return 1; }
+    ensureBootDriverType6A(mem.scsiDisk().image());
+    while (mem.cpuHeld()) mem.tick(1000);
+    const int64_t kFrame = SonoraMemory::kCpuHz / 60;
+    for (long f = 0; f < frames && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+    if (cpu.isHalted()) { std::printf("FAIL: CPU halted\n"); return 1; }
+    SonoraVideo video(mem);
+    std::vector<uint32_t> fb;
+    video.decode(fb);
+    int W = 0, H = 0;
+    video.size(W, H);
+    if (W <= 0 || H <= 0 || fb.size() < size_t(W) * size_t(H)) {
+        std::printf("FAIL: no decodable screen\n");
+        return 1;
+    }
+    auto darkRatio = [&](int x0, int x1, int y0, int y1) {
+        long dark = 0;
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++) {
+                const uint32_t p = fb[size_t(y) * W + x];
+                const int luma = aio
+                    ? (2 * int((p >> 16) & 0xFF) + 5 * int((p >> 8) & 0xFF) +
+                       int(p & 0xFF)) / 8
+                    : int(p & 0xFF);
+                if (luma < 0x80) dark++;
+            }
+        return double(dark) / (double(x1 - x0) * (y1 - y0));
+    };
+    const double menu = darkRatio(0, W, 2, 16);
+    const double desk = darkRatio(W - 112, W, 40, H - 44);
+    const bool ok = menu < 0.30 && desk > 0.35 && desk < (aio ? 0.80 : 0.65) &&
+                    mem.scsi().commands > 50 &&
+                    (!aio || (W == 640 && H == 480));
+    std::printf("%s: %dx%d depth %d menu %.2f desk %.2f SCSI %ld -> %s\n",
+                machine, W, H, mem.videoDepth(), menu, desk,
+                mem.scsi().commands, ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
     Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(disk)) return 1;
@@ -346,7 +456,8 @@ static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
 int main(int argc, char** argv) {
     if (argc < 4) {
         std::fprintf(stderr,
-                     "usage: %s <plus|macii|lcii|q605> <rom> <disk> [frames]\n",
+                     "usage: %s <plus|macii|lcii|classic2|lc|cclassic|lc3|lc520|q605> "
+                     "<rom> <disk> [frames]\n",
                      argv[0]);
         return 2;
     }
@@ -364,6 +475,11 @@ int main(int argc, char** argv) {
         return bootMacII(rom, argv[3], frames > 0 ? frames : 20000);
     if (!std::strcmp(argv[1], "lcii"))
         return bootLcII(rom, argv[3], frames > 0 ? frames : 16000);
+    if (!std::strcmp(argv[1], "classic2") || !std::strcmp(argv[1], "lc") ||
+        !std::strcmp(argv[1], "cclassic"))
+        return bootV8Sibling(argv[1], rom, argv[3], frames > 0 ? frames : 16000);
+    if (!std::strcmp(argv[1], "lc3") || !std::strcmp(argv[1], "lc520"))
+        return bootSonora(argv[1], rom, argv[3], frames > 0 ? frames : 16000);
     if (!std::strcmp(argv[1], "q605")) return bootQ605(rom, argv[3]);
     std::fprintf(stderr, "FAIL: unknown machine %s\n", argv[1]);
     return 2;

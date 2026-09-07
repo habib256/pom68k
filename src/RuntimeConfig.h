@@ -40,6 +40,10 @@ struct NetworkConfig {
 };
 
 struct DeviceConfig {
+    // Start the machine thread in fast-forward — the GUI's own turbo toggle,
+    // set from the command line so a measurement can start every arm the
+    // same way (TODO § C.5, 2026-09-07). The menu still toggles it live.
+    bool turbo = false;
     bool audio = true;
     bool driveSounds = true;
     bool floppyWriteBack = true;

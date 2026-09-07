@@ -1,0 +1,7 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/ref/GISTPERSO-boot.vhd" 262193152 B sha256 73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  HFS "GIST PERSO" drVolAtrb $0100 clean
+capture: 339615 samples at 22257 Hz over 900 frames (15.26 s of audio), halted=0
+spans: 1 audible span(s) above RMS 64
+  0.00 s .. 1.16 s (1160 ms) rms 13133 pitch 0-1125 Hz: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 825 1125 525 500 575 725 625 …
+verdict: audible=1 longest span 1160 ms
+PASSED — LC II boot chime rendered through the ASC

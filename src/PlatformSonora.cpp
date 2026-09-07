@@ -38,7 +38,8 @@ struct SonoraStyleMachine
     GuiHostServices& services;
     SonoraStyleMachine(Mem& m, Cpu& c, Video& v, MacAudioHost& a,
                        GuiHostServices& hostServices)
-        : Base(m, c, a, hostServices.config().diagnostics().keyTrace),
+        : Base(m, c, a, hostServices.config().diagnostics().keyTrace,
+               hostServices.config().devices().turbo),
           video(v), services(hostServices) {}
 
     struct Status { uint32_t pc; long long clock; bool overlay, mmu, held;
