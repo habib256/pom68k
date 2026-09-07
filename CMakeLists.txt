@@ -77,6 +77,17 @@ if(MSVC AND POM68K_LTO)
     endif()
 endif()
 
+# The MSVC linker's default stack is 1 MB. A CPU wrapper carries jit::Engine,
+# whose inline dispatch cache alone is 1 MB (CHANGELOG 2026-09-04 (second):
+# five gates segfaulted on x86-64 for the same reason before their fixtures
+# moved to the heap), and the component gates still build machines on the
+# stack. Seven of them died with SegFault on the 2026-09-07 Windows release
+# dispatch (run 34153492565). 16 MB is what the POSIX hosts give a main
+# thread; the GUI holds the same machines, so every executable gets it.
+if(MSVC)
+    add_link_options(/STACK:16777216)
+endif()
+
 if(NOT MSVC AND NOT EMSCRIPTEN)
     include(CheckCXXCompilerFlag)
     if(POM68K_NATIVE)

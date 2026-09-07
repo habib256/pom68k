@@ -48,8 +48,11 @@ if [ "$status" -ne 0 ]; then
     # shape, not the GUI's lifecycle, and the first MSVC asset-none run
     # (2026-09-07) read it as a red. Same verdict as the no-DISPLAY Linux
     # case above: SKIP, loudly.
-    if grep -q "Failed to find a suitable pixel format" "$smoke_log"; then
-        echo "SKIP: no GL pixel format on this runner (headless) — the GUI smoke needs a display"
+    # GLFW 65542 "API unavailable" (WGL: the driver does not support OpenGL,
+    # the Windows runner) and 65545 "format unavailable" (NSGL, a headless
+    # macOS runner) are the same fact: no GL surface on this machine.
+    if grep -q -E "GLFW error 6554[25]" "$smoke_log"; then
+        echo "SKIP: no OpenGL surface on this runner (headless) — the GUI smoke needs a display"
         exit 77
     fi
     echo "FAIL: POM68K GUI smoke scenario exited $status" >&2
