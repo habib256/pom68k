@@ -1,0 +1,216 @@
+windows	Run the asset-free tier in the release configuration	﻿2026-09-07T19:12:01.2347597Z ##[group]Run ctest --test-dir build-tests -C Release -L asset-none -j 4 --output-on-failure
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:01.2348539Z ^[[36;1mctest --test-dir build-tests -C Release -L asset-none -j 4 --output-on-failure^[[0m
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:01.2349081Z ^[[36;1mif ($LASTEXITCODE -ne 0) { exit 1 }^[[0m
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:01.2459635Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:01.2460128Z env:
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:01.2460440Z   IMGUI_TAG: v1.92.8-docking
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:01.2460766Z ##[endgroup]
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.0084967Z Test project D:/a/pom68k/pom68k/build-tests
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.0673024Z       Start   1: gui_smoke_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4283649Z  1/82 Test   #1: gui_smoke_test ........................***Failed    0.36 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4284290Z GLFW error 65542: WGL: The driver does not appear to support OpenGL
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4285487Z POM68K — Macintosh 68k emulator
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4286080Z No Mac Plus ROM — running built-in 68000 demo. Drop macplus.rom (128K) in roms/ for the real thing.
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4286939Z FAIL: POM68K GUI smoke scenario exited 1
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4287153Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4326977Z       Start   2: cpu_smoke
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4382879Z       Start   3: demo_screenshot
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4429899Z       Start   4: contention_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4488232Z       Start   6: gcr_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4554501Z  2/82 Test   #4: contention_test .......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4560174Z       Start   7: iwm_write_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4843931Z  3/82 Test   #7: iwm_write_test ........................   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.4852710Z       Start   8: iwm_read_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.5140699Z  4/82 Test   #6: gcr_test ..............................   Passed    0.07 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.5146783Z       Start   9: swim1_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.5847253Z  5/82 Test   #8: iwm_read_test .........................   Passed    0.10 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.5853157Z       Start  10: savestate_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.5928642Z  6/82 Test   #9: swim1_test ............................   Passed    0.08 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.5929653Z       Start  11: savestate_v8_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.6038019Z  7/82 Test  #10: savestate_test ........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.6042349Z       Start  13: savestate_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.8538034Z  8/82 Test  #11: savestate_v8_test .....................   Passed    0.26 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.8561463Z       Start  19: scsi_target_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.8784901Z  9/82 Test  #19: scsi_target_test ......................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:02.8788628Z       Start  25: dir2hfs_selftest
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0510884Z 10/82 Test   #3: demo_screenshot .......................***Exception: SegFault  0.61 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0511580Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0516224Z       Start  27: scc_ext_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0632833Z 11/82 Test   #2: cpu_smoke .............................***Exception: SegFault  0.63 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0633745Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0637398Z       Start  28: llap_loop_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0700819Z 12/82 Test  #27: scc_ext_test ..........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0701760Z       Start  29: ltoudp_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0756060Z 13/82 Test  #28: llap_loop_test ........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0762070Z       Start  30: atalk_stack_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0826645Z 14/82 Test  #29: ltoudp_test ...........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0831770Z       Start  31: daynaport_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0903249Z 15/82 Test  #30: atalk_stack_test ......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0953132Z       Start  32: asset_fingerprint_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0974624Z 16/82 Test  #31: daynaport_test ........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.0978253Z       Start  33: fixture_store_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.1161376Z 17/82 Test  #32: asset_fingerprint_test ................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.1174406Z       Start  34: asset_lock_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.1235118Z 18/82 Test  #33: fixture_store_test ....................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.1262514Z       Start  35: machinehost_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.2390244Z 19/82 Test  #35: machinehost_test ......................   Passed    0.12 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.2395780Z       Start  36: input_journal_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.5126615Z 20/82 Test  #36: input_journal_test ....................***Exception: SegFault  0.27 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.5127520Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.5131840Z       Start  37: docs_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.5822593Z 21/82 Test  #13: savestate_040_test ....................   Passed    0.98 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.5949339Z       Start  38: config_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.7601436Z 22/82 Test  #38: config_test ...........................   Passed    0.18 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.7606165Z       Start  39: store_inventory_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.7982752Z 23/82 Test  #39: store_inventory_test ..................   Passed    0.04 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.7987771Z       Start  40: folderprobe_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.8125347Z 24/82 Test  #40: folderprobe_test ......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.8129230Z       Start  41: peripheral_lle_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.8283582Z 25/82 Test  #41: peripheral_lle_test ...................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.8288184Z       Start  46: cpu_wrapper_smoke
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.9540682Z 26/82 Test  #25: dir2hfs_selftest ......................   Passed    1.07 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.9546182Z       Start  47: pseudovia_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.9653910Z 27/82 Test  #47: pseudovia_test ........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:03.9659171Z       Start  48: v8_ramsize
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.0673213Z 28/82 Test  #37: docs_test .............................   Passed    0.55 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.0678530Z       Start  49: flux_pll_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.0834383Z 29/82 Test  #49: flux_pll_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.0839754Z       Start  50: valkyrie_i2c_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.0975265Z 30/82 Test  #50: valkyrie_i2c_test .....................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.0981383Z       Start  51: valkyrie_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1107749Z 31/82 Test  #51: valkyrie_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1112355Z       Start  52: scc_int_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1231795Z 32/82 Test  #52: scc_int_test ..........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1237685Z       Start  53: via6522_parity_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1347318Z 33/82 Test  #53: via6522_parity_test ...................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1352362Z       Start  54: rtc_pram_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1456781Z 34/82 Test  #46: cpu_wrapper_smoke .....................***Exception: SegFault  0.32 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1457908Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1460708Z       Start  55: ncr53c96_queue_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1592746Z 35/82 Test  #54: rtc_pram_test .........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1598407Z       Start  56: msc_parity_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1656584Z 36/82 Test  #55: ncr53c96_queue_test ...................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1661465Z       Start  57: asc_easc_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1788353Z 37/82 Test  #57: asc_easc_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1813621Z       Start  58: q700_turboscsi_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1993380Z 38/82 Test  #56: msc_parity_test .......................   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.1997453Z       Start  59: asc_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2033893Z 39/82 Test  #58: q700_turboscsi_test ...................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2035799Z       Start  60: q605_asc_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2143023Z 40/82 Test  #59: asc_test ..............................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2157043Z       Start  72: swim2_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2222633Z 41/82 Test  #60: q605_asc_test .........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2250562Z       Start  73: swim2_media_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2785737Z 42/82 Test  #48: v8_ramsize ............................***Exception: SegFault  0.31 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2786459Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2790489Z       Start  74: floppy_sound_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2933069Z 43/82 Test  #74: floppy_sound_test .....................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.2944756Z       Start  76: egret_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3047942Z 44/82 Test  #76: egret_test ............................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3053379Z       Start  77: pic1654s_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3220841Z 45/82 Test  #77: pic1654s_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3230042Z       Start  78: adbline_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3298506Z 46/82 Test  #34: asset_lock_test .......................   Passed    1.21 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3302952Z       Start  79: video_beam_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3336085Z 47/82 Test  #78: adbline_test ..........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3337221Z       Start  80: v8_video_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3400166Z 48/82 Test  #79: video_beam_test .......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3403347Z       Start  82: sonora_video_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3561792Z 49/82 Test  #80: v8_video_test .........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3572673Z       Start  83: raster_equiv_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3618920Z 50/82 Test  #82: sonora_video_test .....................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3644657Z       Start  84: v8_raster_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3689853Z 51/82 Test  #73: swim2_media_test ......................   Passed    0.15 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3741178Z       Start  85: q605_dafb_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3849993Z 52/82 Test  #85: q605_dafb_test ........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3856649Z       Start  86: q605_event_scheduler_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3943602Z 53/82 Test  #84: v8_raster_test ........................   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.3944853Z       Start  87: quadra_event_scheduler_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4111761Z 54/82 Test  #86: q605_event_scheduler_test .............   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4117846Z       Start  88: q605_turboscsi_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4133055Z 55/82 Test  #87: quadra_event_scheduler_test ...........   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4142841Z       Start  89: scc_baud_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4316774Z 56/82 Test  #89: scc_baud_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4318353Z       Start  90: scc_engine_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4396162Z 57/82 Test  #83: raster_equiv_test .....................   Passed    0.08 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4397733Z       Start  91: r65c02_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4476343Z 58/82 Test  #90: scc_engine_test .......................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4518935Z       Start  92: applepic_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4687827Z 59/82 Test  #92: applepic_test .........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4768407Z       Start 166: scsi_cdrom_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4881316Z 60/82 Test #166: scsi_cdrom_test .......................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.4905899Z       Start 167: floppy_persist_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.5308242Z 61/82 Test  #72: swim2_test ............................***Exception: SegFault  0.32 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.5326514Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.5328712Z       Start 175: berr030_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.5898994Z 62/82 Test #167: floppy_persist_test ...................   Passed    0.11 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.5905770Z       Start 176: jit_restart_write_030_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6375795Z 63/82 Test #176: jit_restart_write_030_test ............   Passed    0.04 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6395806Z       Start 177: declrom_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6502342Z 64/82 Test #177: declrom_test ..........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6503611Z       Start 178: nubus_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6643740Z 65/82 Test #178: nubus_test ............................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6645055Z       Start 179: toby_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6745767Z 66/82 Test #175: berr030_test ..........................   Passed    0.15 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6747704Z       Start 188: jit_asset_free_lockstep_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6814227Z 67/82 Test #179: toby_test .............................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.6826348Z       Start 189: jit_copyback_write_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7048995Z 68/82 Test #188: jit_asset_free_lockstep_test ..........   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7068759Z       Start 190: jit_copyback_write_040_control_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7144513Z 69/82 Test #189: jit_copyback_write_040_test ...........   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7153507Z       Start 191: jit_copyback_bsr_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7251287Z 70/82 Test #190: jit_copyback_write_040_control_test ...   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7257160Z       Start 192: jit_copyback_pair_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7332242Z 71/82 Test  #88: q605_turboscsi_test ...................***Exception: SegFault  0.33 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7340844Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7341889Z       Start 193: jit_copyback_pair_040_control_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7436351Z 72/82 Test #191: jit_copyback_bsr_040_test .............   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7455463Z       Start 194: cache040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7730424Z 73/82 Test #193: jit_copyback_pair_040_control_test ....   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7759973Z       Start 195: fpu_sanity
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7805536Z 74/82 Test #192: jit_copyback_pair_040_test ............   Passed    0.05 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7826530Z       Start 196: fpu040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.7833468Z 75/82 Test #194: cache040_test .........................   Passed    0.05 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8069327Z       Start 197: callm_rtm_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8086316Z 76/82 Test #197: callm_rtm_test ........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8091787Z       Start 198: jit_backend_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8144227Z 77/82 Test #195: fpu_sanity ............................   Passed    0.05 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8152979Z       Start 199: jit_backend_parity_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8299006Z 78/82 Test #196: fpu040_test ...........................   Passed    0.05 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8315839Z       Start 233: file_size_budget_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8316746Z 79/82 Test #198: jit_backend_test ......................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:04.8347384Z 80/82 Test #199: jit_backend_parity_test ...............   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:05.4194389Z 81/82 Test  #91: r65c02_test ...........................   Passed    0.98 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9167913Z 82/82 Test #233: file_size_budget_test .................   Passed    9.09 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9178879Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9179098Z 90% tests passed, 8 tests failed out of 82
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9180383Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9180586Z Label Time Summary:
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9180969Z asset-none          =  19.50 sec*proc (82 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9181453Z gui                 =   0.36 sec*proc (1 test)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9181896Z host-any            =  19.32 sec*proc (76 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9182705Z host-native         =   0.18 sec*proc (6 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9183147Z jit                 =   0.27 sec*proc (9 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9183567Z jit-fast            =   0.91 sec*proc (8 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9183988Z m030                =   0.05 sec*proc (2 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9184438Z m040                =   0.88 sec*proc (8 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9184919Z scope-component     =  18.47 sec*proc (70 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9185429Z scope-engine        =   0.27 sec*proc (9 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9185912Z scope-repository    =   0.77 sec*proc (3 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9186619Z smoke               =   0.02 sec*proc (1 test)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9187077Z tier-daily          =  19.50 sec*proc (82 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9187528Z unit                =  19.15 sec*proc (81 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9187835Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9187969Z Total Test time (real) =  11.91 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9188243Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9188380Z The following tests FAILED:
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9189536Z 	  1 - gui_smoke_test (Failed)                           asset-none gui host-any scope-component tier-daily
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9190511Z 	  2 - cpu_smoke (SEGFAULT)                              asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9191478Z 	  3 - demo_screenshot (SEGFAULT)                        asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9192457Z 	 36 - input_journal_test (SEGFAULT)                     asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9193406Z 	 46 - cpu_wrapper_smoke (SEGFAULT)                      asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9194280Z 	 48 - v8_ramsize (SEGFAULT)                             asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9195160Z 	 72 - swim2_test (SEGFAULT)                             asset-none host-any m040 scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9196114Z 	 88 - q605_turboscsi_test (SEGFAULT)                    asset-none host-any m040 scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9196823Z Errors while running CTest
+windows	Run the asset-free tier in the release configuration	2026-09-07T19:12:13.9804198Z ##[error]Process completed with exit code 1.

@@ -351,6 +351,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Product scenarios — applications, beyond-boot legs and persistence
 
+- **what it took to turn the seven MSVC reds green, why seven component gates then segfaulted, and what the release pipeline now proves before any tag** → [2026-09-07 (tenth) — The Windows release job goes green end to end…](#2026-09-07-windows-green)
 - **what the first MSVC compile and run of the test tree found — the POSIX-isms in the harnesses, the seven asset-free reds and which of them are policy rather than porting** → [2026-09-07 (ninth) — The first MSVC run of the asset-free tier…](#2026-09-07-msvc-first-run)
 - **why the macOS package had LTO off, what exercised the universal-2 lipo path with it on, and how MSVC's /GL + /LTCG are requested without a Windows host to prove them** → [2026-09-07 (seventh) — LTO enters the artifacts…](#2026-09-07-lto-artifacts)
 - **what the product tier's coverage is against the asset-free tier's, which src/ files no gate reaches, whether the default engines survive ASan on real boots, and what the AppleTalk hub costs at equal arms** → [2026-09-07 (sixth) — Tier C's sweep…](#2026-09-07-tier-c-sweep)
@@ -427,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07 (tenth)** — [The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing](#2026-09-07-windows-green)
 - **2026-09-07 (ninth)** — [The first MSVC run of the asset-free tier: POM68K.exe builds with /GL + /LTCG in six minutes, the gate tree compiles once three POSIX-isms are shimmed or fenced, and 75 of 82 gates pass — the seven reds are configuration findings, read and filed](#2026-09-07-msvc-first-run)
 - **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](#2026-09-07-swim1-mfm-hunt)
 - **2026-09-07 (seventh)** — [LTO enters the artifacts: the universal macOS package builds, passes lipo and runs with it, and MSVC gets /GL + /LTCG through CMake's IPO, probed rather than assumed](#2026-09-07-lto-artifacts)
@@ -869,6 +871,47 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-windows-green"></a>
+## 2026-09-07 (tenth) — The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing
+
+The (ninth) entry filed seven reds from the first MSVC run of the
+asset-free tier. Two dispatches later the `windows` job is green through
+every step, and so are Linux, Linux-arm64 and macOS on the same commit.
+
+The four porting items went as filed: `rtc_pram_test` and
+`machinehost_test` write their scratch files through `pom68kTempPath`
+(TMPDIR, then TEMP/TMP, then /tmp) instead of a literal `/tmp`; the
+size-budget script reads its table through `tr -d '\r'`, so a CRLF
+checkout no longer turns every path into a missing file; and
+`jit_backend_test`'s two "native on both generators" checks follow the
+active generator like their neighbours, because on Windows the x64 emitter
+is not usable by decision. The three policy items got their smallest
+honest answers: `docs_test` names a Windows build `windows-x64` and treats a
+missing `STATUS.md` section for a non-proof host as a note rather than a
+red; the three POSIX-socket harnesses fenced off Windows are recorded in
+the absent roster, so the union stays 245 and the knob contract still
+resolves `afp_server_test`; and the GUI smoke wrapper turns GLFW's "no GL
+surface" errors — 65542 on the Windows runner, 65545 on a headless macOS
+one — into the SKIP the no-DISPLAY Linux path already had.
+
+The dispatch that carried those fixes (34153492565) then showed the eighth
+finding: seven component gates — `cpu_smoke`, `demo_screenshot`,
+`input_journal_test`, `cpu_wrapper_smoke`, `v8_ramsize`, `swim2_test`,
+`q605_turboscsi_test` — died with SegFault. They build `Cpu030`/`Cpu040` on
+the stack, each carrying `jit::Engine`'s 1 MB inline dispatch cache, and
+the MSVC linker's default stack is 1 MB: the same class that moved five
+gates' fixtures to the heap on x86-64 on 2026-09-04. Every MSVC executable
+now links with `/STACK:16777216`, the POSIX main-thread budget. Run
+34154944920: 82 gates, all green or skipped-by-design, `POM68K.exe` built
+with `/GL + /LTCG`, packaged, self-contained, and answering `--version`.
+
+What this establishes for § C.6: `release.yml` builds all four packages
+from a manual dispatch and publishes only on a tag, and every job is green
+on `a1365cd`. The first release is one tag away, and the decision to place
+it is not this entry's to make.
 
 ---
 

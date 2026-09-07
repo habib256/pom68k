@@ -184,25 +184,10 @@ physique.
   est complet. Des utilisateurs sont le chercheur de bugs le moins cher
   disponible, et il n'y en a aucun. À déclencher après les preuves produit
   minimales de C, sans attendre les quatre références externes de A.
-- [ ] **Fermer les sept rouges Windows de `asset-none` avant le tag.** La
-  première exécution MSVC a eu lieu le 2026-09-07 (dispatch manuel sans
-  publication, run 34151560976, journal archivé dans
-  `scratchpad/2026-09-07/msvc/`) : **75/82 verts**, `POM68K.exe` en LTO,
-  et sept découvertes de configuration, aucune dans le cœur de l'émulateur :
-  `file_size_budget_test` (chaque fichier « n'existe plus » — retour chariot
-  du checkout CRLF dans le parseur du budget) ; `rtc_pram_test`
-  (`savePram`/`loadPram` n'écrivent pas de fichier — mode binaire ou chemin
-  Windows) ; `machinehost_test` (insertions floppy par chemin, quatre
-  assertions) ; `jit_backend_test` (« natif sur les deux générateurs »
-  suppose l'émetteur x64 utilisable, faux sous Windows par décision) ;
-  `config_test` (`POM68K_SHARE_DIR` cite `afp_server_test`, qui n'est plus
-  enregistré sous Windows) ; `docs_test` (le runner Windows se compte en
-  x86_64 avec 233 gates contre la section Linux à 241 et une union à 242 :
-  `STATUS.md` n'a pas de notion d'hôte Windows) ; `gui_smoke_test` (aucun
-  pixel format NSGL/WGL sur un runner sans affichage). Les quatre premiers
-  sont des portages locaux ; les trois derniers demandent une décision de
-  politique (hôte Windows dans le registre, gates POSIX dans le contrat des
-  knobs, smoke GUI hors runner headless).
+Le job `windows` de `release.yml` est vert depuis le 2026-09-07 (run
+34154944920) : `POM68K.exe` en LTO MSVC, arbre de gates compilé, tier
+asset-free complet sous MSVC, ZIP autonome et `--version`. La première
+publication n'attend plus que le tag.
 
 **Critère de sortie du palier C :** chaque grande famille matérielle supportée
 possède au moins un scénario déterministe au-delà du boot, les scénarios
