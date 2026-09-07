@@ -188,6 +188,19 @@ public:
     bool consumeRestart() {
         bool r = restartPending_;
         restartPending_ = false;
+        // Re-arm the ROM overlay for the reset vector fetch that the CPU
+        // wrapper does immediately after this returns true. onCpuReset armed
+        // it when the firmware pulled /RESET, but every ROM instruction the
+        // guest fetched in the remainder of that run slice cleared it again
+        // (read8/read16 drop the overlay on any ROM-window access), so by the
+        // time reset() reads SSP/PC from $0/$4 the overlay was gone and the
+        // vector came from stale low RAM ($40810000 left by the OS) — an
+        // arbitrary ROM address whose boot double-faulted the 040 to a HALT
+        // instead of a clean restart (q605_restart_etalon, 2026-09-08). A
+        // real /RESET holds the overlay asserted across the vector fetch;
+        // model that by arming it exactly at the boundary, so the warm reset
+        // reads the ROM's own reset vector, as a cold reset does.
+        if (r) { overlay_ = true; jitMapChanged(); }
         return r;
     }
 

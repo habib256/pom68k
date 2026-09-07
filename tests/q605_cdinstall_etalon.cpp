@@ -23,13 +23,11 @@
 // catalog of the host-owned target image for the System/Finder files, the
 // per-target SCSI counters for who served the boot.
 //
-// The last leg — Finder → Special → Restart, then the machine boots from the
-// freshly installed disk — is written but OPT-IN (POM68K_CDINSTALL_REBOOT):
-// on the 8.1 CD's Finder the Restart menu item blanks the screen but no warm
-// reset follows (CurApName stays "Finder", nothing is read from either
-// disk), so the Shutdown-Manager path 8.1 uses does not reach our Cuda
-// RESET_SYSTEM the way cuda_restart_test's synthetic $11 does. Recorded in
-// TODO § D.3; the gate proves the bootable artefact, not yet the reboot.
+//   restart   Finder → Special → Restart, and the machine reboots FROM THE
+//             INSTALLED DISK: the target serves the second boot, the disc
+//             does not (fixed 2026-09-08 — the warm reset used to double-
+//             fault the 040 to a halt; Q605Memory::consumeRestart now arms
+//             the ROM overlay for the reset-vector fetch, q605_restart_etalon)
 //
 // POM68K_CDINSTALL_DISCOVER=N dumps each 600-frame step of the copy;
 // POM68K_CDINSTALL_TRACE keeps the last 53C96 register accesses (the pair
@@ -260,48 +258,54 @@ int main() {
     if (!quit)
         std::fprintf(stderr, "FAIL: the installer did not quit to the Finder\n");
 
-    // The bootable artefact is the gate's claim: a disc-driven install put a
-    // System that WILL boot onto the blank disk.
-    const bool installed = quit;
-    std::printf("%s — Quadra 605 installs a bootable Mac OS 8.1 from CD onto "
-                "a blank disk\n", installed ? "PASSED" : "FAILED");
-
-    // ── OPT-IN: restart and require the second boot to come from the disk ──
-    // Not part of the default verdict: see the header and TODO § D.3. The
-    // route (Special → Restart) and the pass criterion (the target, not the
-    // disc, serves the second boot) are kept so the fix has its gate the day
-    // the Finder's restart reaches the Cuda reset.
-    if (installed && std::getenv("POM68K_CDINSTALL_REBOOT")) {
-        // Special menu rows off the guest's own dump (POM68K_CDINSTALL_MENU,
-        // scratchpad/2026-09-08/cdinstall/menu): Restart at y 87.
-        steer(181, 9);
-        mem.mouseButton(true);
-        runFrames(30);
-        steer(190, 87);
-        runFrames(30);
-        dump("q605_cdinstall_restart_item.ppm");
-        mem.mouseButton(false);
-        const long cdReads1 = mem.scsiDiskAt(kCdId).readBlocks;
-        const long targetReads1 = mem.scsiDiskAt(kTargetId).readBlocks;
-        bool left = false;
-        for (long f = 0; f < 6000 && !left; f += 30) { runFrames(30); left = !menuUp(); }
-        std::printf("restart: menu bar %s\n", left ? "gone" : "STILL UP");
-        bool back = bootToQuietFinder(mem, 24000, kTargetId, targetReads1);
-        for (int poll = 0; poll < 12 && !back; poll++) {
-            keyHold(0x24, 30);
-            back = bootToQuietFinder(mem, 3000, kTargetId, targetReads1);
-        }
-        const long cdReads2 = mem.scsiDiskAt(kCdId).readBlocks - cdReads1;
-        const long targetReads2 = mem.scsiDiskAt(kTargetId).readBlocks - targetReads1;
-        dump("q605_cdinstall_reboot.ppm");
-        const bool fromTarget = back && targetReads2 > 2000 && targetReads2 > 5 * cdReads2;
-        std::printf("reboot: Finder %s, target served %ld blocks, CD %ld — %s\n",
-                    back ? "up" : "NOT UP", targetReads2, cdReads2,
-                    fromTarget ? "BOOTED FROM THE INSTALLED DISK"
-                               : "did NOT boot from the target (TODO D.3)");
-        return fromTarget ? 0 : 1;
+    if (!quit) {
+        std::fprintf(stderr, "FAIL: the install did not finish and quit to the "
+                     "Finder\n");
+        return 1;
     }
+    std::printf("installed: a bootable Mac OS 8.1 is on the blank disk\n");
 
-    return installed && !cpu.isHalted() ? 0 : 1;
+    // ── restart, and require the second boot to come from the target ──────
+    // Special menu rows off the guest's own dump (POM68K_CDINSTALL_MENU,
+    // scratchpad/2026-09-08/cdinstall/menu): Restart at y 87.
+    steer(181, 9);
+    mem.mouseButton(true);
+    runFrames(30);
+    steer(190, 87);
+    runFrames(30);
+    dump("q605_cdinstall_restart_item.ppm");
+    mem.mouseButton(false);
+    const long cdReads1 = mem.scsiDiskAt(kCdId).readBlocks;
+    const long targetReads1 = mem.scsiDiskAt(kTargetId).readBlocks;
+    bool left = false;
+    for (long f = 0; f < 6000 && !left && !cpu.isHalted(); f += 30) {
+        runFrames(30);
+        left = !menuUp();
+    }
+    std::printf("restart: menu bar %s (halted=%d)\n", left ? "gone" : "STILL UP",
+                cpu.isHalted());
+    if (cpu.isHalted() || !left) {
+        std::fprintf(stderr, "FAIL: the guest restart did not begin\n");
+        return 1;
+    }
+    bool back = bootToQuietFinder(mem, 24000, kTargetId, targetReads1);
+    for (int poll = 0; poll < 12 && !back; poll++) {
+        keyHold(0x24, 30);
+        back = bootToQuietFinder(mem, 3000, kTargetId, targetReads1);
+    }
+    const long cdReads2 = mem.scsiDiskAt(kCdId).readBlocks - cdReads1;
+    const long targetReads2 = mem.scsiDiskAt(kTargetId).readBlocks - targetReads1;
+    dump("q605_cdinstall_reboot.ppm");
+    // A boot off the disc costs it thousands of blocks; a System that boots
+    // from the target leaves the disc a data volume (dozens of blocks).
+    const bool fromTarget = back && !cpu.isHalted() &&
+                            targetReads2 > 2000 && targetReads2 > 5 * cdReads2;
+    std::printf("reboot: Finder %s, target served %ld blocks, CD %ld — %s\n",
+                back ? "up" : "NOT UP", targetReads2, cdReads2,
+                fromTarget ? "BOOTED FROM THE INSTALLED DISK"
+                           : "did NOT boot from the target");
+    std::printf("%s — Quadra 605 installs Mac OS 8.1 from CD and boots the target\n",
+                fromTarget ? "PASSED" : "FAILED");
+    return fromTarget ? 0 : 1;
 }
 

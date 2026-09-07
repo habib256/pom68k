@@ -43,7 +43,6 @@ POM68K_BOXID	test	owner:tests/iivx_boot_etalon.cpp
 POM68K_CACHE_BOOST	product	gate:lcii_boot_etalon
 POM68K_CDINSTALL_DISCOVER	test	owner:tests/q605_cdinstall_etalon.cpp
 POM68K_CDINSTALL_MENU	test	owner:tests/q605_cdinstall_etalon.cpp
-POM68K_CDINSTALL_REBOOT	test	owner:tests/q605_cdinstall_etalon.cpp
 POM68K_CDINSTALL_TRACE	test	owner:tests/q605_cdinstall_etalon.cpp
 POM68K_CD_BOOT	test	owner:tests/q605_cdrom_etalon.cpp
 POM68K_CD_HOT	test	owner:tests/q605_cdrom_etalon.cpp

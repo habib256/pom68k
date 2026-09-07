@@ -293,18 +293,6 @@ de protocole observés, puis ajouter les extensions et les contrôles GUI.
 
 ### D.3 Médias optiques
 
-- [ ] **Faire redémarrer l'invité sur le disque fraîchement installé.**
-  L'installation elle-même est prouvée (`q605_cdinstall_etalon`, 2026-09-08 :
-  démarrage sur le CD 8.1, Installer piloté jusqu'à la copie complète sur un
-  disque vierge fabriqué par l'hôte via `tests/HfsBlankVolume.h`, artefact
-  bootable vérifié — blocs `LK`, System et Finder au catalogue, 171 Mo — et
-  Installer quitté au Finder). Reste le redémarrage : le
-  Redémarrer du Finder du CD 8.1 noircit l'écran mais aucun reset chaud ne
-  suit (CurApName reste « Finder », aucun disque n'est lu) : le chemin
-  Shutdown Manager de 8.1 n'atteint pas notre Cuda RESET_SYSTEM comme le fait
-  le `$11` synthétique de `cuda_restart_test`. Tracer la séquence Cuda que
-  8.1 émet pour Redémarrer et la router vers `hostReset`. La jambe est écrite
-  et opt-in dans le gate (`POM68K_CDINSTALL_REBOOT`).
 - [ ] **Établir la règle des images 512/2048 octets.** Comparer le comportement
   des hybrides et bare-HFS avec un vrai pilote/MAME avant de modifier le
   montage.

@@ -696,6 +696,16 @@ add_test(NAME q605_cdinstall_etalon COMMAND q605_cdinstall_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(q605_cdinstall_etalon PROPERTIES TIMEOUT 3600)
 
+# Guest restart on the Quadra 605 (2026-09-08): Finder → Special → Restart,
+# the Cuda pulls /RESET, and the machine reboots from its disk. Reproducer
+# for the overlay/reset-vector double fault fixed in Q605Memory::consumeRestart
+# — the Cuda counterpart of lcii_restart_etalon.
+add_executable(q605_restart_etalon tests/q605_restart_etalon.cpp)
+target_link_libraries(q605_restart_etalon PRIVATE pom68k_core)
+add_test(NAME q605_restart_etalon COMMAND q605_restart_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_restart_etalon PROPERTIES TIMEOUT 1800)
+
 # Guest-initiated restart (TODO § C.1, 2026-09-07): Finder → Spécial →
 # Redémarrer by mouse, then the machine must come back to the Finder through
 # the ROM's warm-start path with a full second SCSI boot.

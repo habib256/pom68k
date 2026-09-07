@@ -254,6 +254,16 @@ public:
     bool consumeRestart() {
         bool r = restartPending_;
         restartPending_ = false;
+        // Arm the ROM overlay for the vector fetch the CPU wrapper does right
+        // after this returns true: onCpuReset armed it when the Egret pulled
+        // /RESET, but the guest's ROM instruction fetches in the rest of that
+        // run slice cleared it again (read8/read16 drop the overlay on any
+        // ROM access), so reset() would read SSP/PC from stale low RAM rather
+        // than the ROM's own reset vector. The LC II happened to survive it;
+        // the Quadra 605 double-faulted to a HALT (q605_restart_etalon,
+        // 2026-09-08). A real /RESET holds the overlay across the vector
+        // fetch — model that here so the warm reset boots as a cold one does.
+        if (r) { overlay_ = true; jitMapChanged(); }
         return r;
     }
 

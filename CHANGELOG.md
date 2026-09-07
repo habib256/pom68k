@@ -428,7 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
-- **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk and writes a bootable System, finding a 53C96 polled-write defect on the way](#2026-09-08-application-gates)
+- **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way](#2026-09-08-application-gates)
 - **2026-09-07 (tenth)** — [The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing](#2026-09-07-windows-green)
 - **2026-09-07 (ninth)** — [The first MSVC run of the asset-free tier: POM68K.exe builds with /GL + /LTCG in six minutes, the gate tree compiles once three POSIX-isms are shimmed or fenced, and 75 of 82 gates pass — the seven reds are configuration findings, read and filed](#2026-09-07-msvc-first-run)
 - **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](#2026-09-07-swim1-mfm-hunt)
@@ -876,7 +876,7 @@ Newest first.
 ---
 
 <a id="2026-09-08-application-gates"></a>
-## 2026-09-08 — Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk and writes a bootable System, finding a 53C96 polled-write defect on the way
+## 2026-09-08 — Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way
 
 Tier C's exit criterion asks each hardware family for a deterministic
 scenario beyond the boot, with the CPU-sensitive ones agreeing under the
@@ -964,15 +964,28 @@ WRITE(6) of 1024 bytes in 64 preloaded 16-byte chunks, one bus-service
 interrupt per `$10`, none from the preload, payload read back — and fails
 without the fix. With it the installer proceeds past the driver update, copies
 the System (171 MB), and reaches "The installation process has finished":
-`q605_cdinstall_etalon` asserts the host-owned target now carries HFS boot
-blocks, a System and a Finder in its catalog, and quits the installer to the
-Finder — a guest-driven install of a **bootable** Mac OS 8.1 from CD onto a
-blank disk. Its last leg — Finder → Special → Restart, then a boot from the
-installed disk — is written but opt-in (`POM68K_CDINSTALL_REBOOT`): the CD
-Finder's Restart blanks the screen but no warm reset follows (CurApName stays
-"Finder", neither disk is read), so 8.1's Shutdown-Manager restart does not
-reach our Cuda RESET_SYSTEM the way `cuda_restart_test`'s synthetic $11 does.
-That is a separate finding, filed in TODO § D.3.
+`q605_cdinstall_etalon` asserts the host-owned target carries HFS boot
+blocks, a System and a Finder in its catalog, quits the installer to the
+Finder, then restarts and **boots from the installed disk** — the target
+serves the second boot (thousands of blocks), the disc none.
+
+That last leg needed a second fix. The Finder's Restart blanked the screen
+and then HALTED the 68040 instead of rebooting, and it did so on a plain 8.1
+boot too, so the defect was general to the Quadra 605, not the install: the
+Cuda pulls /RESET and `onCpuReset` arms the ROM overlay, but every ROM
+instruction the guest fetches before the reset boundary clears the overlay
+again (`read8`/`read16` drop it on any ROM access), so by the time
+`Cpu040::runCycles` honours `consumeRestart` and `reset()` fetches SSP/PC
+from `$0`/`$4`, the overlay is gone and the vector comes from stale low RAM
+(`$40810000`, left by the OS) — an arbitrary ROM address whose boot double-
+faults to a halt. A real /RESET holds the overlay asserted across the vector
+fetch; `Q605Memory::consumeRestart` (and `V8Memory`'s, which had the same
+latent race and had been surviving it by luck) now arms the overlay at the
+boundary, so the warm reset reads the ROM's own vector and boots as a cold
+reset does. `q605_restart_etalon` is the focused reproducer — boot 8.1,
+Finder → Special → Restart, and require a second full SCSI boot, no halt —
+the Cuda counterpart of `lcii_restart_etalon`; `cuda_restart_test` had
+proved the synthetic $11 mechanism but never walked the Finder's own path.
 
 <a id="2026-09-07-windows-green"></a>
 ## 2026-09-07 (tenth) — The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing

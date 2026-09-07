@@ -110,7 +110,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-06 (seventh)** — [Speedometer becomes four attributable workload families: CPU, ten-test Mix, direct FPU and five-depth Color QuickDraw are exact on A64 and `threaded`](CHANGELOG.md#2026-09-06-speedometer-suite)
 - **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](CHANGELOG.md#2026-09-07-tier-b-closed)
 - **2026-09-07 (third)** — [SimCity 2000 becomes a gate: launched by opening its heaviest city, simulated, saved — identically under the interpreter and the A64 generator, once the harness typed on the guest's own keyboard](CHANGELOG.md#2026-09-07-simcity-etalon)
-- **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk and writes a bootable System, finding a 53C96 polled-write defect on the way](CHANGELOG.md#2026-09-08-application-gates)
+- **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way](CHANGELOG.md#2026-09-08-application-gates)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

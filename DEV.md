@@ -1729,9 +1729,7 @@ Start, dump every 600 frames and press Return only when the screen has been
 still, for N steps; and keep the CDB trace plus the last 53C96 register
 accesses — the pair that read the Drive Setup stall of 2026-09-08),
 `POM68K_CDINSTALL_MENU` (dump the CD Finder's Special menu held open, to read
-the Restart row) and `POM68K_CDINSTALL_REBOOT` (run the opt-in restart leg
-whose warm boot from the installed disk is TODO § D.3, not yet the gate's
-verdict),
+the Restart row),
 `POM68K_FRAMES`, `POM68K_MATRIX_FRAMES` (finder_boot_matrix: widen the
 Plus cell's System-6 budget for a System 7 image), `POM68K_BENCH_*`,
 `POM68K_PROBE*`,
