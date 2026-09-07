@@ -160,15 +160,6 @@ hauteur.
   `full` déclenchable par push et publier `LastTest.log` ainsi que le census
   exécutés/soft-skips. C'est ce qui transforme une preuve personnelle en
   preuve vérifiable par un tiers.
-- [ ] **Lire le premier build MSVC avec `/GL` + `/LTCG`.** Le veto macOS est
-  levé le 2026-09-07 (paquet universel arm64;x86_64 avec LTO : porte `lipo`,
-  bundle autonome, bannière `--version`, tier `asset-none` vert en
-  configuration LTO) et `CMakeLists.txt` porte l'IPO MSVC derrière
-  `check_ipo_supported`, mais aucun hôte Windows n'a compilé cet arbre :
-  le job `windows` de `release.yml` (dispatch manuel sans publication, ou
-  premier tag) est la preuve à lire. Donnée annexe : sur l'hôte M4, un
-  build LTO+`-mcpu=native` est 4–5 % plus rapide que le binaire de mesure
-  OFF/OFF sur la phase Graphics et la route Speedometer entière.
 
 ### C.5 Matériel cible Raspberry Pi
 
@@ -193,10 +184,25 @@ physique.
   est complet. Des utilisateurs sont le chercheur de bugs le moins cher
   disponible, et il n'y en a aucun. À déclencher après les preuves produit
   minimales de C, sans attendre les quatre références externes de A.
-- [ ] **Lire la première exécution MSVC de `asset-none`.** Elle vit dans le
-  job `windows` de `.github/workflows/release.yml` et ne peut donc pas exister
-  avant une publication : traiter tout rouge comme une découverte de
-  configuration et archiver le log.
+- [ ] **Fermer les sept rouges Windows de `asset-none` avant le tag.** La
+  première exécution MSVC a eu lieu le 2026-09-07 (dispatch manuel sans
+  publication, run 34151560976, journal archivé dans
+  `scratchpad/2026-09-07/msvc/`) : **75/82 verts**, `POM68K.exe` en LTO,
+  et sept découvertes de configuration, aucune dans le cœur de l'émulateur :
+  `file_size_budget_test` (chaque fichier « n'existe plus » — retour chariot
+  du checkout CRLF dans le parseur du budget) ; `rtc_pram_test`
+  (`savePram`/`loadPram` n'écrivent pas de fichier — mode binaire ou chemin
+  Windows) ; `machinehost_test` (insertions floppy par chemin, quatre
+  assertions) ; `jit_backend_test` (« natif sur les deux générateurs »
+  suppose l'émetteur x64 utilisable, faux sous Windows par décision) ;
+  `config_test` (`POM68K_SHARE_DIR` cite `afp_server_test`, qui n'est plus
+  enregistré sous Windows) ; `docs_test` (le runner Windows se compte en
+  x86_64 avec 233 gates contre la section Linux à 241 et une union à 242 :
+  `STATUS.md` n'a pas de notion d'hôte Windows) ; `gui_smoke_test` (aucun
+  pixel format NSGL/WGL sur un runner sans affichage). Les quatre premiers
+  sont des portages locaux ; les trois derniers demandent une décision de
+  politique (hôte Windows dans le registre, gates POSIX dans le contrat des
+  knobs, smoke GUI hors runner headless).
 
 **Critère de sortie du palier C :** chaque grande famille matérielle supportée
 possède au moins un scénario déterministe au-delà du boot, les scénarios

@@ -1,0 +1,674 @@
+windows	Run the asset-free tier in the release configuration	﻿2026-09-07T18:43:26.0790914Z ##[group]Run ctest --test-dir build-tests -C Release -L asset-none -j 4 --output-on-failure
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:26.0791791Z ^[[36;1mctest --test-dir build-tests -C Release -L asset-none -j 4 --output-on-failure^[[0m
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:26.0792324Z ^[[36;1mif ($LASTEXITCODE -ne 0) { exit 1 }^[[0m
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:26.0898548Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:26.0899138Z env:
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:26.0899378Z   IMGUI_TAG: v1.92.8-docking
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:26.0899673Z ##[endgroup]
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.2327957Z Test project D:/a/pom68k/pom68k/build-tests
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.3578193Z       Start   1: gui_smoke_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9020981Z  1/82 Test   #1: gui_smoke_test ........................***Failed    0.54 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9021993Z GLFW error 65542: WGL: The driver does not appear to support OpenGL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9023705Z POM68K — Macintosh 68k emulator
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9024508Z No Mac Plus ROM — running built-in 68000 demo. Drop macplus.rom (128K) in roms/ for the real thing.
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9025405Z FAIL: POM68K GUI smoke scenario exited 1
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9025613Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9148275Z       Start   2: cpu_smoke
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9200430Z       Start   3: demo_screenshot
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9245447Z       Start   4: contention_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9287416Z       Start   6: gcr_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9366025Z  2/82 Test   #4: contention_test .......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9372458Z       Start   7: iwm_write_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9648262Z  3/82 Test   #7: iwm_write_test ........................   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:27.9649252Z       Start   8: iwm_read_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0025708Z  4/82 Test   #6: gcr_test ..............................   Passed    0.07 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0030823Z       Start   9: swim1_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0544223Z  5/82 Test   #8: iwm_read_test .........................   Passed    0.09 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0550571Z       Start  10: savestate_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0618604Z  6/82 Test   #9: swim1_test ............................   Passed    0.06 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0624334Z       Start  11: savestate_v8_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0781247Z  7/82 Test  #10: savestate_test ........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.0785639Z       Start  13: savestate_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.3395952Z  8/82 Test  #11: savestate_v8_test .....................   Passed    0.28 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.3401660Z       Start  19: scsi_target_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.3630978Z  9/82 Test  #19: scsi_target_test ......................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.3636321Z       Start  25: dir2hfs_selftest
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7127537Z 10/82 Test   #2: cpu_smoke .............................***Exception: SegFault  0.80 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7128630Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7133571Z       Start  27: scc_ext_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7282493Z 11/82 Test  #27: scc_ext_test ..........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7283617Z       Start  28: llap_loop_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7349813Z 12/82 Test   #3: demo_screenshot .......................***Exception: SegFault  0.81 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7350849Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7400641Z       Start  29: ltoudp_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7416851Z 13/82 Test  #28: llap_loop_test ........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7418360Z       Start  30: atalk_stack_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7491043Z 14/82 Test  #29: ltoudp_test ...........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7492420Z       Start  31: daynaport_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7549234Z 15/82 Test  #30: atalk_stack_test ......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7554878Z       Start  32: asset_fingerprint_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7617440Z 16/82 Test  #31: daynaport_test ........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7621900Z       Start  33: fixture_store_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7750065Z 17/82 Test  #32: asset_fingerprint_test ................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7756764Z       Start  34: asset_lock_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7819314Z 18/82 Test  #33: fixture_store_test ....................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.7824476Z       Start  35: machinehost_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8869881Z 19/82 Test  #35: machinehost_test ......................***Failed    0.10 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8871644Z Q605: no MCU firmware dump found — running the NON-CONFORMANT HLE substitute (docs/LLE_VS_HLE.md §2)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8872744Z ok   the GUI speed gauge arms without inventing a first sample
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8873485Z ok   the GUI speed gauge waits for a half-second window
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8874227Z ok   the GUI speed gauge reports exact real-time progress
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8875013Z ok   a machine-clock reset re-arms the GUI speed gauge
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8876232Z ok   GUI fast-forward starts disabled so double-click timing is preserved
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8877053Z ok   latchFrame refuses before the first frame exists
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8877631Z ok   publish(force) renders exactly one frame
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8878103Z ok   the GUI speed gauge uses the platform's real machine rate
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8878678Z ok   publish exposes real machine cycles, not boosted core cycles
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8879128Z ok   latchFrame succeeds after publish
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8879530Z ok   the latched frame carries the platform's geometry
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8879944Z ok   the latched frame carries its pixels
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8880570Z ok   an already-latched frame is not mutated by the next publish
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8881070Z ok   the next latch sees the new geometry
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8881519Z ok   publish() inside the 16 ms window with no frame run is a no-op
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8882054Z ok   a frame emulated since the last publish forces one through
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8882509Z ok   a 68040 starts on the accelerated engine
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8882964Z ok   cpuEngine() does NOT follow the click before the queue drains
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8883572Z ok   cpuEngine() follows the machine after apply
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8884153Z ok   the CPU really swapped to the reference engine
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8884878Z ok   a batch of conflicting commands applies in order, last wins
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8885395Z ok   setFloppyInserted is visible to the GUI
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8885836Z ok   EjectFloppy clears the flag on apply
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8886279Z ok   InsertFloppy of a missing path leaves the flag clear
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8886828Z FAIL each batched floppy command keeps its own path
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8887301Z FAIL failed later insert keeps the successful media path
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8887753Z ok   eject clears the published media path
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8888141Z FAIL a disk is in the drive and named
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8888525Z ok   a guest-side eject clears the published floppy flag
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8905304Z ok   a guest-side eject clears the published media path
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8906157Z FAIL a bay command does not disturb the floppy flag
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8907715Z ok   a paused machine emulates nothing
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8908369Z ok   a paused machine still services the queue and sleeps
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8909118Z ok   default pacing runs one guest frame and requests a real-time sleep
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8909951Z ok   the fast-forward branch emulates at least one quantum
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8910630Z ok   a silent machine pushes no audio
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8911306Z ok   the first audible drain pushes a frame and arms audio pacing
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8911822Z ok   with the device started, pacing switches to pushRaw()
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8912261Z ok   a mono platform never reaches the stereo entry points
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8912663Z ok   a stereo platform uses pushFrameStereo()
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8913023Z ok   a stereo platform uses pushRawStereo()
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8913490Z SaveState: Save states: profil non câblé
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8913893Z ok   an unwired save-state profile is refused, not crashed into
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8915288Z ok   recording: the tick follows the machine, not the click
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8915814Z InputJournal: Enregistrement → machinehost_test.rec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8916282Z ok   recording: the start lands between two quanta
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8916901Z InputJournal: Enregistré: machinehost_test.rec (10 évènements)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8917474Z ok   recording: the stop lands between two quanta
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8917847Z ok   recording: the outcome names its event count
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8918191Z ok   recording: the journal reads back
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8919035Z ok   recording: the stop wrote the end record
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8919699Z ok   recording: the identity notes ride in the header
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8920347Z ok   recording: all ten commands recorded
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8921344Z ok   recording: journal names mirror Cmd::T in enum order
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8922077Z ok   recording: clocks are monotone from the start record
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8922815Z ok   recording: a media path rides with its command
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8923482Z ok   recording: the initial snapshot was written
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8924483Z ok   recording: the snapshot reads back whole
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8925220Z ok   recording: the journal's statehash matches the snapshot
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8926206Z InputJournal: Enregistrement refusé: profil non câblé
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8926991Z ok   recording: an unwired profile is refused with its reason
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8927762Z ok   recording: an unwired profile leaves no journal behind
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8928800Z InputJournal: Enregistrement → machinehost_test.base-20260907-184328.journal
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8929747Z ok   recording: the menu form arms too
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8930456Z ok   recording: the derived path is stamped beside the state file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8931625Z InputJournal: Enregistré: machinehost_test.base-20260907-184328.journal (0 évènements)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8932645Z ok   recording: session teardown closes an open recording
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8933403Z ok   recording: the teardown-closed journal reads back whole
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8934164Z ok   the machine thread runs quanta of its own accord
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8934820Z ok   stop() joins without hanging
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8935338Z ok   stop() is idempotent
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8936368Z ok   destruction after an explicit stop() does not terminate
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8937232Z ok   destruction WITHOUT an explicit stop() joins the thread
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8937858Z FAILED
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8938046Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:28.8938254Z       Start  36: input_journal_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.0759506Z 20/82 Test  #13: savestate_040_test ....................   Passed    1.00 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.0765924Z       Start  37: docs_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.2064598Z 21/82 Test  #36: input_journal_test ....................***Exception: SegFault  0.32 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.2065339Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.2072808Z       Start  38: config_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4174986Z 22/82 Test  #38: config_test ...........................***Failed    0.21 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4175940Z ok   harvested the knob surface from the tree (222 names)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4176781Z ok   config_knobs.tsv has one exact row per harvested knob (222 rows)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4177602Z ok   configured gate roster is available to config_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4178426Z note: 9 gate(s) exist only on the other host; a knob may cite them
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4179377Z FAIL product knob `POM68K_SHARE_DIR` cites missing gate `afp_server_test`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4180490Z ok   all four lifecycle classes are represented (product=68, diagnostic=52, test=87, chantier=15)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4181664Z ok   DEV.md § 5 found
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4182352Z ok   DEV.md § 5 + POM68K_JIT.md declare 208 names and 4 prefixes
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4183192Z ok   every knob the code reads is documented (222 checked)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4184011Z ok   every documented knob exists in the code (208 checked, 8 retired)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4185149Z ok   retired knob `POM68K_PERIPH_BATCH` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4186607Z ok   retired knob `POM68K_PGE_ADB` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4187397Z ok   retired knob `POM68K_PGE_ADBMOUSE` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4190476Z ok   retired knob `POM68K_PGE_ADBRX` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4191663Z ok   retired knob `POM68K_PGE_CB1BYTE` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4192426Z ok   retired knob `POM68K_PGE_CB1INT` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4193602Z ok   retired knob `POM68K_PGE_CHARGER` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4194359Z ok   retired knob `POM68K_Q900_ADB` is absent from the tree
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4194980Z FAILED
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4195175Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4195427Z       Start  39: store_inventory_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4571765Z 23/82 Test  #39: store_inventory_test ..................   Passed    0.04 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4576776Z       Start  40: folderprobe_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4677106Z 24/82 Test  #40: folderprobe_test ......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4681532Z       Start  41: peripheral_lle_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4831890Z 25/82 Test  #41: peripheral_lle_test ...................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.4836998Z       Start  46: cpu_wrapper_smoke
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6491420Z 26/82 Test  #37: docs_test .............................***Failed    0.57 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6492378Z ok   Machine menu consumes the compiled profile catalogue
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6492994Z ok   snapshot ids live beside the profile catalogue
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6493550Z ok   compiled machine catalogue is non-empty
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6494078Z ok   CLAUDE.md states a profile count somewhere
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6494612Z ok   CLAUDE.md profile count 37 == 37 in the code
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6495217Z ok   headless application architecture files are present
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6495972Z ok   leaf devices consume subsystem views instead of the CoreConfig bag
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6497048Z ok   board composition roots require explicit CoreConfig injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6497745Z ok   LLE qualification state is a type, not loose globals
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6498318Z ok   a MachineSession owns its LLE registry
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6498929Z ok   devices receive their LLE registry through the core policy
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6499664Z ok   configured CPU leaves require explicit CoreCpuConfig injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6500452Z ok   core policy has one explicit fixture default and no section fallbacks
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6501311Z ok   main injects ProcessEnvironment into RuntimeConfig before composition
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6502169Z ok   RuntimeConfig composes typed domains without legacy knob spellings
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6503060Z ok   startup decoding has separate compatibility, product, core and machine owners
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6503973Z ok   startup options have one unique typed schema consumed by decoders
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6504765Z ok   all startup options declare a value policy; only five stay custom
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6505549Z ok   typed boolean policies preserve all legacy empty and false forms
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6506208Z ok   typed integer policies own radix and bounds
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6507017Z ok   StartupSnapshot rejects unknown names and publishes immutable typed values
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6507827Z ok   the unified startup schema owns all 41 typed JIT options
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6508575Z ok   each startup decoder is compile-time restricted to its option domain
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6509395Z ok   main is a cold composition root with no concrete GUI dependency
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6510191Z ok   MachineSession type-erases the concrete core/host/UI runtime
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6510903Z ok   MachineSession owns the concrete runtime with RAII
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6511557Z ok   GUI runtime owns decomposed host/UI process state with RAII
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6512636Z ok   machines receive host services directly without a reverse pointer
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6513472Z ok   GUI window, ImGui backend and texture handles have one RAII owner
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6514253Z ok   ROM identity dispatch belongs to MachineFactory, not main.cpp
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6515006Z ok   profile routing consumes typed selections and retains no raw map
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6515928Z ok   Machine menu marks the actual typed snapshot as current
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6516909Z ok   Machine menu relaunch is typed and never mutates process policy
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6517748Z ok   Peripheral relaunch carries typed firmware policy without env mutation
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6518578Z ok   RuntimeConfig parses typed ROM/media and exact relaunch inputs
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6519350Z ok   RuntimeConfig injects product, JIT and core policy aggregates
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6520098Z ok   typed configuration preserves empty-value default-on semantics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6520791Z ok   Q605 scheduler defaults remain explicitly reversible
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6521507Z ok   RuntimeConfig preserves 0/1 environment semantics for strict mode
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6522301Z ok   typed profile option overrides inherited identity and FPU policy
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6523023Z ok   typed Q605 relaunch restores integrated 68040 FPU policy
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6523770Z ok   typed relaunch replaces stale profile arguments without moving media
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6524551Z ok   typed ADB policy overrides inherited mode and clears its path
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6525285Z ok   typed Egret mode stays distinct and preserves colons in paths
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6526034Z ok   typed Cuda policy overrides inherited HLE and path independently
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6526824Z ok   typed firmware relaunch replaces stale policy without moving media
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6527596Z ok   unrelated relaunch retains the current typed firmware policy
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6528316Z ok   MachineFactory maps every platform's default ROM identity
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6537446Z ok   MachineFactory routes every catalogue profile, including variants
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6538315Z ok   typed relaunch option round-trips every shared-ROM profile
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6539044Z ok   strict AArch64 mode accepts only qualified 1 MB 68040 ROMs
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6539728Z ok   MachineSession retains and delegates once to its runtime
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6540427Z ok   MachineSession destroys its owned runtime at session teardown
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6541145Z ok   GUI session objects are destroyed in reverse dependency order
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6541881Z ok   GuiShell, GuiHostServices and PlatformComposers are present
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6542613Z ok   GUI runtime only owns and connects the three responsibilities
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6543397Z ok   GuiHostServices owns network, audio, relaunch and diagnostics only
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6544241Z ok   GuiShell owns windows, menus and six family render-loop units
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6545107Z ok   PlatformComposers performs typed family construction without rendering
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6546002Z ok   GUI shell loops use typed media and session-owned mutable state
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6546723Z ok   GuiShell owns shared screen and ADB input mechanics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6547394Z ok   the GUI runtime consumes injected configuration without getenv
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6548187Z ok   only ProcessEnvironment may read process-global configuration in src
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6549086Z ok   ProcessEnvironment derives the sole process capture from option schemas
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6549933Z ok   domain decoders use typed options instead of raw key strings
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6550755Z ok   RuntimeConfig decoders have explicit inputs and no process-reading API
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6551258Z ok   standalone JIT gates inject their own test-boundary snapshot
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6551675Z ok   Duo shell preserves no-floppy and staged-CD capabilities
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6552061Z ok   CMake root composes five ordered test responsibilities
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6553257Z ok   CMake gates, dev tools and registry policy stay separated
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6553623Z ok   GUI and gate locators both prefer hdv/ref fixtures
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6554034Z ok   reference lookup and writable ref-to-work routing stay paired
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6554528Z ok   all gate-local asset resolvers delegate to the ref-aware helper
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6555256Z ok   pom68k_gates.tsv located (CMake writes it at configure time)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6555619Z ok   gate roster read from pom68k_gates.tsv
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6556127Z ok   gate manifest has the versioned eight-column schema
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6556492Z ok   gate manifest covers every registered gate exactly once
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6556907Z ok   every gate manifest row has valid assets/host/scope/tier/config/slots
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6557372Z ok   performance budget manifest has valid workload/family/host rows
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6557851Z ok   performance policy separates daily hosts and pins measured Macintosh baselines
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6558285Z ok   JIT metrics schema is explicit and versioned
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6558628Z ok   x86-64 CI validates and archives structured JIT metrics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6558998Z ok   AArch64 CI validates and archives structured JIT metrics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6559507Z note: 9 host-conditional gate(s) not registered here; the documented union totals are held to account
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6559977Z ok   TODO.md active backlog located
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6560262Z ok   TODO.md delegates generated gate facts to STATUS.md
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6560814Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6561360Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6561886Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6562343Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6562650Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6562939Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6563239Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6563525Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6563813Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6564100Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6564394Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6564683Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6564971Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6565274Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6565563Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6565878Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6566179Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6566762Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6567315Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6567866Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6568252Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6568545Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6568834Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6569136Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6569425Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6569715Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6570115Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6570582Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6571113Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6571617Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6572136Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6572653Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6573456Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6574002Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6574525Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6575099Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6575836Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6576697Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6577224Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6577755Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6578294Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6578868Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6579450Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6580009Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6580553Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6581074Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6581622Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6582161Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6582693Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6583254Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6583795Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6584331Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6584903Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6585472Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6586026Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6586571Z ok   TODO.md contains only unchecked task markers
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6587119Z ok   TODO.md contains actionable open work
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6587691Z ok   every registered gate carries at least one label
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6588268Z ok   CLAUDE.md names gates by their full name
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6589322Z ok   CLAUDE.md names `docs_test` — registered here or declared host-conditional
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6590488Z ok   CLAUDE.md names `file_size_budget_test` — registered here or declared host-conditional
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6591318Z ok   the docs state a registry total for x86-64
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6591977Z ok   CLAUDE.md splits the registry by host and states the x86-64 total
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6592813Z ok   TODO.md splits the registry by host and states the x86-64 total
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6593837Z ok   README.md splits the registry by host and states the x86-64 total
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6594550Z ok   DEV.md splits the registry by host and states the x86-64 total
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6594934Z ok   STATUS.md generated registry located
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6595626Z ok   STATUS.md declares itself generated
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6595917Z ok   STATUS.md carries the union section
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6596216Z FAIL STATUS.md union total 245 == configured union 242
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6596577Z FAIL STATUS.md union label table drifted: unit=113 expected
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6596911Z ok   STATUS.md carries a section for x86_64
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6597250Z FAIL STATUS.md says 241 gates registered on x86_64; ctest has 233
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6597665Z FAIL STATUS.md absent-here count matches the absent roster
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6598301Z FAIL STATUS.md x86_64 dimension table drifted from the manifest — rerun tools/status_md.py
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6598971Z ok   STATUS.md carries the PRODUCT_LLE registry section
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6599586Z ok   STATUS.md PRODUCT_LLE registry has been materialized
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6599912Z ok   Moira fork design record located
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6600162Z ok   Moira source inventory traversed
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6600524Z ok   every source file exposing a pom* extension carries a POM68K marker
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6601093Z ok   Moira local-patch inventory table parsed
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6601407Z ok   Moira inventory names marked source `Moira.cpp`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6601722Z ok   Moira inventory names marked source `Moira.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6602066Z ok   Moira inventory names marked source `MoiraALU_cpp.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6602418Z ok   Moira inventory names marked source `MoiraCache040.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6602869Z ok   Moira inventory names marked source `MoiraConfig.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6603210Z ok   Moira inventory names marked source `MoiraDataflow.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6603579Z ok   Moira inventory names marked source `MoiraDataflow_cpp.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6603971Z ok   Moira inventory names marked source `MoiraExceptions_cpp.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6604356Z ok   Moira inventory names marked source `MoiraExecFPU_cpp.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6604728Z ok   Moira inventory names marked source `MoiraExecMMU_cpp.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6605094Z ok   Moira inventory names marked source `MoiraExec_cpp.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6605469Z ok   Moira inventory names marked source `MoiraInit_cpp.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6606041Z ok   Moira inventory names marked source `MoiraTypes.h`
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6606685Z ok   Moira document states the computed pom* identifier count
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6607409Z ok   Moira document states the computed POM68K-marked line count
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6607837Z ok   Moira document states the computed marked/source file count
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6608213Z ok   Moira document states the computed patch-group count
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6608821Z ok   CHANGELOG_INDEX.md lists 441 of the 441 dated entries — regenerate with tools/changelog_index.py
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6609309Z ok   src/jit/backends/JitBackendA64.cpp located
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6609731Z ok   src/jit/backends/JitBackendA64.cpp consumes Instr::memory plans
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6610172Z ok   src/jit/backends/JitBackendA64.cpp does not decode memory semantics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6610644Z ok   src/jit/backends/JitBackendA64.cpp has no opcode-local sole-access guess
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6611163Z ok   src/jit/backends/JitBackendA64.cpp has no opcode-local exact-access exception
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6611635Z ok   src/jit/backends/JitBackendA64.cpp consumes Instr::semantics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6612129Z ok   src/jit/backends/JitBackendA64.cpp consumes the shared EA plan
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6612686Z ok   src/jit/backends/JitBackendA64.cpp does not re-decode effective addresses
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6613169Z ok   src/jit/backends/JitBackendA64.cpp consumes Instr control-flow plans
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6613631Z ok   src/jit/backends/JitBackendA64.cpp does not decode branch extensions
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6614133Z ok   src/jit/backends/JitBackendA64.cpp reads the shared cost columns and defines none
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6614840Z ok   src/jit/backends/JitBackendA64.cpp reads the shared full-format cost, not a local twin
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6616318Z ok   src/jit/backends/JitBackendA64.cpp never re-decodes BlockIr extension words
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6616905Z ok   src/jit/backends/JitBackendA64.cpp shares raw-opcode census semantics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6617400Z ok   src/jit/backends/JitBackendA64.cpp has no opcode-line dispatch decoder
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6617885Z ok   src/jit/backends/JitBackendA64.cpp has no private ALU semantic decoder
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6618379Z ok   src/jit/backends/JitBackendA64.cpp has no private live environment policy
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6618790Z ok   src/jit/backends/JitBackendX64.cpp located
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6619324Z ok   src/jit/backends/JitBackendX64.cpp consumes Instr::memory plans
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6619764Z ok   src/jit/backends/JitBackendX64.cpp does not decode memory semantics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6620534Z ok   src/jit/backends/JitBackendX64.cpp has no opcode-local sole-access guess
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6621066Z ok   src/jit/backends/JitBackendX64.cpp has no opcode-local exact-access exception
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6621568Z ok   src/jit/backends/JitBackendX64.cpp consumes Instr::semantics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6622169Z ok   src/jit/backends/JitBackendX64.cpp consumes the shared EA plan
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6622624Z ok   src/jit/backends/JitBackendX64.cpp does not re-decode effective addresses
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6623115Z ok   src/jit/backends/JitBackendX64.cpp consumes Instr control-flow plans
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6623677Z ok   src/jit/backends/JitBackendX64.cpp does not decode branch extensions
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6624178Z ok   src/jit/backends/JitBackendX64.cpp reads the shared cost columns and defines none
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6624931Z ok   src/jit/backends/JitBackendX64.cpp reads the shared full-format cost, not a local twin
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6625610Z ok   src/jit/backends/JitBackendX64.cpp never re-decodes BlockIr extension words
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6626106Z ok   src/jit/backends/JitBackendX64.cpp shares raw-opcode census semantics
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6626582Z ok   src/jit/backends/JitBackendX64.cpp has no opcode-line dispatch decoder
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6627053Z ok   src/jit/backends/JitBackendX64.cpp has no private ALU semantic decoder
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6627550Z ok   src/jit/backends/JitBackendX64.cpp has no private live environment policy
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6627979Z ok   JitEaPlan.h owns the shared EA admission wrapper
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6628343Z ok   JitEaPlan.h keeps full-format admission opt-in per caller
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6628687Z ok   JitCost.h owns the 68020 cycle columns
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6629007Z ok   JitCost.h owns the D1F0 full-format sub-form predicate
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6629324Z ok   JitCost.h owns the CMPA surcharge
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6629624Z ok   citation lookup preserves filename case on every host
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6630011Z ok   CLAUDE.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6630436Z ok   README.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6630852Z ok   DEV.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6631252Z ok   TODO.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6631703Z ok   src/jit/POM68K_JIT.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6632231Z ok   extern/moira/POM68K_VENDOR.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6632770Z ok   docs/68K_FAMILY_SCOPE.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6633276Z ok   docs/APPLETALK.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6633772Z ok   docs/BASILISK_ROM_NOTES.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6634269Z ok   docs/CACHE_040.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6634749Z ok   docs/DUO_BRINGUP.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6635776Z ok   docs/HLE_OVERLAY.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6636293Z ok   docs/IOP_BRINGUP.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6636960Z ok   docs/JIT_BRINGUP.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6637464Z ok   docs/LC520_BRINGUP.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6637965Z ok   docs/LCII_HARDWARE.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6638451Z ok   docs/LLE_VS_HLE.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6638948Z ok   docs/MAME_PARITY_AUDIT.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6639461Z ok   docs/MEASURING.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6639946Z ok   docs/RASPBERRY_PI.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6640478Z ok   docs/SIMPLIFICATIONS_REVIEW.md: every in-tree file:line citation lands inside its file
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6640924Z ok   in-tree file:line citations judged (376)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6642269Z ok   each JIT Engine requires one explicitly injected snapshot
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6642677Z ok   src/Cpu68k.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6643080Z ok   src/IIfxCpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6643476Z ok   src/Cpu020.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6643972Z ok   src/Cpu030.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6644351Z ok   src/Cpu040.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6644728Z ok   src/MscCpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6645129Z ok   src/CentrisCpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6645540Z ok   src/Q630Cpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6645932Z ok   src/Q700Cpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6646332Z ok   src/SonoraCpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6646732Z ok   src/VaspCpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6647115Z ok   src/RbvCpu.h requires non-null JIT configuration injection
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6647425Z FAILED
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6647518Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6647623Z       Start  47: pseudovia_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6647953Z 27/82 Test  #47: pseudovia_test ........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.6648314Z       Start  48: v8_ramsize
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7544360Z 28/82 Test  #46: cpu_wrapper_smoke .....................***Exception: SegFault  0.27 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7544994Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7548907Z       Start  49: flux_pll_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7655025Z 29/82 Test  #49: flux_pll_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7660812Z       Start  50: valkyrie_i2c_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7760706Z 30/82 Test  #50: valkyrie_i2c_test .....................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7764696Z       Start  51: valkyrie_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7881602Z 31/82 Test  #51: valkyrie_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7886469Z       Start  52: scc_int_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7979494Z 32/82 Test  #52: scc_int_test ..........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.7983872Z       Start  53: via6522_parity_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8083339Z 33/82 Test  #53: via6522_parity_test ...................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8088487Z       Start  54: rtc_pram_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8298922Z 34/82 Test  #54: rtc_pram_test .........................***Failed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8300387Z AdbVia: no MCU firmware dump found — running the NON-CONFORMANT HLE substitute (docs/LLE_VS_HLE.md §2)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8301195Z AdbVia: no MCU firmware dump found — running the NON-CONFORMANT HLE substitute (docs/LLE_VS_HLE.md §2)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8301817Z rtc_pram_test — battery persistence and discrete-RTC heartbeat
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8302255Z   missing file: loadPram returns false                       ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8302643Z   missing file: the factory image survives                   ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8303023Z   savePram wrote a file                                      FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8303404Z   the file is exactly 256 bytes (CentrisMemory's format)     FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8303813Z   loadPram accepts it                                        FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8304170Z   all 256 XPRAM bytes came back                              FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8305058Z   the clock is untouched (seconds are not in the file)       ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8305718Z   short file: loadPram returns false                         ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8306282Z   short file: not one byte was applied                       ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8306667Z   Mac II family: loadPram forwards to the RTC                FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8307050Z   Mac II family: the image arrived intact                    FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8307699Z   IIfx: loadPram forwards to the RTC                         FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8308087Z   IIfx: the image arrived intact                             FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8308465Z   compacts: loadPram forwards to the RTC                     FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8308938Z   compacts: read back the Mac II's image byte for byte       FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8309601Z   IIci: RTC does not advance before the one-second boundary  ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8310070Z   IIci: VIA1 CA2 stays clear before the CKO edge             ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8310471Z   IIci: RTC advances exactly at the one-second boundary      ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8310838Z   IIci: RTC CKO raises VIA1 CA2                              ok
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8311130Z rtc_pram_test: FAIL
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8311252Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8311347Z       Start  55: ncr53c96_queue_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8445135Z 35/82 Test  #55: ncr53c96_queue_test ...................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8449773Z       Start  56: msc_parity_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8743310Z 36/82 Test  #56: msc_parity_test .......................   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8749332Z       Start  57: asc_easc_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8846697Z 37/82 Test  #57: asc_easc_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.8850887Z       Start  58: q700_turboscsi_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9033609Z 38/82 Test  #58: q700_turboscsi_test ...................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9038510Z       Start  59: asc_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9156314Z 39/82 Test  #59: asc_test ..............................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9160361Z       Start  60: q605_asc_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9271525Z 40/82 Test  #60: q605_asc_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9275499Z       Start  72: swim2_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9798997Z 41/82 Test  #48: v8_ramsize ............................***Exception: SegFault  0.32 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9799636Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:29.9804826Z       Start  73: swim2_media_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.0945150Z 42/82 Test  #73: swim2_media_test ......................   Passed    0.11 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.0950185Z       Start  74: floppy_sound_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1082297Z 43/82 Test  #74: floppy_sound_test .....................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1087175Z       Start  76: egret_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1180059Z 44/82 Test  #76: egret_test ............................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1185036Z       Start  77: pic1654s_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1281933Z 45/82 Test  #77: pic1654s_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1286186Z       Start  78: adbline_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1406851Z 46/82 Test  #78: adbline_test ..........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1410538Z       Start  79: video_beam_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1505633Z 47/82 Test  #79: video_beam_test .......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1509990Z       Start  80: v8_video_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1710449Z 48/82 Test  #80: v8_video_test .........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1715065Z       Start  82: sonora_video_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1859968Z 49/82 Test  #82: sonora_video_test .....................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.1864073Z       Start  83: raster_equiv_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2160879Z 50/82 Test  #72: swim2_test ............................***Exception: SegFault  0.29 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2161698Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2165483Z       Start  84: v8_raster_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2348920Z 51/82 Test  #84: v8_raster_test ........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2354979Z       Start  85: q605_dafb_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2405768Z 52/82 Test  #83: raster_equiv_test .....................   Passed    0.05 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2410064Z       Start  86: q605_event_scheduler_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2477752Z 53/82 Test  #85: q605_dafb_test ........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2482058Z       Start  87: quadra_event_scheduler_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2530035Z 54/82 Test  #86: q605_event_scheduler_test .............   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2535875Z       Start  88: q605_turboscsi_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2613964Z 55/82 Test  #87: quadra_event_scheduler_test ...........   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2618820Z       Start  89: scc_baud_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2745377Z 56/82 Test  #89: scc_baud_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2751591Z       Start  90: scc_engine_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2875831Z 57/82 Test  #90: scc_engine_test .......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.2881386Z       Start  91: r65c02_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5280927Z 58/82 Test  #25: dir2hfs_selftest ......................   Passed    2.16 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5285723Z       Start  92: applepic_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5409855Z 59/82 Test  #92: applepic_test .........................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5414448Z       Start 166: scsi_cdrom_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5535692Z 60/82 Test #166: scsi_cdrom_test .......................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5540541Z       Start 167: floppy_persist_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5614363Z 61/82 Test  #88: q605_turboscsi_test ...................***Exception: SegFault  0.31 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5615122Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.5618375Z       Start 175: berr030_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.6489082Z 62/82 Test #167: floppy_persist_test ...................   Passed    0.09 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.6494565Z       Start 176: jit_restart_write_030_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.6903197Z 63/82 Test #176: jit_restart_write_030_test ............   Passed    0.04 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.6907707Z       Start 177: declrom_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.6994431Z 64/82 Test #175: berr030_test ..........................   Passed    0.13 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7035087Z       Start 178: nubus_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7101641Z 65/82 Test #177: declrom_test ..........................   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7109975Z       Start 179: toby_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7143325Z 66/82 Test #178: nubus_test ............................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7144880Z       Start 188: jit_asset_free_lockstep_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7215555Z 67/82 Test #179: toby_test .............................   Passed    0.01 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7274652Z       Start 189: jit_copyback_write_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7411249Z 68/82 Test #188: jit_asset_free_lockstep_test ..........   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7433927Z       Start 190: jit_copyback_write_040_control_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7540192Z 69/82 Test #189: jit_copyback_write_040_test ...........   Passed    0.03 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7556511Z       Start 191: jit_copyback_bsr_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7629183Z 70/82 Test #190: jit_copyback_write_040_control_test ...   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7645007Z       Start 192: jit_copyback_pair_040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7754794Z 71/82 Test #191: jit_copyback_bsr_040_test .............   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7772392Z       Start 193: jit_copyback_pair_040_control_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7856600Z 72/82 Test #192: jit_copyback_pair_040_test ............   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7884681Z       Start 194: cache040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.7999246Z 73/82 Test #193: jit_copyback_pair_040_control_test ....   Passed    0.02 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.8035417Z       Start 195: fpu_sanity
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.8478334Z 74/82 Test #194: cache040_test .........................   Passed    0.06 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.8674334Z       Start 196: fpu040_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.9197243Z 75/82 Test #195: fpu_sanity ............................   Passed    0.12 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.9212656Z       Start 197: callm_rtm_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.9768763Z 76/82 Test #196: fpu040_test ...........................   Passed    0.12 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.9785371Z       Start 198: jit_backend_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.9864008Z 77/82 Test #197: callm_rtm_test ........................   Passed    0.06 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:30.9867600Z       Start 199: jit_backend_parity_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0219959Z 78/82 Test #198: jit_backend_test ......................***Failed    0.05 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0234415Z [jit] unknown backend 'no-such-backend' — falling back to 'auto'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0359994Z [jit_backend] IR semantic and memory protocols
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0369597Z [jit_backend] operating profiles
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0370128Z [jit_backend] backend registry
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0375807Z   compiled: threaded
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0381152Z   auto (68040) -> threaded (portable — replays through Moira, no code generation)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0384718Z [jit_backend] guest-family scope
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0389627Z [jit_backend] executable memory
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0412772Z [jit_backend] native coverage (threaded)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0422781Z   FAIL: EXG A6,A7 is native on both generators (x64 port 2026-08-21)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0461079Z   FAIL: distinct-register CMPM is native on both generators (x64 port 2026-08-21), never EOR-to-ea
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0506550Z [jit_backend] block classifier
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0542630Z [jit_backend] FAIL: 2 check(s)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0572604Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0578237Z       Start 233: file_size_budget_test
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0645238Z 79/82 Test #199: jit_backend_parity_test ...............   Passed    0.06 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.0820215Z 80/82 Test  #34: asset_lock_test .......................   Passed    2.30 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3090563Z 81/82 Test #233: file_size_budget_test .................***Failed    0.29 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3091693Z D:/a/pom68k/pom68k/tools/check_file_sizes.sh: line 131: 250
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3092677Z : arithmetic syntax error: invalid arithmetic operator (error token is "
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3093487Z ")
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3094390Z FAIL  tools/file_size_budget.txt lists 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3095641Z , which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3097511Z FAIL  tools/file_size_budget.txt lists CLAUDE.md, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3100046Z FAIL  tools/file_size_budget.txt lists CMakeLists.txt, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3102169Z FAIL  tools/file_size_budget.txt lists cmake/Pom68kComponentGates.cmake, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3104299Z FAIL  tools/file_size_budget.txt lists cmake/Pom68kDevTools.cmake, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3106431Z FAIL  tools/file_size_budget.txt lists cmake/Pom68kGatePolicy.cmake, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3108528Z FAIL  tools/file_size_budget.txt lists cmake/Pom68kJitGates.cmake, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3110591Z FAIL  tools/file_size_budget.txt lists cmake/Pom68kMachineGates.cmake, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3112676Z FAIL  tools/file_size_budget.txt lists src/AfpServer.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3114718Z FAIL  tools/file_size_budget.txt lists src/GuiHostServices.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3116813Z FAIL  tools/file_size_budget.txt lists src/GuiMachineRuntime.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3119223Z FAIL  tools/file_size_budget.txt lists src/GuiRunnerCompact.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3121604Z FAIL  tools/file_size_budget.txt lists src/GuiRunnerDafb.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3123492Z FAIL  tools/file_size_budget.txt lists src/GuiRunnerDuo.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3125591Z FAIL  tools/file_size_budget.txt lists src/GuiRunnerSonora.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3127423Z FAIL  tools/file_size_budget.txt lists src/GuiRunnerToby.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3129225Z FAIL  tools/file_size_budget.txt lists src/GuiRunnerV8.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3131027Z FAIL  tools/file_size_budget.txt lists src/GuiShellCommon.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3132839Z FAIL  tools/file_size_budget.txt lists src/GuiShell.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3134619Z FAIL  tools/file_size_budget.txt lists src/GuiTobyStatus.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3136660Z FAIL  tools/file_size_budget.txt lists src/jit/backends/JitBackendA64.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3139329Z FAIL  tools/file_size_budget.txt lists src/jit/backends/JitBackendX64.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3141415Z FAIL  tools/file_size_budget.txt lists src/jit/JitConfig.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3143455Z FAIL  tools/file_size_budget.txt lists src/jit/JitEngine.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3145418Z FAIL  tools/file_size_budget.txt lists src/jit/JitIr.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3147408Z FAIL  tools/file_size_budget.txt lists src/main.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3149418Z FAIL  tools/file_size_budget.txt lists src/PlatformCompact.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3151511Z FAIL  tools/file_size_budget.txt lists src/PlatformComposers.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3153598Z FAIL  tools/file_size_budget.txt lists src/PlatformDafb.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3155897Z FAIL  tools/file_size_budget.txt lists src/PlatformDuo.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3157864Z FAIL  tools/file_size_budget.txt lists src/PlatformSonora.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3159921Z FAIL  tools/file_size_budget.txt lists src/PlatformToby.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3161916Z FAIL  tools/file_size_budget.txt lists src/PlatformV8.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3163918Z FAIL  tools/file_size_budget.txt lists src/Q700Memory.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3165874Z FAIL  tools/file_size_budget.txt lists src/R65c02.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3168156Z FAIL  tools/file_size_budget.txt lists src/RuntimeConfigCore.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3170196Z FAIL  tools/file_size_budget.txt lists src/RuntimeConfig.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3172540Z FAIL  tools/file_size_budget.txt lists src/RuntimeConfigMachine.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3174655Z FAIL  tools/file_size_budget.txt lists src/RuntimeConfigParsers.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3177044Z FAIL  tools/file_size_budget.txt lists src/RuntimeConfigProduct.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3178985Z FAIL  tools/file_size_budget.txt lists src/Scc8530.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3180959Z FAIL  tools/file_size_budget.txt lists src/ScsiDisk.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3182902Z FAIL  tools/file_size_budget.txt lists src/SonyDrive.cpp, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3184953Z FAIL  tools/file_size_budget.txt lists src/StartupDomainView.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3187011Z FAIL  tools/file_size_budget.txt lists src/StartupOptions.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3189020Z FAIL  tools/file_size_budget.txt lists src/StartupSnapshot.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3191131Z FAIL  tools/file_size_budget.txt lists src/StartupValueDecoding.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3193550Z FAIL  tools/file_size_budget.txt lists src/StartupValuePolicy.h, which no longer exists — run 'D:/a/pom68k/pom68k/tools/check_file_sizes.sh --update'
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3194575Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3194841Z The rule is CLAUDE.md's first convention: one concern per file.
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3195547Z A new platform's GUI runner is a spec row, not another 350 lines.
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.3196001Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5204779Z 82/82 Test  #91: r65c02_test ...........................   Passed    1.23 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5218960Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5219374Z 83% tests passed, 14 tests failed out of 82
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5220768Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5221354Z Label Time Summary:
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5221976Z asset-none          =  13.71 sec*proc (82 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5222629Z gui                 =   0.54 sec*proc (1 test)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5223353Z host-any            =  13.57 sec*proc (76 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5223990Z host-native         =   0.14 sec*proc (6 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5224601Z jit                 =   0.28 sec*proc (9 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5225195Z jit-fast            =   0.96 sec*proc (8 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5225795Z m030                =   0.04 sec*proc (2 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5226381Z m040                =   0.77 sec*proc (8 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5227307Z scope-component     =  12.60 sec*proc (70 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5228137Z scope-engine        =   0.28 sec*proc (9 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5229239Z scope-repository    =   0.82 sec*proc (3 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5230286Z smoke               =   0.05 sec*proc (1 test)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5231121Z tier-daily          =  13.71 sec*proc (82 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5232136Z unit                =  13.17 sec*proc (81 tests)
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5232672Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5232995Z Total Test time (real) =   4.28 sec
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5233823Z 
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5234469Z Errors while running CTest
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5234858Z The following tests FAILED:
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5239054Z 	  1 - gui_smoke_test (Failed)                           asset-none gui host-any scope-component tier-daily
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5241837Z 	  2 - cpu_smoke (SEGFAULT)                              asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5243393Z 	  3 - demo_screenshot (SEGFAULT)                        asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5244614Z 	 35 - machinehost_test (Failed)                         asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5245821Z 	 36 - input_journal_test (SEGFAULT)                     asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5247074Z 	 37 - docs_test (Failed)                                asset-none host-any jit-fast scope-repository tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5248350Z 	 38 - config_test (Failed)                              asset-none host-any jit-fast scope-repository tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5249586Z 	 46 - cpu_wrapper_smoke (SEGFAULT)                      asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5250771Z 	 48 - v8_ramsize (SEGFAULT)                             asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5251795Z 	 54 - rtc_pram_test (Failed)                            asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5252823Z 	 72 - swim2_test (SEGFAULT)                             asset-none host-any m040 scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5253931Z 	 88 - q605_turboscsi_test (SEGFAULT)                    asset-none host-any m040 scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5255130Z 	198 - jit_backend_test (Failed)                         asset-none host-any jit jit-fast scope-engine smoke tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.5256302Z 	233 - file_size_budget_test (Failed)                    asset-none host-any scope-component tier-daily unit
+windows	Run the asset-free tier in the release configuration	2026-09-07T18:43:31.6079364Z ##[error]Process completed with exit code 1.

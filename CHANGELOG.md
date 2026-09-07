@@ -351,6 +351,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Product scenarios — applications, beyond-boot legs and persistence
 
+- **what the first MSVC compile and run of the test tree found — the POSIX-isms in the harnesses, the seven asset-free reds and which of them are policy rather than porting** → [2026-09-07 (ninth) — The first MSVC run of the asset-free tier…](#2026-09-07-msvc-first-run)
 - **why the macOS package had LTO off, what exercised the universal-2 lipo path with it on, and how MSVC's /GL + /LTCG are requested without a Windows host to prove them** → [2026-09-07 (seventh) — LTO enters the artifacts…](#2026-09-07-lto-artifacts)
 - **what the product tier's coverage is against the asset-free tier's, which src/ files no gate reaches, whether the default engines survive ASan on real boots, and what the AppleTalk hub costs at equal arms** → [2026-09-07 (sixth) — Tier C's sweep…](#2026-09-07-tier-c-sweep)
 - **why a host-forced eject lost the folder the Finder had visibly created, how Put Away from the guest fixes it on SWIM1 and SWIM2, and what the 1.44 MB attempt on the LC II shows** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
@@ -426,6 +427,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-07 (ninth)** — [The first MSVC run of the asset-free tier: POM68K.exe builds with /GL + /LTCG in six minutes, the gate tree compiles once three POSIX-isms are shimmed or fenced, and 75 of 82 gates pass — the seven reds are configuration findings, read and filed](#2026-09-07-msvc-first-run)
 - **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](#2026-09-07-swim1-mfm-hunt)
 - **2026-09-07 (seventh)** — [LTO enters the artifacts: the universal macOS package builds, passes lipo and runs with it, and MSVC gets /GL + /LTCG through CMake's IPO, probed rather than assumed](#2026-09-07-lto-artifacts)
 - **2026-09-07 (sixth)** — [Tier C's sweep: five more machines in the boot matrix, the Duo's input and the LC II's chime as gates, three real boots clean under ASan, the product tier's coverage, a Cortex-A76 package, a scriptable turbo and an AppleTalk hub that costs nothing measurable](#2026-09-07-tier-c-sweep)
@@ -867,6 +869,56 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-07-msvc-first-run"></a>
+## 2026-09-07 (ninth) — The first MSVC run of the asset-free tier: POM68K.exe builds with /GL + /LTCG in six minutes, the gate tree compiles once three POSIX-isms are shimmed or fenced, and 75 of 82 gates pass — the seven reds are configuration findings, read and filed
+
+`release.yml` can be dispatched by hand and publishes nothing off a tag, so
+the (seventh) entry's missing evidence — MSVC LTO on a Windows host — was
+produced today rather than deferred to the first release. Four dispatches
+were needed, each a finding of its own.
+
+The first (34129671630) failed outside LTO: the macOS test configure found
+no glfw3 because only the packaging step carried `CMAKE_PREFIX_PATH`, and
+MSVC stopped on `std::numeric_limits::max()` behind `windows.h`'s `min`/`max`
+macros in `SonyDrive.cpp` (`AtomicReplace.h` now defines `NOMINMAX`). The
+second (34135391393) built the macOS package with LTO and then spent 47 of
+the job's 90 minutes building ~130 gate executables with LTO before two
+runner-environment gates failed (headless NSGL, LToUDP multicast); the
+macOS test tree is now built without LTO and skips those two, which the
+`macOS` CI workflow runs on the same runner label. The third (34143298273)
+was the first time MSVC compiled the shipped binary with `-DPOM68K_LTO=ON`
+— `POM68K: MSVC LTO on (/GL + /LTCG through IPO)`, six minutes — and then
+timed out building the gate tree under the same /GL; the Windows job now
+builds the gates in their own tree, LTO off, eleven minutes.
+
+The fourth (34151560976) compiled the whole test tree under MSVC for the
+first time, after three fixes none of which touched emulator code: nine
+gates called `setenv`/`unsetenv` (`tests/PortableEnv.h` spells them with
+`_putenv_s` on Windows), `floppy_sound_test` linked `pthread` and `m` by
+name, and `afp_server_test`, `pap_server_test` and `macip_gw_test` include
+`unistd.h`/`arpa/inet.h` and drive the host socket API directly — they
+register only off Windows for now. Then the asset-free tier ran under MSVC:
+**75 of 82 green**, and seven reds, each read as the item asked:
+
+| gate | what the Windows run says | kind |
+|---|---|---|
+| `file_size_budget_test` | every listed file "no longer exists" | CRLF checkout: a `\r` on each budget line |
+| `rtc_pram_test` | `savePram` wrote no file, `loadPram` refused | file mode or path on Windows |
+| `machinehost_test` | four floppy-by-path assertions | path handling in the insert flow |
+| `jit_backend_test` | CMPM/EXG "native on both generators" | the x64 emitter is not usable on Windows, by decision |
+| `config_test` | `POM68K_SHARE_DIR` cites `afp_server_test` | the knob contract meets a gate fenced off Windows |
+| `docs_test` | 233 gates registered on "x86_64", union 242 vs 245 | `STATUS.md` has no Windows host |
+| `gui_smoke_test` | scenario exited 1 | no pixel format on a display-less runner |
+
+The first four are local porting; the last three are policy questions —
+a Windows host in the gate registry, POSIX-only gates in the knob contract,
+and where a GUI smoke can run — and TODO § C.6 carries all seven with the
+archived logs (`scratchpad/2026-09-07/msvc/`). The LTO item of § C.4
+closes: the macOS universal package and the Windows executable both ship
+with LTO, each proved on its own job.
 
 ---
 
