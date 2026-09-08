@@ -229,7 +229,19 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   (0x80) car le FIFO ISM de POM68K contient un octet là où celui de MAME est
   vide. Deux cibles concrètes et testables : la valeur de sense-direction sous
   ces phases (`dirToZero_` piloté par `applyPhases` DIRTN=ca2) et l'octet
-  parasite dans le FIFO ISM.
+  parasite dans le FIFO ISM. RACINE PLUS PROFONDE (2026-09-08) : ces deux écarts
+  sont des SYMPTÔMES. À la lecture reg 15, POM68K est en mode ISM (mode=c2) alors
+  que MAME est en IWM (registre mode lu à $00). Les deux entrent en ISM 3× via la
+  séquence magique reg 15, mais MAME RESSORT en IWM avant ces lectures et POM68K
+  Y RESTE — donc POM68K traite `reg7=$82` comme un mode-set ISM là où MAME le
+  traite comme un strobe LSTRB IWM (d'où le strobe DIRTN parasite qui pose
+  `dirToZero_=true`, et le handshake ISM au lieu de l'accès IWM). Le vrai défaut
+  est le SUIVI DE TRANSITION ISM/IWM : notre logique de sortie d'ISM (leaveIsm,
+  `if(!(mode_&0x40)) leaveIsm()`) ne ressort pas quand celle de MAME le fait. Les
+  écritures reg 6 du pilote ($80/$04/$38) n'effacent pas le bit 6 chez aucun des
+  deux, donc MAME sort par un autre mécanisme (à comparer : gestion post-ism_write
+  du changement de bit 6, swim1.cpp:360-367). Prochaine étape = aligner la
+  sortie/entrée ISM sur MAME et valider que le registre mode lu passe à $00.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
