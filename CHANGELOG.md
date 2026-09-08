@@ -886,6 +886,28 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the reg-14 lead is a red herring — POM68K matches MAME at every control decision; the difference is the read DATA
+
+Using the reliable Lua opcode-fetch + CPU-state read on both, POM68K's and MAME's
+D0 at $A6CEDE (the branch after $a6d450 reads SWIM register 14) are IDENTICAL:
+both 37, FF, FF (MAME's interleaved 02s are prefetch duplicates). The first read
+is $37 in BOTH -- q6=1, the STATUS register, sense clear, bpl taken, continue --
+so POM68K does NOT fail this decision; the $FF that errors is a later call
+(the external-drive probe), and it errors identically in MAME. Instrumenting
+POM68K at $A6D460/$A6D464 confirms it is in the IWM personality (ism=0) with q6
+correctly set to 1 by the reg-13 read, exactly as MAME. So the earlier chain
+"POM68K stuck in ISM / reg-14 reads $FF where MAME reads $37" is withdrawn: every
+control-flow lead this session (ISM/IWM personality, the reg-15 handshake, the
+reg-14 status read) turns out to match MAME once measured reliably. What remains
+is the READ DATA: POM68K's Prime #1 reads the 1.44 MB disk through the IWM and
+gets 931 valid nibbles out of 68952 (garbage), returning -400, whereas MAME reads
+usable data and mounts. So the true and only divergence is the IWM read of HD MFM
+flux -- POM68K's GCR nibble framing does not produce the cell stream the
+SuperDrive software MFM decoder consumes. The fix belongs there, and the reliable
+co-trace tool (opcode-fetch + state read, recipe in the mame-lcii-cotrace memory)
+is the way to compare the two read streams byte-for-byte. No control-flow fix
+would help; the register decisions already match MAME.
+
 ## 2026-09-08 — Floppy 1.44 MB: reading MAME's real registers (Lua opcode-fetch + CPU state) gives the target -- reg 14 must read $37, not $FF
 
 The MAME read taps that return $00 are unusable, but the reference is reachable
