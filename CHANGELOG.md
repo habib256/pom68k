@@ -886,6 +886,27 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: reading MAME's real registers (Lua opcode-fetch + CPU state) gives the target -- reg 14 must read $37, not $FF
+
+The MAME read taps that return $00 are unusable, but the reference is reachable
+without a verbose rebuild: install a Lua read tap on the OPCODE FETCH of the
+branch after the read (aligned, e.g. 0xa6cedc..0xa6cedf), and inside it read the
+CPU register from state (`cpu.state["D0"].value`) when the PC is the branch. This
+yields MAME's real value. At $A6CEDE -- the `bpl` after $a6d450 loads SWIM
+register 14 into D0 -- MAME's D0 is $37 (the IWM STATUS register: q6=1, sense=0,
+so bit 7 clear, bpl taken, the driver continues and mounts), while POM68K's is
+$FF (the IWM DATA register read with q6=0 and the drive inactive, bit 7 set, so
+$A6CEE0 loads -65). So the target is exact: POM68K's reg-14 read here must be the
+STATUS register ($37), which requires q6=1 -- set by the preceding reg-13 read
+going through the IWM personality. POM68K's reg-13 read instead runs in ISM (which
+does not touch q6), so reg 14 falls to the disabled DATA register and $FF. The
+write sequences are byte-identical through write 148, so the driver issued the
+same setup; the divergence is POM68K's ISM/IWM personality state at the $a6d450
+reg-13 read on this attempt. The fix is validated two ways now: POM68K's D0 at
+$A6CEDE must become $37, and its write sequence must extend to match MAME past
+write 148. The reliable Lua state-read recipe is saved in the mame-lcii-cotrace
+memory for the fix work.
+
 ## 2026-09-08 — Floppy 1.44 MB: the reliable divergence is $a6d450's reg-14 read returning $FF because POM68K's IWM drive is inactive where MAME's is active
 
 Following the write-diff divergence (write ~149) to its cause in the ROM: the
