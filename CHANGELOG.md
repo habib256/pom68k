@@ -886,6 +886,32 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: correcting the co-trace — MAME read taps are unreliable; the reliable WRITE diff shows POM68K is faithful until a sense read at write ~148
+
+Correction to the previous entries. A MAME Lua read-tap on the SWIM returns $00
+for every register (reg 12: 6895 reads, all zero) even though MAME mounts the
+volume, so the read taps do NOT capture device return values -- they are an
+artifact. Every conclusion drawn from MAME "reads" (mode reads $00, "MAME never
+enters ISM", the reg-12/handshake values) is therefore unsound and withdrawn. The
+WRITE taps are reliable. Diffing the full ordered SWIM WRITE sequences of MAME and
+POM68K, armed on the register-15 magic $57, they are byte-for-byte IDENTICAL for
+the first 148 writes: the same magic, the same walking phases f5..f0, r5=00,
+r6=38, the r3 parameter pattern, the r6=f8/r6=80 deselect run. So the driver's
+control flow -- and therefore the register reads that drive it -- match exactly up
+to that point; POM68K is faithful there, and the earlier "POM68K enters ISM where
+MAME stays IWM" was a read-tap illusion. The first real divergence is at write
+~149: after an r4=f5 (phases), MAME continues pulsing (another r6=80 and on into a
+retry with a fresh magic and parameter load) while POM68K skips it, ending with
+fewer writes (744 vs 784). The driver instruction that gates this is the sense/
+handshake poll (in the ROM, e.g. $A6EDC2 `btst #3,($1e00,A0)` + `dbeq`, which
+spins while the handshake RDDATA/sense bit 3 is clear): POM68K's handshake returns
+that sense bit SET where MAME's is CLEAR, so POM68K exits the wait early and its
+read runs before the drive is where MAME waits for it to be. The fix target is
+thus the SWIM handshake sense bits (2/3) under these phases -- POM68K's senseSwim
+reads high when the real drive line is still low -- validated by re-diffing the
+write sequences past write 148. The IWM MFM-read theory from the prior entry is
+downstream of this premature-exit, not the primary cause.
+
 ## 2026-09-08 — Floppy 1.44 MB: the ISM/IWM divergence is downstream — the real root is PRIME #1's IWM read of MFM producing garbage
 
 Attacking the ISM/IWM personality fix, the co-trace redirects it. Correlating ISM

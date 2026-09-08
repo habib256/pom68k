@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 463 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 464 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 85 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 58 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 59 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 7 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
@@ -246,7 +246,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](CHANGELOG.md#2026-09-07-swim1-mfm-hunt)
 - **2026-09-07 (fifth)** — [The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded](CHANGELOG.md#2026-09-07-floppy-guest-write)
 - **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](CHANGELOG.md#2026-09-07-restart-etalon)
-- **2026-09-08** — [Floppy 1.44 MB: the ISM/IWM divergence is downstream — the real root is PRIME #1's IWM read of MFM producing garbage](CHANGELOG.md#2026-09-08-floppy-ism-vs-iwm)
+- **2026-09-08** — [Floppy 1.44 MB: correcting the co-trace — MAME read taps are unreliable; the reliable WRITE diff shows POM68K is faithful until a sense read at write ~148](CHANGELOG.md#2026-09-08-floppy-ism-vs-iwm)
+- **2026-09-08** — [Floppy 1.44 MB: the ISM/IWM divergence is downstream — the real root is PRIME #1's IWM read of MFM producing garbage](CHANGELOG.md#2026-09-08--floppy-144-mb-the-ismiwm-divergence-is-downstream--the-real-root-is-prime-1s-iwm-read-of-mfm-producing-garbage)
 - **2026-09-08** — [Floppy 1.44 MB: MAME never enters ISM for this read — POM68K's ISM-entry is the bug (mode reads back $00 vs c2)](CHANGELOG.md#2026-09-08--floppy-144-mb-mame-never-enters-ism-for-this-read--pom68ks-ism-entry-is-the-bug-mode-reads-back-00-vs-c2)
 - **2026-09-08** — [Floppy 1.44 MB: the MAME co-trace pinpoints the first divergence — the SWIM handshake reads $8e where MAME reads $00](CHANGELOG.md#2026-09-08--floppy-144-mb-the-mame-co-trace-pinpoints-the-first-divergence--the-swim-handshake-reads-8e-where-mame-reads-00)
 - **2026-09-08** — [Floppy 1.44 MB: a MAME co-trace overturns the ACTION theory — the real LC II reads MFM via the IWM (software), never arming ISM ACTION](CHANGELOG.md#2026-09-08--floppy-144-mb-a-mame-co-trace-overturns-the-action-theory--the-real-lc-ii-reads-mfm-via-the-iwm-software-never-arming-ism-action)
