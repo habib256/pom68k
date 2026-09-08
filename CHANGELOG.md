@@ -886,6 +886,27 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the reliable divergence is $a6d450's reg-14 read returning $FF because POM68K's IWM drive is inactive where MAME's is active
+
+Following the write-diff divergence (write ~149) to its cause in the ROM: the
+driver at $A6CEDA calls $a6d450, which reads SWIM register 14 into D0 and tests
+its sign; $A6CEDE's bpl continues on a positive value, else $A6CEE0 loads -65
+offLinErr. POM68K reads $FF there (bit 7 set) and errors. $FF is NOT the ISM
+handshake or the IWM STATUS register (a filter for a $FF status read fired zero
+times); it is the IWM DATA register read back with the drive inactive -- the
+`if(!enable_) return 0xFF` path, hit 1081 times with selDelay_ == 0, i.e. the IWM
+drive-enable is fully off (not even lingering). So at this read POM68K's IWM drive
+is inactive while MAME's returns valid data (bit 7 clear) and the driver
+continues to mount. The write sequences are identical up to write 148, so the
+driver issued the same enable/mode writes in both; POM68K nonetheless has its IWM
+personality's enable_ off at the reg-14 read. The likely mechanism is the ISM/IWM
+enable coupling -- the drive is spun/selected through the ISM motor-on path while
+the IWM personality's enable_ (reg 8/9 / the selDelay motor-off timer) is a
+separate flag that reads back inactive -- so the IWM DATA/STATUS read the driver
+does here sees a dead drive. Confirming the exact coupling needs MAME's real
+register-read values, which the Lua read taps cannot capture; the write-diff
+(POM68K writes must match MAME past write 148) remains the validation for any fix.
+
 ## 2026-09-08 — Floppy 1.44 MB: correcting the co-trace — MAME read taps are unreliable; the reliable WRITE diff shows POM68K is faithful until a sense read at write ~148
 
 Correction to the previous entries. A MAME Lua read-tap on the SWIM returns $00
