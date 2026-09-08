@@ -135,9 +135,28 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   MFM -> offLinErr. La divergence est EN AMONT : une interception antérieure du
   patch n'installe pas ses trampolines async. Prochaine étape = tracer la
   chaîne d'interception du patch depuis l'entrée PRIME jusqu'à $06AF72 pour
-  trouver le hook qui échoue à installer le trampoline dans notre émulation
-  (outil : `lcii_sony_trace --frames N` + `POM68K_DUMPASM=addr:count` pour
-  désassembler le patch RAM).
+  trouver le hook qui échoue à installer le trampoline dans notre émulation.
+  RÉSOLU au niveau architectural (2026-09-08) : la ROM `.Sony` n'arme JAMAIS
+  ACTION (aucune écriture du bit 3 vers reg 7/$e00 dans toute la ROM) — elle ne
+  sait faire que du GCR (400/800K). Le MFM 1,44 Mo EXIGE le chemin ASYNCHRONE du
+  patch SuperDrive. Notre émulation ISM est vérifiée correcte : le test de
+  readback des registres ISM ($A6EB1C : écrit reg 4/phases via $800, relit reg
+  12 via $1800 aliasé &7) PASSE, et la vérif param PASSE. (Le 1er readback
+  échoue normalement : l'ISM n'est ré-entré qu'à $A6EB6C via la séquence magique
+  reg 15 $57/$17/$57/$57 ; l'itération 2 passe.) Le read est dispatché au
+  dispatcher du patch ($06AF72 via le vecteur bas $b40) avec le frame de retour
+  du Device Manager sur la pile ($a0b69e), PAS le frame du wrapper async `.Sony`
+  ($a6ea7c/$a6ea72). Le patch n'intercepte QUE le frame du wrapper async
+  (`[sp+4]==$a6ea7c && [sp+4]-[sp+8]==10`), donc il DÉCLINE et retombe sur le
+  chemin GCR de la ROM -> offLinErr. Le chemin de dispatch est gouverné par le
+  bit 6 de ioPosMode du ParamBlock ($A6CEA2 `btst #6,($2d,A0)` -> flag $12c.w) ;
+  le flag async-capable ($138,A1 bit7) est bien posé chez nous. Prochaine étape
+  = comprendre pourquoi le read atteint le dispatcher en direct/synchrone au
+  lieu de passer par le wrapper async `.Sony` : tracer l'entrée Prime du `.Sony`
+  face aux appelants du wrapper ($A6E6FC/$A6E774/$A6E97C...) et vérifier si le
+  ParamBlock de notre requête (ioPosMode) ou le dispatch queued/immediate diffère
+  d'un vrai read 1,44 Mo du Finder. Outils : `lcii_sony_trace --frames N
+  --trace N` + `POM68K_DUMPASM=addr:count`.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

@@ -886,6 +886,34 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the ROM cannot do MFM at all; the read reaches the SuperDrive patch on the wrong (synchronous) frame and is declined
+
+Tracing the LC II 1.44 MB read down to the ROM and the RAM patch settles the
+architecture of the failure. The ROM `.Sony` driver never arms ACTION: a full
+disassembly of the ROM finds no write of the ACTION bit (bit 3) to ISM register
+7 ($e00) anywhere in it, so the ROM can only do GCR (400/800 KB). The 1.44 MB
+MFM read exists only in the SuperDrive System patch (loaded from System 7.1 into
+RAM around $06Axxx), which runs it asynchronously. Our ISM register emulation is
+verified correct along the way: the driver's ISM presence/readback test at
+$A6EB1C (write register 4/phases through $800, read it back through register 12
+at $1800, which the ISM aliases with offset&7) passes, and the parameter-RAM
+verify passes. The first readback iteration failing is normal — the driver only
+re-enters ISM mode at $A6EB6C via the register-15 magic sequence $57/$17/$57/$57,
+so iteration two is the one that reads back. The read is dispatched to the patch
+dispatcher at $06AF72 (installed at the low-memory vector $b40) with the Device
+Manager's return frame on the stack ($a0b69e), not the `.Sony` asynchronous
+wrapper's frame ($a6ea7c/$a6ea72). The patch intercepts only the async-wrapper
+frame (it checks [sp+4]==$a6ea7c and [sp+4]-[sp+8]==10), so it declines and falls
+back to the ROM's GCR path, which cannot do MFM, yielding offLinErr. The dispatch
+path is gated by ParamBlock ioPosMode bit 6 ($A6CEA2 `btst #6,($2d,A0)` -> the
+$12c.w flag); the async-capable flag ($138,A1 bit 7) is correctly set in our run.
+Next step: find why the read reaches the dispatcher synchronously instead of
+through the `.Sony` async wrapper — trace the `.Sony` Prime entry against the
+wrapper callers ($A6E6FC/$A6E774/$A6E97C) and check whether our request's
+ParamBlock (ioPosMode) or the queued/immediate dispatch differs from a real
+1.44 MB Finder read. The defect is a driver-dispatch mismatch, not a device or
+ISM-register inaccuracy.
+
 ## 2026-09-08 — Floppy 1.44 MB: the abort is a driver/System control-flow bail before ACTION, not a device fault
 
 A full MAME-vs-POM68K audit of the SWIM1 ISM read path (MAME `swim1.cpp` now
