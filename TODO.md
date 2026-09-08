@@ -169,8 +169,25 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   déterminer pourquoi le read de montage est dispatché en synchrone/direct plutôt
   que via le wrapper async `.Sony` — le plus probable étant les flags de la DCE
   du `.Sony` (bits dCtlFlags async/lock que le patch poserait) ou le chemin
-  d'émission de `_MountVol`. Outils : `lcii_sony_trace --frames N --trace N` +
-  `POM68K_DUMPASM=addr:count`.
+  d'émission de `_MountVol`. Affiné (2026-09-08, comparaison 800K/1,44 Mo) :
+  l'échec est en DEUX phases. PRIME #1 = tentative GCR sur disque MFM (68952
+  nibbles lus, 931 valides, abandon après 4311 polls vs 107667 en 800K car le
+  séparateur GCR ne décode pas du flux MFM) -> -400. PRIME #2 = reprise MFM ->
+  -65 offLinErr. Le 800K réussit dès PRIME #1 en GCR et n'exerce jamais le
+  chemin MFM (pas de diff instruction possible). L'abandon -65 est une lecture
+  de statut : à `$A6CEDA` le pilote appelle `$a6d450` qui lit le registre mode
+  ISM (reg 14/`$1c00`, aliasé offset&7) et teste son signe ; on renvoie `$FF`
+  car le SWIM est en mode IWM avec le lecteur non-enable (le registre DATA IWM
+  lit `$FF` désactivé) -> bit 7 posé -> `$A6CEDE bpl` non pris -> `$A6CEEE` -65.
+  Les polls sense dominants (CSTIN addr 1, READY addr D) sont identiques entre
+  run qui marche et run qui échoue (pas la cause). Fil ouvert = le suivi du mode
+  ISM/IWM sur la reprise MFM : le pilote lit des registres ISM 4779 fois alors
+  que le SWIM est en IWM (bit 6 clair), n'entrant en ISM que 3 fois via la
+  séquence magique reg 15 ; soit le pilote devrait RESTER en ISM et on en sort
+  trop tôt, soit ce sont de vrais polls IWM dont le `$FF` lecteur-désactivé est
+  le défaut. Prochaine étape = tracer les transitions du bit 6 sur une reprise
+  MFM face au switch ism/iwm de MAME. Outils : `lcii_sony_trace --frames N
+  --trace N` + `POM68K_DUMPASM=addr:count`.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

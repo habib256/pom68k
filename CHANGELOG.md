@@ -886,6 +886,32 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the failure is a two-phase GCR-then-MFM sequence; the MFM retry aborts on a drive-not-enabled status read
+
+Comparing a working 800 KB mount against the failing 1.44 MB one, with per-Prime
+counters, shows the shape of the failure. On the 800 KB disk the driver's first
+read Prime succeeds on the GCR path (79053 nibbles read, 107667 data-register
+polls, 10997 valid) and the volume mounts. On the 1.44 MB disk the first read
+Prime returns -400 after only 4311 polls and 931 valid nibbles out of 68952 read
+-- the GCR data separator cannot make valid nibbles out of MFM flux, so the
+driver gives up on GCR early -- and the second Prime, the MFM retry, returns -65
+offLinErr. The two runs therefore cannot be diffed instruction-for-instruction:
+800 KB never exercises the MFM path because GCR already succeeded. Following the
+-65 retry, the abort is a status/sense read: at $A6CEDA the driver calls $a6d450,
+which reads the SWIM register that in ISM mode is the mode register (reg 14/$1c00,
+aliased offset&7) and tests its sign; our read returns $FF because the SWIM is in
+IWM mode with the drive not enabled (the IWM data register reads 0xFF when
+disabled), so bit 7 is set, $A6CEDE's bpl is not taken, and $A6CEEE loads -65.
+The dominant sense polls (CSTIN at addr 1, READY at addr $D) are byte-identical
+between the working and failing runs, so they are not the differentiator. The
+open thread stays the ISM/IWM mode tracking on the MFM retry: the driver reads
+ISM registers 4779 times while the SWIM is in IWM mode (bit 6 clear), entering
+ISM only 3 times via the register-15 magic; either the driver should stay in ISM
+across the read and we leave too eagerly, or those reads are genuinely IWM-mode
+status polls whose disabled-drive 0xFF is itself the defect. Next step: pin which,
+by tracing the mode-bit-6 transitions across one MFM retry against MAME's
+ism/iwm switch.
+
 ## 2026-09-08 — Floppy 1.44 MB: the SuperDrive patch's dispatchers all pass through because the mount read is dispatched direct, not via the .Sony async wrapper
 
 Dumping the actual stack at the patch dispatcher and mapping every low-memory
