@@ -267,6 +267,16 @@ target_link_libraries(q605_savestate_etalon PRIVATE pom68k_core)
 add_test(NAME q605_savestate_etalon COMMAND q605_savestate_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Save-state RELAUNCH (TODO § C.1, 2026-09-08): save a booted Q605 to a file,
+# load it into a FRESH machine that re-attaches the same disk, and require
+# byte-identical resume with the Finder up — the cross-instance half the
+# in-place q605_savestate_etalon cannot prove.
+add_executable(q605_savestate_relaunch_etalon tests/q605_savestate_relaunch_etalon.cpp)
+target_link_libraries(q605_savestate_relaunch_etalon PRIVATE pom68k_core)
+add_test(NAME q605_savestate_relaunch_etalon COMMAND q605_savestate_relaunch_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_savestate_relaunch_etalon PROPERTIES TIMEOUT 1800)
+
 # Beyond-boot gates on the Quadra 605 (second machine after the LC II,
 # TODO §2): idle soak (Mac clock keeps time — catches the MCU-overclock
 # class), and Finder file creation surviving a reboot — the one gate

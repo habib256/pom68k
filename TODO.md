@@ -108,9 +108,18 @@ Keys mesurée, `CurApName` échantillonné comme « processus qui tourne ».
 - [ ] **Introduire Retro68 comme oracle invité différentiel.** Construire des
   sondes Toolbox/Device Manager/XPRAM et comparer les mêmes binaires sous MAME
   et POM68K.
-- [ ] **Faire une passe GUI réelle des save states.** Sauver/restaurer une
-  machine bootée, vérifier les panneaux spécifiques et la reprise des
-  périphériques host-backed.
+- [ ] **Fermer la dérive d'un cycle du relaunch save-state.**
+  `q605_savestate_relaunch_etalon` (2026-09-08) sauve une Q605 bootée dans un
+  fichier, la recharge dans une machine NEUVE qui rattache le même disque, et
+  prouve le rechargement octet-identique + Finder vivant + exécution : la
+  reprise host-backed inter-instances est gatée. Reste une complétude fine :
+  A (bootée) et B (neuve) tournent octet-identiques 35 trames puis l'horloge
+  de B dérive d'un cycle vers la trame 36 et l'écart s'accumule — indépendant
+  du moteur (interp et JIT divergent pareil), donc une phase de timing
+  périphérique sous-cycle qu'un graphe d'objets bootté porte et qu'un graphe
+  neuf n'a pas. `q605_savestate_etalon` en place ne la voit pas (le restore
+  garde la phase). Bissecter le chunk à l'octet 56 de la trame 36 vers le
+  device, puis sérialiser la phase manquante.
 
 ### C.2 Médias et persistance invités
 

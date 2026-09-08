@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 445 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 446 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 7 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 53 |
+| [Machine bring-ups](#machine-bring-ups) | 54 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 31 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -358,6 +358,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-05 (sixth)** — [The caller profile re-taken on the arm that ships: the memory family is 19.2 % of the run instead of 10.0 %, and the generator owns none of it](CHANGELOG.md#2026-09-05-threaded-caller-profile)
 - **2026-09-06 (sixth)** — [Speedometer's first correct time profile makes every fallback a 5.6% ceiling, not a target: the 0.27 s CPU phase must be isolated before any opcode is priced](CHANGELOG.md#2026-09-06-speedometer-time-profile)
 - **2026-09-06 (third)** — [The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem](CHANGELOG.md#2026-09-06-speedometer-census-wrong-program)
+- **2026-09-08 (third)** — [Save-state relaunch into a fresh machine, and a one-cycle cross-instance drift it isolates](CHANGELOG.md#2026-09-08-savestate-relaunch)
 
 ## Build, packaging and release
 

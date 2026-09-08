@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (third)** — [Save-state relaunch into a fresh machine is gated, and it isolates a one-cycle cross-instance timing drift the in-place gate could not see](#2026-09-08-savestate-relaunch)
 - **2026-09-08 (later)** — [The warm-reset overlay fix reaches every Cuda/Egret memory: five more classes re-arm the overlay at the restart boundary, and cuda_restart_test now reproduces the race that halted the Quadra 605](#2026-09-08-restart-sweep)
 - **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way](#2026-09-08-application-gates)
 - **2026-09-07 (tenth)** — [The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing](#2026-09-07-windows-green)
@@ -875,6 +876,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-savestate-relaunch"></a>
+## 2026-09-08 (third) — Save-state relaunch into a fresh machine, and a one-cycle cross-instance drift it isolates
+
+`q605_savestate_etalon` saves a booted machine and loads the snapshot back
+into the SAME objects. That proves the archive round-trips, but not the path
+a GUI restore or a relaunch actually takes: load into a DIFFERENT machine.
+`q605_savestate_relaunch_etalon` (TODO § C.1) does that — boot machine A to
+the Finder, write the snapshot to a FILE, build a FRESH Q605Memory + Cpu040
+that re-attaches the same host disk, load the file, run the scenario, and
+require it to be a live Finder. Its load→save comes back byte-identical to
+A's snapshot: the load rebinds every chunk — CPU, DAFB, ASC, the Ncr53c96
+session, the Cuda MCU, and the SCSI dirty-block deltas — into the fresh
+object graph, and the host disk resumes from the file plus those deltas. The
+invariant it pins is "save and load share one visitor; pointers/callbacks are
+rebound, caches flushed, disk payloads host-owned" across instances, which no
+gate covered before.
+
+It also isolated a real, very subtle completeness gap, which is why its
+verdict stops at the guarantees above rather than requiring B to match A's
+direct run byte-for-byte. A (booted) and B (fresh) run byte-identical for 35
+scenario frames; at frame ~36 B's clock drifts a single cycle and the
+difference compounds. It is engine-independent — the interpreter and the JIT
+diverge to the identical fingerprints — so it is not a JIT-warmth artefact but
+an unsaved sub-cycle peripheral timing phase that a booted object graph
+carries and a freshly constructed one does not. The in-place gate cannot see
+it because a restore keeps that phase. The bisection (first divergence at
+frame 36, snapshot byte 56, a one-cycle clock delta) is recorded for the
+focused pass that will trace the chunk to its device and serialize the
+missing phase (TODO § C.1).
 
 <a id="2026-09-08-restart-sweep"></a>
 ## 2026-09-08 (later) — The warm-reset overlay fix reaches every Cuda/Egret memory, and its gate reproduces the race
