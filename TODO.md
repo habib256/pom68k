@@ -94,7 +94,13 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   bit 3), donc `tickRead` ne tourne jamais. Décoder ce que le pilote attend en
   retour après ces strobes (sémantique du handshake reg 7, ou l'ordre de
   relecture de la param RAM) qui le fait renoncer avant ACTION — le défaut est
-  dans notre handshake ISM SWIM1.
+  dans notre handshake ISM SWIM1. Écarté (2026-09-08) : la param RAM lit
+  correctement ce qui est écrit (Pr = Pw sur les vrais params MFM `18 41 2E…`),
+  donc ni la relecture ni l'ordre param ne sont en cause. Il reste la sémantique
+  du handshake/ACTION après chargement des params — à croiser avec `swim1.cpp`
+  de MAME (les préconditions d'armement d'ACTION). Densité, polarité, table de
+  mode et param RAM sont toutes confirmées correctes ; le bug est isolé au
+  protocole d'armement de lecture ISM.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
