@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 450 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 451 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 32 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 85 |
+| [Cross-cutting](#cross-cutting) | 86 |
 
 ---
 
@@ -511,5 +511,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03 (twelfth)** — [PRODUCT_LLE becomes a first-class registry: default remains 240, product is 248, and both configurations prove the same STATUS](CHANGELOG.md#2026-09-03-product-lle-registry)
 - **2026-09-04 (third)** — [The V8 word paths decoded the address twice for a pair the map cannot split](CHANGELOG.md#2026-09-04-v8-word-decode)
 - **2026-09-05 (second)** — [Access-thunk mode 2 converts device-register byte stores into single accesses and drops nineteen blocks out of native code: one lever, a gain and a cost, which is why the stopwatch never sees it](CHANGELOG.md#2026-09-05-thunk-mode2-priced)
+- **2026-09-08 (eighth)** — [POM68K 0.1.0, and the roadmap reorganized around post-1.0 work](CHANGELOG.md#2026-09-08-release-0-1-0)
 - **2026-09-08 (fourth)** — [The save-state relaunch is deterministic across fresh instances; the one-cycle difference is cp-class, not a gap](CHANGELOG.md#2026-09-08-savestate-relaunch-determinism)
 

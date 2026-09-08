@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (eighth)** — [POM68K 0.1.0 is tagged: tiers B and C are closed, and the roadmap is reorganized around the open post-1.0 work](#2026-09-08-release-0-1-0)
 - **2026-09-08 (seventh)** — [The save-state relaunch gate now covers all three CPU families: the Macintosh Plus (68000) joins the LC II and Quadra 605](#2026-09-08-plus-relaunch)
 - **2026-09-08 (sixth)** — [The 1.44 MB floppy is an HD-media detection bug, not a mode-polarity one: the .Sony picks GCR/MFM from drive variable $17, our strobe table is right, and $17 is never set for HD](#2026-09-08-floppy-density-var17)
 - **2026-09-08 (fifth)** — [The save-state relaunch gate reaches the LC II too, and the 1.44 MB floppy hunt gets its disassembly: the .Sony GCR strobe is located at ROM $A6D482](#2026-09-08-lcii-relaunch-and-floppy-dasm)
@@ -880,6 +881,28 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-release-0-1-0"></a>
+## 2026-09-08 (eighth) — POM68K 0.1.0, and the roadmap reorganized around post-1.0 work
+
+The annotated tag `v0.1.0` is pushed, triggering `release.yml` to build the
+four packages (Linux x86-64 / AArch64 AppImages, a Universal 2 macOS `.dmg`, a
+self-contained Windows x64 `.zip`) and publish the GitHub Release. `VERSION`
+already read `0.1.0`; CI and macOS were green on the tagged commit; the tag
+matches the workflow's `v[0-9]*` trigger. This closes tier C's last exit
+criterion — a downloadable version.
+
+With both tier B (the conformant JIT) and tier C (the product) closed, `TODO.md`
+is reorganized: the two closed tiers collapse to a status block, the items that
+cannot advance without external reference material or hardware are gathered into
+one clearly labelled section (the 1.44 MB floppy's HD-media detection with its
+located ROM code, `duo230_sleep_etalon`, the Retro68 oracle, a self-hosted asset
+runner, the physical-Pi baseline, and the absent System 4.1 floppy asset), and
+the remaining open work — all of it the former tier D plus the engine-research
+residue — is grouped into six themes: hardware fidelity, network services,
+optical media, new machines, timing-profile-gated engine studies, and
+non-conformant acceleration research. None is on a critical path; the priority
+between themes is the next decision.
 
 <a id="2026-09-08-plus-relaunch"></a>
 ## 2026-09-08 (seventh) — Save-state relaunch is gated on all three CPU families
