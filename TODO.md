@@ -37,21 +37,6 @@ qui ajoute son entrée au `CHANGELOG`.
 Items cadrés mais qui ne peuvent avancer sans matériel de référence
 (désassemblage/schéma/spec), un actif absent, ou du matériel physique.
 
-- [ ] **Monter une 1,44 Mo depuis le System (LC II SWIM1, Q605 SWIM2) —
-  détection média HD.** Chaîne tracée dans la ROM du LC II (`CHANGELOG`
-  2026-09-08 (sixth)/(seventh)) : la polarité de strobe est **correcte**
-  (D0=6→MFM/`addr=3`, D0=7→GCR/`addr=B`, table MAME qu'épingle
-  `iwm_write_test`) ; la densité est posée par un handler Control csCode
-  (`$A6E686`, via le dispatch `$A6CBD4`) dont le type-média `D4 = ($1c,A0)`
-  est le csParam **passé par le System** ; `$A6E6BC smi $17` met MFM si
-  `D4==3`. Pour un disque 1,44 Mo la variable `$17` n'est jamais écrite
-  (reste GCR), donc le System croit « DD ». Étape suivante, sûre et bornée :
-  localiser le handler DriveStatus (Status csCode 8) et le champ type-média
-  qu'il renvoie, trouver la ligne de sense qu'il lit (reg F/is_2m écarté) et
-  la faire rapporter HD — probablement côté **System** (extraire et
-  désassembler le fichier System) ou via la spec DriveStatus SuperDrive.
-  Reproducteur : `POM68K_BEYOND=floppy
-  POM68K_FLOPPY_IMG=disks35/Stuffit_Expander_5.5.dsk lcii_beyond_etalon`.
 - [ ] **Créer `duo230_sleep_etalon`.** Sommeil clapet, arrêt CPU, flush disque,
   réveil complet. Milestone 6 de `docs/DUO_BRINGUP.md` : fermer le clapet
   gèle le CPU mais le System ne lance aucune procédure de sommeil (aucune
@@ -76,6 +61,25 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
 ---
 
 ## 1. Fidélité matérielle et LLE
+
+- [ ] **Monter une 1,44 Mo depuis le System (LC II SWIM1, Q605 SWIM2) — bug de
+  lecture MFM ISM live, PAS bloqué sur référence.** Diagnostic corrigé le
+  2026-09-08 (le désassemblage + trace pilote infirment le cadrage « densité »
+  précédent, `CHANGELOG` (ninth)) : (1) la détection de densité à l'insertion
+  fonctionne — `$A6EC6A` lit reg `$F` (is_2m), un disque HD donne var`$18`=FF
+  puis var`$17`=MFM en `$A6EC84`, et le pilote renvoie **-400 (retry)** = l'erreur
+  de PRIME #1 ; (2) le System relance la lecture en MFM ; (3) la lecture MFM
+  ISM live livre le secteur **corrompu** : le pilote trouve la signature MDB
+  `42 44` ('BD') mais tout à partir de l'octet +$2 est faux (`lcii_sony_trace`
+  : PRIME #2/#3 → offLinErr, buffer diverge à +$2). La polarité de strobe est
+  correcte (table MAME) et la densité aussi ; le défaut est notre moteur/
+  livraison MFM du SWIM1 (`Swim1::ismRead`/décode nb/bb, FIFO 2-deep,
+  overruns massifs au poll System `$A0BB8C`). Reproducteur : `POM68K_BEYOND=
+  floppy POM68K_FLOPPY_IMG=disks35/Stuffit_Expander_5.5.dsk lcii_beyond_etalon`
+  ou `./build/lcii_sony_trace --img disks35/Stuffit_Expander_5.5.dsk`.
+  Prochaine étape : comparer les octets décodés par le moteur ISM aux octets
+  de l'image sur le secteur MDB, et voir si la corruption vient du décode
+  (nb/bb après la marque) ou de la livraison (FIFO overrun / cadence).
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

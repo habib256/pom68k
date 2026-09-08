@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is not a density-detection bug at all — density works and returns a retry; the defect is the live MFM ISM read corrupting the sector after the MDB sync](#2026-09-08-floppy-correction)
 - **2026-09-08 (eighth)** — [POM68K 0.1.0 is tagged: tiers B and C are closed, and the roadmap is reorganized around the open post-1.0 work](#2026-09-08-release-0-1-0)
 - **2026-09-08 (seventh)** — [The save-state relaunch gate now covers all three CPU families: the Macintosh Plus (68000) joins the LC II and Quadra 605](#2026-09-08-plus-relaunch)
 - **2026-09-08 (sixth)** — [The 1.44 MB floppy is an HD-media detection bug, not a mode-polarity one: the .Sony picks GCR/MFM from drive variable $17, our strobe table is right, and $17 is never set for HD](#2026-09-08-floppy-density-var17)
@@ -881,6 +882,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-floppy-correction"></a>
+## 2026-09-08 (ninth) — Correction: the 1.44 MB floppy is a live MFM read bug, not density detection
+
+The (sixth) and (seventh) entries concluded the HD-media density was never
+detected — a write watchpoint on drive variable `$17` caught zero writes, so
+the driver stayed in GCR. That was wrong: the watchpoint was on the wrong
+drive-record address (`$4AC9`); the real record is elsewhere. Repaired the
+bit-rotted `lcii_sony_trace` dev tool (its Cpu030 constructor and the 1.44 MB
+tail trim) and single-stepped the actual insert, and the density path works:
+
+- At insert, `$A6EC6A` reads sense register `$F` (is_2m) via `moveq #$F,D0;
+  bsr $a6d450`, and for an HD disk (is_2m = 0) it sets var `$18` = `$FF` then
+  var `$17` = `$FF` (MFM) at `$A6EC84`, and returns error **-400** — a "media
+  changed, retry" signal, which is exactly the code PRIME #1 returns in the
+  driver-call journal.
+- The System's Disk Init retries. PRIME #2 reads in MFM mode and finds the MDB
+  signature (`42 44` = 'BD') but every byte from offset +$2 on is garbage, so
+  the read completes `offLinErr` and `_MountVol` returns `offLinErr`.
+
+So the strobe polarity is correct (as the earlier disassembly already showed),
+the density detection is correct, and the defect is our **live MFM ISM read**:
+the SWIM1 engine delivers a corrupted sector once the driver actually reads it
+through the FIFO — massive overruns are logged at the System's poll loop
+(`$A0BB8C`, ~68 000 nibbles lost). This is POM68K code, not a missing external
+reference, so the item moves out of the reference-blocked list. Next: compare
+the ISM engine's decoded bytes against the image on the MDB sector to place the
+corruption in the decode (the nb/bb path after the mark) or the delivery (the
+two-deep FIFO overrunning against the driver's cadence). Reproducer:
+`./build/lcii_sony_trace --img disks35/Stuffit_Expander_5.5.dsk`.
 
 <a id="2026-09-08-release-0-1-0"></a>
 ## 2026-09-08 (eighth) — POM68K 0.1.0, and the roadmap reorganized around post-1.0 work

@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
 
     V8Memory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    TraceCpu cpu(mem, /*withFpu=*/true);
+    TraceCpu cpu(mem, jit::defaultResolvedConfig(), pom68k::defaultCoreConfig().cpu, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(boot)) { std::fprintf(stderr, "FAIL: bad boot image\n"); return 1; }
@@ -181,6 +181,11 @@ int main(int argc, char** argv) {
         std::ifstream fin(floppySrc, std::ios::binary);
         floppyOrig.assign(std::istreambuf_iterator<char>(fin),
                           std::istreambuf_iterator<char>());
+        // Trim the raw-1.44MB tail (84 bytes past 1 474 560), like the
+        // beyond etalon, so a 1.44 MB image inserts.
+        if (floppyOrig.size() > SonyDrive::kSize1440K &&
+            floppyOrig.size() < SonyDrive::kSize1440K + 512)
+            floppyOrig.resize(SonyDrive::kSize1440K);
         if (floppyOrig.size() >= 0x40C)
             floppyOrig[0x40A] = uint8_t(floppyOrig[0x40A] | 0x01);
     }
@@ -432,7 +437,6 @@ int main(int argc, char** argv) {
     char da[96];
     while (cpu.machineClock() < stepEnd && !cpu.isHalted()) {
         uint32_t pc = m24(cpu.getPC0());
-
         if (pc == primeEntry || pc == ctlEntry) {
             if (callActive) closeCall(int16_t(peek16(callPb + 16)));
             callActive = true;
