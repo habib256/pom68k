@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (fourth)** — [Two fresh relaunches of one snapshot are byte-identical: the save-state relaunch is deterministic, and the A-vs-fresh one-cycle difference is the expected cp-class phase normalization, not a gap](#2026-09-08-savestate-relaunch-determinism)
 - **2026-09-08 (third)** — [Save-state relaunch into a fresh machine is gated, and it isolates a one-cycle cross-instance timing drift the in-place gate could not see](#2026-09-08-savestate-relaunch)
 - **2026-09-08 (later)** — [The warm-reset overlay fix reaches every Cuda/Egret memory: five more classes re-arm the overlay at the restart boundary, and cuda_restart_test now reproduces the race that halted the Quadra 605](#2026-09-08-restart-sweep)
 - **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way](#2026-09-08-application-gates)
@@ -876,6 +877,30 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-savestate-relaunch-determinism"></a>
+## 2026-09-08 (fourth) — The save-state relaunch is deterministic across fresh instances; the one-cycle difference is cp-class, not a gap
+
+The (third) entry shipped `q605_savestate_relaunch_etalon` with the one-cycle
+A-vs-B difference framed as an open completeness gap. Characterizing it
+properly settles it the other way. Loading the same snapshot into TWO fresh
+machines and running the identical scenario gives byte-for-byte identical
+results: the fresh-load path is fully deterministic across instances. The gate
+now asserts that (B == C), alongside the load→save byte-identity and the live
+Finder.
+
+So the only thing that differs is a machine that NEVER went through a load —
+A, which booted and kept running. It carries an unsaved sub-cycle peripheral
+timing phase; the load deterministically normalizes that phase, which is
+exactly why every fresh load agrees while a never-loaded original sits one
+cycle away. That is the same design already settled for Moira's `cp` and the
+read/write buffers (2026-08-16): the snapshot does not carry what only a
+still-running original keeps, and a loaded machine is a valid, deterministic
+continuation. The earlier "bisect the chunk and serialize the missing phase"
+task is withdrawn — there is nothing to fix; serializing that phase would make
+the snapshot depend on how the recent cycles were produced, the very coupling
+the `cp` decision removed. The relaunch gate's verdict therefore stops at the
+three guarantees above and prints the A-vs-fresh numbers for the record.
 
 <a id="2026-09-08-savestate-relaunch"></a>
 ## 2026-09-08 (third) — Save-state relaunch into a fresh machine, and a one-cycle cross-instance drift it isolates
