@@ -886,6 +886,27 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: MAME never enters ISM for this read — POM68K's ISM-entry is the bug (mode reads back $00 vs c2)
+
+Tapping MAME maclc2's SWIM mode register across the whole 1.44 MB mount shows it
+reads back $00 every time (93 samples, bit 6 never set): the real LC II driver
+never effectively enters ISM personality for this read, doing the whole thing
+through the IWM with the SuperDrive patch decoding MFM in software. POM68K
+instead enters ISM three times via the register-15 magic and stays there (enter
+/leave imbalance 3/2), so at the point where the co-trace first diverges POM68K's
+mode is c2 (ISM) while MAME's is $00 (IWM). That single difference cascades into
+everything downstream: POM68K reads the ISM handshake ($8e) where MAME does an
+IWM access, fires a spurious DIRTN strobe that sets dirToZero_ = true (the sense
+bit in the handshake), and drives the ISM cell engine that the real read never
+uses. So the fix is not in the ISM engine or the sense value: POM68K must track
+the ISM/IWM personality the way MAME does and stay in IWM here, after which the
+read follows the IWM software-MFM path where MAME actually gets the data. The
+open question narrows to the register-15 magic and $f8 mode-clear bookkeeping:
+why POM68K completes an ISM entry (or misses a leave) that MAME does not, leaving
+it one enter ahead. The MAME harness and the ordered-access diff validate each
+step (target: the mode register reads back $00). swim1_test still passes because
+it drives the ISM engine directly, which the real driver never does for a mount.
+
 ## 2026-09-08 — Floppy 1.44 MB: the MAME co-trace pinpoints the first divergence — the SWIM handshake reads $8e where MAME reads $00
 
 With the MAME maclc2 reference booting our GISTPERSO HD and mounting the 1.44 MB
