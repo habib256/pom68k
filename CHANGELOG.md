@@ -886,6 +886,26 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the abort is a driver/System control-flow bail before ACTION, not a device fault
+
+A full MAME-vs-POM68K audit of the SWIM1 ISM read path (MAME `swim1.cpp` now
+on hand from the USB backup) clears every device-side suspect. The handshake
+register 7, the mode-bit meanings (motoron/ism/hdsel/rw/action/devsel), the
+`devsel==1 -> internal drive` mapping, the parameter RAM, `senseSwim`, and the
+IBM-System-34 HD MFM track encoder are all faithful to MAME. Instrumenting the
+LC II Sony driver on the 1.44 MB retry shows the real shape of the stall: after
+the parameter verify passes, the driver selects the internal drive (mode $c2),
+reads a sense line, then deselects (mode $42) in a loop and NEVER arms ACTION
+(mode bit 3). `tickRead`, the CSM and the TSM therefore never run and the ISM
+FIFO stays empty, which is why only two bytes were ever pushed over 68973
+nibbles. `commandSwim` is never strobed and `senseSwim` is barely touched in
+that window, so the abort is not in our drive sense or flux at all. The driver
+gives up inside a System helper at $06AF72 (reached through the low-memory
+global $b40) whose branch is pure arithmetic on its stack arguments, taken
+before ACTION would ever be armed. Next step: disassemble that System helper
+from RAM (no symbols) to decode the precondition that suppresses ACTION-arming.
+The defect is a driver/System control-flow bail, not a peripheral inaccuracy.
+
 ## 2026-09-08 (eleventh) — The 1.44 MB read is a different engine from the 800K one, and the ISM setup aborts before ACTION
 
 The (tenth) entry asked what the driver polls at `mode = $42` that resolves on

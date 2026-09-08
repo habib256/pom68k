@@ -108,8 +108,21 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   synchronise pas sur les cellules (armement ACTION/sélection lecteur, ou
   classification de cellules/params de timing). La source MAME `swim1.cpp` est
   désormais disponible (`/Volumes/TEST/sauvegarde-20260906/refs/mame/src/
-  devices/machine/swim1.cpp`, copiée) : prochaine étape = audit MAME-vs-nous
-  du chemin CSM/TSM et de l'armement ACTION/sélection en mode MFM.
+  devices/machine/swim1.cpp`, copiée). Audit MAME-vs-nous fait (2026-09-08) :
+  le handshake reg 7, les bits de mode (motoron/ism/hdsel/rw/action/devsel),
+  le mapping devsel (sel=1 -> drive interne), la table param, le sense et
+  l'encodeur de piste MFM HD sont TOUS fidèles. Séquence observée après la
+  vérif param : le pilote sélectionne le lecteur interne (mode c2), lit le
+  sense, puis DÉSÉLECTIONNE (mode 42) en boucle, sans JAMAIS armer ACTION
+  (bit 3) — donc `tickRead`/CSM/TSM ne tournent jamais et le FIFO reste vide.
+  `commandSwim` n'est jamais strobé et `senseSwim` à peine sollicité dans la
+  fenêtre de lecture : l'abandon n'est PAS dans notre sense/flux. Le pilote
+  renonce dans un helper System (`$06AF72`, atteint via le global bas `$b40`)
+  dont la décision est purement arithmétique sur ses arguments pile, AVANT
+  ACTION. Prochaine étape = désassembler ce helper System depuis la RAM (pas
+  de symboles) pour décoder la précondition qui bloque l'armement d'ACTION —
+  c'est un abandon de flot de contrôle côté pilote/System, pas un défaut de
+  périphérique.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

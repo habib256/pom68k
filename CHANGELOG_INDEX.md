@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 454 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 455 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 85 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 49 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 50 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 7 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
@@ -246,6 +246,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](CHANGELOG.md#2026-09-07-swim1-mfm-hunt)
 - **2026-09-07 (fifth)** — [The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded](CHANGELOG.md#2026-09-07-floppy-guest-write)
 - **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](CHANGELOG.md#2026-09-07-restart-etalon)
+- **2026-09-08** — [Floppy 1.44 MB: the abort is a driver/System control-flow bail before ACTION, not a device fault](CHANGELOG.md#2026-09-08-floppy-ism-vs-iwm)
 - **2026-09-08 (fifth)** — [LC II save-state relaunch is gated too, and the 1.44 MB floppy hunt gets the disassembly it was waiting on](CHANGELOG.md#2026-09-08-lcii-relaunch-and-floppy-dasm)
 - **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is a live MFM read bug, not density detection](CHANGELOG.md#2026-09-08-floppy-correction)
 - **2026-09-08 (sixth)** — [The 1.44 MB floppy is an HD-media detection bug, not the mode-polarity contradiction it was filed as](CHANGELOG.md#2026-09-08-floppy-density-var17)
@@ -513,7 +514,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-04 (third)** — [The V8 word paths decoded the address twice for a pair the map cannot split](CHANGELOG.md#2026-09-04-v8-word-decode)
 - **2026-09-05 (second)** — [Access-thunk mode 2 converts device-register byte stores into single accesses and drops nineteen blocks out of native code: one lever, a gain and a cost, which is why the stopwatch never sees it](CHANGELOG.md#2026-09-05-thunk-mode2-priced)
 - **2026-09-08 (eighth)** — [POM68K 0.1.0, and the roadmap reorganized around post-1.0 work](CHANGELOG.md#2026-09-08-release-0-1-0)
-- **2026-09-08 (eleventh)** — [The 1.44 MB read is a different engine from the 800K one, and the ISM setup aborts before ACTION](CHANGELOG.md#2026-09-08-floppy-ism-vs-iwm)
+- **2026-09-08 (eleventh)** — [The 1.44 MB read is a different engine from the 800K one, and the ISM setup aborts before ACTION](CHANGELOG.md#2026-09-08-eleventh--the-144-mb-read-is-a-different-engine-from-the-800k-one-and-the-ism-setup-aborts-before-action)
 - **2026-09-08 (fourth)** — [The save-state relaunch is deterministic across fresh instances; the one-cycle difference is cp-class, not a gap](CHANGELOG.md#2026-09-08-savestate-relaunch-determinism)
 - **2026-09-08 (tenth)** — [The 1.44 MB stall is the driver never arming the ISM read, pinned to the exact register state](CHANGELOG.md#2026-09-08-floppy-action-stall)
 
