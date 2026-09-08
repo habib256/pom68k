@@ -153,10 +153,18 @@ catalogue restait dans le cache invité.
   écriture), donc le pilote décide GCR et lit du MFM comme du bruit. Le 800K
   marche parce que `$17`=0 (GCR) est déjà correct pour lui. Le flip de
   polarité était un faux-fuyant (il casse `iwm_write_test` et ne monte pas).
-  Prochaine étape, sûre et bornée : trouver quelle ligne de sense la sonde de
-  densité lit pour poser `$17`→MFM (reg F/is_2m déjà écarté), et la faire
-  rapporter « HD » — un correctif sense, sans toucher la table de mode ni le
-  Q605. Code : décision en `$A6D6BE`, strobe `$A6D472`/`$A6D40E`.
+  Raffiné (2026-09-08) : la densité `$17` est posée par un handler csCode
+  Control (`$A6E686`, atteint via le dispatch `$A6CBD4`) où `D4 = ($1c,A0)` =
+  le csParam PASSÉ PAR LE SYSTÈME (`$A6E68E`), pas lu par le pilote ;
+  `$A6E6BC smi $17` met MFM si `D4==3`. La détection HD vit donc côté SYSTÈME :
+  il lit le type de média via DriveStatus du pilote puis émet le Control de
+  densité. Pour notre disque 1,44 Mo ce Control n'arrive jamais avec D4=3
+  (`$17` jamais écrite), donc le System croit DD. Prochaine étape, sûre et
+  bornée : localiser le handler DriveStatus (Status csCode 8) et le champ de
+  type-média qu'il renvoie, trouver la ligne de sense qu'il lit (reg F/is_2m
+  écarté) et la faire rapporter HD — correctif sense, sans toucher la table de
+  mode ni le Q605. Décision `$A6D6BE`, détection `$A6E686`, strobe
+  `$A6D472`/`$A6D40E`.
 - [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Bloqué par l'actif :
   `hdv/System 4.1.dsk` est une image SCSI de 1,5 Mo, pas une disquette ;
   aucune 800 K System 4.1 n'est présente. `bootPlus` reçoit son chemin
