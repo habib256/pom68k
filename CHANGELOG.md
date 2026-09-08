@@ -886,6 +886,27 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the ISM read engine and SWIM2 both work; the failure is specific to the LC II SWIM1/ISM driver dispatch
+
+Two existing gates reframe the 1.44 MB floppy hunt. swim1_test drives the SWIM1
+ISM cell engine directly on a 1.44 MB image with the correct manual setup --
+the register-15 magic into ISM, the parameter table, spindle on via commandSwim,
+setup register for MFM, then `write(7, 0x8A)` = motor + drive-select + ACTION
+read -- and it finds track 0 sector 1's address and data marks and verifies the
+CRC. So the ISM read engine, the SonyDrive MFM flux and the CSM/TSM sync are all
+correct. Separately, q605_floppy_boot_etalon mounts and boots a 1.44 MB image on
+the Quadra 605, whose controller is SWIM2, and passes. So MFM 1.44 MB mounting
+works end-to-end in POM68K through the real driver on a SWIM2 machine. The LC II
+failure is therefore neither a general 1.44 MB defect, nor the read engine, nor
+SonyDrive: it is specific to the SWIM1/ISM driver dispatch. The proximate reason
+matches the manual-vs-driver diff -- swim1_test arms ACTION with `write(7,0x8A)`
+(bit 3 set) and turns the spindle with commandSwim, whereas the real .Sony driver
+on the LC II writes only `$82` (motor + select, no ACTION) and never strobes
+commandSwim, because ACTION-arming for MFM lives in the SuperDrive System patch's
+asynchronous path that the mount read never reaches. Next step: trace the Q605
+SWIM2 driver dispatch that does succeed and compare its MFM read-arming to the LC
+II SWIM1 path, a POM68K-internal comparison that needs no external reference.
+
 ## 2026-09-08 — Floppy 1.44 MB: the failure is a two-phase GCR-then-MFM sequence; the MFM retry aborts on a drive-not-enabled status read
 
 Comparing a working 800 KB mount against the failing 1.44 MB one, with per-Prime

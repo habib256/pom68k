@@ -185,9 +185,22 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   que le SWIM est en IWM (bit 6 clair), n'entrant en ISM que 3 fois via la
   séquence magique reg 15 ; soit le pilote devrait RESTER en ISM et on en sort
   trop tôt, soit ce sont de vrais polls IWM dont le `$FF` lecteur-désactivé est
-  le défaut. Prochaine étape = tracer les transitions du bit 6 sur une reprise
-  MFM face au switch ism/iwm de MAME. Outils : `lcii_sony_trace --frames N
-  --trace N` + `POM68K_DUMPASM=addr:count`.
+  le défaut. Recadrage décisif (2026-09-08) : le moteur
+  N'EST PAS en cause. `swim1_test` pilote le moteur ISM SWIM1 directement sur une
+  image 1,44 Mo avec le BON setup (`write(7,0x8A)` = motor+select+ACTION, broche
+  via `commandSwim(0x2)`) et trouve les marks + vérifie le CRC : le moteur, le
+  flux MFM de SonyDrive et le sync CSM/TSM sont corrects. De plus
+  `q605_floppy_boot_etalon` monte et démarre une image 1,44 Mo sur le Quadra 605
+  (contrôleur SWIM2) : le montage MFM marche de bout en bout via le vrai pilote
+  sur une machine SWIM2. Le défaut est donc SPÉCIFIQUE au dispatch pilote
+  SWIM1/ISM de la LC II — ni général, ni le moteur, ni SonyDrive, ni SWIM2. Cause
+  proximale = `swim1_test` arme ACTION (`write(7,0x8A)`, bit 3) et lance la broche
+  via `commandSwim`, alors que le vrai pilote `.Sony` LC II n'écrit que `$82`
+  (motor+select, sans ACTION) et ne strobe jamais `commandSwim`, car l'armement
+  ACTION du MFM vit dans le chemin ASYNC du patch SuperDrive que la lecture de
+  montage n'atteint jamais. Prochaine étape = tracer le dispatch pilote SWIM2 du
+  Q605 qui RÉUSSIT et comparer son armement de lecture MFM au chemin SWIM1 de la
+  LC II — comparaison interne à POM68K, sans référence externe.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
