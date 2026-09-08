@@ -886,6 +886,27 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: FIX -- HD media presents MFM flux regardless of controller mode; Prime #1 now reads the MDB (0 noErr)
+
+The fix for the GCR-mode-read root. SonyDrive::refreshStream re-encoded the whole
+track as GCR whenever mfmMode_ was clear (`if (mfmMode_ && hd_) encodeTrackMfm();
+else encodeTrackGcr();`), so a GCRModeOn strobe on a 1.44 MB HD disk made the drive
+hand the IWM a GCR-encoded track -- garbage, since the media is MFM sectors. That
+directly contradicts the intent already written above commandMfmMode(): "GCR-on
+has NO guard -- HD media obeys too, and the GCR framer then sees the MFM CELLS as
+garbage exactly like hardware." The media's flux is MFM because the media is MFM;
+the controller's GCR/MFM mode changes how the controller FRAMES those cells, not
+what the platter holds. Encoding is now keyed on the medium: `if (hd_)
+encodeTrackMfm()`. With it, the LC II's first read Prime returns 0 noErr (was
+-400) -- the driver's GCR probe now reads real MFM cells through the IWM and the
+retry path reaches the sector -- and the three gates iwm_write_test, swim1_test
+and swim2_media_test stay green (the change touches only HD-media flux; DD/GCR and
+the ISM engine are unaffected). mfmMode_ still drives rpmNow and the ISM CSM
+state, just not the platter encoding. Prime #2/#3 still return -65 with zero drive
+activity -- a separate, later issue (the drive produces nothing on those calls) --
+so the volume does not fully mount yet, but the primary GCR-vs-MFM defect that
+caused -400 is fixed and validated by the co-trace.
+
 ## 2026-09-08 — Floppy 1.44 MB: THE ROOT -- the drive reads in GCR mode (mfmMode_=0) on an MFM disk; forcing MFM makes Prime #1 succeed
 
 The real defect, finally, and it is not a control-flow issue at all. Instrumenting

@@ -250,7 +250,7 @@ void SonyDrive::encodeTrack() {
 void SonyDrive::refreshStream() {
     stream_.clear();
     if (!hasDisk()) return;
-    if (mfmMode_ && hd_) encodeTrackMfm();
+    if (hd_) encodeTrackMfm();               // HD media is physically MFM regardless of controller mode
     else encodeTrackGcr();
     if (streamPos_ >= stream_.size()) streamPos_ = 0;
 }
