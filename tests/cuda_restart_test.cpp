@@ -67,7 +67,8 @@ std::vector<uint8_t> makeRom(uint32_t size, uint32_t romBase) {
 
 // The five properties, once per platform. `lle` is the machine's CudaLle.
 template <class Mem, class Cpu>
-void testRestart(const char* name, Mem& mem, Cpu& cpu, CudaLle& lle) {
+void testRestart(const char* name, Mem& mem, Cpu& cpu, CudaLle& lle,
+                 uint32_t romBase) {
     // Run until the boot overlay has been dropped by a ROM fetch: that is
     // the state a booted machine is in, and the one Restart has to undo.
     cpu.runCycles(200000);
@@ -108,6 +109,31 @@ void testRestart(const char* name, Mem& mem, Cpu& cpu, CudaLle& lle) {
     const uint32_t counter1 =
         uint32_t(mem.peek8(0x2000)) << 8 | mem.peek8(0x2001);
     check(counter1 != counter0, name, "restart: the machine runs on afterwards");
+
+    // ── The race the 2026-09-08 Quadra 605 halt exposed ──────────────────
+    // A real /RESET holds the overlay asserted across the reset-vector fetch.
+    // In the model onCpuReset arms the overlay, but the guest keeps fetching
+    // ROM in the rest of that run slice, and every ROM read drops the overlay
+    // again — so by the time the CPU wrapper honours consumeRestart and reads
+    // SSP/PC from $0/$4, the overlay is gone and the vector comes from RAM
+    // (stale $40810000 under a real OS → an odd/garbage PC → double-fault
+    // HALT). consumeRestart re-arms the overlay at that boundary; this proves
+    // it, and fails without the fix (the vector reads RAM zeros, PC leaves the
+    // ROM stub, the counter stops).
+    lle.hostReset();
+    check(mem.overlay(), name, "race: the /RESET pulse armed the overlay");
+    (void)mem.read8(romBase + 0x10);            // a guest ROM fetch clears it
+    check(!mem.overlay(), name, "race: an intervening ROM fetch cleared it");
+    const uint32_t raceC0 =
+        uint32_t(mem.peek8(0x2000)) << 8 | mem.peek8(0x2001);
+    cpu.runCycles(4000);                        // consumeRestart → reset → boot
+    check(!cpu.isHalted(), name,
+          "race: the warm reset did not halt (overlay re-armed for the vector)");
+    cpu.runCycles(200000);
+    const uint32_t raceC1 =
+        uint32_t(mem.peek8(0x2000)) << 8 | mem.peek8(0x2001);
+    check(raceC1 != raceC0, name,
+          "race: the ROM stub still runs (the vector came from ROM, not RAM)");
 }
 } // namespace
 
@@ -127,7 +153,7 @@ int main() {
         mem.loadRom(makeRom(Q605Memory::kRomSize, 0x40000000));
         mem.setCpu(&cpu);
         cpu.hardReset();
-        testRestart("q605", mem, cpu, mem.cudaLle());
+        testRestart("q605", mem, cpu, mem.cudaLle(), 0x40000000);
     }
 
     // ── Quadra 900: Egret on the Eclipse tower, Q700Cpu ─────────────────
@@ -148,7 +174,7 @@ int main() {
         cpu.hardReset();
         for (long g = 0; mem.cpuHeld() && g < 200000; g++) mem.tick(1000);
         check(!mem.cpuHeld(), "q900", "setup: the Egret released the 68040");
-        testRestart("q900", mem, cpu, mem.egretLle());
+        testRestart("q900", mem, cpu, mem.egretLle(), 0x40000000);
     }
 
     // ── LC II: Egret, falling-edge release, Cpu030 ──────────────────────
@@ -165,7 +191,7 @@ int main() {
         mem.loadRom(makeRom(V8Memory::kRomSize, 0x00A00000));
         mem.setCpu(&cpu);
         cpu.hardReset();
-        testRestart("lcii", mem, cpu, mem.egretLle());
+        testRestart("lcii", mem, cpu, mem.egretLle(), 0x00A00000);
     }
 
     if (gFails) {

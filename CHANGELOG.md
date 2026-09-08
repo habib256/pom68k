@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (later)** — [The warm-reset overlay fix reaches every Cuda/Egret memory: five more classes re-arm the overlay at the restart boundary, and cuda_restart_test now reproduces the race that halted the Quadra 605](#2026-09-08-restart-sweep)
 - **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way](#2026-09-08-application-gates)
 - **2026-09-07 (tenth)** — [The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing](#2026-09-07-windows-green)
 - **2026-09-07 (ninth)** — [The first MSVC run of the asset-free tier: POM68K.exe builds with /GL + /LTCG in six minutes, the gate tree compiles once three POSIX-isms are shimmed or fenced, and 75 of 82 gates pass — the seven reds are configuration findings, read and filed](#2026-09-07-msvc-first-run)
@@ -874,6 +875,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-restart-sweep"></a>
+## 2026-09-08 (later) — The warm-reset overlay fix reaches every Cuda/Egret memory, and its gate reproduces the race
+
+The earlier entry fixed the Quadra 605's Finder-Restart halt — the ROM
+overlay was cleared by the guest's own instruction fetches before the CPU
+wrapper honoured `consumeRestart` and read the reset vector from `$0`/`$4`,
+so a warm reset booted off a stale RAM pointer instead of the ROM's vector —
+in `Q605Memory::consumeRestart` and `V8Memory`'s. The same `consumeRestart`
+shape, with the same "any ROM read drops the overlay" behaviour, lives in
+five more memory classes: `Q630Memory` (F108, Quadra 630), `Q700Memory`
+(Spike, Quadra 700/900/950), `RbvMemory` (IIci/IIsi), `SonoraMemory`
+(LC III/520/550), `VaspMemory` (IIvx/IIvi). Each now arms the overlay at the
+restart boundary too. Reading the ROM's own reset vector is what a cold reset
+already does everywhere, so this cannot regress a machine that had been
+surviving the race by luck (the LC II did, on System 7.5); it makes the warm
+reset correct rather than lucky.
+
+The bug had survived because `cuda_restart_test` drove the firmware's
+synthetic RESET_SYSTEM ($11) and checked the overlay re-arm and the latched
+CPU reset in a rig where nothing fetched ROM between the two — exactly the
+window the race needs. The test now reproduces it: after the /RESET pulse
+arms the overlay, an intervening ROM read clears it (a guest fetch), and the
+warm reset must still land the CPU back on the ROM stub. Without the
+per-memory fix the vector reads RAM (zeros in the rig, the OS's stale
+`$40810000` on real hardware) and the PC leaves the ROM — the check fails,
+verified by reverting the five headers and watching the q900 leg go red. It
+passes on the q605, q900 (`Q700Memory`) and lcii legs with the fix;
+`q605_restart_etalon` and `lcii_restart_etalon` remain the real-Finder
+reproducers.
 
 <a id="2026-09-08-application-gates"></a>
 ## 2026-09-08 — Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way
