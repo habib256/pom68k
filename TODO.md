@@ -86,9 +86,15 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   null, aucune cellule décodée, seulement 2 octets poussés sur 68973 nibbles.
   Le pilote configure l'ISM en MFM puis stalle avant d'armer la lecture. C'est
   le « n'arme jamais ACTION » de l'entrée (eighth) avec l'état exact. Prochaine
-  étape : tracer ce que le pilote sonde à `mode=$42` avant de poser bit7/ACTION
-  (probablement un statut ISM ou drive), et pourquoi cette sonde n'aboutit
-  jamais sur le chemin MFM alors qu'elle aboutit sur le chemin GCR 800K.
+  étape (`CHANGELOG` (eleventh)) : le 800K lit via la personnalité IWM/GCR
+  (jamais de W7), le 1,44 Mo via le moteur ISM — deux chemins distincts, donc
+  le moteur ISM MFM n'a jamais été exercé par un cas vert. En MFM le pilote
+  fait sa séquence de setup (pulses `W7=$82`/`W6=$80` ×6 + phases + param RAM)
+  puis lit la param RAM et abandonne (offLinErr) **sans armer ACTION** (mode
+  bit 3), donc `tickRead` ne tourne jamais. Décoder ce que le pilote attend en
+  retour après ces strobes (sémantique du handshake reg 7, ou l'ordre de
+  relecture de la param RAM) qui le fait renoncer avant ACTION — le défaut est
+  dans notre handshake ISM SWIM1.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

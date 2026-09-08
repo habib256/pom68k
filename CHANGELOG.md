@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (eleventh)** — [The 1.44 MB read uses a different engine from the working 800K: 800K reads via the IWM/GCR personality, MFM via the ISM engine, and the driver aborts the ISM setup before arming ACTION](#2026-09-08-floppy-ism-vs-iwm)
 - **2026-09-08 (tenth)** — [The 1.44 MB stall, pinned: at the MFM retry the driver configures the ISM to MFM but never arms ACTION or selects the drive, so the read engine never runs](#2026-09-08-floppy-action-stall)
 - **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is not a density-detection bug at all — density works and returns a retry; the defect is the live MFM ISM read corrupting the sector after the MDB sync](#2026-09-08-floppy-correction)
 - **2026-09-08 (eighth)** — [POM68K 0.1.0 is tagged: tiers B and C are closed, and the roadmap is reorganized around the open post-1.0 work](#2026-09-08-release-0-1-0)
@@ -883,6 +884,33 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 (eleventh) — The 1.44 MB read is a different engine from the 800K one, and the ISM setup aborts before ACTION
+
+The (tenth) entry asked what the driver polls at `mode = $42` that resolves on
+the 800K GCR path but never on MFM. Logging every ISM register access on both
+disks answers it, and reframes the comparison: the two disks do not share a
+read engine. On the 800K disk PRIME returns `noErr` and the register log shows
+setup (reg 5), mode-clears (reg 6) and the 16-byte parameter RAM (reg 3), but
+**never a reg-7 mode-set** — the 800K read runs through the IWM/GCR
+personality, not the ISM cell engine. On the 1.44 MB disk the driver does write
+reg 7, as `$82` (motor-select bit 7 + drive-select bit 1), six times, each time
+immediately followed by a reg-6 `$80` that clears bit 7 again — a soft-select
+strobe, paired with the phase writes (reg 4). After that pulse sequence the
+driver reads back the parameter RAM and returns `offLinErr` **without ever
+setting ACTION (mode bit 3)**, so `Swim1::tickRead` never runs and the ISM cell
+engine decodes nothing.
+
+So the earlier "compare against the 800K path" plan does not apply — the ISM
+MFM read engine is a distinct path that no passing case exercises, which is why
+the bug has hidden. The driver aborts its ISM read setup after the soft-select
+strobes, before arming ACTION, on POM68K but not on hardware. The next step is
+to decode what the driver expects back from the ISM after those `W7=$82 /
+W6=$80` strobes and the parameter load (the handshake register 7 semantics, or
+the param-RAM readback order) that makes it give up before ACTION — the defect
+is in POM68K's SWIM1 ISM handshake, not the mode table, the polarity, or the
+density path, all of which are confirmed correct.
 
 <a id="2026-09-08-floppy-action-stall"></a>
 ## 2026-09-08 (tenth) — The 1.44 MB stall is the driver never arming the ISM read, pinned to the exact register state
