@@ -1706,6 +1706,9 @@ Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
 gate against a volume its own list does not name — every "same machine,
 other System" control needs it), `POM68K_HALT`, `POM68K_DUMP`,
+`POM68K_DUMPASM` (`lcii_sony_trace`: disassemble `addr:count` live-RAM
+instructions after the run, for reverse-engineering the SuperDrive System
+patch that owns the 1.44 MB MFM read path),
 `POM68K_SPEEDO_FRAMES` / `POM68K_SPEEDO_TRACE`
 (`lcii_speedometer_census`: move the selected family's frame cap, and print
 the sampled result shape per poll — the pair that tells a slow benchmark

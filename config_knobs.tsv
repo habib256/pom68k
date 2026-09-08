@@ -63,6 +63,7 @@ POM68K_DAYNAPORT	product	gate:daynaport_test
 POM68K_DIAG	test	owner:tests/centris650_boot_etalon.cpp
 POM68K_DRIVE_SFX	product	gate:floppy_sound_test
 POM68K_DUMP	test	owner:tests/BeyondBoot.h
+POM68K_DUMPASM	test	owner:tests/lcii_sony_trace.cpp
 POM68K_DUO_EVENT	chantier	expiry:docs/LLE_VS_HLE.md#peripheral-event-deadline-default
 POM68K_EGRET_LLE	product	gate:egret_lle_test,peripheral_lle_test
 POM68K_FIRMWARE_ROOT	product	gate:peripheral_lle_test
