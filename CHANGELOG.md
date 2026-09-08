@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (seventh)** — [The save-state relaunch gate now covers all three CPU families: the Macintosh Plus (68000) joins the LC II and Quadra 605](#2026-09-08-plus-relaunch)
 - **2026-09-08 (sixth)** — [The 1.44 MB floppy is an HD-media detection bug, not a mode-polarity one: the .Sony picks GCR/MFM from drive variable $17, our strobe table is right, and $17 is never set for HD](#2026-09-08-floppy-density-var17)
 - **2026-09-08 (fifth)** — [The save-state relaunch gate reaches the LC II too, and the 1.44 MB floppy hunt gets its disassembly: the .Sony GCR strobe is located at ROM $A6D482](#2026-09-08-lcii-relaunch-and-floppy-dasm)
 - **2026-09-08 (fourth)** — [Two fresh relaunches of one snapshot are byte-identical: the save-state relaunch is deterministic, and the A-vs-fresh one-cycle difference is the expected cp-class phase normalization, not a gap](#2026-09-08-savestate-relaunch-determinism)
@@ -879,6 +880,22 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-plus-relaunch"></a>
+## 2026-09-08 (seventh) — Save-state relaunch is gated on all three CPU families
+
+`compact_savestate_relaunch_etalon` gives the 68000/compact family the
+cross-instance relaunch gate the Q605 (68040) and the LC II (68030) already
+have: boot the Plus to a System 6 Finder, snapshot to a file, load into a
+FRESH MacMemory + Cpu68k that re-attaches the same disk, two fresh relaunches
+byte-identical to each other, Finder up. It exercises the compact device set —
+MacVideo, the M0110 keyboard, the quadrature MacMouse, the NCR 5380, the
+IWM/SonyDrive and the VIA — through the fresh-graph load path a GUI restore
+takes, a different chunk set from the 030/040 gates. As on the Q605, the
+fresh-load result carries the expected cp-class phase difference from a
+never-loaded original while every fresh load agrees; the gate asserts the
+fresh-to-fresh identity and reports the rest. The three application gates and
+the three relaunch gates now line up one-to-one across 68000/68030/68040.
 
 <a id="2026-09-08-floppy-density-var17"></a>
 ## 2026-09-08 (sixth) — The 1.44 MB floppy is an HD-media detection bug, not the mode-polarity contradiction it was filed as

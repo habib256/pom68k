@@ -286,6 +286,15 @@ add_test(NAME lcii_savestate_relaunch_etalon COMMAND lcii_savestate_relaunch_eta
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(lcii_savestate_relaunch_etalon PROPERTIES TIMEOUT 1800)
 
+# Save-state relaunch on the Macintosh Plus (68000/MacMemory), third family
+# after the Q605 and LC II (2026-09-08): fresh-machine load, two fresh
+# relaunches byte-identical, Finder up.
+add_executable(compact_savestate_relaunch_etalon tests/compact_savestate_relaunch_etalon.cpp)
+target_link_libraries(compact_savestate_relaunch_etalon PRIVATE pom68k_core)
+add_test(NAME compact_savestate_relaunch_etalon COMMAND compact_savestate_relaunch_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(compact_savestate_relaunch_etalon PROPERTIES TIMEOUT 1800)
+
 # Beyond-boot gates on the Quadra 605 (second machine after the LC II,
 # TODO §2): idle soak (Mac clock keeps time — catches the MCU-overclock
 # class), and Finder file creation surviving a reboot — the one gate
