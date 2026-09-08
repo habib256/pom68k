@@ -886,6 +886,34 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: a MAME co-trace overturns the ACTION theory — the real LC II reads MFM via the IWM (software), never arming ISM ACTION
+
+Installing MAME 0.289 (bottle) and building its `maclc2` romset from our own LC II
+ROM (the 35C28F5F dump splits into MAME's four byte-lanes 341-0473..0476 with
+matching CRCs; the Egret firmware comes from roms/egret/) gives, for the first
+time, a reference for what the real driver does. Booting maclc2 from our GISTPERSO
+HD (attached as a raw .hd, which MAME's Mac SCSI accepts) with the 1.44 MB test
+floppy (wrapped as DiskCopy 4.2) mounts the volume -- the desktop shows the HFS
+volume "Stuffit Expander 5.5". A Lua write/read tap on the SWIM registers
+($F16000, $200 stride) then overturns the theory this whole hunt rested on: MAME
+writes register 7 only ever with $82 (motor + drive-select, NEVER the ACTION bit
+3), and the mode register reads back $00 throughout the mount -- IWM personality,
+ISM bit clear, ACTION clear. So the real LC II does NOT read the 1.44 MB disk
+through the SWIM1 ISM hardware MFM engine at all; it reads it through the IWM
+personality, with the SuperDrive System patch decoding MFM in software from the
+raw IWM cell stream. POM68K writes exactly the same $82 and never arms ACTION,
+which is now confirmed FAITHFUL, not a bug -- the earlier "the driver never arms
+ACTION" framing was wrong. The divergence is the data path: with the identical
+control sequence, MAME's IWM feeds the software decoder a usable MFM cell stream
+and mounts, while POM68K's IWM read yielded 931 valid nibbles out of 68952 (the
+GCR nibble framing corrupts the raw MFM cells the software decoder needs).
+swim1_test still passes because it drives the ISM engine directly with a
+synthetic `write(7,0x8A)` setup that the real driver never performs. Next step:
+co-trace the IWM read path (Q6/Q7 latch mode, the raw-cell presentation) MAME vs
+POM68K and align POM68K's IWM so the software MFM decoder in the patch gets the
+cells it does on MAME. The MAME harness (romset build, .hd/.dc42 media, Lua SWIM
+tap) is reusable for that co-trace.
+
 ## 2026-09-08 — Floppy 1.44 MB: the ISM read engine and SWIM2 both work; the failure is specific to the LC II SWIM1/ISM driver dispatch
 
 Two existing gates reframe the 1.44 MB floppy hunt. swim1_test drives the SWIM1

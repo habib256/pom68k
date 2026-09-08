@@ -198,9 +198,28 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   via `commandSwim`, alors que le vrai pilote `.Sony` LC II n'écrit que `$82`
   (motor+select, sans ACTION) et ne strobe jamais `commandSwim`, car l'armement
   ACTION du MFM vit dans le chemin ASYNC du patch SuperDrive que la lecture de
-  montage n'atteint jamais. Prochaine étape = tracer le dispatch pilote SWIM2 du
-  Q605 qui RÉUSSIT et comparer son armement de lecture MFM au chemin SWIM1 de la
-  LC II — comparaison interne à POM68K, sans référence externe.
+  montage n'atteint jamais. CO-TRACE MAME (2026-09-08) —
+  CORRECTION MAJEURE : le cadrage « le pilote n'arme jamais ACTION » était FAUX.
+  MAME 0.289 (`maclc2`, romset construit depuis notre ROM 35C28F5F + firmware
+  Egret) MONTE la disquette 1,44 Mo (volume HFS « Stuffit Expander 5.5 » sur le
+  bureau), en bootant depuis notre HD GISTPERSO (attaché en `.hd` brut) avec la
+  disquette en DiskCopy 4.2. Un tap Lua sur les registres SWIM ($F16000, stride
+  $200) montre que MAME écrit reg 7 UNIQUEMENT avec `$82` (moteur+select, JAMAIS
+  ACTION bit 3) et lit le registre mode à `$00` (personnalité IWM, bit ISM clair)
+  pendant tout le montage. Donc la vraie LC II lit le 1,44 Mo via l'IWM (MFM
+  DÉCODÉ EN LOGICIEL par le patch SuperDrive à partir du flux de cellules IWM
+  brut), PAS via le moteur ISM matériel. POM68K écrit exactement le même `$82` et
+  n'arme jamais ACTION : c'est désormais confirmé FIDÈLE, pas un bug. La
+  divergence est le CHEMIN DE DONNÉES : à séquence de contrôle identique, l'IWM de
+  MAME fournit au décodeur logiciel un flux de cellules MFM exploitable et monte,
+  alors que la lecture IWM de POM68K donnait 931 nibbles valides sur 68952 (le
+  cadrage GCR par nibble corrompt les cellules MFM brutes attendues). `swim1_test`
+  passe car il pilote le moteur ISM en direct avec un setup synthétique
+  `write(7,0x8A)` que le vrai pilote ne fait jamais. Prochaine étape = co-tracer
+  le chemin de lecture IWM (mode latch Q6/Q7, présentation des cellules brutes)
+  MAME vs POM68K et aligner l'IWM de POM68K pour que le décodeur MFM logiciel du
+  patch reçoive les mêmes cellules que sur MAME. Le harness MAME (build romset,
+  media .hd/.dc42, tap Lua SWIM) est réutilisable pour cette co-trace.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
