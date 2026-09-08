@@ -886,6 +886,29 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the ISM/IWM divergence is downstream — the real root is PRIME #1's IWM read of MFM producing garbage
+
+Attacking the ISM/IWM personality fix, the co-trace redirects it. Correlating ISM
+entries with the driver Prime boundaries shows POM68K enters ISM three times: two
+during the boot floppy probe, and one BETWEEN Prime #1 and Prime #2 -- the entry
+that leaves it stuck in ISM for Prime #2, where the reg-15 handshake first
+diverges. But that is downstream. Prime #1 in POM68K reads the 1.44 MB disk
+through the IWM and returns -400 after 68952 nibbles with only 931 valid: the
+IWM's GCR nibble framing (a 2 us cell, one GCR byte every 16 us -- src/Iwm.cpp
+windowTicks/readData) cannot make sense of MFM flux, so the sector comes back
+corrupt and the driver retries. MAME, by contrast, mounts the volume, so its
+Prime #1 read succeeds. The magic-counter and enter/leave logic are byte-for-byte
+the same as MAME's iwm_control (verified against swim1.cpp), so the ISM/IWM toggle
+is not itself wrong; POM68K only ends up in ISM because Prime #1 failed and the
+retry drove a different register sequence. The correction therefore is not a small
+ISM/IWM guard (which would risk the three green gates iwm_write_test / swim1_test /
+swim2_media_test) but the IWM read path for HD MFM: POM68K's IWM must present the
+raw MFM cell stream the SuperDrive software decoder consumes, the way MAME's does,
+rather than GCR-framed nibbles. Open sub-question blocking that: MAME mounts yet a
+Lua tap on the SWIM data/mark registers (reg 0/1) reads $00 throughout, so how the
+driver actually pulls the sector bytes on MAME is not yet captured -- resolving
+that reg-0/1 = $00 mystery is the prerequisite for aligning POM68K's IWM read.
+
 ## 2026-09-08 — Floppy 1.44 MB: MAME never enters ISM for this read — POM68K's ISM-entry is the bug (mode reads back $00 vs c2)
 
 Tapping MAME maclc2's SWIM mode register across the whole 1.44 MB mount shows it
