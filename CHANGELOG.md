@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (tenth)** — [The 1.44 MB stall, pinned: at the MFM retry the driver configures the ISM to MFM but never arms ACTION or selects the drive, so the read engine never runs](#2026-09-08-floppy-action-stall)
 - **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is not a density-detection bug at all — density works and returns a retry; the defect is the live MFM ISM read corrupting the sector after the MDB sync](#2026-09-08-floppy-correction)
 - **2026-09-08 (eighth)** — [POM68K 0.1.0 is tagged: tiers B and C are closed, and the roadmap is reorganized around the open post-1.0 work](#2026-09-08-release-0-1-0)
 - **2026-09-08 (seventh)** — [The save-state relaunch gate now covers all three CPU families: the Macintosh Plus (68000) joins the LC II and Quadra 605](#2026-09-08-plus-relaunch)
@@ -882,6 +883,31 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-floppy-action-stall"></a>
+## 2026-09-08 (tenth) — The 1.44 MB stall is the driver never arming the ISM read, pinned to the exact register state
+
+The (ninth) entry placed the 1.44 MB failure in the live MFM read and proposed
+comparing the ISM engine's decoded bytes to the image. Instrumenting the read
+engine answered it a level up: `Swim1::tickRead` never runs at all on the MFM
+retry. It is gated on `ismMode_ && (mode_ & 0x08)` (ACTION), and
+`selectedDrive()` additionally requires `mode_ & 0x80` (the motor/soft-select
+gate). Logged during the failing read: `mode = $42` (ISM enabled at bit 6,
+drive-select field = 1 at bit 1), `setup = $20` (the ISM decode is in MFM mode,
+which is correct), but **ACTION (bit 3) is never set and bit 7 is never set**,
+so `selectedDrive()` returns null and the cell engine decodes nothing — two
+FIFO bytes over 68 973 nibbles. The apparent 42 44 / garbage the driver reads
+comes from the tool's own diagnostic prints, not the engine; the engine is idle.
+
+So the whole chain is now understood and the earlier framings are superseded:
+the strobe polarity is correct, the density detection works and returns the
+-400 retry, and the retry stalls in the driver's ISM MFM read setup — it puts
+the ISM in MFM mode but never arms ACTION or the drive-select gate. This is the
+"never arms ACTION" the 2026-09-07 (eighth) entry first saw, now with the exact
+register state. Next: trace what the driver polls at `mode = $42` before it
+would set bit 7 / ACTION, and why that poll resolves on the 800K GCR path but
+never on the MFM path — the fix is in that poll's observable, in POM68K's SWIM1
+or SonyDrive sense, not in the mode table or the Q605.
 
 <a id="2026-09-08-floppy-correction"></a>
 ## 2026-09-08 (ninth) — Correction: the 1.44 MB floppy is a live MFM read bug, not density detection

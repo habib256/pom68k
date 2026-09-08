@@ -77,9 +77,18 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   overruns massifs au poll System `$A0BB8C`). Reproducteur : `POM68K_BEYOND=
   floppy POM68K_FLOPPY_IMG=disks35/Stuffit_Expander_5.5.dsk lcii_beyond_etalon`
   ou `./build/lcii_sony_trace --img disks35/Stuffit_Expander_5.5.dsk`.
-  Prochaine étape : comparer les octets décodés par le moteur ISM aux octets
-  de l'image sur le secteur MDB, et voir si la corruption vient du décode
-  (nb/bb après la marque) ou de la livraison (FIFO overrun / cadence).
+  Localisé plus finement (2026-09-08, `CHANGELOG` (tenth)) : au retry MFM, le
+  moteur de lecture ISM `Swim1::tickRead` **ne tourne jamais** — il est gaté
+  sur `ismMode_ && (mode_ & 0x08)` (ACTION) et `selectedDrive()` exige
+  `mode_ & 0x80`. Mesuré pendant la lecture : `mode=$42` (ISM bit6 + sel=1
+  bit1), `setup=$20` (ISM en mode MFM, correct), mais **ACTION (bit3) jamais
+  armé et bit7 (motor/soft-select) jamais mis** → `selectedDrive()` renvoie
+  null, aucune cellule décodée, seulement 2 octets poussés sur 68973 nibbles.
+  Le pilote configure l'ISM en MFM puis stalle avant d'armer la lecture. C'est
+  le « n'arme jamais ACTION » de l'entrée (eighth) avec l'état exact. Prochaine
+  étape : tracer ce que le pilote sonde à `mode=$42` avant de poser bit7/ACTION
+  (probablement un statut ISM ou drive), et pourquoi cette sonde n'aboutit
+  jamais sur le chemin MFM alors qu'elle aboutit sur le chemin GCR 800K.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
