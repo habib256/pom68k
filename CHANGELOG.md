@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (sixth)** — [The 1.44 MB floppy is an HD-media detection bug, not a mode-polarity one: the .Sony picks GCR/MFM from drive variable $17, our strobe table is right, and $17 is never set for HD](#2026-09-08-floppy-density-var17)
 - **2026-09-08 (fifth)** — [The save-state relaunch gate reaches the LC II too, and the 1.44 MB floppy hunt gets its disassembly: the .Sony GCR strobe is located at ROM $A6D482](#2026-09-08-lcii-relaunch-and-floppy-dasm)
 - **2026-09-08 (fourth)** — [Two fresh relaunches of one snapshot are byte-identical: the save-state relaunch is deterministic, and the A-vs-fresh one-cycle difference is the expected cp-class phase normalization, not a gap](#2026-09-08-savestate-relaunch-determinism)
 - **2026-09-08 (third)** — [Save-state relaunch into a fresh machine is gated, and it isolates a one-cycle cross-instance timing drift the in-place gate could not see](#2026-09-08-savestate-relaunch)
@@ -878,6 +879,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-floppy-density-var17"></a>
+## 2026-09-08 (sixth) — The 1.44 MB floppy is an HD-media detection bug, not the mode-polarity contradiction it was filed as
+
+The (fifth) entry located the .Sony GCR strobe at ROM $A6D482 and left the
+open question as "the meaning of SuperDrive register 3 + CA2." Following the
+call chain settles it, and the answer overturns the two-year framing. The
+strobe fires inside the mode-setup routine $A6D6BE, which chooses the strobe
+register from drive variable $17 (the byte at the drive record + $17): bit 7
+clear selects D0=7 -> addr=B -> GCR-on, bit 7 set selects D0=6 -> addr=3 ->
+MFM-on. D0=6 for MFM and D0=7 for GCR is exactly the table iwm_write_test
+pins from MAME, so POM68K's strobe decode is correct. The "two drivers
+contradict on polarity" note (2026-09-07 eighth) and the polarity flip that
+"reads valid HD sectors but does not mount" were a red herring: the flip
+breaks iwm_write_test because the table was never wrong.
+
+The real defect is HD-media DETECTION. On the 1.44 MB disk, drive variable
+$17 stays 0 (GCR) — a write watchpoint on its address across the whole insert
+caught zero writes to it — so the driver decides GCR and reads the MFM disk as
+noise, exactly the "503 sync $FF, 0 address/data marks" the gate reports. The
+800K path mounts because $17 = 0 (GCR) is already what it wants; only HD needs
+the density probe to set $17 -> MFM, and that never happens. The next step is
+now safe and bounded: find which sense line the density probe reads to set $17
+(reg F / is_2m already ruled out) and make it report HD — a sense fix that
+touches neither the mode table nor the Q605's commandSwim path. Located code
+and the framing are in TODO § C.2.
 
 <a id="2026-09-08-lcii-relaunch-and-floppy-dasm"></a>
 ## 2026-09-08 (fifth) — LC II save-state relaunch is gated too, and the 1.44 MB floppy hunt gets the disassembly it was waiting on

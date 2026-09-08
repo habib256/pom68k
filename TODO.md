@@ -143,17 +143,20 @@ catalogue restait dans le cache invité.
   File Manager lit après le MDB. La table reste celle de MAME
   (`iwm_write_test` l'épingle) ; `Swim1::ismStats()` compte désormais ce
   que le pilote dépile et ce que l'engine produit.
-  Désassemblage localisé (2026-09-08, `make dasm` + capture PC du changement
-  de mode via `drive_.mfmMode()`) : sur le disque HD, le .Sony de la ROM LC II
-  bascule MFM→GCR en `$A6D482` (LSTRB via reg 7), sous-routine strobe
-  `$A6D472`, mise en place des lignes CA en `$A6D40E`, appelée depuis la
-  boucle de seek en `$A6D4DC`. Le strobe capté est addr=B = (CA1,CA0,SEL)=011
-  + CA2=1, que notre `SonyDrive::command` décode « GCR-on ». Question ouverte
-  précise : la signification autoritative du registre SuperDrive 3 + CA2 sur
-  ce chemin CA — le seul oracle manquant, contraint par le 800K et le Q605
-  (le flip casse `iwm_write_test`). Prochaine étape : décoder l'algorithme de
-  décision densité autour de `$A6D40E` (quel bit de D0 pilote quelle ligne
-  CA) ou obtenir la spec registre SuperDrive.
+  Désassemblé et REQUALIFIÉ (2026-09-08). La polarité du strobe n'est PAS en
+  cause : la routine de mode `$A6D6BE` choisit le registre via la variable
+  drive `$17` (bit 7) — bit clair → D0=7 → addr=B → GCR ; bit mis → D0=6 →
+  addr=3 → MFM. D0=6→MFM / D0=7→GCR est exactement la table MAME que
+  `iwm_write_test` épingle : notre décodage est bon. Le vrai défaut est la
+  DÉTECTION du média HD : sur le disque 1,44 Mo la variable `$17` reste 0
+  (jamais écrite — watchpoint sur son adresse pendant l'insertion : zéro
+  écriture), donc le pilote décide GCR et lit du MFM comme du bruit. Le 800K
+  marche parce que `$17`=0 (GCR) est déjà correct pour lui. Le flip de
+  polarité était un faux-fuyant (il casse `iwm_write_test` et ne monte pas).
+  Prochaine étape, sûre et bornée : trouver quelle ligne de sense la sonde de
+  densité lit pour poser `$17`→MFM (reg F/is_2m déjà écarté), et la faire
+  rapporter « HD » — un correctif sense, sans toucher la table de mode ni le
+  Q605. Code : décision en `$A6D6BE`, strobe `$A6D472`/`$A6D40E`.
 - [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Bloqué par l'actif :
   `hdv/System 4.1.dsk` est une image SCSI de 1,5 Mo, pas une disquette ;
   aucune 800 K System 4.1 n'est présente. `bootPlus` reçoit son chemin
