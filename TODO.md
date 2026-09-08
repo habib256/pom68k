@@ -100,7 +100,16 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   du handshake/ACTION après chargement des params — à croiser avec `swim1.cpp`
   de MAME (les préconditions d'armement d'ACTION). Densité, polarité, table de
   mode et param RAM sont toutes confirmées correctes ; le bug est isolé au
-  protocole d'armement de lecture ISM.
+  protocole d'armement de lecture ISM. Raffiné (2026-09-08) : la vérif param
+  PASSE (2 succès, 1 réécriture), puis le pilote saute dans un callback System
+  (`$06AF72` via le global `$b40`) qui TIMEOUT et abandonne — il attend des
+  données que l'ISM ne produit pas (le CSM ne se synchronise pas : ~2 octets
+  poussés sur 68973 nibbles). Racine = le moteur de lecture ISM MFM ne
+  synchronise pas sur les cellules (armement ACTION/sélection lecteur, ou
+  classification de cellules/params de timing). La source MAME `swim1.cpp` est
+  désormais disponible (`/Volumes/TEST/sauvegarde-20260906/refs/mame/src/
+  devices/machine/swim1.cpp`, copiée) : prochaine étape = audit MAME-vs-nous
+  du chemin CSM/TSM et de l'armement ACTION/sélection en mode MFM.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
