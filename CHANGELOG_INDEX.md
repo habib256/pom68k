@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 469 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 470 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 85 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 64 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 65 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 7 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
@@ -246,7 +246,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-07 (eighth)** — [The SWIM1 decodes 1.44 MB MFM correctly and the LC II ROM still does not mount it: two .Sony drivers disagree on which strobe turns MFM on, and the table stays MAME's until the wiring is checked](CHANGELOG.md#2026-09-07-swim1-mfm-hunt)
 - **2026-09-07 (fifth)** — [The guest writes to its floppies and puts them away: LC II and Quadra 605 create a folder on the mounted disk, flush and eject from the Finder, and the folder is in the host file — plus the 1.44 MB mount the SWIM1 does not yet deliver, and the bare LC II's system error, both recorded](CHANGELOG.md#2026-09-07-floppy-guest-write)
 - **2026-09-07 (fourth)** — [The guest restarts itself: Finder → Spécial → Redémarrer by mouse, and the LC II comes back through the ROM's warm-start path with a full second SCSI boot](CHANGELOG.md#2026-09-07-restart-etalon)
-- **2026-09-08** — [Floppy 1.44 MB: FIX -- HD media presents MFM flux regardless of controller mode; Prime #1 now reads the MDB (0 noErr)](CHANGELOG.md#2026-09-08-floppy-ism-vs-iwm)
+- **2026-09-08** — [Floppy 1.44 MB: FIX -- HD media presents MFM flux regardless of controller mode; Prime #1 now reads the MDB (0 noErr)](CHANGELOG.md#2026-09-08--floppy-144-mb-fix----hd-media-presents-mfm-flux-regardless-of-controller-mode-prime-1-now-reads-the-mdb-0-noerr)
 - **2026-09-08** — [Floppy 1.44 MB: THE ROOT -- the drive reads in GCR mode (mfmMode_=0) on an MFM disk; forcing MFM makes Prime #1 succeed](CHANGELOG.md#2026-09-08--floppy-144-mb-the-root----the-drive-reads-in-gcr-mode-mfmmode_0-on-an-mfm-disk-forcing-mfm-makes-prime-1-succeed)
 - **2026-09-08** — [Floppy 1.44 MB: the reg-14 lead is a red herring — POM68K matches MAME at every control decision; the difference is the read DATA](CHANGELOG.md#2026-09-08--floppy-144-mb-the-reg-14-lead-is-a-red-herring--pom68k-matches-mame-at-every-control-decision-the-difference-is-the-read-data)
 - **2026-09-08** — [Floppy 1.44 MB: reading MAME's real registers (Lua opcode-fetch + CPU state) gives the target -- reg 14 must read $37, not $FF](CHANGELOG.md#2026-09-08--floppy-144-mb-reading-mames-real-registers-lua-opcode-fetch--cpu-state-gives-the-target----reg-14-must-read-37-not-ff)
@@ -264,6 +264,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-08 (fifth)** — [LC II save-state relaunch is gated too, and the 1.44 MB floppy hunt gets the disassembly it was waiting on](CHANGELOG.md#2026-09-08-lcii-relaunch-and-floppy-dasm)
 - **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is a live MFM read bug, not density detection](CHANGELOG.md#2026-09-08-floppy-correction)
 - **2026-09-08 (sixth)** — [The 1.44 MB floppy is an HD-media detection bug, not the mode-polarity contradiction it was filed as](CHANGELOG.md#2026-09-08-floppy-density-var17)
+- **2026-09-09** — [Floppy 1.44 MB: the fix reads a full valid MDB; the enable/motoron disconnect is NOT the mount blocker (it matches MAME)](CHANGELOG.md#2026-09-08-floppy-ism-vs-iwm)
 
 ## Video — decoders, the raster beam, DAFB
 

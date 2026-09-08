@@ -886,6 +886,27 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-09 — Floppy 1.44 MB: the fix reads a full valid MDB; the enable/motoron disconnect is NOT the mount blocker (it matches MAME)
+
+Following the media-based MFM fix. The LC II mount's first read Prime is fully
+correct now: ioActCount=512 of 512 requested, and the buffer holds the disk's
+exact MDB (42 44 d3 f2 2e 9a ... -- the HFS 'BD' signature, byte-identical to the
+image). All three Primes are the internal drive (ioVRefNum=1), part of the same
+_MountVol. Prime #1 succeeds; Primes #2 and #3 re-read sector 2 and return -65
+with ioActCount=0 (zero drive activity), and _MountVol propagates -65. The
+tempting cause -- at Primes #2/#3 the drive shows enable=0 (IWM) yet motorOn=1
+(ISM), so the reg-14 read falls to the disabled DATA register ($FF) -- is ruled
+OUT by the reliable MAME co-trace: MAME's D0 at $A6CEDE is the same 37, FF, FF,
+its post-$37 read is likewise slow (~3 s), and it too gets $FF on the later
+decisions, yet it mounts. So the enable/motoron state and the reg-14 $FF are
+faithful to MAME, not the defect. The real divergence is that POM68K's _MountVol
+issues Primes #2/#3 as critical drive re-reads of sector 2 (into fresh buffers
+$06FEB4/$9EDE00) that hit a not-ready drive, where MAME's mount is satisfied after
+the first read. Next: compare the driver's track-cache / _MountVol read path (why
+the second sector-2 read re-hits the drive instead of the cache filled by Prime
+#1) with MAME, using the opcode-fetch co-trace -- the reg-14 personality state is
+not the lever.
+
 ## 2026-09-08 — Floppy 1.44 MB: FIX -- HD media presents MFM flux regardless of controller mode; Prime #1 now reads the MDB (0 noErr)
 
 The fix for the GCR-mode-read root. SonyDrive::refreshStream re-encoded the whole
