@@ -220,6 +220,16 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   MAME vs POM68K et aligner l'IWM de POM68K pour que le décodeur MFM logiciel du
   patch reçoive les mêmes cellules que sur MAME. Le harness MAME (build romset,
   media .hd/.dc42, tap Lua SWIM) est réutilisable pour cette co-trace.
+  PREMIÈRE DIVERGENCE ISOLÉE (2026-09-08) : après le même `W reg7=82; W reg4=f3;
+  W reg4=f0`, la lecture du registre 15 (handshake ISM) donne `$00` sur MAME mais
+  `$8e` sur POM68K, ce qui fait diverger le branchement (MAME boucle le pulse
+  select/deselect, POM68K passe au readback). Le `$8e` est gonflé par deux écarts
+  vs MAME : (1) le bit sense (0x0c) car `senseSwim(0)` renvoie `dirToZero_=true`
+  alors que le wpt_r de la ligne direction de MAME lit 0 ; (2) le bit niveau-FIFO
+  (0x80) car le FIFO ISM de POM68K contient un octet là où celui de MAME est
+  vide. Deux cibles concrètes et testables : la valeur de sense-direction sous
+  ces phases (`dirToZero_` piloté par `applyPhases` DIRTN=ca2) et l'octet
+  parasite dans le FIFO ISM.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

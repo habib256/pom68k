@@ -886,6 +886,25 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the MAME co-trace pinpoints the first divergence — the SWIM handshake reads $8e where MAME reads $00
+
+With the MAME maclc2 reference booting our GISTPERSO HD and mounting the 1.44 MB
+floppy, a Lua tap dumped the exact ordered SWIM access sequence, and the same
+sequence was captured from POM68K's lcii_sony_trace. Diffing them lands the first
+divergence precisely. After the identical opening `W reg7=82; W reg4=f3;
+W reg4=f0`, the driver reads register 15 (the ISM handshake): MAME returns $00,
+POM68K returns $8e, and from there the two branch apart — MAME loops the
+select/deselect pulse several times while POM68K falls straight through to the
+readback. Instrumenting that read shows POM68K's $8e is inflated by two things
+over MAME's $00: the sense bit is high (handshake 0x0c) because senseSwim(0)
+returns dirToZero_ = true where MAME's wpt_r for the direction line reads 0, and
+the FIFO level bit is set (0x80) because POM68K's ISM FIFO holds one byte where
+MAME's is empty. So two concrete, testable targets: POM68K's direction-sense
+value under these phases (dirToZero_ driven by applyPhases DIRTN = ca2) and a
+spurious byte sitting in the ISM FIFO. This is the actionable follow-up to the
+"reads MFM via the IWM, never arms ACTION" correction, and the MAME harness plus
+the ordered-access diff are the tools that will carry the rest of the alignment.
+
 ## 2026-09-08 — Floppy 1.44 MB: a MAME co-trace overturns the ACTION theory — the real LC II reads MFM via the IWM (software), never arming ISM ACTION
 
 Installing MAME 0.289 (bottle) and building its `maclc2` romset from our own LC II
