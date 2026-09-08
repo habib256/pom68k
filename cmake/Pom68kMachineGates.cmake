@@ -277,6 +277,15 @@ add_test(NAME q605_savestate_relaunch_etalon COMMAND q605_savestate_relaunch_eta
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(q605_savestate_relaunch_etalon PROPERTIES TIMEOUT 1800)
 
+# Save-state relaunch on the LC II (030/V8/Egret), the sibling of the Q605
+# relaunch gate (2026-09-08): load into a FRESH machine, two fresh relaunches
+# byte-identical, Finder up.
+add_executable(lcii_savestate_relaunch_etalon tests/lcii_savestate_relaunch_etalon.cpp)
+target_link_libraries(lcii_savestate_relaunch_etalon PRIVATE pom68k_core)
+add_test(NAME lcii_savestate_relaunch_etalon COMMAND lcii_savestate_relaunch_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(lcii_savestate_relaunch_etalon PROPERTIES TIMEOUT 1800)
+
 # Beyond-boot gates on the Quadra 605 (second machine after the LC II,
 # TODO §2): idle soak (Mac clock keeps time — catches the MCU-overclock
 # class), and Finder file creation surviving a reboot — the one gate

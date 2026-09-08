@@ -143,6 +143,17 @@ catalogue restait dans le cache invité.
   File Manager lit après le MDB. La table reste celle de MAME
   (`iwm_write_test` l'épingle) ; `Swim1::ismStats()` compte désormais ce
   que le pilote dépile et ce que l'engine produit.
+  Désassemblage localisé (2026-09-08, `make dasm` + capture PC du changement
+  de mode via `drive_.mfmMode()`) : sur le disque HD, le .Sony de la ROM LC II
+  bascule MFM→GCR en `$A6D482` (LSTRB via reg 7), sous-routine strobe
+  `$A6D472`, mise en place des lignes CA en `$A6D40E`, appelée depuis la
+  boucle de seek en `$A6D4DC`. Le strobe capté est addr=B = (CA1,CA0,SEL)=011
+  + CA2=1, que notre `SonyDrive::command` décode « GCR-on ». Question ouverte
+  précise : la signification autoritative du registre SuperDrive 3 + CA2 sur
+  ce chemin CA — le seul oracle manquant, contraint par le 800K et le Q605
+  (le flip casse `iwm_write_test`). Prochaine étape : décoder l'algorithme de
+  décision densité autour de `$A6D40E` (quel bit de D0 pilote quelle ligne
+  CA) ou obtenir la spec registre SuperDrive.
 - [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Bloqué par l'actif :
   `hdv/System 4.1.dsk` est une image SCSI de 1,5 Mo, pas une disquette ;
   aucune 800 K System 4.1 n'est présente. `bootPlus` reçoit son chemin

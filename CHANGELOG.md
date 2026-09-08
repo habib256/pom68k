@@ -428,6 +428,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-08 (fifth)** — [The save-state relaunch gate reaches the LC II too, and the 1.44 MB floppy hunt gets its disassembly: the .Sony GCR strobe is located at ROM $A6D482](#2026-09-08-lcii-relaunch-and-floppy-dasm)
 - **2026-09-08 (fourth)** — [Two fresh relaunches of one snapshot are byte-identical: the save-state relaunch is deterministic, and the A-vs-fresh one-cycle difference is the expected cp-class phase normalization, not a gap](#2026-09-08-savestate-relaunch-determinism)
 - **2026-09-08 (third)** — [Save-state relaunch into a fresh machine is gated, and it isolates a one-cycle cross-instance timing drift the in-place gate could not see](#2026-09-08-savestate-relaunch)
 - **2026-09-08 (later)** — [The warm-reset overlay fix reaches every Cuda/Egret memory: five more classes re-arm the overlay at the restart boundary, and cuda_restart_test now reproduces the race that halted the Quadra 605](#2026-09-08-restart-sweep)
@@ -877,6 +878,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-08-lcii-relaunch-and-floppy-dasm"></a>
+## 2026-09-08 (fifth) — LC II save-state relaunch is gated too, and the 1.44 MB floppy hunt gets the disassembly it was waiting on
+
+`lcii_savestate_relaunch_etalon` gives the 68030/V8/Egret family the
+cross-instance relaunch gate the Q605 got: boot A to the Finder, snapshot to
+a file, load into a FRESH V8Memory + Cpu030 that re-attaches the same disk,
+two fresh relaunches byte-identical to each other, Finder up. Here the
+fresh-load result is even byte-identical to A's own direct run (no cp-class
+phase difference on this machine), which the gate reports rather than
+requires.
+
+The 1.44 MB floppy hunt (TODO § C.2), parked twice on "disassembly is the
+only oracle," now has that disassembly. Capturing the CPU PC at the exact
+instruction where `SonyDrive::mfmMode()` flips (an env-gated probe across the
+SWIM read/write in `V8Memory`) put the MFM→GCR switch at ROM `$A6D482` — a
+LSTRB pulse through IWM register 7 inside the .Sony strobe subroutine
+`$A6D472`, whose CA lines are set by `$A6D40E`, called from the driver's seek
+loop at `$A6D4DC` (`make dasm` over the LC II ROM). The strobe is addr=B =
+`(CA1,CA0,SEL)=011` with CA2=1, which our `SonyDrive::command` decodes as
+GCR-on. That converts the block from "needs a disassembly" into a precise
+question: the authoritative meaning of SuperDrive register 3 + CA2 on the CA
+path, the one oracle still missing — and it stays constrained by the working
+800K and Q605 paths (the polarity flip reads valid HD sectors but does not
+mount and breaks `iwm_write_test`). The located code and the specific question
+are in TODO § C.2 for the pass that has the SuperDrive register spec.
 
 <a id="2026-09-08-savestate-relaunch-determinism"></a>
 ## 2026-09-08 (fourth) — The save-state relaunch is deterministic across fresh instances; the one-cycle difference is cp-class, not a gap
