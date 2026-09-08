@@ -155,8 +155,22 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   lieu de passer par le wrapper async `.Sony` : tracer l'entrée Prime du `.Sony`
   face aux appelants du wrapper ($A6E6FC/$A6E774/$A6E97C...) et vérifier si le
   ParamBlock de notre requête (ioPosMode) ou le dispatch queued/immediate diffère
-  d'un vrai read 1,44 Mo du Finder. Outils : `lcii_sony_trace --frames N
-  --trace N` + `POM68K_DUMPASM=addr:count`.
+  d'un vrai read 1,44 Mo du Finder. Affiné (2026-09-08, dump de pile + carte des
+  vecteurs) : le read qui échoue est le montage lisant le MDB HFS (secteur 2,
+  ioPosMode 1, synchrone, caller Device Manager $A0B69E). Les dispatchers RAM du
+  patch — $b40->$06AF72, $8fc->$06AFEA, $704->$0133B6 — vérifient chacun le
+  contexte appelant et n'agissent que pour un appelant précis ($06AF72 exige le
+  frame du wrapper async `.Sony` : [sp+4]==$a6ea7c && [sp+4]-[sp+8]==10). Le dump
+  de pile confirme que notre appelant est TOUJOURS le frame Device Manager
+  ($40A0B69E), jamais le wrapper — donc tous passent en transparence et le chemin
+  GCR de la ROM tourne (ne sait pas lire du MFM) -> offLinErr. Le vecteur Prime
+  $226 reste sur le handler ROM $A6CE9A (le patch intercepte plus bas), et le
+  chemin Prime SuperDrive est bien pris ($138,A1 bit7 posé). Prochaine étape =
+  déterminer pourquoi le read de montage est dispatché en synchrone/direct plutôt
+  que via le wrapper async `.Sony` — le plus probable étant les flags de la DCE
+  du `.Sony` (bits dCtlFlags async/lock que le patch poserait) ou le chemin
+  d'émission de `_MountVol`. Outils : `lcii_sony_trace --frames N --trace N` +
+  `POM68K_DUMPASM=addr:count`.
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

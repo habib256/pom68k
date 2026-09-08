@@ -886,6 +886,30 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: the SuperDrive patch's dispatchers all pass through because the mount read is dispatched direct, not via the .Sony async wrapper
+
+Dumping the actual stack at the patch dispatcher and mapping every low-memory
+vector the failing read jumps through sharpens the diagnosis to a single upstream
+cause. The failing read is the mount reading the HFS Master Directory Block
+(sector 2, ioPosMode 1, synchronous, caller the Device Manager at $A0B69E). It
+passes through the patch's RAM dispatchers -- $b40->$06AF72, $8fc->$06AFEA and
+$704->$0133B6 -- each of which checks its caller context on the stack and acts
+only for one specific caller: $06AF72 requires the .Sony asynchronous wrapper's
+frame ([sp+4]==$a6ea7c, [sp+4]-[sp+8]==10), $06AFEA requires [sp]==$a6cebe.
+A direct stack dump at $06AF72 confirms our caller is the Device Manager frame
+($40A0B69E) with [sp+8]==1, never the wrapper frame, on every single entry in
+the run. So all the dispatchers pass through and the ROM's GCR path runs, which
+cannot read MFM -> offLinErr. The Prime vector $226 is left pointing at the ROM
+handler $A6CE9A (the patch intercepts deeper, not at Prime), and the SuperDrive
+Prime path is correctly taken ($138,A1 bit 7 is set), so the driver knows it is a
+SuperDrive; the read simply never reaches a dispatcher through the async-wrapper
+caller context that would arm the MFM read. Next step: determine why the mount
+read is dispatched synchronously/directly rather than through the .Sony async
+wrapper -- most likely the .Sony DCE flags (dCtlFlags async/lock bits the patch
+would set) or the _MountVol issue path -- since the patch's MFM read only runs
+for the wrapper caller context. Still a driver-dispatch mismatch, not a device or
+ISM-register inaccuracy.
+
 ## 2026-09-08 — Floppy 1.44 MB: the ROM cannot do MFM at all; the read reaches the SuperDrive patch on the wrong (synchronous) frame and is declined
 
 Tracing the LC II 1.44 MB read down to the ROM and the RAM patch settles the
