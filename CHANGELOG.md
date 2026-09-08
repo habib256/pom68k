@@ -886,6 +886,31 @@ Newest first.
 ---
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
+## 2026-09-08 — Floppy 1.44 MB: THE ROOT -- the drive reads in GCR mode (mfmMode_=0) on an MFM disk; forcing MFM makes Prime #1 succeed
+
+The real defect, finally, and it is not a control-flow issue at all. Instrumenting
+the IWM byte delivery shows POM68K reads the 1.44 MB disk with the SonyDrive in
+GCR mode (mfmMode_=0 throughout, though hd_=1): the delivered stream is Apple GCR
+(D5 AA 96 address prologues, D5 AA AD data, runs of 96), not MFM. So the drive
+presents a GCR-encoded track and the IWM's GCR nibble framing reads GCR sync
+marks whose decoded bytes cannot be the disk's MFM sectors -- Prime #1's 931 valid
+nibbles of 68952 are that mismatch. The proof: inverting the MFM/GCR strobe
+polarity in SonyDrive::command (commandMfmMode(ca2) instead of !ca2) makes the
+delivered stream MFM (dd bb / fe f7 cell patterns) and Prime #1 returns 0 noErr
+with 9719 valid nibbles instead of -400. But that global swap breaks
+iwm_write_test (which pins MAME's polarity), so it is not the fix; it only proves
+the mechanism. The driver's only LSTRB command strobes are two GCR-on strobes
+(addr B: CA2=1, decoded correctly as GCR), and the setup-register MFM reflection
+(Swim1 ismWrite case 5) is skipped because the drive is not selected (motoron=0)
+when setup is written. Since MAME reads MFM, its drive is in MFM: the divergence
+is the CA2/ph2 line value at the command strobe -- POM68K reads CA2=1 (GCR) where
+the LC II driver intends MFM (CA2=0). If ph2 were 0 the same strobe decodes as
+command(3)=MFMModeOn. The clean fix is the ph2 value at the strobe (the LC II CA2
+tracking), validated by: mfmMode_ becomes 1, the byte stream becomes MFM, Prime #1
+returns 0, and the three gates still pass. Everything upstream (ISM/IWM, reg-15,
+reg-14, all register decisions) matches MAME; this GCR-mode read is the one and
+only cause.
+
 ## 2026-09-08 — Floppy 1.44 MB: the reg-14 lead is a red herring — POM68K matches MAME at every control decision; the difference is the read DATA
 
 Using the reliable Lua opcode-fetch + CPU-state read on both, POM68K's and MAME's
