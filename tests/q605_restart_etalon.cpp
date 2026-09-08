@@ -26,6 +26,7 @@
 // reboot, which is what the synthetic test could not see. Soft-skips
 // without the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd.
 
+#include "PortableEnv.h"      // setenv() on MSVC (release Windows job)
 #include "Q605ApplicationHarness.h"
 
 using namespace q605app;
