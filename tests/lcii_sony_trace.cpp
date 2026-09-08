@@ -208,6 +208,12 @@ int main(int argc, char** argv) {
     };
 
     const int64_t kFrame = 640 * 407;        // 60.15 Hz @ 15.6672 MHz
+    auto dumpAsm = [&](uint32_t a, int count){
+        char buf[128];
+        for (int i=0;i<count;i++){ int len=safeDasm(buf,a);
+            std::fprintf(stderr, "$%06X  %s\n", a, buf); a += (len>0?len:2); }
+    };
+
     auto runFrames = [&](long n) {
         for (long f = 0; f < n && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
     };
@@ -527,6 +533,15 @@ int main(int argc, char** argv) {
         if (!drv.hasDisk()) { std::printf("(disk ejected)\n"); break; }
     }
     if (callActive) closeCall(int16_t(peek16(callPb + 16)));
+
+    if (const char* da2 = std::getenv("POM68K_DUMPASM")) {
+        uint32_t a = 0; int cnt = 64;
+        char* colon = const_cast<char*>(std::strchr(da2, ':'));
+        a = uint32_t(std::strtoul(da2, nullptr, 16));
+        if (colon) cnt = std::atoi(colon + 1);
+        std::fprintf(stderr, "== dumpasm $%06X x%d ==\n", a, cnt);
+        dumpAsm(a, cnt);
+    }
 
     // ---- Summary --------------------------------------------------------
     std::printf("\n== summary: %ld primes, %ld controls, %ld failures\n",

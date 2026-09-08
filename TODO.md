@@ -120,9 +120,24 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
   renonce dans un helper System (`$06AF72`, atteint via le global bas `$b40`)
   dont la décision est purement arithmétique sur ses arguments pile, AVANT
   ACTION. Prochaine étape = désassembler ce helper System depuis la RAM (pas
-  de symboles) pour décoder la précondition qui bloque l'armement d'ACTION —
-  c'est un abandon de flot de contrôle côté pilote/System, pas un défaut de
-  périphérique.
+  de symboles) : FAIT (2026-09-08). Le vrai code de lecture 1,44 Mo n'est PAS
+  dans la ROM — celle-ci n'arme jamais ACTION (aucune écriture de $08 vers reg
+  7/$e00). C'est le PATCH System SuperDrive chargé en RAM (~$06Axxx depuis
+  System 7.1) qui implémente le MFM, en interceptant le pilote `.Sony` de la
+  ROM. La ROM fait une E/S synchrone ($A6EA68 : efface le flag $142.w, appelle
+  la routine d'E/S, attend $142.w) ; le patch REMPLACE cette attente par un
+  handshake ASYNCHRONE via un flag driver ($19,A1) et deux trampolines
+  ($6af6c = `st ($19,A1)` signale la fin, $6af62 = `cmpi.b #-1,($19,A1); bne`
+  attend), espacés de 10 octets. Le dispatcher du patch ($06AF72, installé au
+  vecteur bas $b40) vérifie que ses trampolines sont sur la pile
+  (`10 + [sp+8] - [sp+4] == 0`) ; dans notre run ils sont ABSENTS, donc le
+  patch DÉCLINE et retombe sur le chemin ROM ($a6d722) qui ne sait pas faire du
+  MFM -> offLinErr. La divergence est EN AMONT : une interception antérieure du
+  patch n'installe pas ses trampolines async. Prochaine étape = tracer la
+  chaîne d'interception du patch depuis l'entrée PRIME jusqu'à $06AF72 pour
+  trouver le hook qui échoue à installer le trampoline dans notre émulation
+  (outil : `lcii_sony_trace --frames N` + `POM68K_DUMPASM=addr:count` pour
+  désassembler le patch RAM).
 
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.

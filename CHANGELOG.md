@@ -902,8 +902,25 @@ nibbles. `commandSwim` is never strobed and `senseSwim` is barely touched in
 that window, so the abort is not in our drive sense or flux at all. The driver
 gives up inside a System helper at $06AF72 (reached through the low-memory
 global $b40) whose branch is pure arithmetic on its stack arguments, taken
-before ACTION would ever be armed. Next step: disassemble that System helper
-from RAM (no symbols) to decode the precondition that suppresses ACTION-arming.
+before ACTION would ever be armed.
+
+Follow-up the same day disassembles that System helper from RAM (via the new
+`POM68K_DUMPASM=addr:count` seam on `lcii_sony_trace`) and settles what it is.
+The 1.44 MB MFM read is not in the ROM at all: the ROM `.Sony` driver never
+arms ACTION (no `$08` write to register 7 anywhere in it) and runs a plain
+synchronous I/O at $A6EA68 — clear flag $142.w, call the routine, spin on
+$142.w. The SuperDrive System patch (loaded from System 7.1 into RAM around
+$06Axxx) replaces that synchronous wait with an ASYNCHRONOUS completion
+handshake: a driver-variable flag at ($19,A1), a trampoline $6af6c that does
+`st ($19,A1)` to signal completion and a trampoline $6af62 that spins
+`cmpi.b #-1,($19,A1); bne` to await it, the two sitting 10 bytes apart. The
+patch dispatcher at $06AF72, installed at the low-memory vector $b40, verifies
+its own trampolines are on the stack with `10 + [sp+8] - [sp+4] == 0`; in our
+run they are absent, so the patch DECLINES and falls back to the ROM path at
+$a6d722, which cannot do MFM, yielding offLinErr. The divergence is therefore
+UPSTREAM: an earlier patch interception fails to install the async trampolines
+in our emulation. Next step: trace the patch interception chain from the PRIME
+entry down to $06AF72 to find the hook that does not install its trampoline.
 The defect is a driver/System control-flow bail, not a peripheral inaccuracy.
 
 ## 2026-09-08 (eleventh) — The 1.44 MB read is a different engine from the 800K one, and the ISM setup aborts before ACTION
