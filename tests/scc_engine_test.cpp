@@ -112,7 +112,7 @@ int main() {
         }
         const uint8_t f[3] = {1, 2, 0x81};
         good.injectRxFrame(kB, f, 3);
-        bad.injectRxFrame(kB, f, 3, false, true);   // corrupted FCS
+        bad.injectRxFrame(kB, f, 3, Scc8530::RxFrameKind::Peer, true);
         auto drain = [](Scc8530& s) {
             uint8_t last = 0;
             for (int t = 0; t < 32; t++) {

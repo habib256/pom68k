@@ -90,7 +90,8 @@ public:
                     if (data[0] != 0xFF) {
                         const std::uint8_t cts[3] = {
                             data[1], data[0], 0x85};
-                        mem.scc().injectRxFrame(0, cts, 3, true);
+                        mem.scc().injectRxFrame(
+                            0, cts, 3, Scc8530::RxFrameKind::CtsReply);
                     }
                     return;
                 }

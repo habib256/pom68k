@@ -99,9 +99,6 @@ la plus grande dimension produit encore peu exploitée.
 
 - [ ] **Créer un etalon Chooser AppleShare.** Monter le serveur interne depuis
   un vrai invité et vérifier une opération de fichier.
-- [ ] **Fermer la course de défense d'adresse `lapENQ`.** Fournir un chemin de
-  contrôle qui répond dans le délai LLAP sans détourner le sens `express`,
-  puis ajouter un gate où un invité sonde l'adresse du serveur.
 - [ ] **Persister les CNID.** Stocker l'identité catalogue dans `.AppleDB` ou
   les sidecars AppleDouble et vérifier sa stabilité après redémarrage.
 - [ ] **Étendre le sous-ensemble AFP.** Ajouter Desktop DB, CopyFile,

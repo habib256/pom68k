@@ -18,10 +18,12 @@ int main() {
         for (auto& g : w.out)
             if (g.ddpType == 0x82 && g.dstNode == 128) ack = true;
         CHECK(ack, "ENQ for the stack's node ID draws a lapACK");
+        CHECK(w.addressDefences == 1, "lapACK uses the address-defence path");
         const uint8_t enq2[3] = { 47, 47, 0x81 };   // someone else's probe
         w.clear();
         w.st.onGuestFrame(enq2, 3);
         CHECK(w.out.empty(), "foreign ENQ stays unanswered");
+        CHECK(w.addressDefences == 1, "foreign ENQ draws no defence callback");
     }
 
     // ── RTMP beacon + request ──

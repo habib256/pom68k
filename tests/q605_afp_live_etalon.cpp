@@ -202,10 +202,11 @@ int main() {
     hub.attach(mem, hubHz, nullptr);
     mem.scc().onTxFrame = [&](int ch, const uint8_t* d, size_t n) {
         if (ch != 0) return;
-        if (n == 3 && d[2] == 0x84) {              // lapRTS → express lapCTS
+        if (n == 3 && d[2] == 0x84) {              // lapRTS → prompt lapCTS
             if (d[0] != 0xFF) {
                 const uint8_t cts[3] = { d[1], d[0], 0x85 };
-                mem.scc().injectRxFrame(0, cts, 3, true);
+                mem.scc().injectRxFrame(
+                    0, cts, 3, Scc8530::RxFrameKind::CtsReply);
             }
             return;
         }

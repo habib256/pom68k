@@ -192,17 +192,7 @@ add_executable(scc_ext_test tests/scc_ext_test.cpp)
 target_link_libraries(scc_ext_test PRIVATE pom68k_core)
 add_test(NAME scc_ext_test COMMAND scc_ext_test)
 
-# LLAP milestone gate: two SCCs on a virtual LocalTalk cable — SDLC Tx
-# frame capture, paced Rx FIFO, address search, EOF/FCS, carrier sense.
-add_executable(llap_loop_test tests/llap_loop_test.cpp)
-target_link_libraries(llap_loop_test PRIVATE pom68k_core)
-add_test(NAME llap_loop_test COMMAND llap_loop_test)
-
-# LToUDP multicast cable (Mini vMac / TashRouter wire format). Soft-skips
-# where multicast is unavailable.
-add_executable(ltoudp_test tests/ltoudp_test.cpp)
-target_link_libraries(ltoudp_test PRIVATE pom68k_core)
-add_test(NAME ltoudp_test COMMAND ltoudp_test)
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kLlapGates.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kSerialGates.cmake)
 # In-process AppleTalk stack gates (AtalkStack + AFP/PAP/MacIP services)
 add_executable(atalk_stack_test tests/atalk_stack_test.cpp)

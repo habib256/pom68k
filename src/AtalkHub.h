@@ -27,6 +27,7 @@
 #include "EtherLink.h"
 #include "MacIpGateway.h"
 #include "LtoUdp.h"
+#include "Scc8530.h"
 
 #include <cstdint>
 #include <functional>
@@ -71,7 +72,12 @@ public:
         stack_.setBridgeRelay(cable && cable->active());
         cpuHz_ = cpuHz;
         inject_ = [&mem](const uint8_t* d, size_t n) {
-            mem.scc().injectRxFrame(0, d, n, false);
+            mem.scc().injectRxFrame(0, d, n);
+        };
+        stack_.sendAddressDefence = [this, &mem](const uint8_t* d, size_t n) {
+            mem.scc().injectRxFrame(
+                0, d, n, Scc8530::RxFrameKind::AddressDefence);
+            if (cable_ && cable_->active()) cable_->send(d, n);
         };
         // The lossless wire never drops — it DELAYS. Surface that delay:
         // a retransmit whose lag matches a deep backlog / long hold is
@@ -85,12 +91,13 @@ public:
         stack_.sendFrame = [this](const uint8_t* d, size_t n) {
             // DEFER delivery: the node's replies are generated inside the
             // guest's TX callback (onGuestFrame runs during onTxFrame), when
-            // LocalTalk's half-duplex Rx is still OFF — a non-express
-            // injectRxFrame at that instant is DROPPED (Scc8530.cpp:261, "no
+            // LocalTalk's half-duplex Rx is still OFF — an ordinary
+            // injectRxFrame at that instant is DROPPED (Scc8530.cpp, "no
             // ear"). So queue here and flush from tick(), which runs after
             // the CPU has executed the EOM ISR and re-armed Rx — exactly the
             // timing the working LToUDP poll path already has. Multicast to
-            // external peers immediately (the cable has no such window).
+            // external peers immediately. lapACK uses its dedicated prompt
+            // path above; it must start inside the 200 us LLAP IFG.
             pending_.emplace_back(d, d + n);
             if (cable_ && cable_->active()) cable_->send(d, n);
         };

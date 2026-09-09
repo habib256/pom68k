@@ -288,37 +288,34 @@ void Scc8530::injectRxByte(int ch, uint8_t d, bool parityError, bool framingErro
     raiseRxInt(c, false);
 }
 
-void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
+void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, RxFrameKind kind,
                             bool badFcs) {
     Chan& c = ch_[ch & 1];
-    // Receiver off = no ear... except for express (cable-synthesized) frames:
+    const bool prompt = kind != RxFrameKind::Peer;
+    // Receiver off = no ear... except for prompt LLAP response frames:
     // LLAP is half-duplex — the driver disables Rx while transmitting the RTS
     // and only re-arms it on the EOM interrupt, which is the very tick that
     // synthesizes the CTS. A real peer's CTS starts an inter-frame gap later
     // (LLAP: within 200 µs), by which time the sender has re-armed Rx —
-    // express frames therefore queue through the Rx-off window and carry
+    // prompt frames therefore queue through the Rx-off window and carry
     // that gap as a start delay. Delivering them instantly at 8× wire speed
     // (the previous model) played the whole CTS while the driver was still
     // dropping RTS/TxEnable and re-arming Rx: every byte was discarded on
     // the wire and the Chooser lookup retried its RTS forever (2026-07-22).
-    // A non-express frame is a REAL peer transmitting on the transport
-    // (an LToUDP multicast frame, not the cable's own synthesized CTS):
-    // it makes the line a live, terminated network, so the open-line
-    // standing abort drops for a hold window (LLE_VS_HLE §1.8 / step 8).
-    // Either way the line has now carried a frame — a previously-virgin
-    // line is no longer clean once the transport goes quiet (§1.10).
+    // Peer and AddressDefence mark a live peer; CtsReply is cable synthesis.
+    // Every kind drives the formerly virgin line (LLE_VS_HLE §1.8/1.10).
     lineDriven_ = true;
-    if (!express) peerHold_ = kPeerHold;
+    if (kind != RxFrameKind::CtsReply) peerHold_ = kPeerHold;
     if (!n || !sdlcMode(c)) return;
-    // Real hardware: a non-express frame that arrives while the receiver is
+    // Real hardware: an ordinary frame that arrives while the receiver is
     // OFF is lost (half-duplex — no ear). The lossless virtual wire instead
     // QUEUES it and holds playback until the guest re-arms Rx, so a server
     // reply generated during the guest's own transmit (its Rx is down until
     // its EOM ISR re-arms it) is delivered, not dropped. This is what the
     // AppleShare copy "saccade" was: replies flushed into a deaf receiver →
-    // 1-2 s ATP retransmit each. Express (synthesized CTS) always queues
+    // 1-2 s ATP retransmit each. Prompt responses always queue
     // through the Rx-off window regardless (its whole purpose).
-    if (!express && !rxEnabled(c) && !losslessRx_) return;
+    if (!prompt && !rxEnabled(c) && !losslessRx_) return;
     // SDLC Address Search Mode (WR3 bit 2): the chip only opens the FIFO
     // when the first byte matches WR6 or the $FF broadcast.
     if ((c.wr[3] & 0x04) && d[0] != c.wr[6] && d[0] != 0xFF) return;
@@ -328,7 +325,7 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     const uint16_t fcs = uint16_t(crc16x25(d, n) ^ (badFcs ? 0x5A5A : 0));
     f.push_back(uint8_t(fcs & 0xFF));            // FCS little-end first (X25)
     f.push_back(uint8_t(fcs >> 8));
-    // A non-express (real peer) frame defers until the line has been idle
+    // An ordinary peer frame defers until the line has been idle
     // for LLAP's minimum 400 µs INTER-DIALOG gap. That idle is evaluated at
     // DEQUEUE from rxIdle (tick()), NOT baked in here: when two frames are
     // injected in one poll — the router's LkUp broadcast then afpd's
@@ -338,14 +335,14 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     // broadcast finished, its first bytes landing in the still-closing FIFO
     // and the rest playing into hunt — the Chooser re-sent the AFPServer
     // lookup forever and never listed the server (2026-07-22 GISTPERSO live
-    // capture). Express CTS frames keep their short fixed gap: an intra-
-    // dialog CTS must land inside the sender's 200 µs INTER-FRAME window.
+    // capture). Prompt control replies keep their short fixed gap and must
+    // land inside the sender's 200 µs INTER-FRAME window.
     // Playback runs at the effective (possibly virtual-wire-boosted) pace;
-    // the express-CTS gap stays at the REAL pace — it models the SENDER's
+    // the prompt-reply gap stays at the REAL pace — it models the SENDER's
     // post-EOM Rx re-arm window, which is guest code running in real time,
     // not a property of the wire.
     const int pace = paceCycles(ch);
-    const int delay = express ? kCtsGapBytes * realPaceOf(c) : 0;
+    const int delay = prompt ? kReplyGapBytes * realPaceOf(c) : 0;
     // Safety valve: the lossless queue is UNBOUNDED by construction — it
     // holds a frame until the guest re-arms Rx, and nothing guarantees the
     // guest ever does. A guest that stops servicing its LAP driver (a modal
@@ -355,17 +352,19 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     // it is already too old to be useful. A real wire cannot do this — it
     // has NO buffer, so congestion self-limits by dropping. Past the cap we
     // do the same (tail drop, counted): the peer falls back to its normal
-    // retransmit, which is a stall, not a runaway. Express frames are never
-    // dropped — the CTS is the handshake itself.
+    // retransmit, which is a stall, not a runaway. Prompt replies are never
+    // dropped — they are the handshake itself.
     // NOT gated on losslessRx_: that flag is only set for the in-process hub
     // WITHOUT a cable, so with POM68K_LTOUDP=1 — the one path fed by an
     // unfiltered multicast socket — the cap was dead code and the queue could
     // grow without limit until OOM. The reasoning above applies to every mode.
-    if (!express && c.rxQueue.size() >= kLosslessQueueMax) {
+    if (!prompt && c.rxQueue.size() >= kLosslessQueueMax) {
         c.rxDropped++;
         return;
     }
-    c.rxQueue.push_back({std::move(f), pace, delay, express, c.wireClk});
+    Chan::RxFrame frame{std::move(f), pace, delay, prompt, c.wireClk};
+    if (prompt) c.rxQueue.push_front(std::move(frame));
+    else c.rxQueue.push_back(std::move(frame));
     if (c.rxQueue.size() > c.rxQueueMax) c.rxQueueMax = c.rxQueue.size();
 }
 
@@ -789,7 +788,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     // Rx disable (WR3 bit 0 cleared) flushes the CHIP's receive path —
     // FIFO and pending Rx interrupts. The wire (rxQueue/rxCur) is not the
     // chip's to empty: frames in flight keep playing with their bytes lost
-    // (rxPushByte), and queued express frames survive the half-duplex
+    // (rxPushByte), and queued prompt replies survive the half-duplex
     // Rx-off window the LLAP sender opens around its RTS (2026-07-22 —
     // flushing the queue here killed the cable's delayed CTS).
     if (ptr_ == 3 && !(v & 0x01)) {
@@ -977,9 +976,9 @@ bool Scc8530::tick(int cycles) {
             else if (c.rxIdle < (1 << 24)) c.rxIdle += cycles;
             if (c.rxCur.empty() && !c.rxQueue.empty()) {
                 // Start the queued frame once the inter-frame gap has
-                // elapsed. Express (synthesized CTS): a short fixed
+                // elapsed. Prompt reply (CTS/lapACK): a short fixed
                 // countdown so it lands inside the sender's IFG window.
-                // Non-express (real peer): require a full LLAP IDG of
+                // Ordinary peer frame: require a full LLAP IDG of
                 // ACTUAL line-idle since the previous frame ended (rxIdle)
                 // — this is what serializes back-to-back injected frames
                 // (router LkUp broadcast + afpd LkUpReply) so the second
@@ -987,7 +986,7 @@ bool Scc8530::tick(int cycles) {
                 // (the empty-Chooser bug, 2026-07-22).
                 Chan::RxFrame& f = c.rxQueue.front();
                 bool ready;
-                if (f.express) {
+                if (f.prompt) {
                     if (f.delay > 0) f.delay -= cycles;
                     ready = f.delay <= 0;
                 } else {
@@ -1001,9 +1000,9 @@ bool Scc8530::tick(int cycles) {
                 // half-duplex transmit opens only once its EOM ISR re-arms
                 // Rx, never into a deaf receiver — and (b) the FIFO has
                 // drained, so the stale-residue clear in rxStartFrame can't
-                // eat undelivered bytes and no frame ever overruns. Express
-                // (CTS) keeps threading the Rx-off window as before.
-                if (losslessRx_ && !f.express &&
+                // eat undelivered bytes and no frame ever overruns. Prompt
+                // responses keep threading the Rx-off window as before.
+                if (losslessRx_ && !f.prompt &&
                     (!rxEnabled(c) || !c.fifo.empty()))
                     ready = false;
                 if (ready) {
@@ -1059,7 +1058,7 @@ int Scc8530::cyclesToNextEvent() const {
         if (!c.rxCur.empty()) take(c.rxTimer > 0 ? c.rxTimer : 1);
         if (c.rxCur.empty() && !c.rxQueue.empty()) {
             const Chan::RxFrame& f = c.rxQueue.front();
-            if (f.express) {
+            if (f.prompt) {
                 take(f.delay > 0 ? f.delay : 1);
             } else if (!losslessRx_ || (rxEnabled(c) && c.fifo.empty())) {
                 const int left = kIdgBytes * realPaceOf(c) - c.rxIdle;

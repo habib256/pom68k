@@ -21,7 +21,7 @@ POM68K_AFP_SV_X	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_SV_Y	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AIO_EGRET	test	owner:tests/lc520_boot_etalon.cpp
 POM68K_AIO_ID	product	gate:lc520_boot_etalon
-POM68K_APPLETALK	product	gate:atalk_stack_test,llap_two_system_etalon
+POM68K_APPLETALK	product	gate:atalk_stack_test,llap_address_defense_test,llap_two_system_etalon
 POM68K_ATALK_DEBUG	diagnostic	owner:src/StartupOptions.h
 POM68K_ATALK_WIRE_BOOST	product	gate:llap_two_system_etalon
 POM68K_AUDIO	diagnostic	owner:src/StartupOptions.h

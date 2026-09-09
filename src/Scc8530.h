@@ -108,13 +108,12 @@ public:
     // Delivered at wire pace (setByteCycles) through the 3-deep Rx FIFO with
     // Hunt exit, per-byte Rx interrupts (WR1 modes), address search (WR3
     // bit 2 vs WR6 / $FF broadcast) and End-of-Frame status in RR1.
-    // express=true marks a frame synthesized BY the cable itself (LToUDP
-    // local CTS): it queues even while the receiver is off (the LLAP
-    // sender is half-duplex around its RTS) and starts only after an
-    // inter-frame gap, like a real peer's CTS — early delivery played the
-    // frame while the driver was still re-arming Rx and every byte was
-    // lost on the wire (Chooser RTS retry storm, 2026-07-22).
-    void injectRxFrame(int ch, const uint8_t* d, size_t n, bool express = false,
+    // Prompt replies cross the sender's half-duplex Rx-off window and start
+    // inside LLAP's 200 us IFG. CtsReply is cable synthesis and does not mark
+    // a peer present; AddressDefence is a real node's lapACK and does.
+    enum class RxFrameKind : uint8_t { Peer, CtsReply, AddressDefence };
+    void injectRxFrame(int ch, const uint8_t* d, size_t n,
+                       RxFrameKind kind = RxFrameKind::Peer,
                        bool badFcs = false);
     // Async Rx entry (serial-port transports): one received character with
     // optional wire-error flags. Parity error (RR1 bit 4) exists only when
@@ -139,7 +138,7 @@ public:
     // faster wire; 0 = off). It deliberately wins over the guest-derived
     // 230.4 kbit/s SDLC pace — that fidelity is exactly what a
     // several-minute Finder copy is made of. Guest-facing TIMING WINDOWS
-    // stay at the real pace regardless: the express-CTS gap and the
+    // stay at the real pace regardless: the prompt-response gap and the
     // LLAP inter-dialog gap are about the DRIVER's turnaround time, not
     // the wire's (realPaceOf), and an open frame that underruns gets one
     // real byte-time of grace for a late Tx byte before the tail flushes
@@ -244,13 +243,13 @@ private:
         // ── LLAP Rx/Tx wire state ──
         std::vector<uint8_t> txBuf;  // SDLC frame being written (no FCS)
         struct RxFrame { std::vector<uint8_t> bytes; int pace; int delay;
-                         bool express; int64_t queuedAt = 0;
+                         bool prompt; int64_t queuedAt = 0;
             template <class Ar> void visit(Ar& ar) {
-                ar(bytes, pace, delay, express, queuedAt);
+                ar(bytes, pace, delay, prompt, queuedAt);
             } };
         std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace.
-                                     // express: countdown `delay` = CTS
-                                     // inter-frame gap. non-express: gated
+                                     // prompt: countdown `delay` = response
+                                     // inter-frame gap. ordinary: gated
                                      // on rxIdle ≥ IDG at dequeue (the gap
                                      // is measured from the PREVIOUS frame's
                                      // end, not baked in at injection)
@@ -334,8 +333,8 @@ private:
     //    mid-mark — the receiver's last recovered state IS the abort),
     //    a Send Abort, or any transport frame (injectRxFrame).
     //  • A live peer suppresses it: the moment a REAL peer transmits
-    //    (a non-express injectRxFrame — an LToUDP multicast frame, not
-    //    the cable's own synthesized CTS) the line is a live, terminated
+    //    (Peer or AddressDefence, but not a cable-synthesized CtsReply)
+    //    the line is a live, terminated
     //    network. peerHold_ counts down the "peer present" window from
     //    the last real peer frame; while positive the standing abort is
     //    suppressed. A solo boot (no cable, no peer traffic) never
@@ -371,7 +370,7 @@ private:
                                                  // CRC (2 bytes) + closing
                                                  // flag = 24 bit times at the
                                                  // programmed pace
-    static constexpr int kCtsGapBytes = 4;       // synthesized-CTS inter-frame
+    static constexpr int kReplyGapBytes = 4;     // prompt-response inter-frame
                                                  // gap in byte times (~139 µs:
                                                  // after the sender's post-EOM
                                                  // Rx re-arm, inside its wait)

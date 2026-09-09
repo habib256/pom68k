@@ -947,8 +947,10 @@ stack is the network's *other end*, not a shortcut in the Mac.
 
 *Gap*: **RTS/CTS never cross the wire.** A directed `lapRTS` is answered by a
 locally synthesized `lapCTS` (`GuiHostServices.h:78-90`), threaded through the
-sender's half-duplex Rx-off window as an `express` injection; broadcast RTS
-gets no CTS. Real LLAP arbitrates the line.
+sender's half-duplex Rx-off window as `RxFrameKind::CtsReply`; broadcast RTS
+gets no CTS. A real node's prompt lapACK instead uses
+`RxFrameKind::AddressDefence`, so the SCC retains peer-presence semantics.
+Real LLAP arbitrates the line.
 → Closing it means modelling collision/deferral between two real endpoints —
 only meaningful with a second live node on the cable.
 
@@ -1215,13 +1217,13 @@ part — the prose lives in the CHANGELOG entries named below.
 
 Related and still true: **`setAbortIdle(true)` is a transport-driven line
 state, not a permanent open line.** It marks a machine with no *hardwired*
-peer; the moment a real peer transmits (a non-express `injectRxFrame` — an
-LToUDP multicast frame, not the cable's own synthesized CTS, which stays
-`express`) the SDLC line becomes a live terminated network whose idle is clean
-flags, and the abort drops for a `kPeerHold` (~2 s) window refreshed per peer
-frame. A solo boot never refreshes it, so the no-peer LAP timeout that lets the
-boot etalons proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:334`) =
-`abortIdle_ && lineDriven_ && peerHold_ <= 0`. Gate `llap_loop_test`.
+peer; the moment a real peer transmits (`RxFrameKind::Peer` or the prompt
+`AddressDefence`, but not the cable-synthesized `CtsReply`) the SDLC line
+becomes a live terminated network whose idle is clean flags, and the abort
+drops for a `kPeerHold` (~2 s) window refreshed per peer frame. A solo boot
+never refreshes it, so the no-peer LAP timeout that lets the boot etalons
+proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:334`) = `abortIdle_ &&
+lineDriven_ && peerHold_ <= 0`. Gate `llap_loop_test`.
 
 ## 4.2 The 16-step migration plan is finished
 

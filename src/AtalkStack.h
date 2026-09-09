@@ -70,6 +70,9 @@ public:
     // Frames leaving this node (LLAP, no FCS) — wire to Scc8530::
     // injectRxFrame (and the LToUDP cable when active).
     std::function<void(const uint8_t*, size_t)> sendFrame;
+    // A lapACK is an immediate inter-frame reply, not a new dialog. The hub
+    // binds this separately so normal DDP keeps its deferred full-IDG path.
+    std::function<void(const uint8_t*, size_t)> sendAddressDefence;
     // A frame the guest transmitted (Scc8530::onTxFrame payload).
     void onGuestFrame(const uint8_t* d, size_t n);
     // Advance timers (RTMP beacon, ATP retry/release). Call once per

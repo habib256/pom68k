@@ -223,7 +223,7 @@ int main() {
               "directed DATA frame delivered after the handshake");
     }
 
-    // ── Cable-synthesized express CTS across the half-duplex Rx-off window ──
+    // ── Cable-synthesized CtsReply across the half-duplex Rx-off window ──
     // Pins the driver sequence captured on the LToUDP cable (SCCDBG,
     // 2026-07-22): the LAP sender disables Rx around its directed RTS, sees
     // the EOM, drops RTS/TxEnable, writes WR3 again with Rx still off, then
@@ -241,7 +241,8 @@ int main() {
             if (ch != kB) return;
             if (n == 3 && d[2] == 0x84 && d[0] != 0xFF) {
                 const uint8_t cts[3] = { d[1], d[0], 0x85 };
-                s.injectRxFrame(kB, cts, 3, true);   // express (cable CTS)
+                s.injectRxFrame(kB, cts, 3,
+                                Scc8530::RxFrameKind::CtsReply);
             }
         };
         wr(s, 5, 0x6B);                          // TxEnable + RTS
@@ -344,7 +345,7 @@ int main() {
     // solo. A VIRGIN line — never driven since reset — reads clean (no
     // FM0 edge, no recovered clock, no abort: what OT's .MPP bind waits
     // for, §1.10 / step 7). And the instant a REAL peer transmits (a
-    // non-express injected frame — an LToUDP multicast frame, not the
+    // ordinary peer frame — an LToUDP multicast frame, not the
     // cable's own synthesized CTS) the line becomes a live, terminated
     // network and the abort drops for a hold window; it returns only once
     // the peer goes quiet (LLE_VS_HLE §1.8 / step 8).
@@ -365,11 +366,11 @@ int main() {
         s.writeCtl(kB, 0);
         CHECK(s.readCtl(kB) & 0x80, "solo DRIVEN line shows the standing abort");
 
-        // A real peer's frame (express=false) → line live, abort drops.
+        // A real peer's frame marks the line live, so abort drops.
         // Drain it so rxCur is empty: the drop is then the peer state, not
         // the frame-in-flight mask.
         const uint8_t enq[3] = {1, 2, 0x81};
-        s.injectRxFrame(kB, enq, 3, false);
+        s.injectRxFrame(kB, enq, 3);
         uint8_t rr1 = 0;
         (void)lapDrain(s, rr1);
         s.writeCtl(kB, 0);
@@ -381,18 +382,27 @@ int main() {
         s.writeCtl(kB, 0);
         CHECK(s.readCtl(kB) & 0x80, "abort returns after the peer goes quiet");
 
-        // The cable's own synthesized CTS (express=true) is NOT a peer.
+        // The cable's own synthesized CTS is NOT a peer.
         const uint8_t cts[3] = {1, 2, 0x85};
-        s.injectRxFrame(kB, cts, 3, true);
+        s.injectRxFrame(kB, cts, 3, Scc8530::RxFrameKind::CtsReply);
         (void)lapDrain(s, rr1);
         s.writeCtl(kB, 0);
         CHECK(s.readCtl(kB) & 0x80,
-              "a synthesized (express) frame does not mark a peer present");
+              "a synthesized CTS does not mark a peer present");
+
+        // lapACK shares the short reply gap but originates at a real node.
+        const uint8_t ack[3] = {1, 2, 0x82};
+        s.injectRxFrame(kB, ack, 3,
+                        Scc8530::RxFrameKind::AddressDefence);
+        (void)lapDrain(s, rr1);
+        s.writeCtl(kB, 0);
+        CHECK(!(s.readCtl(kB) & 0x80),
+              "an address-defence reply marks the real peer present");
     }
 
     // ── Back-to-back injected frames both survive (empty-Chooser bug) ──
     // The router delivers a LkUp broadcast and afpd's LkUpReply in one poll,
-    // so two non-express frames land in the Rx queue together. The second
+    // so two ordinary peer frames land in the Rx queue together. The second
     // must NOT start the instant the first ends (its head would fall into
     // the still-closing FIFO): the inter-dialog gap is measured from the
     // FIRST frame's END (rxIdle), not from injection. Both must be delivered
@@ -404,8 +414,8 @@ int main() {
         lapArm(s, 1);
         const uint8_t f1[4] = {1, 2, 0x01, 0xAA};    // "broadcast LkUp"
         const uint8_t f2[4] = {1, 2, 0x01, 0xBB};    // "LkUpReply" — the one lost
-        s.injectRxFrame(kB, f1, 4, false);
-        s.injectRxFrame(kB, f2, 4, false);           // same poll, back-to-back
+        s.injectRxFrame(kB, f1, 4);
+        s.injectRxFrame(kB, f2, 4);                  // same poll, back-to-back
         uint8_t rr1 = 0;
         auto got = lapDrain(s, rr1, 96);
         bool sawA = false, sawB = false;
@@ -430,7 +440,7 @@ int main() {
         s.reset();
         lapArm(s, 1);
         const uint8_t f1[6] = {1, 2, 0x01, 0xAA, 0xBB, 0xCC};   // 6 + 2 FCS
-        s.injectRxFrame(kB, f1, sizeof f1, false);
+        s.injectRxFrame(kB, f1, sizeof f1);
         // Read exactly the 6 payload bytes (as the driver does by DDP length).
         std::vector<uint8_t> g1;
         uint8_t rr1 = 0;
@@ -459,7 +469,7 @@ int main() {
               "Enter Hunt at the frame boundary flushes the FCS residue");
         // The LkUpReply-analogue now arrives; it must start on its own byte.
         const uint8_t f2[6] = {1, 2, 0x01, 0x11, 0x22, 0x33};
-        s.injectRxFrame(kB, f2, sizeof f2, false);
+        s.injectRxFrame(kB, f2, sizeof f2);
         std::vector<uint8_t> g2 = lapDrain(s, rr1);
         CHECK(!g2.empty() && g2[0] == 1,
               "next frame starts on its own first byte, not a phantom EOF");
@@ -482,7 +492,7 @@ int main() {
         s.reset();
         lapArm(s, 1);
         const uint8_t f1[6] = {1, 2, 0x01, 0xAA, 0xBB, 0xCC};   // 6 + 2 FCS
-        s.injectRxFrame(kB, f1, sizeof f1, false);
+        s.injectRxFrame(kB, f1, sizeof f1);
         std::vector<uint8_t> g1;
         uint8_t rr1 = 0;
         for (int t = 0; t < 40 && g1.size() < 6; t++) {
@@ -499,7 +509,7 @@ int main() {
         wr(s, 3, 0xDD);                      // re-arm BEFORE crc_hi hits the FIFO
         s.tick(kByteCyc); s.tick(kByteCyc);  // the FCS now paces in as a phantom
         const uint8_t f2[6] = {1, 2, 0x01, 0x11, 0x22, 0x33};
-        s.injectRxFrame(kB, f2, sizeof f2, false);
+        s.injectRxFrame(kB, f2, sizeof f2);
         // The real LAP driver does NOT poll the idle inter-dialog gap — it
         // waits on the carrier-sense (hunt-exit) interrupt, so it reads only
         // once the next frame opens. Model that: advance WITHOUT reading until
@@ -545,7 +555,7 @@ int main() {
         // lossless must pause and deliver every byte once the reader drains.
         s.setLosslessRx(true);
         const uint8_t big[10] = {1, 9, 0x01, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70};
-        s.injectRxFrame(kB, big, sizeof big, false);
+        s.injectRxFrame(kB, big, sizeof big);
         for (int t = 0; t < 400; t++) s.tick(64);   // plenty of wire time
         std::vector<uint8_t> got;
         uint8_t rr1 = 0;
@@ -580,7 +590,7 @@ int main() {
         s.setLosslessRx(true);
         wr(s, 3, 0xD4);                      // Rx DISABLE (bit 0 = 0): "transmitting"
         const uint8_t rep[6] = {1, 128, 0x01, 0xAA, 0xBB, 0xCC};
-        s.injectRxFrame(kB, rep, sizeof rep, false);   // reply into a deaf ear
+        s.injectRxFrame(kB, rep, sizeof rep);          // reply into a deaf ear
         uint8_t rr1 = 0;
         CHECK(lapDrain(s, rr1).empty(),
               "reply held while Rx off (a real wire would have dropped it)");
@@ -592,7 +602,7 @@ int main() {
 
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
-                    "abort, RTS/CTS dialogue in-window, express CTS across "
+                    "abort, RTS/CTS dialogue in-window, prompt CTS across "
                     "Rx-off, carrier sense, lossless virtual wire)\n");
     return failures ? 1 : 0;
 }

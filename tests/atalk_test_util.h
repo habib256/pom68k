@@ -25,12 +25,17 @@ struct Datagram {
 struct Wire {
     AtalkStack st;
     std::vector<Datagram> out;          // everything the stack transmitted
+    long addressDefences = 0;
     int64_t now = 0;
     int64_t hz = 1000000;               // 1 MHz keeps second-scale timers cheap
 
     explicit Wire(uint8_t node = 128, uint16_t net = 2) {
         st.configure(net, node, "POM68K", hz);
         st.sendFrame = [this](const uint8_t* d, size_t n) { parse(d, n); };
+        st.sendAddressDefence = [this](const uint8_t* d, size_t n) {
+            ++addressDefences;
+            parse(d, n);
+        };
         st.tick(0);
     }
 

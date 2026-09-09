@@ -102,12 +102,13 @@ only sees traffic when the LToUDP cable is up.
 
 ### 0.5 Gates
 
-`ctest -L unit` runs the first seven in seconds; the last two need ROM +
+`ctest -L unit` runs the first eight in seconds; the last two need ROM +
 disk assets and soft-skip without them.
 
 | Gate | Covers |
 |---|---|
-| `llap_loop_test` | RTS/CTS, ENQ, address filter, express CTS, carrier sense |
+| `llap_loop_test` | RTS/CTS, ENQ, address filter, prompt CTS, carrier sense |
+| `llap_address_defense_test` | guest SCC probing server node 128: prompt lapACK within 200 µs, priority over queued traffic, ordinary-frame IDG preserved |
 | `ltoudp_test` | the multicast cable |
 | `atalk_stack_test` | ENQ defence, RTMP/ZIP/NBP/AEP, ATP exactly-once |
 | `afp_server_test` | OpenSession→Login→OpenVol→Enumerate→Read; ASP SPWrite→WriteContinue→FPWrite; resource fork → `.AppleDouble` |
@@ -185,7 +186,7 @@ most detail. `AtalkStack` sits directly on it as a second node.
   multi-MB Finder copy take minutes. With the hub up and no external
   cable, `setWirePace(byteCycles / 8)` (floor 64) plus `setLosslessRx`
   give a fast lossless virtual wire (`src/GuiHostServices.h:68-72`). What stays
-  at **real** pace: the express-CTS gap, the LLAP IDG and the Tx-underrun
+  at **real** pace: the prompt-response gap, the LLAP IDG and the Tx-underrun
   grace — those are guest-code turnaround windows, not wire properties.
   Async serial is untouched (the override applies in SDLC mode only).
 - **Encoding FM0** (differential Manchester), self-clocking and
@@ -234,14 +235,15 @@ A node with no address picks a tentative ID (PRAM's last value, or
 random in its range), broadcasts **lapENQ** to it repeatedly, and takes
 it if nobody answers **lapACK**. `llap_two_system_etalon` shows two Macs
 sending ~650 probes each and settling on distinct IDs.
-`AtalkStack::onGuestFrame` answers ENQ for node 128 with a lapACK
-(`src/AtalkStack.cpp:88-99`). That ACK goes out the *normal* path — queued by
-`AtalkHub::sendFrame` and flushed from `tick()` a slice later, deferring a
-full IDG like every other internal-node frame; only the synthesized **CTS**
-is express (§2.4). It still lands in time because a prober repeats: the guest
-sends hundreds of ENQs before claiming an address. (The code comment at
-`AtalkStack.cpp:92-94` calls this the express path; it is not — `inject_` in
-`AtalkHub::attach` passes `express = false`.)
+`AtalkStack::onGuestFrame` answers an ENQ for node 128 through the dedicated
+`sendAddressDefence` hook. `AtalkHub` injects that lapACK immediately as
+`RxFrameKind::AddressDefence`: it crosses the prober's half-duplex Rx-off
+window, takes the prompt-response gap and is prioritized ahead of ordinary
+queued traffic. It is still a real node transmission and refreshes peer
+presence; `RxFrameKind::CtsReply` does not. The end-to-end gate measures the
+first ACK byte at 2,704 cycles / 172.6 µs on the 15.6672 MHz reference, below
+the 3,133-cycle / 200 µs IFG ceiling. A normal frame behind it first appears
+at 7,064 cycles and therefore retains the full 400 µs IDG.
 
 ### 2.4 Media access: CSMA/CA with RTS/CTS — and the IDG
 
@@ -261,12 +263,12 @@ drive an RS-422 pair). It avoids collisions instead:
 **This is not academic — it is what broke twice and what §6.5's stack
 still lives by:**
 
-- The synthesized **lapCTS** must land *inside the sender's IFG window*,
-  so it takes the express path with a short fixed gap —
-  `kCtsGapBytes = 4` byte-times ≈ 139 µs (`src/Scc8530.h:365`, applied
-  `src/Scc8530.cpp:356`), at the **real** pace even when the wire is
-  boosted, and express frames bypass the "Rx is off during my own
-  transmit" drop (`src/Scc8530.cpp:329`).
+- The immediate **lapCTS** and **lapACK** responses must land inside the
+  sender's IFG window. Typed `CtsReply` and `AddressDefence` frames therefore
+  take `kReplyGapBytes = 4` byte-times ≈ 139 µs at the **real** pace even when
+  the virtual wire is boosted, and both cross the sender's temporary Rx-off
+  window. Only `AddressDefence` identifies a real peer. Prompt responses are
+  placed ahead of ordinary queued frames so backlog cannot consume the IFG.
 - Every *other* injected frame defers a full **IDG** — `kIdgBytes = 12`
   byte-times ≈ 417 µs (`src/Scc8530.h:369`) — and that idle is evaluated
   **at dequeue** from the `rxIdle` counter (`src/Scc8530.cpp:995-1005`),
@@ -409,9 +411,9 @@ request/response:
   Max data 578 + 4 user bytes = **582** (`ATP_MAXDATA`).
 
 `AtalkStack` implements **both roles** — responder (XO cache with the
-same 30 s release timer, `src/AtalkStack.cpp:421-425`; deferred replies
+same 30 s release timer, `src/AtalkStack.cpp:174-179`; deferred replies
 for ASP FPWrite) and requester (5 tries, 1 s apart,
-`src/AtalkStack.cpp:187-203`), because ASP tickle, ASP WriteContinue and
+`src/AtalkStack.cpp:181-198`), because ASP tickle, ASP WriteContinue and
 PAP SendData are all *server*-initiated. Buffers follow the netatalk
 convention: 4 ATP user bytes then the data.
 
@@ -424,7 +426,7 @@ Two hard-won responder details:
   30 s release timer as the XO cache (`AtalkStack.h:210-218`).
 - MacIP needs ATP *and* a raw DDP handler on the same socket 72, so ATP
   only claims type 3 where a transaction handler is bound
-  (`src/AtalkStack.cpp:209-215`).
+  (`src/AtalkStack.cpp:203-213`).
 
 ---
 
@@ -804,9 +806,9 @@ guest Mac OS                                   POM68K process
 
 | AppleTalk layer | Owner | File |
 |---|---|---|
-| LLAP node presence (ENQ defence), DDP short/long | `AtalkStack` | `src/AtalkStack.cpp:86-206` |
-| RTMP beacon + req/resp, ZIP GetNetInfo/ZoneList, NBP registry + LkUp + BrRq relay, AEP echo | `AtalkStack` router-lite | `src/AtalkStack.cpp:208-410` |
-| ATP responder (XO cache, release timer, deferred replies) + requester (retries, bitmap fill) | `AtalkStack::AtpTxn` / `atpRequest` | `src/AtalkStack.cpp:414-580` |
+| LLAP node presence (ENQ defence), DDP short/long | `AtalkStack` | `src/AtalkStack.cpp:79-199` |
+| RTMP beacon + req/resp, ZIP GetNetInfo/ZoneList, NBP registry + LkUp + BrRq relay, AEP echo | `AtalkStack` router-lite | `src/AtalkStack.cpp:201-405` |
+| ATP responder (XO cache, release timer, deferred replies) + requester (retries, bitmap fill) | `AtalkStack::AtpTxn` / `atpRequest` | `src/AtalkStack.cpp:407-573` |
 | ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.{h,cpp}` |
 | MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
@@ -876,7 +878,7 @@ Gates: §0.5.
 **Node IDs:** `0` invalid · `1-127` user · `128-254` server · `255`
 broadcast.
 **LLAP timing:** 230.4 kbit/s (≈34.7 µs/byte) · IDG ≥ 400 µs · IFG
-≤ 200 µs · 32 retries. POM68K: `kCtsGapBytes` 4 · `kIdgBytes` 12 ·
+≤ 200 µs · 32 retries. POM68K: `kReplyGapBytes` 4 · `kIdgBytes` 12 ·
 `byteCycles = cpuHz / 28800`.
 
 **DDP sockets:** `1` RTMP · `2` NBP · `4` AEP · `6` ZIP · `72` MacIP

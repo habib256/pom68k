@@ -327,6 +327,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Serial, LocalTalk and AppleTalk
 
+- **why can the in-process server no longer lose node 128 to a guest's lapENQ probe?** → [2026-09-09 (ninth) — The lapACK now wins its 200 µs LLAP race…](#2026-09-09-llap-address-defence)
 - **how do real host programs reach the guest's modem and printer ports without bypassing SCC timing or overflowing its FIFO?** → [2026-09-09 (eighth) — Both SCC serial ports reach host PTYs and loopback TCP…](#2026-09-09-scc-serial-host)
 - **SCC receive path + the LToUDP virtual cable** → [2026-07-22 — LLAP milestone 1: SCC receive path + LToUDP virtual cable](#2026-07-22--llap-milestone-1-scc-receive-path--ltoudp-virtual-cable)
 - **two Systems acquiring LLAP addresses across the cable** → [2026-07-22 — LLAP two-System etalon: real address acquisition between two Systems](#2026-07-22--llap-two-system-etalon-real-address-acquisition-between-two-systems)
@@ -436,6 +437,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (ninth)** — [The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS](#2026-09-09-llap-address-defence)
 - **2026-09-09 (eighth)** — [Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO](#2026-09-09-scc-serial-host)
 - **2026-09-09 (seventh)** — [The LC II sound path reaches the real DFAC, and the host DAC owns playback time with a ten-minute deterministic tempo proof](#2026-09-09-dfac-host-clock)
 - **2026-09-09 (sixth)** — [All 36 desktops get their external Sony drive, and the Plus ROM boots from drive B with drive A empty](#2026-09-09-external-floppy)
@@ -901,6 +903,39 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-llap-address-defence"></a>
+## 2026-09-09 (ninth) — The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS
+
+The internal AppleTalk node had always constructed the right lapACK when a
+guest probed its server address 128, and `atalk_stack_test` had always called
+that success. The test stopped at the callback boundary. Production queued the
+ACK with ordinary DDP output, waited for the next emulation slice, then imposed
+LLAP's full 400 µs inter-dialog gap. The prober was already waiting inside the
+200 µs inter-frame window. Repetition usually hid the race, but a guest could
+still claim 128 and collide with every service hosted there.
+
+[*Inside AppleTalk*, appendix B](https://obsoletemadness.github.io/Inside-AppleTalk/books/inside-appletalk-second-edition/B-llap-access-control-algorithms.html)
+resolves the classification: the receive handler answers lapENQ by transmitting
+lapACK directly, just as it answers lapRTS with lapCTS.
+`AtalkStack::sendAddressDefence` is therefore a dedicated control hook;
+`AtalkHub` injects it during the guest's Tx callback rather than through the
+next-tick DDP queue. The SCC API now names three origins with `RxFrameKind`:
+ordinary `Peer` traffic waits the full IDG, `CtsReply` takes the short response
+gap without claiming a peer, and `AddressDefence` takes that same legal gap
+while retaining the fact that a real node spoke. Prompt replies move ahead of
+ordinary queued traffic, so backlog cannot spend their deadline.
+
+The new asset-free `llap_address_defense_test` is the missing end-to-end proof.
+A guest-side SCC disables its receiver, transmits a real lapENQ for node 128
+through `AtalkHub`, and re-arms exactly as a half-duplex LAP driver does. An
+ordinary frame is deliberately queued first. Without calling `AtalkHub::tick`,
+the guest receives a valid-FCS lapACK first; its first byte lands at 2,704
+cycles (172.6 µs) against the 3,133-cycle (200 µs) ceiling. The displaced
+ordinary frame remains intact and starts only at 7,064 cycles, beyond the
+6,266-cycle 400 µs IDG floor. `llap_loop_test` separately proves the lapACK
+marks a real peer while the cable-synthesized CTS does not. The address-defence
+roadmap item is closed.
 
 <a id="2026-09-09-scc-serial-host"></a>
 ## 2026-09-09 (eighth) — Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO

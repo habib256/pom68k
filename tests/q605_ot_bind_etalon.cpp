@@ -13,7 +13,7 @@
 // the line has actually carried a frame (an LLAP trailer ends in a
 // real abort).
 // The wiring mirrors main.cpp wireLocalTalk: hub attached (router-lite
-// with its periodic RTMP beacon), express lapCTS synthesis, boosted
+// with its periodic RTMP beacon), prompt lapCTS synthesis, boosted
 // lossless virtual wire, sliced quanta with the hub ticked in machine
 // cycles. Proof of bind = the guest's DDP conversation with the stack
 // (stats.ddpIn) after its lapENQ acquisition — a wedged OT probes its
@@ -90,10 +90,11 @@ int main() {
         if (ch != 0) return;
         txFrames++;
         if (n >= 3) typeHist[d[2]]++;
-        if (n == 3 && d[2] == 0x84) {              // lapRTS → express lapCTS
+        if (n == 3 && d[2] == 0x84) {              // lapRTS → prompt lapCTS
             if (d[0] != 0xFF) {
                 const uint8_t cts[3] = { d[1], d[0], 0x85 };
-                mem.scc().injectRxFrame(0, cts, 3, true);
+                mem.scc().injectRxFrame(
+                    0, cts, 3, Scc8530::RxFrameKind::CtsReply);
             }
             return;
         }

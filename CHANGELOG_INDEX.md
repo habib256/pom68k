@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 478 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 479 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -14,7 +14,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 68 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 14 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 15 |
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 56 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
@@ -316,6 +316,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-28 (ninth)** — [Nominal mode never held ×1: the pacer slept relative to emulation cost alone, and AppleTalk had been taking the blame](CHANGELOG.md#2026-08-28-pacing-absolute-deadline)
 - **2026-09-04 (fifth)** — [The Q605's second SCC deadline query is real, the hand-off that removes it is bit-identical, and two ABBAs read it under the noise — so it is withdrawn](CHANGELOG.md#2026-09-04-scc-deadline-handoff-refused)
 - **2026-09-09 (eighth)** — [Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO](CHANGELOG.md#2026-09-09-scc-serial-host)
+- **2026-09-09 (ninth)** — [The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS](CHANGELOG.md#2026-09-09-llap-address-defence)
 
 ## Save states
 
