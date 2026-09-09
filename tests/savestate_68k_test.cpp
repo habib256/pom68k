@@ -156,11 +156,15 @@ void testFamily(const char* family, const Rom& rom) {
     check(!m.mem.overlay(), family, "setup: the stub cleared the boot overlay");
     const uint32_t atSnapshot = m.counter();
     check(atSnapshot != 0, family, "setup: the counter loop is running");
+    check(m.mem.externalDrive().insertImage(
+              std::vector<uint8_t>(SonyDrive::kSize800K, 0x5A)),
+          family, "setup: external 800K medium inserted");
 
     const Blob snapshot = saveOf(m);
     check(snapshot.size() > 64, family, "save: produced a container");
 
     m.cpu.runCycles(200000);
+    m.mem.externalDrive().eject();
     check(m.counter() != atSnapshot, family, "mutate: the machine moved on");
 
     std::string err;
@@ -169,6 +173,8 @@ void testFamily(const char* family, const Rom& rom) {
           family, "load: accepted its own snapshot");
     check(err.empty(), family, "load: no warning on a same-build snapshot");
     check(m.counter() == atSnapshot, family, "load: guest RAM is back");
+    check(m.mem.externalDrive().hasDisk(), family,
+          "load: external floppy state is back");
     check(saveOf(m) == snapshot, family, "load→save is byte-identical");
 
     // ── 2. Determinism across a restore ─────────────────────────────────

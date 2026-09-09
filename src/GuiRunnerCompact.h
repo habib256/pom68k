@@ -33,8 +33,8 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
     const GLuint screenTex = ui->texture();
 
     services.prepareDriveSounds(mem, audioHost);
-    mem.internalDrive().setWriteBack(
-        services.config().devices().floppyWriteBack);
+    configureFloppyWriteBack(
+        mem, services.config().devices().floppyWriteBack);
     if (!audioHost.start())
         std::fprintf(stderr, "audio: no output device (silent)\n");
     services.shell().bindCpuMenu(machine, cpu);
@@ -98,6 +98,7 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
             if (!machine.floppyInserted()) c.spec.floppyPath.clear();
             else if (!liveFloppy.empty()) c.spec.floppyPath = liveFloppy;
             host.floppyPath = c.spec.floppyPath;
+            host.externalFloppyPath = machine.floppyPath(1);
             pom68k::diskBaysWindow(host);
         }
 
@@ -159,7 +160,7 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
     while (!glfwWindowShouldClose(window)) frame(&ctx);
     machine.stop();
     mem.savePram(spec.pramPath);
-    mem.internalDrive().flushToFile();
+    flushFloppyDrives(mem);
     audioHost.stop();
     ui->close();
     services.shell().noteWindowClosed();

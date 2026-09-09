@@ -102,6 +102,7 @@ V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
                      coreConfig.peripherals.egretCommandTrace);
     egretLle_.configure(coreConfig.peripherals);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     // Pseudo-VIA machine hooks (v8.cpp:328-352): reg 1 = RAM config
@@ -284,12 +285,13 @@ void V8Memory::reset() {
     scsi_.reset();
     if (spiceClass()) {                      // Spice/Tinker Bell: SWIM2
         swim2_.reset();
-        swim2_.attachDrive(&drive_, nullptr);
+        swim2_.attachDrive(&drive_, &externalDrive_);
     } else {
         swim_.reset();
-        swim_.attachDrive(&drive_, nullptr);
+        swim_.attachDrive(&drive_, &externalDrive_);
     }
     drive_.setSpinClockHz(15667200);         // devices tick in the C15M domain
+    externalDrive_.setSpinClockHz(15667200);
     framePos_ = 0;
     c15Acc_ = 0;
     // Frame/VBL geometry in CPU cycles: V8-class scans 640×407 dots at
@@ -976,6 +978,7 @@ void V8Memory::tick(int cpuCycles) {
             swim_.tick(c15);                 // IWM nibbles / ISM cell engine
         }
         drive_.tick(c15);                    // spindle/tach time (was frozen)
+        externalDrive_.tick(c15);
     }
     scc_.tick(cpuCycles);                    // open-line Break/Abort stream (O6.11)
     sccIrq_ = scc_.irqAsserted();            // bidirectional — a de-asserted SCC

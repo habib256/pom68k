@@ -215,6 +215,10 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
+- **Format v13** serializes both Sony mechanisms on every floppy-equipped
+  desktop. The bump is mandatory because the seven machine chunks that used
+  to end drive state after drive A now contain drive B before their following
+  SCC/SCSI fields.
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
@@ -884,6 +888,11 @@ needed research, and a dated `CHANGELOG.md` entry.
 The Plus, original SE and original Mac II are the three shipped 800K-only
 profiles. All other floppy-equipped profiles retain this personality for
 400/800K GCR media inside a SWIM; the Duo 230 has no floppy mechanism.
+Every one of the other 36 catalogue profiles owns two `SonyDrive` mechanisms:
+drive A (internal) and drive B (external). IWM line SELECT and SWIM soft-select
+choose between them; `storage_profile_test` strobes STEP through every board
+implementation, and `external_floppy_boot_etalon` boots the Plus ROM with
+drive A empty and the synthetic 800K boot disk present only in drive B.
 Full spec tables in the M5 research report (MAME `iwm.cpp` / `floppy.cpp` /
 `flopimg.cpp` / `ap_dsk35.cpp`, pce, Snow — cross-verified). What the
 implementation actually depends on, several found the hard way with

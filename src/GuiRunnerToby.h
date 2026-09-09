@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "GuiFloppyBays.h"
 #include "GuiShellCommon.h"
 #include "GuiTobyStatus.h"
 
@@ -92,8 +93,8 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     const GLuint screenTex = ui->texture();
 
     services.prepareDriveSounds(mem, audioHost);
-    mem.internalDrive().setWriteBack(
-        services.config().devices().floppyWriteBack);
+    configureFloppyWriteBack(
+        mem, services.config().devices().floppyWriteBack);
     if (!audioHost.start())
         std::fprintf(stderr, "audio: no output device (silent)\n");
 
@@ -156,20 +157,7 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         h.ejectBay = [&ctx](int id) {
             ctx.machine.requestEjectBay(id);
         };
-        h.hasFloppyDrive = true;
-        h.floppyInserted = [&ctx] {
-            return ctx.machine.floppyInserted();
-        };
-        h.insertFloppy = [&ctx](const std::string& disk) {
-            ctx.machine.requestInsertFloppy(disk);
-            ctx.floppyPath = disk;
-            ctx.floppyOk = true;
-        };
-        h.ejectFloppy = [&ctx] {
-            ctx.machine.requestEjectFloppy();
-            ctx.floppyPath.clear();
-            ctx.floppyOk = false;
-        };
+        bindFloppyBays(h, ctx.machine);
         return h;
     }();
 
@@ -189,7 +177,7 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             DiskBaysHost& host = c.diskHost;
             host.romName = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.machine.floppyPath();
+            refreshFloppyBays(host, c.machine);
             diskBaysWindow(host);
         }
 
@@ -252,6 +240,7 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     machine.start();
     while (!glfwWindowShouldClose(window)) frame(&ctx);
     machine.stop();
+    flushFloppyDrives(mem);
     mem.savePram(pramPath);
     audioHost.stop();
     ui->close();

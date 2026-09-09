@@ -208,9 +208,12 @@ can make that wrapping permanent.
 
 Floppy changes are persisted on eject and exit using an atomic replacement;
 DiskCopy 4.2 checksums are regenerated. Use `POM68K_FLOPPY_RO=1` to prevent
-write-back. SCSI images passed explicitly are writable. Repository fixtures
-under `hdv/ref/` remain immutable: the GUI creates its working copy under
-`hdv/work/`.
+write-back. Every floppy-equipped desktop exposes separate internal and
+external rows in **Disques…**; each can be inserted or ejected live, and the
+external mechanism follows the profile's 800K/SuperDrive capability. The
+PowerBook Duo 230 has no floppy mechanism. SCSI images passed explicitly are
+writable. Repository fixtures under `hdv/ref/` remain immutable: the GUI
+creates its working copy under `hdv/work/`.
 
 PRAM is stored beside the boot volume as `<disk>.<profile>.pram`. Save states
 use `<disk>.<profile>.pomss`; incompatible profile, ROM or RAM configurations

@@ -153,8 +153,13 @@ public:
         return model_ == Model::SEFDHD || model_ == Model::Classic;
     }
     SonyDrive& internalDrive() { return drive_; }
+    SonyDrive& externalDrive() { return externalDrive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
+    bool insertExternalDisk(const std::string& path) {
+        return externalDrive_.insert(path);
+    }
+    void ejectExternalDisk() { externalDrive_.eject(); }
     Scc8530& scc() { return scc_; }
     MacMouse& mouse() { return mouse_; }
     MacKeyboard& keyboard() { return kbd_; }
@@ -192,6 +197,7 @@ public:
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
+        externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& disk : scsiDisks_) disk.setSoundSink(hdd);
     }
 
@@ -226,7 +232,8 @@ public:
     // cpu_ and jitGuard_ (pointers the machine owns).
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
-        ar(via_, adb_, adbVia_, rtc_, swim_, drive_, scc_, scsi_, kbd_, mouse_);
+        ar(via_, adb_, adbVia_, rtc_, swim_, drive_, externalDrive_, scc_,
+           scsi_, kbd_, mouse_);
         for (ScsiDisk& disk : scsiDisks_) ar(disk);
         ar(kbdPhase_, kbdCmd_, kbdResp_, kbdTimer_, kbdInquiryHold_,
            viaPhase_, secAcc_, overlay_);
@@ -252,7 +259,8 @@ private:
     AdbVia adbVia_;
     Rtc rtc_;
     Swim1 swim_;
-    SonyDrive drive_;                // internal drive; external = M5.1
+    SonyDrive drive_;                // internal mechanism
+    SonyDrive externalDrive_;        // second / external mechanism
     Scc8530 scc_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];

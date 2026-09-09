@@ -88,8 +88,6 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 - [ ] **Décider les échéanciers Mac II et Duo avec un gate sensible à la
   gigue.** Garder les options expérimentales tant qu'aucun observable ne
   justifie leur coût ; comparer état, débit et jitter avant un défaut produit.
-- [ ] **Câbler le second lecteur 800K.** Fournir un deuxième `SonyDrive` aux
-  machines concernées et ajouter un gate de sélection externe.
 - [ ] **Ajouter un transport série hôte PTY/TCP.** Exposer les ports SCC de
   l'invité sur un pseudo-terminal ou une socket TCP de l'hôte, et gater
   l'aller-retour. (Le volet SCSI de cet item — cibles multiples, LUN et

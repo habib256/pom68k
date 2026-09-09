@@ -21,6 +21,7 @@ VaspMemory::VaspMemory(const pom68k::CoreConfig& coreConfig,
                      coreConfig.peripherals.egretCommandTrace);
     egretLle_.configure(coreConfig.peripherals);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     egret_.setAdbBus(&adb_);
@@ -100,8 +101,9 @@ void VaspMemory::reset() {
     asc_.reset();
     scsi_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive_, nullptr);
+    swim_.attachDrive(&drive_, &externalDrive_);
     drive_.setSpinClockHz(kCpuHzVi);         // drive_.tick unit = C15M cycles
+    externalDrive_.setSpinClockHz(kCpuHzVi);
     videoConfig_ = 0;
     viaAcc_ = tickAcc_ = c15Acc_ = 0;
     framePos_ = 0;
@@ -469,6 +471,7 @@ void VaspMemory::tick(int cpuCycles) {
         asc_.tick(c15);
         swim_.tick(c15);
         drive_.tick(c15);
+        externalDrive_.tick(c15);
     }
     scc_.tick(cpuCycles);
     sccIrq_ = scc_.irqAsserted();

@@ -236,15 +236,23 @@ public:
     // the PB4/PB5 polarity inverted) and the LLE firmware follow it.
     bool hasCudaMcu() const { return spiceClass(); }
     SonyDrive& internalDrive() { return drive_; }
+    SonyDrive& externalDrive() { return externalDrive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    bool insertExternalDisk(const std::string& path) {
+        return externalDrive_.insert(path);
+    }
     // Floppy boost gate input (Cpu030::pollBoostGate): while the motor
     // runs, the Sony denibble path must keep Apple's real timing against
     // the IWM's 14-tick hold — CHANGELOG 2026-08-05 (eighth).
-    bool floppyStreaming() const { return drive_.motorOn(); }
+    bool floppyStreaming() const {
+        return drive_.motorOn() || externalDrive_.motorOn();
+    }
     void ejectDisk() { drive_.eject(); }
+    void ejectExternalDisk() { externalDrive_.eject(); }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
+        externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
     // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
@@ -392,7 +400,8 @@ public:
         ar.blob(vram_);
 
         ar(via_, pvia_, ariel_, egret_, egretLle_, adb_,
-           asc_, ascSonora_, scsi_, swim_, swim2_, drive_, scc_);
+           asc_, ascSonora_, scsi_, swim_, swim2_, drive_, externalDrive_,
+           scc_);
         for (auto& d : scsiDisks_) ar(d);
 
         ar(totalRam_, config_, videoConfig_, montype_,
@@ -489,6 +498,7 @@ private:
     Swim1 swim_;
     Swim2 swim2_;                    // Spice-integrated SWIM2 (Color Classic)
     SonyDrive drive_;
+    SonyDrive externalDrive_;
     Cpu030* cpu_ = nullptr;
 
     uint32_t totalRam_;

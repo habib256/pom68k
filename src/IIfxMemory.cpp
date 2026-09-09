@@ -22,6 +22,7 @@ IIfxMemory::IIfxMemory(const pom68k::CoreConfig& coreConfig,
                        coreConfig.peripherals.adbLleTrace);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     // ASC IRQ → OSS input 8 (`maciifx.cpp:458`).
     asc_.onIrq = [this](bool s) { ossSetInput(8, s); };
@@ -134,9 +135,11 @@ void IIfxMemory::reset() {
     scsi_.reset();
     adbLine_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive_, nullptr);
+    swim_.attachDrive(&drive_, &externalDrive_);
     drive_.reset();
+    externalDrive_.reset();
     drive_.setSpinClockHz(kC15MHz);
+    externalDrive_.setSpinClockHz(kC15MHz);
     scc_.reset();
     // SCC ticks in the C15M domain; PCLK = C7M (the II-class wiring).
     scc_.setClocks(kC15MHz, 7833600);
@@ -532,6 +535,7 @@ void IIfxMemory::tick(int cpuCycles) {
     asc_.tick(c15);
     swim_.tick(c15);
     drive_.tick(c15);
+    externalDrive_.tick(c15);
     if (scc_.tick(c15))
         sccPic_.pintW(scc_.irqAsserted());
     nubus_.tick(c15);

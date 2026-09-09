@@ -24,6 +24,7 @@ MacMemory::MacMemory(const pom68k::CoreConfig& coreConfig, Model model)
                    coreConfig.peripherals.rtcTrace);
     adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     swim_.configureSuperDrive(hasSuperDrive());
@@ -67,8 +68,9 @@ void MacMemory::reset() {
         swim_.iwm().setTickHz(7833600);
         swim_.iwm().setChipHz(isAdb() ? 15667200 : 7833600);
     }
-    swim_.attachDrive(&drive_, nullptr);
+    swim_.attachDrive(&drive_, &externalDrive_);
     drive_.reset();
+    externalDrive_.reset();
     scc_.reset();
     // SCC async-baud LLE: CPU C7M 7.8336 MHz, PCLK 3.9168 MHz (DEV.md:74,
     // MAME); RTxC 3.6864 MHz is chip-internal to the model.
@@ -108,6 +110,7 @@ void MacMemory::tick(int cpuCycles) {
     if (scc_.tick(cpuCycles)) updateIrq();
     swim_.tick(hasSuperDrive() ? cpuCycles * 2 : cpuCycles);
     drive_.tick(cpuCycles);
+    externalDrive_.tick(cpuCycles);
 
     if (isAdb()) {
         adbVia_.tick(cpuCycles);

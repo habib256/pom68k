@@ -71,7 +71,9 @@ struct DiskBaysHost {
     std::string  bootPath;                      // SCSI 0
     std::vector<std::string>* extras = nullptr; // SCSI 1..N, live view
     std::string  floppyPath;                    // "" when no drive / no disk
+    std::string  externalFloppyPath;
     bool         hasFloppyDrive = false;
+    bool         hasExternalFloppyDrive = false;
     bool         supportsEmptyCdDrive = true;   // false on the undocked Duo
 
     // --- Hot-swap hooks (null => staged + reboot) ---
@@ -87,6 +89,9 @@ struct DiskBaysHost {
     std::function<void(const std::string&)> insertFloppy;
     std::function<void()>                   ejectFloppy;
     std::function<bool()>                   floppyInserted;
+    std::function<void(const std::string&)> insertExternalFloppy;
+    std::function<void()>                   ejectExternalFloppy;
+    std::function<bool()>                   externalFloppyInserted;
 
     // --- Machine control ---
     std::function<void()> hardReset;            // power cycle; ROM re-probes

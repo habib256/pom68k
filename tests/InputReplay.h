@@ -50,11 +50,22 @@ struct InputReplayer {
             cpu.setEngine(e.a);
             return true;
         case ET::InsertFloppy:
-            if constexpr (requires { mem.insertDisk(e.path); })
-                if (!e.path.empty()) mem.insertDisk(e.path);
+            if (e.a == 0) {
+                if constexpr (requires { mem.internalDrive().insert(e.path); })
+                    if (!e.path.empty()) mem.internalDrive().insert(e.path);
+            } else if (e.a == 1) {
+                if constexpr (requires { mem.externalDrive().insert(e.path); })
+                    if (!e.path.empty()) mem.externalDrive().insert(e.path);
+            }
             return true;
         case ET::EjectFloppy:
-            if constexpr (requires { mem.ejectDisk(); }) mem.ejectDisk();
+            if (e.a == 0) {
+                if constexpr (requires { mem.internalDrive().eject(); })
+                    mem.internalDrive().eject();
+            } else if (e.a == 1) {
+                if constexpr (requires { mem.externalDrive().eject(); })
+                    mem.externalDrive().eject();
+            }
             return true;
         case ET::InsertBay:
             if constexpr (requires { mem.insertBayMedia(1, e.path); })

@@ -19,6 +19,7 @@ MacIIMemory::MacIIMemory(const pom68k::CoreConfig& coreConfig,
                    coreConfig.peripherals.rtcTrace);
     adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     adbVia_.attach(via1_, adb_, kCpuHz);
@@ -132,9 +133,11 @@ void MacIIMemory::reset() {
     swim_.configureSuperDrive(hasSuperDrive());
     swim_.reset();
     swim_.iwm().setClockHz(15667200);         // ticked in machine cycles, 2x C7M
-    swim_.attachDrive(&drive_, nullptr);
+    swim_.attachDrive(&drive_, &externalDrive_);
     drive_.reset();
+    externalDrive_.reset();
     drive_.setSpinClockHz(15667200);         // machineTick unit (Mac II 68020)
+    externalDrive_.setSpinClockHz(15667200);
     scc_.reset();
     // SCC async-baud LLE: 15.6672 MHz CPU; PCLK = C7M 7.8336 MHz (the
     // 85C30 family wiring MAME uses across the II-class boards).
@@ -791,6 +794,7 @@ void MacIIMemory::tick(int cpuCycles) {
     updateIrq();
     swim_.tick(cpuCycles);
     drive_.tick(cpuCycles);
+    externalDrive_.tick(cpuCycles);
     // SCC time base: SDLC Tx underrun (frame end) + LLAP Rx pacing. The
     // DCD mouse path recomputes sccIrq_ at access time; frame events land
     // between accesses, so recompute here too (same as Q605Memory).

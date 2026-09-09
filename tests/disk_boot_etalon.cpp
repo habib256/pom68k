@@ -55,7 +55,12 @@ static std::vector<uint8_t> makeBootDisk() {
 }
 
 int main(int argc, char** argv) {
-    std::string rom = (argc > 1) ? argv[1] : "";
+    bool external = false;
+    std::string rom;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--external") external = true;
+        else rom = argv[i];
+    }
     if (rom.empty()) {
         for (const char* p : { "roms/macplus.rom", "../roms/macplus.rom" }) {
             std::ifstream f(p, std::ios::binary);
@@ -69,7 +74,9 @@ int main(int argc, char** argv) {
                                  std::istreambuf_iterator<char>());
     MacMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    if (!mem.internalDrive().insertImage(makeBootDisk())) {
+    SonyDrive& bootDrive = external ? mem.externalDrive()
+                                    : mem.internalDrive();
+    if (!bootDrive.insertImage(makeBootDisk())) {
         std::fprintf(stderr, "FAIL: insertImage\n"); return 1;
     }
 
@@ -97,10 +104,22 @@ int main(int argc, char** argv) {
         if (a != 0 && a != 0xFFFFFFFF && b == ((a << 1) | (a >> 31))) good++;
     }
     std::printf("diagonal row pairs matched: %d/4\n", good);
+    if (external && (mem.externalDrive().nibblesRead == 0 ||
+                     mem.internalDrive().nibblesRead != 0 ||
+                     mem.internalDrive().hasDisk())) {
+        std::fprintf(stderr,
+                     "FAIL: boot did not stay on external drive "
+                     "(internal=%ld external=%ld)\n",
+                     mem.internalDrive().nibblesRead,
+                     mem.externalDrive().nibblesRead);
+        return 1;
+    }
     if (good < 3) {
         std::fprintf(stderr, "FAIL: boot code pattern not on screen\n");
         return 1;
     }
-    std::printf("disk_boot_etalon: ROM booted our floppy code, gate passed\n");
+    std::printf("%s: ROM booted our floppy code, gate passed\n",
+                external ? "external_floppy_boot_etalon"
+                         : "disk_boot_etalon");
     return 0;
 }

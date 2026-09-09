@@ -188,10 +188,16 @@ public:
     }
     Swim2& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
+    SonyDrive& externalDrive() { return externalDrive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
+    bool insertExternalDisk(const std::string& path) {
+        return externalDrive_.insert(path);
+    }
+    void ejectExternalDisk() { externalDrive_.eject(); }
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
+        externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
     // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
@@ -301,7 +307,7 @@ public:
         ar.blob(ram_);
         ar.blob(vram_);
         ar(via_, pvia_, egret_, egretLle_, adb_, asc_, scsi_,
-           swim_, drive_, scc_);
+           swim_, drive_, externalDrive_, scc_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_);
         ar(pens_, palAddr_, palIdx_, palControl_, palColkey_, palRgb_,
@@ -345,6 +351,7 @@ private:
     ScsiDisk scsiDisks_[7];
     Swim2 swim_;
     SonyDrive drive_;
+    SonyDrive externalDrive_;
     Scc8530 scc_;
     SonoraCpu* cpu_ = nullptr;
 

@@ -273,7 +273,7 @@ void diskBaysWindow(DiskBaysHost& host) {
     // ── Floppy first: it is the one bay that always swaps live, so it sits
     //    above the cold (reboot-requiring) hard-disk choices.
     if (host.hasFloppyDrive) {
-        ImGui::TextDisabled("Disquette (SWIM)");
+        ImGui::TextDisabled("Disquette interne (SWIM)");
         bool in = host.floppyInserted && host.floppyInserted();
         if (in) {
             ImGui::Text("%s", !host.floppyPath.empty()
@@ -289,6 +289,29 @@ void diskBaysWindow(DiskBaysHost& host) {
                            Only::Floppy)
                 && !fd.empty() && host.insertFloppy)
                 host.insertFloppy(fd);
+        }
+        ImGui::Separator();
+    }
+
+    if (host.hasExternalFloppyDrive) {
+        ImGui::TextDisabled("Disquette externe (SWIM)");
+        bool in = host.externalFloppyInserted &&
+                  host.externalFloppyInserted();
+        if (in) {
+            ImGui::Text("%s", !host.externalFloppyPath.empty()
+                                  ? fileName(host.externalFloppyPath).c_str()
+                                  : "<insérée>");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Éjecter##fdext") &&
+                host.ejectExternalFloppy)
+                host.ejectExternalFloppy();
+        } else {
+            ImGui::SetNextItemWidth(-1);
+            std::string fd;
+            if (imageCombo("##fdextpick", std::string(), host.bootPath, fd,
+                           Only::Floppy) && !fd.empty() &&
+                host.insertExternalFloppy)
+                host.insertExternalFloppy(fd);
         }
         ImGui::Separator();
     }

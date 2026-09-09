@@ -175,9 +175,11 @@ public:
     Iwm& iwm() { return swim_.iwm(); }
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
+    SonyDrive& externalDrive() { return externalDrive_; }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
+        externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
     Scc8530& scc() { return scc_; }
@@ -188,6 +190,10 @@ public:
     void savePram(const std::string& path) { rtc_.savePram(path); }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
+    bool insertExternalDisk(const std::string& path) {
+        return externalDrive_.insert(path);
+    }
+    void ejectExternalDisk() { externalDrive_.eject(); }
     bool overlay() const { return overlay_; }
     bool hmmu24() const { return hmmu24_; }
     uint8_t nubusIrqState() const { return nubusIrqState_; }
@@ -218,7 +224,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via1_, via2_, rtc_, nubus_, adbVia_, adb_, asc_,
-           scsi_, swim_, drive_, scc_, mouse_);
+           scsi_, swim_, drive_, externalDrive_, scc_, mouse_);
         for (auto& d : scsiDisks_) ar(d);
         std::uint8_t hasToby = toby_ != nullptr;
         ar(hasToby);
@@ -292,6 +298,7 @@ private:
     ScsiDisk scsiDisks_[7];
     Swim1 swim_;
     SonyDrive drive_;
+    SonyDrive externalDrive_;
     Scc8530 scc_;
     MacMouse mouse_;
     Cpu020* cpu_ = nullptr;

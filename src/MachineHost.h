@@ -164,27 +164,30 @@ public:
     // ── Floppy hot-swap (GUI → machine thread) ─────────────────────────────
     // The path travels under cmdMu_ with the command, so the machine thread
     // never reads a std::string the GUI thread is still assigning.
-    void requestInsertFloppy(std::string path) {
+    void requestInsertFloppy(std::string path, int drive = 0) {
         std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::InsertFloppy, 0, 0, std::move(path)});
+        cmds_.push_back({Cmd::InsertFloppy, drive, 0, std::move(path)});
     }
-    void requestEjectFloppy() {
+    void requestEjectFloppy(int drive = 0) {
         std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::EjectFloppy});
+        cmds_.push_back({Cmd::EjectFloppy, drive});
     }
-    bool floppyInserted() const {
-        return floppyFlag_.load(std::memory_order_acquire);
+    bool floppyInserted(int drive = 0) const {
+        return drive >= 0 && drive < int(floppyFlag_.size()) &&
+               floppyFlag_[size_t(drive)].load(std::memory_order_acquire);
     }
-    void setFloppyInserted(bool on, std::string path = {}) {
+    void setFloppyInserted(bool on, std::string path = {}, int drive = 0) {
+        if (drive < 0 || drive >= int(floppyFlag_.size())) return;
         {
             std::lock_guard<std::mutex> l(mediaMu_);
-            floppyPath_ = on ? std::move(path) : std::string();
+            floppyPath_[size_t(drive)] = on ? std::move(path) : std::string();
         }
-        floppyFlag_.store(on, std::memory_order_release);
+        floppyFlag_[size_t(drive)].store(on, std::memory_order_release);
     }
-    std::string floppyPath() const {
+    std::string floppyPath(int drive = 0) const {
+        if (drive < 0 || drive >= int(floppyFlag_.size())) return {};
         std::lock_guard<std::mutex> l(mediaMu_);
-        return floppyPath_;
+        return floppyPath_[size_t(drive)];
     }
 
     // CD-bay media in/out — same queue discipline as the floppy.
@@ -371,15 +374,11 @@ public:
         // command path alone did not).
         if constexpr (requires { mem.internalDrive().hasDisk();
                                  mem.internalDrive().backingPath(); }) {
-            const auto& drive = mem.internalDrive();
-            const bool in = drive.hasDisk();
-            {
-                std::lock_guard<std::mutex> l(mediaMu_);
-                if (!in) floppyPath_.clear();
-                else if (floppyPath_ != drive.backingPath())
-                    floppyPath_ = drive.backingPath();
-            }
-            floppyFlag_.store(in, std::memory_order_release);
+            syncFloppy(0, mem.internalDrive());
+        }
+        if constexpr (requires { mem.externalDrive().hasDisk();
+                                 mem.externalDrive().backingPath(); }) {
+            syncFloppy(1, mem.externalDrive());
         }
         {
             std::lock_guard<std::mutex> l(jitMu_);
@@ -390,6 +389,18 @@ public:
 protected:
     Derived* self() { return static_cast<Derived*>(this); }
     const Derived* self() const { return static_cast<const Derived*>(this); }
+
+    template <class Drive>
+    void syncFloppy(int index, const Drive& drive) {
+        const bool in = drive.hasDisk();
+        {
+            std::lock_guard<std::mutex> l(mediaMu_);
+            std::string& path = floppyPath_[size_t(index)];
+            if (!in) path.clear();
+            else if (path != drive.backingPath()) path = drive.backingPath();
+        }
+        floppyFlag_[size_t(index)].store(in, std::memory_order_release);
+    }
 
     // ~100 ms of 22 257 Hz sound. The same on every platform — the figure is a
     // property of the host audio ring, not of the guest.
@@ -455,27 +466,30 @@ protected:
                 if constexpr (requires { self()->afterHardReset(); })
                     self()->afterHardReset();
                 break;
-            // The Duo 230 has no floppy drive at all, so it has no insertDisk;
-            // the GUI simply never offers it the menu entry.
+            // The Duo 230 has no floppy drive at all; the constrained calls
+            // below therefore compile away and its GUI offers no floppy row.
             case Cmd::InsertFloppy:
-                if constexpr (requires { mem.insertDisk(c.path); }) {
-                    if (!c.path.empty() && mem.insertDisk(c.path)) {
-                        {
-                            std::lock_guard<std::mutex> l(mediaMu_);
-                            floppyPath_ = c.path;
-                        }
-                        floppyFlag_.store(true, std::memory_order_release);
-                    }
+                if (!c.path.empty() && c.a == 0) {
+                    if constexpr (requires { mem.internalDrive().insert(c.path); })
+                        if (mem.internalDrive().insert(c.path))
+                            setFloppyInserted(true, c.path, 0);
+                } else if (!c.path.empty() && c.a == 1) {
+                    if constexpr (requires { mem.externalDrive().insert(c.path); })
+                        if (mem.externalDrive().insert(c.path))
+                            setFloppyInserted(true, c.path, 1);
                 }
                 break;
             case Cmd::EjectFloppy:
-                if constexpr (requires { mem.ejectDisk(); }) {
-                    mem.ejectDisk();
-                    {
-                        std::lock_guard<std::mutex> l(mediaMu_);
-                        floppyPath_.clear();
+                if (c.a == 0) {
+                    if constexpr (requires { mem.internalDrive().eject(); }) {
+                        mem.internalDrive().eject();
+                        setFloppyInserted(false, {}, 0);
                     }
-                    floppyFlag_.store(false, std::memory_order_release);
+                } else if (c.a == 1) {
+                    if constexpr (requires { mem.externalDrive().eject(); }) {
+                        mem.externalDrive().eject();
+                        setFloppyInserted(false, {}, 1);
+                    }
                 }
                 break;
             case Cmd::InsertBay:
@@ -522,13 +536,11 @@ protected:
                 self()->afterRestore();
             if constexpr (requires { mem.internalDrive().hasDisk();
                                      mem.internalDrive().backingPath(); }) {
-                const auto& drive = mem.internalDrive();
-                {
-                    std::lock_guard<std::mutex> l(mediaMu_);
-                    floppyPath_ = drive.hasDisk() ? drive.backingPath()
-                                                  : std::string();
-                }
-                floppyFlag_.store(drive.hasDisk(), std::memory_order_release);
+                syncFloppy(0, mem.internalDrive());
+            }
+            if constexpr (requires { mem.externalDrive().hasDisk();
+                                     mem.externalDrive().backingPath(); }) {
+                syncFloppy(1, mem.externalDrive());
             }
         }
     }
@@ -645,9 +657,9 @@ protected:
     // button on its own address and need no folding.
     bool hostBtn_[2] = { false, false };
     bool traceKeys_ = false;
-    std::atomic<bool> floppyFlag_{false};
+    std::array<std::atomic<bool>, 2> floppyFlag_{};
     mutable std::mutex mediaMu_;
-    std::string floppyPath_;
+    std::array<std::string, 2> floppyPath_{};
     std::array<std::atomic<bool>, 7> stBayCd_{};
 
     std::mutex fbMu_;

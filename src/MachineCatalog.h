@@ -25,6 +25,7 @@ enum class FloppyKind : std::uint8_t { None, Gcr800K, SuperDrive };
 
 struct StorageCapabilities {
     FloppyKind floppy;
+    bool externalFloppy;
     bool scsi;
     bool cdrom;
 };
@@ -129,13 +130,13 @@ inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);
 constexpr StorageCapabilities storageCapabilities(const MachineProfile& profile) {
     switch (profile.snapshot) {
         case SnapMachine::Duo230:
-            return {FloppyKind::None, true, true};
+            return {FloppyKind::None, false, true, true};
         case SnapMachine::Plus:
         case SnapMachine::SE:
         case SnapMachine::MacII:
-            return {FloppyKind::Gcr800K, true, true};
+            return {FloppyKind::Gcr800K, true, true, true};
         default:
-            return {FloppyKind::SuperDrive, true, true};
+            return {FloppyKind::SuperDrive, true, true, true};
     }
 }
 

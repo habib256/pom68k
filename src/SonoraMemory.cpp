@@ -43,6 +43,7 @@ SonoraMemory::SonoraMemory(const pom68k::CoreConfig& coreConfig,
                      coreConfig.peripherals.egretCommandTrace);
     egretLle_.configure(coreConfig.peripherals);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     egret_.setAdbBus(&adb_);
@@ -135,8 +136,9 @@ void SonoraMemory::reset() {
     asc_.reset();
     scsi_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive_, nullptr);
+    swim_.attachDrive(&drive_, &externalDrive_);
     drive_.setSpinClockHz(cpuHz_);           // drive_.tick unit = CPU cycles
+    externalDrive_.setSpinClockHz(cpuHz_);
     // mv_sonora device_reset: blanked, no modeline, sense drive released.
     for (uint32_t& p : pens_) p = 0;
     palAddr_ = palIdx_ = palControl_ = palColkey_ = 0;
@@ -615,6 +617,7 @@ void SonoraMemory::tick(int cpuCycles) {
     swimAcc_ -= int64_t(swimCyc) * cpuHz_;
     if (swimCyc) swim_.tick(swimCyc);
     drive_.tick(cpuCycles);
+    externalDrive_.tick(cpuCycles);
     scc_.tick(cpuCycles);
     sccIrq_ = scc_.irqAsserted();
     updateIrq();

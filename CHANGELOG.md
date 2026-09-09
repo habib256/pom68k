@@ -78,6 +78,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **why did a 1.44 MB LC II disk yield a valid MDB and then fail the same mount — and why was SWIM mode bit 5 the wrong head-select source?** → [2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium…](#2026-09-09-lcii-floppy144-mount)
 - **why did the real SWIM1 MFM write reach `finishWrite` with valid bytes and CRC yet leave the disk unchanged?** → [2026-09-09 (fourth) — The real write was valid; the verifier carried a torn field's byte phase across its splice](#2026-09-09-swim1-mfm-writeback)
 - **which of the 37 profiles actually expose 800K, 1.44 MB, SCSI HDD and CD-ROM — and which five FDHD machines were accidentally still wired as IWM-only?** → [2026-09-09 (fifth) — The storage matrix finds five missing SuperDrives…](#2026-09-09-storage-profile-audit)
+- **which machines expose a second floppy, how drive B is selected, and can a real Plus ROM boot with drive A empty?** → [2026-09-09 (sixth) — All 36 desktops get their external Sony drive…](#2026-09-09-external-floppy)
 
 - **"`-mcpu=<core>` is worth 10-20 % over generic aarch64" — inherited from NeoST, and the ISA half of it buys POM68K nothing (byte-identical code)** → [2026-08-08 (fourth) — `-mcpu=cortex-a72` produced byte-identical code…](#2026-08-08-mcpu-identical)
 - **"a CI-built `-mcpu` artifact cannot be done, no ROMs" — conflated two independent halves of NeoST's workflow** → [2026-08-08 (third) — A Pi package built for ONE core…](#2026-08-08-pi400-ci)
@@ -433,6 +434,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (sixth)** — [All 36 desktops get their external Sony drive, and the Plus ROM boots from drive B with drive A empty](#2026-09-09-external-floppy)
 - **2026-09-09 (fifth)** — [The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus](#2026-09-09-storage-profile-audit)
 - **2026-09-09 (fourth)** — [The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice](#2026-09-09-swim1-mfm-writeback)
 - **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](#2026-09-09-lcii-floppy144-mount)
@@ -895,6 +897,39 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-external-floppy"></a>
+## 2026-09-09 (sixth) — All 36 desktops get their external Sony drive, and the Plus ROM boots from drive B with drive A empty
+
+The catalogue audit had described every desktop's floppy personality but left
+one physical omission behind it. `MacMemory`, `MacIIMemory`, `IIfxMemory`,
+`RbvMemory`, `V8Memory`, `SonoraMemory` and `VaspMemory` still attached `nullptr`
+as controller drive B; only the four later 040 maps already owned both
+mechanisms. Each missing family now owns, resets, clocks, sounds, persists and
+serializes an external `SonyDrive`, configured with the same 800K-only or
+SuperDrive personality as its internal mechanism. The catalogue records the
+result explicitly: 36 desktop profiles expose drive B; the Duo 230 remains the
+only no-floppy profile.
+
+Selection is proved at the wire rather than inferred from two object pointers.
+`storage_profile_test` now instantiates every board implementation: on IWM it
+uses line SELECT to read CSTIN from only the loaded mechanism and strobes STEP
+first into drive B then drive A; on SWIM1/SWIM2 it performs the equivalent
+soft-select A/B sequence. The guest-level leg reuses the synthetic 800K boot
+disk from `disk_boot_etalon`, inserts it only in the Plus external drive, and
+requires the real ROM to execute its animated boot block while drive A remains
+empty with zero nibbles read. `external_floppy_boot_etalon` passes in 3.0 s on
+the local asset set.
+
+The product path carries the same distinction. `MachineHost` reserves command
+and publication lane 0 for the internal drive and lane 1 for the external one;
+input journals retain that index, guest eject is mirrored independently, and
+save-state restore republishes both paths. Every desktop Disques window now has
+separate internal/external live rows, with the same read-only policy, drive
+sound and exit flush. The seven longer machine chunks make v12 layouts
+ambiguous after drive A, so the snapshot format advances to **v13**. The
+machine-host, journal and 68000/030/V8 snapshot gates exercise the new lane and
+the restored external medium explicitly.
 
 <a id="2026-09-09-storage-profile-audit"></a>
 ## 2026-09-09 (fifth) — The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus

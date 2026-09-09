@@ -131,6 +131,7 @@ public:
     ScsiDisk& scsiDisk(int id = 0) { return scsiDisks_[id]; }
     AdbLine& adbLine() { return adbLine_; }
     SonyDrive& internalDrive() { return drive_; }
+    SonyDrive& externalDrive() { return externalDrive_; }
 
     // Input events (UI thread → machine): the ADB devices hang off the
     // SWIM PIC's bit-banged line, LLE on both ends of the wire.
@@ -139,9 +140,14 @@ public:
     void mouseButton(bool down, int button = 0) { adbLine_.mouseButton(down, button); }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
+    bool insertExternalDisk(const std::string& path) {
+        return externalDrive_.insert(path);
+    }
+    void ejectExternalDisk() { externalDrive_.eject(); }
     // Mechanical drive sounds (GUI only; headless leaves the sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
+        externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
     bool overlay() const { return overlay_; }
@@ -197,7 +203,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via1_, rtc_, nubus_, asc_, sccPic_, swimPic_, scc_, swim_,
-           drive_, scsi_, adbLine_);
+           drive_, externalDrive_, scsi_, adbLine_);
         for (auto& d : scsiDisks_) ar(d);
         std::uint8_t hasToby = toby_ != nullptr;
         ar(hasToby);
@@ -244,6 +250,7 @@ private:
     Scc8530 scc_;
     Swim1 swim_;
     SonyDrive drive_;
+    SonyDrive externalDrive_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
     IIfxCpu* cpu_ = nullptr;

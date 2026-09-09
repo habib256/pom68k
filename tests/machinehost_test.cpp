@@ -216,6 +216,25 @@ int main() {
         m.stepTick();
         check(m.floppyPath().empty(), "eject clears the published media path");
 
+        // The external mechanism has its own command lane and publication
+        // slot.  A failure or eject on one drive must not mutate the other.
+        m.requestInsertFloppy(fifoDisk, 1);
+        m.stepTick();
+        check(m.floppyInserted(1) && mem.externalDrive().hasDisk() &&
+              !m.floppyInserted(0),
+              "external floppy insertion stays in drive lane 1");
+        check(m.floppyPath(1) == fifoDisk && m.floppyPath(0).empty(),
+              "external media path is published independently");
+        m.requestInsertFloppy(pom68kTempPath("pom68k_machinehost_missing.dsk"), 0);
+        m.stepTick();
+        check(m.floppyInserted(1) && !m.floppyInserted(0),
+              "failed internal insert does not disturb the external drive");
+        m.requestEjectFloppy(1);
+        m.stepTick();
+        check(!m.floppyInserted(1) && m.floppyPath(1).empty() &&
+              !mem.externalDrive().hasDisk(),
+              "external eject clears only drive lane 1");
+
         // ── The GUEST ejects, and the GUI has to hear about it ───────────
         // The command queue is one direction only. A Finder "Ranger" reaches
         // `SonyDrive::eject()` without passing through it, and until
@@ -232,6 +251,13 @@ int main() {
               "a guest-side eject clears the published floppy flag");
         check(m.floppyPath().empty(),
               "a guest-side eject clears the published media path");
+
+        m.requestInsertFloppy(fifoDisk, 1);
+        m.stepTick();
+        mem.externalDrive().eject();
+        m.stepTick();
+        check(!m.floppyInserted(1) && m.floppyPath(1).empty(),
+              "an external guest-side eject clears its published lane");
 
         // ── Bay commands are accepted and stay in their lane ──────────────
         // Q605Memory carries insertBayMedia/ejectBayMedia, so these arms are
@@ -335,7 +361,7 @@ int main() {
         m.push({Cmd::Key, 0x37, 1});
         m.push({Cmd::HardReset});
         m.push({Cmd::CpuEngine, cpu.engine()});
-        m.push({Cmd::InsertFloppy, 0, 0, "disks35/pas-la.dsk"});
+        m.push({Cmd::InsertFloppy, 1, 0, "disks35/pas-la.dsk"});
         m.push({Cmd::EjectFloppy});
         m.push({Cmd::InsertBay, 3, 0, "cd/pas-la.iso"});
         m.push({Cmd::EjectBay, 3});
@@ -371,8 +397,9 @@ int main() {
                            j.events.front().clk >= j.startClk),
               "recording: clocks are monotone from the start record");
         check(j.events.size() > 5 &&
-              j.events[5].path == "disks35/pas-la.dsk",
-              "recording: a media path rides with its command");
+              j.events[5].path == "disks35/pas-la.dsk" &&
+              j.events[5].a == 1,
+              "recording: media path and external-drive index ride together");
 
         // The armed snapshot exists and matches the hash the journal notes.
         std::FILE* f = std::fopen("machinehost_test.rec.pomss", "rb");

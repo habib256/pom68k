@@ -24,6 +24,7 @@ RbvMemory::RbvMemory(const pom68k::CoreConfig& coreConfig,
     rtc_.configure(coreConfig.peripherals.appleTalkPram,
                    coreConfig.peripherals.rtcTrace);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
     egret_.setAdbBus(&adb_);
@@ -173,8 +174,9 @@ void RbvMemory::reset() {
     asc_.reset();
     scsi_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive_, nullptr);
+    swim_.attachDrive(&drive_, &externalDrive_);
     drive_.setSpinClockHz(15667200);         // drive_.tick unit = C15M cycles
+    externalDrive_.setSpinClockHz(15667200);
     videoConfig_ = 0;
     viaAcc_ = tickAcc_ = c15Acc_ = secAcc_ = 0;
     vblState_ = false;
@@ -562,6 +564,7 @@ void RbvMemory::tick(int cpuCycles) {
         asc_.tick(c15);
         swim_.tick(c15);
         drive_.tick(c15);
+        externalDrive_.tick(c15);
     }
     scc_.tick(cpuCycles);
     sccIrq_ = scc_.irqAsserted();

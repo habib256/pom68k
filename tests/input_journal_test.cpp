@@ -94,7 +94,7 @@ int main() {
         w.event(1500, int(ET::MouseMove), 3, -2, {});
         w.event(1500, int(ET::MouseButton), 0, 1, {});
         w.event(2000, int(ET::Key), 0x37, 1, {});
-        w.event(2500, int(ET::InsertFloppy), 0, 0,
+        w.event(2500, int(ET::InsertFloppy), 1, 0,
                 "disks35/un autre chemin.dsk");
         w.event(3000, int(ET::Sense), 6, 0, {});
         w.finish(9999);
@@ -114,8 +114,9 @@ int main() {
               j.events[0].b == -2 &&
               j.events[0].type == int(ET::MouseMove),
               "reader: a mouse move survives, negative delta included");
-        check(j.events[3].path == "disks35/un autre chemin.dsk",
-              "reader: a media path keeps its spaces");
+        check(j.events[3].path == "disks35/un autre chemin.dsk" &&
+              j.events[3].a == 1,
+              "reader: media path and external-drive index survive");
 
         // A crashed session has no `end`: still usable, marked incomplete.
         pom68k::InputJournalWriter w2;

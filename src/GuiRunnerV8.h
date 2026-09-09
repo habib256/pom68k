@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "GuiFloppyBays.h"
 #include "GuiShellCommon.h"
 
 namespace pom68k::gui {
@@ -93,8 +94,8 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
     const GLuint screenTex = ui->texture();
 
     services.prepareDriveSounds(mem, audioHost);
-    mem.internalDrive().setWriteBack(
-        services.config().devices().floppyWriteBack);
+    configureFloppyWriteBack(
+        mem, services.config().devices().floppyWriteBack);
     if (!audioHost.start())
         std::fprintf(stderr, "audio: no output device (silent)\n");
 
@@ -146,20 +147,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
         h.ejectBay = [&ctx](int id) {
             ctx.machine.requestEjectBay(id);
         };
-        h.hasFloppyDrive = true;
-        h.floppyInserted = [&ctx] {
-            return ctx.machine.floppyInserted();
-        };
-        h.insertFloppy = [&ctx](const std::string& disk) {
-            ctx.machine.requestInsertFloppy(disk);
-            ctx.floppyPath = disk;
-            ctx.floppyOk = true;
-        };
-        h.ejectFloppy = [&ctx] {
-            ctx.machine.requestEjectFloppy();
-            ctx.floppyPath.clear();
-            ctx.floppyOk = false;
-        };
+        bindFloppyBays(h, ctx.machine);
         return h;
     }();
 
@@ -210,7 +198,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
             DiskBaysHost& host = c.diskHost;
             host.romName = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = machine.floppyPath();
+            refreshFloppyBays(host, machine);
             diskBaysWindow(host);
         }
 
@@ -291,7 +279,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
     while (!glfwWindowShouldClose(window)) frame(&ctx);
     machine.stop();
     mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();
+    flushFloppyDrives(mem);
     audioHost.stop();
     ui->close();
     services.shell().noteWindowClosed();

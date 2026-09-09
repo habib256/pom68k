@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "GuiFloppyBays.h"
 #include "GuiShellCommon.h"
 
 namespace pom68k::gui {
@@ -32,16 +33,7 @@ pom68k::DiskBaysHost compactDiskBaysHost(Ctx& ctx) {
         return true;
     };
     host.ejectBay = [&ctx](int id) { ctx.machine.requestEjectBay(id); };
-    host.hasFloppyDrive = true;
-    host.floppyInserted = [&ctx] { return ctx.machine.floppyInserted(); };
-    host.insertFloppy = [&ctx](const std::string& disk) {
-        ctx.machine.requestInsertFloppy(disk);
-        ctx.spec.floppyPath = disk;
-    };
-    host.ejectFloppy = [&ctx] {
-        ctx.machine.requestEjectFloppy();
-        ctx.spec.floppyPath.clear();
-    };
+    bindFloppyBays(host, ctx.machine);
     return host;
 }
 

@@ -175,13 +175,21 @@ public:
     }
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
+    SonyDrive& externalDrive() { return externalDrive_; }
     // Floppy boost gate input (RbvCpu::pollBoostGate) — the Cpu030/V8
     // pattern, CHANGELOG 2026-08-05 (eighth).
-    bool floppyStreaming() const { return drive_.motorOn(); }
+    bool floppyStreaming() const {
+        return drive_.motorOn() || externalDrive_.motorOn();
+    }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
+    bool insertExternalDisk(const std::string& path) {
+        return externalDrive_.insert(path);
+    }
+    void ejectExternalDisk() { externalDrive_.eject(); }
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
+        externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
     // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
@@ -289,7 +297,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via_, pvia_, egret_, egretLle_, adbVia_, rtc_, adb_, dac_,
-           asc_, scsi_, swim_, drive_, scc_);
+           asc_, scsi_, swim_, drive_, externalDrive_, scc_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_, videoConfig_, montype_);
         ar(viaAcc_, tickAcc_, c15Acc_, secAcc_, framePos_, frameCycles_,
@@ -359,6 +367,7 @@ private:
     ScsiDisk scsiDisks_[7];
     Swim1 swim_;
     SonyDrive drive_;
+    SonyDrive externalDrive_;
     Scc8530 scc_;
     RbvCpu* cpu_ = nullptr;
 

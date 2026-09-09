@@ -272,7 +272,11 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // wrapper and expands the compacts from one SCSI target to seven.  The five
 // FDHD profiles need the ISM engine's live FIFO/separator/write state, and a
 // compact snapshot with extra SCSI targets has no truthful v11 layout.
-inline constexpr u32      kVersion   = 12;  // v12: FDHD SWIM1 + compact SCSI bays
+// v13 adds the external Sony mechanism to the seven desktop machine chunks
+// that previously serialized only drive A.  A v12 reader would interpret the
+// longer drive payload as the following SCC/SCSI state, so compatibility must
+// be refused at the header.
+inline constexpr u32      kVersion   = 13;  // v13: external floppy mechanism
 
 struct Header {
     u32 version     = kVersion;

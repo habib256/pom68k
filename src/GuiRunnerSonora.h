@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "GuiFloppyBays.h"
 #include "GuiShellCommon.h"
 
 namespace pom68k::gui {
@@ -94,8 +95,8 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
     services.prepareDriveSounds(mem, audioHost);
     // GUI floppies persist committed writes back to the image file on eject
     // and exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable write-back.
-    mem.internalDrive().setWriteBack(
-        services.config().devices().floppyWriteBack);
+    configureFloppyWriteBack(
+        mem, services.config().devices().floppyWriteBack);
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     MachineT& machine = services.template own<MachineT>(
@@ -140,18 +141,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
             return true;
         };
         h.ejectBay = [&ctx](int id) { ctx.m.requestEjectBay(id); };
-        h.hasFloppyDrive = true;
-        h.floppyInserted = [&ctx] { return ctx.m.floppyInserted(); };
-        h.insertFloppy = [&ctx](const std::string& disk) {
-            ctx.m.requestInsertFloppy(disk);
-            ctx.floppyPath = disk;
-            ctx.floppyOk = true;
-        };
-        h.ejectFloppy = [&ctx] {
-            ctx.m.requestEjectFloppy();
-            ctx.floppyPath.clear();
-            ctx.floppyOk = false;
-        };
+        bindFloppyBays(h, ctx.m);
         return h;
     }();
 
@@ -200,7 +190,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
             DiskBaysHost& host = c.diskHost;
             host.romName = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
+            refreshFloppyBays(host, c.m);
             diskBaysWindow(host);
         }
 
@@ -279,7 +269,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
     while (!glfwWindowShouldClose(window)) frame(&ctx);
     machine.stop();
     mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();
+    flushFloppyDrives(mem);
     audioHost.stop();
     ui->close();
     services.shell().noteWindowClosed();
