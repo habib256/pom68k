@@ -32,6 +32,10 @@ int32_t aspCmd(Wire& w, uint8_t sid, uint16_t seq,
 }
 } // namespace
 
+#include "afp_catalog_checks.h"
+#include "afp_persistence_checks.h"
+#include "afp_live_transfer.h"
+
 int main() {
     std::string dir = "/tmp/pom68k_afp_test_" + std::to_string(::getpid());
     fs::create_directories(dir + "/SubDir");
@@ -273,6 +277,40 @@ int main() {
         seq++;
         CHECK(fs::exists(dir + "/.AppleDouble/a.txt"),
               "AppleDouble sidecar created");
+        const auto committed = afplive::read(dir + "/.AppleDouble/a.txt");
+        fs::create_directory(dir + "/.AppleDouble/.pom68k-afp-sidecar.tmp");
+        const auto beforeFailure = afp.status().bytesWritten;
+        const auto failingTid = g_tid++;
+        req[2] = uint8_t(seq >> 8); req[3] = uint8_t(seq);
+        w.clear(); w.atpReq(47, 201, 130, failingTid, req);
+        wtid = -1;
+        for (const auto& frame : w.out)
+            if (frame.dstNode == 47 && frame.dstSock == 200 && frame.ddpType == 3 &&
+                frame.pay.size() >= 8 && (frame.pay[0] & 0xC0) == 0x40 && frame.pay[4] == 7)
+                wtid = get16(frame.pay.data() + 2);
+        CHECK(wtid >= 0, "failing resource update reaches WriteContinue");
+        if (wtid >= 0) {
+            w.atpRespond(47, 200, 130, uint16_t(wtid), {{0, 0, 0, 0, 'B', 'A', 'D', '!'}});
+            CHECK(w.aspResult(failingTid, 201, d) == -5014,
+                  "asynchronous resource write reports its storage failure");
+        }
+        ++seq;
+        CHECK(afp.status().bytesWritten == beforeFailure,
+              "failed write does not increment successful-byte counters");
+        std::vector<uint8_t> resize{31, 0};
+        put16v(resize, rref); put16v(resize, 0x0400); put32v(resize, 8);
+        CHECK(aspCmd(w, sid, seq++, resize, d) == -5014,
+              "resource resize reports failure to stage metadata");
+        CHECK(afplive::read(dir + "/.AppleDouble/a.txt") == committed,
+              "failed resource update preserves committed sidecar byte for byte");
+        fs::remove(dir + "/.AppleDouble/.pom68k-afp-sidecar.tmp");
+        { std::ofstream torn(dir + "/.AppleDouble/.pom68k-afp-sidecar.tmp"); torn << "torn"; }
+        CHECK(aspCmd(w, sid, seq++, resize, d) == 0, "resource update recovers abandoned staging file");
+        std::vector<uint8_t> read{27, 0}; put16v(read, rref); put32v(read, 0); put32v(read, 8);
+        read.push_back(0); read.push_back(0);
+        CHECK(aspCmd(w, sid, seq++, read, d) == 0 &&
+              d == std::vector<uint8_t>({'R', 'S', 'R', 'C', 0, 0, 0, 0}),
+              "retry preserves original resource bytes and extends with zeroes");
     }
 
     // ── FPCreateDir ──
@@ -303,6 +341,19 @@ int main() {
         CHECK(afp.status().sessions == 1, "session survives (client silence < 2 min)");
     }
 
+    catalogMoveChecks(w, sid, seq, dir);
+    catalogPersistenceChecks(dir);
+    const fs::path oracleDir = fs::path(dir) / "TransferOracle";
+    CHECK(afplive::seed(oracleDir) && afplive::exactCopy(oracleDir / "BONJOUR.txt"),
+          "live-transfer oracle accepts its independently seeded two-fork fixture");
+    auto damaged = afplive::data; damaged[12345] ^= 0x80;
+    CHECK(afplive::write(oracleDir / "BONJOUR.txt", damaged) &&
+          !afplive::exactCopy(oracleDir / "BONJOUR.txt"), "oracle rejects one changed data byte");
+    CHECK(afplive::seed(oracleDir), "restore owned oracle fixture");
+    damaged = afplive::read(oracleDir / ".AppleDouble" / "BONJOUR.txt");
+    if (!damaged.empty()) damaged.back() ^= 1;
+    CHECK(afplive::write(oracleDir / ".AppleDouble" / "BONJOUR.txt", damaged) &&
+          !afplive::exactCopy(oracleDir / "BONJOUR.txt"), "oracle rejects one changed resource byte");
     fs::remove_all(dir);
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
     std::printf("afp_server_test OK\n");

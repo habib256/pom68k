@@ -10,6 +10,7 @@
 // volume.c (volume params), Inside AppleTalk ch.11/13.
 
 #include "AfpServer.h"
+#include "AfpAtomicFile.h"
 
 #include <algorithm>
 #include <cctype>
@@ -35,7 +36,7 @@ constexpr uint8_t kAspClose = 1, kAspCmd = 2, kAspStat = 3, kAspOpen = 4,
                   kAspTickle = 5, kAspWrite = 6, kAspWrtCont = 7;
 
 // AFP results (afp.h)
-constexpr int32_t kErrAccess = -5000, kErrBitmap = -5004, kErrDirNotEmpty = -5007,
+constexpr int32_t kErrAccess = -5000, kErrBitmap = -5004,
                   kErrEof = -5009, kErrNoItem = -5012, kErrMisc = -5014,
                   kErrExist = -5017, kErrNoObj = -5018, kErrParam = -5019,
                   kErrNoDir = -5029, kErrNoOp = -5024, kErrBadType = -5025;
@@ -130,9 +131,11 @@ bool adRead(const std::string& host, AdMeta& m) {
     return true;
 }
 
-void adWrite(const std::string& host, const AdMeta& m) {
+bool adWrite(const std::string& host, const AdMeta& m) {
     std::error_code ec;
-    fs::create_directories(fs::path(adPath(host)).parent_path(), ec);
+    const auto destination = fs::path(adPath(host));
+    const bool created = fs::create_directories(destination.parent_path(), ec);
+    if (ec || (created && !afpSyncDirectory(fs::path(host).parent_path()))) return false;
     std::vector<uint8_t> b;
     put32(b, 0x00051607u);                       // magic
     put32(b, 0x00020000u);                       // version 2
@@ -145,8 +148,7 @@ void adWrite(const std::string& host, const AdMeta& m) {
     b.insert(b.end(), m.finder, m.finder + 32);
     put32(b, m.cdate); put32(b, m.cdate); put32(b, m.bdate); put32(b, 0);
     b.insert(b.end(), m.rsrc.begin(), m.rsrc.end());
-    std::ofstream out(adPath(host), std::ios::binary | std::ios::trunc);
-    out.write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()));
+    return afpAtomicWrite(destination, destination.parent_path() / ".pom68k-afp-sidecar.tmp", b);
 }
 
 const char* afpCmdName(uint8_t c) {
@@ -187,6 +189,10 @@ void AfpServer::configure(const std::string& serverName,
     idToPath_ = { { kRootId, "" } };
     pathToId_ = { { "", kRootId } };
     nextId_ = 16;
+    idToHostIdentity_.clear();
+    stat_.catalogError.clear();
+    try { loadCatalog(); }
+    catch (const CatalogError& e) { stat_.catalogError = e.what(); }
     buildStatusBlock();
     configured_ = true;
     if (was) setEnabled(true);
@@ -237,9 +243,12 @@ AfpServer::Status AfpServer::status() const {
 #endif
         ;
     stat_.sessions = int(sessions_.size());
+    stat_.openForks = 0;
     stat_.volMounted = false;
-    for (const auto& [sid, s] : sessions_)
+    for (const auto& [sid, s] : sessions_) {
+        stat_.openForks += int(s.forks.size());
         if (s.volOpen) stat_.volMounted = true;
+    }
     return stat_;
 }
 
@@ -266,32 +275,6 @@ void AfpServer::buildStatusBlock() {
     b[2] = versOff >> 8; b[3] = uint8_t(versOff);
     b[4] = uamOff >> 8;  b[5] = uint8_t(uamOff);
     // icon offset (6-7) = none, flags (8-9) = 0
-}
-
-// ── catalog (CNIDs are per-run, root = 2) ───────────────────────────────
-
-std::string AfpServer::pathForId(uint32_t id) const {
-    auto it = idToPath_.find(id);
-    return it == idToPath_.end() ? std::string("\x01") : it->second;  // \x01 = invalid marker
-}
-
-uint32_t AfpServer::idForPath(const std::string& rel) {
-    auto it = pathToId_.find(rel);
-    if (it != pathToId_.end()) return it->second;
-    uint32_t id = nextId_++;
-    pathToId_[rel] = id;
-    idToPath_[id] = rel;
-    return id;
-}
-
-void AfpServer::dropId(const std::string& rel) {
-    std::string prefix = rel + "/";
-    for (auto it = pathToId_.begin(); it != pathToId_.end();) {
-        if (it->first == rel || it->first.rfind(prefix, 0) == 0) {
-            idToPath_.erase(it->second);
-            it = pathToId_.erase(it);
-        } else ++it;
-    }
 }
 
 // AFP pathname: type byte (1 short / 2 long) + pascal string where NUL
@@ -420,11 +403,19 @@ void AfpServer::sssHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
         return;
     case kAspCmd:
         s.seq = seq;
-        dispatchAfp(s, t, t->req.data() + 4, t->req.size() - 4);
+        if (!stat_.catalogError.empty()) { aspReply(t, -5014, {}); return; }
+        try { dispatchAfp(s, t, t->req.data() + 4, t->req.size() - 4); }
+        catch (const CatalogError& e) {
+            stat_.catalogError = e.what(); aspReply(t, -5014, {});
+        }
         return;
     case kAspWrite:
         s.seq = seq;
-        handleWrite(s, sid, seq, t, t->req.data() + 4, t->req.size() - 4);
+        if (!stat_.catalogError.empty()) { aspReply(t, -5014, {}); return; }
+        try { handleWrite(s, sid, seq, t, t->req.data() + 4, t->req.size() - 4); }
+        catch (const CatalogError& e) {
+            stat_.catalogError = e.what(); aspReply(t, -5014, {});
+        }
         return;
     default:
         return;
@@ -781,25 +772,8 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         std::string rel;
         int e = resolvePath(rd32(c + 4), c + 8, n - 8, used, rel);
         if (e) { err(e); return; }
-        if (rel.empty()) { err(kErrAccess); return; }
-        std::string host = dir_ + "/" + rel;
-        std::error_code ec;
-        if (fs::is_directory(host, ec)) {
-            // Emptiness FIRST: dirOffspring already ignores dotfiles, so the
-            // sidecar dir never affected the count — but wiping it before the
-            // test destroyed the resource fork, Finder info and dates of every
-            // file still inside and THEN reported kFPDirNotEmpty. The user saw
-            // "folder isn't empty" and silently lost the forks within.
-            if (dirOffspring(host)) { err(kErrDirNotEmpty); return; }
-            // Only the AppleDouble sidecar dir may remain inside.
-            fs::remove_all(host + "/.AppleDouble", ec);
-            fs::remove(host, ec);
-            if (ec) { err(kErrAccess); return; }
-        } else if (fs::exists(host, ec)) {
-            fs::remove(host, ec);
-            fs::remove(adPath(host), ec);
-        } else { err(kErrNoObj); return; }
-        dropId(rel);
+        const int deleted = deleteHostPath(rel);
+        if (deleted) { err(deleted); return; }
         ok();
         return;
     }
@@ -818,14 +792,8 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         size_t ncut = newRel.find_last_of('/');
         std::string leaf = ncut == std::string::npos ? newRel : newRel.substr(ncut + 1);
         std::string dst = parent.empty() ? leaf : parent + "/" + leaf;
-        std::error_code ec;
-        uint32_t keep = idForPath(rel);
-        fs::rename(dir_ + "/" + rel, dir_ + "/" + dst, ec);
-        if (ec) { err(kErrNoObj); return; }
-        fs::rename(adPath(dir_ + "/" + rel), adPath(dir_ + "/" + dst), ec);
-        dropId(rel);
-        pathToId_[dst] = keep;
-        idToPath_[keep] = dst;
+        const int moved = moveHostPath(rel, dst);
+        if (moved) { err(moved); return; }
         ok();
         return;
     }
@@ -851,32 +819,8 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
             leaf = scut == std::string::npos ? src : src.substr(scut + 1);
         }
         std::string dst = dstDir.empty() ? leaf : dstDir + "/" + leaf;
-        std::error_code ec;
-        uint32_t keep = idForPath(src);
-        fs::rename(dir_ + "/" + src, dir_ + "/" + dst, ec);
-        if (ec) { err(kErrNoObj); return; }
-        // Cross-directory move: the destination .AppleDouble/ usually does not
-        // exist (only adWrite creates one), so a bare rename fails with ENOENT
-        // and — with ec discarded — silently orphaned the resource fork and
-        // Finder info, leaving the app typeless and unlaunchable.
-        {
-            const std::string sAd = adPath(dir_ + "/" + src);
-            const std::string dAd = adPath(dir_ + "/" + dst);
-            std::error_code ec2;
-            if (fs::exists(sAd, ec2)) {
-                fs::create_directories(fs::path(dAd).parent_path(), ec2);
-                ec2.clear();
-                fs::rename(sAd, dAd, ec2);
-                if (ec2) {                       // e.g. across filesystems
-                    ec2.clear();
-                    fs::copy_file(sAd, dAd, fs::copy_options::overwrite_existing, ec2);
-                    if (!ec2) fs::remove(sAd, ec2);
-                }
-            }
-        }
-        dropId(src);
-        pathToId_[dst] = keep;
-        idToPath_[keep] = dst;
+        const int moved = moveHostPath(src, dst);
+        if (moved) { err(moved); return; }
         ok();
         return;
     }
@@ -913,7 +857,7 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
             default: off = n; break;                     // unsupported: stop
             }
         }
-        if (dirty && !ni.rel.empty()) adWrite(ni.host, m);
+        if (dirty && !ni.rel.empty() && !adWrite(ni.host, m)) { err(kErrMisc); return; }
         ok();
         return;
     }
@@ -968,8 +912,12 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         uint32_t len = rd32(c + 6);
         auto fit = s.forks.find(ref);
         if (fit == s.forks.end()) { err(kErrParam); return; }
-        std::string host = dir_ + "/" + pathForId(fit->second.id);
+        if (!fit->second.writable) { err(kErrAccess); return; }
+        const auto relative = pathForId(fit->second.id);
+        if (relative == "\x01") { err(kErrNoObj); return; }
+        std::string host = dir_ + "/" + relative;
         if (bm & (1u << 9)) {                            // data fork length
+            if (len > kMaxDataFork) { err(kErrParam); return; }
             std::error_code ec;
             fs::resize_file(host, len, ec);
             if (ec) { err(kErrMisc); return; }
@@ -978,7 +926,7 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
             AdMeta m;
             adRead(host, m);
             m.rsrc.resize(len, 0);
-            adWrite(host, m);
+            if (!adWrite(host, m)) { err(kErrMisc); return; }
         }
         ok();
         return;
@@ -1081,11 +1029,20 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
     uint16_t avail = uint16_t(std::min<uint32_t>(req, 8 * 578));
     std::vector<uint8_t> wc = { kAspWrtCont, sid, uint8_t(seq >> 8), uint8_t(seq),
                                 uint8_t(avail >> 8), uint8_t(avail) };
-    std::string host = dir_ + "/" + pathForId(fork.id);
+    if (pathForId(fork.id) == "\x01") { aspReply(t, kErrNoObj, {}); return; }
     st_.atpRequest(s.wss, kSss, std::move(wc), 8, true,
-        [this, t, fork, host, offW, fromEof](bool okFlag,
+        [this, t, fork, offW, fromEof](bool okFlag,
                                              std::vector<std::vector<uint8_t>>& pkts) {
             if (!okFlag) { aspReply(t, kErrMisc, {}); return; }
+            // WriteContinue is asynchronous: revalidate after receiving its
+            // bytes, not only before sending the request to the guest.
+            std::string relative;
+            try { relative = pathForId(fork.id); }
+            catch (const CatalogError& e) {
+                stat_.catalogError = e.what(); aspReply(t, kErrMisc, {}); return;
+            }
+            if (relative == "\x01") { aspReply(t, kErrNoObj, {}); return; }
+            const auto host = dir_ + "/" + relative;
             std::vector<uint8_t> data;
             for (auto& p : pkts)
                 if (p.size() > 4) data.insert(data.end(), p.begin() + 4, p.end());
@@ -1107,6 +1064,7 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
                 f.seekp(std::streamoff(at));
                 f.write(reinterpret_cast<const char*>(data.data()),
                         std::streamsize(data.size()));
+                f.close();                   // delayed flush errors are AFP errors too
                 if (!f) { aspReply(t, kErrMisc, {}); return; }
             } else {
                 AdMeta m;
@@ -1119,7 +1077,7 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
                 if (m.rsrc.size() < size_t(at) + data.size())
                     m.rsrc.resize(size_t(at) + data.size(), 0);
                 std::copy(data.begin(), data.end(), m.rsrc.begin() + long(at));
-                adWrite(host, m);
+                if (!adWrite(host, m)) { aspReply(t, kErrMisc, {}); return; }
             }
             stat_.bytesWritten += long(data.size());
             std::vector<uint8_t> d;

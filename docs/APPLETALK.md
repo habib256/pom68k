@@ -117,7 +117,7 @@ disk assets and soft-skip without them.
 | `daynaport_test` | the SCSI/Link command set (READ/WRITE frame formats, the 6-byte header + more-data flag, SET MAC, the 37-byte INQUIRY) and the round trip guest → Ethernet frame → `EtherLink` → NAT → back, plus proxy-ARP refusing the guest's own address (§6.4bis) |
 | `llap_two_system_etalon` | two Macs acquire node IDs over real ENQ traffic |
 | `q605_ot_bind_etalon` | Open Transport's `.MPP` binds against the in-process stack (§2.5) |
-| `q605_afp_live_etalon` | real Mac OS 8.1: Chooser→NBP→guest login→asserted `volMounted`→Cmd-N→new host directory, with AFP command progress |
+| `q605_afp_live_etalon` | real Mac OS 8.1: Chooser→NBP→guest login→asserted `volMounted`→Cmd-N→new host directory; Finder Cmd-D copies 32,791 data + 8,317 resource bytes, exact contents and type/creator checked independently on the host; closes forks, removes volume, closes session, reconnects through Chooser and copies again, with AFP read/write counters checked on each pass |
 
 ---
 
@@ -494,9 +494,76 @@ Authent"** and **"Cleartxt Passwrd"** (`src/AfpServer.cpp:258-264`). It
 covers what System 6-8 Finders actually issue for browsing and copying
 both ways; resource forks and Finder info live in netatalk-style
 **`.AppleDouble/<name>` sidecars (AppleDouble v2)**, so a folder
-previously served by the external `afpd` keeps its metadata. CNIDs are
-per-run with **root = 2** (`kRootId`, `src/AfpServer.cpp:43`), i.e. stable
-within a session, not across restarts.
+previously served by the external `afpd` keeps its metadata. CNIDs use
+**root = 2** (`kRootId`, `src/AfpServer.cpp:43`). The catalogue is stored in
+`.pom68k-afp-catalog` inside the share; it includes the allocation high-water
+mark, so an AFP-deleted identity is not reused after restart. A staging file
+is flushed and atomically replaced, with directory sync on POSIX. An
+interrupted staging write leaves the committed snapshot authoritative.
+The `.lock` companion excludes a second writer; checksum/format failures
+and persistence errors fail commands closed and appear in `Status::catalogError`.
+
+Catalogue and sidecar writes share `src/AfpAtomicFile.cpp`: write a reserved
+staging file, flush/sync it, atomically replace the destination, then sync the
+directory on POSIX. Resource writes and metadata/EOF updates propagate storage
+failure as AFP errors instead of acknowledging success. The regression blocks
+sidecar staging, checks the previous bytes and successful-byte counter remain
+unchanged, then retries over an abandoned partial staging file and reads back
+the original bytes plus the requested zero extension. Data writes check errors
+from closing/flushing the host stream before replying as well.
+
+The identity mapping is owned by `src/AfpCatalog.cpp`. AFP renames and
+moves preserve the IDs of the whole directory subtree, including the IDs
+held by already-open forks; a similarly prefixed sibling is not part of
+that subtree. Existing destination files are rejected rather than replaced
+by the host's POSIX rename semantics. `tests/afp_catalog_checks.h`, exercised
+by `afp_server_test`, checks descendant IDs, reads an original open fork
+after both operations, and checks both files' bytes and IDs after a rejected
+collision. `tests/afp_persistence_checks.h` recreates the server, discovers
+objects in reversed order, deletes/recreates a pathname, injects a truncated
+staging file, and checks exclusive writer and corrupt-catalogue refusal.
+`src/AfpHostMutation.cpp` writes a pending move into the catalogue before the
+host rename. Startup either cancels an unstarted move or completes its
+AppleDouble move and preserves every descendant CNID. Parent directories are
+synced on POSIX before the final catalogue commit clears the journal.
+The regression blocks the metadata directory to force a real post-rename
+failure, then replays the before-data and after-metadata crash states as well.
+Ambiguous source/destination states fail closed; recovery never guesses which
+object owns an identifier. Deletion uses the same journal: a post-data-removal
+metadata failure is reported, then startup finishes cleanup and retires the
+old CNID before the pathname can be recreated over AFP. Data namespace changes
+are synced before metadata changes on POSIX. Directory emptiness checks include
+hidden host files, so a refused deletion cannot erase their metadata first.
+Older snapshots remain readable; writes use `POMCNID4`, with host-object
+fingerprints and the pending operation covered by the checksum. Fingerprints
+combine the filesystem object number and birth time, not size/mtime: edits in
+place preserve identity, replacement objects receive new IDs, and an old open
+fork cannot access the replacement. A unique displaced identity can be recovered
+when a host-renamed path is rediscovered, including its descendants; this is
+not a background filesystem watcher. Pending-operation replay checks the object
+fingerprint before acting and refuses a substituted object.
+
+macOS uses device/inode/birth time; Linux requires inode and birth time returned
+by `statx` (unsupported filesystems fail closed, with a visible diagnostic);
+Windows uses volume/file index and creation time. Identity guards are checked
+again after asynchronous WriteContinue, before writing. The tests cover offline
+replacement, in-place editing, rediscovery after a host directory rename, and
+replacement of a pending operation's source. External tools still own their
+AppleDouble changes; host file moves do not automatically move sidecars.
+Guest recovery from an abrupt server outage is not covered by these tests.
+
+The real-guest gate now duplicates a seeded file with the Finder. Its
+independent host oracle (`tests/afp_live_transfer.h`) verifies every byte of
+both destination forks, the type/creator metadata, and the unchanged source.
+AFP read and write counters each advance by 41,108 bytes in the reference run;
+enumeration or a server-side filesystem copy cannot satisfy those assertions.
+The oracle itself is tested against one-byte corruption in each fork. This
+proves a transfer through the guest. The gate then uses Finder Put Away to
+remove the volume, asserts zero mounted volumes/sessions/open forks, reconnects
+through the Chooser, and creates a second byte-exact copy. Existing copies
+cannot satisfy the second pass; both passes must transfer new bytes. Both
+copies are checked again at the end. This covers a clean guest reconnect,
+not recovery from a server crash during a transfer.
 
 Historical trap, external path: an **empty volume list** in the Chooser
 was AFP-level authorization — `FPGetSrvrParms` returned zero volumes
@@ -840,7 +907,8 @@ era software uses.
 - **ADSP** (§4.2).
 - The **Desktop database** — `OpenDT` and friends answer "no item".
 - **AFP ≥ 3.0 / UTF-8** names; UAMs beyond guest/cleartext (§4.3).
-- **CNID persistence** — per-run, root = 2; stable within a session only.
+- **Background host filesystem watching** (§4.3); identity checks and rename
+  reconciliation occur on access/rediscovery, not through host notifications.
 - PAP status-polling subtleties; MacIP outbound ICMP / raw sockets.
 
 Backlog: `TODO.md` §6. Migration notes and the HLE/LLE gap list:

@@ -8,9 +8,10 @@
 //
 //   boot Mac OS 8.1 → Apple menu → Chooser → AppleShare → the stack's own
 //   NBP answer ("POM68K") → guest login → mount the shared volume → open
-//   it on the desktop → Cmd-N — and the proof is a DIRECTORY APPEARING IN
-//   THE HOST FILESYSTEM, created by the guest through LLAP/DDP/ATP/ASP/AFP
-//   over the emulated SCC. `afp_server_test` proves the protocol from the
+//   it on the desktop → Cmd-N → select BONJOUR.txt → Cmd-D. The proof is
+//   a guest-created directory AND a byte-exact copy of both file forks,
+//   transferred through LLAP/DDP/ATP/ASP/AFP over the emulated SCC.
+//   `afp_server_test` proves the protocol from the
 //   host side; `q605_ot_bind_etalon` proves the guest binds .MPP; this gate
 //   is the missing middle — the whole wire under a user's own gestures.
 //
@@ -42,6 +43,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+#include "afp_live_transfer.h"
 
 namespace {
 
@@ -164,12 +166,9 @@ int main() {
         std::fprintf(stderr, "FAIL: cannot create %s\n", shareDir.c_str());
         return 1;
     }
-    // The host→guest half of the exchange: a file the server will list to
-    // the guest the moment the volume mounts (the mount itself reads it
-    // over AFP; its byte count travels in the enumerate reply).
-    {
-        std::ofstream hello(shareDir / "BONJOUR.txt");
-        hello << "de l'hote, par AFP\n";
+    if (!afplive::seed(shareDir)) {
+        std::fprintf(stderr, "FAIL: cannot seed two-fork transfer fixture\n");
+        return 1;
     }
 
     std::ifstream in(romPath, std::ios::binary);
@@ -329,171 +328,251 @@ int main() {
     std::fflush(stdout);
     if (stopPhase <= 0) return 0;
 
-    // ── Phase 1: Apple menu → Chooser ────────────────────────────────────
-    // Positions calibrated on this image's 8.1 (see header). The Apple menu
-    // drops from (10,8); the Chooser item is clicked by its row. The drop
-    // is VERIFIED, not assumed: the open menu is a white panel with black
-    // item text where the wallpaper has neither, and a click that lands
-    // during a late Finder redraw simply gets retried.
-    auto menuDropped = [&]() {
-        Screen s = decodeScreen(mem);
-        if (s.pixels.empty()) return false;
-        long white = 0, dark = 0, total = 0;
-        for (int y = 24; y < 130 && y < s.height; y++)
-            for (int x = 4; x < 130 && x < s.width; x++) {
-                uint32_t p = s.pixels[size_t(y) * s.width + x];
-                double lum = ((p >> 16) * 54 + ((p >> 8) & 0xFF) * 183 +
-                              (p & 0xFF) * 19) / 256.0;
-                // Platinum menu paper is (231,231,231) — a 0xE8 cut missed
-                // every panel pixel by ONE luminance point and read an open
-                // menu as a desktop (2026-09-01). The wallpaper's brightest
-                // sky is ~210, so 0xE0 separates cleanly.
-                if (lum >= 0xE0) white++;
-                else if (lum < 0x30) dark++;
-                total++;
+    std::vector<fs::path> verifiedCopies;
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        const auto cycleStart = hub.snapshot();
+        std::printf("connection cycle %d\n", cycle + 1);
+        // ── Phase 1: Apple menu → Chooser ────────────────────────────────────
+        // Positions calibrated on this image's 8.1 (see header). The Apple menu
+        // drops from (10,8); the Chooser item is clicked by its row. The drop
+        // is VERIFIED, not assumed: the open menu is a white panel with black
+        // item text where the wallpaper has neither, and a click that lands
+        // during a late Finder redraw simply gets retried.
+        auto menuDropped = [&]() {
+            Screen s = decodeScreen(mem);
+            if (s.pixels.empty()) return false;
+            long white = 0, dark = 0, total = 0;
+            for (int y = 24; y < 130 && y < s.height; y++)
+                for (int x = 4; x < 130 && x < s.width; x++) {
+                    uint32_t p = s.pixels[size_t(y) * s.width + x];
+                    double lum = ((p >> 16) * 54 + ((p >> 8) & 0xFF) * 183 +
+                                  (p & 0xFF) * 19) / 256.0;
+                    // Platinum menu paper is (231,231,231) — a 0xE8 cut missed
+                    // every panel pixel by ONE luminance point and read an open
+                    // menu as a desktop (2026-09-01). The wallpaper's brightest
+                    // sky is ~210, so 0xE0 separates cleanly.
+                    if (lum >= 0xE0) white++;
+                    else if (lum < 0x30) dark++;
+                    total++;
+                }
+            std::fprintf(stderr, "menu probe: white %ld dark %ld of %ld\n",
+                         white, dark, total);
+            return total > 0 && white > total * 55 / 100 && dark > total / 100;
+        };
+        bool appleOpen = false;
+        for (int attempt = 0; attempt < 6 && !appleOpen; attempt++) {
+            if (!click(10, 8)) { std::fprintf(stderr, "FAIL: apple menu\n"); return 1; }
+            frames(60);
+            appleOpen = menuDropped();
+            if (!appleOpen) {
+                char name[64];
+                std::snprintf(name, sizeof name, "afp_live_1_attempt%d.ppm", attempt);
+                snap(name);
+                frames(540);
             }
-        std::fprintf(stderr, "menu probe: white %ld dark %ld of %ld\n",
-                     white, dark, total);
-        return total > 0 && white > total * 55 / 100 && dark > total / 100;
-    };
-    bool appleOpen = false;
-    for (int attempt = 0; attempt < 6 && !appleOpen; attempt++) {
-        if (!click(10, 8)) { std::fprintf(stderr, "FAIL: apple menu\n"); return 1; }
-        frames(60);
-        appleOpen = menuDropped();
+        }
+        snap("afp_live_1_applemenu.ppm");
         if (!appleOpen) {
-            char name[64];
-            std::snprintf(name, sizeof name, "afp_live_1_attempt%d.ppm", attempt);
-            snap(name);
-            frames(540);
+            std::fprintf(stderr, "FAIL: the Apple menu never dropped\n");
+            return 1;
+        }
+        if (stopPhase <= 1) return 0;
+        // Chooser row (calibrated): itemY below. A miss leaves the menu open,
+        // which the phase-2 dump makes obvious.
+        const int chooserY = getenv("POM68K_AFP_CHOOSER_Y")
+                           ? atoi(getenv("POM68K_AFP_CHOOSER_Y")) : 139;
+        if (!click(60, chooserY)) { std::fprintf(stderr, "FAIL: chooser item\n"); return 1; }
+        frames(600);                              // the DA loads from disk
+        snap("afp_live_2_chooser.ppm");
+        std::printf("phase 2: Chooser open\n");
+        std::fflush(stdout);
+        if (stopPhase <= 2) return 0;
+
+        // ── Phase 3: AppleShare device → NBP lookup → server list ────────────
+        const int asX = getenv("POM68K_AFP_AS_X") ? atoi(getenv("POM68K_AFP_AS_X")) : 88;
+        const int asY = getenv("POM68K_AFP_AS_Y") ? atoi(getenv("POM68K_AFP_AS_Y")) : 84;
+        if (!click(asX, asY)) { std::fprintf(stderr, "FAIL: AppleShare icon\n"); return 1; }
+        frames(900);                              // NBP lookup + list fill
+        snap("afp_live_3_servers.ppm");
+        const long nbpLookups = hub.snapshot().net.nbpLookups - cycleStart.net.nbpLookups;
+        std::printf("phase 3: server list (NBP lookups=%ld)\n", nbpLookups);
+        std::fflush(stdout);
+        if (nbpLookups < 1) {
+            std::fprintf(stderr, "FAIL: AppleShare did not issue an NBP lookup\n");
+            return 1;
+        }
+        if (stopPhase <= 3) return 0;
+
+        // ── Phase 4: pick "POM68K", OK → login dialog ────────────────────────
+        const int svX = getenv("POM68K_AFP_SV_X") ? atoi(getenv("POM68K_AFP_SV_X")) : 300;
+        const int svY = getenv("POM68K_AFP_SV_Y") ? atoi(getenv("POM68K_AFP_SV_Y")) : 88;
+        if (!click(svX, svY, 2)) { std::fprintf(stderr, "FAIL: server row\n"); return 1; }
+        frames(600);
+        snap("afp_live_4_login.ppm");
+        std::printf("phase 4: login dialog\n");
+        std::fflush(stdout);
+        if (stopPhase <= 4) return 0;
+
+        // ── Phase 5: Guest radio, OK → volume list ───────────────────────────
+        const int guX = getenv("POM68K_AFP_GUEST_X") ? atoi(getenv("POM68K_AFP_GUEST_X")) : 146;
+        const int guY = getenv("POM68K_AFP_GUEST_Y") ? atoi(getenv("POM68K_AFP_GUEST_Y")) : 153;
+        if (!click(guX, guY)) { std::fprintf(stderr, "FAIL: guest radio\n"); return 1; }
+        frames(60);
+        key(0x24, 8, 90);                         // Return = Connect/OK
+        frames(600);
+        snap("afp_live_5_volumes.ppm");
+        const int afpSessions = hub.snapshot().afp.sessions;
+        std::printf("phase 5: volume list (AFP sessions=%d)\n", afpSessions);
+        std::fflush(stdout);
+        if (afpSessions < 1) {
+            std::fprintf(stderr, "FAIL: guest login did not open an AFP session\n");
+            return 1;
+        }
+        if (stopPhase <= 5) return 0;
+
+        // ── Phase 6: mount, close the Chooser ────────────────────────────────
+        key(0x24, 8, 90);                         // Return = OK on "Echange"
+        frames(600);
+        // Close box of the Chooser window (calibrated).
+        const int cbX = getenv("POM68K_AFP_CLOSE_X") ? atoi(getenv("POM68K_AFP_CLOSE_X")) : 34;
+        const int cbY = getenv("POM68K_AFP_CLOSE_Y") ? atoi(getenv("POM68K_AFP_CLOSE_Y")) : 40;
+        if (!click(cbX, cbY)) { std::fprintf(stderr, "FAIL: chooser close\n"); return 1; }
+        frames(300);
+        Screen desk1 = snap("afp_live_6_mounted.ppm");
+        const auto mounted = hub.snapshot();
+        std::printf("phase 6: chooser closed, AFP sessions=%d mounted=%d commands=%ld\n",
+                    mounted.afp.sessions, mounted.afp.volMounted,
+                    mounted.afp.cmdCount);
+        std::fflush(stdout);
+        if (!mounted.afp.volMounted) {
+            std::fprintf(stderr, "FAIL: the guest did not open the AFP volume\n");
+            return 1;
+        }
+        if (stopPhase <= 6) return 0;
+
+        // ── Phase 7: open the mounted volume — it is already SELECTED ────────
+        // The Finder selects a freshly mounted volume (desk1 shows "Echange"
+        // inverted), so Cmd-O opens it without any pixel hunt. Two icon-diff
+        // schemes were tried first and both mis-clicked (densest cell:
+        // "Monitors & Sound", displaced; topmost cluster: the boot volume's
+        // own redraw) — the guest's selection is the one pointer the Finder
+        // maintains for us. desk0/desk1 stay captured for the dumps.
+        (void)desk0; (void)desk1;
+        mem.keyEvent(0x37, true);                 // Cmd
+        frames(12);
+        key(0x1F, 75, 12);                        // O (held past Slow Keys)
+        mem.keyEvent(0x37, false);
+        frames(900);                              // enumerate over AFP, draw window
+        snap("afp_live_7_window.ppm");
+        std::printf("phase 7: Cmd-O on the selected volume\n");
+        std::fflush(stdout);
+        if (stopPhase <= 7) return 0;
+
+        // ── Phase 8: Cmd-N in the volume window → a directory on the HOST ────
+        std::set<std::string> before;
+        for (auto& e : fs::directory_iterator(shareDir))
+            before.insert(e.path().filename().string());
+        mem.keyEvent(0x37, true);                 // Cmd
+        frames(12);
+        key(0x2D, 75, 12);                        // N (held past Slow Keys)
+        mem.keyEvent(0x37, false);
+        std::string created;
+        for (int poll = 0; poll < 120 && created.empty(); poll++) {
+            frames(30);
+            for (auto& e : fs::directory_iterator(shareDir))
+                if (!before.count(e.path().filename().string()) &&
+                    fs::is_directory(e.path()))
+                    created = e.path().filename().string();
+        }
+        snap("afp_live_8_created.ppm");
+        auto st = hub.snapshot();
+        std::printf("phase 8: host saw %s; AFP sessions=%d, mounted=%d, "
+                    "commands=%ld, DDP in=%ld\n",
+                    created.empty() ? "NOTHING" : ("\"" + created + "\"").c_str(),
+                    st.afp.sessions, st.afp.volMounted, st.afp.cmdCount,
+                    st.net.ddpIn);
+
+        const bool ok = !cpu.isHalted() && !created.empty() &&
+                        st.afp.sessions >= 1 && st.afp.volMounted &&
+                        st.afp.cmdCount > mounted.afp.cmdCount;
+        if (!ok) { std::fprintf(stderr, "FAIL: guest folder creation\n"); return 1; }
+        if (stopPhase <= 8) return 0;
+
+        // ── Phase 9: Finder duplicate → actual read/write of BOTH forks ──────
+        // The fixture is the first icon in this calibrated Finder window. Return
+        // would START editing the new folder name, not end it; click the file.
+        frames(180);
+        if (!click(46, 88)) { std::fprintf(stderr, "FAIL: select transfer fixture\n"); return 1; }
+        frames(120);
+        snap("afp_live_9_selected.ppm");
+        std::set<std::string> existingCopies;
+        for (const auto& entry : fs::directory_iterator(shareDir))
+            existingCopies.insert(entry.path().filename().string());
+        const auto transferStart = hub.snapshot().afp;
+        mem.keyEvent(0x37, true); frames(12);
+        key(0x02, 75, 12);                       // Cmd-D: Duplicate
+        mem.keyEvent(0x37, false);
+        std::string copied;
+        for (int poll = 0; poll < 600 && copied.empty() && !cpu.isHalted(); ++poll) {
+            frames(30);
+            for (const auto& entry : fs::directory_iterator(shareDir)) {
+                const auto name = entry.path().filename().string();
+                if (!name.empty() && name.front() != '.' && !existingCopies.count(name) &&
+                    entry.is_regular_file() && afplive::exactCopy(entry.path()) &&
+                    hub.snapshot().afp.openForks == 0) copied = name;
+            }
+        }
+        frames(120);                            // receive final replies and redraw
+        snap("afp_live_9_copied.ppm");
+        st = hub.snapshot();
+        const long readBytes = st.afp.bytesRead - transferStart.bytesRead;
+        const long writtenBytes = st.afp.bytesWritten - transferStart.bytesWritten;
+        const long expected = long(afplive::data.size() + afplive::resource.size());
+        const bool transferred = !cpu.isHalted() && !copied.empty() &&
+            readBytes >= expected && writtenBytes >= expected && st.afp.volMounted &&
+            st.afp.openForks == 0 &&
+            afplive::exactCopy(shareDir / "BONJOUR.txt");
+        std::printf("phase 9: duplicate=\"%s\" data=%zu resource=%zu read=%ld written=%ld\n",
+            copied.c_str(), afplive::data.size(), afplive::resource.size(), readBytes, writtenBytes);
+        if (!transferred) {
+            std::fprintf(stderr, "FAILED — guest two-fork transfer did not match the host oracle\n");
+            return 1;
+        }
+        verifiedCopies.push_back(shareDir / copied);
+        if (stopPhase <= 9) return 0;
+        if (cycle == 0) {
+            // Put Away the mounted volume through the guest; do not tear down
+            // server sessions from the host. The second pass must log in afresh.
+            frames(600);
+            mem.keyEvent(0x37, true); frames(12);
+            key(0x0D, 75, 12);                  // Cmd-W: close share window
+            mem.keyEvent(0x37, false); frames(180);
+            if (!click(590, 116)) { std::fprintf(stderr, "FAIL: select mounted volume\n"); return 1; }
+            mem.keyEvent(0x37, true); frames(12);
+            key(0x10, 75, 12);                  // Cmd-Y: Put Away Echange
+            mem.keyEvent(0x37, false);
+            for (int poll = 0; poll < 120; ++poll) {
+                frames(30);
+                const auto state = hub.snapshot().afp;
+                if (!state.volMounted && state.sessions == 0) break;
+            }
+            const auto disconnected = hub.snapshot().afp;
+            snap("afp_live_10_disconnected.ppm");
+            std::printf("phase 10: mounted=%d sessions=%d forks=%d\n",
+                disconnected.volMounted, disconnected.sessions, disconnected.openForks);
+            std::fflush(stdout);
+            if (disconnected.volMounted || disconnected.sessions || disconnected.openForks ||
+                !afplive::exactCopy(shareDir / copied)) {
+                std::fprintf(stderr, "FAIL: guest disconnect or retained transfer contents\n"); return 1;
+            }
+            if (stopPhase <= 10) return 0;
+            frames(300);
         }
     }
-    snap("afp_live_1_applemenu.ppm");
-    if (!appleOpen) {
-        std::fprintf(stderr, "FAIL: the Apple menu never dropped\n");
-        return 1;
-    }
-    if (stopPhase <= 1) return 0;
-    // Chooser row (calibrated): itemY below. A miss leaves the menu open,
-    // which the phase-2 dump makes obvious.
-    const int chooserY = getenv("POM68K_AFP_CHOOSER_Y")
-                       ? atoi(getenv("POM68K_AFP_CHOOSER_Y")) : 139;
-    if (!click(60, chooserY)) { std::fprintf(stderr, "FAIL: chooser item\n"); return 1; }
-    frames(600);                              // the DA loads from disk
-    snap("afp_live_2_chooser.ppm");
-    std::printf("phase 2: Chooser open\n");
-    std::fflush(stdout);
-    if (stopPhase <= 2) return 0;
-
-    // ── Phase 3: AppleShare device → NBP lookup → server list ────────────
-    const int asX = getenv("POM68K_AFP_AS_X") ? atoi(getenv("POM68K_AFP_AS_X")) : 88;
-    const int asY = getenv("POM68K_AFP_AS_Y") ? atoi(getenv("POM68K_AFP_AS_Y")) : 84;
-    if (!click(asX, asY)) { std::fprintf(stderr, "FAIL: AppleShare icon\n"); return 1; }
-    frames(900);                              // NBP lookup + list fill
-    snap("afp_live_3_servers.ppm");
-    const long nbpLookups = hub.snapshot().net.nbpLookups;
-    std::printf("phase 3: server list (NBP lookups=%ld)\n", nbpLookups);
-    std::fflush(stdout);
-    if (nbpLookups < 1) {
-        std::fprintf(stderr, "FAIL: AppleShare did not issue an NBP lookup\n");
-        return 1;
-    }
-    if (stopPhase <= 3) return 0;
-
-    // ── Phase 4: pick "POM68K", OK → login dialog ────────────────────────
-    const int svX = getenv("POM68K_AFP_SV_X") ? atoi(getenv("POM68K_AFP_SV_X")) : 300;
-    const int svY = getenv("POM68K_AFP_SV_Y") ? atoi(getenv("POM68K_AFP_SV_Y")) : 88;
-    if (!click(svX, svY, 2)) { std::fprintf(stderr, "FAIL: server row\n"); return 1; }
-    frames(600);
-    snap("afp_live_4_login.ppm");
-    std::printf("phase 4: login dialog\n");
-    std::fflush(stdout);
-    if (stopPhase <= 4) return 0;
-
-    // ── Phase 5: Guest radio, OK → volume list ───────────────────────────
-    const int guX = getenv("POM68K_AFP_GUEST_X") ? atoi(getenv("POM68K_AFP_GUEST_X")) : 146;
-    const int guY = getenv("POM68K_AFP_GUEST_Y") ? atoi(getenv("POM68K_AFP_GUEST_Y")) : 153;
-    if (!click(guX, guY)) { std::fprintf(stderr, "FAIL: guest radio\n"); return 1; }
-    frames(60);
-    key(0x24, 8, 90);                         // Return = Connect/OK
-    frames(600);
-    snap("afp_live_5_volumes.ppm");
-    const int afpSessions = hub.snapshot().afp.sessions;
-    std::printf("phase 5: volume list (AFP sessions=%d)\n", afpSessions);
-    std::fflush(stdout);
-    if (afpSessions < 1) {
-        std::fprintf(stderr, "FAIL: guest login did not open an AFP session\n");
-        return 1;
-    }
-    if (stopPhase <= 5) return 0;
-
-    // ── Phase 6: mount, close the Chooser ────────────────────────────────
-    key(0x24, 8, 90);                         // Return = OK on "Echange"
-    frames(600);
-    // Close box of the Chooser window (calibrated).
-    const int cbX = getenv("POM68K_AFP_CLOSE_X") ? atoi(getenv("POM68K_AFP_CLOSE_X")) : 34;
-    const int cbY = getenv("POM68K_AFP_CLOSE_Y") ? atoi(getenv("POM68K_AFP_CLOSE_Y")) : 40;
-    if (!click(cbX, cbY)) { std::fprintf(stderr, "FAIL: chooser close\n"); return 1; }
-    frames(300);
-    Screen desk1 = snap("afp_live_6_mounted.ppm");
-    const auto mounted = hub.snapshot();
-    std::printf("phase 6: chooser closed, AFP sessions=%d mounted=%d commands=%ld\n",
-                mounted.afp.sessions, mounted.afp.volMounted,
-                mounted.afp.cmdCount);
-    std::fflush(stdout);
-    if (!mounted.afp.volMounted) {
-        std::fprintf(stderr, "FAIL: the guest did not open the AFP volume\n");
-        return 1;
-    }
-    if (stopPhase <= 6) return 0;
-
-    // ── Phase 7: open the mounted volume — it is already SELECTED ────────
-    // The Finder selects a freshly mounted volume (desk1 shows "Echange"
-    // inverted), so Cmd-O opens it without any pixel hunt. Two icon-diff
-    // schemes were tried first and both mis-clicked (densest cell:
-    // "Monitors & Sound", displaced; topmost cluster: the boot volume's
-    // own redraw) — the guest's selection is the one pointer the Finder
-    // maintains for us. desk0/desk1 stay captured for the dumps.
-    (void)desk0; (void)desk1;
-    mem.keyEvent(0x37, true);                 // Cmd
-    frames(12);
-    key(0x1F, 75, 12);                        // O (held past Slow Keys)
-    mem.keyEvent(0x37, false);
-    frames(900);                              // enumerate over AFP, draw window
-    snap("afp_live_7_window.ppm");
-    std::printf("phase 7: Cmd-O on the selected volume\n");
-    std::fflush(stdout);
-    if (stopPhase <= 7) return 0;
-
-    // ── Phase 8: Cmd-N in the volume window → a directory on the HOST ────
-    std::set<std::string> before;
-    for (auto& e : fs::directory_iterator(shareDir))
-        before.insert(e.path().filename().string());
-    mem.keyEvent(0x37, true);                 // Cmd
-    frames(12);
-    key(0x2D, 75, 12);                        // N (held past Slow Keys)
-    mem.keyEvent(0x37, false);
-    std::string created;
-    for (int poll = 0; poll < 120 && created.empty(); poll++) {
-        frames(30);
-        for (auto& e : fs::directory_iterator(shareDir))
-            if (!before.count(e.path().filename().string()) &&
-                fs::is_directory(e.path()))
-                created = e.path().filename().string();
-    }
-    snap("afp_live_8_created.ppm");
-    auto st = hub.snapshot();
-    std::printf("phase 8: host saw %s; AFP sessions=%d, mounted=%d, "
-                "commands=%ld, DDP in=%ld\n",
-                created.empty() ? "NOTHING" : ("\"" + created + "\"").c_str(),
-                st.afp.sessions, st.afp.volMounted, st.afp.cmdCount,
-                st.net.ddpIn);
-
-    const bool ok = !cpu.isHalted() && !created.empty() &&
-                    st.afp.sessions >= 1 && st.afp.volMounted &&
-                    st.afp.cmdCount > mounted.afp.cmdCount;
-    std::printf("%s\n", ok
-        ? "PASSED — the guest created a folder on the host over AppleTalk/AFP"
-        : "FAILED — no guest-created object reached the host share");
-    return ok ? 0 : 1;
+    for (const auto& path : verifiedCopies)
+        if (!afplive::exactCopy(path)) {
+            std::fprintf(stderr, "FAIL: prior copy changed across reconnect\n"); return 1;
+        }
+    std::printf("PASSED — Finder transferred both forks before and after guest reconnection\n");
+    return 0;
 }

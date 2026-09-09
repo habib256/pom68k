@@ -119,10 +119,10 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
         state.atalk.setService("afp", afpOn);
     statusDot(snapshot.afp.registered,
               "Visible dans le Sélecteur (NBP AFPServer)");
-    statusDot(snapshot.afp.dirOk,
-              snapshot.afp.dirOk
-                  ? "Dossier partagé accessible en écriture"
-                  : "Dossier partagé INTROUVABLE / lecture seule");
+    statusDot(snapshot.afp.dirOk && snapshot.afp.catalogError.empty(),
+              !snapshot.afp.catalogError.empty() ? snapshot.afp.catalogError.c_str() :
+              snapshot.afp.dirOk ? "Dossier partagé accessible en écriture"
+                                 : "Dossier partagé INTROUVABLE / lecture seule");
     ImGui::Text("Nom serveur : %s", snapshot.afp.serverName.c_str());
     ImGui::Text("Volume : %s", snapshot.afp.volName.c_str());
     ImGui::TextWrapped("Dossier hôte : %s",

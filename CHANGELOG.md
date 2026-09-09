@@ -438,6 +438,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (eleventh)** — [AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting](#2026-09-09-afp-persistence-transfer)
 - **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](#2026-09-09-chooser-appleshare-proof)
 - **2026-09-09 (ninth)** — [The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS](#2026-09-09-llap-address-defence)
 - **2026-09-09 (eighth)** — [Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO](#2026-09-09-scc-serial-host)
@@ -905,6 +906,53 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-afp-persistence-transfer"></a>
+## 2026-09-09 (eleventh) — AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting
+
+The previous Chooser gate proved mounting and directory creation, not file
+contents. It now seeds 32,791 deterministic data bytes and 8,317 resource bytes,
+drives Finder Duplicate, and independently checks every destination byte and
+type/creator metadata. AFP read and write counters each advance by 41,108 bytes;
+enumeration or a host-side copy cannot satisfy the test. It waits for all forks
+to close, drives Put Away, asserts no mounted volume/session/fork, reconnects
+through the Chooser and makes a second new copy. Both copies remain exact at the
+end. The host oracle has one-byte-corruption negative checks for both forks.
+
+Final local validation: a complete rebuild, all 92 asset-free gates executed
+and passed outside the sandbox (GUI/PTY/socket restrictions explained the
+initial sandbox-only failures), and the real Mac OS 8.1 transfer/reconnect
+gate passed in 142.28 seconds with both 41,108-byte read/write cycles asserted.
+
+CNIDs now live in a checksummed, exclusively locked `.pom68k-afp-catalog` inside
+the share. A synced staging file and atomic replacement preserve the committed
+snapshot after an interrupted write. The allocation high-water mark persists;
+deleting and recreating a pathname does not recycle its identity. Host-object
+fingerprints distinguish replacement from in-place editing and protect old open
+forks; a unique displaced directory identity is reconciled on rediscovery.
+Linux requires statx inode/birth-time support and reports an error when the
+filesystem cannot supply it. Catalogue failures are visible in the network UI
+and fail commands closed rather than silently resetting the catalogue.
+
+The regression first exposed four losses after parent rename/move: descendant
+IDs were discarded and an existing open fork became unreadable. Moving the
+whole mapping subtree fixes those failures. Further negative tests exposed
+POSIX rename overwriting an existing destination, ignored sidecar-move/delete
+errors, and resource updates modifying the committed sidecar despite a failed
+staging precondition. Mutations now record their intent before touching host
+names; restart cancels an unstarted mutation or finishes metadata and catalogue
+updates. Replays cover pre-data, post-data and post-metadata states, including
+refusal when a host object was substituted. Hidden host files keep a directory
+nonempty before any metadata cleanup. Catalogue and AppleDouble writes share a
+durable replacement helper; asynchronous resource-write failures do not advance
+successful-byte counters. EOF updates also reject read-only fork references.
+
+Evidence: expanded `afp_server_test` passes the restart, failure/recovery,
+identity, metadata and read-only regressions. The real Mac OS 8.1 gate executes
+against the immutable reference image and has passed the two complete transfer
+cycles. `docs/APPLETALK.md` records operating constraints: external tools still
+own their sidecar moves, reconciliation is on access rather than a watcher, and
+a mid-transfer server outage is not claimed by the clean reconnect gate.
 
 <a id="2026-09-09-chooser-appleshare-proof"></a>
 ## 2026-09-09 (tenth) — The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory

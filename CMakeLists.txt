@@ -400,7 +400,7 @@ add_library(pom68k_core STATIC
     src/CudaLle.cpp       # step 10 — Cuda firmware ↔ VIA/ADB glue (opt-in)
     src/LtoUdp.cpp        # LLAP — LocalTalk-over-UDP multicast cable
     src/AtalkStack.cpp    # AppleTalk in-process node (DDP/RTMP/ZIP/NBP/ATP)
-    src/AfpServer.cpp     # in-process AppleShare (ASP + AFP 2.1 subset)
+    src/AfpServer.cpp src/AfpCatalog.cpp src/AfpHostMutation.cpp src/AfpHostIdentity.cpp src/AfpAtomicFile.cpp
     src/PapServer.cpp     # in-process LaserWriter (PAP → CUPS/fichier)
     src/MacIpGateway.cpp  # in-process MacIP gateway + user-mode NAT
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse

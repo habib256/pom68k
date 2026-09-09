@@ -27,11 +27,15 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 class AfpServer {
 public:
     explicit AfpServer(AtalkStack& st) : st_(st) {}
+    ~AfpServer();
+    AfpServer(const AfpServer&) = delete;
+    AfpServer& operator=(const AfpServer&) = delete;
 
     // dirPath: the host folder served as volume volName. Safe to call
     // again (rebinds NBP under the new name).
@@ -46,7 +50,9 @@ public:
         bool registered = false;     // NBP AFPServer entity live
         std::string serverName, volName, dirPath;
         bool dirOk = false;          // folder exists and is writable
+        std::string catalogError;   // persistence failure; commands fail closed
         int sessions = 0;
+        int openForks = 0;
         bool volMounted = false;     // a session has the volume open
         std::string lastUser;        // last FPLogin identity
         std::string lastCmd;
@@ -83,10 +89,20 @@ private:
                   const std::vector<uint8_t>& data);
     void buildStatusBlock();
 
-    // catalog / filesystem backend (definitions in AfpServer.cpp)
+    // Identity mapping in AfpCatalog.cpp; wire path decoding in AfpServer.cpp.
     std::string pathForId(uint32_t id) const;
     uint32_t idForPath(const std::string& rel);
-    void dropId(const std::string& rel);
+    void dropId(const std::string& rel, bool persist = true);
+    void moveIds(const std::string& source, const std::string& destination);
+    struct CatalogError : std::runtime_error { using std::runtime_error::runtime_error; };
+    void loadCatalog();
+    void saveCatalog();
+    int moveHostPath(const std::string& source, const std::string& destination);
+    void recoverCatalogMove();
+    void finishCatalogMove();
+    int deleteHostPath(const std::string& source);
+    void finishCatalogDelete();
+    std::string hostIdentity(const std::string& relative) const;
     int resolvePath(uint32_t dirId, const uint8_t* p, size_t n, size_t& used,
                     std::string& outRel);
 
@@ -102,7 +118,12 @@ private:
     uint8_t nextSid_ = 1;
     std::map<uint32_t, std::string> idToPath_;   // CNID → volume-relative
     std::map<std::string, uint32_t> pathToId_;
+    std::map<uint32_t, std::string> idToHostIdentity_;
     uint32_t nextId_ = 16;
+    int catalogLock_ = -1;           // exclusive writer for the configured volume
+    std::string pendingSource_, pendingDestination_;
+    bool pendingSidecar_ = false;
+    bool pendingDelete_ = false;
 
     // GUI-facing counters
     mutable Status stat_;
