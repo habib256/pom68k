@@ -371,7 +371,7 @@ void Swim1::finishWrite() {
         atTicks.push_back(int64_t(h) * halfTick);
     d->commitFlux(writeStartTick_, int64_t(writeHalfPos_) * halfTick, atTicks,
                   !(setup_ & 0x40),
-                  int64_t(cellCycles()) * FluxPll::kSubCell);
+                  int64_t(params_[P_TIME0] + 2 * 2) * halfTick);
     writeTransitions_.clear();
 }
 

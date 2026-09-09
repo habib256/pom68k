@@ -388,6 +388,7 @@ add_library(pom68k_core STATIC
     src/Rtc.cpp           # M4 — clock/PRAM serial chip
     src/Iwm.cpp           # M5 — floppy controller
     src/SonyDrive.cpp     # M5 — 800K GCR drive
+    src/SonyDriveFlux.cpp # M5 — flux-to-cell write-back reconstruction
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
     src/R65c02.cpp        # IOP M1 — R65C02 core (Apple PIC, docs/IOP_BRINGUP.md)

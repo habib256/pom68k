@@ -565,6 +565,9 @@ int64_t SonyDrive::fluxAngleTicks(bool side1) {
 void SonyDrive::fluxSeedFromCells() {
     flux_.clear();
     decodeCellTicks_ = 0;                        // canonical track: nominal
+    decodeStartTick_ = 0;
+    decodeSpanTicks_ = 0;
+    decodeWriteCellBegin_ = decodeWriteCellEnd_ = size_t(-1);
     fluxJitterTicks_ = int64_t(fluxJitterPct_) * fluxCellTicks() / 100;
     const int64_t cellT = fluxCellTicks();
     fluxRev_ = int64_t(cells_.size()) * cellT;
@@ -580,32 +583,6 @@ void SonyDrive::fluxSeedFromCells() {
     // spacing is nominal; under the stretch seam they are not, so make the
     // decoders re-derive rather than trust them.
     if (fluxStretchPermille_ != 1000) cellsDirty_ = true;
-}
-
-// The store, read back through a real separator — the offline write-back
-// decoders' view of the medium. Quantizing on the nominal grid instead
-// would defeat the store's whole purpose: a track the guest wrote at its
-// own rate would decode to garbage here and commit nothing, where a real
-// controller's PLL reads it back without noticing.
-void SonyDrive::rebuildCellsFromFlux() {
-    cellsDirty_ = false;
-    cells_.clear();
-    if (flux_.empty() || fluxRev_ <= 0) return;
-    const int64_t cellT = decodeCellTicks_ > 0 ? decodeCellTicks_
-                                               : fluxCellTicks();
-    FluxPll pll;
-    pll.setClock(cellT);
-    pll.readReset(0);
-    size_t idx = 0;
-    cells_.reserve(size_t(fluxRev_ / cellT) + 8);
-    while (pll.ctime() < fluxRev_) {
-        while (idx < flux_.size() && flux_[idx] < pll.ctime()) idx++;
-        const int64_t edge = idx < flux_.size() ? flux_[idx] : FluxPll::kNever;
-        const int cell = pll.feedReadData(edge, fluxRev_);
-        if (cell < 0) break;                     // window crosses the index
-        cells_.push_back(uint8_t(cell));
-        if (cell) idx++;                         // that edge is consumed
-    }
 }
 
 const std::vector<uint8_t>& SonyDrive::cellsView() {
@@ -699,10 +676,16 @@ void SonyDrive::commitFlux(int64_t startTick, int64_t totalTicks,
     flux_.swap(next);
     cellsDirty_ = true;
     decodeCellTicks_ = cellTicks > 0 ? cellTicks : 0;
+    // MFM fields carry an explicit byte phase in their zero/A1 preamble.
+    // Tell the offline verifier where this write's phase starts and ends;
+    // the description is consumed synchronously below, then discarded.
+    decodeStartTick_ = mediaMfm ? from : 0;
+    decodeSpanTicks_ = mediaMfm ? span : 0;
     inFluxCommit_ = true;
     if (mediaMfm) decodeMfmCells();
     else          decodeGcrCells();
     inFluxCommit_ = false;
+    decodeStartTick_ = decodeSpanTicks_ = 0;
 }
 
 // Offline replica of the SWIM2 MFM read engine (swim2.cpp:499-546) over
@@ -725,7 +708,18 @@ void SonyDrive::decodeMfmCells() {
     };
     const size_t n = cv.size();
     for (size_t k = 0; k < 2 * n; k++) {
-        const int bit = cv[k % n];
+        const size_t pos = k % n;
+        if (pos == decodeWriteCellBegin_ || pos == decodeWriteCellEnd_) {
+            // A controller write starts a fresh byte phase at an arbitrary
+            // angular position.  Do not carry the old field's bit phase
+            // across either splice: the zero preambles on both sides let a
+            // real separator acquire the new phase before the next mark.
+            sr = 0;
+            crc = 0xCDB4;
+            tss = 0;
+            sync = 0;
+        }
+        const int bit = cv[pos];
         if (sync < 64) {
             if (bit != (sync & 1)) sync++;
             else sync = 0;
@@ -774,7 +768,14 @@ void SonyDrive::decodeMfmCells() {
         for (size_t j = i + 10; j + 517 < m && j < i + 80; j++) {
             if (!(markRun(j) && !bytes[j + 3].mark && bytes[j + 3].val == 0xFB))
                 continue;
-            if (!bytes[j + 517].crcOk) break;            // data CRC (2nd byte)
+            if (!bytes[j + 517].crcOk) {
+                // A write can begin just after the old data mark, leaving
+                // that mark ahead of the replacement preamble.  Its torn
+                // payload fails CRC, but a later, complete data field in
+                // the same address-field window can still be the valid
+                // replacement.  Keep scanning up to the gap2 bound.
+                continue;
+            }
             Pending p;
             p.t = c;
             p.h = h & 1;

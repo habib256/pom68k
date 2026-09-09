@@ -16,10 +16,8 @@
 //
 // That is deliberately screen-free: the 800K gate's icon-strip judge is
 // calibrated on one desktop image, and a mount is a File Manager fact.
-// The read-write mount's own attempt to clear drAtrb "unmounted cleanly"
-// is reported too. Its MFM write-back is deliberately not asserted here:
-// the driver completes the write, but the live ISM write path still fails
-// to commit it to the medium and remains a separate TODO item.
+// The read-write mount must also clear drAtrb "unmounted cleanly" in sector
+// 2, first on the flux-backed medium and then in the host file on eject.
 //
 // Soft-skips without the LC II ROM, a bootable hdv/ image and a 1.44 MB
 // HFS image in disks35/.
@@ -267,24 +265,22 @@ int main() {
           "vcbAlBlkSiz equals the MDB's drAlBlkSiz");
     check(drv.hasDisk() && drv.isHd() && drv.mfmMode(),
           "the medium is still an HD MFM disk in the drive");
-    // MEASURED, not asserted: _MountVol's read-write half issues a WRITE of
-    // sector 2 (the MDB with "unmounted cleanly" cleared) and the driver
-    // completes it 0 noErr, but the ISM/MFM write path does not put those
-    // bytes on the medium — sector 2 reads back unchanged. That is the next
-    // open item (TODO §1), a different engine from the read this gate locks;
-    // the 800K GCR write round-trip has its own gate (`lcii_floppy_etalon`).
+    // _MountVol's write starts after the old sector-2 data mark, replaces
+    // the complete MDB data field, and returns noErr. Require that field to
+    // have survived the ISM/TSS → flux → MFM-verifier path.
     { uint8_t sec[512] = {};
       const bool got = drv.readSector(0, 0, 2, sec);
-      std::printf("floppy: medium sector 2 read back: got=%d sig %02X %02X "
-                  "drAtrb $%02X%02X (MFM write-back still open)\n",
-                  got, sec[0], sec[1], sec[10], sec[11]); }
+      check(got, "the MFM-written MDB reads back from the medium");
+      check(sec[0] == 0x42 && sec[1] == 0x44,
+            "the MFM-written MDB keeps its signature");
+      check((sec[10] & 0x01) == 0,
+            "the MFM-written MDB clears the clean-unmount bit"); }
     std::printf("floppy: nibbles %ld, ISM produced %ld bytes (%ld marks, "
                 "%ld syncs), driver popped %ld (%ld empty), %ld error reads\n",
                 drv.nibblesRead, mem.swim().ismStats().bytes,
                 mem.swim().ismStats().marks, mem.swim().ismStats().syncs,
                 mem.swim().ismStats().dataPops, mem.swim().ismStats().emptyPops,
                 mem.swim().ismStats().errorReads);
-
     drv.eject();                                 // flush write-back to the copy
     {
         std::ifstream back(floppyCopy, std::ios::binary);
@@ -295,6 +291,8 @@ int main() {
         check(after.size() >= 0x402 && after[0x400] == 0x42 &&
               after[0x401] == 0x44,
               "the MDB signature survived the session");
+        check(after.size() >= 0x40C && (after[0x40A] & 0x01) == 0,
+              "eject persisted the MFM-written clean-unmount bit");
         for (size_t i = 0; i + 1 < after.size() && i + 1 < floppyOrig.size(); i++)
             if (after[i] != floppyOrig[i]) {
                 std::printf("floppy: host file first differs at $%zX "

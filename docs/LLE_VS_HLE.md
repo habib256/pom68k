@@ -418,8 +418,13 @@ real media do not. What the write-back decode is clocked at is the honest
 part: the drive has no reader of its own, so `commitFlux` takes the
 **controller's** cell period and verifies the write with the clock that
 wrote it (SWIM2 setup bit 3 doubles the write spacing; the SWIM1 ISM takes
-it from P_TIME0/1). Gated four ways, and the gates bite: reinstating the
-canonical re-lay fails exactly the four medium checks and nothing else.
+it from P_TIME0/1). A partial MFM write is separated into nominal/write/
+nominal PLL arcs and the byte framer reacquires at both splice boundaries.
+That matters when ACTION begins after an old data mark: the torn old field
+fails CRC, but its stale byte phase must not hide the complete replacement
+field later in the same address window. The off-phase, data-only SWIM1 gate
+bites this case directly. Reinstating the canonical re-lay still fails the
+four original medium checks and nothing else.
 
 *Closed by step 6 — the `Iwm` cell engine.* The read path is MAME's
 `sync()` MODE_READ machine (`src/devices/machine/iwm.cpp:398-455`) over

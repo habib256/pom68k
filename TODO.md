@@ -62,15 +62,6 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
 
 ## 1. Fidélité matérielle et LLE
 
-- [ ] **Terminer l’écriture MFM du SWIM1 sous le vrai pilote System.**
-  `lcii_floppy144_etalon` prouve désormais le montage 1,44 Mo et observe
-  l’écriture de secteur 2 que `_MountVol` termine avec `noErr`, mais le chemin
-  ISM/TSS live ne remet pas encore ces octets sur le média : `drAtrb` reste
-  `$0100` après éjection. Le test unitaire synthétique `swim1_test` vérifie que
-  le sérialiseur peut commettre un secteur ; il faut donc tracer la séquence
-  réelle FIFO/ACTION jusqu’à `finishWrite`, corriger la divergence, puis
-  transformer la mesure du MDB en assertion de write-back.
-
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 

@@ -245,9 +245,16 @@ private:
     // decoders verify a track the guest wrote off-rate.
     std::vector<uint8_t> cells_;
     bool cellsDirty_ = true;
+    size_t decodeWriteCellBegin_ = size_t(-1);  // derived splice boundaries
+    size_t decodeWriteCellEnd_ = size_t(-1);
     // Cell period the derivation clocks at: the medium's nominal rate until
     // a controller writes at its own, then that one (see commitFlux).
     int64_t decodeCellTicks_ = 0;                // 0 = nominal
+    // Transient description of the commitFlux() splice currently being
+    // verified. commitFlux is synchronous, so these are never snapshot
+    // state; cells_ and its derived boundaries are likewise not serialized.
+    int64_t decodeStartTick_ = 0;
+    int64_t decodeSpanTicks_ = 0;
     // Set while commitFlux() is decoding: writeSector() then refreshes the
     // legacy nibble stream only, instead of re-laying the whole track
     // canonically over the flux the controller just wrote.

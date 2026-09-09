@@ -431,7 +431,8 @@ int main() {
 
         // Write one MFM data field with P_TIME1 = t1, return the drive.
         auto ismWrite = [&](SonyDrive& drive, Swim1& swim, uint8_t t1,
-                            const uint8_t* wr) {
+                            const uint8_t* wr, int spinBefore = 0,
+                            bool dataOnly = false) {
             drive.setSpinClockHz(15667200);
             swim.reset();
             swim.attachDrive(&drive, nullptr);
@@ -439,6 +440,7 @@ int main() {
             switchToIsm(swim);
             loadParams(swim, 64, t1);
             drive.commandSwim(0x2);
+            drive.tick(spinBefore);
             swim.write(5, 0x00);                 // MFM write, fclk
             auto feed = [&](int reg, uint8_t v) {
                 int guard = 64;
@@ -450,12 +452,14 @@ int main() {
                 drive.tick(kMfmByte / 2);
             };
             swim.write(7, 0x9A);
-            for (int i = 0; i < 12; i++) feed(0, 0x00);
-            for (int i = 0; i < 3; i++) feed(1, 0xA1);
-            feed(0, 0xFE);
-            feed(0, 0x00); feed(0, 0x00); feed(0, 0x02); feed(0, 0x02);
-            feed(2, 0);
-            for (int i = 0; i < 22; i++) feed(0, 0x4E);
+            if (!dataOnly) {
+                for (int i = 0; i < 12; i++) feed(0, 0x00);
+                for (int i = 0; i < 3; i++) feed(1, 0xA1);
+                feed(0, 0xFE);
+                feed(0, 0x00); feed(0, 0x00); feed(0, 0x02); feed(0, 0x02);
+                feed(2, 0);
+                for (int i = 0; i < 22; i++) feed(0, 0x4E);
+            }
             for (int i = 0; i < 12; i++) feed(0, 0x00);
             for (int i = 0; i < 3; i++) feed(1, 0xA1);
             feed(0, 0xFB);
@@ -496,6 +500,18 @@ int main() {
                   "ISM flux-store write still commits its sector");
             check(countGap(drive, 63 * kHalfTick) > 100,
                   "the medium keeps P_TIME1's 63-half spacing");
+        }
+
+        // The real LC II driver begins a data-only replacement just after
+        // the old sector-3 data mark.  The torn old field must not hide the
+        // complete replacement field, whose byte phase starts at the splice.
+        {
+            SonyDrive drive; Swim1 swim;
+            ismWrite(drive, swim, 59, wr, 372845, true);
+            uint8_t back[512];
+            check(drive.readSector(0, 0, 2, back) &&
+                  std::memcmp(back, wr, 512) == 0,
+                  "off-phase data-only splice replaces the old MFM field");
         }
 
         // The bite: move P_TIME1 and the DISK moves with it. A guest that

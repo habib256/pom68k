@@ -76,6 +76,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
 - **why did a 1.44 MB LC II disk yield a valid MDB and then fail the same mount — and why was SWIM mode bit 5 the wrong head-select source?** → [2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium…](#2026-09-09-lcii-floppy144-mount)
+- **why did the real SWIM1 MFM write reach `finishWrite` with valid bytes and CRC yet leave the disk unchanged?** → [2026-09-09 (fourth) — The real write was valid; the verifier carried a torn field's byte phase across its splice](#2026-09-09-swim1-mfm-writeback)
 
 - **"`-mcpu=<core>` is worth 10-20 % over generic aarch64" — inherited from NeoST, and the ISA half of it buys POM68K nothing (byte-identical code)** → [2026-08-08 (fourth) — `-mcpu=cortex-a72` produced byte-identical code…](#2026-08-08-mcpu-identical)
 - **"a CI-built `-mcpu` artifact cannot be done, no ROMs" — conflated two independent halves of NeoST's workflow** → [2026-08-08 (third) — A Pi package built for ONE core…](#2026-08-08-pi400-ci)
@@ -431,6 +432,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (fourth)** — [The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice](#2026-09-09-swim1-mfm-writeback)
 - **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](#2026-09-09-lcii-floppy144-mount)
 - **2026-09-09 (later)** — [The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk](#2026-09-09-scsi-sense-lun)
 - **2026-09-09** — [The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes](#2026-09-09-m0110-keypad-prefix)
@@ -891,6 +893,35 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-swim1-mfm-writeback"></a>
+## 2026-09-09 (fourth) — The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice
+
+The remaining 1.44 MB write-back gap was not in the SWIM1 FIFO, ACTION edge,
+TSS serializer or CRC generator. The System 7.1 mount performs one data-only
+write of raw sector 3 (HFS sector 2): ACTION reaches `finishWrite`, consumes
+531 FIFO entries without underrun and lays 4,130 transitions, including the
+three marked A1 bytes, `$FB`, 512 payload bytes and CRC `$FEFA`. The old TODO's
+localization to the live controller path is therefore overturned.
+
+The failure was in `SonyDrive`'s offline flux verifier. ACTION begins six raw
+cells into the old payload, after its data mark. The verifier decoded that
+torn old field first, kept its byte phase across the write splice, failed its
+CRC, and never recognized the complete replacement field and its new phase.
+Flux-to-cell reconstruction now uses the medium's nominal PLL clock before
+and after the splice, the writer's clock within it, resumes the untouched tail
+on its original cell grid, and resets MFM framing at both boundaries. A bad
+old data field no longer terminates the bounded search for a later valid one.
+The splice description is synchronous derived state, so the snapshot format
+does not change; the focused reconstruction moved to `SonyDriveFlux.cpp` to
+keep the drive translation unit inside its size ratchet.
+
+`swim1_test` now starts the exact data-only write at the real driver's
+off-phase angle and requires sector 3 to equal its new payload. The real
+`lcii_floppy144_etalon` upgrades its former printout to three medium assertions
+and one host-file assertion: `_MountVol` clears `drAtrb` from `$0100` to `$0000`,
+the MDB remains `BD`, and eject persists the first change at file offset
+`$40A`. Both gates pass; the SWIM1 MFM write-back item leaves `TODO.md`.
 
 <a id="2026-09-09-lcii-floppy144-mount"></a>
 ## 2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof

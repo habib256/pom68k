@@ -396,7 +396,8 @@ register file with SWIM1's 16-entry parameter RAM and MFM CRC-CCITT cell
 engine (entered by the four 1-0-1-1 mode writes). `swim1_test` covers both
 personalities and `lcii_floppy144_etalon` hot-inserts a 1.44 MB HFS medium,
 then proves the mount from the File Manager's VCB queue and the medium's MDB.
-The remaining MFM write-back gap is tracked separately in `TODO.md`.
+The same gate requires `_MountVol`'s data-only ISM write to clear the MDB's
+clean-unmount bit in flux, in the sector image, and in the host file on eject.
 
 - Regs at `$F16000`, stride `$200` like the IWM; MAME charges 5 extra CPU
   cycles per access (maclc.cpp:268-287) — applied via `Cpu030::stall(5)`.
