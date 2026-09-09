@@ -123,6 +123,11 @@ void Ncr5380::trySelect() {
     for (int id = 0; id < 7; id++) {
         if ((targets & (1 << id)) && targets_[id] && targets_[id]->present()) {
             disk_ = targets_[id];                 // device answers → COMMAND
+            // No MSG OUT phase on this engine and none in the ROM's SCSI
+            // Manager: the Plus/SE initiator never sends IDENTIFY, so the
+            // nexus has no LUN and the target reads the CDB's SCSI-1 byte-1
+            // field instead (ScsiTarget::selectLun / SCSI-2 § 5.6.7).
+            disk_->selectLun(ScsiTarget::kNoIdentify);
             enterCommand();
             return;
         }

@@ -232,6 +232,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
+- **why does a SCSI target have to forget a failure, and what does it answer on a logical unit it does not have?** → [2026-09-09 (later) — The SCSI target kept a failure's sense forever…](#2026-09-09-scsi-sense-lun)
 - **why does a Macintosh Plus keypad digit or arrow key need TWO wire bytes, and why do the arrows come out as keypad codes?** → [2026-09-09 — The M0110A keypad and the arrow keys…](#2026-09-09-m0110-keypad-prefix)
 - **why does the 68HC05 memory decoder test ROM last when almost every instruction fetch comes from ROM, and what does reversing that order buy on the measured Q605 pump?** → [2026-09-03 (sixteenth) — The 68HC05 ROM fetch stops crossing…](#2026-09-03-m68hc05-rom-fast-path)
 - **the last unconditional HLE in the tree retires: the Eclipse towers get the real 341S0851 — and which wire a Quadra 900's ADB devices actually hang off** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
@@ -429,6 +430,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (later)** — [The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk](#2026-09-09-scsi-sense-lun)
 - **2026-09-09** — [The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes](#2026-09-09-m0110-keypad-prefix)
 - **2026-09-08 (eleventh)** — [The 1.44 MB read uses a different engine from the working 800K: 800K reads via the IWM/GCR personality, MFM via the ISM engine, and the driver aborts the ISM setup before arming ACTION](#2026-09-08-floppy-ism-vs-iwm)
 - **2026-09-08 (tenth)** — [The 1.44 MB stall, pinned: at the MFM retry the driver configures the ISM to MFM but never arms ACTION or selects the drive, so the read engine never runs](#2026-09-08-floppy-action-stall)
@@ -886,6 +888,84 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-scsi-sense-lun"></a>
+## 2026-09-09 (later) — The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk
+
+Two gaps in the SCSI target model, both on paths a real driver's recovery and
+enumeration code walks, both closed against SCSI-2 and MAME's `bus/nscsi`.
+
+**The sense outlived its command.** The CHECK CONDITION → REQUEST SENSE round
+trip already existed — `ScsiDisk::command()` installed a key + ASC on every
+failure and `REQUEST SENSE` ($03) returned it and cleared it — but nothing
+else ever cleared it. SCSI-2 § 7.2.14 is explicit that sense data is
+preserved "until it is retrieved by a REQUEST SENSE command **or until the
+receipt of any other command**" on the same nexus. Ours survived arbitrarily
+many successful commands, so a driver that retried a failed read, succeeded,
+and then read sense anyway (several Mac drivers do, to log the recovered
+error) was handed the failure it had already recovered from, with no way to
+tell it apart from a fresh one. The receipt of any non-REQUEST-SENSE command
+now clears it, before the command runs so the failures below still install
+theirs. Two smaller shortfalls in the same payload: byte 13 (ASCQ) was never
+written, and the reply was zero-padded to the allocation length instead of
+being the lesser of that length and the 18 bytes of fixed-format sense a
+drive actually has (§ 8.2.14) — a `REQUEST SENSE` asked for 255 returned 255
+bytes. It now returns 18, and the SCSI-1 4-byte short form is still what an
+allocation length of 0 gets.
+
+**Every LUN was LUN 0.** `Ncr53c96::selectTarget` popped the IDENTIFY message
+off the FIFO and dropped it on the floor — the comment said so: "IDENTIFY
+(LUN select) — ignored". A populated ID therefore answered LUN 3 with LUN 0's
+disk, which is how a bus scan ends up with eight copies of the boot volume.
+The LUN is now carried: `ScsiTarget::selectLun()` is called once per
+selection with the IDENTIFY's unit (SCSI-2 § 5.6.7) or with `kNoIdentify`
+when the initiator sent none — the `Ncr5380` path, since the Plus/SE ROM is
+SCSI-1 and has no MSG OUT phase — and the target resolves the precedence the
+way MAME's `nscsi_full_device::get_lun(default)` does: the identified unit if
+there is one, else the CDB's byte-1 bits 7-5. `ScsiDisk` implements LUN 0 and
+refuses the rest as SCSI-2 requires: INQUIRY answers GOOD with peripheral
+qualifier 011b + device type $1F (§ 8.2.5.1 — MAME's `nscsi_hd`/`nscsi_cd`
+write the same `$7f` into byte 0), REQUEST SENSE answers GOOD carrying
+ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED (§ 8.2.14 — a REQUEST SENSE is
+never refused for a bad LUN, that is how the initiator finds out), and
+everything else is CHECK CONDITION with that sense (§ 7.5.3).
+
+**What was already right, and is now gated rather than assumed.** Selecting
+an unpopulated ID already behaved like an empty bus slot in both engines
+(`Ncr5380::trySelect` falls through to BUS FREE, `Ncr53c96::selectTarget`
+raises I_DISCONNECT and reaches no device), and every platform but the Plus
+already attached its targets as an array indexed by SCSI ID. Neither had a
+gate. `ncr53c96_queue_test` now selects all six unpopulated IDs in turn and
+checks that the chip reports the timeout, the bus goes free, **no target
+executed a command**, and the populated ID still answers afterwards; it then
+attaches a second, deliberately different-sized disk at ID 3 and proves each
+ID answers as itself before running the LUN cases through the real register
+interface (IDENTIFY in the FIFO, polled Transfer Information, Initiator
+Command Complete). `scsi_target_test` gets the target-side half: the 18-byte
+fixed-format payload field by field, the allocation-length clamp, the
+lifetime rule both ways round, and the three LUN answers including the
+IDENTIFY-beats-CDB precedence.
+
+Save-state format v10 → **v11**: the sense qualifier and the nexus LUN are
+guest-visible target state a v10 chunk cannot supply, and the longer layout
+would shift every field behind it, so the mismatch is refused rather than
+misread — the rule every earlier bump followed.
+
+Evidence: `scsi_target_test` and `ncr53c96_queue_test` extended and green;
+`asset-none` green (87/87 but for another agent's in-flight
+`file_size_budget_test` entry); the SCSI-bearing asset-required gates re-run
+and green with their assets actually present — `scsi_boot_etalon`,
+`ncr53c96_test`, `scsi_pdma_test`, `scsi_hfs_facade_test`, `scsi_disk_test`,
+`q605_cdrom_etalon` (21.8 s) and `q605_cdboot_etalon` (26.8 s), plus
+`q605_soak_etalon`, `q605_persist_etalon`, `centris_persist_etalon`,
+`q700_persist_etalon` and `savestate_test`. (`q700_persist_etalon` first came
+back Timeout 1800.7 s when four etalons ran concurrently on a host three
+agents were sharing; isolated it passes in 123.5 s — the same contention
+pattern the 2026-08-30 note on the IIvx bound records, not a regression.) The normal success path is untouched by construction: GOOD
+status arms no sense, and LUN 0 takes the same branch it always did.
+
+Left open in TODO § 1: the host serial PTY/TCP transport, which was the other
+half of that item.
 
 <a id="2026-09-09-m0110-keypad-prefix"></a>
 ## 2026-09-09 — The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes

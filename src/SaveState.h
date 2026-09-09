@@ -262,7 +262,13 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // synthetic command-level bus/reply scheduler and Eclipse's unused Egret bus.
 // A v9 chunk would otherwise shift every following field while still passing
 // the header check, so the incompatible shorter layouts require a hard bump.
-inline constexpr u32      kVersion   = 10;  // v10: dead ADB route state removed
+// v11 completes the SCSI target chunk with the two fields the SCSI-2 sense
+// and LUN model made real state: the sense qualifier (ASCQ — the fixed-format
+// sense a driver reads back is key/ASC/ASCQ, § 8.2.14) and the nexus's
+// logical unit from the IDENTIFY message (§ 5.6.7), which decides how every
+// command of an in-flight connection is answered. A v10 chunk supplies
+// neither, and the longer layout would shift every field behind it.
+inline constexpr u32      kVersion   = 11;  // v11: SCSI sense ASCQ + nexus LUN
 
 struct Header {
     u32 version     = kVersion;

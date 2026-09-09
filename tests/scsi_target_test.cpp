@@ -4,7 +4,11 @@
 // Gate for the hard-disk target's SCSI-2 surface: the MODE SENSE page set,
 // the Apple identity, and the command coverage a guest-side formatter needs
 // (SEEK / VERIFY / SYNCHRONIZE CACHE / READ DEFECT DATA / REASSIGN BLOCKS /
-// MODE SELECT(10)). Nothing here needs a ROM or a real disk image — the test
+// MODE SELECT(10)), plus the two behaviours a driver's error and enumeration
+// paths depend on: the CHECK CONDITION → REQUEST SENSE round trip with its
+// 18-byte fixed-format payload and its lifetime (§ 12), and what an
+// unsupported logical unit answers (§ 13).
+// Nothing here needs a ROM or a real disk image — the test
 // builds its own — so it runs everywhere, which is the point: the boot
 // etalons only prove the ROM can READ a volume, and every command below is
 // one the ROM never issues and Drive Setup / HD SC Setup / Silverlining do.
@@ -295,6 +299,101 @@ int main() {
         check(disk.extendDataOut(fmt, 6, empty, 4) == 4, "empty defect list ends it");
         const uint8_t rd6[6] = { 0x08, 0, 0, 0, 1, 0 };
         check(disk.extendDataOut(rd6, 6, hdr, 4) == 4, "READ(6) is never extended");
+    }
+
+    // ── 12. CHECK CONDITION → REQUEST SENSE, and the sense's lifetime ───
+    // The round trip a driver's error recovery depends on: the failing
+    // command returns CHECK CONDITION, the NEXT command is a REQUEST SENSE
+    // that returns the standard 18-byte fixed-format sense, and the sense is
+    // gone afterwards (SCSI-2 § 8.2.14). The lifetime rule is the half that
+    // used to be missing: sense survives ONLY until the next command on the
+    // nexus (§ 7.2.14), so a driver that retries successfully and then asks
+    // for sense must be told NO SENSE, not the failure it recovered from.
+    {
+        const uint8_t badPage[6] = { 0x1A, 0, 0x0C, 0, 64, 0 };   // no such page
+        check(disk.command(badPage, 6, out, none) == 2, "failing command → CHECK");
+
+        const uint8_t rs[6] = { 0x03, 0, 0, 0, 18, 0 };
+        check(disk.command(rs, 6, out, none) == 0, "REQUEST SENSE itself is GOOD");
+        check(out.size() == 18, "fixed-format sense is 18 bytes");
+        check(out[0] == 0x70, "response code $70 = current error, fixed format");
+        check((out[2] & 0x0F) == 0x05, "sense key ILLEGAL REQUEST");
+        check(out[7] == 0x0A, "additional sense length = 10 (8 + 10 = 18)");
+        check(out[12] == 0x24, "ASC = INVALID FIELD IN CDB");
+        check(out[13] == 0x00, "ASCQ = 0");
+
+        // Drained: the very next REQUEST SENSE reports NO SENSE.
+        check(disk.command(rs, 6, out, none) == 0, "second REQUEST SENSE GOOD");
+        check((out[2] & 0x0F) == 0x00 && out[12] == 0x00,
+              "…and the sense was cleared by the read");
+
+        // A target asked for more than it has returns what it has, not
+        // padding: 255 requested, 18 returned.
+        const uint8_t rsBig[6] = { 0x03, 0, 0, 0, 0xFF, 0 };
+        disk.command(rsBig, 6, out, none);
+        check(out.size() == 18, "allocation length 255 still yields 18 bytes");
+        // Allocation length 0 keeps the SCSI-1 4-byte short form.
+        const uint8_t rsShort[6] = { 0x03, 0, 0, 0, 0, 0 };
+        disk.command(rsShort, 6, out, none);
+        check(out.size() == 4 && out[0] == 0x70, "allocation 0 → 4-byte short form");
+
+        // The lifetime rule, both ways round.
+        check(disk.command(badPage, 6, out, none) == 2, "fail again");
+        const uint8_t tur[6] = { 0x00, 0, 0, 0, 0, 0 };
+        check(disk.command(tur, 6, out, none) == 0, "…then a command that succeeds");
+        sense(disk, key, asc);
+        check(key == 0x00 && asc == 0x00,
+              "a successful command clears the pending sense (§ 7.2.14)");
+
+        // And the success path never arms one in the first place.
+        check(disk.command(tur, 6, out, none) == 0, "TEST UNIT READY GOOD");
+        sense(disk, key, asc);
+        check(key == 0x00 && asc == 0x00, "GOOD status leaves no sense behind");
+    }
+
+    // ── 13. Logical units: this target implements LUN 0 and says so ─────
+    // No IDENTIFY has been sent, so the CDB's byte-1 bits 7-5 select the
+    // unit (SCSI-1 form). LUN 0 is the disk; every other LUN answers the
+    // three SCSI-2 ways, none of which is "here is LUN 0's disk again".
+    {
+        const uint8_t inq0[6] = { 0x12, 0x00, 0, 0, 36, 0 };
+        check(disk.command(inq0, 6, out, none) == 0 && out[0] == 0x00,
+              "LUN 0 INQUIRY is still the direct-access device");
+
+        const uint8_t inq3[6] = { 0x12, 0x60, 0, 0, 36, 0 };      // LUN 3
+        check(disk.command(inq3, 6, out, none) == 0, "INQUIRY to LUN 3 is GOOD");
+        check(out.size() == 36, "…full-length reply");
+        check(out[0] == 0x7F, "…peripheral qualifier 011b + device type $1F");
+
+        const uint8_t tur1[6] = { 0x00, 0x20, 0, 0, 0, 0 };       // LUN 1
+        check(disk.command(tur1, 6, out, none) == 2,
+              "any other command to an unsupported LUN → CHECK CONDITION");
+        const uint8_t rs1[6] = { 0x03, 0x20, 0, 0, 18, 0 };       // LUN 1
+        check(disk.command(rs1, 6, out, none) == 0,
+              "REQUEST SENSE to an unsupported LUN is GOOD, never refused");
+        check((out[2] & 0x0F) == 0x05 && out[12] == 0x25 && out[13] == 0x00,
+              "…carrying ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED");
+
+        // A READ(6) to LUN 2: byte 1 bits 7-5 are the LUN, bits 4-0 the LBA
+        // high bits, and the unit is checked before the block address.
+        const uint8_t rd2[6] = { 0x08, 0x40, 0, 0, 1, 0 };
+        check(disk.command(rd2, 6, out, none) == 2, "READ(6) to LUN 2 → CHECK");
+        check(out.empty(), "…and no block came back");
+        sense(disk, key, asc);
+        check(key == 0x05 && asc == 0x25, "…LOGICAL UNIT NOT SUPPORTED");
+
+        // An IDENTIFY overrides the CDB field in both directions
+        // (SCSI-2 § 5.6.7 — the nexus owns the LUN).
+        disk.selectLun(4);
+        check(disk.command(inq0, 6, out, none) == 0 && out[0] == 0x7F,
+              "IDENTIFY LUN 4 wins over a CDB that says LUN 0");
+        disk.selectLun(0);
+        check(disk.command(inq3, 6, out, none) == 0 && out[0] == 0x00,
+              "IDENTIFY LUN 0 wins over a CDB that says LUN 3");
+        disk.selectLun(ScsiTarget::kNoIdentify);
+        check(disk.command(inq3, 6, out, none) == 0 && out[0] == 0x7F,
+              "no IDENTIFY hands the decision back to the CDB field");
+        disk.selectLun(0);
     }
 
     std::remove(path.c_str());

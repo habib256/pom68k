@@ -271,8 +271,11 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   justifie leur coût ; comparer état, débit et jitter avant un défaut produit.
 - [ ] **Câbler le second lecteur 800K.** Fournir un deuxième `SonyDrive` aux
   machines concernées et ajouter un gate de sélection externe.
-- [ ] **Étendre SCSI et série.** Ajouter plusieurs targets/LUNs, REQUEST SENSE
-  après CHECK CONDITION et un transport série hôte PTY/TCP.
+- [ ] **Ajouter un transport série hôte PTY/TCP.** Exposer les ports SCC de
+  l'invité sur un pseudo-terminal ou une socket TCP de l'hôte, et gater
+  l'aller-retour. (Le volet SCSI de cet item — cibles multiples, LUN et
+  REQUEST SENSE après CHECK CONDITION — est clos le 2026-09-09, `CHANGELOG`
+  (later).)
 - [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Garder les
   assets privés soft-skippables et comparer des captures stables.
 

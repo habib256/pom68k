@@ -616,12 +616,21 @@ void Ncr53c96::selectTarget(bool withAtn, bool stopAfterMsg) {
     // MSG OUT (IDENTIFY / message), remainder is the command descriptor block.
     cmd_.clear();
     int wireBytes = 0;                        // bytes clocked onto the bus
+    // Every selection re-establishes the nexus, so the LUN is announced
+    // even when there is no IDENTIFY: a target left holding the previous
+    // connection's LUN would answer this one on the wrong unit.
+    std::uint8_t lun = ScsiTarget::kNoIdentify;
     if (withAtn && fifoPos_ > 0) {
-        // Consume the IDENTIFY message byte (msg bytes have bit7 or are 0x80+).
-        (void)fifoPop();                      // IDENTIFY (LUN select) — ignored
+        // The IDENTIFY message (SCSI-2 § 5.6.7): bit 7 marks it, bits 2-0
+        // carry the logical unit. Anything else in the MSG OUT byte is a
+        // different message and leaves the nexus at "no IDENTIFY", which
+        // sends the target to the CDB's SCSI-1 LUN field.
+        const std::uint8_t msg = fifoPop();
+        if (msg & 0x80) lun = msg & 0x07;
         seq_ = 2;                             // one MSG OUT byte sent
         wireBytes++;
     }
+    t->selectLun(lun);
     if (stopAfterMsg) {
         // Stop here: the CDB stays in the FIFO and arrives through the normal
         // COMMAND path (fifoPush/dmaWrite -> runTarget) once the driver has

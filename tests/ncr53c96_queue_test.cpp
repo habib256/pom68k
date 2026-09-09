@@ -27,6 +27,13 @@
 //   5. S_TC0 (#41, ncr53c90.cpp:1234-1251 decrement_tcounter): strictly the
 //      DMA transfer-counter-zero flag — never on polled ($10) drains, never
 //      on a chunk cut short by a phase change.
+//   6. The populated bus: selecting an ID nothing answers must time out like
+//      an empty slot (no target runs a command, I_DISCONNECT, bus free), and
+//      a second target at another ID must answer as itself — together, what
+//      makes a driver's bus scan enumerate exactly the IDs that exist.
+//   7. The IDENTIFY message's LUN (SCSI-2 § 5.6.7) reaches the target, so a
+//      populated ID still refuses the logical units it does not implement:
+//      INQUIRY $7F, everything else CHECK CONDITION.
 //
 // Self-contained: builds its own tiny raw disk image in the system temp
 // directory (no asset dependency, never skips). Modelled on
@@ -57,10 +64,43 @@ static void selectNoWait(R& s, const std::vector<uint8_t>& cdb) {
     s.write(R::R_COMMAND, R::CD_SELECT_ATN);
 }
 
+// Same, for an arbitrary destination ID and logical unit. `lun` < 0 means
+// "no IDENTIFY": a plain SELECT, which is the SCSI-1 form the target has to
+// answer out of the CDB's byte-1 field instead.
+static void selectId(R& s, int id, int lun, const std::vector<uint8_t>& cdb) {
+    s.write(R::R_COMMAND, R::CM_FLUSH_FIFO);
+    if (lun >= 0) s.write(R::R_FIFO, uint8_t(0xC0 | (lun & 0x07)));   // IDENTIFY
+    for (uint8_t b : cdb) s.write(R::R_FIFO, b);
+    s.write(R::R_STATUS, uint8_t(id & 7));
+    s.write(R::R_COMMAND, lun >= 0 ? R::CD_SELECT_ATN : R::CD_SELECT);
+}
+
 static void setTc(R& s, uint32_t n) {
     s.write(R::R_TCLOW, uint8_t(n));
     s.write(R::R_TCMID, uint8_t(n >> 8));
     s.write(R::R_TCHIGH, uint8_t(n >> 16));
+}
+
+// One whole transaction: select, drain `n` DATA IN bytes through the polled
+// FIFO port, then Initiator Command Complete for the status byte.
+static uint8_t transact(R& s, int id, int lun, const std::vector<uint8_t>& cdb,
+                        int n, std::vector<uint8_t>& out) {
+    selectId(s, id, lun, cdb);
+    (void)s.read(R::R_ISTAT);                 // pop the select
+    out.clear();
+    if (n > 0) {
+        setTc(s, uint32_t(n));
+        s.write(R::R_COMMAND, R::CI_XFER);    // polled Transfer Information
+        for (int i = 0; i < n; i++) out.push_back(s.read(R::R_FIFO));
+        (void)s.read(R::R_ISTAT);
+    }
+    s.write(R::R_COMMAND, R::CI_COMPLETE);
+    (void)s.read(R::R_ISTAT);
+    const uint8_t status = s.read(R::R_FIFO);
+    (void)s.read(R::R_FIFO);                  // COMMAND COMPLETE message
+    s.write(R::R_COMMAND, R::CI_MSG_ACCEPT);
+    (void)s.read(R::R_ISTAT);
+    return status;
 }
 
 int main() {
@@ -372,8 +412,90 @@ int main() {
         std::printf("  S_TC0: DMA-counter-zero only (polled + short chunk clean) OK\n");
     }
 
+    // ── 6. An unpopulated ID is an empty bus slot ──────────────────────
+    // Only ID 0 is attached. Selecting any other ID must reach no device at
+    // all: the target never asserts BSY, the chip reports the selection
+    // timeout as I_DISCONNECT and the bus goes free (SCSI-2 § 6.1.1). This
+    // is what makes the ROM's bus scan enumerate the populated IDs only —
+    // an empty ID that answered would put a phantom volume on every one.
+    {
+        const long ranBefore = scsi.commands;
+        for (int id = 1; id < 7; id++) {
+            selectId(scsi, id, 0, tur);
+            CHECK(scsi.irq(), "empty ID %d raised the timeout interrupt", id);
+            const uint8_t ist = scsi.read(R::R_ISTAT);
+            CHECK(ist == R::I_DISCONNECT,
+                  "select of empty ID %d = I_DISCONNECT, got %02X", id, ist);
+            CHECK((scsi.read(R::R_STATUS) & 0x07) == 0,
+                  "bus free after the ID %d timeout", id);
+        }
+        CHECK(scsi.commands == ranBefore,
+              "no target executed a command for an empty ID (%ld ran)",
+              scsi.commands - ranBefore);
+
+        // The populated ID still answers afterwards: a timeout does not
+        // wedge the engine.
+        std::vector<uint8_t> out;
+        CHECK(transact(scsi, 0, 0, tur, 0, out) == 0x00,
+              "ID 0 still answers GOOD after six selection timeouts");
+        std::printf("  bus: empty IDs time out, populated ID unaffected OK\n");
+    }
+
+    // ── 7. A second target, and the LUNs neither of them implements ────
+    {
+        // A distinguishable second device: 8 blocks against the first's 16,
+        // so READ CAPACITY alone says which one answered.
+        const std::string img2 =
+            (std::filesystem::temp_directory_path() / "pom68k_ncr53c96_lun.hda").string();
+        {
+            std::ofstream out(img2, std::ios::binary | std::ios::trunc);
+            for (int b = 0; b < 8; b++)
+                for (int i = 0; i < 512; i++) out.put(char(uint8_t(b + i)));
+        }
+        ScsiDisk disk2;
+        CHECK(disk2.open(img2), "open the second temp image");
+        std::filesystem::remove(img2);
+        scsi.attach(&disk2, 3);
+
+        const std::vector<uint8_t> rdcap = { 0x25, 0, 0,0,0,0, 0,0,0, 0 };
+        std::vector<uint8_t> out;
+        CHECK(transact(scsi, 0, 0, rdcap, 8, out) == 0x00, "ID 0 READ CAPACITY GOOD");
+        CHECK(out.size() == 8 && out[3] == 15, "ID 0 is the 16-block disk, got %u",
+              out.empty() ? 0u : unsigned(out[3]));
+        CHECK(transact(scsi, 3, 0, rdcap, 8, out) == 0x00, "ID 3 READ CAPACITY GOOD");
+        CHECK(out.size() == 8 && out[3] == 7, "ID 3 is the 8-block disk, got %u",
+              out.empty() ? 0u : unsigned(out[3]));
+
+        // The IDENTIFY's LUN reaches the target (SCSI-2 § 5.6.7): LUN 0 is
+        // the disk, any other LUN on the SAME populated ID is "not
+        // connected" — INQUIRY peripheral qualifier 011b + device type $1F
+        // (§ 8.2.5.1, MAME nscsi_hd/nscsi_cd write $7f into byte 0).
+        const std::vector<uint8_t> inq = { 0x12, 0, 0, 0, 36, 0 };
+        CHECK(transact(scsi, 0, 0, inq, 36, out) == 0x00, "LUN 0 INQUIRY GOOD");
+        CHECK(out[0] == 0x00, "LUN 0 is the direct-access device, got %02X", out[0]);
+        CHECK(transact(scsi, 0, 2, inq, 36, out) == 0x00, "LUN 2 INQUIRY GOOD");
+        CHECK(out[0] == 0x7F, "LUN 2 INQUIRY = $7F not-connected, got %02X", out[0]);
+        CHECK(transact(scsi, 3, 5, inq, 36, out) == 0x00, "ID 3 LUN 5 INQUIRY GOOD");
+        CHECK(out[0] == 0x7F, "the second target refuses LUNs too, got %02X", out[0]);
+
+        // Every other command on an unsupported LUN: CHECK CONDITION, then
+        // the sense that says why (§ 7.5.3 / § 8.2.14).
+        CHECK(transact(scsi, 0, 1, tur, 0, out) == 0x02,
+              "TEST UNIT READY on LUN 1 → CHECK CONDITION");
+        const std::vector<uint8_t> rs = { 0x03, 0, 0, 0, 18, 0 };
+        CHECK(transact(scsi, 0, 1, rs, 18, out) == 0x00,
+              "REQUEST SENSE on LUN 1 is GOOD, never refused");
+        CHECK(out.size() == 18 && (out[2] & 0x0F) == 0x05 && out[12] == 0x25,
+              "…ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED");
+
+        // And LUN 0 is untouched by all of it.
+        CHECK(transact(scsi, 0, 0, tur, 0, out) == 0x00, "LUN 0 still GOOD");
+        std::printf("  targets/LUNs: second ID answers as itself, "
+                    "non-zero LUNs refused per SCSI-2 OK\n");
+    }
+
     std::printf("ncr53c96_queue_test: command queue, bus reset flush, "
                 "transfer pad (recv + send), I_ILLEGAL validation, "
-                "S_TC0 DMA-only OK\n");
+                "S_TC0 DMA-only, empty-ID timeout and multi-target/LUN OK\n");
     return 0;
 }

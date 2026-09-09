@@ -16,6 +16,11 @@ constexpr uint8_t kGood = 0x00, kCheck = 0x02;
 constexpr uint8_t kNoSense = 0x00, kNotReady = 0x02, kIllegalRequest = 0x05,
                   kDataProtect = 0x07, kUnitAttention = 0x06,
                   kMiscompare = 0x0E;
+// Additional sense codes used outside their one call site.
+constexpr uint8_t kAscLunNotSupported = 0x25;    // SCSI-2 appendix D
+// Fixed-format sense data is 18 bytes: an 8-byte head plus the 10 the
+// "additional sense length" field at byte 7 announces (SCSI-2 § 8.2.14).
+constexpr size_t kFixedSenseLen = 18;
 
 // wrap_hfs.py layout: 96-block head (DDM + map + Apple_Driver43) then HFS.
 constexpr uint32_t kFacadePrefixBlocks = 96;
@@ -504,7 +509,19 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
     }
 }
 
-void ScsiDisk::setSense(uint8_t key, uint8_t asc) { senseKey_ = key; senseAsc_ = asc; }
+void ScsiDisk::setSense(uint8_t key, uint8_t asc, uint8_t ascq) {
+    senseKey_ = key; senseAsc_ = asc; senseAscq_ = ascq;
+}
+
+// ── Which logical unit is this CDB for? ─────────────────────────────────
+// SCSI-2 § 5.6.7 / § 7.5.3: the IDENTIFY message sent after selection owns
+// the nexus's LUN; the CDB's byte-1 bits 7-5 are the SCSI-1 field, and are
+// consulted only when the initiator sent no IDENTIFY (the Ncr5380 path).
+// MAME resolves the same precedence in `nscsi_full_device::get_lun(default)`.
+uint8_t ScsiDisk::effectiveLun(const uint8_t* cdb, int cdbLen) const {
+    if (identifyLun_ != kNoIdentify) return identifyLun_ & 0x07;
+    return cdbLen > 1 ? uint8_t((cdb[1] >> 5) & 0x07) : 0;
+}
 
 // ── MODE SENSE pages, hard-disk personality ─────────────────────────────
 // MAME's nscsi_hd answers MODE SENSE with a bare header and no pages at all
@@ -764,6 +781,16 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
     // cdb[4]/cdb[8] unconditionally, so a short (or empty) CDB read past the
     // buffer. Group code (cdb[0] bits 7-5) fixes the required length.
     if (!cdb || cdbLen <= 0) { setSense(kIllegalRequest, 0x20); return kCheck; }
+    // ── The pending sense belongs to the PREVIOUS command ───────────────
+    // SCSI-2 § 7.2.14: sense data is preserved for the initiator until it
+    // is read by REQUEST SENSE **or until the target receives any other
+    // command** on the same nexus. Holding it past a successful command is
+    // what makes a driver's recovery path misdiagnose: it retries, the
+    // retry succeeds, it asks for sense anyway (several Mac drivers do) and
+    // is handed the failure it had already recovered from. Clearing here —
+    // before the command runs, so the failures below still install theirs —
+    // is the whole of the rule.
+    if (cdb[0] != 0x03) setSense(kNoSense, 0x00);
     {
         static const int kGroupLen[8] = { 6, 10, 10, 6, 16, 12, 6, 6 };
         if (cdbLen < kGroupLen[(cdb[0] >> 5) & 7]) {
@@ -799,6 +826,29 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                      cdbLen > 5 ? cdb[5] : 0, cdbLen > 6 ? cdb[6] : 0,
                      cdbLen > 7 ? cdb[7] : 0, cdbLen > 8 ? cdb[8] : 0,
                      cdbLen > 9 ? cdb[9] : 0);
+    // ── LUN != 0: the target exists, the logical unit does not ─────────
+    // A populated ID must still refuse the LUNs it does not implement, and
+    // refuse them the way SCSI-2 spells out, or a driver's bus scan mounts
+    // seven copies of the boot volume. INQUIRY answers GOOD with peripheral
+    // qualifier 011b + device type $1F (§ 8.2.5.1 — MAME's nscsi_hd and
+    // nscsi_cd write the same `$7f` into byte 0 of their INQUIRY reply when
+    // `get_lun()` is non-zero); REQUEST SENSE answers GOOD carrying the
+    // sense (§ 8.2.14 — a REQUEST SENSE is never refused for a bad LUN,
+    // that is how the initiator finds out); everything else is CHECK
+    // CONDITION / ILLEGAL REQUEST / LOGICAL UNIT NOT SUPPORTED (§ 7.5.3).
+    if (effectiveLun(cdb, cdbLen) != 0) {
+        if (cdb[0] == 0x12) {                        // INQUIRY
+            const uint8_t alloc = cdb[4] ? cdb[4] : 36;
+            dataOut.assign(alloc, 0);
+            dataOut[0] = 0x7F;                       // qualifier 011b, type $1F
+            if (dataOut.size() > 4) dataOut[4] = 0x20;   // additional length
+            return kGood;
+        }
+        setSense(kIllegalRequest, kAscLunNotSupported);
+        // REQUEST SENSE falls through to the shared path below, which
+        // returns that sense with GOOD status and clears it.
+        if (cdb[0] != 0x03) return kCheck;
+    }
     // A medium change owes exactly one CHECK CONDITION / UNIT ATTENTION
     // before anything else executes (SCSI-2 §7.9); INQUIRY and REQUEST
     // SENSE are the two commands that must not be blocked by it.
@@ -984,7 +1034,12 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             return kGood;
 
         case 0x03: {                                 // REQUEST SENSE
-            uint8_t alloc = cdb[4] ? cdb[4] : 4;
+            // Fixed format, 18 bytes (SCSI-2 § 8.2.14). The reply is the
+            // LESSER of the allocation length and what the target has: a
+            // drive asked for 255 returns 18, it does not pad to 255. An
+            // allocation length of 0 keeps the SCSI-1 4-byte short form.
+            size_t alloc = cdb[4] ? size_t(cdb[4]) : 4;
+            if (alloc > kFixedSenseLen) alloc = kFixedSenseLen;
             dataOut.assign(alloc, 0);
             dataOut[0] = 0x70;                       // current error, fixed format
             if (dataOut.size() > 2) dataOut[2] = senseKey_ & 0x0F;
@@ -993,6 +1048,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 dataOut[7] = uint8_t(addl < 10 ? addl : 10);
             }
             if (dataOut.size() > 12) dataOut[12] = senseAsc_;
+            if (dataOut.size() > 13) dataOut[13] = senseAscq_;
             setSense(kNoSense, 0);
             return kGood;
         }

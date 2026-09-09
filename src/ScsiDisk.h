@@ -134,6 +134,17 @@ public:
     // copy of this table, which is why MODE SELECT worked on the Plus and
     // not on the Quadra.
     int writeByteCount(const uint8_t* cdb, int cdbLen) const override;
+    // ── Logical units ───────────────────────────────────────────────────
+    // This target implements LUN 0 only, which is what every Macintosh
+    // drive of the era was. What matters is that it says so the way SCSI-2
+    // requires rather than answering LUN 3 with LUN 0's disk: INQUIRY to an
+    // unsupported LUN reports peripheral qualifier 011b + device type $1F
+    // (§ 8.2.5.1, and MAME's nscsi_hd/nscsi_cd write the same `$7f` into
+    // byte 0), REQUEST SENSE answers GOOD carrying ILLEGAL REQUEST /
+    // LOGICAL UNIT NOT SUPPORTED (§ 8.2.14), and everything else is a
+    // CHECK CONDITION with that same sense (§ 7.5.3).
+    // Gate: tests/scsi_target_test.cpp § 12.
+    void selectLun(std::uint8_t lun) override { identifyLun_ = lun; }
     // A few commands carry their real length INSIDE the first bytes rather
     // than in the CDB (the 4-byte defect-list header of FORMAT UNIT and
     // REASSIGN BLOCKS). Called each time the gather reaches `expected`;
@@ -166,7 +177,8 @@ public:
     // received those writes and a restore does not un-write it. The file
     // lives outside the snapshot by design (tests run write-back off).
     template <class Ar> void visit(Ar& ar) {
-        ar(blocks_, hfsPrefixBlocks_, senseKey_, senseAsc_, readCommands, readBlocks);
+        ar(blocks_, hfsPrefixBlocks_, senseKey_, senseAsc_, senseAscq_,
+           identifyLun_, readCommands, readBlocks);
         // Attachment properties (path, kind, write-back, the backing
         // stream) belong to the machine's setup, not to guest state, and
         // are deliberately NOT restored from a snapshot.
@@ -206,7 +218,10 @@ private:
     void applySnapshotBlock(uint32_t blk, const uint8_t* data);
     void read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out);
     void write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in);
-    void setSense(uint8_t key, uint8_t asc);
+    void setSense(uint8_t key, uint8_t asc, uint8_t ascq = 0);
+    // Effective LUN for this CDB: the IDENTIFY's if the connection carried
+    // one, else the CDB's SCSI-1 byte-1 field (ScsiTarget::selectLun).
+    uint8_t effectiveLun(const uint8_t* cdb, int cdbLen) const;
     // MODE SENSE(6) and (10) share a body; `ten` picks the header shape.
     uint8_t modeSense(const uint8_t* cdb, bool ten, std::vector<uint8_t>& out);
     bool applyFlatHfsFacade(const std::string& imagePath);
@@ -224,7 +239,13 @@ private:
     // Non-zero when image_ has a synthetic DDM/PM/driver prefix; HFS file
     // bytes begin at this LBA and write-back subtracts it from the LBA.
     uint32_t hfsPrefixBlocks_ = 0;
-    uint8_t senseKey_ = 0, senseAsc_ = 0;
+    // Fixed-format sense (SCSI-2 § 8.2.14): key + ASC + ASCQ, cleared by the
+    // REQUEST SENSE that reads it and by the receipt of any other command.
+    uint8_t senseKey_ = 0, senseAsc_ = 0, senseAscq_ = 0;
+    // LUN of the current connection's IDENTIFY, or kNoIdentify when the
+    // initiator sent none. Set at selection by the controller; part of a
+    // mid-connection snapshot exactly as the controllers' phase_ is.
+    uint8_t identifyLun_ = kNoIdentify;
     FloppySoundSink* sound_ = nullptr;
 
     // Save-state write log. `dirtyBits_` answers "already logged?" in O(1);
