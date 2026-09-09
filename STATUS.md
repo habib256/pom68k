@@ -61,27 +61,27 @@ Scheduling cost if every gate ran at once: 480 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-250 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+254 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 86 |
+| assets | none | 87 |
 | assets | optional | 15 |
-| assets | required | 149 |
-| host | any | 239 |
+| assets | required | 152 |
+| host | any | 243 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 89 |
+| scope | component | 90 |
 | scope | engine | 22 |
-| scope | profile | 136 |
+| scope | profile | 139 |
 | scope | repository | 3 |
-| tier | daily | 86 |
-| tier | full | 152 |
+| tier | daily | 87 |
+| tier | full | 155 |
 | tier | platform | 12 |
-| slots_src | assumed | 137 |
+| slots_src | assumed | 141 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 609 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 613 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
