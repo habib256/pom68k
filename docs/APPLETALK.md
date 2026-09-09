@@ -102,7 +102,7 @@ only sees traffic when the LToUDP cable is up.
 
 ### 0.5 Gates
 
-`ctest -L unit` runs the first eight in seconds; the last two need ROM +
+`ctest -L unit` runs the first eight in seconds; the last three need ROM +
 disk assets and soft-skip without them.
 
 | Gate | Covers |
@@ -117,6 +117,7 @@ disk assets and soft-skip without them.
 | `daynaport_test` | the SCSI/Link command set (READ/WRITE frame formats, the 6-byte header + more-data flag, SET MAC, the 37-byte INQUIRY) and the round trip guest → Ethernet frame → `EtherLink` → NAT → back, plus proxy-ARP refusing the guest's own address (§6.4bis) |
 | `llap_two_system_etalon` | two Macs acquire node IDs over real ENQ traffic |
 | `q605_ot_bind_etalon` | Open Transport's `.MPP` binds against the in-process stack (§2.5) |
+| `q605_afp_live_etalon` | real Mac OS 8.1: Chooser→NBP→guest login→asserted `volMounted`→Cmd-N→new host directory, with AFP command progress |
 
 ---
 

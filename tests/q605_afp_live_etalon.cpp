@@ -1,7 +1,8 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// The LIVE AppleShare gate (TODO § 6, ordered by the user 2026-08-28):
+// The LIVE AppleShare gate (CHANGELOG 2026-08-28 (tenth), first green and
+// calibrated 2026-09-01 (ninth)):
 // a real guest EXCHANGES FILES with the in-process AFP server, end to end,
 // the way a person would — no protocol-level shortcut anywhere:
 //
@@ -435,9 +436,15 @@ int main() {
     if (!click(cbX, cbY)) { std::fprintf(stderr, "FAIL: chooser close\n"); return 1; }
     frames(300);
     Screen desk1 = snap("afp_live_6_mounted.ppm");
-    std::printf("phase 6: chooser closed, AFP sessions=%d opens=%ld\n",
-                hub.snapshot().afp.sessions, (long)0);
+    const auto mounted = hub.snapshot();
+    std::printf("phase 6: chooser closed, AFP sessions=%d mounted=%d commands=%ld\n",
+                mounted.afp.sessions, mounted.afp.volMounted,
+                mounted.afp.cmdCount);
     std::fflush(stdout);
+    if (!mounted.afp.volMounted) {
+        std::fprintf(stderr, "FAIL: the guest did not open the AFP volume\n");
+        return 1;
+    }
     if (stopPhase <= 6) return 0;
 
     // ── Phase 7: open the mounted volume — it is already SELECTED ────────
@@ -476,11 +483,15 @@ int main() {
     }
     snap("afp_live_8_created.ppm");
     auto st = hub.snapshot();
-    std::printf("phase 8: host saw %s; AFP sessions=%d, DDP in=%ld\n",
+    std::printf("phase 8: host saw %s; AFP sessions=%d, mounted=%d, "
+                "commands=%ld, DDP in=%ld\n",
                 created.empty() ? "NOTHING" : ("\"" + created + "\"").c_str(),
-                st.afp.sessions, st.net.ddpIn);
+                st.afp.sessions, st.afp.volMounted, st.afp.cmdCount,
+                st.net.ddpIn);
 
-    const bool ok = !cpu.isHalted() && !created.empty() && st.afp.sessions >= 1;
+    const bool ok = !cpu.isHalted() && !created.empty() &&
+                    st.afp.sessions >= 1 && st.afp.volMounted &&
+                    st.afp.cmdCount > mounted.afp.cmdCount;
     std::printf("%s\n", ok
         ? "PASSED — the guest created a folder on the host over AppleTalk/AFP"
         : "FAILED — no guest-created object reached the host share");

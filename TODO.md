@@ -97,8 +97,6 @@ L'ordre interne est : prouver le parcours invité existant, fermer les défauts
 de protocole observés, puis ajouter les extensions et les contrôles GUI. C'est
 la plus grande dimension produit encore peu exploitée.
 
-- [ ] **Créer un etalon Chooser AppleShare.** Monter le serveur interne depuis
-  un vrai invité et vérifier une opération de fichier.
 - [ ] **Persister les CNID.** Stocker l'identité catalogue dans `.AppleDB` ou
   les sidecars AppleDouble et vérifier sa stabilité après redémarrage.
 - [ ] **Étendre le sous-ensemble AFP.** Ajouter Desktop DB, CopyFile,

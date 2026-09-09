@@ -395,8 +395,8 @@ add_test(NAME duo230_input_etalon COMMAND duo_beyond_etalon
 set_tests_properties(duo230_input_etalon PROPERTIES
                      ENVIRONMENT "POM68K_BEYOND=input" TIMEOUT 1800)
 
-# The LIVE AppleShare exchange (2026-08-28, TODO § 6's named missing gate,
-# ordered by the user): a real 8.1 guest drives the Chooser, mounts the
+# The LIVE AppleShare exchange (2026-08-28 (tenth), calibrated and first green
+# 2026-09-01 (ninth)): a real 8.1 guest drives the Chooser, mounts the
 # in-process AFP share and creates a folder — the pass criterion is the
 # directory appearing in the HOST filesystem. The whole wire, no protocol
 # shortcut. Mouse-calibrated to the pinned MacOS-8.1 image; soft-skips

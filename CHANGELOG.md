@@ -327,6 +327,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Serial, LocalTalk and AppleTalk
 
+- **where is the end-to-end proof that a real guest mounts the in-process AppleShare server and changes the host share?** → [2026-09-09 (tenth) — The Chooser AppleShare goal was already real…](#2026-09-09-chooser-appleshare-proof)
 - **why can the in-process server no longer lose node 128 to a guest's lapENQ probe?** → [2026-09-09 (ninth) — The lapACK now wins its 200 µs LLAP race…](#2026-09-09-llap-address-defence)
 - **how do real host programs reach the guest's modem and printer ports without bypassing SCC timing or overflowing its FIFO?** → [2026-09-09 (eighth) — Both SCC serial ports reach host PTYs and loopback TCP…](#2026-09-09-scc-serial-host)
 - **SCC receive path + the LToUDP virtual cable** → [2026-07-22 — LLAP milestone 1: SCC receive path + LToUDP virtual cable](#2026-07-22--llap-milestone-1-scc-receive-path--ltoudp-virtual-cable)
@@ -437,6 +438,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](#2026-09-09-chooser-appleshare-proof)
 - **2026-09-09 (ninth)** — [The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS](#2026-09-09-llap-address-defence)
 - **2026-09-09 (eighth)** — [Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO](#2026-09-09-scc-serial-host)
 - **2026-09-09 (seventh)** — [The LC II sound path reaches the real DFAC, and the host DAC owns playback time with a ten-minute deterministic tempo proof](#2026-09-09-dfac-host-clock)
@@ -903,6 +905,29 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-chooser-appleshare-proof"></a>
+## 2026-09-09 (tenth) — The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory
+
+The network backlog still asked for an etalon that mounts the in-process
+AppleShare server from a real guest and verifies a file operation. That was a
+stale roadmap line, not an unimplemented path. `q605_afp_live_etalon` has
+driven the pinned Mac OS 8.1 image through Apple menu → Chooser → AppleShare
+→ NBP server list → Guest login → volume selection → mount since its first
+green calibration on 2026-09-01. It then opens the selected network volume and
+sends Cmd-N; success is a new directory appearing in the host share through
+the emulated SCC, LLAP, DDP, ATP, ASP and AFP stack.
+
+The audit reran that asset-backed path rather than closing the item from source
+inspection alone. The guest issued 20 NBP lookups, opened one AFP session,
+reached `volMounted`, advanced the AFP command count from 27 after mount to 53
+after the file operation, delivered 170 inbound DDP datagrams and created
+`Echange/untitled folder` plus its AppleDouble sidecar on the host. The gate now
+asserts `volMounted` at phase 6 and requires both the mounted state and command
+progress at its final filesystem proof; the former placeholder `opens=0` can no
+longer label a merely login-shaped screen as a mount. The AppleTalk gate table
+now lists this profile etalon, its stale TODO references are gone, and the
+completed roadmap item leaves `TODO.md`.
 
 <a id="2026-09-09-llap-address-defence"></a>
 ## 2026-09-09 (ninth) — The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS

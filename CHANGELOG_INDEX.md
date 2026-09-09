@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 479 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 480 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 56 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 32 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 33 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 89 |
 
@@ -437,6 +437,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03 (ninth)** — [B.4 opens at the VASP: the store inventory is audited, a source-level gate pins it, and the CACR flush retires](CHANGELOG.md#2026-09-03-vasp-inventory)
 - **2026-09-03 (third)** — [The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout](CHANGELOG.md#2026-09-03-asan-timeout)
 - **2026-09-08 (seventh)** — [Save-state relaunch is gated on all three CPU families](CHANGELOG.md#2026-09-08-plus-relaunch)
+- **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](CHANGELOG.md#2026-09-09-chooser-appleshare-proof)
 
 ## Documentation, audits and reviews
 
