@@ -492,7 +492,9 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
             oneSecFirst_ = true;         // always the full form)
         }
         break;
-    case kSendDfac:                      // DFAC volume/filter: swallowed
+    case kSendDfac:                      // [1, $0E, settings]
+        if (cmd.size() >= 3 && onDfacSettings) onDfacSettings(cmd[2]);
+        break;
     case kPowerDown:
     case kResetSystem:
     default:

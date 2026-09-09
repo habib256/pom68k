@@ -43,10 +43,12 @@ namespace {
 struct FakeAudio {
     bool startedFlag = false;
     size_t bufferedCount = 0;
+    size_t targetCount = 2225;
     int raw = 0, frame = 0, rawStereo = 0, frameStereo = 0;
 
     bool started() const { return startedFlag; }
     size_t buffered() const { return bufferedCount; }
+    size_t targetBuffered() const { return targetCount; }
     void pushRaw(std::vector<float>&, int) { raw++; }
     void pushFrame(std::vector<float>&, int) { frame++; }
     void pushRawStereo(std::vector<float>&, int) { rawStereo++; }
@@ -307,12 +309,13 @@ int main() {
         check(audio.frame == 1,
               "the first audible drain pushes a frame and arms audio pacing");
         audio.startedFlag = true;
-        audio.bufferedCount = 0;
+        audio.targetCount = 4800;             // a native 48 kHz callback
+        audio.bufferedCount = 3000;           // above the old fixed 2225
         m.forceAudioClocked();
         const int rawBefore = audio.raw;
         m.stepTick();
         check(audio.raw > rawBefore,
-              "with the device started, pacing switches to pushRaw()");
+              "native-rate target keeps audio-clocked pacing on the host clock");
         check(audio.rawStereo == 0 && audio.frameStereo == 0,
               "a mono platform never reaches the stereo entry points");
     }

@@ -138,8 +138,8 @@ add_test(NAME scsi_target_test COMMAND scsi_target_test)
 # M6 gate: the startup chime is a real decaying tone (soft-skips).
 add_executable(sound_test tests/sound_test.cpp)
 target_link_libraries(sound_test PRIVATE pom68k_core)
-add_test(NAME sound_test COMMAND sound_test
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME sound_test COMMAND sound_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kAudioGates.cmake)
 
 # M7 gate: the NCR 5380 phase engine driven like the ROM's SCSI Manager.
 add_executable(ncr5380_test tests/ncr5380_test.cpp)

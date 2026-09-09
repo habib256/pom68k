@@ -171,6 +171,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     V8Video& video = services.own<V8Video>(mem);
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);
+    audioHost.setInputSampleRate(AscV8::kSampleRate);
     mem.loadRom(rom);
     mem.setCpu(&cpu);
     return runV8Gui<LcMachine>(

@@ -125,6 +125,7 @@ int main() {
         check(m.mem.externalDrive().insertImage(
                   std::vector<uint8_t>(SonyDrive::kSize800K, 0x5A)),
               "setup: external 800K medium inserted");
+        m.mem.dfac().writeSettings(0xA2);
 
         snapshot = m.save();
         check(snapshot.size() > 64, "save: produced a container");
@@ -134,6 +135,7 @@ int main() {
 
         m.run(200000);                  // diverge
         m.mem.externalDrive().eject();
+        m.mem.dfac().writeSettings(0x20);
         check(m.counter() != atSnapshot, "mutate: the machine moved on");
 
         std::string err;
@@ -144,6 +146,8 @@ int main() {
         check(m.counter() == atSnapshot, "load: guest RAM is back to the snapshot");
         check(m.mem.externalDrive().hasDisk(),
               "load: external floppy state is back");
+        check(m.mem.dfac().settings() == 0xA2,
+              "load: the original DFAC settings are back");
 
         const Blob again = m.save();
         check(again == snapshot, "load→save is byte-identical to the original");

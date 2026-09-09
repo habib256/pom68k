@@ -276,7 +276,10 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // that previously serialized only drive A.  A v12 reader would interpret the
 // longer drive payload as the following SCC/SCSI state, so compatibility must
 // be refused at the header.
-inline constexpr u32      kVersion   = 13;  // v13: external floppy mechanism
+// v14 adds the original DFAC's shift/latch/settings state to the V8-family
+// chunk. It is live peripheral state between Egret wire edges, not a host
+// cache; a v13 reader would shift every following V8 device field.
+inline constexpr u32      kVersion   = 14;  // v14: original V8-family DFAC
 
 struct Header {
     u32 version     = kVersion;

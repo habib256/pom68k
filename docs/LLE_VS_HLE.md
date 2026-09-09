@@ -806,7 +806,7 @@ non-destructively and reports `$FF` = on, `$00` = off, **anything else as
 address is ordinary RAM); a binary verdict over noise would have been the
 same class of mistake as the false green in § 5.
 
-## 1.7 Audio — fixed drain rate
+## 1.7 Audio — guest drain rate and host clock
 
 `Asc.*`. FIFO semantics are faithful (MODE mask, edge/level IRQ variants);
 the drain is a fixed 22 257 Hz via fractional accumulators. **Four** flavours
@@ -835,10 +835,24 @@ hardware rather than luck: only the **classic** (Mac II discrete) ASC accepts
 a write to `$807` — on the V8/Sonora/IOSB integrations it is read-only and
 reads back 0, which the gate asserts alongside the rates.
 
-*Host caveat, deliberate*: the output ring is consumed by a fixed-rate host
-DAC, so a guest that really programmed 44.1 kHz would get its FIFO interrupts
-at the correct cadence while the emulator paced to half speed. Resampling is
-out of scope and no known guest writes the register.
+The V8 guest drain and the host DAC are now separate clocks. `MacAudioHost`
+asks miniaudio for the device's native callback rate, and
+`HostAudioResampler` linearly converts the configured guest stream before it
+enters the SPSC ring.
+Its rational phase survives GUI-frame chunk boundaries; the pacing target is
+100 ms expressed at the negotiated host rate. `audio_resampler_test` proves
+byte-identical irregular chunking and a ten-minute 22 257→48 000 Hz run whose
+duration differs by less than one host frame and whose 997 Hz tone remains
+within 0.02 Hz. `machinehost_test` pins the dynamic target and `gui_smoke_test`
+executes the composed GUI lifecycle.
+
+On V8/Eagle the stream crosses the original `Dfac` first: Egret firmware LLE
+drives PA4 latch plus PB6/PB7 data/clock, while the HLE fallback maps pseudo
+command `$0E` to the same settings byte. The device implements the input gate
+and 0/-18/-15/-12/-9/-6/-3/0 dB volume table; upstream still leaves its analog
+filters as a TODO. `lcii_asc_chime_etalon` now pulls through this stage and
+observes the real 341S0850 programming `$EA`. DFAC2 remains the separate,
+ACK-only Cuda/I2C case documented in § 3.
 
 *The one place POM68K models **more** than all its sources.* The classic
 ASC's **idle empty-cycle IRQ** — a FIFO left running with no data still
@@ -909,8 +923,8 @@ autopoll are the 68HC05's own. Two things it does not close:
   that window must not resume without the reset it owes.
   Gate: `cuda_restart_test`, 22 checks over both flavours and both bindings
   (Q605/Cuda/rising/`Cpu040` and LC II/Egret/falling/`Cpu030`), verified to
-  bite. (`PC2`/NMI and `PA4`/DFAC outputs are still absent, for the reason
-  this entry no longer has: no consumer.)
+  bite. `PA4`/DFAC is now bound to the original audio-stage consumer on the
+  Egret flavor; `PC2`/NMI remains absent because no board consumer exists.
 - **The 6805's programmable timer is pinned at 512 cycles** whatever the PLL
   rate the firmware programs (`M68hc05.cpp:479-486`). Invisible on every
   dump POM68K ships, because the shared rate-2→3 accommodation masks it.

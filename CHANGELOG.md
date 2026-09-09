@@ -316,6 +316,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Sound
 
+- **the LC II's original DFAC and ten-minute host-clock tempo proof** → [2026-09-09 (seventh) — The LC II sound path reaches the real DFAC and the host DAC owns playback time](#2026-09-09-dfac-host-clock)
 - **the ASC drain follows $807, and why that is free on every booting machine** → [2026-08-02 (third) — Two rates that were rounded…](#2026-08-02-eclock-asc)
 
 - **the startup chime** → [2026-07-15 — M6: the startup chime plays](#2026-07-15--m6-the-startup-chime-plays)
@@ -434,6 +435,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (seventh)** — [The LC II sound path reaches the real DFAC, and the host DAC owns playback time with a ten-minute deterministic tempo proof](#2026-09-09-dfac-host-clock)
 - **2026-09-09 (sixth)** — [All 36 desktops get their external Sony drive, and the Plus ROM boots from drive B with drive A empty](#2026-09-09-external-floppy)
 - **2026-09-09 (fifth)** — [The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus](#2026-09-09-storage-profile-audit)
 - **2026-09-09 (fourth)** — [The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice](#2026-09-09-swim1-mfm-writeback)
@@ -895,6 +897,54 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-09-dfac-host-clock"></a>
+## 2026-09-09 (seventh) — The LC II sound path reaches the real DFAC, and the host DAC owns playback time
+
+The V8 ASC had a valid 22 257 Hz guest clock and a boot-chime gate, but the
+last board stage was fiction: `V8Memory::ascPop()` handed ASC samples straight
+to the GUI, Egret HLE swallowed `SEND_DFAC $0E`, and firmware LLE discarded
+the exact PA4/PB6/PB7 pins that program the part. `Dfac` now owns the original
+LC/LC II/Classic II three-wire shift register, latch and live setting. It
+implements the source-input gate plus MAME's volume table — mute, then
+-18/-15/-12/-9/-6/-3/0 dB — and sits in the only audio facade the V8 runner
+uses. The LLE establishes PB6 data before each PB7 clock edge and commits on
+PA4; the explicit HLE fallback forwards the command's setting byte to the same
+device. Its mid-byte wire state is guest hardware, so the snapshot format is
+v14 rather than pretending a restore can reset it.
+
+The split between the original DFAC and DFAC2 matters. Color Classic keeps its
+Cuda I2C slave at `$6F`, and its payload remains ACK-only: current upstream
+`dfac2_device::write_data` still only logs the unknown register write. Applying
+the apparent reset-zero attenuation would mute a machine on an invented
+interpretation. Mac TV still has no DFAC. The analog switched-capacitor and
+external low-pass filters on the original part remain explicitly unsynthesized,
+matching the open TODO in upstream `dfac.cpp`; the implemented digital control
+surface is the one its consumer can presently prove.
+
+The other fiction was time. `MacAudioHost` requested a 22 254 Hz callback and
+treated one guest sample as one host frame, while V8 produces 22 257. It now
+requests the output device's native callback rate, configures V8's real source
+rate before the GUI starts, and linearly resamples with a rational phase that
+survives every guest-frame chunk boundary. The SPSC ring therefore contains
+host-clock frames, and `MachineHost` derives its ~100 ms pacing target from the
+negotiated rate instead of the fixed 2 225-frame constant. Mechanical drive
+sounds are moved to the same native clock at device start.
+
+The proof covers each seam. `dfac_test` pins mute/gain/input and LSB-first
+shift/latch semantics; `egret_test` pins HLE `$0E`; the real-ROM
+`lcii_asc_chime_etalon` now consumes `V8Memory::ascPop()` and observes the real
+341S0850 program `$EA`, unit gain, before accepting the 1.16 s chime.
+`audio_resampler_test` proves irregular GUI-quantum chunk identity and runs
+600 seconds of 22 257→48 000 Hz: 13 354 200 source frames become exactly
+28 799 998 host frames, the two timelines differ by less than one output
+frame, and a 997 Hz tone measures 996.99927 Hz. `machinehost_test` exercises a
+48 kHz target above the old threshold. `gui_smoke_test` traverses the composed
+GUI lifecycle and, on this device-less host, proves the clean silent fallback;
+the deterministic gate covers the callback stream itself. The completed
+DFAC/host-clock item leaves `TODO.md`.
 
 ---
 

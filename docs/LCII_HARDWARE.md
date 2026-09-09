@@ -325,7 +325,8 @@ The 60.15 Hz "VBL" heartbeat and the one-second interrupt both live on VIA1
 ## Sound (ASC-V8 + DFAC)
 
 → `Asc.h/.cpp` — `AscV8` for the V8/Eagle, `AscSonora` (the EASC at `$BC`) for
-Spice/Tinker Bell. Gate `asc_test`.
+Spice/Tinker Bell; `Dfac.*` is the original output stage. Gates `asc_test`,
+`dfac_test`, `audio_resampler_test`, `lcii_asc_chime_etalon`.
 
 - ASC registers at `$F14000`, classic ASC layout (`asc.cpp:23-46`): FIFO A =
   `+$000-$3FF`, FIFO B = `+$400-$7FF`, regs at `+$800`.
@@ -339,12 +340,25 @@ Spice/Tinker Bell. Gate `asc_test`.
   *unconditionally* — MAME's `HALF_B` gate freezes the CC / LC III boot at
   "Bienvenue." inside the autovector (`LLE_VS_HLE.md` § 1.7).
 - IRQ → pseudo-VIA IFR bit 4 (v8.cpp:119-122).
-- **DFAC** (Digitally Filtered Audio Chip) sits after the ASC DAC: volume/
-  filter/mic input stage, programmed by the MCU **over I2C** (bit-bang
-  SCL/SDA + latch, maclc.cpp:421-423; dfac.cpp). Not modelled as an audio
-  stage — but the **I2C ACK is not optional** on the Cuda-flavour siblings
-  (`CudaLle::setI2cDfac`): its absence was the long-standing Color Classic
-  "0417 wedge". `TODO.md § LC II / V8` still lists DFAC/sound-out polish.
+- The original **DFAC** (Digitally Filtered Audio Chip) sits after the ASC on
+  LC/LC II/Classic II. It is not I2C: Egret PA4=latch, PB6=data, PB7=clock
+  (`egret.cpp`, `maclc.cpp`). `Dfac` implements the input-enable gate and the
+  volume codes 0..7 (mute, then -18/-15/-12/-9/-6/-3/0 dB); LLE drives the
+  three pins, and the HLE fallback forwards pseudo command `$0E`. The analog
+  switched-capacitor/external low-pass filters remain unmodelled, as in the
+  upstream `dfac.cpp` TODO.
+- The Color Classic instead carries **DFAC2** on Cuda I2C. Its ACK remains
+  mandatory (`CudaLle::setI2cDfac`) but register payload stays discarded:
+  upstream `dfac2_device::write_data` still only logs it, so applying the
+  apparent reset-zero attenuation would incorrectly mute the machine. Mac TV
+  has no DFAC at all.
+- `MacAudioHost` asks miniaudio for the output device's native rate, linearly
+  resamples the fixed 22 257 Hz stream with a rational phase accumulator, and
+  sizes its audio-pacing target as 100 ms at that host rate. The 600-second
+  gate differs by less than one 48 kHz frame and keeps a 997 Hz tone within
+  0.02 Hz. The GUI smoke covers composition and the no-device fallback, the
+  deterministic gate covers the callback stream, and the real LC II chime gate
+  covers the guest source plus DFAC path.
 - No PWM/alternate sound buffer: the Plus's sound-buffer scanout is gone.
 
 ## SCSI (NCR 53C80 + pseudo-DMA)
@@ -515,7 +529,7 @@ V8-specific slice.
 | **VRAM is always 512 KB** (`kVramSize`), never the 256 KB base config | `V8Memory::kVramSize` | The 256 KB machine's mode limits are therefore not enforced |
 | **SCSI DRQ timeout is not timed** — no DRQ raises `/BERR` immediately instead of after ~16 µs | `V8Memory::scsiDma_` | Functionally what the blind-transfer loops need; `LLE_VS_HLE` § 1.5 |
 | **ASC drain is a fixed 22 257 Hz**, not derived from the programmed rate | `Asc.*` | `LLE_VS_HLE` § 1.7 |
-| **DFAC is not an audio stage** — writes accepted and dropped (but the I2C ACK is modelled) | `CudaLle::setI2cDfac`, `V8Memory` Spice brightness/contrast DAC | `TODO.md § LC II / V8` |
+| **DFAC analog filters are not synthesized; DFAC2 payload remains ACK-only** | `Dfac`, `CudaLle::setI2cDfac` | Original DFAC gain/input gate is live; DFAC2 follows upstream's still-incomplete register model |
 | **68882 populated by default** although the stock LC II has none | `main.cpp`, LC II gates pass `withFpu = true` | Era software F-line-faults otherwise; `POM68K_NOFPU` = bare machine |
 | **No CPU/bus contention model** beyond VIA E-clock sync + SWIM wait states; an i-cache *throughput* overlay, not a cache model | `Cpu030.h` | Functional accuracy by design; `LLE_VS_HLE` § 1.2 |
 | **LC PDS slot: no card, BERR** | `V8Memory::read8` | Nothing to emulate yet |

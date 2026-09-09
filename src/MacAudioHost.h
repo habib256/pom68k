@@ -2,9 +2,11 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // ── Audio host (miniaudio) ──
-// Plays the Mac Plus PWM sample stream on the host speakers. A lock-free
-// SPSC ring carries stereo frames from the emulator thread (producer)
-// to miniaudio's callback (consumer, real time at 22 254.5 Hz). Only
+// Plays the Macintosh sample stream on the host speakers. A lock-free SPSC
+// ring carries stereo frames from the emulator thread (producer) to
+// miniaudio's callback (consumer, on the output device's native clock). A
+// streaming linear converter crosses from the guest crystal to that clock.
+// Only
 // non-silent frames are pushed, so the ~1x-rate ring stays drained while
 // the machine turbos through the silent RAM test — the startup chime and
 // system beeps still play at the right pitch. Mono Plus/LC II streams are
@@ -13,6 +15,7 @@
 
 #pragma once
 #include "FloppySound.h"
+#include "HostAudioResampler.h"
 #include "MacAudio.h"
 #include "third_party/miniaudio.h"
 #include <algorithm>
@@ -28,10 +31,18 @@ public:
         ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
         cfg.playback.format   = ma_format_f32;
         cfg.playback.channels = 2;
-        cfg.sampleRate        = 22254;              // Mac Plus native rate
+        // Zero asks miniaudio for the device's native callback rate instead
+        // of hiding a second conversion behind a fixed 22 254 Hz callback.
+        cfg.sampleRate        = 0;
         cfg.dataCallback      = &MacAudioHost::callback;
         cfg.pUserData         = this;
         if (ma_device_init(nullptr, &cfg, &device_) != MA_SUCCESS) return false;
+        outputRate_ = device_.sampleRate ? device_.sampleRate : inputRate_;
+        resampler_.configure(inputRate_, outputRate_);
+        read_.store(0, std::memory_order_relaxed);
+        write_.store(0, std::memory_order_relaxed);
+        for (FloppySound* fx : fx_)
+            if (fx) fx->setSampleRate(int(outputRate_));
         // An init'd-but-not-started device still owns backend handles: without
         // this uninit they leak for the process lifetime, since stop() is
         // gated on started_.
@@ -53,13 +64,24 @@ public:
     }
     bool started() const { return started_; }
 
+    // Guest sample clock, configured by the platform before start(). V8,
+    // Eagle, Spice and Tinker Bell all expose 22 257 Hz at this boundary.
+    void setInputSampleRate(uint32_t rate) {
+        if (!started_ && rate != 0) inputRate_ = rate;
+    }
+    uint32_t outputSampleRate() const { return outputRate_; }
+
     // Mechanical-sound sources (FloppySound), mixed into the callback
     // after the machine's sample ring — they play even while the ring
     // is silent (a seeking drive on a quiet desktop). Attach BEFORE
     // start(); the callback reads the array without locks.
     void attachFx(FloppySound* fx) {
         for (FloppySound*& slot : fx_)
-            if (!slot) { slot = fx; fx->setSampleRate(22254); return; }
+            if (!slot) {
+                slot = fx;
+                fx->setSampleRate(int(outputRate_));
+                return;
+            }
     }
 
     // Samples queued and not yet played — the LC II frame loop uses this
@@ -70,21 +92,25 @@ public:
         return (write_.load(std::memory_order_acquire) + kRing
               - read_.load(std::memory_order_acquire)) % kRing;
     }
+    size_t targetBuffered() const {
+        return std::max<size_t>(1, size_t(outputRate_) / 10);  // about 100 ms
+    }
 
     // Unconditional push (no silence gate): while music streams, silence
     // BETWEEN notes is part of the timeline — dropping it would make the
     // pacing loop run extra frames and speed the tempo up.
     void pushRaw(const std::vector<float>& s, size_t begin) {
-        for (size_t i = begin; i < s.size(); i++) {
-            if (!push(s[i], s[i])) break;
-        }
+        if (begin >= s.size()) return;
+        resampler_.pushMono(s.data() + begin, s.size() - begin,
+            [this](float left, float right) { return push(left, right); });
     }
 
     // Interleaved L/R frames from the IOSB ASC.
     void pushRawStereo(const std::vector<float>& s, size_t begin) {
         begin += begin & 1;                    // keep channel alignment
-        for (size_t i = begin; i + 1 < s.size(); i += 2)
-            if (!push(s[i], s[i + 1])) break;
+        if (begin + 1 >= s.size()) return;
+        resampler_.pushStereo(s.data() + begin, (s.size() - begin) / 2,
+            [this](float left, float right) { return push(left, right); });
     }
 
     // Push a frame's samples — but only if it carries real sound, so the
@@ -101,9 +127,7 @@ public:
             if (s[i] > hi) hi = s[i];
         }
         if (hi - lo < 0.02f) return;                // silence or DC → skip
-        for (size_t i = begin; i < s.size(); i++) {
-            if (!push(s[i], s[i])) break;
-        }
+        pushRaw(s, begin);
     }
 
     void pushFrameStereo(const std::vector<float>& s, size_t begin) {
@@ -163,10 +187,13 @@ private:
         }
     }
 
-    static constexpr size_t kRing = 1 << 16;        // 64k stereo frames (~3 s)
+    static constexpr size_t kRing = 1 << 16;        // 64k native-rate frames
     Frame ring_[kRing] = {};
     std::atomic<size_t> read_{0}, write_{0};
     ma_device device_{};
     bool started_ = false;
+    uint32_t inputRate_ = 22254;             // legacy Mac Plus default
+    uint32_t outputRate_ = 22254;            // replaced after device init
+    pom68k::HostAudioResampler resampler_;
     FloppySound* fx_[2] = { nullptr, nullptr };     // floppy + HDD proxy
 };

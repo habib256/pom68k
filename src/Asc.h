@@ -8,7 +8,7 @@
 // rate fixed 22 257 Hz. FIFO status ($804): bit 0 = A half-empty
 // (< $200 bytes — asserts the IRQ, LEVEL-triggered on the pseudo-VIA),
 // bit 1 = A empty/full. Reading $804 clears the IRQ only when not still
-// half-empty. The DFAC output stage is a unit-gain pass-through.
+// half-empty. V8Memory routes this stream through the separate DFAC device.
 // Source of truth: MAME asc.cpp asc_v8_device (master 2026-07-15,
 // :755-903 + base :369-431), hardware-tested (ASCTester dumps in-file);
 // pinned in docs/LCII_HARDWARE.md § Sound.
@@ -69,10 +69,10 @@ public:
     // every machine that boots today. Code 1 is undefined: keep the Mac
     // rate rather than invent one.
     //
-    // Host caveat, deliberate: the output ring is consumed by a fixed-rate
-    // host DAC, so a guest that actually programmed 44.1 kHz would get its
-    // FIFO IRQs at the right cadence but the emulator would pace to half
-    // speed. Resampling is out of scope; no known guest writes this.
+    // MacAudioHost resamples each platform's configured guest clock onto the
+    // output device's native callback clock. The V8 path configures its fixed
+    // 22 257 Hz explicitly. A runtime switch on this classic cell is still not
+    // propagated to the host boundary; no known guest writes that mode.
     int drainHz() const {
         if (!classic()) return kSampleRate;
         switch (regs_[0x07] & 3) {
@@ -304,10 +304,9 @@ public:
     std::function<void(uint32_t, uint8_t)> onRead;
 
     // Audio host pull. The chip drains its FIFOs at 44.1 kHz — that rate is
-    // guest-visible (FIFO IRQ cadence) and must not bend — but the host DAC
-    // side of POM68K runs at the Mac rate, so the output ring keeps every
-    // SECOND sample: 22 050 Hz, the same "no resampler" stance documented
-    // at AscV8::drainHz.
+    // guest-visible (FIFO IRQ cadence) and must not bend. The compatibility
+    // output ring still keeps every SECOND sample (22 050 Hz); MacAudioHost
+    // subsequently converts that nominal Mac-rate stream to the device clock.
     int available() const { return int((outWr_ - outRd_) & (kOutSize - 1)); }
     int16_t pop() {
         if (outRd_ == outWr_) return 0;

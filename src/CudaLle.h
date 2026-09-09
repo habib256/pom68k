@@ -72,6 +72,13 @@ public:
     // gate; TODO § 4 carries it. (2026-08-12)
     std::function<void()> onCpuReset;
 
+    // Original Egret DFAC three-wire pins. These are present only on the
+    // Egret flavor: PA4=latch, PB6=data, PB7=clock. A Cuda uses PB6/PB7 as
+    // I2C instead (DFAC2 on the Color Classic), so the two paths cannot mix.
+    std::function<void(bool)> onDfacData;
+    std::function<void(bool)> onDfacClock;
+    std::function<void(bool)> onDfacLatch;
+
     // The action a firmware RESET_SYSTEM performs — pull the host /RESET
     // line. The PC3 handler calls exactly this once it has decided the
     // release is a restart and not the power-on hold coming off, so a
@@ -141,7 +148,7 @@ public:
     // re-synchronized underneath the firmware.
     //
     // Out: `via_` (reference), `cpuHz_`/`flavor_`/`i2cDfac_`/`fwLoaded_`
-    // (board identity, set at construction), `onMcuPortWrite` (re-bound).
+    // (board identity, set at construction), callbacks (re-bound).
     template <class Ar> void visit(Ar& ar) {
         ar(mcu_, adb_);
         ar(mcuAcc_, mcuDebt_, adbAcc_,

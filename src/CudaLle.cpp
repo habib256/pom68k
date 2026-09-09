@@ -243,6 +243,10 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
             // Getting this backwards made AdbLine see idle-low/attention-
             // high and never decode a single autopoll command.
             adb_.setHostDrive(!(v & 0x80));
+            // Egret PA4 is the original DFAC's latch line. Cuda PA4 is not
+            // that device (its DFAC2 is on I2C), so keep flavors disjoint.
+            if (flavor_ == Flavor::Egret && onDfacLatch)
+                onDfacLatch((v & 0x10) != 0);
             break;
         case 1: {                        // PB (pb_w :123-137)
             const uint8_t newTreq = uint8_t((v >> 1) & 1);
@@ -269,9 +273,15 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                 }
                 lastViaClock_ = clock;
             }
-            // PB7 = IIC SCL, PB6 = IIC SDA (cuda.cpp pb_w :198-199) — the
-            // DFAC2 slave listens when the machine carries one.
-            if (i2cDfac_) i2cWire((v & 0x80) != 0, (v & 0x40) != 0);
+            if (flavor_ == Flavor::Egret) {
+                // Original DFAC: data is established before the clock edge,
+                // matching MAME egret.cpp's pb_w ordering.
+                if (onDfacData) onDfacData((v & 0x40) != 0);
+                if (onDfacClock) onDfacClock((v & 0x80) != 0);
+            } else if (i2cDfac_) {
+                // Cuda PB7/PB6 = I2C SCL/SDA; DFAC2 listens on that bus.
+                i2cWire((v & 0x80) != 0, (v & 0x40) != 0);
+            }
             break;
         }
         case 2: {                        // PC3 = host reset

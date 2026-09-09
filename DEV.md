@@ -215,10 +215,10 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
-- **Format v13** serializes both Sony mechanisms on every floppy-equipped
-  desktop. The bump is mandatory because the seven machine chunks that used
-  to end drive state after drive A now contain drive B before their following
-  SCC/SCSI fields.
+- **Format v14** adds the original DFAC's serial lines, shift byte and live
+  settings to the V8-family chunk. Version 13 added both Sony mechanisms on
+  every floppy-equipped desktop; either longer layout would shift following
+  device fields in an older reader, so both changes require hard bumps.
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
@@ -286,10 +286,11 @@ later auto-clear on first `$400000` access — the Plus does not.**
   linear PCM `(byte-128)/128` (the standard approximation). VIA PA3 selects
   the buffer (1=main); PB7 enable (0=enabled); PA2-0 volume (0-7).
 - `MacAudio` extracts the 370 samples/frame; `MacAudioHost` (miniaudio,
-  GUI-only) plays them through a lock-free SPSC ring at 22254 Hz. Only
-  **non-silent frames** are pushed, so the ring stays drained while the
-  machine turbos through the silent RAM test — the startup chime and system
-  beeps still play at the right pitch, just slightly delayed.
+  GUI-only) converts the guest stream onto the output device's **native
+  callback clock** and queues those host-rate stereo frames in a lock-free
+  SPSC ring. Only **non-silent frames** are pushed, so the ring stays drained
+  while the machine turbos through the silent RAM test — the startup chime
+  and system beeps still play at the right pitch, just slightly delayed.
 - The **startup chime** is a clean ~601 Hz (≈D5) tone for ~0.7 s at power-on
   (before the RAM test), then PB7 mutes it. `sound_test` captures it to
   `chime.wav` and checks it is an audible decaying tone in the beep band.
@@ -421,6 +422,11 @@ Functional accuracy (O6).
   transport, ADB keyboard/mouse, RTC and XPRAM stream commands
   ([§3.7](#37-mcus-egret--cuda-68hc05-firmware-lle)). `V8Video` decodes the
   built-in framebuffer through the Ariel CLUT.
+- **Sound:** the 22 257 Hz ASC stream crosses the original DFAC on LC/LC II/
+  Classic II (Egret PA4/PB6/PB7 latch/data/clock; HLE pseudo command `$0E`),
+  then `MacAudioHost` resamples it onto the native host callback clock. The
+  Color Classic keeps its upstream-faithful DFAC2 ACK/pass-through and the
+  Mac TV has no DFAC.
 - **RAM:** 4/6/8/10 MB (motherboard + SIMM pair); 10 MB is the V8 hard
   limit (12 MB installed, 2 MB wasted).
 - **Boot contract:** the real 512 KB LC II ROM boots System 7.x from SCSI
@@ -1248,6 +1254,12 @@ Cuda 2.35, **341S0788** = 2.37, **341S0060** = 2.40; Egret flavours
   after one aborted probe and never completes the next host VIA session —
   that was the whole "0417 wedge". Enabled for the Color Classic, the
   Sonora AIOs and the Quadra 630.
+- **The original DFAC** on LC/LC II/Classic II is a different three-wire
+  device: Egret PA4 latches, PB6 carries data and PB7 clocks it. `Dfac`
+  implements the input gate and the seven hardware attenuation steps; the
+  LLE drives those pins directly, while Egret HLE forwards pseudo command
+  `$0E`. `lcii_asc_chime_etalon` proves the real 341S0850 programs `$EA` and
+  that the boot chime remains audible through the stage.
 - **Egret XPRAM wire protocol** (O6.11, pinned from the ROM's own drivers):
   ReadXPram `[1,2,1,addr]` and GetPram `[1,7,hi,lo]` are **byte streams
   with no length on the wire** — Egret keeps supplying successive bytes;
@@ -1960,6 +1972,11 @@ manual CPU-window action. Normal mode targets the profile's nominal machine
 clock. This is independent of each CPU's `cacheBoost`
 timing overlay, whose family defaults are part of the emulated throughput
 model rather than GUI pacing. `machinehost_test` pins the startup default.
+When sound is active, the queued frame count becomes the pacer: its target is
+100 ms at `MacAudioHost::outputSampleRate()`, not the former hard-coded 2 225
+frames. `HostAudioResampler` carries a rational phase across guest quanta;
+`audio_resampler_test` proves chunk identity plus 600 seconds of 22 257 →
+48 000 Hz duration and pitch without requiring an audio device.
 
 Per-platform variations that are not worth a hook go to
 `if constexpr (requires { … })` in `applyCmds()` — the CD bay

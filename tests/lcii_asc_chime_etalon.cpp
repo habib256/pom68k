@@ -5,8 +5,8 @@
 //
 // `asc_test` pins the ASC-V8's registers, FIFO status and IRQ against MAME;
 // none of that says whether a listener hears anything (TODO § C.3). This
-// gate pulls the ASC's output ring exactly as the audio host does — every
-// frame, at the fixed 22 257 Hz drain — across the ROM's power-on sequence,
+// gate pulls the ASC through the real DFAC output stage exactly as the audio
+// host does — every frame, at the fixed 22 257 Hz drain — across power-on,
 // and judges the rendered samples: an audible span exists (RMS above the
 // silence floor for long enough to be a chime, not a click), its pitch —
 // zero crossings per window — sits where the ROM puts it, and the pitch is
@@ -83,7 +83,7 @@ int main() {
         ? std::strtol(std::getenv("POM68K_CHIME_FRAMES"), nullptr, 10) : 900;
     for (long f = 0; f < frames && !cpu.isHalted(); f++) {
         cpu.runCycles(V8Memory::kCpuHz / 60);
-        while (mem.asc().available() > 0) samples.push_back(mem.asc().pop());
+        while (mem.ascAvailable() > 0) samples.push_back(mem.ascPop());
     }
     if (std::getenv("POM68K_DUMP")) writeWav("lcii_chime.wav", samples, rate);
     std::printf("capture: %zu samples at %d Hz over %ld frames (%.2f s of "
@@ -154,6 +154,7 @@ int main() {
         }
     }
     const bool audible = !spans.empty();
+    const bool dfacEnabled = mem.dfac().inputEnabled() && mem.dfac().gain() > 0;
     const bool tonal = tonalWindows >= 30;
     const bool bounded = longest <= 150;
     const bool inBand = tonal && pitchLo >= 300.0 && pitchHi <= 1500.0;
@@ -162,8 +163,10 @@ int main() {
                 "(want <= 3000) pitch %.0f-%.0f Hz (want 300-1500, spread >= 100)\n",
                 audible, tonalWindows * 20, longest * 20,
                 tonal ? pitchLo : 0.0, tonal ? pitchHi : 0.0);
-    const bool ok = audible && tonal && bounded && inBand && varied;
-    std::printf("%s — LC II boot chime rendered through the ASC\n",
+    std::printf("DFAC: settings $%02X gain %.6f enabled=%d\n",
+                mem.dfac().settings(), mem.dfac().gain(), dfacEnabled);
+    const bool ok = audible && tonal && bounded && inBand && varied && dfacEnabled;
+    std::printf("%s — LC II boot chime rendered through ASC + DFAC\n",
                 ok ? "PASSED" : "FAILED");
     return ok ? 0 : 1;
 }

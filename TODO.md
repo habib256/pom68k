@@ -65,8 +65,6 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 
-- [ ] **Terminer DFAC et la sortie audio du LC II / V8.** Ajouter le
-  resampling sur horloge hôte et vérifier le tempo sur une session GUI longue.
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** Couvrir IRQ,
   VBL, VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution.

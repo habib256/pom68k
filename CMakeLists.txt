@@ -413,6 +413,7 @@ add_library(pom68k_core STATIC
     src/Egret.cpp         # O6 — Egret ADB/RTC/PRAM MCU (HLE)
     src/AdbBus.cpp        # O6 — ADB bus + HLE keyboard/mouse
     src/Asc.cpp           # O6 — ASC-V8 sound (FIFO A, 22 257 Hz)
+    src/Dfac.cpp          # O6 — LC/LC II/Classic II DFAC output stage
     src/Swim1.cpp         # O6.7 — LC II SWIM1 (IWM personality + ISM/MFM)
     src/Swim2.cpp         # Q8 — PrimeTime/IOSB SWIM2 register + FIFO core
     src/SonoraMemory.cpp  # Phase C — LC III map + Sonora gate array

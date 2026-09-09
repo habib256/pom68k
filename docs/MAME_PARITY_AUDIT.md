@@ -308,7 +308,7 @@ comme glue.
 **Bug-suspect** : table #46, #47.
 
 **Simplifications** :
-- ~~**Ligne reset PC3 = seul le release de boot**~~ — **FERMÉ le 2026-08-13** (F4/action 9) : le `RESET_SYSTEM $11` atteint le 68k sur les six plateformes à Egret/Cuda LLE, reset différé, gate `cuda_restart_test`. Sorties PC2 NMI et PA4 DFAC toujours absentes, pour la raison que cette entrée n'a plus : aucun consommateur.
+- ~~**Ligne reset PC3 = seul le release de boot**~~ — **FERMÉ le 2026-08-13** (F4/action 9) : le `RESET_SYSTEM $11` atteint le 68k sur les six plateformes à Egret/Cuda LLE, reset différé, gate `cuda_restart_test`. **PA4 DFAC fermé le 2026-09-09** : le DFAC original consomme désormais PA4/PB6/PB7 et traite l'audio V8 ; seule la sortie PC2 NMI reste sans consommateur.
 - Timer programmable fixé à 512 cycles quel que soit le rate PLL (le cheat rate-2→3 partagé rend ça invisible pour le firmware expédié).
 - DFAC2 = ACK I2C seulement, audio non routé dans l'atténuateur (`LLE_VS_HLE.md` § 3, « The Cuda's I2C bus and its DFAC2 » — c'est la parité MAME, dont le `dfac2_device::write_data` ne fait que logger ; la parité *stricte* muterait ces machines).
 - Egret.cpp : HLE totale du transport, fallback uniquement (§ 1.9).

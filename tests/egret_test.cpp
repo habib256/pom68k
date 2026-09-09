@@ -97,6 +97,13 @@ int main() {
         (void)h.readReply();
         check(h.egret.seconds() == 0x11223344, "SET_TIME programs the clock");
 
+        uint8_t dfac = 0;
+        h.egret.onDfacSettings = [&](uint8_t v) { dfac = v; };
+        h.sendCommand({ 0x01, 0x0E, 0xE2 });
+        auto rd = h.readReply();
+        check(rd.size() == 4 && rd[3] == 0x0E && dfac == 0xE2,
+              "SEND_DFAC forwards its settings byte and acknowledges it");
+
         // PRAM round-trip ([1,$C,hi,lo,value] / [1,7,hi,lo])
         h.sendCommand({ 0x01, 0x0C, 0x00, 0xF9, 0x5A });
         auto ra = h.readReply();

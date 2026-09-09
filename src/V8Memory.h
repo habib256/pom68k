@@ -24,6 +24,7 @@
 #include "CudaLle.h"
 #include "AdbBus.h"
 #include "Asc.h"
+#include "Dfac.h"
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
 #include "Swim1.h"
@@ -179,13 +180,15 @@ public:
     AdbBus& adb() { return adb_; }
     AscV8& asc() { return asc_; }
     AscSonora& ascSonora() { return ascSonora_; }
+    Dfac& dfac() { return dfac_; }
     // Audio host facade — dispatches to the model's ASC block (Spice =
     // Sonora EASC, others = V8 ASC) so LcMachine::drain stays model-blind.
     int ascAvailable() const {
         return spiceClass() ? ascSonora_.available() : asc_.available();
     }
     int16_t ascPop() {
-        return spiceClass() ? ascSonora_.pop() : asc_.pop();
+        const int16_t sample = spiceClass() ? ascSonora_.pop() : asc_.pop();
+        return hasOriginalDfac() ? dfac_.process(sample) : sample;
     }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
@@ -400,7 +403,7 @@ public:
         ar.blob(vram_);
 
         ar(via_, pvia_, ariel_, egret_, egretLle_, adb_,
-           asc_, ascSonora_, scsi_, swim_, swim2_, drive_, externalDrive_,
+           asc_, ascSonora_, dfac_, scsi_, swim_, swim2_, drive_, externalDrive_,
            scc_);
         for (auto& d : scsiDisks_) ar(d);
 
@@ -487,12 +490,16 @@ private:
     Egret egret_;
     CudaLle egretLle_;
     bool egretLleOn_ = false;
+    bool hasOriginalDfac() const {
+        return model_ != Model::ColorClassic && model_ != Model::MacTv;
+    }
     uint8_t xcvrSession_() const {           // → VIA1 PB3 (active path)
         return egretLleOn_ ? egretLle_.xcvrSession() : egret_.xcvrSession();
     }
     AdbBus adb_;
     AscV8 asc_;
     AscSonora ascSonora_;            // Spice/Sonora EASC (Color Classic)
+    Dfac dfac_;                      // original three-wire stage (not DFAC2)
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];          // by SCSI ID; [0] = boot drive
     Swim1 swim_;

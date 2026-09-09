@@ -270,7 +270,7 @@ public:
             // Audio-clocked: the sound buffer is the pacer, so emulate until
             // it is topped up rather than against the wall clock.
             int n = 0;
-            while (audioHost.buffered() < kTarget && n < 8) {
+            while (audioHost.buffered() < audioHost.targetBuffered() && n < 8) {
                 self()->emulateQuantum();
                 if (self()->drainAudio()) activeHold_ = 90; else activeHold_--;
                 pushAudioRaw();
@@ -401,10 +401,6 @@ protected:
         }
         floppyFlag_[size_t(index)].store(in, std::memory_order_release);
     }
-
-    // ~100 ms of 22 257 Hz sound. The same on every platform — the figure is a
-    // property of the host audio ring, not of the guest.
-    static constexpr size_t kTarget = 2225;
 
     void pushAudioRaw() {
         if constexpr (Derived::kStereo) audioHost.pushRawStereo(samp_, 0);

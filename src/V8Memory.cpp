@@ -130,6 +130,15 @@ V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
     if (model_ == Model::MacTv) simmLoc_ = 0x400000;  // SIMM bus base (v8.cpp:1093)
     pvia_.onVideoWrite = [this](uint8_t v) { videoConfig_ = v; };
     egret_.setAdbBus(&adb_);
+    if (hasOriginalDfac()) {
+        // LC/LC II/Classic II: the Egret owns the original DFAC. Firmware
+        // LLE drives its physical PA4/PB6/PB7 wires; the explicit HLE
+        // fallback receives the same settings byte through pseudo cmd $0E.
+        egret_.onDfacSettings = [this](uint8_t v) { dfac_.writeSettings(v); };
+        egretLle_.onDfacData = [this](bool v) { dfac_.dataWrite(v); };
+        egretLle_.onDfacClock = [this](bool v) { dfac_.clockWrite(v); };
+        egretLle_.onDfacLatch = [this](bool v) { dfac_.latchWrite(v); };
+    }
     // ASC IRQ is LEVEL-triggered into pseudo-VIA IFR bit 4 (v8.cpp:119-122).
     // The Spice carries the Sonora-class EASC ($BC) instead of the V8 ASC
     // (v8.cpp:717-720 ASC_SONORA replace) — only one of the two is wired.
@@ -273,6 +282,7 @@ void V8Memory::reset() {
     via_.reset();
     pvia_.reset();
     ariel_.reset();
+    dfac_.reset();
     egret_.reset();
     egret_.factoryDefaults();                // SPConfig XPRAM $13 = $22
     egretLle_.reset();

@@ -96,6 +96,9 @@ public:
     std::function<void(int, int)> onXPramRead;
     // XPRAM/PRAM write hook (offset, value) — Q6.4 restart-loop trace
     std::function<void(int, uint8_t)> onXPramWrite;
+    // Original DFAC settings byte carried by pseudo command $0E. The HLE
+    // collapses the firmware's three-wire serial transfer into this action.
+    std::function<void(uint8_t)> onDfacSettings;
 
     // ── Save states (SaveState.h) ───────────────────────────────────────
     // Battery-backed store (`pram_`, `mcuRam_`, `seconds_`) plus the whole
@@ -106,7 +109,7 @@ public:
     // wire event the driver is counting.
     //
     // Out: `via_` (reference), `adb_` (pointer, re-bound by the machine),
-    // `cudaPolarity_`/`clockHz_` (board identity), the four debug hooks.
+    // `cudaPolarity_`/`clockHz_` (board identity), the debug/device hooks.
     template <class Ar> void visit(Ar& ar) {
         ar(phase_, held_, xcvr_, lastPb_, delay_, respIdx_,
            cmd_, resp_, pending_, streamSrc_, streamAddr_);
