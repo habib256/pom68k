@@ -67,11 +67,13 @@ public:
     AdbBus& adb() { return adb_; }
     bool adbLleActive() const { return adbVia_.lle(); }
     // Uniform MachineHost input surface. ADB compacts consume native ADB key
-    // codes; the Plus converts the same code back to its odd M0110 transition
-    // byte. The GUI therefore queues one command format for every platform.
+    // codes; the Plus hands the same code to the M0110A model, which frames
+    // it (one byte for the main block, $79-prefixed for the keypad and the
+    // arrows — MacInput.cpp). The GUI therefore queues one command format
+    // for every platform.
     void keyEvent(uint8_t code, bool down) {
         if (isAdb()) adbVia_.keyEvent(code, down);
-        else kbd_.enqueue(uint8_t((code << 1) | 1 | (down ? 0 : 0x80)));
+        else kbd_.keyEvent(code, down);
     }
     void mouseMove(int dx, int dy) {
         if (isAdb()) adbVia_.mouseMove(dx, dy);

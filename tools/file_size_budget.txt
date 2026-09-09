@@ -8,7 +8,7 @@
 
 CLAUDE.md                                250
 CMakeLists.txt                           592
-cmake/Pom68kComponentGates.cmake         455
+cmake/Pom68kComponentGates.cmake         458
 cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               652
@@ -22,7 +22,7 @@ src/GuiRunnerDuo.h                       237
 src/GuiRunnerSonora.h                    297
 src/GuiRunnerToby.h                      264
 src/GuiRunnerV8.h                        310
-src/GuiShellCommon.h                     366
+src/GuiShellCommon.h                     385
 src/GuiShell.cpp                         389
 src/GuiTobyStatus.h                      41
 src/jit/backends/JitBackendA64.cpp       5111

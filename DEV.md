@@ -1113,6 +1113,21 @@ System-verified). Plus-family only; everything later is ADB.
   (mode 011). Verified against System 6's own state: RawMouse (`$82C`),
   MBState (`$172`), KeyMap (`$174`, **8 bytes** — asserting over 16 made a
   dead ADB stack look half-alive once). Gate `input_etalon`.
+- **The `$79` keypad prefix.** The M0110A is an M0110 plugged into an
+  M0120 keypad, so the keypad *and the arrow keys* are reported as a
+  multi-byte sequence: `$79` then the transition byte (MAME
+  `src/devices/bus/mackbd/pluskbd.cpp` header; raw-code chart in tmk
+  `tmk_core/protocol/m0110.h`). The four calc keys (`= / * +`) share their
+  raw code with an arrow key and are told apart only by a **synthetic
+  Shift** the keyboard sends around them — `$71` before the sequence on
+  press, `$F1` on release. One wire byte still leaves per Inquiry/Instant
+  transaction, so `MacKeyboard` queues the whole sequence and the pacing is
+  unchanged. The ROM resolves a prefixed code to `$40 + (raw >> 1)` and
+  posts it to **KeypadMap (`$17C`)**, not KeyMap — so the arrows are keypad
+  codes here (`$46` left, `$42` right, `$48` down, `$4D` up), not the ADB
+  `$3B`–`$3E` the host surface uses. Main-block keys are untouched: one
+  byte, `(code << 1) | 1`. Gates `m0110_keypad_test` (bytes) and
+  `input_etalon` (the bit System 6 lights).
 
 ### 3.6 Input: ADB — PIC1654S transceiver LLE
 

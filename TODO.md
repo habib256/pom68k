@@ -271,8 +271,6 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   justifie leur coût ; comparer état, débit et jitter avant un défaut produit.
 - [ ] **Câbler le second lecteur 800K.** Fournir un deuxième `SonyDrive` aux
   machines concernées et ajouter un gate de sélection externe.
-- [ ] **Gérer les préfixes clavier `$79`.** Couvrir pavé numérique et flèches
-  M0110 là où le protocole les exige.
 - [ ] **Étendre SCSI et série.** Ajouter plusieurs targets/LUNs, REQUEST SENSE
   après CHECK CONDITION et un transport série hôte PTY/TCP.
 - [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Garder les

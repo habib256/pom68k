@@ -290,14 +290,17 @@ private:
         {ImGuiKey_Keypad8,0xB6},{ImGuiKey_Keypad9,0xB8},
     };
 
+    // Index by the Mac virtual key code (`m0110 >> 1`), the value actually
+    // pushed: masking the wire byte instead collided the moment keypad
+    // entries (codes >= $40, so a wire byte >= $80) joined the tables.
     bool keyDown(uint8_t code, ImGuiKey key) {
         if (!ImGui::IsKeyPressed(key, false)) return false;
-        return ++held_[code & 0x7F] == 1;
+        return ++held_[code >> 1] == 1;
     }
 
     bool keyUp(uint8_t code, ImGuiKey key) {
         if (!ImGui::IsKeyReleased(key)) return false;
-        uint8_t& count = held_[code & 0x7F];
+        uint8_t& count = held_[code >> 1];
         if (!count) return false;
         return --count == 0;
     }
@@ -329,13 +332,14 @@ public:
     }
 
 private:
+    // See AdbKeyboard::keyDown: refcount per virtual key code.
     bool keyDown(const Key& entry) {
         if (!ImGui::IsKeyPressed(entry.key, false)) return false;
-        return ++held_[entry.m0110 & 0x7F] == 1;
+        return ++held_[entry.m0110 >> 1] == 1;
     }
     bool keyUp(const Key& entry) {
         if (!ImGui::IsKeyReleased(entry.key)) return false;
-        uint8_t& count = held_[entry.m0110 & 0x7F];
+        uint8_t& count = held_[entry.m0110 >> 1];
         if (!count) return false;
         return --count == 0;
     }
@@ -358,6 +362,21 @@ private:
         {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},
         {ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0x71},
         {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+        // M0110A keypad and arrow block. These are `code << 1` like the ADB
+        // keypad table above — the odd wire byte does not survive a code
+        // >= $40, and MacMemory hands the code to the M0110A model, which
+        // owns the $79 framing (MacInput.cpp). Gate: m0110_keypad_test.
+        {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
+        {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
+        {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},
+        {ImGuiKey_Keypad2,0xA8},{ImGuiKey_Keypad3,0xAA},
+        {ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
+        {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},
+        {ImGuiKey_Keypad8,0xB6},{ImGuiKey_Keypad9,0xB8},
+        {ImGuiKey_KeypadDecimal,0x82},{ImGuiKey_KeypadMultiply,0x86},
+        {ImGuiKey_KeypadAdd,0x8A},{ImGuiKey_NumLock,0x8E},
+        {ImGuiKey_KeypadDivide,0x96},{ImGuiKey_KeypadEnter,0x98},
+        {ImGuiKey_KeypadSubtract,0x9C},{ImGuiKey_KeypadEqual,0xA2},
     };
     uint8_t held_[128]{};
 };

@@ -17,7 +17,7 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 252 gates
+## Union across hosts — 253 gates
 
 | `ctest -L` | selects |
 |---|---|
@@ -29,7 +29,7 @@ nothing about the behaviour it names.
 | `m030` | 61 |
 | `m040` | 58 |
 | `smoke` | 9 |
-| `unit` | 116 |
+| `unit` | 117 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -37,27 +37,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-247 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+248 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 86 |
+| assets | none | 87 |
 | assets | optional | 15 |
 | assets | required | 146 |
 | host | a64 | 4 |
-| host | any | 237 |
+| host | any | 238 |
 | host | native | 6 |
-| scope | component | 88 |
+| scope | component | 89 |
 | scope | engine | 21 |
 | scope | profile | 135 |
 | scope | repository | 3 |
-| tier | daily | 86 |
+| tier | daily | 87 |
 | tier | full | 149 |
 | tier | platform | 12 |
-| slots_src | assumed | 131 |
+| slots_src | assumed | 132 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 474 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 475 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 

@@ -7,6 +7,8 @@
 // Instant $14, Model $16, Test $36) into the SR; the keyboard answers with
 // a transition code (bit 7 = key-up), $7B = null. We model the transaction
 // with a response delay so the SR interrupt (IFR bit 2) paces correctly.
+// The keypad and arrow block is a MULTI-BYTE sequence behind the $79
+// prefix — see MacInput.cpp and DEV.md § 3.5. Gate: m0110_keypad_test.
 // Mouse: quadrature X1/Y1 → SCC DCD A/B, X2/Y2 → VIA PB4/PB5, button →
 // VIA PB3 (0 = down). Steps are emitted at a bounded rate from the host
 // deltas; direction polarity pinned by DEV.md § Input.
@@ -21,8 +23,14 @@ class MacKeyboard {
 public:
     void reset() { queue_.clear(); }
     bool pending() const { return !queue_.empty(); }
-    // Host key event → M0110 transition code (already encoded by caller)
+    // Raw wire byte, already encoded by the caller. Kept for gates that
+    // drive the wire directly; production input goes through keyEvent().
     void enqueue(uint8_t transitionCode) { queue_.push_back(transitionCode); }
+
+    // Physical key (identified by its Macintosh virtual key code, the
+    // uniform MachineHost input currency) → the one to three wire bytes
+    // the M0110A actually sends for it. Non-keypad keys stay one byte.
+    void keyEvent(uint8_t virtualKey, bool down);
 
     // Execute a command byte, return the response (transaction pacing —
     // the two SR interrupts, 3 ms apart — is MacMemory's job).

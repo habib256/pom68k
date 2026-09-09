@@ -232,6 +232,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
+- **why does a Macintosh Plus keypad digit or arrow key need TWO wire bytes, and why do the arrows come out as keypad codes?** → [2026-09-09 — The M0110A keypad and the arrow keys…](#2026-09-09-m0110-keypad-prefix)
 - **why does the 68HC05 memory decoder test ROM last when almost every instruction fetch comes from ROM, and what does reversing that order buy on the measured Q605 pump?** → [2026-09-03 (sixteenth) — The 68HC05 ROM fetch stops crossing…](#2026-09-03-m68hc05-rom-fast-path)
 - **the last unconditional HLE in the tree retires: the Eclipse towers get the real 341S0851 — and which wire a Quadra 900's ADB devices actually hang off** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **why a PG&E that has already run will not cold-boot again (the `$91` power flag), and why its trackball register has to be LATCHED rather than drained on read** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
@@ -428,6 +429,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09** — [The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes](#2026-09-09-m0110-keypad-prefix)
 - **2026-09-08 (eleventh)** — [The 1.44 MB read uses a different engine from the working 800K: 800K reads via the IWM/GCR personality, MFM via the ISM engine, and the driver aborts the ISM setup before arming ACTION](#2026-09-08-floppy-ism-vs-iwm)
 - **2026-09-08 (tenth)** — [The 1.44 MB stall, pinned: at the MFM retry the driver configures the ISM to MFM but never arms ACTION or selects the drive, so the read engine never runs](#2026-09-08-floppy-action-stall)
 - **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is not a density-detection bug at all — density works and returns a retry; the defect is the live MFM ISM read corrupting the sector after the MDB sync](#2026-09-08-floppy-correction)
@@ -884,6 +886,58 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-m0110-keypad-prefix"></a>
+## 2026-09-09 — The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes
+
+The compact keyboard model encoded every key the same way: one wire byte,
+`(virtualKey << 1) | 1`, bit 7 for the release. That is right for the main
+block and impossible for the rest of the keyboard. The M0110A "emulates an
+M0120 keypad with an M0110 keyboard plugged in to it. Keypad keys and arrow
+keys produce scan codes with the `0x79` prefix. The keyboard simulates
+holding shift when pressing the `= / * +` keys on the keypad." (MAME
+`src/devices/bus/mackbd/pluskbd.cpp`, header comment; the raw-code chart and
+the exact byte sequences are in tmk's `tmk_core/protocol/m0110.h`, itself
+page 7 of Apple's *Technical Information for the Macintosh Plus*.)
+
+So the old encoding did not merely mislabel those keys. Keypad virtual codes
+are `>= $40`, so `(code << 1) | 1` overflowed into bit 7 and the ROM read a
+**forged release** of some unrelated key; Down and Up produced `$7A` and
+`$7C`, one bit away from `$7B` = Null. Nothing on the Plus had a working
+keypad or arrow key, and nothing said so.
+
+`MacKeyboard::keyEvent()` now owns the framing (`src/MacInput.cpp`): `$79`
+then the transition byte for the keypad and the arrows, and for the four
+calc keys `= / * +` a synthetic Shift transition first — `$71` on press,
+`$F1` on release — because those four **share their raw code with an arrow
+key** and the fake Shift is the only thing that tells them apart. This costs
+the transaction pacing nothing: one byte still leaves per Inquiry/Instant, so
+a keypad press is simply two transactions and a calc press three. Main-block
+keys are byte-for-byte unchanged, and a virtual code this keyboard has no key
+for is now dropped instead of being encoded into a forged release.
+
+What the real ROM does with it, measured through `input_etalon` on
+`roms/macplus.rom` + System 6.0.5: a prefixed code resolves to
+`$40 + (raw >> 1)` and is posted to **KeypadMap (`$17C`)**, not KeyMap — which
+is why the 2026-07-29 note that "`$17C` is NOT KeyMap" was right and
+incomplete. The arrows are *keypad* keys on this machine: Left is `$46`,
+Right `$42`, Down `$48`, Up `$4D`, not the ADB `$3B`–`$3E` the host input
+surface uses. Keypad `+` lights KeyMap bit 56 (Shift) **and** the same bit as
+Left, which is the hardware truth rather than a defect: on an M0110A the two
+are one code plus a shift state.
+
+Two gates. `m0110_keypad_test` (asset-none) drains the queue transaction by
+transaction and asserts the exact bytes for a digit, a calc key, an arrow,
+the sequence-not-interleaved property — and, as the negative case that keeps
+the fix narrow, that `A`, `Return` and `Shift` are still single bytes.
+`input_etalon` gains the guest-visible half: press through the production
+`MacMemory::keyEvent()` path and assert the exact KeypadMap bit System 6
+lights for keypad 0, keypad 9, Clear, Left, Up and keypad `+`.
+
+The GUI compact table had no keypad or arrow rows at all, so it gained them,
+and both keyboard tables now refcount held keys by virtual key code
+(`m0110 >> 1`) rather than by the masked wire byte: masking collides the
+moment an entry's code reaches `$40`.
 
 <a id="2026-09-08-floppy-ism-vs-iwm"></a>
 ## 2026-09-09 — Floppy 1.44 MB: the fix reads a full valid MDB; the enable/motoron disconnect is NOT the mount blocker (it matches MAME)

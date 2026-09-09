@@ -7,7 +7,9 @@
 // globals: RawMouse ($82C: v,h words), MBState ($172: $80 = up), KeyMap
 // ($174: EIGHT bytes, one bit per virtual key code — a wider window
 // reads $017C+ which is NOT KeyMap, and a positive assertion over it is
-// a false green: that cost a debug round on 2026-07-29). Soft-skips without
+// a false green: that cost a debug round on 2026-07-29). $17C is
+// KeypadMap, where the $79-prefixed keypad and arrow keys land; this gate
+// reads it deliberately, and only for those. Soft-skips without
 // roms/macplus.rom + disks35/Disk605.dsk.
 
 #include "AssetFingerprint.h"
@@ -103,6 +105,62 @@ int main() {
     if (changedDown < 0 || !backToIdle) {
         std::fprintf(stderr, "FAIL: key transition not seen by the System\n");
         return 1;
+    }
+
+    // ── Keypad and arrows: the $79-prefixed sequences (MacInput.cpp) ────
+    // One layer above m0110_keypad_test: the wire bytes are only right if
+    // the ROM's keyboard driver resolves them to a key. Press through
+    // MacMemory::keyEvent — the production path — and read the bit the
+    // System lit. Keypad keys do NOT land in KeyMap: they land in
+    // KeypadMap ($17C, the four bytes right after KeyMap's eight), at bit
+    // `code - $40` of that map, i.e. bit `64 + code - $40` of the window
+    // scanned here. That is why an 8-byte KeyMap is the correct window for
+    // a main-block key and the wrong one for these.
+    auto pressBits = [&](const char* what, uint8_t vk) {
+        uint8_t before[12];
+        for (int i = 0; i < 12; i++) before[i] = ram[0x174 + i];
+        mem.keyEvent(vk, true);
+        for (long f = 0; f < 60; f++) fc.runFrame(cpu, mem);
+        std::vector<int> bits;
+        for (int i = 0; i < 12; i++) {
+            uint8_t diff = uint8_t(ram[0x174 + i] ^ before[i]);
+            while (diff) {
+                const int b = __builtin_ctz(diff);
+                diff = uint8_t(diff & (diff - 1));
+                bits.push_back(i * 8 + b);
+            }
+        }
+        std::sort(bits.begin(), bits.end());
+        mem.keyEvent(vk, false);
+        for (long f = 0; f < 60; f++) fc.runFrame(cpu, mem);
+        bool idle = true;
+        for (int i = 0; i < 12; i++) if (ram[0x174 + i] != before[i]) idle = false;
+        std::printf("%-10s vk $%02X -> bits", what, vk);
+        for (int b : bits) std::printf(" %d", b);
+        std::printf("%s, released clean: %d\n", bits.empty() ? " (none)" : "",
+                    idle ? 1 : 0);
+        if (!idle) bits.clear();
+        return bits;
+    };
+    // 64 + ($52 - $40) = 82 for keypad 0, and the arrows are keypad keys
+    // on this keyboard: Left is code $46 (raw $0D behind the prefix), so
+    // 64 + 6 = 70. Keypad + shares that raw code and is told apart ONLY by
+    // the synthetic Shift the M0110A wraps it in — so it must light both
+    // KeyMap bit 56 (Shift, $38) and the same keypad bit 70.
+    const struct { const char* name; uint8_t vk; std::vector<int> want; } kPad[] = {
+        { "keypad 0",  0x52, { 82 } },
+        { "keypad 9",  0x5C, { 92 } },
+        { "Clear",     0x47, { 71 } },
+        { "Left",      0x3B, { 70 } },
+        { "Up",        0x3E, { 77 } },
+        { "keypad +",  0x45, { 56, 70 } },
+    };
+    for (const auto& k : kPad) {
+        if (pressBits(k.name, k.vk) != k.want) {
+            std::fprintf(stderr, "FAIL: %s did not reach the System as the "
+                                 "$79-prefixed key it is\n", k.name);
+            return 1;
+        }
     }
 
     std::printf("input_etalon: mouse + button + keyboard accepted by System 6\n");

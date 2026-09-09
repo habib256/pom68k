@@ -175,6 +175,11 @@ add_test(NAME dir2hfs_selftest
          COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_dir2hfs_selftest.sh"
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+# The M0110A $79 keypad/arrow framing, byte for byte (no assets).
+add_executable(m0110_keypad_test tests/m0110_keypad_test.cpp)
+target_link_libraries(m0110_keypad_test PRIVATE pom68k_core)
+add_test(NAME m0110_keypad_test COMMAND m0110_keypad_test)
+
 # M5.5 gate: keyboard/mouse against the System 6 drivers (soft-skips).
 add_executable(input_etalon tests/input_etalon.cpp)
 target_link_libraries(input_etalon PRIVATE pom68k_core)
