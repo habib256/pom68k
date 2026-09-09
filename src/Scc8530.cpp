@@ -4,7 +4,6 @@
 #include "Scc8530.h"
 #include <cstdio>
 #include <cstdlib>
-
 void Scc8530::reset() {
     ch_[0] = Chan{};
     ch_[1] = Chan{};
@@ -916,6 +915,7 @@ bool Scc8530::tick(int cycles) {
                     if (!txLoad(c, rem)) break;   // a late byte may reload
                     if (c.txIp) changed = true;
                 } else {
+                    emitAsyncByte(i, c);
                     // WR14 bit 4 Local Loopback (Zilog UM §5.4): the
                     // character that just finished shifting re-enters the
                     // SAME channel's receiver. The LC ROM's SCC POST sends

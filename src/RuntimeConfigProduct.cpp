@@ -33,6 +33,8 @@ ProductStartupConfig parseProductStartup(
     config.devices.startupFloppy = values.text(startup_option::Floppy);
     if (const auto value = values.integer(startup_option::Monitor))
         config.devices.monitorWidth = *value;
+    config.devices.serialPrinter = parseSerialPort(values.text(startup_option::SerialPrinter));
+    config.devices.serialModem = parseSerialPort(values.text(startup_option::SerialModem));
 
     config.diagnostics.fpuLog = values.text(startup_option::FpuLog);
     config.diagnostics.inputRecord = values.text(startup_option::InputRecord);

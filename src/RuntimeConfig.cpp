@@ -175,9 +175,9 @@ RuntimeConfig RuntimeConfig::parse(
                 // The gate exercises GUI lifecycle, not host devices.
                 config.network_.appleTalk = false;
                 config.network_.ltoUdp = false;
-                config.devices_.audio = false;
-                config.devices_.driveSounds = false;
+                config.devices_.audio = config.devices_.driveSounds = false;
                 config.devices_.floppyWriteBack = false;
+                config.devices_.serialPrinter = config.devices_.serialModem = {};
             }
             continue;
         }

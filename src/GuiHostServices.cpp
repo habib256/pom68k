@@ -2,7 +2,6 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "GuiHostServices.h"
-
 #include "GuiShell.h"
 #include "MachineHost.h"
 
@@ -35,6 +34,7 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     state_.network.ltoUdpEnabled = network.ltoUdp;
     state_.network.appleTalkWireBoost = network.appleTalkWireBoost;
     state_.network.shareDirectory = network.shareDirectory;
+    configureSerial();
     state_.network.atalk.configureDiagnostics(
         config_.core().diagnostics.appleTalkTrace, config_.core().diagnostics.macIpTrace);
     state_.diagnostics.keyTraceEnabled = diagnostics.keyTrace;

@@ -547,7 +547,7 @@ int main() {
                                           pom68k::StartupDomain::Jit))
             ++jitOptionCount;
     check(sizeof(pom68k::startup_option::kAll) /
-                  sizeof(pom68k::startup_option::kAll[0]) == 134 &&
+                  sizeof(pom68k::startup_option::kAll[0]) == 136 &&
               jitOptionCount == 41 &&
               jitDecoder.find("option::JitProfile") != std::string::npos &&
               jitDecoder.find("kConfigurationKeys") == std::string::npos &&
@@ -697,6 +697,8 @@ int main() {
             {"POM68K_FLOPPY_RO", "1"},
             {"POM68K_FLOPPY", "boot.dsk"},
             {"POM68K_MONITOR", "512"},
+            {"POM68K_SERIAL_MODEM", "tcp:6502"},
+            {"POM68K_SERIAL_PRINTER", "pty"},
             {"POM68K_NOFPU", "0"},
             {"POM68K_Q605_NOFPU", "1"},
             {"POM68K_FPU_LOG", "fpu.log"},
@@ -730,6 +732,11 @@ int main() {
                   !devices.floppyWriteBack && devices.startupFloppy &&
                   *devices.startupFloppy == "boot.dsk" &&
                   devices.monitorWidth && *devices.monitorWidth == 512 &&
+                  devices.serialModem.kind ==
+                      pom68k::app::SerialTransportKind::Tcp &&
+                  devices.serialModem.tcpPort == 6502 &&
+                  devices.serialPrinter.kind ==
+                      pom68k::app::SerialTransportKind::Pty &&
                   !cpu.fpu && !cpu.q605Fpu && diagnostics.fpuLog &&
                   *diagnostics.fpuLog == "fpu.log" && diagnostics.keyTrace &&
                   diagnostics.freezeProbe && diagnostics.speedLog &&
@@ -749,6 +756,17 @@ int main() {
                   injected.machineSelection().memcJr ==
                       pom68k::SnapMachine::Lc575,
               "RuntimeConfig injects product, JIT and core policy aggregates");
+
+        pom68k::StartupSnapshot invalidSerial{
+            {"POM68K_SERIAL_MODEM", "tcp:65536"},
+            {"POM68K_SERIAL_PRINTER", "file:/tmp/tty"}};
+        const auto rejectedSerial = pom68k::app::RuntimeConfig::parse(
+            1, av, invalidSerial);
+        check(rejectedSerial.devices().serialModem.kind ==
+                  pom68k::app::SerialTransportKind::Invalid &&
+              rejectedSerial.devices().serialPrinter.kind ==
+                  pom68k::app::SerialTransportKind::Invalid,
+              "typed serial endpoints reject unknown schemes and invalid ports");
 
         pom68k::StartupSnapshot emptyValues{
             {"POM68K_APPLETALK", ""}, {"POM68K_AUDIO", ""},

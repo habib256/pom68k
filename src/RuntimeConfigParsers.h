@@ -18,8 +18,8 @@ struct ProductStartupConfig {
     bool fullLleCheckOnly = false;
 };
 
-ProductStartupConfig parseProductStartup(
-    const StartupSnapshot& startup);
+ProductStartupConfig parseProductStartup(const StartupSnapshot& startup);
+SerialPortConfig parseSerialPort(const std::optional<std::string>& value);
 pom68k::CoreConfig parseCoreStartup(
     const StartupSnapshot& startup);
 MachineSelectionConfig parseMachineSelectionStartup(

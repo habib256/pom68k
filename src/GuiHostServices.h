@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Process/host boundary for one GUI session: network wiring, host audio,
+// Process/host boundary for one GUI session: network/serial wiring, host audio,
 // relaunch and qualification diagnostics. Windowing, menus and rendering live
 // in GuiShell; concrete machine construction lives in PlatformComposers.
 
@@ -14,12 +14,15 @@
 #include "MacAudioHost.h"
 #include "MachineFactory.h"
 #include "RuntimeConfig.h"
+#include "SerialHostTransport.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,16 +58,20 @@ public:
     template <class Mem>
     void wireNetwork(Mem& mem) {
         const int byteCycles = int(mem.cpuHz() / 28800);
+        mem.scc().setByteCycles(byteCycles);
+        if (serialActive()) {
+            mem.scc().onTxByte = [this](int channel, std::uint8_t value) {
+                if (channel >= 0 && channel < int(serial_.size()) &&
+                    serial_[std::size_t(channel)])
+                    serial_[std::size_t(channel)]->sendByte(value);
+            };
+        }
         const bool cable = state_.network.ltoUdpEnabled &&
                            state_.network.ltoudp.start();
         const bool hub = state_.network.appleTalkEnabled;
-        if (!cable && !hub) {
-            mem.scc().setByteCycles(byteCycles);
-            return;
-        }
+        if (!cable && !hub) return;
 
         const std::int64_t hubHz = std::int64_t(byteCycles) * 28800;
-        mem.scc().setByteCycles(byteCycles);
         if (hub && !cable && state_.network.appleTalkWireBoost > 1) {
             mem.scc().setWirePace(
                 std::max(byteCycles / state_.network.appleTalkWireBoost, 64));
@@ -95,27 +102,41 @@ public:
 
     template <class Mem>
     void pollNetwork(Mem& mem) {
-        if (!state_.network.ltoudp.active()) return;
-        state_.network.ltoudp.poll([this, &mem](const std::uint8_t* data,
-                                       std::size_t size) {
-            mem.scc().injectRxFrame(0, data, size);
-            if (state_.network.appleTalkEnabled)
-                state_.network.atalk.onCableFrame(data, size);
-        });
+        if (state_.network.ltoudp.active()) {
+            state_.network.ltoudp.poll([this, &mem](const std::uint8_t* data,
+                                           std::size_t size) {
+                mem.scc().injectRxFrame(0, data, size);
+                if (state_.network.appleTalkEnabled)
+                    state_.network.atalk.onCableFrame(data, size);
+            });
+        }
+        if (serialActive()) {
+            auto& scc = mem.scc();
+            for (std::size_t channel = 0; channel < serial_.size(); ++channel) {
+                auto& transport = serial_[channel];
+                if (!transport) continue;
+                transport->poll();
+                std::uint8_t value = 0;
+                while (scc.canInjectRxByte(int(channel)) &&
+                       transport->readByte(value))
+                    scc.injectRxByte(int(channel), value);
+            }
+        }
     }
 
     template <class Mem, class Cpu, class OnSlice>
     void runNetworkQuantum(Mem& mem, Cpu& cpu, std::int64_t frameCycles,
                            OnSlice&& onSlice) {
         const bool hub = state_.network.appleTalkEnabled;
-        if (!state_.network.ltoudp.active() && !hub) {
+        const bool serial = serialActive();
+        if (!state_.network.ltoudp.active() && !hub && !serial) {
             cpu.runCycles(frameCycles);
             onSlice();
             return;
         }
-        const int slices = hub ? 64 : 16;
+        const int slices = (hub || serial) ? 64 : 16;
         for (int i = 0; i < slices; ++i) {
-            cpu.runCycles(frameCycles / slices);
+            cpu.runCycles(frameCycles / slices + (i < frameCycles % slices));
             pollNetwork(mem);
             if (hub) state_.network.atalk.tick(cpu.machineClock());
             onSlice();
@@ -129,6 +150,10 @@ public:
 
     bool networkEnabled() const noexcept {
         return state_.network.appleTalkEnabled;
+    }
+
+    bool serialActive() const noexcept {
+        return serial_[0] || serial_[1];
     }
 
     void tickNetwork(std::int64_t machineClock) {
@@ -232,12 +257,15 @@ public:
 
 private:
     void configureAppleTalk();
+    void configureSerial();
     void initializeDriveSounds(MacAudioHost& audioHost);
 
     GuiSessionState& state_;
     GuiSessionObjects& objects_;
     GuiShell& shell_;
     const app::RuntimeConfig& config_;
+    // SCC channel 0/B = printer; channel 1/A = modem.
+    std::array<std::unique_ptr<SerialHostTransport>, 2> serial_;
 };
 
 } // namespace pom68k::gui

@@ -203,7 +203,7 @@ add_test(NAME llap_loop_test COMMAND llap_loop_test)
 add_executable(ltoudp_test tests/ltoudp_test.cpp)
 target_link_libraries(ltoudp_test PRIVATE pom68k_core)
 add_test(NAME ltoudp_test COMMAND ltoudp_test)
-
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kSerialGates.cmake)
 # In-process AppleTalk stack gates (AtalkStack + AFP/PAP/MacIP services)
 add_executable(atalk_stack_test tests/atalk_stack_test.cpp)
 target_link_libraries(atalk_stack_test PRIVATE pom68k_core)

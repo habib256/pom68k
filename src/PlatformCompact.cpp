@@ -47,8 +47,13 @@ struct CompactMachine
     void afterRestore() { clock.resync(cpu); }
 
     void emulateQuantum() {
-        clock.runFrame(cpu, mem, [this] { video.raster(mem); });
-        services.pollNetwork(mem);
+        // MacFrameClock already subdivides the frame for the beam. Poll host
+        // wires at those same safe boundaries so serial Rx is not delayed by
+        // a full 16.6 ms frame (and no timing boundary moves).
+        clock.runFrame(cpu, mem, [this] {
+            video.raster(mem);
+            services.pollNetwork(mem);
+        }, services.serialActive() ? 64 : 16);
         services.tickNetwork(cpu.machineClock());
         framesRun_++;
     }

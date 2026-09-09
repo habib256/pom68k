@@ -390,6 +390,8 @@ add_library(pom68k_core STATIC
     src/SonyDrive.cpp     # M5 — 400/800K GCR + 1.44 MB MFM mechanism
     src/SonyDriveFlux.cpp # M5 — flux-to-cell write-back reconstruction
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
+    src/Scc8530Serial.cpp # SCC async byte-wire seam
+    src/SerialHostTransport.cpp # SCC async — host PTY/TCP byte transport
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
     src/R65c02.cpp        # IOP M1 — R65C02 core (Apple PIC, docs/IOP_BRINGUP.md)
     src/ApplePic.cpp      # IOP M2 — Apple 343S1021 PIC (host window/DMA/timer)
@@ -457,11 +459,10 @@ target_compile_definitions(pom68k_core PUBLIC ${POM68K_JIT_DEFS})
 # This headless layer is exercised by docs_test without GLFW/ImGui.
 add_library(pom68k_app STATIC
     src/ProcessEnvironment.cpp
-    src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp
+    src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp src/RuntimeConfigSerial.cpp
     src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp
     src/MachineFactory.cpp src/MachineSession.cpp)
 target_include_directories(pom68k_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
 # ─── GUI executable (Dear ImGui, fetched by setup_imgui.sh) ──────────────
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 if(EXISTS "${IMGUI_DIR}/imgui.cpp")
@@ -477,6 +478,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/main.cpp
         src/GuiMachineRuntime.cpp
         src/GuiHostServices.cpp
+        src/GuiHostSerial.cpp
         src/GuiShell.cpp
         src/GuiSmokeScenario.cpp
         src/PlatformComposers.cpp

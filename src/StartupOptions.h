@@ -62,7 +62,6 @@ template <class Option>
 concept IntegerStartupOption =
     StartupOptionType<Option> &&
     startupValueIsInteger(std::remove_cvref_t<Option>::value.kind);
-
 #define STARTUP_OPTION_SCHEMA(X)                                             \
     X(NoFpu, "POM68K_NOFPU", StartupDomain::Product,                        \
       startup_policy::Presence)                                              \
@@ -77,6 +76,8 @@ concept IntegerStartupOption =
       StartupDomain::Product, startup_policy::NonnegativeDecimalInteger)     \
     X(ShareDirectory, "POM68K_SHARE_DIR", StartupDomain::Product,          \
       startup_policy::Text)                                                  \
+    X(SerialPrinter, "POM68K_SERIAL_PRINTER", StartupDomain::Product, startup_policy::Text) \
+    X(SerialModem, "POM68K_SERIAL_MODEM", StartupDomain::Product, startup_policy::Text) \
     X(Audio, "POM68K_AUDIO", StartupDomain::Product,                       \
       startup_policy::ExactZeroBoolean)                                      \
     X(DriveSounds, "POM68K_DRIVE_SFX", StartupDomain::Product,             \

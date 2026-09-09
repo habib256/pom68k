@@ -12,6 +12,7 @@
 #include "StartupSnapshot.h"
 #include "jit/JitConfig.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -39,6 +40,19 @@ struct NetworkConfig {
     std::string shareDirectory;
 };
 
+enum class SerialTransportKind {
+    Disabled,
+    Pty,
+    Tcp,
+    Invalid,
+};
+
+struct SerialPortConfig {
+    SerialTransportKind kind = SerialTransportKind::Disabled;
+    std::uint16_t tcpPort = 0;
+    std::string requested;
+};
+
 struct DeviceConfig {
     // Start the machine thread in fast-forward — the GUI's own turbo toggle,
     // set from the command line so a measurement can start every arm the
@@ -49,6 +63,8 @@ struct DeviceConfig {
     bool floppyWriteBack = true;
     std::optional<std::string> startupFloppy;
     std::optional<int> monitorWidth;
+    SerialPortConfig serialPrinter;
+    SerialPortConfig serialModem;
 };
 
 struct DiagnosticConfig {

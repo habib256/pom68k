@@ -34,10 +34,11 @@ struct MacFrameClock {
     // unaffected too. This machine's timing is the reference every accuracy
     // claim rests on; nothing here is allowed to perturb it.
     template <class F>
-    void runFrame(Cpu68k& cpu, MacMemory& mem, F&& onSlice) {
-        constexpr int kSlices = 16;
-        for (int i = 1; i <= kSlices; i++) {
-            cpu.runUntil(frameBase + kVblankStart * i / kSlices);
+    void runFrame(Cpu68k& cpu, MacMemory& mem, F&& onSlice,
+                  int slices = 16) {
+        if (slices < 1) slices = 1;
+        for (int i = 1; i <= slices; i++) {
+            cpu.runUntil(frameBase + kVblankStart * i / slices);
             onSlice();
         }
         mem.via().raiseCa1();                        // vblank

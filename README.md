@@ -311,6 +311,25 @@ Protocol, tracing and external netatalk/TashRouter setup are documented in
 [`docs/APPLETALK.md`](docs/APPLETALK.md) and
 [`tools/netatalk2/README.md`](tools/netatalk2/README.md).
 
+## Host serial ports
+
+On macOS and Linux, either asynchronous SCC port can be exposed as a raw PTY
+or as a TCP server bound to loopback:
+
+```sh
+POM68K_SERIAL_MODEM=pty ./build/POM68K
+POM68K_SERIAL_MODEM=tcp:6502 ./build/POM68K
+POM68K_APPLETALK=0 POM68K_SERIAL_PRINTER=pty ./build/POM68K
+```
+
+The process prints the created PTY slave path or `127.0.0.1:<port>` endpoint;
+`tcp:0` asks the OS for a free port. The printer port is SCC channel B, also
+used by LocalTalk, so its serial endpoint is accepted only when built-in
+AppleTalk is disabled and LToUDP is not requested. The modem port (channel A)
+is independent. Host I/O is non-blocking, outgoing bytes follow the baud rate
+programmed by the guest, and incoming bursts wait behind the SCC's three-byte
+FIFO instead of being silently truncated.
+
 ## Build and test
 
 The source build requires:

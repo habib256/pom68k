@@ -373,16 +373,19 @@ endforeach()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv "${pom68k_gate_list}")
 # Empty on the AArch64 dev host, two rows anywhere else — see the guard
 # above. docs_test adds these back before comparing with the docs.
-# Windows also lacks the three POSIX-socket harnesses fenced in
-# Pom68kComponentGates.cmake; they stay part of the union (the knob
-# contract cites afp_server_test) and are recorded here as absent.
+# Windows also lacks the three POSIX-socket service harnesses and the
+# PTY-backed SCC serial harness fenced in Pom68kComponentGates.cmake; they
+# stay part of the union (knob contracts cite them) and are recorded absent.
 if(WIN32)
     string(APPEND pom68k_absent_gates
-        "afp_server_test\tunit\npap_server_test\tunit\nmacip_gw_test\tunit\n")
+        "afp_server_test\tunit\npap_server_test\tunit\nmacip_gw_test\tunit\n"
+        "scc_serial_host_test\tunit\n")
+elseif(EMSCRIPTEN)
+    string(APPEND pom68k_absent_gates
+        "scc_serial_host_test\tunit\n")
 endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv
      "${pom68k_absent_gates}")
-
 # `make jitdev` builds ONLY what `ctest -L smoke` needs. The tree-wide LTO
 # makes a full `make` relink ~90 binaries after any core change; this is
 # three. Pair them: `make -j4 jitdev && ctest -L smoke`.

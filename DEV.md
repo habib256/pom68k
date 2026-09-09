@@ -1635,6 +1635,12 @@ Keyboard II, 3 = the extended protocol with distinct right-hand modifier
 codes — a guest can select any of them itself with a Listen R3, this only
 moves the reset value), `POM68K_APPLETALK`,
 `POM68K_SHARE_DIR`, `POM68K_ATALK_WIRE_BOOST`, `POM68K_LTOUDP`,
+`POM68K_SERIAL_MODEM` / `POM68K_SERIAL_PRINTER` (`pty` or `tcp:<port>` =
+connect the SCC A modem port / SCC B printer port to a non-blocking host
+endpoint on macOS and Linux; `tcp:0` selects a free loopback port and the
+actual endpoint is printed. Printer serial is refused while AppleTalk or
+LToUDP owns channel B. The host queue feeds only free slots in the SCC's
+three-byte FIFO; `scc_serial_host_test` gates PTY and TCP round-trips),
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_FLUX_JITTER`
 (`<pct>` = displace every flux edge the SWIM separators read by a
 deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in

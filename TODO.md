@@ -76,21 +76,18 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 - [ ] **Étendre les commandes Cuda du Q605/LC 475 uniquement depuis des traces
   ROM/pilote.** Le prochain travail porte sur le timing pin-level 040 et les
   commandes réellement observées, pas sur une nouvelle approximation.
-- [ ] **Compléter le low tier SCC seulement avec un consommateur.** Ajouter
-  l'échantillonnage série asynchrone avec un transport réel, les variantes
+- [ ] **Compléter le low tier SCC seulement avec un consommateur.** Le
+  transport série réel PTY/TCP et son chemin octet asynchrone sont clos le
+  2026-09-09 (`CHANGELOG`, eighth) ; ajouter désormais les variantes
   8530/85C30/ESCC lorsqu'une machine les demande, puis WR9 VIS/NV et DPLL avec
-  gates ; préserver le comportement LLAP déjà plus complet que l'oracle MAME.
+  gates, en préservant le comportement LLAP déjà plus complet que l'oracle
+  MAME.
 - [ ] **Créer un store de piste flux de première classe.** Faire survivre les
   flux écrits hors cadence à un commit et revalider l'arithmétique de zones
   GCR ; exiger un symptôme ou un corpus avant d'élargir le modèle.
 - [ ] **Décider les échéanciers Mac II et Duo avec un gate sensible à la
   gigue.** Garder les options expérimentales tant qu'aucun observable ne
   justifie leur coût ; comparer état, débit et jitter avant un défaut produit.
-- [ ] **Ajouter un transport série hôte PTY/TCP.** Exposer les ports SCC de
-  l'invité sur un pseudo-terminal ou une socket TCP de l'hôte, et gater
-  l'aller-retour. (Le volet SCSI de cet item — cibles multiples, LUN et
-  REQUEST SENSE après CHECK CONDITION — est clos le 2026-09-09, `CHANGELOG`
-  (later).)
 - [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Garder les
   assets privés soft-skippables et comparer des captures stables.
 

@@ -94,6 +94,11 @@ public:
     // frame — WITHOUT the FCS the chip appends — is handed to onTxFrame.
     // Send Abort discards the pending bytes. Channel 0 = B (LocalTalk port).
     std::function<void(int ch, const uint8_t* d, size_t n)> onTxFrame;
+    // Async serial wire: emitted exactly when a character leaves the paced
+    // shifter, never when the CPU merely fills the Tx buffer. Internal SCC
+    // loopback does not drive this external pin. Channel 0 = printer/B,
+    // channel 1 = modem/A.
+    std::function<void(int ch, uint8_t d)> onTxByte;
     // Rx: inject one LLAP frame (dest, src, type, payload — no FCS; the
     // "chip" computes and appends it so the driver sees the SDLC tail).
     // The receiver VERIFIES that FCS as the frame closes: RR1 bit 6 (CRC
@@ -120,6 +125,7 @@ public:
     // owns the pacing (no line model on the async side yet).
     void injectRxByte(int ch, uint8_t d, bool parityError = false,
                       bool framingError = false);
+    bool canInjectRxByte(int ch) const;
     // CPU cycles per LocalTalk byte (230.4 kbit/s): 544 @ 15.6672 MHz
     // (LC II / Mac II), 272 @ 7.8336 (Plus), 868 @ 25 MHz (Q605).
     // Legacy fixed pace — the fallback when the machine has not provided
@@ -311,6 +317,7 @@ private:
     void rxPushByte(Chan& c);        // pace one frame byte into the FIFO
     void rxStartFrame(Chan& c, int chIdx);
     void raiseRxInt(Chan& c, bool special);
+    void emitAsyncByte(int ch, const Chan& c);
     // The open-line standing Break/Abort is a LINE state, not a machine
     // constant: setAbortIdle(true) marks a connector with no hardwired
     // peer, but the abort exists only under a genuine abort condition —

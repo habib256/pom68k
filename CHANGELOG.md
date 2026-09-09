@@ -327,6 +327,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Serial, LocalTalk and AppleTalk
 
+- **how do real host programs reach the guest's modem and printer ports without bypassing SCC timing or overflowing its FIFO?** → [2026-09-09 (eighth) — Both SCC serial ports reach host PTYs and loopback TCP…](#2026-09-09-scc-serial-host)
 - **SCC receive path + the LToUDP virtual cable** → [2026-07-22 — LLAP milestone 1: SCC receive path + LToUDP virtual cable](#2026-07-22--llap-milestone-1-scc-receive-path--ltoudp-virtual-cable)
 - **two Systems acquiring LLAP addresses across the cable** → [2026-07-22 — LLAP two-System etalon: real address acquisition between two Systems](#2026-07-22--llap-two-system-etalon-real-address-acquisition-between-two-systems)
 - **the guest programs the wire pace (async baud)** → [2026-07-23 — SCC async-baud machinery: the guest programs the wire pace now](#2026-07-23--scc-async-baud-machinery-the-guest-programs-the-wire-pace-now)
@@ -435,6 +436,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (eighth)** — [Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO](#2026-09-09-scc-serial-host)
 - **2026-09-09 (seventh)** — [The LC II sound path reaches the real DFAC, and the host DAC owns playback time with a ten-minute deterministic tempo proof](#2026-09-09-dfac-host-clock)
 - **2026-09-09 (sixth)** — [All 36 desktops get their external Sony drive, and the Plus ROM boots from drive B with drive A empty](#2026-09-09-external-floppy)
 - **2026-09-09 (fifth)** — [The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus](#2026-09-09-storage-profile-audit)
@@ -899,6 +901,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-scc-serial-host"></a>
+## 2026-09-09 (eighth) — Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO
+
+The SCC had had an asynchronous receive entry since its Tx/Rx fidelity pass,
+but no real consumer: the GUI could attach only LocalTalk to channel B. A
+serial driver could fill and drain the chip perfectly while every character
+still vanished at the emulated TxD pin. `Scc8530::onTxByte` now fires when an
+async character actually leaves the paced shifter — not when the CPU writes
+the one-byte buffer — and stays disconnected during internal loopback. The
+opposite direction has an explicit `canInjectRxByte` contract, so host bursts
+remain queued until the guest makes room in the physical three-byte FIFO.
+
+`SerialHostTransport` adds two non-blocking POSIX endpoints. `pty` creates a
+raw pseudo-terminal and prints its slave path; it deliberately retains one
+slave control descriptor because macOS resets termios after the last slave
+closes, which otherwise restored echo and fed the guest its own transmitted
+bytes. `tcp:<port>` listens on `127.0.0.1` only, accepts one client, survives a
+disconnect, and supports `tcp:0` for an OS-selected port. Both queues are
+bounded at 64 KiB; TCP output sent with no peer is dropped like an unplugged
+cable. Every descriptor is close-on-exec, so a GUI relaunch cannot retain an
+old PTY or keep its predecessor's TCP listener bound.
+
+The typed product inputs are `POM68K_SERIAL_MODEM` (SCC A) and
+`POM68K_SERIAL_PRINTER` (SCC B). Printer serial is refused while the default
+AppleTalk hub or LToUDP owns B, rather than replacing the LLAP frame callback
+silently; modem serial coexists. The GUI polls serial in the same sliced host
+I/O cadence as its network wire. Windows and WASM compile explicit inactive
+stubs today because PTYs are a POSIX facility.
+
+The asset-free `scc_serial_host_test` opens a real PTY slave and a real
+loopback TCP client. For each it proves paced guest→host order, then sends five
+host bytes into a three-byte SCC FIFO and proves all five arrive in order as
+the guest drains it. This closes the roadmap's PTY/TCP transport item and
+leaves only the separately scoped SCC variants/VIS/DPLL work.
 
 <a id="2026-09-09-dfac-host-clock"></a>
 ## 2026-09-09 (seventh) — The LC II sound path reaches the real DFAC, and the host DAC owns playback time

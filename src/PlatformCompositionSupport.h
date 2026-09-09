@@ -1,4 +1,4 @@
-// POM68K — shared includes and the hot network-quantum seam for composers
+// POM68K — shared includes and the hot host-wire quantum seam for composers
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #pragma once

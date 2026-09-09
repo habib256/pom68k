@@ -207,6 +207,8 @@ POM68K_SCSI_LAT	diagnostic	owner:src/StartupOptions.h
 POM68K_SCSI_TRACE	diagnostic	owner:src/StartupOptions.h
 POM68K_SENSE	test	owner:tests/iici_boot_etalon.cpp
 POM68K_SE_VIA_TRACE	diagnostic	owner:src/StartupOptions.h
+POM68K_SERIAL_MODEM	product	gate:scc_serial_host_test
+POM68K_SERIAL_PRINTER	product	gate:scc_serial_host_test
 POM68K_SHARE_DIR	product	gate:afp_server_test
 POM68K_SHUTDOWN_CLOSEWIN	test	owner:tests/lcii_shutdown_flush.cpp
 POM68K_SHUTDOWN_HUB	test	owner:tests/q605_shutdown_flush.cpp
