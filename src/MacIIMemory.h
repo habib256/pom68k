@@ -17,7 +17,7 @@
 #include "Asc.h"
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
-#include "Iwm.h"
+#include "Swim1.h"
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include "MacInput.h"
@@ -41,12 +41,14 @@ public:
     static constexpr int64_t  kCpuHz   = 15667200;
     int64_t cpuHz() const { return kCpuHz; }         // LocalTalk pace / 60 Hz quantum
 
-    // Same GLUE board, ROM-sharing models (MAME macii.cpp): the plain
-    // **Mac II** / II FDHD (68020 + HMMU), and the 68030 variants **IIx**,
+    // Same GLUE board, ROM-sharing models (MAME macii.cpp): the original
+    // **Mac II** (68020 + HMMU, 800K IWM), and the SWIM/SuperDrive 68030
+    // variants **IIx**,
     // **IIcx** and **SE/30** — distinguished only by the VIA1 PA / VIA2 PB
     // machine-ID pins (iix_via2_in_b $87; iicx_via_in_a $C1; the SE/30 shows
-    // both). All boot the mac2fdhd ROM. The SE/30 is the compact IIx: no
-    // NuBus slots, internal 512×342 video on pseudo-slot $E (Se30Video).
+    // both). The 68030 trio boot the mac2fdhd ROM; the original Mac II keeps
+    // its own ROM. The SE/30 is the compact IIx: no NuBus slots, internal
+    // 512×342 video on pseudo-slot $E (Se30Video).
     enum class Model { MacII, IIx, IIcx, SE30 };
 
     explicit MacIIMemory(
@@ -54,6 +56,7 @@ public:
         Model model = Model::MacII);
     Model model() const { return model_; }
     bool is030() const { return model_ != Model::MacII; }
+    bool hasSuperDrive() const { return model_ != Model::MacII; }
     ~MacIIMemory();
 
     bool loadRom(const std::vector<uint8_t>& data);
@@ -169,7 +172,8 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
-    Iwm& iwm() { return iwm_; }
+    Iwm& iwm() { return swim_.iwm(); }
+    Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
@@ -214,7 +218,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via1_, via2_, rtc_, nubus_, adbVia_, adb_, asc_,
-           scsi_, iwm_, drive_, scc_, mouse_);
+           scsi_, swim_, drive_, scc_, mouse_);
         for (auto& d : scsiDisks_) ar(d);
         std::uint8_t hasToby = toby_ != nullptr;
         ar(hasToby);
@@ -286,7 +290,7 @@ private:
     AscV8 asc_{0x00};   // Mac II discrete ASC (version $00), not V8
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
-    Iwm iwm_;
+    Swim1 swim_;
     SonyDrive drive_;
     Scc8530 scc_;
     MacMouse mouse_;

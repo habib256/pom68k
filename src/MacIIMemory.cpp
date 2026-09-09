@@ -129,9 +129,10 @@ void MacIIMemory::reset() {
     adbVia_.reset();
     asc_.reset();
     scsi_.reset();
-    iwm_.reset();
-    iwm_.attachDrive(&drive_, nullptr);
-    iwm_.setClockHz(15667200);               // ticked in machine cycles, 2x C7M
+    swim_.configureSuperDrive(hasSuperDrive());
+    swim_.reset();
+    swim_.iwm().setClockHz(15667200);         // ticked in machine cycles, 2x C7M
+    swim_.attachDrive(&drive_, nullptr);
     drive_.reset();
     drive_.setSpinClockHz(15667200);         // machineTick unit (Mac II 68020)
     scc_.reset();
@@ -308,7 +309,7 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
                 // moved, which is the one invalidation a write guard is
                 // blind to (JitGuard.h § invalidate).
                 if (wasOverlay && !overlay_) jitMapChanged();
-                iwm_.setSel((reg == Via6522::ORA || reg == Via6522::ORA_NH)
+                swim_.setSel((reg == Via6522::ORA || reg == Via6522::ORA_NH)
                             ? (v & 0x20) != 0
                             : (via.portA() & 0x20) != 0);
                 // SE/30: PA6 selects the video page (MAME via_out_a
@@ -571,7 +572,7 @@ uint8_t MacIIMemory::read8Decoded(uint32_t addr) {
             return asc_.read(ioOff - 0x14000);
         if (ioOff >= 0x16000 && ioOff < 0x18000) {
             if (cpu_) cpu_->stall(5);
-            return iwm_.read((ioOff >> 9) & 0xF);
+            return swim_.read((ioOff >> 9) & 0xF);
         }
         return 0xFF;                             // open bus (map probe)
     }
@@ -666,7 +667,7 @@ void MacIIMemory::write8Decoded(uint32_t addr, uint8_t v) {
         }
         if (ioOff >= 0x16000 && ioOff < 0x18000) {
             if (cpu_) cpu_->stall(5);
-            iwm_.write((ioOff >> 9) & 0xF, v);
+            swim_.write((ioOff >> 9) & 0xF, v);
             return;
         }
         return;                                    // open bus
@@ -788,7 +789,7 @@ void MacIIMemory::tick(int cpuCycles) {
     via2_.setCb2(!scsi_.irqAsserted());
     via2Irq_ = via2_.irqAsserted();
     updateIrq();
-    iwm_.tick(cpuCycles);
+    swim_.tick(cpuCycles);
     drive_.tick(cpuCycles);
     // SCC time base: SDLC Tx underrun (frame end) + LLAP Rx pacing. The
     // DCD mouse path recomputes sccIrq_ at access time; frame events land

@@ -25,7 +25,8 @@ MacMemory::MacMemory(const pom68k::CoreConfig& coreConfig, Model model)
     adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
-    scsiDisk_.configure(coreConfig.storage);
+    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    swim_.configureSuperDrive(hasSuperDrive());
     if (isAdb()) adbVia_.attach(via_, adb_, kCpuHz);
 }
 
@@ -34,6 +35,7 @@ void MacMemory::setModel(Model m) {
     model_ = m;
     romSize_ = romSizeFor(m);
     rom_.assign(romSize_, 0xFF);
+    swim_.configureSuperDrive(hasSuperDrive());
     if (isAdb()) adbVia_.attach(via_, adb_, kCpuHz);
 }
 
@@ -51,20 +53,29 @@ void MacMemory::installRom(const uint8_t* data, size_t n) {
 void MacMemory::reset() {
     via_.reset();
     rtc_.reset();                    // shifter only; seconds/PRAM are battery-backed
-    iwm_.reset();
+    swim_.configureSuperDrive(hasSuperDrive());
+    swim_.reset();
     // The board's clock on the chip, which is not the CPU's: MAME's macse
     // replaces the Plus's `IWM(config, m_iwm, C7M)` with `C7M*2`
     // (mac128.cpp:1182 vs :1317), and macsefd/macclasc inherit it. tick()
     // keeps being fed C7M CPU cycles on all four — see Iwm.h's note.
-    iwm_.setChipHz(isAdb() ? 15667200 : 7833600);
-    iwm_.attachDrive(&drive_, nullptr);
+    if (hasSuperDrive()) {
+        // The SWIM itself runs at C15M while this 68000 still advances in
+        // C7M CPU cycles; tick() below supplies the exact 2:1 bridge.
+        swim_.iwm().setClockHz(15667200);
+    } else {
+        swim_.iwm().setTickHz(7833600);
+        swim_.iwm().setChipHz(isAdb() ? 15667200 : 7833600);
+    }
+    swim_.attachDrive(&drive_, nullptr);
     drive_.reset();
     scc_.reset();
     // SCC async-baud LLE: CPU C7M 7.8336 MHz, PCLK 3.9168 MHz (DEV.md:74,
     // MAME); RTxC 3.6864 MHz is chip-internal to the model.
     scc_.setClocks(7833600, 3916800);
     scsi_.reset();
-    if (scsiDisk_.present()) scsi_.attach(&scsiDisk_);
+    for (int id = 0; id < 7; ++id)
+        if (scsiDisks_[id].present()) scsi_.attach(&scsiDisks_[id], id);
     kbd_.reset();
     mouse_.reset();                  // dx/dy, button and the quadrature lines
     kbdPhase_ = KBD_IDLE;
@@ -95,7 +106,7 @@ void MacMemory::tick(int cpuCycles) {
     // The SCC Tx engine paces the wire (byte shifter + SDLC tail drain) —
     // without ticks a TBE poll would never see the buffer free again.
     if (scc_.tick(cpuCycles)) updateIrq();
-    iwm_.tick(cpuCycles);
+    swim_.tick(hasSuperDrive() ? cpuCycles * 2 : cpuCycles);
     drive_.tick(cpuCycles);
 
     if (isAdb()) {
@@ -223,7 +234,7 @@ uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
             // and only this write knows it (JitGuard.h § invalidate).
             if (was != overlay_) jitMapChanged();
         }
-        iwm_.setSel((via_.portA() & 0x20) != 0); // PA5 = drive SEL line
+        swim_.setSel((via_.portA() & 0x20) != 0); // PA5 = drive SEL line
     }
     if (!isAdb() && reg == Via6522::SR && ((via_.acr() >> 2) & 7) == 7) {
         // shift-out under external clock = keyboard command byte
@@ -361,7 +372,7 @@ uint8_t MacMemory::read8(uint32_t addr) {
         case 0xA: case 0xB:                                  // SCC write side (reads: 0)
             return 0x00;
         case 0xC: case 0xD:                                  // IWM, odd bytes, reg = A9-A12
-            return iwm_.read((addr >> 9) & 0xF);
+            return swim_.read((addr >> 9) & 0xF);
         case 0xE:                                            // VIA ($E80000-$EFFFFF)
             if (addr >= 0xE80000) return viaAccess(addr, false, 0);
             return 0xFF;
@@ -417,7 +428,7 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
             return;
         }
         case 0xC: case 0xD:                                  // IWM
-            iwm_.write((addr >> 9) & 0xF, v);
+            swim_.write((addr >> 9) & 0xF, v);
             return;
         case 0xE:                                            // VIA ($E80000-$EFFFFF)
             if (addr >= 0xE80000) viaAccess(addr, true, v);

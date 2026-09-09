@@ -136,7 +136,7 @@ inline const char* kCdBayToken = "cdbay";
 // gates build their machines directly in `tests/`, and never run a line of
 // this file. What it really cost was the GUI's usability.
 //
-// A machine whose memory has no `attachCdromEmpty` (the 68000 compacts, the
+// A machine whose memory has no `attachCdromEmpty` (currently only the
 // undocked Duo) compiles this out and keeps `supportsEmptyCdDrive = false`.
 // `POM68K_NO_CDBAY=1` opts out for a session — for anyone comparing a bus
 // against a pre-2026-08-15 capture.

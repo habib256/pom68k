@@ -46,6 +46,15 @@ public:
     void reset();
     void attachDrive(SonyDrive* internal, SonyDrive* external);
 
+    // A SWIM1 is pin-compatible with the IWM it replaced.  The Plus, SE and
+    // original Mac II therefore share this wrapper with their FDHD siblings,
+    // but must remain plain-IWM machines: the 1-0-1-1 personality switch is
+    // absent and their MFD-51W mechanism is not HD-capable.  This is board
+    // configuration, not live state, so the owning memory map reapplies it
+    // from its model and it is deliberately not serialized.
+    void configureSuperDrive(bool enabled);
+    bool superDriveConfigured() const { return superDriveConfigured_; }
+
     // Bus access: reg = addr bits A9-A12 (IWM state lines; ISM regs & 7)
     uint8_t read(int reg);
     void write(int reg, uint8_t v);
@@ -169,6 +178,7 @@ private:
 
     Iwm iwm_;                                    // IWM personality
     SonyDrive* drive_[2] = { nullptr, nullptr };
+    bool superDriveConfigured_ = true;            // board wiring, not state
     bool ismMode_ = false;
     int iwmToIsm_ = 0;                           // magic-pattern counter
 

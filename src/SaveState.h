@@ -268,7 +268,11 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // logical unit from the IDENTIFY message (§ 5.6.7), which decides how every
 // command of an in-flight connection is answered. A v10 chunk supplies
 // neither, and the longer layout would shift every field behind it.
-inline constexpr u32      kVersion   = 11;  // v11: SCSI sense ASCQ + nexus LUN
+// v12 replaces the compact/GLUE machines' IWM chunk with the full SWIM1
+// wrapper and expands the compacts from one SCSI target to seven.  The five
+// FDHD profiles need the ISM engine's live FIFO/separator/write state, and a
+// compact snapshot with extra SCSI targets has no truthful v11 layout.
+inline constexpr u32      kVersion   = 12;  // v12: FDHD SWIM1 + compact SCSI bays
 
 struct Header {
     u32 version     = kVersion;

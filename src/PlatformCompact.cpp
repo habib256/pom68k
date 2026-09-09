@@ -12,6 +12,7 @@
 #include "MacAudioHost.h"
 #include "DemoRom.h"
 
+#include "CompactMedia.h"
 #include "GuiRunnerCompact.h"
 
 // ── 68000 compact host ──────────────────────────────────────────────────
@@ -109,21 +110,11 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     mem.rtc().setSeconds(services.hostMacSeconds());
     services.wireNetwork(mem);
 
-    // First media argument: floppy, else probe disks35/ (CWD, exec dir, parent —
-    // same resolution as the ROM, so it works whatever the launch directory).
-    std::string diskPath = !media.empty()
-        ? media[0] : services.locate("disks35/Disk605.dsk");
-    const bool diskOk = !diskPath.empty() && mem.insertDisk(diskPath);
-    if (diskOk) std::printf("Floppy: %s\n", diskPath.c_str());
-
-    // Second media argument: SCSI disk, else probe hdv/HD20SC.vhd.
-    std::string hddPath = media.size() > 1
-        ? media[1] : services.locate("hdv/HD20SC.vhd");
-    const bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD: %s (%u blocks, write-back)\n", hddPath.c_str(), mem.scsiDisk().blocks());
-    if (!diskOk && !hddOk && !demoMode)
-        std::fprintf(stderr, "No boot media — drop a .dsk in disks35/ or a .vhd in "
-                     "hdv/ (looked relative to CWD and the executable).\n");
+    pom68k::gui::CompactMountedMedia mounted =
+        pom68k::gui::mountCompactMedia(mem, media, services, demoMode);
+    const bool diskOk = mounted.floppyOk;
+    const std::string& diskPath = mounted.floppyPath;
+    const std::string& hddPath = mounted.hddPath;
 
     // The compact 68000 siblings run this very machine (Plus map + ADB).
     const MacMemory::Model compactModel = mem.model();
@@ -161,7 +152,8 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     machine.setFloppyInserted(diskOk, diskOk ? diskPath : std::string());
     return pom68k::gui::runCompactGui(
         machine, mem, cpu, audioHost, services,
-        {matched, hddPath, diskOk ? diskPath : std::string(), pramPath,
+        {matched, hddPath, diskOk ? diskPath : std::string(),
+         std::move(mounted.extraDisks), pramPath,
          std::string("POM68K — ") + machineName, machineName, compactKind,
          demoMode, MacVideo::kWidth, MacVideo::kHeight});
 }

@@ -587,9 +587,8 @@ set_tests_properties(lc580_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_Q630_ID=A55A225A;POM68K_Q630_ROM=lc580"
                      TIMEOUT 3600)
 
-# Compact 68000 family (Mac SE / SE FDHD / Classic): the Plus machine with
-# a bigger ROM and the PIC1654S ADB transceiver instead of the M0110.
-# One binary, POM68K_COMPACT_MODEL picks the sibling.
+# Compact 68000 family: the Plus machine with a bigger ROM and PIC1654S ADB.
+# One binary; POM68K_COMPACT_MODEL picks SE / SE FDHD / Classic.
 add_executable(compact_boot_etalon tests/compact_boot_etalon.cpp)
 target_link_libraries(compact_boot_etalon PRIVATE pom68k_core)
 add_test(NAME se_boot_etalon COMMAND compact_boot_etalon
@@ -603,6 +602,7 @@ set_tests_properties(sefdhd_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=sefdhd" TIMEOUT 1800)
 set_tests_properties(classic_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=classic" TIMEOUT 1800)
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kStorageGates.cmake)
 
 # Quadra 700 ("Spike"): the first Quadra — a full 68040 on discrete
 # chips (Mac II VIA1/VIA2 + RTC + PIC ADB, Quadra DAFB/53C96/SWIM1/EASC),

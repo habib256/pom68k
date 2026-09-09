@@ -77,6 +77,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
 - **why did a 1.44 MB LC II disk yield a valid MDB and then fail the same mount — and why was SWIM mode bit 5 the wrong head-select source?** → [2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium…](#2026-09-09-lcii-floppy144-mount)
 - **why did the real SWIM1 MFM write reach `finishWrite` with valid bytes and CRC yet leave the disk unchanged?** → [2026-09-09 (fourth) — The real write was valid; the verifier carried a torn field's byte phase across its splice](#2026-09-09-swim1-mfm-writeback)
+- **which of the 37 profiles actually expose 800K, 1.44 MB, SCSI HDD and CD-ROM — and which five FDHD machines were accidentally still wired as IWM-only?** → [2026-09-09 (fifth) — The storage matrix finds five missing SuperDrives…](#2026-09-09-storage-profile-audit)
 
 - **"`-mcpu=<core>` is worth 10-20 % over generic aarch64" — inherited from NeoST, and the ISA half of it buys POM68K nothing (byte-identical code)** → [2026-08-08 (fourth) — `-mcpu=cortex-a72` produced byte-identical code…](#2026-08-08-mcpu-identical)
 - **"a CI-built `-mcpu` artifact cannot be done, no ROMs" — conflated two independent halves of NeoST's workflow** → [2026-08-08 (third) — A Pi package built for ONE core…](#2026-08-08-pi400-ci)
@@ -432,6 +433,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (fifth)** — [The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus](#2026-09-09-storage-profile-audit)
 - **2026-09-09 (fourth)** — [The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice](#2026-09-09-swim1-mfm-writeback)
 - **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](#2026-09-09-lcii-floppy144-mount)
 - **2026-09-09 (later)** — [The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk](#2026-09-09-scsi-sense-lun)
@@ -893,6 +895,39 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-09-storage-profile-audit"></a>
+## 2026-09-09 (fifth) — The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus
+
+A profile-by-profile storage audit found two shared-wiring omissions behind
+five machines. `MacMemory` still instantiated a plain `Iwm` for the **SE
+FDHD** and **Classic**, and `MacIIMemory` did the same for the **IIx, IIcx and
+SE/30**. Those ROMs could read 800K GCR through the compatibility personality,
+which hid the error in their boot gates, but they could never enter SWIM ISM
+or operate a 1.44 MB MFM medium. MAME's current `mac128.cpp` and `macii.cpp`
+make the split explicit: SE FDHD/Classic and the FDHD Mac II descendants use
+SWIM/SuperDrive, while Plus, original SE and original Mac II remain 800K IWM.
+
+Both early memory maps now own the same configurable `Swim1` wrapper. Board
+configuration disables the 1-0-1-1 ISM switch and HD mechanism on the three
+800K-only profiles, enables them on the five FDHD profiles, and preserves the
+different C7M/C15M clock wiring. The compact map also grows from one
+`ScsiDisk` to seven targets, with typed HDD/CD attachment, a persistent empty
+CD drive, hot insertion/ejection and GUI relaunch state. A lone compact HDD or
+ISO is classified by media type instead of being lost to the old positional
+floppy-first parser. Because both device graphs changed, the snapshot format
+is intentionally version 12.
+
+`MachineCatalog.h::storageCapabilities()` records the shipped result: one
+no-floppy Duo, three 800K-only machines, 33 SuperDrive machines, and SCSI HDD
+plus SCSI CD-ROM on all 37 profiles. The new asset-free
+`storage_profile_test` accounts for every row, asserts all twelve platform
+APIs, drives the early IWM/SWIM switch, and performs NCR 5380 READ(6)/READ(10)
+against a compact HDD and ISO. The real-media sweep passes 800K, 1.44 MB
+read/write persistence, CD mount/boot/hot-insert and ISO/CUE/BIN handling.
+Finally, 37/37 profile cells boot to the Finder from SCSI; the SE, SE FDHD and
+Classic now have dedicated no-floppy SCSI gates rather than borrowing their
+800K boot proof.
 
 <a id="2026-09-09-swim1-mfm-writeback"></a>
 ## 2026-09-09 (fourth) — The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice

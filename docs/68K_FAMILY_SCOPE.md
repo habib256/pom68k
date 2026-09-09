@@ -2,7 +2,7 @@
 
 Which classic 68K Macs POM68K ships, and what each remaining one costs.
 Written 2026-07-17; the Phase C fan-out (2026-07-24/25) obsoleted most of it,
-and every line was re-derived from the code on **2026-08-12**.
+and every line was re-derived from the code on **2026-09-09**.
 
 The target is **every 68k Macintosh**. Counts in this document describe the
 current implementation and must never be read as a ceiling on that target.
@@ -14,6 +14,13 @@ Source of truth for that count: `kMachineProfiles` in
 consumed by the **Machine** menu; compile-time checks keep ids unique and
 dense. A platform = one `*Memory`/`*Cpu` pair in `src/` and one save/load
 overload in `src/SaveStateMachines.h`.
+
+Storage is also explicit in that catalogue through `storageCapabilities()`:
+the Duo 230 has no floppy; Plus, SE and the original Mac II are 800K-only;
+the other 33 profiles have a SuperDrive and accept both 800K GCR and 1.44 MB
+MFM. All 37 expose SCSI hard disks and SCSI CD-ROM targets (external where
+the chassis has no bay). The asset-free `storage_profile_test` accounts for
+all 37 rows and exercises the early IWM/SWIM split plus compact HDD/CD reads.
 
 There is no longer any platform in `src/` without a profile row: the last two
 paid the house rule (a catalogue row is earned by a Finder cell *plus* GUI
@@ -46,9 +53,9 @@ access, and **ADB on the same PIC1654S firmware LLE the Mac II uses**
 | Profile | ROM | Gate |
 |---|---|---|
 | Macintosh Plus | `macplus.rom` | `system_boot_etalon`, `disk_boot_etalon`, `scsi_boot_etalon`, `rom_boot_etalon`, `input_etalon` |
-| Macintosh SE | `B2E362A8` | `se_boot_etalon` |
-| Macintosh SE FDHD | `B306E171` | `sefdhd_boot_etalon` |
-| Macintosh Classic | `A49F9914` | `classic_boot_etalon`, `jit_classic_boot_etalon` |
+| Macintosh SE | `B2E362A8` | `se_boot_etalon`, `se_scsi_boot_etalon` |
+| Macintosh SE FDHD | `B306E171` | `sefdhd_boot_etalon`, `sefdhd_scsi_boot_etalon` |
+| Macintosh Classic | `A49F9914` | `classic_boot_etalon`, `classic_scsi_boot_etalon`, `jit_classic_boot_etalon` |
 
 ### GLUE + Toby NuBus — `MacIIMemory` / `Cpu020`
 

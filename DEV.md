@@ -242,7 +242,8 @@ PIC1654S firmware LLE** (PB4/PB5 = ST) in place of the M0110 — see
 `main()` builds the machine before it has read the ROM, and the compacts are
 told apart by its checksum. Gates: `rom_boot_etalon`, `disk_boot_etalon`,
 `system_boot_etalon`, `scsi_boot_etalon`, `se_boot_etalon`,
-`sefdhd_boot_etalon`, `classic_boot_etalon`.
+`sefdhd_boot_etalon`, `classic_boot_etalon`, and the three explicit
+`{se,sefdhd,classic}_scsi_boot_etalon` cells.
 
 #### Address map (24-bit)
 
@@ -254,7 +255,7 @@ told apart by its checksum. Gates: `rom_boot_etalon`, `disk_boot_etalon`,
 | `$600000-$7FFFFF` | RAM overlay window | RAM lives here while overlay on |
 | `$800000-$9FFFFF` | SCC **read** (even, D8-D15) | `sccRBase=$9FFFF8`; A1=channel (0=B), A2=ctl/data; **odd read resets the SCC** (Mini vMac) |
 | `$A00000-$BFFFFF` | SCC **write** (odd, D0-D7) | `sccWBase=$BFFFF9` |
-| `$C00000-$DFFFFF` | IWM (odd, D0-D7) | reg = A9-A12 (`$200` spacing), `dBase=$DFE1FF`; stub read `$1F` suffices to reach the blinking-? |
+| `$C00000-$DFFFFF` | IWM / SWIM1 (odd, D0-D7) | reg = A9-A12 (`$200` spacing), `dBase=$DFE1FF`; Plus/SE stay IWM+800K, SE FDHD/Classic expose SWIM ISM+SuperDrive |
 | `$E80000-$EFFFFF` | VIA (even, D8-D15) | reg = A9-A12, `vBase=$EFE1FE`=ORB; `$EFFFFE`=ORA_NH (reg 1 never used); E-clock sync via /VPA |
 | `$FFFFF0-$FFFFFF` | autovector space | glue asserts /VPA on IACK |
 
@@ -877,9 +878,12 @@ needed research, and a dated `CHANGELOG.md` entry.
 
 ## 3. Devices shared across platforms
 
-### 3.1 Storage: IWM + Sony 800K GCR
+### 3.1 Storage: IWM-compatible mode + Sony 400/800K GCR
 
 `Iwm.h/.cpp` + `SonyDrive.h/.cpp` (M5, research-pinned + trace-verified).
+The Plus, original SE and original Mac II are the three shipped 800K-only
+profiles. All other floppy-equipped profiles retain this personality for
+400/800K GCR media inside a SWIM; the Duo 230 has no floppy mechanism.
 Full spec tables in the M5 research report (MAME `iwm.cpp` / `floppy.cpp` /
 `flopimg.cpp` / `ap_dsk35.cpp`, pce, Snow — cross-verified). What the
 implementation actually depends on, several found the hard way with
@@ -936,14 +940,16 @@ implementation actually depends on, several found the hard way with
   mechanism, CHANGELOG 2026-08-05 (eighth)), IWM per-reg/sense counters,
   consumed-nibble ring.
 - Gates: `gcr_test`, `iwm_read_test`, `iwm_write_test`,
-  `floppy_persist_test`, `floppy_sound_test`.
+  `floppy_persist_test`, `floppy_sound_test`, `storage_profile_test`.
 
 ### 3.2 Storage: SWIM1 and the SWIM2 cell engine
 
-- **`Swim1`** — IWM + ISM modes, 1.44 MB MFM. Used by V8, RBV, VASP, the
-  IIfx (behind its SWIM IOP) and the discrete-040 board (direct on the
-  Quadra 700, behind the SWIM IOP on the Eclipse towers). Gate
-  `swim1_test`. `Swim2` covers Sonora, Q605, Centris and Q630, plus the V8's
+- **`Swim1`** — IWM + ISM modes, 1.44 MB MFM. Used by the SE FDHD, Classic,
+  IIx, IIcx and SE/30, by V8, RBV, VASP, the IIfx (behind its SWIM IOP) and
+  the discrete-040 board (direct on the Quadra 700, behind the SWIM IOP on
+  the Eclipse towers). The same wrapper is configured IWM-only on Plus, SE
+  and Mac II so the 1-0-1-1 ISM switch and HD mechanism remain absent. Gates
+  `swim1_test`, `storage_profile_test`. `Swim2` covers Sonora, Q605, Centris and Q630, plus the V8's
   `spiceClass()` boards; the Duo has no internal drive at all.
 - **`Swim2`** (2026-07-23, `docs/LLE_VS_HLE.md` step 13) runs MAME
   `swim2.cpp`'s **bit engines**: the MFM sync-hunting shifter with serial
@@ -975,7 +981,9 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   COMMAND→DATA(IN/OUT)→STATUS→MSG IN with REQ/ACK per byte; pseudo-DMA
   auto-handshakes one byte per A9 access. Seven target slots by ID
   (`targets_[7]`, ID 7 = the initiator, never used): the boot volume at 0,
-  additional typed media at 1-6, a CD bay wherever the machine puts it. Bit
+  additional typed media at 1-6, a CD bay wherever the machine puts it. The
+  compact runner exposes the same seven-target topology and live CD bay as
+  the later desktop families. Bit
   layouts from MAME `ncr5380.cpp`; sequence from pce `macplus/scsi.c` and a
   bit-exact ROM disassembly (`SCSI_DO_SELECT`).
 - **Target** (`ScsiDisk`, one implementation of `ScsiTarget` —

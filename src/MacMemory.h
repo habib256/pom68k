@@ -6,15 +6,14 @@
 // $580000, SCC read $9xxxxx / write $Bxxxxx, IWM $Dxxxxx, VIA $Exxxxx.
 // Boot overlay maps ROM at $000000 and RAM at $600000 until the ROM clears
 // VIA PA4. Video framebuffer: main = ramSize-0x5900 (512×342, 1 bpp).
-// Source of truth: Guide to the Macintosh Family Hardware; MAME mac.cpp
-// (pending web-research pinning — see TODO.md § M2).
-// Gate: tests/cpu_smoke.cpp.
+// Source of truth: Guide to the Macintosh Family Hardware; MAME mac128.cpp.
+// Gates: tests/cpu_smoke.cpp, tests/storage_profile_test.cpp.
 
 #pragma once
 #include "CoreConfig.h"
 #include "Via6522.h"
 #include "Rtc.h"
-#include "Iwm.h"
+#include "Swim1.h"
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include "MacInput.h"
@@ -52,7 +51,9 @@ public:
     //    uses (mac128.cpp `m_adbmodem->set_via_state((data & 0x30) >> 4)`),
     //    so `AdbVia` + `AdbLine` run their real firmware here too — VIA PB5/
     //    PB4 = ST, PB3 = /ADB IRQ, CB1/CB2 = the shifter;
-    //  * no mouse quadrature on PB4/PB5 (the mouse is an ADB device).
+    //  * no mouse quadrature on PB4/PB5 (the mouse is an ADB device);
+    //  * SWIM + SuperDrive on the SE FDHD and Classic; Plus and original SE
+    //    keep the IWM-compatible personality and 800K-only mechanism.
     enum class Model { Plus, SE, SEFDHD, Classic };
 
     explicit MacMemory(
@@ -146,7 +147,11 @@ public:
     // everywhere, and the compact ROMs only ever touch the low end.
     bool loadPram(const std::string& path) { return rtc_.loadPram(path); }
     void savePram(const std::string& path) { rtc_.savePram(path); }
-    Iwm& iwm() { return iwm_; }
+    Iwm& iwm() { return swim_.iwm(); }
+    Swim1& swim() { return swim_; }
+    bool hasSuperDrive() const {
+        return model_ == Model::SEFDHD || model_ == Model::Classic;
+    }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
@@ -155,16 +160,39 @@ public:
     MacKeyboard& keyboard() { return kbd_; }
     bool sccIrq() const { return scc_.irqAsserted(); }
     Ncr5380& scsi() { return scsi_; }
-    ScsiDisk& scsiDisk() { return scsiDisk_; }
-    bool attachScsi(const std::string& path, bool writeBack = false) {
-        if (!scsiDisk_.open(path, writeBack)) return false;
-        scsi_.attach(&scsiDisk_);
+    ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    bool attachScsi(const std::string& path, bool writeBack = false,
+                    int id = 0) {
+        if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack))
+            return false;
+        scsi_.attach(&scsiDisks_[id], id);
         return true;
+    }
+    bool attachCdrom(const std::string& path, int id = 3) {
+        if (id < 0 || id > 6 || !scsiDisks_[id].openCdrom(path)) return false;
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
+    bool attachCdromEmpty(int id) {
+        if (id < 1 || id > 6) return false;
+        scsiDisks_[id].attachCdromEmpty();
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
+    bool bayIsCdrom(int id) const {
+        return id >= 1 && id <= 6 && scsiDisks_[id].cdrom()
+            && scsiDisks_[id].present();
+    }
+    bool insertBayMedia(int id, const std::string& path) {
+        return bayIsCdrom(id) && scsiDisks_[id].openCdrom(path);
+    }
+    void ejectBayMedia(int id) {
+        if (bayIsCdrom(id)) scsiDisks_[id].eject();
     }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
-        scsiDisk_.setSoundSink(hdd);
+        for (ScsiDisk& disk : scsiDisks_) disk.setSoundSink(hdd);
     }
 
     // ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────
@@ -198,8 +226,8 @@ public:
     // cpu_ and jitGuard_ (pointers the machine owns).
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
-        ar(via_, adb_, adbVia_, rtc_, iwm_, drive_, scc_,
-           scsi_, scsiDisk_, kbd_, mouse_);
+        ar(via_, adb_, adbVia_, rtc_, swim_, drive_, scc_, scsi_, kbd_, mouse_);
+        for (ScsiDisk& disk : scsiDisks_) ar(disk);
         ar(kbdPhase_, kbdCmd_, kbdResp_, kbdTimer_, kbdInquiryHold_,
            viaPhase_, secAcc_, overlay_);
         if constexpr (Ar::loading) {
@@ -223,11 +251,11 @@ private:
     AdbBus adb_;
     AdbVia adbVia_;
     Rtc rtc_;
-    Iwm iwm_;
+    Swim1 swim_;
     SonyDrive drive_;                // internal drive; external = M5.1
     Scc8530 scc_;
     Ncr5380 scsi_;
-    ScsiDisk scsiDisk_;
+    ScsiDisk scsiDisks_[7];
     MacKeyboard kbd_;
     MacMouse mouse_;
     // M0110 transaction pacing: two SR interrupts ~3 ms apart (Snow model)

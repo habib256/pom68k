@@ -16,6 +16,19 @@ namespace pom68k {
 
 enum class CpuFamily : std::uint8_t { M68000, M68020, M68030, M68040 };
 
+// User-visible removable/fixed-storage capabilities.  These describe the
+// shipped machine profile, not every aftermarket upgrade: the original SE
+// and Macintosh II keep their 800K mechanisms, while their FDHD successors
+// expose the SWIM/SuperDrive.  SCSI CD-ROM is external on machines without an
+// internal bay, but it is still a supported SCSI target.
+enum class FloppyKind : std::uint8_t { None, Gcr800K, SuperDrive };
+
+struct StorageCapabilities {
+    FloppyKind floppy;
+    bool scsi;
+    bool cdrom;
+};
+
 // A platform is one board implementation (memory map + CPU wrapper + device
 // graph), not one marketing name. This is the bounded reuse unit through which
 // the catalogue grows towards every 68k Macintosh.
@@ -112,6 +125,19 @@ inline constexpr MachineProfile kMachineProfiles[] = {
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);
+
+constexpr StorageCapabilities storageCapabilities(const MachineProfile& profile) {
+    switch (profile.snapshot) {
+        case SnapMachine::Duo230:
+            return {FloppyKind::None, true, true};
+        case SnapMachine::Plus:
+        case SnapMachine::SE:
+        case SnapMachine::MacII:
+            return {FloppyKind::Gcr800K, true, true};
+        default:
+            return {FloppyKind::SuperDrive, true, true};
+    }
+}
 
 constexpr const MachineProfile* machineProfile(SnapMachine id) {
     for (const auto& profile : kMachineProfiles)

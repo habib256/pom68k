@@ -69,9 +69,16 @@ void Swim1::attachDrive(SonyDrive* internal, SonyDrive* external) {
     drive_[0] = internal;
     drive_[1] = external;
     iwm_.attachDrive(internal, external);
-    // The LC II ships a SuperDrive (MFD-75W) as its internal mechanism.
-    if (drive_[0]) drive_[0]->setSuperDrive(true);
-    if (drive_[1]) drive_[1]->setSuperDrive(true);
+    if (drive_[0]) drive_[0]->setSuperDrive(superDriveConfigured_);
+    if (drive_[1]) drive_[1]->setSuperDrive(superDriveConfigured_);
+}
+
+void Swim1::configureSuperDrive(bool enabled) {
+    superDriveConfigured_ = enabled;
+    iwmToIsm_ = 0;
+    if (!enabled && ismMode_) leaveIsm();
+    if (drive_[0]) drive_[0]->setSuperDrive(enabled);
+    if (drive_[1]) drive_[1]->setSuperDrive(enabled);
 }
 
 SonyDrive* Swim1::selectedDrive() const {
@@ -145,6 +152,7 @@ uint16_t Swim1::fifoPop() {
 // pattern step resets the counter (:578-579). Reads reach iwm_control with
 // data 0x00 (:153-154), so a READ of offset 0xf stands in for a 0 step.
 void Swim1::iwmModeWatch(int reg, uint8_t v) {
+    if (!superDriveConfigured_) return;
     const int prev = iwmToIsm_;
     if (reg == 15) {
         switch (iwmToIsm_) {

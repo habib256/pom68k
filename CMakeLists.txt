@@ -387,7 +387,7 @@ add_library(pom68k_core STATIC
     src/Via6522.cpp       # M2/M4 — VIA (ports, timers)
     src/Rtc.cpp           # M4 — clock/PRAM serial chip
     src/Iwm.cpp           # M5 — floppy controller
-    src/SonyDrive.cpp     # M5 — 800K GCR drive
+    src/SonyDrive.cpp     # M5 — 400/800K GCR + 1.44 MB MFM mechanism
     src/SonyDriveFlux.cpp # M5 — flux-to-cell write-back reconstruction
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
@@ -535,8 +535,8 @@ option(POM68K_PRODUCT_LLE_GATES
 if(POM68K_TESTS AND NOT EMSCRIPTEN)
     enable_testing()
 
-    # Test modules execute in this directory scope. Their order is contractual:
-    # machine targets precede JIT oracle variants; policy runs after every gate.
+    # Test-module order is contractual: machine targets precede JIT variants;
+    # policy runs after every gate.
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests
                         ${CMAKE_CURRENT_SOURCE_DIR}/src)
     include(cmake/Pom68kComponentGates.cmake)

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "GuiShellCommon.h"
+#include "GuiRunnerCompactStorage.h"
 
 namespace pom68k::gui {
 
@@ -11,6 +12,7 @@ struct CompactRunnerSpec {
     std::string romName;
     std::string hddPath;
     std::string floppyPath;
+    std::vector<std::string> extraDisks;
     std::string pramPath;
     std::string windowTitle;
     std::string machineName;
@@ -50,31 +52,7 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
     Ctx& ctx = services.template own<Ctx>(
         window, machine, screenTex, spec, services,
         pom68k::DiskBaysHost{}, ScreenInput{}, CompactKeyboard{});
-    ctx.diskHost = [&ctx] {
-        pom68k::DiskBaysHost host;
-        host.hardReset = [&ctx] {
-            ctx.machine.push({MachineT::Cmd::HardReset});
-        };
-        host.relaunch = [&ctx](const std::string& boot,
-                               const std::vector<std::string>& extras) {
-            (void)extras;
-            ctx.services.requestRelaunch(
-                ctx.window, ctx.spec.romName, ctx.spec.floppyPath, {boot});
-        };
-        host.hasFloppyDrive = true;
-        host.floppyInserted = [&ctx] {
-            return ctx.machine.floppyInserted();
-        };
-        host.insertFloppy = [&ctx](const std::string& disk) {
-            ctx.machine.requestInsertFloppy(disk);
-            ctx.spec.floppyPath = disk;
-        };
-        host.ejectFloppy = [&ctx] {
-            ctx.machine.requestEjectFloppy();
-            ctx.spec.floppyPath.clear();
-        };
-        return host;
-    }();
+    ctx.diskHost = compactDiskBaysHost<MachineT>(ctx);
 
     auto frame = [](void* opaque) {
         Ctx& c = *static_cast<Ctx*>(opaque);
