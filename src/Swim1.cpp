@@ -60,6 +60,7 @@ void Swim1::reset() {
     writeActive_ = false;
     writeTransitions_.clear();
     if (onDat1Byte) onDat1Byte(false);           // swim1.cpp:109
+    if (onHdsel) onHdsel(false);                 // swim1.cpp:108
     if (drive_[0]) drive_[0]->reset();
     if (drive_[1]) drive_[1]->reset();
 }
@@ -82,8 +83,11 @@ SonyDrive* Swim1::selectedDrive() const {
     return nullptr;
 }
 
+// mac_floppy_device::wpt_r/seek_phase_w (floppy.cpp:3252, :3328): the sense
+// register is `(phases & 7) | (m_actual_ss ? 8 : 0)` — bit 3 is the DRIVE's
+// side-select line, whoever last wrote it, not the SWIM mode register.
 int Swim1::senseAddr() const {
-    return (phases_ & 7) | (side1() ? 8 : 0);
+    return (phases_ & 7) | (hdsel() ? 8 : 0);
 }
 
 void Swim1::updateDevsel() {
@@ -290,6 +294,8 @@ void Swim1::ismWrite(int reg, uint8_t value) {
     }
     if (mode_ & 0x01) fifoClear();
     if ((mode_ ^ previousMode) & 0x86) updateDevsel();
+    // HDSEL pin follows mode bit 5, on the edge only (swim1.cpp:345-346).
+    if (((mode_ ^ previousMode) & 0x20) && onHdsel) onHdsel((mode_ & 0x20) != 0);
 
     // ACTION edges (swim1.cpp:355-383): write = mode bits 4+3, read = bit 3.
     if ((mode_ & 0x18) == 0x18 && (previousMode & 0x18) != 0x18) {
@@ -307,7 +313,7 @@ void Swim1::ismWrite(int reg, uint8_t value) {
         currentBit_ = 0;
         sr_ = 0;
         SonyDrive* d = selectedDrive();
-        const int64_t t0 = d ? d->fluxAngleTicks(side1())
+        const int64_t t0 = d ? d->fluxAngleTicks(hdsel())
                                    / (FluxPll::kSubCell / 2)
                              : 0;
         ismClock_ = lastSync_ = latestEdge_ = t0;
@@ -341,7 +347,7 @@ void Swim1::startWrite() {
     writeTransitions_.clear();
     writeActive_ = true;
     SonyDrive* d = selectedDrive();
-    writeStartTick_ = d ? d->startWriteFlux(side1()) : 0;
+    writeStartTick_ = d ? d->startWriteFlux(hdsel()) : 0;
 }
 
 // Same flux hand-off as Swim2::finishWrite. It matters more here: the ISM
@@ -422,7 +428,7 @@ void Swim1::tickRead(int cycles) {
         int64_t cyclesToNext;
         bool willHitEdge;
         const int64_t edge =
-            live ? d->nextFluxAfter((latestEdge_ + 2) * kHalf, side1())
+            live ? d->nextFluxAfter((latestEdge_ + 2) * kHalf, hdsel())
                  : FluxPll::kNever;
         if (edge == FluxPll::kNever || edge / kHalf > nextSync) {
             cyclesToNext = nextSync - latestEdge_;

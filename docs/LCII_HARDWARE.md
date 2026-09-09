@@ -49,7 +49,7 @@ On conflict the oracle (MAME behaviour) wins, per `CLAUDE.md`.
 | Video + Ariel | `src/V8Video.h`, `src/Ariel.h`, `src/VideoBeam.h` | `v8_video_test`, `v8_raster_test` |
 | Sound | `src/Asc.h/.cpp` (`AscV8`; `AscSonora` for Spice/Tinker Bell) | `asc_test` |
 | SCSI | `src/Ncr5380.*`, `src/ScsiDisk.*` + `V8Memory::scsiDma_/scsiDmaW_` | `scsi_pdma_test` |
-| Floppy | `src/Swim1.*` (+ `src/Iwm.*`, `src/SonyDrive.*`) | `swim1_test`, `lcii_floppy_etalon` |
+| Floppy | `src/Swim1.*` (+ `src/Iwm.*`, `src/SonyDrive.*`) | `swim1_test`, `lcii_floppy_etalon`, `lcii_floppy144_etalon` |
 | SCC | `src/Scc8530.*` | `scc_baud_test` |
 | Egret | `src/CudaLle.*` + `src/M68hc05.*` (firmware LLE, default); `src/Egret.*` (HLE fallback) | `egret_lle_test`, `egret_test` |
 | ADB devices | `src/AdbBus.*`, `src/AdbLine.*`, `src/MacInput.*` | `lcii_boot_etalon` (mouse) |
@@ -393,13 +393,17 @@ code):
 → `Swim1.*` — **both personalities are implemented**: the IWM-compatible GCR
 mode delegates to the proven `Iwm`, and the ISM half is the SWIM2-lineage
 register file with SWIM1's 16-entry parameter RAM and MFM CRC-CCITT cell
-engine (entered by the four 1-0-1-1 mode writes). Gate `swim1_test`; the
-missing piece is a *guest-level* 1.44 MB mount/boot gate (`TODO.md`).
+engine (entered by the four 1-0-1-1 mode writes). `swim1_test` covers both
+personalities and `lcii_floppy144_etalon` hot-inserts a 1.44 MB HFS medium,
+then proves the mount from the File Manager's VCB queue and the medium's MDB.
+The remaining MFM write-back gap is tracked separately in `TODO.md`.
 
 - Regs at `$F16000`, stride `$200` like the IWM; MAME charges 5 extra CPU
   cycles per access (maclc.cpp:268-287) — applied via `Cpu030::stall(5)`.
 - HDSEL (side select) comes from **VIA1 PA5** (maclc.cpp:309-319; v8.cpp:264)
-  — `swim_.setSel((via_.portA() & 0x20) != 0)` on every access.
+  — `swim_.setSel((via_.portA() & 0x20) != 0)` on every access. That actual
+  drive line supplies bit 3 of the ISM sense address too; SWIM mode bit 5 is
+  only an output pin, and is not wired to the drive on V8.
 - Spice/Tinker Bell swap in the gate array's integrated **SWIM2** at the same
   window (`Swim2.*`).
 
@@ -511,7 +515,6 @@ V8-specific slice.
 | **SCSI DRQ timeout is not timed** — no DRQ raises `/BERR` immediately instead of after ~16 µs | `V8Memory::scsiDma_` | Functionally what the blind-transfer loops need; `LLE_VS_HLE` § 1.5 |
 | **ASC drain is a fixed 22 257 Hz**, not derived from the programmed rate | `Asc.*` | `LLE_VS_HLE` § 1.7 |
 | **DFAC is not an audio stage** — writes accepted and dropped (but the I2C ACK is modelled) | `CudaLle::setI2cDfac`, `V8Memory` Spice brightness/contrast DAC | `TODO.md § LC II / V8` |
-| **SWIM1 read engine has no flux jitter** — MAME's LS-pair cell state machine reduces to the SWIM2 shifter; DAT1BYTE not wired | `Swim1.h` | Our cells are ideal; `LLE_VS_HLE` § 1.3 / § 3 |
 | **68882 populated by default** although the stock LC II has none | `main.cpp`, LC II gates pass `withFpu = true` | Era software F-line-faults otherwise; `POM68K_NOFPU` = bare machine |
 | **No CPU/bus contention model** beyond VIA E-clock sync + SWIM wait states; an i-cache *throughput* overlay, not a cache model | `Cpu030.h` | Functional accuracy by design; `LLE_VS_HLE` § 1.2 |
 | **LC PDS slot: no card, BERR** | `V8Memory::read8` | Nothing to emulate yet |

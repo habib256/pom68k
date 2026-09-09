@@ -118,6 +118,10 @@ Q700Memory::Q700Memory(const pom68k::CoreConfig& coreConfig,
             swimPic_.reqaW(s);
             swimPic_.reqbW(s);
         };
+        // The Eclipse towers take the drive's side-select from the SWIM's
+        // HDSEL pin (`macquadra700.cpp:881` hdsel_cb → :406-415 fdc_hdsel);
+        // their VIA1 PA5 handler is empty (:681-683), unlike the Spike's.
+        swim_.onHdsel = [this](bool s) { swim_.setSel(s); };
         // The SWIM IOP's host interrupt lands on VIA2 CA2, INVERTED
         // (macquadra700.cpp:877). The 6522 latches that line on its edge,
         // so an assertion (line → 0) is the flag-setting transition;
@@ -460,8 +464,8 @@ uint8_t Q700Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
         // personality also multiplexes half its sense registers on this line
         // (Iwm.cpp:23 senseAddr), so leaving it undriven pinned the Quadra 700
         // to side 0. q700_boot_etalon boots from SCSI and never saw it.
-        if (reg == Via6522::ORA || reg == Via6522::ORA_NH
-            || reg == Via6522::DDRA)
+        if (!eclipse() && (reg == Via6522::ORA || reg == Via6522::ORA_NH
+                           || reg == Via6522::DDRA))
             swim_.setSel((via1_.portA() & 0x20) != 0);
         if (reg == Via6522::ORB || reg == Via6522::DDRB || reg == Via6522::SR
             || reg == Via6522::ACR) {

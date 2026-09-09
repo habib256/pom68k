@@ -30,6 +30,7 @@ public:
 
     // VIA PA5 — SEL bit of the drive sense/command address + head select.
     void setSel(bool sel) { sel_ = sel; }
+    bool sel() const { return sel_; }
 
     // ── TWO clocks, and on the Mac SE they are not the same one ─────────
     // `setTickHz` is the unit of tick()'s argument: the cycle the platform

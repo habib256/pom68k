@@ -12,7 +12,7 @@ cmake/Pom68kComponentGates.cmake         458
 cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               652
-cmake/Pom68kMachineGates.cmake           845
+cmake/Pom68kMachineGates.cmake           853
 src/AfpServer.cpp                        1129
 src/GuiHostServices.cpp                  177
 src/GuiMachineRuntime.cpp                47
@@ -38,7 +38,7 @@ src/PlatformDuo.cpp                      145
 src/PlatformSonora.cpp                   290
 src/PlatformToby.cpp                     312
 src/PlatformV8.cpp                       206
-src/Q700Memory.cpp                       1087
+src/Q700Memory.cpp                       1091
 src/R65c02.cpp                           1420
 src/RuntimeConfigCore.cpp                175
 src/RuntimeConfig.cpp                    200

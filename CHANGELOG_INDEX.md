@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 472 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 473 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 7 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 13 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 54 |
+| [Machine bring-ups](#machine-bring-ups) | 55 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 32 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -264,7 +264,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-08 (fifth)** — [LC II save-state relaunch is gated too, and the 1.44 MB floppy hunt gets the disassembly it was waiting on](CHANGELOG.md#2026-09-08-lcii-relaunch-and-floppy-dasm)
 - **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is a live MFM read bug, not density detection](CHANGELOG.md#2026-09-08-floppy-correction)
 - **2026-09-08 (sixth)** — [The 1.44 MB floppy is an HD-media detection bug, not the mode-polarity contradiction it was filed as](CHANGELOG.md#2026-09-08-floppy-density-var17)
-- **2026-09-09** — [Floppy 1.44 MB: the fix reads a full valid MDB; the enable/motoron disconnect is NOT the mount blocker (it matches MAME)](CHANGELOG.md#2026-09-08-floppy-ism-vs-iwm)
+- **2026-09-09** — [Floppy 1.44 MB: the fix reads a full valid MDB; the enable/motoron disconnect is NOT the mount blocker (it matches MAME)](CHANGELOG.md#2026-09-09-floppy-mdb-read)
 - **2026-09-09 (later)** — [The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk](CHANGELOG.md#2026-09-09-scsi-sense-lun)
 
 ## Video — decoders, the raster beam, DAFB
@@ -379,6 +379,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-06 (sixth)** — [Speedometer's first correct time profile makes every fallback a 5.6% ceiling, not a target: the 0.27 s CPU phase must be isolated before any opcode is priced](CHANGELOG.md#2026-09-06-speedometer-time-profile)
 - **2026-09-06 (third)** — [The Speedometer census was not profiling Speedometer: its `cpu-test` phase spent 200 guest seconds on a Prince of Persia Read Me, and `done=0` had been reporting it as a budget problem](CHANGELOG.md#2026-09-06-speedometer-census-wrong-program)
 - **2026-09-08 (third)** — [Save-state relaunch into a fresh machine, and a one-cycle cross-instance drift it isolates](CHANGELOG.md#2026-09-08-savestate-relaunch)
+- **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](CHANGELOG.md#2026-09-09-lcii-floppy144-mount)
 
 ## Build, packaging and release
 

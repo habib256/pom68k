@@ -52,8 +52,24 @@ public:
     void tick(int cycles);
     int cyclesToNextEvent() const;
 
-    // VIA PA5 → IWM-personality SEL (ISM ignores it: HDSEL = mode bit 5)
+    // The drive's side-select line, as the BOARD drives it — MAME models
+    // it on the drive (`floppy_image_device::ss_w`, floppy.h:334) and every
+    // Mac host writes it from somewhere different: VIA1 PA5 through the
+    // glue on the V8/VASP/RBV/Spike boards (`maclc.cpp:309-318` hdsel_w,
+    // `maciivx.cpp:283-292`, `macii.cpp:441`, `macquadra700.cpp:614-625`),
+    // and the SWIM's own HDSEL output pin on the IIfx and the Eclipse
+    // towers (`maciifx.cpp:430`, `macquadra700.cpp:881`, which is `onHdsel`
+    // below). It reaches BOTH personalities: the ISM sense address takes it
+    // as bit 3 (`floppy.cpp:3328` `(phases & 7) | (m_actual_ss ? 8 : 0)`)
+    // exactly as the IWM's does, so it lives in one place — the IWM's SEL
+    // latch — and `hdsel()` reads it back for the ISM half.
     void setSel(bool sel) { iwm_.setSel(sel); }
+
+    // SWIM HDSEL output pin: ISM mode register bit 5 (swim1.cpp:345-346,
+    // and :108 at reset). Only the boards that WIRE that pin to the drive
+    // subscribe; on the others the pin is a no-connect and the board's own
+    // PA5 path owns `setSel` above.
+    std::function<void(bool)> onHdsel;
 
     // DAT1BYTE (swim1.cpp:1226-1238) — the controller's "the ISM FIFO can
     // take/give a byte NOW" line: in write mode it asserts while the 2-deep
@@ -147,7 +163,9 @@ private:
     void applyPhases(uint8_t value);
     void updateDevsel();
     SonyDrive* selectedDrive() const;
-    bool side1() const { return (mode_ & 0x20) != 0; }   // ISM HDSEL
+    // The head the ISM half reads/writes and the top bit of its sense
+    // address: the drive's side-select line, not the mode register.
+    bool hdsel() const { return iwm_.sel(); }
 
     Iwm iwm_;                                    // IWM personality
     SonyDrive* drive_[2] = { nullptr, nullptr };

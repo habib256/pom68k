@@ -49,6 +49,10 @@ IIfxMemory::IIfxMemory(const pom68k::CoreConfig& coreConfig,
     // 900/950 append channel B, this board does not). The line is level:
     // "the ISM FIFO can take/give a byte now".
     swim_.onDat1Byte = [this](bool s) { swimPic_.reqaW(s); };
+    // HDSEL: on this board the drive's side-select comes from the SWIM's own
+    // output pin, not from a VIA line (`maciifx.cpp:430` hdsel_cb →
+    // :308-318 fdc_hdsel → `m_cur_floppy->ss_w`).
+    swim_.onHdsel = [this](bool s) { swim_.setSel(s); };
     // ADB on the SWIM PIC's GPIO (M5): the IOP firmware bit-bangs the
     // wire, `AdbLine` answers as keyboard+mouse — LLE on both ends.
     // gpout0 is inverted on the board (MAME `maciifx.cpp:483` .invert()):

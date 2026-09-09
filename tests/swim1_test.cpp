@@ -135,6 +135,40 @@ int main() {
         check(ring, "16-deep param RAM ring reads back");
     }
 
+    // ── HDSEL is a board wire, not an ISM-register shortcut ──────────
+    // V8/VASP/RBV/Spike drive the head from VIA PA5. IIfx/Eclipse wire
+    // SWIM1's mode-bit-5 output pin back to the drive. In both cases the
+    // drive's actual line supplies bit 3 of the ISM sense address.
+    {
+        SonyDrive drive;
+        Swim1 swim;
+        swim.reset();
+        swim.attachDrive(&drive, nullptr);
+        drive.insertImage(std::vector<uint8_t>(SonyDrive::kSize1440K, 0));
+        switchToIsm(swim);
+        swim.write(7, 0x82);                    // motor gate + internal drive
+        swim.write(4, 0x02);                    // low sense address = MOTOR
+
+        swim.setSel(false);
+        check((swim.read(7) & 0x0C) == 0x0C,
+              "board HDSEL=0 reads stopped MOTOR at ISM sense address 2");
+        swim.setSel(true);
+        check((swim.read(7) & 0x0C) == 0,
+              "board HDSEL=1 reads TRACK0 at ISM sense address A");
+
+        int edges = 0;
+        bool pin = true;
+        swim.onHdsel = [&](bool s) { pin = s; edges++; swim.setSel(s); };
+        swim.reset();
+        check(edges == 1 && !pin, "SWIM HDSEL pin drops on reset");
+        switchToIsm(swim);
+        swim.write(7, 0x20);
+        swim.write(7, 0x20);                    // level unchanged: no callback
+        check(edges == 2 && pin, "mode bit 5 raises HDSEL on its edge only");
+        swim.write(6, 0x20);
+        check(edges == 3 && !pin, "clearing mode bit 5 drops HDSEL");
+    }
+
     // ── ISM MFM read: 1.44 MB sector through the cell engine ──────────
     {
         std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);

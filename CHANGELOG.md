@@ -75,6 +75,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"the Duo holds its writes behind the hard-disk spin-down" — the Finder reads the catalog off the disk to create the folder, so the drive is awake; the volume is simply never flushed** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
+- **why did a 1.44 MB LC II disk yield a valid MDB and then fail the same mount — and why was SWIM mode bit 5 the wrong head-select source?** → [2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium…](#2026-09-09-lcii-floppy144-mount)
 
 - **"`-mcpu=<core>` is worth 10-20 % over generic aarch64" — inherited from NeoST, and the ISA half of it buys POM68K nothing (byte-identical code)** → [2026-08-08 (fourth) — `-mcpu=cortex-a72` produced byte-identical code…](#2026-08-08-mcpu-identical)
 - **"a CI-built `-mcpu` artifact cannot be done, no ROMs" — conflated two independent halves of NeoST's workflow** → [2026-08-08 (third) — A Pi package built for ONE core…](#2026-08-08-pi400-ci)
@@ -430,8 +431,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](#2026-09-09-lcii-floppy144-mount)
 - **2026-09-09 (later)** — [The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk](#2026-09-09-scsi-sense-lun)
 - **2026-09-09** — [The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes](#2026-09-09-m0110-keypad-prefix)
+- **2026-09-09** — [Floppy 1.44 MB: the fix reads a full valid MDB; the enable/motoron disconnect is NOT the mount blocker (it matches MAME)](#2026-09-09-floppy-mdb-read)
 - **2026-09-08 (eleventh)** — [The 1.44 MB read uses a different engine from the working 800K: 800K reads via the IWM/GCR personality, MFM via the ISM engine, and the driver aborts the ISM setup before arming ACTION](#2026-09-08-floppy-ism-vs-iwm)
 - **2026-09-08 (tenth)** — [The 1.44 MB stall, pinned: at the MFM retry the driver configures the ISM to MFM but never arms ACTION or selects the drive, so the read engine never runs](#2026-09-08-floppy-action-stall)
 - **2026-09-08 (ninth)** — [Correction: the 1.44 MB floppy is not a density-detection bug at all — density works and returns a retry; the defect is the live MFM ISM read corrupting the sector after the MDB sync](#2026-09-08-floppy-correction)
@@ -889,6 +892,48 @@ Newest first.
 
 ---
 
+<a id="2026-09-09-lcii-floppy144-mount"></a>
+## 2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof
+
+The two-day 1.44 MB mount hunt ends at one wire whose ownership had been
+collapsed into the controller. The media correction from the previous entries
+made the first Prime return the exact HFS MDB, but later reads still failed and
+`_MountVol` returned `offLinErr`. `Swim1` treated ISM mode bit 5 as the drive's
+head select everywhere: it used that bit for the sense-register address and for
+the head read or written by the flux engines. MAME keeps those concepts
+separate. Mode bit 5 is the SWIM's **HDSEL output pin**
+(`swim1.cpp:345-346`); the drive answers from its actual `ss_w` line
+(`floppy.cpp:3251-3252,3328`). On the LC II that line comes from V8/VIA1 PA5,
+not from the SWIM pin (`maclc.cpp:309-319`). The wrong shortcut therefore sent
+the ISM's sense and flux paths to a head/address the board had not selected.
+
+There is now one drive-line latch, the existing IWM SEL state, shared by both
+personalities. V8, VASP, RBV and the Quadra 700 Spike continue to drive it from
+VIA PA5. The IIfx and Quadra 900/950 Eclipse boards instead subscribe to a new
+`Swim1::onHdsel` output and feed mode bit 5 back to that latch, matching their
+MAME `hdsel_cb` wiring; reset drives the pin low and mode writes notify only on
+an edge. This adds no snapshot field or format bump: the actual line was already
+serialized as IWM SEL, while the callback is immutable board wiring.
+
+The closure is a guest fact, not another trace. `lcii_floppy144_etalon`
+hot-inserts a private copy of `Stuffit_Expander_5.5.dsk` after a System 7.1 boot,
+walks low-memory `VCBQHdr`, and requires drive 1 to acquire a VCB whose `BD`
+signature, volume name, allocation-block count and allocation-block size equal
+the medium's own MDB. It mounts as “Stuffit Expander 5.5” after 150 frames in
+the measured run; the SWIM produced 85,039 ISM bytes and the driver consumed
+84,484 with zero empty pops. `swim1_test` separately bites both wiring forms:
+manual board HDSEL changes the ISM sense address, while the SWIM-pin callback
+follows mode-bit-5 edges.
+
+Evidence: the new gate passes in 23.8 s with the ROM, boot disk and floppy asset
+all reported; `swim1_test`, `lcii_floppy_etalon`, both 030/040 save-state unit
+gates, `q700_turboscsi_test`, and the Q700/Q900/Q950/IIfx boot etalons pass
+(9/9 focused regressions before the added unit checks). The mount item leaves
+`TODO.md`. One narrower defect remains honestly open: the real driver's MFM
+sector-2 write returns `noErr` but does not survive on the medium, although the
+synthetic ISM serializer test writes a sector successfully. The new gate prints
+that unchanged `drAtrb=$0100`; it does not call it a write-back proof.
+
 <a id="2026-09-09-scsi-sense-lun"></a>
 ## 2026-09-09 (later) — The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk
 
@@ -1019,7 +1064,7 @@ and both keyboard tables now refcount held keys by virtual key code
 (`m0110 >> 1`) rather than by the masked wire byte: masking collides the
 moment an entry's code reaches `$40`.
 
-<a id="2026-09-08-floppy-ism-vs-iwm"></a>
+<a id="2026-09-09-floppy-mdb-read"></a>
 ## 2026-09-09 — Floppy 1.44 MB: the fix reads a full valid MDB; the enable/motoron disconnect is NOT the mount blocker (it matches MAME)
 
 Following the media-based MFM fix. The LC II mount's first read Prime is fully

@@ -684,6 +684,16 @@ foreach(scenario soak persist launch floppy)
                          TIMEOUT 1800)
 endforeach()
 
+# The OTHER half of the SuperDrive (2026-09-09): a 1.44 MB MFM medium
+# hot-inserted at the Finder must MOUNT — asserted on the File Manager's
+# VCB queue (name and allocation geometry from the medium's own MDB), not
+# on pixels. The still-open MFM write-back is measured but not asserted.
+add_executable(lcii_floppy144_etalon tests/lcii_floppy144_etalon.cpp)
+target_link_libraries(lcii_floppy144_etalon PRIVATE pom68k_core)
+add_test(NAME lcii_floppy144_etalon COMMAND lcii_floppy144_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(lcii_floppy144_etalon PROPERTIES TIMEOUT 1800)
+
 # The sustained application gate (TODO § C.1, 2026-09-07): SimCity 2000
 # launched by opening a saved city, simulated under a fixed guest budget,
 # saved — under the interpreter AND the default engine in one process, with
@@ -841,4 +851,3 @@ add_executable(duo230_boot_etalon tests/duo230_boot_etalon.cpp)
 target_link_libraries(duo230_boot_etalon PRIVATE pom68k_core)
 add_test(NAME duo230_boot_etalon COMMAND duo230_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-
