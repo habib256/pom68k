@@ -948,6 +948,11 @@ all three passed in 546.48 seconds, including data outage in 198.50 seconds
 and resource outage in 204.35 seconds, with both incomplete-copy cleanups
 confirmed by the host oracle. No required-asset gate soft-skipped.
 
+The first Linux CI run caught stale per-host registry documentation: the new
+gates had updated the AArch64 default section but not x86-64. Regenerating
+`STATUS.md` from an explicit x86-64 configure and the PRODUCT_LLE configure
+updates both remaining sections; the registry assertion stays enforced.
+
 This is recovery by acknowledging the guest errors, reconnecting and retrying
 from the source, not automatic offset resumption or whole-file atomicity.
 Preallocated size cannot certify completion. The outage model is live service
