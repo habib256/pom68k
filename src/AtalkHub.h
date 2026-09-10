@@ -25,6 +25,7 @@
 #include "AfpServer.h"
 #include "PapServer.h"
 #include "EtherLink.h"
+#include "EtherTalkLink.h"
 #include "MacIpGateway.h"
 #include "LtoUdp.h"
 #include "Scc8530.h"
@@ -46,6 +47,10 @@ public:
 
     struct Config {
         bool stack = true;               // the node/router itself
+        // The node ALSO on the Ethernet segment a DaynaPort provides.
+        // Off by default: it changes which wire AppleTalk lives on, and
+        // every LocalTalk gate is calibrated on the SCC (EtherTalkLink.h).
+        bool ethertalk = false;
         bool afp = true;
         bool pap = true;
         bool macip = true;
@@ -98,6 +103,8 @@ public:
             // timing the working LToUDP poll path already has. Multicast to
             // external peers immediately. lapACK uses its dedicated prompt
             // path above; it must start inside the 200 us LLAP IFG.
+            if (cfg_.ethertalk && etalk_) etalk_->onStackFrame(d, n);
+            if (!cfg_.stack) return;      // no LocalTalk wire to defer onto
             pending_.emplace_back(d, d + n);
             if (cable_ && cable_->active()) cable_->send(d, n);
         };
@@ -120,7 +127,28 @@ public:
         if constexpr (requires { mem.daynaPort(); }) {
             if (mem.daynaPort().present()) {
                 ether_ = std::make_unique<EtherLink>(mem.daynaPort(), macip_);
+                // One millisecond of the machine's own clock between the
+                // NAT's answer and the card seeing it. Without it the reply
+                // lands inside the guest's own send call and a real MacTCP
+                // application never matches it (EtherLink.h).
+                ether_->setLatency(cpuHz / 1000);
                 ether_->attach();
+                // The card's OTHER protocol family. Its RTMP beacon runs at
+                // the same 10 s period the LocalTalk node uses.
+                etalk_ = std::make_unique<EtherTalkLink>(mem.daynaPort(), stack_);
+                etalk_->configure(cpuHz / 1000, 10 * cpuHz);
+                // One card, two protocol families: AppleTalk frames are
+                // 802.3 with an LLC/SNAP header, IPv4 and ARP are DIX.
+                // EtherLink::attach took the callback first; this demux
+                // replaces it and keeps both halves reachable.
+                mem.daynaPort().sendFrame =
+                    [this](const uint8_t* d, size_t n) {
+                        if (EtherTalkLink::isAppleTalk(d, n)) {
+                            if (cfg_.ethertalk) etalk_->onGuestFrame(d, n);
+                            return;
+                        }
+                        ether_->onGuestFrame(d, n);
+                    };
             }
         }
         applyLocked();
@@ -149,8 +177,12 @@ public:
         // machine-thread entry point. snapshot() (GUI thread) then serves
         // the copy below under mu_, instead of reaching into the SCC mid-pop.
         if (wire_) wireMeter_ = wire_();
-        stack_.tick(nowCycles, cfg_.stack);
+        stack_.tick(nowCycles, cfg_.stack || cfg_.ethertalk);
         macip_.tick(nowCycles);
+        // The Ethernet segment carries its own latency and must advance
+        // whether or not LocalTalk is running.
+        if (ether_) ether_->tick(nowCycles);
+        if (etalk_ && cfg_.ethertalk) etalk_->tick(nowCycles);
         if (!cfg_.stack) { pending_.clear(); return; }
         afp_.tick(nowCycles);
         pap_.tick(nowCycles);
@@ -206,6 +238,7 @@ public:
         else if (key == "pap") cfg_.pap = on;
         else if (key == "macip") cfg_.macip = on;
         else if (key == "stack") cfg_.stack = on;
+        else if (key == "ethertalk") cfg_.ethertalk = on;
         if (attached_) applyLocked();
     }
 
@@ -222,9 +255,12 @@ private:
     }
 
     void applyLocked() {
-        afp_.setEnabled(cfg_.stack && cfg_.afp);
-        pap_.setEnabled(cfg_.stack && cfg_.pap);
-        macip_.setEnabled(cfg_.stack && cfg_.macip);
+        // A service is reachable when the node is on ANY wire: the SCC's
+        // LocalTalk, the card's EtherTalk, or both.
+        const bool node = cfg_.stack || cfg_.ethertalk;
+        afp_.setEnabled(node && cfg_.afp);
+        pap_.setEnabled(node && cfg_.pap);
+        macip_.setEnabled(node && cfg_.macip);
     }
 
     std::mutex mu_;
@@ -234,6 +270,7 @@ private:
     MacIpGateway macip_;
     // Non-null only on a machine whose DaynaPort was put on the bus.
     std::unique_ptr<EtherLink> ether_;
+    std::unique_ptr<EtherTalkLink> etalk_;
     LtoUdp* cable_ = nullptr;
     std::function<void(const uint8_t*, size_t)> inject_;
     std::function<WireMeter()> wire_;

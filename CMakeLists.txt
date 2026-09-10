@@ -406,7 +406,8 @@ add_library(pom68k_core STATIC
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
     src/DaynaPort.cpp     # DaynaPort SCSI/Link — Ethernet as a SCSI target
-    src/EtherLink.cpp     # Ethernet framing + ARP: DaynaPort ↔ MacIpGateway
+    src/EtherLink.cpp
+    src/EtherTalkLink.cpp     # Ethernet framing + ARP: DaynaPort ↔ MacIpGateway
     src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
     src/Ncr53c96.cpp      # Q6 — NCR 53C96 SCSI controller (Quadra 605)
     src/PseudoVia.cpp     # O6 — LC II pseudo-VIA (V8 interrupt core)

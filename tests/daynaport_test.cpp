@@ -404,7 +404,9 @@ int main() {
         mem.card.command(en, 6, out, none);
         AtalkHub hub;
         hub.setService("stack", false);
+        // 1 MHz here, so the hub's 1 ms Ethernet latency is 1000 cycles.
         hub.attach(mem, 1000000, nullptr);
+        int64_t now = 0;
         for (bool appleTalk : {false, true, false}) {
             hub.setService("stack", appleTalk);
             std::vector<uint8_t> ping{8, 0, 0, 0, 0, 7, 0, 1, 'N', 'A', 'T'};
@@ -413,6 +415,14 @@ int main() {
             const auto frame = ethFrame(link.gatewayMac(), kGuestMac, 0x0800,
                                         ipPkt(kGuest, kGw, 1, ping));
             mem.card.sendFrame(frame.data(), frame.size());
+            // The answer is ON THE WIRE, not in the card: a gateway that
+            // replies inside the guest's own send call is what made a real
+            // MacTCP application miss every reply (EtherLink.h, 2026-09-10).
+            // An empty ring still answers GOOD: the six-byte header alone,
+            // length zero. "Nothing yet" is a short reply, not a failure.
+            CHECK(readOne(mem.card).data.size() <= 6,
+                  "the reply is not available before the segment's latency");
+            hub.tick(now += 1000);
             const auto response = readOne(mem.card);
             CHECK(response.ok && response.data.size() >= 45 && response.data[34] == 0,
                   "hub Ethernet echo survives AppleTalk disabled at boot and live toggle");
@@ -422,7 +432,7 @@ int main() {
         }
         CHECK(hub.snapshot().macip.leases == 1, "Ethernet retains its learned address");
         const auto framesBefore = hub.snapshot().net.framesOut;
-        hub.tick(3601000000LL);
+        hub.tick(now = 3601000000LL);
         CHECK(hub.snapshot().macip.leases == 0, "NAT timers advance with AppleTalk off");
         CHECK(hub.snapshot().net.framesOut == framesBefore,
               "advancing Ethernet time emits no LocalTalk protocol traffic");

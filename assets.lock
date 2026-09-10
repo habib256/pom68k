@@ -42,4 +42,6 @@ reference-disk | Mac OS 8.1 | 314621952 | 0a798fa4c1084a6132cacf903d057979598ee0
 reference-disk | System 7.0 | 41943040 | 0d6729bf5bb72f4aac3ec7fb87194ebba6b68733c9a2a9f02c56fae0505e386c | hdv/ref/System 7.0 HD.dsk | macii
 reference-disk | System 7.1 | 41943040 | 81f1b16c7ff6bb9c28b3ab928d2b91a9be3d1e923795e0eef39a3f8252394ae2 | hdv/ref/System 7.1 HD.dsk | plus,lcii
 reference-disk | System 7.5 | 41943040 | 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382 | hdv/ref/System 7.5 HD.dsk | lc,lc3,lc3plus,classic2,cclassic
-reference-disk | System 7.5.5 | 83886080 | 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f | hdv/ref/System 7.5.5 HD.dsk | duo230
+reference-disk | System 7.5.5 | 83886080 | 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f | hdv/ref/System 7.5.5 HD.dsk | duo230,q605
+reference-disk | DaynaPORT installer disk | 1474560 | c1b256d6f89389abf60caaab24b59f072b00b0c69e2da181695d4831e78ca932 | hdv/ref/DAYNA.vhd | q605
+reference-disk | MacTCP Ping tools volume | 4250112 | e616c34227b6098e6bd549fcfe598314ed4c01a159edabc7ffba884bb30262fa | hdv/ref/TOOLS.vhd | q605

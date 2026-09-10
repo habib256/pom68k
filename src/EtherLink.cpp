@@ -51,11 +51,31 @@ void EtherLink::sendToGuest(const std::array<std::uint8_t, 6>& dst,
     std::memcpy(f.data() + 6, gwMac_.data(), 6);
     wr16(f.data() + 12, ethType);
     if (n) std::memcpy(f.data() + kEthHdr, payload, n);
-    nic_.receiveFrame(f.data(), f.size());
+    deliver(std::move(f));
 }
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
+
+// Straight to the card when the owner set no latency (a unit test with no
+// clock); otherwise onto the wire, to be released by tick().
+void EtherLink::deliver(std::vector<std::uint8_t>&& f) {
+    if (!latency_) {
+        nic_.receiveFrame(f.data(), f.size());
+        return;
+    }
+    if (wire_.size() >= kMaxInFlight) { wireDrops++; return; }
+    wire_.emplace_back(now_ + latency_, std::move(f));
+}
+
+void EtherLink::tick(std::int64_t now) {
+    now_ = now;
+    while (!wire_.empty() && wire_.front().first <= now_) {
+        const std::vector<std::uint8_t>& f = wire_.front().second;
+        nic_.receiveFrame(f.data(), f.size());
+        wire_.pop_front();
+    }
+}
 
 void EtherLink::onGuestFrame(const std::uint8_t* d, std::size_t n) {
     if (!d || n < kEthHdr) return;

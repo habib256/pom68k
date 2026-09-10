@@ -31,6 +31,8 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include <deque>
+#include <utility>
 #include <vector>
 
 class DaynaPort;
@@ -50,14 +52,37 @@ public:
     // the NAT sends back. Zero until the guest has spoken.
     const std::array<std::uint8_t, 6>& guestMac() const { return guestMac_; }
 
+    // ── the segment's own latency ───────────────────────────────────────
+    // A gateway on the other end of a wire cannot answer INSIDE the guest's
+    // own send call, and this one did: `MacIpGateway` replies synchronously,
+    // so an echo reply reached the Rx ring before the WRITE(6) that carried
+    // the request had finished, and the driver READ it back in the same SCSI
+    // transaction. Apple's MacTCP Ping 2.0.2 then reported "timeout" for
+    // every one of its own replies (2026-09-10, `q605_dayna_driver_etalon`):
+    // valid frames, verified checksums, delivered too early to be matched.
+    // Frames to the guest therefore wait `cycles` of MACHINE time — the
+    // owner sets it (`AtalkHub::attach`: 1 ms of the machine's own clock),
+    // and 0 keeps the immediate path for a unit test that owns no clock.
+    void setLatency(std::int64_t cycles) { latency_ = cycles > 0 ? cycles : 0; }
+    std::int64_t latency() const { return latency_; }
+    // Release everything now due. Machine cycles, like every other deadline.
+    void tick(std::int64_t now);
+    std::size_t inFlight() const { return wire_.size(); }
+
     // Entry points (public so a test can drive them without the callbacks).
     void onGuestFrame(const std::uint8_t* d, std::size_t n);
     void ipToGuest(std::uint32_t dstIp, const std::vector<std::uint8_t>& pkt);
 
     long arpRequests = 0, arpReplies = 0, ipToGuestFrames = 0, ipFromGuestFrames = 0;
+    long wireDrops = 0;                  // queued past kMaxInFlight
 
 private:
+    // A queue this deep is already a stall, not a wire: the guest has
+    // stopped reading, and the Rx ring's own ceiling is the next stop.
+    static constexpr std::size_t kMaxInFlight = 64;
+
     void handleArp(const std::uint8_t* p, std::size_t n);
+    void deliver(std::vector<std::uint8_t>&& f);
     void sendToGuest(const std::array<std::uint8_t, 6>& dst,
                      std::uint16_t ethType,
                      const std::uint8_t* payload, std::size_t n);
@@ -67,4 +92,7 @@ private:
     std::array<std::uint8_t, 6> gwMac_ = { 0x02, 0x00, 0x4B, 0x36, 0x38, 0x01 };
     std::array<std::uint8_t, 6> guestMac_ = {};
     std::uint32_t guestIp_ = 0;          // learned from ARP / IP source
+    std::int64_t latency_ = 0;           // machine cycles, set by the owner
+    std::int64_t now_ = 0;               // last tick, machine cycles
+    std::deque<std::pair<std::int64_t, std::vector<std::uint8_t>>> wire_;
 };

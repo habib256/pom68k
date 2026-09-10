@@ -220,6 +220,12 @@ endif()
 
 # DaynaPort SCSI/Link (Ethernet as a SCSI target) + the EtherLink bridge
 # onto the same NAT the MacIP gateway uses.
+# AppleTalk on the same card: AARP, extended RTMP and DDP over 802.3/SNAP.
+add_executable(ethertalk_test tests/ethertalk_test.cpp)
+target_include_directories(ethertalk_test PRIVATE tests)
+target_link_libraries(ethertalk_test PRIVATE pom68k_core)
+add_test(NAME ethertalk_test COMMAND ethertalk_test)
+
 add_executable(daynaport_test tests/daynaport_test.cpp)
 target_include_directories(daynaport_test PRIVATE tests)
 target_link_libraries(daynaport_test PRIVATE pom68k_core)
