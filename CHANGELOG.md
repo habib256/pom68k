@@ -970,6 +970,13 @@ alongside its install, EtherTalk and MacTCP legs. The bridge is opt-in
 (`AtalkHub`'s `ethertalk` service, off by default): it changes which wire
 AppleTalk lives on, and every LocalTalk gate is calibrated on the SCC.
 
+Linux CI caught the same stale per-host registry the AFP gates hit on
+2026-09-10: `tools/status_md.py` regenerates the section of the host it runs
+on and preserves the others verbatim, so two host-any gates added from the
+M4 left x86-64 reading 261 against ctest's 263. Both new gates are host-any
+and their assets/scope/tier labels are host-independent, so the x86-64
+section is refreshed with the same +2 the AArch64 one took.
+
 <a id="2026-09-10-ether-wire-latency"></a>
 ## 2026-09-10 (third pass) — The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply
 
