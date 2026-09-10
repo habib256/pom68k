@@ -102,7 +102,7 @@ only sees traffic when the LToUDP cable is up.
 
 ### 0.5 Gates
 
-`ctest -L unit` runs the first eight in seconds; the last three need ROM +
+The component gates run without guest media; the `*_etalon` gates need ROM +
 disk assets and soft-skip without them.
 
 | Gate | Covers |
@@ -118,6 +118,8 @@ disk assets and soft-skip without them.
 | `llap_two_system_etalon` | two Macs acquire node IDs over real ENQ traffic |
 | `q605_ot_bind_etalon` | Open Transport's `.MPP` binds against the in-process stack (§2.5) |
 | `q605_afp_live_etalon` | real Mac OS 8.1: Chooser→NBP→guest login→asserted `volMounted`→Cmd-N→new host directory; Finder Cmd-D copies 32,791 data + 8,317 resource bytes, exact contents and type/creator checked independently on the host; closes forks, removes volume, closes session, reconnects through Chooser and copies again, with AFP read/write counters checked on each pass |
+| `q605_afp_outage_data_etalon` | interrupts AFP after a partial data write from Finder; requires unchanged source and stable partial destination, guest session timeout, a fresh Chooser login and a new byte-exact two-fork copy |
+| `q605_afp_outage_resource_etalon` | same interruption/retry assertions, with the cut during the resource fork after the data fork has transferred |
 
 ---
 
@@ -550,7 +552,42 @@ again after asynchronous WriteContinue, before writing. The tests cover offline
 replacement, in-place editing, rediscovery after a host directory rename, and
 replacement of a pending operation's source. External tools still own their
 AppleDouble changes; host file moves do not automatically move sidecars.
-Guest recovery from an abrupt server outage is not covered by these tests.
+Those catalogue tests do not themselves exercise guest recovery from an outage.
+
+Pending WriteContinue callbacks are scoped to the lifetime of the exact open
+fork, not its reusable numeric reference. Closing the fork, volume or session,
+logging out, expiring the session, disabling/reconfiguring AFP, or destroying
+the server invalidates that lifetime. A late payload cannot mutate either fork
+or count as a successful write. `tests/afp_outage_checks.h` exercises all eight
+boundaries for both data and resource forks, including replacing the server
+while its transport still holds the old request. These are wire-level unit
+regressions, not evidence of Finder recovery or whole-file transfer atomicity.
+Command/write requests for a session the server no longer knows are left unanswered. Returning
+`aspSessClosed` as an AFP command result is not an ASP CloseSess notification:
+ASP transports command results opaquely, and receiving replies can refresh the
+guest's session-maintenance timer. The outage regression checks that stale
+commands remain silent, allowing that timer to expire. An unknown-session tickle
+identifies the workstation session socket, so the server sends a real ASP
+CloseSess request there, with bounded retries and no dependency on a retained
+session table. The wire-level regression checks that packet separately from
+application error replies. A client CloseSess for an already-gone session is
+acknowledged as well, allowing its local teardown to finish. See *Inside AppleTalk*
+ch.11, "What ASP does not do" and "Session maintenance" (§9).
+Workstation tickles received on the listening socket (SLS) refresh the matching
+session after its node/network identity is checked; the regression keeps an
+otherwise idle session alive beyond the timeout using only these tickles.
+
+Re-enabling AFP advertises a fresh listening socket through NBP, keeping the
+server name, volume name and catalogue unchanged. The first listener is 129;
+subsequent activations use 132 through 254 before wrapping, reserving 130 for
+ASP sessions and 131 for PAP. The real 8.1 Chooser retained an unusable "Already
+connected" entry when the same listener address was reused, even after timeout
+and an AppleTalk off/on cycle. A fresh listener lets it open a new session.
+Netatalk likewise allocates its listener with `ATADDR_ANYPORT`
+(`extern/netatalk2/etc/afpd/afp_config.c`). ATP cache, pending-request and release
+keys include the local socket as well as the peer address and TID: a request,
+release or late completion on the old listener cannot consume or overwrite
+the new listener's transaction. `tests/atalk_socket_checks.h` pins this boundary.
 
 The real-guest gate now duplicates a seeded file with the Finder. Its
 independent host oracle (`tests/afp_live_transfer.h`) verifies every byte of
@@ -564,6 +601,28 @@ through the Chooser, and creates a second byte-exact copy. Existing copies
 cannot satisfy the second pass; both passes must transfer new bytes. Both
 copies are checked again at the end. This covers a clean guest reconnect,
 not recovery from a server crash during a transfer.
+
+The two outage gates extend the same real-guest path. They disable AFP after
+4,624 data bytes, or after all 32,791 data bytes and 4,624 resource bytes, then
+restore the service while the Mac stays running. Host bytes independently
+identify the interrupted fork. The source must remain exact, and the partial
+destination must not change while the guest acknowledges the lost connection.
+The Chooser must then open a new session without restarting the Mac or toggling
+AppleTalk. Finder creates a distinct, byte-exact two-fork copy and removes the
+incomplete copy; both its data file and AppleDouble sidecar must disappear,
+without altering the source or successful retry. No reserved staging files may
+remain. CTest serializes these scenarios with the clean gate because they own
+the same test share.
+
+**Recovery contract:** after an AFP service interruption, acknowledge the
+guest's connection-loss and copy-error alerts, reconnect through the Chooser,
+retry the copy from its intact source, and discard the incomplete destination
+through Finder. This is a clean retry, not automatic offset resumption or a
+transaction spanning an entire file's two forks. An interrupted destination
+can have its final preallocated size without containing the complete file;
+size alone is never proof of success. These gates model service loss with the
+Mac still running, not host power loss. They do not promise rollback of edits
+to a pre-existing destination file.
 
 Historical trap, external path: an **empty volume list** in the Chooser
 was AFP-level authorization — `FPGetSrvrParms` returned zero volumes

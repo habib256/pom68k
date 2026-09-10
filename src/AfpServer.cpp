@@ -28,7 +28,6 @@
 namespace fs = std::filesystem;
 
 namespace {
-constexpr uint8_t kSls = 129;         // session listening socket (NBP'd)
 constexpr uint8_t kSss = 130;         // server session socket
 
 // ASP functions (asp.h)
@@ -203,12 +202,19 @@ void AfpServer::setEnabled(bool on) {
     enabled_ = on;
     if (on) {
         if (!configured_) configure(serverName_, volName_, dir_);
-        st_.bindAtp(kSls, [this](std::shared_ptr<AtalkStack::AtpTxn> t) { slsHandler(std::move(t)); });
+        st_.bindAtp(listeningSocket_, [this](std::shared_ptr<AtalkStack::AtpTxn> t) { slsHandler(std::move(t)); });
         st_.bindAtp(kSss, [this](std::shared_ptr<AtalkStack::AtpTxn> t) { sssHandler(std::move(t)); });
-        st_.nbpRegister(serverName_, "AFPServer", kSls);
+        st_.nbpRegister(serverName_, "AFPServer", listeningSocket_);
     } else {
         st_.nbpUnregister(serverName_, "AFPServer");
         sessions_.clear();
+        // The stack can outlive the service; do not leave handlers owning this.
+        st_.bindAtp(listeningSocket_, [](auto) {});
+        st_.bindAtp(kSss, [](auto) {});
+        // Reserve 130 for ASP sessions and 131 for PAP. A restarted listener
+        // has a fresh advertised address, as with netatalk's ATADDR_ANYPORT.
+        listeningSocket_ = listeningSocket_ == 129 ? 132 :
+            (listeningSocket_ == 254 ? 129 : uint8_t(listeningSocket_ + 1));
     }
 }
 
@@ -233,6 +239,7 @@ void AfpServer::tick(int64_t now) {
 AfpServer::Status AfpServer::status() const {
     stat_.enabled = enabled_;
     stat_.registered = enabled_;
+    stat_.listeningSocket = listeningSocket_;
     stat_.serverName = serverName_;
     stat_.volName = volName_;
     stat_.dirPath = dir_;
@@ -323,6 +330,10 @@ int AfpServer::resolvePath(uint32_t dirId, const uint8_t* p, size_t n,
 void AfpServer::slsHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
     if (!enabled_ || t->req.size() < 4) return;
     switch (t->req[0]) {
+    case kAspTickle:
+        // Workstation keep-alives target SLS (Inside AppleTalk ch.11).
+        sssHandler(std::move(t));
+        return;
     case kAspStat: {
         std::vector<uint8_t> pkt = { 0, 0, 0, 0 };
         pkt.insert(pkt.end(), statusBlock_.begin(), statusBlock_.end());
@@ -378,8 +389,21 @@ void AfpServer::sssHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
     uint16_t seq = rd16(t->req.data() + 2);
     auto it = sessions_.find(sid);
     if (it == sessions_.end()) {
-        if (func == kAspCmd || func == kAspWrite)
-            aspReply(t, -1072, {});        // aspSessClosed
+        if (func == kAspClose) {
+            // Closing an already-gone session is idempotent. The workstation
+            // still needs its acknowledgement to finish local teardown.
+            t->respond({{0, 0, 0, 0}});
+            return;
+        }
+        if (func == kAspTickle) {
+            // A workstation tickles from its WSS. Even after a restart with
+            // no session table, explicitly retire that half-open connection.
+            st_.atpRequest(t->src, kSss, {kAspClose, sid, 0, 0}, 1, false, {});
+        }
+        // A CmdReply is opaque application data, not an ASP close signal.
+        // Answering stale requests keeps the guest's dead session alive and
+        // wedges Chooser reconnects. With no WSS retained, let it time out.
+        // Inside AppleTalk ch.11: What ASP does not do / Session maintenance.
         return;
     }
     Session& s = it->second;
@@ -588,7 +612,8 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         ok();
         return;
     }
-    case 20: ok(); return;                               // FPLogout
+    case 20:                                            // FPLogout
+        s.forks.clear(); s.volOpen = false; ok(); return;
     case 37: {                                           // FPGetUserInfo
         if (n < 8) { err(kErrParam); return; }
         uint16_t bm = rd16(c + 6);
@@ -630,7 +655,8 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         ok(d);
         return;
     }
-    case 2: s.volOpen = false; ok(); return;             // FPCloseVol
+    case 2:                                             // FPCloseVol
+        s.forks.clear(); s.volOpen = false; ok(); return;
     case 32: ok(); return;                               // FPSetVolParms
     case 10: ok(); return;                               // FPFlush
 
@@ -1031,13 +1057,19 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
                                 uint8_t(avail >> 8), uint8_t(avail) };
     if (pathForId(fork.id) == "\x01") { aspReply(t, kErrNoObj, {}); return; }
     st_.atpRequest(s.wss, kSss, std::move(wc), 8, true,
-        [this, t, fork, offW, fromEof](bool okFlag,
+        [this, t, id = fork.id, resource = fork.resource,
+         lifetime = std::weak_ptr<const int>(fork.lifetime), offW, fromEof](bool okFlag,
                                              std::vector<std::vector<uint8_t>>& pkts) {
+            // Check before touching this: the server may itself be destroyed.
+            if (lifetime.expired()) {
+                t->respond({{0xff, 0xff, 0xfb, 0xd0}}); // aspSessClosed (-1072)
+                return;
+            }
             if (!okFlag) { aspReply(t, kErrMisc, {}); return; }
             // WriteContinue is asynchronous: revalidate after receiving its
             // bytes, not only before sending the request to the guest.
             std::string relative;
-            try { relative = pathForId(fork.id); }
+            try { relative = pathForId(id); }
             catch (const CatalogError& e) {
                 stat_.catalogError = e.what(); aspReply(t, kErrMisc, {}); return;
             }
@@ -1047,7 +1079,7 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
             for (auto& p : pkts)
                 if (p.size() > 4) data.insert(data.end(), p.begin() + 4, p.end());
             int64_t at = offW;
-            if (!fork.resource) {
+            if (!resource) {
                 std::fstream f(host, std::ios::binary | std::ios::in | std::ios::out);
                 if (!f) { aspReply(t, kErrAccess, {}); return; }
                 if (fromEof) {

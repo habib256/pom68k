@@ -49,7 +49,10 @@ bool validCatalogPath(const std::string& path) {
 }
 }
 
-AfpServer::~AfpServer() { closeCatalogLock(catalogLock_); }
+AfpServer::~AfpServer() {
+    setEnabled(false);
+    closeCatalogLock(catalogLock_);
+}
 
 void AfpServer::loadCatalog() {
     closeCatalogLock(catalogLock_);

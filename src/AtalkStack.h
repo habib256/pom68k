@@ -191,8 +191,8 @@ private:
     void nbpReply(const Addr& to, uint8_t id,
                   const std::vector<const NbpEntry*>& matches);
     void zipAtpHandler(std::shared_ptr<AtpTxn> t);
-    static uint64_t txnKey(const Addr& a, uint16_t tid) {
-        return uint64_t(a.net) << 32 | uint64_t(a.node) << 24
+    static uint64_t txnKey(const Addr& a, uint8_t localSocket, uint16_t tid) {
+        return uint64_t(localSocket) << 48 | uint64_t(a.net) << 32 | uint64_t(a.node) << 24
              | uint64_t(a.sock) << 16 | tid;
     }
 

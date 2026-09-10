@@ -35,6 +35,7 @@ int32_t aspCmd(Wire& w, uint8_t sid, uint16_t seq,
 #include "afp_catalog_checks.h"
 #include "afp_persistence_checks.h"
 #include "afp_live_transfer.h"
+#include "afp_outage_checks.h"
 
 int main() {
     std::string dir = "/tmp/pom68k_afp_test_" + std::to_string(::getpid());
@@ -339,10 +340,21 @@ int main() {
                 tickled = true;
         CHECK(tickled, "server sends SPTickle to the workstation");
         CHECK(afp.status().sessions == 1, "session survives (client silence < 2 min)");
+        // Workstation tickles go to the listening socket, not the SSS.
+        for (int i = 0; i < 5; ++i) {
+            w.now += 30 * w.hz;
+            w.st.tick(w.now);
+            w.atpReq(47, 200, 129, g_tid++, {5, sid, 0, 0});
+            afp.tick(w.now);
+        }
+        CHECK(afp.status().sessions == 1,
+              "SLS tickles preserve a healthy session beyond the idle timeout");
+        if (afp.status().sessions != 1) return 1;
     }
 
     catalogMoveChecks(w, sid, seq, dir);
     catalogPersistenceChecks(dir);
+    outageWriteChecks(dir);
     const fs::path oracleDir = fs::path(dir) / "TransferOracle";
     CHECK(afplive::seed(oracleDir) && afplive::exactCopy(oracleDir / "BONJOUR.txt"),
           "live-transfer oracle accepts its independently seeded two-fork fixture");

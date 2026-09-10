@@ -395,17 +395,7 @@ add_test(NAME duo230_input_etalon COMMAND duo_beyond_etalon
 set_tests_properties(duo230_input_etalon PROPERTIES
                      ENVIRONMENT "POM68K_BEYOND=input" TIMEOUT 1800)
 
-# The LIVE AppleShare exchange (2026-08-28 (tenth), calibrated and first green
-# 2026-09-01 (ninth)): a real 8.1 guest drives the Chooser, mounts the
-# in-process AFP share and creates a folder — the pass criterion is the
-# directory appearing in the HOST filesystem. The whole wire, no protocol
-# shortcut. Mouse-calibrated to the pinned MacOS-8.1 image; soft-skips
-# without the assets.
-add_executable(q605_afp_live_etalon tests/q605_afp_live_etalon.cpp)
-target_link_libraries(q605_afp_live_etalon PRIVATE pom68k_core)
-add_test(NAME q605_afp_live_etalon COMMAND q605_afp_live_etalon
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(q605_afp_live_etalon PROPERTIES TIMEOUT 1800)
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kAfpGates.cmake)
 
 # The AIO pair (2026-08-28, TODO § 2's named next beyond-boot target):
 # the LC 520 — the Sonora roster's OTHER half, which the LC III legs never

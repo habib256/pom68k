@@ -1799,6 +1799,9 @@ settle before judging the mount), `POM68K_AFP_PHASE` +
 its Chooser walk clicks — a scripted GUI drive fails at a pixel far more
 often than at a protocol, so each click is a knob and the phase stop is how
 one gets re-measured without paying for the mount again),
+`POM68K_AFP_OUTAGE` = `data|resource` (`q605_afp_live_etalon`: interrupt AFP
+during the selected fork's first copy, then exercise guest reconnection and
+a fresh two-fork copy; unset keeps the clean-disconnect scenario),
 `POM68K_SHUTDOWN_OUT`, `POM68K_SHUTDOWN_IMG`, `POM68K_SHUTDOWN_MODE`,
 `POM68K_SHUTDOWN_PHASE`, `POM68K_SHUTDOWN_SPECIAL_X`,
 `POM68K_SHUTDOWN_ITEM_Y`, `POM68K_SHUTDOWN_SLICED`, `POM68K_SHUTDOWN_HUB`,

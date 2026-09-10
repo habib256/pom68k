@@ -17,17 +17,17 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 263 gates
+## Union across hosts — 265 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 140 |
+| `etalon` | 142 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
 | `jit` | 44 |
 | `jit-fast` | 8 |
 | `m030` | 62 |
-| `m040` | 58 |
+| `m040` | 60 |
 | `smoke` | 9 |
 | `unit` | 122 |
 
@@ -37,27 +37,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-258 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+260 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 92 |
 | assets | optional | 15 |
-| assets | required | 151 |
+| assets | required | 153 |
 | host | a64 | 4 |
-| host | any | 248 |
+| host | any | 250 |
 | host | native | 6 |
 | scope | component | 94 |
 | scope | engine | 21 |
-| scope | profile | 140 |
+| scope | profile | 142 |
 | scope | repository | 3 |
 | tier | daily | 92 |
-| tier | full | 154 |
+| tier | full | 156 |
 | tier | platform | 12 |
-| slots_src | assumed | 142 |
+| slots_src | assumed | 144 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 485 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 487 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
@@ -142,3 +142,8 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 06 21:03 +04 | aarch64 | default | 56 | 56 | 0 | 0 | AArch64-native 68030 requalification: ctest -L m030 serial, 56/56 in 2970.62 s; census 56 executed / 0 soft-skipped / 0 failed after assets.lock strict 38/38. jit_store_guard_a64_test also passed separately, 1/1 in 0.89 s. |
 | Sep 09 23:30 +04 | aarch64 | default | 92 | 92 | 0 | 0 | AppleShare persistence: full rebuild, asset-none outside sandbox |
 | Sep 09 23:31 +04 | aarch64 | default | 1 | 1 | 0 | 0 | AppleShare: real Mac OS 8.1 two-fork transfers before and after reconnect |
+| Sep 10 07:10 +04 | aarch64 | default | 92 | 92 | 0 | 0 | AppleShare outage session fixes: full rebuild, asset-none, 92 executed, zero skips |
+| Sep 10 07:41 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Data-fork outage: real Mac OS 8.1 reconnects on a fresh SLS and retries both forks, 196.44 s, executed |
+| Sep 10 07:52 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Full rebuild after AFP listener rotation and socket-scoped ATP cache: asset-none 92 executed, zero skips |
+| Sep 10 07:52 +04 | aarch64 | default | 3 | 3 | 0 | 0 | Real Mac OS 8.1: clean reconnect plus data/resource outages, exact two-fork retries and Finder partial-copy cleanup; 3 executed, zero skips, 546.48 s |
+| Sep 10 08:01 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Final AppleShare outage regression: 92 asset-none gates executed, zero skips, 9.29 s |

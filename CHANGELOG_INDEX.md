@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 481 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 482 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 33 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 90 |
+| [Cross-cutting](#cross-cutting) | 91 |
 
 ---
 
@@ -543,4 +543,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-08 (tenth)** — [The 1.44 MB stall is the driver never arming the ISM read, pinned to the exact register state](CHANGELOG.md#2026-09-08-floppy-action-stall)
 - **2026-09-09** — [The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes](CHANGELOG.md#2026-09-09-m0110-keypad-prefix)
 - **2026-09-09 (eleventh)** — [AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting](CHANGELOG.md#2026-09-09-afp-persistence-transfer)
+- **2026-09-10** — [AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage](CHANGELOG.md#2026-09-10-afp-outage-recovery)
 

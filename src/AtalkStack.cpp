@@ -410,7 +410,7 @@ void AtalkStack::AtpTxn::respond(std::vector<std::vector<uint8_t>> pkts) {
     if (done_ || !st_) return;
     done_ = true;
     st_->sendAtpResponses(src, sock_, tid_, pkts, bitmap_);
-    uint64_t key = txnKey(src, tid_);
+    uint64_t key = txnKey(src, sock_, tid_);
     if (xo_) {
         // Exactly-once: cache the reply under the release timer so a
         // retransmitted TReq is answered from here, not re-executed.
@@ -446,7 +446,7 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
     switch (ctrl & kAtpFuncMask) {
     case kAtpTReq: {
         stats_.atpReqIn++;
-        uint64_t key = txnKey(src, tid);
+        uint64_t key = txnKey(src, dstSock, tid);
         auto cached = xoCache_.find(key);
         if (cached != xoCache_.end()) {
             // The client asked again for a transaction we HAVE answered.
@@ -532,8 +532,8 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
         // TRel retires the transaction on the client side, so any deferred
         // server-side entry for it is dead too — release it now rather than
         // waiting out the sweep.
-        xoCache_.erase(txnKey(src, tid));
-        pendingTxns_.erase(txnKey(src, tid));
+        xoCache_.erase(txnKey(src, dstSock, tid));
+        pendingTxns_.erase(txnKey(src, dstSock, tid));
         return;
     default:
         return;

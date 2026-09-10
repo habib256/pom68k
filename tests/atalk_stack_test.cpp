@@ -6,6 +6,7 @@
 // XO TReq is answered from the cache, not re-executed).
 
 #include "atalk_test_util.h"
+#include "atalk_socket_checks.h"
 
 int main() {
     Wire w;                                        // node 128, net 2, "POM68K"
@@ -181,6 +182,7 @@ int main() {
     CHECK(w.st.stats().framesIn > 0 && w.st.stats().framesOut > 0,
           "traffic counters run");
 
+    socketScopedAtpChecks();
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
     std::printf("atalk_stack_test OK\n");
     return 0;

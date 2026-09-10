@@ -438,6 +438,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-10** — [AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage](#2026-09-10-afp-outage-recovery)
 - **2026-09-09 (eleventh)** — [AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting](#2026-09-09-afp-persistence-transfer)
 - **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](#2026-09-09-chooser-appleshare-proof)
 - **2026-09-09 (ninth)** — [The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS](#2026-09-09-llap-address-defence)
@@ -906,6 +907,53 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-10-afp-outage-recovery"></a>
+## 2026-09-10 — AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage
+
+A delayed WriteContinue previously retained enough state to write after its
+fork or session disappeared. Regression cases reproduced changes to committed
+bytes and successful-write counters after interruption. A weak lifetime token
+now ties the continuation to the exact open fork, including across reuse of
+numeric session/fork references. Sixteen cases cover both forks across close,
+logout, timeout, disable, reconfiguration and server destruction/replacement.
+Volume close and logout retire their forks; destruction also removes handlers
+that would otherwise reference the dead server from its surviving transport.
+
+The real Mac OS 8.1 Chooser exposed a separate reconnect failure: it retained
+an unusable "Already connected" entry when the restarted server advertised the
+same listening socket. Re-enabling AFP now rotates its NBP listener, preserving
+the server/volume names and catalogue. The guest opens a fresh session without
+rebooting or toggling AppleTalk. Healthy workstation tickles on SLS maintain
+their session; unknown-session commands stay silent, unknown-session tickles
+receive an ASP CloseSess request, and already-closed sessions acknowledge close.
+
+The new listener also exposed three ATP regression failures: transaction keys
+ignored the local socket, letting old-listener requests, releases or deferred
+completions interfere with another listener's cache. Including the destination
+socket isolates those transactions. Both wire-level test suites pass after
+these corrections; a full rebuild and all 92 asset-free gates also passed
+with no skips.
+
+Two new serialized real-guest gates interrupt Finder Duplicate during the data
+fork or resource fork. The cut is checked against actual host bytes, not just
+a timer: the reference runs stop at 4,624 data bytes or 32,791 data plus 4,624
+resource bytes. They require an intact source, stable partial destination,
+new Chooser session, a distinct exact 32,791/8,317-byte two-fork copy, and Finder
+deletion of the incomplete destination and its sidecar. Reserved catalogue and
+sidecar staging files must not remain. The original clean-reconnect gate stays
+separate, and all three share a CTest resource lock for their owned fixture.
+The final three-gate run executed with the pinned ROM and Mac OS 8.1 disk:
+all three passed in 546.48 seconds, including data outage in 198.50 seconds
+and resource outage in 204.35 seconds, with both incomplete-copy cleanups
+confirmed by the host oracle. No required-asset gate soft-skipped.
+
+This is recovery by acknowledging the guest errors, reconnecting and retrying
+from the source, not automatic offset resumption or whole-file atomicity.
+Preallocated size cannot certify completion. The outage model is live service
+loss with the Mac still running, not host power loss; it does not promise
+rollback of edits to an existing destination. `docs/APPLETALK.md` records the
+operating contract and `DEV.md` documents the diagnostic fork selector.
 
 <a id="2026-09-09-afp-persistence-transfer"></a>
 ## 2026-09-09 (eleventh) — AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting

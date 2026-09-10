@@ -153,6 +153,10 @@ int main() {
 
     const int stopPhase = getenv("POM68K_AFP_PHASE")
                         ? atoi(getenv("POM68K_AFP_PHASE")) : 99;
+    const std::string outageMode = getenv("POM68K_AFP_OUTAGE") ? getenv("POM68K_AFP_OUTAGE") : "";
+    if (!outageMode.empty() && outageMode != "data" && outageMode != "resource") {
+        std::fprintf(stderr, "FAIL: POM68K_AFP_OUTAGE must be data or resource\n"); return 1;
+    }
 
     // ── The share the guest will write into: fresh every run ─────────────
     // The folder's NAME is the AFP volume name (AtalkHub::folderName), so
@@ -211,6 +215,15 @@ int main() {
             return;
         }
         if (n == 3 && d[2] == 0x85) return;
+        if (!outageMode.empty() && n >= 16) {
+            const size_t atp = d[2] == 1 ? 8 : 16;
+            if (n >= atp + 8 && d[atp - 1] == 3 && (d[atp] & 0xc0) == 0x40 &&
+                (d[atp + 4] == 1 || d[atp + 4] == 4 || d[atp + 4] == 5)) {
+                std::printf("ASP wire: function=%u source=%u destination=%u sid/WSS=%u\n",
+                            d[atp + 4], d[atp - 2], d[atp - 3], d[atp + 5]);
+                std::fflush(stdout);
+            }
+        }
         hub.onGuestFrame(d, n);
     };
 
@@ -219,11 +232,22 @@ int main() {
 
     constexpr int kFrameCycles = 416667;          // 25 MHz / ~60 Hz
     constexpr int kSlices = 64;                   // main.cpp runQuantumWithWire
+    long cutAfterBytes = -1;
+    bool cutObserved = false;
     auto frames = [&](long n) {
         for (long f = 0; f < n && !cpu.isHalted(); f++) {
             for (int s = 0; s < kSlices; s++) {
                 cpu.runCycles(kFrameCycles / kSlices);
                 hub.tick(cpu.machineClock());
+                if (cutAfterBytes >= 0 && hub.snapshot().afp.bytesWritten > cutAfterBytes) {
+                    const auto state = hub.snapshot().afp;
+                    hub.setService("afp", false);
+                    cutAfterBytes = -1;
+                    cutObserved = true;
+                    std::printf("outage: AFP stopped with %ld bytes written, %d open forks\n",
+                                state.bytesWritten, state.openForks);
+                    std::fflush(stdout);
+                }
             }
         }
     };
@@ -329,6 +353,7 @@ int main() {
     if (stopPhase <= 0) return 0;
 
     std::vector<fs::path> verifiedCopies;
+    std::vector<fs::path> interruptedCopies;
     for (int cycle = 0; cycle < 2; ++cycle) {
         const auto cycleStart = hub.snapshot();
         std::printf("connection cycle %d\n", cycle + 1);
@@ -509,9 +534,81 @@ int main() {
         for (const auto& entry : fs::directory_iterator(shareDir))
             existingCopies.insert(entry.path().filename().string());
         const auto transferStart = hub.snapshot().afp;
+        if (cycle == 0 && !outageMode.empty())
+            cutAfterBytes = transferStart.bytesWritten +
+                (outageMode == "resource" ? long(afplive::data.size()) : 0);
         mem.keyEvent(0x37, true); frames(12);
         key(0x02, 75, 12);                       // Cmd-D: Duplicate
         mem.keyEvent(0x37, false);
+        if (cycle == 0 && !outageMode.empty()) {
+            for (int poll = 0; poll < 18000 && !cutObserved; ++poll) frames(1);
+            if (!cutObserved) { std::fprintf(stderr, "FAIL: outage was not reached\n"); return 1; }
+            frames(900);
+            snap("afp_outage_offline.ppm");
+            const auto stopped = hub.snapshot().afp;
+            const long partialBytes = stopped.bytesWritten - transferStart.bytesWritten;
+            const long lower = outageMode == "resource" ? long(afplive::data.size()) : 0;
+            const long upper = outageMode == "resource" ?
+                long(afplive::data.size() + afplive::resource.size()) : long(afplive::data.size());
+            if (stopped.sessions || stopped.openForks || stopped.volMounted ||
+                partialBytes <= lower || partialBytes >= upper ||
+                !afplive::exactCopy(shareDir / "BONJOUR.txt")) {
+                std::fprintf(stderr, "FAIL: outage retained sessions or changed source\n"); return 1;
+            }
+            std::map<fs::path, std::vector<uint8_t>> partialSnapshot;
+            for (const auto& entry : fs::directory_iterator(shareDir)) {
+                const auto name = entry.path().filename().string();
+                if (!existingCopies.count(name) && entry.is_regular_file()) {
+                    if (afplive::exactCopy(entry.path())) {
+                        std::fprintf(stderr, "FAIL: cut happened after a complete copy\n"); return 1;
+                    }
+                    const auto bytes = afplive::read(entry.path());
+                    const bool phaseMatches = outageMode == "resource" ? bytes == afplive::data :
+                        bytes != afplive::data && bytes.size() >= size_t(partialBytes) &&
+                        std::equal(bytes.begin(), bytes.begin() + partialBytes, afplive::data.begin());
+                    if (!phaseMatches) {
+                        std::fprintf(stderr, "FAIL: host bytes do not match the selected cut phase\n"); return 1;
+                    }
+                    partialSnapshot[entry.path()] = bytes;
+                    interruptedCopies.push_back(entry.path());
+                    const auto sidecar = shareDir / ".AppleDouble" / name;
+                    partialSnapshot[sidecar] = afplive::read(sidecar);
+                }
+            }
+            if (partialSnapshot.empty()) {
+                std::fprintf(stderr, "FAIL: no interrupted destination\n"); return 1;
+            }
+            hub.setService("afp", true);
+            // Allow the guest ASP timeout without letting its screen saver
+            // swallow the first acknowledgement key. Pointer movement is not
+            // a network shortcut and leaves guest/session timers untouched.
+            for (int wait = 0; wait < 250; ++wait) {
+                mem.mouseMove(1, 0); frames(30);
+                mem.mouseMove(-1, 0); frames(30);
+            }
+            snap("afp_outage_online.ppm");
+            // This guest's connection-loss notification can consume a key
+            // merely bringing its modal window forward. Use its actual OK.
+            if (!click(318, 245)) return 1;
+            frames(600);
+            snap("afp_outage_first_ack.ppm");
+            if (!click(464, 168)) return 1;     // Finder's follow-up copy error
+            frames(600);
+            snap("afp_outage_acknowledged.ppm");
+            const auto recovered = hub.snapshot().afp;
+            if (recovered.sessions || recovered.openForks || recovered.volMounted ||
+                recovered.bytesWritten != stopped.bytesWritten ||
+                !afplive::exactCopy(shareDir / "BONJOUR.txt")) {
+                std::fprintf(stderr, "FAIL: stale session wrote after outage\n"); return 1;
+            }
+            for (const auto& [path, bytes] : partialSnapshot)
+                if (afplive::read(path) != bytes) {
+                    std::fprintf(stderr, "FAIL: interrupted destination changed after restart\n"); return 1;
+                }
+            std::printf("outage: guest acknowledged disconnect; reconnecting through Chooser\n");
+            std::fflush(stdout);
+            continue;
+        }
         std::string copied;
         for (int poll = 0; poll < 600 && copied.empty() && !cpu.isHalted(); ++poll) {
             frames(30);
@@ -569,10 +666,33 @@ int main() {
             frames(300);
         }
     }
+    if (!interruptedCopies.empty()) {
+        // Finder offsets duplicates by 16 px: the incomplete copy's icon is
+        // between the source and the newly completed copy (both stay intact).
+        if (interruptedCopies.size() != 1 || !click(62, 100)) return 1;
+        mem.keyEvent(0x37, true); frames(12);
+        key(0x33, 75, 12);                     // Cmd-Delete: remove failed copy
+        mem.keyEvent(0x37, false); frames(300);
+        snap("afp_outage_delete_prompt.ppm");
+        key(0x24, 75, 120); frames(300);        // confirm server-side deletion
+        snap("afp_outage_cleaned.ppm");
+        const auto& partial = interruptedCopies.front();
+        if (fs::exists(partial) || fs::exists(shareDir / ".AppleDouble" / partial.filename()) ||
+            !afplive::exactCopy(shareDir / "BONJOUR.txt")) {
+            std::fprintf(stderr, "FAIL: guest cleanup of interrupted copy\n"); return 1;
+        }
+        std::printf("outage: Finder removed the incomplete copy and its sidecar\n");
+    }
     for (const auto& path : verifiedCopies)
         if (!afplive::exactCopy(path)) {
             std::fprintf(stderr, "FAIL: prior copy changed across reconnect\n"); return 1;
         }
-    std::printf("PASSED — Finder transferred both forks before and after guest reconnection\n");
+    for (const auto& entry : fs::recursive_directory_iterator(shareDir)) {
+        const auto name = entry.path().filename().string();
+        if (name == ".pom68k-afp-catalog.tmp" || name == ".pom68k-afp-sidecar.tmp") {
+            std::fprintf(stderr, "FAIL: abandoned AFP staging file after retry\n"); return 1;
+        }
+    }
+    std::printf("PASSED — Finder transferred both forks after guest reconnection\n");
     return 0;
 }

@@ -26,6 +26,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <stdexcept>
 #include <vector>
@@ -48,6 +49,7 @@ public:
     struct Status {
         bool enabled = false;
         bool registered = false;     // NBP AFPServer entity live
+        uint8_t listeningSocket = 129;
         std::string serverName, volName, dirPath;
         bool dirOk = false;          // folder exists and is writable
         std::string catalogError;   // persistence failure; commands fail closed
@@ -67,6 +69,9 @@ private:
         uint32_t id = 0;             // CNID of the file
         bool resource = false;
         bool writable = false;
+        // A delayed WriteContinue may write only while this exact open fork
+        // still exists. A reused session/fork number does not revive it.
+        std::shared_ptr<const int> lifetime = std::make_shared<const int>(0);
     };
     struct Session {
         AtalkStack::Addr wss;        // client workstation session socket
@@ -109,6 +114,7 @@ private:
     AtalkStack& st_;
     bool enabled_ = false;
     bool configured_ = false;
+    uint8_t listeningSocket_ = 129;
     std::string serverName_ = "POM68K";
     std::string volName_ = "Partage";
     std::string dir_;                // host folder ('' = unset)

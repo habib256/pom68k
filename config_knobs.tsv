@@ -16,6 +16,7 @@ POM68K_AFP_CLOSE_X	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_CLOSE_Y	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_GUEST_X	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_GUEST_Y	test	owner:tests/q605_afp_live_etalon.cpp
+POM68K_AFP_OUTAGE	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_PHASE	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_SV_X	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_SV_Y	test	owner:tests/q605_afp_live_etalon.cpp
