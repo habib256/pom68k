@@ -165,8 +165,9 @@ void AtalkStack::sendDdp(const Addr& dst, uint8_t srcSock, uint8_t ddpType,
     sendFrame(f.data(), f.size());
 }
 
-void AtalkStack::tick(int64_t nowCycles) {
+void AtalkStack::tick(int64_t nowCycles, bool runProtocols) {
     now_ = nowCycles;
+    if (!runProtocols) return;
     if (now_ >= nextRtmp_) {
         sendRtmpData(true, {});
         nextRtmp_ = now_ + 10 * cpuHz_;   // RTMP broadcast period: 10 s

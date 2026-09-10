@@ -26,6 +26,7 @@
 
 struct GuiNetworkState {
     bool appleTalkEnabled = true;
+    bool ethernetEnabled = false;       // DaynaPort uplink, independent of LocalTalk
     bool appleTalkWasSpecified = false;
     bool ltoUdpEnabled = false;
     int appleTalkWireBoost = 8;

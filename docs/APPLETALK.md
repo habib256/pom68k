@@ -911,9 +911,14 @@ initialise.
 Caveats, all real: **no guest driver has been run against it** (the
 command set is gated by `daynaport_test`, the driver's opinion of it is
 not); **no EtherTalk** — the card carries IPv4 and ARP only, so everything
-in §§1-5 above still travels over the SCC; and the uplink lives in
-`AtalkHub`, so `POM68K_APPLETALK=0` leaves the guest a card with nothing
-behind it. Design notes: `DEV.md` § 3.3bis; rationale and the RaSCSI/PiSCSI
+in §§1-5 above still travels over the SCC. The Ethernet uplink works with
+`POM68K_APPLETALK=0`: attachment, scheduling and NAT activation are independent
+of the LocalTalk services. Disabling MacIP preserves Ethernet leases and
+in-flight UDP/TCP flows; removing the Ethernet sink retires its own flows.
+The shared clock advances without running LocalTalk protocols when that
+stack is disabled. Hub echo/timer tests and loopback UDP/TCP regressions
+cover this separation; they are not a substitute for the guest-driver test.
+Design notes: `DEV.md` § 3.3bis; rationale and the RaSCSI/PiSCSI
 provenance: `CHANGELOG.md` 2026-08-07 (later).
 
 ### 6.5 The in-process stack — POM68K as its own router, server, printer and gateway

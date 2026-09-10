@@ -69,7 +69,10 @@ public:
         const bool cable = state_.network.ltoUdpEnabled &&
                            state_.network.ltoudp.start();
         const bool hub = state_.network.appleTalkEnabled;
-        if (!cable && !hub) return;
+        if constexpr (requires { mem.daynaPort(); })
+            state_.network.ethernetEnabled = mem.daynaPort().present();
+        const bool ethernet = state_.network.ethernetEnabled;
+        if (!cable && !hub && !ethernet) return;
 
         const std::int64_t hubHz = std::int64_t(byteCycles) * 28800;
         if (hub && !cable && state_.network.appleTalkWireBoost > 1) {
@@ -77,11 +80,13 @@ public:
                 std::max(byteCycles / state_.network.appleTalkWireBoost, 64));
             mem.scc().setLosslessRx(true);
         }
-        if (hub) {
-            configureAppleTalk();
+        if (hub || ethernet) {
+            if (hub) configureAppleTalk();
+            state_.network.atalk.setService("stack", hub);
             state_.network.atalk.attach(
                 mem, hubHz, cable ? &state_.network.ltoudp : nullptr);
         }
+        if (!hub && !cable) return;
         mem.scc().onTxFrame =
             [this, &mem, cable, hub](int channel, const std::uint8_t* data,
                                      std::size_t size) {
@@ -128,7 +133,7 @@ public:
     template <class Mem, class Cpu, class OnSlice>
     void runNetworkQuantum(Mem& mem, Cpu& cpu, std::int64_t frameCycles,
                            OnSlice&& onSlice) {
-        const bool hub = state_.network.appleTalkEnabled;
+        const bool hub = networkEnabled();
         const bool serial = serialActive();
         if (!state_.network.ltoudp.active() && !hub && !serial) {
             cpu.runCycles(frameCycles);
@@ -150,7 +155,7 @@ public:
     }
 
     bool networkEnabled() const noexcept {
-        return state_.network.appleTalkEnabled;
+        return state_.network.appleTalkEnabled || state_.network.ethernetEnabled;
     }
 
     bool serialActive() const noexcept {
@@ -158,7 +163,7 @@ public:
     }
 
     void tickNetwork(std::int64_t machineClock) {
-        if (state_.network.appleTalkEnabled)
+        if (networkEnabled())
             state_.network.atalk.tick(machineClock);
     }
 
@@ -185,7 +190,7 @@ public:
         for (const auto& m : media)
             if (!m.empty()) notes.emplace_back("media", m);
         notes.emplace_back("network",
-                           (state_.network.appleTalkEnabled ||
+                           (networkEnabled() ||
                             state_.network.ltoUdpEnabled) ? "1" : "0");
         machine.setRecordingIdentity(std::move(notes));
         const auto& rec = config_.diagnostics().inputRecord;

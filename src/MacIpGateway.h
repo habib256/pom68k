@@ -45,6 +45,7 @@ public:
     // 192.168.151.1/24, DNS 8.8.8.8.
     void configure(uint32_t gwIp, uint32_t mask, uint32_t dns);
     void setDebug(bool on) { debug_ = on; }
+    // Controls only MacIP (NBP/ATP/DDP), not an attached Ethernet uplink.
     void setEnabled(bool on);
     bool enabled() const { return enabled_; }
     void tick(int64_t now);
@@ -60,8 +61,11 @@ public:
     // Ethernet equivalent. The guest is configured by hand (an address in
     // the gateway's subnet, the gateway as router) and the lease is learned
     // from its first packet, which is what handleIp already does for DDP.
+    // Installing a sink enables this link independently of MacIP; removing
+    // it retires its leases and sockets without disabling the DDP service.
     void setEtherSink(std::function<void(uint32_t dstIp,
                                          const std::vector<uint8_t>&)> s) {
+        if (!s) retireLink(true);
         etherSink_ = std::move(s);
     }
     void ipFromEther(const uint8_t* ip, size_t n) {
@@ -89,6 +93,7 @@ public:
     Status status() const;
 
 private:
+    void retireLink(bool ether);
     // Idle leases are reclaimed in tick(); generous enough that a quiet but
     // live MacTCP node keeps its address (traffic refreshes lastSeen).
     static constexpr int64_t kLeaseLifetimeSec = 3600;

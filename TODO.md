@@ -114,8 +114,6 @@ la plus grande dimension produit encore peu exploitée.
   et vérifier les deux directions.
 - [ ] **Tester un vrai driver DaynaPort.** Installer le driver, configurer
   MacTCP et valider le jeu de commandes contre un invité réel.
-- [ ] **Découpler l'uplink de `AtalkHub`.** Faire fonctionner le NAT Ethernet
-  même avec `POM68K_APPLETALK=0`.
 - [ ] **Ajouter EtherTalk.** Implémenter AARP et DDP sur 802.3/SNAP pour sortir
   AppleTalk du SCC.
 - [ ] **Ajouter le contrôle DaynaPort au GUI.** Attacher/détacher et choisir

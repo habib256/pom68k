@@ -147,3 +147,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 10 07:52 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Full rebuild after AFP listener rotation and socket-scoped ATP cache: asset-none 92 executed, zero skips |
 | Sep 10 07:52 +04 | aarch64 | default | 3 | 3 | 0 | 0 | Real Mac OS 8.1: clean reconnect plus data/resource outages, exact two-fork retries and Finder partial-copy cleanup; 3 executed, zero skips, 546.48 s |
 | Sep 10 08:01 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Final AppleShare outage regression: 92 asset-none gates executed, zero skips, 9.29 s |
+| Sep 10 17:29 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Ethernet independent of AppleTalk: full rebuild, 92 asset-none executed, zero skips |
+| Sep 10 17:32 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Ethernet separation: real Mac OS 8.1 AppleShare clean reconnect and exact two-fork copies unchanged; 141.04 s, executed |

@@ -124,7 +124,10 @@ int main() {
     }
 
     // ── UDP round-trip through the NAT ──
-    {
+    for (bool ethernet : {false, true}) {
+        std::vector<uint8_t> etherReply;
+        if (ethernet)
+            gw.setEtherSink([&](uint32_t, const auto& pkt) { etherReply = pkt; });
         int us = ::socket(AF_INET, SOCK_DGRAM, 0);
         sockaddr_in sa {};
         sa.sin_family = AF_INET;
@@ -138,7 +141,14 @@ int main() {
         std::vector<uint8_t> udp = { 0x07, 0xD0, uint8_t(port >> 8), uint8_t(port),
                                      0, 12, 0, 0, 'p', 'i', 'n', 'g' };
         w.clear();
-        w.sendDdp(47, 72, 72, 22, ipPkt(kGuest, kLo, 17, udp));
+        const auto request = ipPkt(ethernet ? kGuest + 1 : kGuest, kLo, 17, udp);
+        if (ethernet) {
+            gw.ipFromEther(request.data(), request.size());
+            gw.setEnabled(false); // keep the in-flight Ethernet flow alive
+            CHECK(!gw.status().registered && gw.status().udpFlows == 1 &&
+                  !gw.leased(kGuest) && gw.leased(kGuest + 1),
+                  "disabling MacIP retires DDP but keeps an in-flight Ethernet UDP flow");
+        } else w.sendDdp(47, 72, 72, 22, request);
         uint8_t buf[64];
         sockaddr_in from {};
         socklen_t fl = sizeof from;
@@ -153,16 +163,41 @@ int main() {
         std::vector<uint8_t> back;
         for (int i = 0; i < 50 && back.empty(); i++) {
             pump(1);
-            back = lastIpToGuest();
+            back = ethernet ? etherReply : lastIpToGuest();
             if (!back.empty() && (back.size() < 32 || back[9] != 17)) back.clear();
         }
         CHECK(back.size() == 32 && !std::memcmp(back.data() + 28, "pong", 4),
-              "UDP reply tunneled back as DDP 22");
+              "UDP reply returns on its own link, including Ethernet with MacIP off");
         ::close(us);
+        if (ethernet) {
+            const auto count = gw.status().ipFromGuest;
+            w.sendDdp(47, 72, 72, 22, request);
+            CHECK(gw.status().ipFromGuest == count, "disabled MacIP refuses DDP data");
+            gw.setEnabled(true);
+            w.sendDdp(47, 72, 72, 22, ipPkt(kGuest, kLo, 17, udp));
+            gw.setEtherSink({});
+            CHECK(gw.status().udpFlows == 1 && gw.status().leases == 1 &&
+                  gw.leased(kGuest) && !gw.leased(kGuest + 1) && gw.status().registered,
+                  "detaching Ethernet retires only its flows and leases, not DDP");
+            gw.setEnabled(false);
+            gw.setEnabled(true);
+        }
     }
 
     // ── TCP-lite: connect, data both ways, close both ways ──
-    {
+    for (bool ethernet : {false, true}) {
+        std::vector<uint8_t> etherReply;
+        if (ethernet) {
+            gw.setEtherSink([&](uint32_t, const auto& pkt) { etherReply = pkt; });
+            gw.setEnabled(false);
+        }
+        const auto sendPacket = [&](const auto& pkt) {
+            if (ethernet) gw.ipFromEther(pkt.data(), pkt.size());
+            else w.sendDdp(47, 72, 72, 22, pkt);
+        };
+        const auto receivePacket = [&]() {
+            return ethernet ? etherReply : lastIpToGuest();
+        };
         int ls = ::socket(AF_INET, SOCK_STREAM, 0);
         int one = 1;
         ::setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
@@ -177,14 +212,14 @@ int main() {
         ::fcntl(ls, F_SETFL, O_NONBLOCK);
 
         w.clear();
-        w.sendDdp(47, 72, 72, 22,
+        sendPacket(
                   ipPkt(kGuest, kLo, 6, tcpSeg(3000, port, 1000, 0, 0x02)));
         int as = -1;
         std::vector<uint8_t> synAck;
         for (int i = 0; i < 100 && (as < 0 || synAck.empty()); i++) {
             pump(1);
             if (as < 0) as = ::accept(ls, nullptr, nullptr);
-            auto r = lastIpToGuest();
+            auto r = receivePacket();
             if (r.size() >= 40 && r[9] == 6 && (r[33] & 0x12) == 0x12) synAck = r;
         }
         CHECK(as >= 0, "host connection accepted");
@@ -195,9 +230,9 @@ int main() {
         CHECK(get32(synAck.data() + 28) == 1001, "SYN-ACK acks the guest ISN");
 
         // guest ACK + "hello"
-        w.sendDdp(47, 72, 72, 22,
+        sendPacket(
                   ipPkt(kGuest, kLo, 6, tcpSeg(3000, port, 1001, isn + 1, 0x10)));
-        w.sendDdp(47, 72, 72, 22,
+        sendPacket(
                   ipPkt(kGuest, kLo, 6, tcpSeg(3000, port, 1001, isn + 1, 0x18, "hello")));
         char rb[16] = {};
         ssize_t n = -1;
@@ -206,20 +241,27 @@ int main() {
 
         // host app answers "world"
         w.clear();
+        if (ethernet) {
+            gw.setEnabled(true);
+            gw.setEnabled(false);
+            CHECK(gw.status().tcpConns == 1,
+                  "live MacIP toggle preserves an established Ethernet TCP connection");
+            etherReply.clear();
+        }
         ::send(as, "world", 5, 0);
         std::vector<uint8_t> data;
         for (int i = 0; i < 50 && data.empty(); i++) {
             pump(1);
-            auto r = lastIpToGuest();
+            auto r = receivePacket();
             if (r.size() == 45 && r[9] == 6 && (r[33] & 0x08)) data = r;
         }
         CHECK(data.size() == 45 && !std::memcmp(data.data() + 40, "world", 5),
               "host data segmented back to the guest");
         uint32_t hseq = data.empty() ? 0 : get32(data.data() + 24);
         // guest ACKs the data, then closes
-        w.sendDdp(47, 72, 72, 22,
+        sendPacket(
                   ipPkt(kGuest, kLo, 6, tcpSeg(3000, port, 1006, hseq + 5, 0x10)));
-        w.sendDdp(47, 72, 72, 22,
+        sendPacket(
                   ipPkt(kGuest, kLo, 6, tcpSeg(3000, port, 1006, hseq + 5, 0x11)));
         // host side sees EOF and closes too
         char eb[8];
@@ -230,19 +272,20 @@ int main() {
         std::vector<uint8_t> fin;
         for (int i = 0; i < 50 && fin.empty(); i++) {
             pump(1);
-            auto r = lastIpToGuest();
+            auto r = receivePacket();
             if (r.size() >= 40 && r[9] == 6 && (r[33] & 0x01)) fin = r;
         }
         CHECK(!fin.empty(), "host close forwarded as FIN");
         if (!fin.empty()) {
             uint32_t fseq = get32(fin.data() + 24);
-            w.sendDdp(47, 72, 72, 22,
+            sendPacket(
                       ipPkt(kGuest, kLo, 6,
                             tcpSeg(3000, port, 1007, fseq + 1, 0x10)));
         }
         pump(5);
         CHECK(gw.status().tcpConns == 0, "connection fully reaped");
         ::close(ls);
+        if (ethernet) { gw.setEtherSink({}); gw.setEnabled(true); }
     }
 
     CHECK(gw.status().ipFromGuest > 0 && gw.status().ipToGuest > 0,

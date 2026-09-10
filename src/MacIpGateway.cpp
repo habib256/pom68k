@@ -104,6 +104,7 @@ MacIpGateway::~MacIpGateway() {
 void MacIpGateway::configure(uint32_t gwIp, uint32_t mask, uint32_t dns) {
     bool was = enabled_;
     if (was) setEnabled(false);
+    retireLink(true);
     gw_ = gwIp;
     mask_ = mask;
     dns_ = dns;
@@ -124,14 +125,30 @@ void MacIpGateway::setEnabled(bool on) {
         st_.nbpRegister(iptoa(gw_), "IPGATEWAY", kMacIpSock);
     } else {
         st_.nbpUnregister(iptoa(gw_), "IPGATEWAY");
-#ifndef _WIN32
-        for (auto& f : udp_) if (f.fd >= 0) ::close(f.fd);
-        for (auto& c : tcp_) if (c->fd >= 0) ::close(c->fd);
-#endif
-        udp_.clear();
-        tcp_.clear();
-        leases_.clear();
+        retireLink(false);
     }
+}
+
+void MacIpGateway::retireLink(bool ether) {
+    const auto belongs = [&](uint32_t ip) {
+        const auto it = leases_.find(ip);
+        return it == leases_.end() || it->second.ether == ether;
+    };
+    std::erase_if(udp_, [&](const UdpFlow& flow) {
+        if (!belongs(flow.gIp)) return false;
+#ifndef _WIN32
+        if (flow.fd >= 0) ::close(flow.fd);
+#endif
+        return true;
+    });
+    std::erase_if(tcp_, [&](const auto& conn) {
+        if (!belongs(conn->gIp)) return false;
+#ifndef _WIN32
+        if (conn->fd >= 0) ::close(conn->fd);
+#endif
+        return true;
+    });
+    std::erase_if(leases_, [=](const auto& lease) { return lease.second.ether == ether; });
 }
 
 MacIpGateway::Status MacIpGateway::status() const {
@@ -240,7 +257,7 @@ void MacIpGateway::sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt
 
 void MacIpGateway::handleIp(const AtalkStack::Addr& src, bool ether,
                             const uint8_t* p, size_t n) {
-    if (!enabled_ || n < 20 || (p[0] >> 4) != 4) return;
+    if ((ether ? !etherSink_ : !enabled_) || n < 20 || (p[0] >> 4) != 4) return;
     size_t ihl = (p[0] & 0x0F) * 4;
     if (ihl < 20 || n < ihl) return;
     // The IP total-length field is the authority, not the DDP payload length:
@@ -591,7 +608,7 @@ void MacIpGateway::tcpPump(TcpConn& c, int64_t now) {
 
 void MacIpGateway::tick(int64_t now) {
 #ifndef _WIN32
-    if (!enabled_) return;
+    if (!enabled_ && !etherSink_) return;
     for (auto& c : tcp_)
         if (c->state != TcpConn::Dead) tcpPump(*c, now);
     tcp_.erase(std::remove_if(tcp_.begin(), tcp_.end(),

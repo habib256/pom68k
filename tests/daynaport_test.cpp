@@ -18,6 +18,7 @@
 #include "DaynaPort.h"
 #include "EtherLink.h"
 #include "MacIpGateway.h"
+#include "AtalkHub.h"
 #include "atalk_test_util.h"
 
 #include <array>
@@ -390,6 +391,42 @@ int main() {
         CHECK(gw.status().leases == 1, "the guest holds one lease");
     }
 
+    // Ethernet must remain reachable when the LocalTalk services are off.
+    {
+        struct Machine {
+            Scc8530 serial;
+            DaynaPort card;
+            Scc8530& scc() { return serial; }
+            DaynaPort& daynaPort() { return card; }
+        } mem;
+        mem.card.attach();
+        const uint8_t en[6] = {0x0E, 0, 0, 0, 0, 0x80};
+        mem.card.command(en, 6, out, none);
+        AtalkHub hub;
+        hub.setService("stack", false);
+        hub.attach(mem, 1000000, nullptr);
+        for (bool appleTalk : {false, true, false}) {
+            hub.setService("stack", appleTalk);
+            std::vector<uint8_t> ping{8, 0, 0, 0, 0, 7, 0, 1, 'N', 'A', 'T'};
+            const auto sum = csum16(ping.data(), ping.size());
+            ping[2] = uint8_t(sum >> 8); ping[3] = uint8_t(sum);
+            const auto frame = ethFrame(link.gatewayMac(), kGuestMac, 0x0800,
+                                        ipPkt(kGuest, kGw, 1, ping));
+            mem.card.sendFrame(frame.data(), frame.size());
+            const auto response = readOne(mem.card);
+            CHECK(response.ok && response.data.size() >= 45 && response.data[34] == 0,
+                  "hub Ethernet echo survives AppleTalk disabled at boot and live toggle");
+            const auto state = hub.snapshot();
+            CHECK(state.macip.registered == appleTalk && state.afp.enabled == appleTalk,
+                  "Ethernet does not secretly enable LocalTalk services");
+        }
+        CHECK(hub.snapshot().macip.leases == 1, "Ethernet retains its learned address");
+        const auto framesBefore = hub.snapshot().net.framesOut;
+        hub.tick(3601000000LL);
+        CHECK(hub.snapshot().macip.leases == 0, "NAT timers advance with AppleTalk off");
+        CHECK(hub.snapshot().net.framesOut == framesBefore,
+              "advancing Ethernet time emits no LocalTalk protocol traffic");
+    }
     if (failures) {
         std::printf("daynaport_test: %d check(s) failed\n", failures);
         return 1;

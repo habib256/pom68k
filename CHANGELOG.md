@@ -438,6 +438,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-10 (later)** — [DaynaPort Ethernet keeps its NAT when AppleTalk is disabled](#2026-09-10-ethernet-independent)
 - **2026-09-10** — [AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage](#2026-09-10-afp-outage-recovery)
 - **2026-09-09 (eleventh)** — [AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting](#2026-09-09-afp-persistence-transfer)
 - **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](#2026-09-09-chooser-appleshare-proof)
@@ -907,6 +908,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-10-ethernet-independent"></a>
+## 2026-09-10 (later) — DaynaPort Ethernet keeps its NAT when AppleTalk is disabled
+
+The hub regression first failed twice: Ethernet echo worked with AppleTalk
+enabled but not when disabled at attachment or switched off live. The GUI
+also skipped hub attachment and network scheduling in the Ethernet-only case.
+It now activates that path independently, without enabling LocalTalk services
+or changing the SCC wire pace. Input-recording provenance includes Ethernet.
+
+MacIP activation controls NBP/ATP/DDP only; an attached Ethernet sink keeps
+the common NAT available. Link teardown retires that link's leases and host
+sockets, preserving the other link's in-flight work. Machine time advances
+with LocalTalk off, without running its protocol timers or emitting frames.
+
+`daynaport_test` checks hub echo before/after live toggles, disabled-service
+status, lease expiry and LocalTalk silence. `macip_gw_test` checks real loopback
+UDP and full TCP exchanges on both links, including a MacIP toggle during an
+Ethernet connection and Ethernet detachment cleanup. Both narrow gates pass;
+the socket gate needs the same sandbox exception as its original DDP tests.
+The complete build and all 92 asset-free gates passed (zero skips), followed
+by the reinforced mixed-link teardown test. The real Mac OS 8.1 AppleShare
+transfer/reconnect gate also executed and passed in 141.04 seconds with two
+exact two-fork copies; the LocalTalk path remains usable.
+This closes the uplink dependency, not guest-driver interoperability: no real
+DaynaPort driver is claimed tested, and EtherTalk remains separate open work.
 
 <a id="2026-09-10-afp-outage-recovery"></a>
 ## 2026-09-10 — AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage

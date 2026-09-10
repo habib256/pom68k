@@ -1069,9 +1069,12 @@ Wiring: `POM68K_DAYNAPORT=<id>` puts a card on the **Quadra 605**'s bus
 (`=1` → the default ID 3, where MAME parks the CD-ROM). `AtalkHub::attach`
 detects `mem.daynaPort()` with a `requires` clause, so the eleven machines
 without one compile unchanged and adding a card elsewhere is a member plus
-an accessor. The card is on the bus regardless of AppleTalk; its *uplink*
-is the hub's NAT, so `POM68K_APPLETALK=0` leaves the guest a card with
-nothing behind it.
+an accessor. Both the card and its NAT uplink work with
+`POM68K_APPLETALK=0`: the GUI attaches and schedules the Ethernet path
+independently. Disabling MacIP retires its DDP leases and sockets, not
+Ethernet flows. NAT timers still advance while LocalTalk protocols remain
+silent. `daynaport_test` pins the hub path and `macip_gw_test` exercises
+UDP/TCP on both links with real loopback sockets.
 
 Measured: `q605_boot_etalon` reaches the same Mac OS 8.1 desktop with the
 card at ID 4 — identical screen signature, 4558 SCSI commands against 4551

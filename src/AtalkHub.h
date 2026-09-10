@@ -149,11 +149,11 @@ public:
         // machine-thread entry point. snapshot() (GUI thread) then serves
         // the copy below under mu_, instead of reaching into the SCC mid-pop.
         if (wire_) wireMeter_ = wire_();
+        stack_.tick(nowCycles, cfg_.stack);
+        macip_.tick(nowCycles);
         if (!cfg_.stack) { pending_.clear(); return; }
-        stack_.tick(nowCycles);
         afp_.tick(nowCycles);
         pap_.tick(nowCycles);
-        macip_.tick(nowCycles);
         // Flush every frame the node queued this quantum (replies from the
         // guest's TX callback + RTMP/ATP timers) now that Rx is re-armed.
         if (inject_)

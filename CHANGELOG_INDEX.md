@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 482 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 483 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 85 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 68 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 69 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 15 |
@@ -268,6 +268,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-09 (fifth)** — [The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus](CHANGELOG.md#2026-09-09-storage-profile-audit)
 - **2026-09-09 (fourth)** — [The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice](CHANGELOG.md#2026-09-09-swim1-mfm-writeback)
 - **2026-09-09 (later)** — [The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk](CHANGELOG.md#2026-09-09-scsi-sense-lun)
+- **2026-09-10 (later)** — [DaynaPort Ethernet keeps its NAT when AppleTalk is disabled](CHANGELOG.md#2026-09-10-ethernet-independent)
 
 ## Video — decoders, the raster beam, DAFB
 

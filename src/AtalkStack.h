@@ -77,7 +77,8 @@ public:
     void onGuestFrame(const uint8_t* d, size_t n);
     // Advance timers (RTMP beacon, ATP retry/release). Call once per
     // emulation slice with the running cycle counter.
-    void tick(int64_t nowCycles);
+    // The shared NAT still needs machine time while LocalTalk is disabled.
+    void tick(int64_t nowCycles, bool runProtocols = true);
 
     // ── DDP ──
     using DdpHandler = std::function<void(const Addr& src, uint8_t ddpType,
