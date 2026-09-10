@@ -1126,7 +1126,11 @@ startup range. When the bridge starts beaconing, the guest says so
 itself — "Access to your AppleTalk internet has now become available" —
 re-probes (AARP 10 → 30), moves onto net 2, reads back "Current Zone:
 POM68K" in the Network control panel, and its Chooser lists this node's
-AppleShare server. The SCC is idle throughout.
+AppleShare server. From there the gate runs the same chain
+`q605_afp_live_etalon` drives over LocalTalk: Guest login, the volume
+mounted, and a folder the guest creates in it appearing on the HOST
+filesystem — NBP, ATP, ASP and AFP over 802.3/SNAP, with the SCC idle
+throughout.
 
 Still not done: no GUI menu entry; not in save states (a restore comes
 back with an empty Rx ring); zone multicast addresses are not joined (the
