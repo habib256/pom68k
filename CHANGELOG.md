@@ -438,6 +438,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-11** — [A real AppleShare session over EtherTalk: the guest mounts the volume on the SCSI card and its new folder lands on the host](#2026-09-11-appleshare-over-ethertalk)
 - **2026-09-10 (fourth pass)** — [AppleTalk leaves the SCC: the guest joins an EtherTalk network on the SCSI card, and its Chooser finds the server there](#2026-09-10-ethertalk-bridge)
 - **2026-09-10 (third pass)** — [The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply](#2026-09-10-ether-wire-latency)
 - **2026-09-10 (later still)** — [Dayna's own driver installs itself on the emulated SCSI/Link, and MacTCP reaches the gateway over it](#2026-09-10-dayna-real-driver)
@@ -911,6 +912,30 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-11-appleshare-over-ethertalk"></a>
+## 2026-09-11 — A real AppleShare session over EtherTalk: the guest mounts the volume on the SCSI card and its new folder lands on the host
+
+[The bridge](#2026-09-10-ethertalk-bridge) got the guest onto the network and
+its Chooser listed the server. A listed name is not a session, so the driver
+etalon now runs the rest of the chain — the same one `q605_afp_live_etalon`
+drives over LocalTalk, here over 802.3/SNAP:
+
+- the server row picked in the Chooser, then Return on the OK it enables
+  (two clicks a settle apart are NOT a double-click, and the first attempt
+  landed nine pixels below the row with OK still greyed);
+- Guest login: **AFP sessions 1**, volume **mounted**, 20 AFP commands;
+- Cmd-O on the freshly mounted volume, Cmd-N inside it, and the host
+  filesystem grows an `untitled folder` — 35 AFP commands by then.
+
+The artefact check needed one correction to mean anything: `.AppleDouble` is
+the SERVER's own fork store and appears the moment the volume is mounted, so
+the first green was the server's directory, not the guest's. Names beginning
+with a dot are skipped now.
+
+So AppleTalk's whole upper stack — NBP, ATP, ASP, AFP — runs on the SCSI
+Ethernet card with the SCC idle, and the file the guest makes is a real
+directory on the host. `q605_dayna_driver_etalon` asserts it.
 
 <a id="2026-09-10-ethertalk-bridge"></a>
 ## 2026-09-10 (fourth pass) — AppleTalk leaves the SCC: the guest joins an EtherTalk network on the SCSI card, and its Chooser finds the server there

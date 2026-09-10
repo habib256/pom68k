@@ -52,6 +52,8 @@
 #include "JitTestConfig.h"
 
 #include <cctype>
+#include <filesystem>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -352,6 +354,18 @@ int main() {
     testasset::report({ romPath, refDisk, drvPath, toolsPath });
     std::fflush(stdout);
 
+    // Fresh every run: what the guest writes here is this gate's artefact.
+    const std::filesystem::path shareRoot =
+        std::filesystem::path("run") / "dayna-ethertalk";
+    const std::filesystem::path shareDir = shareRoot / "Echange";
+    std::error_code ec;
+    std::filesystem::remove_all(shareRoot, ec);
+    std::filesystem::create_directories(shareDir, ec);
+    if (!std::filesystem::is_directory(shareDir)) {
+        std::fprintf(stderr, "FAIL: cannot create %s\n", shareDir.c_str());
+        return 1;
+    }
+
     const std::string diskPath = "hdv/work/dayna-755.dsk";
     if (!cloneVolume(refDisk, diskPath)) {
         std::fprintf(stderr, "FAIL: could not clone %s to %s\n",
@@ -390,13 +404,13 @@ int main() {
     struct Result {
         bool finder = false, installed = false, artefact = false;
         bool ethertalk = false, aarp = false, joinedNetwork = false;
-        bool namedService = false;
+        bool namedService = false, appleShare = false;
         bool mactcpBound = false, icmpOut = false, received = false;
         bool halted = false;
         bool ok() const {
             return finder && installed && artefact && ethertalk && aarp &&
-                   joinedNetwork && namedService && mactcpBound && icmpOut &&
-                   received && !halted;
+                   joinedNetwork && namedService && appleShare &&
+                   mactcpBound && icmpOut && received && !halted;
         }
     } r;
 
@@ -541,6 +555,9 @@ int main() {
     // in the startup range; the restart below is where it hears a router.
     hub.setService("ethertalk", true);
     hub.setService("afp", true);
+    // The folder's own NAME becomes the AFP volume name (AtalkHub::
+    // folderName), so the guest mounts a volume called "Echange".
+    hub.setDefaultShareDir(shareDir.string());
     const int byteCycles = int(mem.cpuHz() / 28800);
     hub.attach(mem, int64_t(byteCycles) * 28800, nullptr);
     gAfterFrame = [&] { hub.tick(cpu.machineClock()); };
@@ -596,7 +613,53 @@ int main() {
     std::printf("ethertalk: NBP lookups served %ld (Chooser), DDP in %ld\n",
                 afterChooser.nbpLookups - beforeChooser.nbpLookups,
                 afterChooser.ddpIn - beforeChooser.ddpIn);
-    command(adbFor('w'), 600);               // close the Chooser
+    // ── a real AppleShare session over the card ──────────────────────────
+    // The same chain q605_afp_live_etalon drives over LocalTalk, here over
+    // 802.3/SNAP: pick the server, log in as Guest, mount, and let the
+    // guest create a directory the HOST can see.
+    click(440, 143, 120);                    // the "POM68K" row
+    keyHold(0x24, 8);                        // Return = OK, enabled by it
+    runFrames(900);
+    dump("q605_dayna_16_login.ppm");
+    click(146, 153, 120);                    // Guest radio
+    keyHold(0x24, 8);                        // Return = Connect
+    runFrames(900);
+    dump("q605_dayna_17_volumes.ppm");
+    const int afpSessions = hub.snapshot().afp.sessions;
+    keyHold(0x24, 8);                        // Return = OK on the volume
+    runFrames(900);
+    click(180, 97, 300);                     // the Chooser's close box
+    runFrames(600);
+    dump("q605_dayna_18_mounted.ppm");
+    const auto mounted = hub.snapshot().afp;
+    std::printf("appleshare: sessions=%d mounted=%d commands=%ld\n",
+                mounted.sessions, mounted.volMounted, mounted.cmdCount);
+
+    std::set<std::string> shareBefore;
+    for (auto& e : std::filesystem::directory_iterator(shareDir))
+        shareBefore.insert(e.path().filename().string());
+    command(0x1F, 900);                      // Cmd-O on the mounted volume
+    dump("q605_dayna_19_volume_window.ppm");
+    command(0x2D, 60);                       // Cmd-N: a new folder, over AFP
+    std::string created;
+    for (int poll = 0; poll < 120 && created.empty(); poll++) {
+        runFrames(30);
+        for (auto& e : std::filesystem::directory_iterator(shareDir)) {
+            const std::string name = e.path().filename().string();
+            // ".AppleDouble" is the SERVER's own fork store, created the
+            // moment the volume is mounted — the artefact this gate wants
+            // is the folder the GUEST made.
+            if (name.empty() || name[0] == '.') continue;
+            if (!shareBefore.count(name) && std::filesystem::is_directory(e.path()))
+                created = name;
+        }
+    }
+    dump("q605_dayna_20_created.ppm");
+    r.appleShare = mounted.volMounted && afpSessions > 0 && !created.empty();
+    std::printf("appleshare: the guest created %s on the host over EtherTalk "
+                "(AFP commands %ld)\n",
+                created.empty() ? "NOTHING" : ("\"" + created + "\"").c_str(),
+                hub.snapshot().afp.cmdCount);
 
     before = mem.scsi().commands;
     if (!restartAndBoot(16000)) {

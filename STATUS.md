@@ -154,3 +154,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 10 22:25 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Wire latency on the Ethernet segment: MacTCP Ping reports 5/5 success over the real DaynaPORT driver, 154.10 s, executed |
 | Sep 10 23:58 +04 | aarch64 | default | 93 | 93 | 0 | 0 | EtherTalk bridge: 93 asset-none gates executed, zero skips |
 | Sep 11 00:02 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Real DaynaPORT driver end to end: install, EtherTalk on the card, the guest joins net 2 and its Chooser lists POM68K, MacTCP 5/5 pings |
+| Sep 11 00:51 +04 | aarch64 | default | 1 | 1 | 0 | 0 | AppleShare over EtherTalk: the guest mounts the volume on the card and its new folder lands on the host |
