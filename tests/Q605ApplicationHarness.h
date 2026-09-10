@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -46,9 +47,18 @@ constexpr int kFrameCycles = 416667;          // 25 MHz / ~60 Hz
 
 inline std::string find(const char* rel) { return testasset::find(rel); }
 
+// Optional per-frame hook. A gate that owns a device clock outside the
+// machine — the AppleTalk hub, whose NAT and timers advance in machine
+// cycles — installs it here, so every gesture in this header (clicks,
+// typing, settle loops) keeps that clock moving with guest time instead
+// of freezing it for the length of a dialog.
+inline std::function<void()> gAfterFrame;
+
 inline void runFrames(long n) {
-    for (long f = 0; f < n && !gCpu->isHalted(); f++)
+    for (long f = 0; f < n && !gCpu->isHalted(); f++) {
         gCpu->runCycles(kFrameCycles);
+        if (gAfterFrame) gAfterFrame();
+    }
 }
 
 inline uint32_t peek32(uint32_t addr) {

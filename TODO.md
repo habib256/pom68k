@@ -112,10 +112,9 @@ la plus grande dimension produit encore peu exploitée.
   transfert.
 - [ ] **Tester l'interop Mini vMac LToUDP.** Utiliser le même groupe multicast
   et vérifier les deux directions.
-- [ ] **Tester un vrai driver DaynaPort.** Installer le driver, configurer
-  MacTCP et valider le jeu de commandes contre un invité réel.
-- [ ] **Ajouter EtherTalk.** Implémenter AARP et DDP sur 802.3/SNAP pour sortir
-  AppleTalk du SCC.
+- [ ] **Activer EtherTalk par défaut.** Le bridge existe et un vrai pilote le
+  valide ; reste à mesurer une session AFP complète dessus, à joindre les
+  adresses multicast de zone et à décider du défaut produit.
 - [ ] **Ajouter le contrôle DaynaPort au GUI.** Attacher/détacher et choisir
   l'ID SCSI sans variable d'environnement.
 - [ ] **Sérialiser DaynaPort au prochain bump de format.** Restaurer anneau RX,

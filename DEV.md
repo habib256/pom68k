@@ -1080,11 +1080,59 @@ Measured: `q605_boot_etalon` reaches the same Mac OS 8.1 desktop with the
 card at ID 4 — identical screen signature, 4558 SCSI commands against 4551
 without it, which is one bus probe of one extra target.
 
-Not done, and each is a real gap: no guest-side SCSI/Link **driver** has
-been run against this (the command set is gated, the driver's opinion of it
-is not); no GUI menu entry; not in save states (a restore comes back with
-an empty Rx ring); EtherTalk is not bridged — the card carries IPv4 and ARP,
-so AppleTalk still goes over the SCC. Gate: `daynaport_test`.
+**The driver's own opinion** (2026-09-10): Dayna's shipped software has
+now been run against the card. `q605_dayna_driver_etalon` boots System
+7.5.5 on the Quadra 605, mounts the ORIGINAL DaynaPORT installer floppy
+image, and drives Dayna's installer from the Finder: it probes the bus,
+recognises the card and offers "DaynaPORT SCSI/Link version 1.2.5", which
+it merges into the System file. The installed ADEV then appears in the
+Network control panel as "EtherTalk Alternative", and selecting it makes
+the real driver open the card and put AARP probes and DDP on the wire
+(EtherTalk 2.5.7 by the panel's own reading). MacTCP 2.0.6 on the same
+card, addressed by hand at 192.168.151.2 with the gateway at .1, ARPs for
+the gateway, gets EtherLink's proxy answer and sends ICMP echo requests;
+an echo request injected the other way is answered by the guest's own
+stack. INQUIRY, ENABLE, WRITE(6) format `$80` and READ(6) with control
+`$C0` are therefore all confirmed against a driver, not just a document.
+
+Two findings from that run. MacTCP's AppleTalk link ("EtherTalk (A)")
+carries IP inside DDP — MacIP, which this card does not bridge — so the
+Ethernet link is the one to choose. And a real defect: MacTCP Ping
+reported "timeout" for replies whose checksums verify, because
+`MacIpGateway` answers synchronously and the frame reached the Rx ring
+INSIDE the guest's own WRITE(6) — the driver READ it back in the same SCSI
+transaction, before the send had returned. No wire can do that.
+`EtherLink` now holds frames bound for the guest for the segment's own
+latency, in machine cycles, released from `AtalkHub::tick`; the hub sets
+1 ms of the machine's clock at attach. With it the application reports
+five successes out of five, 0% loss, round trip 0/6/13 ticks. A latency of
+zero keeps the immediate path for a unit test that owns no clock.
+
+**`EtherTalkLink`** (`EtherTalkLink.h/.cpp`, 2026-09-10) is AppleTalk on
+the same card: 802.3 + LLC/SNAP framing (`AA AA 03`, OUI `08 00 07` for
+DDP `$809B`, OUI `00 00 00` for AARP `$80F3`), an AARP responder that
+defends this node's address and no other, and the EXTENDED RTMP Data a
+node on an extended network needs — `AtalkStack`'s own RTMP is the
+non-extended LocalTalk form and is dropped on this segment. Everything
+above DDP is the existing stack: NBP, ATP, ASP, AFP and ZIP need nothing
+of their own. The hub demuxes the card by frame shape (802.3 with an
+AppleTalk SNAP header here, DIX IPv4/ARP to `EtherLink`) and the
+`ethertalk` service turns it on; it is OFF by default because it changes
+which wire AppleTalk lives on.
+
+Measured against Dayna's own driver (`q605_dayna_driver_etalon`): a
+Macintosh with no router probes `$FFF9.1` ten times and stays in the
+startup range. When the bridge starts beaconing, the guest says so
+itself — "Access to your AppleTalk internet has now become available" —
+re-probes (AARP 10 → 30), moves onto net 2, reads back "Current Zone:
+POM68K" in the Network control panel, and its Chooser lists this node's
+AppleShare server. The SCC is idle throughout.
+
+Still not done: no GUI menu entry; not in save states (a restore comes
+back with an empty Rx ring); zone multicast addresses are not joined (the
+ZIP reply says UseBroadcast, which is what makes that legal). Gates:
+`daynaport_test` and `ethertalk_test` (asset-free) and
+`q605_dayna_driver_etalon` (the real driver, asset-gated).
 - **THE GATE (why it took a day): the ROM's SCSI-presence probe.**
   `E_SoftReset` does `MOVE.L ($420000),D0; CMP.L ($440000),D0; BEQ no-scsi`.
   On real hardware the 128 KB ROM does **not** mirror across the whole

@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 265 gates
+## Union across hosts — 267 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 142 |
+| `etalon` | 143 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
 | `jit` | 44 |
 | `jit-fast` | 8 |
 | `m030` | 62 |
-| `m040` | 60 |
+| `m040` | 61 |
 | `smoke` | 9 |
-| `unit` | 122 |
+| `unit` | 123 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -37,27 +37,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-260 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+262 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 92 |
+| assets | none | 93 |
 | assets | optional | 15 |
-| assets | required | 153 |
+| assets | required | 154 |
 | host | a64 | 4 |
-| host | any | 250 |
+| host | any | 252 |
 | host | native | 6 |
-| scope | component | 94 |
+| scope | component | 95 |
 | scope | engine | 21 |
-| scope | profile | 142 |
+| scope | profile | 143 |
 | scope | repository | 3 |
-| tier | daily | 92 |
-| tier | full | 156 |
+| tier | daily | 93 |
+| tier | full | 157 |
 | tier | platform | 12 |
-| slots_src | assumed | 144 |
+| slots_src | assumed | 146 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 487 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 489 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
@@ -149,3 +149,8 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 10 08:01 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Final AppleShare outage regression: 92 asset-none gates executed, zero skips, 9.29 s |
 | Sep 10 17:29 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Ethernet independent of AppleTalk: full rebuild, 92 asset-none executed, zero skips |
 | Sep 10 17:32 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Ethernet separation: real Mac OS 8.1 AppleShare clean reconnect and exact two-fork copies unchanged; 141.04 s, executed |
+| Sep 10 21:09 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Real DaynaPORT SCSI/Link driver: Dayna's installer, EtherTalk over the card, MacTCP 192.168.151.2 and an answered injected echo, 156.92 s, executed |
+| Sep 10 21:17 +04 | aarch64 | default | 92 | 92 | 0 | 0 | Asset-free tier after the real-driver gate landed: 92 executed, zero skips |
+| Sep 10 22:25 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Wire latency on the Ethernet segment: MacTCP Ping reports 5/5 success over the real DaynaPORT driver, 154.10 s, executed |
+| Sep 10 23:58 +04 | aarch64 | default | 93 | 93 | 0 | 0 | EtherTalk bridge: 93 asset-none gates executed, zero skips |
+| Sep 11 00:02 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Real DaynaPORT driver end to end: install, EtherTalk on the card, the guest joins net 2 and its Chooser lists POM68K, MacTCP 5/5 pings |

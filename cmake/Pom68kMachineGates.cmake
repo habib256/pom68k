@@ -34,6 +34,16 @@ target_link_libraries(q605_ot_bind_etalon PRIVATE pom68k_core)
 add_test(NAME q605_ot_bind_etalon COMMAND q605_ot_bind_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+# TODO §2 gate: Dayna's own shipped driver, installed from the original
+# floppy image (hdv/ref/DAYNA.vhd) onto System 7.5.5 and driven over the
+# emulated card; MacTCP Ping comes from hdv/ref/TOOLS.vhd.
+add_executable(q605_dayna_driver_etalon tests/q605_dayna_driver_etalon.cpp)
+target_link_libraries(q605_dayna_driver_etalon PRIVATE pom68k_core)
+add_test(NAME q605_dayna_driver_etalon COMMAND q605_dayna_driver_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# ~210 s: install, three restarts, EtherTalk, MacTCP and the Chooser.
+set_tests_properties(q605_dayna_driver_etalon PROPERTIES TIMEOUT 2400)
+
 # Q8 gate: same Finder boot under POM68K_Q605_NOFPU (real 68LC040, no
 # 68882) — UniversalInfo FPU bit cleared so System installs PACK 4.
 add_executable(q605_nofpu_boot_etalon tests/q605_nofpu_boot_etalon.cpp)

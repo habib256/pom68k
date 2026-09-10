@@ -438,6 +438,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-10 (fourth pass)** — [AppleTalk leaves the SCC: the guest joins an EtherTalk network on the SCSI card, and its Chooser finds the server there](#2026-09-10-ethertalk-bridge)
+- **2026-09-10 (third pass)** — [The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply](#2026-09-10-ether-wire-latency)
+- **2026-09-10 (later still)** — [Dayna's own driver installs itself on the emulated SCSI/Link, and MacTCP reaches the gateway over it](#2026-09-10-dayna-real-driver)
 - **2026-09-10 (later)** — [DaynaPort Ethernet keeps its NAT when AppleTalk is disabled](#2026-09-10-ethernet-independent)
 - **2026-09-10** — [AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage](#2026-09-10-afp-outage-recovery)
 - **2026-09-09 (eleventh)** — [AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting](#2026-09-09-afp-persistence-transfer)
@@ -908,6 +911,171 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-10-ethertalk-bridge"></a>
+## 2026-09-10 (fourth pass) — AppleTalk leaves the SCC: the guest joins an EtherTalk network on the SCSI card, and its Chooser finds the server there
+
+The DaynaPort carried IPv4 and ARP; AppleTalk still went over the SCC at LLAP
+speed. The real-driver gate earlier today captured exactly what the guest puts
+on the card once EtherTalk is selected, and that capture is the whole
+specification this entry implements:
+
+    AARP probe   00 01 80 9B 06 04 00 03  src 00:80:19:10:98:E3  $FFF9.1 → $FFF9.1
+    RTMP Request 08 00 07 80 9B  long DDP, dst 0.$FF sock 6, type 5
+    NBP LkUp     "<Unnamed>" / "  Macintosh"
+
+Ten AARP probes for `$FFF9.1`, three RTMP Requests, then silence: a Macintosh
+that finds no router stays in the startup range ($FF00-$FFFE) and is alone on
+its own network.
+
+**`EtherTalkLink`** answers all three. 802.3 + LLC/SNAP framing (`AA AA 03`,
+OUI `08 00 07` for DDP `$809B`, OUI `00 00 00` for AARP `$80F3`); an AARP
+responder that defends this node's address and NO other (answering for an
+address it does not hold would keep the guest out of the network it is trying
+to join); and the RTMP Data an EXTENDED network needs — range start, distance
+`$80`, range end, version `$82`. `AtalkStack`'s own RTMP Data is the
+non-extended LocalTalk form, which a node on an extended network discards, so
+it is dropped on this segment rather than confusing the guest. Everything
+above DDP is the stack that already exists: NBP, ATP, ASP, AFP and ZIP needed
+nothing at all, and ZIP GetNetInfo's reply already said UseBroadcast, which is
+what makes a zero-length zone multicast legal.
+
+**What the guest did with it**, measured with Dayna's own driver on System
+7.5.5, LocalTalk off, SCC idle:
+
+- the beacon reached a Macintosh that had already given up, and it said so
+  itself, in a dialog: *"Access to your AppleTalk internet has now become
+  available. To use the internet, please open the Network icon in the Control
+  Panels Folder, then click the selected AppleTalk connection icon."* The gate
+  follows that instruction rather than restarting — which is also why it found
+  the modal dialog blocking its next menu gesture, and why every restart in
+  that gate now VERIFIES the machine left the Finder (one earlier "restart"
+  served 339 SCSI commands instead of ~4700 and every later leg measured a
+  system that never rebooted);
+- AARP frames 10 → 30: it re-probed for an address in the advertised range;
+- DDP source network `$FFF9` → 2: it moved onto the router's network;
+- the Network control panel read back **Current Zone: POM68K**, where it had
+  said "< No zones available >";
+- its Chooser, on AppleShare, listed **POM68K** — 50 NBP lookups served over
+  the card.
+
+One MAC holds one AppleTalk address, so the mapping table drops a node's
+previous address when it moves: without that, every guest that leaves the
+startup range leaves a stale `$FFxx` entry behind forever.
+
+Gates: `ethertalk_test` (asset-free — AARP defence and its refusal, the
+extended range tuple, an NBP lookup answered over 802.3/SNAP, and the beacon)
+and the real-driver etalon, which now asserts the join and the named service
+alongside its install, EtherTalk and MacTCP legs. The bridge is opt-in
+(`AtalkHub`'s `ethertalk` service, off by default): it changes which wire
+AppleTalk lives on, and every LocalTalk gate is calibrated on the SCC.
+
+<a id="2026-09-10-ether-wire-latency"></a>
+## 2026-09-10 (third pass) — The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply
+
+The entry below reported one thing it could not explain: Apple's MacTCP Ping
+2.0.2, over the real DaynaPORT driver, showed "timeout" for every reply
+although the gateway's answers were valid — IP and ICMP checksums verified
+byte by byte — and a trace in `DaynaPort::command` showed the driver READ(6)ing
+each one back within a frame of its arrival. That was recorded as an
+application matter. It was not.
+
+**The cause is timing, and it is ours.** `MacIpGateway` answers synchronously:
+the echo reply is built and queued into the card's Rx ring during
+`DaynaPort::command`'s WRITE(6) handling, so the frame is available to the
+guest BEFORE the SCSI transaction that carried the request has finished. The
+trace shows the shape exactly — `WRITE 98 → RX 98 → READ -> 108`, one after
+the other with nothing in between. No wire can deliver a reply to a sender
+that has not finished sending, and MacTCP (or the application on top of it)
+does not match one that does.
+
+**Measured, not guessed.** With the uplink still carrying ARP but the echo
+requests held back and answered by the gate itself, delayed by ONE frame of
+guest time (16.7 ms), the same binary reports `success 5/5, 0% loss, round
+trip min/avg/max 0/15/60 ticks`. Delayed by half a second: 5/5 again. Answered
+inside the send call: 0/5, sixteen requests on the wire instead of five,
+because the application kept retrying.
+
+`EtherLink` therefore carries the segment's own latency: frames bound for the
+guest wait in a queue keyed on MACHINE cycles and are released from
+`AtalkHub::tick`, which already runs on the machine clock. `AtalkHub::attach`
+sets 1 ms of the machine's own clock — a defensible gateway-plus-wire figure,
+and two orders of magnitude above the 78 µs a 98-byte frame spends on 10 Mbit
+Ethernet. A latency of 0 keeps the immediate path for a unit test that owns no
+clock. The in-flight queue is capped at 64 frames (`wireDrops` counts the
+rest): past that the guest has stopped reading and the Rx ring's own ceiling
+is the next stop.
+
+With 1 ms, MacTCP Ping reports **five successes out of five, 0% loss, round
+trip 0/6/13 ticks**, and the application stops at the five packets it was
+asked for — which is what `q605_dayna_driver_etalon` now asserts (five echo
+requests on the wire, not sixteen). `daynaport_test` gained the other half of
+the proof: after the guest sends, the reply is NOT in the card until the hub
+has ticked past the latency, and is there afterwards.
+
+<a id="2026-09-10-dayna-real-driver"></a>
+## 2026-09-10 (later still) — Dayna's own driver installs itself on the emulated SCSI/Link, and MacTCP reaches the gateway over it
+
+Everything the DaynaPort target knew came from Dayna's SLINKCMD.TXT as PiSCSI
+implements it — a specification read, never a driver's opinion (2026-09-06
+opened the card, 2026-09-10 gave it a NAT that survives AppleTalk being off).
+`daynaport_test` pins that command set from the host side. TODO §2 asked for
+the other half.
+
+The driver software was fetched from vintageapple.org (DaynaPORT 7.5.3 and
+7.7.2 installers) and Macintosh Garden (the ORIGINAL installer floppy image,
+Disk Copy 4.2, volume "DaynaPORT Installer" created 1992-11-22). The floppy
+image matters: a volume rebaked from the extracted files is refused with
+"This is not the correct DaynaPORT Installer disk" — Apple's Installer
+identifies its sources by path AND creation date (`infs` resources carry both;
+`infs` 1005 wants `$ADC09F8F` for Network Resources SCSI/Link). Stamping the
+dates the script asks for was not enough either; the authentic image was.
+
+What the real software then did, on a System 7.5.5 volume on the Quadra 605
+with the card at SCSI ID 3:
+
+- Dayna's installer probed the bus, recognised the card, and offered
+  **"DaynaPORT SCSI/Link version 1.2.5"** — Easy Install, no Customize needed.
+  It merged the ADEV into the System file (`infs` 1, `special-macs:System`),
+  which is why nothing appears in Extensions afterwards.
+- The Network control panel then listed "EtherTalk Alternative" beside
+  "LocalTalk Built-In". Selecting it made the driver ENABLE the card and put
+  **10 AARP probes and 6 DDP frames** on the wire, addressed to the AppleTalk
+  multicast group `09:00:07:FF:FF:FF` from the card's own MAC; the panel read
+  back "EtherTalk Version: 2.5.7".
+- MacTCP 2.0.6 offers two links for this card, and the choice is not
+  cosmetic: its AppleTalk link ("EtherTalk (A)") carries IP inside DDP —
+  MacIP, which this card does not bridge, and the guest then NBP-looks-up
+  the address it was given. The Ethernet link is the card's own protocol.
+  Configured by hand at 192.168.151.2, gateway .1, MacTCP ARPed for the
+  gateway, took EtherLink's proxy answer and sent ICMP echo requests.
+- The receive path was proven from outside: an echo REQUEST injected toward
+  the guest is answered by the guest's own stack.
+
+Recorded honestly, because it is the one thing that did not work: MacTCP
+Ping's display shows "timeout" for its own replies. The gateway's answers are
+valid (IP and ICMP checksums verified byte by byte) and a temporary trace in
+`DaynaPort::command` showed the driver READ(6)ing every one of them back
+within a frame of its arrival, so it is not the card and not the driver — it
+is the gateway's TIMING, chased down the same day in
+[the NAT answered inside the guest's own send call](#2026-09-10-ether-wire-latency).
+
+Two gate-driving lessons, both measured: this volume's Startup Items launch
+Stickies, which takes the keyboard while the desktop is already drawn — a
+Finder type-select typed into that gap selects nothing, so desktop volumes are
+opened by clicking their icons. And "a window appeared" is not proof a gesture
+landed: Stickies' note put a new record at the head of WindowList and made
+three failed opens look successful, so the gate compares the front window's
+own title (`WindowRecord` +134) instead.
+
+New gate: `q605_dayna_driver_etalon` (asset-required, ~2 min 35 s), asserting
+boot, install, the installed driver's strings in the guest-written volume,
+ENABLE plus AARP/DDP, the ARP for the gateway, ICMP out, and the injected
+echo answered. `Q605ApplicationHarness.h` gained one hook: `gAfterFrame`,
+called per frame so a gate that owns an external device clock (the AppleTalk
+hub) keeps it advancing through clicks and dialogs. Assets stay private:
+`hdv/ref/DAYNA.vhd` (the installer floppy) and `hdv/ref/TOOLS.vhd`
+(MacTCP Ping), both in `assets.lock`.
 
 <a id="2026-09-10-ethernet-independent"></a>
 ## 2026-09-10 (later) — DaynaPort Ethernet keeps its NAT when AppleTalk is disabled

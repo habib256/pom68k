@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 483 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 486 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 85 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 69 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 71 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 15 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 33 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 91 |
+| [Cross-cutting](#cross-cutting) | 92 |
 
 ---
 
@@ -268,7 +268,9 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-09 (fifth)** — [The storage matrix finds five missing SuperDrives and gives every compact a real seven-target SCSI/CD bus](CHANGELOG.md#2026-09-09-storage-profile-audit)
 - **2026-09-09 (fourth)** — [The real SWIM1 MFM write was valid; the verifier carried a torn field's byte phase across its splice](CHANGELOG.md#2026-09-09-swim1-mfm-writeback)
 - **2026-09-09 (later)** — [The SCSI target kept a failure's sense forever and answered every logical unit with LUN 0's disk](CHANGELOG.md#2026-09-09-scsi-sense-lun)
+- **2026-09-10 (fourth pass)** — [AppleTalk leaves the SCC: the guest joins an EtherTalk network on the SCSI card, and its Chooser finds the server there](CHANGELOG.md#2026-09-10-ethertalk-bridge)
 - **2026-09-10 (later)** — [DaynaPort Ethernet keeps its NAT when AppleTalk is disabled](CHANGELOG.md#2026-09-10-ethernet-independent)
+- **2026-09-10 (later still)** — [Dayna's own driver installs itself on the emulated SCSI/Link, and MacTCP reaches the gateway over it](CHANGELOG.md#2026-09-10-dayna-real-driver)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -545,4 +547,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-09** — [The M0110A keypad and the arrow keys are a `$79`-prefixed sequence, and the arrows are keypad codes](CHANGELOG.md#2026-09-09-m0110-keypad-prefix)
 - **2026-09-09 (eleventh)** — [AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting](CHANGELOG.md#2026-09-09-afp-persistence-transfer)
 - **2026-09-10** — [AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage](CHANGELOG.md#2026-09-10-afp-outage-recovery)
+- **2026-09-10 (third pass)** — [The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply](CHANGELOG.md#2026-09-10-ether-wire-latency)
 

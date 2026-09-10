@@ -908,10 +908,16 @@ answered as a proxy for the whole subnet, never for the guest's own
 address — a reply there reads as a duplicate address and MacTCP refuses to
 initialise.
 
-Caveats, all real: **no guest driver has been run against it** (the
-command set is gated by `daynaport_test`, the driver's opinion of it is
-not); **no EtherTalk** — the card carries IPv4 and ARP only, so everything
-in §§1-5 above still travels over the SCC. The Ethernet uplink works with
+Both caveats this paragraph used to carry are gone (2026-09-10).
+**Dayna's own driver has been run against it**: its installer recognises
+the card, installs SCSI/Link 1.2.5, and the ADEV drives it — see
+`q605_dayna_driver_etalon`. And **EtherTalk is bridged**: `EtherTalkLink`
+carries AARP and DDP over 802.3/SNAP and beacons an extended RTMP, so
+everything in §§1-5 above can travel on the card instead of the SCC. The
+guest joins the advertised network by itself, reads back the zone name in
+its Network control panel, and its Chooser lists this node's AppleShare
+server with LocalTalk switched off. It is opt-in (`AtalkHub`'s `ethertalk`
+service, off by default). The Ethernet uplink works with
 `POM68K_APPLETALK=0`: attachment, scheduling and NAT activation are independent
 of the LocalTalk services. Disabling MacIP preserves Ethernet leases and
 in-flight UDP/TCP flows; removing the Ethernet sink retires its own flows.
