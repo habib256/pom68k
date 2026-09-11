@@ -23,7 +23,7 @@ VaspMemory::VaspMemory(const pom68k::CoreConfig& coreConfig,
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     egret_.setAdbBus(&adb_);
     // V8-style pseudo-VIA video hooks (vasp.cpp:308-315): the config read
     // returns the monitor sense on bits 3-5, the write latches depth.
