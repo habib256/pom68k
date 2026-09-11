@@ -104,7 +104,7 @@ V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     // Pseudo-VIA machine hooks (v8.cpp:328-352): reg 1 = RAM config
     // (reads back config | 0x04), reg $10 read = monitor sense on bits
     // 3-5, port B bit 3 = HMMU enable (68020 LC only, see addrMask_).
