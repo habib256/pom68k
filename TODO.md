@@ -112,11 +112,6 @@ la plus grande dimension produit encore peu exploitée.
   transfert.
 - [ ] **Tester l'interop Mini vMac LToUDP.** Utiliser le même groupe multicast
   et vérifier les deux directions.
-- [ ] **Rejouer la carte DaynaPort sur l'hôte x86-64.** Les assets sont sur
-  `/Volumes/TEST/pom68K/hdv` (`DAYNA.vhd`, `TOOLS.vhd`, `System 7.5.5 HD.dsk`) ;
-  y exécuter `ethertalk_test` et `q605_dayna_driver_etalon`, puis régénérer la
-  section x86_64 de `STATUS.md` depuis un vrai configure — elle a été mise à
-  jour à la main le 2026-09-11 (+2 gates), ce que seul cet hôte peut vérifier.
 - [ ] **Activer EtherTalk par défaut.** Le bridge porte une session AFP réelle
   et un transfert mesuré à 18,6 Kio/s de temps invité contre 0,2 sur le SCC ;
   reste à joindre les adresses multicast de zone et à décider du défaut

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 488 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 489 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 85 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 72 |
@@ -111,6 +111,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](CHANGELOG.md#2026-09-07-tier-b-closed)
 - **2026-09-07 (third)** — [SimCity 2000 becomes a gate: launched by opening its heaviest city, simulated, saved — identically under the interpreter and the A64 generator, once the harness typed on the guest's own keyboard](CHANGELOG.md#2026-09-07-simcity-etalon)
 - **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way](CHANGELOG.md#2026-09-08-application-gates)
+- **2026-09-11 (third)** — [The DaynaPort card replays on x86-64 figure for figure, and the LocalTalk copy after reconnect is 171.67 s under every x86-64 engine, not the 165.17 s AArch64 printed](CHANGELOG.md#2026-09-11-x86-dayna-leg)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
