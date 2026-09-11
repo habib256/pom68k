@@ -26,6 +26,7 @@
 
 #include "AssetFingerprint.h"
 #include "AtalkHub.h"
+#include "BenchHarness.h"
 #include "Cpu040.h"
 #include "FinderSignature.h"
 #include "JitTestConfig.h"
@@ -294,9 +295,29 @@ int main() {
         mem.keyEvent(code, false);
         frames(settle);
     };
+    // Every phase boundary snaps, so every boundary also prints a trace: the
+    // machine clock, the architectural fingerprint jit_bench compares across
+    // engines, and the cumulative network and wire counters (wire = deepest
+    // injection backlog / longest hold / frames refused at the queue cap).
+    // Two runs of this image that disagree first at boundary N diverged
+    // before N — how a guest-time difference between hosts is localised
+    // (CHANGELOG 2026-09-11 (fourth)). Guest RAM is deliberately not digested:
+    // the FPGetSrvrParms reply the guest keeps in it carries the host's wall
+    // clock, so it differs between two runs of the same binary.
     auto snap = [&](const char* name) {
         Screen s = decodeScreen(mem);
         dumpPpm(name, s);
+        const auto hs = hub.snapshot();
+        std::printf("trace: %s clock=%lld fp=%016llx afp=%ld "
+                    "frames=%ld/%ld ddp=%ld/%ld atp=%ld dup=%ld/%ld lagmax=%ldms "
+                    "wire=%zu/%ldms/%ld\n",
+                    name, (long long)cpu.machineClock(),
+                    (unsigned long long)bench::fingerprint(cpu), hs.afp.cmdCount,
+                    hs.net.framesIn, hs.net.framesOut, hs.net.ddpIn, hs.net.ddpOut,
+                    hs.net.atpReqIn, hs.net.atpDupReqs, hs.net.atpDupPending,
+                    hs.net.atpDupLagMaxMs, hs.wire.backlogMax, hs.wireHoldMaxMs,
+                    hs.wire.drops);
+        std::fflush(stdout);
         return s;
     };
 
