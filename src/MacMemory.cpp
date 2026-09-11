@@ -26,7 +26,7 @@ MacMemory::MacMemory(const pom68k::CoreConfig& coreConfig, Model model)
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     swim_.configureSuperDrive(hasSuperDrive());
     if (isAdb()) adbVia_.attach(via_, adb_, kCpuHz);
 }

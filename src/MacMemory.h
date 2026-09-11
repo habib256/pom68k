@@ -11,6 +11,7 @@
 
 #pragma once
 #include "CoreConfig.h"
+#include "DaynaPortBus.h"
 #include "Via6522.h"
 #include "Rtc.h"
 #include "Swim1.h"
@@ -166,6 +167,9 @@ public:
     bool sccIrq() const { return scc_.irqAsserted(); }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
+    // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
+    DaynaPort& daynaPort() { return dayna_; }
     bool attachScsi(const std::string& path, bool writeBack = false,
                     int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack))
@@ -264,6 +268,7 @@ private:
     Scc8530 scc_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     MacKeyboard kbd_;
     MacMouse mouse_;
     // M0110 transaction pacing: two SR interrupts ~3 ms apart (Snow model)
