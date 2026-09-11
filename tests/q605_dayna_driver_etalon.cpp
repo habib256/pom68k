@@ -313,7 +313,13 @@ bool restartAndBoot(int maxFrames) {
 
 // A writable clone, made here so the gate is repeatable: the guest
 // installs software onto it and the reference image must not move.
+// hdv/work/ is created when absent — a host that has never run a
+// write-back gate does not have it, and the clone would fail there with
+// nothing but a stream error to say why.
 bool cloneVolume(const std::string& from, const std::string& to) {
+    std::error_code ec;
+    const auto parent = std::filesystem::path(to).parent_path();
+    if (!parent.empty()) std::filesystem::create_directories(parent, ec);
     std::ifstream in(from, std::ios::binary);
     std::ofstream out(to, std::ios::binary | std::ios::trunc);
     if (!in || !out) return false;
