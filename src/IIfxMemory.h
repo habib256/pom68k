@@ -41,6 +41,7 @@
 #include "AdbLine.h"
 #include "ApplePic.h"
 #include "Asc.h"
+#include "DaynaPortBus.h"
 #include "DeclRom.h"
 #include "NuBus.h"
 #include "Ncr5380.h"
@@ -129,6 +130,9 @@ public:
     // The boot disk's image, as the sibling memories expose it (the beyond
     // gate samples the HFS catalog through it).
     ScsiDisk& scsiDisk(int id = 0) { return scsiDisks_[id]; }
+    // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
+    // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
+    DaynaPort& daynaPort() { return dayna_; }
     AdbLine& adbLine() { return adbLine_; }
     SonyDrive& internalDrive() { return drive_; }
     SonyDrive& externalDrive() { return externalDrive_; }
@@ -253,6 +257,7 @@ private:
     SonyDrive externalDrive_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     IIfxCpu* cpu_ = nullptr;
     jit::CodeGuard* jitGuard_ = nullptr;   // not serialized: machine wiring
 
