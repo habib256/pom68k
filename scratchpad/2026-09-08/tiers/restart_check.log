@@ -1,0 +1,21 @@
+Test project /Users/mercure/src/pom68k/build
+    Start  84: cuda_restart_test
+1/2 Test  #84: cuda_restart_test ................   Passed    1.17 sec
+    Start 179: lcii_restart_etalon
+2/2 Test #179: lcii_restart_etalon ..............   Passed   45.02 sec
+
+100% tests passed out of 2
+
+Label Time Summary:
+asset-optional     =   1.17 sec*proc (1 test)
+asset-required     =  45.02 sec*proc (1 test)
+etalon             =  45.02 sec*proc (1 test)
+host-any           =  46.19 sec*proc (2 tests)
+m030               =  45.02 sec*proc (1 test)
+scope-component    =   1.17 sec*proc (1 test)
+scope-profile      =  45.02 sec*proc (1 test)
+tier-full          =  46.19 sec*proc (2 tests)
+unit               =   1.17 sec*proc (1 test)
+
+Total Test time (real) =  46.19 sec
+exit 0

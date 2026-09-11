@@ -1,0 +1,4 @@
+[cmd-IWM] addr=B &7=3 ca2=1
+[cmd-IWM] addr=4 &7=4 ca2=0
+[cmd-IWM] addr=B &7=3 ca2=1
+[cmd-IWM] addr=8 &7=0 ca2=1

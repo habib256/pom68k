@@ -1,0 +1,12 @@
+[im3] reg15 v=57 bit6=1 prev=0 now=1
+[im3] reg15 v=17 bit6=0 prev=1 now=2
+[im3] reg15 v=57 bit6=1 prev=2 now=3
+[im3] reg15 v=57 bit6=1 prev=3 now=0 RESET
+[im3] reg15 v=57 bit6=1 prev=0 now=1
+[im3] reg15 v=17 bit6=0 prev=1 now=2
+[im3] reg15 v=57 bit6=1 prev=2 now=3
+[im3] reg15 v=57 bit6=1 prev=3 now=0 RESET
+[im3] reg15 v=57 bit6=1 prev=0 now=1
+[im3] reg15 v=17 bit6=0 prev=1 now=2
+[im3] reg15 v=57 bit6=1 prev=2 now=3
+[im3] reg15 v=57 bit6=1 prev=3 now=0 RESET

@@ -1,0 +1,11 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+[keys] key-down reaches KeyMap after 2 frames
+FAIL: leg 'engine' — finder=1 keys=1 launched=1 progressed=1 saved=1 quit=0 halted=0 menu=1
+[engine] boot: Finder up, SCSI 5406, processes 'Finder'x10, 'MyEyes Extension'x49, 'CM Window'x1
+[engine] keys: short taps accepted; "applic" types as 0C 23 23 25 22 08 
+[engine] launch: processes 'MyEyes Extension'x27, 'SimpleText'x32, 'Finder'x1, 84.5% of the screen changed, SCSI +508
+[engine] progress: window f74f8b4850aa7813 -> afe3ae576ccf3d31 -> 43b90f458873a06b (typed)
+[engine] artefact: 'pom proof of quadra' x0 -> x6 in the catalog, 29 blocks written
+[engine] end: engine=aarch64 processes 'SimpleText'x60 halted=0 menu=up fp=c9db7084c6685f7f screen=4a93f87d5967ca02 SCSI 6051
+FAILED — Quadra 605 SimpleText application etalon

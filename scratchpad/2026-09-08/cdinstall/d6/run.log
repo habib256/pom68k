@@ -1,0 +1,122 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "cd/MAC_OS_8-1_RETAIL_0.ISO" 420542464 B sha256 a9e19e2da7c4ad7552beb3eee2609dbe88c3392fad6e98e1490088b326e5e26c
+SCSI: flat HFS façade — DDM template from hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 512000 = 512096 blocks)
+target: /var/folders/lk/1g75s7c514v4f1v9msbpsb8h0000gn/T//q605_cdinstall_target.img, 512000 sectors, 4096-byte blocks, 63997 blocks
+boot: CD served 3912 blocks, target served 41 blocks (7 written), processes 'Finder'x60
+installer: processes 'Mac OS Install'x60
+install pane: processes 'Mac OS Install'x60
+step 1: processes 'Installer'x60, target 57 written, CD 5195 read, moving
+step 2: processes 'Mac OS Install'x19, 'Installer'x41, target 82 written, CD 5964 read, moving
+step 3: processes 'Mac OS Install'x16, 'Installer'x44, target 82 written, CD 7840 read, moving
+step 4: processes 'Installer'x48, 'Mac OS Install'x12, target 82 written, CD 9750 read, moving
+step 5: processes 'Installer'x40, 'Mac OS Install'x20, target 82 written, CD 12182 read, moving
+step 6: processes 'Installer'x47, 'Mac OS Install'x13, target 82 written, CD 13978 read, moving
+step 7: processes 'Installer'x44, 'Mac OS Install'x16, target 82 written, CD 15980 read, moving
+step 8: processes 'Mac OS Install'x18, 'Installer'x42, target 2108 written, CD 17443 read, moving
+step 9: processes 'Installer'x43, 'Mac OS Install'x17, target 47398 written, CD 18537 read, moving
+step 10: processes 'Installer'x48, 'Mac OS Install'x12, target 47398 written, CD 20106 read, moving
+step 11: processes 'Installer'x41, 'Mac OS Install'x19, target 47398 written, CD 21545 read, moving
+step 12: processes 'Mac OS Install'x15, 'Installer'x44, 'Finder'x1, target 47398 written, CD 23512 read, moving
+step 13: processes 'Mac OS Install'x23, 'Installer'x37, target 47398 written, CD 24243 read, moving
+step 14: processes 'Installer'x36, 'Mac OS Install'x24, target 47398 written, CD 24631 read, moving
+step 15: processes 'Installer'x38, 'Mac OS Install'x22, target 47398 written, CD 24978 read, moving
+step 16: processes 'Installer'x40, 'Mac OS Install'x20, target 47398 written, CD 25177 read, moving
+step 17: processes 'Installer'x51, 'Mac OS Install'x9, target 47398 written, CD 26233 read, moving
+step 18: processes 'Mac OS Install'x23, 'Installer'x37, target 74192 written, CD 26293 read, moving
+step 19: processes 'Mac OS Install'x23, 'Installer'x37, target 76836 written, CD 26297 read, moving
+step 20: processes 'Mac OS Install'x15, 'Installer'x45, target 81520 written, CD 26329 read, moving
+step 21: processes 'Installer'x49, 'Mac OS Install'x11, target 81521 written, CD 26815 read, moving
+step 22: processes 'Installer'x60, target 97424 written, CD 26911 read, moving
+step 23: processes 'Installer'x51, 'Mac OS Install'x9, target 109832 written, CD 27036 read, moving
+step 24: processes 'Installer'x57, 'Mac OS Install'x3, target 125621 written, CD 27280 read, moving
+step 25: processes 'Installer'x36, 'Mac OS Install'x24, target 132325 written, CD 31602 read, moving
+step 26: processes 'Installer'x47, 'Mac OS Install'x13, target 132325 written, CD 35597 read, moving
+step 27: processes 'Mac OS Install'x23, 'Installer'x37, target 132325 written, CD 38947 read, moving
+step 28: processes 'Installer'x37, 'Mac OS Install'x20, 'Finder'x3, target 159239 written, CD 39872 read, moving
+step 29: processes 'Installer'x48, 'Mac OS Install'x12, target 177866 written, CD 40139 read, moving
+step 30: processes 'Installer'x47, 'Mac OS Install'x13, target 177866 written, CD 40424 read, moving
+step 31: processes 'Installer'x56, 'Mac OS Install'x4, target 177866 written, CD 41006 read, moving
+step 32: processes 'Installer'x56, 'Mac OS Install'x4, target 177866 written, CD 41710 read, moving
+step 33: processes 'Installer'x60, target 189104 written, CD 42105 read, moving
+step 34: processes 'Installer'x56, 'Finder'x2, 'Mac OS Install'x2, target 218082 written, CD 43923 read, moving
+step 35: processes 'Installer'x37, 'Mac OS Install'x23, target 218108 written, CD 44478 read, moving
+step 36: processes 'Installer'x52, 'Mac OS Install'x8, target 220712 written, CD 44740 read, moving
+step 37: processes 'Installer'x54, 'Mac OS Install'x5, 'Finder'x1, target 220749 written, CD 45447 read, moving
+step 38: processes 'Installer'x56, 'Mac OS Install'x4, target 223526 written, CD 46189 read, moving
+step 39: processes 'Installer'x52, 'Finder'x4, 'Mac OS Install'x4, target 227811 written, CD 46607 read, moving
+step 40: processes 'Mac OS Install'x8, 'Installer'x52, target 230597 written, CD 47004 read, moving
+step 41: processes 'Installer'x56, 'Mac OS Install'x4, target 230621 written, CD 47642 read, moving
+step 42: processes 'Installer'x60, target 235571 written, CD 48193 read, moving
+step 43: processes 'Installer'x56, 'Mac OS Install'x4, target 235582 written, CD 48770 read, moving
+step 44: processes 'Installer'x60, target 240297 written, CD 49231 read, moving
+step 45: processes 'Installer'x56, 'Mac OS Install'x4, target 240297 written, CD 49995 read, moving
+step 46: processes 'Installer'x51, 'Mac OS Install'x9, target 240820 written, CD 50729 read, moving
+step 47: processes 'Installer'x56, 'Mac OS Install'x4, target 246834 written, CD 51479 read, moving
+step 48: processes 'Installer'x54, 'Mac OS Install'x5, 'Finder'x1, target 246834 written, CD 52238 read, moving
+step 49: processes 'Mac OS Install'x5, 'Installer'x55, target 254854 written, CD 52836 read, moving
+step 50: processes 'Installer'x60, target 270501 written, CD 57072 read, moving
+step 51: processes 'Mac OS Install'x24, 'Installer'x36, target 284031 written, CD 62165 read, moving
+step 52: processes 'Installer'x56, 'Mac OS Install'x4, target 287328 written, CD 63032 read, moving
+step 53: processes 'Installer'x60, target 287605 written, CD 63522 read, moving
+step 54: processes 'Installer'x48, 'Mac OS Install'x10, 'Finder'x2, target 287676 written, CD 69907 read, moving
+step 55: processes 'Installer'x36, 'Mac OS Install'x24, target 287676 written, CD 70766 read, moving
+step 56: processes 'Installer'x33, 'Mac OS Install'x27, target 312810 written, CD 71476 read, moving
+step 57: processes 'Installer'x39, 'Mac OS Install'x19, 'Finder'x2, target 318245 written, CD 72068 read, moving
+step 58: processes 'Installer'x59, 'Mac OS Install'x1, target 318747 written, CD 72705 read, moving
+step 59: processes 'Installer'x48, 'Mac OS Install'x12, target 322699 written, CD 73297 read, moving
+step 60: processes 'Installer'x56, 'Mac OS Install'x4, target 325373 written, CD 73880 read, moving
+step 61: processes 'Mac OS Install'x11, 'Installer'x49, target 327157 written, CD 74370 read, moving
+step 62: processes 'Mac OS Install'x10, 'Installer'x50, target 327157 written, CD 74834 read, moving
+step 63: processes 'Installer'x43, 'Mac OS Install'x17, target 333201 written, CD 75398 read, moving
+step 64: processes 'Installer'x47, 'Mac OS Install'x13, target 333245 written, CD 75867 read, moving
+step 65: processes 'Installer'x51, 'Mac OS Install'x9, target 338251 written, CD 76374 read, moving
+step 66: processes 'Installer'x39, 'Mac OS Install'x19, 'Finder'x2, target 343026 written, CD 77241 read, moving
+step 67: processes 'Mac OS Install'x60, target 343336 written, CD 77305 read, moving
+step 68: processes 'Mac OS Install'x60, target 343336 written, CD 77305 read, moving
+step 69: processes 'Mac OS Install'x60, target 343336 written, CD 77305 read, moving
+step 70: processes 'Mac OS Install'x60, target 343336 written, CD 77305 read, still → Return
+step 71: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 72: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 73: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 74: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 75: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 76: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 77: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 78: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 79: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 80: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 81: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 82: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 83: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 84: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 85: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 86: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 87: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 88: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 89: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 90: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 91: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 92: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 93: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 94: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 95: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 96: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 97: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 98: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 99: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 100: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 101: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 102: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 103: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 104: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 105: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 106: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 107: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 108: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 109: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 110: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 111: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 112: processes 'Finder'x60, target 343336 written, CD 77309 read, moving
+step 113: processes 'Finder'x60, target 343336 written, CD 77309 read, still → Return
+step 114: processes 'Finder'x60, target 343336 written, CD 77309 read, moving

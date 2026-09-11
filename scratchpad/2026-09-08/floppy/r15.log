@@ -1,0 +1,6 @@
+[r15] ism=1 mode=c2 phases=f0 senseAddr=0 sense=1 fifoPos=1 err=0 -> hs=8e iwm=ff
+[r15] ism=1 mode=c2 phases=f0 senseAddr=0 sense=1 fifoPos=1 err=0 -> hs=8e iwm=ff
+[r15] ism=1 mode=c2 phases=f0 senseAddr=0 sense=1 fifoPos=0 err=0 -> hs=0c iwm=ff
+[r15] ism=1 mode=c2 phases=f0 senseAddr=0 sense=1 fifoPos=0 err=1 -> hs=2c iwm=ff
+[r15] ism=1 mode=c2 phases=f0 senseAddr=0 sense=1 fifoPos=0 err=1 -> hs=2c iwm=ff
+[r15] ism=1 mode=c2 phases=f0 senseAddr=0 sense=1 fifoPos=0 err=1 -> hs=2c iwm=ff

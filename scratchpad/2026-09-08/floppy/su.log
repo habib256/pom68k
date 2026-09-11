@@ -1,0 +1,4 @@
+[su] setup=00 bit2=0 -> MFM=1 sel=0(motoron=0) super=-1
+[su] setup=00 bit2=0 -> MFM=1 sel=0(motoron=0) super=-1
+[su] setup=20 bit2=0 -> MFM=1 sel=0(motoron=0) super=-1
+[su] setup=20 bit2=0 -> MFM=1 sel=0(motoron=0) super=-1
