@@ -28,7 +28,7 @@ Q605Memory::Q605Memory(const pom68k::CoreConfig& coreConfig,
     drive0_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     drive1_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     dafbCell_.configureTrace(coreConfig.peripherals.dafbClockTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     // The ROM's bank prober sizes RAM by ALIASING (write a pattern,
     // find where it reappears): the size must be a power of two and
     // the whole $0-$3FFFFFFF window must mirror modulo the size, like
@@ -66,29 +66,6 @@ Q605Memory::Q605Memory(const pom68k::CoreConfig& coreConfig,
     // xferDelayCpu_). POM68K_SCSI_LAT=0 forces the historical instant
     // behaviour, =N a flat N-cycle deferral (diagnostics).
     scsi_.setLatency(coreConfig.bus.scsiLatency.value_or(-1));
-    // DaynaPort SCSI/Link — Ethernet as a SCSI target, opt-in and OFF by
-    // default: a new device answering selection changes what the ROM's bus
-    // probe finds, and every boot etalon is calibrated against a bus with
-    // only disks on it. POM68K_DAYNAPORT=<id> puts the card at that ID
-    // (=1 means "pick the default", ID 3 — where MAME parks the CD-ROM, so
-    // choose another if a disc is mounted). `=0` and empty are off.
-    // The knob is boolean-shaped at its edges, so `=1` reads as "on, you
-    // choose" and NOT as "at ID 1": ID 1 is unreachable through this knob,
-    // which is the price of `=1` meaning what everyone types it to mean.
-    // Until 2026-08-12 the guard was `id < 1`, so atoi("1") passed straight
-    // through and the card landed at ID 1 — the one behaviour no document
-    // ever described. (2026-08-12)
-    // The card is on the bus regardless of AppleTalk; what it is WIRED to is
-    // the in-process NAT, which lives in AtalkHub (see AtalkHub::attach).
-    // With POM68K_APPLETALK=0 the guest still sees the card and it carries
-    // nothing — a cable-unplugged state, not a missing device.
-    if (const auto id = coreConfig.bus.daynaPortId) {
-        dayna_.attach();
-        scsi_.attach(&dayna_, *id);
-        std::fprintf(stderr, "DaynaPort SCSI/Link at SCSI ID %d "
-                     "(guest needs the SCSI/Link driver + a manual MacTCP "
-                     "address in the gateway's subnet)\n", *id);
-    }
     if (coreConfig.bus.q605MachineId)
         machineId_ = *coreConfig.bus.q605MachineId;
     // Cuda firmware LLE — the DEFAULT whenever the real dump is present

@@ -9,6 +9,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu68k.h"
+#include "DaynaBootProbe.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
 #include "MacFrame.h"
@@ -50,7 +51,7 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    MacMemory mem(pom68k::defaultCoreConfig(), model);
+    MacMemory mem(daynaboot::config(), model);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
@@ -80,6 +81,7 @@ int main() {
         std::fprintf(stderr, "FAIL: not the Finder desktop — SCSI boot failed\n");
         return 1;
     }
+    if (!daynaboot::check(mem, true)) return 1;
     std::printf("scsi_boot_etalon: %s booted from SCSI to the Finder, gate passed\n",
                 name);
     return 0;

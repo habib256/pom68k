@@ -23,7 +23,7 @@ IIfxMemory::IIfxMemory(const pom68k::CoreConfig& coreConfig,
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     // ASC IRQ → OSS input 8 (`maciifx.cpp:458`).
     asc_.onIrq = [this](bool s) { ossSetInput(8, s); };
     // The two IOPs' host interrupts → OSS inputs 7 (SCC) and 6 (SWIM)

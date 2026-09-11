@@ -2,6 +2,7 @@
 // Soft-skips without ROM + bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "FinderSignature.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
@@ -39,7 +40,7 @@ int main() {
         return 1;
     }
 
-    MacIIMemory mem(pom68k::defaultCoreConfig());
+    MacIIMemory mem(daynaboot::config());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.installTobyVideo();
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
@@ -89,6 +90,7 @@ int main() {
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
            && menuRun > findersig::menuBarRunFloor(W)
            && app == "Finder";
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }

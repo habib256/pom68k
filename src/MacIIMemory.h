@@ -6,6 +6,7 @@
 
 #pragma once
 #include "CoreConfig.h"
+#include "DaynaPortBus.h"
 #include "Via6522.h"
 #include "Rtc.h"
 #include "NuBus.h"
@@ -128,6 +129,9 @@ public:
     AscV8& asc() { return asc_; }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
+    // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
+    DaynaPort& daynaPort() { return dayna_; }
     // Mount a CD image at a SCSI ID. Call AFTER attachScsi: the disk is
     // mirrored across every ID below (a boot-scan workaround), so the CD
     // must overwrite its own slot afterwards to be seen as a CD.
@@ -296,6 +300,7 @@ private:
     AscV8 asc_{0x00};   // Mac II discrete ASC (version $00), not V8
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     Swim1 swim_;
     SonyDrive drive_;
     SonyDrive externalDrive_;

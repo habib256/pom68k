@@ -42,7 +42,7 @@
 #include "AdbBus.h"
 #include "Scc8530.h"
 #include "Ncr53c96.h"
-#include "DaynaPort.h"
+#include "DaynaPortBus.h"
 #include "ScsiDisk.h"
 #include "Asc.h"
 #include "Swim2.h"

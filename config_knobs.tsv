@@ -229,6 +229,7 @@ POM68K_SPEED_LOG	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_COUNT	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_SKIP	diagnostic	owner:src/StartupOptions.h
 POM68K_TEACHTEXT_DISCOVER	test	owner:tests/compact_teachtext_etalon.cpp
+POM68K_TEST_DAYNAPORT	test	owner:tests/DaynaBootProbe.h
 POM68K_TRAIL	test	owner:tests/centris650_boot_etalon.cpp
 POM68K_TURBO	product	gate:gui_smoke_test
 POM68K_V8_HOLEVAL	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole

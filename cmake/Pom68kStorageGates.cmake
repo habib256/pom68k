@@ -19,3 +19,7 @@ foreach(model se sefdhd classic)
                          ENVIRONMENT "POM68K_COMPACT_MODEL=${model}"
                          TIMEOUT 1800)
 endforeach()
+
+# The DaynaPort SCSI/Link — a SCSI target like the disks above — on
+# every platform's bus.
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kDaynaGates.cmake)

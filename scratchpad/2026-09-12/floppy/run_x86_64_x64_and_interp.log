@@ -1,0 +1,12 @@
+E1 (x64 default, alone) exit=8
+floppy: guest wrote to the medium: yes (sectors committed)
+floppy: guest Put Away ejected the medium after 60 frames
+floppy: NO candidate folder name appeared in the host file
+FAILED — LC II beyond-boot floppy
+E3 (interpreter) exit=8
+floppy: guest wrote to the medium: yes (sectors committed)
+floppy: guest Put Away ejected the medium after 60 frames
+floppy: NO candidate folder name appeared in the host file
+FAILED — LC II beyond-boot floppy
+
+[exited with code 0]

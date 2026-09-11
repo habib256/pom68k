@@ -9,6 +9,7 @@
 // without the real slot resource the ROM never reaches StartBoot.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "IIfxMemory.h"
 #include "IIfxCpu.h"
 #include "JitTestConfig.h"
@@ -48,7 +49,7 @@ int main() {
         return 1;
     }
 
-    IIfxMemory mem(pom68k::defaultCoreConfig());
+    IIfxMemory mem(daynaboot::config());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.installTobyVideo(toby)) {
         std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
@@ -121,6 +122,7 @@ int main() {
 
     std::printf("IIfx: f=%ld menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
                 f, menuBar, desktop, mem.scsi().commands);
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }

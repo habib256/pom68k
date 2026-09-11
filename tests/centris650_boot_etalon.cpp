@@ -14,6 +14,7 @@
 #include "AssetFingerprint.h"
 #include "CentrisMemory.h"
 #include "CentrisCpu.h"
+#include "DaynaBootProbe.h"
 #include "JitTestConfig.h"
 
 #include <cstdint>
@@ -99,6 +100,7 @@ int main() {
     const bool isQuadra = q650 || q610 || q800;
     pom68k::CoreConfig core;
     core.cpu.centrisFull040 = isQuadra;
+    core.bus.daynaPortId = daynaboot::id();
     std::string rom = find("roms/centris650.rom");
     if (rom.empty())
         rom = find("roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM");
@@ -279,6 +281,7 @@ int main() {
     const char* name = q800 ? "Quadra 800" : q650 ? "Quadra 650"
                      : q610 ? "Quadra 610"
                      : c610 ? "Centris 610" : "Centris 650";
+    ok = daynaboot::check(mem, ok);
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,
                 ok ? "booted to the Finder" : "did not reach the Finder");
     return ok ? 0 : 1;

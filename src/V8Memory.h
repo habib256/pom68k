@@ -16,6 +16,7 @@
 
 #pragma once
 #include "CoreConfig.h"
+#include "DaynaPortBus.h"
 #include "jit/JitGuard.h" 
 #include "Via6522.h"
 #include "PseudoVia.h"
@@ -192,6 +193,9 @@ public:
     }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
+    // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
+    DaynaPort& daynaPort() { return dayna_; }
     ScsiDisk& scsiDiskAt(int id) { return scsiDisks_[id & 7]; }
     // Attach a disk image at a SCSI ID (0 = boot drive, 1-6 = secondary
     // volumes picked up by the System's boot-time bus scan).
@@ -502,6 +506,7 @@ private:
     Dfac dfac_;                      // original three-wire stage (not DFAC2)
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];          // by SCSI ID; [0] = boot drive
+    DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     Swim1 swim_;
     Swim2 swim2_;                    // Spice-integrated SWIM2 (Color Classic)
     SonyDrive drive_;

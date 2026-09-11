@@ -82,6 +82,7 @@ public:
     // ── Observability (the GUI network window reads these) ──────────────
     long framesToGuest = 0, framesFromGuest = 0, framesDropped = 0;
     long bytesToGuest = 0, bytesFromGuest = 0;
+    long commands = 0;               // every CDB it answered, the ROM's bus probe included
     std::size_t queued() const { return rx_.size(); }
 
 private:

@@ -96,6 +96,7 @@ std::uint8_t DaynaPort::command(const std::uint8_t* cdb, int cdbLen,
                                 std::vector<std::uint8_t>& dataOut,
                                 const std::vector<std::uint8_t>& dataIn) {
     dataOut.clear();
+    commands++;
     if (!cdb || cdbLen < 6) { setSense(kIllegalRequest, 0x20); return kCheck; }
 
     switch (cdb[0]) {

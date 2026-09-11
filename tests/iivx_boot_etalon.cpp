@@ -12,6 +12,7 @@
 // 4957EB49 ROM or a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "VaspMemory.h"
 #include "VaspVideo.h"
 #include "VaspCpu.h"
@@ -72,7 +73,7 @@ int main() {
     if (const char* b = getenv("POM68K_BOXID"))
         boxId = uint32_t(strtoul(b, nullptr, 16));
     const int64_t cpuHz = vi ? VaspMemory::kCpuHzVi : VaspMemory::kCpuHzVx;
-    VaspMemory mem(pom68k::defaultCoreConfig(), 0x800000, cpuHz, boxId);
+    VaspMemory mem(daynaboot::config(), 0x800000, cpuHz, boxId);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     int sense = 6;                           // 13" 640×480 RGB
     if (const char* s = getenv("POM68K_SENSE")) sense = atoi(s);
@@ -144,6 +145,7 @@ int main() {
     bool ok = W == 640 && H == 480 && mem.videoDepth() == 3
            && menuBar < 0.30 && desktop > 0.35 && desktop < 0.85
            && mem.scsi().commands > 50;
+    ok = daynaboot::check(mem, ok);
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED",
                 vi ? "IIvi" : "IIvx",
                 ok ? "booted to the Finder" : "did not reach the Finder");

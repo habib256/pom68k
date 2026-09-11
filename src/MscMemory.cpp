@@ -34,7 +34,7 @@ MscMemory::MscMemory(const pom68k::CoreConfig& coreConfig,
     lle_ = coreConfig.firmware.registry;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     asc_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };
     via_.setMscShiftQuirk(true);     // mscvia: SR mode 000 = ext shift-in
     // msc_config rides the pseudo-VIA video hook (msc.cpp:63-64) — the

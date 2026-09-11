@@ -45,7 +45,7 @@ SonoraMemory::SonoraMemory(const pom68k::CoreConfig& coreConfig,
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     egret_.setAdbBus(&adb_);
     // The Cuda AIOs (LC 520/550/CC II) carry a DFAC2 on the Cuda's I2C
     // (maclc3.cpp:403) — the slave ACK lives in CudaLle (setI2cDfac).

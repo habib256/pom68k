@@ -7,6 +7,7 @@
 // without the ROM, the PG&E dump or the 7.5.5 image.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "MscCpu.h"
 #include "JitTestConfig.h"
 #include "MscMemory.h"
@@ -39,7 +40,7 @@ int main() {
         return 1;
     }
 
-    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+    MscMemory mem(daynaboot::config(), 8u << 20,
                   MscMemory::kCpuHz230, MscMemory::kIdDuo230);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.pgeActive()) { std::fprintf(stderr, "FAIL: PG&E inactive\n"); return 1; }
@@ -96,6 +97,7 @@ int main() {
 
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.80
            && mem.scsi().commands > 500;
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }

@@ -1065,11 +1065,13 @@ reads as a duplicate address and MacTCP refuses to initialise.
 `MacIpGateway` leases now record which link they were learned on, and
 `sendIpToGuest` routes DDP or Ethernet accordingly.
 
-Wiring: `POM68K_DAYNAPORT=<id>` puts a card on the **Quadra 605**'s bus
-(`=1` → the default ID 3, where MAME parks the CD-ROM). `AtalkHub::attach`
-detects `mem.daynaPort()` with a `requires` clause, so the eleven machines
-without one compile unchanged and adding a card elsewhere is a member plus
-an accessor. Both the card and its NAT uplink work with
+Wiring: `POM68K_DAYNAPORT=<id>` puts a card on **every** machine's SCSI bus
+(`=1` → the default ID 3, where MAME parks the CD-ROM). Each memory map's
+constructor populates its bus with one call, `pom68k::configureScsiBus`
+(`src/DaynaPortBus.h`) — its disk slots configured, the card attached when
+asked — and carries a `DaynaPort` member plus a `daynaPort()` accessor, which
+`AtalkHub::attach` and `GuiHostServices` detect with a `requires` clause. No
+registry: the NCR 5380 and the 53C96 both take any `ScsiTarget`. Both the card and its NAT uplink work with
 `POM68K_APPLETALK=0`: the GUI attaches and schedules the Ethernet path
 independently. Disabling MacIP retires its DDP leases and sockets, not
 Ethernet flows. NAT timers still advance while LocalTalk protocols remain
@@ -1871,6 +1873,10 @@ one gets re-measured without paying for the mount again),
 `POM68K_AFP_OUTAGE` = `data|resource` (`q605_afp_live_etalon`: interrupt AFP
 during the selected fork's first copy, then exercise guest reconnection and
 a fresh two-fork copy; unset keeps the clean-disconnect scenario),
+`POM68K_TEST_DAYNAPORT` = `0-6` (`tests/DaynaBootProbe.h`: the
+`<family>_dayna_boot_etalon` variants put a DaynaPort SCSI/Link at that ID
+on a boot etalon's bus and also require the guest's SCSI traffic to have
+reached it; unset, the etalon is the gate it always was),
 `POM68K_SHUTDOWN_OUT`, `POM68K_SHUTDOWN_IMG`, `POM68K_SHUTDOWN_MODE`,
 `POM68K_SHUTDOWN_PHASE`, `POM68K_SHUTDOWN_SPECIAL_X`,
 `POM68K_SHUTDOWN_ITEM_Y`, `POM68K_SHUTDOWN_SLICED`, `POM68K_SHUTDOWN_HUB`,

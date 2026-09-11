@@ -1,0 +1,47 @@
+--- /tmp/claude-1000/-home-gistarcade-src-pom68k/71d5def7-b808-4614-9601-fb3dd42f30cf/scratchpad/floppy_evidence/reference_m4_2026-09-07.log	2026-09-12 02:24:46.324982709 +0400
++++ /tmp/claude-1000/-home-gistarcade-src-pom68k/71d5def7-b808-4614-9601-fb3dd42f30cf/scratchpad/floppy_evidence/run_b7700f1.log	2026-09-12 02:24:46.313974013 +0400
+@@ -2,14 +2,14 @@
+ ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+ Finder up (SCSI 9618)
+ floppy: disks35/Disk605.dsk, 819200 bytes, HFS=1, drAtrb=$0100 at insert
+-floppy: guest read 586503 nibbles off the medium
+-floppy: SWIM1 personality=IWM mode=$00, head at track 0, motor off, sense CSTIN=0 TKO=0
+-floppy: IWM re-reads of a latched byte: 567
+-floppy: IWM polls 718639, hits 70962 (9.9%), overwritten 517256; last 512 consumed: 330 sync $FF, 3 address/data marks
+-floppy: consumed tail: FF FF FF FF FF FF FF FF FF FF FF FF FF D5 AA 96 96 9F D6 D9 9D DE AA 9B
+-floppy: screen changed 0.123 after insert, Finder up
+-floppy: changed region x 3..503, y 25..335 (24163 px)
+-floppy: System responded: yes — centre white 0.91, icon strip Δ1375 px → volume icon appeared (MOUNTED)
++floppy: guest read 309598 nibbles off the medium
++floppy: SWIM1 personality=IWM mode=$00, head at track 10, motor off, sense CSTIN=0 TKO=1
++floppy: IWM re-reads of a latched byte: 503
++floppy: IWM polls 604930, hits 59934 (9.9%), overwritten 251327; last 512 consumed: 5 sync $FF, 0 address/data marks
++floppy: consumed tail: AC A6 F6 D3 BF FE E9 DD F6 DC D7 D6 FA CE BC EE F4 EE F2 BC DE AA D3 CE
++floppy: screen changed 0.012 after insert, Finder up
++floppy: changed region x 439..503, y 28..123 (2310 px)
++floppy: System responded: yes — centre white 0.65, icon strip Δ1388 px → volume icon appeared (MOUNTED)
+   [floppy/before] 'untitled folder' x0
+   [floppy/before] 'Nouveau dossier' x0
+   [floppy/before] 'Dossier sans titre' x0
+@@ -17,16 +17,16 @@
+   [floppy/before] 'Dossier vide' x0
+ floppy: write-protect sense = 0
+ floppy: KeyMap saw the gesture
+-floppy: Cmd-N changed the screen by 3066 px (region x 17..503, y 52..170)
++floppy: Cmd-N changed the screen by 3069 px (region x 17..503, y 45..316)
+ floppy: hard disk image untouched by the Cmd-N (tells us which window was frontmost)
+ floppy: guest wrote to the medium: yes (sectors committed)
+-floppy: guest Put Away ejected the medium after 180 frames
+-  [floppy/after] 'untitled folder' x2
++floppy: guest Put Away ejected the medium after 60 frames
++  [floppy/after] 'untitled folder' x0
+   [floppy/after] 'Nouveau dossier' x0
+   [floppy/after] 'Dossier sans titre' x0
+   [floppy/after] 'Empty Folder' x1
+   [floppy/after] 'Dossier vide' x0
+-floppy: 'untitled folder' 0 -> 2 in the host file
++floppy: NO candidate folder name appeared in the host file
+ floppy: host file modified, size kept, HFS sig intact, drAtrb $0100 → $0100
+ floppy: re-insert OK
+-PASSED — LC II beyond-boot floppy
++FAILED — LC II beyond-boot floppy

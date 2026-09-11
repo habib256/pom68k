@@ -10,6 +10,7 @@
 // q605/centris signature). Soft-skips without the ROM or a bootable image.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "Q700Memory.h"
 #include "Q700Cpu.h"
 #include "JitTestConfig.h"
@@ -143,7 +144,7 @@ int main(int argc, char** argv) {
     }
 
     const int64_t cpuHz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
-    Q700Memory mem(pom68k::defaultCoreConfig(), 32u << 20, cpuHz, model);
+    Q700Memory mem(daynaboot::config(), 32u << 20, cpuHz, model);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     std::printf("Machine: %s (%lld MHz), ADB: %s\n", name, (long long)(cpuHz / 1000000),
                 mem.eclipse()
@@ -388,6 +389,7 @@ int main(int argc, char** argv) {
             ok = false;
         }
     }
+    ok = daynaboot::check(mem, ok);
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,
                 ok ? "booted to the Finder" : "did not reach the Finder");
     return ok ? 0 : 1;

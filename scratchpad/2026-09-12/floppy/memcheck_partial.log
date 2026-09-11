@@ -1,0 +1,18 @@
+==194001== Memcheck, a memory error detector
+==194001== Copyright (C) 2002-2022, and GNU GPL'd, by Julian Seward et al.
+==194001== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==194001== Command: /tmp/claude-1000/-home-gistarcade-src-pom68k/71d5def7-b808-4614-9601-fb3dd42f30cf/scratchpad/wt-b7700f1/build/lcii_beyond_etalon
+==194001== Parent PID: 193999
+==194001== 
+==194001== Warning: set address range perms: large range [0x59c93040, 0xb14a3040) (undefined)
+==194001== Warning: set address range perms: large range [0x59c93040, 0xb14a3040) (defined)
+==194001== 
+==194001== Process terminating with default action of signal 15 (SIGTERM)
+==194001==    at 0x134218: pom68k::MoiraCpu<Cpu030, V8Memory>::sync(int) (in /tmp/claude-1000/-home-gistarcade-src-pom68k/71d5def7-b808-4614-9601-fb3dd42f30cf/scratchpad/wt-b7700f1/build/lcii_beyond_etalon)
+==194001==    by 0x13F70D: pom68kJitSync (in /tmp/claude-1000/-home-gistarcade-src-pom68k/71d5def7-b808-4614-9601-fb3dd42f30cf/scratchpad/wt-b7700f1/build/lcii_beyond_etalon)
+==194001==    by 0x88D6C57: ???
+==194001== 
+==194001== HEAP SUMMARY:
+==194001==     in use at exit: 1,519,393,631 bytes in 104,948 blocks
+==194001==   total heap usage: 675,973 allocs, 571,025 frees, 1,598,383,207 bytes allocated
+==194001== 

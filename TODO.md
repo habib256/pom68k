@@ -57,6 +57,13 @@ Items cadrés mais qui ne peuvent avancer sans matériel de référence
 - [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Bloqué par l'actif :
   `hdv/System 4.1.dsk` est une image SCSI, pas une disquette 800 K ; `bootPlus`
   reçoit son chemin `insertDisk` le jour où l'image existe.
+- [ ] **Confirmer sur le M4 les sections AArch64 de `STATUS.md`.** Les quatorze
+  gates DaynaPort du 2026-09-12 sont tous `host-any` : la section x86_64 vient
+  d'un run réel, les deux sections aarch64 ont reçu le même +14 par report
+  manuel — vérifié étiquette par étiquette, attendu 276 gates / 503 créneaux et
+  287 à l'union PRODUCT_LLE. Bloqué : aucun hôte ARM ici. Un run sur le M4
+  remplace ces chiffres reportés par des chiffres mesurés et confirme que les
+  quatorze s'y exécutent au lieu de se sauter.
 
 ---
 
@@ -85,6 +92,19 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 - [ ] **Créer un store de piste flux de première classe.** Faire survivre les
   flux écrits hors cadence à un commit et revalider l'arithmétique de zones
   GCR ; exiger un symptôme ou un corpus avant d'élargir le modèle.
+- [ ] **Élucider l'échec x86-64 de `lcii_floppy_etalon`.** Rouge déterministe
+  ici — x64 comme interpréteur, seul comme sous `-j64` — mais vert sur le M4 au
+  même commit `b7700f1`, à entrées identiques (ROM `35C28F5F`, `hdv/boot.vhd`,
+  `disks35/Disk605.dsk`). La divergence est **dès l'insertion** : 309 598
+  quartets lus contre 586 503, tête laissée piste 10 (TKO=1) au lieu de 0,
+  aucune marque d'adresse GCR `D5 AA 96` dans le dernier bloc consommé. Le
+  volume monte des deux côtés, mais seule l'icône se repeint (0,012 de l'écran
+  contre 0,123, fractions de pixels et non délais) au lieu d'une fenêtre de
+  volume, si bien que le Cmd-N tombe ailleurs. La calibration au temps mural
+  est exclue : `runFrames`, `diffRatio` et le décompte d'éjection dérivent tous
+  du temps invité. Repro `POM68K_BEYOND=floppy build/lcii_beyond_etalon` (65 s),
+  évidence `scratchpad/2026-09-12/floppy/`. Suite : rejouer sur le M4, puis
+  instrumenter IWM/SWIM1 des deux côtés depuis la première lecture qui diffère.
 - [ ] **Décider les échéanciers Mac II et Duo avec un gate sensible à la
   gigue.** Garder les options expérimentales tant qu'aucun observable ne
   justifie leur coût ; comparer état, débit et jitter avant un défaut produit.
@@ -131,8 +151,6 @@ la plus grande dimension produit encore peu exploitée.
   l'ID SCSI sans variable d'environnement.
 - [ ] **Sérialiser DaynaPort au prochain bump de format.** Restaurer anneau RX,
   configuration et liaison hôte dans `SaveStateMachines.*`.
-- [ ] **Porter la carte DaynaPort aux autres plateformes SCSI.** Ajouter
-  membre, accessor, configuration et gate par famille.
 
 ## 3. Médias optiques
 
