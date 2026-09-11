@@ -621,6 +621,24 @@ int main() {
             if (!click(464, 168)) return 1;     // Finder's follow-up copy error
             frames(600);
             snap("afp_outage_acknowledged.ppm");
+            // How many alerts the Finder raises depends on where the copy was
+            // when the link dropped: two when this was calibrated (the wire
+            // still stalled on FCS residue), a third once it stopped — "You
+            // cannot duplicate in the shared disk", its OK in the same place
+            // (CHANGELOG 2026-09-11 (fourth)). Ask the guest what is in front:
+            // WindowList ($9D6) → windowKind (WindowRecord +108), 2 = dialog.
+            auto frontIsDialog = [&]() {
+                const uint32_t w = peek32(mem, 0x09D6);
+                return w && (mem.peek8(w + 108) << 8 | mem.peek8(w + 109)) == 2;
+            };
+            for (int more = 0; more < 3 && frontIsDialog(); ++more) {
+                if (!click(464, 168)) return 1;
+                frames(600);
+            }
+            if (frontIsDialog()) {
+                std::fprintf(stderr, "FAIL: an alert is still in front after the outage\n");
+                return 1;
+            }
             const auto recovered = hub.snapshot().afp;
             if (recovered.sessions || recovered.openForks || recovered.volMounted ||
                 recovered.bytesWritten != stopped.bytesWritten ||
