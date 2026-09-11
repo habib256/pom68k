@@ -9,6 +9,7 @@
 // lc_boot_etalon. Soft-skips without the ROM or a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
@@ -67,7 +68,7 @@ int main() {
         return 1;
     }
 
-    SonoraMemory mem(pom68k::defaultCoreConfig(), 0x800000); // 8 MB
+    SonoraMemory mem(daynaboot::config(), 0x800000); // 8 MB
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(2);                  // 512×384 12" RGB (etalon frame)
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
@@ -110,6 +111,7 @@ int main() {
 
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
            && mem.scsi().commands > 50;
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — Macintosh LC III booted to the Finder"
                            : "FAILED");
     return ok ? 0 : 1;

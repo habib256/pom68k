@@ -18,6 +18,7 @@
 // - POM68K_DUMP=1     — write iisi_screen.ppm at the end.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "RbvMemory.h"
 #include "RbvVideo.h"
 #include "RbvCpu.h"
@@ -74,7 +75,7 @@ int main() {
         return 1;
     }
 
-    RbvMemory mem(pom68k::defaultCoreConfig(), 0x800000);
+    RbvMemory mem(daynaboot::config(), 0x800000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     int sense = 6;                           // 13" RGB 640×480
     if (const char* s = getenv("POM68K_SENSE")) sense = atoi(s);
@@ -224,6 +225,7 @@ int main() {
                 mem.scsi().commands);
 
     bool ok = menuBar < 0.30 && desktopAlive && mem.scsi().commands > 50;
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — Macintosh IIsi booted to the Finder"
                            : "FAILED");
     return ok ? 0 : 1;

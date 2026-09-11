@@ -21,6 +21,7 @@
 // Exit 0 = pass / soft-skip, 1 = fail.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
@@ -84,7 +85,7 @@ int main() {
         return 1;
     }
 
-    V8Memory mem(pom68k::defaultCoreConfig());
+    V8Memory mem(daynaboot::config());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
     // POM68K_NOFPU=1 boots the bare LC II the way the product knob would
@@ -136,6 +137,7 @@ int main() {
 
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
            && mem.scsi().commands > 50;
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — booted to the Finder" : "FAILED");
     return ok ? 0 : 1;
 }

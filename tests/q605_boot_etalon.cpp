@@ -8,6 +8,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
+#include "DaynaBootProbe.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
 
@@ -130,7 +131,7 @@ int main() {
         return 1;
     }
 
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(daynaboot::config(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
@@ -200,6 +201,7 @@ int main() {
                   desktop.deviation > 30 && desktop.deviation < 90 &&
                   menu.mean - desktop.mean > 35;
     bool ok = geometry && finder && mem.scsi().commands > 4000;
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — Quadra 605 Finder in 256 colors" : "FAILED");
     return ok ? 0 : 1;
 }

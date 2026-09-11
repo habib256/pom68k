@@ -8,6 +8,7 @@
 // pseudo-VIA2 and TurboSCSI. POM68K_Q630_ID=A55A225A selects the LC 580.
 
 #include "AssetFingerprint.h"
+#include "DaynaBootProbe.h"
 #include "Q630Cpu.h"
 #include "JitTestConfig.h"
 #include "Q630Memory.h"
@@ -143,6 +144,7 @@ int main() {
     pom68k::CoreConfig core;
     if (const char* id = getenv("POM68K_Q630_ID"))
         core.bus.q630MachineId = uint32_t(std::strtoul(id, nullptr, 16));
+    core.bus.daynaPortId = daynaboot::id();
     Q630Memory mem(core, 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
@@ -215,6 +217,7 @@ int main() {
                   desktop.deviation > 30 && desktop.deviation < 90 &&
                   menu.mean - desktop.mean > 35;
     bool ok = geometry && finder && mem.scsi().commands > 4000;
+    ok = daynaboot::check(mem, ok);
     std::printf("%s\n", ok ? "PASSED — Quadra 630 Finder in 256 colors" : "FAILED");
     return ok ? 0 : 1;
 }
