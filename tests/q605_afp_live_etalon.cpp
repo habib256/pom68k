@@ -555,6 +555,7 @@ int main() {
         for (const auto& entry : fs::directory_iterator(shareDir))
             existingCopies.insert(entry.path().filename().string());
         const auto transferStart = hub.snapshot().afp;
+        const long retransmitsBefore = hub.snapshot().net.atpDupReqs;
         // Guest time, not host wall clock: what this emulator makes
         // deterministic is the machine's own clock, so the rate below
         // repeats run to run and is comparable with the same fixture's
@@ -682,6 +683,18 @@ int main() {
                     transferSeconds > 0 ? double(writtenBytes) / 1024.0 / transferSeconds : 0.0);
         if (!transferred) {
             std::fprintf(stderr, "FAILED — guest two-fork transfer did not match the host oracle\n");
+            return 1;
+        }
+        // The lossless wire's own health criterion (docs/APPLETALK.md § 0.4):
+        // a client retransmit means a reply reached the guest too late. Before
+        // the FCS-residue fix every copy here cost ~80 of them, each a stall
+        // on the guest's ATP timer (llap_loop_test, CHANGELOG 2026-09-11
+        // (fourth)).
+        const long retransmits = st.net.atpDupReqs - retransmitsBefore;
+        std::printf("phase 9: %ld client retransmissions during the copy\n", retransmits);
+        if (retransmits) {
+            std::fprintf(stderr, "FAILED — the guest retransmitted %ld ATP requests "
+                         "during the copy\n", retransmits);
             return 1;
         }
         verifiedCopies.push_back(shareDir / copied);

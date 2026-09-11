@@ -273,6 +273,13 @@ private:
         struct RxByte { uint8_t d; uint8_t rr1;
             template <class Ar> void visit(Ar& ar) { ar(d, rr1); } };
         std::deque<RxByte> fifo;     // 3-deep Rx FIFO, per-byte RR1 status
+        // Nothing but a finished frame's FCS: the FIFO holds a contiguous
+        // tail of the frame, so one or two bytes ending on its EOF byte are
+        // crc_lo/crc_hi — what the LAP driver skips and rxStartFrame drops.
+        bool fcsResidueOnly() const {
+            return !fifo.empty() && fifo.size() <= 2 && (fifo.back().rr1 & 0x80);
+        }
+        bool fifoDrained() const { return fifo.empty() || fcsResidueOnly(); }
         bool rxIp = false;           // Rx-char-available interrupt pending
         bool specialIp = false;      // special receive condition (EOF/ovr)
         bool firstCharSeen = false;  // WR1 mode 01: int on FIRST char only
