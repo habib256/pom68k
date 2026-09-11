@@ -438,6 +438,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-11 (later)** — [What the card is worth: the same AFP copy is two orders of magnitude faster off the SCC](#2026-09-11-ethertalk-rate)
 - **2026-09-11** — [A real AppleShare session over EtherTalk: the guest mounts the volume on the SCSI card and its new folder lands on the host](#2026-09-11-appleshare-over-ethertalk)
 - **2026-09-10 (fourth pass)** — [AppleTalk leaves the SCC: the guest joins an EtherTalk network on the SCSI card, and its Chooser finds the server there](#2026-09-10-ethertalk-bridge)
 - **2026-09-10 (third pass)** — [The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply](#2026-09-10-ether-wire-latency)
@@ -912,6 +913,35 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-11-ethertalk-rate"></a>
+## 2026-09-11 (later) — What the card is worth: the same AFP copy is two orders of magnitude faster off the SCC
+
+[The session](#2026-09-11-appleshare-over-ethertalk) proved AppleTalk works on
+the card. It said nothing about why anyone would want it there. Both gates now
+time the same two-fork duplicate — `afplive`'s 32791-byte data fork and
+8317-byte resource fork, the same Cmd-D in the Finder, the same Quadra 605 —
+in MACHINE cycles:
+
+| link | bytes | guest time | rate |
+|---|---|---|---|
+| LocalTalk, over the SCC (Mac OS 8.1) | 41108 | 240.68 s, then 165.17 s after reconnect | 0.2 KiB/s |
+| EtherTalk, over the DaynaPort (System 7.5.5) | 41984 | 2.20 s, twice | 18.6 KiB/s |
+
+Machine cycles and not host wall clock, deliberately: guest time is what this
+emulator makes deterministic, so the rate repeats run to run and
+`docs/MEASURING.md`'s counterbalancing rules — which exist for wall-clock
+comparisons of the emulator's own speed — are not what governs here. Both
+EtherTalk runs printed 2.20 s.
+
+The gap is not LLAP's bit rate. 230.4 kbit/s is ~28 KiB/s, so a link running
+at its ceiling would finish the fixture in a second and a half; the SCC path
+spends its time on turnaround instead — a handshake per frame, and the
+lossless virtual wire's deferred delivery on top. The card has neither: a
+frame goes out in one WRITE(6) and comes back in one READ(6).
+
+What the user sees: a 41 KB file that takes four minutes to copy over
+LocalTalk takes two seconds over the SCSI Ethernet card.
 
 <a id="2026-09-11-appleshare-over-ethertalk"></a>
 ## 2026-09-11 — A real AppleShare session over EtherTalk: the guest mounts the volume on the SCSI card and its new folder lands on the host
