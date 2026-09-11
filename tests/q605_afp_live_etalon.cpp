@@ -26,6 +26,7 @@
 
 #include "AssetFingerprint.h"
 #include "AtalkHub.h"
+#include "BenchHarness.h"
 #include "Cpu040.h"
 #include "FinderSignature.h"
 #include "JitTestConfig.h"
@@ -294,9 +295,29 @@ int main() {
         mem.keyEvent(code, false);
         frames(settle);
     };
+    // Every phase boundary snaps, so every boundary also prints a trace: the
+    // machine clock, the architectural fingerprint jit_bench compares across
+    // engines, and the cumulative network and wire counters (wire = deepest
+    // injection backlog / longest hold / frames refused at the queue cap).
+    // Two runs of this image that disagree first at boundary N diverged
+    // before N — how a guest-time difference between hosts is localised
+    // (CHANGELOG 2026-09-11 (fourth)). Guest RAM is deliberately not digested:
+    // the FPGetSrvrParms reply the guest keeps in it carries the host's wall
+    // clock, so it differs between two runs of the same binary.
     auto snap = [&](const char* name) {
         Screen s = decodeScreen(mem);
         dumpPpm(name, s);
+        const auto hs = hub.snapshot();
+        std::printf("trace: %s clock=%lld fp=%016llx afp=%ld "
+                    "frames=%ld/%ld ddp=%ld/%ld atp=%ld dup=%ld/%ld lagmax=%ldms "
+                    "wire=%zu/%ldms/%ld\n",
+                    name, (long long)cpu.machineClock(),
+                    (unsigned long long)bench::fingerprint(cpu), hs.afp.cmdCount,
+                    hs.net.framesIn, hs.net.framesOut, hs.net.ddpIn, hs.net.ddpOut,
+                    hs.net.atpReqIn, hs.net.atpDupReqs, hs.net.atpDupPending,
+                    hs.net.atpDupLagMaxMs, hs.wire.backlogMax, hs.wireHoldMaxMs,
+                    hs.wire.drops);
+        std::fflush(stdout);
         return s;
     };
 
@@ -534,6 +555,7 @@ int main() {
         for (const auto& entry : fs::directory_iterator(shareDir))
             existingCopies.insert(entry.path().filename().string());
         const auto transferStart = hub.snapshot().afp;
+        const long retransmitsBefore = hub.snapshot().net.atpDupReqs;
         // Guest time, not host wall clock: what this emulator makes
         // deterministic is the machine's own clock, so the rate below
         // repeats run to run and is comparable with the same fixture's
@@ -600,6 +622,24 @@ int main() {
             if (!click(464, 168)) return 1;     // Finder's follow-up copy error
             frames(600);
             snap("afp_outage_acknowledged.ppm");
+            // How many alerts the Finder raises depends on where the copy was
+            // when the link dropped: two when this was calibrated (the wire
+            // still stalled on FCS residue), a third once it stopped — "You
+            // cannot duplicate in the shared disk", its OK in the same place
+            // (CHANGELOG 2026-09-11 (fourth)). Ask the guest what is in front:
+            // WindowList ($9D6) → windowKind (WindowRecord +108), 2 = dialog.
+            auto frontIsDialog = [&]() {
+                const uint32_t w = peek32(mem, 0x09D6);
+                return w && (mem.peek8(w + 108) << 8 | mem.peek8(w + 109)) == 2;
+            };
+            for (int more = 0; more < 3 && frontIsDialog(); ++more) {
+                if (!click(464, 168)) return 1;
+                frames(600);
+            }
+            if (frontIsDialog()) {
+                std::fprintf(stderr, "FAIL: an alert is still in front after the outage\n");
+                return 1;
+            }
             const auto recovered = hub.snapshot().afp;
             if (recovered.sessions || recovered.openForks || recovered.volMounted ||
                 recovered.bytesWritten != stopped.bytesWritten ||
@@ -643,6 +683,18 @@ int main() {
                     transferSeconds > 0 ? double(writtenBytes) / 1024.0 / transferSeconds : 0.0);
         if (!transferred) {
             std::fprintf(stderr, "FAILED — guest two-fork transfer did not match the host oracle\n");
+            return 1;
+        }
+        // The lossless wire's own health criterion (docs/APPLETALK.md § 0.4):
+        // a client retransmit means a reply reached the guest too late. Before
+        // the FCS-residue fix every copy here cost ~80 of them, each a stall
+        // on the guest's ATP timer (llap_loop_test, CHANGELOG 2026-09-11
+        // (fourth)).
+        const long retransmits = st.net.atpDupReqs - retransmitsBefore;
+        std::printf("phase 9: %ld client retransmissions during the copy\n", retransmits);
+        if (retransmits) {
+            std::fprintf(stderr, "FAILED — the guest retransmitted %ld ATP requests "
+                         "during the copy\n", retransmits);
             return 1;
         }
         verifiedCopies.push_back(shareDir / copied);

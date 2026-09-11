@@ -112,15 +112,21 @@ la plus grande dimension produit encore peu exploitée.
   transfert.
 - [ ] **Tester l'interop Mini vMac LToUDP.** Utiliser le même groupe multicast
   et vérifier les deux directions.
-- [ ] **Rejouer la carte DaynaPort sur l'hôte x86-64.** Les assets sont sur
-  `/Volumes/TEST/pom68K/hdv` (`DAYNA.vhd`, `TOOLS.vhd`, `System 7.5.5 HD.dsk`) ;
-  y exécuter `ethertalk_test` et `q605_dayna_driver_etalon`, puis régénérer la
-  section x86_64 de `STATUS.md` depuis un vrai configure — elle a été mise à
-  jour à la main le 2026-09-11 (+2 gates), ce que seul cet hôte peut vérifier.
+- [ ] **Localiser sur l'hôte AArch64 l'écart entre hôtes de
+  `q605_afp_live_etalon`.** Avant le correctif du reliquat FCS, la seconde
+  copie LocalTalk valait 171,67 s sur x86-64 (interpréteur, `threaded`, x64,
+  cadence ½) contre 165,17 s sur le M4 : une micro-divergence amplifiée par
+  ~80 retransmissions ATP. Le correctif retire l'amplificateur, pas la cause.
+  Le gate imprime une ligne `trace:` par frontière de phase (horloge,
+  empreinte, compteurs) ; référence x86-64 :
+  `scratchpad/2026-09-11/afp_live_trace_x86_64.txt`. Rejouer le gate sur le
+  M4 et comparer ligne à ligne — la première frontière qui diffère situe la
+  divergence —, puis sous `POM68K_CPU_ENGINE=interp` pour séparer le
+  générateur `a64` de l'hôte (`CHANGELOG` 2026-09-11 (third) et (fourth)).
 - [ ] **Activer EtherTalk par défaut.** Le bridge porte une session AFP réelle
-  et un transfert mesuré à 18,6 Kio/s de temps invité contre 0,2 sur le SCC ;
-  reste à joindre les adresses multicast de zone et à décider du défaut
-  produit.
+  et un transfert mesuré à 18,6 Kio/s de temps invité contre 8,6 sur le SCC
+  (0,2 avant le correctif du reliquat FCS) ; reste à joindre les adresses
+  multicast de zone et à décider du défaut produit.
 - [ ] **Ajouter le contrôle DaynaPort au GUI.** Attacher/détacher et choisir
   l'ID SCSI sans variable d'environnement.
 - [ ] **Sérialiser DaynaPort au prochain bump de format.** Restaurer anneau RX,

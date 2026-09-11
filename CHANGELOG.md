@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
+- **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
 - **"the Cmd-N folder ON the floppy stays printed-not-asserted" (lcii_floppy_etalon since 2026-08-05) — the Finder did create it every time; the gate's own host-forced eject discarded the catalog write still in the guest's cache** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
 - **"the SimCity census plays BLACK FOREST MONSTRE" (2026-08-27) — it had been playing TED CITY, the alphabetical neighbour of a prefix typed into the wrong window; and every LC II type-select on GISTPERSO had been sending QWERTY key codes to an AZERTY System, so "black forest m" arrived as "blqck forest ,"** → [2026-09-07 (third) — SimCity 2000 becomes a gate…](#2026-09-07-simcity-etalon)
 - **"the whole F-line stays out of a block" — the FPU general window `$F200-$F23F` changes FPU state only; it is now an exact-replay block member, −11.6 % on Speedometer's isolated direct-FPU phase, and a cross-binary "before" that seemed to contradict the knob turned out to be a fresh configure's LTO+native defaults** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
@@ -438,6 +440,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-11 (fourth)** — [LocalTalk copies paid an ATP retransmit per reply: the lossless wire waited on FCS bytes the driver never reads, and the 41 KB copy drops from 240.68 s to 4.65 s](#2026-09-11-localtalk-fcs-residue)
+- **2026-09-11 (third)** — [The DaynaPort card replays on x86-64 figure for figure, and the LocalTalk copy after reconnect is 171.67 s under every x86-64 engine, not the 165.17 s AArch64 printed](#2026-09-11-x86-dayna-leg)
 - **2026-09-11 (later)** — [What the card is worth: the same AFP copy is two orders of magnitude faster off the SCC](#2026-09-11-ethertalk-rate)
 - **2026-09-11** — [A real AppleShare session over EtherTalk: the guest mounts the volume on the SCSI card and its new folder lands on the host](#2026-09-11-appleshare-over-ethertalk)
 - **2026-09-10 (fourth pass)** — [AppleTalk leaves the SCC: the guest joins an EtherTalk network on the SCSI card, and its Chooser finds the server there](#2026-09-10-ethertalk-bridge)
@@ -913,6 +917,157 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-11-localtalk-fcs-residue"></a>
+## 2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply: the lossless wire waited on FCS bytes the driver never reads, and the 41 KB copy drops from 240.68 s to 4.65 s
+
+[The third entry](#2026-09-11-x86-dayna-leg) left one figure per host and a
+question for AArch64. Localising it needed an instrument first:
+`q605_afp_live_etalon` now prints a `trace:` line at every phase boundary —
+machine clock, the architectural fingerprint `jit_bench` compares across
+engines, and the cumulative AppleTalk and wire counters. Two runs that
+disagree first at boundary N diverged before N. On this host x64 and the
+interpreter print the same 22 lines.
+
+A digest of guest RAM was tried and dropped: it differed between two runs of
+the same binary. Between x64 and the interpreter at one boundary exactly two
+bytes differed, at `$175558`, inside the `FPGetSrvrParms` reply the guest
+keeps — `3236DBF1 01 00 07 "Echange"`, the server's `std::time()` in AFP's
+2000 epoch. The host's wall clock reaches guest memory; it does not reach
+guest time (the half-pace run of the third entry).
+
+The counters then said what the copy was made of:
+
+| first copy | before | after |
+|---|---|---|
+| client retransmits (`atpDupReqs`) | 83 | 0 |
+| worst reply → retransmit lag | 28.0 s | 0 |
+| worst hold of a frame in the lossless queue | 9.74 s | 20 ms |
+| guest time, 41108 bytes | 240.68 s | 4.65 s |
+| second copy, after reconnect | 171.67 s, 78 retransmits | 4.65 s, 0 |
+
+The same 83 at the real 230.4 kbit/s pace as at the ×8 virtual pace, so not
+congestion. A temporary hold-reason probe in `Scc8530::tick` classified every
+hold over 50 ms of one run: 173 of them, 616 s in total, and every one had
+seen the FIFO holding an EOF-tagged tail and the receiver disabled — the
+guest's own transmission — before the frame was released.
+
+The mechanism, now pinned in `llap_loop_test`: the LAP driver reads a frame by
+its DDP length and re-arms hunt before the trailing FCS reaches the FIFO (the
+"residue after the re-arm" ordering the 2026-07-22 captures already knew), so
+`crc_lo`/`crc_hi` sit there unread for good. Without lossless, `rxStartFrame`
+drops that residue when the next frame opens. With lossless, the next frame
+waited for an EMPTY FIFO first — and nothing empties it until the guest
+transmits again, which it does when its ATP timer fires. Every multi-packet
+reply stalled on the guest's retransmit timer.
+
+The fix is one predicate and no new state: `Chan::fcsResidueOnly()` — one or
+two bytes ending on the EOF byte, which in a contiguous tail of the frame can
+only be the FCS — counts as drained, in `tick()`'s readiness and in
+`cyclesToNextEvent` (otherwise an event-driven SCC schedules no wake for a
+frame that may now open). `rxStartFrame` drops the residue as it always did;
+unread DATA still holds the wire, which is what the lossless rule protects.
+The new `llap_loop_test` case was red before the fix on exactly this — the
+frame never opened, and drained by hand it came out behind the phantom FCS —
+and is green after.
+
+Results, x64 and the interpreter identical to the last trace line: both copies
+4.65 s, no retransmission anywhere in the run. The gate now fails on any
+client retransmission during a completed copy — the lossless wire's own health
+criterion, which no gate had asserted since 2026-07-25.
+
+Three things this corrects. [The rate entry](#2026-09-11-ethertalk-rate)
+explained LocalTalk's 0.2 KiB/s as turnaround, "a handshake per frame"; it was
+this stall, and the card's advantage is ×2.2 (18.6 against 8.6 KiB/s), not two
+orders of magnitude — `DEV.md` and TODO carry the new figure.
+`docs/APPLETALK.md` § 0.4 read a 1-2 s retransmit lag as a reply that played
+late; it now names the structural case. And the cross-host gap of the third
+entry was a small divergence multiplied by ~80 retransmit timers: removing the
+amplifier leaves the cause, which the trace lines are there to find on
+AArch64 — the x86-64 reference is
+`scratchpad/2026-09-11/afp_live_trace_x86_64.txt`.
+
+Gates, x86-64, full rebuild. `llap_loop_test` gains the lossless-residue case,
+red before the fix and green after. `asset-none`: 92 executed, 0 soft-skipped,
+0 failed (the run before it had `docs_test` red on an index not yet
+regenerated). The six network gates in one ctest: 6 executed, 0 soft-skipped,
+0 failed — `llap_two_system_etalon`, `q605_ot_bind_etalon`,
+`q605_afp_live_etalon`, both outage variants and `q605_dayna_driver_etalon`
+(EtherTalk still 2.20 s). Every completed copy is retransmit-free: 4.65 s twice
+in the live gate, 4.15 and 4.65 s after the two outages' reconnects.
+
+The outage variants first failed at phase 3, "AppleShare did not issue an NBP
+lookup": the Finder now raises a third alert after the link drops ("You cannot
+duplicate in the shared disk…") and it was still in front of the Chooser. The
+data cut lands on the same byte as before the fix (4624), but the faster copy
+is further along when it does. A worktree of 7c3a20f passes on this host with
+two alerts, so it was the gate that had been calibrated on the stall, not the
+emulator that broke; it now closes every alert the guest reports in front
+(`windowKind` 2) and fails by name if one stays. `Scc8530.cpp` stays inside its
+1071-line budget.
+
+<a id="2026-09-11-x86-dayna-leg"></a>
+## 2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure, and the LocalTalk copy after reconnect is 171.67 s under every x86-64 engine, not the 165.17 s AArch64 printed
+
+TODO § 2 handed this host the card the same morning. The assets came off the
+private backup volume into `hdv/ref/` (`DAYNA.vhd`, `TOOLS.vhd`, sha256
+matching `assets.lock`); this host had never run a write-back gate, so
+`hdv/work/` did not exist and the driver gate created it itself — the clone
+fix of the handoff commit, exercised exactly where it was needed.
+
+- **Registry.** `tools/status_md.py` from a fresh configure rewrote the x86_64
+  section byte for byte: 263 registered, 4 absent, the counts [the hand
+  refresh](#2026-09-10-ethertalk-bridge) had typed. `docs_test` green.
+- **Asset-free.** `ethertalk_test`, `daynaport_test`, `docs_test`: 3 executed,
+  0 soft-skipped.
+- **The real driver.** `q605_dayna_driver_etalon` green in 528.52 s of wall
+  time on the x64 generator, every leg asserted — Dayna's installer, EtherTalk
+  on the card, MacTCP, the Chooser, AppleShare mounted over the card and a
+  folder created on the host. Its two-fork copy printed **41984 bytes in
+  2.20 s of guest time**, the AArch64 figure exactly.
+- **The LocalTalk twin.** `q605_afp_live_etalon` green (with the driver gate:
+  2 executed, 0 soft-skipped). Its first copy printed **240.68 s**, the
+  AArch64 figure exactly. Its second copy — after the guest puts the volume
+  away and logs in afresh — printed **171.67 s**, where AArch64 printed
+  165.17 s on the same code (`git diff b27fca2 HEAD` touches only the Dayna
+  test and TODO).
+
+Six and a half seconds is exactly thirteen of the gate's 30-frame completion
+polls: the copy finished thirteen polls later here. [The rate
+entry](#2026-09-11-ethertalk-rate) said the rate "repeats run to run"; per host
+it does, across hosts this one figure does not. Before blaming either host,
+five runs pinned what x86-64 believes:
+
+| run | engine | wall | second copy | AFP commands (phase 6 / 8), DDP in |
+|---|---|---|---|---|
+| ctest | x64 (`auto`) | 317.56 s | 171.67 s | 142 / 163, 607 |
+| repeat | x64 | 327 s | 171.67 s | 142 / 163, 607 |
+| threaded | `threaded` | 686 s | 171.67 s | 142 / 163, 607 |
+| half pace | x64, on a core shared with a busy loop | 658 s | 171.67 s | 142 / 163, 607 |
+| oracle | interpreter (`POM68K_CPU_ENGINE=interp`) | 990 s | 171.67 s | 142 / 163, 607 |
+
+On this host the figure is the interpreter's, and neither generator nor the
+host's pace moves it. The pace row matters because the AFP server does hand
+the guest host wall-clock values — `FPGetSrvrParms` sends `std::time()`, every
+file and directory date is the host's `st_mtime` — and halving the pace
+changes every one of them without moving guest time by a cycle. Enumeration
+order, the other host-dependent suspect, is closed in the code: `FPEnumerate`
+sorts case-insensitively, a total order over these names, so ext4 and APFS
+list them identically.
+
+What remains is AArch64's own: its `a64` generator, or something the host
+contributes (compiler, floating point, the filesystem's answers). TODO § 2
+carries the run that splits the two — the same gate under the AArch64
+interpreter. 171.67 s there means the generator drifts from the oracle over a
+whole session, which no lockstep has caught; 165.17 s means the host does, and
+the engines are not in question.
+
+Two host notes. GCC 13's LTO prints `-Wstringop-overflow` for
+`EtherLink::sendToGuest` — the false-positive class its own comment names,
+emitted by `lto1` where the source pragma no longer reaches; the `-Werror` CI
+job builds without LTO, so nothing breaks. And the driver gate's CMake comment
+said "~210 s", an AArch64 figure; it now names both hosts, the 2400 s bound
+keeping 4.5× over this one.
 
 <a id="2026-09-11-ethertalk-rate"></a>
 ## 2026-09-11 (later) — What the card is worth: the same AFP copy is two orders of magnitude faster off the SCC

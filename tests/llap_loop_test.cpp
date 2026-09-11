@@ -600,6 +600,52 @@ int main() {
               "reply delivered intact once Rx re-armed (no drop, no retransmit)");
     }
 
+    // ── Lossless + FCS residue that arrives AFTER the re-arm ──
+    // The two cases above meet here. The lossless wire opens a queued frame
+    // only once the FIFO has drained, and the residue case leaves the
+    // previous frame's unread FCS in it for good: the driver re-armed hunt
+    // before crc_hi reached the FIFO and will never read it. The next frame
+    // must still open — rxStartFrame drops that residue, as it does without
+    // lossless — or it waits until the guest next transmits, which is an ATP
+    // retransmit per multi-packet reply (q605_afp_live_etalon, 2026-09-11).
+    {
+        Scc8530 s;
+        s.reset();
+        lapArm(s, 1);
+        s.setLosslessRx(true);
+        const uint8_t f1[6] = {1, 2, 0x01, 0xAA, 0xBB, 0xCC};   // 6 + 2 FCS
+        s.injectRxFrame(kB, f1, sizeof f1);
+        std::vector<uint8_t> g1;
+        uint8_t rr1 = 0;
+        for (int t = 0; t < 40 && g1.size() < 6; t++) {
+            s.tick(kByteCyc);
+            s.writeCtl(kB, 0x10);
+            while (g1.size() < 6) {
+                s.writeCtl(kB, 0);
+                if (!(s.readCtl(kB) & 0x01)) break;
+                s.writeCtl(kB, 1); rr1 = s.readCtl(kB);
+                g1.push_back(s.readData(kB));
+            }
+        }
+        CHECK(g1.size() == 6, "lossless: frame read by length, FCS still on the wire");
+        wr(s, 3, 0xDD);                      // re-arm BEFORE crc_hi hits the FIFO
+        s.tick(kByteCyc); s.tick(kByteCyc);  // the FCS paces in and stays unread
+        const uint8_t f2[6] = {1, 2, 0x01, 0x11, 0x22, 0x33};
+        s.injectRxFrame(kB, f2, sizeof f2);
+        bool opened = false;
+        for (int t = 0; t < 40 && !opened; t++) {
+            s.tick(kByteCyc);
+            s.writeCtl(kB, 0x10);                // the ISR's Reset Ext/Status:
+                                                 // RR0 stays latched otherwise
+            s.writeCtl(kB, 0);
+            opened = !(s.readCtl(kB) & 0x10);    // hunt cleared → f2 opened
+        }
+        CHECK(opened, "lossless: the next frame opens past unread FCS residue");
+        std::vector<uint8_t> g2 = lapDrain(s, rr1);
+        CHECK(g2.size() == 8 && g2[0] == 1 && g2[5] == 0x33,
+              "lossless: it opens on its own first byte, intact");
+    }
+
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
                     "abort, RTS/CTS dialogue in-window, prompt CTS across "

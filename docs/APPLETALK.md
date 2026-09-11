@@ -82,7 +82,7 @@ Four blocks, each with a live enable checkbox and a green/red bullet:
 ### 0.4 When it misbehaves
 
 The in-process wire is **lossless by design** — `setLosslessRx(true)`
-makes a full Rx FIFO *pause* the wire instead of dropping (`src/GuiHostServices.h:68-72`).
+makes a full Rx FIFO *pause* the wire instead of dropping (`src/GuiHostServices.h:78-82`).
 So it never loses a reply; it can only **delay** one. That turns the
 window's counters into a diagnosis rather than a score:
 
@@ -92,13 +92,27 @@ window's counters into a diagnosis rather than a score:
 | retransmit lag ~1-2 s | the guest's own ATP timer fired — the reply played late |
 | retransmit lag tens of ms | the guest gave up early / the reply was mangled |
 | "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/GuiShell.cpp:119-139`) |
-| "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:373`; counter `rxOverflowDrops`, `Scc8530.h:156`) |
+| "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:387`; counter `rxOverflowDrops`, `Scc8530.h:162`) |
 
 Lowering `POM68K_ATALK_WIRE_BOOST` is the wrong reflex for a backlog: the
 cap is the guest's Rx drain rate, not the pace. Tracers: `POM68K_ATALK_DEBUG=1`,
 `POM68K_MACIP_DEBUG=1`. Passive wire capture (throughput / gap / RTT
 distributions, LLAP header decode): `scratchpad/ltoudp_measure.py`, and it
 only sees traffic when the LToUDP cable is up.
+
+Until 2026-09-11 one delay was structural, and the table above read it as
+the guest's own timer. The LAP driver reads a frame by its DDP length and
+re-arms hunt before the trailing FCS reaches the FIFO, so the previous
+frame's `crc_lo`/`crc_hi` can sit there unread for good. The lossless wire
+waited for an *empty* FIFO before opening the next frame, and nothing
+emptied that residue until the guest transmitted again — which it does when
+its ATP timer fires. Every multi-packet reply paid a retransmit:
+`q605_afp_live_etalon`'s 41 KB two-fork copy took 240.68 s of guest time
+with 83 of them. A FIFO holding only a finished frame's FCS now counts as
+drained (`Scc8530::Chan::fcsResidueOnly`; `rxStartFrame` drops the residue
+as it always did without lossless): the same copy takes 4.65 s with none,
+`llap_loop_test` pins the residue case, and the live gate fails on any
+retransmission during a copy.
 
 ### 0.5 Gates
 
@@ -188,7 +202,7 @@ most detail. `AtalkStack` sits directly on it as a second node.
 - **The in-process wire is boosted.** A real 230 kbit/s cable makes a
   multi-MB Finder copy take minutes. With the hub up and no external
   cable, `setWirePace(byteCycles / 8)` (floor 64) plus `setLosslessRx`
-  give a fast lossless virtual wire (`src/GuiHostServices.h:68-72`). What stays
+  give a fast lossless virtual wire (`src/GuiHostServices.h:78-82`). What stays
   at **real** pace: the prompt-response gap, the LLAP IDG and the Tx-underrun
   grace — those are guest-code turnaround windows, not wire properties.
   Async serial is untouched (the override applies in SDLC mode only).

@@ -998,12 +998,13 @@ bool Scc8530::tick(int cycles) {
                 // Lossless virtual wire: hold the frame until (a) the guest
                 // is actually LISTENING — a reply queued during the guest's
                 // half-duplex transmit opens only once its EOM ISR re-arms
-                // Rx, never into a deaf receiver — and (b) the FIFO has
-                // drained, so the stale-residue clear in rxStartFrame can't
-                // eat undelivered bytes and no frame ever overruns. Prompt
-                // responses keep threading the Rx-off window as before.
+                // Rx — and (b) the FIFO has drained, so the residue clear in
+                // rxStartFrame can't eat undelivered bytes (prompt responses
+                // keep threading the Rx-off window). A finished frame's unread
+                // FCS counts as drained: waiting on it cost an ATP retransmit
+                // per reply (llap_loop_test; CHANGELOG 2026-09-11 (fourth)).
                 if (losslessRx_ && !f.prompt &&
-                    (!rxEnabled(c) || !c.fifo.empty()))
+                    (!rxEnabled(c) || !c.fifoDrained()))
                     ready = false;
                 if (ready) {
                     const int64_t held = c.wireClk - f.queuedAt;
@@ -1060,7 +1061,7 @@ int Scc8530::cyclesToNextEvent() const {
             const Chan::RxFrame& f = c.rxQueue.front();
             if (f.prompt) {
                 take(f.delay > 0 ? f.delay : 1);
-            } else if (!losslessRx_ || (rxEnabled(c) && c.fifo.empty())) {
+            } else if (!losslessRx_ || (rxEnabled(c) && c.fifoDrained())) {
                 const int left = kIdgBytes * realPaceOf(c) - c.rxIdle;
                 take(left > 0 ? left : 1);
             }

@@ -1136,12 +1136,15 @@ so the number repeats run to run:
 
 | link | bytes | guest time | rate |
 |---|---|---|---|
-| LocalTalk, SCC (`q605_afp_live_etalon`, Mac OS 8.1) | 41108 | 165-241 s | 0.2 KiB/s |
+| LocalTalk, SCC (`q605_afp_live_etalon`, Mac OS 8.1) | 41108 | 4.65 s | 8.6 KiB/s |
 | EtherTalk, DaynaPort (`q605_dayna_driver_etalon`, 7.5.5) | 41984 | 2.20 s | 18.6 KiB/s |
 
-Two orders of magnitude, and LLAP's 230.4 kbit/s is not the reason: its
-ceiling is ~28 KiB/s, so what the SCC path spends is turnaround — a
-handshake per frame — not bit rate.
+About twice as fast on the card. The LocalTalk row read 165-241 s
+(0.2 KiB/s) when first measured, and the reason given then — a handshake
+per frame — was wrong: the lossless wire held each multi-packet reply
+behind the previous frame's unread FCS until the guest's ATP timer fired,
+~80 retransmissions per copy (`docs/APPLETALK.md` § 0.4, CHANGELOG
+2026-09-11 (fourth)).
 
 Still not done: no GUI menu entry; not in save states (a restore comes
 back with an empty Rx ring); zone multicast addresses are not joined (the

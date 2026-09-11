@@ -1,0 +1,29 @@
+# q605_afp_live_etalon, default mode (no outage): one trace line per phase boundary.
+# Host x86_64 (16 cores), build Release + POM68K_LTO + POM68K_NATIVE, GCC 13.3.
+# Engine: POM68K defaults (x64 generator for the 68LC040); the interpreter prints
+# the same 22 lines. Tree: 7c3a20f plus the 2026-09-11 (fourth) FCS-residue fix.
+# Compare on another host with:
+#   diff <(grep '^trace:' THIS_FILE) <(ctest ... -V | sed -n 's/^[0-9]*: //p' | grep '^trace:')
+# The first line that differs is the first phase boundary where the runs diverged.
+trace: afp_live_0_finder.ppm clock=1725547544 fp=f8abb8b231423935 afp=2 frames=18/16 ddp=18/16 atp=7 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_1_applemenu.ppm clock=1773470591 fp=840740debb9fb5cd afp=2 frames=20/17 ddp=20/17 atp=7 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_2_chooser.ppm clock=2093095184 fp=bbb77860f203a6b5 afp=2 frames=22/20 ddp=22/20 atp=9 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_3_servers.ppm clock=2507731935 fp=87cef12b33c0fb63 afp=2 frames=41/41 ddp=41/41 atp=9 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_4_login.ppm clock=2815263683 fp=69ad7f451395a54c afp=2 frames=48/49 ddp=48/49 atp=10 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_5_volumes.ppm clock=3211555029 fp=cb4aa81233a313cc afp=7 frames=62/57 ddp=62/57 atp=17 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_6_mounted.ppm clock=3669106925 fp=b1e41e60c4cb19bf afp=28 frames=119/95 ddp=119/95 atp=38 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_7_window.ppm clock=4085397294 fp=2ef709e853c79ff5 afp=39 frames=142/109 ddp=142/109 atp=50 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_8_created.ppm clock=4139154529 fp=991adebaaeaa7082 afp=51 frames=166/121 ddp=166/121 atp=62 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_9_selected.ppm clock=4297087126 fp=41aeb595d1cc793b afp=51 frames=166/122 ddp=166/122 atp=62 dup=0/0 lagmax=0ms wire=1/0ms/0
+trace: afp_live_9_copied.ppm clock=4413359035 fp=d8ecdbca6f297813 afp=103 frames=342/256 ddp=342/256 atp=114 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_10_disconnected.ppm clock=4915494957 fp=50c09f289905928a afp=111 frames=360/268 ddp=360/268 atp=124 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_1_applemenu.ppm clock=5153016748 fp=1c9128d9eb1ae5e2 afp=111 frames=360/269 ddp=360/269 atp=124 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_2_chooser.ppm clock=5450969562 fp=924e274cbd9255c7 afp=111 frames=362/272 ddp=362/272 atp=126 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_3_servers.ppm clock=5867689801 fp=7cccf6f6e5118480 afp=111 frames=381/293 ddp=381/293 atp=126 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_4_login.ppm clock=6170638117 fp=d39fd426e583857a afp=111 frames=388/301 ddp=388/301 atp=127 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_5_volumes.ppm clock=6555260657 fp=635e920e22b13c39 afp=116 frames=402/310 ddp=402/310 atp=134 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_6_mounted.ppm clock=7012395124 fp=388b70a17ea62e3f afp=135 frames=455/346 ddp=455/346 atp=153 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_7_window.ppm clock=7428685698 fp=332c667dd2c6babc afp=144 frames=474/357 ddp=474/357 atp=163 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_8_created.ppm clock=7482442597 fp=a52de7e0e2ceb18c afp=156 frames=498/369 ddp=498/369 atp=175 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_9_selected.ppm clock=7649959279 fp=c2d52336be2cb63d afp=156 frames=498/370 ddp=498/370 atp=175 dup=0/0 lagmax=0ms wire=8/20ms/0
+trace: afp_live_9_copied.ppm clock=7766230817 fp=8058155fce90ef57 afp=210 frames=678/507 ddp=678/507 atp=229 dup=0/0 lagmax=0ms wire=8/20ms/0

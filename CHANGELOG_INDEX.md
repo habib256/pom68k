@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 488 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 490 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,13 +8,13 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 85 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 72 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 16 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 17 |
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 56 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
@@ -111,6 +111,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-07 (second)** — [Tier B is closed: the conformant JIT code generator meets its own exit criterion, and the residual engine studies leave the critical path](CHANGELOG.md#2026-09-07-tier-b-closed)
 - **2026-09-07 (third)** — [SimCity 2000 becomes a gate: launched by opening its heaviest city, simulated, saved — identically under the interpreter and the A64 generator, once the harness typed on the guest's own keyboard](CHANGELOG.md#2026-09-07-simcity-etalon)
 - **2026-09-08** — [Every CPU family has an application gate: TeachText on the Plus and SimpleText on the Quadra 605 join SimCity on the LC II, typed, saved and quit under interpreter and JIT in one process; the Mac OS 8.1 installer runs from CD onto a blank disk, installs, restarts and boots the target — finding a 53C96 polled-write defect and a Quadra-605 warm-reset halt on the way](CHANGELOG.md#2026-09-08-application-gates)
+- **2026-09-11 (third)** — [The DaynaPort card replays on x86-64 figure for figure, and the LocalTalk copy after reconnect is 171.67 s under every x86-64 engine, not the 165.17 s AArch64 printed](CHANGELOG.md#2026-09-11-x86-dayna-leg)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -321,6 +322,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-04 (fifth)** — [The Q605's second SCC deadline query is real, the hand-off that removes it is bit-identical, and two ABBAs read it under the noise — so it is withdrawn](CHANGELOG.md#2026-09-04-scc-deadline-handoff-refused)
 - **2026-09-09 (eighth)** — [Both SCC serial ports reach host PTYs and loopback TCP without bypassing the shifter or overflowing the receive FIFO](CHANGELOG.md#2026-09-09-scc-serial-host)
 - **2026-09-09 (ninth)** — [The in-process server's lapACK now wins its 200 µs LLAP address-defence race without turning every reply into an express CTS](CHANGELOG.md#2026-09-09-llap-address-defence)
+- **2026-09-11 (fourth)** — [LocalTalk copies paid an ATP retransmit per reply: the lossless wire waited on FCS bytes the driver never reads, and the 41 KB copy drops from 240.68 s to 4.65 s](CHANGELOG.md#2026-09-11-localtalk-fcs-residue)
 - **2026-09-11 (later)** — [What the card is worth: the same AFP copy is two orders of magnitude faster off the SCC](CHANGELOG.md#2026-09-11-ethertalk-rate)
 
 ## Save states
