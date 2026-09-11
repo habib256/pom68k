@@ -26,7 +26,7 @@ CentrisMemory::CentrisMemory(const pom68k::CoreConfig& coreConfig,
     drive0_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     drive1_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     dafbCell_.configureTrace(coreConfig.peripherals.dafbClockTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;   // pow2
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
