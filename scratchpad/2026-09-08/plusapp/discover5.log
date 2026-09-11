@@ -1,0 +1,11 @@
+ASSET rom    "roms/macplus.rom" 131072 B sha256 dd908e2b65772a6b1f0c859c24e9a0d3dcde17b1c6a24f4abd8955846d7895e7
+ASSET disk   "hdv/System 6.0.8 HD.dsk" 31457280 B sha256 48c50e9c5a50aadde424e6056561c073b6c5f0ab17a35d0bbfe0788cecf336f3  HFS "Macintosh HD" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+SCSI: flat HFS façade — DDM template from /Users/mercure/src/pom68k/hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 61440 = 61536 blocks)
+[click] MBState before = $F0 (want $80)
+[click] MBState during press = $00 (want $00)
+[click] MBState after = $80, MBTicks=$00000E74
+FAIL: leg 'engine' — finder=1 launched=0 progressed=0 saved=0 quit=0 halted=1 menu=0
+[engine] boot: Finder up, SCSI 1261, front app 'Finder'
+[engine] discover 1: click (470,45) → pointer (470,45), front app 'Finder', SCSI 1261
+FAILED — Macintosh Plus TeachText application etalon

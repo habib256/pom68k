@@ -1,0 +1,7 @@
+[el] ENTER (mode was 00)
+[el] reg6-write val=f8 clears bit6, ismMode=1 mode=40
+[el] LEAVE (mode=00)
+[el] ENTER (mode was 00)
+[el] reg6-write val=f8 clears bit6, ismMode=1 mode=40
+[el] LEAVE (mode=00)
+[el] ENTER (mode was 00)

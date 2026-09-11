@@ -1,0 +1,109 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "cd/MAC_OS_8-1_RETAIL_0.ISO" 420542464 B sha256 a9e19e2da7c4ad7552beb3eee2609dbe88c3392fad6e98e1490088b326e5e26c
+SCSI: flat HFS façade — DDM template from hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 512000 = 512096 blocks)
+target: /var/folders/lk/1g75s7c514v4f1v9msbpsb8h0000gn/T//q605_cdinstall_target.img, 512000 sectors, 4096-byte blocks, 63997 blocks
+boot: CD served 3912 blocks, target served 41 blocks (7 written), processes 'Finder'x60
+installer: processes 'Mac OS Install'x60
+install pane: processes 'Mac OS Install'x60
+step 1: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 2: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 3: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 4: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 5: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 6: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 7: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 8: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 9: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 10: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 11: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 12: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 13: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 14: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 15: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 16: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 17: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 18: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 19: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 20: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 21: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 22: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 23: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 24: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 25: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 26: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 27: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 28: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 29: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 30: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 31: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 32: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 33: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 34: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 35: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 36: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 37: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 38: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 39: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 40: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 41: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 42: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 43: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 44: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 45: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 46: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 47: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 48: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 49: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 50: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 51: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 52: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 53: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 54: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 55: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 56: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 57: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 58: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 59: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 60: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 61: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 62: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 63: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 64: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 65: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 66: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 67: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 68: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 69: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 70: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 71: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 72: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 73: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 74: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 75: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 76: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 77: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 78: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 79: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 80: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 81: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 82: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 83: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 84: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 85: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 86: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 87: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 88: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 89: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 90: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 91: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 92: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 93: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 94: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 95: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 96: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 97: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 98: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 99: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving
+step 100: processes 'Drive Setup'x60, target 22 written, CD 4782 read, still → Return
+step 101: processes 'Drive Setup'x60, target 22 written, CD 4782 read, moving

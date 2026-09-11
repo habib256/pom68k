@@ -1,0 +1,7 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+A boot: SCSI 9618, snapshot 10876513 bytes, 3 dirty block(s)
+B relaunch: load->save byte-identical to A, Finder up
+two fresh relaunches: byte-identical to each other; A-direct hash ec8bc7a39e66386c vs fresh-load hash ec8bc7a39e66386c (identical)
+PASSED — LC II save-state relaunch into a fresh machine
+exit

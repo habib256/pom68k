@@ -1,0 +1,20 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+[keys] key-down reaches KeyMap after 2 frames
+FAIL: leg 'interp' — finder=1 keys=1 launched=1 progressed=1 saved=1 quit=0 halted=0 menu=1
+[keys] key-down reaches KeyMap after 2 frames
+FAIL: leg 'default' — finder=1 keys=1 launched=1 progressed=1 saved=1 quit=0 halted=0 menu=1
+[interp] boot: Finder up, SCSI 5406, processes 'Finder'x10, 'MyEyes Extension'x49, 'CM Window'x1
+[interp] keys: short taps accepted; "applic" types as 0C 23 23 25 22 08 
+[interp] launch: processes 'MyEyes Extension'x25, 'SimpleText'x34, 'Finder'x1, 84.5% of the screen changed, SCSI +508
+[interp] progress: window c84d1d6fb2d92a17 -> afe3ae576ccf3d31 -> 43b90f458873a06b (typed)
+[interp] artefact: 'pom proof of quadra' x0 -> x6 in the catalog, 29 blocks written
+[interp] end: engine=interp processes 'SimpleText'x60 halted=0 menu=up fp=ca69144e33e8a185 screen=77be411352836f19 SCSI 6052
+[default] boot: Finder up, SCSI 5406, processes 'Finder'x10, 'MyEyes Extension'x49, 'CM Window'x1
+[default] keys: short taps accepted; "applic" types as 0C 23 23 25 22 08 
+[default] launch: processes 'MyEyes Extension'x25, 'SimpleText'x34, 'Finder'x1, 84.5% of the screen changed, SCSI +508
+[default] progress: window c84d1d6fb2d92a17 -> afe3ae576ccf3d31 -> 43b90f458873a06b (typed)
+[default] artefact: 'pom proof of quadra' x0 -> x6 in the catalog, 29 blocks written
+[default] end: engine=aarch64 processes 'SimpleText'x60 halted=0 menu=up fp=ca69144e33e8a185 screen=77be411352836f19 SCSI 6052
+FAILED — Quadra 605 SimpleText application etalon
+exit 1

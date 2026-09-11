@@ -1,0 +1,9 @@
+[ls] addr=E cmd&7=6 ph2=1 ph0=1 sel=0 drvSel=1 en=1 selDly=0
+[ls] addr=E cmd&7=6 ph2=1 ph0=1 sel=0 drvSel=1 en=1 selDly=0
+[ls] addr=E cmd&7=6 ph2=1 ph0=1 sel=0 drvSel=1 en=1 selDly=0
+[ls] addr=E cmd&7=6 ph2=1 ph0=1 sel=0 drvSel=1 en=1 selDly=0
+[ls] addr=E cmd&7=6 ph2=1 ph0=1 sel=0 drvSel=1 en=1 selDly=0
+[ls] addr=B cmd&7=3 ph2=1 ph0=1 sel=1 drvSel=1 en=1 selDly=0 [GCR-strobe]
+[ls] addr=4 cmd&7=4 ph2=0 ph0=0 sel=0 drvSel=1 en=1 selDly=0
+[ls] addr=B cmd&7=3 ph2=1 ph0=1 sel=1 drvSel=1 en=1 selDly=0 [GCR-strobe]
+[ls] addr=8 cmd&7=0 ph2=1 ph0=0 sel=0 drvSel=1 en=1 selDly=0

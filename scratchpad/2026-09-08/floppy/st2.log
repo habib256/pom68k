@@ -1,0 +1,3 @@
+[st2] D0=37 enable=1 selDly=0 motorOn=0 mfm=1
+[st2] D0=FF enable=0 selDly=0 motorOn=1 mfm=1
+[st2] D0=FF enable=0 selDly=0 motorOn=1 mfm=1

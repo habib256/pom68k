@@ -1,0 +1,6 @@
+[fifo] --reg15 read, fifoPos=1--
+[fifo] --reg15 read, fifoPos=1--
+[fifo] --reg15 read, fifoPos=0--
+[fifo] --reg15 read, fifoPos=0--
+[fifo] --reg15 read, fifoPos=0--
+[fifo] --reg15 read, fifoPos=0--

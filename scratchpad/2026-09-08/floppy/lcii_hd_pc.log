@@ -1,0 +1,35 @@
+ASSET rom    "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" 524288 B sha256 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0
+ASSET disk   "hdv/boot.vhd" 1468071936 B sha256 cc364381220afc9de7c85f65449b8bde14ace79eb19f39e3f1086186cb6c2868  HFS "MacPack" drVolAtrb $0000 bit 8 clear: not cleanly unmounted
+floppy: trimming a 1474644-byte raw image to the 1.44 MB medium
+Finder up (SCSI 9618)
+floppy: disks35/Stuffit_Expander_5.5.dsk, 1474560 bytes, HFS=1, drAtrb=$0100 at insert
+floppy: guest read 68973 nibbles off the medium
+floppy: SWIM1 personality=ISM mode=$42, head at track 0, motor on, sense CSTIN=0 TKO=0
+floppy: ISM engine produced 2 bytes (0 marks, 0 syncs), driver popped 59 (57 empty), saw 0 non-zero error reads, 0 FIFO overruns; setup=$20 MFM=0
+floppy: IWM re-reads of a latched byte: 200
+floppy: IWM polls 9156, hits 2002 (21.9%), overwritten 68258; last 512 consumed: 67 sync $FF, 1 address/data marks
+floppy: consumed tail: FF FF FF FF FF FF FF FF FF FF FF FF FF D5 AA 96 96 9A 96 D9 D6 DE AA 9F
+floppy: screen changed 0.000 after insert, Finder up
+floppy: changed region x 512..-1, y 384..-1 (0 px)
+floppy: System responded: NO — centre white 0.65, icon strip Δ0 px → no window and no dialog
+  [floppy/before] 'untitled folder' x0
+  [floppy/before] 'Nouveau dossier' x0
+  [floppy/before] 'Dossier sans titre' x0
+  [floppy/before] 'Empty Folder' x0
+  [floppy/before] 'Dossier vide' x0
+floppy: write-protect sense = 0
+floppy: KeyMap saw the gesture
+floppy: Cmd-N changed the screen by 2691 px (region x 17..492, y 28..316)
+floppy: hard disk image CHANGED by the Cmd-N (tells us which window was frontmost)
+floppy: guest wrote to the medium: NO
+floppy: guest Put Away did NOT eject after 1800 frames
+  [floppy/after] 'untitled folder' x0
+  [floppy/after] 'Nouveau dossier' x0
+  [floppy/after] 'Dossier sans titre' x0
+  [floppy/after] 'Empty Folder' x0
+  [floppy/after] 'Dossier vide' x0
+floppy: NO candidate folder name appeared in the host file
+floppy: host file unchanged (no guest write yet), size kept, HFS sig intact, drAtrb $0100 → $0100
+floppy: re-insert OK
+FAILED — LC II beyond-boot floppy
+exit

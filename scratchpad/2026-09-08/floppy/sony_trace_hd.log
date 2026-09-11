@@ -1,0 +1,21 @@
+FAIL: could not insert lcii_sony_trace.dsk
+lcii_sony_trace: boost=4 (default), boot=hdv/boot.vhd, floppy=disks35/Stuffit_Expander_5.5.dsk
+UTableBase=$0173F0 UnitNtryCnt=96
+  unit  1: dce=$004A2C flags=$4F20 refNum=-5 drvr=$A6C3E0 '.Sony'
+    refNum -5 raw dCtlDriver=$00A6C3E0  as ptr -> $A6C3E0 '.Sony'  as handle -> $000000 ''
+  unit  3: dce=$004EC0 flags=$4E20 refNum=-4 drvr=$A51410 '.Sound'
+  unit  4: dce=$004A2C flags=$4F20 refNum=-5 drvr=$A6C3E0 '.Sony'
+    refNum -5 raw dCtlDriver=$00A6C3E0  as ptr -> $A6C3E0 '.Sony'  as handle -> $000000 ''
+  unit  5: dce=$005134 flags=$4D00 refNum=-6 drvr=$A6ABCA '.AIn'
+  unit  6: dce=$005174 flags=$4E00 refNum=-7 drvr=$A6ABE2 '.AOut'
+  unit  7: dce=$0051B0 flags=$4D00 refNum=-8 drvr=$A6ABFA '.BIn'
+  unit  8: dce=$0051EC flags=$4E00 refNum=-9 drvr=$A6AC12 '.BOut'
+  unit  9: dce=$0F25DC flags=$4C00 refNum=-10 drvr=$09FE3C '.MPP'
+  unit 10: dce=$0CC1B8 flags=$4400 refNum=-11 drvr=$0A22CC '.ATP'
+  unit 32: dce=$00927C flags=$4F24 refNum=-33 drvr=$006772 '.ASYC00'
+  unit 40: dce=$0EE970 flags=$4400 refNum=-41 drvr=$0A34C8 '.XPP'
+  unit 48: dce=$004F10 flags=$4C20 refNum=-49 drvr=$0889FC '.Display_Video_Apple_V8'
+  unit 50: dce=$0053E8 flags=$4D20 refNum=-51 drvr=$086CA8 '.AppleSoundInput'
+  unit 51: dce=$0EE8A4 flags=$4400 refNum=-52 drvr=$0B78CC '.DSP'
+driver .Sony at $A6C3E0, prime=$A6C406 ctl=$A6C414
+exit

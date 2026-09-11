@@ -1,0 +1,10 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+[dbg] after scenario: A dirty=47 B dirty=47
+[dbg] A fp=fb65c6f81d197806 clock=10001705793 | B fp=5aa8f2e8d0b602fa clock=10001706206
+[dbg] A SCSI=5407 B SCSI=5407
+FAIL: the relaunched machine diverged from the direct run (first divergence at byte 36 of 33165038 vs 33165101)
+A boot: SCSI 4551, snapshot 33228876 bytes, 40 dirty SCSI block(s)
+B relaunch: load→save byte-identical to A's snapshot; A dirty=47 B dirty-after-load=40
+determinism: A-direct 33165101 bytes (hash d9b35e9542ea2587), B-relaunched 33165038 bytes (hash 587aab637551199d), B Finder up
+exit

@@ -1,0 +1,16 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "cd/MAC_OS_8-1_RETAIL_0.ISO" 420542464 B sha256 a9e19e2da7c4ad7552beb3eee2609dbe88c3392fad6e98e1490088b326e5e26c
+SCSI: flat HFS façade — DDM template from hdv/HD20SC.vhd
+SCSI: flat HFS → façade (96 + 512000 = 512096 blocks)
+target: /var/folders/lk/1g75s7c514v4f1v9msbpsb8h0000gn/T//q605_cdinstall_target.img, 512000 sectors, 4096-byte blocks, 63997 blocks
+boot: CD served 3912 blocks, target served 41 blocks (7 written), processes 'Finder'x60
+installer: processes 'Mac OS Install'x60
+install pane: processes 'Mac OS Install'x60
+copy: finished after 70 steps, target +343329 blocks (171664 KB), CD 77305 blocks read, processes 'Mac OS Install'x60
+artefact: boot blocks 'LK', catalog 'System' x54 'Finder' x327, 171664 KB written
+quit: processes 'Finder'x60
+installed: a bootable Mac OS 8.1 is on the blank disk
+restart: menu bar gone (halted=0)
+reboot: Finder up, target served 34810 blocks, CD 20 — BOOTED FROM THE INSTALLED DISK
+PASSED — Quadra 605 installs Mac OS 8.1 from CD and boots the target
+exit 0

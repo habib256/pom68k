@@ -1,0 +1,7 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+first boot: Finder up, SCSI 5406, Cuda LLE
+restart: machine left the Finder after 0 frames (halted=0)
+reboot: Finder up, halted=0, second boot served 5501 SCSI commands (first 5406), front 'MyEyes Extension'
+PASSED — Quadra 605 guest restart etalon
+exit 0
