@@ -21,7 +21,7 @@ MacIIMemory::MacIIMemory(const pom68k::CoreConfig& coreConfig,
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     adbVia_.attach(via1_, adb_, kCpuHz);
     // MAME mac_asc_irq: VIA2 CB1 = !asc_irq (active-low into the 6522).
     asc_.onIrq = [this](bool s) {
