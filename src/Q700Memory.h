@@ -63,6 +63,7 @@
 
 #pragma once
 #include "CoreConfig.h"
+#include "DaynaPortBus.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "ViaEClock.h"
@@ -173,6 +174,9 @@ public:
     Ncr53c96& scsi() { flushScsi(); return scsi_; }
     int64_t deferredScsiCycles() const { return scsiDebt_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
+    // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
+    DaynaPort& daynaPort() { return dayna_; }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
         scsi_.attach(&scsiDisks_[id], id);
@@ -393,6 +397,7 @@ private:
     int64_t scsiDebt_ = 0;
     void flushScsi();
     ScsiDisk scsiDisks_[7];
+    DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     // Eclipse front end (constructed always, wired only when eclipse()).
     ApplePic sccPic_, swimPic_;
     AdbLine adbLine_;
