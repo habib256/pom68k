@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12** — [The DaynaPort leaves the Quadra 605: every SCSI machine can carry the card, and one gate per platform proves the guest found it](#2026-09-12-dayna-every-bus)
 - **2026-09-11 (fourth)** — [LocalTalk copies paid an ATP retransmit per reply: the lossless wire waited on FCS bytes the driver never reads, and the 41 KB copy drops from 240.68 s to 4.65 s](#2026-09-11-localtalk-fcs-residue)
 - **2026-09-11 (third)** — [The DaynaPort card replays on x86-64 figure for figure, and the LocalTalk copy after reconnect is 171.67 s under every x86-64 engine, not the 165.17 s AArch64 printed](#2026-09-11-x86-dayna-leg)
 - **2026-09-11 (later)** — [What the card is worth: the same AFP copy is two orders of magnitude faster off the SCC](#2026-09-11-ethertalk-rate)
@@ -917,6 +918,92 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-12-dayna-every-bus"></a>
+## 2026-09-12 — The DaynaPort leaves the Quadra 605: every SCSI machine can carry the card, and one gate per platform proves the guest found it
+
+`daynaport_test` pinned the card's command set, `q605_dayna_driver_etalon` ran
+Dayna's own driver against it, and both did so on one machine out of
+thirty-seven. TODO § 2 asked for the rest: every machine here has a SCSI bus,
+and both controllers — the NCR 5380 of eight memory maps, the 53C96 of four —
+already take any `ScsiTarget`.
+
+**One call, not a registry.** `src/DaynaPortBus.h` holds what the Q605's
+constructor used to spell out: `pom68k::configureScsiBus(scsi_, scsiDisks_,
+dayna_, coreConfig)` configures the disk slots exactly as the line it replaces
+did, then attaches the card when `CoreBusConfig::daynaPortId` asks. Each memory
+map adds that call, a `DaynaPort` member and a `daynaPort()` accessor — which
+`AtalkHub::attach` and `GuiHostServices` already look for with a `requires`
+clause, so the in-process NAT wires itself. Neither controller serializes its
+target table and neither `reset()` clears it, so attaching once from the
+session's configuration is what survives a restart and a restore; the card's
+own state stays out of save states, as it was.
+
+Eleven platforms follow the Quadra 605: the compacts (`MacMemory`), the GLUE
+board, the OSS board, V8, RBV, Sonora, VASP, djMEMC, the discrete 040 board,
+F108 and the Duo's MSC. One commit each, and without `POM68K_DAYNAPORT` every
+one of them is the machine it was: the card stays unattached, and both
+controllers refuse selection for a target that is not present.
+
+**Two new asset-free gates, one per controller.** `daynaport_ncr5380_test` and
+`daynaport_ncr53c96_test` drive the card the way a guest does — arbitration,
+selection, REQ/ACK bytes on the 5380; FIFO, SELECT-with-ATN and Transfer
+Information on the 53C96 — and assert the same four things on both: an
+unattached card answers no selection, INQUIRY returns the 37-byte SCSI/Link
+identity, ENABLE turns the interface on, a WRITE(6) frame reaches `sendFrame`
+byte for byte and a received frame comes back through READ(6) behind its
+six-byte header with its FCS.
+
+**And one gate per platform.** `tests/DaynaBootProbe.h` reads
+`POM68K_TEST_DAYNAPORT`; the twelve `<family>_dayna_boot_etalon` variants set
+it to 4 and re-run each platform's representative boot etalon — the same
+binary, the same Finder verdict, with the card added — plus one more
+requirement: the card must have answered the guest, which is the ROM's own bus
+probe (`DaynaPort::commands`). All twelve pass on this host, from 19 s on the
+IIfx to 632 s on the IIvx — not one in the hundredth of a second a soft-skip
+costs — so a real guest found the card on every SCSI platform the emulator has.
+The two controller gates pass in 0.01 s each, and Dayna's own driver still runs
+unchanged against the card on the Quadra 605 (`q605_dayna_driver_etalon`,
+2 066 s).
+
+The whole registry ran afterwards: 277 gates, 275 executed, one soft-skipped and
+one failed, against 263, 261, one and one before the change. The fourteen new
+gates are the entire difference. The soft-skip is `lcii_floppy144_etalon` still
+wanting a 1.44 MB image; the failure is the same `lcii_floppy_etalon`, below.
+
+Registry bookkeeping: fourteen host-any gates, so the union goes 267 → 281 and
+this host 263 → 277; `tools/status_md.py` rewrote the union and the x86_64
+section, and the AArch64 default and PRODUCT_LLE sections were carried by the
+same +14 by hand, the 2026-09-10 precedent. TODO hands the M4 the check.
+
+**The safety net found one red, and it is older than this work.** The registry
+ran before any of this was written — 263 gates, 261 executed, one soft-skipped,
+one failed — and the one red is `lcii_floppy_etalon`. It is not this change:
+built in a throwaway worktree at `b7700f1`, where the M4 reported it green
+(2026-09-09 (third)), it fails here the same way, under x64 and under the
+interpreter, alone and under `-j64`. The inputs are the same on both hosts: ROM
+`35C28F5F`, `hdv/boot.vhd` sha256 `cc364381…`, `disks35/Disk605.dsk` sha256
+`6ea0c1c7…`.
+
+The divergence is at the insert, not at the gesture the gate is named for. The
+guest reads 309 598 nibbles against the M4's 586 503, leaves the head on track
+10 with TKO=1 instead of track 0, and consumes its last 512 nibbles without one
+GCR address mark where the reference finds three. The volume still mounts on
+both hosts; what differs is the repaint that follows — 0.012 of the screen
+against 0.123, fractions of changed pixels rather than delays, a 64×95 patch in
+the top-right corner where the M4 opens a volume window across almost the full
+width. The Cmd-N therefore lands elsewhere, and although the guest does commit
+sectors, no candidate folder name reaches the host file.
+
+The escape that closed yesterday's AFP investigation — gate calibration rather
+than emulator defect — is excluded here rather than assumed away: every
+quantity in this gate's floppy path is guest-derived. `runFrames` advances
+emulated frames, `diffRatio` is a pixel fraction, and the eject count is a
+measured, capped response (`ejectFrames < 1800 && drv.hasDisk()`), never a
+budget a fast host could expire. Sixty guest frames against 180 is the guest
+doing less work, not a deadline running out. Evidence and the reproducer are in
+`scratchpad/2026-09-12/floppy/`; TODO carries the item, whose first step is
+re-running the gate on the M4 to confirm it still passes there.
 
 <a id="2026-09-11-localtalk-fcs-residue"></a>
 ## 2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply: the lossless wire waited on FCS bytes the driver never reads, and the 41 KB copy drops from 240.68 s to 4.65 s

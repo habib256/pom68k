@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 267 gates
+## Union across hosts — 281 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 143 |
+| `etalon` | 155 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
 | `jit` | 44 |
 | `jit-fast` | 8 |
-| `m030` | 62 |
-| `m040` | 61 |
+| `m030` | 68 |
+| `m040` | 65 |
 | `smoke` | 9 |
-| `unit` | 123 |
+| `unit` | 125 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -37,95 +37,95 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-262 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+276 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 93 |
+| assets | none | 95 |
 | assets | optional | 15 |
-| assets | required | 154 |
+| assets | required | 166 |
 | host | a64 | 4 |
-| host | any | 252 |
+| host | any | 266 |
 | host | native | 6 |
-| scope | component | 95 |
+| scope | component | 97 |
 | scope | engine | 21 |
-| scope | profile | 143 |
+| scope | profile | 155 |
 | scope | repository | 3 |
-| tier | daily | 93 |
-| tier | full | 157 |
+| tier | daily | 95 |
+| tier | full | 169 |
 | tier | platform | 12 |
-| slots_src | assumed | 146 |
+| slots_src | assumed | 160 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 489 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 503 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-263 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+277 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 92 |
+| assets | none | 94 |
 | assets | optional | 15 |
-| assets | required | 156 |
-| host | any | 252 |
+| assets | required | 168 |
+| host | any | 266 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 95 |
+| scope | component | 97 |
 | scope | engine | 22 |
-| scope | profile | 143 |
+| scope | profile | 155 |
 | scope | repository | 3 |
-| tier | daily | 92 |
-| tier | full | 159 |
+| tier | daily | 94 |
+| tier | full | 171 |
 | tier | platform | 12 |
-| slots_src | assumed | 150 |
+| slots_src | assumed | 164 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 622 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 636 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
-Configuration union across hosts: 273 gates.
+Configuration union across hosts: 287 gates.
 
 | `ctest -L` | selects |
 |---|---|
 | `a64` | 21 |
 | `a64-oracle` | 18 |
-| `etalon` | 142 |
+| `etalon` | 154 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
 | `jit` | 44 |
 | `jit-fast` | 8 |
 | `lle` | 18 |
-| `m030` | 62 |
-| `m040` | 66 |
+| `m030` | 68 |
+| `m040` | 70 |
 | `product` | 18 |
 | `smoke` | 9 |
-| `unit` | 130 |
+| `unit` | 132 |
 
-268 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+282 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 100 |
+| assets | none | 102 |
 | assets | optional | 15 |
-| assets | required | 153 |
+| assets | required | 165 |
 | host | a64 | 12 |
-| host | any | 250 |
+| host | any | 264 |
 | host | native | 6 |
-| scope | component | 102 |
+| scope | component | 104 |
 | scope | engine | 21 |
-| scope | profile | 142 |
+| scope | profile | 154 |
 | scope | repository | 3 |
-| tier | daily | 100 |
-| tier | full | 156 |
+| tier | daily | 102 |
+| tier | full | 168 |
 | tier | platform | 12 |
-| config | all | 260 |
+| config | all | 274 |
 | config | product-lle | 8 |
-| slots_src | assumed | 152 |
+| slots_src | assumed | 166 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 495 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 509 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Recorded runs
 
@@ -161,3 +161,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 11 21:00 +04 | x86_64 | default | 92 | 91 | 0 | 1 | LocalTalk FCS-residue fix (Scc8530 lossless readiness) and the traced AFP gate: full rebuild, asset-none tier |
 | Sep 11 21:12 +04 | x86_64 | default | 92 | 92 | 0 | 0 | asset-none rerun after regenerating CHANGELOG_INDEX.md: the previous row's one red was docs_test counting 489 of 490 dated entries, the new CHANGELOG entry not yet indexed |
 | Sep 11 21:22 +04 | x86_64 | default | 6 | 6 | 0 | 0 | LocalTalk FCS-residue fix: the six network gates, outage variants closing every alert the guest has in front; every completed copy retransmit-free (4.15-4.65 s of guest time), EtherTalk 2.20 s unchanged |
+| Sep 12 00:34 +04 | x86_64 | default | 263 | 261 | 1 | 1 | Phase 0 safety net on main 598428f after the 2026-09-11 SCC fix: full registry, ctest -j64, 2607 s wall; one red, lcii_floppy_etalon (no Cmd-N folder in the host file), deterministic alone and under the interpreter, so not contention and not the engine; lcii_floppy144_etalon soft-skips for its missing 1.44 MB image |
+| Sep 12 02:21 +04 | x86_64 | default | 277 | 275 | 1 | 1 | full registry after the DaynaPort port to every SCSI platform; ctest -j64, a memcheck run co-resident on one core |

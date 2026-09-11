@@ -1065,11 +1065,13 @@ reads as a duplicate address and MacTCP refuses to initialise.
 `MacIpGateway` leases now record which link they were learned on, and
 `sendIpToGuest` routes DDP or Ethernet accordingly.
 
-Wiring: `POM68K_DAYNAPORT=<id>` puts a card on the **Quadra 605**'s bus
-(`=1` → the default ID 3, where MAME parks the CD-ROM). `AtalkHub::attach`
-detects `mem.daynaPort()` with a `requires` clause, so the eleven machines
-without one compile unchanged and adding a card elsewhere is a member plus
-an accessor. Both the card and its NAT uplink work with
+Wiring: `POM68K_DAYNAPORT=<id>` puts a card on **every** machine's SCSI bus
+(`=1` → the default ID 3, where MAME parks the CD-ROM). Each memory map's
+constructor populates its bus with one call, `pom68k::configureScsiBus`
+(`src/DaynaPortBus.h`) — its disk slots configured, the card attached when
+asked — and carries a `DaynaPort` member plus a `daynaPort()` accessor, which
+`AtalkHub::attach` and `GuiHostServices` detect with a `requires` clause. No
+registry: the NCR 5380 and the 53C96 both take any `ScsiTarget`. Both the card and its NAT uplink work with
 `POM68K_APPLETALK=0`: the GUI attaches and schedules the Ethernet path
 independently. Disabling MacIP retires its DDP leases and sockets, not
 Ethernet flows. NAT timers still advance while LocalTalk protocols remain

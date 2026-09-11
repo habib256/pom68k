@@ -909,9 +909,10 @@ Why bother, given §6.4 works: the LLAP road runs at 230.4 kbit/s through
 the SCC, the most timing-fragile device here (hence
 `POM68K_ATALK_WIRE_BOOST`). The SCSI bus is neither slow nor fragile.
 
-Operating it: `POM68K_DAYNAPORT=<id>`, Quadra 605 only today. `<id>` is
-taken literally when it parses to 1-6 and falls back to **ID 3** — where
-the CD-ROM normally sits — otherwise (`src/Q605Memory.cpp:73-81`). Guest
+Operating it: `POM68K_DAYNAPORT=<id>`, on any machine (`src/DaynaPortBus.h`).
+`<id>` is taken literally when it parses to 1-6 and falls back to **ID 3** —
+where the CD-ROM normally sits — otherwise (`src/RuntimeConfigCore.cpp:92-96`).
+Guest
 side needs the
 DaynaPort SCSI/Link driver plus a **manual** MacTCP/TCP-IP configuration —
 an address in the gateway's subnet (192.168.151.x by default), the gateway
