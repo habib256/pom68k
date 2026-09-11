@@ -24,7 +24,7 @@ Q630Memory::Q630Memory(const pom68k::CoreConfig& coreConfig,
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     drive0_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     drive1_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
-    for (ScsiDisk& disk : scsiDisks_) disk.configure(coreConfig.storage);
+    pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     // The ROM's bank prober sizes RAM by ALIASING (write a pattern,
     // find where it reappears): the size must be a power of two and
     // the whole $0-$3FFFFFFF window must mirror modulo the size, like
