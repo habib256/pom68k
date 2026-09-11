@@ -34,6 +34,7 @@
 
 #pragma once
 #include "CoreConfig.h"
+#include "DaynaPortBus.h"
 #include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "PseudoVia.h"
@@ -129,6 +130,9 @@ public:
     int16_t ascPop() { return asc_.pop(); }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
+    // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
+    DaynaPort& daynaPort() { return dayna_; }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
         scsi_.attach(&scsiDisks_[id], id);
@@ -265,6 +269,7 @@ private:
     AscV8 asc_{0xE9};
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     Scc8530 scc_;
     MscCpu* cpu_ = nullptr;
 
