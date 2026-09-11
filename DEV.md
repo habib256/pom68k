@@ -1130,7 +1130,18 @@ AppleShare server. From there the gate runs the same chain
 `q605_afp_live_etalon` drives over LocalTalk: Guest login, the volume
 mounted, and a folder the guest creates in it appearing on the HOST
 filesystem — NBP, ATP, ASP and AFP over 802.3/SNAP, with the SCC idle
-throughout.
+throughout. And the point of the exercise, measured on the same two-fork
+fixture, the same Cmd-D gesture and the same Quadra 605, in MACHINE cycles
+so the number repeats run to run:
+
+| link | bytes | guest time | rate |
+|---|---|---|---|
+| LocalTalk, SCC (`q605_afp_live_etalon`, Mac OS 8.1) | 41108 | 165-241 s | 0.2 KiB/s |
+| EtherTalk, DaynaPort (`q605_dayna_driver_etalon`, 7.5.5) | 41984 | 2.20 s | 18.6 KiB/s |
+
+Two orders of magnitude, and LLAP's 230.4 kbit/s is not the reason: its
+ceiling is ~28 KiB/s, so what the SCC path spends is turnaround — a
+handshake per frame — not bit rate.
 
 Still not done: no GUI menu entry; not in save states (a restore comes
 back with an empty Rx ring); zone multicast addresses are not joined (the

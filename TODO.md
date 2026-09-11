@@ -113,8 +113,9 @@ la plus grande dimension produit encore peu exploitée.
 - [ ] **Tester l'interop Mini vMac LToUDP.** Utiliser le même groupe multicast
   et vérifier les deux directions.
 - [ ] **Activer EtherTalk par défaut.** Le bridge porte une session AFP réelle
-  (montage + dossier créé côté hôte) ; reste à joindre les adresses multicast
-  de zone, à mesurer un débit et à décider du défaut produit.
+  et un transfert mesuré à 18,6 Kio/s de temps invité contre 0,2 sur le SCC ;
+  reste à joindre les adresses multicast de zone et à décider du défaut
+  produit.
 - [ ] **Ajouter le contrôle DaynaPort au GUI.** Attacher/détacher et choisir
   l'ID SCSI sans variable d'environnement.
 - [ ] **Sérialiser DaynaPort au prochain bump de format.** Restaurer anneau RX,

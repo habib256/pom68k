@@ -53,9 +53,12 @@
 
 #include <cctype>
 #include <filesystem>
+namespace fs = std::filesystem;
 #include <set>
 #include <string>
 #include <vector>
+
+#include "afp_live_transfer.h"
 
 using namespace q605app;
 
@@ -365,6 +368,12 @@ int main() {
         std::fprintf(stderr, "FAIL: cannot create %s\n", shareDir.c_str());
         return 1;
     }
+    // The same two-fork fixture q605_afp_live_etalon transfers over
+    // LocalTalk, so the two rates are measured on the same bytes.
+    if (!afplive::seed(shareDir)) {
+        std::fprintf(stderr, "FAIL: cannot seed the transfer fixture\n");
+        return 1;
+    }
 
     const std::string diskPath = "hdv/work/dayna-755.dsk";
     if (!cloneVolume(refDisk, diskPath)) {
@@ -404,12 +413,12 @@ int main() {
     struct Result {
         bool finder = false, installed = false, artefact = false;
         bool ethertalk = false, aarp = false, joinedNetwork = false;
-        bool namedService = false, appleShare = false;
+        bool namedService = false, appleShare = false, transferred = false;
         bool mactcpBound = false, icmpOut = false, received = false;
         bool halted = false;
         bool ok() const {
             return finder && installed && artefact && ethertalk && aarp &&
-                   joinedNetwork && namedService && appleShare &&
+                   joinedNetwork && namedService && appleShare && transferred &&
                    mactcpBound && icmpOut && received && !halted;
         }
     } r;
@@ -655,6 +664,35 @@ int main() {
         }
     }
     dump("q605_dayna_20_created.ppm");
+
+    // ── what the wire is worth ───────────────────────────────────────────
+    // Duplicating the fixture reads both forks and writes them back over
+    // AFP. Machine cycles, not host wall clock: guest time is what this
+    // emulator makes deterministic, so the rate repeats run to run.
+    click(46, 88, 180);                      // the fixture's icon
+    dump("q605_dayna_21_selected.ppm");
+    const auto beforeCopy = hub.snapshot().afp;
+    const int64_t clock0 = cpu.machineClock();
+    command(0x02, 60);                       // Cmd-D: Duplicate
+    long copied = 0;
+    int64_t clock1 = clock0;
+    for (int poll = 0; poll < 600; poll++) {
+        runFrames(30);
+        const auto now = hub.snapshot().afp;
+        copied = now.bytesWritten - beforeCopy.bytesWritten;
+        clock1 = cpu.machineClock();
+        if (copied >= long(afplive::data.size() + afplive::resource.size()) &&
+            now.openForks == 0)
+            break;
+    }
+    dump("q605_dayna_22_copied.ppm");
+    const double guestSeconds = double(clock1 - clock0) / double(mem.cpuHz());
+    const double kbPerSecond = guestSeconds > 0
+        ? double(copied) / 1024.0 / guestSeconds : 0.0;
+    r.transferred = copied >= long(afplive::data.size() + afplive::resource.size());
+    std::printf("transfer: %ld bytes over EtherTalk in %.2f s of guest time "
+                "(%.1f KiB/s)\n", copied, guestSeconds, kbPerSecond);
+
     r.appleShare = mounted.volMounted && afpSessions > 0 && !created.empty();
     std::printf("appleshare: the guest created %s on the host over EtherTalk "
                 "(AFP commands %ld)\n",

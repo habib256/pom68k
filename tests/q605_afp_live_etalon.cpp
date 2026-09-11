@@ -534,6 +534,11 @@ int main() {
         for (const auto& entry : fs::directory_iterator(shareDir))
             existingCopies.insert(entry.path().filename().string());
         const auto transferStart = hub.snapshot().afp;
+        // Guest time, not host wall clock: what this emulator makes
+        // deterministic is the machine's own clock, so the rate below
+        // repeats run to run and is comparable with the same fixture's
+        // rate over EtherTalk (q605_dayna_driver_etalon).
+        const int64_t transferClock0 = cpu.machineClock();
         if (cycle == 0 && !outageMode.empty())
             cutAfterBytes = transferStart.bytesWritten +
                 (outageMode == "resource" ? long(afplive::data.size()) : 0);
@@ -629,8 +634,13 @@ int main() {
             readBytes >= expected && writtenBytes >= expected && st.afp.volMounted &&
             st.afp.openForks == 0 &&
             afplive::exactCopy(shareDir / "BONJOUR.txt");
+        const double transferSeconds =
+            double(cpu.machineClock() - transferClock0) / double(mem.cpuHz());
         std::printf("phase 9: duplicate=\"%s\" data=%zu resource=%zu read=%ld written=%ld\n",
             copied.c_str(), afplive::data.size(), afplive::resource.size(), readBytes, writtenBytes);
+        std::printf("phase 9: %ld bytes over LocalTalk in %.2f s of guest time "
+                    "(%.1f KiB/s)\n", writtenBytes, transferSeconds,
+                    transferSeconds > 0 ? double(writtenBytes) / 1024.0 / transferSeconds : 0.0);
         if (!transferred) {
             std::fprintf(stderr, "FAILED — guest two-fork transfer did not match the host oracle\n");
             return 1;
