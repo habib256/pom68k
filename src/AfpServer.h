@@ -43,6 +43,11 @@ public:
     void configure(const std::string& serverName, const std::string& volName,
                    const std::string& dirPath);
     void setEnabled(bool on);
+    // FPGetSrvrParms reports the server's clock, which is what a real file
+    // server must do — and which puts host wall-time into a guest-visible
+    // reply. A gate that asserts a deterministic trajectory cannot consume
+    // that, so tests pin it here. Zero means report real time.
+    void setFixedDate(int64_t unixSecs) { fixedDate_ = unixSecs; }
     bool enabled() const { return enabled_; }
     void tick(int64_t now);
 
@@ -139,4 +144,5 @@ private:
 
     // GUI-facing counters
     mutable Status stat_;
+    int64_t fixedDate_ = 0;              // 0 = report the real clock
 };
