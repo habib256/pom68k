@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12 (later)** — [Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it](#2026-09-12-floppy-correction)
 - **2026-09-12** — [The DaynaPort leaves the Quadra 605: every SCSI machine can carry the card, and one gate per platform proves the guest found it](#2026-09-12-dayna-every-bus)
 - **2026-09-11 (fourth)** — [LocalTalk copies paid an ATP retransmit per reply: the lossless wire waited on FCS bytes the driver never reads, and the 41 KB copy drops from 240.68 s to 4.65 s](#2026-09-11-localtalk-fcs-residue)
 - **2026-09-11 (third)** — [The DaynaPort card replays on x86-64 figure for figure, and the LocalTalk copy after reconnect is 171.67 s under every x86-64 engine, not the 165.17 s AArch64 printed](#2026-09-11-x86-dayna-leg)
@@ -918,6 +919,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-12-floppy-correction"></a>
+## 2026-09-12 (later) — Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it
+
+Today's earlier entry ([the DaynaPort port](#2026-09-12-dayna-every-bus))
+called the `lcii_floppy_etalon` red "the second divergence between hosts of the
+same kind after the AFP one", green on the M4 and red here on byte-identical
+inputs. The conclusion survives; the reasoning behind it did not, and two of its
+statements were wrong.
+
+**What was wrong.** The diff it rested on compared the reference log of
+2026-09-07 against a run of `b7700f1` built here. Those are different trees —
+thirty-six commits apart, two of them in the floppy path, `b7700f1` being
+"Mount 1.44 MB floppies by wiring SWIM1 HDSEL from the board" — so it varied the
+host *and* the code and could attribute nothing to either. And the reference log
+is not the M4's by any record: it was committed by `662a64f`, and neither that
+commit nor the log names a host. "Green on the M4" was an inference presented as
+a fact.
+
+**What is now demonstrated.** Rebuilding `662a64f` — the very commit that
+carries the passing log — and running it here fails, against that log's pass, on
+the same gate, the same code and the same assets (ROM `18c3de07…`,
+`hdv/boot.vhd cc364381…`, `disks35/Disk605.dsk` unchanged since 14 August):
+
+| at `662a64f` | the committed log | this host |
+|---|---|---|
+| nibbles read | 586 503 | 309 598 |
+| Put Away ejected after | 180 frames | 60 frames |
+| `untitled folder` in the host file | 0 → 2 | never appears |
+| verdict | PASSED | FAILED |
+
+That is the comparison this morning's entry asserted and did not have.
+
+**And the red has a birthday, which is not a regression.** Bisecting the 49
+commits between `697a572` (2026-09-02) and `fc7d472` finds the first red at
+`f557e88` (2026-09-07), whose own message says `lcii_floppy_etalon` "had printed
+the Cmd-N folder without asserting it since 2026-08-05". It added
+`&& guestEjected && grewF < folderprobe::kCount` to the verdict, promoting a
+question `TODO` had kept open into an assertion. Nothing in the emulator changed
+at that commit. This host's guest had never put the folder in the host file; the
+gate simply stopped tolerating it — which is why the two all-green registry runs
+of 2026-09-01 covered this gate and passed it (236 gates, 0 failed, the single
+soft-skip named as `jit_store_guard_a64_test`).
+
+Of the two added conjuncts only one fails here: the guest does Put Away the
+volume and the drive does empty, in 60 frames. What never happens is the catalog
+write reaching the host file. The divergence is visible earlier still — at the
+insert, half the nibbles and the head left on track 10 — so the folder is the
+symptom the gate can see, not the whole of it.
+
+**Two method notes.** A `SKIP` line exits 0: the first baseline run was read as a
+pass until its log was opened, where it had merely failed to see the ROM, and the
+same shape nearly misread a bisection step. And the `senseAddr()` change in that
+span — bit 3 moving from the ISM mode register to the drive's SEL line — was a
+plausible, symptom-matching suspect that a single baseline run killed before one
+build was spent on it.
 
 <a id="2026-09-12-dayna-every-bus"></a>
 ## 2026-09-12 — The DaynaPort leaves the Quadra 605: every SCSI machine can carry the card, and one gate per platform proves the guest found it
