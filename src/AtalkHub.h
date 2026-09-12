@@ -231,6 +231,12 @@ public:
         std::lock_guard<std::mutex> l(mu_);
         defaultShareDir_ = d;
     }
+    // Pin the date FPGetSrvrParms reports, so a gate asserting a deterministic
+    // trajectory does not consume host wall-time through it. 0 = real clock.
+    void setAfpFixedDate(int64_t unixSecs) {
+        std::lock_guard<std::mutex> l(mu_);
+        afp_.setFixedDate(unixSecs);
+    }
     // Toggle a service live (from the GUI). key: "afp" | "pap" | "macip".
     void setService(const std::string& key, bool on) {
         std::lock_guard<std::mutex> l(mu_);

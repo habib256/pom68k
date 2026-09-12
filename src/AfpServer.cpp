@@ -628,7 +628,7 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
 
     case 16: {                                           // FPGetSrvrParms
         std::vector<uint8_t> d;
-        put32(d, afpDate(std::time(nullptr)));
+        put32(d, afpDate(fixedDate_ ? fixedDate_ : std::time(nullptr)));
         d.push_back(1);                                  // one volume
         d.push_back(0);                                  // flags: no password
         pstr(d, volName_, 27);

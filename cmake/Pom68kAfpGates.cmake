@@ -1,5 +1,5 @@
 # Real Mac OS 8.1 Finder transfers: clean reconnect and interruptions in each
-# fork. All three own run/afp-live AND measure time, so they run serially.
+# fork. All three own run/afp-live, so CTest must serialize them even with -j.
 add_executable(q605_afp_live_etalon tests/q605_afp_live_etalon.cpp)
 target_link_libraries(q605_afp_live_etalon PRIVATE pom68k_core)
 add_test(NAME q605_afp_live_etalon COMMAND q605_afp_live_etalon
@@ -16,4 +16,4 @@ foreach(fork data resource)
     list(APPEND pom68k_afp_gates ${gate})
 endforeach()
 set_tests_properties(${pom68k_afp_gates} PROPERTIES
-                     TIMEOUT 1800 RESOURCE_LOCK afp_live_share RUN_SERIAL TRUE)
+                     TIMEOUT 1800 RESOURCE_LOCK afp_live_share)

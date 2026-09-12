@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12 (seventh)** — [Correction: the AFP outage red was host wall-clock reaching the guest, not `-j64` contention, and `RUN_SERIAL` is reverted](#2026-09-12-afp-date-nondeterminism)
 - **2026-09-12 (sixth)** — [What the AFP server refuses is now visible, and it turns out Mac OS 8.1 never asks for anything it lacks](#2026-09-12-afp-refusals-observable)
 - **2026-09-12 (fifth)** — [The AFP timing gates now run serially: `-j64` was making the measurement lie, and the red was mine](#2026-09-12-afp-gates-serial)
 - **2026-09-12 (fourth)** — [MacIP reassembles fragmented datagrams, and the old path had been delivering the first fragment truncated](#2026-09-12-macip-reassembly)
@@ -924,6 +925,46 @@ Newest first.
 
 ---
 
+<a id="2026-09-12-afp-date-nondeterminism"></a>
+## 2026-09-12 (seventh) — Correction: the AFP outage red was host wall-clock reaching the guest, not `-j64` contention, and `RUN_SERIAL` is reverted
+
+[This morning's fifth entry](#2026-09-12-afp-gates-serial) blamed
+`q605_afp_outage_data_etalon`'s red on contention and claimed `RUN_SERIAL` fixed
+it. Both are wrong, and the serialisation cost the suite 22.5 % of its wall time
+for nothing.
+
+**What disproved it.** Two failing runs were **bit-identical** — same guest
+clocks, same architectural fingerprints, `dup=1/0 lagmax=1440ms`, 41 108 bytes in
+5.15 s — one of them under `ctest` with no concurrency at all. Contention cannot
+reproduce identical guest clocks. And in today's confirming run the three AFP
+gates were heavily contended (`outage_resource` 1168 s, `outage_data` 511 s
+against 296 s alone) and passed with **0 retransmissions on every copy**.
+Contended and green is the end of that story.
+
+**The actual cause is one line.** `AfpServer.cpp:631` answered FPGetSrvrParms
+with `afpDate(std::time(nullptr))` — host wall-clock in a guest-visible reply.
+A sweep of the AFP, catalog, host-mutation, host-identity, atomic-file, hub and
+stack sources found it to be the *only* per-run-varying host input in the whole
+path, which is what made this enumerable instead of endless. Pinned, the gate is
+bit-identical across twelve runs spanning four fixed dates (1970 to 2033), an
+advancing counter, and the shipped setter path. So the **value is irrelevant** —
+only that it stops moving.
+
+`AfpServer::setFixedDate` and `AtalkHub::setAfpFixedDate` let the gate pin it;
+production still reports the real clock, which is what a file server must do.
+`afplive::seed` also pins the seeded forks' and folders' mtimes, since
+`FPGetFileDirParms` reports host mtimes the same way. Registry back to
+277/275/1/1 at **2752 s**, against 3394 s serialised and 2770 s before.
+
+**What is still not understood**, stated rather than dressed up: *why* a moving
+date ever produced the second trajectory. The divergence appears at the
+post-reconnect mount — two extra AFP commands, nine extra frames — and ends in a
+reply arriving 1.44 s late. Neither the date's value nor the gap between
+successive replies selects it; six hypotheses died here (contention, inherited
+share state, a refused FPCopyFile, file mtimes, the date value, the inter-call
+delta). The gate is now deterministic and the reproducer is recorded; the
+mechanism is open.
+
 <a id="2026-09-12-afp-refusals-observable"></a>
 ## 2026-09-12 (sixth) — What the AFP server refuses is now visible, and it turns out Mac OS 8.1 never asks for anything it lacks
 
@@ -966,6 +1007,10 @@ assertion bites. The naming check was not separately mutated; it would have read
 
 <a id="2026-09-12-afp-gates-serial"></a>
 ## 2026-09-12 (fifth) — The AFP timing gates now run serially: `-j64` was making the measurement lie, and the red was mine
+
+> **Superseded:** the red was host wall-clock reaching the guest, not
+> contention; `RUN_SERIAL` is reverted — see
+> [2026-09-12 (seventh)](#2026-09-12-afp-date-nondeterminism).
 
 A full registry run came back 277/274/1/**2**: `lcii_floppy_etalon`, the known
 host divergence, and `q605_afp_outage_data_etalon`, which had been green in the

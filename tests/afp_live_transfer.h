@@ -44,8 +44,22 @@ inline bool seed(const fs::path& dir) {
     sidecar.insert(sidecar.end(), {'T', 'E', 'X', 'T', 't', 't', 'x', 't'});
     sidecar.resize(82, 0);
     sidecar.insert(sidecar.end(), resource.begin(), resource.end());
-    return !ec && write(dir / "BONJOUR.txt", data) &&
-           write(dir / ".AppleDouble" / "BONJOUR.txt", sidecar);
+    if (ec || !write(dir / "BONJOUR.txt", data) ||
+        !write(dir / ".AppleDouble" / "BONJOUR.txt", sidecar)) return false;
+    // The server reports HOST mtimes to the guest (AfpServer.cpp:473 stats the
+    // file, :500-501 send it as creation/modification date), so a freshly
+    // seeded share hands the guest different date bytes on every run. A gate
+    // that asserts a deterministic trajectory must not consume a
+    // nondeterministic input; pin both forks to a fixed instant.
+    // Directories carry host mtimes too: the stat in AfpServer.cpp sits in the
+    // shared node helper, above the isDir branch, so FPGetFileDirParms reports
+    // a folder's date exactly as it reports a file's.
+    const auto epoch = fs::file_time_type{};
+    fs::last_write_time(dir / "BONJOUR.txt", epoch, ec);
+    fs::last_write_time(dir / ".AppleDouble" / "BONJOUR.txt", epoch, ec);
+    fs::last_write_time(dir / ".AppleDouble", epoch, ec);
+    fs::last_write_time(dir, epoch, ec);
+    return true;
 }
 inline bool exactCopy(const fs::path& path) {
     if (read(path) != data) return false;

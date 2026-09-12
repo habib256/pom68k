@@ -197,6 +197,13 @@ int main() {
     // ── The full stack, exactly main.cpp's wiring (ot_bind's rig + AFP) ──
     AtalkHub hub;
     hub.setDefaultShareDir(shareDir.string());
+    // FPGetSrvrParms reports the server's clock. Unpinned, that put host
+    // wall-time into a guest-visible reply and this gate ran two different
+    // trajectories: 4.15 s with no retransmit, or 5.15 s with one, the second
+    // failing the § 0.4 zero-retransmission rule. Nine runs across four fixed
+    // dates and an advancing counter are bit-identical, so the value does not
+    // matter — only that it stops moving. 2026-09-12.
+    hub.setAfpFixedDate(1000000000);
     hub.setService("pap", false);
     hub.setService("macip", false);
     const int byteCycles = int(mem.cpuHz() / 28800);

@@ -114,19 +114,26 @@ as it always did without lossless): the same copy takes 4.65 s with none,
 `llap_loop_test` pins the residue case, and the live gate fails on any
 retransmission during a copy.
 
-Those three gates **measure** that, so since 2026-09-12 they carry `RUN_SERIAL`.
-Under `ctest -j64` the data-outage variant came back red with `dup=1/0
-lagmax=1440ms` — pending 0, so by the table above the server was *not* the slow
-one — and passed alone in 296 s against 1371 s contended. The in-process server
-is host code whose completion maps back into guest-visible timing, so host
-scheduling leaks into a guest-timed measurement: that copy took 5.15 s of
-*guest* time against 4.15 s in the run before it. The resource lock already kept
-these three apart from each other; it never kept the other sixty off the host.
-Slots are not the lever either — `PROCESSORS` is derived from RAM alone
-(`gate_resource_budgets.tsv`), so buying scheduling headroom there would mean
-writing a false memory figure into a reviewed manifest. Serialising costs the
-suite about ten minutes of wall (2770 s → 3394 s) and keeps the zero criterion
-above meaning what it says.
+Those three gates **measure** that, so their input must not move between runs.
+On 2026-09-12 the data-outage variant went red with `dup=1/0 lagmax=1440ms` —
+pending 0, so by the table above the server was *not* the slow one. It looked
+like contention and was first "fixed" with `RUN_SERIAL`; that was wrong. Two
+failing runs proved **bit-identical** (same guest clocks, same fingerprints),
+one of them with no concurrency at all, and afterwards the three gates ran
+heavily contended (1168 s and 511 s against 296 s alone) and passed with zero
+retransmissions. Contended and green ends the contention reading, and the
+serialisation was reverted — it had cost the suite 2770 s → 3394 s for nothing.
+
+The real input was `AfpServer.cpp`'s FPGetSrvrParms answering with
+`afpDate(std::time(nullptr))`: host wall-clock inside a guest-visible reply, and
+the only per-run-varying host input anywhere in this path. `AfpServer::
+setFixedDate` (via `AtalkHub::setAfpFixedDate`) lets a gate pin it while
+production keeps reporting the real clock, as a file server must; `afplive::seed`
+pins the seeded mtimes for the same reason, since `FPGetFileDirParms` reports
+host file dates too. Pinned, the gate is bit-identical across twelve runs and
+four wildly different dates, so the value is irrelevant — only that it stops
+moving. **Why** a moving date ever produced the slow trajectory, two extra AFP
+commands at the remount and a 1.44 s late reply, is still unexplained.
 
 ### 0.5 Gates
 
