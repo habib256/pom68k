@@ -1156,9 +1156,9 @@ behind the previous frame's unread FCS until the guest's ATP timer fired,
 ~80 retransmissions per copy (`docs/APPLETALK.md` § 0.4, CHANGELOG
 2026-09-11 (fourth)).
 
-Still not done: no GUI menu entry; not in save states (a restore comes
-back with an empty Rx ring); zone multicast addresses are not joined (the
-ZIP reply says UseBroadcast, which is what makes that legal). Gates:
+Still not done: no GUI menu entry; zone multicast addresses are not joined
+(the ZIP reply says UseBroadcast, which is what makes that legal). The card
+itself travels in save states since format v15 (§ 1.4). Gates:
 `daynaport_test` and `ethertalk_test` (asset-free) and
 `q605_dayna_driver_etalon` (the real driver, asset-gated).
 - **THE GATE (why it took a day): the ROM's SCSI-presence probe.**

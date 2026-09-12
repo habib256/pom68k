@@ -23,8 +23,8 @@
 // Restart and restore: neither controller serializes its target table — a
 // snapshot carries the selected target as an ID and re-resolves it — and
 // `reset()` keeps it, so attaching once, here, from the session's
-// configuration is what survives both. The card's own state is not in save
-// states (DaynaPort.h).
+// configuration is what survives both. The card's own state does travel in
+// save states, since format v15 (DaynaPort.h).
 //
 // Gates: daynaport_ncr5380_test and daynaport_ncr53c96_test (the card through
 // both real controllers), and one <family>_dayna_boot_etalon per platform.
