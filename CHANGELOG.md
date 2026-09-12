@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12 (fifth)** — [The AFP timing gates now run serially: `-j64` was making the measurement lie, and the red was mine](#2026-09-12-afp-gates-serial)
 - **2026-09-12 (fourth)** — [MacIP reassembles fragmented datagrams, and the old path had been delivering the first fragment truncated](#2026-09-12-macip-reassembly)
 - **2026-09-12 (third)** — [The DaynaPort travels in save states: format v15, and what deliberately does not travel](#2026-09-12-dayna-savestate)
 - **2026-09-12 (later)** — [Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it](#2026-09-12-floppy-correction)
@@ -921,6 +922,57 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-12-afp-gates-serial"></a>
+## 2026-09-12 (fifth) — The AFP timing gates now run serially: `-j64` was making the measurement lie, and the red was mine
+
+A full registry run came back 277/274/1/**2**: `lcii_floppy_etalon`, the known
+host divergence, and `q605_afp_outage_data_etalon`, which had been green in the
+02:21 run on the same tree shape. A second red in a registry that had held at
+one is the kind of thing that must be diagnosed, not re-run until it goes away.
+
+**It was not that day's work.** The gate copies over LocalTalk — SCC, LLAP, DDP,
+ATP — and `tests/q605_afp_live_etalon.cpp:201` does `hub.setService("macip",
+false)`, so `MacIpGateway::handleIp` is unreachable from it. That exonerates the
+reassembly change by inspection rather than by the weaker argument that the
+other network gates passed.
+
+**The counters named the cause.** The failing copy's trace reads `dup=1/0
+lagmax=1440ms`: one retransmit, **pending 0**, lag 1.44 s. By § 0.4's table that
+is "the guest's own ATP timer fired — the reply played late", not "the retransmit
+arrived while we were still serving" (`AtalkStack.cpp:472` annotates that
+counter "= we are the slow one", and it stayed zero). The copy also took 5.15 s
+of *guest* time against the baseline's 4.15 s — 7.8 KiB/s against 9.7 — so this
+was not simple host starvation: the in-process AFP server is host code whose
+completion maps back into guest-visible timing, which is how `-j64` scheduling
+reaches a guest-timed measurement. Run alone, the gate passed in 296 s against
+1371 s contended.
+
+**The fix changes no contract.** `RUN_SERIAL TRUE` joins the `RESOURCE_LOCK`
+these three already shared — the lock kept them apart from each other and never
+kept the other sixty off the host. Two alternatives were rejected on their
+merits. Raising their slot reservation is not available: `PROCESSORS` is derived
+from RAM alone (`gate_resource_budgets.tsv`, and § 0.4's gates hold no row), so
+it would have meant writing a false memory figure into a reviewed manifest. A
+tolerance would have worked arithmetically — the FCS defect produced ~80
+retransmits per copy, so ≤2 would still fail loudly — but § 0.4 documents zero as
+the criterion for a lossless wire, and that sentence was written the day before;
+loosening it a day later to accommodate a scheduler is the wrong direction.
+
+**Measured, not predicted.** All three gates green in situ, 0 client
+retransmissions on every copy: data 296.33 s (was 1371), resource 303.13 s (was
+695), live 134.94 s (was 224). The registry is back to 277/275/1/1. The suite
+pays for it: **3394 s against 2770 s, +624 s (+22.5 %)** — their own time fell
+from ~2290 s to ~734 s, but they no longer overlap with anything. That is the
+trade, stated as a cost rather than dressed up.
+
+The rationale lives in § 0.4 and here because `cmake/Pom68kAfpGates.cmake` sits
+exactly at its 19-line budget; a first attempt to comment it in place pushed the
+file to 32 and would have turned `file_size_budget_test` red.
+
+And the assertion that fired is mine, added in `31f7521` the night before. The
+gate was right to fail — a reply did play late — but a gate that measures time
+had been left to compete with sixty others for the host.
 
 <a id="2026-09-12-macip-reassembly"></a>
 ## 2026-09-12 (fourth) — MacIP reassembles fragmented datagrams, and the old path had been delivering the first fragment truncated

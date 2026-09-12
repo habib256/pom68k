@@ -114,6 +114,20 @@ as it always did without lossless): the same copy takes 4.65 s with none,
 `llap_loop_test` pins the residue case, and the live gate fails on any
 retransmission during a copy.
 
+Those three gates **measure** that, so since 2026-09-12 they carry `RUN_SERIAL`.
+Under `ctest -j64` the data-outage variant came back red with `dup=1/0
+lagmax=1440ms` — pending 0, so by the table above the server was *not* the slow
+one — and passed alone in 296 s against 1371 s contended. The in-process server
+is host code whose completion maps back into guest-visible timing, so host
+scheduling leaks into a guest-timed measurement: that copy took 5.15 s of
+*guest* time against 4.15 s in the run before it. The resource lock already kept
+these three apart from each other; it never kept the other sixty off the host.
+Slots are not the lever either — `PROCESSORS` is derived from RAM alone
+(`gate_resource_budgets.tsv`), so buying scheduling headroom there would mean
+writing a false memory figure into a reviewed manifest. Serialising costs the
+suite about ten minutes of wall (2770 s → 3394 s) and keeps the zero criterion
+above meaning what it says.
+
 ### 0.5 Gates
 
 The component gates run without guest media; the `*_etalon` gates need ROM +
