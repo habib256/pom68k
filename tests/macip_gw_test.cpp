@@ -40,6 +40,30 @@ std::vector<uint8_t> ipPkt(uint32_t src, uint32_t dst, uint8_t proto,
     return p;
 }
 
+// ipPkt() emits a complete datagram. A fragment needs the offset/MF field set
+// and a total length covering only this slice, and the header checksum has to
+// be recomputed after patching both — hence a builder rather than a post-hoc
+// patch of ipPkt's output, which would leave a stale checksum behind.
+std::vector<uint8_t> ipFrag(uint32_t src, uint32_t dst, uint8_t proto,
+                            const std::vector<uint8_t>& l4,
+                            size_t off, size_t len, bool more) {
+    std::vector<uint8_t> p(20);
+    p[0] = 0x45;
+    p[2] = uint8_t((20 + len) >> 8);
+    p[3] = uint8_t(20 + len);
+    p[4] = 0x12; p[5] = 0x34;                    // one datagram, one id
+    const uint16_t fr = uint16_t((more ? 0x2000 : 0) | uint16_t(off / 8));
+    p[6] = uint8_t(fr >> 8); p[7] = uint8_t(fr);
+    p[8] = 64;
+    p[9] = proto;
+    p[12] = src >> 24; p[13] = uint8_t(src >> 16); p[14] = uint8_t(src >> 8); p[15] = uint8_t(src);
+    p[16] = dst >> 24; p[17] = uint8_t(dst >> 16); p[18] = uint8_t(dst >> 8); p[19] = uint8_t(dst);
+    const uint16_t c = csum16(p.data(), 20);
+    p[10] = c >> 8; p[11] = uint8_t(c);
+    p.insert(p.end(), l4.begin() + off, l4.begin() + off + len);
+    return p;
+}
+
 std::vector<uint8_t> tcpSeg(uint16_t sport, uint16_t dport, uint32_t seq,
                             uint32_t ack, uint8_t flags,
                             const std::string& data = {}) {
@@ -182,6 +206,54 @@ int main() {
             gw.setEnabled(false);
             gw.setEnabled(true);
         }
+    }
+
+    // ── A fragmented datagram is reassembled, never delivered truncated ──
+    // Until 2026-09-12 a FIRST fragment passed the offset test and went
+    // straight to the UDP handler, which reads the payload after the L4 header
+    // and handed the host socket a short datagram while the tail was dropped.
+    // Asserting only that "a payload arrived" would pass on exactly that bug —
+    // a truncated delivery is still a delivery — so the lone first fragment
+    // must deliver NOTHING and be held instead.
+    {
+        int us = ::socket(AF_INET, SOCK_DGRAM, 0);
+        sockaddr_in sa {};
+        sa.sin_family = AF_INET;
+        sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        ::bind(us, reinterpret_cast<sockaddr*>(&sa), sizeof sa);
+        socklen_t sl = sizeof sa;
+        ::getsockname(us, reinterpret_cast<sockaddr*>(&sa), &sl);
+        const uint16_t port = ntohs(sa.sin_port);
+        ::fcntl(us, F_SETFL, O_NONBLOCK);
+
+        // UDP header (8) + 40 bytes, split 24/24 on an 8-byte boundary.
+        std::vector<uint8_t> udp = { 0x07, 0xD0, uint8_t(port >> 8), uint8_t(port),
+                                     0, 48, 0, 0 };
+        for (int i = 0; i < 40; i++) udp.push_back(uint8_t('A' + i % 26));
+
+        const long reasmBefore = gw.status().ipReassembled;
+        w.clear();
+        w.sendDdp(47, 72, 72, 22, ipFrag(kGuest, kLo, 17, udp, 0, 24, true));
+        uint8_t buf[128];
+        ssize_t n = -1;
+        for (int i = 0; i < 10 && n < 0; i++) {
+            pump(1);
+            n = ::recv(us, buf, sizeof buf, 0);
+        }
+        CHECK(n < 0 && gw.status().fragSets == 1,
+              "a lone first fragment is held, not delivered truncated");
+
+        w.sendDdp(47, 72, 72, 22, ipFrag(kGuest, kLo, 17, udp, 24, 24, false));
+        for (int i = 0; i < 50 && n < 0; i++) {
+            pump(1);
+            n = ::recv(us, buf, sizeof buf, 0);
+        }
+        CHECK(n == 40 && !std::memcmp(buf, udp.data() + 8, 40),
+              "the tail completes it: the host gets all 40 payload bytes");
+        CHECK(gw.status().ipReassembled == reasmBefore + 1 &&
+              gw.status().fragSets == 0,
+              "the datagram is counted once and the buffer drains");
+        ::close(us);
     }
 
     // ── TCP-lite: connect, data both ways, close both ways ──

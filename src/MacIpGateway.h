@@ -87,7 +87,9 @@ public:
         int leases = 0;
         std::string lastLease;           // last assigned dotted quad
         long ipFromGuest = 0, ipToGuest = 0;
+        long ipReassembled = 0;          // fragmented datagrams put back together
         int udpFlows = 0, tcpConns = 0;
+        int fragSets = 0;                // partial datagrams held right now
         int64_t lastActivity = -1;       // emuCycles of last IP datagram
     };
     Status status() const;
@@ -134,6 +136,9 @@ private:
                     const uint8_t* p, size_t n);
     void handleIp(const AtalkStack::Addr& src, bool ether,
                   const uint8_t* p, size_t n);
+    // True when `out` holds the whole datagram; false while it is still
+    // incomplete, or when the set is refused by one of the bounds above.
+    bool reassemble(const uint8_t* p, size_t n, std::vector<uint8_t>& out);
     void handleTcpFromGuest(const uint8_t* ip, size_t n);
     void handleUdpFromGuest(const uint8_t* ip, size_t n);
     void sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt);
@@ -153,8 +158,28 @@ private:
     uint32_t isnCounter_ = 0x12340000;
 
     std::function<void(uint32_t, const std::vector<uint8_t>&)> etherSink_;
+    // A datagram being put back together. Every dimension is bounded, because
+    // this is the one structure a guest grows by sending a first fragment and
+    // never the rest: bytes per set, sets in flight, and age (RFC 791 § 3.2,
+    // reaped in tick() on guest cycles like every other deadline here).
+    static constexpr size_t  kMaxReasmBytes = 16 * 1024;
+    static constexpr size_t  kMaxFragSets   = 16;
+    static constexpr int64_t kFragTtlSec    = 15;
+    struct FragSet {
+        uint32_t sip = 0, dip = 0;
+        uint16_t id = 0;
+        uint8_t proto = 0;
+        int64_t firstSeen = 0;
+        size_t totalLen = 0;             // known once the MF=0 fragment lands
+        size_t haveCount = 0;
+        std::vector<uint8_t> hdr;        // the offset-0 fragment's IP header
+        std::vector<uint8_t> data;
+        std::vector<bool> have;          // per-byte, so overlaps cannot double-count
+    };
+
     std::map<uint32_t, Lease> leases_;   // guest IP → return address
     std::vector<UdpFlow> udp_;
     std::vector<std::unique_ptr<TcpConn>> tcp_;
+    std::vector<FragSet> frags_;
     mutable Status stat_;
 };

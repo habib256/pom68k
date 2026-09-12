@@ -128,8 +128,17 @@ la plus grande dimension produit encore peu exploitée.
   refuse le cleartext.
 - [ ] **Compléter PAP.** Ajouter polling de statut, configuration des files et
   sélection CUPS dans le GUI.
-- [ ] **Compléter MacIP.** Ajouter ICMP sortant, réassemblage IP et window
-  scaling TCP.
+- [ ] **Compléter MacIP : window scaling TCP.** Le réassemblage IP est fait le
+  2026-09-12 (`CHANGELOG`) : un premier fragment passait le test d'offset et
+  était livré **tronqué** à la socket hôte, la queue étant jetée — le gate le
+  prouve rouge avant / vert après. Reste le window scaling, qui se poserait
+  au-dessus d'un endpoint volontairement in-order-only (MSS 536) : décider
+  d'abord si cette simplification tombe.
+  **ICMP sortant est bloqué par l'hôte, pas par l'effort** : sans `CAP_NET_RAW`
+  il faudrait une socket `IPPROTO_ICMP` non privilégiée, or
+  `net.ipv4.ping_group_range` vaut `1 0` — une plage vide — sur cette machine.
+  Un gate ne pourrait que se sauter, ce qui ne prouverait rien. À rouvrir sur un
+  hôte dont la plage couvre le gid, ou avec la capability accordée.
 - [ ] **Rendre la configuration réseau éditable dans le GUI.** Partage,
   serveur, imprimante, subnet/DNS et révélation du spool.
 - [ ] **Exécuter une session AppleShare complète sur le bridge réel.** Lancer
