@@ -266,7 +266,7 @@ Even the broad set below leaves most machine and device translation units
 cold, and GCC optimizes cold functions **for size**. Untrained profiles would
 come out of a PGO build *slower* than out of a plain `-O3` one.
 `-fprofile-partial-training` (GCC ≥ 10, probed —
-`CMakeLists.txt:174-176`) is what stops that, and the training set is
+`CMakeLists.txt:255-257`) is what stops that, and the training set is
 deliberately broad for the same reason — one machine per CPU family, plus the
 floppy path no hard-disk boot ever reaches. The list lives in **one** place,
 `tools/pgo_train_run.sh`'s `kGates`, shared by both recipes:

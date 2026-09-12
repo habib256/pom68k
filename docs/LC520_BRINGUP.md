@@ -47,7 +47,7 @@ the typed `runLc3` composer (`PlatformSonora.cpp:111-172`).
 5. **When the ROM disagrees with MAME's device wiring, MAME's *other* drivers
    still know the answer** — `maclc3.cpp:379` had the right MCU all along.
 
-### Harness knobs (`tests/lc520_boot_etalon.cpp`, pinned in `CMakeLists.txt`)
+### Harness knobs (`tests/lc520_boot_etalon.cpp`, pinned in `cmake/Pom68kMachineGates.cmake`)
 
 - `POM68K_BOXID=<hex>` — override the `$5FFFFFFC` model longword.
 - `POM68K_SENSE=<n>` — override the monitor sense (`setMonitorSense`).

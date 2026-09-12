@@ -14,11 +14,17 @@ actually is (and are why it is no longer a pending item in `TODO.md`):
 
 1. **There is no oracle.** The vendored WinUAE oracle models a 68030
    data cache (`oracle/uae/upstream/cpummu030.h`,
-   `write_dcache030_lrmw_mmu`) but has **no 68040 data-cache model** —
-   upstream WinUAE serves 040 data straight from memory too. Do not be
-   fooled by `struct cache040` / `fill_icache040`
-   (`oracle/uae/upstream/newcpu.h:160,726-738`): that is the
-   **instruction** cache; there is no `*_dcache040` anywhere. The house
+   `write_dcache030_lrmw_mmu`) and serves 040 data straight from memory
+   as the harness drives it. *Correction (2026-09-12): the 2026-08-04
+   recon was wrong that no `*_dcache040` exists — `newcpu.c` does carry
+   an 040/060 data-cache model (`oracle/uae/upstream/newcpu.c:171`,
+   `read_dcache040` at `:11125`, `write_dcache040` at `:11172`). It is
+   reached only through the accessors WinUAE installs under
+   `currprefs.cpu_data_cache` (`:1255`), a flag the POM68K harness
+   clears (`oracle/uae/glue.c:98`) — so the ruling below is unchanged,
+   only its reason is.* Do not be fooled by `struct cache040` /
+   `fill_icache040` (`oracle/uae/upstream/newcpu.h:160,726`) either:
+   that pair is the **instruction** cache. The house
    rule "on spec/oracle conflict, the oracle wins" has no oracle to
    defer to here: **the MC68040UM is the spec**, and gates must be
    synthetic self-consistency tests built from its pseudocode.
@@ -59,7 +65,7 @@ Consequences, stated plainly:
 |---|---|---|
 | CINV/CPUSH | `MoiraExec_cpp.h` (`execCinv/execCpush`) | push dirty bytes to physical memory and invalidate the selected line/page/cache |
 | CACR | `Cpu040::didChangeCACR` (`src/Cpu040.cpp`) | bit 15/11 drive the **throughput** i-cache overlay + JIT flushAll; **since M1** DE/IE also gate the tag model (read at touch time, no hook needed) |
-| CM bits | `Moira::Mmu040AtcEntry.status` (`Moira.h:1777-1783` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
+| CM bits | `Moira::Mmu040AtcEntry.status` (`Moira.h:2180-2186` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
 | TTR cache fields | `mmu040MatchTTR` | TTR CM bits reachable the same way |
 | JIT contract | `pomJitFetch`, `pomJitProbeCode/Data`, `pomJitData` | page-to-host-RAM data windows are refused; validated sole reads and write-authorized copyback hits may use the resident physical D-cache line; native writes publish the exact dirty-longword mask; every fetched byte and a native block's whole embedded range require resident byte-for-byte I-cache identity; native links return to that guard between blocks |
 | Snoop hook | `pomSnoop040Read/Write` | alternate-master read supply, invalidate and write-sink/MI behaviour; callable even while DC is disabled |

@@ -1,8 +1,8 @@
 # PowerBook Duo bring-up — the MSC + PG&E platform
 
-(`MscMemory.h:4` calls this "platform #11" and `IIfxMemory.h:4` calls OSS+IOP
-"#12": those are **creation order**, not row numbers in CLAUDE.md's machine
-table, and nothing derives from them.)
+(`MscMemory.h:4` and `IIfxMemory.h:4` both label their platform "#12": those
+are **creation order**, not row numbers in CLAUDE.md's machine table, and
+nothing derives from them.)
 
 **Status: the Duo 230 is the 37th profile** (2026-08-06). It boots System 7.5.5
 to the Finder — menu bar, battery icon, Control Strip, mounted volume — under
@@ -18,10 +18,10 @@ established** — the MAME cites to port from (`macpwrbkmsc.cpp` / `msc.cpp` /
 the findings that are not derivable from the code, and the things that were
 *disproved* and must not be re-tried.
 
-Still open, in milestone order: the **trackball quadrature counters** (the
-mouse still rides the PG&E's ADB modem cell; the KEYBOARD matrix landed
-2026-08-13) and then **sleep/wake**, the one path no other machine in the tree
-can exercise — of which the CPU-power-down half is now done, see milestone 6.
+Still open: **sleep/wake**, the one path no other machine in the tree
+can exercise — of which the CPU-power-down half is now done, see milestone 6
+(the KEYBOARD matrix landed 2026-08-13 and the trackball quadrature counters
+2026-08-14, both gated by `duo230_input_etalon`).
 Then the PB150, whose ROM is the only oracle.
 
 ---
@@ -189,7 +189,7 @@ defaults: `DEV.md` § 5.
 | **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520 method (ROM as the only oracle) |
 
 `MscMemory` already carries `kCpuHz210` and all three Duo 2x0 box IDs
-(`MscMemory.h:53-59`); the 210/250 share the `ECFA989B` ROM, so they need an
+(`MscMemory.h:63-69`); the 210/250 share the `ECFA989B` ROM, so they need an
 env selector: today the clock and the box ID are written straight into
 `runDuo`'s memory construction (`PlatformDuo.cpp:88-123`).
 
@@ -301,7 +301,7 @@ different address width, stack window, vectors, map and peripherals) plus
    **Still absent, machine-side API gaps rather than shell gaps:** no floppy
    (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds, no
    live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)` takes
-   no index so button 1 is dropped (`MscMemory.h:134`).
+   no index so button 1 is dropped (`MscMemory.h:175`).
 4. ✅ **Input through the PMU**, both halves. The **keyboard matrix**
    (2026-08-13, `PgePmu`): rows selected on port C, columns on port A (X0-X7)
    and port B bits 0-2 (X8-X10), modifiers on port B bits 3-7, all active low,
@@ -316,8 +316,9 @@ different address width, stack window, vectors, map and peripherals) plus
    the motion; steering on that builds a backlog that lands as one jump), and
    never let the last step be ±1 — that is below System 7's mouse-scaling
    floor, so the pointer stops moving and a halving loop never converges.
-   A dedicated `duo230_input_etalon` is still worth having: the pointer's only
-   coverage today is inside the persist leg.
+   `duo230_input_etalon` (2026-09-07) now judges both halves at guest level —
+   the KeyMap and the guest's own Mouse global — independently of the persist
+   leg.
 5. ⬜ Variants: Duo 210/250 (trivial, § *Why this order*), 270c (CSC), 280
    (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
    oracle).

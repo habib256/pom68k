@@ -18,8 +18,8 @@ fast, and flags where POM68K deliberately differs.
 > do (`V8Memory.h:14`, `V8Video.h:11`, `PseudoVia.h:26`, `Ariel.h:10`,
 > `Asc.h:14`, `Egret.h:38`). Two cites are still by line and are wrong after
 > any edit here — resolve them by section, not by counting:
-> `V8Memory.cpp:242` says "LCII_HARDWARE.md:44" (the C7M/VIA clock — **§
-> Clocking**) and `V8Memory.cpp:527` says "LCII_HARDWARE.md:78" (the
+> `V8Memory.cpp:268` says "LCII_HARDWARE.md:44" (the C7M/VIA clock — **§
+> Clocking**) and `V8Memory.cpp:556` says "LCII_HARDWARE.md:78" (the
 > `AddrMapFlags $773F` BERR note — **§ Address map**).
 
 Mined 2026-07-15 in source-of-truth rank order:
@@ -81,7 +81,7 @@ reference profile documented here**; the per-variant deltas are in
 
 Constants as built: `V8Memory::kRomSize` `$80000`, `kVramSize` `$80000`,
 `kMbRamSize` `$400000`, `kCpuHz` 15 667 200, `kViaHz` 783 360
-(`V8Memory.h:43-48`).
+(`V8Memory.h:52-57`).
 
 ## Clocking
 
@@ -141,7 +141,7 @@ BERR there lands on a zero vector → DS 1. The `$FF` is a **knob, not a fact**:
 MAME answers 0 there but that is its `address_space` default, not a modelled
 decision, so `POM68K_V8_HOLEVAL=<hex>` picks the byte until an observable
 separates them, and `POM68K_V8_IOHOLE=<n>` logs the accesses with their PC
-(`V8Memory.cpp:525-554`).
+(`V8Memory.cpp:561-579` read, `:801-807` write).
 
 ### 24/32-bit story
 
@@ -242,7 +242,7 @@ No RTC bits, no overlay bit, no sound bits — all moved to Egret/ASC/V8.
 
 **As built** (`V8Memory::reset`, the `setInA`/`setInB` block — read it, the
 reasoning is there): PA is driven with the diag bit **set** (`$D5` on
-LC/LC II, `$93` Eagle, `$83` Spice, `$84` Tinker Bell — Tinker Bell has no
+LC/LC II, `$93` Eagle, `$82` Spice, `$84` Tinker Bell — the last two have no
 diag OR). PB idles `$C7 | XCVR_SESSION<<3`: PB0-2 (legacy RTC lines) and
 PB6-7 keep the 6522 pull-up 1s, but **PB4/PB5 must idle LOW** — they are
 host-driven and the HLE transport is edge-triggered, so pull-ups there read
@@ -308,8 +308,9 @@ The 60.15 Hz "VBL" heartbeat and the one-second interrupt both live on VIA1
 - Monitor sense (reg $10 read, bits 3-5): 1 = 640×870 portrait, 2 = 512×384
   12" RGB, 6 = 640×480 13" RGB (v8.cpp:61-66,495-515). `V8Memory`'s own
   default is sense **2** (what the tests get); the GUI path forces sense **6**
-  unless `POM68K_MONITOR=512`, and offers only those two (`main.cpp` — 640×870
-  needs a wider framebuffer than the V8 provides).
+  unless `POM68K_MONITOR=512`, and offers only those two
+  (`GuiRunnerV8.h:30-34` — 640×870 needs a wider framebuffer than the V8
+  provides).
 - Real-machine mode limits (EveryMac; GttMFH LC ch.): 256 KB VRAM →
   512×384@8bpp or 640×480@4bpp; 512 KB → 512×384@16bpp or 640×480@8bpp;
   640×870@1bpp (4bpp w/512 KB).
@@ -397,7 +398,8 @@ code):
 - The stock LC II has no FPU, but much LC II-era software (and the test
   disk) issues 68882 instructions; without an FPU they F-line-fault to
   **system error 10**. `Cpu030`'s socket is **empty by default**
-  (`withFpu = false`, matching maclc.cpp:325-330); `main.cpp` and every LC II
+  (`withFpu = false`, matching maclc.cpp:325-330); `PlatformV8.cpp:168-170`
+  (from the startup default, `RuntimeConfigProduct.cpp:12`) and every LC II
   gate pass `withFpu = true`, and `POM68K_NOFPU` models the bare machine.
   Whether the 030 path still needs the UniversalInfo/`defaultRSRCs` selection
   that fixed the 040 side is **untested** —
@@ -531,7 +533,7 @@ V8-specific slice.
 | **SCSI DRQ timeout is not timed** — no DRQ raises `/BERR` immediately instead of after ~16 µs | `V8Memory::scsiDma_` | Functionally what the blind-transfer loops need; `LLE_VS_HLE` § 1.5 |
 | **ASC drain is a fixed 22 257 Hz**, not derived from the programmed rate | `Asc.*` | `LLE_VS_HLE` § 1.7 |
 | **DFAC analog filters are not synthesized; DFAC2 payload remains ACK-only** | `Dfac`, `CudaLle::setI2cDfac` | Original DFAC gain/input gate is live; DFAC2 follows upstream's still-incomplete register model |
-| **68882 populated by default** although the stock LC II has none | `main.cpp`, LC II gates pass `withFpu = true` | Era software F-line-faults otherwise; `POM68K_NOFPU` = bare machine |
+| **68882 populated by default** although the stock LC II has none | `PlatformV8.cpp` (startup default in `RuntimeConfigProduct.cpp`), LC II gates pass `withFpu = true` | Era software F-line-faults otherwise; `POM68K_NOFPU` = bare machine |
 | **No CPU/bus contention model** beyond VIA E-clock sync + SWIM wait states; an i-cache *throughput* overlay, not a cache model | `Cpu030.h` | Functional accuracy by design; `LLE_VS_HLE` § 1.2 |
 | **LC PDS slot: no card, BERR** | `V8Memory::read8` | Nothing to emulate yet |
 

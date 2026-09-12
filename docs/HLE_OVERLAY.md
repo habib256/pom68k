@@ -45,16 +45,16 @@ Two secondary premises also moved, in the overlay's favour:
 - **Save states shipped** 2026-07-30 (`src/SaveState.h/.cpp`,
   `SaveStateMachines.h/.cpp`, **12** machine families / **37** profiles).
   § 3's "stamp the active module set" guardrail is no longer hypothetical —
-  and since 2026-08-12 it is no longer even a design: `SaveStateMachines.cpp:163`
-  writes `lle::snapshotFlags()` into the header and `:207-210` refuses an
+  and since 2026-08-12 it is no longer even a design: `SaveStateMachines.cpp:165`
+  writes `lle::snapshotFlags()` into the header and `:209-213` refuses an
   HLE-tainted restore in strict mode.
 - **The "loud non-conformant mode" precedent exists.** Every HLE ADB *fallback*
   prints a `NON-CONFORMANT` notice to stderr on entry **and** registers the
   module in `pom68k::lle` — eight sites, all through the one shared
   `pom68k::fw::select` that prints it (`FirmwareChoice.h:106-110`):
-  `AdbVia.cpp:51-61`, `V8Memory.cpp:164-174`, `SonoraMemory.cpp:51-67`,
-  `VaspMemory.cpp:26-37`, `RbvMemory.cpp:35-47`, `Q605Memory.cpp:96-106`,
-  `Q630Memory.cpp:78-88`, `Q700Memory.cpp:46-58` — per `LLE_VS_HLE.md` § 2's
+  `AdbVia.cpp:51-61`, `V8Memory.cpp:201`, `SonoraMemory.cpp:84`,
+  `VaspMemory.cpp:48`, `RbvMemory.cpp:61`, `Q605Memory.cpp:88`,
+  `Q630Memory.cpp:96`, `Q700Memory.cpp:78` — per `LLE_VS_HLE.md` § 2's
   policy settled 2026-07-29. The last of those was the last exception: until
   **2026-08-14** the Eclipse Q900/Q950 registered `HleEgretCuda` *without* a
   notice, because its Egret HLE was unconditional rather than a fallback and
@@ -85,7 +85,9 @@ feature a net win instead of a slow-acting poison.
 The JIT was built under the same rule and is the working proof it holds: the
 proved conformant engine is now the 68040 default, while the interpreter stays
 the declared and explicitly tested reference (`POM68K_JIT.md` § 2,
-invariants 1 and 3). Other guest families remain on the interpreter.
+invariants 1 and 3). The 68030 families joined that default on 2026-08-18
+(`JitEngine.cpp:212-213`); the 68000 and 68020 families remain on the
+interpreter.
 
 ---
 
@@ -188,13 +190,13 @@ Checked against the vendored core on 2026-07-31. The study's original claim
 
 | Hook | Where | Reality |
 |---|---|---|
-| `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:872` (virtual) / `:1015`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == Instr::STOP \|\| I == Instr::TAS \|\| I == Instr::BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
-| `didReachSoftwareTrap(addr)` | `Moira.h:974` (virtual) / `:1066`, fired from `execLineA` (`MoiraExec_cpp.h:47`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
+| `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:1143` (virtual) / `:1332`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == Instr::STOP \|\| I == Instr::TAS \|\| I == Instr::BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
+| `didReachSoftwareTrap(addr)` | `Moira.h:1291` (virtual) / `:1383`, fired from `execLineA` (`MoiraExec_cpp.h:47`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
 | `MoiraDebugger` breakpoints / softstops | `MoiraDebugger.*`, checked at `Moira.cpp:667` | **The zero-cost-when-unused route**: `State::CHECK_BP` is set only while a breakpoint exists (`MoiraDebugger.cpp:190-192`), so an unarmed build pays one already-hot flag test. **Caveat:** the check sits at the `done:` label — *after* the instruction retires, reporting `reg.pc0`. An entry-address hook therefore fires with the routine's first instruction **already executed**; the handler must either account for that or hook the instruction before the entry |
 
 Also corrected: `Cpu68k` derives from `MoiraSnapshot` (`src/MoiraSnapshot.h:32`),
 not from `moira::Moira` directly; `MacMemory::loadRom` is at
-`src/MacMemory.cpp:39`.
+`src/MacMemory.cpp:43`.
 
 ### 5.2 Two attach strategies — support both
 
@@ -207,7 +209,7 @@ Recommendation: **address hook for v1** (no checksum handling, instant toggle).
 Move a module to byte-patch only with *patch-before-compile* + *region
 invalidation* guaranteed.
 
-A byte-patch pass would run inside `MacMemory::loadRom` (`src/MacMemory.cpp:39`)
+A byte-patch pass would run inside `MacMemory::loadRom` (`src/MacMemory.cpp:43`)
 and its per-machine equivalents, **after** the signature scan and **before** the
 first fetch or JIT compile sees the page.
 
@@ -243,7 +245,7 @@ and different drivers (IWM vs SWIM1 vs SWIM2, NCR 5380 vs 53C96, M0110 vs
 PIC1654S vs Egret vs Cuda vs PG&E — roster in `CLAUDE.md`, reachability in
 `docs/68K_FAMILY_SCOPE.md`). `machines` gates a module to the families it
 understands; `RomMatch` further gates it to the specific ROM the scan
-recognises. `SnapMachine` (`src/MachineCatalog.h:35-49`) already enumerates
+recognises. `SnapMachine` (`src/MachineCatalog.h:50-64`) already enumerates
 the 37 profiles and is the natural basis for `MachineMask`.
 A module with no signature hit on the loaded ROM is inert and greyed, not a
 hazard.
@@ -276,7 +278,8 @@ and Plus ROMs are catalogued in `BASILISK_ROM_NOTES.md` §3 (patch map) and §5
 ## 7. Guardrails (keeping the oracle discipline)
 
 - **Purity mode.** A global `HLE_FORBIDDEN` flag set by every accuracy gate —
-  the boot etalons (48 gate names end in `boot_etalon`), the SST vector suites
+  the boot etalons (every gate whose name ends in `boot_etalon`; the count
+  lives in `STATUS.md`), the SST vector suites
   (`sst68000`/`sst68030`/`sst68040`), the JIT locksteps. Any attempt to install
   an HLE hook while the flag is set **`abort()`s**. This makes it *mechanically
   impossible* for an oracle gate to be "helped." The JIT does not need the
@@ -313,7 +316,7 @@ predictions. Source: `src/jit/POM68K_JIT.md` §§ 4, 8, 9.
 - **The invalidation machinery already exists.** `jit::CodeGuard` watches guest
   writes at **256-byte** slice granularity (`JitGuard.h:28-62`) and
   `Engine::serviceGuard()` evicts only the blocks overlapping a written slice
-  (`JitEngine.cpp:492`). A byte-patch module writing into `rom_` must go through
+  (`JitBlockCache.cpp:62`). A byte-patch module writing into `rom_` must go through
   that path, or patch before the first compile.
 - **An A-line or illegal-opcode hook exits a JIT block cleanly for free.** The
   classifier marks the **whole A-line** and the `$4Exx` group `Unsafe`

@@ -48,7 +48,7 @@ Every gate below is a Finder-signature boot etalon unless noted.
 The compacts turned out to be a `MacMemory::Model` enum, not a machine: the SE
 map is the Plus map with a bigger ROM, the overlay clearing on the first ROM
 access, and **ADB on the same PIC1654S firmware LLE the Mac II uses**
-(VIA PB5/PB4 = ST, PB3 = /ADB IRQ — `MacMemory.h:46-48`) in place of the M0110.
+(VIA PB5/PB4 = ST, PB3 = /ADB IRQ — `MacMemory.h:51-54`) in place of the M0110.
 
 | Profile | ROM | Gate |
 |---|---|---|
@@ -61,8 +61,8 @@ access, and **ADB on the same PIC1654S firmware LLE the Mac II uses**
 
 `MacIIMemory::Model` + `Cpu020`'s `is030` flag. The IIx/IIcx wall was the 030
 PMMU double-translating against the GLUE 24-bit remap — skip `physAddr` when
-the PMMU is on (`MacIIMemory.h:66-71`). All four run at 15.6672 MHz:
-`kCpuHz` is fixed and the ctor takes no clock (`MacIIMemory.h:34,45`).
+the PMMU is on (`MacIIMemory.h:79-84`). All four run at 15.6672 MHz:
+`kCpuHz` is fixed and the ctor takes no clock (`MacIIMemory.h:42,55`).
 
 | Profile | CPU | ROM | Gate |
 |---|---|---|---|
@@ -137,7 +137,7 @@ Ariel, 2048-byte pitch), Egret 341S0851. Empty NuBus reads MAME-unmapped 0.
 
 68040 / 68LC040 + 040 MMU, Cuda firmware LLE, NCR 53C96, SWIM2. **All three
 profiles run at 25 MHz**: `Q605Memory::kCpuHz` is fixed and the ctor takes no
-clock parameter (`Q605Memory.h:73,76`), so the LC 575's "33 MHz" is a menu
+clock parameter (`Q605Memory.h:80,83`), so the LC 575's "33 MHz" is a menu
 label, not the emulated clock. The identity is the `POM68K_Q605_ID` longword
 only.
 
@@ -153,7 +153,7 @@ Q605 devices (DAFB, 53C96, SWIM2, AscIosb, PseudoVia) + discrete `Rtc` +
 PIC1654S ADB LLE. The one wall was djMEMC's 2 MB VRAM window vs MEMCjr's 1 MB.
 The Quadra 800 needed only its ID pins (`$12`) and the Ethernet address ROM at
 `$50008000`; SONIC and its NuBus slots stay unmapped-0 and the boot path never
-binds them. Clocks and ID pins are per profile (`CentrisMemory.h:56-67`).
+binds them. Clocks and ID pins are per profile (`CentrisMemory.h:64-75`).
 
 | Profile | Clock / ID pins | Gate |
 |---|---|---|
@@ -184,7 +184,7 @@ CB1/CB2 instead of the discrete RTC, and a second 53C96 bus
 ### F108 + PrimeTime II + Valkyrie — `Q630Memory` / `Q630Cpu` / `Valkyrie`
 
 The last 68k desktop board. Fixed-mode Valkyrie framebuffer, Cuda 341S0060,
-68040 @ 33 MHz (both profiles — `Q630Memory.h:66`). The ATA/IDE port is mapped
+68040 @ 33 MHz (both profiles — `Q630Memory.h:74`). The ATA/IDE port is mapped
 but has no drive, so boot goes over SCSI (§ 4).
 
 | Profile | ROM | Gate |
@@ -243,7 +243,7 @@ new bus. Backlog entries: `TODO.md` § Nouvelles machines.
 | Brick | Unlocks | ROM on hand | Status |
 |---|---|---|---|
 | **Apple PIC IOP** (343S1021: R65C02 + 32 KB shared RAM + 2 DMA channels + host/peripheral mailboxes + timer) **+ the OSS** interrupt controller | Mac IIfx (2026-08-01), Quadra 900 / 950 (2026-08-02). `R65c02.*` + `ApplePic.*` serve the IIfx front end and both Eclipse IOPs; all three Finder gates pass | IIfx `4147DD77`; Q900 shares `420DBFF3` with the Q700; Q950 `3DC27823` | ✅ **landed** |
-| **Power Manager + LCD framebuffer** — 68HC05 flavour (PB 150 / 190 / Duo / 500) or **M50753** (Mitsubishi 740 = 6502 superset; Portable, PB 100 / 140-180) | the whole portable line. **68HC05 side landed**: `M68hc05Pge.*` + `PgePmu.*` + `MscMemory.*` boot the Duo 230 to the Finder and it is the 37th profile (2026-08-06). Still open on that platform: input through the PMU's matrix/trackball path, and sleep/wake. **M50753 side untouched** | PB150 `FDA22562`; PB160-180 `E33B2724`; Duos `ECFA989B` / `0024D346` / `015621D7`; PB520/540 `B6909089`; PB190 `4D27039C`; Portable `96CA3846`; PB100 `96645F9C` | 🟢 (68HC05) / 🟡 (M50753) |
+| **Power Manager + LCD framebuffer** — 68HC05 flavour (PB 150 / 190 / Duo / 500) or **M50753** (Mitsubishi 740 = 6502 superset; Portable, PB 100 / 140-180) | the whole portable line. **68HC05 side landed**: `M68hc05Pge.*` + `PgePmu.*` + `MscMemory.*` boot the Duo 230 to the Finder and it is the 37th profile (2026-08-06). Still open on that platform: sleep/wake (input through the PMU's matrix keyboard and trackball counters landed 2026-08-13/14, gated by `duo230_input_etalon`). **M50753 side untouched** | PB150 `FDA22562`; PB160-180 `E33B2724`; Duos `ECFA989B` / `0024D346` / `015621D7`; PB520/540 `B6909089`; PB190 `4D27039C`; Portable `96CA3846`; PB100 `96645F9C` | 🟢 (68HC05) / 🟡 (M50753) |
 | **AV I/O complex** — advanced video + S-Video digitizer, **Curio** combo SCC/SCSI/Ethernet, **MACE**, sound codec, AV memory/DMA controller | Quadra/Centris **660AV**, **840AV** — boot **without** the DSP | `5BF10FD1` | 🟠 |
 | **AT&T DSP3210 core + VCOS/ARTA** | full 660AV / 840AV DSP fidelity | — | 🔴 |
 
@@ -279,7 +279,7 @@ platforms.
 |---|---|---|
 | **128K / 512K / 512Ke** | A subset of the Plus: 64K ROM, no SCSI, less RAM. Memory/ROM config on `MacMemory`. | 128K `28BA61CE` and 512K `28BA4E50` are on hand |
 | **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + typed `SnapMachine` selection |
-| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:53-61`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:88-123`) |
+| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:63-69`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:88-123`) |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |
 | **ATA/IDE target on the Quadra 630 / LC 580** | The port is mapped (`Q630Memory.h:27`), it just has no drive | The remaining gap on that board; boot currently goes over SCSI |
 
@@ -313,8 +313,8 @@ Re-derived from the CMake gate modules on 2026-08-12:
 - **15 of 37** are additionally gated on the **second execution engine**
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
   iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` in
-  `cmake/Pom68kJitGates.cmake:371-454`, plus `jit_classic_boot_etalon`
-  registered on its own at `cmake/Pom68kJitGates.cmake:548-551` because it
+  `cmake/Pom68kJitGates.cmake:475-521`, plus `jit_classic_boot_etalon`
+  registered on its own at `cmake/Pom68kJitGates.cmake:648-652` because it
   shares the compact binary); four of those also
   carry an explicit `interp_*_boot_etalon` interpreter reference (q605,
   centris650, q630, q700).
@@ -332,12 +332,13 @@ Phase A/B/C — Plus → Mac II → the V8/Sonora/VASP/RBV/040 fan-out — are *
 and so are the two platforms this section used to call unfinished (§ 1). What
 is left, in return-on-effort order:
 
-1. **Depth over breadth** — beyond-boot gates on the 28 profiles that have
-   none (§ 5). Not a new machine, and the highest-value item on this page.
-2. **Finish the Duo platform**: input through the PMU's matrix keyboard and
-   trackball counters (`duo230_input_etalon`), then the **sleep/wake gate no
-   other machine in the tree can run** (`docs/DUO_BRINGUP.md` milestones 4
-   and 6). The brick is paid for; this is the product work.
+1. **Depth over breadth** — beyond-boot gates on the profiles that have
+   none (§ 5 records the 2026-08-12 state; `STATUS.md` owns the current
+   one). Not a new machine, and the highest-value item on this page.
+2. **Finish the Duo platform**: the **sleep/wake gate no other machine in the
+   tree can run** (`docs/DUO_BRINGUP.md` milestone 6) — input through the
+   PMU's matrix keyboard and trackball counters is done and gated
+   (`duo230_input_etalon`). The brick is paid for; this is the product work.
 3. **Generalize NuBus** → real slot cards on IIx/IIcx/IIci/IIsi/VASP and the
    NuBus Quadras. (No longer a prerequisite for the IIfx: it ships on
    `TobyVideo` in slot 9.)
