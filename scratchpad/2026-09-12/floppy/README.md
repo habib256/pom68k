@@ -1,85 +1,86 @@
 # `lcii_floppy_etalon` on x86-64: the evidence
 
-The gate fails on this host and was reported green on the M4 at the same commit
-(`b7700f1`, CHANGELOG 2026-09-09 (third)). The inputs are identical on both
-sides — ROM `35C28F5F`, `hdv/boot.vhd` sha256 `cc364381…`, `disks35/Disk605.dsk`
-sha256 `6ea0c1c7…` — so this is a host divergence, the second of its kind after
-the AFP one (CHANGELOG 2026-09-11 (third)).
+The gate fails on this host. A log committed at `662a64f` records it passing.
+Rebuilding that same commit here and running it reproduces the failure, so the
+comparison below is the same gate, the same code and the same assets on two
+machines — ROM `35C28F5F` / `18c3de07…`, `hdv/boot.vhd` sha256 `cc364381…`,
+`disks35/Disk605.dsk` sha256 `6ea0c1c7…`, untouched since 14 August.
+
+The host that produced the passing log is **not recorded**: neither `662a64f`
+nor the log itself names one. Earlier revisions of this note attributed it to
+the M4; that was an inference, not a fact, and it has been removed.
 
 | File | What it is |
 |---|---|
-| `reference_m4_2026-09-07.log` | the M4's passing run, `scratchpad/2026-09-07/floppy/final_lcii_800k.log` |
-| `run_b7700f1.log` | this host, same commit `b7700f1`, built in a throwaway worktree |
+| `reference_662a64f.log` | the passing run committed at `662a64f`, host unrecorded (was `scratchpad/2026-09-07/floppy/final_lcii_800k.log`) |
+| `run_662a64f_this_host.log` | the same commit rebuilt and run **here** — the like-for-like comparison |
+| `run_b7700f1.log` | this host at `b7700f1`, two commits later |
 | `run_x86_64_x64_and_interp.log` | this host, current tree, x64 default and interpreter — both fail identically |
-| `diff_vs_reference.txt` | `reference_m4_2026-09-07.log` against `run_b7700f1.log` |
-| `memcheck_partial.log` | `valgrind --tool=memcheck --track-origins=yes`, stopped in the boot phase — see below |
+| `diff_vs_reference.txt` | the original confounded diff, kept for the record (see below) |
+| `memcheck_partial.log` | `valgrind --tool=memcheck`, stopped in the boot phase |
 
-## What the diff says
+## The like-for-like comparison, at `662a64f`
 
-The volume mounts on **both** hosts: each run ends the insert with "volume icon
-appeared (MOUNTED)". What differs is everything the guest does to get there.
-
-| | M4 (passes) | x86-64 (fails) |
+| | committed log | this host |
 |---|---|---|
 | nibbles read off the medium | 586 503 | 309 598 |
 | head left at | track 0, TKO=0 | track 10, TKO=1 |
 | last 512 nibbles consumed | 330 sync `$FF`, 3 marks | 5 sync `$FF`, **0 marks** |
-| consumed tail | `… FF FF D5 AA 96 …` | no `D5 AA 96` anywhere |
-| repaint after insert (fraction of pixels) | 0.123 — 24 163 px, x 3..503 y 25..335 | 0.012 — 2 310 px, x 439..503 y 28..123 |
-| repaint on Cmd-N | 3 066 px, y 52..170 | 3 069 px, y 45..316 |
-| Put Away ejected after (guest frames) | 180 | 60 |
-| folder in the host file | `untitled folder` 0 → 2 | none appeared |
+| repaint after insert (fraction of pixels) | 0.123 | 0.012 |
+| Put Away ejected after | 180 guest frames | 60 guest frames |
+| `untitled folder` in the host file | 0 → 2 | never appears |
+| verdict | PASSED | FAILED |
 
-The repaint regions are the tell, and they are pixel fractions rather than
-delays — `diffRatio` over two framebuffers. On the M4 the insert repaints an
-eighth of the screen across almost its full width: a volume **window** opening.
-On x86-64 it repaints a 64×95 patch in the top-right corner — the disk **icon**
-on the desktop, and nothing more. The Cmd-N that follows therefore lands
-somewhere other than an open floppy window: the hard-disk image is untouched on
-both sides, the guest does commit sectors to the floppy on both sides, yet no
-candidate folder name reaches the host file here.
+The volume mounts on both. What differs begins at the insert: half the nibbles,
+the head parked on track 10, and no GCR address mark in the last 512 nibbles
+consumed. The repaint figures are fractions of changed pixels, not delays — here
+a 64×95 patch in the top-right corner, the disk **icon**, where the reference
+repaints an eighth of the screen across nearly its full width, a volume
+**window**. The Cmd-N that follows therefore lands elsewhere, and although the
+guest commits sectors, no folder name reaches the host file.
 
-The divergence is already present at the insert, before the gesture the gate is
-nominally about. The half-sized nibble count with the head parked at track 10
-and not one GCR address mark in the last 512 nibbles consumed says the read path
-itself is where the two hosts part ways, not the Finder scripting on top of it.
-The shorter eject (60 guest frames against 180) fits that: less was read and
-less is left to flush.
+## What made this red visible, on 2026-09-07
 
-## The gate does not read the host clock
+Bisecting the 49 commits between `697a572` and `fc7d472` puts the first red at
+`f557e88`, whose message says the gate "had printed the Cmd-N folder without
+asserting it since 2026-08-05". It added `&& guestEjected && grewF <
+folderprobe::kCount` to the verdict, turning a question `TODO` had kept open
+into an assertion. No emulator code changed there. This host's guest had never
+written that folder to the host file; the gate merely stopped tolerating it,
+which is why the two all-green registry runs of 2026-09-01 included this gate
+and passed it.
 
-Worth stating, because the AFP investigation this session ended in gate
-calibration rather than an emulator defect, and the same escape had to be
-excluded here rather than assumed away. It does not apply: every quantity in
-this gate's floppy path is guest-derived. `runFrames` advances emulated frames,
-`diffRatio` is a fraction of changed pixels, and the eject count is a *measured*
-guest response — `for (; ejectFrames < 1800 && drv.hasDisk(); ejectFrames += 30)`
-— capped, never imposed. A faster host cannot cut this guest off early, so the
-180-against-60 difference is the guest genuinely doing less work, not a budget
-expiring.
+Of the two added conjuncts only one fails here: the guest does Put Away the
+volume and the drive empties, in 60 frames. The catalog write is what never
+happens.
 
-## Memcheck reported nothing, and could not finish
+`diff_vs_reference.txt` is the first diff taken during this investigation. It
+compared the reference log against a `b7700f1` build — thirty-six commits and two
+floppy-path changes apart — so it varied host and code together and proved
+nothing on its own. It is kept because its per-line figures are still accurate
+for the two runs it names.
 
-`valgrind --tool=memcheck --track-origins=yes` was run against the reproducing
-binary and stopped after 93 minutes of wall time and 4 131 s of CPU — 64× the
-65 s the same binary takes natively, well past the 30–50× memcheck normally
-costs. In everything it did reach, the whole boot phase up to and including
-asset loading, it reported **zero** invalid reads, invalid writes or
-uninitialised values. That is a weak negative, not an exoneration: it never got
-as far as the floppy insert, which is where the divergence lives.
+## Ruled out
 
-The reason it crawled is in its own stack trace: `pom68kJitSync` calling into an
-anonymous region (`0x88D6C57 ???`). This binary runs the x64 JIT backend by
-default, and code generated at run time forces Valgrind to re-translate
-continuously. A rerun worth the wait must pin the interpreter —
-`POM68K_CPU_ENGINE=interp` — which the gate also fails under, so nothing is lost
-by doing so. A memory error was never the strong hypothesis anyway: the failure
-is deterministic and identical under both engines.
+- **A host clock.** Nothing in the floppy path reads one; `std::chrono` appears
+  only in GUI and host files. Every quantity in the gate is guest-derived:
+  `runFrames` advances emulated frames, `diffRatio` is a pixel fraction, and the
+  eject count is a measured, capped response (`ejectFrames < 1800 &&
+  drv.hasDisk()`), never a budget a fast host could expire.
+- **Floating point.** There is no `float` or `double` anywhere in the read path;
+  the PLL is `int64_t`.
+- **Image drift between runs.** `Disk605.dsk` is unchanged since 14 August; the
+  gate writes to a private copy.
+- **The `senseAddr()` change** in that span, bit 3 moving from the ISM mode
+  register to the drive's SEL line. It matches the symptom well — the sense
+  address selects TK0 at `0x5` — but the failure predates it.
+- **A memory error**, weakly: memcheck reported zero invalid accesses in the
+  boot phase it reached, though it never got to the insert. It was stopped at 64×
+  the native runtime because the x64 JIT backend makes Valgrind re-translate
+  continuously; a rerun should pin `POM68K_CPU_ENGINE=interp`, which fails too.
 
-## What is not yet known
+## Next
 
-Which layer of the read path diverges, and why it is host-dependent at all when
-machine time is guest time. Next: re-run the gate on the M4 to confirm it still
-passes there, then instrument the IWM/SWIM1 path on both hosts from the first
-read that differs. Reproducer here: `POM68K_BEYOND=floppy build/lcii_beyond_etalon`,
-65 s.
+Instrument the IWM/SWIM1 read path on both machines from the first read that
+differs, which is at the insert and well before the folder the gate asserts.
+Reproducer here: `POM68K_BEYOND=floppy build/lcii_beyond_etalon`, 65 s.

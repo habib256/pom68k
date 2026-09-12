@@ -92,19 +92,24 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 - [ ] **Créer un store de piste flux de première classe.** Faire survivre les
   flux écrits hors cadence à un commit et revalider l'arithmétique de zones
   GCR ; exiger un symptôme ou un corpus avant d'élargir le modèle.
-- [ ] **Élucider l'échec x86-64 de `lcii_floppy_etalon`.** Rouge déterministe
-  ici — x64 comme interpréteur, seul comme sous `-j64` — mais vert sur le M4 au
-  même commit `b7700f1`, à entrées identiques (ROM `35C28F5F`, `hdv/boot.vhd`,
-  `disks35/Disk605.dsk`). La divergence est **dès l'insertion** : 309 598
-  quartets lus contre 586 503, tête laissée piste 10 (TKO=1) au lieu de 0,
-  aucune marque d'adresse GCR `D5 AA 96` dans le dernier bloc consommé. Le
-  volume monte des deux côtés, mais seule l'icône se repeint (0,012 de l'écran
-  contre 0,123, fractions de pixels et non délais) au lieu d'une fenêtre de
-  volume, si bien que le Cmd-N tombe ailleurs. La calibration au temps mural
-  est exclue : `runFrames`, `diffRatio` et le décompte d'éjection dérivent tous
-  du temps invité. Repro `POM68K_BEYOND=floppy build/lcii_beyond_etalon` (65 s),
-  évidence `scratchpad/2026-09-12/floppy/`. Suite : rejouer sur le M4, puis
-  instrumenter IWM/SWIM1 des deux côtés depuis la première lecture qui diffère.
+- [ ] **Élucider la divergence entre hôtes de `lcii_floppy_etalon`.** Au commit
+  `662a64f` — même gate, même code, mêmes actifs — cet hôte x86-64 échoue
+  (309 598 quartets, éjection en 60 images, aucun dossier dans le fichier hôte)
+  là où le journal committé à ce même commit passe (586 503 quartets, 180
+  images, `untitled folder` 0 → 2). L'hôte de ce run passant n'est **pas
+  consigné** : ni `662a64f` ni le journal ne le nomment. Le rouge est apparu le
+  2026-09-07 avec `f557e88`, qui a promu en assertion (`&& guestEjected &&
+  grewF < folderprobe::kCount`) une question ouverte depuis le 2026-08-05 ;
+  aucun code d'émulation n'y a changé, et les deux runs tout-verts du
+  2026-09-01 couvraient ce gate sans pouvoir échouer là-dessus. Des deux
+  conjonctions ajoutées seule celle du dossier échoue ici : l'invité éjecte bien
+  le volume. La divergence commence **dès l'insertion** — moitié des quartets,
+  tête piste 10 (TKO=1), aucune marque GCR `D5 AA 96` — donc avant le dossier
+  que le gate observe. Écartés : horloge hôte (aucune dans ce chemin), flottant
+  (chemin entier), dérive de l'image, et le changement `senseAddr()` (le rouge
+  lui est antérieur). Repro : `POM68K_BEYOND=floppy build/lcii_beyond_etalon`
+  (65 s). Évidence : `scratchpad/2026-09-12/floppy/`. Suite : instrumenter
+  IWM/SWIM1 des deux côtés depuis la première lecture qui diffère.
 - [ ] **Décider les échéanciers Mac II et Duo avec un gate sensible à la
   gigue.** Garder les options expérimentales tant qu'aucun observable ne
   justifie leur coût ; comparer état, débit et jitter avant un défaut produit.
