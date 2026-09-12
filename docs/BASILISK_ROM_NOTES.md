@@ -53,7 +53,7 @@ relative to `BasiliskII/src/`; line numbers refer to that checkout.
 
 The parsers of §1-§4 are implemented in **`tools/rominfo.cpp`** (standalone, no
 emulator core). The target is `EXCLUDE_FROM_ALL`
-(`cmake/Pom68kDevTools.cmake:107`), so
+(`cmake/Pom68kDevTools.cmake:143`), so
 build it explicitly:
 
 ```
@@ -61,11 +61,13 @@ make -C build rominfo
 build/rominfo roms/maclcii.rom [--resources] [--traps] [--trap A053] [--all]
 ```
 
-Those four are the **only** flags `main()` parses (`tools/rominfo.cpp:265-272`);
-anything else is silently taken as the ROM *path*, so a typo reports "cannot
-open --whatever". The header, the PACK-4 count and the **whole universal table
-+ DecoderInfo dump print unconditionally** — there is no `--universal` switch
-(the usage comment at `tools/rominfo.cpp:26-27` still lists one).
+Those four, plus a no-op `--universal`, are the flags `main()` parses
+(`tools/rominfo.cpp:265-284`); since 2026-08-12 an unrecognised flag is refused
+by name ("rominfo: unknown option --whatever"), and only a non-flag argument is
+taken as the ROM *path*. The header, the PACK-4 count and the **whole universal
+table + DecoderInfo dump print unconditionally**, so `--universal` asks for what
+it already gets (`tools/rominfo.cpp:275,297`; the usage comment at
+`tools/rominfo.cpp:26-27` lists it).
 
 Everything below was produced by that tool on the ROMs in `roms/` (first pass
 2026-07-15, re-verified 2026-07-30). If a claim here and a claim in §1-§7
@@ -120,7 +122,7 @@ Firsthand consequences:
 - **`AddrMapFlags $773F` is not universal.** The IIci/IIsi/LC records carry it
   (it is why the LC/LC II ROM probes the I/O map expecting a bus error, which
   is what `V8Memory` raises in its unmapped I/O holes —
-  `src/V8Memory.cpp:526-527`), the
+  `src/V8Memory.cpp:555-580`), the
   **IIfx record carries `$00000000`**, Gestalt 12 carries `$00039807`, and every
   `$FD` record carries `$00000000`. Do not quote "$773F" as an invariant.
 - The FPU bit is **hwCfgWord bit 12** = bit 28 of the long at +$10 (§2.2). The
@@ -139,7 +141,7 @@ Every populated entry matches `V8Memory`:
 | 5 | `$50F16000` | `$1E0` SWIM | `Swim1` |
 | 8 / 9 / 10 | `$50F10000` / `$50F12000` / `$50F06000` | `$C00` / `$C04` / `$C08` | SCSI triplet over `Ncr5380` |
 | 12 | `$50F14000` | `$CC0` ASCBase | `AscV8` |
-| **13** | **`$50F26000`** | `$CEC` VIA2/RBV | `PseudoVia` (`src/V8Memory.cpp:520-524` read / `:735-738` write) |
+| **13** | **`$50F26000`** | `$CEC` VIA2/RBV | `PseudoVia` (`src/V8Memory.cpp:549-553` read / `:795-799` write) |
 | 11 (real VIA2) | **`$00000000`** | `$CEC` | *unpopulated on V8 — the pseudo-VIA is decoder[13], not [11]* |
 | 6, 7, 15, 16, 17, 18 | `$00000000` | `$B0A`/`$312`/`$266`, `$C00-$C08`, `$1D8`/`$1DC`, `$1E0`, `$CEC` | unused on this board |
 
@@ -190,8 +192,8 @@ the LC II ROM (2026-07-30):
   → mask `$08000000` → the **integer** `PACK 4`; hwCfgWord `$CC00` has bit 12
   clear so there is no promotion to 3. The mechanism therefore exists and is
   correctly parameterised on this ROM — see the open item in
-  `TODO.md § 5 (LC II / V8) — "No-FPU SANE"`, which still wants the 030 path
-  re-tested rather than re-diagnosed.
+  `TODO.md` § Fidélité matérielle et LLE — « SANE sans FPU », which still wants
+  the 030 path re-tested rather than re-diagnosed.
 
 ### 8.6 Trap → ROM offset (breakpoint fodder for `lcii_trace`)
 

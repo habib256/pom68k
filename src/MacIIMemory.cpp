@@ -740,7 +740,8 @@ int MacIIMemory::cyclesToNextEvent() const {
     // moment", and honouring that would collapse the deadline to a flush per
     // cycle. The fallback keeps its historical batch instead, which is both
     // its former cadence and the rule the other platforms follow
-    // (TODO § 4: "the explicit HLE fallback keeps its historical batch").
+    // (TODO § Fidélité: "the explicit HLE fallback keeps its historical
+    // batch").
     if (adbVia_.lle()) tighten(adbVia_.cyclesToNextEvent());
 
     // Sound drain, and the SCC's live countdowns (infinite when idle).

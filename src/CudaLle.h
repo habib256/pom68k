@@ -69,7 +69,7 @@ public:
     // Q605Memory.cpp:134) — a direct binding re-enters and resets the MCU
     // while it is executing. It needs a DEFERRED reset (latch here, act at
     // the next tick boundary), one binding per Egret/Cuda platform, and a
-    // gate; TODO § 4 carries it. (2026-08-12)
+    // gate; TODO § Fidélité carries it. (2026-08-12)
     std::function<void()> onCpuReset;
 
     // Original Egret DFAC three-wire pins. These are present only on the

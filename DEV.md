@@ -229,14 +229,14 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
   append, never renumber. All **37** profiles are enumerated
-  (`MachineCatalog.h:35-49`, tags 1-37 contiguous) and each of the **12**
+  (`MachineCatalog.h:50-64`, tags 1-37 contiguous) and each of the **12**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
   whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`.
   The GUI hook shipped 2026-07-30; the remaining item (a hands-on GUI
-  pass) is in `TODO.md` § 8.
+  pass) is in `TODO.md` § Preuve, outillage et dettes de mesure.
 
 ---
 
@@ -359,7 +359,8 @@ emulators just mirror via a mask and let the ROM discover it.
   XPRAM on every platform, and the compact ROMs only touch the low end.
   **PRAM persists on all twelve platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
-  runner in `GuiMachineRuntime.cpp` (`MacMemory.h:117-124`).
+  family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:147` for
+  the compacts) (`MacMemory.h:149-150`).
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256`),
   unlike MAME's constant.
 
@@ -449,7 +450,7 @@ Functional accuracy (O6).
   - **Color Classic** — Spice, PA `$82`, fixed sense 2, SWIM2 in the gate
     array, **factory Cuda 341S0417 (2.35) firmware LLE, default since
     2026-07-29**; the long-standing "0417 wedge" was the missing DFAC2 I2C
-    ACK, not an M68hc05 bug (`CudaLle::setI2cDfac`, `V8Memory.cpp:137-141`).
+    ACK, not an M68hc05 bug (`CudaLle::setI2cDfac`, `V8Memory.cpp:158-162`).
     341S0788 (2.37) stays as the no-0417 fallback.
   - **Mac TV** — its own `$EAF1678D` Tinker Bell ROM (PA id `$84`, fixed
     640×480 sense 6, 8 MB cap, 68030 @ 31.3344 MHz), *not* the EDE66CBD
@@ -493,7 +494,7 @@ desktop pixels unless they account for the PMMU.
   reset-hold, so the 68030 runs from power-on. Three empty NuBus slots
   read 0. ROM `$368CADFE`, 25 MHz. **VIA1 PA must read `$C7`, not `$C6`**:
   MAME's `via_in_a` is `0xC6 | BIT(config,1)` and diagnostic mode is
-  disabled by default, so PA0 = 1 (`RbvMemory.cpp:166-173`). With PA0 = 0
+  disabled by default, so PA0 = 1 (`RbvMemory.cpp:185-190`). With PA0 = 0
   the ROM takes the diagnostic path and spins forever in its VIA-T2
   calibration loop.
 - **The IIsi is the machine that exposed the bus-time bug** —
@@ -597,7 +598,7 @@ the fixed IOSB `$A55A2BAD` for all of them:
 | Quadra 650 | `$52` | 68040 @ 33.33 MHz |
 | Quadra 800 | `$12` | 68040 @ 33.33 MHz (SONIC + NuBus on the real board — see below) |
 
-(Clocks are `CentrisMemory.h:56-59`, straps `:61-67`, the runner table
+(Clocks are `CentrisMemory.h:64-67`, straps `:69-75`, the runner table
 `PlatformDafb.cpp:409-460`. The Q650 and Q800 share one constant — the "33 MHz"
 on the Q800's GUI label is a rounding, not a second rate.)
 
@@ -764,7 +765,7 @@ KeyMap through the IOP firmware), save states in `savestate_030_test`.
 ### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230
 
 `MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptop, the 37th
-profile (`MachineCatalog.h:48`, `runDuo` at `PlatformDuo.cpp:88`, `SnapMachine::Duo230`), a
+profile (`MachineCatalog.h:125`, `runDuo` at `PlatformDuo.cpp:99`, `SnapMachine::Duo230`), a
 68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 `MscMemory.h:1-31` — the LC-family `$50Fxxxxx` shape with three deltas: a
@@ -806,7 +807,8 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   the whole frame, because the firmware reads a register more than once per
   sample and a live drain turns that into a race — measured, two directions
   out of four silently stopped working. The sleep/wake gate no other machine
-  can test is the one open milestone (`TODO.md` § 7).
+  can test is the one open milestone
+  (`TODO.md` § Bloqué sur références externes ou matériel).
 - **A machine reset must scrub the PG&E's `$91` power flag** (`PgePmu::reset`).
   The MCU restarts from its mask ROM with its RAM intact, and `$91` is what
   the ROM branches on at `$FE28`: left at the last session's `$62` it takes
@@ -1552,12 +1554,12 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   kGuest68040 | kGuest68030` since 2026-08-18 (correctness scope; the
   030's `(An)+` timing, restartable-write/format-$A framing and prefetch
   refill are proved by the two 120k lockstep gates). Their `autoFamilies`
-  speed masks are narrower and no longer equal: a64 carries
-  `kGuest68040 | kGuest68030` (D.1 promotion 2026-08-20), x64 carries
-  `kGuest68040` alone since its 030 promotion was withdrawn on 2026-08-29
-  — so `auto` gives the 68000/68020 families the `threaded` backend, an
-  040 the native generator, and an 030 the generator on AArch64 and
-  `threaded` on x86-64.
+  speed masks are narrower, and equal again: a64 carries
+  `kGuest68040 | kGuest68030` (D.1 promotion 2026-08-20), and x64 carries
+  the same mask since its 030 promotion — withdrawn on 2026-08-29 — was
+  re-earned on 2026-09-06 on the terms that entry set
+  — so `auto` gives the 68000/68020 families the `threaded` backend, and
+  an 040 or an 030 the native generator on both hosts.
 - **…and what it is worth there**, because "wired" and "worth switching on"
   are not the same claim. The window's job is to skip an ATC walk, so the
   gain tracks the MMU: 68040 **×5.0** on a fixed budget and **×2.68** end to
@@ -1633,9 +1635,9 @@ than extend by hand** — the two cross-checks that built this list found 22
 and then 12 knobs the code read that no document mentioned.
 
 The prose below explains behaviour; [`config_knobs.tsv`](config_knobs.tsv) is
-the exact lifecycle registry. Its 185 rows contain no wildcard and classify
-each literal as `product` (65), `diagnostic` (50), `test` (56), or `chantier`
-(14). A product row cites at least one configured regression gate; a permanent
+the exact lifecycle registry. Its 232 rows contain no wildcard and classify
+each literal as `product` (70), `diagnostic` (52), `test` (95), or `chantier`
+(15). A product row cites at least one configured regression gate; a permanent
 diagnostic or test row names the source file that owns it; a chantier row names
 the document and closeout topic that decides its removal or graduation.
 
@@ -1732,9 +1734,10 @@ compare a bus against a pre-2026-08-15 capture, `DiskBays.h ensureCdDrive`),
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort
-SCSI/Link at that SCSI ID on the Quadra 605; a value outside 2-6 — or a
+SCSI/Link at that SCSI ID on every machine's bus; a value outside 2-6 — or a
 non-numeric one — lands on the default ID 3 (ID 1 is refused too), `0` or
-unset = no card (`Q605Memory.cpp:79-87`) —
+unset = no card (`RuntimeConfigCore.cpp:92-96`, attached through
+`configureScsiBus`) —
 [§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)),
 `POM68K_FIRMWARE_ROOT` (`<dir>` **replaces** both default search bases
 `./` and `../` for every dump `FirmwareManifest::verify` looks up —
@@ -1743,7 +1746,8 @@ MCU fall back to HLE, which is the point when qualifying a packaged build).
 
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, captured by
 `RuntimeConfig` and passed directly to `lle::beginSession` and the JIT policy:
-`POM68K_LLE_AARCH64_FULL` (`LleSession.h:39-42`; the run must be on the
+`POM68K_LLE_AARCH64_FULL` (`StartupOptions.h:107-108`, consumed by
+`lle::beginSession`, `LleSession.h:83`; the run must be on the
 AArch64 code generator with every MCU on real firmware, and any HLE
 fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`
 (`--lle-aarch64-check`: run the preflight, print, exit 0 without opening a
@@ -1821,9 +1825,9 @@ protocol is in `docs/RASPBERRY_PI.md` § 3.
 `POM68K_PERF_HOST_PROFILE` (performance-policy identity written to JIT
 metrics, `src/jit/JitMetrics.h:27` — semantics in `POM68K_JIT.md` § 6).
 Four legacy non-prefixed diagnostics predate the namespace and are kept
-as-is: `EGRET_CMD_LOG` (`Egret.cpp:294`), `RTCDBG` (`Rtc.cpp:144`),
-`SCCDBG` (`Scc8530.cpp:11`), `NEOST_EXC_DIAG` (Moira exception diag,
-`Moira.cpp:1271`).
+as-is: `EGRET_CMD_LOG`, `RTCDBG` and `SCCDBG`, now declared with the rest
+in `StartupOptions.h:212-214`, and `NEOST_EXC_DIAG` (Moira exception diag,
+`Moira.cpp:1271`), still a direct `getenv`.
 
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
 next person greps once instead of twice: `POM68K_AIO_EGRET`,
@@ -2009,8 +2013,9 @@ Labels are **derived from the test name** in one final policy module
 (`cmake/Pom68kGatePolicy.cmake:58-110`): name ends in `etalon` → `etalon` (+
 `etalon-core` if it is in the twelve-name `POM68K_ETALON_CORE` list, whose
 membership is a configure-time `FATAL_ERROR` if a name stops resolving);
-anything else → `unit`; `^jit_` → `jit`; a substring match on the 68040
-machine names → `m040`, and on the 68030 ones → `m030` (`:74-87`,
+`gui_smoke_test` → `gui`; anything else → `unit`; `^jit_` → `jit`; a
+substring match on the 68040 machine names → `m040`, and on the 68030
+ones → `m030` (`:74-87`,
 since 2026-08-18). A gate added tomorrow is classified the moment it
 exists. **The loop MERGES with explicit labels since 2026-08-12**
 (`:96-109` — `get_test_property` + append + de-dup): an inline
@@ -2019,7 +2024,7 @@ which is how `quadra_event_scheduler_test` lost `m040` for two weeks.
 
 Asset-dependent gates soft-skip when the user-provided ROM/disk images are
 absent. The whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,
-`q605_trace`, `duo_trace`, `iifx_trace`, …) are among the 18
+`q605_trace`, `duo_trace`, `iifx_trace`, …) are among the 25
 `EXCLUDE_FROM_ALL` dev tools, not gates — and the gate is the `add_test`
 NAME, which is not always the binary name (`macii_mouse_trace` registers as
 `macii_mouse_etalon`; `compact_boot_etalon` backs four gates under four other
@@ -2110,8 +2115,8 @@ Le parsing derrière cette façade est lui-même séparé :
 unités `Product`, `Core` et `Machine` décodent leurs agrégats, et
 `RuntimeConfig.cpp` ne connaît plus aucun nom `POM68K_*`. L'unique lecture
 `getenv()` reste dans `ProcessEnvironment.cpp`; tous les décodeurs reçoivent
-le même `const StartupSnapshot&`, jamais une map publique. Les 128 clés, dont
-les 37 du JIT, sont déclarées une seule
+le même `const StartupSnapshot&`, jamais une map publique. Les 136 clés, dont
+les 40 du JIT, sont déclarées une seule
 fois dans le catalogue neutre `StartupOptions.h`, avec leur domaine typé. La
 capture itère cette collection unique ; les décodeurs et `JitConfig` manipulent
 des `StartupOption`, jamais une chaîne de clé libre. Le tableau
@@ -2223,8 +2228,8 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-`assets.lock` (repo root, 37 rows) pins the qualified reference set: the 24
-machine ROMs, 2 declaration ROMs, PG&E firmware and 6 boot volumes explicitly
+`assets.lock` (repo root, 40 rows) pins the qualified reference set: the 24
+machine ROMs, 2 declaration ROMs, PG&E firmware and 9 boot volumes explicitly
 named by green-gate `ASSET` preambles, plus the 4 firmwares accepted by strict
 product mode. Each row records role, label, size, SHA-256, path and qualified
 `MachineCatalog` profile slugs. The tracked manifest contains only identities,

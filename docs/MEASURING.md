@@ -85,12 +85,14 @@ compile-time constant, like every other reviewed budget in this tree.
 > floor is a measurement, not a safety margin — the harness now says
 > `POLICY TOO LOOSE` when the recorded one is more than twice the measured.
 
-The AArch64 row (2 permille) is the Apple M1's null experiment of 2026-08-22
+The AArch64 row was 2 permille, the Apple M1's null experiment of 2026-08-22
 (`jit_bench_lcii`, `POM68K_BENCH_NULL=1`, 3 repeats, 6000 frames, a64 against
 itself: delta 0.0 %, worst arm spread 0.1 %), taken with the host idle after
 the `m030|m040` tiers had finished — the same hour as the −16.4 % `threaded,a64`
-measurement it bars (`CHANGELOG.md` 2026-08-22 (third)). Re-measure on any
-other ARM host before trusting it there.
+measurement it bars (`CHANGELOG.md` 2026-08-22 (third)). It now records 11
+permille, re-measured on the M4 when both of that host's nulls failed the
+policy check against the M1's figure (`CHANGELOG.md` 2026-09-03). Re-measure
+on any other ARM host before trusting it there.
 
 The bar the harness applies is the **widest evidence of noise available**:
 each arm's own spread *and* the recorded host floor, never the narrowest of

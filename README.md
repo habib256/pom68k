@@ -265,14 +265,14 @@ or a native generator is unavailable.
 | Guest | Default engine | AArch64 `auto` | x86-64 Unix-like `auto` | Windows x64 `auto` |
 |---|---|---|---|---|
 | 68000 / 68020 | interpreter | `threaded` if JIT is forced | `threaded` if JIT is forced | `threaded` if JIT is forced |
-| 68030 | JIT | native `a64` | `threaded` | `threaded` |
+| 68030 | JIT | native `a64` | native `x64` | `threaded` |
 | 68040 | JIT | native `a64` | native `x64` | `threaded` |
 
 The x64 generator remains explicitly available and conformance-gated for a
-68030 on supported non-Windows x86-64 builds, but its automatic 68030
-promotion is currently withdrawn pending whole-tier performance and stability
-evidence. Windows does not compile the System V x64 emitter in the automatic
-configuration.
+68030 on supported non-Windows x86-64 builds, and since 2026-09-06 `auto`
+selects it there for a 68030 again, on the whole-tier gate and lockstep
+evidence its 2026-08-29 withdrawal demanded. Windows does not compile the
+System V x64 emitter in the automatic configuration.
 
 Useful overrides:
 

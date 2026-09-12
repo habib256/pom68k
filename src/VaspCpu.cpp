@@ -105,7 +105,7 @@ void VaspCpu::schedulePeriphDeadline() {
     // min(next observable machine-cycle bound, the historical batch): the
     // cap keeps every transport without a deadline API (ADB PIC, IOPs) at
     // exactly its former cadence, so exactness can only refine, never
-    // coarsen (TODO § 4, extension inventory 2026-08-04).
+    // coarsen (TODO.md § Fidélité matérielle et LLE, inventory 2026-08-04).
     moira::i64 machine = mem_.cyclesToNextEvent();
     if (machine < 1) machine = 1;
     moira::i64 d = machine * boost_ - periphAccum_;

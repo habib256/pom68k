@@ -54,7 +54,7 @@ public:
     void reset();
     void tick(int cpuCycles);                        // CudaLle debt pattern
 
-    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // ── Peripheral event deadline (TODO § Fidélité) ─────────────────────
     // Machine cycles until the PMU's 68HC05 can execute another cycle,
     // accounting for the fractional clock bridge AND run()'s overshoot debt
     // — exactly CudaLle::cyclesToNextEvent, because the clocking is the

@@ -115,7 +115,7 @@ public:
 
     void tick(int cpuCycles);        // VIA timers, 60.15 Hz CA1, VBL
 
-    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // ── Peripheral event deadline (TODO § Fidélité) ─────────────────────
     // Machine cycles until the earliest moment a device here can change
     // observable state on its own. The PG&E is the binding source: its
     // 68HC05 executes continuously, so this normally lands near the

@@ -96,7 +96,7 @@ placed. `decode()` (whole frame, state as of now) stays for stills and tests.
 `TobyVideo` (its own CRTC clock), `Se30Video` (no CRTC of its own — it rides
 `MacIIMemory`'s 60 Hz accumulator), `Dafb` and `Valkyrie` (both through the
 one `DafbMachine` template and GUI lifecycle — `GuiRunnerDafb.h:25-289`,
-four wrapper instantiations at `PlatformDafb.cpp:367-566`
+four wrapper instantiations at `PlatformDafb.cpp:427-578`
 covering **thirteen** profiles: Q605×3, Centris×5, Q700×3, Q630×2), and
 `MacVideo`.
 
@@ -153,11 +153,12 @@ caught it.
   sub-480-line mode still fires once per frame. (The old `vtotal_ > 480`
   guard that pinned such modes to the legacy 60 Hz / 525-line shape is
   gone — `Dafb.cpp:403-408`.)
-- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:444-451`:
+- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:544`, `:552-558`:
   `montype_` defaults to 2, 512×384, and the frame constants are computed
   from that dot clock) whatever the monitor sense says. MAME pins the 13"
   instead, and of the four gate arrays only **RBV** re-derives the frame
-  from the sense (`RbvMemory::recalcFrame`, `RbvMemory.h:230-262`). A
+  from the sense (`RbvMemory::recalcFrame`, `RbvMemory.h:287`,
+  `RbvMemory.cpp:129`). A
   *different* choice from MAME's, not a lesser one — neither is
   sense-driven. → **Reopen when** the V8 monitor sense becomes selectable
   at runtime (today the V8 runner sets it once, `GuiRunnerV8.h:29-33`, and
@@ -184,7 +185,7 @@ caught it.
   the setter).
 - ~~No beam-position register is exposed to a guest~~ — **resolved
   2026-08-02, and it was smaller than it looked** (this bullet was stale
-  against `TODO.md` § 4bis until 2026-08-02). Valkyrie's `$14` blanking bit
+  against the backlog until 2026-08-02). Valkyrie's `$14` blanking bit
   was the only real position register in the tree and it now answers from
   the LIVE scanline (`Valkyrie::readReg8` case `0x14`, `Valkyrie.cpp:85-92`
   → `currentLine()`, defined at `:195`); it used to read
@@ -259,7 +260,7 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   batch (64 / 128) whose binding source is only ~2× / 8× finer, so there is no
   slack to recover — only the per-entry fan-out cost. The governing precedent
   is the Q605 **ASC** event scheduler: seven green gates, a throughput
-  regression, and it was withdrawn entirely (`TODO.md` § 0·A).
+  regression, and it was withdrawn entirely (`CHANGELOG.md`).
   → **Turn either on by default** the day a gate can SEE the difference (a
   jitter-sensitive beyond-boot gate) or a guest symptom appears. The
   mechanism, its bounds and its save-state field are in place, so that day
@@ -358,7 +359,7 @@ Both workarounds are retired (`RbvCpu` back to the shared default;
 `POM68K_Q605_CACHE_BOOST` re-measured green at 2/4/8 across the 040 family).
 The audit found one more boosted-clock reader: `AdbVia::syncTo` fed the
 PIC1654S co-step the raw core clock — every boosted call site now passes
-`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:97`
+`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:117`
 passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
 **Any new consumer of the CPU clock must ask which domain it is in.**
 
@@ -453,7 +454,7 @@ transitions (12 % peak-shift jitter still frames, which is what the
 re-centring is *for* — disabling that one branch fails every check in the
 gate), a self-sync group costs ten cell times against a data nibble's
 eight, and a read starts where rotation left the head instead of where a
-byte array's index happened to be. `nextByte()` retired with it;
+byte array's index happened to be. `nextByte()` left the live read path with it;
 `nextNibble()` survives as the encoder's own gate vehicle, off the live
 path.
 
@@ -554,14 +555,16 @@ TSS half-cycle times too (`flush_write`), the PLL write side belongs to
 the WD-style FDCs.
 
 *Not a gap (corrected 2026-07-31)*: **host-file persistence exists.**
-`SonyDrive::flushToFile` (`SonyDrive.cpp:768`) writes committed sectors back on
+`SonyDrive::flushToFile` (`SonyDrive.cpp:958`) writes committed sectors back on
 eject and at exit via temp+rename, regenerating the DiskCopy 4.2 header and
 data checksum. It is **on by default in every floppy-capable GUI path** —
-the two autonomous runners call
-`setWriteBack(getenv("POM68K_FLOPPY_RO") == nullptr)` (the compact path at
-`PlatformCompact.cpp`); the four DAFB profiles share `GuiRunnerDafb.h:106-107`, the
+the runners call the shared
+`configureFloppyWriteBack(mem, services.config().devices().floppyWriteBack)`
+(`GuiFloppyBays.h:38-40`; the compact path at `GuiRunnerCompact.h:36`), the
+knob being decoded once at the startup boundary (`StartupOptions.h:85`,
+`RuntimeConfigProduct.cpp:32`); the four DAFB profiles share `GuiRunnerDafb.h:106-107`, the
 three Sonora-style platforms share `GuiRunnerSonora.h:97-98`, and the Mac II/IIfx
-pair shares `GuiRunnerToby.h:93-94`; V8 shares `GuiRunnerV8.h:96-97`. It is
+pair shares `GuiRunnerToby.h:96-97`; V8 shares `GuiRunnerV8.h:96-97`. It is
 deliberately off in tests. Note the knob is
 **presence-only**: `POM68K_FLOPPY_RO=0` still disables write-back. Gate
 `floppy_persist_test`.
@@ -668,7 +671,7 @@ blind*:
   fine for a Mac; target-side DISCONNECT is approximated by direct BUS FREE
   detection.
 - **`CI_COMPLETE` completes instantly and `CI_MSG_ACCEPT` does not advance
-  the sequence step** (`Ncr53c96.cpp:505`, `:518`) — the two residual
+  the sequence step** (`Ncr53c96.cpp:517-528`, `:530-535`) — the two residual
   short-circuits of the same staging shortcut as the first bullet, called
   out separately because they live on the *command* side rather than the
   FIFO side. Both are unobservable through a driver that reads status
@@ -811,13 +814,13 @@ same class of mistake as the false green in § 5.
 `Asc.*`. FIFO semantics are faithful (MODE mask, edge/level IRQ variants);
 the drain is a fixed 22 257 Hz via fractional accumulators. **Four** flavours
 share the file, each pinned by the version byte its `$800` returns:
-`AscV8` — one class, two identities: version `$E8` on the V8/VASP/Duo
-integrations (the Duo should read `$E9`, still a TODO at `MscMemory.h:222`)
+`AscV8` — one class, two identities: version `$E8` on the V8/VASP
+integrations and `$E9` on the Duo (`MscMemory.h:269`)
 and version `$00` on the Mac II / IIfx / IIci **discrete** cell, which is
-exactly what `AscV8::classic()` tests (`Asc.h:110`, `MacIIMemory.h:258`);
-`AscSonora` (`$BC`, Spice/Sonora — `Asc.cpp:503`),
-`AscIosb` (`$BB`, Q605 stereo — `:324`) and `AscEasc` (`$B0`, the real EASC
-on the discrete-040 Quadra 700/900/950 — `:685`, landed as MAME-audit action
+exactly what `AscV8::classic()` tests (`Asc.h:146`, `MacIIMemory.h:300`);
+`AscSonora` (`$BC`, Spice/Sonora — `Asc.cpp:572`),
+`AscIosb` (`$BB`, Q605 stereo — `:393`) and `AscEasc` (`$B0`, the real EASC
+on the discrete-040 Quadra 700/900/950 — `:754`, landed as MAME-audit action
 8, gate `asc_easc_test`).
 
 **Pinned quirk**: the Sonora/Spice (`AscSonora`) `$804` status read must clear the IRQ
@@ -857,7 +860,7 @@ ACK-only Cuda/I2C case documented in § 3.
 *The one place POM68K models **more** than all its sources.* The classic
 ASC's **idle empty-cycle IRQ** — a FIFO left running with no data still
 raising a fresh empty/half interrupt once per 1 KB drain cycle
-(`Asc.h:144`, `Asc.cpp:253`) — is derived from **QEMU's `asc.c`**. It exists
+(`Asc.h:185-187`, `Asc.cpp:322-327`) — is derived from **QEMU's `asc.c`**. It exists
 in neither MAME nor the real-IIci ASCTester dump the rest of this file is
 pinned against. That makes it an *addition*, not a simplification, and the
 house rule cuts the other way: an unsourced addition needs a named consumer.
@@ -921,10 +924,11 @@ autopoll are the 68HC05's own. Two things it does not close:
   /RESET line takes the CPU and the gate array, not the part pulling it.
   The latch is serialized (snapshot format **v5**) — a snapshot taken inside
   that window must not resume without the reset it owes.
-  Gate: `cuda_restart_test`, 22 checks over both flavours and both bindings
-  (Q605/Cuda/rising/`Cpu040` and LC II/Egret/falling/`Cpu030`), verified to
-  bite. `PA4`/DFAC is now bound to the original audio-stage consumer on the
-  Egret flavor; `PC2`/NMI remains absent because no board consumer exists.
+  Gate: `cuda_restart_test`, over both flavours and all three bindings
+  (Q605/Cuda/rising/`Cpu040`, LC II/Egret/falling/`Cpu030` and
+  Q900/Egret/`Q700Cpu`), verified to bite. `PA4`/DFAC is now bound to the
+  original audio-stage consumer on the Egret flavor; `PC2`/NMI remains
+  absent because no board consumer exists.
 - **The 6805's programmable timer is pinned at 512 cycles** whatever the PLL
   rate the firmware programs (`M68hc05.cpp:479-486`). Invisible on every
   dump POM68K ships, because the shared rate-2→3 accommodation masks it.
@@ -946,7 +950,7 @@ the guest side is fully LLE: real LLAP frames, real DDP/RTMP/ZIP/NBP/ATP. The
 stack is the network's *other end*, not a shortcut in the Mac.
 
 *Gap*: **RTS/CTS never cross the wire.** A directed `lapRTS` is answered by a
-locally synthesized `lapCTS` (`GuiHostServices.h:78-90`), threaded through the
+locally synthesized `lapCTS` (`GuiHostServices.h:94-102`), threaded through the
 sender's half-duplex Rx-off window as `RxFrameKind::CtsReply`; broadcast RTS
 gets no CTS. A real node's prompt lapACK instead uses
 `RxFrameKind::AddressDefence`, so the SCC retains peer-presence semantics.
@@ -966,7 +970,7 @@ Neither is a hardware deviation, but both make choices a reader should know.
   Snapshots are same-version artifacts (header pins format version + machine
   profile; mismatch is refused). Coverage is the whole tree: `save`/`load`
   overloads for **all twelve** machine families (`SaveStateMachines.h:53-110`,
-  the **37** `SnapMachine` tags in `MachineCatalog.h:35-49` — one per PROFILE,
+  the **37** `SnapMachine` tags in `MachineCatalog.h:50-64` — one per PROFILE,
   not per class, because identity twins share a ROM and the header checksum
   cannot tell them apart), gated by `savestate_test`, `savestate_v8_test`,
   `savestate_030/040/68k_test`, `lcii_savestate_etalon`,
@@ -978,7 +982,7 @@ Neither is a hardware deviation, but both make choices a reader should know.
   cycle clock, low 2 KB of RAM, compared at every instruction boundary —
   `jit_lockstep_*`). The five relaxations a classic 68k JIT makes and this one
   refuses (coarse time, coarse interrupts, a big soft TLB instead of exact ATC
-  semantics, lazy flags, long traces) are named in `POM68K_JIT.md:22-25` and
+  semantics, lazy flags, long traces) are named in `POM68K_JIT.md:27-30` and
   catalogued in `CHANGELOG.md` § 2026-07-28 (eighth pass); § 8 is what the
   data path refuses and why.
   → If a future non-conformant fast mode takes any of them, it belongs in
@@ -1000,8 +1004,8 @@ escapes.
 
 Gates: `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `egret_test`,
 `pic1654s_test`, `adbline_test`, `q605_cudalle_*`, `macii_mouse_etalon`,
-`input_etalon`, and the four gates the `family_input_etalon` binary serves
-(`lc3_`/`lc520_`/`iivx_`/`iisi_input_etalon`) — which **SKIP rather than pass**
+`input_etalon`, and the five gates the `family_input_etalon` binary serves
+(`lc3_`/`lc520_`/`iivx_`/`iisi_`/`q900_input_etalon`) — which **SKIP rather than pass**
 when a machine fell back to HLE, since they exist to pin the firmware path.
 
 ### Retirement policy (settled 2026-07-29)
@@ -1012,7 +1016,7 @@ all — but **never silent on a fallback path**: every entry into an HLE ADB
 *fallback* prints a
 NON-CONFORMANT-substitute notice naming the missing dump — seven memory
 classes (`V8Memory.cpp:164-174`, `SonoraMemory.cpp:51-67`,
-`VaspMemory.cpp:26-37`, `RbvMemory.cpp:35-47`, `Q605Memory.cpp:96-106`,
+`VaspMemory.cpp:26-37`, `RbvMemory.cpp:35-47`, `Q605Memory.cpp:76-95`,
 `Q630Memory.cpp:78-88`, and `Q700Memory.cpp:46-58` since 2026-08-14) plus
 `AdbVia` itself (`AdbVia.cpp:51-61`), which covers the compacts, the Mac II,
 Centris and Q700 families. All eight go through the one shared
@@ -1092,8 +1096,8 @@ does (Caps `$39`, Control `$36`, Shift `$38`, Option `$3A`, Command `$37`) and
 reports them **active low** — 0 = held, which is what makes MAME's own `$FF`
 reset value mean "nothing held". MAME's press path *sets* rather than clears
 the bit; that internal inconsistency we did not copy.
-`AdbLine.cpp:37` (reset value), `AdbLine.h:132` (`modifiers_`); the field
-travels in the save-state `visit()` (`AdbLine.h:73`).
+`AdbLine.cpp:36` (reset value), `AdbLine.h:138` (`modifiers_`); the field
+travels in the save-state `visit()` (`AdbLine.h:74-79`).
 
 **This is a conformance fix, NOT a fix for the symptom that exposed it** — see
 § 1.6. Recording that precisely matters, because the next person will otherwise
@@ -1170,17 +1174,17 @@ trace tools, PRAM file persistence, LToUDP peer bridging, `FloppySound.*`.
 old "absent on the compacts, Mac II, IIfx and Duo" claim, which also reached
 `MAME_PARITY_AUDIT.md` § 2.2 and `SIMPLIFICATIONS_REVIEW.md` F1, was false).
 Every `*Memory` declares `loadPram`/`savePram` and every GUI lifecycle wires
-both (the Mac II/IIfx pair at `GuiRunnerToby.h:49` / `GuiRunnerToby.h:250`; the
-four DAFB profiles at `GuiRunnerDafb.h:96` / `GuiRunnerDafb.h:285`, and the three
-Sonora-style platforms at `GuiRunnerSonora.h:85` / `GuiRunnerSonora.h:279`; V8 at
-`GuiRunnerV8.h:85` / `GuiRunnerV8.h:292`, and Duo at
+both (the Mac II/IIfx pair at `GuiRunnerToby.h:52` / `GuiRunnerToby.h:244`; the
+four DAFB profiles at `GuiRunnerDafb.h:97` / `GuiRunnerDafb.h:274`, and the three
+Sonora-style platforms at `GuiRunnerSonora.h:86` / `GuiRunnerSonora.h:271`; V8 at
+`GuiRunnerV8.h:86` / `GuiRunnerV8.h:281`, and Duo at
 `GuiRunnerDuo.h:68` / `GuiRunnerDuo.h:224`); the file is
 `<image>.<profile-tag>.pram`, profile-tagged so two profiles sharing a boot
 image do not share a battery (`GuiRunnerToby.h:46-50`). What varies is the
 **store**, not the persistence: a discrete `Rtc` (compacts, Mac II family,
 IIfx, IIci), the Egret/Cuda XPRAM (V8, Sonora, VASP, RBV/IIsi, Q605, Q630,
 Centris, Q700), or the PG&E's own internal RAM + 32 KB SRAM on the Duo
-(`MscMemory.h:118-127`, with MAME's `$91` power-flag scrub).
+(`MscMemory.h:161-168`, with MAME's `$91` power-flag scrub).
 
 - **`ScsiDisk` flat-HFS façade** (`ScsiDisk.cpp:21-146`): synthesizes an
   in-memory DDM + partition map + Apple_Driver43 in front of bare HFS `.dsk`
@@ -1222,7 +1226,7 @@ peer; the moment a real peer transmits (`RxFrameKind::Peer` or the prompt
 becomes a live terminated network whose idle is clean flags, and the abort
 drops for a `kPeerHold` (~2 s) window refreshed per peer frame. A solo boot
 never refreshes it, so the no-peer LAP timeout that lets the boot etalons
-proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:334`) = `abortIdle_ &&
+proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:349`) = `abortIdle_ &&
 lineDriven_ && peerHold_ <= 0`. Gate `llap_loop_test`.
 
 ## 4.2 The 16-step migration plan is finished
@@ -1321,7 +1325,7 @@ session-wide registry of the HLE modules a machine actually fell back to
 once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
 wrappers — `Cpu040.cpp:176`, `CentrisCpu.cpp:87`, `Q630Cpu.cpp:94`,
 `Q700Cpu.cpp:95`; the GUI's CPU menu greys itself on the same condition,
-`GuiHostServices.h:143-186`), verifies firmware by size +
+`GuiShell.cpp:340`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save
 state (`SaveStateMachines.cpp:163`). Restoring a snapshot that carries an
 HLE module is **refused** in strict mode (`:207-210`). Build with

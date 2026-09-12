@@ -49,7 +49,7 @@ public:
     // Diagnostic write tap (null = off, zero cost). offset is masked to the
     // $F14000 window (0..0xFFF): < 0x400 = FIFO A byte, 0x800+ = registers.
     // Used to check whether an app actually feeds the ASC (SC2K silence,
-    // TODO § App-compat). Not part of the hardware model.
+    // CHANGELOG.md 2026-07-17). Not part of the hardware model.
     std::function<void(uint32_t, uint8_t)> onWrite;
     std::function<void(uint32_t, uint8_t)> onRead;   // diagnostic read tap
 
@@ -85,7 +85,7 @@ public:
     int fifoCap() const { return cap_; }
     int fifoCapB() const { return capB_; }
 
-    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // ── Peripheral event deadline (TODO § Fidélité) ─────────────────────
     // CPU cycles until the next drained sample, which is the only thing
     // that moves FIFO status or the IRQ line without a bus access. The
     // classic cell also raises the QEMU empty-cycle IRQ, but only ever on a

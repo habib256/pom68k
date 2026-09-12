@@ -21,7 +21,7 @@ path when the host supports it. Their exactness is why the wins are bounded
 (§ 7). The GUI
 says "Moteur accéléré", distinguishes "JIT `<backend>`" from
 "fenêtres (threaded)" and names the backend (`GuiShell.cpp:322-357`, gauge
-window `drawJitWindow()` at `GuiShell.cpp:204-268`);
+window `drawJitWindow()` at `GuiShell.cpp:182-256`);
 the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode
 (`docs/HLE_OVERLAY.md`) would build on. The five relaxations a classic 68k
@@ -36,8 +36,8 @@ own handlers with the fetch window armed, and is valid for every guest.
 inline data TLB (§ 8) and control transfers compiled as block terminators,
 so a loop closing on itself never returns to the engine; on an x86-64 host
 `auto` picks it for the 68040 and 68030 machines and it beats `threaded` on every
-regime measured (§ 3.4). `aarch64` covers the same 68040 *family* — with a
-broader current opcode subset than x64 (§ 7): register and memory ALU,
+regime measured (§ 3.4). `aarch64` covers the same 68040 *family* — with the
+same admitted opcode set as x64 (§ 7): register and memory ALU,
 MOVE/MOVEA, effective addresses including brief indexing and direct or
 memory-indirect full-index sources, bit tests/bitfields, internal branches,
 calls/returns, LINK/UNLK, MOVEM and immediate or guarded register-count
@@ -67,15 +67,16 @@ Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family,
 passes its `GuestFamily` bit to the `jit::Engine` constructor — grep
 `jit::kGuest` in `src/*.cpp` for the roster. The last four wrappers landed
 on 2026-08-06. Both code generators declare 040+030 correctness through
-`guestFamilies`. Their narrower `autoFamilies` speed policy is per backend
-and they no longer agree: AArch64 carries 040+030 since 2026-08-20 with the
+`guestFamilies`. Their `autoFamilies` speed policy is a separate, per-backend
+statement: AArch64 carries 040+030 since 2026-08-20 with the
 measured 68030 profitability score of 64; x86-64 carried 030 from
 2026-08-21 at score 0 until the promotion was **withdrawn on 2026-08-29**
 by the first whole-tier 030 run on that host (its
 −12.6 % was measured without an admission score, and a score is adopted
 per backend on measurement only — measured on x64 the same day:
 `x64@score=0,x64@score=64` ABBA at 6000 frames gave −0.8 %, inside this
-host's 1.0 % floor, so x64 REFUSES the score its sibling earned). Thus
+host's 1.0 % floor, so x64 REFUSES the score its sibling earned), and
+**restored on 2026-09-06** on exactly the condition that withdrawal set. Thus
 `auto` gives a 68030 native code on both host ISAs (§ 7).
 
 **And what each is worth.** The engine being wired is not the same as the
@@ -146,12 +147,12 @@ what it does and does not drive today:
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
 an encoding-only answer — consulted by the opcode census
 (`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
-as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:2604`;
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4825-4827`;
 the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
 `POM68K_JIT_MIN_NATIVE` percent native — 50 by default
-(`JitBackendX64.cpp:3384`). Anything an otherwise-compilable block contains
+(`JitBackendX64.cpp:5531-5533`). Anything an otherwise-compilable block contains
 that the backend cannot emit becomes a per-instruction cold stub inside the
 generated code, not a shorter block. Block termination is the classifier's
 job alone (§ 4).
@@ -164,7 +165,7 @@ Each one names the gate that would catch it breaking.
 
 | # | invariant | gate |
 |---|---|---|
-| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_asset_free_lockstep_test` is the daily native floor; `jit_lockstep_test` (five registrations, six on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2), widens it to real machines |
+| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_asset_free_lockstep_test` is the daily native floor; `jit_lockstep_test` (five registrations on x86-64, four on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2), widens it to real machines |
 | 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. A replay of `FlagMayTrap` also verifies that PC remained on the recorded straight line; an internal DIV/CHK exception ends the block with Moira's vector PC and queue intact. | `jit_asset_free_lockstep_test` compares 768 generated boundaries plus restart/last-write and divide-zero frames; `jit_lockstep_x64_fine_test` widens that to a machine one cycle at a time |
 | 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is native `jit/auto` for 68040 and 68030 on AArch64/x86-64, and the interpreter on 68000/68020. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; ten `interp_*_boot_etalon` registrations keep one interpreter reference per accelerated platform — q605/centris650/q630/q700 and lcii/lc3/iivx/iisi/iifx/duo230 |
 | 4 | **Peripheral time stays owed.** Blocks never run past the caller's cycle target (`Context::clockTarget`) and generated cycles go through the machine's virtual `sync()` (`pomJitSync`), so VIA, ASC, SWIM and the Egret/Cuda MCU keep their pacing. | `jit_mactv_boot_etalon` — registered for exactly this reason: Tinker Bell's Cuda transport deadlocks on a 2 % shift in MCU pacing long before a Finder signature would fail |
@@ -486,7 +487,7 @@ us. Wired 2026-08-10; it named both cells within one run:
   **every** `MOVE <ea>,(xxx).W`: 47.4 % of all block fallbacks.
 * `CMPA` charges `kEaRead + 2`, not `kEaRead` — `execCmpa` holds a `SYNC(2)`
   that the `ADDA`/`SUBA` path takes only for a word or register source
-  (`MoiraExec_cpp.h:2197` vs `:420-422`). This refused **every** `CMPA`: a
+  (`MoiraExec_cpp.h:2196` vs `:421-423`). This refused **every** `CMPA`: a
   further 12 %.
 
 Fixing the two took the native share 96.2 → 97.6 % and block fallbacks from
@@ -1146,7 +1147,7 @@ detached-FPU case, a chronic DIV by zero — retraced its entire prefix each
 time it ran; the FPU-less regime of the gate above pins `compiled=3` over
 407 laps.
 
-**`MOVE SR,Dn` is the one carve-out out of that SR group** (`JitIr.h:1378-1381`,
+**`MOVE SR,Dn` is the one carve-out out of that SR group** (`JitIr.h:1994-2001`,
 2026-08-12): on a 68010+ it is privileged, so a successful trace is
 necessarily supervisor mode, and it changes no mapping and no execution
 state. It is `Kind::Alu`, a read-only block member. A memory destination
@@ -1163,7 +1164,7 @@ twice, each time for a measured reason recorded in `JitIr.h`:
 | `Bcc`/`BRA`/`BSR` | J1 | the target is a compile-time constant, so a backward branch into its own block becomes an internal jump and the loop never returns to the engine — most of what a code generator is for here |
 | `DBcc` | J1 | same |
 | `JSR <ea>`, `RTS` | 2026-07-28 | 7 % of a real Mac OS workload, and every one of them was both an interpreter round trip AND a block boundary the linker could not cross |
-| `JMP <ea>` | 2026-07-30 | 0.66 % of the idle Finder in the census; a terminator simpler than `JSR` (no stack push). **Plain EA modes only** — `(An)`, `d16(An)`, `(xxx).W/.L`, `d16(PC)`. Indexed data EAs are now lowered, but indexed control flow stays `Unsafe` until its dynamic target/queue contract has a dedicated proof |
+| `JMP <ea>` | 2026-07-30 | 0.66 % of the idle Finder in the census; a terminator simpler than `JSR` (no stack push). **Plain EA modes only** — `(An)`, `d16(An)`, `(xxx).W/.L`, `d16(PC)`. Indexed data EAs are now lowered, but indexed `JMP` stays `Unsafe` until its dynamic target/queue contract has a dedicated proof — indexed `JSR` earned that proof separately (§ 3.5quater) |
 
 The `JSR` row has one model-specific commit door. With the architectural
 68040 I/D cache active, Moira pushes the return address and then performs an
@@ -1189,13 +1190,13 @@ instead.
 
 ## 5. The working loop
 
-Do not iterate against a bare `ctest` — 218 gates on the A64 development host,
-hours, and `-j` is unsafe
+Do not iterate against a bare `ctest` — the whole registry (`STATUS.md` owns
+the total), hours, and `-j` is unsafe
 because the boot etalons are contention-sensitive. Do not iterate against a
 bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
 
 The first answer after a JIT edit is the native, asset-free tier. It builds
-five small binaries, runs 768 deterministic interpreter/native checkpoints
+six small binaries, runs 768 deterministic interpreter/native checkpoints
 plus restart/last-write fault frames, executes generated cache protocols,
 checks 384 precise one/two-slice guard evictions, checks the IR/profile
 contracts and runs the documentation/configuration gates.
@@ -1240,10 +1241,11 @@ make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
 `jitdev` builds the three binaries `-L smoke` needs (`jit_backend_test`,
 `jit_lockstep_test`, `q605_boot_etalon`) — the other registrations re-run
 those same binaries under different environments. `-L smoke` is **eight**
-gates: `jit_backend_test`, five flavours of `jit_lockstep_test`, and the
-q605 boot etalon **on both engines**; on an AArch64 host with
-`POM68K_JIT_BACKENDS=auto` a sixth lockstep flavour
-(`jit_lockstep_a64_coarse_test`) joins the tier, making it nine.
+gates on an x86-64 host: `jit_backend_test`, five flavours of
+`jit_lockstep_test`, and the q605 boot etalon **on both engines**; on an
+AArch64 host the two x64-pinned flavours are not registered at all and
+`jit_lockstep_a64_coarse_test` takes their place, making it seven — nine
+across the two hosts.
 
 `jit_lockstep_test` is the one that matters: two Quadra 605 machines from one
 ROM and one read-only disk image, one interpreted and one JIT-driven,
@@ -1252,8 +1254,8 @@ stacks, the cycle clock — **and the first 2 KB of guest RAM**. That last one
 is not decoration. A JIT bug in a STORE shows up in a register only much
 later, when something reads the byte back; the 68k system globals live in low
 RAM and are written constantly during a boot, which makes them a cheap, high
-yield tripwire. Its five registrations — six on AArch64 — exist because each
-covers something the others cannot:
+yield tripwire. Its five registrations on an x86-64 host — four on AArch64,
+six across the two — exist because each covers something the others cannot:
 
 | gate | what it pins |
 |---|---|
@@ -1262,7 +1264,7 @@ covers something the others cannot:
 | `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
 | `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
-| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:255-265`), which is also why it is the one smoke gate an x86-64 developer never sees |
+| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:322-327`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
 Two things this gate learned the hard way, both worth keeping in mind when
 extending it:
@@ -1339,7 +1341,7 @@ do not affect an injected session.
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
 | `POM68K_JIT_ICACHE_EMIT` | `1` | ATTRIBUTION knob for the emitted 68030 i-cache charge (`docs/JIT_BRINGUP.md` § B). Off, an 030 block charges the instruction cost alone, so a residual divergence provably belongs to something else. Only a bring-up measurement should turn it off |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
-| `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitConfig.h:150`, the door at `JitEngine.cpp:90-104`) |
+| `POM68K_DATA_WINDOW` | 68030 `1`, others `0` | the INTERPRETER's data window (§ 8) — opt-in on the 68040 since the ATC-exactness capping made it a net loss there, and the 68030 default since 2026-09-05 on that family's own measurement (`JitConfig.h:105`, the per-family default at `JitEngine.cpp:117-118`, the door at `JitEngine.cpp:144`) |
 | `POM68K_JIT_PARANOID` | profile | re-validate the translation at every arm; off in `production`, on in `conservative`/`instrumented` |
 | `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line and a dtlb-refusals-by-reason line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
 | `POM68K_JIT_VERBOSE_BLOCKS` | `40` | how many compiled blocks the dump prints under `POM68K_JIT_VERBOSE`. The dump is the only place a block's MEASURED per-instruction cycles are visible, and 40 only ever reaches ROM reset code — raise it to diagnose a refusal deep in a boot |
@@ -1521,9 +1523,9 @@ plans and every other full-format instruction replay untouched.
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
-> `MoiraExecMMU_cpp.h:2085-2135`) and `pomJitReadData`/`pomJitWriteData`
+> `MoiraExecMMU_cpp.h:2215-2274`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
-> (`:2287`, `:2312`). `jit_lockstep_030_test` gives the family the
+> (`:2447-2454`, `:2472-2479`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
 > is lockstep-proved since 2026-08-18 — generated 030 code is reachable by
 > an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — and since
@@ -1590,10 +1592,11 @@ Source of truth: `X64Backend::canEmit()` plus the emitters it dispatches to.
   close internally like `Bcc`) and **`JMP <ea>`**;
 * over addressing modes `Dn`, `An`, `(An)`, `(An)+`, `-(An)`, `d16(An)`,
   brief `d8(An,Xn)` / `d8(PC,Xn)` (word/long Dn or An index, ×1/2/4/8),
-  `(xxx).W`, `(xxx).L`, `d16(PC)` and immediate (`eaIndex()`). A64 also
-  accepts proved direct or memory-indirect full-index plans for `LEA`,
-  `JMP`/`JSR`, register-destination `MOVE` and read-only ALU sources,
-  including base/index suppression and base/outer displacement.
+  `(xxx).W`, `(xxx).L`, `d16(PC)` and immediate (`eaIndex()`). Both
+  generators accept proved direct or memory-indirect full-index plans for
+  `LEA`, `JMP`/`JSR`, register-destination `MOVE` and read-only ALU sources,
+  including base/index suppression and base/outer displacement — x64 admits
+  the memory-indirect forms on the 68030 only.
 
 Everything else — including full-indexed `MOVEM`, memory-indirect writes and
 three-access MOVE forms, unsupported shifts/rotates,
@@ -1799,7 +1802,7 @@ data space where `mmu040Read` takes `data` as an argument
 `pomJitData030Refusals` make the difference between "off" and "dead"
 visible: `jit_bench_lcii` and `jit_lockstep_030_test` print them, and a
 knob-on 68030 run with zero hits is a regression rather than a pass. The
-knob stays **off by default** — the standing 68040 measurement
+knob stays **off by default on the 68040** — the standing 68040 measurement
 (`POM68K_VENDOR.md` § J3 point 11) is a net loss, and the 030's automatic
 policy is decided on its own measurement, not on reach.
 
@@ -1809,7 +1812,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2085-2135`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2215-2274`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;

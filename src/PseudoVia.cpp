@@ -125,8 +125,8 @@ void PseudoVia::slotIrq(uint8_t mask, bool state) {
 // re-latches when the System later enables the ASC interrupt (IER bit 4)
 // with the line already high (empty FIFO after the boot chime). Without
 // this the Sound Manager enables the ASC IRQ but never sees it pending →
-// its refill handler never runs → app sound is silent (SC2K, TODO §
-// App-compat; traced 2026-07-17).
+// its refill handler never runs → app sound is silent (SC2K; traced
+// 2026-07-17).
 //
 // Base (RBV/VASP, pseudovia.cpp:136-146): only the 0→1 transition sets IFR
 // bit 4, ascLine_ is purely the edge detector (m_live_main_ints bit 4), and

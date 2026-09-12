@@ -43,12 +43,14 @@ correct) et **#21-#23 ont leur propre gate**, `via6522_parity_test`.
 Egret/Cuda de l'**action 9**, a fermé le 2026-08-13. Un `RESET_SYSTEM $11`
 firmware atteint désormais le 68k sur les **six** plateformes portant un
 Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630 — le Centris n'a pas
-d'Egret et l'Eclipse tourne sur celui HLE, sans seam). Reset **différé** par
+d'Egret et l'Eclipse tournait alors sur celui HLE, sans seam ; il a reçu le
+sien le 2026-08-14, ce qui porte le compte à **sept** — `Q700Memory.cpp:78`,
+`Q700Cpu.cpp:50`). Reset **différé** par
 construction : le handler PC3 décide, `CudaLle::hostReset()` agit, la machine
 réarme son overlay et verrouille `restartPending_`, le wrapper CPU consomme
 le verrou à une frontière de run — jamais dans le callback mémoire, qui
 resetterait le MCU en pleine instruction. Même contrat que la moitié Duo
-(`PgePmu::onCpuReset` → `MscMemory.cpp:88`). Gate : `cuda_restart_test`
+(`PgePmu::onCpuReset` → `MscMemory.cpp:94`). Gate : `cuda_restart_test`
 (22 checks, les deux saveurs). Détail : `LLE_VS_HLE.md` § 1.9.
 
 **Ce que ce fichier garde donc :** les citations MAME `fichier:lignes` (le coût de
@@ -160,10 +162,12 @@ polarité enable — tout à parité. **Aucun bug-suspect.**
 **Simplifications** :
 - Pas d'onde carrée CKO : les machines pulsent CA2 à 1 Hz depuis `cpuHz` (nuance de phase demi-seconde perdue).
 - ~~**Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo)~~ — **FINDING FAUX,
-  retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:123`,
-  `MacIIMemory.h:158`, `IIfxMemory.h:111`, `MscMemory.h:126`, et les huit autres) et **chacun des douze
-  runners** de `main.cpp` câble la paire (douze `loadPram`, douze `savePram` ; la première paire à
-  `:1117` / `:1340`). Le fichier est `<image>.<tag-profil>.pram`. Ce qui varie est le **magasin**, pas la
+  retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:149`,
+  `MacIIMemory.h:193`, `IIfxMemory.h:120`, `MscMemory.h:167`, et les huit autres) et **chacun des
+  runners** câble la paire (`GuiRunnerToby.h:52` / `:244`, `GuiRunnerV8.h:86` / `:281`,
+  `GuiRunnerSonora.h:86` / `:271`, `GuiRunnerDafb.h:97` / `:274`, `GuiRunnerDuo.h:68` / `:225`, et les
+  compacts à `PlatformCompact.cpp:147` / `GuiRunnerCompact.h:162`). Le fichier est
+  `<image>.<tag-profil>.pram`. Ce qui varie est le **magasin**, pas la
   persistance : `Rtc` discret, XPRAM Egret/Cuda, ou RAM interne + SRAM du PG&E sur le Duo. L'erreur venait
   d'une ligne périmée de la table `CLAUDE.md` et a été recopiée dans `SIMPLIFICATIONS_REVIEW.md` (F1) —
   les deux sont corrigés. **Leçon : une « simplification » lue dans un doc et non dans le code n'est pas
@@ -177,8 +181,10 @@ polarité enable — tout à parité. **Aucun bug-suspect.**
 ### 2.3 IWM + Sony 3.5" GCR
 
 **Verdict** : bonne parité sur les chemins porteurs (décodage q6/q7, moteur d'écriture async, hold 14 ticks
-correctement scalé C7M, tables GCR 6&2, checksum roulant bit-à-bit, 5 zones de vitesse). Le chemin lecture est
-une HLE octet/nibble assumée (LLE_VS_HLE § 1.3, `FluxPll.h` porté mais non câblé). Les vraies divergences se
+correctement scalé C7M, tables GCR 6&2, checksum roulant bit-à-bit, 5 zones de vitesse). Le chemin lecture était
+une HLE octet/nibble assumée (LLE_VS_HLE § 1.3, `FluxPll.h` porté mais non câblé) — **FERMÉ le 2026-08-14**
+(F7) : l'`Iwm` lit la vue flux du lecteur (`Iwm.cpp:290-306`, `SonyDrive.h:123`) ; les puces « PLL non câblée »
+ci-dessous datent de l'audit. Les vraies divergences se
 concentrent dans les tables commande/sense du chemin IWM classique (SWIM1-as-IWM, LC II), masquées par les
 gates car `insertImage()` re-dérive `mfmMode_` de la taille du média.
 
@@ -202,8 +208,8 @@ la simplification cellule-idéale-vs-flux est celle documentée § 1.3.
 **Bug-suspect** : table #28, #29, #30, #31 (+ #27 partagé avec l'IWM).
 
 **Simplifications** :
-- Moteur de lecture ISM du SWIM1 réduit au shifter SWIM2 : bits d'erreur CSM `0x08/0x20/0x40` jamais levés — **medium**, inventorié § 1.3.
-- Cellules discrètes à cadence programmée au lieu de flux attotime + `fdc_pll` (§ 1.3).
+- ~~Moteur de lecture ISM du SWIM1 réduit au shifter SWIM2 : bits d'erreur CSM `0x08/0x20/0x40` jamais levés — **medium**, inventorié § 1.3.~~ — **FERMÉ le 2026-08-14** (F7) : moteur LS-pair/CSM/TSM porté, les trois bits sont levés (`Swim1.cpp:483`, `:501`, `:547`). Gate : `swim1_test`.
+- ~~Cellules discrètes à cadence programmée au lieu de flux attotime + `fdc_pll` (§ 1.3).~~ — **FERMÉ le 2026-08-14** (F7) : le flux est devenu le médium, les deux générations résolvent leurs cellules sur la vue flux du lecteur (`SonyDrive.h:123`, `Swim2.cpp:244`, `Swim1.cpp:439`).
 - Nibble output-enable du registre phases non modélisé ; ligne SEL35 (et son kill moteur) ignorée.
 
 **Cosmétique** : pas de DAT1BYTE sur Swim2 (aucun consommateur MAME non plus) ; seed CRC/préservation d'état ISM au reset ; underrun-avec-erreur-pendante termine quand même l'ACTION ; span d'écriture sans transition n'efface pas la piste.
@@ -266,7 +272,7 @@ inventoriées. Les gaps réels sont tous dans des chemins froid/erreur jamais ex
 `!(HALF_B)` de MAME) est délibérée, justifiée par les dumps ASCTester que MAME embarque lui-même, et inventoriée.
 Sur plusieurs points POM68K colle mieux au vrai matériel que le câblage MAME. Manques réels au moment de
 l'audit : **pas de modèle EASC du tout** (Quadra 700/900/950 servis par le Sonora `$BC`) — **corrigé depuis**
-(action 8 du § 3 : classe `AscEasc`, version `$B0`, câblée dans `Q700Memory.h:324`, gate `asc_easc_test`) ;
+(action 8 du § 3 : classe `AscEasc`, version `$B0`, câblée dans `Q700Memory.h:390` (accesseur `:158`), gate `asc_easc_test`) ;
 stub wavetable ; et quelques bords classiques.
 Le master fetché diffère du master 2026-07-15 cité dans les commentaires (F09/F29 lit désormais 0 ; l'EASC
 complet a atterri) — reflété dans les findings.
@@ -342,7 +348,7 @@ boot — aucun des bug-suspects ne pouvait la faire tomber.
 **Bug-suspect** : table #15, #16 (medium) ; #48, #49.
 
 **Simplifications** :
-- Matrice clavier/power key/trackball non câblées, entrée injectée au niveau cellule ADB — milestone déclaré (DUO_BRINGUP, « Next: input through the PMU ») ; piège documenté : le `$DF` littéral de MAME = power-key-held → hang.
+- ~~Matrice clavier/power key/trackball non câblées, entrée injectée au niveau cellule ADB — milestone déclaré (DUO_BRINGUP, « Next: input through the PMU »).~~ — **FERMÉ** (F6) : matrice le 2026-08-13, trackball le 2026-08-14 (`PgePmu.cpp:109`, `:161`, `:180-182`, `:309`, compteurs `$14`-`$16`), power key en pseudo-rangée port A (`PgePmu.cpp:341-349`) ; piège documenté : le `$DF` littéral de MAME = power-key-held → hang.
 - ~~Pas de persistance NVRAM RAM interne + SRAM (PRAM/flag power)~~ — **PÉRIMÉ : livré avec le 37e profil**, `MscMemory::loadPram`/`savePram` (`MscMemory.cpp:137-175`) sérialisent la RAM interne + la SRAM 32 Ko du PG&E et **appliquent le scrub `$91`** (cold boot forcé, `src/devices/cpu/m6805/m68hc05pge.cpp:959`) que cette ligne annonçait comme « à copier ». Même classe d'erreur que le finding PRAM du § 2.2 : lu dans un doc, pas dans le code.
 - Entrée d'interruption facturée 0 cycle (inexactitude délibérée partagée avec l'E1 — leçon Mac TV).
 - `power_cycle_w` et le bit clock-divide MSC loggés, non modélisés (milestone sommeil).

@@ -83,7 +83,8 @@ completes), IRQ on tc=0. DREQ lines: SCC WREQA/WREQB (inverted), SWIM
 `dat1byte`. **On the IIfx `dat1byte` drives channel A alone; on the Eclipse it
 drives both** (`macquadra700.cpp:879-880` sets reqa and appends reqb — the line
 means "the ISM FIFO can move a byte now", and whichever channel the firmware
-enabled is the one that moves). `IIfxMemory.cpp:46` vs `Q700Memory.cpp:62-65`.
+enabled is the one that moves). `IIfxMemory.cpp:49-52` vs
+`Q700Memory.cpp:117-119`.
 
 ### GPIO — the ADB path
 
@@ -96,8 +97,8 @@ MAME feeds this to its HLE `macadb`; POM68K wires it to the real
 was; current MAME disproves it — SWIM1's own `hdsel_cb` drives
 `eclipse_state::fdc_hdsel` (`macquadra700.cpp:815,819`), and in ISM mode that
 output is mode bit 5 (`swim1.cpp:341-342`), which POM68K already consumes
-through `Swim1::side1()`. Wiring `gpout1` to `Iwm::setSel` would invent a board
-connection.
+through `Swim1::onHdsel` (`Swim1.h:77-81`). Wiring `gpout1` to `Iwm::setSel`
+would invent a board connection.
 
 ---
 
@@ -105,7 +106,7 @@ connection.
 
 68030 @ 40 MHz, VIA1 = R65NC22 at C7M/10 = 783.36 kHz, RTC 343-0042 on VIA
 port B (same wiring as the Mac II), **discrete ASC** (base flavour, version
-`$00` — `IIfxMemory.h:225` `AscV8 asc_{0x00}`; IRQ → OSS input 8), SWIM1,
+`$00` — `IIfxMemory.h:251` `AscV8 asc_{0x00}`; IRQ → OSS input 8), SWIM1,
 SCC 85C30, **no VIA2 — the OSS replaces it**, **no onboard video** — it boots
 on a NuBus card (MAME defaults slot 9 to `mdc824`; POM68K reuses
 `TobyVideo`/`DeclRom` from the Mac II platform).
@@ -130,9 +131,9 @@ NCR **53C80** cell + Apple handshake logic for blind `MOVE.L (A0),(A2)+`
 transfers + arbitration. **"No shipped version of MacOS supports the full
 DMA mode. But A/UX does"** (`scsidma.cpp:12`) — so the Mac OS boot needs only
 the 5380 register model behind the SCSIDMA control/handshake registers. POM68K
-implements exactly that subset **inline in `IIfxMemory.cpp:237+`**, not as a
+implements exactly that subset **inline in `IIfxMemory.cpp:248+`**, not as a
 separate `ScsiDma` class; true DMA and the restartable handshake stall are
-deliberately absent (`IIfxMemory.h:239-240`).
+deliberately absent (`IIfxMemory.h:267-268`).
 
 The trap that cost a day (fixed 2026-08-01): **`$00-$03` is both the handshake
 data port and 5380 register 0.** With no DRQ active it must fall through to the
@@ -168,7 +169,7 @@ code branches on) **plus** the IIfx front end:
 - There is also a second 53C96 bus, and VIA2 port B carries no DFAC.
 - VIA1 PA identity `$D0` (Q900) / `$90` (Q950) vs the Spike's `$C0`, each
   OR'd with the diagnostic-disabled bit 0 — feeding PA0 = 0 sends the ROM down
-  the burn-in path (the IIci lesson, `Q700Memory.cpp:229-234`).
+  the burn-in path (the IIci lesson, `Q700Memory.cpp:318-319`).
 - Q950: `via_in_a_q950` (`:671`), `DAFB_Q950` flavour at 50 MHz/2 (`:937`),
   ROM `3DC27823`, 33.333 MHz. Q900 shares the Q700 ROM (`#define rom_macqd900
   rom_macqd700`, `:954`) and runs at 25 MHz.
@@ -210,7 +211,7 @@ image to its `$24F1` success trap, since that image tests WAI/STP
 | M1 | `src/R65c02.*` vendored from POM2 `M6502` | `r65c02_test` (Klaus's 65C02 extended image → `$24F1`, plus the base 6502 functional image; `tests/assets/`, label `unit`, no machine assets) | CMOS + Rockwell set required; WAI/STP kept (§ 4) |
 | M2 | `src/ApplePic.*` — host window, shared RAM + auto-increment, status/control, timer, 2-channel DMA, int mask/flags, GPIO, bypass | `applepic_test` (uploads a hand-assembled 65C02 program, then proves reset-release, mailboxes both ways, timer one-shot + continuous cadence, DMA loopback, bypass pass-through) | 32 KB RAM, not 2 KB; timer/DMA phase counted in PIC clocks with remainders carried |
 | M3 | `src/IIfxMemory.*` + platform loop: map, OSS, BIU stub, the `$50024000` BERR window, VIA1/RTC/ASC/SWIM1/SCC, ROM overlay | `iifx_post_etalon` | The IOP firmware uploads are byte-identical to the system ROM — verify that before suspecting anything else |
-| M4 | SCSIDMA | the Mac OS subset folded into M3 (`IIfxMemory.cpp:237+`), no separate class; true DMA + the restartable handshake stall stay deferred as A/UX-only, and `IIfxMemory.h:239-240` still calls that remainder "M4" | Mac OS needs only the 5380 + soft handshake; `$00-$03` must fall through to reg 0 with no DRQ |
+| M4 | SCSIDMA | the Mac OS subset folded into M3 (`IIfxMemory.cpp:248+`), no separate class; true DMA + the restartable handshake stall stay deferred as A/UX-only, and `IIfxMemory.h:267-268` still calls that remainder "M4" | Mac OS needs only the 5380 + soft handshake; `$00-$03` must fall through to reg 0 with no DRQ |
 | M5 | ADB through the SWIM PIC GPIO ↔ `AdbBus`/`AdbLine` | `iifx_boot_etalon` (Finder on 7.6, ~26 guest-seconds) | Zero HLE on the wire: ADBReInit → IOP mailbox → real SWIM PIC firmware → GPIO bit-bang → `AdbLine` |
 | M6 | Profile plumbing: `kProfiles` row, `SnapMachine::IIfx = 34`, save states (`ApplePic::visit` carries the 32 KB RAM, R65C02 registers, DMA and timer phase) | `iifx_input_etalon` (cursor + KeyMap, 8-byte window) | MCU↔host *phase* is load-bearing state, not derivable — the Cuda lesson |
 | M7 | Quadra 900/950 = the Eclipse front end on `Q700Memory` | `q900_boot_etalon`, `q950_boot_etalon`; `SnapMachine::Quadra900/950 = 35/36` | § 5b — four Quadra 700 rules that must not apply to the tower |
@@ -286,7 +287,7 @@ interrupt flags/mask → disassemble the IOP RAM at its stuck PC.
   correct. The SCC runs in bypass mode; the SWIM/ADB firmware is the real
   consumer of the IOP model. DMA was not gold-plated and did not need to be.
 - **ASC flavour**: settled — the IIfx carries the **discrete** ASC, version
-  `$00`, like the Mac II (`IIfxMemory.h:225`), not the V8 `$E8` or the
+  `$00`, like the Mac II (`IIfxMemory.h:251`), not the V8 `$E8` or the
   Sonora/IOSB variants.
 - **Timer/DMA phase**: both counted in PIC clocks (input clock /8 for
   instructions, /8 per DMA byte), slaved to `emuCycles` with remainders carried
