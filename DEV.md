@@ -215,6 +215,12 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
+- **Format v15** adds the DaynaPort SCSI/Link chunk to all twelve machine
+  families: the card can sit on any SCSI bus since 2026-09-12, and its enable
+  bit, guest-set MAC, RX ring and sense are guest state. `attached_` and
+  `sendFrame` stay out — the machine's configuration re-attaches the card and
+  re-binds the callback. The chunk is written whether or not a card is
+  configured, so the layout never depends on configuration.
 - **Format v14** adds the original DFAC's serial lines, shift byte and live
   settings to the V8-family chunk. Version 13 added both Sony mechanisms on
   every floppy-equipped desktop; either longer layout would shift following

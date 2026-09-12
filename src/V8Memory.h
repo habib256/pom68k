@@ -408,7 +408,7 @@ public:
 
         ar(via_, pvia_, ariel_, egret_, egretLle_, adb_,
            asc_, ascSonora_, dfac_, scsi_, swim_, swim2_, drive_, externalDrive_,
-           scc_);
+           scc_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
 
         ar(totalRam_, config_, videoConfig_, montype_,

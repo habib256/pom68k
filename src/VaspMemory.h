@@ -277,7 +277,7 @@ public:
         ar.blob(ram_);
         ar.blob(vram_);
         ar(via_, pvia_, egret_, egretLle_, adb_, ariel_, asc_, scsi_,
-           swim_, drive_, externalDrive_, scc_);
+           swim_, drive_, externalDrive_, scc_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_, videoConfig_, montype_);
         ar(viaAcc_, tickAcc_, c15Acc_, framePos_, vblState_, frameCount_,

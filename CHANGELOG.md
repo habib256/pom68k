@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12 (third)** — [The DaynaPort travels in save states: format v15, and what deliberately does not travel](#2026-09-12-dayna-savestate)
 - **2026-09-12 (later)** — [Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it](#2026-09-12-floppy-correction)
 - **2026-09-12** — [The DaynaPort leaves the Quadra 605: every SCSI machine can carry the card, and one gate per platform proves the guest found it](#2026-09-12-dayna-every-bus)
 - **2026-09-11 (fourth)** — [LocalTalk copies paid an ATP retransmit per reply: the lossless wire waited on FCS bytes the driver never reads, and the 41 KB copy drops from 240.68 s to 4.65 s](#2026-09-11-localtalk-fcs-residue)
@@ -919,6 +920,61 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-12-dayna-savestate"></a>
+## 2026-09-12 (third) — The DaynaPort travels in save states: format v15, and what deliberately does not travel
+
+This morning the card reached every SCSI bus. Its state still did not survive a
+snapshot: restore gave you a machine whose card had forgotten it was enabled,
+what address the guest had given it, and every frame waiting in its ring.
+
+**What travels.** `DaynaPort::visit()` carries `enabled_`, the MAC, the RX ring
+and its byte count, the sense pair, and the six counters — counters because
+`Iwm` already carries its own, and the MAC because SET MAC (`$0C/$40`) lets the
+guest override the built-in address, which makes it guest state rather than
+setup.
+
+**What does not, and why that is not an omission.** `attached_` stays out: the
+machine's configuration re-attaches the card in its constructor, the same reason
+`ScsiDisk` leaves out its path and backing stream (DEV.md § 1.4). `sendFrame`
+stays out because § 1.4 forbids callbacks travelling at all — the machine
+re-binds it. So `TODO`'s wording, "anneau RX, configuration et liaison hôte",
+is not what landed. The intent is met — a restored machine has a working card in
+the state the guest left it — but configuration and the host link are
+re-established rather than stored, which is the contract's answer, not a gap.
+
+**Why a hard bump.** The chunk is written whether or not a card is configured; a
+conditional field would make the layout depend on configuration, so a v14 reader
+would shift every following device field. The same grounds carried v12, v13 and
+v14. No committed fixture pins the format — there is no `.sav` in the tree — so
+the bump turns no gate red.
+
+**The proof, and what the existing gate could not have given.**
+`savestate_v8_test` already asserted re-save byte-identity and determinism
+across a restore. Neither could have caught an omitted card: this test's
+synthetic ROM never polls the SCSI bus, so an unserialised card round-trips
+(nobody writes it, nobody reads it) and runs identically. The explicit
+assertions are the whole proof, and the ring is the sharp one — the mutation
+queues a *second* frame, so a ring that failed to restore would come back
+holding two:
+
+```
+setup: the card's interface is on                              ok
+setup: a frame is queued on the card                           ok
+mutate: a second frame is queued on the card                   ok
+load: the card's enable bit is back                            ok
+load: the guest-set MAC is back, not the built-in one          ok
+load: the RX ring is back to one frame, not the two it held    ok
+```
+
+Full build 171 binaries; the save-state and DaynaPort unit gates 8/8; the
+`asset-none` tier 94/94.
+
+**Method note.** The first run failed with the card disabled. `$0E` is ENABLE
+*or* DISABLE, chosen by the control byte, and the zero I had written there
+disabled the interface — after which `receiveFrame` drops every frame, so the
+ring assertions fell with it. The MAC assertion passing while the others failed
+is what localised the fault to the test rather than to `visit()`.
 
 <a id="2026-09-12-floppy-correction"></a>
 ## 2026-09-12 (later) — Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it
