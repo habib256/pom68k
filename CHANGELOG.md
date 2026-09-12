@@ -440,6 +440,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](#2026-09-12-docs-vs-code-sweep)
+- **2026-09-12 (eighth)** — [The backlog names its next two chantiers, absorbs twelve items that existed only in this file, and stops being addressable by section number](#2026-09-12-todo-reorg)
 - **2026-09-12 (seventh)** — [Correction: the AFP outage red was host wall-clock reaching the guest, not `-j64` contention, and `RUN_SERIAL` is reverted](#2026-09-12-afp-date-nondeterminism)
 - **2026-09-12 (sixth)** — [What the AFP server refuses is now visible, and it turns out Mac OS 8.1 never asks for anything it lacks](#2026-09-12-afp-refusals-observable)
 - **2026-09-12 (fifth)** — [The AFP timing gates now run serially: `-j64` was making the measurement lie, and the red was mine](#2026-09-12-afp-gates-serial)
@@ -924,6 +926,144 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-12-docs-vs-code-sweep"></a>
+## 2026-09-12 (ninth) — Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them
+
+Every document in the tree — 15 200 lines across 22 files, `CLAUDE.md`,
+`README.md`, `DEV.md`, `src/jit/POM68K_JIT.md`,
+`extern/moira/POM68K_VENDOR.md`, both `README`s and every note under `docs/` —
+was audited claim by claim against the code it describes. Ten auditors, one per
+document group, reported only what they could prove with a `file:line` they had
+opened; ten *different* correctors re-verified each claim independently and
+applied what survived. **197 corrections applied, 18 claims rejected.**
+
+**What had actually drifted.** Mostly counts nobody re-derives and citations
+nothing checks: `config_knobs.tsv` had grown from the documented 185 rows to
+232 (product 70 / diagnostic 52 / test 95 / chantier 15), `assets.lock` from 37
+rows to 40, the `EXCLUDE_FROM_ALL` dev tools from 18 to 25,
+`StartupOptions.h` from 128 keys to 136. The most dangerous single line was in
+`DEV.md` § 4: it still described the x86-64 68030 automatic policy as
+*withdrawn on 2026-08-29*, which the 2026-09-06 re-promotion had reversed — a
+document contradicting the shipping default, four days after the entry that
+changed it, in the same file whose § 4 bullet said the opposite eighty lines
+earlier.
+
+**One finding was substantive, not clerical.** `docs/CACHE_040.md` § 0 rests
+on "there is no oracle": the 2026-08-04 recon stated that WinUAE has no
+`*_dcache040`. It does — `read_dcache040` at `newcpu.c:11125`,
+`write_dcache040` at `:11172`. The ruling survives anyway, because those
+accessors are only installed under `currprefs.cpu_data_cache` and the POM68K
+harness clears that flag (`oracle/uae/glue.c:98`) — so the premise holds and
+only its *reason* was wrong. The correction was written in place as a dated
+note; the original claim stays where it was.
+
+**The rejections are the evidence the method worked**, and they split in two.
+Seven refused to "fix" **dated history**: "six platforms carrying an
+Egret/Cuda LLE" is anchored to its 2026-08-13 closure and a seventh arrived the
+day after; the `jit` tier's gate counts are explicitly derived "on 2026-08-31";
+"the four 68030 wrappers" belongs to a 2026-08-18 measurement. A past-tense
+dated sentence that is no longer true is correct history, and rewriting it
+would have destroyed the record while *looking* like an improvement. Five more
+are correctors overruling their own auditor on the evidence: `:50-77` cut to
+`:50-64` because the enum closes at 64, seven `pom68k::fw::select` sites
+instead of eight because the eighth citation was already right, and the x64/030
+restoration dated from this file (2026-09-06) rather than from the in-code
+comment's work date.
+
+**The gate gap this exposes is the finding worth keeping.** `docs_test` § 10
+validates that every `file:line` a document cites lands *inside* that file —
+and it has been green throughout. It is the deliberately weak half of the
+claim, documented as such in its own comment, and this sweep is the first
+measurement of what that weakness costs: dozens of citations pointed at
+entirely unrelated code while the gate passed. `DEV.md` cited
+`MacMemory.h:117-124` for the `loadPram`/`savePram` pair that lives at
+`:149-150`; `MachineCatalog.h:35-49` for a `SnapMachine` enum that opens at
+`:50`. In-range is not correct. `TODO.md` § Preuve carries the item.
+
+**Verification.** Full rebuild of every target after the sixteen headers this
+day's earlier pass touched: exit 0. `docs_test`: PASS. `ctest -L asset-none`:
+**94/94**, zero failures. `git diff --check`: clean. `STATUS.md` untouched and
+not regenerated — no gate registration changed. The agents were barred from
+`CHANGELOG.md`, `CHANGELOG_INDEX.md`, `TODO.md` and `STATUS.md`, and the file
+mtimes confirm the bar held.
+
+<a id="2026-09-12-todo-reorg"></a>
+## 2026-09-12 (eighth) — The backlog names its next two chantiers, absorbs twelve items that existed only in this file, and stops being addressable by section number
+
+`TODO.md` is reorganized a second time — the 2026-09-08 pass sorted what had
+*closed*; this one prepares what comes *next*.
+
+**The priority is decided.** That pass left "la priorité entre thèmes reste à
+décider" standing as the open question. Two chantiers are now dotés, in
+parallel: the **Macintosh 128K/512K** and **finishing the network services**.
+Neither was chosen for being hard. The 128K is the oldest hole in a catalogue
+that claims *every* 68k Macintosh and starts at the Plus, and
+`docs/68K_FAMILY_SCOPE.md` § 4 has classed it *cheap, unblocked* for a month:
+a subset of the Plus, not a brick. The network chantier is the opposite shape —
+the guest path is finished and proved (Chooser, mount, enumeration, both forks,
+Put Away, over LocalTalk and then EtherTalk) while the product controls around
+it are missing, which is why its first step is two GUI panels and not a
+protocol opcode.
+
+**What the 128K actually costs, read off the code rather than guessed.** Both
+64K dumps are on hand (`roms/64KB ROMs/`, 65 536 bytes, `28BA61CE` and
+`28BA4E50`) and **neither is pinned in `assets.lock`**, which carries no 64K
+row at all. `MacMemory::Model` knows four compacts and its ROM size is frozen
+at 128 KB (`src/MacMemory.h:42`, `:58`); `FloppyKind` offers
+`None/Gcr800K/SuperDrive` with no 400K mechanism (`src/MachineCatalog.h:24`);
+and the profile would be the **first in the tree with `scsi = false`**
+(`src/MachineCatalog.h:130`). None of that is blocked. What *is* blocked is the
+Finder etalon the house rule demands, because no bootable 400K image exists
+here — the four `disks35/` images are 819 200 bytes and everything else is
+SCSI. That split is now two items in two different sections rather than one
+optimistic one.
+
+**Twelve pieces of open work existed only as prose in this file.** Every open
+item was cross-checked against the 2026-09-01→12 entries, and the gap ran the
+other way too: work these entries left explicitly open had no backlog item at
+all. Among them — the AFP moving-date *mechanism* (the gate was made
+deterministic by pinning the date; the six dead hypotheses and the
+post-reconnect divergence were not explained), `declrom_test` losing three
+assertions without its ROM while still counting as executed, the `finder_boot_matrix`
+macii × 7.5.5 cell recorded UNSTABLE, the 1 MB `jit::Engine` dispatch cache that
+"owes its own measurement", the `-Wstringop-overflow` that GCC 13 + LTO sees and
+the `-Werror` job cannot, the guest KCHR table abandoned rather than guessed,
+and the GUI which still has **no gate of any kind**. They are collected in a new
+section, *Preuve, outillage et dettes de mesure*, whose first item is the one
+`docs/68K_FAMILY_SCOPE.md` § 5 has been calling the project's biggest gap:
+**9 profiles of 37 have any gate past the Finder signature**.
+
+**Six items were stale in their wording**, and a stale item is worse than a
+missing one because it sends the next reader to re-derive a settled fact: the
+compact-sound item still asked for work the 2026-09-09 DFAC/host-DAC entry had
+done, the flux-track item asked for a commit-survival that shipped the same day,
+the Pi 400 item ignored its own archived A76 package, the System 4.1 cell read
+"the day the image exists" when `external_floppy_boot_etalon` had gated that
+path, `mmu040InstrStart`'s 3.26 % ceiling was measured on a profile its own
+successor declared obsolete, and the AArch64 AFP comparison still pointed at a
+reference trace captured *before* the date pin.
+
+**A section number is not an address.** The 2026-09-08 renumbering silently
+invalidated every external pointer into this backlog, and nothing in the build
+checks one: `docs_test` § 10 validates `file:line` citations but a `§ N` is just
+prose. Repaired this pass — fourteen in `docs/` and `DEV.md`, plus a cluster of
+sixteen in production comments, of which *twelve* were the same pointer (the
+peripheral-deadline contract, `§ 4`, now `§ Fidélité`) reproduced across six
+platform headers, four CPU wrappers and two memory maps. The failure mode worth
+naming is not the dangling pointer but the **silently retargeted** one:
+`RASPBERRY_PI.md` sent its reader to "§ 4" for the deadline mechanism, and § 4
+had become "Nouvelles machines" — a correct-looking citation pointing at an
+unrelated section. `TODO.md` now states the rule in its own preamble: cite a
+section by NAME, abbreviated to its first word when a comment banner cannot
+afford the width. Roughly forty further `§` citations — in `tests/`,
+`oracle/`, `extern/`, nine still in `src/` (`JitBackendX64.cpp`,
+`RuntimeConfig.h`, `Cpu030.h`, `SonyDrive.cpp`, `JitStats.h`,
+`POM68K_JIT.md`) and this file's own history — were left alone deliberately:
+they name *historical* plans (`§ B.2`, `§ C.2`, `§ C.5`, `§ O6`, `§ Q5.1a`,
+`§ Phase 2`), not live backlog items, and history is what `CHANGELOG.md` is
+for. The rule that separates the two: repair a pointer that claims to name
+open work, leave one that narrates why the code looks as it does.
 
 <a id="2026-09-12-afp-date-nondeterminism"></a>
 ## 2026-09-12 (seventh) — Correction: the AFP outage red was host wall-clock reaching the guest, not `-j64` contention, and `RUN_SERIAL` is reverted

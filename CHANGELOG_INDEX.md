@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 497 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 499 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,9 +18,9 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 7 |
 | [Machine bring-ups](#machine-bring-ups) | 56 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 33 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 34 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 92 |
+| [Cross-cutting](#cross-cutting) | 93 |
 
 ---
 
@@ -452,6 +452,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03 (third)** — [The sanitizer leg's second run: the stack fix holds, and the last red is a gate sitting ON the default timeout](CHANGELOG.md#2026-09-03-asan-timeout)
 - **2026-09-08 (seventh)** — [Save-state relaunch is gated on all three CPU families](CHANGELOG.md#2026-09-08-plus-relaunch)
 - **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](CHANGELOG.md#2026-09-09-chooser-appleshare-proof)
+- **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](CHANGELOG.md#2026-09-12-docs-vs-code-sweep)
 
 ## Documentation, audits and reviews
 
@@ -559,4 +560,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-09 (eleventh)** — [AppleShare keeps catalogue identities across restarts and the real Finder copies both forks before and after reconnecting](CHANGELOG.md#2026-09-09-afp-persistence-transfer)
 - **2026-09-10** — [AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage](CHANGELOG.md#2026-09-10-afp-outage-recovery)
 - **2026-09-10 (third pass)** — [The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply](CHANGELOG.md#2026-09-10-ether-wire-latency)
+- **2026-09-12 (eighth)** — [The backlog names its next two chantiers, absorbs twelve items that existed only in this file, and stops being addressable by section number](CHANGELOG.md#2026-09-12-todo-reorg)
 
