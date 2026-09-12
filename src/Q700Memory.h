@@ -320,7 +320,7 @@ public:
         ar.blob(ram_);
         ar.blob(vram_);
         ar(via1_, via2_, rtc_, adb_, adbVia_, scc_, asc_, swim_,
-           drive0_, drive1_, scsi_, dafbCell_);
+           drive0_, drive1_, scsi_, dafbCell_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_, nubusIrqs_, scsiCtrl_,
            scsiReadCycles_, scsiWriteCycles_,

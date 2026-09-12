@@ -228,7 +228,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via1_, via2_, rtc_, nubus_, adbVia_, adb_, asc_,
-           scsi_, swim_, drive_, externalDrive_, scc_, mouse_);
+           scsi_, swim_, drive_, externalDrive_, scc_, mouse_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
         std::uint8_t hasToby = toby_ != nullptr;
         ar(hasToby);

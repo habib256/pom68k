@@ -229,7 +229,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar.blob(vram_);
-        ar(via_, pvia_, pmu_, asc_, scsi_, scc_);
+        ar(via_, pvia_, pmu_, asc_, scsi_, scc_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
         // pmuReq_ is the HOST's half of the REQ wire: written through
         // pseudo-VIA2 PB2 and read back on every port-B read. The PMU's own

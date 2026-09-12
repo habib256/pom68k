@@ -279,7 +279,12 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // v14 adds the original DFAC's shift/latch/settings state to the V8-family
 // chunk. It is live peripheral state between Egret wire edges, not a host
 // cache; a v13 reader would shift every following V8 device field.
-inline constexpr u32      kVersion   = 14;  // v14: original V8-family DFAC
+// v15 adds the DaynaPort SCSI/Link to all twelve machine chunks: the card can
+// sit on any SCSI bus since 2026-09-12, and its enable bit, guest-set MAC, RX
+// ring and sense are live guest state. The chunk is written whether or not a
+// card is configured — a conditional field would make the layout depend on
+// configuration — so a v14 reader would shift every following device field.
+inline constexpr u32      kVersion   = 15;  // v15: DaynaPort on every bus
 
 struct Header {
     u32 version     = kVersion;

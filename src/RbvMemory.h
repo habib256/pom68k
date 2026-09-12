@@ -301,7 +301,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via_, pvia_, egret_, egretLle_, adbVia_, rtc_, adb_, dac_,
-           asc_, scsi_, swim_, drive_, externalDrive_, scc_);
+           asc_, scsi_, swim_, drive_, externalDrive_, scc_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_, videoConfig_, montype_);
         ar(viaAcc_, tickAcc_, c15Acc_, secAcc_, framePos_, frameCycles_,

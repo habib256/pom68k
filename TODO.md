@@ -154,8 +154,6 @@ la plus grande dimension produit encore peu exploitée.
   multicast de zone et à décider du défaut produit.
 - [ ] **Ajouter le contrôle DaynaPort au GUI.** Attacher/détacher et choisir
   l'ID SCSI sans variable d'environnement.
-- [ ] **Sérialiser DaynaPort au prochain bump de format.** Restaurer anneau RX,
-  configuration et liaison hôte dans `SaveStateMachines.*`.
 
 ## 3. Médias optiques
 

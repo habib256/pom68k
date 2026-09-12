@@ -36,6 +36,7 @@
 // Gate: tests/daynaport_test.cpp.
 
 #pragma once
+#include "SaveState.h"
 #include "ScsiTarget.h"
 #include <array>
 #include <cstdint>
@@ -84,6 +85,18 @@ public:
     long bytesToGuest = 0, bytesFromGuest = 0;
     long commands = 0;               // every CDB it answered, the ROM's bus probe included
     std::size_t queued() const { return rx_.size(); }
+
+    // Guest state only. `attached_` is an attachment property: the machine's
+    // configuration re-attaches the card in its constructor, the same reason
+    // ScsiDisk leaves its path and backing stream out (§ 1.4). `sendFrame` is
+    // a host callback the machine re-binds and must never travel
+    // (SaveState.h:20-26). `mac_` IS carried — SET MAC ($0C/$40) lets the
+    // guest override the built-in address, so it is guest state, not setup.
+    template <class Ar> void visit(Ar& ar) {
+        ar(enabled_, mac_, rx_, rxBytes_, senseKey_, senseAsc_);
+        ar(framesToGuest, framesFromGuest, framesDropped,
+           bytesToGuest, bytesFromGuest, commands);
+    }
 
 private:
     void setSense(std::uint8_t key, std::uint8_t asc);

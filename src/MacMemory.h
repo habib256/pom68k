@@ -237,7 +237,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via_, adb_, adbVia_, rtc_, swim_, drive_, externalDrive_, scc_,
-           scsi_, kbd_, mouse_);
+           scsi_, kbd_, mouse_, dayna_);
         for (ScsiDisk& disk : scsiDisks_) ar(disk);
         ar(kbdPhase_, kbdCmd_, kbdResp_, kbdTimer_, kbdInquiryHold_,
            viaPhase_, secAcc_, overlay_);

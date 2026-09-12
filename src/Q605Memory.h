@@ -314,7 +314,7 @@ public:
         ar.blob(ram_);
         ar.blob(vram_);
         ar(via1_, cuda_, cudaLle_, adb_, scc_, asc_, swim_,
-           drive0_, drive1_, scsi_, dafbCell_);
+           drive0_, drive1_, scsi_, dafbCell_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_,
            pvIfr_, pvIer_, pvPortB_, nubusIrqs_, ascLine_,

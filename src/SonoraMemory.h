@@ -311,7 +311,7 @@ public:
         ar.blob(ram_);
         ar.blob(vram_);
         ar(via_, pvia_, egret_, egretLle_, adb_, asc_, scsi_,
-           swim_, drive_, externalDrive_, scc_);
+           swim_, drive_, externalDrive_, scc_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_);
         ar(pens_, palAddr_, palIdx_, palControl_, palColkey_, palRgb_,

@@ -25,6 +25,7 @@
 #include "SaveState.h"
 #include "SaveStateMachines.h"
 #include "V8Memory.h"
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -127,6 +128,27 @@ int main() {
               "setup: external 800K medium inserted");
         m.mem.dfac().writeSettings(0xA2);
 
+        // The DaynaPort carries guest state that neither property above can
+        // see: this synthetic ROM never polls the SCSI bus, so a card left out
+        // of visit() would still round-trip (nobody writes it, nobody reads
+        // it) and would still run identically. Only a direct assertion catches
+        // that, so ENABLE goes through the real command path rather than a
+        // back door, and the frame is queued the way the link would queue it.
+        m.mem.daynaPort().attach();
+        {
+            // $0E is ENABLE *or* DISABLE: the control byte picks which
+            // (DaynaPort.cpp:242), and receiveFrame drops everything while the
+            // interface is off, so a zero here would silently queue nothing.
+            const std::uint8_t enable[6] = { 0x0E, 0, 0, 0, 0, 0x80 };
+            std::vector<std::uint8_t> out;
+            m.mem.daynaPort().command(enable, 6, out, {});
+        }
+        m.mem.daynaPort().setMac({ 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 });
+        const std::vector<std::uint8_t> frame(64, 0xC3);
+        m.mem.daynaPort().receiveFrame(frame.data(), frame.size());
+        check(m.mem.daynaPort().enabled(), "setup: the card's interface is on");
+        check(m.mem.daynaPort().queued() == 1, "setup: a frame is queued on the card");
+
         snapshot = m.save();
         check(snapshot.size() > 64, "save: produced a container");
         // 10 MB of mostly-zero RAM must not cost 10 MB.
@@ -136,6 +158,10 @@ int main() {
         m.run(200000);                  // diverge
         m.mem.externalDrive().eject();
         m.mem.dfac().writeSettings(0x20);
+        m.mem.daynaPort().setMac({ 0x02, 0x02, 0x02, 0x02, 0x02, 0x02 });
+        m.mem.daynaPort().receiveFrame(frame.data(), frame.size());
+        check(m.mem.daynaPort().queued() == 2,
+              "mutate: a second frame is queued on the card");
         check(m.counter() != atSnapshot, "mutate: the machine moved on");
 
         std::string err;
@@ -148,6 +174,13 @@ int main() {
               "load: external floppy state is back");
         check(m.mem.dfac().settings() == 0xA2,
               "load: the original DFAC settings are back");
+        check(m.mem.daynaPort().enabled(),
+              "load: the card's enable bit is back");
+        check(m.mem.daynaPort().mac() == std::array<std::uint8_t, 6>{
+                  0x00, 0x11, 0x22, 0x33, 0x44, 0x55 },
+              "load: the guest-set MAC is back, not the built-in one");
+        check(m.mem.daynaPort().queued() == 1,
+              "load: the RX ring is back to one frame, not the two it held");
 
         const Blob again = m.save();
         check(again == snapshot, "load→save is byte-identical to the original");
