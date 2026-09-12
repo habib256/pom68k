@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12 (fourth)** — [MacIP reassembles fragmented datagrams, and the old path had been delivering the first fragment truncated](#2026-09-12-macip-reassembly)
 - **2026-09-12 (third)** — [The DaynaPort travels in save states: format v15, and what deliberately does not travel](#2026-09-12-dayna-savestate)
 - **2026-09-12 (later)** — [Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it](#2026-09-12-floppy-correction)
 - **2026-09-12** — [The DaynaPort leaves the Quadra 605: every SCSI machine can carry the card, and one gate per platform proves the guest found it](#2026-09-12-dayna-every-bus)
@@ -920,6 +921,58 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-12-macip-reassembly"></a>
+## 2026-09-12 (fourth) — MacIP reassembles fragmented datagrams, and the old path had been delivering the first fragment truncated
+
+`TODO` listed "réassemblage IP" as a missing feature. It was worse than missing.
+`handleIp` dropped fragments with `if (frag & 0x1FFF) return;` — which only
+catches a non-zero *offset*. A **first** fragment has offset 0, so it passed that
+test and went straight into `handleUdpFromGuest`, which reads the payload after
+the L4 header and wrote it to the host socket. The guest sent 40 bytes in two
+fragments; the host received 16 and the tail was discarded. Nothing downstream
+can detect that: a short datagram is a valid datagram.
+
+**The fix.** `MacIpGateway::reassemble()` intercepts anything with MF set *or*
+offset non-zero, and only a complete datagram reaches an L4 handler. The tail
+(MF=0) names the total length; the rebuilt packet gets its total-length field,
+a cleared fragment field and a recomputed header checksum before going through
+the normal switch, so handlers keep parsing a well-formed IP packet. Presence is
+tracked **per byte** rather than per fragment: overlapping or duplicated
+fragments are exactly how a reassembler is told a datagram is whole when it is
+not.
+
+**Bounded in three dimensions**, because this is the one structure a guest grows
+by sending a first fragment and never the rest: 16 KB per set, 16 sets in
+flight, and 15 s of age (RFC 791 § 3.2), reaped in `tick()` on guest cycles like
+every other deadline here. The age bound is not decoration — with only a count
+bound, sixteen sets that never complete would hold the buffer for the process
+lifetime and refuse every datagram after them. `Status` gains `ipReassembled`
+and `fragSets` so the buffer is observable rather than inferred.
+
+**The gate could not pass on the bug it guards.** Asserting that "a payload
+arrived" would have passed under the old code too — a truncated delivery is
+still a delivery. So `macip_gw_test` sends the first fragment **alone** and
+requires that *nothing* reaches the host socket while `fragSets == 1`; only then
+does the tail complete it, all 40 bytes arrive, `ipReassembled` rises by one and
+the buffer drains to zero.
+
+That matters because `CHECK` prints only on failure
+(`tests/atalk_test_util.h:16`), so this test's one-line "OK" cannot distinguish
+assertions that passed from assertions that never ran. Restoring the old
+dispatch and rebuilding makes all three fail by name — "a lone first fragment is
+held, not delivered truncated", "the tail completes it", "the datagram is
+counted once and the buffer drains", 3 failure(s), exit 1 — and the fix turns
+them green again. The mutation is the evidence; the aggregate was not.
+
+Full build 164 binaries, `asset-none` 94/94.
+
+**What did not land.** ICMP outbound is blocked by the host rather than by
+effort: without `CAP_NET_RAW` it needs an unprivileged `IPPROTO_ICMP` socket,
+and `net.ipv4.ping_group_range` is `1 0` — an empty range — on this machine, so
+a gate could only soft-skip and would prove nothing. TCP window scaling stays
+open, and would sit on top of a deliberately in-order-only endpoint (MSS 536);
+that simplification should be decided before it is built on. `TODO` records both.
 
 <a id="2026-09-12-dayna-savestate"></a>
 ## 2026-09-12 (third) — The DaynaPort travels in save states: format v15, and what deliberately does not travel

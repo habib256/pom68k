@@ -159,6 +159,7 @@ MacIpGateway::Status MacIpGateway::status() const {
     stat_.leases = int(leases_.size());
     stat_.udpFlows = int(udp_.size());
     stat_.tcpConns = int(tcp_.size());
+    stat_.fragSets = int(frags_.size());
     return stat_;
 }
 
@@ -299,10 +300,18 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, bool ether,
     // as one fabricated a TCP/UDP header out of user data, opened a socket to a
     // garbage port and leaked it until the 120 s reap. The tracer in this same
     // file already computes and tests this field; the data path did not.
-    // (First fragments still go through: there is no reassembly buffer, but
-    // that is the pre-existing behaviour and does not fabricate headers.)
+    // Since 2026-09-12 a fragmented datagram is put back together first. The
+    // old code let a FIRST fragment through (offset 0 passes the test below)
+    // straight into handleUdpFromGuest, which reads the payload after the L4
+    // header and sent the host socket a silently TRUNCATED datagram — worse
+    // than the dropped tail, because nothing downstream can detect it.
     const uint16_t frag = rd16(p + 6);
-    if (frag & 0x1FFF) return;                             // offset != 0
+    std::vector<uint8_t> whole;
+    if (frag & 0x3FFF) {                     // more-fragments set, or offset != 0
+        if (!reassemble(p, n, whole)) return;         // incomplete, or refused
+        p = whole.data();
+        n = whole.size();
+    }
     switch (proto) {
     case 6: handleTcpFromGuest(p, n); break;
     case 17: handleUdpFromGuest(p, n); break;
@@ -311,6 +320,64 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, bool ether,
 }
 
 // ── UDP flows ───────────────────────────────────────────────────────────
+
+// ── IPv4 reassembly ─────────────────────────────────────────────────────
+// Put back together before any L4 handler sees the datagram: those handlers
+// read ports at `p + ihl` and the payload after them, so a first fragment
+// dispatched alone truncates and a later fragment carries no L4 header at all.
+// Neither is detectable downstream, which is why this lives in handleIp.
+//
+// `have` is per byte rather than per fragment so an overlapping or duplicated
+// fragment cannot count twice toward completion — the classic way a reassembler
+// is told a datagram is whole when it is not.
+bool MacIpGateway::reassemble(const uint8_t* p, size_t n,
+                              std::vector<uint8_t>& out) {
+    const size_t ihl = size_t(p[0] & 0x0F) * 4;
+    if (n < ihl) return false;
+    const uint16_t frag = rd16(p + 6);
+    const size_t off = size_t(frag & 0x1FFF) * 8;
+    const bool more = (frag & 0x2000) != 0;
+    const size_t plen = n - ihl;
+    if (off + plen > kMaxReasmBytes) return false;         // refuse, do not clamp
+
+    const uint32_t sip = rd32(p + 12), dip = rd32(p + 16);
+    const uint8_t proto = p[9];
+    const uint16_t id = rd16(p + 4);
+
+    FragSet* s = nullptr;
+    for (auto& f : frags_)
+        if (f.id == id && f.sip == sip && f.dip == dip && f.proto == proto)
+            s = &f;
+    if (!s) {
+        if (frags_.size() >= kMaxFragSets) return false;
+        frags_.push_back(FragSet{});
+        s = &frags_.back();
+        s->sip = sip; s->dip = dip; s->proto = proto; s->id = id;
+        s->firstSeen = st_.now();
+    }
+    if (s->data.size() < off + plen) {
+        s->data.resize(off + plen, 0);
+        s->have.resize(off + plen, false);
+    }
+    for (size_t i = 0; i < plen; i++)
+        if (!s->have[off + i]) { s->have[off + i] = true; s->haveCount++; }
+    std::memcpy(s->data.data() + off, p + ihl, plen);
+    if (off == 0) s->hdr.assign(p, p + ihl);
+    if (!more) s->totalLen = off + plen;                   // the tail names the size
+
+    if (s->hdr.empty() || s->totalLen == 0 || s->haveCount != s->totalLen)
+        return false;                                      // still holes, or no tail
+
+    out.assign(s->hdr.begin(), s->hdr.end());
+    out.insert(out.end(), s->data.begin(), s->data.begin() + s->totalLen);
+    wr16(out.data() + 2, uint16_t(out.size()));            // total length, rebuilt
+    wr16(out.data() + 6, 0);                               // no longer a fragment
+    wr16(out.data() + 10, 0);
+    wr16(out.data() + 10, csum(out.data(), ihl));
+    frags_.erase(frags_.begin() + (s - frags_.data()));
+    stat_.ipReassembled++;
+    return true;
+}
 
 void MacIpGateway::handleUdpFromGuest(const uint8_t* p, size_t n) {
 #ifndef _WIN32
@@ -661,6 +728,14 @@ void MacIpGateway::tick(int64_t now) {
 #else
     (void)now;
 #endif
+
+    // Fragment sets expire on the same clock as every other deadline here. The
+    // count bound alone is not enough: sixteen sets that never complete would
+    // hold the buffer for the process lifetime and refuse every datagram after
+    // them, so the age bound is what makes the limit recoverable.
+    std::erase_if(frags_, [&](const FragSet& f) {
+        return now - f.firstSeen > kFragTtlSec * st_.cpuHz();
+    });
 
     // Lease reclaim: without this the ~253-address pool only ever shrinks —
     // every node that asks, plus every in-subnet source learned from traffic,
