@@ -48,7 +48,7 @@ public:
     // periphDeadline_ is real scheduling state, not a cache: a restore that
     // dropped it would run the fan-out on a stale deadline until the next
     // flush. The savestate gates catch the omission — that is why the
-    // contract in TODO § 4 names this line explicitly.
+    // contract in TODO § Fidélité names this line explicitly.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
         ar(lastPeriphClock_, periphDeadline_);

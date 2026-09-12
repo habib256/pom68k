@@ -184,7 +184,7 @@ caught it.
   the setter).
 - ~~No beam-position register is exposed to a guest~~ — **resolved
   2026-08-02, and it was smaller than it looked** (this bullet was stale
-  against `TODO.md` § 4bis until 2026-08-02). Valkyrie's `$14` blanking bit
+  against the backlog until 2026-08-02). Valkyrie's `$14` blanking bit
   was the only real position register in the tree and it now answers from
   the LIVE scanline (`Valkyrie::readReg8` case `0x14`, `Valkyrie.cpp:85-92`
   → `currentLine()`, defined at `:195`); it used to read
@@ -259,7 +259,7 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   batch (64 / 128) whose binding source is only ~2× / 8× finer, so there is no
   slack to recover — only the per-entry fan-out cost. The governing precedent
   is the Q605 **ASC** event scheduler: seven green gates, a throughput
-  regression, and it was withdrawn entirely (`TODO.md` § 0·A).
+  regression, and it was withdrawn entirely (`CHANGELOG.md`).
   → **Turn either on by default** the day a gate can SEE the difference (a
   jitter-sensitive beyond-boot gate) or a guest symptom appears. The
   mechanism, its bounds and its save-state field are in place, so that day

@@ -190,8 +190,8 @@ the LC II ROM (2026-07-30):
   → mask `$08000000` → the **integer** `PACK 4`; hwCfgWord `$CC00` has bit 12
   clear so there is no promotion to 3. The mechanism therefore exists and is
   correctly parameterised on this ROM — see the open item in
-  `TODO.md § 5 (LC II / V8) — "No-FPU SANE"`, which still wants the 030 path
-  re-tested rather than re-diagnosed.
+  `TODO.md` § Fidélité matérielle et LLE — « SANE sans FPU », which still wants
+  the 030 path re-tested rather than re-diagnosed.
 
 ### 8.6 Trap → ROM offset (breakpoint fodder for `lcii_trace`)
 

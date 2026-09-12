@@ -236,7 +236,7 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
   whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`.
   The GUI hook shipped 2026-07-30; the remaining item (a hands-on GUI
-  pass) is in `TODO.md` § 8.
+  pass) is in `TODO.md` § Preuve, outillage et dettes de mesure.
 
 ---
 
@@ -806,7 +806,8 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   the whole frame, because the firmware reads a register more than once per
   sample and a live drain turns that into a race — measured, two directions
   out of four silently stopped working. The sleep/wake gate no other machine
-  can test is the one open milestone (`TODO.md` § 7).
+  can test is the one open milestone
+  (`TODO.md` § Bloqué sur références externes ou matériel).
 - **A machine reset must scrub the PG&E's `$91` power flag** (`PgePmu::reset`).
   The MCU restarts from its mask ROM with its RAM intact, and `$91` is what
   the ROM branches on at `$FE28`: left at the last session's `$62` it takes

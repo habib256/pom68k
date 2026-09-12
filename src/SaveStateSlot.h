@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-// ── Save states (TODO § C GUI wiring) ───────────────────────────────────
+// ── Save states (TODO § Preuve) ─────────────────────────────────────────
 // Shared plumbing embedded in each machine-thread struct: the GUI queues a
 // request; the MACHINE thread performs the save/load between two quanta
 // (the Cmd::CpuEngine precedent — a restore replaces the whole tree, so it

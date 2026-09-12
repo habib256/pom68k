@@ -13,7 +13,7 @@ IIfxCpu::IIfxCpu(IIfxMemory& mem, const jit::ResolvedConfig& jitConfig,
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     // Fixed batch, like the Mac II family: the IIfx is one of the four
     // platforms still on kPeriphBatch rather than a device-derived
-    // deadline (TODO.md § 4).
+    // deadline (TODO.md § Fidélité matérielle et LLE).
     jit_.setPeriphPacing(&lastPeriphClock_, kPeriphBatch);
 }
 

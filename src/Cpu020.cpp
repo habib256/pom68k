@@ -100,7 +100,7 @@ void Cpu020::schedulePeriphDeadline() {
     // its binding source, the PIC1654S at 460.8 kHz, is only ~2× finer, so
     // there is no slack to recover — only the per-entry fan-out cost.
     // Precedent: the Q605 ASC event scheduler was withdrawn ENTIRELY on a
-    // throughput regression despite seven green gates (TODO § 0·A).
+    // throughput regression despite seven green gates (CHANGELOG.md).
     // → Turn it on by default the day a gate can SEE the difference (a
     //   jitter-sensitive beyond-boot gate), or a guest symptom appears.
     if (!eventDriven_) { periphDeadline_ = clock + kPeriphBatch; return; }

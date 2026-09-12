@@ -10,8 +10,7 @@ gated, nothing implemented before its observable is named.*
 
 The chantier opened because "040 copyback/snooping" was then billed as the
 largest remaining CPU inexactness. Two findings reframe what that work
-actually is (and are why `TODO.md` § 4 now records it closed rather than
-pending):
+actually is (and are why it is no longer a pending item in `TODO.md`):
 
 1. **There is no oracle.** The vendored WinUAE oracle models a 68030
    data cache (`oracle/uae/upstream/cpummu030.h`,

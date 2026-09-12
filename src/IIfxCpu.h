@@ -42,7 +42,7 @@ private:
     friend pom68k::MoiraCpu<IIfxCpu, IIfxMemory>;
     moira::u16 read16OnReset(moira::u32 addr) const override;
     void didChangeCACR(moira::u32 value) override;
-    // Fixed-batch pacing, not a device-derived deadline (TODO.md § 4) —
+    // Fixed-batch pacing, not a device-derived deadline (TODO § Fidélité) —
     // shadows the base's deadline-flavoured dispatch.
     void catchUp();
 

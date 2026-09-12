@@ -400,7 +400,8 @@ code):
   (`withFpu = false`, matching maclc.cpp:325-330); `main.cpp` and every LC II
   gate pass `withFpu = true`, and `POM68K_NOFPU` models the bare machine.
   Whether the 030 path still needs the UniversalInfo/`defaultRSRCs` selection
-  that fixed the 040 side is **untested** — `TODO.md § LC II / V8`.
+  that fixed the 040 side is **untested** —
+  `TODO.md` § Fidélité matérielle et LLE.
 
 ## Floppy (SWIM1 + SuperDrive)
 
@@ -556,4 +557,4 @@ Still open — these need hardware traces or a guest that exercises them:
 5. Egret firmware ADB timing vs System 7.1's ADB manager (MAME note: real
    Egret runs ADB at 2× spec timings, egret.cpp:83).
 6. Interrupt/VBL/VIA/memory timing vs real hardware, and the idle screen dim
-   seen after very long runs (`TODO.md § LC II / V8`).
+   seen after very long runs (`TODO.md` § Fidélité matérielle et LLE).

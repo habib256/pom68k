@@ -19,7 +19,7 @@ trade timing fidelity for speed **only where the user explicitly asks**.
 
 | Where it lives elsewhere | |
 |---|---|
-| backlog entry | `TODO.md` § 8 *Cross-machine architecture* — "Optional HLE acceleration overlay" |
+| backlog entry | `TODO.md` § Recherche conditionnelle — "Optional HLE acceleration overlay" |
 | the *what* and *how* of Basilisk's patches | `docs/BASILISK_ROM_NOTES.md` (EMUL_OP plane §1, patch map §3, trap dispatcher §4, Egret/Cuda/ADB/PRAM stubs §5) — the implementation oracle, not restated here. **Those sections are its SECONDHAND tier** (read from Basilisk's sources, not verified on a ROM); only its §8 is firsthand. Anything here that becomes code must be re-verified against the actual ROM first |
 | what POM68K already deviates on, and its policy | `docs/LLE_VS_HLE.md` — §2's "kept but LOUD" retirement policy is the precedent this overlay's visibility guardrail should follow |
 | the conformant accelerator that shipped instead | `src/jit/POM68K_JIT.md` |

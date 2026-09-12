@@ -303,10 +303,11 @@ out every 68030 machine's hot loop as if it were cold.
 - **NeoST's code-level optimizations** (§ 3 of its PERFORMANCE.md: MMU decode
   cache, inline bus fast path, scheduler O(1) `nextDue`). POM68K has already
   been down this road with its own profile, and the answers differ because the
-  machines differ. The peripheral **deadline** mechanism (`TODO.md` § 4) is
+  machines differ. The peripheral **deadline** mechanism
+  (`TODO.md` § Fidélité matérielle et LLE) is
   POM68K's version of the scheduler fix — 833.2 M → 86.65 M `tick()` calls on
   the Q605 boot. Page-granular memory dispatch and an O(1) ATC lookup were
-  both **measured and dropped** (`TODO.md`, *Measured and DROPPED*). Do not
+  both **measured and dropped** (`CHANGELOG.md`). Do not
   re-open either from NeoST's numbers; re-open them from POM68K's.
 
 ---

@@ -1017,7 +1017,7 @@ era software uses.
   reconciliation occur on access/rediscovery, not through host notifications.
 - PAP status-polling subtleties; MacIP outbound ICMP / raw sockets.
 
-Backlog: `TODO.md` §6. Migration notes and the HLE/LLE gap list:
+Backlog: `TODO.md` § Services réseau. Migration notes and the HLE/LLE gap list:
 `docs/LLE_VS_HLE.md`.
 
 ---
@@ -1123,4 +1123,5 @@ dotted quad) · assign = ATP func 1 · probe = 3 · default
   `docs/LLE_VS_HLE.md` §1.4 (SCC gaps + the MAME `z80scc.cpp` audit),
   §1.10 (the in-process stack's one synthesized signal) and §4.1 item 10
   (the virgin-line ruling), `CHANGELOG.md` (LLAP milestone 1, the SCC IDG fix,
-  the AppleShare bridge, the in-process stack), `TODO.md` §6 (backlog).
+  the AppleShare bridge, the in-process stack),
+  `TODO.md` § Services réseau (backlog).

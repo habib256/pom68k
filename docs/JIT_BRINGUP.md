@@ -6,13 +6,14 @@ flip that follows each one. The 68040 half is finished and shipped.
 
 Design and invariants of the engine itself: `src/jit/POM68K_JIT.md`. This
 file is the *plan*; every measured result lands there and in `CHANGELOG.md`,
-not here. Backlog cross-reference: `TODO.md` § 3.
+not here. Backlog cross-reference: `TODO.md` § Moteur.
 
 > **Premise, stated once.** Everything below is *conformant* work: the
 > interpreter stays the reference and every step is proved bit-identical to
 > it by a lockstep gate before it is allowed to be fast. Nothing here trades
 > accuracy for speed. The non-conformant lane (relaxed JIT profile, HLE
-> overlay — `docs/HLE_OVERLAY.md`, `TODO.md` § 8) stays behind this,
+> overlay — `docs/HLE_OVERLAY.md`, `TODO.md` § Recherche conditionnelle)
+> stays behind this,
 > per the 2026-08-09 ordering decision.
 
 ---
@@ -264,8 +265,8 @@ and `:2287`. Three things about them that cost a round to learn:
   `mmuRead`/`mmuWrite`, so a run with that window on and off produces
   identical fingerprints and identical *zero* fills — a dead path, not a
   passing test.
-  **Closed 2026-09-04, and the default flipped 2026-09-05** (TODO § B.2
-  slice 5): the window is now ON by default for a 68030 guest — measured
+  **Closed 2026-09-04, and the default flipped 2026-09-05** (the B.2 plan,
+  slice 5; `CHANGELOG.md`): the window is now ON by default for a 68030 guest — measured
   −5.5 % on `threaded` and −5.7 % on the interpreter arm, `-L m030` green
   56/56 with it on, fingerprints bit-identical either way. The 68040 keeps
   the opposite default on its own measurement (`POM68K_VENDOR.md` § J3
@@ -514,7 +515,7 @@ Two things follow, and neither is about which opcodes the emitters accept.
 **1. The x64 generator on a 68030 is slower than the INTERPRETER** (21.91 s
 against 17.90 s), and at its own ceiling it still loses to `threaded`
 (17.13 against 14.19). The AArch64 half was already known to lose to
-`threaded` (`TODO.md` § 3, 2026-08-12); the x64 half is worse, and neither
+`threaded` (`CHANGELOG.md`, 2026-08-12); the x64 half is worse, and neither
 number is a coverage tail away from winning.
 
 **2. Almost nothing runs in a block.** Native residency is **14.4 %** and
@@ -558,7 +559,7 @@ where the window pays a straight interpreter dispatch. Everything from 50
 upward is one flat plateau, so the inherited 68040 number is already at the
 optimum and there is nothing to win by tuning it.
 
-That retires the framing this document and `TODO.md` § 3 both carried —
+That retires the framing this document and `TODO.md` § Moteur both carried —
 "the measured lock is global native residency (18.4 %)". Residency is a
 **symptom**. The lock is how many instructions per block the emitters can
 take, because that is what carries a block over a bar which is correctly
@@ -697,7 +698,7 @@ an ordinary guest `MOVE` through `write8`/`write16`, which `note()`s the
 guard), the IWM is polled, and generated-code stores cross the DTLB's
 `codeMask`. If that inventory holds for every 68030 board, the hint is
 redundant and can go. One workload's matching fingerprint is not that
-proof, and the four-proof bar in `TODO.md` § 3 applies.
+proof, and the admission bar in `TODO.md` § Moteur applies.
 
 ### C.4sexies — the ceiling was three bugs and a policy (2026-08-19)
 

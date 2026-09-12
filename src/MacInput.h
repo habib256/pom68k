@@ -71,7 +71,7 @@ public:
     bool x1 = false, y1 = false;     // → SCC DCD A / B
     bool x2 = false, y2 = false;     // → VIA PB4 / PB5
 
-    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // ── Peripheral event deadline (TODO § Fidélité) ─────────────────────
     // CPU cycles until the next quadrature edge — the mouse flips SCC DCD
     // and VIA port lines spontaneously, so it owes a bound. With nothing
     // queued it cannot move on its own; a host delta arriving later is

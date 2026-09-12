@@ -106,7 +106,7 @@ public:
     }
     bool extShiftCB2Out() const { return (sr_ >> 7) & 1; }
     void loadSRDevice(uint8_t v) { sr_ = v; }   // device presents a byte, no IFR
-    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // ── Peripheral event deadline (TODO § Fidélité) ─────────────────────
     // φ2 (E-clock) ticks until this VIA can next change observable state ON
     // ITS OWN — 0x7fffffff when it cannot. Only three things in tick() flip
     // a line or an IFR bit without a bus access: a T1 underflow (always in

@@ -15,7 +15,7 @@ using pom68k::gui::runV8Gui;
 
 // ── LC II machine thread ────────────────────────────────────────────────
 // Runs the emulation + audio-clocked pacing OFF the vsync'd ImGui thread
-// (TODO § Performance): a slow GPU frame or a compositor stall no longer
+// (`CHANGELOG.md`): a slow GPU frame or a compositor stall no longer
 // steals emulation time, and the pacer sleeps on its own schedule instead
 // of piggybacking on vsync. GUI ↔ machine contract:
 //   - input and machine controls cross as queued commands (cmdMu_) applied

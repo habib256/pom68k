@@ -35,7 +35,7 @@ bricks in § 3, or a ROM dump.
 
 Per-subsystem status lives in `CLAUDE.md`; the as-built per-platform
 descriptions in `DEV.md` § 2; the LLE-vs-HLE deviation inventory in
-`docs/LLE_VS_HLE.md`; the backlog in `TODO.md` § 7.
+`docs/LLE_VS_HLE.md`; the backlog in `TODO.md` § Nouvelles machines.
 
 ---
 
@@ -238,7 +238,7 @@ MCU, for the Portable / PB 100 / 140-180) and the **AV I/O complex**.
 ## 3. Remaining — the bricks, and what each unlocks
 
 Every remaining 68k Mac needs a **new co-processor core** (or a dump), not a
-new bus. Backlog entries: `TODO.md` § 7 *Independent majors*.
+new bus. Backlog entries: `TODO.md` § Nouvelles machines.
 
 | Brick | Unlocks | ROM on hand | Status |
 |---|---|---|---|
@@ -320,8 +320,9 @@ Re-derived from the CMake gate modules on 2026-08-12:
   centris650, q630, q700).
 
 Adding a 38th machine is cheaper than hardening the 37 that exist. Read the
-roadmap below against that trade — and against `TODO.md` § 2, which calls test
-depth the single biggest gap in the project.
+roadmap below against that trade — and against
+`TODO.md` § Preuve, outillage et dettes de mesure, whose first item is that
+depth.
 
 ---
 

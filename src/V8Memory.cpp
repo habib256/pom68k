@@ -443,7 +443,8 @@ uint8_t V8Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 // FIRST access from each PC, dump the low-memory globals the ROM's
 // DecoderInfo copies its hardware bases into, plus a window of code around
 // that PC — the accessing routine can then be disassembled offline instead
-// of guessed at (the Classic II $F18000 question, TODO § 4).
+// of guessed at (the Classic II $F18000 question, TODO.md
+// § Fidélité matérielle et LLE).
 void V8Memory::holeDump(uint32_t addr) const {
     if ((addr & 0xFFF000) != 0xF18000) return;
     static std::vector<uint32_t> seen;
@@ -560,7 +561,8 @@ uint8_t V8Memory::read8(uint32_t addr) {
     // Bring-up eyes (POM68K_V8_IOHOLE=1): what does the guest actually DO
     // in the map holes? The Classic II's ROM is known to dereference
     // $50F18038; the block behind it has never been identified, and the
-    // only way to name it is to watch the access pattern (TODO § 4).
+    // only way to name it is to watch the access pattern
+    // (TODO.md § Fidélité matérielle et LLE).
     if (ioHoleTraceLimit_ > 0) {
         if (ioHoleTraceCount_++ < ioHoleTraceLimit_)
             std::fprintf(stderr, "[iohole] rd $%06X pc=$%08X\n", addr,

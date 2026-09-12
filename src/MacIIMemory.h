@@ -101,7 +101,7 @@ public:
     int  iplLevel() const;
     void tick(int cpuCycles);
 
-    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // ── Peripheral event deadline (TODO § Fidélité) ─────────────────────
     // CPU cycles until the earliest moment any device here can change
     // observable state on its own. Conservative by contract: a bound that is
     // too small only costs time, one that is too large moves emulated time.
