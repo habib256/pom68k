@@ -122,8 +122,18 @@ L'ordre interne est : prouver le parcours invité existant, fermer les défauts
 de protocole observés, puis ajouter les extensions et les contrôles GUI. C'est
 la plus grande dimension produit encore peu exploitée.
 
-- [ ] **Étendre le sous-ensemble AFP.** Ajouter Desktop DB, CopyFile,
-  CatSearch, chemins DID relatifs et, si requis, AFP 3/UTF-8.
+- [ ] **Étendre le sous-ensemble AFP — seulement sur consommateur observé.**
+  Dimensionné le 2026-09-12 (`CHANGELOG`) : les DID relatifs sont déjà traités,
+  le Desktop DB n'est pas absent mais **volontairement bouchonné** (`FPOpenDT`
+  implémenté, côté Get `kErrNoItem`, documenté dans `AfpServer.h`), et seuls
+  `FPCopyFile` (5) et `FPCatSearch` (43) manquent réellement. Or une session
+  live complète du Finder de Mac OS 8.1 — Chooser, montage, énumération, Cmd-N,
+  duplication, 41 Kio sur les deux forks, Put Away — rapporte `refused=0/-` aux
+  22 frontières de phase : **aucun consommateur réel**. Le serveur compte
+  désormais les opcodes refusés (`refusedCount`/`lastRefused`, tracés par
+  `q605_afp_live_etalon`), donc le jour où un invité en demande un, cela se
+  verra. Ne rien implémenter avant ce signal. AFP 3/UTF-8 reste de même
+  conditionné à un invité qui l'exige.
 - [ ] **Ajouter des UAM sûrs.** Implémenter DHX/random-number lorsqu'un invité
   refuse le cleartext.
 - [ ] **Compléter PAP.** Ajouter polling de statut, configuration des files et

@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-12 (sixth)** — [What the AFP server refuses is now visible, and it turns out Mac OS 8.1 never asks for anything it lacks](#2026-09-12-afp-refusals-observable)
 - **2026-09-12 (fifth)** — [The AFP timing gates now run serially: `-j64` was making the measurement lie, and the red was mine](#2026-09-12-afp-gates-serial)
 - **2026-09-12 (fourth)** — [MacIP reassembles fragmented datagrams, and the old path had been delivering the first fragment truncated](#2026-09-12-macip-reassembly)
 - **2026-09-12 (third)** — [The DaynaPort travels in save states: format v15, and what deliberately does not travel](#2026-09-12-dayna-savestate)
@@ -922,6 +923,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-12-afp-refusals-observable"></a>
+## 2026-09-12 (sixth) — What the AFP server refuses is now visible, and it turns out Mac OS 8.1 never asks for anything it lacks
+
+`TODO` asked to extend the AFP subset with "Desktop DB, CopyFile, CatSearch,
+chemins DID relatifs". Sizing the server first changed the question. Relative
+DIDs are already handled. Desktop DB is not missing but *deliberately stubbed* —
+`FPOpenDT` is implemented, the Add side answers ok and the Get side answers
+`kErrNoItem`, which `AfpServer.h` has documented all along. Only `FPCopyFile`
+(5) and `FPCatSearch` (43) are genuinely absent.
+
+**But absence is not a reason to build.** This tree's rule for such additions is
+a trace, a guest observable or a real consumer. The server answered unknown
+opcodes at `default: err(kErrNoOp)` and counted nothing, so no one could say
+whether a guest had ever asked. That is the gap worth closing first, and it is
+three lines: `Status` gains `refusedCount` and `lastRefused`, the `default:` arm
+records both, and `afpCmdName` learns 5 and 43 — without which the trace would
+have printed `?` for exactly the two commands the exercise exists to identify.
+`q605_afp_live_etalon`'s trace now carries `refused=N/Name` at every phase
+boundary.
+
+**The answer is a clean negative.** Through a full live session — Chooser,
+login, mount, enumerate, Cmd-N, duplicate, 41 KB across both forks, Put Away —
+all 22 phase boundaries report `refused=0/-`. The real Finder never asks for an
+opcode this server lacks. So `FPCopyFile` and `FPCatSearch` have no consumer
+here and are **not** built: implementing them would be speculative work no gate
+could honestly prove, which is the outcome the rule exists to produce.
+
+It also falsifies a hypothesis of mine. I had expected a refused `FPCopyFile` to
+explain why Duplicate costs a 41 KB read+write round trip through the wire
+rather than a server-side copy. It does not: the Finder never issues it, and the
+round trip is what it chooses to do.
+
+`afp_server_test` sends opcode 5 and asserts the refusal is returned, counted
+and named. Disabling the counter makes it fail by name ("the refusal is counted,
+not silent", 1 failure, exit 1) and restoring it turns it green — so that
+assertion bites. The naming check was not separately mutated; it would have read
+`?` had `afpCmdName` not learned case 5.
+
+`src/AfpServer.cpp` ends at 1122 lines against its 1129 budget.
 
 <a id="2026-09-12-afp-gates-serial"></a>
 ## 2026-09-12 (fifth) — The AFP timing gates now run serially: `-j64` was making the measurement lie, and the red was mine

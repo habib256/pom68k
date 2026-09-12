@@ -60,6 +60,12 @@ public:
         std::string lastCmd;
         long cmdCount = 0;
         long bytesRead = 0, bytesWritten = 0;
+        // Commands the vocabulary does not implement. `default:` answers
+        // kErrNoOp, which is correct but invisible: without these a guest can
+        // ask for FPCopyFile every time it duplicates a file and nothing here
+        // would ever say so.
+        long refusedCount = 0;
+        std::string lastRefused;
         int64_t lastActivity = -1;   // emuCycles
     };
     Status status() const;
