@@ -170,6 +170,7 @@ const char* afpCmdName(uint8_t c) {
     case 51: return "GetIcon"; case 52: return "GetIconInfo";
     case 53: return "AddAPPL"; case 55: return "GetAPPL";
     case 56: return "AddComment"; case 58: return "GetComment";
+    case 5: return "CopyFile"; case 43: return "CatSearch";
     default: return "?";
     }
 }
@@ -1026,6 +1027,8 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
     case 51: case 52: case 55: case 58: err(kErrNoItem); return;  // Get icon/APPL/comment
 
     default:
+        stat_.refusedCount++;
+        stat_.lastRefused = afpCmdName(c[0]);
         err(kErrNoOp);
         return;
     }

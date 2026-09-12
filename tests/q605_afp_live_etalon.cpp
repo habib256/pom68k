@@ -308,11 +308,13 @@ int main() {
         Screen s = decodeScreen(mem);
         dumpPpm(name, s);
         const auto hs = hub.snapshot();
-        std::printf("trace: %s clock=%lld fp=%016llx afp=%ld "
+        std::printf("trace: %s clock=%lld fp=%016llx afp=%ld refused=%ld/%s "
                     "frames=%ld/%ld ddp=%ld/%ld atp=%ld dup=%ld/%ld lagmax=%ldms "
                     "wire=%zu/%ldms/%ld\n",
                     name, (long long)cpu.machineClock(),
                     (unsigned long long)bench::fingerprint(cpu), hs.afp.cmdCount,
+                    hs.afp.refusedCount,
+                    hs.afp.lastRefused.empty() ? "-" : hs.afp.lastRefused.c_str(),
                     hs.net.framesIn, hs.net.framesOut, hs.net.ddpIn, hs.net.ddpOut,
                     hs.net.atpReqIn, hs.net.atpDupReqs, hs.net.atpDupPending,
                     hs.net.atpDupLagMaxMs, hs.wire.backlogMax, hs.wireHoldMaxMs,

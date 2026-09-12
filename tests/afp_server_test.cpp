@@ -84,6 +84,24 @@ int main() {
         CHECK(aspCmd(w, sid, seq++, cmd, d) == 0, "guest FPLogin accepted");
     }
 
+    // ── An unimplemented opcode is refused VISIBLY ──
+    // `default:` has always answered kErrNoOp, which is correct and entirely
+    // invisible: nothing counted it, so there was no way to learn what a real
+    // guest asks for and is denied. That is exactly the evidence any
+    // FPCopyFile / FPCatSearch work would need, and without it such work would
+    // rest on a guess. Opcode 5 reaches `default:` before any volume logic, so
+    // this holds with a session open and no volume mounted.
+    {
+        const long before = afp.status().refusedCount;
+        std::vector<uint8_t> cmd = { 5 };                 // FPCopyFile
+        CHECK(aspCmd(w, sid, seq++, cmd, d) != 0,
+              "an unimplemented opcode is refused");
+        CHECK(afp.status().refusedCount == before + 1,
+              "the refusal is counted, not silent");
+        CHECK(afp.status().lastRefused == "CopyFile",
+              "and the refused opcode is named, not a '?'");
+    }
+
     // ── FPOpenVol ──
     uint16_t vid = 0;
     {
