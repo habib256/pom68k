@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-13** — [Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel](#2026-09-13-dayna-stale-comments)
 - **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](#2026-09-12-docs-vs-code-sweep)
 - **2026-09-12 (eighth)** — [The backlog names its next two chantiers, absorbs twelve items that existed only in this file, and stops being addressable by section number](#2026-09-12-todo-reorg)
 - **2026-09-12 (seventh)** — [Correction: the AFP outage red was host wall-clock reaching the guest, not `-j64` contention, and `RUN_SERIAL` is reverted](#2026-09-12-afp-date-nondeterminism)
@@ -926,6 +927,43 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-13-dayna-stale-comments"></a>
+## 2026-09-13 — Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel
+
+The card went onto all twelve SCSI buses on 2026-09-12
+([every bus](#2026-09-12-dayna-every-bus)), and that afternoon format v15
+([save states](#2026-09-12-dayna-savestate)) put its enable bit, guest-set
+MAC, Rx ring and sense keys into every machine chunk. Four comments were left
+behind asserting the opposite, and one of them contradicted its own document:
+
+- `src/DaynaPort.h` listed save states under **"NOT modelled, each
+  deliberately"** — "a snapshot restores with an empty Rx ring" — and gave as
+  the reason a cost v15 had already paid: that adding a device to a machine's
+  chunk list would change the on-disk format for every existing `.pomss`;
+- `src/DaynaPortBus.h` — "The card's own state is not in save states";
+- `src/AtalkHub.h` — "the eleven machines with no card compile exactly as
+  before". No such machine is left; all twelve carry one;
+- `DEV.md` § 3.3bis — "not in save states (a restore comes back with an empty
+  Rx ring)", while § 1.4 of the same file documents format v15 as adding the
+  DaynaPort chunk to all twelve machine families.
+
+**Why nothing caught it.** `docs_test` § 10 judges `file:line` citations by
+whether the range lands inside the file — "deliberately the WEAK half of the
+claim", in its own comment. Nothing in the build reads what a comment *says*,
+so a comment that contradicts the code beside it has no gate at all. The
+2026-09-12 documentation sweep ([197 corrections](#2026-09-12-docs-vs-code-sweep))
+is the pass that would have caught the fourth: it audited documents against
+code and missed this one. The other three are source comments, which that
+pass did not cover.
+
+**The fix is line-count neutral where it has to be.** `docs/APPLETALK.md:328`
+cites `AtalkHub.h:189-193`, downstream of the corrected comment, so that edit
+keeps the file at 290 lines and the citation still lands on the frame-flush
+block it names; `DEV.md` and `DaynaPortBus.h` are likewise unchanged in
+length. `src/DaynaPort.h` grows by three lines and is cited by no line
+reference. This file's own three occurrences of the old wording are history
+and stay as written.
 
 <a id="2026-09-12-docs-vs-code-sweep"></a>
 ## 2026-09-12 (ninth) — Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them

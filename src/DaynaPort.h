@@ -28,12 +28,15 @@
 //     gateway, one guest), so there is nothing to filter out;
 //   • the dropped-packet report (flags $FFFFFFFF) — the Rx ring drops when
 //     full and counts it, but never tells the guest, exactly as PiSCSI does.
-//     Reopening condition: a driver observed to depend on the report;
-//   • save states — a snapshot restores with an empty Rx ring. Frames in
-//     flight are not guest state, and adding a device to a machine's chunk
-//     list would change the on-disk format for every existing .pomss.
+//     Reopening condition: a driver observed to depend on the report.
 //
-// Gate: tests/daynaport_test.cpp.
+// Save states DO carry the card, since format v15 (2026-09-12): the enable
+// bit, the guest-set MAC, the Rx ring and the sense keys are live guest
+// state, and the chunk is written whether or not a card is configured
+// (SaveState.h). `attached_` and `sendFrame` stay out — the machine's
+// configuration re-attaches the card and re-binds the callback.
+//
+// Gates: tests/daynaport_test.cpp; savestate_v8_test for the v15 chunk.
 
 #pragma once
 #include "SaveState.h"

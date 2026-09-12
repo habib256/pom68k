@@ -121,9 +121,9 @@ public:
         // the SAME NAT the MacIP gateway uses — the guest's MacTCP then has
         // two ways to the outside (IP-in-DDP over LocalTalk, or IP over
         // Ethernet through the SCSI bus) and one gateway behind both.
-        // `requires` rather than a virtual: the eleven machines with no card
-        // compile exactly as before, and adding one to a machine is a member
-        // plus an accessor.
+        // `requires` rather than a virtual: a machine without the accessor
+        // compiles exactly as before, and giving one the card is a member
+        // plus an accessor — all twelve carry it since 2026-09-12.
         if constexpr (requires { mem.daynaPort(); }) {
             if (mem.daynaPort().present()) {
                 ether_ = std::make_unique<EtherLink>(mem.daynaPort(), macip_);
