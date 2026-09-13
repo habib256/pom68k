@@ -119,6 +119,24 @@ window's counters into a diagnosis rather than a score:
 | "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/NetworkWindow.cpp:196-199`) |
 | "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:388`; counter `rxOverflowDrops`, `Scc8530.h:162`) |
 
+**Two runs that disagree.** `q605_afp_live_etalon` prints one `trace:` line
+per phase boundary — machine clock, architectural fingerprint, cumulative
+AFP/network/wire counters — and `tools/afp_trace_diff.py ref.txt other.log`
+names the first boundary where two runs part (either side may be a raw
+`ctest -V` log). Two runs that first disagree at boundary N diverged before N.
+Exit status is 0 for identical traces, 1 for a divergence, and 2 for an
+unreadable, empty or malformed trace. The historical `refused=` field is
+ignored; all other fields on either side are compared.
+References: `scratchpad/2026-09-11/afp_live_trace_x86_64.txt` (x86-64,
+**before** the 2026-09-12 date pin) and
+`scratchpad/2026-09-13/afp_live_trace_aarch64.txt` (M4, pinned). On the M4
+default-engine repeat matches all 22 boundaries. The interpreter run
+(`scratchpad/2026-09-13/afp_live_trace_aarch64_interp.txt`) passes the gate
+but first diverges at boundary 14, the server list after reconnect: its
+clock is eight ticks earlier and its fingerprint differs. This engine
+difference needs investigation; the cross-host protocol also still needs a
+pinned x86-64 run (`TODO.md § Services réseau`).
+
 Lowering `POM68K_ATALK_WIRE_BOOST` is the wrong reflex for a backlog: the
 cap is the guest's Rx drain rate, not the pace. Tracers: `POM68K_ATALK_DEBUG=1`,
 `POM68K_MACIP_DEBUG=1`. Passive wire capture (throughput / gap / RTT
