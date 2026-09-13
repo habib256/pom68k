@@ -939,6 +939,9 @@ int main() {
             pom68k::SnapMachine expected;
         };
         const RouteCase routes[] = {
+            {64u << 10,  0x28BA61CE, pom68k::SnapMachine::Mac128K},
+            {64u << 10,  0x28BA4E50, pom68k::SnapMachine::Mac512K},
+            {64u << 10,  0,          pom68k::SnapMachine::Mac128K},
             {128u << 10, 0,          pom68k::SnapMachine::Plus},
             {256u << 10, 0xB2E362A8, pom68k::SnapMachine::SE},
             {256u << 10, 0xB306E171, pom68k::SnapMachine::SEFDHD},

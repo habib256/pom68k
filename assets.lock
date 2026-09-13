@@ -8,6 +8,8 @@ firmware | ADB PIC1654S 342s0440-b | 1024 | 22466ae8e4c11509dcc862e85c65239efcc7
 firmware | Egret 341s0851 | 4352 | 77f5fb2baaca55a5921423b041e60257a864d79d734872991fa607fa33784d88 | roms/egret/341s0851.bin | q900,q950
 firmware | PG&E boot | 512 | ab6348f7f71d97162d7e17813c46ff8e1d2213635099166809df3214725eb29b | roms/pge/pge_boot.bin | duo230
 
+machine-rom | Macintosh 128K 28BA61CE | 65536 | 13fe8312cf6167a2bb4351297b48cc1ee29c523b788e58270434742bfeda864c | roms/64KB ROMs/1984-01 - 28BA61CE - Macintosh 128.ROM | mac128k
+machine-rom | Macintosh 512K 28BA4E50 | 65536 | fe6a1ceff5b3eefe32f20efea967cdf8cd4cada291ede040600e7f6c9e2dfc0e | roms/64KB ROMs/1984-10 - 28BA4E50 - Macintosh 512K.ROM | mac512k
 machine-rom | Macintosh Plus v3 4D1F8172 | 131072 | dd908e2b65772a6b1f0c859c24e9a0d3dcde17b1c6a24f4abd8955846d7895e7 | roms/macplus.rom | plus
 machine-rom | Macintosh SE B2E362A8 | 262144 | 0dea05180e66fddb5f5577c89418de31b97e2d9dc6affe84871b031df8245487 | roms/256KB ROMs/1987-03 - B2E362A8 - Mac SE.ROM | se
 machine-rom | Macintosh SE FDHD B306E171 | 262144 | bb0cb4786e2e004b701dda9bec475598bc82a4f27eb7b11e6b78dfcee1434f71 | roms/256KB ROMs/1989-08 - B306E171 - Mac SE FDHD.ROM | sefdhd

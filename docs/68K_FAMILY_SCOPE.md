@@ -39,7 +39,7 @@ descriptions in `DEV.md` § 2; the LLE-vs-HLE deviation inventory in
 
 ---
 
-## 1. Done — the 37 profiles and the gate that proves each
+## 1. Done — the 39 profiles and the gate that proves each
 
 Every gate below is a Finder-signature boot etalon unless noted.
 
@@ -50,8 +50,15 @@ map is the Plus map with a bigger ROM, the overlay clearing on the first ROM
 access, and **ADB on the same PIC1654S firmware LLE the Mac II uses**
 (VIA PB5/PB4 = ST, PB3 = /ADB IRQ — `MacMemory.h:51-54`) in place of the M0110.
 
+The two machines BELOW the Plus are the same enum going the other way: less
+ROM (64 KB), less RAM (128/512 KB, which moves the top-of-RAM framebuffer),
+the M0110 rather than ADB, a single-sided 400K mechanism — and no SCSI bus,
+making them the tree's only `scsi = false` profiles.
+
 | Profile | ROM | Gate |
 |---|---|---|
+| Macintosh 128K | `28BA61CE` | **none yet** — POST stops at Sad Mac `$0F0004` |
+| Macintosh 512K | `28BA4E50` | **none yet** — same, identical failure |
 | Macintosh Plus | `macplus.rom` | `system_boot_etalon`, `disk_boot_etalon`, `scsi_boot_etalon`, `rom_boot_etalon`, `input_etalon` |
 | Macintosh SE | `B2E362A8` | `se_boot_etalon`, `se_scsi_boot_etalon` |
 | Macintosh SE FDHD | `B306E171` | `sefdhd_boot_etalon`, `sefdhd_scsi_boot_etalon` |
@@ -277,7 +284,7 @@ platforms.
 
 | Item | Why cheap | Note |
 |---|---|---|
-| **128K / 512K / 512Ke** | A subset of the Plus: 64K ROM, no SCSI, less RAM. Memory/ROM config on `MacMemory`. | 128K `28BA61CE` and 512K `28BA4E50` are on hand |
+| **512Ke** | The 512K board that now exists, rebadged: the Plus's 128 KB ROM and an 800K mechanism. Catalogue row, not a brick | The 128K and 512K themselves landed 2026-09-13 (§ 1) |
 | **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + typed `SnapMachine` selection |
 | **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:63-69`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:88-123`) |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |
@@ -303,14 +310,17 @@ the memory callbacks. See `docs/CACHE_040.md`.
 Booting to the Finder is the *entry* criterion, not the finish line.
 Re-derived from the CMake gate modules on 2026-08-12:
 
-- **37 of 37** profiles have a Finder boot gate.
-- **9 of 37** have any gate *past* the boot signature: Plus (`input_etalon`),
+- **37 of 39** profiles have a Finder boot gate. The 128K and 512K arrived
+  2026-09-13 with their board wired and their asset-free facts gated, but
+  their 64 KB ROM stops in its power-on self test (Sad Mac `$0F0004`, the
+  mod3 RAM sub-test) before it reaches the disk — § 1.
+- **9 of 39** have any gate *past* the boot signature: Plus (`input_etalon`),
   Mac II (`macii_mouse_etalon`), LC II (soak / persist / launch / floppy /
   savestate), LC III, LC 520, IIsi (`*_input_etalon`), IIvx (input + soak +
   persist), Quadra 605 (OT bind, CD-ROM ×3, floppy, mouse, key, soak, persist,
-  savestate), IIfx (`iifx_input_etalon`). **28 profiles are proven only to the
+  savestate), IIfx (`iifx_input_etalon`). **30 profiles are proven only to the
   point where the Finder appears** — including every 2026-08 arrival.
-- **15 of 37** are additionally gated on the **second execution engine**
+- **15 of 39** are additionally gated on the **second execution engine**
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
   iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` in
   `cmake/Pom68kJitGates.cmake:475-521`, plus `jit_classic_boot_etalon`
@@ -319,7 +329,7 @@ Re-derived from the CMake gate modules on 2026-08-12:
   carry an explicit `interp_*_boot_etalon` interpreter reference (q605,
   centris650, q630, q700).
 
-Adding a 38th machine is cheaper than hardening the 37 that exist. Read the
+Adding a 40th machine is cheaper than hardening the 39 that exist. Read the
 roadmap below against that trade — and against
 `TODO.md` § Preuve, outillage et dettes de mesure, whose first item is that
 depth.

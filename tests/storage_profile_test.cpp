@@ -253,13 +253,14 @@ void checkGlueModel(const pom68k::CoreConfig& core, MacIIMemory::Model model,
 } // namespace
 
 int main() {
-    std::printf("storage_profile_test — 37-profile floppy/SCSI/CD matrix\n");
+    std::printf("storage_profile_test — 39-profile floppy/SCSI/CD matrix\n");
 
-    std::size_t none = 0, gcr800 = 0, super = 0, external = 0;
+    std::size_t none = 0, gcr400 = 0, gcr800 = 0, super = 0, external = 0;
     std::size_t scsi = 0, cdrom = 0;
     for (const auto& profile : pom68k::kMachineProfiles) {
         const auto caps = pom68k::storageCapabilities(profile);
         none += caps.floppy == pom68k::FloppyKind::None;
+        gcr400 += caps.floppy == pom68k::FloppyKind::Gcr400K;
         gcr800 += caps.floppy == pom68k::FloppyKind::Gcr800K;
         super += caps.floppy == pom68k::FloppyKind::SuperDrive;
         external += caps.externalFloppy;
@@ -267,22 +268,51 @@ int main() {
         cdrom += caps.cdrom;
         std::printf("    %-10s floppy=%-10s external=%s SCSI=%s CD=%s\n", profile.slug,
                     caps.floppy == pom68k::FloppyKind::None ? "none" :
+                    caps.floppy == pom68k::FloppyKind::Gcr400K ? "400K" :
                     caps.floppy == pom68k::FloppyKind::Gcr800K ? "800K" : "SuperDrive",
                     caps.externalFloppy ? "yes" : "no",
                     caps.scsi ? "yes" : "no", caps.cdrom ? "yes" : "no");
     }
-    check(pom68k::kMachineProfileCount == 37, "catalogue contains all 37 profiles");
-    check(none == 1 && gcr800 == 3 && super == 33,
-          "floppy matrix = 1 none + 3 800K-only + 33 SuperDrive");
-    check(external == 36,
-          "all 36 desktop profiles expose an external floppy mechanism");
-    check(scsi == 37 && cdrom == 37, "all profiles expose SCSI HDD and SCSI CD-ROM");
+    check(pom68k::kMachineProfileCount == 39, "catalogue contains all 39 profiles");
+    check(none == 1 && gcr400 == 2 && gcr800 == 3 && super == 33,
+          "floppy matrix = 1 none + 2 400K + 3 800K-only + 33 SuperDrive");
+    check(external == 38,
+          "all 38 desktop profiles expose an external floppy mechanism");
+    // NOT "all profiles" any more: the SCSI bus arrived with the Plus, so the
+    // Macintosh 128K and 512K are the two that answer no. This is the
+    // assertion that would have caught a `scsi = true` copied onto them.
+    check(scsi == 37 && cdrom == 37,
+          "37 of 39 expose SCSI HDD + CD-ROM; the 128K/512K predate the bus");
 
     const auto& core = pom68k::defaultCoreConfig();
+    checkCompactModel(core, MacMemory::Model::Mac128, "Mac 128K", false);
+    checkCompactModel(core, MacMemory::Model::Mac512, "Mac 512K", false);
     checkCompactModel(core, MacMemory::Model::Plus, "Plus", false);
     checkCompactModel(core, MacMemory::Model::SE, "SE", false);
     checkCompactModel(core, MacMemory::Model::SEFDHD, "SE FDHD", true);
     checkCompactModel(core, MacMemory::Model::Classic, "Classic", true);
+    // The two machines below the Plus, as BOARDS rather than catalogue rows:
+    // RAM and ROM are profile facts here, the top-of-RAM framebuffer moves
+    // with them, the 400K mechanism is single-sided, and neither decodes a
+    // SCSI bus. Asset-free — this is the part of the pair that needs no ROM.
+    {
+        MacMemory m128(core, MacMemory::Model::Mac128);
+        MacMemory m512(core, MacMemory::Model::Mac512);
+        check(m128.ramSize() == 0x20000 && m512.ramSize() == 0x80000,
+              "128K/512K carry their soldered RAM (128 KB / 512 KB)");
+        check(m128.romSize() == 0x10000 && m512.romSize() == 0x10000,
+              "both run the 64 KB ROM, not the Plus's 128 KB");
+        check(!m128.hasScsi() && !m512.hasScsi(),
+              "neither board decodes a SCSI bus");
+        check(m128.mainScreenBase() == 0x1A700 &&
+              m512.mainScreenBase() == 0x7A700,
+              "the framebuffer follows ramTop-0x5900 on both");
+        check(m128.internalDrive().insertImage(
+                  std::vector<uint8_t>(SonyDrive::kSize400K, 0)) &&
+              !m128.internalDrive().doubleSided(),
+              "400K media derives single-sided geometry on the board");
+    }
+
     checkGlueModel(core, MacIIMemory::Model::MacII, "Mac II", false);
     checkGlueModel(core, MacIIMemory::Model::IIx, "IIx", true);
     checkGlueModel(core, MacIIMemory::Model::IIcx, "IIcx", true);

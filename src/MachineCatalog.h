@@ -21,7 +21,13 @@ enum class CpuFamily : std::uint8_t { M68000, M68020, M68030, M68040 };
 // and Macintosh II keep their 800K mechanisms, while their FDHD successors
 // expose the SWIM/SuperDrive.  SCSI CD-ROM is external on machines without an
 // internal bay, but it is still a supported SCSI target.
-enum class FloppyKind : std::uint8_t { None, Gcr800K, SuperDrive };
+//
+// `Gcr400K` is the original single-sided 400K mechanism (M0130), and the
+// Macintosh 128K/512K are the only profiles that carry it — they are also
+// the only profiles with `scsi = false`, because the SCSI bus arrived with
+// the Plus. `SonyDrive` derives the single-sided geometry from the 409 600
+// byte image itself (`SonyDrive.cpp:188`, gated by `iwm_write_test`).
+enum class FloppyKind : std::uint8_t { None, Gcr400K, Gcr800K, SuperDrive };
 
 struct StorageCapabilities {
     FloppyKind floppy;
@@ -42,7 +48,7 @@ enum class PlatformKind : std::uint8_t {
 enum class MachineKind : std::uint8_t {
     Plus = 0, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII,
     ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630,
-    Quadra, Duo
+    Quadra, Duo, Mac128, Mac512
 };
 
 // Stored in snapshot headers: these numeric values are a file format. Append,
@@ -61,6 +67,7 @@ enum class SnapMachine : std::uint32_t {
     Plus = 29, SE = 30, SEFDHD = 31, Classic = 32,
     SE30 = 33, IIfx = 34, Quadra900 = 35, Quadra950 = 36,
     Duo230 = 37,
+    Mac128K = 38, Mac512K = 39,
 };
 
 struct MachineProfile {
@@ -76,6 +83,8 @@ struct MachineProfile {
 };
 
 inline constexpr MachineProfile kMachineProfiles[] = {
+    {"68000", "Macintosh 128K", "mac128k", MachineKind::Mac128, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Mac128K, "roms/mac128k.rom", "28BA61CE"},
+    {"68000", "Macintosh 512K", "mac512k", MachineKind::Mac512, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Mac512K, "roms/mac512k.rom", "28BA4E50"},
     {"68000", "Macintosh Plus", "plus", MachineKind::Plus, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Plus, "roms/macplus.rom", nullptr},
     {"68000", "Macintosh SE", "se", MachineKind::Se, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::SE, "roms/macse.rom", "B2E362A8"},
     {"68000", "Macintosh SE FDHD", "sefdhd", MachineKind::SeFdhd, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::SEFDHD, "roms/macsefd.rom", "B306E171"},
@@ -131,6 +140,11 @@ constexpr StorageCapabilities storageCapabilities(const MachineProfile& profile)
     switch (profile.snapshot) {
         case SnapMachine::Duo230:
             return {FloppyKind::None, false, true, true};
+        // The only profiles without a SCSI bus: it arrived with the Plus.
+        // Both keep the external floppy port (DB-19) the 128K shipped with.
+        case SnapMachine::Mac128K:
+        case SnapMachine::Mac512K:
+            return {FloppyKind::Gcr400K, true, false, false};
         case SnapMachine::Plus:
         case SnapMachine::SE:
         case SnapMachine::MacII:

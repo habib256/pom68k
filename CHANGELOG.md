@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-13 (later)** — [The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent](#2026-09-13-mac128k-zero-divide)
 - **2026-09-13** — [Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel](#2026-09-13-dayna-stale-comments)
 - **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](#2026-09-12-docs-vs-code-sweep)
 - **2026-09-12 (eighth)** — [The backlog names its next two chantiers, absorbs twelve items that existed only in this file, and stops being addressable by section number](#2026-09-12-todo-reorg)
@@ -927,6 +928,88 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-13-mac128k-zero-divide"></a>
+## 2026-09-13 (later) — The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent
+
+The Macintosh 128K and 512K were wired this morning and stopped dead in the
+ROM's power-on self test, showing **Sad Mac `$0F0004`** — by every published
+table, a RAM sub-test. Both machines, identically, with `MemTop` and
+`ScrnBase` correct on each and a full-RAM probe finding not one discrepancy.
+
+**`$0F0004` is not a RAM sub-test.** The display routine at `$4000F4` takes
+its first two digits from `A4` and its last four from `D1`; `$4009D0` loads
+`A4 = $0F`, which is the *exception* class, and `D1` the index. Vectors 2
+through 11 are filled at `$40027E` with ten two-byte `bsr.b` stubs based at
+`$4001AA`, and `$4001D2` recovers which fired. `D1 = 4` names **vector 5,
+division by zero**.
+
+The faulting instruction is `DIVU.W D5,D2` at `$401EC0`, with `D5 = 0`, and
+it is the heart of the 400K spindle calibration: the ROM measures tachometer
+speed at PWM duty `$80`, then at `$100`, and divides by the difference. The
+captured registers convict us arithmetically — `$401E9A` performs
+`lsl.l #1,d3`, so `D3 = $2328` is exactly twice `D4 = $1194`. Both
+measurements returned 4500. The difference was nought, and the machine
+divided by it before ever stepping the drive.
+
+**The cause was ours.** `SonyDrive::rpmNow()` returned `kRpm[track_ >> 4]`, a
+function of the cylinder alone, deaf to the duty cycle — and nothing in the
+tree consumed the sound buffer's **odd** byte, which this project's own memory
+map has always described as the disk PWM, *ignored by the Plus's 800K drives*.
+The 400K mechanism does not ignore it. Two machines were wired to a drive
+whose speed control was never connected.
+
+**A wrong hypothesis, recorded because it was confidently wrong.** The
+coordinator read `$620000 - $600000 = $20000` — exactly the 128K's RAM — and
+pronounced the fault to lie in the mirror folding. It was dead on three
+counts: the ROM *depends* on the mirror working (screen at `$67A700`, sound
+buffer at `$7FD01`, vectors at `$600008`), so a broken fold would have drawn
+nothing at all; the RAM test passes; and the 512K, with four times the memory,
+fails at the same instruction with the same registers. A mirror fault cannot
+be indifferent to the size of what it mirrors.
+
+**The fix** ports MAME's `pwm_push()`: the firmware encodes pulse width as a
+6-bit LFSR seed, so the byte is de-mapped through the inverse table, summed
+over a 100-pulse window, and turned into `index = count1/10 - 11` clamped to
+0..399, `duty = index/419`, then Apple's documented envelope read linearly
+(9.4 % → 342.5 rpm, 91 % → 702.5), adopted only when two consecutive windows
+agree. The odd byte is fetched **one per scan line in `MacMemory::tick`** —
+352 CPU cycles, 370 per frame, main/alternate selected by VIA PA3 — and not in
+`MacAudio::renderFrame`, which only the GUI ever calls and a headless gate
+never traverses. Containment is by construction: `pwmPush` has exactly two
+call sites, both inside `hasPwmSpindle()`, true only for `Mac128` and
+`Mac512`.
+
+**Both machines now reach the Finder** on `disks35/System 1.1.dsk` — menu bar
+0.08, desktop 0.50, track 2, screen at `$1A700` and `$7A700`, the two
+addresses differing by precisely the RAM difference. Non-regression: 94
+asset-free gates executed with no skips, and 26 asset-required compact etalons
+executed on real ROMs — Plus, SE, SE FDHD, Classic, Colour Classic, soak,
+persist, save-state relaunch, the SCSI variants and the JIT Classic. The one
+red, `lcii_floppy_etalon`, predates this work (recorded on 2026-09-12 with the
+same signature, no Cmd-N folder in the host file) and is structurally
+unreachable from it: the LC II is a V8 machine, and `V8Memory` contains
+neither `pwmPush` nor `hasPwmSpindle`.
+
+**The 400K image search is closed too.** Two bootable raw images sat in the
+Infinite Mac clone all along — `System 1.1.dsk` and `System 2.0.dsk`, 409 600
+bytes, `'LK'` boot blocks, and **MFS** rather than HFS. MFS is no obstacle to
+booting: `SonyDrive` serves sectors and the guest ROM reads the filesystem
+(`SonyDrive.cpp:188` derives single-sided geometry from the image size, gated
+since `iwm_write_test.cpp:255-257`). It does bar any host-side check of a file
+the guest writes, so `lcii_floppy_etalon`'s model is out of reach here.
+
+**Two reds the blast-radius replay could not see.** Replaying the affected
+behaviour left `config_test` and `file_size_budget_test` failing: a probe knob
+added without its `config_knobs.tsv` row and its `DEV.md` § 5 line, and
+`SonyDrive.cpp` at 1348 lines against a 1305 ceiling. Neither is a regression
+in the emulator, and both are invisible to a behavioural blast radius — a
+ratchet's radius is a different shape. The full tier is what caught them.
+
+**Not done:** `mac128k_boot_etalon` is still `EXCLUDE_FROM_ALL`, so these two
+profiles are covered by asset-free gates only. Registering it changes gate
+registration and is filed with the question of pinning the two images
+(`TODO.md` § Nouvelles machines, § Bloqué).
 
 <a id="2026-09-13-dayna-stale-comments"></a>
 ## 2026-09-13 — Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel

@@ -5,8 +5,8 @@ belongs, which invariants must survive a change, and how to verify the result.
 It deliberately does not carry dated investigations, generated counts or
 subsystem tutorials.
 
-POM68K aims to support every 68k Macintosh. Current coverage is **37 machine profiles**
-across 12 board implementations, from the Macintosh Plus to the
+POM68K aims to support every 68k Macintosh. Current coverage is **39 machine profiles**
+across 12 board implementations, from the Macintosh 128K to the
 Quadra 950, with every catalogue entry booting to the Finder when its
 user-provided ROM and system media are available. The compiled catalogue is
 `kMachineProfiles` in `src/MachineCatalog.h`; it is the authority, not this
@@ -68,7 +68,7 @@ sharing that hardware remain separate catalogue/save-state identities.
 
 | Platform kind | Profiles | Main owners |
 |---|---|---|
-| `Compact` | Plus, SE, SE FDHD, Classic | `MacMemory.*`, `Cpu68k.*`, `PlatformCompact.cpp` |
+| `Compact` | 128K, 512K, Plus, SE, SE FDHD, Classic | `MacMemory.*`, `Cpu68k.*`, `PlatformCompact.cpp` |
 | `Glue` | Mac II, IIx, IIcx, SE/30 | `MacIIMemory.*`, `Cpu020.*`, `PlatformToby.cpp` |
 | `Oss` | IIfx | `IIfxMemory.*`, `IIfxCpu.*`, `ApplePic.*` |
 | `V8` | LC, LC II, Classic II, Color Classic, Mac TV | `V8Memory.*`, `Cpu030.*`, `PlatformV8.cpp` |

@@ -20,6 +20,7 @@
 namespace pom68k::app {
 namespace {
 
+constexpr std::size_t kRom64K = 64u << 10;
 constexpr std::size_t kRom256K = 256u << 10;
 constexpr std::size_t kRom512K = 512u << 10;
 constexpr std::size_t kRom1M = 1u << 20;
@@ -141,6 +142,15 @@ const MachineProfile& MachineFactory::selectProfile(
             return bySnapshot(selected.f108);
         if (id == 0xECFA989B) return bySnapshot(SnapMachine::Duo230);
         return bySnapshot(selected.memcJr);
+    }
+
+    // The two machines below the Plus are the only 64 KB ROMs, and the
+    // checksum is what tells them apart. Anything else that size is a 128K:
+    // that ROM is the family's floor, and its map is the subset every other
+    // compact extends.
+    if (rom.size() == kRom64K) {
+        if (id == 0x28BA4E50) return bySnapshot(SnapMachine::Mac512K);
+        return bySnapshot(SnapMachine::Mac128K);
     }
 
     if (rom.size() >= kRom256K) {

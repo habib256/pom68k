@@ -80,6 +80,34 @@ struct CompactMachine
         stFlags_.store(mem.overlay() ? 1 : 0, std::memory_order_relaxed);
     }
 };
+// One row per compact profile — four parallel ternary chains before this.
+struct CompactProfile {
+    pom68k::SnapMachine snapshot;
+    MacMemory::Model model;
+    MachineKind kind;
+    const char* name;
+    const char* tag;      // PRAM / save-state / input-journal file stem
+};
+static constexpr CompactProfile kCompactProfiles[] = {
+    {pom68k::SnapMachine::Plus, MacMemory::Model::Plus,
+     MachineKind::Plus, "Macintosh Plus", "plus"},
+    {pom68k::SnapMachine::Mac128K, MacMemory::Model::Mac128,
+     MachineKind::Mac128, "Macintosh 128K", "mac128k"},
+    {pom68k::SnapMachine::Mac512K, MacMemory::Model::Mac512,
+     MachineKind::Mac512, "Macintosh 512K", "mac512k"},
+    {pom68k::SnapMachine::SE, MacMemory::Model::SE,
+     MachineKind::Se, "Macintosh SE", "se"},
+    {pom68k::SnapMachine::SEFDHD, MacMemory::Model::SEFDHD,
+     MachineKind::SeFdhd, "Macintosh SE FDHD", "sefdhd"},
+    {pom68k::SnapMachine::Classic, MacMemory::Model::Classic,
+     MachineKind::MacClassic, "Macintosh Classic", "classic"},
+};
+static const CompactProfile& compactProfile(pom68k::SnapMachine selected) {
+    for (const CompactProfile& profile : kCompactProfiles)
+        if (profile.snapshot == selected) return profile;
+    return kCompactProfiles[0];              // the Plus: this map's default
+}
+
 // Compact composition. Native sessions use CompactMachine's worker thread;
 // Emscripten drives the same MachineHost::stepTick() from its frame callback.
 static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
@@ -92,12 +120,8 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     MacAudio& audio = services.own<MacAudio>();
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);
-    const MacMemory::Model model =
-        selected == pom68k::SnapMachine::SE ? MacMemory::Model::SE :
-        selected == pom68k::SnapMachine::SEFDHD ? MacMemory::Model::SEFDHD :
-        selected == pom68k::SnapMachine::Classic ? MacMemory::Model::Classic :
-                                                   MacMemory::Model::Plus;
-    mem.setModel(model);
+    const CompactProfile& profile = compactProfile(selected);
+    mem.setModel(profile.model);
 
     const bool demoMode = rom.empty() || !mem.loadRom(rom);
     if (demoMode) {
@@ -121,45 +145,26 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     const std::string& diskPath = mounted.floppyPath;
     const std::string& hddPath = mounted.hddPath;
 
-    // The compact 68000 siblings run this very machine (Plus map + ADB).
-    const MacMemory::Model compactModel = mem.model();
-    const char* machineName =
-        compactModel == MacMemory::Model::SE      ? "Macintosh SE" :
-        compactModel == MacMemory::Model::SEFDHD  ? "Macintosh SE FDHD" :
-        compactModel == MacMemory::Model::Classic ? "Macintosh Classic" : "Macintosh Plus";
-    const MachineKind compactKind =
-        compactModel == MacMemory::Model::SE      ? MachineKind::Se :
-        compactModel == MacMemory::Model::SEFDHD  ? MachineKind::SeFdhd :
-        compactModel == MacMemory::Model::Classic ? MachineKind::MacClassic : MachineKind::Plus;
-
     // Battery-backed PRAM (Rtc.h). The compacts were the last platform
     // family without it: the Control Panel's settings — and the ROM's
     // startup-disk choice — died with the process. Tagged per model like
     // every other profile, since the four boards share one boot volume.
     // The clock is not in the file; host wall time was seeded above.
-    const char* compactTag =
-        compactModel == MacMemory::Model::SE      ? "se" :
-        compactModel == MacMemory::Model::SEFDHD  ? "sefdhd" :
-        compactModel == MacMemory::Model::Classic ? "classic" : "plus";
     const std::string pramPath =
-        (hddPath.empty() ? std::string(compactTag)
-                         : hddPath + "." + compactTag) + ".pram";
+        (hddPath.empty() ? std::string(profile.tag)
+                         : hddPath + "." + profile.tag) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    machine.state.kind =
-        compactModel == MacMemory::Model::SE      ? pom68k::SnapMachine::SE :
-        compactModel == MacMemory::Model::SEFDHD  ? pom68k::SnapMachine::SEFDHD :
-        compactModel == MacMemory::Model::Classic ? pom68k::SnapMachine::Classic
-                                                  : pom68k::SnapMachine::Plus;
-    machine.state.setPath((hddPath.empty() ? std::string(compactTag)
-                                            : hddPath + "." + compactTag) +
+    machine.state.kind = profile.snapshot;
+    machine.state.setPath((hddPath.empty() ? std::string(profile.tag)
+                                           : hddPath + "." + profile.tag) +
                           ".pomss");
-    services.armInputRecording(machine, compactTag, matched, media);
+    services.armInputRecording(machine, profile.tag, matched, media);
     machine.setFloppyInserted(diskOk, diskOk ? diskPath : std::string());
     return pom68k::gui::runCompactGui(
         machine, mem, cpu, audioHost, services,
         {matched, hddPath, diskOk ? diskPath : std::string(),
          std::move(mounted.extraDisks), pramPath,
-         std::string("POM68K — ") + machineName, machineName, compactKind,
+         std::string("POM68K — ") + profile.name, profile.name, profile.kind,
          demoMode, MacVideo::kWidth, MacVideo::kHeight});
 }
 

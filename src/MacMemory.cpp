@@ -7,6 +7,8 @@
 
 static uint32_t romSizeFor(MacMemory::Model m) {
     switch (m) {
+        case MacMemory::Model::Mac128:
+        case MacMemory::Model::Mac512: return 0x10000;    // 64 KB
         case MacMemory::Model::SE:
         case MacMemory::Model::SEFDHD: return 0x40000;    // 256 KB
         case MacMemory::Model::Classic: return 0x80000;   // 512 KB
@@ -14,9 +16,23 @@ static uint32_t romSizeFor(MacMemory::Model m) {
     }
 }
 
+// RAM is soldered on the two machines below the Plus, so it is part of the
+// profile rather than a configuration: 128 KB and 512 KB exactly (there is
+// no 128K expansion — the 512K IS the expansion). Everything above keeps the
+// Plus's 4 MB ceiling. The screen and sound buffers are quoted from the top
+// of RAM, so this number decides where they land: a 128K paints its frame
+// at $1A700, not at $3FA700.
+static uint32_t ramSizeFor(MacMemory::Model m) {
+    switch (m) {
+        case MacMemory::Model::Mac128: return 0x20000;    // 128 KB
+        case MacMemory::Model::Mac512: return 0x80000;    // 512 KB
+        default: return MacMemory::kRamSize;              // 4 MB
+    }
+}
+
 MacMemory::MacMemory(const pom68k::CoreConfig& coreConfig, Model model)
-    : ram_(kRamSize, 0), rom_(romSizeFor(model), 0xFF), model_(model),
-      romSize_(romSizeFor(model)) {
+    : ram_(ramSizeFor(model), 0), rom_(romSizeFor(model), 0xFF), model_(model),
+      romSize_(romSizeFor(model)), ramSize_(ramSizeFor(model)) {
     lle_ = coreConfig.firmware.registry;
     seViaTrace_ = coreConfig.peripherals.seViaTrace;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
@@ -36,6 +52,12 @@ void MacMemory::setModel(Model m) {
     model_ = m;
     romSize_ = romSizeFor(m);
     rom_.assign(romSize_, 0xFF);
+    // RAM is re-sized, so its BUFFER moved: any window a JIT guard handed
+    // out points into a freed array (JitGuard.h § invalidate). main() calls
+    // this before the CPU is wired, but a gate need not.
+    ramSize_ = ramSizeFor(m);
+    ram_.assign(ramSize_, 0);
+    jitMapChanged();
     swim_.configureSuperDrive(hasSuperDrive());
     if (isAdb()) adbVia_.attach(via_, adb_, kCpuHz);
 }
@@ -111,6 +133,26 @@ void MacMemory::tick(int cpuCycles) {
     swim_.tick(hasSuperDrive() ? cpuCycles * 2 : cpuCycles);
     drive_.tick(cpuCycles);
     externalDrive_.tick(cpuCycles);
+    // The video counter fetches one sound/PWM word per scan line — 370 a
+    // frame, 352 cycles apart, which is exactly kCyclesPerFrame. The even
+    // byte is the audio sample (MacAudio reads it when there IS a GUI); the
+    // ODD byte is the 400K spindle duty, and the boot depends on it, so it
+    // is fetched here where every session ticks rather than in the audio
+    // path. MAME mac128.cpp:548 pwm_push(mac_snd_buf_ptr[scanline] & 0xff).
+    if (hasPwmSpindle()) {
+        pwmPhase_ += cpuCycles;
+        while (pwmPhase_ >= 352) {
+            pwmPhase_ -= 352;
+            // VIA PA3 selects main/alt, both quoted from the top of RAM.
+            const uint32_t base = (via_.portA() & 0x08) ? (ramSize_ - 0x0300)
+                                                        : (ramSize_ - 0x5F00);
+            const uint8_t duty =
+                ram_[(base + uint32_t(pwmLine_) * 2 + 1) & (ramSize_ - 1)];
+            drive_.pwmPush(duty);
+            externalDrive_.pwmPush(duty);
+            if (++pwmLine_ >= 370) pwmLine_ = 0;
+        }
+    }
 
     if (isAdb()) {
         adbVia_.tick(cpuCycles);
@@ -279,8 +321,12 @@ const uint8_t* MacMemory::codeSpan(uint32_t phys, uint32_t& len) const {
             len = romSize_ - o;
             return rom_.data() + o;
         }
-        len = 0x400000 - phys;
-        return ram_.data() + (phys & (kRamSize - 1));
+        // RAM mirrors every ramSize_ bytes through $3FFFFF, so the span ends
+        // at the MIRROR boundary, not at $400000: handing out 0x400000-phys
+        // on a 128 KB machine would let the window read past the array.
+        const uint32_t o = phys & (ramSize_ - 1);
+        len = ramSize_ - o;
+        return ram_.data() + o;
     }
     if (phys >= 0x400000 && phys < 0x400000 + romSize_) {   // ROM window
         const uint32_t o = phys - 0x400000;
@@ -301,8 +347,9 @@ uint8_t* MacMemory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
             len = romSize_ - o;
             return rom_.data() + o;
         }
-        len = 0x400000 - phys;
-        return ram_.data() + (phys & (kRamSize - 1));
+        const uint32_t o = phys & (ramSize_ - 1);   // mirror, as in codeSpan
+        len = ramSize_ - o;
+        return ram_.data() + o;
     }
     if (!write && phys >= 0x400000 && phys < 0x400000 + romSize_) {
         const uint32_t o = phys - 0x400000;
@@ -326,13 +373,14 @@ uint8_t MacMemory::peek8(uint32_t addr) const {
     switch (addr >> 20) {
     case 0x0: case 0x1: case 0x2: case 0x3:
         if (overlay_) return rom_[addr & (romSize_ - 1)];
-        return ram_[addr & (kRamSize - 1)];
+        return ram_[addr & (ramSize_ - 1)];
     case 0x4: case 0x5:
         // The ROM window only; $580000 is the 5380 and reading it latches.
         if (addr < 0x400000 + romSize_) return rom_[addr & (romSize_ - 1)];
         return 0xFF;
     case 0x6: case 0x7:
-        if (overlay_) return ram_[addr & (kRamSize - 1)];
+        if (overlay_ || (!hasScsi() && addr < 0x700000))
+            return ram_[addr & (ramSize_ - 1)];
         return 0xFF;                     // open bus once the overlay is down
     default:
         return 0xFF;                     // SCC, IWM, VIA, SCSI — all latch
@@ -344,9 +392,12 @@ uint8_t MacMemory::read8(uint32_t addr) {
     switch (addr >> 20) {
         case 0x0: case 0x1: case 0x2: case 0x3:              // RAM (or ROM w/ overlay)
             if (overlay_) return rom_[addr & (romSize_ - 1)];
-            return ram_[addr & (kRamSize - 1)];
+            return ram_[addr & (ramSize_ - 1)];
         case 0x4: case 0x5:
-            if (addr >= 0x580000) {                          // SCSI NCR 5380
+            // hasScsi(): the 128K/512K decode nothing here (mac128.cpp's
+            // mac128_map has no 5380), so the quarter falls through to the
+            // address-dependent open bus below, exactly like $420000.
+            if (hasScsi() && addr >= 0x580000) {             // SCSI NCR 5380
                 int reg = (addr >> 4) & 7;
                 if ((addr & 0x200) && scsi_.drqActive()) return scsi_.dmaRead();
                 return scsi_.read(reg);
@@ -361,12 +412,23 @@ uint8_t MacMemory::read8(uint32_t addr) {
             // $420000 vs $440000 to detect SCSI hardware (E_SoftReset): they
             // must DIFFER or CheckSCSI ($407D40) skips the SCSI scan.
             return uint8_t(addr >> 16);
-        case 0x6: case 0x7:                                  // RAM while overlay on
-            // ...and ONLY while it is on: mac128.cpp's macplus_map/macse_map
-            // install nothing here. Answering RAM unconditionally made an
-            // overlay-state probe read back "still overlaid", and let a stray
-            // write at $600000 corrupt physical $200000 in the live image.
-            if (overlay_) return ram_[addr & (kRamSize - 1)];
+        case 0x6: case 0x7:                                  // RAM alias
+            // On the Plus and the ADB compacts, ONLY while the overlay is on:
+            // mac128.cpp's macplus_map/macse_map install nothing here.
+            // Answering RAM unconditionally made an overlay-state probe read
+            // back "still overlaid", and let a stray write at $600000 corrupt
+            // physical $200000 in the live image.
+            //
+            // The 128K/512K are the exception, and it is not cosmetic:
+            // mac512ke_map maps $600000-$6FFFFF to ram_600000_r/w with NO
+            // overlay test (mac128.cpp:1105, :386-394), and the 64 KB ROM
+            // depends on it — it paints the screen through A2 = $67A700
+            // (`$400068`), which the RAM mirror folds onto $1A700 on a 128K,
+            // and it keeps writing there long after clearing the overlay.
+            // Gated on the overlay, the desktop never appears and the POST
+            // falls into the chimes-of-death loop at $40016C.
+            if (overlay_ || (!hasScsi() && addr < 0x700000))
+                return ram_[addr & (ramSize_ - 1)];
             return uint8_t(addr >> 16);                      // open bus
         case 0x8: case 0x9:                                  // SCC read, even bytes
             // A1 = channel (0 = B, 1 = A), A2 = ctl/data
@@ -402,25 +464,28 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
             if (isAdb() && overlay_) { overlay_ = false; jitMapChanged(); }
             if (!overlay_) {
                 if (jitGuard_) jitGuard_->note(addr, 1);
-                ram_[addr & (kRamSize - 1)] = v;  // ROM under overlay: ignored
+                ram_[addr & (ramSize_ - 1)] = v;  // ROM under overlay: ignored
             }
             return;
         case 0x4: case 0x5:                                  // SCSI NCR 5380
-            if (addr >= 0x580000) {
+            if (hasScsi() && addr >= 0x580000) {
                 int reg = (addr >> 4) & 7;
                 if ((addr & 0x200) && scsi_.drqActive()) scsi_.dmaWrite(v);
                 else scsi_.write(reg, v);
             }
             return;
         case 0x6: case 0x7:
-            if (overlay_) {                                   // overlay only
+            // Overlay only — except on the 128K/512K, where the alias is
+            // always RAM and is the path the ROM draws the screen through
+            // (see read8's note and mac128.cpp:1105).
+            if (overlay_ || (!hasScsi() && addr < 0x700000)) {
                 // A SECOND name for a byte the window can reach at
                 // $000000 once the overlay is down. It cannot be windowed
                 // right now (low memory reads ROM while overlaid) and the
                 // drop invalidates everything anyway — noted so the rule
                 // "every RAM write is noted" holds without a caveat.
-                if (jitGuard_) jitGuard_->note(addr & (kRamSize - 1), 1);
-                ram_[addr & (kRamSize - 1)] = v;
+                if (jitGuard_) jitGuard_->note(addr & (ramSize_ - 1), 1);
+                ram_[addr & (ramSize_ - 1)] = v;
             }
             return;
         case 0xA: case 0xB: {                                // SCC write, odd bytes

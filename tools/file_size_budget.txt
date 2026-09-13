@@ -13,7 +13,7 @@ cmake/Pom68kComponentGates.cmake         454
 cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               652
-cmake/Pom68kMachineGates.cmake           853
+cmake/Pom68kMachineGates.cmake           865
 src/AfpServer.cpp                        1129
 src/GuiHostServices.cpp                  177
 src/GuiMachineRuntime.cpp                47
@@ -48,7 +48,7 @@ src/RuntimeConfigParsers.h               31
 src/RuntimeConfigProduct.cpp             55
 src/Scc8530.cpp                          1071
 src/ScsiDisk.cpp                         1277
-src/SonyDrive.cpp                        1305
+src/SonyDrive.cpp                        1348
 src/StartupDomainView.h                  73
 src/StartupOptions.h                     385
 src/StartupSnapshot.h                    93

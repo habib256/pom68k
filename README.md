@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
-POM68K emulates classic Macintosh computers from the 68000 Macintosh Plus to
-the 68040 Quadra 950. The project currently provides **37 machine profiles on
+POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
+the 68040 Quadra 950. The project currently provides **39 machine profiles on
 12 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
@@ -117,7 +117,9 @@ Examples:
 ```
 
 For Plus, SE, SE FDHD and Classic, the positional media layout is
-`[ROM] [floppy] [SCSI disk]`. Other platforms use `[ROM] [boot volume]
+`[ROM] [floppy] [SCSI disk]`. The 128K and 512K take `[ROM] [floppy]` only:
+they have no SCSI bus, so a volume passed to them would be a disk the guest
+could never see. Other platforms use `[ROM] [boot volume]
 [additional media...]`; additional SCSI disks are attached at IDs 1 through 6.
 
 Without an explicit ROM, POM68K looks for `roms/maclcii.rom`, an LC II CRC in
@@ -142,6 +144,8 @@ Bold text is the default profile for a shared ROM.
 
 | ROM size | Header checksum | Machine profiles | Profile slug when shared |
 |---|---|---|---|
+| 64 KB | `28BA61CE` | Macintosh 128K | — |
+| 64 KB | `28BA4E50` | Macintosh 512K | — |
 | 128 KB | any | Macintosh Plus | — |
 | 256 KB | `B2E362A8` | Macintosh SE | — |
 | 256 KB | `B306E171` | Macintosh SE FDHD | — |

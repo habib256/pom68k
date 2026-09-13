@@ -32,6 +32,16 @@ CompactMountedMedia mountCompactMedia(
     if (mounted.floppyOk)
         std::printf("Floppy: %s\n", mounted.floppyPath.c_str());
 
+    // The Macintosh 128K and 512K have no SCSI bus (MacMemory::hasScsi):
+    // the floppy bays are the whole storage story, and attaching a volume
+    // the board cannot decode would report a disk the guest never sees.
+    if (!mem.hasScsi()) {
+        if (!mounted.floppyOk && !demoMode)
+            std::fprintf(stderr, "No boot media — this machine boots from "
+                         "floppy only; drop a 400K .dsk in disks35/.\n");
+        return mounted;
+    }
+
     // A valid floppy reserves slot 0. A failed one becomes typed SCSI media;
     // an empty slot is the explicit placeholder used by GUI relaunches.
     const std::size_t scsiBegin =
