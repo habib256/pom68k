@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-13 (third)** — [The two 64K machines get real gates: the registry goes to 279 here, 283 in union](#2026-09-13-mac128k-gates-registered)
 - **2026-09-13 (later)** — [The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent](#2026-09-13-mac128k-zero-divide)
 - **2026-09-13** — [Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel](#2026-09-13-dayna-stale-comments)
 - **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](#2026-09-12-docs-vs-code-sweep)
@@ -928,6 +929,39 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-13-mac128k-gates-registered"></a>
+## 2026-09-13 (third) — The two 64K machines get real gates: the registry goes to 279 here, 283 in union
+
+Corrects the closing line of
+[the zero-divide entry](#2026-09-13-mac128k-zero-divide), which read "Not
+done: `mac128k_boot_etalon` is still `EXCLUDE_FROM_ALL`, so these two profiles
+are covered by asset-free gates only". They no longer are.
+
+`mac128k_boot_etalon` and `mac512k_boot_etalon` are registered off one binary,
+the model arriving through the test's own `ENVIRONMENT` — the pattern
+`compact_boot_etalon` already uses for the SE, SE FDHD and Classic three lines
+above it. Both execute rather than soft-skip, in 7.40 s apiece, and carry
+`asset-required` / `etalon` / `scope-profile` / `tier-full` with neither family
+label, the `m030` and `m040` name regexes matching neither.
+
+**The earlier refusal was right at the time, and is worth preserving as such.**
+A gate registered that morning would have been red, not green: the machines
+died in the ROM's self test. The rule that produced the refusal — an etalon
+that would soft-skip or fail proves nothing, so do not register it — is the
+same rule that now admits them.
+
+Registration is what changed, so `STATUS.md` is **regenerated** rather than
+given a run row: 279 gates registered on x86_64, union 283. The aarch64
+sections are preserved verbatim, as the tool does for any host but the one it
+runs on, and remain owed a real run on the M4.
+
+Still deliberately unregistered: the four probes on the same binary
+(`POM68K_MAC128K_TRACE`, `_MEMPROBE`, `_EXC`, `_PPM`), and `_EXC` most of all —
+it exits 0 whether or not an exception fires, so it reports and never judges.
+The two 400K images stay unpinned in `assets.lock`; no gate requires it, and
+`disks35/Disk605.dsk` is the standing precedent for a gate asset that is not
+pinned. That question stays open in `TODO.md` § Bloqué.
 
 <a id="2026-09-13-mac128k-zero-divide"></a>
 ## 2026-09-13 (later) — The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent

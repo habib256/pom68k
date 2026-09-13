@@ -603,16 +603,27 @@ set_tests_properties(sefdhd_boot_etalon PROPERTIES
 set_tests_properties(classic_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=classic" TIMEOUT 1800)
 # Below the Plus: 64 KB ROM, 128/512 KB RAM, no SCSI, single-sided 400K.
-# DELIBERATELY NOT REGISTERED as a gate (2026-09-13). The 64 KB ROM stops in
-# its power-on self test — Sad Mac $0F0004, the mod3 RAM sub-test — before it
-# ever steps the drive, so there is no Finder cell to claim and a registered
-# gate would be red, not green. Kept buildable as the reproducer:
-#   make -C build mac128k_boot_etalon
-#   POM68K_MAC128K_TRACE=1 ./build/mac128k_boot_etalon      # PC/globals trace
-#   POM68K_MAC128K_MEMPROBE=1 ./build/mac128k_boot_etalon   # RAM self-check
-#   POM68K_MAC128K_PPM=/tmp/s.ppm ./build/mac128k_boot_etalon
-add_executable(mac128k_boot_etalon EXCLUDE_FROM_ALL tests/mac128k_boot_etalon.cpp)
+# One binary, two registrations by model — the pattern compact_boot_etalon
+# uses three lines above. Both reach the Finder on a 400K/MFS System 1.1
+# (menu bar 0.08, desktop 0.50, screen $1A700 and $7A700, the two differing
+# by exactly the RAM difference). They were NOT registered when the machines
+# were first wired, because the ROM died in a Sad Mac $0F0004 that every
+# published table calls a RAM sub-test and which was in fact vector 5, a zero
+# divide in the 400K spindle calibration — CHANGELOG 2026-09-13 (later).
+# Probes, on the same binary, opt-in and never registered:
+#   POM68K_MAC128K_TRACE=1     PC/globals per frame
+#   POM68K_MAC128K_MEMPROBE=1  RAM self-check through the $600000 alias
+#   POM68K_MAC128K_EXC=1       vector, faulting PC and registers
+#   POM68K_MAC128K_PPM=/tmp/s.ppm
+add_executable(mac128k_boot_etalon tests/mac128k_boot_etalon.cpp)
 target_link_libraries(mac128k_boot_etalon PRIVATE pom68k_core)
+add_test(NAME mac128k_boot_etalon COMMAND mac128k_boot_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME mac512k_boot_etalon COMMAND mac128k_boot_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(mac128k_boot_etalon PROPERTIES TIMEOUT 1800)
+set_tests_properties(mac512k_boot_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_MAC128K_MODEL=mac512k" TIMEOUT 1800)
 
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kStorageGates.cmake)
 

@@ -368,18 +368,6 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
 premier profil consommateur avant d'être généralisés ; une ligne catalogue se
 mérite par une cellule Finder **plus** le câblage GUI et save-state.
 
-- [ ] **Enregistrer les deux etalons 128K/512K comme gates.** La machine, elle,
-  est faite depuis le 2026-09-13 : câblée, bootant jusqu'au Finder sur les deux
-  modèles, sans régression sur la famille compacte (26 etalons à actif requis
-  réellement exécutés). Ce qui reste est l'inscription :
-  `mac128k_boot_etalon` est encore `EXCLUDE_FROM_ALL`
-  (`cmake/Pom68kMachineGates.cmake`), donc les deux profils ne sont couverts
-  que par des gates sans actif — la matrice 39 profils et les deux routes de
-  checksum 64 K. L'enregistrer **change l'inscription des gates**, donc impose
-  de régénérer `STATUS.md` plutôt que d'y ajouter une ligne de run, et suppose
-  tranchée la question d'épinglage des deux images 400 K (§ Bloqué). Ne pas
-  enregistrer la sonde `POM68K_MAC128K_EXC` : elle sort 0 même sans exception
-  (`DEV.md` § 5).
 - [ ] **Sérialiser l'état PWM du lecteur 400 K, ou acter qu'il ne l'est pas.**
   Il est délibérément hors de `visit()`, sur le raisonnement déjà tenu pour
   `cells_` : un instantané restauré tourne donc à 300 tr/min pendant ≤100
