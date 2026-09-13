@@ -17,11 +17,11 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 281 gates
+## Union across hosts — 283 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 155 |
+| `etalon` | 157 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
 | `jit` | 44 |
@@ -61,27 +61,27 @@ Scheduling cost if every gate ran at once: 503 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-277 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+279 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 94 |
 | assets | optional | 15 |
-| assets | required | 168 |
-| host | any | 266 |
+| assets | required | 170 |
+| host | any | 268 |
 | host | native | 6 |
 | host | x64 | 5 |
 | scope | component | 97 |
 | scope | engine | 22 |
-| scope | profile | 155 |
+| scope | profile | 157 |
 | scope | repository | 3 |
 | tier | daily | 94 |
-| tier | full | 171 |
+| tier | full | 173 |
 | tier | platform | 12 |
-| slots_src | assumed | 164 |
+| slots_src | assumed | 166 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 636 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 638 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -169,3 +169,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 13 01:18 +04 | x86_64 | default | 94 | 94 | 0 | 0 | asset-none after correcting four comments that denied the v15 DaynaPort chunk: 94 executed, 0 soft-skipped, 0 failed, 10.86 s, ctest -j16; comment-and-doc-only change, no gate changes result |
 | Sep 13 11:33 +04 | x86_64 | default | 94 | 94 | 0 | 0 | asset-none after the 400K PWM spindle fix (Mac 128K/512K reach the Finder): 94 executed, 0 soft-skipped, 0 failed, 10.76 s, ctest -j16 |
 | Sep 13 11:34 +04 | x86_64 | default | 28 | 26 | 1 | 1 | compact-family blast radius on real ROMs after the PWM fix: 26 executed, 1 soft-skipped (lcii_floppy144_etalon, no 1.44 MB image), 1 failed (lcii_floppy_etalon, red since 2026-09-12 with the same signature and structurally unreachable from this change: V8Memory has neither pwmPush nor hasPwmSpindle); 312 s, ctest -j8 |
+| Sep 13 12:47 +04 | x86_64 | default | 94 | 94 | 0 | 0 | asset-none after registering mac128k_boot_etalon and mac512k_boot_etalon: registry regenerated to 279 here / 283 union, both new gates execute in 7.40 s apiece |
