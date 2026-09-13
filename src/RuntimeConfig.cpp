@@ -125,6 +125,7 @@ RuntimeConfig RuntimeConfig::parse(
                 argument.substr(kDaynaPortOption.size()));
             continue;
         }
+        if (applyAtalkArgument(config.network_, argument)) continue;
         if (argument.starts_with(smokePrefix)) {
             const std::string_view report = argument.substr(smokePrefix.size());
             if (!report.empty()) {

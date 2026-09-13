@@ -61,10 +61,11 @@ deux identités dans `assets.lock`, qui ne contient aujourd'hui aucune ligne
 bout — Chooser, montage, énumération, copie des deux forks, Put Away, sur
 LocalTalk puis sur EtherTalk — et le serveur ne refuse plus rien qu'un invité
 demande. Ce qui manque est au-dessus et au-dessous : les contrôles produit et
-deux mécanismes non élucidés. **Premier pas, fait le 2026-09-13** : l'attache
-DaynaPort au GUI — présence et ID stagés, appliqués par relaunch — la variable
-d'environnement n'étant plus la seule route. Reste le second contrôle, la
-configuration réseau éditable. Items : § Services réseau.
+deux mécanismes non élucidés. **Les deux contrôles produit sont livrés le
+2026-09-13** — l'attache DaynaPort (présence et ID stagés, appliqués par
+relaunch) et la configuration des services éditable à chaud, chacune portée
+par la ligne de relance. Restent les mécanismes non élucidés et les dettes de
+preuve. Items : § Services réseau.
 
 ---
 
@@ -197,8 +198,6 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 élucidés, livrer les contrôles produit, puis n'ajouter du protocole que sur
 consommateur observé.
 
-- [ ] **Rendre la configuration réseau éditable dans le GUI.** Partage,
-  serveur, imprimante, subnet/DNS et révélation du spool.
 - [ ] **Payer les dettes de preuve du contrôle DaynaPort au GUI.** Le contrôle
   est complet le 2026-09-13 : ligne d'état, bascule « câble », et le choix
   présence + ID SCSI **sans variable d'environnement** — stagé dans la fenêtre
@@ -207,9 +206,13 @@ consommateur observé.
   invité réel n'a traversé un débranchement ni un relaunch avec carte
   (`q605_dayna_driver_etalon`, à actif, n'a pas tourné ici) ; la fenêtre n'a
   jamais été **rendue** — elle compile et lie, sa mise en page (sélecteur
-  compris) n'est pas vérifiée à l'œil ; et le relaunch lui-même n'est couvert
-  que par sa sérialisation (`daynaport_test` prouve l'aller-retour
-  argument → `RuntimeConfig`), pas par un re-exec observé.
+  compris, et le formulaire « Configuration des services » du même jour)
+  n'est pas vérifiée à l'œil ; et le relaunch lui-même n'est couvert que par
+  sa sérialisation (`daynaport_test` et `atalk_hub_test` prouvent l'aller-retour
+  argument → `RuntimeConfig`), pas par un re-exec observé. S'y ajoute, pour le
+  formulaire : « Révéler » lance `open` / `xdg-open` / `explorer` sans gate
+  possible, et aucun invité n'a remonté un serveur AFP renommé à chaud —
+  `afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur.
 - [ ] **Fermer la course `uplink_` / `cfg_.ethertalk`, ou l'acter.** Écrites
   côté GUI sous `mu_`, lues côté machine sans verrou : des `bool` nus, bénins
   en pratique, formellement une course. `cfg_.ethertalk` la porte déjà dans le

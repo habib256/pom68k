@@ -384,6 +384,31 @@ int main() {
     if (!damaged.empty()) damaged.back() ^= 1;
     CHECK(afplive::write(oracleDir / ".AppleDouble" / "BONJOUR.txt", damaged) &&
           !afplive::exactCopy(oracleDir / "BONJOUR.txt"), "oracle rejects one changed resource byte");
+    // ── A live rename (the window's « Appliquer ») restarts the service:
+    // the old NBP name stops answering, the new one answers, and the
+    // sessions are gone — the cut the window announces. ──
+    {
+        auto lookup = [&](const char* name) {
+            w.clear();
+            std::vector<uint8_t> lk = { uint8_t(0x2 << 4 | 1), 0x11 };
+            put16v(lk, 2); lk.push_back(47); lk.push_back(100); lk.push_back(0);
+            putP(lk, name); putP(lk, "AFPServer"); putP(lk, "*");
+            w.sendDdp(47, 100, 2, 2, lk, 0xFF);
+            for (auto& g : w.out)
+                if (g.ddpType == 2 && g.dstNode == 47 && (g.pay[0] >> 4) == 3)
+                    return true;
+            return false;
+        };
+        CHECK(lookup("POM68K"), "before the rename, NBP finds POM68K");
+        afp.configure("Renamed", "Vol2", dir);
+        CHECK(afp.status().enabled && afp.status().registered,
+              "configure() on an enabled server leaves it enabled and registered");
+        CHECK(afp.status().serverName == "Renamed" && afp.status().volName == "Vol2",
+              "…under the new identity");
+        CHECK(afp.status().sessions == 0, "…and the sessions were dropped, as announced");
+        CHECK(!lookup("POM68K"), "the old NBP name no longer answers");
+        CHECK(lookup("Renamed"), "the new NBP name answers");
+    }
     fs::remove_all(dir);
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
     std::printf("afp_server_test OK\n");

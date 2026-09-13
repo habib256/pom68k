@@ -40,7 +40,7 @@ change AppleTalk behaviour are repeated here.
 |---|---|---|
 | `POM68K_APPLETALK=0` | (unset = on) | is captured once by `ProcessEnvironment`, parsed by `RuntimeConfig`, and kills the in-process stack; the **Réseau → AppleTalk / Ethernet** window stays reachable, says so, and still stages a DaynaPort card for the next boot (`src/GuiShell.cpp:228-236`, `src/NetworkWindow.cpp:157-166`) |
 | `POM68K_APPLETALK=1` | — | *different job*: seeds PRAM SPConfig `$21` = LocalTalk **active at boot** (`src/Egret.cpp:70-76`, `src/Rtc.cpp:53-57`). Unset seeds `$22` (async) — a fresh PRAM then needs the Chooser's AppleTalk radio button, or an image whose prefs already have it on |
-| `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/GuiHostServices.cpp:77-101`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:111-117`) |
+| `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/GuiHostServices.cpp:80-105`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:356-361`). Editable live in the window (§0.3), and `--atalk-share=/path` on the relaunch line overrides the variable |
 | `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/GuiHostServices.h:77-82`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s and no `setLosslessRx`, so the wire can drop again. See §0.4 |
 | `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — the boost block runs only with the hub up and **no** cable (`src/GuiHostServices.h:78`) |
 | `POM68K_ATALK_DEBUG=1` | off | DDP/NBP/ATP tracer + one line per client retransmit with its lag (`src/AtalkStack.cpp:126-129`, retransmit lag at `:462-467`) |
@@ -65,7 +65,7 @@ it would against hardware.
 
 ### 0.3 The GUI window (`Réseau → AppleTalk / Ethernet`, `drawAppleTalkWindow`, `src/NetworkWindow.cpp`)
 
-Five blocks. The first four each have a live enable checkbox and a green/red bullet:
+Six blocks. The first four each have a live enable checkbox and a green/red bullet:
 
 - **Nœud / routeur** — net/node/zone, guest node seen, frames in/out,
   NBP lookups served, ATP transactions, and the retransmission
@@ -88,6 +88,21 @@ Five blocks. The first four each have a live enable checkbox and a green/red bul
   ENABLE bit, frames and bytes both ways, SCSI commands served, ring drops.
   Reachable with `POM68K_APPLETALK=0` too, which is where a card gets staged
   on a machine that has none.
+- **Configuration des services** (between MacIP and Ethernet) — the
+  services' identity, edited **live**: AFP server name, volume name (empty =
+  the shared folder's own name), shared folder, printer name, spool folder,
+  MacIP gateway as `a.b.c.d/n`, DNS. « Appliquer » goes through
+  `AtalkHub::reconfigure` (`AtalkHub.h:260-269`): each service restarts
+  itself, so the AFP sessions drop, an open print job closes, MacIP leases are
+  retired and the NBP names are re-registered — the window says so before
+  the button. The LocalTalk *zone* keeps the name the stack was attached
+  with; the guest chose it at boot. « Révéler » opens the shared or spool
+  folder in the host's file manager. The relaunch line carries the result
+  as `--atalk-<key>=<value>` (`share`, `server`, `volume`, `printer`,
+  `spool`, `gateway`, `dns`; `src/RuntimeConfigNetwork.cpp`), so an edit
+  survives a disk swap; the same arguments work by hand on the command line
+  and override `POM68K_SHARE_DIR`. Gates: `atalk_hub_test` (the hub and the
+  family), `afp_server_test` (a live rename re-registers NBP).
 
 ### 0.4 When it misbehaves
 

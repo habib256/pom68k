@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-13 (sixth)** — [The network services' identity is edited live in the window, and the relaunch line carries it: the second product control of the chantier lands](#2026-09-13-network-config-editable)
 - **2026-09-13 (fifth)** — [The DaynaPort card is chosen in the window, not the environment: staged, relaunched as `--daynaport=`, and its knob finally has the gate it cited](#2026-09-13-dayna-staged-card)
 - **2026-09-13 (fourth)** — [The DaynaPort gets a cable you can unplug, and counters the GUI finally reads](#2026-09-13-dayna-cable)
 - **2026-09-13 (third)** — [The two 64K machines get real gates: the registry goes to 279 here, 283 in union](#2026-09-13-mac128k-gates-registered)
@@ -931,6 +932,63 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-13-network-config-editable"></a>
+## 2026-09-13 (sixth) — The network services' identity is edited live in the window, and the relaunch line carries it: the second product control of the chantier lands
+
+`TODO.md § Services réseau` asked for "partage, serveur, imprimante,
+subnet/DNS et révélation du spool" in the GUI. The AppleTalk / Ethernet
+window gets a « Configuration des services » form: AFP server name, volume
+name (empty = the shared folder's own name), shared folder, printer name,
+spool folder, MacIP gateway as `a.b.c.d/n`, DNS — and a « Révéler » button
+beside each folder that hands it to `open` / `xdg-open` / `explorer`.
+
+**Live, because the services already knew how.** `AfpServer`, `PapServer`
+and `MacIpGateway` each had a `configure()` that disables, sets and
+re-enables — dropping sessions, closing an open print job, retiring leases,
+unregistering and re-registering the NBP name. Nothing called it after
+attach. `AtalkHub::reconfigure` now does, under the hub's lock, through the
+same `configureServicesLocked()` that `attach()` uses — one place derives
+the volume name from the folder, not two. The form deliberately does not
+carry the toggles (the checkboxes own them), and the LocalTalk zone keeps the
+name the stack was attached with: the guest chose it at boot, and a zone
+that changes under a running guest would be the lie a live control must not
+tell. The window states the cut before the button: "appliquées à chaud, ce
+qui coupe les sessions AFP, le travail d'impression en cours et les baux
+MacIP".
+
+**And it survives a relaunch.** The (fifth) entry set the rule for the
+DaynaPort — the relaunch line carries the session's effective state — and
+the same rule applies here: `--atalk-<key>=<value>` for `share`, `server`,
+`volume`, `printer`, `spool`, `gateway`, `dns`, parsed and serialized by one
+key table in `src/RuntimeConfigNetwork.cpp` so the two directions cannot
+drift. `GuiHostServices` applies them to the hub at startup and serializes
+the hub's current configuration back at relaunch, so a printer renamed in
+the window keeps its name across a disk swap. `--atalk-share=` overrides
+`POM68K_SHARE_DIR`, which stays the only environment knob of the family:
+the rest of the identity had none and gets none.
+
+**Gated.** New `atalk_hub_test` (asset-free): reconfigure before attach is
+what attach uses; after attach all three services follow, the volume name
+derived when left empty, the toggles untouched, `/16` becoming the mask;
+the IPv4/CIDR helpers refuse three octets, an octet above 255, trailing
+junk and a prefix outside 1-30; and the relaunch family round-trips through
+`RuntimeConfig`, seven arguments ahead of the media, an empty volume
+included, an unknown key refused rather than swallowed. `afp_server_test`
+gains the NBP half: after `configure("Renamed", …)` on an enabled server
+the old name no longer answers a lookup, the new one does, and the
+sessions are gone.
+
+**Ceilings.** `Pom68kComponentGates.cmake` 454 → 459 (the registration),
+`GuiHostServices.cpp` 182 → 186, `RuntimeConfig.cpp` 159 → 160 and
+`CMakeLists.txt` 593 → 594 (two app-layer units on one more line), all
+recorded in the same commit; the form itself lives in `NetworkWindow.cpp`,
+which is why that file exists.
+
+**Not proved, and filed:** the form is unrendered like the rest of the
+window; « Révéler » has no gate by nature; and no guest has remounted a
+renamed server — the NBP re-registration is proved at the frame level, not
+in the Chooser.
 
 <a id="2026-09-13-dayna-staged-card"></a>
 ## 2026-09-13 (fifth) — The DaynaPort card is chosen in the window, not the environment: staged, relaunched as `--daynaport=`, and its knob finally has the gate it cited

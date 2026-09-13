@@ -37,7 +37,16 @@ struct NetworkConfig {
     bool appleTalkWasSpecified = false;
     bool ltoUdp = false;
     int appleTalkWireBoost = 8;
-    std::string shareDirectory;
+    std::string shareDirectory;          // POM68K_SHARE_DIR or --atalk-share=
+    // The rest of the in-process services' identity, set only from the
+    // relaunch line (`--atalk-<key>=`): what the AppleTalk window edited
+    // live comes back after a relaunch. Absent = the hub's own default.
+    std::optional<std::string> serverName;    // --atalk-server=
+    std::optional<std::string> volumeName;    // --atalk-volume= ('' = folder's name)
+    std::optional<std::string> printerName;   // --atalk-printer=
+    std::optional<std::string> spoolDirectory;// --atalk-spool=
+    std::optional<std::string> gateway;       // --atalk-gateway=a.b.c.d/n
+    std::optional<std::string> dns;           // --atalk-dns=a.b.c.d
 };
 
 enum class SerialTransportKind {
@@ -123,6 +132,17 @@ inline constexpr std::string_view kDaynaPortOption = "--daynaport=";
 std::string daynaPortArgument(std::optional<int> id);
 std::vector<std::string> daynaPortArguments(std::vector<std::string> arguments,
                                             std::optional<int> id);
+
+// The in-process AppleTalk services' identity for the NEXT boot:
+// `--atalk-<key>=<value>` with key ∈ share, server, volume, printer, spool,
+// gateway, dns. The window edits them live (AtalkHub::reconfigure) and the
+// relaunch line carries the session's effective values, so a rename made in
+// the window survives a disk swap. `applyAtalkArgument` returns false for a
+// key it does not know; `atalkArguments` replaces every previous one.
+inline constexpr std::string_view kAtalkOptionPrefix = "--atalk-";
+bool applyAtalkArgument(NetworkConfig& network, std::string_view argument);
+std::vector<std::string> atalkArguments(std::vector<std::string> arguments,
+                                        const NetworkConfig& network);
 
 class RuntimeConfig {
 public:

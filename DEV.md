@@ -1735,7 +1735,11 @@ power-on keyboard handler ID: 1 = Apple Standard, the default, 2 = Extended
 Keyboard II, 3 = the extended protocol with distinct right-hand modifier
 codes — a guest can select any of them itself with a Listen R3, this only
 moves the reset value), `POM68K_APPLETALK`,
-`POM68K_SHARE_DIR`, `POM68K_ATALK_WIRE_BOOST`, `POM68K_LTOUDP`,
+`POM68K_SHARE_DIR` (the AFP folder; the rest of the services' identity has
+no knob — it is edited live in the AppleTalk window and travels on the
+relaunch line as `--atalk-<key>=`, `RuntimeConfigNetwork.cpp`, which also
+overrides this variable through `--atalk-share=`), `POM68K_ATALK_WIRE_BOOST`,
+`POM68K_LTOUDP`,
 `POM68K_SERIAL_MODEM` / `POM68K_SERIAL_PRINTER` (`pty` or `tcp:<port>` =
 connect the SCC A modem port / SCC B printer port to a non-blocking host
 endpoint on macOS and Linux; `tcp:0` selects a free loopback port and the
@@ -2245,7 +2249,15 @@ shell past its size ceiling. It renders `AtalkHub::snapshot()` — a copy taken
 under the hub's lock, never a device — and keeps two kinds of control apart:
 
 - **Live**: the four AppleTalk services and the card's cable, each through
-  `AtalkHub::setService`, applied on the machine thread.
+  `AtalkHub::setService`, applied on the machine thread; and the services'
+  identity (names, folders, gateway/DNS) through `AtalkHub::reconfigure`,
+  which restarts each service under the hub's lock — sessions, an open print
+  job and MacIP leases are cut, the NBP names re-registered, the LocalTalk
+  zone untouched. `GuiHostServices` applies the relaunch line's
+  `--atalk-<key>=` values to the hub at startup (`applyNetworkConfig`) and
+  serializes the hub's current configuration back at relaunch
+  (`networkConfigOf`), so what the window applied is what the next process
+  reads. « Révéler » hands a folder to `open` / `xdg-open` / `explorer`.
 - **Staged + relaunch**: the card's presence and SCSI ID. Same contract as
   Disques and Périphériques — a Mac probes its SCSI bus once, at boot — and
   the same mechanism: `GuiRelaunchState::stageOwnCommandLine()` re-execs the
