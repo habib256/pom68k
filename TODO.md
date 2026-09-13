@@ -232,11 +232,18 @@ consommateur observé.
   hypothèses sont mortes et on ne sait toujours pas par quoi une date qui
   avance faisait diverger le montage post-reconnexion (2 commandes AFP,
   9 trames, une réponse en retard de 1,44 s).
-- [ ] **Localiser sur l'hôte AArch64 l'écart entre hôtes de
+- [ ] **Rejouer sur x86-64 date-épinglé la comparaison entre hôtes de
   `q605_afp_live_etalon`.** Le gate imprime une ligne `trace:` par frontière de
-  phase (horloge, empreinte, compteurs) ; rejouer sur le M4 et comparer ligne à
-  ligne situe la divergence à la première frontière qui diffère, puis sous
-  `POM68K_CPU_ENGINE=interp` pour séparer le générateur `a64` de l'hôte.
+  phase (horloge, empreinte, compteurs). La référence M4 date-épinglée est
+  `scratchpad/2026-09-13/afp_live_trace_aarch64.txt` ;
+  `tools/afp_trace_diff.py` situe la première frontière qui diffère entre
+  cette référence et un autre run, y compris un log brut `ctest -V`.
+  Le rejeu A64 retrouve les 22 frontières ; le rejeu sous
+  `POM68K_CPU_ENGINE=interp` passe le gate mais diverge à la frontière 14
+  (serveurs après reconnexion, horloge −8 ticks puis empreinte différente).
+  Sa trace est conservée dans `afp_live_trace_aarch64_interp.txt` du même
+  dossier : cet écart entre moteurs reste à localiser avant attribution à
+  l'hôte.
   **Le protocole est à refaire**, pas à reprendre : la référence
   `scratchpad/2026-09-11/afp_live_trace_x86_64.txt` est antérieure à
   l'épinglage de la date et les chiffres 171,67 s / 165,17 s sont antérieurs au
