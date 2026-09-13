@@ -31,6 +31,7 @@
 #include "Scc8530.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -114,15 +115,7 @@ public:
             pending_.emplace_back(d, d + n);
             if (cable_ && cable_->active()) cable_->send(d, n);
         };
-        if (cfg_.shareDir.empty()) cfg_.shareDir = defaultShareDir_;
-        // The volume takes the shared folder's OWN name (netatalk does the
-        // same when a volume has no explicit name) — so a folder called
-        // "AppleShare" mounts as "AppleShare", not a hardcoded label.
-        std::string vol = cfg_.volName.empty() ? folderName(cfg_.shareDir)
-                                               : cfg_.volName;
-        afp_.configure(cfg_.serverName, vol, cfg_.shareDir);
-        pap_.configure(cfg_.printerName, cfg_.spoolDir);
-        macip_.configure(cfg_.gwIp, cfg_.gwMask, cfg_.dns);
+        configureServicesLocked();
         // A machine carrying a DaynaPort SCSI/Link gets that card wired to
         // the SAME NAT the MacIP gateway uses — the guest's MacTCP then has
         // two ways to the outside (IP-in-DDP over LocalTalk, or IP over
@@ -264,6 +257,65 @@ public:
     }
 
     Config config() { std::lock_guard<std::mutex> l(mu_); return cfg_; }
+    // The editable half of Config — names, folders, addresses — applied LIVE
+    // from the GUI. Each service already restarts itself on configure()
+    // (disable → set → enable): the AFP server drops its sessions and
+    // re-registers its NBP name, the printer closes an open connection,
+    // the gateway retires its leases. That cut is the honest price of a
+    // rename and the window says so. The toggles in `next` are ignored (the
+    // checkboxes own them, live), and the LocalTalk ZONE keeps the server
+    // name the stack was attached with — the guest chose it at boot. Before
+    // attach, this is simply the configuration the attach will use.
+    void reconfigure(const Config& next) {
+        std::lock_guard<std::mutex> l(mu_);
+        cfg_.serverName = next.serverName.empty() ? "POM68K" : next.serverName;
+        cfg_.volName = next.volName;
+        cfg_.shareDir = next.shareDir;
+        cfg_.printerName = next.printerName.empty() ? "POM68K" : next.printerName;
+        cfg_.spoolDir = next.spoolDir.empty() ? "run/print" : next.spoolDir;
+        cfg_.gwIp = next.gwIp;
+        cfg_.gwMask = next.gwMask;
+        cfg_.dns = next.dns;
+        if (!attached_) return;
+        configureServicesLocked();
+        applyLocked();
+    }
+
+    // Dotted-quad helpers for the window and the relaunch line; the mask
+    // travels as a prefix length ("192.168.151.1/24").
+    static bool parseIpv4(const std::string& text, uint32_t& out) {
+        unsigned a, b, c, d; char tail;
+        if (std::sscanf(text.c_str(), "%u.%u.%u.%u%c", &a, &b, &c, &d, &tail) != 4)
+            return false;
+        if (a > 255 || b > 255 || c > 255 || d > 255) return false;
+        out = (a << 24) | (b << 16) | (c << 8) | d;
+        return true;
+    }
+    static std::string formatIpv4(uint32_t ip) {
+        char b[20];
+        std::snprintf(b, sizeof b, "%u.%u.%u.%u", ip >> 24, (ip >> 16) & 255,
+                      (ip >> 8) & 255, ip & 255);
+        return b;
+    }
+    // "a.b.c.d/n" → address + mask. A bare address means /24.
+    static bool parseCidr(const std::string& text, uint32_t& ip, uint32_t& mask) {
+        const size_t slash = text.find('/');
+        int prefix = 24;
+        if (slash != std::string::npos) {
+            char tail;
+            if (std::sscanf(text.c_str() + slash + 1, "%d%c", &prefix, &tail) != 1 ||
+                prefix < 1 || prefix > 30)
+                return false;
+        }
+        if (!parseIpv4(text.substr(0, slash), ip)) return false;
+        mask = uint32_t(0xFFFFFFFFu << (32 - prefix));
+        return true;
+    }
+    static std::string formatCidr(uint32_t ip, uint32_t mask) {
+        int prefix = 0;
+        for (uint32_t m = mask; m & 0x80000000u; m <<= 1) ++prefix;
+        return formatIpv4(ip) + "/" + std::to_string(prefix);
+    }
     void setDefaultShareDir(const std::string& d) {
         std::lock_guard<std::mutex> l(mu_);
         defaultShareDir_ = d;
@@ -296,6 +348,19 @@ private:
         size_t p = d.find_last_of('/');
         std::string name = (p == std::string::npos) ? d : d.substr(p + 1);
         return name.empty() ? "Partage" : name;
+    }
+
+    // The three services from cfg_: at attach, and again on reconfigure().
+    void configureServicesLocked() {
+        if (cfg_.shareDir.empty()) cfg_.shareDir = defaultShareDir_;
+        // The volume takes the shared folder's OWN name (netatalk does the
+        // same when a volume has no explicit name) — so a folder called
+        // "AppleShare" mounts as "AppleShare", not a hardcoded label.
+        const std::string vol = cfg_.volName.empty() ? folderName(cfg_.shareDir)
+                                                     : cfg_.volName;
+        afp_.configure(cfg_.serverName, vol, cfg_.shareDir);
+        pap_.configure(cfg_.printerName, cfg_.spoolDir);
+        macip_.configure(cfg_.gwIp, cfg_.gwMask, cfg_.dns);
     }
 
     void applyLocked() {

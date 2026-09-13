@@ -249,8 +249,11 @@ large inputs are split at 1,900 MB by default. Run
 - **Disques:** choose the boot volume, secondary SCSI disks, floppies and CDs.
   Changes that affect the boot bus relaunch the machine.
 - **Réseau:** toggle the built-in AppleTalk services and the Ethernet card's
-  cable live; choose the DaynaPort card itself (none, or SCSI ID 2-6) for the
-  next boot, which relaunches the machine.
+  cable live; edit the services' identity live (AFP server and volume names,
+  shared folder, printer name, spool folder, MacIP gateway and DNS, with a
+  button that reveals each folder on the host); choose the DaynaPort card
+  itself (none, or SCSI ID 2-6) for the next boot, which relaunches the
+  machine.
 - **Périphériques (LLE / HLE):** inspect controller provenance and choose
   firmware or fallback policy.
 
@@ -302,9 +305,15 @@ queues and services.
 
 - **AppleShare:** exports `AppleShare/` as an AFP volume. In the guest, use
   Chooser → AppleShare and log in as Guest. Override the host directory with
-  `POM68K_SHARE_DIR=/path`.
+  `POM68K_SHARE_DIR=/path`, or edit it in the window.
 - **LaserWriter:** sends PostScript to `lp` when CUPS is available, otherwise
   stores `.ps` files under `run/print`.
+
+Server name, volume name, shared folder, printer name, spool folder, MacIP
+gateway and DNS are edited live in **Réseau → AppleTalk / Ethernet**; applying
+restarts the service concerned, which drops its current sessions. The same
+values are accepted on the command line as `--atalk-<key>=<value>` (`share`,
+`server`, `volume`, `printer`, `spool`, `gateway`, `dns`).
 - **MacIP:** proxies guest TCP/IP through a user-mode NAT. Classic Mac systems
   generally support plain HTTP, not modern TLS.
 

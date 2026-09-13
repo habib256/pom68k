@@ -34,6 +34,8 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     state_.network.ltoUdpEnabled = network.ltoUdp;
     state_.network.appleTalkWireBoost = network.appleTalkWireBoost;
     state_.network.shareDirectory = network.shareDirectory;
+    // Hub attached or not: processRelaunch serializes the hub's values back.
+    applyNetworkConfig(state_.network.atalk, network);
     configureSerial();
     state_.network.atalk.configureDiagnostics(
         config_.core().diagnostics.appleTalkTrace, config_.core().diagnostics.macIpTrace);
@@ -142,12 +144,14 @@ int GuiHostServices::processRelaunch() const {
     if (shell_.smokeEnabled()) return shell_.finishSmoke(
         !state_.relaunch.switchArguments.empty());
     if (state_.relaunch.switchArguments.empty()) return 0;
-    auto relaunchArguments = app::daynaPortArguments(
-        app::firmwareOverrideArguments(
-            app::machineProfileArguments(state_.relaunch.switchArguments,
-                                         state_.relaunch.targetProfile),
-            state_.relaunch.firmwareOverrides),
-        state_.relaunch.daynaPortId);
+    auto relaunchArguments = app::atalkArguments(
+        app::daynaPortArguments(
+            app::firmwareOverrideArguments(
+                app::machineProfileArguments(state_.relaunch.switchArguments,
+                                             state_.relaunch.targetProfile),
+                state_.relaunch.firmwareOverrides),
+            state_.relaunch.daynaPortId),
+        networkConfigOf(state_.network.atalk.config()));
     const std::string& executable = config_.executable();
 #if defined(_WIN32)
     std::vector<const char*> arguments = {executable.c_str()};

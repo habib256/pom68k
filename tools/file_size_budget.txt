@@ -7,15 +7,15 @@
 # Regenerate with: tools/check_file_sizes.sh --update
 
 CLAUDE.md                                250
-CMakeLists.txt                           593
+CMakeLists.txt                           594
 cmake/Pom68kAfpGates.cmake                19
-cmake/Pom68kComponentGates.cmake         454
+cmake/Pom68kComponentGates.cmake         459
 cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               652
 cmake/Pom68kMachineGates.cmake           876
 src/AfpServer.cpp                        1129
-src/GuiHostServices.cpp                  182
+src/GuiHostServices.cpp                  186
 src/GuiMachineRuntime.cpp                47
 src/GuiRunnerCompact.h                   193
 src/GuiRunnerDafb.h                      302
@@ -42,7 +42,7 @@ src/PlatformV8.cpp                       206
 src/Q700Memory.cpp                       1091
 src/R65c02.cpp                           1420
 src/RuntimeConfigCore.cpp                178
-src/RuntimeConfig.cpp                    159
+src/RuntimeConfig.cpp                    160
 src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             55

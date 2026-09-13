@@ -25,8 +25,10 @@
 #include "imgui.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <optional>
+#include <string>
 
 namespace pom68k::gui {
 
@@ -40,6 +42,111 @@ void statusDot(bool ok, const char* label) {
 }
 
 namespace {
+
+// Open a host folder in the desktop's file manager — the "reveal the spool"
+// the backlog asked for, and the shared folder beside it. Fire-and-forget:
+// the launcher's own exit status says nothing about the folder.
+void revealFolder(const std::string& path) {
+    std::string quoted = "'";
+    for (const char c : path) quoted += (c == '\'') ? std::string("'\\''") : std::string(1, c);
+    quoted += "'";
+#if defined(_WIN32)
+    const std::string command = "explorer " + quoted;
+#elif defined(__APPLE__)
+    const std::string command = "open " + quoted + " >/dev/null 2>&1 &";
+#else
+    const std::string command = "xdg-open " + quoted + " >/dev/null 2>&1 &";
+#endif
+    (void)std::system(command.c_str());
+}
+
+// ── The services' identity, edited LIVE ──
+// Names, folders and addresses go through AtalkHub::reconfigure, which
+// restarts each service (the AFP sessions drop, an open print job closes,
+// MacIP leases are retired) and re-registers the NBP names. The buffers
+// below are the form; they follow the hub until the user starts typing, and
+// « Appliquer » sends the whole form back. The relaunch line carries the
+// result (`--atalk-<key>=`), so the edit survives a disk swap.
+struct ServiceForm {
+    bool editing = false;
+    char server[64] = "", volume[64] = "", share[512] = "";
+    char printer[64] = "", spool[512] = "", gateway[32] = "", dns[24] = "";
+    std::string error;
+
+    void load(const AtalkHub::Config& cfg) {
+        std::snprintf(server, sizeof server, "%s", cfg.serverName.c_str());
+        std::snprintf(volume, sizeof volume, "%s", cfg.volName.c_str());
+        std::snprintf(share, sizeof share, "%s", cfg.shareDir.c_str());
+        std::snprintf(printer, sizeof printer, "%s", cfg.printerName.c_str());
+        std::snprintf(spool, sizeof spool, "%s", cfg.spoolDir.c_str());
+        std::snprintf(gateway, sizeof gateway, "%s",
+                      AtalkHub::formatCidr(cfg.gwIp, cfg.gwMask).c_str());
+        std::snprintf(dns, sizeof dns, "%s", AtalkHub::formatIpv4(cfg.dns).c_str());
+    }
+    // The form as a Config, or an explanation of what does not parse.
+    bool build(AtalkHub::Config& out) {
+        error.clear();
+        out.serverName = server;
+        out.volName = volume;
+        out.shareDir = share;
+        out.printerName = printer;
+        out.spoolDir = spool;
+        if (!AtalkHub::parseCidr(gateway, out.gwIp, out.gwMask))
+            error = "Passerelle : attendu a.b.c.d/n (n de 1 à 30)";
+        else if (!AtalkHub::parseIpv4(dns, out.dns))
+            error = "DNS : attendu a.b.c.d";
+        else if (out.shareDir.empty())
+            error = "Dossier partagé : vide";
+        return error.empty();
+    }
+};
+ServiceForm gForm;
+
+void drawServiceConfiguration(GuiNetworkState& state,
+                              const AtalkHub::Snapshot& snapshot) {
+    ImGui::SeparatorText("Configuration des services");
+    if (!gForm.editing) gForm.load(snapshot.cfg);
+    ImGui::PushItemWidth(260);
+    bool touched = false;
+    touched |= ImGui::InputText("Serveur AFP (nom NBP)", gForm.server, sizeof gForm.server);
+    touched |= ImGui::InputTextWithHint("Volume", "vide = nom du dossier partagé",
+                                        gForm.volume, sizeof gForm.volume);
+    touched |= ImGui::InputText("Dossier partagé", gForm.share, sizeof gForm.share);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Révéler##share")) revealFolder(snapshot.cfg.shareDir);
+    touched |= ImGui::InputText("Imprimante (nom NBP)", gForm.printer, sizeof gForm.printer);
+    touched |= ImGui::InputText("Dossier de spool", gForm.spool, sizeof gForm.spool);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Révéler##spool")) revealFolder(snapshot.cfg.spoolDir);
+    touched |= ImGui::InputText("Passerelle MacIP (a.b.c.d/n)", gForm.gateway,
+                                sizeof gForm.gateway);
+    touched |= ImGui::InputText("DNS", gForm.dns, sizeof gForm.dns);
+    ImGui::PopItemWidth();
+    if (touched) gForm.editing = true;
+    if (!gForm.editing) {
+        ImGui::TextDisabled("Appliqué à chaud ; les sessions AFP, le travail "
+                            "d'impression en cours et les baux MacIP sont coupés.");
+        return;
+    }
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                       "Modifications en attente — appliquées à chaud, ce qui "
+                       "coupe les sessions AFP, le travail d'impression en "
+                       "cours et les baux MacIP.");
+    if (ImGui::Button("Appliquer")) {
+        AtalkHub::Config next = snapshot.cfg;
+        if (gForm.build(next)) {
+            state.atalk.reconfigure(next);
+            gForm.editing = false;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Annuler")) {
+        gForm.editing = false;
+        gForm.error.clear();
+    }
+    if (!gForm.error.empty())
+        ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.35f, 1), "%s", gForm.error.c_str());
+}
 
 // The card for the NEXT boot: which bus the relaunched machine gets. Staged
 // here and applied by an explicit relaunch, exactly like the Disques and
@@ -277,6 +384,7 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
     ImGui::TextDisabled("HTTP uniquement (TLS 2026 hors d'atteinte) — "
                         "frogfind.com, theoldnet.com");
 
+    drawServiceConfiguration(state, snapshot);
     drawEthernetSection(state, snapshot);
     ImGui::End();
 }
