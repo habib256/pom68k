@@ -84,6 +84,12 @@ public:
     // Release what is due and beacon RTMP.
     void tick(std::int64_t now);
 
+    // The same cable the IPv4 half hangs on (EtherLink::setUplink): one
+    // physical wire carries both protocol families, so unplugging it stops
+    // AARP, DDP and the RTMP beacon too. The card stays on the SCSI bus.
+    void setUplink(bool up) { uplink_ = up; }
+    bool uplink() const { return uplink_; }
+
     // True once the guest has claimed an address on this segment.
     bool guestPresent() const { return !amt_.empty(); }
     std::size_t knownNodes() const { return amt_.size(); }
@@ -120,6 +126,7 @@ private:
     std::array<std::uint8_t, 6> mac_ = { 0x02, 0x00, 0x4B, 0x36, 0x38, 0x02 };
     std::map<std::pair<std::uint16_t, std::uint8_t>,
              std::array<std::uint8_t, 6>> amt_;   // address mapping table
+    bool uplink_ = true;                                 // see setUplink()
     std::int64_t latency_ = 0, rtmpPeriod_ = 0;
     std::int64_t now_ = 0, nextRtmp_ = 0;
     std::deque<std::pair<std::int64_t, std::vector<std::uint8_t>>> wire_;

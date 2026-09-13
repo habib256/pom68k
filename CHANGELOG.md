@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-13 (fourth)** — [The DaynaPort gets a cable you can unplug, and counters the GUI finally reads](#2026-09-13-dayna-cable)
 - **2026-09-13 (third)** — [The two 64K machines get real gates: the registry goes to 279 here, 283 in union](#2026-09-13-mac128k-gates-registered)
 - **2026-09-13 (later)** — [The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent](#2026-09-13-mac128k-zero-divide)
 - **2026-09-13** — [Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel](#2026-09-13-dayna-stale-comments)
@@ -929,6 +930,54 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-13-dayna-cable"></a>
+## 2026-09-13 (fourth) — The DaynaPort gets a cable you can unplug, and counters the GUI finally reads
+
+`DaynaPort.h:85-89` carried the comment "Observability (the GUI network
+window reads these)" over six counters, and nothing read them. It does now:
+presence, SCSI ID, the guest's ENABLE bit **read only**, frames and bytes both
+ways, SCSI commands served, the Rx queue, and ring drops in red.
+
+The meter follows the SCC's `wire_`/`wireMeter_` exactly — sampled inside
+`tick()` on the machine thread, served by `snapshot()` under `mu_` — because
+the card's counters are plain members the SCSI code mutates unlocked. It is
+installed whether or not a card is on the bus, so "no card" is a reported
+answer rather than an absent one, and one sample is taken at the end of
+`attach()` so the window cannot read "no card" between attachment and the
+first tick.
+
+**"Detach" means the cable, not the target** — the ruling of 2026-09-13. The
+card stays on the SCSI bus, `present()` stays true, and the guest driver keeps
+its own ENABLE INTERFACE bit, which the host must never write because it is
+guest state and travels in save states since v15. Only the uplink stops. That
+is the honest switch: classic Mac OS probes the bus once, at boot
+(`DiskBays.h:19-42`), so a control offering hot attach would be the lie
+`PeripheralWindow.h:24-30` already refuses.
+
+`AtalkHub::setService("ethernet", …)` drives it through `applyLocked()` onto
+`EtherLink::setUplink` and `EtherTalkLink::setUplink` — both hub-owned, so no
+GUI path reaches into the machine. The cut is gated at three points, not one:
+inbound at `deliver`, outbound at `onGuestFrame`, and frames already on the
+wire dropped inside `tick()` on the machine thread rather than by clearing a
+deque from the GUI. EtherTalk suppresses its RTMP beacon while unplugged
+without advancing `nextRtmp_`, so replugging announces the router at once.
+
+**Proved both ways, which is the point**: unplugged, the guest's frame brings
+nothing back, the card stays `present()`, its ENABLE bit is untouched and it
+keeps answering SCSI commands; replugged, the same ICMP echo travels again.
+A toggle tested in one direction only would pass while doing nothing but
+break things. Negative controls were run: with `setUplink` neutered only the
+"unplugged" assertion fails; with the uplink forced false, only "replugged"
+does.
+
+asset-none 94 executed / 0 soft-skipped / 0 failed, on binaries rebuilt after
+the change — `EtherLink.cpp` is inside `pom68k_core`, so a narrower replay
+would have tested a stale library.
+
+**Not proved, and owed:** no real guest crossed an unplug.
+`q605_dayna_driver_etalon` is asset-gated and did not run here; the window was
+never rendered, so its layout is unverified by eye. Both are filed.
 
 <a id="2026-09-13-mac128k-gates-registered"></a>
 ## 2026-09-13 (third) — The two 64K machines get real gates: the registry goes to 279 here, 283 in union

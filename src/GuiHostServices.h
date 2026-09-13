@@ -69,8 +69,13 @@ public:
         const bool cable = state_.network.ltoUdpEnabled &&
                            state_.network.ltoudp.start();
         const bool hub = state_.network.appleTalkEnabled;
-        if constexpr (requires { mem.daynaPort(); })
+        if constexpr (requires { mem.daynaPort(); }) {
             state_.network.ethernetEnabled = mem.daynaPort().present();
+            // The ID the session was configured with — a bus property, fixed
+            // for the run: the ROM probes SCSI once, at boot (DiskBays.h).
+            state_.network.ethernetScsiId =
+                config_.core().bus.daynaPortId.value_or(-1);
+        }
         const bool ethernet = state_.network.ethernetEnabled;
         if (!cable && !hub && !ethernet) return;
 

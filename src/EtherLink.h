@@ -69,6 +69,17 @@ public:
     void tick(std::int64_t now);
     std::size_t inFlight() const { return wire_.size(); }
 
+    // ── the cable ───────────────────────────────────────────────────────
+    // "Unplugged" is a property of the WIRE, not of the device: the card
+    // stays a target on the SCSI bus, `present()` stays true, and the guest
+    // driver keeps its own ENABLE INTERFACE bit (DaynaPort.h — host code must
+    // never write that one, it is guest state and travels in save states).
+    // What stops is traffic, in both directions, including whatever was
+    // already in flight when the plug came out. The owner drives this from
+    // `AtalkHub::applyLocked`. Gate: tests/daynaport_test.cpp.
+    void setUplink(bool up) { uplink_ = up; }
+    bool uplink() const { return uplink_; }
+
     // Entry points (public so a test can drive them without the callbacks).
     void onGuestFrame(const std::uint8_t* d, std::size_t n);
     void ipToGuest(std::uint32_t dstIp, const std::vector<std::uint8_t>& pkt);
@@ -92,6 +103,7 @@ private:
     std::array<std::uint8_t, 6> gwMac_ = { 0x02, 0x00, 0x4B, 0x36, 0x38, 0x01 };
     std::array<std::uint8_t, 6> guestMac_ = {};
     std::uint32_t guestIp_ = 0;          // learned from ARP / IP source
+    bool uplink_ = true;                 // the cable, see setUplink()
     std::int64_t latency_ = 0;           // machine cycles, set by the owner
     std::int64_t now_ = 0;               // last tick, machine cycles
     std::deque<std::pair<std::int64_t, std::vector<std::uint8_t>>> wire_;
