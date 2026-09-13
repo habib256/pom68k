@@ -201,6 +201,30 @@ consommateur observé.
   l'ID SCSI sans variable d'environnement. La fonction, elle, est finie : la
   carte tient sur les douze bus depuis le 2026-09-12 (un gate par plateforme
   prouve que l'invité l'a trouvée) et voyage en save state format v15.
+  **Tranché le 2026-09-13** : « détacher » veut dire *débrancher le câble* — la
+  cible reste présente et ne porte rien, précédent du lecteur amovible
+  (`ScsiDisk.h:97-100`, « an empty drive, not a gap ») et état déjà nommé dans
+  `DaynaPortBus.h:19-21` — et non retirer la cible du bus ; le contrôle vit dans
+  la **fenêtre AppleTalk**, pas dans la fenêtre Disques.
+  Ce que la reconnaissance a établi : aucun `detach` n'est à écrire, les deux
+  contrôleurs consultent `present()` à *chaque* sélection (`Ncr5380.cpp:124`,
+  `Ncr53c96.cpp:606-611`), `DaynaPort::attach` prend déjà un booléen, et
+  `daynaport_bus_test.cpp:134-140` asserte déjà les deux côtés du prédicat sur
+  les deux puces. Deux garde-fous : le Mac classique ne sonde le bus qu'**au
+  boot** (`DiskBays.h:19-42`), donc présence et ID restent *stagés + relaunch* —
+  prétendre l'attache à chaud serait le mensonge que `PeripheralWindow.h:24-30`
+  refuse déjà ; et `enabled()` est le bit ENABLE du **pilote invité**
+  (commande `$0E`), que l'hôte ne doit pas forger — le levier est l'uplink.
+  **Premier pas, sans décision** : la ligne d'état en lecture seule.
+  `DaynaPort.h:85-89` dit « the GUI network window reads these » de ses
+  compteurs, et rien ne les lit ; le GUI ne lit aujourd'hui que `present()`
+  (`GuiHostServices.h:72-73`).
+- [ ] **Couvrir le chemin produit de `POM68K_DAYNAPORT`.** Le knob est classé
+  `gate:daynaport_test` (`config_knobs.tsv:63`) mais **aucun gate ne le pose** :
+  `tests/DaynaBootProbe.h:22-36` écrit `k.bus.daynaPortId` directement et
+  court-circuite le décodage produit (`RuntimeConfigCore.cpp:92-97`), clamp
+  « hors 2-6 → ID 3 » compris. La ligne du registre affirme donc une couverture
+  qui n'existe pas.
 - [ ] **Élucider pourquoi une date serveur mouvante produisait une seconde
   trajectoire AFP.** Le 2026-09-12 a rendu le gate déterministe en épinglant la
   seule entrée hôte variable du chemin (`FPGetSrvrParms` renvoyait
