@@ -61,10 +61,10 @@ deux identités dans `assets.lock`, qui ne contient aujourd'hui aucune ligne
 bout — Chooser, montage, énumération, copie des deux forks, Put Away, sur
 LocalTalk puis sur EtherTalk — et le serveur ne refuse plus rien qu'un invité
 demande. Ce qui manque est au-dessus et au-dessous : les contrôles produit et
-deux mécanismes non élucidés. **Premier pas** : les deux contrôles GUI
-absents (configuration réseau, attache DaynaPort), parce que l'attache d'une
-carte passe encore par une variable d'environnement sur une fonction qui,
-elle, est gatée sur les douze plateformes. Items : § Services réseau.
+deux mécanismes non élucidés. **Premier pas, fait le 2026-09-13** : l'attache
+DaynaPort au GUI — présence et ID stagés, appliqués par relaunch — la variable
+d'environnement n'étant plus la seule route. Reste le second contrôle, la
+configuration réseau éditable. Items : § Services réseau.
 
 ---
 
@@ -110,13 +110,6 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
   précédent d'épinglage. La géométrie simple face, elle, est acquise et gatée
   (`SonyDrive.cpp:188` dérive `doubleSided_` de la taille,
   `iwm_write_test.cpp:255-257`).
-- [ ] **Confirmer sur le M4 les sections AArch64 de `STATUS.md`.** Les quatorze
-  gates DaynaPort du 2026-09-12 sont tous `host-any` : la section x86_64 vient
-  d'un run réel, les deux sections aarch64 ont reçu le même +14 par report
-  manuel — vérifié étiquette par étiquette, attendu 276 gates / 503 créneaux et
-  287 à l'union PRODUCT_LLE. Bloqué : aucun hôte ARM ici. Un run sur le M4
-  remplace ces chiffres reportés par des chiffres mesurés et confirme que les
-  quatorze s'y exécutent au lieu de se sauter.
 
 ---
 
@@ -206,46 +199,28 @@ consommateur observé.
 
 - [ ] **Rendre la configuration réseau éditable dans le GUI.** Partage,
   serveur, imprimante, subnet/DNS et révélation du spool.
-- [ ] **Finir le contrôle DaynaPort au GUI : présence et ID SCSI.** La ligne
-  d'état (S3) et la bascule « câble » (S4) sont livrées le 2026-09-13 ; ce qui
-  reste est de choisir la présence et l'ID **sans variable d'environnement**,
-  en stagé + relaunch — le Mac ne sonde le bus qu'au boot. Deux dettes de
-  preuve ouvertes par cette livraison : aucun invité réel n'a traversé un
-  débranchement (`q605_dayna_driver_etalon`, à actif, n'a pas tourné), et la
-  fenêtre n'a jamais été **rendue** — elle compile et lie, sa mise en page
-  n'est pas vérifiée à l'œil.
+- [ ] **Payer les dettes de preuve du contrôle DaynaPort au GUI.** Le contrôle
+  est complet le 2026-09-13 : ligne d'état, bascule « câble », et le choix
+  présence + ID SCSI **sans variable d'environnement** — stagé dans la fenêtre
+  AppleTalk / Ethernet (`src/NetworkWindow.cpp`), appliqué par relaunch sur
+  `--daynaport=<id>`, les ID tenus par un disque grisés. Trois dettes : aucun
+  invité réel n'a traversé un débranchement ni un relaunch avec carte
+  (`q605_dayna_driver_etalon`, à actif, n'a pas tourné ici) ; la fenêtre n'a
+  jamais été **rendue** — elle compile et lie, sa mise en page (sélecteur
+  compris) n'est pas vérifiée à l'œil ; et le relaunch lui-même n'est couvert
+  que par sa sérialisation (`daynaport_test` prouve l'aller-retour
+  argument → `RuntimeConfig`), pas par un re-exec observé.
 - [ ] **Fermer la course `uplink_` / `cfg_.ethertalk`, ou l'acter.** Écrites
   côté GUI sous `mu_`, lues côté machine sans verrou : des `bool` nus, bénins
   en pratique, formellement une course. `cfg_.ethertalk` la porte déjà dans le
   démultiplexeur `sendFrame` ; `uplink_` est de la même forme. Un `atomic` ou
   un échantillonnage dans `tick()` la ferme ; ne rien faire est défendable,
-  mais alors il faut l'écrire ici plutôt que de la redécouvrir. La fonction, elle, est finie : la
-  carte tient sur les douze bus depuis le 2026-09-12 (un gate par plateforme
-  prouve que l'invité l'a trouvée) et voyage en save state format v15.
-  **Tranché le 2026-09-13** : « détacher » veut dire *débrancher le câble* — la
-  cible reste présente et ne porte rien, précédent du lecteur amovible
-  (`ScsiDisk.h:97-100`, « an empty drive, not a gap ») et état déjà nommé dans
-  `DaynaPortBus.h:19-21` — et non retirer la cible du bus ; le contrôle vit dans
-  la **fenêtre AppleTalk**, pas dans la fenêtre Disques.
-  Ce que la reconnaissance a établi : aucun `detach` n'est à écrire, les deux
-  contrôleurs consultent `present()` à *chaque* sélection (`Ncr5380.cpp:124`,
-  `Ncr53c96.cpp:606-611`), `DaynaPort::attach` prend déjà un booléen, et
-  `daynaport_bus_test.cpp:134-140` asserte déjà les deux côtés du prédicat sur
-  les deux puces. Deux garde-fous : le Mac classique ne sonde le bus qu'**au
-  boot** (`DiskBays.h:19-42`), donc présence et ID restent *stagés + relaunch* —
-  prétendre l'attache à chaud serait le mensonge que `PeripheralWindow.h:24-30`
-  refuse déjà ; et `enabled()` est le bit ENABLE du **pilote invité**
-  (commande `$0E`), que l'hôte ne doit pas forger — le levier est l'uplink.
-  **Premier pas, sans décision** : la ligne d'état en lecture seule.
-  `DaynaPort.h:85-89` dit « the GUI network window reads these » de ses
-  compteurs, et rien ne les lit ; le GUI ne lit aujourd'hui que `present()`
-  (`GuiHostServices.h:72-73`).
-- [ ] **Couvrir le chemin produit de `POM68K_DAYNAPORT`.** Le knob est classé
-  `gate:daynaport_test` (`config_knobs.tsv:63`) mais **aucun gate ne le pose** :
-  `tests/DaynaBootProbe.h:22-36` écrit `k.bus.daynaPortId` directement et
-  court-circuite le décodage produit (`RuntimeConfigCore.cpp:92-97`), clamp
-  « hors 2-6 → ID 3 » compris. La ligne du registre affirme donc une couverture
-  qui n'existe pas.
+  mais alors il faut l'écrire ici plutôt que de la redécouvrir. Le levier
+  lui-même est tranché depuis le 2026-09-13 et livré : « détacher » veut dire
+  *débrancher le câble* (l'uplink), la cible reste sur le bus ; présence et ID
+  sont stagés + relaunch ; `enabled()` est le bit ENABLE du **pilote invité**
+  (commande `$0E`), que l'hôte ne forge jamais. La reconnaissance complète est
+  au `CHANGELOG` (2026-09-13 (fourth) et (fifth)).
 - [ ] **Élucider pourquoi une date serveur mouvante produisait une seconde
   trajectoire AFP.** Le 2026-09-12 a rendu le gate déterministe en épinglant la
   seule entrée hôte variable du chemin (`FPGetSrvrParms` renvoyait
@@ -309,6 +284,13 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 Section ouverte le 2026-09-12 : douze de ces items étaient du travail ouvert
 consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
 
+- [ ] **Exécuter sur le M4 les quatorze gates DaynaPort.** Les sections
+  aarch64 de `STATUS.md` ne sont plus reportées : régénérées le 2026-09-13
+  depuis un configure réel sur le M4 (278 gates / 505 créneaux, les deux
+  etalons 64 K compris, que le report manuel du 2026-09-12 n'avait pas). Ce
+  qui reste non mesuré est l'**exécution** : les quatorze gates DaynaPort sont
+  `host-any`, mais seul un run à actifs sur le M4 confirme qu'ils s'y exécutent
+  au lieu de se sauter.
 - [ ] **Donner une preuve au-delà du boot aux 28 profils qui n'en ont pas.**
   37 profils sur 37 ont un etalon Finder ; **9 sur 37** seulement ont un gate
   *après* la signature. `docs/68K_FAMILY_SCOPE.md` § 5 appelle cela le plus

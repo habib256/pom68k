@@ -38,14 +38,14 @@ change AppleTalk behaviour are repeated here.
 
 | Knob | Default | Effect |
 |---|---|---|
-| `POM68K_APPLETALK=0` | (unset = on) | is captured once by `ProcessEnvironment`, parsed by `RuntimeConfig`, and kills the in-process stack; the **Réseau → AppleTalk** menu item greys out (`src/GuiShell.cpp:365-370`) |
+| `POM68K_APPLETALK=0` | (unset = on) | is captured once by `ProcessEnvironment`, parsed by `RuntimeConfig`, and kills the in-process stack; the **Réseau → AppleTalk / Ethernet** window stays reachable, says so, and still stages a DaynaPort card for the next boot (`src/GuiShell.cpp:228-236`, `src/NetworkWindow.cpp:157-166`) |
 | `POM68K_APPLETALK=1` | — | *different job*: seeds PRAM SPConfig `$21` = LocalTalk **active at boot** (`src/Egret.cpp:70-76`, `src/Rtc.cpp:53-57`). Unset seeds `$22` (async) — a fresh PRAM then needs the Chooser's AppleTalk radio button, or an image whose prefs already have it on |
 | `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/GuiHostServices.cpp:77-101`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:111-117`) |
 | `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/GuiHostServices.h:77-82`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s and no `setLosslessRx`, so the wire can drop again. See §0.4 |
 | `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — the boost block runs only with the hub up and **no** cable (`src/GuiHostServices.h:78`) |
 | `POM68K_ATALK_DEBUG=1` | off | DDP/NBP/ATP tracer + one line per client retransmit with its lag (`src/AtalkStack.cpp:126-129`, retransmit lag at `:462-467`) |
 | `POM68K_MACIP_DEBUG=1` | off | every IP datagram both ways, with TCP flags/seq/ack (`src/MacIpGateway.cpp:61-68`) |
-| `POM68K_DAYNAPORT=<id>` | off | put a DaynaPort SCSI/Link (Ethernet as a SCSI target) at that SCSI ID, on any machine. **`<id>` is taken literally only for 2-6; `=1` and anything out of range mean "the default", ID 3** — where the CD-ROM normally sits (`src/RuntimeConfigCore.cpp:92-96`, comment in `src/DaynaPortBus.h:13-21`). Its uplink is the same NAT the MacIP gateway uses — §6.4bis |
+| `POM68K_DAYNAPORT=<id>` | off | put a DaynaPort SCSI/Link (Ethernet as a SCSI target) at that SCSI ID, on any machine. **`<id>` is taken literally only for 2-6; `=1` and anything out of range mean "the default", ID 3** — where the CD-ROM normally sits (`decodeDaynaPortId`, `src/RuntimeConfigCore.cpp:172-176`, comment in `src/DaynaPortBus.h:13-24`). `--daynaport=<id>` on the command line overrides it (`0` = no card) — that is how the window's staged selector reaches the next boot (`src/RuntimeConfig.h`, `src/RuntimeConfigRelaunch.cpp`). Its uplink is the same NAT the MacIP gateway uses — §6.4bis |
 
 ### 0.2 Guest side
 
@@ -63,9 +63,9 @@ server name): it defends its own address against the
 guest's lapENQ probes, so the guest settles on a different ID exactly as
 it would against hardware.
 
-### 0.3 The GUI window (`Réseau → AppleTalk`, `drawAppleTalkWindow`, `src/GuiShell.cpp:53-180`)
+### 0.3 The GUI window (`Réseau → AppleTalk / Ethernet`, `drawAppleTalkWindow`, `src/NetworkWindow.cpp`)
 
-Four blocks, each with a live enable checkbox and a green/red bullet:
+Five blocks. The first four each have a live enable checkbox and a green/red bullet:
 
 - **Nœud / routeur** — net/node/zone, guest node seen, frames in/out,
   NBP lookups served, ATP transactions, and the retransmission
@@ -78,6 +78,16 @@ Four blocks, each with a live enable checkbox and a green/red bullet:
 - **Internet (MacIP)** — gateway registered? **a lease attributed is the
   proof it works**; gateway/DNS addresses, leases, live UDP/TCP flows,
   IP datagram counters.
+- **Ethernet (carte DaynaPort SCSI/Link)** — two kinds of control, kept
+  apart. *Live*: the cable (`setService("ethernet", …)`, §6.4bis) — unplugged,
+  the card stays on the bus and carries nothing. *Staged + relaunch*: « Carte
+  au prochain démarrage », none or SCSI ID 2-6, applied by « Appliquer et
+  redémarrer » as `--daynaport=<id>` on the session's own command line —
+  the Mac probes its bus once, at boot, so there is no live control to offer.
+  IDs a disk holds are greyed out. Also shown, read-only: the guest driver's
+  ENABLE bit, frames and bytes both ways, SCSI commands served, ring drops.
+  Reachable with `POM68K_APPLETALK=0` too, which is where a card gets staged
+  on a machine that has none.
 
 ### 0.4 When it misbehaves
 
@@ -91,7 +101,7 @@ window's counters into a diagnosis rather than a score:
 | retransmissions 0 | clean |
 | retransmit lag ~1-2 s | the guest's own ATP timer fired — the reply played late |
 | retransmit lag tens of ms | the guest gave up early / the reply was mangled |
-| "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/GuiShell.cpp:97-100`) |
+| "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/NetworkWindow.cpp:196-199`) |
 | "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:388`; counter `rxOverflowDrops`, `Scc8530.h:162`) |
 
 Lowering `POM68K_ATALK_WIRE_BOOST` is the wrong reflex for a backlog: the
@@ -930,9 +940,12 @@ Why bother, given §6.4 works: the LLAP road runs at 230.4 kbit/s through
 the SCC, the most timing-fragile device here (hence
 `POM68K_ATALK_WIRE_BOOST`). The SCSI bus is neither slow nor fragile.
 
-Operating it: `POM68K_DAYNAPORT=<id>`, on any machine (`src/DaynaPortBus.h`).
+Operating it: `POM68K_DAYNAPORT=<id>`, on any machine (`src/DaynaPortBus.h`),
+or the AppleTalk / Ethernet window's « Carte au prochain démarrage » selector,
+staged and applied by a relaunch that carries `--daynaport=<id>` (§0.3).
 `<id>` is taken literally when it parses to 2-6 and falls back to **ID 3** —
-where the CD-ROM normally sits — otherwise (`src/RuntimeConfigCore.cpp:92-96`).
+where the CD-ROM normally sits — otherwise (`decodeDaynaPortId`,
+`src/RuntimeConfigCore.cpp:172-176`, one reading for both routes).
 Guest
 side needs the
 DaynaPort SCSI/Link driver plus a **manual** MacTCP/TCP-IP configuration —
@@ -986,7 +999,7 @@ guest Mac OS                                   POM68K process
 | ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.{h,cpp}` |
 | MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
-| SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/GuiHostServices.h:58-155`, `src/GuiShell.cpp:53-180` |
+| SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/GuiHostServices.h:58-155`, `src/NetworkWindow.cpp` |
 
 **Threading contract** (`src/AtalkHub.h:17-21`): the hub's mutex guards the
 hub's own state, never the machine's. The SCC's Rx meters are unlocked
@@ -1036,7 +1049,7 @@ Backlog: `TODO.md` § Services réseau. Migration notes and the HLE/LLE gap list
 | **In-process** ASP + AFP 2.1 | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | **In-process** PAP → `lp`/CUPS or `.ps` | `PapServer` | `src/PapServer.{h,cpp}` |
 | **In-process** MacIP + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
-| Wiring + GUI window + toggles | `AtalkHub`, `drawAppleTalkWindow` | `src/AtalkHub.h`, `src/GuiShell.cpp:53-180` |
+| Wiring + GUI window + toggles | `AtalkHub`, `drawAppleTalkWindow` | `src/AtalkHub.h`, `src/NetworkWindow.cpp` |
 | External DDP/RTMP/ZIP/NBP routing | TashRouter | `extern/tashrouter` |
 | External ATP/ASP/AFP | netatalk `afpd` | `extern/netatalk2` |
 | External PAP → CUPS | netatalk `papd` (`cupsautoadd`) | `extern/netatalk2/etc/papd` |

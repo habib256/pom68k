@@ -1090,7 +1090,13 @@ reads as a duplicate address and MacTCP refuses to initialise.
 `sendIpToGuest` routes DDP or Ethernet accordingly.
 
 Wiring: `POM68K_DAYNAPORT=<id>` puts a card on **every** machine's SCSI bus
-(`=1` → the default ID 3, where MAME parks the CD-ROM). Each memory map's
+(`=1` → the default ID 3, where MAME parks the CD-ROM), and so does the
+AppleTalk / Ethernet window (`src/NetworkWindow.cpp`): presence and ID are
+staged there and applied by a relaunch carrying `--daynaport=<id>`, which
+overrides the variable — the Mac probes its bus once, at boot. The window
+greys out the IDs a disk holds; a command-line choice that lands on one is
+not refused, but `attachDaynaPort` says aloud that the card displaced the
+disk (`src/DaynaPortBus.h`). Each memory map's
 constructor populates its bus with one call, `pom68k::configureScsiBus`
 (`src/DaynaPortBus.h`) — its disk slots configured, the card attached when
 asked — and carries a `DaynaPort` member plus a `daynaPort()` accessor, which
@@ -1752,8 +1758,9 @@ instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort
 SCSI/Link at that SCSI ID on every machine's bus; a value outside 2-6 — or a
 non-numeric one — lands on the default ID 3 (ID 1 is refused too), `0` or
-unset = no card (`RuntimeConfigCore.cpp:92-96`, attached through
-`configureScsiBus`) —
+unset = no card (`decodeDaynaPortId`, `RuntimeConfigCore.cpp:172-176`, attached
+through `configureScsiBus`; the relaunch argument `--daynaport=<id>` is read by
+the same decoder and overrides the variable — `RuntimeConfigRelaunch.cpp`) —
 [§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)),
 `POM68K_FIRMWARE_ROOT` (`<dir>` **replaces** both default search bases
 `./` and `../` for every dump `FirmwareManifest::verify` looks up —
@@ -2230,6 +2237,29 @@ reached. The window also **opens itself once** on the first frame a machine
 reports a substitute, which is what makes the stderr policy hold for a
 GUI-only user; it never re-opens after being closed, and never appears on a
 fully-LLE machine.
+
+### The "AppleTalk / Ethernet" window (`src/NetworkWindow.*`)
+
+Out of `GuiShell.cpp` since 2026-09-13, when the DaynaPort selector took the
+shell past its size ceiling. It renders `AtalkHub::snapshot()` — a copy taken
+under the hub's lock, never a device — and keeps two kinds of control apart:
+
+- **Live**: the four AppleTalk services and the card's cable, each through
+  `AtalkHub::setService`, applied on the machine thread.
+- **Staged + relaunch**: the card's presence and SCSI ID. Same contract as
+  Disques and Périphériques — a Mac probes its SCSI bus once, at boot — and
+  the same mechanism: `GuiRelaunchState::stageOwnCommandLine()` re-execs the
+  session's own arguments, with the choice serialized as `--daynaport=<id>`
+  by `RuntimeConfigRelaunch.cpp`. The relaunch line always carries the
+  session's effective card, staged or not, so a relaunch reads the same
+  whether the card came from the environment, the command line or the window.
+  The bus occupancy that greys out a disk's ID is sampled once at wiring
+  (`GuiHostServices::wireNetwork`, through `Ncr5380::target` /
+  `Ncr53c96::target`).
+
+The window is reachable with `POM68K_APPLETALK=0` and no card: that is where a
+card gets staged on a machine that has none. `docs/APPLETALK.md` §0.3 lists
+the blocks.
 
 Gate: `peripheral_lle_test` (`unit`, 38 checks) covers the model —
 registration, the product-mode contract, the reason on all three paths,

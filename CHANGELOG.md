@@ -440,6 +440,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-13 (fifth)** — [The DaynaPort card is chosen in the window, not the environment: staged, relaunched as `--daynaport=`, and its knob finally has the gate it cited](#2026-09-13-dayna-staged-card)
 - **2026-09-13 (fourth)** — [The DaynaPort gets a cable you can unplug, and counters the GUI finally reads](#2026-09-13-dayna-cable)
 - **2026-09-13 (third)** — [The two 64K machines get real gates: the registry goes to 279 here, 283 in union](#2026-09-13-mac128k-gates-registered)
 - **2026-09-13 (later)** — [The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent](#2026-09-13-mac128k-zero-divide)
@@ -930,6 +931,66 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-13-dayna-staged-card"></a>
+## 2026-09-13 (fifth) — The DaynaPort card is chosen in the window, not the environment: staged, relaunched as `--daynaport=`, and its knob finally has the gate it cited
+
+The (fourth) entry left presence and SCSI ID on `POM68K_DAYNAPORT` alone,
+with the window's "no card" line pointing the user at a variable. They are
+now a control: « Carte au prochain démarrage » — none, or ID 2-6 — with
+« Appliquer et redémarrer », the Disques / Périphériques contract, because a
+Mac probes its bus once, at boot.
+
+**How the choice travels.** A new relaunch argument, `--daynaport=<id>`
+(`0` = no card), read by the same decoder as the variable and overriding it
+— `decodeDaynaPortId`, one function, where until today the reading lived
+inline in `RuntimeConfigCore.cpp`. `GuiRelaunchState` carries the session's
+effective card from construction on and the relaunch line **always**
+serializes it, staged or not, so a machine that came up on the variable
+relaunches identically: `execv()` keeps the environment, and the argument
+says the same thing on top of it. The two staging windows now share one
+helper, `stageOwnCommandLine()`, instead of two copies of the same four
+lines.
+
+**What the window will not offer.** The IDs a disk holds are greyed out. The
+controllers' `attach()` overwrites its slot without a word, so a card staged
+over a disk would have made the disk vanish — both `Ncr5380` and `Ncr53c96`
+gained a `target(id)` query, `GuiHostServices::wireNetwork` samples the bus
+once at wiring, and `attachDaynaPort` now says aloud when a command-line
+choice displaces something. The menu item is reachable with
+`POM68K_APPLETALK=0` and no card, which is where a card gets staged on a
+machine that has none — before, that exact state greyed the item out.
+
+**The knob's gate existed only on paper.** `config_knobs.tsv` classed
+`POM68K_DAYNAPORT` as `gate:daynaport_test` while nothing exercised the
+decode: the boot etalons write `bus.daynaPortId` directly. `daynaport_test`
+now links `pom68k_app` and parses fifteen cases through `RuntimeConfig` —
+unset / `0` / empty → no card; 2-6 literal; `1`, out of range and
+non-numeric → ID 3; the argument over the variable, `--daynaport=0`
+removing the variable's card, the same clamp on the argument; and the round
+trip, one `--daynaport=` on the line ahead of the media and read back over
+any environment.
+
+**The ratchet asked its question, twice.** Five files crossed their
+ceilings. Two answers were new translation units: the whole AppleTalk /
+Ethernet window leaves `GuiShell.cpp` (501 → 254 lines) as
+`src/NetworkWindow.cpp` — the shell is menus and docking, the window is one
+concern, and the next backlog item (network configuration in the GUI) lands
+there; and relaunch serialization leaves `RuntimeConfig.cpp` (222 → 159) as
+`src/RuntimeConfigRelaunch.cpp`, the inverse of the parser rather than part
+of it. Three ceilings rose by the feature's own lines and are recorded in
+the same commit: `GuiHostServices.cpp` 177 → 182, `RuntimeConfigCore.cpp`
+175 → 178, `RuntimeConfigParsers.h` 31 → 36.
+
+**Also measured, not reported: the AArch64 registry.** This tree ran on the
+M4, and `STATUS.md`'s aarch64 sections — carried by hand since 2026-09-12 —
+were regenerated from a real configure: 278 gates / 505 slots, the two 64K
+etalons included, which the manual carry had missed (276). `docs_test` had
+been red on that count on this host before any of today's changes.
+
+**Not proved, and filed:** no guest crossed a relaunch with a staged card,
+the window is still unrendered, and the re-exec itself is covered only by
+its serialization.
 
 <a id="2026-09-13-dayna-cable"></a>
 ## 2026-09-13 (fourth) — The DaynaPort gets a cable you can unplug, and counters the GUI finally reads

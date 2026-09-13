@@ -1325,7 +1325,7 @@ session-wide registry of the HLE modules a machine actually fell back to
 once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
 wrappers — `Cpu040.cpp:176`, `CentrisCpu.cpp:87`, `Q630Cpu.cpp:94`,
 `Q700Cpu.cpp:95`; the GUI's CPU menu greys itself on the same condition,
-`GuiShell.cpp:340`), verifies firmware by size +
+`GuiShell.cpp:203-205`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save
 state (`SaveStateMachines.cpp:163`). Restoring a snapshot that carries an
 HLE module is **refused** in strict mode (`:207-210`). Build with

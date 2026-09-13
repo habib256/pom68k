@@ -42,6 +42,12 @@ public:
     void attach(ScsiTarget* disk, int id = 0) {
         if (id >= 0 && id < 7) targets_[id] = disk;
     }
+    // What sits at an ID, or null. The GUI's DaynaPort selector greys out
+    // the IDs a disk holds, and attachDaynaPort (DaynaPortBus.h) says
+    // aloud when a card displaces one — attach() itself overwrites.
+    ScsiTarget* target(int id) const {
+        return (id >= 0 && id < 7) ? targets_[id] : nullptr;
+    }
 
     // ── Register file (offset = address bits, 0..15). On the Q605 the CPU
     // reaches these at PrimeTime + $10000, stride $10 (reg = (addr>>4)&0xf) —

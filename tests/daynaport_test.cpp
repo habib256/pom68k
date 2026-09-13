@@ -12,6 +12,10 @@
 //     READ(6). That path crosses every piece added for this: ScsiTarget,
 //     DaynaPort, EtherLink and the gateway's raw-link leases.
 //
+// A third, since 2026-09-13: the product decode — POM68K_DAYNAPORT and the
+// `--daynaport=` relaunch argument through RuntimeConfig, clamp and all,
+// which `config_knobs.tsv` had been citing this gate for without it.
+//
 // No ROM, no disk image, no host sockets (ICMP echo to the gateway is
 // answered internally), so this gate always runs.
 
@@ -19,10 +23,13 @@
 #include "EtherLink.h"
 #include "MacIpGateway.h"
 #include "AtalkHub.h"
+#include "RuntimeConfig.h"
 #include "atalk_test_util.h"
 
 #include <array>
 #include <cstring>
+#include <string>
+#include <utility>
 
 namespace {
 constexpr uint32_t kGw    = 0xC0A89701;            // 192.168.151.1
@@ -482,6 +489,53 @@ int main() {
         CHECK(hub.snapshot().net.framesOut == framesBefore,
               "advancing Ethernet time emits no LocalTalk protocol traffic");
     }
+    // ── The product decode: POM68K_DAYNAPORT and the --daynaport= relaunch
+    // argument. `config_knobs.tsv` classes the knob `gate:daynaport_test`, and
+    // until 2026-09-13 nothing exercised RuntimeConfigCore's reading of it —
+    // the boot etalons write `bus.daynaPortId` directly (DaynaBootProbe.h).
+    {
+        using pom68k::StartupSnapshot;
+        using pom68k::app::RuntimeConfig;
+        auto parse = [](std::vector<std::string> args, StartupSnapshot startup) {
+            std::vector<char*> argv = {const_cast<char*>("POM68K")};
+            for (std::string& a : args) argv.push_back(a.data());
+            return RuntimeConfig::parse(int(argv.size()), argv.data(), startup);
+        };
+        auto env = [](const char* v) {
+            return StartupSnapshot{{"POM68K_DAYNAPORT", v}};
+        };
+        auto card = [&](std::vector<std::string> args, StartupSnapshot startup) {
+            return parse(std::move(args), std::move(startup)).core().bus.daynaPortId;
+        };
+        CHECK(!card({}, StartupSnapshot{}), "unset: no card on the bus");
+        CHECK(!card({}, env("0")), "=0: no card");
+        CHECK(!card({}, env("")), "empty: no card");
+        CHECK(card({}, env("4")) == 4, "=4: taken literally");
+        CHECK(card({}, env("6")) == 6, "=6: the last legal ID, literally");
+        CHECK(card({}, env("1")) == 3, "=1: the default, ID 3");
+        CHECK(card({}, env("9")) == 3, "=9: out of range lands on ID 3");
+        CHECK(card({}, env("abc")) == 3, "non-numeric: ID 3");
+        CHECK(card({"--daynaport=5"}, env("4")) == 5,
+              "--daynaport= overrides the environment");
+        CHECK(!card({"--daynaport=0"}, env("4")),
+              "--daynaport=0 removes the environment's card");
+        CHECK(card({"--daynaport=7"}, StartupSnapshot{}) == 3,
+              "the argument is read by the same decoder, clamp included");
+        // Round trip: the serializer leaves ONE --daynaport=, first, and the
+        // parser reads back the staged card over any environment.
+        const std::vector<std::string> line = pom68k::app::daynaPortArguments(
+            {"--daynaport=2", "rom.bin", "disk.dsk"}, 6);
+        CHECK(line.size() == 3 && line[0] == "--daynaport=6" &&
+              line[1] == "rom.bin" && line[2] == "disk.dsk",
+              "one --daynaport= on the relaunch line, ahead of the media");
+        CHECK(card(line, env("4")) == 6, "…read back as the staged card");
+        CHECK(pom68k::app::daynaPortArguments({}, std::nullopt).front() ==
+              "--daynaport=0", "no card serializes as --daynaport=0");
+        const RuntimeConfig relaunched = parse(line, StartupSnapshot{});
+        CHECK(relaunched.romPath() == "rom.bin",
+              "the option leaves the ROM and media arguments alone");
+    }
+
     if (failures) {
         std::printf("daynaport_test: %d check(s) failed\n", failures);
         return 1;

@@ -69,12 +69,20 @@ public:
         const bool cable = state_.network.ltoUdpEnabled &&
                            state_.network.ltoudp.start();
         const bool hub = state_.network.appleTalkEnabled;
-        if constexpr (requires { mem.daynaPort(); }) {
+        if constexpr (requires { mem.daynaPort(); mem.scsi().target(0); }) {
             state_.network.ethernetEnabled = mem.daynaPort().present();
             // The ID the session was configured with — a bus property, fixed
             // for the run: the ROM probes SCSI once, at boot (DiskBays.h).
             state_.network.ethernetScsiId =
                 config_.core().bus.daynaPortId.value_or(-1);
+            // Which IDs a disk holds, so the window's selector cannot stage
+            // the card over one (attachDaynaPort would let it, aloud).
+            std::uint8_t occupied = 0;
+            for (int id = 0; id < 7; ++id) {
+                const auto* held = mem.scsi().target(id);
+                if (held && held != &mem.daynaPort()) occupied |= std::uint8_t(1u << id);
+            }
+            state_.network.scsiOccupied = occupied;
         }
         const bool ethernet = state_.network.ethernetEnabled;
         if (!cable && !hub && !ethernet) return;

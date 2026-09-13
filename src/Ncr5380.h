@@ -36,6 +36,12 @@ public:
     void attach(ScsiTarget* disk, int id = 0) {
         if (id >= 0 && id < 7) targets_[id] = disk;
     }
+    // What sits at an ID, or null. The GUI's DaynaPort selector greys out
+    // the IDs a disk holds, and attachDaynaPort (DaynaPortBus.h) says
+    // aloud when a card displaces one — attach() itself overwrites.
+    ScsiTarget* target(int id) const {
+        return (id >= 0 && id < 7) ? targets_[id] : nullptr;
+    }
 
     // reg = (addr>>4)&7. Pseudo-DMA (A9) handled by the dma* entry points.
     uint8_t read(int reg);

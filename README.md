@@ -248,7 +248,9 @@ large inputs are split at 1,900 MB by default. Run
   speed relative to the emulated machine.
 - **Disques:** choose the boot volume, secondary SCSI disks, floppies and CDs.
   Changes that affect the boot bus relaunch the machine.
-- **Réseau:** configure the built-in AppleTalk services.
+- **Réseau:** toggle the built-in AppleTalk services and the Ethernet card's
+  cable live; choose the DaynaPort card itself (none, or SCSI ID 2-6) for the
+  next boot, which relaunches the machine.
 - **Périphériques (LLE / HLE):** inspect controller provenance and choose
   firmware or fallback policy.
 

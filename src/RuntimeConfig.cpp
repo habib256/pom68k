@@ -2,7 +2,8 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // Public startup composition: typed domain decoders feed the immutable model;
-// this unit owns only application arguments and relaunch serialization.
+// this unit owns only application arguments. Their relaunch serialization —
+// the inverse of this parser — is RuntimeConfigRelaunch.cpp.
 
 #include "RuntimeConfig.h"
 #include "RuntimeConfigParsers.h"
@@ -13,15 +14,6 @@
 
 namespace pom68k::app {
 namespace {
-
-std::string_view firmwareTargetSlug(FirmwareTarget target) {
-    switch (target) {
-    case FirmwareTarget::Adb: return "adb";
-    case FirmwareTarget::Egret: return "egret";
-    case FirmwareTarget::Cuda: return "cuda";
-    }
-    return {};
-}
 
 std::optional<FirmwareTarget> firmwareTarget(std::string_view slug) {
     if (slug == "adb") return FirmwareTarget::Adb;
@@ -70,48 +62,6 @@ void applyFirmwareOverride(pom68k::CoreFirmwareConfig& firmware,
 
 } // namespace
 
-std::string machineProfileArgument(SnapMachine profile) {
-    const MachineProfile* selected = machineProfile(profile);
-    return selected
-        ? std::string(kMachineProfileOption) + selected->slug
-        : std::string();
-}
-
-std::vector<std::string> machineProfileArguments(
-    std::vector<std::string> arguments,
-    std::optional<SnapMachine> profile) {
-    std::erase_if(arguments, [](const std::string& argument) {
-        return argument.starts_with(kMachineProfileOption);
-    });
-    if (profile) {
-        const std::string serialized = machineProfileArgument(*profile);
-        if (!serialized.empty()) arguments.insert(
-            arguments.begin(), serialized);
-    }
-    return arguments;
-}
-
-std::string firmwareOverrideArgument(const FirmwareOverride& policy) {
-    return std::string(kFirmwareOverrideOption) +
-        std::string(firmwareTargetSlug(policy.target)) + ':' +
-        (policy.lle ? "lle:" : "hle:") + policy.path.value_or(std::string());
-}
-
-std::vector<std::string> firmwareOverrideArguments(
-    std::vector<std::string> arguments,
-    const std::vector<FirmwareOverride>& overrides) {
-    if (overrides.empty()) return arguments;
-    std::erase_if(arguments, [](const std::string& argument) {
-        return argument.starts_with(kFirmwareOverrideOption);
-    });
-    std::vector<std::string> serialized;
-    serialized.reserve(overrides.size());
-    for (const FirmwareOverride& policy : overrides)
-        serialized.push_back(firmwareOverrideArgument(policy));
-    arguments.insert(arguments.begin(), serialized.begin(), serialized.end());
-    return arguments;
-}
-
 RuntimeConfig RuntimeConfig::parse(
     int argc, char* const argv[], const StartupSnapshot& startup) {
     RuntimeConfig config;
@@ -135,6 +85,8 @@ RuntimeConfig RuntimeConfig::parse(
     config.executable_ = argc > 0 && argv[0] ? argv[0] : "POM68K";
     std::optional<SnapMachine> commandLineProfile;
     std::vector<FirmwareOverride> firmwareOverrides;
+    // Outer optional: was the option given at all. Inner: the card, or none.
+    std::optional<std::optional<int>> commandLineDaynaPort;
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i] ? argv[i] : "";
         config.launchArguments_.emplace_back(arg);
@@ -168,6 +120,11 @@ RuntimeConfig RuntimeConfig::parse(
                 firmwareOverrides.push_back(*policy);
             continue;
         }
+        if (argument.starts_with(kDaynaPortOption)) {
+            commandLineDaynaPort = detail::decodeDaynaPortId(
+                argument.substr(kDaynaPortOption.size()));
+            continue;
+        }
         if (argument.starts_with(smokePrefix)) {
             const std::string_view report = argument.substr(smokePrefix.size());
             if (!report.empty()) {
@@ -189,6 +146,8 @@ RuntimeConfig RuntimeConfig::parse(
                                     config.core_, *commandLineProfile);
     for (const FirmwareOverride& policy : firmwareOverrides)
         applyFirmwareOverride(config.core_.firmware, policy);
+    if (commandLineDaynaPort)
+        config.core_.bus.daynaPortId = *commandLineDaynaPort;
     return config;
 }
 

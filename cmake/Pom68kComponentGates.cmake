@@ -228,7 +228,7 @@ add_test(NAME ethertalk_test COMMAND ethertalk_test)
 
 add_executable(daynaport_test tests/daynaport_test.cpp)
 target_include_directories(daynaport_test PRIVATE tests)
-target_link_libraries(daynaport_test PRIVATE pom68k_core)
+target_link_libraries(daynaport_test PRIVATE pom68k_app pom68k_core)
 add_test(NAME daynaport_test COMMAND daynaport_test)
 
 # Gate for the gate preamble: SHA-256 against FIPS 180-4 (padding

@@ -114,6 +114,16 @@ std::vector<std::string> firmwareOverrideArguments(
     std::vector<std::string> arguments,
     const std::vector<FirmwareOverride>& overrides);
 
+// The DaynaPort SCSI/Link for the NEXT boot: `--daynaport=<id>` (2-6) puts
+// the card at that ID, `--daynaport=0` leaves it off, and either overrides
+// POM68K_DAYNAPORT, which execv() carries across a relaunch unchanged. The
+// AppleTalk window stages the choice and the relaunch serializes it — a Mac
+// probes its bus once, at boot (DiskBays.h), so there is no live control.
+inline constexpr std::string_view kDaynaPortOption = "--daynaport=";
+std::string daynaPortArgument(std::optional<int> id);
+std::vector<std::string> daynaPortArguments(std::vector<std::string> arguments,
+                                            std::optional<int> id);
+
 class RuntimeConfig {
 public:
     static RuntimeConfig parse(int argc, char* const argv[],

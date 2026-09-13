@@ -45,16 +45,19 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     // and the qualification verdict all read that one.
     state_.peripherals.registry = config_.core().firmware.registry;
     state_.relaunch.launchArguments = config_.launchArguments();
+    state_.relaunch.daynaPortId = config_.core().bus.daynaPortId;
     state_.peripherals.relaunch = [this](std::vector<FirmwareOverride> overrides) {
         state_.relaunch.firmwareOverrides = std::move(overrides);
-        state_.relaunch.switchArguments = state_.relaunch.launchArguments;
-        if (state_.relaunch.switchArguments.empty())
-            state_.relaunch.switchArguments = {std::string()};
-        state_.relaunch.showWindow = true;
+        state_.relaunch.stageOwnCommandLine();
+    };
+    state_.network.relaunchWithDaynaPort = [this](std::optional<int> id) {
+        state_.relaunch.daynaPortId = id;
+        state_.relaunch.stageOwnCommandLine();
     };
 }
 GuiHostServices::~GuiHostServices() {
     state_.peripherals.relaunch = {};
+    state_.network.relaunchWithDaynaPort = {};
     state_.cpu.setCpuEngine = {};
     state_.cpu.getCpuEngine = {};
     state_.cpu.jitStats = {};
@@ -139,10 +142,12 @@ int GuiHostServices::processRelaunch() const {
     if (shell_.smokeEnabled()) return shell_.finishSmoke(
         !state_.relaunch.switchArguments.empty());
     if (state_.relaunch.switchArguments.empty()) return 0;
-    auto relaunchArguments = app::firmwareOverrideArguments(
-        app::machineProfileArguments(state_.relaunch.switchArguments,
-                                     state_.relaunch.targetProfile),
-        state_.relaunch.firmwareOverrides);
+    auto relaunchArguments = app::daynaPortArguments(
+        app::firmwareOverrideArguments(
+            app::machineProfileArguments(state_.relaunch.switchArguments,
+                                         state_.relaunch.targetProfile),
+            state_.relaunch.firmwareOverrides),
+        state_.relaunch.daynaPortId);
     const std::string& executable = config_.executable();
 #if defined(_WIN32)
     std::vector<const char*> arguments = {executable.c_str()};
