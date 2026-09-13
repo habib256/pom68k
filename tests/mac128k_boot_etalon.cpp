@@ -130,6 +130,55 @@ int main() {
     };
     MacFrameClock fc;
     fc.resync(cpu);
+    // Exception probe. The 64 KB ROM points vectors 2..11 at ten 2-byte
+    // `bsr.b $4001d2` stubs starting at $4001AA, and $4001D2 turns the
+    // return address back into an index: Sad Mac $0F000N is 68000 vector
+    // N+1, NOT a RAM subtest. Stepping a cycle at a time is timing-neutral
+    // by MacFrame.h's own contract (a chain of increasing runUntil targets
+    // executes exactly what one call would), so this catches the FIRST
+    // stub entry with the faulting frame still on the stack.
+    if (getenv("POM68K_MAC128K_EXC")) {
+        uint32_t ring[16] = {};
+        int ri = 0;
+        auto peek16 = [&mem](uint32_t a) {
+            return unsigned(mem.peek8(a)) << 8 | unsigned(mem.peek8(a + 1));
+        };
+        auto stepTo = [&](moira::i64 target) {
+            while (cpu.getClock() < target) {
+                cpu.runUntil(cpu.getClock() + 1);
+                const uint32_t pc = cpu.getPC();
+                if (pc >= 0x4001AA && pc < 0x4001BE) {
+                    const unsigned vec = (pc - 0x4001AA) / 2 + 2;
+                    const uint32_t sp = cpu.getA(7);
+                    std::printf("EXC: stub $%06X -> vector %u, Sad Mac $0F%04X\n",
+                                pc, vec, vec - 1);
+                    std::printf("     SP=$%06X SR=$%04X faultPC(next)=$%06X\n",
+                                sp, peek16(sp),
+                                (peek16(sp + 2) << 16) | peek16(sp + 4));
+                    for (int k = 0; k < 16; k++)
+                        std::printf("     prev[-%2d] = $%06X\n", 16 - k,
+                                    ring[(ri + k) % 16]);
+                    for (int r = 0; r < 8; r++)
+                        std::printf("     D%d=%08X A%d=%08X\n", r,
+                                    unsigned(cpu.getD(r)), r,
+                                    unsigned(cpu.getA(r)));
+                    return true;
+                }
+                ring[ri] = pc;
+                ri = (ri + 1) % 16;
+            }
+            return false;
+        };
+        for (long f = 0; f < kFrames; f++) {
+            if (stepTo(fc.frameBase + kVblankStart)) return 0;
+            mem.via().raiseCa1();
+            mem.updateIrq();
+            if (stepTo(fc.frameBase + kCyclesPerFrame)) return 0;
+            fc.frameBase += kCyclesPerFrame;
+        }
+        std::printf("EXC: no exception stub reached in %ld frames\n", kFrames);
+        return 0;
+    }
     for (long f = 0; f < kFrames; f++) {
         fc.runFrame(cpu, mem);
         if (trace && (f < 400 || f % 250 == 0)) {

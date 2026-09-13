@@ -61,6 +61,18 @@ public:
     void commandSwim(int reg);
     void setMotor(bool on) { setMotorState(on); }
     bool motorOn() const { return motorOn_; }
+    // ── 400K spindle PWM servo (Macintosh 128K/512K) ──
+    // The 400K mechanism has no speed control of its own: the board commands
+    // the spindle with a bit-density PWM carried in the ODD bytes of the
+    // sound buffer (MacAudio.h), and the 64K ROM closes the loop itself off
+    // the tachometer. It calibrates by measuring at duty indexes $80 and
+    // $100 and DIVIDING by the difference (ROM $401E96 then DIVU at
+    // $401EC0), so a spindle that ignores the PWM returns the same speed
+    // twice, the divisor is zero, and the machine dies with Sad Mac $0F0004
+    // — vector 5, zero divide — before it ever seeks. Feed one byte per scan
+    // line; the drive adopts a speed once two consecutive windows agree.
+    // MAME mac128.cpp pwm_push()/set_rpm on the OAD34V mechanism.
+    void pwmPush(uint8_t data);
     // The /READY line. Not the same thing as motorOn(): the mechanism needs
     // two index pulses to come up to speed (MAME floppy.cpp:825, :888-891),
     // so a Sony at 394 RPM answers ~0.25 s after the motor command.
@@ -279,6 +291,16 @@ private:
     int64_t spin_ = 0;                           // motor-on time, CPU cycles
     int64_t cycles_ = 0;                         // free-running tick time
     FloppySoundSink* sound_ = nullptr;
+    // PWM spindle servo. Deliberately NOT in visit(), on the same reasoning
+    // `cells_` is not: it is a reading of state that IS carried. The window
+    // refills from the guest's own sound buffer — which is RAM, and so is
+    // saved — in 100 scan lines, a quarter of one frame, and pwmRpmSeen_ is
+    // re-derived from it. pwmSpindle_ stays false until the guest actually
+    // commands a duty, so every non-PWM machine keeps the zone table below.
+    bool pwmSpindle_ = false;
+    int pwmCount1_ = 0, pwmCountTotal_ = 0;      // MAME m_pwm_count_1/_total
+    int pwmRpmSeen_ = 300, pwmRpmPrev_ = 300;    // MAME m_pwm_current_rpm[1]/[0]
+    int pwmRpm_ = 300;                           // the debounced, adopted speed
 
     // MFM write assembler (address + data field)
     int wrState_ = 0;                            // 0 idle, 1 sync, 2 addr, 3 data

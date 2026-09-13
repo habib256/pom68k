@@ -277,8 +277,53 @@ void SonyDrive::refreshStream() {
 // media in the drive; commandMfmMode() is the place that would notice.
 int SonyDrive::rpmNow() const {
     if (mfmMode_ && hd_) return 300;             // SuperDrive HD (mfd75w)
+    // A PWM-commanded spindle has no zone table of its own: the guest ROM
+    // measures THIS value through the tachometer and picks, per zone, the
+    // duty that puts the spindle where it wants it. Answering the table
+    // below instead is what makes the 64K ROM's calibration divide by zero.
+    if (pwmSpindle_) return pwmRpm_;
     static const int kRpm[5] = { 394, 429, 472, 525, 590 };
     return kRpm[track_ >> 4];
+}
+
+// MAME mac128.cpp pwm_push(). The firmware sends pulses whose width it
+// encodes as a 6-bit LFSR SEED (taps 0 and 1, insertion on bit 5): the
+// width is the run length from that seed to $20, so the byte has to be
+// de-mapped through the LFSR's inverse before it can be summed. Widths run
+// 1-40 out of 42 slots, and the firmware dithers between two adjacent
+// widths across 10 pulses, giving an internal 0-399 range over 420 slots.
+void SonyDrive::pwmPush(uint8_t data) {
+    static const uint8_t kValueToLength[64] = {
+         0,  1, 59,  2, 60, 40, 54,  3,
+        61, 32, 49, 41, 55, 19, 35,  4,
+        62, 52, 30, 33, 50, 12, 14, 42,
+        56, 16, 27, 20, 36, 23, 44,  5,
+        63, 58, 39, 53, 31, 48, 18, 34,
+        51, 29, 11, 13, 15, 26, 22, 43,
+        57, 38, 47, 17, 28, 10, 25, 21,
+        37, 46,  9, 24, 45,  8,  7,  6
+    };
+    pwmCount1_ += kValueToLength[data & 0x3F];
+    if (++pwmCountTotal_ < 100) return;
+    int index = pwmCount1_ / (pwmCountTotal_ / 10) - 11;
+    index = index < 0 ? 0 : (index > 399 ? 399 : index);
+    // Apple's documented envelope, linear between the two stated points:
+    // 9.4 % duty => 305-380 RPM (middle 342.5), 91 % => 625-780 (middle
+    // 702.5). Rounded to an integer RPM because every consumer of rpmNow()
+    // is integer cycle arithmetic and this machine's timing is a gate.
+    const double duty = index / 419.0;
+    const int rpm = int((duty - 0.094) * (702.5 - 342.5) / (0.91 - 0.094) +
+                        342.5 + 0.5);
+    // Adopt only when two consecutive windows agree, so a duty that changes
+    // mid-window never reaches the spindle (MAME's same guard).
+    if (rpm == pwmRpmSeen_ && pwmRpmSeen_ != pwmRpmPrev_) {
+        pwmRpm_ = rpm;
+        pwmSpindle_ = true;
+    }
+    pwmRpmPrev_ = pwmRpmSeen_;
+    pwmRpmSeen_ = rpm;
+    pwmCount1_ = 0;
+    pwmCountTotal_ = 0;
 }
 
 // Nominal cells per revolution: C15M / cell-divider vs the spindle RPM.

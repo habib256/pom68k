@@ -1854,8 +1854,14 @@ The 128K/512K reproducer (`tests/mac128k_boot_etalon.cpp`, built on demand,
 `POM68K_MAC128K_MODEL` (pick `mac128k` / `mac512k`),
 `POM68K_MAC128K_TRACE` (per-frame PC, overlay, track and the ROM's own
 `MemTop`/`ScrnBase`), `POM68K_MAC128K_MEMPROBE` (RAM self-check through the
-`$600000` alias) and `POM68K_MAC128K_PPM` (dump the framebuffer as a PGM —
-how the Sad Mac `$0F0004` was read off the screen).
+`$600000` alias), `POM68K_MAC128K_PPM` (dump the framebuffer as a PGM —
+how the Sad Mac `$0F0004` was read off the screen) and
+`POM68K_MAC128K_EXC` (trap the exception stubs at `$4001AA` and print the
+vector, the faulting PC and the registers — what proved `$0F0004` to be
+vector 5, a zero divide in the 400K spindle calibration, rather than the
+RAM sub-test its encoding suggests). `_EXC` exits 0 whether or not an
+exception fires: it reports, it never judges, so it must not be registered
+as a gate in that mode.
 Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
 gate against a volume its own list does not name — every "same machine,

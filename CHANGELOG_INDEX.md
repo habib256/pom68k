@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 500 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 501 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 34 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 93 |
+| [Cross-cutting](#cross-cutting) | 94 |
 
 ---
 
@@ -562,4 +562,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-10** — [AppleShare retires interrupted writes and the real Mac OS 8.1 Finder reconnects after a service outage](CHANGELOG.md#2026-09-10-afp-outage-recovery)
 - **2026-09-10 (third pass)** — [The NAT answered inside the guest's own send call, and a real MacTCP application never matched a single reply](CHANGELOG.md#2026-09-10-ether-wire-latency)
 - **2026-09-12 (eighth)** — [The backlog names its next two chantiers, absorbs twelve items that existed only in this file, and stops being addressable by section number](CHANGELOG.md#2026-09-12-todo-reorg)
+- **2026-09-13 (later)** — [The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent](CHANGELOG.md#2026-09-13-mac128k-zero-divide)
 

@@ -133,6 +133,26 @@ void MacMemory::tick(int cpuCycles) {
     swim_.tick(hasSuperDrive() ? cpuCycles * 2 : cpuCycles);
     drive_.tick(cpuCycles);
     externalDrive_.tick(cpuCycles);
+    // The video counter fetches one sound/PWM word per scan line — 370 a
+    // frame, 352 cycles apart, which is exactly kCyclesPerFrame. The even
+    // byte is the audio sample (MacAudio reads it when there IS a GUI); the
+    // ODD byte is the 400K spindle duty, and the boot depends on it, so it
+    // is fetched here where every session ticks rather than in the audio
+    // path. MAME mac128.cpp:548 pwm_push(mac_snd_buf_ptr[scanline] & 0xff).
+    if (hasPwmSpindle()) {
+        pwmPhase_ += cpuCycles;
+        while (pwmPhase_ >= 352) {
+            pwmPhase_ -= 352;
+            // VIA PA3 selects main/alt, both quoted from the top of RAM.
+            const uint32_t base = (via_.portA() & 0x08) ? (ramSize_ - 0x0300)
+                                                        : (ramSize_ - 0x5F00);
+            const uint8_t duty =
+                ram_[(base + uint32_t(pwmLine_) * 2 + 1) & (ramSize_ - 1)];
+            drive_.pwmPush(duty);
+            externalDrive_.pwmPush(duty);
+            if (++pwmLine_ >= 370) pwmLine_ = 0;
+        }
+    }
 
     if (isAdb()) {
         adbVia_.tick(cpuCycles);

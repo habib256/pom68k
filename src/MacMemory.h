@@ -80,6 +80,13 @@ public:
     bool hasScsi() const {
         return model_ != Model::Mac128 && model_ != Model::Mac512;
     }
+    // The 400K mechanism whose spindle speed the board commands by PWM, and
+    // which the 64K ROM calibrates against the tachometer. The Plus's 800K
+    // drive regulates itself, so its ROM never runs that calibration and
+    // never reads the odd sound bytes back — see SonyDrive::pwmPush.
+    bool hasPwmSpindle() const {
+        return model_ == Model::Mac128 || model_ == Model::Mac512;
+    }
     uint32_t romSize() const { return romSize_; }
     // Physical RAM, a PROFILE fact on this board rather than a constant:
     // 128 KB on the Mac 128K, 512 KB on the 512K, 4 MB on the Plus and the
@@ -282,6 +289,8 @@ private:
     Model model_ = Model::Plus;
     uint32_t romSize_ = kRomSize;
     uint32_t ramSize_ = kRamSize;
+    // Scan-line phase of the sound/PWM word fetch (hasPwmSpindle only).
+    int pwmPhase_ = 0, pwmLine_ = 0;
     Via6522 via_;
     AdbBus adb_;
     AdbVia adbVia_;

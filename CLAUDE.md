@@ -7,11 +7,8 @@ subsystem tutorials.
 
 POM68K aims to support every 68k Macintosh. Current coverage is **39 machine profiles**
 across 12 board implementations, from the Macintosh 128K to the
-Quadra 950. All but two boot to the Finder when their user-provided ROM and
-system media are available: the 128K and 512K are wired and gated for their
-hardware, but stop inside their own ROM's RAM self-test (Sad Mac `$0F0004`,
-subtest mod3) without ever reading the disk, so they do not boot yet — see
-`TODO.md` § Nouvelles machines. The compiled catalogue is
+Quadra 950, with every catalogue entry booting to the Finder when its
+user-provided ROM and system media are available. The compiled catalogue is
 `kMachineProfiles` in `src/MachineCatalog.h`; it is the authority, not this
 summary.
 

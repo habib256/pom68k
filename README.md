@@ -2,10 +2,8 @@
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
 the 68040 Quadra 950. The project currently provides **39 machine profiles on
-12 hardware platforms**, and all but two boot to the Finder with the matching
-ROM and system media. The exceptions are the 128K and 512K: their hardware is
-wired and gated, but they stop inside their own ROM's RAM self-test and do not
-reach a disk yet.
+12 hardware platforms**, and every listed profile boots to the Finder with the
+matching ROM and system media.
 
 The goal is broader than the current catalogue: **support every 68k
 Macintosh**. The compiled source of truth for present coverage is

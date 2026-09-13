@@ -97,10 +97,19 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
   `external_floppy_boot_etalon` boote la ROM Plus depuis le drive B avec le
   drive A vide. Bloqué par le seul actif : `hdv/System 4.1.dsk` est une image
   SCSI, pas une disquette 800 K.
-- [ ] **Trouver une image système 400 K amorçable** (System 1.x–3.x). Aucune
-  n'existe dans l'arbre : les quatre images de `disks35/` font 819 200 octets
-  et tout le reste est SCSI. C'est ce qui sépare le Mac 128K/512K de son
-  etalon Finder — le câblage, lui, n'est pas bloqué (§ Nouvelles machines).
+- [ ] **Décider si les deux images 400 K s'épinglent dans `assets.lock`.** La
+  recherche, elle, est close depuis le 2026-09-13 : `disks35/System 1.1.dsk` et
+  `disks35/System 2.0.dsk` font 409 600 octets, portent des blocs de boot
+  `'LK'` et sont en **MFS** (`d2d7` à l'offset 1024), non en HFS. L'arbre n'a
+  aucun parseur MFS, ce qui n'empêche pas le boot — `SonyDrive` sert des
+  secteurs et c'est la ROM invitée qui lit le système de fichiers — mais
+  interdit toute vérification hôte d'un fichier écrit par l'invité sur la
+  disquette, donc le modèle de `lcii_floppy_etalon` est hors d'atteinte ici.
+  Elles viennent du clone Infinite Mac, sont ignorées par git
+  (`.gitignore:18`) et ne sont **pas** épinglées : `disks35/` n'a aucun
+  précédent d'épinglage. La géométrie simple face, elle, est acquise et gatée
+  (`SonyDrive.cpp:188` dérive `doubleSided_` de la taille,
+  `iwm_write_test.cpp:255-257`).
 - [ ] **Confirmer sur le M4 les sections AArch64 de `STATUS.md`.** Les quatorze
   gates DaynaPort du 2026-09-12 sont tous `host-any` : la section x86_64 vient
   d'un run réel, les deux sections aarch64 ont reçu le même +14 par report
@@ -359,20 +368,25 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
 premier profil consommateur avant d'être généralisés ; une ligne catalogue se
 mérite par une cellule Finder **plus** le câblage GUI et save-state.
 
-- [ ] **Ajouter le Macintosh 128K et le 512K/512Ke.** C'est un sous-ensemble du
-  Plus, pas une brique : ROM 64 K, pas de SCSI, moins de RAM, mécanisme
-  400 K. Les deux dumps sont en main (`roms/64KB ROMs/`, 65 536 octets chacun,
-  `28BA61CE` et `28BA4E50`) et **aucun n'est épinglé dans `assets.lock`** — qui
-  n'a aucune ligne 64 K. Ce que le code demande, dans l'ordre :
-  épingler les deux identités ; étendre `MacMemory::Model`
-  (`src/MacMemory.h:58`), qui ne connaît que `Plus/SE/SEFDHD/Classic`, et sa
-  taille de ROM figée à 128 Ko (`src/MacMemory.h:42`) ; ajouter le mécanisme
-  400 K à `FloppyKind` (`src/MachineCatalog.h:24`), qui ne propose que
-  `None/Gcr800K/SuperDrive`, et décrire `scsi = false` dans
-  `storageCapabilities` (`src/MachineCatalog.h:130`) — ce sera le premier
-  profil sans SCSI de l'arbre ; enfin la ligne catalogue, le `SnapMachine`, le
-  menu Machine et la ligne de la table ROM du `README.md`. L'etalon Finder, lui,
-  attend une image 400 K amorçable (§ Bloqué).
+- [ ] **Enregistrer les deux etalons 128K/512K comme gates.** La machine, elle,
+  est faite depuis le 2026-09-13 : câblée, bootant jusqu'au Finder sur les deux
+  modèles, sans régression sur la famille compacte (26 etalons à actif requis
+  réellement exécutés). Ce qui reste est l'inscription :
+  `mac128k_boot_etalon` est encore `EXCLUDE_FROM_ALL`
+  (`cmake/Pom68kMachineGates.cmake`), donc les deux profils ne sont couverts
+  que par des gates sans actif — la matrice 39 profils et les deux routes de
+  checksum 64 K. L'enregistrer **change l'inscription des gates**, donc impose
+  de régénérer `STATUS.md` plutôt que d'y ajouter une ligne de run, et suppose
+  tranchée la question d'épinglage des deux images 400 K (§ Bloqué). Ne pas
+  enregistrer la sonde `POM68K_MAC128K_EXC` : elle sort 0 même sans exception
+  (`DEV.md` § 5).
+- [ ] **Sérialiser l'état PWM du lecteur 400 K, ou acter qu'il ne l'est pas.**
+  Il est délibérément hors de `visit()`, sur le raisonnement déjà tenu pour
+  `cells_` : un instantané restauré tourne donc à 300 tr/min pendant ≤100
+  lignes de balayage, le temps que la calibration se re-dérive des octets
+  impairs du tampon son. Borné et sans conséquence tant qu'aucun gate
+  save/restore ne porte sur ces deux profils — à traiter avant qu'un seul le
+  fasse.
 - [ ] **Ajouter les variantes Duo 210 et 250.** Exploiter les IDs déjà
   présents, introduire la sélection de profil et ajouter les lignes
   catalogue/gates (après `duo230_sleep_etalon`).
