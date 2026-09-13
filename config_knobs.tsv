@@ -153,6 +153,10 @@ POM68K_LLE_AARCH64_FULL	product	gate:savestate_040_test
 POM68K_LTOUDP	product	gate:ltoudp_test
 POM68K_MACII_020	test	owner:tests/iix_boot_etalon.cpp
 POM68K_MACII_EVENT	chantier	expiry:docs/LLE_VS_HLE.md#peripheral-event-deadline-default
+POM68K_MAC128K_MEMPROBE	test	owner:tests/mac128k_boot_etalon.cpp
+POM68K_MAC128K_MODEL	test	owner:tests/mac128k_boot_etalon.cpp
+POM68K_MAC128K_PPM	test	owner:tests/mac128k_boot_etalon.cpp
+POM68K_MAC128K_TRACE	test	owner:tests/mac128k_boot_etalon.cpp
 POM68K_MACII_MODEL	product	gate:macii_boot_etalon,iix_boot_etalon
 POM68K_MACIP_DEBUG	diagnostic	owner:src/StartupOptions.h
 POM68K_MATRIX_FRAMES	test	owner:tests/finder_boot_matrix.cpp

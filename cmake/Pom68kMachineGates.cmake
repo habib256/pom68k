@@ -602,6 +602,18 @@ set_tests_properties(sefdhd_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=sefdhd" TIMEOUT 1800)
 set_tests_properties(classic_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=classic" TIMEOUT 1800)
+# Below the Plus: 64 KB ROM, 128/512 KB RAM, no SCSI, single-sided 400K.
+# DELIBERATELY NOT REGISTERED as a gate (2026-09-13). The 64 KB ROM stops in
+# its power-on self test — Sad Mac $0F0004, the mod3 RAM sub-test — before it
+# ever steps the drive, so there is no Finder cell to claim and a registered
+# gate would be red, not green. Kept buildable as the reproducer:
+#   make -C build mac128k_boot_etalon
+#   POM68K_MAC128K_TRACE=1 ./build/mac128k_boot_etalon      # PC/globals trace
+#   POM68K_MAC128K_MEMPROBE=1 ./build/mac128k_boot_etalon   # RAM self-check
+#   POM68K_MAC128K_PPM=/tmp/s.ppm ./build/mac128k_boot_etalon
+add_executable(mac128k_boot_etalon EXCLUDE_FROM_ALL tests/mac128k_boot_etalon.cpp)
+target_link_libraries(mac128k_boot_etalon PRIVATE pom68k_core)
+
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kStorageGates.cmake)
 
 # Quadra 700 ("Spike"): the first Quadra — a full 68040 on discrete

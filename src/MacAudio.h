@@ -31,8 +31,10 @@ public:
         int volume = pa & 0x07;                     // PA2-0: 0..7
         // Sound buffers sit at ramTop-$300 (main) / ramTop-$5F00 (alt);
         // PA3 = 1 selects main (GttMFH).
-        uint32_t base = (pa & 0x08) ? (MacMemory::kRamSize - 0x0300)
-                                    : (MacMemory::kRamSize - 0x5F00);
+        // Quoted from the TOP of RAM, which is a profile fact on this board
+        // (MacMemory::ramSize): a Mac 128K buffers its sound at $1FD00.
+        uint32_t base = (pa & 0x08) ? (mem.ramSize() - 0x0300)
+                                    : (mem.ramSize() - 0x5F00);
         const uint8_t* ram = mem.ram();
         float gain = enabled ? (volume / 7.0f) : 0.0f;
         for (int i = 0; i < kSamplesPerFrame; i++) {

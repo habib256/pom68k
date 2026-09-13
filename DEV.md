@@ -92,7 +92,7 @@ ROM identity and stable save-state id live).
 
 | Platform | Reference machine | Variants in the same section | § |
 |---|---|---|---|
-| 68000 + PAL glue | **Mac Plus** | SE, SE FDHD, Classic (`MacMemory::Model`) | [2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic) |
+| 68000 + PAL glue | **Mac Plus** | 128K, 512K, SE, SE FDHD, Classic (`MacMemory::Model`) | [2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic) |
 | GLUE + NuBus | **Mac II** | IIx, IIcx, SE/30 (68030 on the same board; the SE/30 is the compact IIx) | [2.2](#22-glue--nubus--mac-ii-iix-iicx-se30) |
 | V8 gate array | **Mac LC II** | LC, Classic II (Eagle), Color Classic (Spice), Mac TV (Tinker Bell) | [2.3](#23-v8-gate-array--mac-lc-ii-lc-classic-ii-color-classic-mac-tv) |
 | RBV (RAM-based video) | **Mac IIsi** | IIci (PIC ADB modem + discrete RTC) | [2.4](#24-rbv-ram-based-video--mac-iisi-iici) |
@@ -244,24 +244,39 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 
 ### 2.1 68000 + PAL glue — Mac Plus (SE, SE FDHD, Classic)
 
-`MacMemory` (`Model {Plus, SE, SEFDHD, Classic}`) + `Cpu68k`. **Cycle-exact**
-(M0-M7). The compacts are the same map with a bigger ROM, the SE-style
-overlay clear ([§1.2](#12-family-wide-invariants)) and **ADB on the
+`MacMemory` (`Model {Plus, SE, SEFDHD, Classic, Mac128, Mac512}`) + `Cpu68k`.
+**Cycle-exact** (M0-M7). The SE family is the same map with a bigger ROM, the
+SE-style overlay clear ([§1.2](#12-family-wide-invariants)) and **ADB on the
 PIC1654S firmware LLE** (PB4/PB5 = ST) in place of the M0110 — see
 [§3.6](#36-input-adb--pic1654s-transceiver-lle). `setModel()` exists because
 `main()` builds the machine before it has read the ROM, and the compacts are
-told apart by its checksum. Gates: `rom_boot_etalon`, `disk_boot_etalon`,
-`system_boot_etalon`, `scsi_boot_etalon`, `se_boot_etalon`,
-`sefdhd_boot_etalon`, `classic_boot_etalon`, and the three explicit
+told apart by its checksum.
+
+The **128K and 512K** go the other way: the same map with LESS of it — a
+64 KB ROM, 128 KB / 512 KB of soldered RAM, the Plus's M0110 and quadrature
+mouse, the single-sided 400K mechanism, and **no SCSI bus** (`hasScsi()`;
+they are the tree's only `scsi = false` profiles). RAM size is therefore a
+profile fact rather than a constant: `ramSize()` drives the RAM mirror mask
+and the top-of-RAM screen and sound buffers alike.
+
+Gates: `rom_boot_etalon`, `disk_boot_etalon`, `system_boot_etalon`,
+`scsi_boot_etalon`, `se_boot_etalon`, `sefdhd_boot_etalon`,
+`classic_boot_etalon`, and the three explicit
 `{se,sefdhd,classic}_scsi_boot_etalon` cells.
+
+**The 128K and 512K have no boot gate yet.** Their board is wired and their
+asset-free facts are held by `storage_profile_test`, but the 64 KB ROM stops
+in its power-on self test — Sad Mac `$0F0004`, the mod3 RAM sub-test — before
+it steps the drive. `tests/mac128k_boot_etalon.cpp` is built on demand
+(`EXCLUDE_FROM_ALL`) and carries the reproducer and its probes.
 
 #### Address map (24-bit)
 
 | Range | Device | Notes |
 |---|---|---|
 | `$000000-$3FFFFF` | RAM | mirrors modulo RAM size (MAME `offset & ram_mask`) |
-| `$400000-$4FFFFF` | ROM 128 KB | mirrored only within `$400000-$41FFFF` (A0 undecoded); above `$400000+romSize` = address-dependent open bus (`MacMemory.cpp:339-348`, § 3.3bis — the SCSI probe depends on it). pce mirrors to `$57FFFF`; this map deliberately does not |
-| `$580000-$5FFFFF` | SCSI NCR 5380 | reg = A4-A6 (×16); A0: 0=read 1=write; A9=DACK (pseudo-DMA `$580201`/`$580260`) |
+| `$400000-$4FFFFF` | ROM 128 KB (64 KB on the 128K/512K, 256/512 KB above) | mirrored only within `$400000+romSize` (A0 undecoded); above that = address-dependent open bus (`MacMemory.cpp`, § 3.3bis — the SCSI probe depends on it). pce mirrors to `$57FFFF`; this map deliberately does not |
+| `$580000-$5FFFFF` | SCSI NCR 5380 | reg = A4-A6 (×16); A0: 0=read 1=write; A9=DACK (pseudo-DMA `$580201`/`$580260`). **Absent on the 128K/512K** — `hasScsi()` leaves the quarter as open bus |
 | `$600000-$7FFFFF` | RAM overlay window | RAM lives here while overlay on |
 | `$800000-$9FFFFF` | SCC **read** (even, D8-D15) | `sccRBase=$9FFFF8`; A1=channel (0=B), A2=ctl/data; **odd read resets the SCC** (Mini vMac) |
 | `$A00000-$BFFFFF` | SCC **write** (odd, D0-D7) | `sccWBase=$BFFFF9` |
@@ -279,7 +294,8 @@ later auto-clear on first `$400000` access — the Plus does not.**
 #### Video
 
 - Main buffer **ramTop−$5900**, alt **ramTop−$D900** (main−$8000). 4 MB:
-  `$3FA700`/`$3F2700`. `ScrnBase` global = `$0824`.
+  `$3FA700`/`$3F2700`; 128 KB: `$1A700`; 512 KB: `$7A700`. `ScrnBase`
+  global = `$0824`.
 - 512×342×1 bpp = 21 888 bytes, 64 bytes/row contiguous; **MSB = leftmost,
   1 = black**. VIA **PA6: 1 = main, 0 = alternate**.
 
@@ -1833,6 +1849,13 @@ in `StartupOptions.h:212-214`, and `NEOST_EXC_DIAG` (Moira exception diag,
 next person greps once instead of twice: `POM68K_AIO_EGRET`,
 `POM68K_IICX`, `POM68K_MACII_020`, `POM68K_COMPACT_MODEL`,
 `POM68K_Q630_ROM`, `POM68K_BOXID`, `POM68K_SENSE`, `POM68K_DIAG`.
+The 128K/512K reproducer (`tests/mac128k_boot_etalon.cpp`, built on demand,
+[§2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic)) adds
+`POM68K_MAC128K_MODEL` (pick `mac128k` / `mac512k`),
+`POM68K_MAC128K_TRACE` (per-frame PC, overlay, track and the ROM's own
+`MemTop`/`ScrnBase`), `POM68K_MAC128K_MEMPROBE` (RAM self-check through the
+`$600000` alias) and `POM68K_MAC128K_PPM` (dump the framebuffer as a PGM —
+how the Sad Mac `$0F0004` was read off the screen).
 Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
 gate against a volume its own list does not name — every "same machine,
@@ -2228,7 +2251,7 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-`assets.lock` (repo root, 40 rows) pins the qualified reference set: the 24
+`assets.lock` (repo root, 42 rows) pins the qualified reference set: the 26
 machine ROMs, 2 declaration ROMs, PG&E firmware and 9 boot volumes explicitly
 named by green-gate `ASSET` preambles, plus the 4 firmwares accepted by strict
 product mode. Each row records role, label, size, SHA-256, path and qualified
@@ -2240,7 +2263,7 @@ present entry (size + SHA-256; `--strict` also refuses missing files). Roles are
 structural: firmware and ROMs stay below `roms/`, while a `reference-disk` row
 is rejected unless its path is below `hdv/ref/`. A disk fixture placed there
 is immutable by construction. The verifier also cross-checks profile slugs
-against `MachineCatalog.h` and requires its 37 profiles to be covered exactly
+against `MachineCatalog.h` and requires its 39 profiles to be covered exactly
 once by `machine-rom` rows. Every normal
 `hdv/<name>` lookup now prefers that twin (`FixtureStore.h:23-39`) in both the
 GUI (`GuiHostServices.h:48-51`) and gate search (`AssetFingerprint.h:129-138`). A

@@ -38,6 +38,8 @@ public:
     // read it back from the machine rather than from a global.
     pom68k::lle::Registry& lleRegistry() const { return *lle_; }
 
+    // Ceiling of the family, not the size of every member: ramSize() and
+    // romSize() are the live values (the 128K/512K are smaller on both).
     static constexpr uint32_t kRamSize = 0x400000;   // 4 MB (Mac Plus max)
     static constexpr uint32_t kRomSize = 0x20000;    // 128 KB (Plus)
     static constexpr int64_t  kCpuHz   = 7833600;    // 7.8336 MHz
@@ -55,7 +57,13 @@ public:
     //  * no mouse quadrature on PB4/PB5 (the mouse is an ADB device);
     //  * SWIM + SuperDrive on the SE FDHD and Classic; Plus and original SE
     //    keep the IWM-compatible personality and 800K-only mechanism.
-    enum class Model { Plus, SE, SEFDHD, Classic };
+    //
+    // The two machines BELOW the Plus are the same board with less of it:
+    // a 64 KB ROM, 128 KB / 512 KB of RAM, the M0110 keyboard and quadrature
+    // mouse the Plus uses, the single-sided 400K mechanism — and no SCSI at
+    // all, which is why `hasScsi()` exists (mac128.cpp macplus_map adds the
+    // 5380 that mac128_map does not have).
+    enum class Model { Plus, SE, SEFDHD, Classic, Mac128, Mac512 };
 
     explicit MacMemory(
         const pom68k::CoreConfig& coreConfig, Model model = Model::Plus);
@@ -63,8 +71,23 @@ public:
     // read the ROM, and the compact models are told apart by its checksum.
     void setModel(Model m);
     Model model() const { return model_; }
-    bool isAdb() const { return model_ != Model::Plus; }
+    bool isAdb() const {
+        return model_ == Model::SE || model_ == Model::SEFDHD ||
+               model_ == Model::Classic;
+    }
+    // The SCSI bus arrived with the Plus. On the 128K/512K nothing decodes
+    // $580000-$5FFFFF and the quarter answers address-dependent open bus.
+    bool hasScsi() const {
+        return model_ != Model::Mac128 && model_ != Model::Mac512;
+    }
     uint32_t romSize() const { return romSize_; }
+    // Physical RAM, a PROFILE fact on this board rather than a constant:
+    // 128 KB on the Mac 128K, 512 KB on the 512K, 4 MB on the Plus and the
+    // ADB compacts. The map mirrors it through $3FFFFF (MAME `offset &
+    // ram_mask`), so every RAM index below masks with ramSize_-1 — and the
+    // screen and sound buffers, which are quoted from the TOP of RAM, move
+    // with it.
+    uint32_t ramSize() const { return ramSize_; }
     AdbVia& adbVia() { return adbVia_; }
     AdbBus& adb() { return adb_; }
     bool adbLleActive() const { return adbVia_.lle(); }
@@ -108,8 +131,8 @@ public:
 
     // Screen buffer bases, selected by VIA PA6 (1 = main, 0 = alternate).
     // GttMFH; MAME MAC_MAIN_SCREEN_BUF_OFFSET; Mini vMac kMain_Offset.
-    uint32_t mainScreenBase() const { return kRamSize - 0x5900; }
-    uint32_t altScreenBase()  const { return kRamSize - 0xD900; }
+    uint32_t mainScreenBase() const { return ramSize_ - 0x5900; }
+    uint32_t altScreenBase()  const { return ramSize_ - 0xD900; }
     uint32_t screenBase() const {
         return (via_.portA() & 0x40) ? mainScreenBase() : altScreenBase();
     }
@@ -258,6 +281,7 @@ private:
     std::vector<uint8_t> ram_, rom_;
     Model model_ = Model::Plus;
     uint32_t romSize_ = kRomSize;
+    uint32_t ramSize_ = kRamSize;
     Via6522 via_;
     AdbBus adb_;
     AdbVia adbVia_;
