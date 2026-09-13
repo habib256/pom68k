@@ -60,6 +60,7 @@ void EtherLink::sendToGuest(const std::array<std::uint8_t, 6>& dst,
 // Straight to the card when the owner set no latency (a unit test with no
 // clock); otherwise onto the wire, to be released by tick().
 void EtherLink::deliver(std::vector<std::uint8_t>&& f) {
+    if (!uplink_) return;                 // no cable, nothing reaches the card
     if (!latency_) {
         nic_.receiveFrame(f.data(), f.size());
         return;
@@ -72,12 +73,18 @@ void EtherLink::tick(std::int64_t now) {
     now_ = now;
     while (!wire_.empty() && wire_.front().first <= now_) {
         const std::vector<std::uint8_t>& f = wire_.front().second;
-        nic_.receiveFrame(f.data(), f.size());
+        // A frame already on the wire when the cable came out is lost with
+        // it. Dropped HERE, on the machine thread, rather than by clearing
+        // the queue from setUplink(): the GUI thread must not touch a deque
+        // the machine thread may be inside (AtalkHub.h, thread contract).
+        if (uplink_) nic_.receiveFrame(f.data(), f.size());
         wire_.pop_front();
     }
 }
 
 void EtherLink::onGuestFrame(const std::uint8_t* d, std::size_t n) {
+    if (!uplink_) return;                 // the card still accepted the
+                                          // WRITE(6); the wire carries nothing
     if (!d || n < kEthHdr) return;
     // Learn the guest's MAC from its source address, never from the
     // destination: a broadcast frame's destination is FF:FF:FF:FF:FF:FF and

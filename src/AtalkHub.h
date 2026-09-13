@@ -51,6 +51,12 @@ public:
         // Off by default: it changes which wire AppleTalk lives on, and
         // every LocalTalk gate is calibrated on the SCC (EtherTalkLink.h).
         bool ethertalk = false;
+        // The DaynaPort's CABLE. Plugged by default, and unplugging it is
+        // the only honest host-side switch this card has: the target stays
+        // on the SCSI bus (`present()` stays true, the ROM's boot-time probe
+        // is not re-run, DiskBays.h) and its ENABLE INTERFACE bit stays the
+        // guest driver's (DaynaPort.h). Only the uplink stops.
+        bool ethernetCable = true;
         bool afp = true;
         bool pap = true;
         bool macip = true;
@@ -125,6 +131,17 @@ public:
         // compiles exactly as before, and giving one the card is a member
         // plus an accessor — all twelve carry it since 2026-09-12.
         if constexpr (requires { mem.daynaPort(); }) {
+            // Sampled on the machine thread, like the SCC's wire meters.
+            // Set whether or not the card is on the bus, so "no card" is a
+            // reported answer rather than an absent one.
+            dayna_ = [&mem] {
+                auto& card = mem.daynaPort();
+                return DaynaMeter{ card.present(), card.enabled(),
+                                   card.framesToGuest, card.framesFromGuest,
+                                   card.framesDropped, card.bytesToGuest,
+                                   card.bytesFromGuest, card.commands,
+                                   card.queued() };
+            };
             if (mem.daynaPort().present()) {
                 ether_ = std::make_unique<EtherLink>(mem.daynaPort(), macip_);
                 // One millisecond of the machine's own clock between the
@@ -151,6 +168,9 @@ public:
                     };
             }
         }
+        // One sample now: the window must not read "no card" for the frames
+        // between attachment and the first tick().
+        if (dayna_) etherMeter_ = dayna_();
         applyLocked();
         attached_ = true;
     }
@@ -177,6 +197,7 @@ public:
         // machine-thread entry point. snapshot() (GUI thread) then serves
         // the copy below under mu_, instead of reaching into the SCC mid-pop.
         if (wire_) wireMeter_ = wire_();
+        if (dayna_) etherMeter_ = dayna_();
         stack_.tick(nowCycles, cfg_.stack || cfg_.ethertalk);
         macip_.tick(nowCycles);
         // The Ethernet segment carries its own latency and must advance
@@ -196,6 +217,20 @@ public:
     // ── GUI ──
     struct WireMeter { size_t backlog = 0, backlogMax = 0; int64_t holdMax = 0;
                        long drops = 0; };
+    // What the DaynaPort reports about itself, for the AppleTalk window's
+    // Ethernet line. Same rule as WireMeter above: the card's counters and
+    // its ENABLE bit are plain members the SCSI code mutates unlocked, so
+    // they are sampled in tick() — machine thread — and snapshot() serves
+    // the copy. `enabled` is the GUEST driver's bit and is displayed READ
+    // ONLY: writing it from the host would forge guest state (DaynaPort.h).
+    struct DaynaMeter {
+        bool present = false;            // on the bus at all
+        bool enabled = false;            // guest's ENABLE INTERFACE ($0E)
+        long framesToGuest = 0, framesFromGuest = 0, framesDropped = 0;
+        long bytesToGuest = 0, bytesFromGuest = 0;
+        long commands = 0;
+        size_t queued = 0;               // frames waiting in the Rx ring
+    };
     struct Snapshot {
         bool attached = false;
         AtalkStack::Stats net;
@@ -208,6 +243,7 @@ public:
         MacIpGateway::Status macip;
         Config cfg;
         bool cableUp = false;
+        DaynaMeter ether;               // machine-thread sample, see tick()
     };
     Snapshot snapshot() {
         std::lock_guard<std::mutex> l(mu_);
@@ -222,6 +258,7 @@ public:
         s.cfg = cfg_;
         s.cableUp = cable_ && cable_->active();
         s.wire = wireMeter_;                 // machine-thread sample, see tick()
+        s.ether = etherMeter_;               // idem, the DaynaPort's own line
         if (cpuHz_) s.wireHoldMaxMs = long(s.wire.holdMax * 1000 / cpuHz_);
         return s;
     }
@@ -245,6 +282,7 @@ public:
         else if (key == "macip") cfg_.macip = on;
         else if (key == "stack") cfg_.stack = on;
         else if (key == "ethertalk") cfg_.ethertalk = on;
+        else if (key == "ethernet") cfg_.ethernetCable = on;
         if (attached_) applyLocked();
     }
 
@@ -267,6 +305,11 @@ private:
         afp_.setEnabled(node && cfg_.afp);
         pap_.setEnabled(node && cfg_.pap);
         macip_.setEnabled(node && cfg_.macip);
+        // The card's uplink, both protocol families on the one wire. These
+        // objects are the HUB's own (unique_ptr members), so driving them
+        // from here keeps the GUI thread out of the machine entirely.
+        if (ether_) ether_->setUplink(cfg_.ethernetCable);
+        if (etalk_) etalk_->setUplink(cfg_.ethernetCable);
     }
 
     std::mutex mu_;
@@ -281,6 +324,8 @@ private:
     std::function<void(const uint8_t*, size_t)> inject_;
     std::function<WireMeter()> wire_;
     WireMeter wireMeter_;            // last machine-thread sample (mu_-guarded)
+    std::function<DaynaMeter()> dayna_;
+    DaynaMeter etherMeter_;          // idem, for the card
     int64_t cpuHz_ = 0;
     std::vector<std::vector<uint8_t>> pending_;   // frames awaiting Rx re-arm
     Config cfg_;

@@ -50,6 +50,51 @@ void statusDot(bool ok, const char* label) {
     ImGui::TextUnformatted(label);
 }
 
+// The DaynaPort SCSI/Link's own line. Everything displayed here is the
+// machine-thread sample the hub took in tick() (AtalkHub::DaynaMeter): no GUI
+// path dereferences the card. Two things are deliberately NOT offered:
+//   • the guest's ENABLE INTERFACE bit is shown, never written — it belongs
+//     to the guest's driver and travels in save states (DaynaPort.h);
+//   • presence and SCSI ID are not editable — a Mac probes its SCSI bus once,
+//     at boot (DiskBays.h), so a live "remove the card" button would be a lie
+//     in the UI, the same reason the Périphériques window stages and relaunches.
+// What the host really owns is the CABLE, below.
+void drawEthernetSection(GuiNetworkState& state,
+                         const AtalkHub::Snapshot& snapshot) {
+    const AtalkHub::DaynaMeter& card = snapshot.ether;
+    ImGui::SeparatorText("Ethernet (carte DaynaPort SCSI/Link)");
+    if (!card.present) {
+        ImGui::TextDisabled(
+            "Aucune carte sur le bus SCSI (POM68K_DAYNAPORT=<id> au lancement).");
+        return;
+    }
+    char line[96];
+    if (state.ethernetScsiId >= 0)
+        std::snprintf(line, sizeof line, "Carte présente, ID SCSI %d",
+                      state.ethernetScsiId);
+    else
+        std::strcpy(line, "Carte présente sur le bus SCSI");
+    statusDot(true, line);
+    statusDot(card.enabled,
+              card.enabled ? "Pilote invité : interface activée"
+                           : "Pilote invité : interface désactivée");
+    bool cable = snapshot.cfg.ethernetCable;
+    if (ImGui::Checkbox("Câble réseau branché", &cable))
+        state.atalk.setService("ethernet", cable);
+    ImGui::TextDisabled(
+        "Débranché, la carte reste sur le bus et ne porte plus rien.");
+    ImGui::Text("Invité → réseau : %ld trames (%ld o)   ·   réseau → invité : "
+                "%ld trames (%ld o)",
+                card.framesFromGuest, card.bytesFromGuest,
+                card.framesToGuest, card.bytesToGuest);
+    ImGui::Text("Commandes SCSI servies : %ld   ·   en attente de lecture : %zu",
+                card.commands, card.queued);
+    if (card.framesDropped)
+        ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.35f, 1),
+                           "Trames perdues (anneau plein) : %ld",
+                           card.framesDropped);
+}
+
 void drawAppleTalkWindow(GuiNetworkState& state) {
     if (!state.showWindow) return;
     const AtalkHub::Snapshot snapshot = state.atalk.snapshot();
@@ -62,6 +107,9 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
     if (!snapshot.attached || !state.appleTalkEnabled) {
         ImGui::TextUnformatted(
             "Pile AppleTalk interne désactivée (POM68K_APPLETALK=0).");
+        // The card is on the SCSI bus regardless of AppleTalk, and carries
+        // IPv4 through the NAT without it (DaynaPortBus.h).
+        if (snapshot.attached) drawEthernetSection(state, snapshot);
         ImGui::End();
         return;
     }
@@ -176,6 +224,8 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
                 snapshot.macip.ipFromGuest, snapshot.macip.ipToGuest);
     ImGui::TextDisabled("HTTP uniquement (TLS 2026 hors d'atteinte) — "
                         "frogfind.com, theoldnet.com");
+
+    drawEthernetSection(state, snapshot);
     ImGui::End();
 }
 
@@ -363,10 +413,14 @@ void GuiShell::drawMachineMenuImpl(
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Réseau")) {
-        ImGui::MenuItem("AppleTalk...", nullptr, &state_.network.showWindow,
-                        state_.network.appleTalkEnabled);
-        if (!state_.network.appleTalkEnabled)
-            ImGui::TextDisabled("(POM68K_APPLETALK=0)");
+        // Reachable for the card alone: with POM68K_APPLETALK=0 the window
+        // still owns the DaynaPort's status line and its cable.
+        const bool network = state_.network.appleTalkEnabled ||
+                             state_.network.ethernetEnabled;
+        ImGui::MenuItem("AppleTalk / Ethernet...", nullptr,
+                        &state_.network.showWindow, network);
+        if (!network)
+            ImGui::TextDisabled("(POM68K_APPLETALK=0, aucune carte réseau)");
         ImGui::EndMenu();
     }
     peripheralMenuItem();

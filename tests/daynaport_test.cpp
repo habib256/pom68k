@@ -430,6 +430,51 @@ int main() {
             CHECK(state.macip.registered == appleTalk && state.afp.enabled == appleTalk,
                   "Ethernet does not secretly enable LocalTalk services");
         }
+
+        // ── the cable ──────────────────────────────────────────────────
+        // Unplugging the uplink is NOT removing the target: the card stays
+        // on the bus, the guest driver keeps its own ENABLE bit, and nothing
+        // crosses in either direction. Plugging it back restores the very
+        // same round trip — proven both ways, since a toggle that only ever
+        // breaks things would pass a one-directional test.
+        auto ping = [&] {
+            std::vector<uint8_t> echo{8, 0, 0, 0, 0, 7, 0, 2, 'C', 'A', 'B'};
+            const auto sum = csum16(echo.data(), echo.size());
+            echo[2] = uint8_t(sum >> 8); echo[3] = uint8_t(sum);
+            const auto frame = ethFrame(link.gatewayMac(), kGuestMac, 0x0800,
+                                        ipPkt(kGuest, kGw, 1, echo));
+            mem.card.sendFrame(frame.data(), frame.size());
+            hub.tick(now += 1000);
+            return readOne(mem.card);
+        };
+        hub.setService("ethernet", false);
+        CHECK(ping().data.size() <= 6,
+              "cable unplugged: the guest's frame brings nothing back");
+        CHECK(mem.card.present(),
+              "…the card is still a target on the SCSI bus");
+        CHECK(mem.card.enabled(),
+              "…and the guest driver's ENABLE bit is untouched by the host");
+        const long servedWhileOut = mem.card.commands;
+        hub.setService("ethernet", true);
+        const auto replugged = ping();
+        CHECK(replugged.ok && replugged.data.size() >= 45 &&
+              replugged.data[34] == 0,
+              "cable plugged back: the same echo travels again");
+        CHECK(mem.card.commands > servedWhileOut,
+              "the card answered SCSI commands throughout, plugged or not");
+
+        // The GUI's Ethernet line reads the card through this meter and
+        // nothing else — no GUI path dereferences the machine (AtalkHub.h).
+        hub.tick(now += 1000);
+        const AtalkHub::DaynaMeter meter = hub.snapshot().ether;
+        CHECK(meter.present && meter.enabled,
+              "the hub's card meter reports a present, guest-enabled card");
+        CHECK(meter.commands == mem.card.commands &&
+              meter.framesToGuest == mem.card.framesToGuest &&
+              meter.framesFromGuest == mem.card.framesFromGuest &&
+              meter.queued == mem.card.queued(),
+              "…and serves the card's own counters, sampled on the machine thread");
+
         CHECK(hub.snapshot().macip.leases == 1, "Ethernet retains its learned address");
         const auto framesBefore = hub.snapshot().net.framesOut;
         hub.tick(now = 3601000000LL);

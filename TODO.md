@@ -206,8 +206,20 @@ consommateur observé.
 
 - [ ] **Rendre la configuration réseau éditable dans le GUI.** Partage,
   serveur, imprimante, subnet/DNS et révélation du spool.
-- [ ] **Ajouter le contrôle DaynaPort au GUI.** Attacher/détacher et choisir
-  l'ID SCSI sans variable d'environnement. La fonction, elle, est finie : la
+- [ ] **Finir le contrôle DaynaPort au GUI : présence et ID SCSI.** La ligne
+  d'état (S3) et la bascule « câble » (S4) sont livrées le 2026-09-13 ; ce qui
+  reste est de choisir la présence et l'ID **sans variable d'environnement**,
+  en stagé + relaunch — le Mac ne sonde le bus qu'au boot. Deux dettes de
+  preuve ouvertes par cette livraison : aucun invité réel n'a traversé un
+  débranchement (`q605_dayna_driver_etalon`, à actif, n'a pas tourné), et la
+  fenêtre n'a jamais été **rendue** — elle compile et lie, sa mise en page
+  n'est pas vérifiée à l'œil.
+- [ ] **Fermer la course `uplink_` / `cfg_.ethertalk`, ou l'acter.** Écrites
+  côté GUI sous `mu_`, lues côté machine sans verrou : des `bool` nus, bénins
+  en pratique, formellement une course. `cfg_.ethertalk` la porte déjà dans le
+  démultiplexeur `sendFrame` ; `uplink_` est de la même forme. Un `atomic` ou
+  un échantillonnage dans `tick()` la ferme ; ne rien faire est défendable,
+  mais alors il faut l'écrire ici plutôt que de la redécouvrir. La fonction, elle, est finie : la
   carte tient sur les douze bus depuis le 2026-09-12 (un gate par plateforme
   prouve que l'invité l'a trouvée) et voyage en save state format v15.
   **Tranché le 2026-09-13** : « détacher » veut dire *débrancher le câble* — la
