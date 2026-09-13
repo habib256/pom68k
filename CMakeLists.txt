@@ -461,7 +461,7 @@ target_compile_definitions(pom68k_core PUBLIC ${POM68K_JIT_DEFS})
 add_library(pom68k_app STATIC
     src/ProcessEnvironment.cpp
     src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp src/RuntimeConfigSerial.cpp
-    src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp
+    src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp src/RuntimeConfigRelaunch.cpp
     src/MachineFactory.cpp src/MachineSession.cpp)
 target_include_directories(pom68k_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # ─── GUI executable (Dear ImGui, fetched by setup_imgui.sh) ──────────────
@@ -491,7 +491,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/PlatformDuo.cpp
         src/miniaudio_impl.cpp
         src/FloppySound.cpp src/DiskBays.cpp src/PeripheralWindow.cpp
-        src/DockLayout.cpp ${IMGUI_SOURCES})
+        src/NetworkWindow.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core pom68k_app)
     # Version stamp for `POM68K --version` (release smoke gates). Single

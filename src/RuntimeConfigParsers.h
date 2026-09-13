@@ -28,4 +28,9 @@ MachineSelectionConfig parseMachineSelectionStartup(
 void applyMachineProfile(MachineSelectionConfig& selection, CpuConfig& cpu,
                          pom68k::CoreConfig& core, SnapMachine profile);
 
+// POM68K_DAYNAPORT and --daynaport= share this reading: empty, absent or a
+// leading '0' = no card; 2-6 taken literally; anything else (1, out of
+// range, non-numeric) = the default ID 3. Gate: daynaport_test.
+std::optional<int> decodeDaynaPortId(std::optional<std::string_view> value);
+
 } // namespace pom68k::app::detail

@@ -14,8 +14,11 @@
 // changes what the ROM's bus probe finds, and every boot etalon is calibrated
 // against a bus with only disks on it. POM68K_DAYNAPORT=<id> puts it at that
 // ID (=1 means "pick the default", ID 3 — where MAME parks the CD-ROM, so
-// choose another if a disc is mounted; decoded in RuntimeConfigCore.cpp into
-// `CoreBusConfig::daynaPortId`). The card is on the bus regardless of
+// choose another if a disc is mounted), and the relaunch argument
+// `--daynaport=<id>` overrides the variable — that is how the AppleTalk
+// window's selector reaches the next boot (`0` = no card). One decoder for
+// both, `decodeDaynaPortId` in RuntimeConfigCore.cpp, into
+// `CoreBusConfig::daynaPortId`. The card is on the bus regardless of
 // AppleTalk; what it is WIRED to is the in-process NAT in AtalkHub. With
 // POM68K_APPLETALK=0 the guest still sees the card and it carries nothing — a
 // cable-unplugged state, not a missing device.
@@ -41,6 +44,9 @@ namespace pom68k {
 template <class Bus>
 void attachDaynaPort(DaynaPort& card, Bus& scsi, const std::optional<int>& id) {
     if (!id) return;
+    if (scsi.target(*id))
+        std::fprintf(stderr, "DaynaPort SCSI/Link: SCSI ID %d already held a "
+                     "target; the card replaces it (choose another ID)\n", *id);
     card.attach();
     scsi.attach(&card, *id);
     std::fprintf(stderr, "DaynaPort SCSI/Link at SCSI ID %d (guest needs the "

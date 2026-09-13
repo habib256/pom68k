@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 503 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 504 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 77 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 78 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
@@ -277,6 +277,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-12 (later)** — [Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it](CHANGELOG.md#2026-09-12-floppy-correction)
 - **2026-09-12 (third)** — [The DaynaPort travels in save states: format v15, and what deliberately does not travel](CHANGELOG.md#2026-09-12-dayna-savestate)
 - **2026-09-13** — [Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel](CHANGELOG.md#2026-09-13-dayna-stale-comments)
+- **2026-09-13 (fifth)** — [The DaynaPort card is chosen in the window, not the environment: staged, relaunched as `--daynaport=`, and its knob finally has the gate it cited](CHANGELOG.md#2026-09-13-dayna-staged-card)
 - **2026-09-13 (fourth)** — [The DaynaPort gets a cable you can unplug, and counters the GUI finally reads](CHANGELOG.md#2026-09-13-dayna-cable)
 
 ## Video — decoders, the raster beam, DAFB

@@ -28,6 +28,9 @@ struct GuiNetworkState {
     bool appleTalkEnabled = true;
     bool ethernetEnabled = false;       // DaynaPort uplink, independent of LocalTalk
     int ethernetScsiId = -1;            // where the card sits; -1 = no card
+    std::uint8_t scsiOccupied = 0;      // bit n: a disk (not the card) holds SCSI ID n
+    // Staged + relaunch, the card being probed at boot only: nullopt = no card.
+    std::function<void(std::optional<int>)> relaunchWithDaynaPort;
     bool appleTalkWasSpecified = false;
     bool ltoUdpEnabled = false;
     int appleTalkWireBoost = 8;
@@ -49,7 +52,20 @@ struct GuiRelaunchState {
     std::vector<std::string> launchArguments;
     std::optional<pom68k::SnapMachine> targetProfile;
     std::vector<pom68k::FirmwareOverride> firmwareOverrides;
+    // The card the relaunched machine gets: the session's own unless the
+    // AppleTalk window staged another. Always serialized (`--daynaport=`),
+    // so a relaunch reads the same whether the card came from the
+    // environment, the command line or the window.
+    std::optional<int> daynaPortId;
     bool showWindow = false;
+
+    // Relaunch on the session's own command line: the machine comes back
+    // identical apart from what the caller staged just before.
+    void stageOwnCommandLine() {
+        switchArguments = launchArguments;
+        if (switchArguments.empty()) switchArguments = {std::string()};
+        showWindow = true;
+    }
 };
 
 struct GuiCpuPanelState {

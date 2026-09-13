@@ -3,6 +3,7 @@
 #include "RuntimeConfigParsers.h"
 
 #include <cstdlib>
+#include <string>
 
 namespace pom68k::app::detail {
 namespace {
@@ -89,12 +90,8 @@ pom68k::CoreConfig parseCoreStartup(
         values.boolean(startup_option::Q605EventScsi, true);
     options.bus.q605MachineId = values.hexadecimal(startup_option::Q605Id);
     options.bus.q630MachineId = values.hexadecimal(startup_option::Q630Id);
-    if (const auto dayna = values.text(startup_option::DaynaPort);
-        dayna && !dayna->empty() && (*dayna)[0] != '0') {
-        int id = std::atoi(dayna->c_str());
-        if (id <= 1 || id > 6) id = 3;
-        options.bus.daynaPortId = id;
-    }
+    options.bus.daynaPortId =
+        decodeDaynaPortId(values.text(startup_option::DaynaPort));
     options.bus.v8IoHoleTraceLimit =
         values.traceLimit(startup_option::V8IoHole, 200);
     if (const auto hole = values.hexadecimal(startup_option::V8HoleValue))
@@ -170,6 +167,12 @@ pom68k::CoreConfig parseCoreStartup(
     options.diagnostics.macIpTrace = values.present(startup_option::MacIpDebug);
     options.diagnostics.peripheralStats = values.present(startup_option::PeripheralStats);
     return options;
+}
+
+std::optional<int> decodeDaynaPortId(std::optional<std::string_view> value) {
+    if (!value || value->empty() || (*value)[0] == '0') return std::nullopt;
+    const int id = std::atoi(std::string(*value).c_str());
+    return (id >= 2 && id <= 6) ? id : 3;
 }
 
 } // namespace pom68k::app::detail
