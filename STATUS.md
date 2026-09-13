@@ -37,27 +37,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-276 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+278 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 95 |
 | assets | optional | 15 |
-| assets | required | 166 |
+| assets | required | 168 |
 | host | a64 | 4 |
-| host | any | 266 |
+| host | any | 268 |
 | host | native | 6 |
 | scope | component | 97 |
 | scope | engine | 21 |
-| scope | profile | 155 |
+| scope | profile | 157 |
 | scope | repository | 3 |
 | tier | daily | 95 |
-| tier | full | 169 |
+| tier | full | 171 |
 | tier | platform | 12 |
-| slots_src | assumed | 160 |
+| slots_src | assumed | 162 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 503 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 505 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
@@ -171,3 +171,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 13 11:34 +04 | x86_64 | default | 28 | 26 | 1 | 1 | compact-family blast radius on real ROMs after the PWM fix: 26 executed, 1 soft-skipped (lcii_floppy144_etalon, no 1.44 MB image), 1 failed (lcii_floppy_etalon, red since 2026-09-12 with the same signature and structurally unreachable from this change: V8Memory has neither pwmPush nor hasPwmSpindle); 312 s, ctest -j8 |
 | Sep 13 12:47 +04 | x86_64 | default | 94 | 94 | 0 | 0 | asset-none after registering mac128k_boot_etalon and mac512k_boot_etalon: registry regenerated to 279 here / 283 union, both new gates execute in 7.40 s apiece |
 | Sep 13 15:30 +04 | x86_64 | default | 94 | 94 | 0 | 0 | asset-none after the DaynaPort GUI status line and cable toggle (S3+S4), rebuilt: EtherLink.cpp is in pom68k_core so every binary was stale |
+| Sep 13 18:05 +04 | aarch64 | default | 95 | 95 | 0 | 0 | asset-none on the M4 (aarch64), DaynaPort staged card + NetworkWindow |
