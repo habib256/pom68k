@@ -57,7 +57,11 @@ void revealFolder(const std::string& path) {
 #else
     const std::string command = "xdg-open " + quoted + " >/dev/null 2>&1 &";
 #endif
-    (void)std::system(command.c_str());
+    // GCC's warn_unused_result on system() survives a (void) cast; the
+    // desktop opener reports its own failures, so the status is read and
+    // deliberately dropped.
+    const int status = std::system(command.c_str());
+    if (status != 0) return;
 }
 
 // ── The services' identity, edited LIVE ──
