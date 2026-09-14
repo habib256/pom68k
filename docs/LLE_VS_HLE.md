@@ -95,7 +95,7 @@ placed. `decode()` (whole frame, state as of now) stays for stills and tests.
 **Converted — all nine**: `V8Video`, `SonoraVideo`, `VaspVideo`, `RbvVideo`,
 `TobyVideo` (its own CRTC clock), `Se30Video` (no CRTC of its own — it rides
 `MacIIMemory`'s 60 Hz accumulator), `Dafb` and `Valkyrie` (both through the
-one `DafbMachine` template and GUI lifecycle — `GuiRunnerDafb.h:25-289`,
+one `DafbMachine` template and GUI lifecycle — `GuiRunnerDafb.h:26-256`,
 four wrapper instantiations at `PlatformDafb.cpp:427-578`
 covering **thirteen** profiles: Q605×3, Centris×5, Q700×3, Q630×2), and
 `MacVideo`.
@@ -1174,11 +1174,11 @@ trace tools, PRAM file persistence, LToUDP peer bridging, `FloppySound.*`.
 old "absent on the compacts, Mac II, IIfx and Duo" claim, which also reached
 `MAME_PARITY_AUDIT.md` § 2.2 and `SIMPLIFICATIONS_REVIEW.md` F1, was false).
 Every `*Memory` declares `loadPram`/`savePram` and every GUI lifecycle wires
-both (the Mac II/IIfx pair at `GuiRunnerToby.h:52` / `GuiRunnerToby.h:244`; the
-four DAFB profiles at `GuiRunnerDafb.h:97` / `GuiRunnerDafb.h:274`, and the three
-Sonora-style platforms at `GuiRunnerSonora.h:86` / `GuiRunnerSonora.h:271`; V8 at
-`GuiRunnerV8.h:86` / `GuiRunnerV8.h:281`, and Duo at
-`GuiRunnerDuo.h:68` / `GuiRunnerDuo.h:224`); the file is
+both (the Mac II/IIfx pair at `GuiRunnerToby.h:52` / `GuiRunnerToby.h:229`; the
+four DAFB profiles at `GuiRunnerDafb.h:97` / `GuiRunnerDafb.h:248`, and the three
+Sonora-style platforms at `GuiRunnerSonora.h:86` / `GuiRunnerSonora.h:244`; V8 at
+`GuiRunnerV8.h:86` / `GuiRunnerV8.h:255`, and Duo at
+`GuiRunnerDuo.h:68` / `GuiRunnerDuo.h:200`); the file is
 `<image>.<profile-tag>.pram`, profile-tagged so two profiles sharing a boot
 image do not share a battery (`GuiRunnerToby.h:46-50`). What varies is the
 **store**, not the persistence: a discrete `Rtc` (compacts, Mac II family,
@@ -1325,7 +1325,7 @@ session-wide registry of the HLE modules a machine actually fell back to
 once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
 wrappers — `Cpu040.cpp:176`, `CentrisCpu.cpp:87`, `Q630Cpu.cpp:94`,
 `Q700Cpu.cpp:95`; the GUI's CPU menu greys itself on the same condition,
-`GuiShell.cpp:203-205`), verifies firmware by size +
+`GuiShell.cpp:109-112`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save
 state (`SaveStateMachines.cpp:163`). Restoring a snapshot that carries an
 HLE module is **refused** in strict mode (`:207-210`). Build with

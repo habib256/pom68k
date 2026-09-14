@@ -148,8 +148,37 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
             ctx.machine.requestEjectBay(id);
         };
         bindFloppyBays(h, ctx.machine);
+        bindScsiBays(h, ctx.machine);
         return h;
     }();
+    services.shell().bindMachineControls(machine, [&ctx] {
+        const auto status = ctx.machine.status();
+        ImGui::Text("%s @ %.4f MHz (Moira%s)  PC=%08X  clock=%lld",
+                    ctx.spec.cpu.c_str(), ctx.spec.cpuMhz,
+                    ctx.spec.pmmu ? " + PMMU" : "",
+                    status.pc, status.clock);
+        ImGui::Text("overlay=%d  config=$%02X  MMU=%s  held=%d",
+                    status.overlay ? 1 : 0, status.config,
+                    status.mmu ? "on" : "off", status.held ? 1 : 0);
+        if (!ctx.spec.showMonitorControls) return;
+        const int sense = status.sense;
+        ImGui::Text("Moniteur:");
+        ImGui::SameLine();
+        auto monitorButton = [&](const char* label, int value) {
+            const bool current = sense == value;
+            if (current)
+                ImGui::PushStyleColor(
+                    ImGuiCol_Button,
+                    ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+            if (ImGui::Button(label) && !current)
+                ctx.machine.push({MachineT::Cmd::Sense, value});
+            if (current) ImGui::PopStyleColor();
+            ImGui::SameLine();
+        };
+        monitorButton("512x384", 2);
+        monitorButton("640x480", 6);
+        ImGui::TextDisabled("(redémarre le Mac)");
+    });
 
     if (const auto& floppy = services.config().devices().startupFloppy) {
         if (mem.insertDisk(*floppy)) {
@@ -179,20 +208,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
                          GL_BGRA, GL_UNSIGNED_BYTE, c.framebuffer.data());
         }
 
-        c.services.shell().drawMachineMenu(c.spec.snap, c.window, [&c] {
-            diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.machine.push({MachineT::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état"))
-                c.machine.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état"))
-                c.machine.state.request(true);
-            const std::string message = c.machine.state.message();
-            if (!message.empty())
-                ImGui::TextDisabled("%s", message.c_str());
-            recordingMenuItems(c.machine);
-        });
+        c.services.shell().drawMachineMenu(c.spec.snap, c.window);
 
         {
             DiskBaysHost& host = c.diskHost;
@@ -219,47 +235,6 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
         c.keyboard.frame(machine, [&c](uint8_t adb, bool down) {
             c.services.traceKey(adb, down);
         });
-
-        ImGui::SetNextWindowPos(ImVec2(20, 830), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        const auto status = machine.status();
-        ImGui::Text("%s @ %.4f MHz (Moira%s)  PC=%08X  clock=%lld",
-                    c.spec.cpu.c_str(), c.spec.cpuMhz,
-                    c.spec.pmmu ? " + PMMU" : "",
-                    status.pc, status.clock);
-        ImGui::Text("overlay=%d  config=$%02X  MMU=%s  held=%d",
-                    status.overlay ? 1 : 0, status.config,
-                    status.mmu ? "on" : "off", status.held ? 1 : 0);
-        bool running = machine.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run"))
-            machine.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset"))
-            machine.push({MachineT::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = machine.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Avance rapide", &turbo)) machine.turbo.store(turbo);
-
-        if (c.spec.showMonitorControls) {
-            const int sense = status.sense;
-            ImGui::Text("Moniteur:");
-            ImGui::SameLine();
-            auto monitorButton = [&](const char* label, int value) {
-                const bool current = sense == value;
-                if (current)
-                    ImGui::PushStyleColor(
-                        ImGuiCol_Button,
-                        ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                if (ImGui::Button(label) && !current)
-                    machine.push({MachineT::Cmd::Sense, value});
-                if (current) ImGui::PopStyleColor();
-                ImGui::SameLine();
-            };
-            monitorButton("512x384", 2);
-            monitorButton("640x480", 6);
-            ImGui::TextDisabled("(redemarre le Mac)");
-        }
-        ImGui::End();
 
         c.services.shell().runSmokeFrame(c.window, machine.state);
         ImGui::Render();

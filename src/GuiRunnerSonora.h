@@ -16,8 +16,7 @@ struct SonoraRunnerSpec {
     std::string pramTag;
     /// First boot-volume candidate before the common fallbacks.
     std::string defaultHdd;
-    /// Optional CPU-panel first line. Empty preserves platforms whose copied
-    /// runner never exposed that panel.
+    /// First line of the « Tableau de bord » window.
     std::string cpuLine;
     MachineKind kind;
     SnapMachine snap;
@@ -142,8 +141,34 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
         };
         h.ejectBay = [&ctx](int id) { ctx.m.requestEjectBay(id); };
         bindFloppyBays(h, ctx.m);
+        bindScsiBays(h, ctx.m);
         return h;
     }();
+    services.shell().bindMachineControls(machine, [&ctx] {
+        const auto st = ctx.m.status();
+        ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine.c_str(),
+                    st.pc, st.clock);
+        ImGui::Text("overlay=%d  MMU=%s  held=%d",
+                    st.overlay ? 1 : 0, st.mmu ? "on" : "off",
+                    st.held ? 1 : 0);
+        const int sense = st.sense;
+        ImGui::Text("Moniteur:");
+        ImGui::SameLine();
+        auto monitorButton = [&](const char* label, int value) {
+            const bool current = sense == value;
+            if (current)
+                ImGui::PushStyleColor(
+                    ImGuiCol_Button,
+                    ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+            if (ImGui::Button(label) && !current)
+                ctx.m.push({MachineT::Cmd::Sense, value});
+            if (current) ImGui::PopStyleColor();
+            ImGui::SameLine();
+        };
+        monitorButton("512x384", 2);
+        monitorButton("640x480", 6);
+        ImGui::TextDisabled("(redémarre le Mac)");
+    });
 
     // Optional startup floppy; the Disques window can hot-swap it later.
     if (const auto& floppy = services.config().devices().startupFloppy) {
@@ -172,17 +197,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
                          GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
         }
 
-        services.shell().drawMachineMenu(c.spec.snap, c.window, [&c] {
-            diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({MachineT::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            const std::string ssMsg = c.m.state.message();
-            if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            recordingMenuItems(c.m);
-        });
+        services.shell().drawMachineMenu(c.spec.snap, c.window);
 
         // Hooks are owned by the runner context and cross mutations through
         // MachineHost commands.
@@ -209,47 +224,6 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
         // Preserve the original Sonora behaviour: transitions were not
         // included in POM68K_KEY_TRACE on these three platforms.
         c.keyboard.frame(c.m, [](uint8_t, bool) {});
-
-        // The LC III copy exposed this panel; the VASP/RBV copies did not.
-        // An empty descriptor field preserves that visible distinction.
-        if (!c.spec.cpuLine.empty()) {
-            ImGui::SetNextWindowPos(ImVec2(20, 830), ImGuiCond_FirstUseEver);
-            ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-            const auto st = c.m.status();
-            ImGui::Text("%s  PC=%08X  clock=%lld", c.spec.cpuLine.c_str(),
-                        st.pc, st.clock);
-            ImGui::Text("overlay=%d  MMU=%s  held=%d",
-                        st.overlay ? 1 : 0, st.mmu ? "on" : "off",
-                        st.held ? 1 : 0);
-            bool running = c.m.running.load(std::memory_order_relaxed);
-            if (ImGui::Button(running ? "Pause" : "Run"))
-                c.m.running.store(!running);
-            ImGui::SameLine();
-            if (ImGui::Button("Reset"))
-                c.m.push({MachineT::Cmd::HardReset});
-            ImGui::SameLine();
-            bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-            if (ImGui::Checkbox("Avance rapide", &turbo)) c.m.turbo.store(turbo);
-
-            int sense = st.sense;
-            ImGui::Text("Moniteur:");
-            ImGui::SameLine();
-            auto monoBtn = [&](const char* label, int s) {
-                bool current = sense == s;
-                if (current)
-                    ImGui::PushStyleColor(
-                        ImGuiCol_Button,
-                        ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                if (ImGui::Button(label) && !current)
-                    c.m.push({MachineT::Cmd::Sense, s});
-                if (current) ImGui::PopStyleColor();
-                ImGui::SameLine();
-            };
-            monoBtn("512x384", 2);
-            monoBtn("640x480", 6);
-            ImGui::TextDisabled("(redemarre le Mac)");
-            ImGui::End();
-        }
 
         services.shell().runSmokeFrame(c.window, c.m.state);
         ImGui::Render();

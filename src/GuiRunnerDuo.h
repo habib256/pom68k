@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "GuiFloppyBays.h"
 #include "GuiShellCommon.h"
 
 namespace pom68k::gui {
@@ -118,8 +119,18 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         };
         h.hasFloppyDrive = false;
         h.supportsEmptyCdDrive = false;
+        bindScsiBays(h, ctx.machine);
         return h;
     }();
+    services.shell().bindMachineControls(machine, [&ctx] {
+        const auto status = ctx.machine.status();
+        ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine,
+                    status.pc, status.clock);
+        ImGui::Text("overlay=%d  MMU=%s  PG&E hold=%d  GSC mode=$%02X",
+                    status.overlay ? 1 : 0,
+                    status.mmu ? "on" : "off",
+                    status.held ? 1 : 0, status.gscMode);
+    });
 
     auto frame = [](void* opaque) {
         Ctx& c = *static_cast<Ctx*>(opaque);
@@ -133,20 +144,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         machine.stepTick();
 #endif
 
-        c.services.shell().drawMachineMenu(c.spec.snap, c.window, [&c] {
-            diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.machine.push({MachineT::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état"))
-                c.machine.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état"))
-                c.machine.state.request(true);
-            const std::string message = c.machine.state.message();
-            if (!message.empty())
-                ImGui::TextDisabled("%s", message.c_str());
-            recordingMenuItems(c.machine);
-        });
+        c.services.shell().drawMachineMenu(c.spec.snap, c.window);
 
         // No floppy hooks and no live bay hooks: the Disques window stages
         // CD changes for a relaunch, exactly as the old Duo body did.
@@ -183,27 +181,6 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         c.keyboard.frameLegacy(machine, [&c](uint8_t adb, bool down) {
             c.services.traceKey(adb, down);
         });
-
-        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        const auto status = machine.status();
-        ImGui::Text("%s  PC=%08X  clock=%lld", c.spec.cpuLine,
-                    status.pc, status.clock);
-        ImGui::Text("overlay=%d  MMU=%s  PG&E hold=%d  GSC mode=$%02X",
-                    status.overlay ? 1 : 0,
-                    status.mmu ? "on" : "off",
-                    status.held ? 1 : 0, status.gscMode);
-        bool running = machine.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run"))
-            machine.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset"))
-            machine.push({MachineT::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = machine.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Avance rapide", &turbo)) machine.turbo.store(turbo);
-        c.services.shell().drawSaveState(machine.state);
-        ImGui::End();
 
         c.services.shell().runSmokeFrame(c.window, machine.state);
         ImGui::Render();

@@ -37,14 +37,6 @@ void dockLayoutReset()
     gFirstLayout = false;              // an explicit reset outranks the file
 }
 
-void dockLayoutMenu()
-{
-    if (!ImGui::BeginMenu("Fenêtres")) return;
-    if (ImGui::MenuItem("Réinitialiser la disposition"))
-        dockLayoutReset();
-    ImGui::EndMenu();
-}
-
 void dockLayoutScreenWindow(const char* title)
 {
     if (!title || !*title) return;

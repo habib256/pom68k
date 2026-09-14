@@ -53,6 +53,15 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
         window, machine, screenTex, spec, services,
         pom68k::DiskBaysHost{}, ScreenInput{}, CompactKeyboard{});
     ctx.diskHost = compactDiskBaysHost<MachineT>(ctx);
+    services.shell().bindMachineControls(machine, [&ctx] {
+        const auto status = ctx.machine.status();
+        ImGui::Text(
+            "68000 @ 7.8336 MHz (Moira, cycle-exact)  PC=%06X  clock=%lld",
+            status.pc, status.clock);
+        ImGui::Text("overlay=%d  demo=%d  floppy=%s",
+                    status.overlay ? 1 : 0, ctx.spec.demoMode ? 1 : 0,
+                    ctx.machine.floppyInserted() ? "inserted" : "none");
+    });
 
     auto frame = [](void* opaque) {
         Ctx& c = *static_cast<Ctx*>(opaque);
@@ -75,21 +84,7 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
                          0, GL_RGBA, GL_UNSIGNED_BYTE, framebuffer.data());
         }
 
-        c.services.shell().drawMachineMenu(
-            c.machine.state.kind, c.window, [&c] {
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.machine.push({MachineT::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état"))
-                c.machine.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état"))
-                c.machine.state.request(true);
-            const std::string message = c.machine.state.message();
-            if (!message.empty())
-                ImGui::TextDisabled("%s", message.c_str());
-            recordingMenuItems(c.machine);
-        });
+        c.services.shell().drawMachineMenu(c.machine.state.kind, c.window);
         {
             pom68k::DiskBaysHost& host = c.diskHost;
             host.romName = c.spec.romName;
@@ -120,27 +115,6 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
         c.keyboard.frame(machine, [&c](std::uint8_t code, bool down) {
             c.services.traceKey(code, down);
         });
-
-        ImGui::SetNextWindowPos(ImVec2(20, 740), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        const auto status = machine.status();
-        ImGui::Text(
-            "68000 @ 7.8336 MHz (Moira, cycle-exact)  PC=%06X  clock=%lld",
-            status.pc, status.clock);
-        ImGui::Text("overlay=%d  demo=%d  floppy=%s",
-                    status.overlay ? 1 : 0, c.spec.demoMode ? 1 : 0,
-                    machine.floppyInserted() ? "inserted" : "none");
-        bool running = machine.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run"))
-            machine.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset"))
-            machine.push({MachineT::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = machine.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Avance rapide x8", &turbo))
-            machine.turbo.store(turbo);
-        ImGui::End();
 
         c.services.shell().runSmokeFrame(c.window, machine.state);
         ImGui::Render();

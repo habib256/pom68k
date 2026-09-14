@@ -212,7 +212,7 @@ public:
     // AppleTalk hub) makes a session non-replayable — then auto-start a
     // recording when the configuration asks for one. Call after state.kind
     // is wired. The menu's start/stop reaches the same host slot
-    // (recordingMenuItems in GuiShellCommon.h).
+    // (drawMachineControlItems in GuiMachineControls.cpp).
     template <class Machine>
     void armInputRecording(Machine& machine, const std::string& profileTag,
                            const std::string& romName,

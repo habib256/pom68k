@@ -1148,7 +1148,7 @@ int main() {
               shellHeaderSource.find("int runV8Gui") != std::string::npos &&
               shellHeaderSource.find("int runDuoGui") != std::string::npos &&
               shellSource.find("GuiShell::openWindow") != std::string::npos &&
-              shellSource.find("GuiShell::drawMachineMenuImpl") !=
+              shellSource.find("GuiShell::drawMachineMenu") !=
                   std::string::npos,
           "GuiShell owns windows, menus and six family render-loop units");
     check(composersSource.find("PlatformComposers::run") !=
