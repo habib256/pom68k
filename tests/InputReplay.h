@@ -17,6 +17,8 @@
 
 #include "InputJournal.h"
 
+#include "ScsiAgentMailbox.h"
+
 #include <cstdint>
 
 // Per-run applier: carries the host-button fold state that
@@ -80,6 +82,28 @@ struct InputReplayer {
                 mem.setMonitorSense(uint8_t(e.a));
                 cpu.hardReset();
             }
+            return true;
+        // The SCSI commands (docs/SCSI_HOTPLUG.md). Replay attaches without
+        // write-back — the tests' convention for images — and applies the
+        // outcome the recording got: a detach refused inside a session was
+        // re-queued and recorded again at the quantum where it landed.
+        case ET::AttachDisk:
+            if constexpr (requires { mem.attachScsi(e.path, false, e.a); })
+                if (!e.path.empty()) mem.attachScsi(e.path, false, e.a);
+            return true;
+        case ET::AgentMount:
+        case ET::AgentUnmount:
+            if constexpr (requires { mem.scsi().agent().post(
+                              pom68k::ScsiAgentMailbox::Mount, 1); }) {
+                mem.scsi().agent().post(
+                    ET(e.type) == ET::AgentMount ? pom68k::ScsiAgentMailbox::Mount
+                                                 : pom68k::ScsiAgentMailbox::Unmount,
+                    e.a);
+            }
+            return true;
+        case ET::DetachDisk:
+            if constexpr (requires { mem.detachScsi(e.a); })
+                mem.detachScsi(e.a);
             return true;
         case ET::StateRestore:
             return false;

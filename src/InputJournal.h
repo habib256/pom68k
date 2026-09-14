@@ -39,19 +39,25 @@
 
 namespace pom68k {
 
-// The first ten values MIRROR MachineHost::Cmd::T in order — the recording
-// tap casts the enum straight through. `machinehost_test` pins the pairing
-// by name, so a re-order there fails a gate instead of silently breaking
-// every recorded journal.
+// Every value before StateRestore MIRRORS MachineHost::Cmd::T in order —
+// the recording tap casts the enum straight through. `machinehost_test`
+// pins the pairing by name, so a re-order there fails a gate instead of
+// silently breaking every recorded journal. A command added to Cmd::T
+// goes here too, BEFORE StateRestore: from 2026-09-13 to 2026-09-14 the
+// four SCSI commands were missing, so a recorded AttachDisk (10) read
+// back as the restore marker and the others as « unknown ». The file
+// carries names, not numbers, so old journals are unaffected.
 enum class InputEventType : int {
     MouseMove, MouseButton, Key, HardReset, CpuEngine,
     InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense,
+    AttachDisk, AgentMount, AgentUnmount, DetachDisk,
     StateRestore,   // journal marker (GUI restored a state) — never queued
 };
 
 inline constexpr const char* kInputEventNames[] = {
     "mousemove", "mousebutton", "key", "hardreset", "cpuengine",
     "insertfloppy", "ejectfloppy", "insertbay", "ejectbay", "sense",
+    "attachdisk", "agentmount", "agentunmount", "detachdisk",
     "staterestore",
 };
 inline constexpr int kInputEventTypeCount =

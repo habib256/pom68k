@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "GuiHostServices.h"
+#include "DiskBays.h"
 #include "GuiShell.h"
 #include "MachineHost.h"
 
@@ -134,7 +135,7 @@ void GuiHostServices::requestRelaunch(
     GLFWwindow* window, const std::string& romName, const std::string& boot,
     const std::vector<std::string>& extras) {
     state_.relaunch.switchArguments = {romName, boot};
-    for (const std::string& extra : extras)
+    for (const std::string& extra : relaunchExtras(extras))
         if (extra != boot) state_.relaunch.switchArguments.push_back(extra);
     glfwSetWindowShouldClose(window, GLFW_TRUE);
 }

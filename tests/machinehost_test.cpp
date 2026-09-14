@@ -371,6 +371,10 @@ int main() {
         m.push({Cmd::InsertBay, 3, 0, "cd/pas-la.iso"});
         m.push({Cmd::EjectBay, 3});
         m.push({Cmd::Sense, 6, 0});
+        m.push({Cmd::AttachDisk, 2, 0, "hdv/pas-la.vhd"});
+        m.push({Cmd::AgentMount, 2});
+        m.push({Cmd::AgentUnmount, 2});
+        m.push({Cmd::DetachDisk, 2});
         m.stepTick();
         check(m.recordingActive(),
               "recording: the start lands between two quanta");
@@ -378,7 +382,7 @@ int main() {
         m.stepTick();
         check(!m.recordingActive(),
               "recording: the stop lands between two quanta");
-        check(m.recordingMessage().find("10") != std::string::npos,
+        check(m.recordingMessage().find("14") != std::string::npos,
               "recording: the outcome names its event count");
         m.stop();
 
@@ -389,12 +393,16 @@ int main() {
         check(j.complete, "recording: the stop wrote the end record");
         check(j.note("profile") == "q605",
               "recording: the identity notes ride in the header");
-        check(j.events.size() == 10, "recording: all ten commands recorded");
-        bool namesMatch = j.events.size() == 10;
+        check(j.events.size() == 14, "recording: all fourteen commands recorded");
+        bool namesMatch = j.events.size() == 14;
         for (size_t i = 0; namesMatch && i < j.events.size(); i++)
             namesMatch = j.events[i].type == int(i);
         check(namesMatch,
-              "recording: journal names mirror Cmd::T in enum order");
+              "recording: journal names mirror Cmd::T in enum order, SCSI commands included");
+        check(j.events.size() > 13 && j.events[10].path == "hdv/pas-la.vhd" &&
+              j.events[13].type == int(pom68k::InputEventType::DetachDisk) &&
+              j.events[13].type != int(pom68k::InputEventType::StateRestore),
+              "recording: a SCSI command is named, never mistaken for the restore marker");
         bool monotone = true;
         for (size_t i = 1; i < j.events.size(); i++)
             monotone = monotone && j.events[i].clk >= j.events[i - 1].clk;

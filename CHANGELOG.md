@@ -297,6 +297,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **why did a relaunch put SCSI 3's disk on SCSI 2, and what is the `emptybay` literal?** → [2026-09-14 (third) — The two debts the detach left are paid…](#2026-09-14-relaunch-ids-and-journal-names)
 - **can a hard disk leave the bus without a reboot, and why does the board refuse a detach inside a session?** → [2026-09-14 (later) — The cable comes out…](#2026-09-14-scsi-detach-live)
 - **how do I create a blank hard disk in the GUI, and why did Theme Park still not mount after the .toast was a « disk »?** → [2026-09-13 (eighth) — Disques can create a hard disk…](#2026-09-13-disques-usable)
 - **why a .toast is in Disques but never appears on the LC II desktop** → [2026-09-13 (seventh) — A 512-byte Toast dump sat in Disques…](#2026-09-13-toast-512-is-a-disk)
@@ -443,6 +444,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](#2026-09-14-relaunch-ids-and-journal-names)
 - **2026-09-14 (later)** — [The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it](#2026-09-14-scsi-detach-live)
 - **2026-09-14** — [« POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way](#2026-09-14-guest-agent-mounts-on-request)
 - **2026-09-13 (tenth)** — [Disques stops guessing: the guest's own drive and VCB queues say what is mounted, and a fixed disk joins the bus with the machine running](#2026-09-13-scsi-bus-as-the-guest-sees-it)
@@ -941,6 +943,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-relaunch-ids-and-journal-names"></a>
+## 2026-09-14 (third) — The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command
+
+Both were « seen on the way, not paid » in the 2026-09-14 (later) entry;
+both were latent since 2026-09-13, widened by the detach, and neither had
+bitten a user or a journal yet.
+
+**The relaunch line was positional.** The Disques window's extras list
+maps entry *i* to SCSI id *i*+1 and `GuiHostServices::requestRelaunch`
+copied it into the argument line; every runner's media loop then
+re-derived the id from the *count of entries it had kept*, so an interior
+gap — a disk detached live under an occupied higher id, a disk attached
+live into a gap, or a staged « Retirer » in the same position — shifted
+every id above it on relaunch: the guest came back with SCSI 3's disk on
+SCSI 2. Now `relaunchExtras` (`DiskBays.h`) carries an interior gap as the
+literal `emptybay` and drops trailing gaps, and the six media loops
+(`GuiRunnerDafb/Sonora/Toby/V8/Duo.h`, `CompactMedia.h`) consume the token
+as « nothing here, next id » — the compact boot-volume scan skips it too,
+as it skips `cdbay`. `README.md` documents the literal beside `cdbay`.
+Gate: `relaunch_extras_test` (asset-none): interior gaps become the token
+id by id, trailing ones are dropped, `cdbay` is a bay, a token already in
+the list passes through.
+
+**The input journal stopped naming commands at `Sense`.** `applyCmds`
+records `int(c.t)` for every command, but `InputEventType` mirrored only
+the first ten values of `Cmd::T` and then placed `StateRestore` at 10 —
+the very number `AttachDisk` took on 2026-09-13. A recorded attach would
+have read back as the restore marker (which replay refuses), and
+`AgentMount`, `AgentUnmount`, `DetachDisk` as « unknown ». The four now sit
+before `StateRestore` in enum order, with names, and `InputReplay.h`
+applies them (attach without write-back, the tests' convention; a detach
+refused inside a session was re-queued and recorded again at the quantum
+where it landed, so replay applies each recorded attempt and gets the same
+answer). The file format is unchanged — it carries names, not numbers —
+so every existing journal reads as before. `machinehost_test` now records
+fourteen commands and pins that the SCSI ones are named and never mistaken
+for the restore marker.
 
 <a id="2026-09-14-scsi-detach-live"></a>
 ## 2026-09-14 (later) — The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it

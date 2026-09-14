@@ -39,6 +39,10 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     for (std::size_t i = 1; i < media.size() && extraDisks.size() < 6; ++i) {
         const std::string& argument = media[i];
         if (argument == hddPath) continue;
+        if (argument == kEmptyBayToken) {           // a gap that keeps its id
+            extraDisks.emplace_back();
+            continue;
+        }
         const int id = int(extraDisks.size()) + 1;
         if (diskBaysPathIsCd(argument)) {
             if (mem.attachCdrom(argument, id)) {

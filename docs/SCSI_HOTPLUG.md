@@ -172,12 +172,14 @@ Three rules the pieces obey:
   times out the way it does for any ID nothing answers (5380: the bus
   stays free; 53C96: `I_DISCONNECT`). A CD bay never closes — that is
   `ejectBayMedia`, and the drive stays for the next disc.
-- **The relaunch line follows.** A live detach clears the bay's entry in
-  the extras list and trims trailing empties, so a machine switch does
-  not bring the disk back. An *interior* empty entry (a detached SCSI 2
-  under an occupied SCSI 3) is still carried positionally and shifts the
-  IDs above it on relaunch — the same limitation a live attach into a gap
-  has had since 2026-09-13; `TODO.md` § Preuve holds it.
+- **The relaunch line follows, id by id.** A live detach clears the bay's
+  entry in the extras list, so a machine switch does not bring the disk
+  back. The list is positional, and an *interior* gap (a detached SCSI 2
+  under an occupied SCSI 3) used to shift the ids above it on relaunch —
+  the same defect a live attach into a gap had since 2026-09-13. Since
+  2026-09-14 (third) `relaunchExtras` carries such a gap as the literal
+  `emptybay`, which every runner's media loop consumes as « nothing here,
+  next id », and drops the gaps at the end. Gate: `relaunch_extras_test`.
 
 The Finder's own Put Away leaves the ROM's driver in the drive queue
 (`driver` true, `mounted` false): « Retirer » is offered on that state

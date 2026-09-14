@@ -158,6 +158,24 @@ bool diskBaysPathIsCd(const std::string& path);
 // The reserved-bay placeholder: an extras entry equal to this names an empty
 // CD drive that must exist on the bus at boot (runners attachCdromEmpty it).
 inline const char* kCdBayToken = "cdbay";
+// An empty bay that must keep its position: the extras list is positional
+// (entry i = SCSI id i+1) and the relaunch line is built from it, so a
+// disk detached live under an occupied higher id, or one attached live
+// into a gap, used to shift every id above it on relaunch (latent since
+// the live attach of 2026-09-13, closed 2026-09-14). Runners consume the
+// token as « nothing here, next id ».
+inline const char* kEmptyBayToken = "emptybay";
+
+// The extras list as the relaunch line carries it: interior gaps become
+// kEmptyBayToken so ids survive, trailing gaps are dropped. Pure; the
+// window's live and staged lists both go through it (GuiHostServices).
+inline std::vector<std::string> relaunchExtras(std::vector<std::string> extras) {
+    while (!extras.empty() && (extras.back().empty() || extras.back() == kEmptyBayToken))
+        extras.pop_back();
+    for (std::string& e : extras)
+        if (e.empty()) e = kEmptyBayToken;
+    return extras;
+}
 
 // ── Every machine that can have a CD drive boots with one ──────────────────
 // Call once per runner, straight after the additional-media loop.

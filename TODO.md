@@ -321,20 +321,6 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
   quand la vue ne montre plus de VCB sur la baie — § 7). Reste à lancer
   l'agent automatiquement (Startup Items sur les volumes de référence, ou un
   INIT) pour que « Monter / Démonter » soit disponible dès le Finder.
-- [ ] **Porter les ID SCSI dans la ligne de relance, pas leur position.** La
-  liste des extras est positionnelle : un trou intérieur (SCSI 2 retiré à
-  chaud sous un SCSI 3 occupé, ou un disque attaché à chaud dans un trou)
-  décale au relaunch les ID situés au-dessus. Latent depuis l'attache à chaud
-  du 2026-09-13, élargi par le détachement du 2026-09-14 (qui ne rogne que
-  les vides de fin). Une syntaxe `--scsi<id>=` ou un jeton de baie vide
-  fermerait le point.
-- [ ] **Nommer dans le journal d'entrées les commandes média ajoutées après
-  `Sense`.** `applyCmds` enregistre `int(c.t)` pour toute commande, mais
-  `InputEventType` s'arrête à `Sense` = 9 puis `StateRestore` = 10 : un
-  `AttachDisk` (10) enregistré se relit comme un marqueur de restauration,
-  `AgentMount`/`AgentUnmount`/`DetachDisk` comme « unknown ». Aucun journal
-  n'en contient aujourd'hui ; renuméroter est une décision de format, à
-  prendre avant qu'un rejeu ne l'apprenne.
 - [ ] **Réparer `declrom_test`, qui compte « exécuté » en perdant trois
   assertions.** Sans sa ROM il en saute trois et sort quand même 0 : même
   classe de défaut que les étiquettes `asset-none` menteuses, et invisible au

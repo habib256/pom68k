@@ -64,6 +64,10 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             }
             continue;
         }
+        if (arg == kEmptyBayToken) {           // a gap that keeps its id
+            extraDisks.emplace_back();
+            continue;
+        }
         const int id = int(extraDisks.size()) + 1;
         if (arg == "cdbay") {
             if (mem.attachCdromEmpty(id)) {

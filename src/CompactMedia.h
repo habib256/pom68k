@@ -49,6 +49,7 @@ CompactMountedMedia mountCompactMedia(
     std::size_t bootArg = media.size();
     for (std::size_t i = scsiBegin; i < media.size(); ++i) {
         if (media[i] != pom68k::kCdBayToken &&
+            media[i] != pom68k::kEmptyBayToken &&
             !pom68k::diskBaysPathIsCd(media[i])) {
             bootArg = i;
             break;
@@ -69,7 +70,9 @@ CompactMountedMedia mountCompactMedia(
         const std::string& argument = media[i];
         if (i == bootArg) continue;
         const int id = int(mounted.extraDisks.size()) + 1;
-        if (argument == pom68k::kCdBayToken) {
+        if (argument == pom68k::kEmptyBayToken) {      // a gap that keeps its id
+            mounted.extraDisks.emplace_back();
+        } else if (argument == pom68k::kCdBayToken) {
             if (mem.attachCdromEmpty(id)) mounted.extraDisks.push_back(argument);
         } else if (pom68k::diskBaysPathIsCd(argument)) {
             if (mem.attachCdrom(argument, id)) {

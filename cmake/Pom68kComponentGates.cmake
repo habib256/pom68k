@@ -297,6 +297,13 @@ add_executable(scsi_detach_test tests/scsi_detach_test.cpp)
 target_link_libraries(scsi_detach_test PRIVATE pom68k_core)
 add_test(NAME scsi_detach_test COMMAND scsi_detach_test)
 
+# The relaunch line (DiskBays.h `relaunchExtras`): an interior gap in the
+# positional extras list is carried as `emptybay` so the SCSI ids above it
+# survive a relaunch; trailing gaps are dropped. Pure function, no ROM.
+add_executable(relaunch_extras_test tests/relaunch_extras_test.cpp)
+target_link_libraries(relaunch_extras_test PRIVATE pom68k_core)
+add_test(NAME relaunch_extras_test COMMAND relaunch_extras_test)
+
 # The input journal end to end (src/InputJournal.h + tests/InputReplay.h):
 # format round-trip through a real file, then REPLAY DETERMINISM on a live
 # synthetic-ROM LC II — restore one snapshot, replay one journal twice,

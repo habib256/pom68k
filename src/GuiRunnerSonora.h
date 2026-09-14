@@ -56,6 +56,10 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
         int id = int(extraDisks.size()) + 1;
         // "cdbay" reserves an empty CD drive on the bus; a CD image creates
         // the same hot-swappable bay with media already inserted.
+        if (argument == kEmptyBayToken) {           // a gap that keeps its id
+            extraDisks.emplace_back();
+            continue;
+        }
         if (argument == "cdbay") {
             if (mem.attachCdromEmpty(id)) {
                 extraDisks.push_back("cdbay");

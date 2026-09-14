@@ -57,6 +57,10 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         const std::string& argument = media[i];
         if (argument == hddPath) continue;
         const int id = int(extraDisks.size()) + 1;
+        if (argument == kEmptyBayToken) {           // a gap that keeps its id
+            extraDisks.emplace_back();
+            continue;
+        }
         if (argument == "cdbay") {
             if (mem.attachCdromEmpty(id)) {
                 extraDisks.push_back("cdbay");

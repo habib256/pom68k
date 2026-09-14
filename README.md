@@ -204,7 +204,9 @@ POM68K accepts SCSI hard disks, writable HFS volumes, floppy images and SCSI
 CD images. Common CD extensions are `.iso`, `.cdr`, `.cue` and `.bin`. A
 `.toast` that declares 512-byte Apple blocks is a disk dump, not a CD — the
 Disques window attaches it as a hard disk. Passing the literal `cdbay` as
-additional media creates an empty, hot-swappable CD drive.
+additional media creates an empty, hot-swappable CD drive; the literal
+`emptybay` leaves that SCSI id empty so the ids after it keep their place
+(the Disques window writes it into the relaunch line for a bay emptied live).
 
 **Disques…** creates a blank HFS volume in `hdv/work/` (name and size, then
 **Créer**). A new hard disk appears on the guest desktop only after
