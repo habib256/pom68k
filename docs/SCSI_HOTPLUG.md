@@ -200,7 +200,7 @@ fixture. The pieces:
 | Catalog B*-tree search and insertion on a live volume: leaf split, index split, root split, node allocation from the map, first-fit allocation blocks, MDB counts, folder valence and dates; MacBinary decoding; the walk from the blessed folder to « Startup Items » (or « Éléments de démarrage ») | `src/HfsInject.h/.cpp` | `hfs_inject_test` (blank volume, sixty files, everything read back; `machfs` re-reads the result) |
 | `ScsiDisk::hostWrite` — the guest WRITE path without its counters: write log and write-back apply | `src/ScsiDisk.cpp` | — |
 | The runner hook after the boot attach, on the twelve platforms; `POM68K_NO_AGENT_AUTOSTART=1` opts out; every outcome printed | `src/GuiAgentAutostart.h` | — (the GUI has no gate) |
-| Cold launch → Finder → the agent polls with no input → « Monter » works | — | `scsi_agent_autostart_etalon` (first poll one frame after the Finder) |
+| Cold launch → Finder → the agent polls with no input → « Monter » works | — | `scsi_agent_autostart_etalon` (Quadra 605, Mac OS 8.1 US, 53C96) and `lc520_agent_autostart_etalon` (LC 520, System 7.5.5 French, NCR 5380, Cuda) — first poll one frame after the Finder on both |
 
 Rules and limits:
 
@@ -212,8 +212,15 @@ Rules and limits:
 - **Refuse rather than guess.** No extents overflow tree (a catalog whose
   fourth extent would be needed is refused), no folder creation in the
   product path (a System without Startup Items is System 6, a localized
-  one names it otherwise — the two names known are tried), no write when
-  a file of that name is already there. Every change is staged and
+  one names it otherwise — « Startup Items » then « Ouverture au
+  démarrage » are tried), no write when a file of that name is already
+  there.
+- **A folder name is a fact about a shipped System.** The French name was
+  first written as « Éléments de démarrage » from memory; the GISTPERSO
+  volume (System 7.5.5) names it « Ouverture au démarrage » (CNID 4769,
+  beside « Ouverture à l'extinction » for Shutdown Items), and the LC 520
+  gate asserts that the wrong name resolves to nothing there. A third
+  language will need its own volume to read, not a dictionary. Every change is staged and
   applied by one commit, so a refusal leaves the volume untouched.
 - **Nothing silent.** The runner prints the outcome on every launch; the
   agent's window says it is running. The MacBinary is a fresh Retro68

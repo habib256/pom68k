@@ -297,6 +297,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **what is the French Startup Items folder called, and why did machfs and a leaf-chain walk both fail on a real System 7.5 catalog?** → [2026-09-14 (sixth) — The French Startup Items folder is « Ouverture au démarrage »…](#2026-09-14-ouverture-au-demarrage)
 - **where does a package get the guest agent from, and why is a binary committed?** → [2026-09-14 (fifth) — The agent ships…](#2026-09-14-agent-shipped-in-share)
 - **how does the guest agent start by itself, and how does the host add a file to an HFS volume without a Mac?** → [2026-09-14 (fourth) — The host writes « POM68K Disques » into the boot volume's Startup Items…](#2026-09-14-agent-startup-items)
 - **why did a relaunch put SCSI 3's disk on SCSI 2, and what is the `emptybay` literal?** → [2026-09-14 (third) — The two debts the detach left are paid…](#2026-09-14-relaunch-ids-and-journal-names)
@@ -446,6 +447,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (sixth)** — [The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too](#2026-09-14-ouverture-au-demarrage)
 - **2026-09-14 (fifth)** — [The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds](#2026-09-14-agent-shipped-in-share)
 - **2026-09-14 (fourth)** — [The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac](#2026-09-14-agent-startup-items)
 - **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](#2026-09-14-relaunch-ids-and-journal-names)
@@ -947,6 +949,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-ouverture-au-demarrage"></a>
+## 2026-09-14 (sixth) — The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too
+
+The (fifth) entry left one open item: the French folder name was
+recognised but never exercised. Reading the real volume settled it before
+any gate ran: GISTPERSO's blessed « Dossier Système » (CNID 4173) holds
+« Ouverture au démarrage » (4769), beside « Ouverture à l'extinction » —
+not the « Éléments de démarrage » written from memory the day before.
+`startupItemsNames()` carries the right name; `hfs_inject_test` pins it
+and its accent-insensitive collation.
+
+**Two lessons from the way there.** First, `machfs` — the Python reader
+the media tools bake with — refuses GISTPERSO outright (a catalog record
+whose parent it has not seen), and a leaf-chain walk of that catalog
+reaches 265 of its 789 leaves before a forward link is zero: a catalog
+Mac OS has grown and pruned for years is not the tidy chain a fresh bake
+is. The installer never walks the chain — it descends the index from the
+root, as the File Manager does — which is why it found the folder at
+once; a scan of every node of the catalog file is what listed the
+folder's children. Second, the LC II does not boot GISTPERSO at all (a
+grey screen after 16 000 frames, injection or not — no gate ever claimed
+it did); the LC 520, whose `aio_beyond_etalon` boots that volume daily,
+is the rig.
+
+**Evidence.** `lc520_agent_autostart_etalon` (Sonora, NCR 5380, Cuda,
+System 7.5.5 French): the installer resolves « Ouverture au démarrage »
+to 4769 and « Éléments de démarrage » to nothing, installs the agent as
+CNID 4998 in memory, the French Finder comes up and launches it — front
+application « POM68KDisques », first poll **one frame** after the Finder
+with no input — and a blank disk attached live on SCSI 2 is mounted on
+request as « Branche » through the 5380. Its `control` argument boots the
+same rig without the injection and reaches the Finder, which is what
+separated « the injection broke the boot » from « the Finder signature
+missed it » when the LC II attempt went grey.
 
 <a id="2026-09-14-agent-shipped-in-share"></a>
 ## 2026-09-14 (fifth) — The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds

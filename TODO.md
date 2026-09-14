@@ -314,12 +314,6 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
   floppy/CD, save/restore) reste la validation due — c'est le même reliquat que
   la passe save-state GUI, jamais fermée, que les trois gates de relance du
   2026-09-08 ne couvrent pas (ils sont hors GUI).
-- [ ] **Exercer « Éléments de démarrage » sur un System français.** Le
-  nom localisé du dossier est reconnu par l'installeur de l'agent
-  (`HfsInject.cpp`, `startupItemsNames`) mais jamais exercé : seul le volume
-  8.1 US a tourné dans `scsi_agent_autostart_etalon`. Une cellule sur
-  GISTPERSO (7.5.5 français) dirait si le Finder français lance bien ce que
-  l'hôte y écrit.
 - [ ] **Réparer `declrom_test`, qui compte « exécuté » en perdant trois
   assertions.** Sans sa ROM il en saute trois et sort quand même 0 : même
   classe de défaut que les étiquettes `asset-none` menteuses, et invisible au

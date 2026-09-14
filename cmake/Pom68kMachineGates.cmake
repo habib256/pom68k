@@ -787,6 +787,19 @@ add_test(NAME scsi_agent_autostart_etalon COMMAND scsi_agent_autostart_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(scsi_agent_autostart_etalon PROPERTIES TIMEOUT 1800)
 
+# The same, on a French System: the LC 520 (Sonora, NCR 5380, Cuda) boots
+# GISTPERSO (System 7.5.5, « Dossier Système » / « Ouverture au
+# démarrage »), the host installs the agent under the French folder name
+# in memory, and the French Finder launches it with no gesture; a blank
+# disk attached live is mounted on request. The 68030 + 5380 side of the
+# agent, and the localized name. EDE66CBD ROM + hdv/GISTPERSO-boot.vhd +
+# the shipped agent. `control` boots the same rig without the injection.
+add_executable(lc520_agent_autostart_etalon tests/lc520_agent_autostart_etalon.cpp)
+target_link_libraries(lc520_agent_autostart_etalon PRIVATE pom68k_core)
+add_test(NAME lc520_agent_autostart_etalon COMMAND lc520_agent_autostart_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(lc520_agent_autostart_etalon PROPERTIES TIMEOUT 1800)
+
 add_executable(q605_cdinstall_etalon tests/q605_cdinstall_etalon.cpp)
 target_link_libraries(q605_cdinstall_etalon PRIVATE pom68k_core)
 add_test(NAME q605_cdinstall_etalon COMMAND q605_cdinstall_etalon

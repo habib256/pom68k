@@ -150,10 +150,11 @@ private:
     bool bitmapDirty_ = false;
 };
 
-// Put `app` into <blessed System Folder>:Startup Items (or its French
-// name) of the volume on `io`, unless a file of that name is already
-// there. Never creates the folder: a System without one (System 6) has no
-// Startup Items concept, and a localized System names it otherwise.
+// Put `app` into <blessed System Folder>:Startup Items — or « Ouverture
+// au démarrage » on a French System — of the volume on `io`, unless a file
+// of that name is already there. Never creates the folder: a System
+// without one (System 6) has no Startup Items concept, and a System in a
+// third language names it otherwise; the outcome says so.
 struct Outcome {
     enum Kind { Installed, AlreadyPresent, NoVolume, NoFolder, Refused } kind = Refused;
     std::string message;               // one line for the console / window

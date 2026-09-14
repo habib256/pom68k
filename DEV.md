@@ -1277,9 +1277,11 @@ switch.
   and root splits, allocation bitmap, MDB and folder bookkeeping) over
   `ScsiDisk::hostWrite`, so the write log and write-back apply. Idempotent,
   printed, `POM68K_NO_AGENT_AUTOSTART=1` to opt out. Gates:
-  `hfs_inject_test` (asset-none) and `scsi_agent_autostart_etalon` (the
-  8.1 Finder launches the installed agent; it polls with no input and
-  mounts on request). `docs/SCSI_HOTPLUG.md` § 8.
+  `hfs_inject_test` (asset-none), `scsi_agent_autostart_etalon` (the 8.1
+  Finder on the Quadra 605 launches the installed agent; it polls with no
+  input and mounts on request) and `lc520_agent_autostart_etalon` (the
+  same on a French System 7.5.5 — GISTPERSO's « Ouverture au démarrage »
+  — over the NCR 5380 and the Cuda). `docs/SCSI_HOTPLUG.md` § 8.
 
 ### 3.5 Input: M0110 keyboard + quadrature mouse
 
