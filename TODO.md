@@ -206,11 +206,11 @@ consommateur observé.
   est complet le 2026-09-13 : ligne d'état, bascule « câble », et le choix
   présence + ID SCSI **sans variable d'environnement** — stagé dans la fenêtre
   AppleTalk / Ethernet (`src/NetworkWindow.cpp`), appliqué par relaunch sur
-  `--daynaport=<id>`, les ID tenus par un disque grisés. Trois dettes : aucun
-  invité réel n'a traversé un débranchement ni un relaunch avec carte
-  (`q605_dayna_driver_etalon` a tourné sur le M4 le 2026-09-14, 237 s,
-  PASSED — il prouve le pilote sur la carte, pas un débranchement ni un
-  re-exec) ; la fenêtre n'a
+  `--daynaport=<id>`, les ID tenus par un disque grisés. Le débranchement est
+  traversé par un vrai invité depuis le 2026-09-14 (`q605_dayna_driver_etalon`
+  : câble sorti, 8 requêtes ICMP émises et rien en retour ; rentré, 6 trames
+  reviennent, la cible et le bit ENABLE du pilote intacts). Restent : aucun
+  invité n'a traversé un relaunch avec carte ; la fenêtre n'a
   jamais été **rendue** — elle compile et lie, sa mise en page (sélecteur
   compris, et le formulaire « Configuration des services » du même jour)
   n'est pas vérifiée à l'œil ; et le relaunch lui-même n'est couvert que par
@@ -219,17 +219,6 @@ consommateur observé.
   formulaire : « Révéler » lance `open` / `xdg-open` / `explorer` sans gate
   possible, et aucun invité n'a remonté un serveur AFP renommé à chaud —
   `afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur.
-- [ ] **Fermer la course `uplink_` / `cfg_.ethertalk`, ou l'acter.** Écrites
-  côté GUI sous `mu_`, lues côté machine sans verrou : des `bool` nus, bénins
-  en pratique, formellement une course. `cfg_.ethertalk` la porte déjà dans le
-  démultiplexeur `sendFrame` ; `uplink_` est de la même forme. Un `atomic` ou
-  un échantillonnage dans `tick()` la ferme ; ne rien faire est défendable,
-  mais alors il faut l'écrire ici plutôt que de la redécouvrir. Le levier
-  lui-même est tranché depuis le 2026-09-13 et livré : « détacher » veut dire
-  *débrancher le câble* (l'uplink), la cible reste sur le bus ; présence et ID
-  sont stagés + relaunch ; `enabled()` est le bit ENABLE du **pilote invité**
-  (commande `$0E`), que l'hôte ne forge jamais. La reconnaissance complète est
-  au `CHANGELOG` (2026-09-13 (fourth) et (fifth)).
 - [ ] **Élucider pourquoi une date serveur mouvante produisait une seconde
   trajectoire AFP.** Le 2026-09-12 a rendu le gate déterministe en épinglant la
   seule entrée hôte variable du chemin (`FPGetSrvrParms` renvoyait
@@ -371,13 +360,6 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
 premier profil consommateur avant d'être généralisés ; une ligne catalogue se
 mérite par une cellule Finder **plus** le câblage GUI et save-state.
 
-- [ ] **Sérialiser l'état PWM du lecteur 400 K, ou acter qu'il ne l'est pas.**
-  Il est délibérément hors de `visit()`, sur le raisonnement déjà tenu pour
-  `cells_` : un instantané restauré tourne donc à 300 tr/min pendant ≤100
-  lignes de balayage, le temps que la calibration se re-dérive des octets
-  impairs du tampon son. Borné et sans conséquence tant qu'aucun gate
-  save/restore ne porte sur ces deux profils — à traiter avant qu'un seul le
-  fasse.
 - [ ] **Ajouter les variantes Duo 210 et 250.** Exploiter les IDs déjà
   présents, introduire la sélection de profil et ajouter les lignes
   catalogue/gates (après `duo230_sleep_etalon`).

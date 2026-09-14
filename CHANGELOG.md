@@ -297,6 +297,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **why does a restored 128K spin at 300 rpm for a quarter of a frame, and what does save-state v16 add?** → [2026-09-14 (eighth) — Three debts paid…](#2026-09-14-three-small-debts)
 - **what is the French Startup Items folder called, and why did machfs and a leaf-chain walk both fail on a real System 7.5 catalog?** → [2026-09-14 (sixth) — The French Startup Items folder is « Ouverture au démarrage »…](#2026-09-14-ouverture-au-demarrage)
 - **where does a package get the guest agent from, and why is a binary committed?** → [2026-09-14 (fifth) — The agent ships…](#2026-09-14-agent-shipped-in-share)
 - **how does the guest agent start by itself, and how does the host add a file to an HFS volume without a Mac?** → [2026-09-14 (fourth) — The host writes « POM68K Disques » into the boot volume's Startup Items…](#2026-09-14-agent-startup-items)
@@ -447,6 +448,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (eighth)** — [Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug](#2026-09-14-three-small-debts)
 - **2026-09-14 (seventh)** — [The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned](#2026-09-14-daynaport-executed-on-m4)
 - **2026-09-14 (sixth)** — [The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too](#2026-09-14-ouverture-au-demarrage)
 - **2026-09-14 (fifth)** — [The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds](#2026-09-14-agent-shipped-in-share)
@@ -950,6 +952,43 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-three-small-debts"></a>
+## 2026-09-14 (eighth) — Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug
+
+**The PWM servo of the 400K drive** was deliberately outside
+`SonyDrive::visit()` on the reasoning held for `cells_` — a reading that
+re-derives from the guest's sound buffer within 100 scan lines. But the
+adopted speed is what `rpmNow()` answers the 64 K ROM's tachometer
+calibration with, so a restored 128K ran at 300 rpm for a quarter of a
+frame while the ROM measured it. Six integers now follow the GCR write
+buffer; save-state format **v16**. `rpmNow()` is public so a gate can read
+what a restored drive answers. Gate: `iwm_write_test` — two agreeing
+windows of duty `$3F` adopt ~353 rpm, a third window cut in half by the
+snapshot completes identically on both sides after the restore, and a
+drive never commanded keeps the zone table. `DEV.md` § 1.4 has the entry.
+
+**The cable bits.** `EtherLink::uplink_` and `EtherTalkLink::uplink_` were
+plain bools written by the GUI thread under the hub's lock and read by the
+machine thread with none; `cfg_.ethertalk` was read the same way inside
+the card's TX demux. Both `uplink_` are `std::atomic<bool>` now, relaxed
+— the two sides share nothing but the bit, and a frame that straddles the
+toggle may go either way, as on a real cable — and the demux reads
+`ethertalkLive_`, an atomic mirror `setService()` and `attach()` keep equal
+to `cfg_.ethertalk`. No gate can see a data race; the item is closed by
+the code, not by a run.
+
+**The unplug, traversed.** `q605_dayna_driver_etalon` gained its last
+phase, after the echo-request leg: `hub.setService("ethernet", false)` —
+what the window's « câble » toggle does — then « Start Ping » pressed
+again with the cable out: **8 ICMP requests** from the guest reach the
+card, **0 frames** come back; cable in, another press once the series had
+run out: 5 requests, **6 frames** to the guest. The target stayed on the
+bus and the driver's ENABLE bit stayed its own throughout. A first
+attempt measured 0 frames sent in 10 s of silence — MacTCP Ping's series
+had ended — which is the lesson: an unplug is only visible on a guest
+that talks. 231 s on the M4, recorded. The relaunch with a card is still
+proven by its serialization only.
 
 <a id="2026-09-14-daynaport-executed-on-m4"></a>
 ## 2026-09-14 (seventh) — The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned

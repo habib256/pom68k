@@ -174,3 +174,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 13 18:05 +04 | aarch64 | default | 95 | 95 | 0 | 0 | asset-none on the M4 (aarch64), DaynaPort staged card + NetworkWindow |
 | Sep 13 18:29 +04 | aarch64 | default | 96 | 96 | 0 | 0 | asset-none on the M4 (aarch64), editable network configuration + atalk_hub_test |
 | Sep 14 18:54 +04 | aarch64 | default | 18 | 16 | 2 | 0 | the sixteen DaynaPort gates on the M4 (aarch64): daynaport_test, both controller tests, q605_dayna_driver_etalon and the twelve dayna_boot etalons all EXECUTED (16/18; the two 64 K boot etalons soft-skip here for want of disks35/System 1.1.dsk) |
+| Sep 14 19:27 +04 | aarch64 | default | 1 | 1 | 0 | 0 | q605_dayna_driver_etalon with its new cable phase on the M4: 231 s, EXECUTED (cable out: 8 guest ICMP requests, 0 frames back; in: 6 frames back) |

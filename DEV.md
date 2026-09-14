@@ -215,6 +215,15 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
+- **Format v16** adds the 400K spindle PWM servo to every `SonyDrive`: six
+  integers after the GCR write buffer — whether a duty was ever commanded,
+  the running window's counts, the two speeds being debounced and the
+  adopted one. It had been left out as a reading that re-derives from the
+  guest's sound buffer within 100 scan lines, but the adopted speed is what
+  `rpmNow()` answers the 64 K ROM's tachometer calibration with, and a
+  restored 128K ran at 300 rpm for a quarter of a frame meanwhile. Gate:
+  `iwm_write_test` (a half window cut by the snapshot completes identically
+  on both sides).
 - **Format v15** adds the DaynaPort SCSI/Link chunk to all twelve machine
   families: the card can sit on any SCSI bus since 2026-09-12, and its enable
   bit, guest-set MAC, RX ring and sense are guest state. `attached_` and

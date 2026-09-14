@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 516 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 517 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -15,7 +15,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
-| [Save states](#save-states) | 7 |
+| [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 59 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 34 |
@@ -352,6 +352,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-01 (late night)** — [The IIfx is the 34th profile: GUI, save states, and an input gate whose thresholds were measured, not invented](CHANGELOG.md#2026-08-01-iifx-profile)
 - **2026-08-12 (later)** — [The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer](CHANGELOG.md#2026-08-12-savestate-writebuffer)
 - **2026-08-29 (tenth)** — [Real sessions become replayable benchmarks: the input journal records every GUI input at its machine clock, and a recorded session replays bit-identically from its snapshot](CHANGELOG.md#2026-08-29-input-journal)
+- **2026-09-14 (eighth)** — [Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug](CHANGELOG.md#2026-09-14-three-small-debts)
 
 ## Machine bring-ups
 

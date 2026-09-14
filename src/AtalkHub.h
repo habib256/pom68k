@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -151,10 +152,14 @@ public:
                 // 802.3 with an LLC/SNAP header, IPv4 and ARP are DIX.
                 // EtherLink::attach took the callback first; this demux
                 // replaces it and keeps both halves reachable.
+                // This runs on the MACHINE thread inside the card's TX,
+                // with no lock: the EtherTalk switch it reads is the
+                // atomic mirror setService keeps, never cfg_ itself.
                 mem.daynaPort().sendFrame =
                     [this](const uint8_t* d, size_t n) {
                         if (EtherTalkLink::isAppleTalk(d, n)) {
-                            if (cfg_.ethertalk) etalk_->onGuestFrame(d, n);
+                            if (ethertalkLive_.load(std::memory_order_relaxed))
+                                etalk_->onGuestFrame(d, n);
                             return;
                         }
                         ether_->onGuestFrame(d, n);
@@ -164,6 +169,7 @@ public:
         // One sample now: the window must not read "no card" for the frames
         // between attachment and the first tick().
         if (dayna_) etherMeter_ = dayna_();
+        ethertalkLive_.store(cfg_.ethertalk, std::memory_order_relaxed);
         applyLocked();
         attached_ = true;
     }
@@ -335,6 +341,7 @@ public:
         else if (key == "stack") cfg_.stack = on;
         else if (key == "ethertalk") cfg_.ethertalk = on;
         else if (key == "ethernet") cfg_.ethernetCable = on;
+        ethertalkLive_.store(cfg_.ethertalk, std::memory_order_relaxed);
         if (attached_) applyLocked();
     }
 
@@ -378,6 +385,10 @@ private:
     }
 
     std::mutex mu_;
+    // cfg_.ethertalk as the machine thread may read it without mu_: the
+    // card's TX demux above. Kept equal to cfg_.ethertalk by setService()
+    // and attach(); the closed race of 2026-09-14 (TODO § Services réseau).
+    std::atomic<bool> ethertalkLive_{false};
     AtalkStack stack_;
     AfpServer afp_;
     PapServer pap_;

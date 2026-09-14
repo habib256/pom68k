@@ -284,7 +284,11 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // ring and sense are live guest state. The chunk is written whether or not a
 // card is configured — a conditional field would make the layout depend on
 // configuration — so a v14 reader would shift every following device field.
-inline constexpr u32      kVersion   = 15;  // v15: DaynaPort on every bus
+// v16 (2026-09-14): the 400K spindle PWM servo of every SonyDrive — six
+// integers after the GCR write buffer. The adopted speed is what the 64 K
+// ROM's tachometer calibration reads; a v15 reader would shift every field
+// after the drives.
+inline constexpr u32      kVersion   = 16;  // v16: SonyDrive PWM servo
 
 struct Header {
     u32 version     = kVersion;

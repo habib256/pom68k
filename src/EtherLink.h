@@ -29,6 +29,7 @@
 
 #pragma once
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstddef>
 #include <deque>
@@ -77,8 +78,12 @@ public:
     // What stops is traffic, in both directions, including whatever was
     // already in flight when the plug came out. The owner drives this from
     // `AtalkHub::applyLocked`. Gate: tests/daynaport_test.cpp.
-    void setUplink(bool up) { uplink_ = up; }
-    bool uplink() const { return uplink_; }
+    // Written from the GUI thread (AtalkHub::setService under its lock),
+    // read on the machine thread with no lock: an atomic, relaxed — the
+    // two sides share nothing but this bit, and a frame that straddles the
+    // toggle may go either way, as on a real cable.
+    void setUplink(bool up) { uplink_.store(up, std::memory_order_relaxed); }
+    bool uplink() const { return uplink_.load(std::memory_order_relaxed); }
 
     // Entry points (public so a test can drive them without the callbacks).
     void onGuestFrame(const std::uint8_t* d, std::size_t n);
@@ -103,7 +108,7 @@ private:
     std::array<std::uint8_t, 6> gwMac_ = { 0x02, 0x00, 0x4B, 0x36, 0x38, 0x01 };
     std::array<std::uint8_t, 6> guestMac_ = {};
     std::uint32_t guestIp_ = 0;          // learned from ARP / IP source
-    bool uplink_ = true;                 // the cable, see setUplink()
+    std::atomic<bool> uplink_{true};     // the cable, see setUplink()
     std::int64_t latency_ = 0;           // machine cycles, set by the owner
     std::int64_t now_ = 0;               // last tick, machine cycles
     std::deque<std::pair<std::int64_t, std::vector<std::uint8_t>>> wire_;
