@@ -8,6 +8,7 @@
 
 #include "DiskBays.h"
 #include "DockLayout.h"
+#include "GuiMachineControls.h"
 #include "MachineCatalog.h"
 #include "GuiSessionObjects.h"
 #include "GuiSessionState.h"
@@ -68,15 +69,17 @@ public:
         state_.cpu.jitBackend = cpu.jit().backendName();
     }
 
-    template <class MenuFn>
-    void drawMachineMenu(SnapMachine current, GLFWwindow* window,
-                         MenuFn&& extraMenus) {
-        drawMachineMenuImpl(
-            current, window,
-            std::function<void()>(std::forward<MenuFn>(extraMenus)));
+    // The runner's whole contribution to the menu bar and the control
+    // window: callbacks bound once, the family status lines as a lambda.
+    template <class MachineT, class DrawStatus>
+    void bindMachineControls(MachineT& machine, DrawStatus&& drawStatus) {
+        gui::bindMachineControls(state_.machine, machine,
+                                 std::forward<DrawStatus>(drawStatus));
     }
 
-    void drawSaveState(SaveStateSlot& state) const;
+    // Menu bar, dock space and every shell-owned window, once per frame,
+    // before the runner draws the screen window.
+    void drawMachineMenu(SnapMachine current, GLFWwindow* window);
 
     // Drives the command-line GUI smoke scenario once per rendered frame.
     // Normal sessions pay one predictable empty-optional branch.
@@ -90,34 +93,10 @@ public:
     }
 
 private:
-    void drawMachineMenuImpl(SnapMachine current, GLFWwindow* window,
-                             const std::function<void()>& extraMenus);
-
     GuiSessionState& state_;
     GuiSessionObjects& objects_;
     GuiSmokeScenario smoke_;
 };
-
-// Machine-menu block for the input journal (src/InputJournal.h): start or
-// stop a recording of the running session. One block shared by every
-// family's menu lambda, so the labels and the discipline live once. The
-// item shown follows the machine's OWN state (recordingActive(), set by
-// the machine thread when the snapshot + journal are actually armed), not
-// the click — the engine-swap precedent — and the line under it is the
-// recorder's last outcome, the save-state row's convention.
-template <class Machine>
-inline void recordingMenuItems(Machine& machine) {
-    ImGui::Separator();
-    if (!machine.recordingActive()) {
-        if (ImGui::MenuItem("Démarrer l'enregistrement"))
-            machine.requestRecordingStart();
-    } else if (ImGui::MenuItem("Arrêter l'enregistrement")) {
-        machine.requestRecordingStop();
-    }
-    const std::string recMessage = machine.recordingMessage();
-    if (!recMessage.empty())
-        ImGui::TextDisabled("%s", recMessage.c_str());
-}
 
 // An emulated screen is an InvisibleButton with the image drawn over it.
 // A drag started on the Mac screen owns the mouse until release.  The middle

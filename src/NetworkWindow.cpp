@@ -252,11 +252,13 @@ void drawEthernetSection(GuiNetworkState& state,
 
 } // namespace
 
+const char* kNetworkWindowTitle = "AppleTalk / Ethernet";
+
 void drawAppleTalkWindow(GuiNetworkState& state) {
     if (!state.showWindow) return;
     const AtalkHub::Snapshot snapshot = state.atalk.snapshot();
     ImGui::SetNextWindowSize(ImVec2(420, 0), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("AppleTalk", &state.showWindow,
+    if (!ImGui::Begin(kNetworkWindowTitle, &state.showWindow,
                       ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;

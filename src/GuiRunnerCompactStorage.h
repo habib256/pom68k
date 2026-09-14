@@ -34,6 +34,7 @@ pom68k::DiskBaysHost compactDiskBaysHost(Ctx& ctx) {
     };
     host.ejectBay = [&ctx](int id) { ctx.machine.requestEjectBay(id); };
     bindFloppyBays(host, ctx.machine);
+    bindScsiBays(host, ctx.machine);
     return host;
 }
 

@@ -361,7 +361,7 @@ endforeach()
 # Beyond-boot on the FOURTH machine, and the first RAM-based-video one:
 # the IIsi. Blocked until 2026-08-13 on the logical-address read of the
 # Time global (peek8 is physical and low physical RAM is the framebuffer
-# there) — tests/Mmu030Peek.h is that read, a side-effect-free walk of
+# there) — src/Mmu030Peek.h is that read, a side-effect-free walk of
 # the live page tables.
 add_executable(rbv_beyond_etalon tests/rbv_beyond_etalon.cpp)
 target_link_libraries(rbv_beyond_etalon PRIVATE pom68k_core)
@@ -749,8 +749,31 @@ add_test(NAME compact_teachtext_etalon COMMAND compact_teachtext_etalon
 set_tests_properties(compact_teachtext_etalon PROPERTIES TIMEOUT 2700)
 
 # Installation from CD (TODO § D.3, 2026-09-08): a blank formatted disk
-# (HfsBlankVolume.h) and the Mac OS 8.1 retail CD; the guest boots the CD,
+# (src/HfsBlankVolume.h) and the Mac OS 8.1 retail CD; the guest boots the CD,
 # runs its installer onto the disk, restarts and must come up from the disk.
+# SCSI hot-plug contract on the Quadra 605 (docs/SCSI_HOTPLUG.md § 3):
+# the guest's own drive/VCB queues name the boot volume on SCSI 0; a
+# fixed disk attached live is on the bus but has no driver until a power
+# cycle, after which the ROM's re-probe mounts it. FF7439EE ROM + a
+# bootable hdv/ image; the second disk is built by the gate.
+add_executable(scsi_hotplug_etalon tests/scsi_hotplug_etalon.cpp)
+target_link_libraries(scsi_hotplug_etalon PRIVATE pom68k_core)
+add_test(NAME scsi_hotplug_etalon COMMAND scsi_hotplug_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(scsi_hotplug_etalon PROPERTIES TIMEOUT 1800)
+
+# The guest agent end to end (docs/SCSI_HOTPLUG.md § 3, dev/scsiagent):
+# « POM68K Disques » launched from its floppy in the 8.1 Finder polls the
+# mailbox; a blank disk attached live on SCSI 2 is mounted, unmounted and
+# mounted again on request, and the guest's own queues confirm each step;
+# unmounting the boot volume is refused with fBsyErr. FF7439EE ROM + a
+# bootable hdv/ image + the agent's .dsk built with Retro68.
+add_executable(scsi_agent_etalon tests/scsi_agent_etalon.cpp)
+target_link_libraries(scsi_agent_etalon PRIVATE pom68k_core)
+add_test(NAME scsi_agent_etalon COMMAND scsi_agent_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(scsi_agent_etalon PROPERTIES TIMEOUT 1800)
+
 add_executable(q605_cdinstall_etalon tests/q605_cdinstall_etalon.cpp)
 target_link_libraries(q605_cdinstall_etalon PRIVATE pom68k_core)
 add_test(NAME q605_cdinstall_etalon COMMAND q605_cdinstall_etalon

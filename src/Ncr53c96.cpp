@@ -48,7 +48,8 @@ void Ncr53c96::acceptDataOutByte_(uint8_t v) {
     // A defect-list header carries the real length of what follows it, so the
     // gather target can grow once the first four bytes are in (FORMAT UNIT /
     // REASSIGN BLOCKS — ScsiDisk::extendDataOut).
-    if (disk_ && !cmd_.empty())
+    if (disk_ && !cmd_.empty() &&
+        !pom68k::ScsiAgentMailbox::handles(cmd_.data(), int(cmd_.size())))
         dataOutExpected_ = disk_->extendDataOut(cmd_.data(), int(cmd_.size()),
                                                 dataOut_, dataOutExpected_);
     if (tcounter_ == 0 || dataOut_.size() >= dataOutExpected_) {
@@ -225,6 +226,8 @@ int Ncr53c96::cdbLength(uint8_t op) {
 // 53C96 machine while working on the Plus.
 int Ncr53c96::writeByteCount(const std::vector<uint8_t>& cdb) const {
     if (!disk_ || cdb.empty()) return 0;
+    if (pom68k::ScsiAgentMailbox::handles(cdb.data(), int(cdb.size())))
+        return pom68k::ScsiAgentMailbox::writeByteCount(cdb.data(), int(cdb.size()));
     return disk_->writeByteCount(cdb.data(), int(cdb.size()));
 }
 
@@ -697,7 +700,7 @@ void Ncr53c96::runTarget() {
         return;
     }
     std::vector<uint8_t> none;
-    targetStatus_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), dataIn_, none) : 0x02;
+    targetStatus_ = dispatch(dataIn_, none);
     if (!dataIn_.empty()) { phase_ = DATA_IN; dataInPos_ = 0; dataXfer_ = false; }
     else phase_ = STATUS;
 }
@@ -706,8 +709,7 @@ void Ncr53c96::runTarget() {
 void Ncr53c96::advanceToStatus() {
     if (phase_ == DATA_OUT) {                 // finish a WRITE
         std::vector<uint8_t> readback, none;
-        targetStatus_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), readback, dataOut_)
-                              : 0x02;
+        targetStatus_ = dispatch(readback, dataOut_);
     }
     phase_ = STATUS;
     // No S_TC0 here (#41): the flag belongs to the DMA transfer counter alone

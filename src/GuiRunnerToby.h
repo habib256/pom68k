@@ -158,8 +158,12 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             ctx.machine.requestEjectBay(id);
         };
         bindFloppyBays(h, ctx.machine);
+        bindScsiBays(h, ctx.machine);
         return h;
     }();
+    services.shell().bindMachineControls(machine, [&ctx] {
+        drawTobyStatus(ctx.spec.cpuLine, ctx.readStatus(ctx.machine));
+    });
 
     auto frame = [](void* opaque) {
         Ctx& c = *static_cast<Ctx*>(opaque);
@@ -169,10 +173,7 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        c.services.shell().drawMachineMenu(c.spec.snap, c.window, [&c] {
-            diskBaysMenuItem();
-            recordingMenuItems(c.machine);
-        });
+        c.services.shell().drawMachineMenu(c.spec.snap, c.window);
         {
             DiskBaysHost& host = c.diskHost;
             host.romName = c.romName;
@@ -207,21 +208,6 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         c.keyboard.frameLegacy(machine, [&c](uint8_t adb, bool down) {
             if (c.spec.traceKeys) c.services.traceKey(adb, down);
         });
-
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        const TobyStatusView status = c.readStatus(machine);
-        drawTobyStatus(c.spec.cpuLine, status);
-        bool running = machine.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run"))
-            machine.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset"))
-            machine.push({MachineT::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = machine.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Avance rapide", &turbo)) machine.turbo.store(turbo);
-        c.services.shell().drawSaveState(machine.state);
-        ImGui::End();
 
         c.services.shell().runSmokeFrame(c.window, machine.state);
         ImGui::Render();

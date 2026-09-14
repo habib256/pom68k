@@ -28,6 +28,23 @@ void bindFloppyBays(DiskBaysHost& host, Machine& machine) {
     };
 }
 
+// Live attach and the guest's bus view (docs/SCSI_HOTPLUG.md § 3). The
+// attach is queued; `true` means requested, the outcome is bayMessage's.
+template <class Machine>
+void bindScsiBays(DiskBaysHost& host, Machine& machine) {
+    host.attachBay = [&machine](int id, const std::string& path) {
+        if (id < 1 || id > 6 || path.empty()) return false;
+        machine.requestAttachDisk(id, path);
+        return true;
+    };
+    host.guestView = [&machine] { return machine.guestScsiView(); };
+    host.bayMessage = [&machine] { return machine.bayMessage(); };
+    host.agentPresent = [&machine] { return machine.agent().present; };
+    host.agentReport = [&machine] { return machine.agent().mailbox; };
+    host.agentMount = [&machine](int id) { machine.requestAgentMount(id); };
+    host.agentUnmount = [&machine](int id) { machine.requestAgentUnmount(id); };
+}
+
 template <class Machine>
 void refreshFloppyBays(DiskBaysHost& host, const Machine& machine) {
     host.floppyPath = machine.floppyPath(0);

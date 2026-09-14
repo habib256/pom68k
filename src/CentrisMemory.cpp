@@ -421,6 +421,20 @@ void CentrisMemory::scsiDmaWrite_(uint8_t v) {
 
 void CentrisMemory::scsiPoll_() {
     scsiIrq(scsi_.irq());
+    scsiDrq(scsi_.drq());
+}
+
+// DRQ is an INTERRUPT source as well as a flag: pseudovia.cpp:162 scsi_drq_w
+// sets IFR bit 0 and recalculates. The Mac OS 8.1 SCSI Manager's old-API
+// emulation (SCSIGet/SCSISelect/SCSICmd, what SCSIProbe and POM68K's own
+// guest agent use) selects with a DMA « Select without ATN » ($C1) and
+// arms IER bit 0 to feed the CDB at DRQ-interrupt time; with the bit only
+// reflected on IFR reads, that continuation never ran and every old-API
+// transaction hung in the XPT (gate scsi_agent_etalon, 2026-09-14).
+void CentrisMemory::scsiDrq(bool s) {
+    if (s) pvIfr_ |= 0x01;
+    else   pvIfr_ &= ~0x01;
+    via2Recalc();
 }
 
 // POM68K JIT: the address map itself moved (overlay flip, ROM reload).
@@ -630,7 +644,8 @@ void CentrisMemory::tick(int cpuCycles) {
     drive0_.tick(cpuCycles);
     drive1_.tick(cpuCycles);
 
-    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0) ||
+            scsi_.drq() != ((pvIfr_ & 0x01) != 0)) scsiPoll_();
     scsiDebt_ += cpuCycles;
     if (scsi_.cyclesToNextEvent() <= scsiDebt_) flushScsi();
 
@@ -699,5 +714,6 @@ void CentrisMemory::flushScsi() {
         scsiDebt_ -= step;
         scsi_.tick(step);
     }
-    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0) ||
+            scsi_.drq() != ((pvIfr_ & 0x01) != 0)) scsiPoll_();
 }

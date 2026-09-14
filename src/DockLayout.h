@@ -49,10 +49,8 @@ void dockLayoutFrame();
 // each, and a changed title (i.e. a machine switch) re-splits on its own.
 void dockLayoutScreenWindow(const char* title);
 
-// Force the default split back on the next frame (menu: Fenêtres → Réinitialiser).
+// Force the default split back on the next frame. The shell's Fenêtres
+// menu (GuiShell.cpp) carries the « Réinitialiser la disposition » entry.
 void dockLayoutReset();
-
-// A "Fenêtres" menu with the reset entry, for the shared menu bar.
-void dockLayoutMenu();
 
 } // namespace pom68k

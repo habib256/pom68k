@@ -53,8 +53,11 @@ struct PeripheralHost {
     lle::Registry* registry = &lle::processRegistry();
 };
 
-// "Périphériques (LLE / HLE)..." — for the Machine menu.
-void peripheralMenuItem();
+// The window's title, shared with the Fenêtres menu.
+extern const char* kPeripheralWindowTitle;
+
+// A checkable entry that toggles the window, inside an already-open menu.
+void peripheralMenuItem(const char* label);
 
 // Draws the window when open. Safe to call every frame on every machine.
 void peripheralWindow(const PeripheralHost& host);

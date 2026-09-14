@@ -341,6 +341,7 @@ private:
     uint8_t scsiDmaRead_();                  // DRQ-gated pseudo-DMA byte in
     void    scsiDmaWrite_(uint8_t v);        // DRQ-gated pseudo-DMA byte out
     void    scsiPoll_();                      // feed 53C96 irq()/drq() to VIA2
+    void    scsiDrq(bool s);                  // IFR bit 0 + IRQ recalc
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);
 

@@ -10,6 +10,7 @@
 #include "AtalkHub.h"
 #include "FloppySound.h"
 #include "FirmwareConfig.h"
+#include "GuiMachineControls.h"
 #include "GuiSpeedGauge.h"
 #include "LtoUdp.h"
 #include "MachineCatalog.h"
@@ -95,4 +96,5 @@ struct GuiSessionState {
     GuiCpuPanelState cpu;
     GuiDiagnosticState diagnostics;
     pom68k::PeripheralHost peripherals;
+    pom68k::gui::GuiMachineControls machine;
 };

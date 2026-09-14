@@ -14,6 +14,9 @@
 #include <vector>
 
 namespace pom68k {
+
+const char* kPeripheralWindowTitle = "Périphériques (LLE / HLE)";
+
 namespace {
 
 // Closed by default — but see openIfFallback() below.
@@ -108,8 +111,8 @@ std::string reasonText(const lle::Device& d) {
 
 } // namespace
 
-void peripheralMenuItem() {
-    if (ImGui::MenuItem("Périphériques (LLE / HLE)...", nullptr, gOpen))
+void peripheralMenuItem(const char* label) {
+    if (ImGui::MenuItem(label, nullptr, gOpen))
         gOpen = !gOpen;
 }
 
@@ -121,7 +124,7 @@ void peripheralWindow(const PeripheralHost& host) {
     if (!gOpen) return;
 
     ImGui::SetNextWindowSize(ImVec2(560, 0), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Périphériques (LLE / HLE)", &gOpen)) {
+    if (!ImGui::Begin(kPeripheralWindowTitle, &gOpen)) {
         ImGui::End();
         return;
     }

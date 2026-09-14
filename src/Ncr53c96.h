@@ -27,6 +27,7 @@
 // Gate: tests/ncr53c96_test.cpp.
 
 #pragma once
+#include "ScsiAgentMailbox.h"
 #include "ScsiTarget.h"
 #include <cstdint>
 #include <functional>
@@ -39,6 +40,9 @@ public:
     // Attach a target at a SCSI ID (0-6). The initiator is ID 7 by default
     // (set through the CONFIG1 register at run time — bus_id_w selects the
     // destination for a Select command).
+    // The guest agent's mailbox (ScsiAgentMailbox.h): vendor CDBs $C0/$C1
+    // answered here for any selected target, before the disk sees them.
+    pom68k::ScsiAgentMailbox& agent() { return agent_; }
     void attach(ScsiTarget* disk, int id = 0) {
         if (id >= 0 && id < 7) targets_[id] = disk;
     }
@@ -174,6 +178,14 @@ public:
     }
 
 private:
+    std::uint8_t dispatch(std::vector<uint8_t>& out,
+                          const std::vector<uint8_t>& in) {
+        if (!disk_) return 0x02;
+        if (pom68k::ScsiAgentMailbox::handles(cmd_.data(), int(cmd_.size())))
+            return agent_.command(cmd_.data(), int(cmd_.size()), out, in);
+        return disk_->command(cmd_.data(), int(cmd_.size()), out, in);
+    }
+    pom68k::ScsiAgentMailbox agent_;
     ScsiTarget* targets_[7] = {};
     ScsiTarget* disk_ = nullptr;         // target selected this session
 

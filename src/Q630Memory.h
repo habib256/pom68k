@@ -333,6 +333,7 @@ private:
     uint8_t scsiDmaRead_();                  // DRQ-gated pseudo-DMA byte in
     void    scsiDmaWrite_(uint8_t v);        // DRQ-gated pseudo-DMA byte out
     void    scsiPoll_();                      // feed 53C96 irq()/drq() to VIA2
+    void    scsiDrq(bool s);                  // IFR bit 0 + IRQ recalc
 
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via1_;

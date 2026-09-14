@@ -25,8 +25,12 @@
 //
 //     - a bay that is OCCUPIED at boot exists as a removable target from the
 //       ROM's probe onward, and its medium can be swapped live, forever;
-//     - a bay that is EMPTY at boot has no target to probe, so filling it is
-//       staged and takes a reboot.
+//     - a FIXED disk can join the bus at any time (`attachBay`, since
+//       2026-09-13 — Cmd::AttachDisk on the machine thread), but the
+//       System only learns of it at the next power cycle, or through a
+//       guest-side mount. The window no longer guesses which: it prints
+//       the guest's own drive and VCB queues under each bay
+//       (`guestView`, src/GuestScsiView.h, gate scsi_hotplug_etalon).
 //
 //   Which is why, since 2026-08-15, every machine that can hold a CD drive
 //   BOOTS with one (`ensureCdDrive` below) and the window carries a CD row
@@ -43,6 +47,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "FixtureStore.h"
+#include "GuestScsiView.h"
+#include "ScsiAgentMailbox.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -93,14 +99,32 @@ struct DiskBaysHost {
     std::function<void()>                   ejectExternalFloppy;
     std::function<bool()>                   externalFloppyInserted;
 
+    // --- Live attach and the guest's view (docs/SCSI_HOTPLUG.md § 3) ---
+    // attachBay puts a fixed disk on the bus NOW (queued to the machine
+    // thread; the outcome comes back through bayMessage). Null = staged +
+    // reboot, the pre-2026-09-13 behaviour. guestView reads the guest's own
+    // drive and VCB queues: what the System knows, not what the host wired.
+    std::function<bool(int id, const std::string& path)> attachBay;
+    std::function<GuestScsiView()>                       guestView;
+    std::function<std::string()>                         bayMessage;
+    // The guest agent (dev/scsiagent, ScsiAgentMailbox.h): mount/unmount a
+    // bay's volume from inside Mac OS. `agentPresent` = it polled within
+    // the last ~2 s; `agentReport` = its last answer. Null = no agent path.
+    std::function<bool()>                                agentPresent;
+    std::function<ScsiAgentSnapshot()>                   agentReport;
+    std::function<void(int id)>                          agentMount;
+    std::function<void(int id)>                          agentUnmount;
+
     // --- Machine control ---
     std::function<void()> hardReset;            // power cycle; ROM re-probes
     std::function<void(const std::string& boot,
                        const std::vector<std::string>& extras)> relaunch;
 };
 
-// Draw the "Disques…" entry inside an already-open menu. Toggles the window.
-void diskBaysMenuItem();
+// A checkable entry that toggles the window, inside an already-open menu.
+// The label is the caller's: "Disques..." under Périphériques, the window
+// title under Fenêtres.
+void diskBaysMenuItem(const char* label);
 
 // Draw the window itself (no-op while closed). Call once per frame, after
 // the menu bar, from any runner's frame lambda.
@@ -110,14 +134,15 @@ void diskBaysWindow(DiskBaysHost& host);
 // Safe to call once per runner at start-up.
 void diskBaysInstallDrop(GLFWwindow* window);
 
-// Images discoverable from the usual places (hdv/, disks35/, the boot image's
-// own directory) plus anything the user has dropped or typed this session.
-// Accepts every extension the command line accepts.
+// Images discoverable from the usual places (hdv/ref/, hdv/work/, hdv/,
+// disks35/, cd/, the boot image's own directory) plus anything the user
+// has dropped, typed or created this session.
 std::vector<std::string> diskBaysKnownImages(const std::string& nearPath);
 
-// CD image by extension (.iso/.cdr/.toast/.cue/.bin) — the ONE list, shared
-// by the window and every runner's typed-media loop. Name-based on purpose: a .dsk
-// that happens to be 2048-aligned is still a hard disk.
+// CD image for the window and every runner's typed-media loop. Extension
+// first (.iso/.cdr/.toast/.cue/.bin) so a 2048-aligned `.dsk` stays a hard
+// disk; then the Apple prefix so a 512-byte Toast/DDM dump is not sent to
+// the CD bay, where the guest never mounts it.
 bool diskBaysPathIsCd(const std::string& path);
 
 // The reserved-bay placeholder: an extras entry equal to this names an empty

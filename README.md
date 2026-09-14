@@ -201,9 +201,14 @@ classes.
 ## Media and persistent files
 
 POM68K accepts SCSI hard disks, writable HFS volumes, floppy images and SCSI
-CD images. Common CD extensions are `.iso`, `.cdr`, `.toast`, `.cue` and
-`.bin`. Passing the literal `cdbay` as additional media creates an empty,
-hot-swappable CD drive.
+CD images. Common CD extensions are `.iso`, `.cdr`, `.cue` and `.bin`. A
+`.toast` that declares 512-byte Apple blocks is a disk dump, not a CD — the
+Disques window attaches it as a hard disk. Passing the literal `cdbay` as
+additional media creates an empty, hot-swappable CD drive.
+
+**Disques…** creates a blank HFS volume in `hdv/work/` (name and size, then
+**Créer**). A new hard disk appears on the guest desktop only after
+**Appliquer et redémarrer**: Classic Mac OS probes the SCSI bus once, at boot.
 
 Bare HFS volumes are given an in-memory partition-map facade when a template
 is available as `HD20SC.vhd`, `boot.vhd`, or through
@@ -241,21 +246,28 @@ large inputs are split at 1,900 MB by default. Run
 - **Mouse:** hover the Macintosh screen to control it. Middle click,
   `Ctrl+Alt+G`, or `Delete` toggles full mouse capture; releasing capture does
   not require the pointer to remain over the screen.
-- **Machine:** select another profile whose ROM is available, save or restore
-  state, and toggle drive sounds. Profile changes relaunch the emulator.
-- **CPU:** switch between interpreter and accelerated execution, choose the
-  available backend, select display-related CPU options, and view measured
-  speed relative to the emulated machine.
-- **Disques:** choose the boot volume, secondary SCSI disks, floppies and CDs.
-  Changes that affect the boot bus relaunch the machine.
-- **Réseau:** toggle the built-in AppleTalk services and the Ethernet card's
-  cable live; edit the services' identity live (AFP server and volume names,
-  shared folder, printer name, spool folder, MacIP gateway and DNS, with a
-  button that reveals each folder on the host); choose the DaynaPort card
-  itself (none, or SCSI ID 2-6) for the next boot, which relaunches the
-  machine.
-- **Périphériques (LLE / HLE):** inspect controller provenance and choose
+- **Machine:** restart, pause, fast-forward, save or restore state, start or
+  stop an input recording; **Changer de machine** lists every profile by
+  board family (a profile whose ROM is absent stays greyed) and relaunches the
+  emulator; drive sounds.
+- **Périphériques:** the three hardware windows. **Disques** chooses the boot
+  volume, secondary SCSI disks, floppies and CDs (changes to the boot bus
+  relaunch the machine). **Réseau** toggles the built-in AppleTalk services
+  and the Ethernet card's cable live, edits the services' identity live (AFP
+  server and volume names, shared folder, printer name, spool folder, MacIP
+  gateway and DNS, with a button that reveals each folder on the host), and
+  chooses the DaynaPort card itself (none, or SCSI ID 2-6) for the next boot.
+  **Contrôleurs LLE / HLE** shows each controller's provenance and stages
   firmware or fallback policy.
+- **CPU:** measured speed relative to the emulated machine, interpreter or
+  accelerated engine, and the engine statistics window.
+- **Fenêtres:** show or hide every secondary window — the **Tableau de bord**
+  (CPU status lines plus the same run controls as buttons), the disk library,
+  the network and controller windows, the engine statistics — and reset the
+  docked layout.
+
+The right edge of the menu bar reads live: the LLE qualification badge when a
+strict session asked for one, the speed ratio, and the mouse-capture reminder.
 
 Fast-forward is intentionally disabled at startup. It can execute up to eight
 guest frames per host frame, but it also advances the guest clock between
@@ -300,7 +312,7 @@ and backend without changing emulated timing.
 ## AppleTalk and host file exchange
 
 The in-process AppleTalk stack is enabled by default and requires neither root
-nor an external router. Open **Réseau → AppleTalk** to inspect the node,
+nor an external router. Open **Périphériques → Réseau** to inspect the node,
 queues and services.
 
 - **AppleShare:** exports `AppleShare/` as an AFP volume. In the guest, use
@@ -310,7 +322,7 @@ queues and services.
   stores `.ps` files under `run/print`.
 
 Server name, volume name, shared folder, printer name, spool folder, MacIP
-gateway and DNS are edited live in **Réseau → AppleTalk / Ethernet**; applying
+gateway and DNS are edited live in **Périphériques → Réseau : AppleTalk / Ethernet**; applying
 restarts the service concerned, which drops its current sessions. The same
 values are accepted on the command line as `--atalk-<key>=<value>` (`share`,
 `server`, `volume`, `printer`, `spool`, `gateway`, `dns`).

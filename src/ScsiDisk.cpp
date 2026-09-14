@@ -8,6 +8,24 @@
 #include <cstring>
 #include <filesystem>
 
+uint32_t scsiAppleImageBlockSize(const uint8_t* prefix, size_t n) {
+    if (!prefix || n < 1026) return 0;
+    if (prefix[0] == 'E' && prefix[1] == 'R') {
+        const uint32_t sb = (uint32_t(prefix[2]) << 8) | prefix[3];
+        return (sb == 512 || sb == 2048) ? sb : 0;
+    }
+    if (prefix[1024] == 'B' && prefix[1025] == 'D') return 512;
+    return 0;
+}
+
+uint32_t scsiAppleImageBlockSize(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return 0;
+    uint8_t b[1026];
+    in.read(reinterpret_cast<char*>(b), 1026);
+    return scsiAppleImageBlockSize(b, size_t(in.gcount()));
+}
+
 namespace {
 constexpr int kBlockSize = 512;
 // SCSI status bytes
@@ -86,6 +104,43 @@ static bool looksBareHfs(const std::vector<uint8_t>& img) {
     if (img.size() >= 2 && img[0] == 'L' && img[1] == 'K') return true;
     return img.size() >= 0x402 && img[0x400] == 'B' && img[0x401] == 'D'
         && !(img[0] == 'E' && img[1] == 'R');       // already partitioned
+}
+
+// A Toast/DDM dump (ER, 512-byte blocks, no driver) is not a SCSI disk the
+// ROM will bind: sbDrvrCount is 0, the map is a CD layout, and Mac OS
+// mounts nothing — Theme Park on the LC II and the Quadra 700. Keep the
+// Apple_HFS partition; `open` then applies the same façade a flat `.dsk`
+// gets. Write-back is refused: the in-memory layout no longer matches the
+// file. CHANGELOG 2026-08-15, 2026-09-13.
+static bool unwrapDriverless512Dump(std::vector<uint8_t>& img) {
+    if (img.size() < 0x600) return false;
+    if (img[0] != 'E' || img[1] != 'R') return false;
+    const uint32_t sb = (uint32_t(img[2]) << 8) | img[3];
+    if (sb != 512) return false;
+    if (((img[0x10] << 8) | img[0x11]) != 0) return false;
+    uint32_t start = 0, len = 0;
+    for (int i = 1; i < 64; i++) {
+        const size_t b = size_t(i) * 512;
+        if (b + 80 > img.size() || img[b] != 'P' || img[b + 1] != 'M') break;
+        char typ[33] = {};
+        std::memcpy(typ, img.data() + b + 48, 32);
+        if (std::strcmp(typ, "Apple_HFS") != 0) continue;
+        start = (uint32_t(img[b + 8]) << 24) | (uint32_t(img[b + 9]) << 16)
+              | (uint32_t(img[b + 10]) << 8) | img[b + 11];
+        len   = (uint32_t(img[b + 12]) << 24) | (uint32_t(img[b + 13]) << 16)
+              | (uint32_t(img[b + 14]) << 8) | img[b + 15];
+        break;
+    }
+    if (!start || !len) return false;
+    const uint64_t off = uint64_t(start) * 512;
+    uint64_t bytes = uint64_t(len) * 512;
+    if (off >= img.size()) return false;
+    if (off + bytes > img.size()) bytes = img.size() - off;
+    if (bytes < 0x402) return false;
+    if (img[off + 0x400] != 'B' || img[off + 0x401] != 'D') return false;
+    std::vector<uint8_t> hfs(img.begin() + off, img.begin() + off + bytes);
+    img.swap(hfs);
+    return true;
 }
 
 bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
@@ -183,9 +238,14 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
         !in.read(reinterpret_cast<char*>(image_.data()), image_.size()))
         return false;
     hfsPrefixBlocks_ = 0;
-    blocks_ = uint32_t(image_.size() / kBlockSize);
     if (file_.is_open()) file_.close();
     writeBack_ = false;
+    if (unwrapDriverless512Dump(image_)) {
+        writeBack = false;
+        std::fprintf(stderr, "SCSI: %s: driverless 512 dump → HFS, read-only\n",
+                     backingPath.c_str());
+    }
+    blocks_ = uint32_t(image_.size() / kBlockSize);
 
     if (blocks_ && looksBareHfs(image_))
         applyFlatHfsFacade(backingPath);
@@ -327,15 +387,8 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     // descriptor and +2 is sbBlkSize; no descriptor at all with an HFS `BD`
     // at 1024 is the same thing without a map. Anything else — ISO 9660, a
     // de-framed raw rip — is a real 2048-byte disc.
-    uint32_t bs = 2048;
-    if (image_.size() >= 1026) {
-        if (image_[0] == 'E' && image_[1] == 'R') {
-            const uint32_t sb = uint32_t(image_[2]) << 8 | image_[3];
-            if (sb == 512 || sb == 2048) bs = sb;
-        } else if (image_[1024] == 'B' && image_[1025] == 'D') {
-            bs = 512;
-        }
-    }
+    uint32_t bs = scsiAppleImageBlockSize(image_.data(), image_.size());
+    if (!bs) bs = 2048;
     kind_ = bs == 2048 ? Kind::Cdrom : Kind::Removable;
     if (bs != 2048)
         std::fprintf(stderr, "CD-ROM: %s declares %u-byte blocks — attaching "

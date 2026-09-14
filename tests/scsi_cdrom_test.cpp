@@ -236,6 +236,56 @@ int main() {
         std::remove(rawPath.c_str());
     }
 
+    {
+        std::vector<uint8_t> er(1026, 0);
+        er[0] = 'E'; er[1] = 'R';
+        er[2] = 0x02; er[3] = 0x00;
+        check(scsiAppleImageBlockSize(er.data(), er.size()) == 512,
+              "ER + sbBlkSize 512 is a disk dump");
+        er[2] = 0x08; er[3] = 0x00;
+        check(scsiAppleImageBlockSize(er.data(), er.size()) == 2048,
+              "ER + sbBlkSize 2048 is a CD");
+        std::vector<uint8_t> bare(1026, 0);
+        bare[1024] = 'B'; bare[1025] = 'D';
+        check(scsiAppleImageBlockSize(bare.data(), bare.size()) == 512,
+              "bare HFS BD at 1024 is a disk dump");
+        check(scsiAppleImageBlockSize(iso.data(), iso.size()) == 0,
+              "unlabelled 2048 image declares no Apple block size");
+    }
+
+    {
+        std::vector<uint8_t> toast(8 * 512, 0);
+        toast[0] = 'E'; toast[1] = 'R';
+        toast[2] = 0x02; toast[3] = 0x00;
+        toast[0x200] = 'P'; toast[0x201] = 'M';
+        toast[0x207] = 2;
+        toast[0x400] = 'P'; toast[0x401] = 'M';
+        toast[0x407] = 2;
+        toast[0x40b] = 4;
+        toast[0x40f] = 4;
+        std::memcpy(toast.data() + 0x430, "Apple_HFS", 9);
+        toast[4 * 512 + 0x400] = 'B';
+        toast[4 * 512 + 0x401] = 'D';
+        const std::string tp = "scsi_toast512_test.img";
+        { std::ofstream o(tp, std::ios::binary | std::ios::trunc);
+          o.write(reinterpret_cast<const char*>(toast.data()),
+                  std::streamsize(toast.size())); }
+        ScsiDisk hd;
+        check(hd.open(tp), "open a driverless 512 Toast dump");
+        const auto& img = hd.image();
+        bool hfs = false;
+        if (hd.flatHfsFacade()) {
+            const size_t o = size_t(hd.hfsPrefixBlocks()) * 512;
+            hfs = img.size() > o + 0x401 && img[o + 0x400] == 'B'
+               && img[o + 0x401] == 'D';
+        } else {
+            hfs = img.size() > 0x401 && img[0x400] == 'B' && img[0x401] == 'D'
+               && !(img[0] == 'E' && img[1] == 'R');
+        }
+        check(hfs, "512 dump unwraps to an HFS volume");
+        std::remove(tp.c_str());
+    }
+
     std::remove(path.c_str());
     if (fails) { std::printf("FAILED (%d)\n", fails); return 1; }
     std::printf("PASS\n");

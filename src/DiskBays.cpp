@@ -2,6 +2,8 @@
 
 #include "DiskBays.h"
 #include "DockLayout.h"
+#include "HfsBlankVolume.h"
+#include "ScsiDisk.h"
 
 #include "imgui.h"
 
@@ -9,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -25,6 +28,8 @@ bool  gOpen         = true;    // a base window: docked right by default
 bool  gStaged       = false;                // a reboot-requiring edit is pending
 bool  gReserveEmpty = false;                // opt-in: empty removable bays at boot
 char  gPathEntry[512] = {0};
+char  gNewDiskName[32] = "Nouveau disque";
+int   gNewDiskMb = 250;
 std::string gLastError;
 
 // Images the user brought in this session (dropped or typed). Kept separate
@@ -43,10 +48,19 @@ bool endsWithNoCase(const std::string& p, const char* ext) {
     return true;
 }
 
-bool isCd(const std::string& p) {
+bool hasCdExtension(const std::string& p) {
     return endsWithNoCase(p, ".iso")  || endsWithNoCase(p, ".cdr")
         || endsWithNoCase(p, ".toast") || endsWithNoCase(p, ".cue")
         || endsWithNoCase(p, ".bin");
+}
+
+// Extension first, then the Apple prefix: a .toast that declares 512-byte
+// blocks is a disk dump. Putting it in the CD bay is why it appears in
+// Disques and never on the desktop (CHANGELOG 2026-08-15, 2026-09-13).
+bool isCd(const std::string& p) {
+    if (!hasCdExtension(p)) return false;
+    if (endsWithNoCase(p, ".cue") || endsWithNoCase(p, ".bin")) return true;
+    return scsiAppleImageBlockSize(p) != 512;
 }
 
 // Everything the command line accepts. The old menu listed only .vhd/.hda/
@@ -106,6 +120,26 @@ std::string sizeLabel(const std::string& p) {
     return buf;
 }
 
+std::string sanitizeDiskStem(const char* raw) {
+    std::string s;
+    for (const char* p = raw; *p && s.size() < 27; ++p) {
+        const unsigned char c = static_cast<unsigned char>(*p);
+        if (c < 32 || c == '/' || c == '\\' || c == ':') continue;
+        s.push_back(c == ' ' ? '-' : char(c));
+    }
+    return s.empty() ? std::string("Nouveau-disque") : s;
+}
+
+std::string workDiskDir() {
+    const std::string w = probeDir("hdv/work");
+    if (!w.empty()) return w;
+    const std::string h = probeDir("hdv");
+    const std::string dir = h.empty() ? std::string("hdv/work") : (h + "/work");
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    return dir;
+}
+
 // Snapshot the running configuration into the staging buffers.
 void beginStaging(const DiskBaysHost& host) {
     if (gStaged) return;
@@ -140,6 +174,16 @@ bool bayIsLive(const DiskBaysHost& host, int index) {
     return host.bayIsCd(index + 1);
 }
 
+int firstEmptyDiskSlot(const DiskBaysHost& host) {
+    const std::vector<std::string>& ex = activeExtras(host);
+    for (int i = 0; i < kMaxBays; i++) {
+        if (bayIsLive(host, i)) continue;
+        const std::string cur = i < int(ex.size()) ? ex[size_t(i)] : std::string();
+        if (cur.empty()) return i;
+    }
+    return -1;
+}
+
 // A SuperDrive holds 400 K, 800 K or 1.44 MB. Anything larger in the list is
 // a hard-disk image and has no business being offered to the floppy bay.
 // Largest supported DC42: 84-byte header + 1.44 MiB data + 12 tag bytes for
@@ -159,7 +203,7 @@ bool looksLikeFloppy(const std::string& p) {
 // Returns true and fills `chosen` when the user picked something this frame.
 // The filter is what each row can actually accept: a SuperDrive takes no
 // .iso, and a CD drive takes nothing else.
-enum class Only { Any, Floppy, Cd };
+enum class Only { Any, Floppy, Cd, Disk };
 
 bool imageCombo(const char* label, const std::string& current,
                 const std::string& nearPath, std::string& chosen,
@@ -178,6 +222,7 @@ bool imageCombo(const char* label, const std::string& current,
         for (const std::string& d : diskBaysKnownImages(nearPath)) {
             if (only == Only::Floppy && !looksLikeFloppy(d)) continue;
             if (only == Only::Cd && !isCd(d)) continue;
+            if (only == Only::Disk && isCd(d)) continue;
             bool sel = samePath(d, current);
             std::string item = fileName(d) + "   " + sizeLabel(d);
             if (isCd(d)) item += "   CD";
@@ -194,6 +239,45 @@ bool imageCombo(const char* label, const std::string& current,
     return picked;
 }
 
+// What the guest says about a bay, printed under the host's row. Reads the
+// queues the System keeps (GuestScsiView.h); "inconnu" when they are not
+// readable yet, never a guess.
+void guestBayLine(const DiskBaysHost& host, int id) {
+    if (!host.guestView) return;
+    const GuestScsiView view = host.guestView();
+    const ImVec4 grey = ImGui::GetStyle().Colors[ImGuiCol_TextDisabled];
+    if (!view.valid || id < 0 || id >= int(view.bays.size())) {
+        ImGui::TextColored(grey, "invité : inconnu");
+        return;
+    }
+    const GuestScsiBay& bay = view.bays[size_t(id)];
+    if (bay.mounted)
+        ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.35f, 1),
+                           "invité : monté « %s » (lecteur %d)",
+                           bay.volume.c_str(), bay.driveNum);
+    else if (bay.driver)
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1),
+                           "invité : lecteur %d installé, aucun volume monté",
+                           bay.driveNum);
+    else
+        ImGui::TextColored(grey, "invité : aucun lecteur — invisible pour le System");
+}
+
+// Put a fixed disk on the bus now, or stage it when the machine offers no
+// live attach. The extras list is what the relaunch line carries, so it is
+// updated either way.
+void placeDisk(DiskBaysHost& host, int index, const std::string& path) {
+    if (host.attachBay && host.extras && host.attachBay(index + 1, path)) {
+        while (int(host.extras->size()) <= index) host.extras->emplace_back();
+        (*host.extras)[size_t(index)] = path;
+        gLastError.clear();
+        return;
+    }
+    beginStaging(host);
+    while (int(gStagedExtras.size()) <= index) gStagedExtras.emplace_back();
+    gStagedExtras[size_t(index)] = path;
+}
+
 } // namespace
 
 // ── Discovery ──────────────────────────────────────────────────────────────
@@ -203,6 +287,7 @@ std::vector<std::string> diskBaysKnownImages(const std::string& nearPath) {
     // Reference fixtures are first-class picker entries. Selecting one is
     // safe: ScsiDisk redirects the writable GUI session to hdv/work/.
     scanInto(probeDir("hdv/ref"), out);
+    scanInto(probeDir("hdv/work"), out);
     scanInto(probeDir("hdv"), out);
     scanInto(probeDir("disks35"), out);
     // `cd/` is to CDs what `disks35/` is to floppies. Before it was scanned,
@@ -253,8 +338,8 @@ void diskBaysInstallDrop(GLFWwindow* window) {
 
 // ── Menu entry ─────────────────────────────────────────────────────────────
 
-void diskBaysMenuItem() {
-    if (ImGui::MenuItem("Disques...", nullptr, gOpen))
+void diskBaysMenuItem(const char* label) {
+    if (ImGui::MenuItem(label, nullptr, gOpen))
         gOpen = !gOpen;
 }
 
@@ -380,11 +465,63 @@ void diskBaysWindow(DiskBaysHost& host) {
     }
     ImGui::SameLine();
     ImGui::TextDisabled("redémarrage requis");
+    guestBayLine(host, 0);
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Nouveau disque dur");
+    ImGui::SetNextItemWidth(180);
+    ImGui::InputTextWithHint("##newdiskname", "nom du volume",
+                             gNewDiskName, sizeof gNewDiskName);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(90);
+    if (ImGui::BeginCombo("##newdiskmb",
+                          (std::to_string(gNewDiskMb) + " Mo").c_str())) {
+        for (int mb : {250, 500, 1000}) {
+            if (ImGui::Selectable((std::to_string(mb) + " Mo").c_str(),
+                                  gNewDiskMb == mb))
+                gNewDiskMb = mb;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Créer")) {
+        const int slot = firstEmptyDiskSlot(host);
+        if (slot < 0) {
+            gLastError = "Plus de baie SCSI libre pour un disque dur.";
+        } else {
+            const std::string stem = sanitizeDiskStem(gNewDiskName);
+            fs::path out = fs::path(workDiskDir()) / (stem + ".vhd");
+            int n = 2;
+            while (fs::exists(out)) {
+                out = fs::path(workDiskDir()) /
+                      (stem + "-" + std::to_string(n++) + ".vhd");
+            }
+            const std::string vol = gNewDiskName[0] ? std::string(gNewDiskName)
+                                                    : stem;
+            if (!hfsblank::writeFile(out.string(),
+                    hfsblank::build(uint64_t(gNewDiskMb) << 20, vol))) {
+                gLastError = "Impossible d'écrire " + out.string();
+            } else {
+                gSessionImages.push_back(out.string());
+                placeDisk(host, slot, out.string());
+                gLastError.clear();
+            }
+        }
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped(host.attachBay
+        ? "Écrit un volume HFS vide dans hdv/work/ et le met sur le bus "
+          "aussitôt. Le Finder ne monte un disque fixe qu'au démarrage : "
+          "« Redémarrer la machine », ou un montage depuis l'invité."
+        : "Écrit un volume HFS vide dans hdv/work/ et l'attache sur une "
+          "baie SCSI. Le Finder ne le voit qu'après « Appliquer et "
+          "redémarrer ».");
+    ImGui::PopStyleColor();
 
     ImGui::Separator();
 
     // ── Secondary bays.
-    ImGui::TextDisabled("Baies secondaires (SCSI 1-%d)", kMaxBays);
+    ImGui::TextDisabled("Disques durs (SCSI 1-%d) — pas le lecteur CD", kMaxBays);
 
     const std::vector<std::string>& extras = activeExtras(host);
     for (int i = 0; i < kMaxBays; i++) {
@@ -392,19 +529,20 @@ void diskBaysWindow(DiskBaysHost& host) {
         bool live = bayIsLive(host, i);
 
         ImGui::PushID(i);
-        ImGui::Text("SCSI %d", i + 1);
-        ImGui::SameLine(80);
+        ImGui::Text(live ? "SCSI %d (CD)" : "SCSI %d", i + 1);
+        ImGui::SameLine(100);
 
         ImGui::SetNextItemWidth(-74);   // leave room for the button
         std::string pick;
-        if (imageCombo("##img", cur, host.bootPath, pick)) {
+        if (imageCombo("##img", cur, host.bootPath, pick,
+                       live ? Only::Cd : Only::Disk)) {
             if (samePath(pick, boot) && !pick.empty()) {
                 gLastError = "Ce volume est déjà le disque de démarrage.";
             } else if (live && !pick.empty() && !diskBaysPathIsCd(pick)) {
                 // A live bay is a CD drive; a hard-disk image in it would
                 // mount garbage. Staging it wouldn't help either — tell.
                 gLastError = "Baie " + std::to_string(i + 1)
-                           + ": lecteur CD — image .iso/.toast/.cdr attendue.";
+                           + ": lecteur CD — un vrai CD (.iso 2048) seulement.";
             } else if (live && host.insertBay && !pick.empty()) {
                 // Occupied bay, hooks present: swap the medium on the spot.
                 if (host.insertBay(i + 1, pick)) {
@@ -421,8 +559,13 @@ void diskBaysWindow(DiskBaysHost& host) {
                 if (host.extras && i < int(host.extras->size()))
                     (*host.extras)[i] = kCdBayToken;
                 gLastError.clear();
+            } else if (!pick.empty() && cur.empty() && !gStaged) {
+                // Empty bay: on the bus now when the machine can, staged
+                // otherwise. The guest line below says what the System
+                // made of it.
+                placeDisk(host, i, pick);
             } else {
-                // Empty bay, or no hot-swap on this machine: stage it.
+                // Occupied fixed bay, or a staged session: stage it.
                 beginStaging(host);
                 while (int(gStagedExtras.size()) <= i) gStagedExtras.emplace_back();
                 gStagedExtras[i] = pick;
@@ -448,15 +591,62 @@ void diskBaysWindow(DiskBaysHost& host) {
                     ImGui::SetTooltip("Prendra effet au prochain redémarrage");
             }
         }
+        if (!cur.empty() && !live) {
+            ImGui::Indent(100);
+            guestBayLine(host, i + 1);
+            // The guest agent, when it is polling: mount or unmount this
+            // bay's volume from inside Mac OS (docs/SCSI_HOTPLUG.md § 3,
+            // step 3). The button follows the guest's own view of the bay.
+            if (host.agentPresent && host.agentPresent() && host.guestView) {
+                const GuestScsiView v = host.guestView();
+                const bool mounted = v.valid && v.bays[size_t(i + 1)].mounted;
+                ImGui::SameLine();
+                if (mounted) {
+                    if (ImGui::SmallButton("Démonter") && host.agentUnmount)
+                        host.agentUnmount(i + 1);
+                } else if (ImGui::SmallButton("Monter") && host.agentMount) {
+                    host.agentMount(i + 1);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Par l'agent POM68K qui tourne dans le Mac");
+            }
+            ImGui::Unindent(100);
+        }
         ImGui::PopID();
     }
 
     // Why some rows swap live and others do not -- stated once, in place.
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-    ImGui::TextWrapped("Une baie occupée au démarrage s'échange à chaud. "
-                       "Une baie vide au démarrage demande un redémarrage: "
-                       "le ROM ne sonde le bus SCSI qu'une fois, au boot.");
+    ImGui::TextWrapped(host.attachBay
+        ? "Un disque choisi ici rejoint le bus aussitôt ; le Finder ne monte "
+          "un disque fixe qu'au démarrage — « Redémarrer la machine » (le "
+          "ROM re-sonde le bus) ou un montage depuis l'invité (SCSIProbe). "
+          "La ligne CD-ROM n'accepte qu'un vrai CD (2048 octets/bloc). Un "
+          "dump Toast .toast est un disque, pas un CD."
+        : "Un disque dur n'apparaît sur le bureau qu'au démarrage: "
+          "choisissez-le ici, puis « Appliquer et redémarrer ». La ligne "
+          "CD-ROM n'accepte qu'un vrai CD (2048 octets/bloc). Un dump Toast "
+          ".toast est un disque, pas un CD.");
     ImGui::PopStyleColor();
+    if (host.bayMessage) {
+        const std::string m = host.bayMessage();
+        if (!m.empty()) ImGui::TextWrapped("%s", m.c_str());
+    }
+    if (host.agentPresent && host.agentReport) {
+        const bool present = host.agentPresent();
+        const ScsiAgentSnapshot rep = host.agentReport();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::Text("Agent invité : %s", present
+            ? (rep.pending ? "présent, requête en cours" : "présent")
+            : "absent (lancer « POM68K Disques » dans le Mac)");
+        ImGui::PopStyleColor();
+        if (rep.reported)
+            ImGui::TextWrapped("Agent : %s SCSI %d → %s%s%s (err %d)",
+                               rep.lastKind == 1 ? "montage" : "démontage",
+                               rep.lastId, rep.lastText.empty() ? "" : "« ",
+                               rep.lastText.c_str(), rep.lastText.empty() ? "" : " »",
+                               rep.lastErr);
+    }
     if (host.supportsEmptyCdDrive) {
         ImGui::Checkbox("Réserver un lecteur CD vide au démarrage",
                         &gReserveEmpty);

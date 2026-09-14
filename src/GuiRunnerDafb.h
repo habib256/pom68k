@@ -161,8 +161,21 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
                 ctx.window, ctx.romName, boot, extras);
         };
         bindFloppyBays(value, ctx.machine);
+        bindScsiBays(value, ctx.machine);
         return value;
     }();
+    services.shell().bindMachineControls(machine, [&ctx] {
+        const auto status = ctx.machine.status();
+        ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine.c_str(),
+                    status.pc, status.clock);
+        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
+                    status.overlay ? 1 : 0, status.w, status.h, status.depth,
+                    status.mmu ? "on" : "off", status.held ? 1 : 0);
+        const std::string liveFloppy = ctx.machine.floppyPath();
+        ImGui::Text("floppy=%s", ctx.machine.floppyInserted()
+                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
+                    : "none");
+    });
 
     auto frame = [](void* opaque) {
         Ctx& context = *static_cast<Ctx*>(opaque);
@@ -186,20 +199,7 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
                          context.framebuffer.data());
         }
 
-        services.shell().drawMachineMenu(context.spec.snap, context.window, [&] {
-            diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                machine.push({MachineT::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état"))
-                machine.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état"))
-                machine.state.request(true);
-            const std::string message = machine.state.message();
-            if (!message.empty())
-                ImGui::TextDisabled("%s", message.c_str());
-            recordingMenuItems(machine);
-        });
+        services.shell().drawMachineMenu(context.spec.snap, context.window);
 
         {
             DiskBaysHost& host = context.diskHost;
@@ -227,31 +227,6 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         context.keyboard.frame(machine, [&](uint8_t adb, bool down) {
             services.traceKey(adb, down);
         });
-
-        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        const auto status = machine.status();
-        ImGui::Text("%s  PC=%08X  clock=%lld", context.spec.cpuLine.c_str(),
-                    status.pc, status.clock);
-        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
-                    status.overlay ? 1 : 0, status.w, status.h, status.depth,
-                    status.mmu ? "on" : "off", status.held ? 1 : 0);
-        const std::string liveFloppy = machine.floppyPath();
-        ImGui::Text("floppy=%s", machine.floppyInserted()
-                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
-                    : "none");
-        const bool running =
-            machine.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run"))
-            machine.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset"))
-            machine.push({MachineT::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = machine.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Avance rapide", &turbo))
-            machine.turbo.store(turbo);
-        ImGui::End();
 
         services.shell().runSmokeFrame(context.window, machine.state);
         ImGui::Render();

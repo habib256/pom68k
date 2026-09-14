@@ -547,6 +547,20 @@ void Q605Memory::scsiDmaWrite_(uint8_t v) {
 // scsi_irq_w -> via2 (pseudovia.cpp:148); IntStatus-read clears the IRQ.
 void Q605Memory::scsiPoll_() {
     scsiIrq(scsi_.irq());
+    scsiDrq(scsi_.drq());
+}
+
+// DRQ is an INTERRUPT source as well as a flag: pseudovia.cpp:162 scsi_drq_w
+// sets IFR bit 0 and recalculates. The Mac OS 8.1 SCSI Manager's old-API
+// emulation (SCSIGet/SCSISelect/SCSICmd, what SCSIProbe and POM68K's own
+// guest agent use) selects with a DMA « Select without ATN » ($C1) and
+// arms IER bit 0 to feed the CDB at DRQ-interrupt time; with the bit only
+// reflected on IFR reads, that continuation never ran and every old-API
+// transaction hung in the XPT (gate scsi_agent_etalon, 2026-09-14).
+void Q605Memory::scsiDrq(bool s) {
+    if (s) pvIfr_ |= 0x01;
+    else   pvIfr_ &= ~0x01;
+    via2Recalc();
 }
 
 // POM68K JIT: the address map itself moved (overlay flip, ROM reload).
@@ -786,13 +800,15 @@ void Q605Memory::tick(int cpuCycles) {
 
     // SCSI bus-service latency countdown (Q6.5b) → reflect the deferred IRQ
     // into the pseudo-VIA2 line when it lands.
-    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0) ||
+            scsi_.drq() != ((pvIfr_ & 0x01) != 0)) scsiPoll_();
     if (scsiEventDriven_) {
         scsiDebt_ += cpuCycles;
         if (scsi_.cyclesToNextEvent() <= scsiDebt_) flushScsi();
     } else {
         scsi_.tick(cpuCycles);
-        if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+        if (scsi_.irq() != ((pvIfr_ & 0x08) != 0) ||
+            scsi_.drq() != ((pvIfr_ & 0x01) != 0)) scsiPoll_();
     }
 
     // 60.15 Hz CA1 tick (iosb 6015_timer)
@@ -866,7 +882,8 @@ void Q605Memory::flushScsi() {
         scsiDebt_ -= step;
         scsi_.tick(step);
     }
-    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0) ||
+            scsi_.drq() != ((pvIfr_ & 0x01) != 0)) scsiPoll_();
 }
 
 namespace {
