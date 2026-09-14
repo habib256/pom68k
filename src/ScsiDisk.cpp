@@ -539,16 +539,24 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
     }
     writeCommands++;
     writeBlocks += long(count);
+    store(lba, count, in.data(), in.size());
+}
+
+void ScsiDisk::hostWrite(uint32_t lba, const uint8_t* data, uint32_t count) {
+    store(lba, count, data, size_t(count) * kBlockSize);
+}
+
+void ScsiDisk::store(uint32_t lba, uint32_t count, const uint8_t* in, size_t inSize) {
     uint64_t off = uint64_t(lba) * kBlockSize;
     uint64_t n = uint64_t(count) * kBlockSize;
     if (off >= image_.size()) return;
     uint64_t avail = image_.size() - off;
     uint64_t w = n < avail ? n : avail;
-    if (w > in.size()) w = in.size();
+    if (w > inSize) w = inSize;
     // Log the pre-write bytes BEFORE the memcpy — that ordering is the
     // whole point of the copy-on-first-write log (ScsiDisk.h § Save states).
     markDirty(lba, uint32_t((w + kBlockSize - 1) / kBlockSize));
-    std::memcpy(image_.data() + off, in.data(), size_t(w));
+    std::memcpy(image_.data() + off, in, size_t(w));
     if (!writeBack_ || !w) return;
 
     // Façade prefix is synthetic — never write it into the flat .dsk.
@@ -557,7 +565,7 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
         if (skip >= count) return;
         uint64_t skipBytes = uint64_t(skip) * kBlockSize;
         if (skipBytes >= w) return;
-        const char* src = reinterpret_cast<const char*>(in.data()) + skipBytes;
+        const char* src = reinterpret_cast<const char*>(in) + skipBytes;
         uint64_t fileOff = 0;
         uint64_t fileW = w - skipBytes;
         file_.seekp(std::streamoff(fileOff));
@@ -567,7 +575,7 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
             ? uint64_t(lba - hfsPrefixBlocks_) * kBlockSize
             : off;
         file_.seekp(std::streamoff(fileOff));
-        file_.write(reinterpret_cast<const char*>(in.data()), std::streamoff(w));
+        file_.write(reinterpret_cast<const char*>(in), std::streamoff(w));
     }
     file_.flush();
     if (!file_) {

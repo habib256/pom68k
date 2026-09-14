@@ -4,6 +4,7 @@
 #pragma once
 
 #include "DiskBays.h"
+#include "GuiAgentAutostart.h"
 #include "MacMemory.h"
 
 #include <cstdio>
@@ -59,6 +60,8 @@ CompactMountedMedia mountCompactMedia(
         ? media[bootArg] : services.locate("hdv/HD20SC.vhd");
     mounted.hddOk = !mounted.hddPath.empty() &&
                     mem.attachScsi(mounted.hddPath, true);
+    if (mounted.hddOk)
+        pom68k::gui::installAgentStartupItem(mem.scsiDisk(), services);
     if (mounted.hddOk)
         std::printf("SCSI HD: %s (%u blocks, write-back)\n",
                     mounted.hddPath.c_str(), mem.scsiDisk().blocks());

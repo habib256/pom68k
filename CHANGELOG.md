@@ -297,6 +297,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **how does the guest agent start by itself, and how does the host add a file to an HFS volume without a Mac?** → [2026-09-14 (fourth) — The host writes « POM68K Disques » into the boot volume's Startup Items…](#2026-09-14-agent-startup-items)
 - **why did a relaunch put SCSI 3's disk on SCSI 2, and what is the `emptybay` literal?** → [2026-09-14 (third) — The two debts the detach left are paid…](#2026-09-14-relaunch-ids-and-journal-names)
 - **can a hard disk leave the bus without a reboot, and why does the board refuse a detach inside a session?** → [2026-09-14 (later) — The cable comes out…](#2026-09-14-scsi-detach-live)
 - **how do I create a blank hard disk in the GUI, and why did Theme Park still not mount after the .toast was a « disk »?** → [2026-09-13 (eighth) — Disques can create a hard disk…](#2026-09-13-disques-usable)
@@ -444,6 +445,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (fourth)** — [The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac](#2026-09-14-agent-startup-items)
 - **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](#2026-09-14-relaunch-ids-and-journal-names)
 - **2026-09-14 (later)** — [The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it](#2026-09-14-scsi-detach-live)
 - **2026-09-14** — [« POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way](#2026-09-14-guest-agent-mounts-on-request)
@@ -943,6 +945,64 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-agent-startup-items"></a>
+## 2026-09-14 (fourth) — The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac
+
+The last item of the hot-plug chantier (`docs/SCSI_HOTPLUG.md`, now § 8).
+Step 3 needed one gesture: insert the agent's floppy, open it, double-click.
+Mac OS 7.5+ launches the contents of the System Folder's Startup Items
+when the Finder comes up, and the emulator owns the disk, so the host puts
+the file there itself.
+
+**What was built.** `src/HfsInject.h/.cpp`: insertion into an EXISTING
+classic HFS volume — the half HfsBlankVolume.h did not have. Catalog
+B*-tree search from the root, leaf insertion with split, index insertion
+with split, root split, node allocation from the header map and map
+nodes, first-fit contiguous allocation in the volume bitmap, both forks
+written through the extents, the file record (102 bytes), folder records
+and threads, valence and dates of the parent, MDB counts and next CNID,
+the alternate MDB, MacBinary I/II decoding, the partition map walk to the
+Apple_HFS partition (or a bare volume), and the name collation table the
+File Manager uses (from `machfs`). Everything is staged as 512-byte block
+writes and applied by one `commit()`; every refusal — a catalog needing a
+fourth extent, no free node, no contiguous run, an existing name — leaves
+the volume as it was. `ScsiDisk::hostWrite` is the guest WRITE path
+without its counters, so the write log and write-back apply to the
+session image and never to a fixture (`hdv/work/` clone rule).
+`GuiAgentAutostart.h` runs it after the boot attach on the twelve
+platforms, prints the outcome, and `POM68K_NO_AGENT_AUTOSTART=1` opts out.
+
+**Evidence.** `hfs_inject_test` (asset-none): on a blank volume, System
+Folder and Startup Items created and blessed, a synthetic MacBinary
+installed and read back fork for fork with its Finder info and dates,
+the installer idempotent and refusing an unblessed volume, then sixty
+files whose insertion forces leaf splits, an index level and a root
+split — every one found back through the tree, the leaf chain strictly
+ordered, header and MDB counts right. The Python reference reader
+(`machfs`, the library `tools/dir2hfs.py` bakes with) re-reads a volume
+so modified and lists all 41 Startup Items with the agent's resource fork
+byte-identical (checked by hand, not gated). `scsi_agent_autostart_etalon`:
+the agent's `.bin` written into the 8.1 boot volume in memory (150 dirty
+blocks, write-back off, the asset untouched), the Quadra 605 boots, and
+the mailbox sees the agent's **first poll one frame after the Finder**
+with no input at all; a blank disk attached live is then mounted on
+request as « Branche ». That boot is the oracle of the catalog surgery:
+the File Manager read what the host wrote.
+
+**What was learned.** The catalog index keys are padded to 37 bytes with
+the key-length byte set to `$25`, as `machfs` writes them; a search
+descends to the last index record whose key is ≤ the search key, and to
+the first when none is, which is why an insertion at the front of the
+leftmost leaf needs no index update. The Startup Items folder is found
+by name under the blessed folder (MDB `drFndrInfo[0]`); the French
+« Éléments de démarrage » is in the list but no French System has run
+the gate.
+
+**Open, in `TODO.md` § Preuve.** The binary exists only where Retro68
+built it; the packages do not carry it, so a package user gets nothing
+installed — deciding between committing the 65 KB `.bin` and building it
+in packaging is the remaining item.
 
 <a id="2026-09-14-relaunch-ids-and-journal-names"></a>
 ## 2026-09-14 (third) — The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command

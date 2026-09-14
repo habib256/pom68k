@@ -181,6 +181,8 @@ concept IntegerStartupOption =
       startup_policy::TraceLimit)                                            \
     X(NoCdBay, "POM68K_NO_CDBAY", StartupDomain::Core,                     \
       startup_policy::Presence)                                              \
+    X(NoAgentAutostart, "POM68K_NO_AGENT_AUTOSTART", StartupDomain::Core,   \
+      startup_policy::Presence)                                              \
     X(FluxJitter, "POM68K_FLUX_JITTER", StartupDomain::Core,               \
       startup_policy::autoBounded(0, 45))                                    \
     X(ScsiDdmTemplate, "POM68K_SCSI_DDM_TEMPLATE", StartupDomain::Core,    \

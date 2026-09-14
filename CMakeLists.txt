@@ -405,6 +405,7 @@ add_library(pom68k_core STATIC
     src/MacIpGateway.cpp  # in-process MacIP gateway + user-mode NAT
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
+    src/HfsInject.cpp     # host-side file insertion into an HFS volume (Startup Items)
     src/DaynaPort.cpp     # DaynaPort SCSI/Link — Ethernet as a SCSI target
     src/EtherLink.cpp
     src/EtherTalkLink.cpp     # Ethernet framing + ARP: DaynaPort ↔ MacIpGateway

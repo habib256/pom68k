@@ -304,6 +304,16 @@ add_executable(relaunch_extras_test tests/relaunch_extras_test.cpp)
 target_link_libraries(relaunch_extras_test PRIVATE pom68k_core)
 add_test(NAME relaunch_extras_test COMMAND relaunch_extras_test)
 
+# Host-side HFS insertion (src/HfsInject.h, docs/SCSI_HOTPLUG.md § 8): on
+# a blank volume, folders and files are added to the catalog B*-tree —
+# leaf splits, an index level, a root split — and read back through the
+# extents; the MDB counts, the bitmap and the leaf-key order are checked;
+# the Startup Items installer is idempotent and refuses a volume without
+# a blessed folder. MacBinary decoding on a synthetic file. No ROM.
+add_executable(hfs_inject_test tests/hfs_inject_test.cpp)
+target_link_libraries(hfs_inject_test PRIVATE pom68k_core)
+add_test(NAME hfs_inject_test COMMAND hfs_inject_test)
+
 # The input journal end to end (src/InputJournal.h + tests/InputReplay.h):
 # format round-trip through a real file, then REPLAY DETERMINISM on a live
 # synthetic-ROM LC II — restore one snapshot, replay one journal twice,

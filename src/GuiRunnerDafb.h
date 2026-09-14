@@ -4,6 +4,7 @@
 #pragma once
 
 #include "GuiFloppyBays.h"
+#include "GuiAgentAutostart.h"
 #include "GuiShellCommon.h"
 
 namespace pom68k::gui {
@@ -38,6 +39,7 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         ? media.front() : services.locate("hdv/MacOS-8.1-boot.vhd");
     if (hddPath.empty()) hddPath = services.locate("hdv/boot.vhd");
     bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
+    if (hddOk) pom68k::gui::installAgentStartupItem(mem.scsiDisk(), services);
     if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
 

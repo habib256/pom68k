@@ -1,6 +1,6 @@
 # SCSI hot-plug: re-reading the bus, and mounting from inside Mac OS
 
-*Research note, opened 2026-09-13. Status: all three steps and the host-side detach built and gated (§ 5, § 6, § 7). What remains is launching the agent without a gesture in the Mac (`TODO.md` § Preuve).*
+*Research note, opened 2026-09-13. Status: closed 2026-09-14 — the three steps, the host-side detach and the agent's automatic launch are built and gated (§ 5 – § 8). Open: shipping the agent's binary in the packages (`TODO.md` § Preuve).*
 
 ## 1. The problem the Disques window cannot solve alone
 
@@ -185,3 +185,37 @@ The Finder's own Put Away leaves the ROM's driver in the drive queue
 (`driver` true, `mounted` false): « Retirer » is offered on that state
 too, and the driver's next probe of the vanished target gets a selection
 timeout, which the SCSI Manager reports as an error rather than hanging.
+
+## 8. The agent without a gesture (2026-09-14, evening): Startup Items, written by the host
+
+Step 3 left one gesture in the Mac: insert the agent's floppy, open it,
+double-click. Mac OS 7.5+ launches whatever sits in the System Folder's
+Startup Items when the Finder comes up, so the host puts the agent there
+itself, at launch, into the **session** image — the `hdv/work/` clone for a
+reference volume, the user's own image otherwise — and never into a
+fixture. The pieces:
+
+| Piece | Where | Gate |
+|---|---|---|
+| Catalog B*-tree search and insertion on a live volume: leaf split, index split, root split, node allocation from the map, first-fit allocation blocks, MDB counts, folder valence and dates; MacBinary decoding; the walk from the blessed folder to « Startup Items » (or « Éléments de démarrage ») | `src/HfsInject.h/.cpp` | `hfs_inject_test` (blank volume, sixty files, everything read back; `machfs` re-reads the result) |
+| `ScsiDisk::hostWrite` — the guest WRITE path without its counters: write log and write-back apply | `src/ScsiDisk.cpp` | — |
+| The runner hook after the boot attach, on the twelve platforms; `POM68K_NO_AGENT_AUTOSTART=1` opts out; every outcome printed | `src/GuiAgentAutostart.h` | — (the GUI has no gate) |
+| Cold launch → Finder → the agent polls with no input → « Monter » works | — | `scsi_agent_autostart_etalon` (first poll one frame after the Finder) |
+
+Rules and limits:
+
+- **The File Manager is the oracle.** A catalog rewritten by the host is
+  only right if Mac OS reads it: the etalon boots the rewritten 8.1
+  volume and the Finder finds and launches the file. `hfs_inject_test`
+  checks what the host can check (order, counts, forks, idempotence) and
+  the Python reference reader agrees; neither replaces the boot.
+- **Refuse rather than guess.** No extents overflow tree (a catalog whose
+  fourth extent would be needed is refused), no folder creation in the
+  product path (a System without Startup Items is System 6, a localized
+  one names it otherwise — the two names known are tried), no write when
+  a file of that name is already there. Every change is staged and
+  applied by one commit, so a refusal leaves the volume untouched.
+- **Nothing silent.** The runner prints the outcome on every launch; the
+  agent's window says it is running. The MacBinary is found in
+  `dev/scsiagent/build/` (Retro68) or `share/`; a package that does not
+  carry it simply installs nothing, which is the open item.

@@ -167,6 +167,7 @@ POM68K_MX	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_MY	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_NOFPU	product	gate:fpu_sanity
 POM68K_NO_CDBAY	product	gate:scsi_cdrom_test
+POM68K_NO_AGENT_AUTOSTART	product	gate:scsi_agent_autostart_etalon
 POM68K_PERF_HOST_PROFILE	diagnostic	owner:tests/BenchHarness.h
 POM68K_PERIPH_STATS	diagnostic	owner:src/StartupOptions.h
 POM68K_PGE_ADBTRACE	diagnostic	owner:src/StartupOptions.h

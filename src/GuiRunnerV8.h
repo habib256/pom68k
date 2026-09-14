@@ -4,6 +4,7 @@
 #pragma once
 
 #include "GuiFloppyBays.h"
+#include "GuiAgentAutostart.h"
 #include "GuiShellCommon.h"
 
 namespace pom68k::gui {
@@ -42,6 +43,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
     if (hddPath.empty()) hddPath = services.locate("hdv/boot.vhd");
     if (hddPath.empty()) hddPath = services.locate("hdv/HD20SC.vhd");
     bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
+    if (hddOk) pom68k::gui::installAgentStartupItem(mem.scsiDisk(), services);
     if (hddOk)
         std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else

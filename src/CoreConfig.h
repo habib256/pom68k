@@ -62,6 +62,9 @@ struct CoreBusConfig {
 
 struct CoreStorageConfig {
     bool cdBay = true;
+    // Put « POM68K Disques » into the boot volume's Startup Items at launch
+    // when the agent's MacBinary is found (GuiAgentAutostart.h).
+    bool agentAutostart = true;
     int fluxJitterPercent = 0;
     std::optional<std::string> ddmTemplate;
     bool scsiTrace = false;

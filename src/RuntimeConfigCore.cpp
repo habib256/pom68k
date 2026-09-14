@@ -103,6 +103,8 @@ pom68k::CoreConfig parseCoreStartup(
         values.traceLimit(startup_option::Q900IopTrace, 600);
 
     options.storage.cdBay = !values.present(startup_option::NoCdBay);
+    options.storage.agentAutostart =
+        !values.present(startup_option::NoAgentAutostart);
     options.storage.fluxJitterPercent =
         values.integer(startup_option::FluxJitter).value_or(0);
     options.storage.ddmTemplate =

@@ -314,13 +314,16 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
   floppy/CD, save/restore) reste la validation due — c'est le même reliquat que
   la passe save-state GUI, jamais fermée, que les trois gates de relance du
   2026-09-08 ne couvrent pas (ils sont hors GUI).
-- [ ] **Lancer l'agent « POM68K Disques » sans geste dans le Mac.** La
-  chaîne de `docs/SCSI_HOTPLUG.md` est complète depuis le 2026-09-14 : vue
-  du bus lue dans l'invité, attache à chaud, agent invité qui monte et
-  démonte sur demande, et détachement à chaud (`detachScsi`, « Retirer »
-  quand la vue ne montre plus de VCB sur la baie — § 7). Reste à lancer
-  l'agent automatiquement (Startup Items sur les volumes de référence, ou un
-  INIT) pour que « Monter / Démonter » soit disponible dès le Finder.
+- [ ] **Livrer `POM68KDisques.bin` dans les paquets.** L'agent se lance
+  sans geste depuis le 2026-09-14 (`docs/SCSI_HOTPLUG.md` § 8) : l'hôte
+  l'écrit dans les Startup Items du volume de session au lancement. Mais le
+  binaire n'existe que dans `dev/scsiagent/build/`, produit par Retro68, qui
+  n'est ni sur la CI ni dans les paquets Linux/macOS/Pi : un utilisateur du
+  paquet n'a pas l'agent. Trancher entre commiter le `.bin` (65 Ko, notre
+  code, reproductible) et l'installer dans `share/` au packaging, puis
+  ajouter Retro68 au job qui le reconstruit. La deuxième langue du dossier
+  (« Éléments de démarrage ») est reconnue mais jamais exercée : aucun
+  volume système français n'a tourné dans `scsi_agent_autostart_etalon`.
 - [ ] **Réparer `declrom_test`, qui compte « exécuté » en perdant trois
   assertions.** Sans sa ROM il en saute trois et sort quand même 0 : même
   classe de défaut que les étiquettes `asset-none` menteuses, et invisible au

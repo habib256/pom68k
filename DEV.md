@@ -1270,6 +1270,16 @@ switch.
   `machinehost_test` (the re-queue) and `scsi_agent_etalon` step 2b (the
   cycle unmount → detach → re-attach → mount on the Quadra 605).
   `docs/SCSI_HOTPLUG.md` § 7.
+- **The agent launches itself** (`GuiAgentAutostart.h`): after the boot
+  attach every runner puts the agent's MacBinary into the blessed System
+  Folder's Startup Items of the session image through
+  `src/HfsInject.h` — host-side catalog B*-tree insertion (leaf, index
+  and root splits, allocation bitmap, MDB and folder bookkeeping) over
+  `ScsiDisk::hostWrite`, so the write log and write-back apply. Idempotent,
+  printed, `POM68K_NO_AGENT_AUTOSTART=1` to opt out. Gates:
+  `hfs_inject_test` (asset-none) and `scsi_agent_autostart_etalon` (the
+  8.1 Finder launches the installed agent; it polls with no input and
+  mounts on request). `docs/SCSI_HOTPLUG.md` § 8.
 
 ### 3.5 Input: M0110 keyboard + quadrature mouse
 
@@ -1815,6 +1825,12 @@ machine the default empty CD drive the Disques window's CD row needs; every
 platform with an `attachCdromEmpty` boots with one since 2026-08-15, which is
 what makes a disc insertable live instead of staged + rebooted — set this to
 compare a bus against a pre-2026-08-15 capture, `DiskBays.h ensureCdDrive`),
+`POM68K_NO_AGENT_AUTOSTART` (`=1` = do **not** put « POM68K Disques » into
+the boot volume's Startup Items at launch; by default every runner installs
+the agent's MacBinary, when `dev/scsiagent/build/POM68KDisques.bin` is
+found, into the blessed System Folder's Startup Items of the session
+image — the work clone for a reference volume — so the agent polls from
+the first Finder without a gesture, `GuiAgentAutostart.h`, § 3.4bis),
 `POM68K_SCSI_DDM_TEMPLATE`,
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —

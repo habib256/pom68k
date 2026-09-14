@@ -774,6 +774,19 @@ add_test(NAME scsi_agent_etalon COMMAND scsi_agent_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(scsi_agent_etalon PROPERTIES TIMEOUT 1800)
 
+# The agent without a gesture (docs/SCSI_HOTPLUG.md § 8): the agent's
+# MacBinary is put into the 8.1 boot volume's Startup Items IN MEMORY
+# (HfsInject over the attached ScsiDisk, no write-back — the asset is
+# untouched), the Quadra 605 boots, and the agent polls the mailbox
+# before any input reaches the guest; a blank disk attached live is then
+# mounted on request. The File Manager is the oracle of the catalog
+# surgery. FF7439EE ROM + a bootable hdv/ image + the agent's .bin.
+add_executable(scsi_agent_autostart_etalon tests/scsi_agent_autostart_etalon.cpp)
+target_link_libraries(scsi_agent_autostart_etalon PRIVATE pom68k_core)
+add_test(NAME scsi_agent_autostart_etalon COMMAND scsi_agent_autostart_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(scsi_agent_autostart_etalon PROPERTIES TIMEOUT 1800)
+
 add_executable(q605_cdinstall_etalon tests/q605_cdinstall_etalon.cpp)
 target_link_libraries(q605_cdinstall_etalon PRIVATE pom68k_core)
 add_test(NAME q605_cdinstall_etalon COMMAND q605_cdinstall_etalon

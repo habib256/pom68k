@@ -129,6 +129,12 @@ public:
     bool flatHfsFacade() const { return hfsPrefixBlocks_ != 0; }
     uint32_t hfsPrefixBlocks() const { return hfsPrefixBlocks_; }
 
+    // A HOST write: the same path as a guest WRITE — copy-on-first-write
+    // log, in-memory image, write-back stream — without the guest's
+    // traffic counters or drive sounds. HfsInject.h puts « POM68K
+    // Disques » into the boot volume's Startup Items through it.
+    void hostWrite(uint32_t lba, const uint8_t* data, uint32_t count);
+
     // In-memory image access — direct pokes bypass the write-back stream
     // (never reach the backing file). Used by tests to inject a $6A DDM
     // driver entry so an otherwise-bootable disk passes the LC II ROM's
@@ -234,6 +240,8 @@ private:
     void applySnapshotBlock(uint32_t blk, const uint8_t* data);
     void read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out);
     void write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in);
+    // Shared by write() and hostWrite(): log, copy, write through.
+    void store(uint32_t lba, uint32_t count, const uint8_t* in, size_t inSize);
     void setSense(uint8_t key, uint8_t asc, uint8_t ascq = 0);
     // Effective LUN for this CDB: the IDENTIFY's if the connection carried
     // one, else the CDB's SCSI-1 byte-1 field (ScsiTarget::selectLun).
