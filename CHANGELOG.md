@@ -447,6 +447,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (seventh)** — [The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned](#2026-09-14-daynaport-executed-on-m4)
 - **2026-09-14 (sixth)** — [The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too](#2026-09-14-ouverture-au-demarrage)
 - **2026-09-14 (fifth)** — [The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds](#2026-09-14-agent-shipped-in-share)
 - **2026-09-14 (fourth)** — [The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac](#2026-09-14-agent-startup-items)
@@ -949,6 +950,33 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-daynaport-executed-on-m4"></a>
+## 2026-09-14 (seventh) — The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned
+
+Two bookkeeping debts, paid with a run and a reading rather than code.
+
+**The DaynaPort gates on AArch64.** `TODO.md` § Preuve held that the
+DaynaPort gates were `host-any` by label but had only ever executed on
+the x86-64 host. `ctest -R dayna` on the M4: `daynaport_test`, both
+controller tests, `q605_dayna_driver_etalon` (237 s, « PASSED — Quadra
+605 real DaynaPORT SCSI/Link driver etalon ») and the twelve
+`*_dayna_boot_etalon` — all EXECUTED, none soft-skipped
+(`tools/gate_execution_census.py`: 16 executed of 18 in the log; the two
+others are the 64 K boot etalons, which soft-skip here for want of
+`disks35/System 1.1.dsk`). Recorded in `STATUS.md`. The driver etalon's
+first run on this host also narrows the DaynaPort GUI proof debt: the
+driver on the card is proven here; an unplug and a re-exec still are not.
+
+**The roadmap paragraph on the 128K/512K** still read, on 2026-09-14,
+that `assets.lock` « contient aujourd'hui aucune ligne 64 K » and that
+coverage started at the Plus. It dated from 2026-09-12; since 2026-09-13
+the catalogue has profiles 38 and 39, `assets.lock` pins both ROMs and the
+two boot etalons reach the Finder from a 400 K System floppy (x86-64,
+7.40 s apiece). Rewritten as « livré pour l'essentiel », with the one
+remaining item (the 400 K drive's PWM state in save states) and the
+reason the M4 cannot execute those gates (the unpinned 400 K images,
+§ Bloqué).
 
 <a id="2026-09-14-ouverture-au-demarrage"></a>
 ## 2026-09-14 (sixth) — The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too

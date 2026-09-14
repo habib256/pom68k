@@ -50,12 +50,16 @@ pour le mécanisme de deadline périphérique, devenu « Nouvelles machines ».
 Ce bloc ne porte que la décision et le premier pas ; le travail lui-même vit
 dans les sections thématiques, en un seul exemplaire.
 
-**1. Le Mac 128K/512K — ne pas commencer la collection au deuxième album.**
-La couverture commence au Plus alors que les deux ROMs 64 K sont en main et
-que `docs/68K_FAMILY_SCOPE.md` § 4 classe la machine *cheap, unblocked* :
-c'est un sous-ensemble du Plus, pas une brique. **Premier pas** : épingler les
-deux identités dans `assets.lock`, qui ne contient aujourd'hui aucune ligne
-64 K. Item complet : § Nouvelles machines.
+**1. Le Mac 128K/512K — livré pour l'essentiel.** Les profils 38 et 39
+sont au catalogue, les deux identités 64 K sont épinglées dans `assets.lock`
+et `mac128k_boot_etalon` / `mac512k_boot_etalon` bootent une disquette
+System 400 K jusqu'au bureau du Finder — exécutés sur x86-64 le 2026-09-13
+(7,40 s chacun) ; sur le M4 ils se sautent faute de `disks35/System 1.1.dsk`,
+ce que tranche l'item « Décider si les deux images 400 K s'épinglent »
+(§ Bloqué). Reliquat propre à ces deux machines : la sérialisation PWM du
+lecteur 400 K (§ Nouvelles machines). Le paragraphe précédent disait encore,
+le 2026-09-14, qu'`assets.lock` n'avait aucune ligne 64 K : il datait du
+2026-09-12.
 
 **2. Finir les services réseau.** Le parcours invité est prouvé de bout en
 bout — Chooser, montage, énumération, copie des deux forks, Put Away, sur
@@ -204,7 +208,9 @@ consommateur observé.
   AppleTalk / Ethernet (`src/NetworkWindow.cpp`), appliqué par relaunch sur
   `--daynaport=<id>`, les ID tenus par un disque grisés. Trois dettes : aucun
   invité réel n'a traversé un débranchement ni un relaunch avec carte
-  (`q605_dayna_driver_etalon`, à actif, n'a pas tourné ici) ; la fenêtre n'a
+  (`q605_dayna_driver_etalon` a tourné sur le M4 le 2026-09-14, 237 s,
+  PASSED — il prouve le pilote sur la carte, pas un débranchement ni un
+  re-exec) ; la fenêtre n'a
   jamais été **rendue** — elle compile et lie, sa mise en page (sélecteur
   compris, et le formulaire « Configuration des services » du même jour)
   n'est pas vérifiée à l'œil ; et le relaunch lui-même n'est couvert que par
@@ -294,13 +300,6 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 Section ouverte le 2026-09-12 : douze de ces items étaient du travail ouvert
 consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
 
-- [ ] **Exécuter sur le M4 les quatorze gates DaynaPort.** Les sections
-  aarch64 de `STATUS.md` ne sont plus reportées : régénérées le 2026-09-13
-  depuis un configure réel sur le M4 (278 gates / 505 créneaux, les deux
-  etalons 64 K compris, que le report manuel du 2026-09-12 n'avait pas). Ce
-  qui reste non mesuré est l'**exécution** : les quatorze gates DaynaPort sont
-  `host-any`, mais seul un run à actifs sur le M4 confirme qu'ils s'y exécutent
-  au lieu de se sauter.
 - [ ] **Donner une preuve au-delà du boot aux 28 profils qui n'en ont pas.**
   37 profils sur 37 ont un etalon Finder ; **9 sur 37** seulement ont un gate
   *après* la signature. `docs/68K_FAMILY_SCOPE.md` § 5 appelle cela le plus

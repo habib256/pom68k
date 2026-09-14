@@ -173,3 +173,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 13 15:30 +04 | x86_64 | default | 94 | 94 | 0 | 0 | asset-none after the DaynaPort GUI status line and cable toggle (S3+S4), rebuilt: EtherLink.cpp is in pom68k_core so every binary was stale |
 | Sep 13 18:05 +04 | aarch64 | default | 95 | 95 | 0 | 0 | asset-none on the M4 (aarch64), DaynaPort staged card + NetworkWindow |
 | Sep 13 18:29 +04 | aarch64 | default | 96 | 96 | 0 | 0 | asset-none on the M4 (aarch64), editable network configuration + atalk_hub_test |
+| Sep 14 18:54 +04 | aarch64 | default | 18 | 16 | 2 | 0 | the sixteen DaynaPort gates on the M4 (aarch64): daynaport_test, both controller tests, q605_dayna_driver_etalon and the twelve dayna_boot etalons all EXECUTED (16/18; the two 64 K boot etalons soft-skip here for want of disks35/System 1.1.dsk) |
