@@ -6,10 +6,10 @@
 #
 # Regenerate with: tools/check_file_sizes.sh --update
 
-CLAUDE.md                                229
+CLAUDE.md                                230
 cmake/Pom68kAfpGates.cmake               19
 cmake/Pom68kAudioGates.cmake             12
-cmake/Pom68kComponentGates.cmake         499
+cmake/Pom68kComponentGates.cmake         508
 cmake/Pom68kDaynaGates.cmake             36
 cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             400

@@ -214,13 +214,12 @@ only probes the bus at boot, so it appears on the desktop after
 **Redémarrer**, or through **Monter** when the guest agent runs. **Retirer**
 takes it off the bus at once when no volume is mounted on it.
 
-**POM68K Disques**, the guest agent (`dev/scsiagent`, built with Retro68),
-mounts and unmounts such disks on request. When its binary is found
-(`dev/scsiagent/build/POM68KDisques.bin`), POM68K installs it at launch into
-the boot volume's Startup Items — the `hdv/work/` clone for a reference
-volume, your own image otherwise — and the Finder starts it with the
-desktop. The console says what was done; `POM68K_NO_AGENT_AUTOSTART=1`
-leaves your System Folder alone.
+**POM68K Disques**, the guest agent (`dev/scsiagent`, built with Retro68 and
+shipped in every package as `share/POM68KDisques.bin`), mounts and unmounts
+such disks on request. At launch POM68K installs it into the boot volume's
+Startup Items — the `hdv/work/` clone for a reference volume, your own image
+otherwise — and the Finder starts it with the desktop. The console says what
+was done; `POM68K_NO_AGENT_AUTOSTART=1` leaves your System Folder alone.
 
 Bare HFS volumes are given an in-memory partition-map facade when a template
 is available as `HD20SC.vhd`, `boot.vhd`, or through

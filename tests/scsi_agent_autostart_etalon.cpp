@@ -10,7 +10,8 @@
 // « Monter », with no click in the Mac. The File Manager reading the
 // catalog this gate rewrote is the oracle of that surgery.
 //
-// Soft-skips without the ROM, a bootable image, or the agent's .bin.
+// Soft-skips without the ROM or a bootable image; the agent's .bin is
+// the one the repository ships (share/), or a fresh Retro68 build.
 
 #include "AssetFingerprint.h"
 #include "FinderSignature.h"
@@ -58,10 +59,13 @@ int main() {
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM");
     std::string img = find("hdv/MacOS-8.1-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
-    const std::string agent = find("dev/scsiagent/build/POM68KDisques.bin");
+    // A fresh Retro68 build first, else the copy the repository ships —
+    // so this gate runs on a host without the toolchain.
+    std::string agent = find("dev/scsiagent/build/POM68KDisques.bin");
+    if (agent.empty()) agent = find("share/POM68KDisques.bin");
     if (rom.empty() || img.empty() || agent.empty()) {
         std::printf("SKIP: needs the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd + "
-                    "dev/scsiagent/build/POM68KDisques.bin (Retro68)\n");
+                    "share/POM68KDisques.bin\n");
         return 0;
     }
     testasset::report({rom, img, agent});

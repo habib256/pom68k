@@ -359,6 +359,7 @@ jobs:
           $stage = "dist/POM68K-Windows"
           New-Item -ItemType Directory -Force -Path $stage, "$stage/roms", "$stage/hdv", "$stage/disks35" | Out-Null
           Copy-Item build/Release/POM68K.exe $stage/
+          Copy-Item share/POM68KDisques.bin $stage/   # the guest agent, beside the .exe (share/README.md)
           # An array of lines, not a here-string: the @" terminator must sit
           # in column 1, which a YAML block scalar cannot contain.
           @(

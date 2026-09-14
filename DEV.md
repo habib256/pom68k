@@ -1827,8 +1827,9 @@ what makes a disc insertable live instead of staged + rebooted — set this to
 compare a bus against a pre-2026-08-15 capture, `DiskBays.h ensureCdDrive`),
 `POM68K_NO_AGENT_AUTOSTART` (`=1` = do **not** put « POM68K Disques » into
 the boot volume's Startup Items at launch; by default every runner installs
-the agent's MacBinary, when `dev/scsiagent/build/POM68KDisques.bin` is
-found, into the blessed System Folder's Startup Items of the session
+the agent's MacBinary — a fresh Retro68 build in `dev/scsiagent/build/`,
+else the copy shipped in `share/` — into the blessed System Folder's
+Startup Items of the session
 image — the work clone for a reference volume — so the agent polls from
 the first Finder without a gesture, `GuiAgentAutostart.h`, § 3.4bis),
 `POM68K_SCSI_DDM_TEMPLATE`,

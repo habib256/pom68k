@@ -314,6 +314,15 @@ add_executable(hfs_inject_test tests/hfs_inject_test.cpp)
 target_link_libraries(hfs_inject_test PRIVATE pom68k_core)
 add_test(NAME hfs_inject_test COMMAND hfs_inject_test)
 
+# The shipped guest agent (share/README.md): share/POM68KDisques.bin is a
+# MacBinary named POM68KDisques of type APPL with a resource fork; when the
+# Retro68 build output exists it matches fork for fork (a stale copy
+# fails); and the four packagings each carry the file. Reads the tree.
+add_executable(agent_binary_test tests/agent_binary_test.cpp)
+target_link_libraries(agent_binary_test PRIVATE pom68k_core)
+add_test(NAME agent_binary_test COMMAND agent_binary_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
 # The input journal end to end (src/InputJournal.h + tests/InputReplay.h):
 # format round-trip through a real file, then REPLAY DETERMINISM on a live
 # synthetic-ROM LC II — restore one snapshot, replay one journal twice,

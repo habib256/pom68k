@@ -166,7 +166,9 @@ if [ "$DO_INSTALL" = "1" ]; then
     # Data: never overwrite what is already there. A ROM set and a disk image
     # the operator dropped in must survive a binary upgrade — and POM68K's
     # disk images are WRITTEN to, so clobbering one destroys a guest volume.
-    for d in roms hdv disks35 assets; do
+    # share/ carries the guest agent the emulator installs into the boot
+    # volume (share/README.md); bin/../share is where findPath looks.
+    for d in roms hdv disks35 assets share; do
         [ -d "$ROOT/$d" ] || continue
         install -d "$PREFIX/$d"
         cp -rn "$ROOT/$d/." "$PREFIX/$d/" 2>/dev/null || true

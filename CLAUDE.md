@@ -45,6 +45,7 @@ with `python3 tools/changelog_index.py`.
 | `oracle/` | WinUAE-based 68k differential oracle and fuzz workflow |
 | `extern/` | vendored/forked dependencies with provenance records |
 | `packaging/` | Linux, macOS and Raspberry Pi packaging logic |
+| `share/` | guest-side binaries shipped beside the executable (the Disques agent) |
 | `.github/workflows/` | CI, nightly, release and on-demand package jobs |
 
 The main application composition is intentionally one-way:

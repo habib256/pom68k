@@ -1,6 +1,6 @@
 # SCSI hot-plug: re-reading the bus, and mounting from inside Mac OS
 
-*Research note, opened 2026-09-13. Status: closed 2026-09-14 — the three steps, the host-side detach and the agent's automatic launch are built and gated (§ 5 – § 8). Open: shipping the agent's binary in the packages (`TODO.md` § Preuve).*
+*Research note, opened 2026-09-13, closed 2026-09-14: the three steps, the host-side detach, the agent's automatic launch and its shipping in every package are built and gated (§ 5 – § 8).*
 
 ## 1. The problem the Disques window cannot solve alone
 
@@ -216,6 +216,11 @@ Rules and limits:
   a file of that name is already there. Every change is staged and
   applied by one commit, so a refusal leaves the volume untouched.
 - **Nothing silent.** The runner prints the outcome on every launch; the
-  agent's window says it is running. The MacBinary is found in
-  `dev/scsiagent/build/` (Retro68) or `share/`; a package that does not
-  carry it simply installs nothing, which is the open item.
+  agent's window says it is running. The MacBinary is a fresh Retro68
+  build in `dev/scsiagent/build/` when there is one, else the copy the
+  repository ships in `share/` (65 KB, built from our own sources), which
+  every package carries where `findPath` looks from the executable —
+  `usr/share/` in the AppImage and the Pi tarball, `Contents/Resources/`
+  in the macOS bundle, beside the `.exe` on Windows. `agent_binary_test`
+  decodes the shipped copy, compares it fork for fork with the build
+  output when one exists, and reads each packaging for the file.

@@ -9,6 +9,7 @@
 #                                           linuxdeploy (rpath $ORIGIN/../lib)
 #   usr/share/applications/POM68K.desktop
 #   usr/share/icons/hicolor/512x512/apps/POM68K.png
+#   usr/share/POM68KDisques.bin             the guest agent (share/README.md)
 #   AppRun                                  picks the data directory and
 #                                           chdirs to it: beside the .AppImage
 #                                           if roms/hdv/disks35 already sit
@@ -90,6 +91,9 @@ strip --strip-unneeded "${APPDIR}/usr/bin/POM68K" || true
 install -m 644 packaging/linux/POM68K.desktop "${APPDIR}/usr/share/applications/"
 install -m 644 packaging/POM68K.png \
         "${APPDIR}/usr/share/icons/hicolor/512x512/apps/POM68K.png"
+# The guest agent « POM68K Disques » (share/README.md): usr/bin/../share is
+# where findPath looks from the executable.
+install -m 644 share/POM68KDisques.bin "${APPDIR}/usr/share/POM68KDisques.bin"
 install -m 755 packaging/linux/AppRun "${APPDIR}/AppRun"
 
 # --- linuxdeploy: bundle non-blacklisted libs (glfw, libX*) ------------------

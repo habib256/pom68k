@@ -297,6 +297,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **where does a package get the guest agent from, and why is a binary committed?** → [2026-09-14 (fifth) — The agent ships…](#2026-09-14-agent-shipped-in-share)
 - **how does the guest agent start by itself, and how does the host add a file to an HFS volume without a Mac?** → [2026-09-14 (fourth) — The host writes « POM68K Disques » into the boot volume's Startup Items…](#2026-09-14-agent-startup-items)
 - **why did a relaunch put SCSI 3's disk on SCSI 2, and what is the `emptybay` literal?** → [2026-09-14 (third) — The two debts the detach left are paid…](#2026-09-14-relaunch-ids-and-journal-names)
 - **can a hard disk leave the bus without a reboot, and why does the board refuse a detach inside a session?** → [2026-09-14 (later) — The cable comes out…](#2026-09-14-scsi-detach-live)
@@ -445,6 +446,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (fifth)** — [The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds](#2026-09-14-agent-shipped-in-share)
 - **2026-09-14 (fourth)** — [The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac](#2026-09-14-agent-startup-items)
 - **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](#2026-09-14-relaunch-ids-and-journal-names)
 - **2026-09-14 (later)** — [The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it](#2026-09-14-scsi-detach-live)
@@ -945,6 +947,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-agent-shipped-in-share"></a>
+## 2026-09-14 (fifth) — The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds
+
+The (fourth) entry closed with the one gap left: the agent's binary
+existed only where Retro68 had built it, so a package user got nothing
+installed. Decided: **commit the binary**. It is 65 KB, built from
+`dev/scsiagent/` (our own GPLv3 sources), reproducible fork for fork, and
+Retro68 — a full GCC cross-toolchain — has no place on the CI runners or
+in a packaging job; `tests/assets/*.bin` and `roms/macplus.rom` are the
+precedents for tracked binaries the tree needs. The alternative, building
+it at packaging, would have added an hour-long toolchain build to four
+jobs for a file that changes when `dev/scsiagent` does.
+
+**Where it lives.** A new top-level `share/` — guest-side binaries shipped
+beside the executable, never a private input — with a README naming the
+source, the consumer, the gate and the refresh recipe. Each package puts
+it where `MachineFactory::findPath` looks from the executable: the
+AppImage and the Pi tarball at `usr/share/POM68KDisques.bin`
+(`build_appimage.sh`, whose `usr/` the tarball copies), the macOS bundle
+at `Contents/Resources/` (`package_macos_release.sh`), the Windows zip
+beside the `.exe` (`release.yml`), the native Pi install under
+`/opt/pom68k/share` (`build_native_pi.sh`). `GuiAgentAutostart.h` looks
+in that order after a fresh Retro68 build. `scsi_agent_autostart_etalon`
+falls back to the shipped copy, so the gate now runs on a host without
+the toolchain.
+
+**Evidence.** `agent_binary_test` (asset-none, runs from the repository
+root): the shipped file decodes as the MacBinary of the APPL
+`POM68KDisques` with its code in the resource fork; when
+`dev/scsiagent/build/POM68KDisques.bin` exists — it does here — the two
+agree fork for fork, dates aside (the build stamps them), so a rebuilt
+agent cannot ship stale; and each of the four packagings names the file.
+On a host without the build output the identity half prints a note and
+is not counted — the file's own decoding is the always-present half.
+
+**Left open.** « Éléments de démarrage », the French name of the folder,
+is recognised and never exercised; `TODO.md` § Preuve.
 
 <a id="2026-09-14-agent-startup-items"></a>
 ## 2026-09-14 (fourth) — The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac

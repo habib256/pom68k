@@ -59,6 +59,9 @@ rm -rf "${STAGING}"
 mkdir -p "${STAGING}/Contents/MacOS" "${STAGING}/Contents/Resources"
 
 cp "${BUILD_DIR}/POM68K" "${STAGING}/Contents/MacOS/POM68K-bin"
+# The guest agent « POM68K Disques »: Contents/MacOS/../Resources is where
+# findPath looks from the executable (share/README.md).
+cp share/POM68KDisques.bin "${STAGING}/Contents/Resources/POM68KDisques.bin"
 
 # Launcher: provision the user data dir, chdir, exec the real binary.
 cat > "${STAGING}/Contents/MacOS/POM68K" <<'EOF'

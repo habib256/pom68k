@@ -25,11 +25,16 @@
 
 namespace pom68k::gui {
 
-// Where the agent's MacBinary lives: the Retro68 build directory of
-// dev/scsiagent, or an installed copy beside the other assets.
+// Where the agent's MacBinary lives, first hit wins: a fresh Retro68 build
+// in dev/scsiagent, then the copy the repository ships (share/README.md),
+// where each package puts it relative to the executable — usr/share/ in
+// the AppImage and the Pi tarball, Contents/Resources/ in the macOS
+// bundle, beside POM68K.exe in the Windows zip.
 inline std::string locateAgentBinary(const GuiHostServices& services) {
     for (const char* rel : {"dev/scsiagent/build/POM68KDisques.bin",
-                            "share/POM68KDisques.bin"}) {
+                            "share/POM68KDisques.bin",
+                            "Resources/POM68KDisques.bin",
+                            "POM68KDisques.bin"}) {
         const std::string p = services.locate(rel);
         if (!p.empty()) return p;
     }
