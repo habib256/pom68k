@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 510 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 511 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 58 |
+| [Machine bring-ups](#machine-bring-ups) | 59 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 34 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -409,6 +409,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](CHANGELOG.md#2026-09-09-lcii-floppy144-mount)
 - **2026-09-13 (ninth)** — [The menu bar belonged to nobody: six runners each pasted five bare items into it, and the shell now owns one Machine / Périphériques / CPU / Fenêtres bar](CHANGELOG.md#2026-09-13-menu-bar-owned-by-the-shell)
 - **2026-09-13 (third)** — [The two 64K machines get real gates: the registry goes to 279 here, 283 in union](CHANGELOG.md#2026-09-13-mac128k-gates-registered)
+- **2026-09-14 (later)** — [The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it](CHANGELOG.md#2026-09-14-scsi-detach-live)
 
 ## Build, packaging and release
 

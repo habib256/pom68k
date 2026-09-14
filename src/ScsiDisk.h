@@ -94,6 +94,14 @@ public:
     // raises UNIT ATTENTION / $28 and the Finder mounts it, no reboot.
     void attachCdromEmpty();
     void eject();
+    // The reverse of open() for a FIXED disk: the image is dropped, the
+    // write-back stream closed (every WRITE already reached it), the
+    // write log reset, and the target is gone — present() is false, the
+    // controller's selection times out, and the slot is a fresh ScsiDisk
+    // for whatever attaches next. Not a medium change: a fixed disk never
+    // owes UNIT ATTENTION, and this is the cable coming out, not a tray.
+    // A CD bay keeps its drive across an eject(); it never closes.
+    void close();
     // "This bay is the removable kind" — what the platforms' `bayIsCdrom`
     // and the Disques window ask, and the answer is the same for both
     // removable kinds: its medium can be swapped without a reboot.

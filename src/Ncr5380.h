@@ -46,6 +46,23 @@ public:
     ScsiTarget* target(int id) const {
         return (id >= 0 && id < 7) ? targets_[id] : nullptr;
     }
+    // The cable coming out (docs/SCSI_HOTPLUG.md § 7). Refused — false,
+    // nothing changed — while a session is open on that target: the
+    // initiator would be left mid-phase with no device, which no rule
+    // this bus model states. The machine thread retries at the next
+    // quantum; a session lasts microseconds of guest time. Between
+    // sessions the slot is simply empty and selection times out, as it
+    // does for any ID nothing answers.
+    bool sessionOn(int id) const {
+        return id >= 0 && id < 7 && targets_[id] && disk_ == targets_[id]
+            && phase_ != BUS_FREE;
+    }
+    bool detach(int id) {
+        if (id < 0 || id >= 7 || !targets_[id] || sessionOn(id)) return false;
+        if (disk_ == targets_[id]) disk_ = nullptr;   // stale bus-free pointer
+        targets_[id] = nullptr;
+        return true;
+    }
 
     // reg = (addr>>4)&7. Pseudo-DMA (A9) handled by the dma* entry points.
     uint8_t read(int reg);

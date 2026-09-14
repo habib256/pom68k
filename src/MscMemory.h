@@ -138,6 +138,21 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // The reverse of attachScsi, for a FIXED disk the guest has let go of
+    // (docs/SCSI_HOTPLUG.md § 7): the target leaves the bus between two
+    // quanta and the image is dropped. The host decides WHEN — only once
+    // the guest's VCB queue no longer holds a volume on that bay
+    // (GuestScsiView); this call does not look. False and nothing changed
+    // when no fixed disk sits there, or while the controller has a
+    // session open on it (`scsi().sessionOn(id)`; MachineHost retries).
+    // The CD bays keep their drive: that is ejectBayMedia.
+    bool detachScsi(int id) {
+        if (id < 1 || id > 6 || scsiDisks_[id].cdrom() || !scsiDisks_[id].present())
+            return false;
+        if (!scsi().detach(id)) return false;
+        scsiDisks_[id].close();
+        return true;
+    }
     bool attachCdrom(const std::string& path, int id = 3) {
         if (id < 0 || id > 6 || !scsiDisks_[id].openCdrom(path)) return false;
         scsi_.attach(&scsiDisks_[id], id);

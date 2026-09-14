@@ -113,7 +113,7 @@ public:
     struct Cmd {
         enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
                  InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense,
-                 AttachDisk, AgentMount, AgentUnmount } t;
+                 AttachDisk, AgentMount, AgentUnmount, DetachDisk } t;
         int a = 0, b = 0;
         std::string path{};   // media commands only; {} keeps -Wextra quiet
     };
@@ -218,6 +218,19 @@ public:
         std::lock_guard<std::mutex> l(cmdMu_);
         cmds_.push_back({Cmd::AttachDisk, id, 0, std::move(path)});
     }
+    // The reverse (docs/SCSI_HOTPLUG.md § 7): the fixed disk leaves the
+    // bus between two quanta. The caller — the Disques window — asks only
+    // once the guest's own VCB queue shows no volume on that bay; the
+    // machine thread then still refuses a detach that would land inside
+    // an open session on the target (the agent's poll, a driver's last
+    // TEST UNIT READY) and retries at the next quantum, for at most
+    // kDetachRetries quanta, so a busy bus never yields a half-pulled
+    // cable. The outcome crosses back through bayMessage.
+    void requestDetachDisk(int id) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::DetachDisk, id});
+    }
+    static constexpr int kDetachRetries = 600;
     std::string bayMessage() const {
         std::lock_guard<std::mutex> l(mediaMu_);
         return bayMessage_;
@@ -566,6 +579,28 @@ protected:
                     (ok ? " : cible sur le bus — l'invité ne l'a pas encore "
                           "sondée (redémarrage, ou montage depuis l'invité)"
                         : " : image refusée");
+                break;
+            }
+            case Cmd::DetachDisk: {
+                bool ok = false, busy = false;
+                if constexpr (requires { mem.detachScsi(c.a);
+                                         mem.scsi().sessionOn(c.a); }) {
+                    ok = mem.detachScsi(c.a);
+                    busy = !ok && mem.scsi().sessionOn(c.a);
+                }
+                if (busy && c.b < kDetachRetries) {
+                    // Between two quanta the session will have ended; ask
+                    // again then. cmds_ is the GUI-facing queue and this is
+                    // the machine thread, so the push takes the same lock.
+                    std::lock_guard<std::mutex> l(cmdMu_);
+                    cmds_.push_back({Cmd::DetachDisk, c.a, c.b + 1});
+                    break;
+                }
+                std::lock_guard<std::mutex> l(mediaMu_);
+                bayMessage_ = "SCSI " + std::to_string(c.a) +
+                    (ok   ? " : cible retirée du bus"
+                     : busy ? " : cible occupée — retrait abandonné"
+                            : " : rien à retirer");
                 break;
             }
             // Monitor sense (V8/Sonora/VASP/RBV): a multi-field update inside

@@ -297,6 +297,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **can a hard disk leave the bus without a reboot, and why does the board refuse a detach inside a session?** → [2026-09-14 (later) — The cable comes out…](#2026-09-14-scsi-detach-live)
 - **how do I create a blank hard disk in the GUI, and why did Theme Park still not mount after the .toast was a « disk »?** → [2026-09-13 (eighth) — Disques can create a hard disk…](#2026-09-13-disques-usable)
 - **why a .toast is in Disques but never appears on the LC II desktop** → [2026-09-13 (seventh) — A 512-byte Toast dump sat in Disques…](#2026-09-13-toast-512-is-a-disk)
 - **CD-ROM: the target, then a disc mounting in the guest (and why 8.6 cannot boot)** → [2026-07-29 (evening) — A CD mounts in the guest; .cue/.bin; and why 8.6 cannot boot](#2026-07-29-evening--a-cd-mounts-in-the-guest-cuebin-and-why-86-cannot-boot)
@@ -442,6 +443,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (later)** — [The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it](#2026-09-14-scsi-detach-live)
 - **2026-09-14** — [« POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way](#2026-09-14-guest-agent-mounts-on-request)
 - **2026-09-13 (tenth)** — [Disques stops guessing: the guest's own drive and VCB queues say what is mounted, and a fixed disk joins the bus with the machine running](#2026-09-13-scsi-bus-as-the-guest-sees-it)
 - **2026-09-13 (ninth)** — [The menu bar belonged to nobody: six runners each pasted five bare items into it, and the shell now owns one Machine / Périphériques / CPU / Fenêtres bar](#2026-09-13-menu-bar-owned-by-the-shell)
@@ -939,6 +941,67 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-scsi-detach-live"></a>
+## 2026-09-14 (later) — The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it
+
+The last sentence of `docs/SCSI_HOTPLUG.md` § 6 read « what the window
+cannot do yet: detach the target from the bus once the guest has let go of
+it — the memory maps have `attachScsi` and no detach ». They have one now,
+and « Retirer » no longer stages a relaunch when the guest holds no volume
+on the bay.
+
+**What was built, bottom up.** `ScsiDisk::close()` is the reverse of
+`open()` for a fixed disk: the image is dropped (and its memory returned —
+these are hundreds of MB), the write-back stream closed, the save-state
+write log reset, the kind back to fixed; `present()` is false and the same
+object re-opens. `Ncr5380::detach(id)` and `Ncr53c96::detach(id)` empty the
+slot, but **refuse while a session is open on that target**
+(`sessionOn(id)`: the target selected and the bus not free) — the initiator
+would otherwise be left mid-phase with no device, a state this bus model
+has no rule for. `detachScsi(id)` on the twelve memory maps takes a fixed
+disk on ID 1–6 and refuses the boot ID and the CD bays (those are
+`ejectBayMedia`: the drive stays). `Cmd::DetachDisk` runs it between two
+quanta and, on a refusal that is a session, re-queues itself for the next
+quantum (600 at most) instead of reporting — a session lasts microseconds
+of guest time, and the agent's poll rides on target 0. The Disques window
+offers the live « Retirer » only when `GuestScsiView` shows no volume on
+the bay (`canDetachNow`); a mounted volume, or queues not readable yet,
+keep the staged relaunch, with the tooltip saying to unmount first.
+
+**Evidence.** `scsi_detach_test` (asset-none, synthetic HFS image): on
+both controllers a detach between sessions makes the next selection of
+that ID time out the way an empty ID does (5380: bus free, no REQ; 53C96:
+`I_DISCONNECT`) while the boot target still answers; a detach inside a
+session is refused and changes nothing, the session completes, the detach
+then goes through; `close()` leaves a reusable slot whose re-open reads the
+file, not the closed session's write; on a V8 board and a Q605 board the
+boot ID, a CD bay and an empty ID refuse and the freed slot takes a new
+disk. `machinehost_test` pins the re-queue on the Q605's 53C96 with a
+TEST UNIT READY left pending across three quanta — refused, still waiting,
+then landed the quantum after `MSG_ACCEPT` (the Q605 controller defers its
+interrupts by the MAME-derived delay model, so the test pumps `tick()` by
+hand). `scsi_agent_etalon` gained step 2b: after the agent's unmount the
+target leaves the bus, the guest's drive and VCB queues do not move for
+three seconds of polls, the agent keeps polling, the same image is
+re-attached and the agent mounts it again through the drive it had
+registered — `PASS … the target left and rejoined the bus, remounted`
+(23.6 s). `scsi_hotplug_etalon` unchanged and green (21.5 s).
+
+**Ceilings raised, deliberately.** `src/ScsiDisk.cpp` sat exactly at its
+1330-line ceiling and `cmake/Pom68kComponentGates.cmake` at 473; `close()`
+belongs beside `open()` and `eject()`, and the gate beside the other SCSI
+component gates, so `tools/check_file_sizes.sh --update` regenerated the
+budget (recording the wins elsewhere: `CLAUDE.md` 250 → 229, `AfpServer.cpp`
+1129 → 1122, `JitIr.h` 2185 → 2180).
+
+**Two debts seen on the way, not paid** (both in `TODO.md` § Preuve): the
+relaunch line carries the extras positionally, so an interior gap — a
+detached SCSI 2 under an occupied SCSI 3 — shifts the IDs above it on
+relaunch (latent since the live attach of 2026-09-13; the detach trims only
+trailing empties); and the input journal names commands by `int(c.t)` while
+`InputEventType` stops at `Sense`, so a recorded `AttachDisk` (10) reads
+back as `StateRestore` and the three later commands as « unknown ».
 
 <a id="2026-09-14-guest-agent-mounts-on-request"></a>
 ## 2026-09-14 — « POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way

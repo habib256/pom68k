@@ -11,8 +11,12 @@
 //      reads its partition map, serves it with its own driver and
 //      PBMountVol's it — reported by name, and the guest's own queues show
 //      the volume on the drive the report named;
-//   2. « Démonter »: gone from the VCB queue;
-//   3. « Monter » again: the drive the agent already registered is reused;
+//   2. « Démonter »: gone from the VCB queue — then « Retirer »: with no
+//      VCB left on the bay the target leaves the bus (detachScsi, § 7),
+//      the guest's queues do not move and the agent keeps polling; the
+//      same image is attached again;
+//   3. « Monter » again: the drive the agent already registered is reused,
+//      on the re-attached target;
 //   4. « Démonter » the BOOT volume: refused (fBsyErr −47, the File
 //      Manager's word), and the host is told the code unchanged.
 //
@@ -191,7 +195,6 @@ int main() {
         std::fprintf(stderr, "FAIL: live attach refused\n");
         return 1;
     }
-    std::remove(newPath.c_str());
     pom68k::ScsiAgentSnapshot rep;
     pom68k::GuestScsiDriveHints hints{};
     if (!ask(pom68k::ScsiAgentMailbox::Mount, kNewId, rep)) {
@@ -256,7 +259,42 @@ int main() {
         return 1;
     }
 
-    // ── 3. mount again: the registered drive is reused ───────────────────
+    // ── 2b. the cable comes out, then goes back in ───────────────────────
+    // With no VCB on the bay (docs/SCSI_HOTPLUG.md § 7) the target may
+    // leave the bus: the controller's slot empties and the guest's queues
+    // do not move — the agent keeps polling target 0 throughout. The
+    // detach may land inside one of those polls, on another target: the
+    // board refuses only a session on the detached ID.
+    if (!mem.detachScsi(kNewId)) {
+        std::fprintf(stderr, "FAIL: live detach refused (session on the target? %d)\n",
+                     mem.scsi().sessionOn(kNewId) ? 1 : 0);
+        return 1;
+    }
+    if (mem.scsi().target(kNewId) != nullptr || mem.scsiDiskAt(kNewId).present()) {
+        std::fprintf(stderr, "FAIL: SCSI %d still on the bus after the detach\n", kNewId);
+        return 1;
+    }
+    runFrames(180);                              // three seconds of polls without it
+    v = view(&hints);
+    if (!v.valid || v.bays[kNewId].mounted || !v.bays[0].mounted) {
+        std::fprintf(stderr, "FAIL: the guest's queues moved across the detach\n");
+        return 1;
+    }
+    const uint32_t pollsBefore = mem.scsi().agent().snapshot().polls;
+    runFrames(120);
+    if (mem.scsi().agent().snapshot().polls == pollsBefore) {
+        std::fprintf(stderr, "FAIL: the agent stopped polling after the detach\n");
+        return 1;
+    }
+    std::printf("detached: SCSI %d off the bus, agent still polling\n", kNewId);
+    if (!mem.attachScsi(newPath, false, kNewId)) {
+        std::fprintf(stderr, "FAIL: re-attach after the detach refused\n");
+        return 1;
+    }
+    std::remove(newPath.c_str());
+
+    // ── 3. mount again: the registered drive is reused, on the re-attached
+    //       target — the same image, read afresh from the bus ─────────────
     if (!ask(pom68k::ScsiAgentMailbox::Mount, kNewId, rep) || rep.lastErr != 0 ||
         rep.lastText != "Branche") {
         show("remount", rep);
@@ -287,7 +325,8 @@ int main() {
         std::fprintf(stderr, "FAIL: the boot volume left the VCB queue\n");
         return 1;
     }
-    std::printf("PASS: agent mounted, unmounted and remounted « Branche » on SCSI %d; "
-                "boot volume refused with %d\n", kNewId, rep.lastErr);
+    std::printf("PASS: agent mounted, unmounted « Branche » on SCSI %d, the target left and "
+                "rejoined the bus, remounted; boot volume refused with %d\n", kNewId,
+                rep.lastErr);
     return 0;
 }

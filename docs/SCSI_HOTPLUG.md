@@ -1,6 +1,6 @@
 # SCSI hot-plug: re-reading the bus, and mounting from inside Mac OS
 
-*Research note, opened 2026-09-13. Status: all three steps built and gated (§ 5, § 6); the host-side detach is the remaining piece.*
+*Research note, opened 2026-09-13. Status: all three steps and the host-side detach built and gated (§ 5, § 6, § 7). What remains is launching the agent without a gesture in the Mac (`TODO.md` § Preuve).*
 
 ## 1. The problem the Disques window cannot solve alone
 
@@ -143,6 +143,43 @@ The design of § 3 held, with four corrections the guest taught:
   drew the same Finder alert at mount time. The Finder's own « put away »
   Apple event, tried in between, refuses fixed disks (`errAEEventFailed`).
 
-What the window cannot do yet: detach the target from the bus once the
-guest has let go of it — the memory maps have `attachScsi` and no detach.
-The bay keeps its image; « Retirer » still stages a relaunch.
+## 7. The cable coming out (2026-09-14, later): `detachScsi`
+
+§ 3 ended with the sentence this section implements: *unmount from the
+Finder needs no agent at all — step 1 sees the VCB vanish and the host may
+then detach safely*. The pieces, bottom up:
+
+| Piece | Where | Gate |
+|---|---|---|
+| `ScsiDisk::close()` — image dropped, write-back stream closed, write log reset; `present()` false, kind back to fixed, the slot reusable | `src/ScsiDisk.cpp` | `scsi_detach_test` |
+| `detach(id)` / `sessionOn(id)` on both controllers — refused inside a session on that target, an empty slot afterwards | `Ncr5380.h`, `Ncr53c96.h` | `scsi_detach_test` |
+| `detachScsi(id)` on the twelve memory maps — fixed disks on ID 1–6 only; the boot ID and the CD bays refuse | `*Memory.h` | `scsi_detach_test` (a 5380 board and a 53C96 board) |
+| `Cmd::DetachDisk` — between two quanta; a detach that would land inside an open session is re-queued and lands at the next quantum (600 at most); outcome in `bayMessage` | `MachineHost.h` | `machinehost_test` |
+| « Retirer » on a fixed bay: live when the guest's VCB queue shows no volume on it, staged (a relaunch, as before) when a volume is mounted or the queues are not readable | `src/DiskBays.cpp`, `canDetachNow` | — (the GUI has no gate) |
+| The full cycle on the Quadra 605: agent unmount → detach → the guest's queues unchanged, the agent still polling → the same image re-attached → agent mount | — | `scsi_agent_etalon` step 2b |
+
+Three rules the pieces obey:
+
+- **The host decides when, the bus decides whether.** Only the window
+  knows the guest's view; `detachScsi` does not look at VCBs. What the
+  board *does* refuse is a detach inside a session on that very target —
+  the initiator would be left mid-phase with no device, a state this bus
+  model has no rule for. A session lasts microseconds of guest time, so
+  the machine thread simply asks again at the next quantum; the agent's
+  poll rides on target 0 and is never in the way.
+- **A fixed disk is not a tray.** `close()` raises no UNIT ATTENTION and
+  the slot answers nothing afterwards; the next selection of that ID
+  times out the way it does for any ID nothing answers (5380: the bus
+  stays free; 53C96: `I_DISCONNECT`). A CD bay never closes — that is
+  `ejectBayMedia`, and the drive stays for the next disc.
+- **The relaunch line follows.** A live detach clears the bay's entry in
+  the extras list and trims trailing empties, so a machine switch does
+  not bring the disk back. An *interior* empty entry (a detached SCSI 2
+  under an occupied SCSI 3) is still carried positionally and shifts the
+  IDs above it on relaunch — the same limitation a live attach into a gap
+  has had since 2026-09-13; `TODO.md` § Preuve holds it.
+
+The Finder's own Put Away leaves the ROM's driver in the drive queue
+(`driver` true, `mounted` false): « Retirer » is offered on that state
+too, and the driver's next probe of the vanished target gets a selection
+timeout, which the SCSI Manager reports as an error rather than hanging.

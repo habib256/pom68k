@@ -288,6 +288,15 @@ add_executable(scsi_agent_mailbox_test tests/scsi_agent_mailbox_test.cpp)
 target_link_libraries(scsi_agent_mailbox_test PRIVATE pom68k_core)
 add_test(NAME scsi_agent_mailbox_test COMMAND scsi_agent_mailbox_test)
 
+# The cable coming out (docs/SCSI_HOTPLUG.md § 7): a fixed target detached
+# between sessions is gone from both controllers' selection, a detach inside
+# a session is refused and changes nothing, ScsiDisk::close() leaves a
+# reusable slot, and detachScsi() on a 5380 board and a 53C96 board refuses
+# the boot ID and the CD bay. Synthetic HFS image; no ROM, no asset.
+add_executable(scsi_detach_test tests/scsi_detach_test.cpp)
+target_link_libraries(scsi_detach_test PRIVATE pom68k_core)
+add_test(NAME scsi_detach_test COMMAND scsi_detach_test)
+
 # The input journal end to end (src/InputJournal.h + tests/InputReplay.h):
 # format round-trip through a real file, then REPLAY DETERMINISM on a live
 # synthetic-ROM LC II — restore one snapshot, replay one journal twice,

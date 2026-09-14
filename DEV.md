@@ -1258,6 +1258,18 @@ switch.
   The lessons — the DRQ interrupt the old SCSI Manager API needs, the
   driver's unit number the Finder classes by, `PBDTCloseDown` before
   `UnmountVol` — are in `docs/SCSI_HOTPLUG.md` § 6.
+- **`Cmd::DetachDisk`** (`MachineHost::requestDetachDisk`) is the reverse:
+  the memory map's `detachScsi` empties the controller's slot and
+  `ScsiDisk::close()` drops the image, between two quanta. Both
+  controllers refuse a detach inside a session on that target
+  (`sessionOn`), and the host re-queues it for the next quantum rather
+  than report a failure. The window offers it as « Retirer » only while
+  the guest's VCB queue shows no volume on the bay; otherwise « Retirer »
+  stages a relaunch as before. Gates: `scsi_detach_test` (both
+  controllers, the target, a 5380 and a 53C96 board; synthetic image),
+  `machinehost_test` (the re-queue) and `scsi_agent_etalon` step 2b (the
+  cycle unmount → detach → re-attach → mount on the Quadra 605).
+  `docs/SCSI_HOTPLUG.md` § 7.
 
 ### 3.5 Input: M0110 keyboard + quadrature mouse
 

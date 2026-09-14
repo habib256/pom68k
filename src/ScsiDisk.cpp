@@ -434,6 +434,21 @@ void ScsiDisk::eject() {
     setSense(kNotReady, 0x3A);                   // MEDIUM NOT PRESENT
 }
 
+void ScsiDisk::close() {
+    if (file_.is_open()) file_.close();
+    writeBack_ = false;
+    kind_ = Kind::Disk;
+    attached_ = false;
+    unitAttention_ = false;
+    image_.clear();
+    image_.shrink_to_fit();              // hundreds of MB: give them back now
+    blocks_ = 0;
+    hfsPrefixBlocks_ = 0;
+    identifyLun_ = kNoIdentify;
+    resetWriteLog();
+    setSense(0, 0);
+}
+
 void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
     readCommands++;
     readBlocks += count;

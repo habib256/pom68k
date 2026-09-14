@@ -22,7 +22,9 @@
 #include "Cpu040.h"
 #include "PortableEnv.h"
 #include "GuiSpeedGauge.h"
+#include "HfsBlankVolume.h"
 #include "MachineHost.h"
+#include "Ncr53c96.h"
 #include "Q605Memory.h"
 
 #include <cstdio>
@@ -422,6 +424,63 @@ int main() {
         }
         std::remove("machinehost_test.rec");
         std::remove("machinehost_test.rec.pomss");
+    }
+
+    // ── Live detach (docs/SCSI_HOTPLUG.md § 7): the fixed disk leaves the
+    //    bus between two quanta; a detach that would land inside an open
+    //    session on the target is re-queued and lands once the bus is free.
+    {
+        const std::string img = pom68kTempPath("machinehost_detach.img");
+        check(hfsblank::writeFile(img, hfsblank::build(4ull << 20, "Retire")),
+              "detach: the synthetic image is written");
+        MonoMachine m(mem, cpu, audio);
+        using Cmd = MonoMachine::Cmd;
+        m.push({Cmd::DetachDisk, 2});
+        m.stepTick();
+        check(m.bayMessage().find("rien à retirer") != std::string::npos,
+              "detach: an empty bay says so");
+        m.push({Cmd::AttachDisk, 2, 0, img});
+        m.stepTick();
+        check(mem.scsi().target(2) != nullptr, "detach: the disk is on the bus first");
+        // A session on that very target: IDENTIFY + TEST UNIT READY selected
+        // and left pending, the way the agent's poll or a driver's probe
+        // sits between two quanta at most once in a blue moon. The Q605's
+        // 53C96 defers its interrupts by the MAME-derived delay model,
+        // which Q605Memory::tick pumps; nothing here runs the machine, so
+        // the delays are paid by hand.
+        auto settle = [] { mem.scsi().tick(10'000'000); };
+        mem.scsi().write(Ncr53c96::R_CONFIG1, 0x07);
+        mem.scsi().write(Ncr53c96::R_COMMAND, Ncr53c96::CM_FLUSH_FIFO);
+        mem.scsi().write(Ncr53c96::R_FIFO, 0xC0);
+        for (int i = 0; i < 6; i++) mem.scsi().write(Ncr53c96::R_FIFO, 0);
+        mem.scsi().write(Ncr53c96::R_STATUS, 2);
+        mem.scsi().write(Ncr53c96::R_COMMAND, Ncr53c96::CD_SELECT_ATN);
+        settle();
+        check(mem.scsi().sessionOn(2), "detach: a session is open on the target");
+        m.push({Cmd::DetachDisk, 2});
+        m.stepTick();
+        check(mem.scsi().target(2) != nullptr && m.bayMessage().find("retirée") == std::string::npos,
+              "detach: refused inside the session, and re-queued rather than reported");
+        m.stepTick();
+        check(mem.scsi().target(2) != nullptr, "detach: still waiting while the session lasts");
+        // The session ends: STATUS + message accepted → bus free.
+        (void)mem.scsi().read(Ncr53c96::R_ISTAT);
+        mem.scsi().write(Ncr53c96::R_COMMAND, Ncr53c96::CI_COMPLETE);
+        settle();
+        (void)mem.scsi().read(Ncr53c96::R_ISTAT);
+        (void)mem.scsi().read(Ncr53c96::R_FIFO);
+        (void)mem.scsi().read(Ncr53c96::R_FIFO);
+        mem.scsi().write(Ncr53c96::R_COMMAND, Ncr53c96::CI_MSG_ACCEPT);
+        settle();
+        (void)mem.scsi().read(Ncr53c96::R_ISTAT);
+        check(!mem.scsi().sessionOn(2), "detach: the session is over");
+        m.stepTick();
+        check(mem.scsi().target(2) == nullptr && !mem.scsiDiskAt(2).present(),
+              "detach: the re-queued detach lands at the next quantum");
+        check(m.bayMessage().find("retirée du bus") != std::string::npos,
+              "detach: the outcome is reported once it happened");
+        m.stop();
+        std::remove(img.c_str());
     }
 
     // ── Recording without a wired profile refuses, loudly, and survives ──

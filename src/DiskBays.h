@@ -30,7 +30,12 @@
 //       System only learns of it at the next power cycle, or through a
 //       guest-side mount. The window no longer guesses which: it prints
 //       the guest's own drive and VCB queues under each bay
-//       (`guestView`, src/GuestScsiView.h, gate scsi_hotplug_etalon).
+//       (`guestView`, src/GuestScsiView.h, gate scsi_hotplug_etalon);
+//     - a FIXED disk leaves the bus live too (`detachBay`, since
+//       2026-09-14 — Cmd::DetachDisk), but only once that view shows no
+//       volume on the bay: « Retirer » on a mounted volume, or with no
+//       view at all, stages a relaunch as before. Unmount first — the
+//       Finder's Put Away, or « Démonter » through the guest agent.
 //
 //   Which is why, since 2026-08-15, every machine that can hold a CD drive
 //   BOOTS with one (`ensureCdDrive` below) and the window carries a CD row
@@ -105,6 +110,11 @@ struct DiskBaysHost {
     // reboot, the pre-2026-09-13 behaviour. guestView reads the guest's own
     // drive and VCB queues: what the System knows, not what the host wired.
     std::function<bool(int id, const std::string& path)> attachBay;
+    // detachBay takes the fixed disk off the bus NOW (queued; outcome in
+    // bayMessage). The window calls it only when guestView shows no
+    // volume on that bay — the one condition under which a target may
+    // vanish without the System noticing (docs/SCSI_HOTPLUG.md § 7).
+    std::function<bool(int id)>                          detachBay;
     std::function<GuestScsiView()>                       guestView;
     std::function<std::string()>                         bayMessage;
     // The guest agent (dev/scsiagent, ScsiAgentMailbox.h): mount/unmount a

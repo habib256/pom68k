@@ -263,6 +263,16 @@ void guestBayLine(const DiskBaysHost& host, int id) {
         ImGui::TextColored(grey, "invité : aucun lecteur — invisible pour le System");
 }
 
+// A fixed disk may leave the bus live only when the machine offers the
+// detach AND the guest's own VCB queue shows no volume on that bay — the
+// condition docs/SCSI_HOTPLUG.md § 3 states for a safe detach. No view
+// (the queues not readable yet) is « unknown », and unknown stages.
+bool canDetachNow(const DiskBaysHost& host, int id) {
+    if (!host.detachBay || !host.guestView || gStaged) return false;
+    const GuestScsiView v = host.guestView();
+    return v.valid && id >= 0 && id < int(v.bays.size()) && !v.bays[size_t(id)].mounted;
+}
+
 // Put a fixed disk on the bus now, or stage it when the machine offers no
 // live attach. The extras list is what the relaunch line carries, so it is
 // updated either way.
@@ -582,13 +592,31 @@ void diskBaysWindow(DiskBaysHost& host) {
                 }
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Éjection immédiate, sans redémarrage");
+            } else if (canDetachNow(host, i + 1)) {
+                // The guest holds no volume on this bay: the cable can
+                // come out now, and the relaunch line forgets the disk.
+                if (ImGui::SmallButton("Retirer") && host.detachBay(i + 1)) {
+                    if (host.extras && i < int(host.extras->size())) {
+                        (*host.extras)[size_t(i)].clear();
+                        while (!host.extras->empty() && host.extras->back().empty())
+                            host.extras->pop_back();
+                    }
+                    gLastError.clear();
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Quitte le bus maintenant — l'invité n'a "
+                                      "aucun volume monté sur cette cible");
             } else {
                 if (ImGui::SmallButton("Retirer")) {
                     beginStaging(host);
                     if (i < int(gStagedExtras.size())) gStagedExtras[i].clear();
                 }
                 if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Prendra effet au prochain redémarrage");
+                    ImGui::SetTooltip(host.detachBay
+                        ? "Prendra effet au prochain redémarrage — un volume "
+                          "est monté dessus : « Démonter » ou Ranger dans le "
+                          "Finder pour le retirer sans redémarrer"
+                        : "Prendra effet au prochain redémarrage");
             }
         }
         if (!cur.empty() && !live) {
@@ -621,6 +649,8 @@ void diskBaysWindow(DiskBaysHost& host) {
         ? "Un disque choisi ici rejoint le bus aussitôt ; le Finder ne monte "
           "un disque fixe qu'au démarrage — « Redémarrer la machine » (le "
           "ROM re-sonde le bus) ou un montage depuis l'invité (SCSIProbe). "
+          "« Retirer » le débranche aussitôt quand aucun volume n'est monté "
+          "dessus. "
           "La ligne CD-ROM n'accepte qu'un vrai CD (2048 octets/bloc). Un "
           "dump Toast .toast est un disque, pas un CD."
         : "Un disque dur n'apparaît sur le bureau qu'au démarrage: "
