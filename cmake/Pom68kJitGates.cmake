@@ -14,7 +14,15 @@ set(POM68K_PERF_BUDGET_FILE
 # (docs/MEASURING.md § 2, why the binary must identify itself).
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${POM68K_PERF_BUDGET_FILE}")
-string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" POM68K_PERF_HOST)
+# A Rosetta build directory (CMAKE_OSX_ARCHITECTURES naming one other
+# architecture) targets that architecture: its budgets, its measured rows,
+# its STATUS.md section — the rule tools/status_md.py already applies
+# (2026-09-14, the x86_64 section regenerated on the M4).
+if(CMAKE_OSX_ARCHITECTURES MATCHES "^(x86_64|arm64|aarch64|amd64)$")
+    string(TOLOWER "${CMAKE_OSX_ARCHITECTURES}" POM68K_PERF_HOST)
+else()
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" POM68K_PERF_HOST)
+endif()
 if(POM68K_PERF_HOST MATCHES "^(arm64|aarch64)$")
     set(POM68K_PERF_HOST "aarch64")
 elseif(POM68K_PERF_HOST MATCHES "^(x86_64|amd64)$")

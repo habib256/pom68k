@@ -78,10 +78,10 @@ Scheduling cost if every gate ran at once: 510 slots of 256 MiB (`slots_src` say
 | tier | daily | 97 |
 | tier | full | 175 |
 | tier | platform | 12 |
-| slots_src | assumed | 168 |
-| slots_src | measured | 116 |
+| slots_src | assumed | 171 |
+| slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 511 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 643 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
