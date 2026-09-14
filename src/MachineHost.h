@@ -45,8 +45,11 @@
 
 #pragma once
 
+#include "GuestScsiView.h"
 #include "InputJournal.h"
+#include "Mmu030Peek.h"
 #include "SaveStateSlot.h"
+#include "ScsiAgentMailbox.h"
 #include "jit/JitStats.h"
 
 #include <algorithm>
@@ -109,7 +112,8 @@ public:
     // applyPlatformCmd() is a no-op by default.
     struct Cmd {
         enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
-                 InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense } t;
+                 InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense,
+                 AttachDisk, AgentMount, AgentUnmount } t;
         int a = 0, b = 0;
         std::string path{};   // media commands only; {} keeps -Wextra quiet
     };
@@ -202,6 +206,50 @@ public:
     bool bayIsCdrom(int id) const {
         return id >= 0 && id < int(stBayCd_.size())
             && stBayCd_[size_t(id)].load(std::memory_order_relaxed);
+    }
+
+    // ── Live SCSI attach (docs/SCSI_HOTPLUG.md § 3, step 2) ───────────────
+    // A fixed disk joins the bus between two quanta, the way a drive cabled
+    // in with the machine on would: the target answers INQUIRY from then
+    // on, and nothing mounts until the guest looks — a power cycle (the ROM
+    // re-probes) or a guest-side mount. The outcome crosses back as text,
+    // the save-state row's convention.
+    void requestAttachDisk(int id, std::string path) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::AttachDisk, id, 0, std::move(path)});
+    }
+    std::string bayMessage() const {
+        std::lock_guard<std::mutex> l(mediaMu_);
+        return bayMessage_;
+    }
+
+    // ── The guest agent (ScsiAgentMailbox.h, dev/scsiagent) ─────────────
+    // Mount or unmount a bay's volume from inside Mac OS, through the agent
+    // polling the bus. `agent()` says whether one is polling (seen within
+    // the last ~2 s of publishes) and what it last reported.
+    void requestAgentMount(int id) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::AgentMount, id});
+    }
+    void requestAgentUnmount(int id) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::AgentUnmount, id});
+    }
+    struct AgentState {
+        bool present = false;
+        pom68k::ScsiAgentSnapshot mailbox;
+    };
+    AgentState agent() const {
+        std::lock_guard<std::mutex> l(scsiViewMu_);
+        return agent_;
+    }
+
+    // The bus as the GUEST sees it, sampled from its drive and VCB queues on
+    // the machine thread at frame boundaries (step 1). `valid` is false
+    // until the System has built the queues.
+    pom68k::GuestScsiView guestScsiView() const {
+        std::lock_guard<std::mutex> l(scsiViewMu_);
+        return scsiView_;
     }
 
     // ── Framebuffer handoff ────────────────────────────────────────────────
@@ -361,6 +409,8 @@ public:
                 stBayCd_[size_t(id)].store(mem.bayIsCdrom(id),
                                             std::memory_order_relaxed);
         }
+        sampleGuestScsiView();
+        sampleAgent();
         // ── The GUEST ejects too ────────────────────────────────────────
         // `Cmd::EjectFloppy` is only the GUI's half of it. A Finder "Ranger",
         // a Cmd-E, or any driver eject reaches `SonyDrive::eject()` straight
@@ -497,6 +547,27 @@ protected:
                 if constexpr (requires { mem.ejectBayMedia(1); })
                     mem.ejectBayMedia(c.a);
                 break;
+            case Cmd::AgentMount:
+            case Cmd::AgentUnmount:
+                if constexpr (requires { mem.scsi().agent().post(
+                                  pom68k::ScsiAgentMailbox::Mount, 1); }) {
+                    mem.scsi().agent().post(
+                        c.t == Cmd::AgentMount ? pom68k::ScsiAgentMailbox::Mount
+                                               : pom68k::ScsiAgentMailbox::Unmount,
+                        c.a);
+                }
+                break;
+            case Cmd::AttachDisk: {
+                bool ok = false;
+                if constexpr (requires { mem.attachScsi(c.path, true, c.a); })
+                    ok = !c.path.empty() && mem.attachScsi(c.path, true, c.a);
+                std::lock_guard<std::mutex> l(mediaMu_);
+                bayMessage_ = "SCSI " + std::to_string(c.a) +
+                    (ok ? " : cible sur le bus — l'invité ne l'a pas encore "
+                          "sondée (redémarrage, ou montage depuis l'invité)"
+                        : " : image refusée");
+                break;
+            }
             // Monitor sense (V8/Sonora/VASP/RBV): a multi-field update inside
             // the memory object, so it is applied on THIS thread and crosses
             // back to the GUI as an atomic — the GUI never reaches into mem.
@@ -632,9 +703,74 @@ protected:
         recMessage_ = std::move(m);
     }
 
+    // One logical byte of guest memory, side-effect-free. Machines whose
+    // System runs behind the 68030 PMMU (RBV, Duo, IIsi) are walked through
+    // Mmu030Peek.h; on the 68040 boards the System's low memory and heap
+    // are identity-mapped and the etalons read them physically, so the
+    // 040 tables are not walked. Anything else is physical.
+    bool guestPeek8(uint32_t va, uint8_t& out) {
+        if constexpr (!requires { mem.peek8(uint32_t(0)); }) {
+            (void)va; (void)out;
+            return false;
+        } else {
+            uint32_t phys = va;
+            if constexpr (requires { cpu.getTC(); cpu.getCRP(); cpu.getSRP(); }) {
+                const uint32_t tc = uint32_t(cpu.getTC());
+                if ((tc & 0x80000000u) &&
+                    !mmu030peek::translate(
+                        tc, cpu.getCRP(), cpu.getSRP(), va, 5,
+                        [&](uint32_t a) { return mem.peek8(a); }, &phys))
+                    return false;
+            }
+            out = mem.peek8(phys);
+            return true;
+        }
+    }
+
+    // Every 15th publish (~4 Hz at the 60 Hz cadence): two bounded queue
+    // walks, a few hundred peeks, no guest code.
+    void sampleGuestScsiView() {
+        if (++scsiViewTick_ < 15) return;
+        scsiViewTick_ = 0;
+        pom68k::GuestScsiView view = pom68k::readGuestScsiView(
+            [&](uint32_t va, uint8_t& out) { return guestPeek8(va, out); },
+            &agentDrives_);
+        std::lock_guard<std::mutex> l(scsiViewMu_);
+        scsiView_ = std::move(view);
+    }
+
+    // Presence is a poll count that moved within the last 120 publishes
+    // (~2 s at the 60 Hz cadence): the agent polls twice a second.
+    void sampleAgent() {
+        if constexpr (requires { mem.scsi().agent().snapshot(); }) {
+            pom68k::ScsiAgentSnapshot snap = mem.scsi().agent().snapshot();
+            if (snap.polls != agentPolls_) { agentPolls_ = snap.polls; agentIdle_ = 0; }
+            else if (agentIdle_ < 1000) ++agentIdle_;
+            // A successful mount names the drive the agent serves the bay
+            // on; an unmount forgets it. The bus view matches by that.
+            if (snap.reported && !snap.pending && snap.lastId < agentDrives_.size()) {
+                if (snap.lastKind == pom68k::ScsiAgentMailbox::Mount && snap.lastErr == 0)
+                    agentDrives_[snap.lastId] = snap.lastDrive;
+                else if (snap.lastKind == pom68k::ScsiAgentMailbox::Unmount && snap.lastErr == 0)
+                    agentDrives_[snap.lastId] = 0;
+            }
+            std::lock_guard<std::mutex> l(scsiViewMu_);
+            agent_.present = snap.polls && agentIdle_ < 120;
+            agent_.mailbox = std::move(snap);
+        }
+    }
+
     std::thread th_;
     std::mutex cmdMu_;
     std::vector<Cmd> cmds_, cmdsApply_;
+    mutable std::mutex scsiViewMu_;
+    AgentState agent_;
+    std::uint32_t agentPolls_ = 0;
+    int agentIdle_ = 1000;
+    pom68k::GuestScsiDriveHints agentDrives_{};
+    pom68k::GuestScsiView scsiView_;
+    int scsiViewTick_ = 0;
+    std::string bayMessage_;            // under mediaMu_
     // Recording state. journalW_/journalOn_/recEvents_ belong to the
     // machine thread (stop() only touches them after the join); recNotes_
     // is written by the runner before start(); the pending slot and the

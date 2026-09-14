@@ -118,6 +118,7 @@ Focused research notes under `docs/`:
 | `MAME_PARITY_AUDIT.md` | chip-level POM68K/MAME comparison |
 | `MEASURING.md` | rules for publishable performance measurements |
 | `RASPBERRY_PI.md` | Pi tuning, packaging and PGO |
+| `SCSI_HOTPLUG.md` | live SCSI attach, guest-side mount/unmount and the bus view the GUI needs |
 | `SIMPLIFICATIONS_REVIEW.md` | reviewed implementation simplifications |
 
 ## Product and architecture invariants

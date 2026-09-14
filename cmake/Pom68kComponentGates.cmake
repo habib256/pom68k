@@ -274,6 +274,20 @@ add_executable(machinehost_test tests/machinehost_test.cpp)
 target_link_libraries(machinehost_test PRIVATE pom68k_core)
 add_test(NAME machinehost_test COMMAND machinehost_test)
 
+# The guest's SCSI bus view (src/GuestScsiView.h): the drive-queue and VCB
+# walk on a synthetic low-memory image — refNum → SCSI ID, a mounted
+# volume's name, and the bounds that keep a half-built System from being
+# misread. No ROM, no image.
+add_executable(guest_scsi_view_test tests/guest_scsi_view_test.cpp)
+target_link_libraries(guest_scsi_view_test PRIVATE pom68k_core)
+add_test(NAME guest_scsi_view_test COMMAND guest_scsi_view_test)
+
+# The host ↔ guest-agent mailbox (src/ScsiAgentMailbox.h): the $C0 POLL /
+# $C1 REPORT protocol, sequence matching and the heartbeat count. No ROM.
+add_executable(scsi_agent_mailbox_test tests/scsi_agent_mailbox_test.cpp)
+target_link_libraries(scsi_agent_mailbox_test PRIVATE pom68k_core)
+add_test(NAME scsi_agent_mailbox_test COMMAND scsi_agent_mailbox_test)
+
 # The input journal end to end (src/InputJournal.h + tests/InputReplay.h):
 # format round-trip through a real file, then REPLAY DETERMINISM on a live
 # synthetic-ROM LC II — restore one snapshot, replay one journal twice,

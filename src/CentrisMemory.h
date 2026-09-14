@@ -259,6 +259,7 @@ private:
     uint8_t scsiDmaRead_();
     void    scsiDmaWrite_(uint8_t v);
     void    scsiPoll_();
+    void    scsiDrq(bool s);                  // IFR bit 0 + IRQ recalc
     void syncSwimFromCpu();
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);

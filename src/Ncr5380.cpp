@@ -89,6 +89,7 @@ void Ncr5380::enterMsgIn()   {
 // MODE SELECT ended up supported here and not on the 53C96.
 void Ncr5380::extendDataOut() {
     if (!disk_ || cmd_.empty()) return;
+    if (pom68k::ScsiAgentMailbox::handles(cmd_.data(), int(cmd_.size()))) return;
     dataOutExpected_ = disk_->extendDataOut(cmd_.data(), int(cmd_.size()),
                                             dataOut_, dataOutExpected_);
 }
@@ -96,7 +97,11 @@ void Ncr5380::extendDataOut() {
 void Ncr5380::execute() {
     commands++; lastCmd = cmd_.empty() ? 0 : cmd_[0];
     if (onCommand) onCommand(cmd_);
-    int wbytes = disk_ ? disk_->writeByteCount(cmd_.data(), int(cmd_.size())) : 0;
+    int wbytes = 0;
+    if (disk_)
+        wbytes = pom68k::ScsiAgentMailbox::handles(cmd_.data(), int(cmd_.size()))
+            ? pom68k::ScsiAgentMailbox::writeByteCount(cmd_.data(), int(cmd_.size()))
+            : disk_->writeByteCount(cmd_.data(), int(cmd_.size()));
     if (wbytes > 0) {                                          // WRITE: collect DATA OUT first
         phase_ = DATA_OUT; dataOut_.clear(); dataOutExpected_ = size_t(wbytes);
         req_ = true;
@@ -104,14 +109,14 @@ void Ncr5380::execute() {
     }
     dataIn_.clear(); dataPos_ = 0;
     std::vector<uint8_t> none;
-    status_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), dataIn_, none) : 0x02;
+    status_ = dispatch(dataIn_, none);
     if (!dataIn_.empty()) { phase_ = DATA_IN; dataPos_ = 0; req_ = true; }
     else enterStatus();
 }
 
 void Ncr5380::finishWrite() {
     std::vector<uint8_t> readback;
-    status_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), readback, dataOut_) : 0x02;
+    status_ = dispatch(readback, dataOut_);
     enterStatus();
 }
 

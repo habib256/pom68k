@@ -1212,6 +1212,53 @@ PIO/DMA chunking. On the Quadra 700 the surrounding cell is DAFB's, not
 IOSB's ([§2.8](#28-discrete-040--dafb--quadra-700--900--950)). Gates:
 `ncr53c96_test`, `q605_turboscsi_test`.
 
+### 3.4bis The bus as the guest sees it, and a disk that joins it live
+
+Classic Mac OS enumerates the SCSI bus once, at boot. Two mechanisms
+since 2026-09-13 let the Disques window state what the System actually
+knows instead of guessing (`docs/SCSI_HOTPLUG.md`):
+
+- **`src/GuestScsiView.h`** walks the guest's own drive queue (`DrvQHdr`
+  `$308`) and VCB queue (`VCBQHdr` `$356`) through a side-effect-free
+  `peek8`. A drive-queue element whose driver reference number is
+  `−(33 + ID)` belongs to SCSI bay ID (Inside Macintosh: Devices); a VCB
+  on that drive number names the mounted volume (Inside Macintosh: Files,
+  offsets in the header). Both walks are bounded (64 elements, aligned
+  non-null links, HFS/MFS signature) and a queue that fails them yields
+  `valid = false` — shown as « inconnu », never as « absent ».
+  `MachineHost::sampleGuestScsiView` runs it on the machine thread every
+  15th publish; addresses are logical, walked through `Mmu030Peek.h`
+  (moved from `tests/`) when a 68030's TC.E is set, physical otherwise —
+  the 68040 boards identity-map their low memory and heap, as the etalons
+  already relied on. Gate: `guest_scsi_view_test` (synthetic image).
+- **`Cmd::AttachDisk`** (`MachineHost::requestAttachDisk`) opens the image
+  and calls the memory map's `attachScsi` between two quanta, so a fixed
+  disk joins the bus with the machine running. The outcome crosses back as
+  text (`bayMessage`). Nothing mounts until the System looks again: a
+  power cycle (the ROM re-probes) or a guest-side mount. Gate:
+  `scsi_hotplug_etalon` — boot volume named from the queues, a live attach
+  invisible for 15 s of guest time, mounted by name after the reset.
+
+The window binds both through `bindScsiBays` (`GuiFloppyBays.h`) and
+prints an « invité : … » line under SCSI 0 and every fixed bay; an empty
+bay's pick and « Créer » attach live rather than staging. The relaunch
+line still carries the extras list, so a live attach survives a machine
+switch.
+
+- **The guest agent** (`dev/scsiagent`, « POM68K Disques », Retro68) is
+  step 3: it polls the emulator through two vendor SCSI commands the
+  controllers answer for any selected POM68K target (`ScsiAgentMailbox.h`,
+  `$C0` POLL / `$C1` REPORT) and mounts or unmounts on request with its own
+  block driver, installed at the target's SCSI unit. `Cmd::AgentMount` /
+  `AgentUnmount` post the request; a poll within ~2 s is « agent présent »;
+  the window offers « Monter / Démonter » on fixed bays while it is. Gates:
+  `scsi_agent_mailbox_test` (protocol) and `scsi_agent_etalon` (the 8.1
+  Finder launching the agent from its floppy, a live-attached blank disk
+  mounted, unmounted and remounted by name, the boot volume refused).
+  The lessons — the DRQ interrupt the old SCSI Manager API needs, the
+  driver's unit number the Finder classes by, `PBDTCloseDown` before
+  `UnmountVol` — are in `docs/SCSI_HOTPLUG.md` § 6.
+
 ### 3.5 Input: M0110 keyboard + quadrature mouse
 
 `MacInput.h/.cpp` + `Scc8530` + VIA (M5.5, research-pinned and
@@ -2192,6 +2239,42 @@ manifestes depuis cinq fichiers `cmake/Pom68k*.cmake`. Le registre reste
 produit dans le scope du répertoire racine, sans déclaration de test dans la
 racine elle-même.
 
+### The menu bar (`src/GuiShell.cpp`, `src/GuiMachineControls.*`)
+
+The shell owns the bar; a runner contributes nothing to it. Until
+2026-09-13 every runner emitted its own copy of the same twelve lines
+(Redémarrer, Sauver/Restaurer l'état, the recording pair) *directly into
+the bar* — so the bar was a flat row of eleven items, five of which acted
+the instant they were clicked — and its own copy of a "CPU" window with
+Pause / Reset / Avance rapide. The six copies had drifted: Toby had no
+save-state menu, the compact runner said « x8 », VASP and RBV hid the panel.
+
+A runner now binds two things once at setup, both on `GuiSessionState`:
+`bindCpuMenu` (engine switch, JIT statistics, the speed sample) and
+`bindMachineControls` (`GuiMachineControls`: reset, running, fast-forward,
+the `SaveStateSlot`, the recorder, plus a `drawStatus` lambda for the
+family's own status lines — Toby's IOP cycle counters, the LC/Sonora monitor
+sense buttons, the Duo's PG&E hold flag). Every callback crosses to the
+machine thread through the host's queue or atomics, and every item shown
+follows the machine's own state, not the click. The bar is then:
+
+| Menu | Contents |
+|---|---|
+| Machine | control block · **Changer de machine** (one submenu per catalogue group) · drive sounds |
+| Périphériques | Disques… · Réseau : AppleTalk / Ethernet… · Contrôleurs LLE / HLE… |
+| CPU | speed · interpreter / accelerated engine · statistics window |
+| Fenêtres | a checkable entry per secondary window · Réinitialiser la disposition |
+| right edge | LLE badge (strict sessions) · speed ratio · mouse-capture hint |
+
+The catalogue is a submenu because 39 profiles plus their separators are
+taller than a 900 px screen: an entry appended after them landed under the
+scroll (measured under Xvfb, which is why the Périphériques window used to
+sit at bar level). Each window owns its own open flag and exposes a
+labelled, checkable menu item (`diskBaysMenuItem`, `peripheralMenuItem`),
+so Périphériques and Fenêtres toggle the same state under different labels.
+The « Tableau de bord » window (`drawMachineControlWindow`) replaces the
+six "CPU" windows: `drawStatus` first, then the control block as buttons.
+
 ### The "Périphériques (LLE / HLE)" window (`src/PeripheralWindow.*`)
 
 The visible half of the § 2 fallback policy of `docs/LLE_VS_HLE.md`. That
@@ -2233,11 +2316,10 @@ Three design points, each of which is a rule rather than a preference:
   now keep distinct injected paths, while `POM68K_CUDA_FW` seeds both only at
   the compatibility boundary.
 
-It sits at **menu-bar level**, beside `Disques...`, and not inside the
-Machine menu: that menu is 37 profiles plus separators, taller than a 900 px
-screen, so an entry appended to it lands under the scroll. That was measured
-under Xvfb, not assumed — the first version was there and could not be
-reached. The window also **opens itself once** on the first frame a machine
+It is reached from **Périphériques → Contrôleurs LLE / HLE…** and listed
+under Fenêtres (until 2026-09-13 it sat at bar level, because the Machine
+menu then carried the whole catalogue inline — see the menu-bar section
+above). The window also **opens itself once** on the first frame a machine
 reports a substitute, which is what makes the stderr policy hold for a
 GUI-only user; it never re-opens after being closed, and never appears on a
 fully-LLE machine.

@@ -33,10 +33,18 @@
 #include "FloppySoundSink.h"
 #include "SaveState.h"
 #include "ScsiTarget.h"
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <string>
 #include <vector>
+
+// Apple Driver Map `ER` + `sbBlkSize`, or a bare HFS `BD` at 1024. 512 means
+// a Toast/DDM dump that must be a SCSI disk; 2048 means a real CD; 0 means
+// the prefix does not declare one. Shared by `openCdrom` and the Disques
+// router so a .toast is not sent to the CD bay just because of its name.
+uint32_t scsiAppleImageBlockSize(const uint8_t* prefix, size_t n);
+uint32_t scsiAppleImageBlockSize(const std::string& path);
 
 class ScsiDisk : public ScsiTarget {
 public:

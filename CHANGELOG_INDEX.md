@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 505 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 510 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,12 +11,12 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 78 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 82 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
 | [Save states](#save-states) | 7 |
-| [Machine bring-ups](#machine-bring-ups) | 57 |
+| [Machine bring-ups](#machine-bring-ups) | 58 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 34 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -277,8 +277,12 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-12 (later)** — [Correction: the LC II floppy red is a host divergence, but the evidence published this morning did not show it, and an assertion added on 2026-09-07 is what exposed it](CHANGELOG.md#2026-09-12-floppy-correction)
 - **2026-09-12 (third)** — [The DaynaPort travels in save states: format v15, and what deliberately does not travel](CHANGELOG.md#2026-09-12-dayna-savestate)
 - **2026-09-13** — [Four comments still said the DaynaPort leaves its state behind, a day after format v15 made it travel](CHANGELOG.md#2026-09-13-dayna-stale-comments)
+- **2026-09-13 (eighth)** — [Disques can create a hard disk, and a driverless Toast dump is unwrapped so the guest actually mounts it](CHANGELOG.md#2026-09-13-disques-usable)
 - **2026-09-13 (fifth)** — [The DaynaPort card is chosen in the window, not the environment: staged, relaunched as `--daynaport=`, and its knob finally has the gate it cited](CHANGELOG.md#2026-09-13-dayna-staged-card)
 - **2026-09-13 (fourth)** — [The DaynaPort gets a cable you can unplug, and counters the GUI finally reads](CHANGELOG.md#2026-09-13-dayna-cable)
+- **2026-09-13 (seventh)** — [A 512-byte Toast dump sat in Disques and never appeared on the desktop, because `.toast` still meant « CD bay »](CHANGELOG.md#2026-09-13-toast-512-is-a-disk)
+- **2026-09-13 (tenth)** — [Disques stops guessing: the guest's own drive and VCB queues say what is mounted, and a fixed disk joins the bus with the machine running](CHANGELOG.md#2026-09-13-scsi-bus-as-the-guest-sees-it)
+- **2026-09-14** — [« POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way](CHANGELOG.md#2026-09-14-guest-agent-mounts-on-request)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -403,6 +407,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-08 (third)** — [Save-state relaunch into a fresh machine, and a one-cycle cross-instance drift it isolates](CHANGELOG.md#2026-09-08-savestate-relaunch)
 - **2026-09-09 (sixth)** — [All 36 desktops get their external Sony drive, and the Plus ROM boots from drive B with drive A empty](CHANGELOG.md#2026-09-09-external-floppy)
 - **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](CHANGELOG.md#2026-09-09-lcii-floppy144-mount)
+- **2026-09-13 (ninth)** — [The menu bar belonged to nobody: six runners each pasted five bare items into it, and the shell now owns one Machine / Périphériques / CPU / Fenêtres bar](CHANGELOG.md#2026-09-13-menu-bar-owned-by-the-shell)
 - **2026-09-13 (third)** — [The two 64K machines get real gates: the registry goes to 279 here, 283 in union](CHANGELOG.md#2026-09-13-mac128k-gates-registered)
 
 ## Build, packaging and release

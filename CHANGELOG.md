@@ -297,6 +297,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **how do I create a blank hard disk in the GUI, and why did Theme Park still not mount after the .toast was a « disk »?** → [2026-09-13 (eighth) — Disques can create a hard disk…](#2026-09-13-disques-usable)
+- **why a .toast is in Disques but never appears on the LC II desktop** → [2026-09-13 (seventh) — A 512-byte Toast dump sat in Disques…](#2026-09-13-toast-512-is-a-disk)
 - **CD-ROM: the target, then a disc mounting in the guest (and why 8.6 cannot boot)** → [2026-07-29 (evening) — A CD mounts in the guest; .cue/.bin; and why 8.6 cannot boot](#2026-07-29-evening--a-cd-mounts-in-the-guest-cuebin-and-why-86-cannot-boot)
 - **…the SCSI CD-ROM target itself** → [2026-07-29 (later) — SCSI CD-ROM support, a guest-level floppy gate…](#2026-07-29-later--scsi-cd-rom-support-a-guest-level-floppy-gate-and-the-lle-inventory-re-synced)
 
@@ -440,6 +442,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14** — [« POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way](#2026-09-14-guest-agent-mounts-on-request)
+- **2026-09-13 (tenth)** — [Disques stops guessing: the guest's own drive and VCB queues say what is mounted, and a fixed disk joins the bus with the machine running](#2026-09-13-scsi-bus-as-the-guest-sees-it)
+- **2026-09-13 (ninth)** — [The menu bar belonged to nobody: six runners each pasted five bare items into it, and the shell now owns one Machine / Périphériques / CPU / Fenêtres bar](#2026-09-13-menu-bar-owned-by-the-shell)
+- **2026-09-13 (eighth)** — [Disques can create a hard disk, and a driverless Toast dump is unwrapped so the guest actually mounts it](#2026-09-13-disques-usable)
+- **2026-09-13 (seventh)** — [A 512-byte Toast dump sat in Disques and never appeared on the desktop, because `.toast` still meant « CD bay »](#2026-09-13-toast-512-is-a-disk)
 - **2026-09-13 (sixth)** — [The network services' identity is edited live in the window, and the relaunch line carries it: the second product control of the chantier lands](#2026-09-13-network-config-editable)
 - **2026-09-13 (fifth)** — [The DaynaPort card is chosen in the window, not the environment: staged, relaunched as `--daynaport=`, and its knob finally has the gate it cited](#2026-09-13-dayna-staged-card)
 - **2026-09-13 (fourth)** — [The DaynaPort gets a cable you can unplug, and counters the GUI finally reads](#2026-09-13-dayna-cable)
@@ -930,6 +937,218 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-14-guest-agent-mounts-on-request"></a>
+## 2026-09-14 — « POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way
+
+Step 3 of `docs/SCSI_HOTPLUG.md`, the one the 2026-09-13 (tenth) entry left
+open for want of a toolchain. The Retro68 toolchain is now built on the M4
+(`dev/Retro68-build`, 24 min, `--no-ppc --no-carbon`, bison and texinfo
+from Homebrew on the PATH), and `dev/scsiagent` is a Mac OS application
+that polls the emulator twice a second through two vendor SCSI commands
+(`src/ScsiAgentMailbox.h`: `$C0` POLL, `$C1` REPORT, answered by both
+controllers for any selected POM68K target) and mounts or unmounts a bay's
+volume with the File Manager. The Disques window offers « Monter /
+Démonter » under a fixed bay while the agent is heard from
+(`Cmd::AgentMount` / `AgentUnmount`, a poll within ~2 s of publishes).
+
+**Evidence.** `scsi_agent_mailbox_test` (asset-none) pins the protocol.
+`scsi_agent_etalon` on the Quadra 605 with the 8.1 volume, 23 s: the agent
+is launched from its floppy by Finder gestures, polls; a ROM-served blank
+volume attached at boot is unmounted on request (the control); a blank
+disk attached live on SCSI 2 is mounted by name (« Branche », drive 10, the
+agent's own driver at unit 34), the guest's queues show it, it is
+unmounted, remounted, and the boot volume's unmount comes back `fBsyErr`.
+The boot gates of the three boards touched by the DRQ change
+(`q605_boot_etalon`, `q605_restart_etalon`, `centris650_boot_etalon` and
+its jit/interp forms, `q630_boot_etalon`) and `scsi_hotplug_etalon` pass;
+the asset-none tier passes.
+
+**Four findings, each a gate-ending mistake until measured.**
+
+1. *Retro68's GCC pushes a prototyped `short` on two bytes* (`movew
+   %fp@(14),%sp@-` in the disassembly of `drv.c.obj`). A glue reading
+   `6(sp)` for a first `short` argument reads the next word: `SCSICmd` got
+   a random CDB length, `_DrvrInstall` a random unit (`badUnitErr`).
+2. *The old SCSI Manager API needs a DRQ interrupt.* Mac OS 8.1's SCSI
+   Manager 4.3 emulates `SCSIGet`/`SCSISelect`/`SCSICmd` with a DMA
+   « Select without ATN » (`$C1`, transfer count 2) and feeds the CDB when
+   the 53C96's DRQ interrupts through the pseudo-VIA2 (IFR bit 0). The
+   emulator only reflected DRQ on IFR reads (`pseudovia.cpp:162 scsi_drq_w`
+   sets the bit and recalculates); every old-API client hung in the XPT
+   wait loop (`$A0(a4) == 1`, no chip access). `scsiDrq()` on `Q605Memory`,
+   `CentrisMemory`, `Q630Memory`. Found by single-stepping the guest from
+   the agent's stage mark and reading the XPT's SIM-start routine.
+3. *Finder 8.1 classes a volume by its driver's reference number.* With the
+   agent's driver in a free unit above 47, the Finder's `UnmountVol` patch
+   showed « There is a problem with the disk » and ran its modal alert in
+   the caller's time slice (the agent's heartbeat stopped, the etalon read
+   « never answered »); a ROM-served volume unmounted silently by the same
+   code. At the target's own unit, `−(33 + id)`, the same driver unmounts
+   silently — and `GuestScsiView` maps the drive without a hint.
+   `PBDTCloseDown` before `UnmountVol` (Drive Setup's sequence) is kept.
+   Registered *ejectable*, the drive drew the same alert at mount time; the
+   Finder's own « put away » Apple event (tried with an object specifier,
+   then a list of aliases, the documented form) refuses fixed disks.
+4. *`OpenDriver` by name fails (`fnfErr`) on a freshly installed RAM
+   driver on 8.1*; setting `dOpened` by hand on the DCE is enough for the
+   Device Manager to route Prime/Status/Control.
+
+**Not done.** Detaching a target from the bus once the guest has let go
+(`detachScsi` on the twelve boards); launching the agent automatically.
+`TODO.md` § Preuve.
+
+<a id="2026-09-13-scsi-bus-as-the-guest-sees-it"></a>
+## 2026-09-13 (tenth) — Disques stops guessing: the guest's own drive and VCB queues say what is mounted, and a fixed disk joins the bus with the machine running
+
+The bar was reorganised an hour earlier (ninth); the second half of the
+same request was « une relecture d'arbre SCSI et une gestion correcte des
+mount / unmount de l'intérieur de Mac OS ». `docs/SCSI_HOTPLUG.md` weighs
+the options; this entry lands its steps 1 and 2.
+
+**What the window said before.** « Un disque dur n'apparaît sur le bureau
+qu'au démarrage » — a sentence about the host's wiring, not about the
+guest. Adding a fixed disk meant staging plus a relaunch, and nothing in
+the window knew whether the System had mounted anything, or dragged a
+volume to the Corbeille since.
+
+**Step 1 — read the guest's tables.** Classic Mac OS keeps the answer in
+low memory: the drive queue at `DrvQHdr` (`$308`) and the VCB queue at
+`VCBQHdr` (`$356`). A drive-queue element whose driver reference number
+is `−(33 + ID)` belongs to SCSI bay ID (Inside Macintosh: Devices); a VCB
+on that drive number names the mounted volume (Inside Macintosh: Files —
+`vcbVN` at 44, `vcbDrvNum` at 72). `src/GuestScsiView.h` walks both
+through a side-effect-free `peek8`, bounded (64 elements, aligned non-null
+links, HFS/MFS signature) and withholds the whole answer on anything
+else. `MachineHost::sampleGuestScsiView` runs it on the machine thread
+every 15th publish; addresses are logical, walked through `Mmu030Peek.h`
+(moved from `tests/` to `src/`) when a 68030's TC.E is set, physical
+otherwise — the 040 boards identity-map low memory and heap, as
+`centris650_boot_etalon` already relies on. The window prints
+« invité : monté « X » (lecteur n) / lecteur installé, aucun volume / aucun
+lecteur — invisible pour le System / inconnu » under SCSI 0 and every
+fixed bay.
+
+**Step 2 — a disk joins the bus live.** `Cmd::AttachDisk`
+(`requestAttachDisk`) opens the image and calls the memory map's
+`attachScsi` between two quanta on every one of the twelve boards; the
+outcome comes back as text (`bayMessage`). An empty bay's pick and
+« Créer » now attach on the spot instead of staging; the extras list still
+carries the disk onto the relaunch line. Nothing mounts until the System
+looks again: « Redémarrer la machine » (the ROM re-probes) or a guest-side
+mount.
+
+**Evidence.** `guest_scsi_view_test` (asset-none) lays the two queues out
+by hand and checks the walk, the floppy's exclusion and the bounds.
+`scsi_hotplug_etalon` on the Quadra 605 with the 8.1 volume is the
+contract in one 20 s run: `[boot] SCSI0: drive 8 « Mac-8.1-US »`; a blank
+HFS disk attached live on SCSI 2 answers the bus and after 15 s of guest
+time is still `[attached] SCSI0 only`; a power cycle gives
+`[rebooted] SCSI0: drive 9 « Mac-8.1-US »  SCSI2: drive 8 « Branche »`.
+Rendered on the Quadra 950 with the 7.6 volume: « invité : monté « MacHD
+7.6.1FR » (lecteur 8) » under the boot disk, read while the « pas été
+éteint correctement » alert was still up.
+
+**Two things the gate taught on the way.** The second Finder is
+recognised by `CurApName`, not by `bootToFinder()`'s desktop luminance:
+a second disk icon is exactly what the step produces, and the signature
+was calibrated on a one-disk desktop. And `Cpu040::hardReset()` leaves
+the Cuda holding the CPU; a loop that does not wait on `cpuHeld()` runs
+frames against a held machine — stale queues, black screen — which is what
+the first two runs of the gate reported as « no Finder ».
+
+**Not done.** Step 3, the Retro68 guest agent that mounts and unmounts on
+request, and a host-side `detachScsi` to call once the VCB is gone
+(`TODO.md` § Preuve). The GUI itself still has no gate.
+
+<a id="2026-09-13-menu-bar-owned-by-the-shell"></a>
+## 2026-09-13 (ninth) — The menu bar belonged to nobody: six runners each pasted five bare items into it, and the shell now owns one Machine / Périphériques / CPU / Fenêtres bar
+
+DOOM II ran on the Quadra 950 tonight (68040 @ 33 MHz, 640×480 @ 8 bpp,
+from the 8.1 volume on SCSI 0) and the verdict on the shell around it was
+« tout est mal organisé ». It was. `GuiShell::drawMachineMenuImpl` drew
+Machine, CPU and Réseau, then handed the bar to an `extraMenus` lambda
+that every runner filled with `Disques...`, `Redémarrer`, `Sauver l'état`,
+`Restaurer l'état` and the recording item — as top-level `MenuItem`s, so
+the bar read as a flat row of eleven entries and a mis-aimed click on the
+fourth rebooted the guest. The Machine menu was the whole catalogue inline
+(39 profiles, taller than a 900 px screen, which is why Périphériques had
+been pushed to bar level on 2026-08-27). Fenêtres held one entry. Each
+runner also carried its own "CPU" window, and the six copies had drifted:
+Toby had no save-state menu, the compact runner said « x8 », VASP and RBV
+hid the panel behind an empty `cpuLine`.
+
+**What changed.** `GuiMachineControls` (new) is the runner's whole
+contribution: reset, running, fast-forward, the `SaveStateSlot`, the
+recorder and a `drawStatus` lambda, bound once by
+`GuiShell::bindMachineControls` exactly as `bindCpuMenu` binds the engine.
+The shell draws the bar from it — Machine (control block, « Changer de
+machine » as one submenu per catalogue group, drive sounds), Périphériques
+(Disques, Réseau, Contrôleurs LLE / HLE), CPU, Fenêtres (a checkable entry
+per secondary window, layout reset) — with the LLE badge, the live speed
+ratio and the capture hint right-aligned. The « Tableau de bord » window
+replaces the six "CPU" windows. `drawJitWindow` moved to
+`GuiEngineWindow.cpp`; `dockLayoutMenu` and `recordingMenuItems` are gone.
+The two VASP/RBV boards get a status line instead of the historical
+omission. Window titles and menu labels now agree (`kNetworkWindowTitle`,
+`kPeripheralWindowTitle`, `kDiskWindowTitle`).
+
+**Evidence.** Builds; `docs_test` and `file_size_budget_test` pass (eight
+ceilings lowered: GuiShell.cpp 254→235, GuiShellCommon.h 385→364, the six
+runners −27 to −47 lines each). Rendered on the Quadra 950 with the 7.6
+volume: the bar, the right-aligned status and the floating Tableau de bord.
+The menus themselves were exercised by reading, not by a gate — the GUI
+still has none (`TODO.md` § Preuve).
+
+**Opened, not done.** The same session asked for the other half: a way to
+re-read the SCSI tree and to mount/unmount from inside Mac OS so the
+window stops guessing. `docs/SCSI_HOTPLUG.md` records the analysis and the
+method chosen; `TODO.md` § Preuve carries the item.
+
+<a id="2026-09-13-disques-usable"></a>
+## 2026-09-13 (eighth) — Disques can create a hard disk, and a driverless Toast dump is unwrapped so the guest actually mounts it
+
+Routing `.toast` away from the CD bay (seventh, earlier today) was
+necessary and not sufficient. `MacThemePark.toast` is `ER` / 512 /
+`sbDrvrCount` 0: the ROM finds no driver, and attaching the file as a SCSI
+disk still mounts nothing. The volume that finally appeared was the
+Apple_HFS partition extracted by hand. `ScsiDisk::open` now does that
+unwrap and applies the flat-HFS façade; write-back is refused because the
+in-memory layout no longer matches the file. `scsi_cdrom_test` pins it.
+
+The window itself could not do the rest of the job the user was asked to
+do. There was no way to create a blank disk (the 8.1 install on the Quadra
+700 used a host-side `HfsBlankVolume` one-off). `hdv/work/` was not
+scanned, so a disk created there never showed in the picker. SCSI 1 is the
+reserved CD bay and looks like every other secondary row, so a hard disk
+chosen there is a hot-insert the System will not see.
+
+Disques now has **Nouveau disque dur** (name, 250/500/1000 Mo, **Créer**):
+it writes `hdv/work/<name>.vhd` from the same builder the install gate
+uses (`src/HfsBlankVolume.h`, moved out of `tests/`) and stages it on the
+first empty non-CD bay. The CD row and any live CD id stay a 2048-byte
+disc; hard-disk rows no longer offer `.iso`. The guest still needs
+**Appliquer et redémarrer** — that is the bus, not the window.
+
+---
+
+<a id="2026-09-13-toast-512-is-a-disk"></a>
+## 2026-09-13 (seventh) — A 512-byte Toast dump sat in Disques and never appeared on the desktop, because `.toast` still meant « CD bay »
+
+`openCdrom` has known since 2026-08-15 that an Apple Driver Map with
+`sbBlkSize` 512 is a disk dump, not a CD — serving it as 2048 puts every
+partition four times too far in. The Disques window and every runner still
+routed on the extension alone, so `MacThemePark.toast` (ER, 512, volume
+`MacThemePark`) went into the reserved CD bay. That bay is a type-5 target
+at boot; hot-inserting the dump flips it to a 512-byte removable, and the
+System — which already scanned the bus — mounts nothing. The same id is
+SCSI 1 in the window, so picking the toast there is the same insert.
+
+`diskBaysPathIsCd` now reads the prefix. A 512 dump is a SCSI hard disk
+from boot; a 2048 `ER` (the Mac OS 8.1 ISO) stays a CD. `scsi_cdrom_test`
+pins the classifier.
 
 ---
 
