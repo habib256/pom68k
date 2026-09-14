@@ -11,6 +11,7 @@
 // pinned too.
 
 #include "Iwm.h"
+#include "SaveState.h"
 #include "SonyDrive.h"
 #include "Swim1.h"
 
@@ -246,6 +247,41 @@ int main() {
         check(hd.mfmMode(), "MFMModeOn returns HD media to MFM");
         hd.setMfmMode(false);
         check(hd.mfmMode(), "setup reflection keeps the HD guard");
+    }
+
+    // ── The 400K spindle PWM servo travels in a save state (v16) ──────
+    // Two agreeing 100-byte windows of duty $3F adopt ~353 rpm; the third
+    // window is cut in half by the snapshot and completes after the
+    // restore exactly as it would have — the restored drive answers the
+    // tachometer with the guest's speed, not the zone table's 300.
+    {
+        SonyDrive src;
+        src.reset();
+        check(src.insertImage(std::vector<uint8_t>(SonyDrive::kSize400K, 0)),
+              "pwm: insert 400K media");
+        src.setMotor(true);
+        check(src.rpmNow() == 394, "pwm: zone table before any duty (394 rpm at track 0)");
+        for (int i = 0; i < 200; i++) src.pwmPush(0x3F);
+        // Duty $3F: 6 cells per byte, 600 per window → index 49 → 11.7 % of
+        // Apple's envelope, ~353 rpm; the exact integer is the servo's.
+        const int adopted = src.rpmNow();
+        check(adopted != 394 && adopted >= 305 && adopted <= 780,
+              "pwm: two agreeing windows adopt the commanded speed");
+        for (int i = 0; i < 50; i++) src.pwmPush(0x00);   // half a window of a new duty
+        std::vector<sav::u8> buf;
+        { sav::Writer w(buf); src.visit(w); }
+        SonyDrive dst;
+        dst.reset();
+        { sav::Reader r(buf.data(), buf.size()); dst.visit(r); check(r.ok(), "pwm: the drive reads back"); }
+        check(dst.rpmNow() == adopted, "pwm: the restored drive keeps the adopted speed");
+        for (int i = 0; i < 50; i++) { src.pwmPush(0x00); dst.pwmPush(0x00); }
+        for (int i = 0; i < 100; i++) { src.pwmPush(0x00); dst.pwmPush(0x00); }
+        check(src.rpmNow() == dst.rpmNow() && dst.rpmNow() != adopted,
+              "pwm: the half window completes identically on both sides after the restore");
+        SonyDrive plain;
+        plain.reset();
+        check(plain.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0)) && plain.rpmNow() == 394,
+              "pwm: a drive never commanded keeps the zone table");
     }
 
     // ── Mechanism-vs-media senses + tach gate (floppy.cpp parity) ─────

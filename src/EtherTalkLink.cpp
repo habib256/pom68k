@@ -52,7 +52,7 @@ bool EtherTalkLink::isAppleTalk(const std::uint8_t* d, std::size_t n,
 // ── out ─────────────────────────────────────────────────────────────────
 void EtherTalkLink::send(const std::array<std::uint8_t, 6>& dstMac, bool ddp,
                          const std::uint8_t* payload, std::size_t n) {
-    if (!uplink_) return;                 // no cable: AARP, DDP and RTMP alike
+    if (!uplink()) return;                 // no cable: AARP, DDP and RTMP alike
     std::vector<std::uint8_t> f;
     f.reserve(kEthHdr + kSnapHdr + n);
     f.insert(f.end(), dstMac.begin(), dstMac.end());
@@ -192,7 +192,7 @@ void EtherTalkLink::handleAarp(const std::uint8_t* p, std::size_t n) {
 }
 
 void EtherTalkLink::onGuestFrame(const std::uint8_t* d, std::size_t n) {
-    if (!uplink_) return;
+    if (!uplink()) return;
     std::uint16_t snap = 0;
     if (!isAppleTalk(d, n, &snap)) return;
     const std::uint8_t* p = d + kEthHdr + kSnapHdr;
@@ -276,7 +276,7 @@ void EtherTalkLink::tick(std::int64_t now) {
     now_ = now;
     // A beacon is not counted while the cable is out — and nextRtmp_ stays
     // where it was, so plugging back in announces the router immediately.
-    if (rtmpPeriod_ && uplink_ && now_ >= nextRtmp_) {
+    if (rtmpPeriod_ && uplink() && now_ >= nextRtmp_) {
         // A router beacons whether or not anyone has spoken: that beacon is
         // how a node that missed its own RTMP Request still finds the
         // network range.
@@ -286,7 +286,7 @@ void EtherTalkLink::tick(std::int64_t now) {
     }
     while (!wire_.empty() && wire_.front().first <= now_) {
         const std::vector<std::uint8_t>& f = wire_.front().second;
-        if (uplink_) nic_.receiveFrame(f.data(), f.size());   // EtherLink.cpp
+        if (uplink()) nic_.receiveFrame(f.data(), f.size());   // EtherLink.cpp
         wire_.pop_front();
     }
 }

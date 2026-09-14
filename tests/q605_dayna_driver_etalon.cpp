@@ -421,11 +421,12 @@ int main() {
         bool ethertalk = false, aarp = false, joinedNetwork = false;
         bool namedService = false, appleShare = false, transferred = false;
         bool mactcpBound = false, icmpOut = false, received = false;
+        bool unplugged = false;
         bool halted = false;
         bool ok() const {
             return finder && installed && artefact && ethertalk && aarp &&
                    joinedNetwork && namedService && appleShare && transferred &&
-                   mactcpBound && icmpOut && received && !halted;
+                   mactcpBound && icmpOut && received && unplugged && !halted;
         }
     } r;
 
@@ -783,6 +784,46 @@ int main() {
         r.received = sniffer.icmpReplies > repliesBefore;
         std::printf("receive: echo requests answered by the guest %ld\n",
                     sniffer.icmpReplies - repliesBefore);
+    }
+
+    // ── the cable comes out, then goes back in ───────────────────────────
+    // The window's « câble » toggle (AtalkHub::setService("ethernet")),
+    // traversed by the real guest. An unplug is only visible on a guest
+    // that talks, and MacTCP Ping's series above has ended by now (a first
+    // attempt measured 0 frames sent in 10 s of silence), so « Start Ping »
+    // is pressed again with the cable out: the card keeps taking the
+    // guest's requests — the target stays on the bus and the driver keeps
+    // its own ENABLE bit, nothing is forged — and no answer comes back.
+    // Plugged again, the answers resume, with another press if the series
+    // had run out meanwhile. What the 2026-09-13 control could only
+    // serialize is here observed on the wire.
+    {
+        hub.setService("ethernet", false);
+        const long icmpBefore = sniffer.icmpRequests;
+        const long rxBefore2 = mem.daynaPort().framesToGuest;
+        click(340, 309, 60);                 // Start Ping, cable out
+        runFrames(900);
+        const long sentUnplugged = sniffer.icmpRequests - icmpBefore;
+        const long rxUnplugged = mem.daynaPort().framesToGuest - rxBefore2;
+        hub.setService("ethernet", true);
+        const long rxBefore3 = mem.daynaPort().framesToGuest;
+        const long icmpBefore3 = sniffer.icmpRequests;
+        runFrames(300);
+        if (mem.daynaPort().framesToGuest == rxBefore3) {
+            click(340, 309, 60);             // the series ran out: again
+            runFrames(900);
+        }
+        const long sentReplugged = sniffer.icmpRequests - icmpBefore3;
+        const long rxReplugged = mem.daynaPort().framesToGuest - rxBefore3;
+        r.unplugged = sentUnplugged > 0 && rxUnplugged == 0 && sentReplugged > 0 &&
+                      rxReplugged > 0 && mem.daynaPort().present() &&
+                      mem.daynaPort().enabled();
+        std::printf("cable: out — guest ICMP requests %ld, frames to the guest %ld; "
+                    "in — requests %ld, frames to the guest %ld (card present %d, "
+                    "driver enabled %d)\n", sentUnplugged, rxUnplugged, sentReplugged,
+                    rxReplugged, mem.daynaPort().present() ? 1 : 0,
+                    mem.daynaPort().enabled() ? 1 : 0);
+        dump("q605_dayna_23_cable.ppm");
     }
 
     r.halted = cpu.isHalted();

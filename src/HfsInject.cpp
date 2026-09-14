@@ -97,10 +97,16 @@ int compareNames(const uint8_t* a, size_t alen, const uint8_t* b, size_t blen) {
     return alen < blen ? -1 : 1;
 }
 
+// The US name and the French one. The French name was first guessed as
+// « Éléments de démarrage » (2026-09-14) and corrected the same day from
+// a real System 7.5.5 volume (GISTPERSO), whose blessed « Dossier
+// Système » holds « Ouverture au démarrage » — CNID 4769 there, next to
+// « Ouverture à l'extinction » for Shutdown Items. A folder name is a
+// fact about a shipped System, not a translation exercise.
 const std::vector<std::string>& startupItemsNames() {
     static const std::vector<std::string> names = {
         "Startup Items",
-        "\x83l\x8Ements de d\x8Emarrage",            // « Éléments de démarrage »
+        "Ouverture au d\x8Emarrage",                 // « Ouverture au démarrage »
     };
     return names;
 }

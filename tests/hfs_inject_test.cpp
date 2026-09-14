@@ -77,6 +77,16 @@ int main() {
     check(!decodeMacBinary(bad, app, err), "MacBinary: a truncated file is refused");
     check(decodeMacBinary(raw, app, err), "MacBinary: decodes again");
 
+    // ── The folder names the installer tries ─────────────────────────────
+    // The French one is what a real System 7.5.5 names the folder
+    // (GISTPERSO, gate lc520_agent_autostart_etalon), MacRoman é = $8E.
+    check(startupItemsNames().size() == 2 && startupItemsNames()[0] == "Startup Items" &&
+          startupItemsNames()[1] == "Ouverture au d\x8Emarrage",
+          "installer: looks for Startup Items, then « Ouverture au démarrage »");
+    check(compareNames(reinterpret_cast<const uint8_t*>("OUVERTURE AU D\x8EMARRAGE"), 22,
+                       reinterpret_cast<const uint8_t*>("Ouverture au d\x8Emarrage"), 22) == 0,
+          "collation: the French name matches case-insensitively, accent included");
+
     // ── A blank volume: no blessed folder, so nothing is installed ───────
     std::vector<uint8_t> img = hfsblank::build(8ull << 20, "Injecte");
     MemoryIo io(img);

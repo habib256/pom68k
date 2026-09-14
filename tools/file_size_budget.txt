@@ -15,7 +15,7 @@ cmake/Pom68kDevTools.cmake               143
 cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
-cmake/Pom68kMachineGates.cmake           912
+cmake/Pom68kMachineGates.cmake           925
 cmake/Pom68kProductRegistry.cmake        23
 cmake/Pom68kSerialGates.cmake            8
 cmake/Pom68kStorageGates.cmake           25

@@ -215,6 +215,15 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
+- **Format v16** adds the 400K spindle PWM servo to every `SonyDrive`: six
+  integers after the GCR write buffer — whether a duty was ever commanded,
+  the running window's counts, the two speeds being debounced and the
+  adopted one. It had been left out as a reading that re-derives from the
+  guest's sound buffer within 100 scan lines, but the adopted speed is what
+  `rpmNow()` answers the 64 K ROM's tachometer calibration with, and a
+  restored 128K ran at 300 rpm for a quarter of a frame meanwhile. Gate:
+  `iwm_write_test` (a half window cut by the snapshot completes identically
+  on both sides).
 - **Format v15** adds the DaynaPort SCSI/Link chunk to all twelve machine
   families: the card can sit on any SCSI bus since 2026-09-12, and its enable
   bit, guest-set MAC, RX ring and sense are guest state. `attached_` and
@@ -1277,9 +1286,11 @@ switch.
   and root splits, allocation bitmap, MDB and folder bookkeeping) over
   `ScsiDisk::hostWrite`, so the write log and write-back apply. Idempotent,
   printed, `POM68K_NO_AGENT_AUTOSTART=1` to opt out. Gates:
-  `hfs_inject_test` (asset-none) and `scsi_agent_autostart_etalon` (the
-  8.1 Finder launches the installed agent; it polls with no input and
-  mounts on request). `docs/SCSI_HOTPLUG.md` § 8.
+  `hfs_inject_test` (asset-none), `scsi_agent_autostart_etalon` (the 8.1
+  Finder on the Quadra 605 launches the installed agent; it polls with no
+  input and mounts on request) and `lc520_agent_autostart_etalon` (the
+  same on a French System 7.5.5 — GISTPERSO's « Ouverture au démarrage »
+  — over the NCR 5380 and the Cuda). `docs/SCSI_HOTPLUG.md` § 8.
 
 ### 3.5 Input: M0110 keyboard + quadrature mouse
 

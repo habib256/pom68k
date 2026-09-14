@@ -297,6 +297,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **why does a restored 128K spin at 300 rpm for a quarter of a frame, and what does save-state v16 add?** → [2026-09-14 (eighth) — Three debts paid…](#2026-09-14-three-small-debts)
+- **what is the French Startup Items folder called, and why did machfs and a leaf-chain walk both fail on a real System 7.5 catalog?** → [2026-09-14 (sixth) — The French Startup Items folder is « Ouverture au démarrage »…](#2026-09-14-ouverture-au-demarrage)
 - **where does a package get the guest agent from, and why is a binary committed?** → [2026-09-14 (fifth) — The agent ships…](#2026-09-14-agent-shipped-in-share)
 - **how does the guest agent start by itself, and how does the host add a file to an HFS volume without a Mac?** → [2026-09-14 (fourth) — The host writes « POM68K Disques » into the boot volume's Startup Items…](#2026-09-14-agent-startup-items)
 - **why did a relaunch put SCSI 3's disk on SCSI 2, and what is the `emptybay` literal?** → [2026-09-14 (third) — The two debts the detach left are paid…](#2026-09-14-relaunch-ids-and-journal-names)
@@ -446,6 +448,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-14 (eighth)** — [Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug](#2026-09-14-three-small-debts)
+- **2026-09-14 (seventh)** — [The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned](#2026-09-14-daynaport-executed-on-m4)
+- **2026-09-14 (sixth)** — [The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too](#2026-09-14-ouverture-au-demarrage)
 - **2026-09-14 (fifth)** — [The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds](#2026-09-14-agent-shipped-in-share)
 - **2026-09-14 (fourth)** — [The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac](#2026-09-14-agent-startup-items)
 - **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](#2026-09-14-relaunch-ids-and-journal-names)
@@ -947,6 +952,105 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-14-three-small-debts"></a>
+## 2026-09-14 (eighth) — Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug
+
+**The PWM servo of the 400K drive** was deliberately outside
+`SonyDrive::visit()` on the reasoning held for `cells_` — a reading that
+re-derives from the guest's sound buffer within 100 scan lines. But the
+adopted speed is what `rpmNow()` answers the 64 K ROM's tachometer
+calibration with, so a restored 128K ran at 300 rpm for a quarter of a
+frame while the ROM measured it. Six integers now follow the GCR write
+buffer; save-state format **v16**. `rpmNow()` is public so a gate can read
+what a restored drive answers. Gate: `iwm_write_test` — two agreeing
+windows of duty `$3F` adopt ~353 rpm, a third window cut in half by the
+snapshot completes identically on both sides after the restore, and a
+drive never commanded keeps the zone table. `DEV.md` § 1.4 has the entry.
+
+**The cable bits.** `EtherLink::uplink_` and `EtherTalkLink::uplink_` were
+plain bools written by the GUI thread under the hub's lock and read by the
+machine thread with none; `cfg_.ethertalk` was read the same way inside
+the card's TX demux. Both `uplink_` are `std::atomic<bool>` now, relaxed
+— the two sides share nothing but the bit, and a frame that straddles the
+toggle may go either way, as on a real cable — and the demux reads
+`ethertalkLive_`, an atomic mirror `setService()` and `attach()` keep equal
+to `cfg_.ethertalk`. No gate can see a data race; the item is closed by
+the code, not by a run.
+
+**The unplug, traversed.** `q605_dayna_driver_etalon` gained its last
+phase, after the echo-request leg: `hub.setService("ethernet", false)` —
+what the window's « câble » toggle does — then « Start Ping » pressed
+again with the cable out: **8 ICMP requests** from the guest reach the
+card, **0 frames** come back; cable in, another press once the series had
+run out: 5 requests, **6 frames** to the guest. The target stayed on the
+bus and the driver's ENABLE bit stayed its own throughout. A first
+attempt measured 0 frames sent in 10 s of silence — MacTCP Ping's series
+had ended — which is the lesson: an unplug is only visible on a guest
+that talks. 231 s on the M4, recorded. The relaunch with a card is still
+proven by its serialization only.
+
+<a id="2026-09-14-daynaport-executed-on-m4"></a>
+## 2026-09-14 (seventh) — The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned
+
+Two bookkeeping debts, paid with a run and a reading rather than code.
+
+**The DaynaPort gates on AArch64.** `TODO.md` § Preuve held that the
+DaynaPort gates were `host-any` by label but had only ever executed on
+the x86-64 host. `ctest -R dayna` on the M4: `daynaport_test`, both
+controller tests, `q605_dayna_driver_etalon` (237 s, « PASSED — Quadra
+605 real DaynaPORT SCSI/Link driver etalon ») and the twelve
+`*_dayna_boot_etalon` — all EXECUTED, none soft-skipped
+(`tools/gate_execution_census.py`: 16 executed of 18 in the log; the two
+others are the 64 K boot etalons, which soft-skip here for want of
+`disks35/System 1.1.dsk`). Recorded in `STATUS.md`. The driver etalon's
+first run on this host also narrows the DaynaPort GUI proof debt: the
+driver on the card is proven here; an unplug and a re-exec still are not.
+
+**The roadmap paragraph on the 128K/512K** still read, on 2026-09-14,
+that `assets.lock` « contient aujourd'hui aucune ligne 64 K » and that
+coverage started at the Plus. It dated from 2026-09-12; since 2026-09-13
+the catalogue has profiles 38 and 39, `assets.lock` pins both ROMs and the
+two boot etalons reach the Finder from a 400 K System floppy (x86-64,
+7.40 s apiece). Rewritten as « livré pour l'essentiel », with the one
+remaining item (the 400 K drive's PWM state in save states) and the
+reason the M4 cannot execute those gates (the unpinned 400 K images,
+§ Bloqué).
+
+<a id="2026-09-14-ouverture-au-demarrage"></a>
+## 2026-09-14 (sixth) — The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too
+
+The (fifth) entry left one open item: the French folder name was
+recognised but never exercised. Reading the real volume settled it before
+any gate ran: GISTPERSO's blessed « Dossier Système » (CNID 4173) holds
+« Ouverture au démarrage » (4769), beside « Ouverture à l'extinction » —
+not the « Éléments de démarrage » written from memory the day before.
+`startupItemsNames()` carries the right name; `hfs_inject_test` pins it
+and its accent-insensitive collation.
+
+**Two lessons from the way there.** First, `machfs` — the Python reader
+the media tools bake with — refuses GISTPERSO outright (a catalog record
+whose parent it has not seen), and a leaf-chain walk of that catalog
+reaches 265 of its 789 leaves before a forward link is zero: a catalog
+Mac OS has grown and pruned for years is not the tidy chain a fresh bake
+is. The installer never walks the chain — it descends the index from the
+root, as the File Manager does — which is why it found the folder at
+once; a scan of every node of the catalog file is what listed the
+folder's children. Second, the LC II does not boot GISTPERSO at all (a
+grey screen after 16 000 frames, injection or not — no gate ever claimed
+it did); the LC 520, whose `aio_beyond_etalon` boots that volume daily,
+is the rig.
+
+**Evidence.** `lc520_agent_autostart_etalon` (Sonora, NCR 5380, Cuda,
+System 7.5.5 French): the installer resolves « Ouverture au démarrage »
+to 4769 and « Éléments de démarrage » to nothing, installs the agent as
+CNID 4998 in memory, the French Finder comes up and launches it — front
+application « POM68KDisques », first poll **one frame** after the Finder
+with no input — and a blank disk attached live on SCSI 2 is mounted on
+request as « Branche » through the 5380. Its `control` argument boots the
+same rig without the injection and reaches the Finder, which is what
+separated « the injection broke the boot » from « the Finder signature
+missed it » when the LC II attempt went grey.
 
 <a id="2026-09-14-agent-shipped-in-share"></a>
 ## 2026-09-14 (fifth) — The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds

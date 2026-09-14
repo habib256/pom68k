@@ -73,6 +73,10 @@ public:
     // line; the drive adopts a speed once two consecutive windows agree.
     // MAME mac128.cpp pwm_push()/set_rpm on the OAD34V mechanism.
     void pwmPush(uint8_t data);
+    // The spindle speed the tachometer reports: the PWM-adopted speed once
+    // the guest has commanded one, the zone table otherwise. Public so a
+    // gate can read what a restored drive answers (iwm_write_test).
+    int rpmNow() const;
     // The /READY line. Not the same thing as motorOn(): the mechanism needs
     // two index pulses to come up to speed (MAME floppy.cpp:825, :888-891),
     // so a Sony at 394 RPM answers ~0.25 s after the motor command.
@@ -210,6 +214,7 @@ public:
         ar(wrState_, wrSync_, wrAddrPos_, wrDataPos_,
            wrTrack_, wrHead_, wrSector_, wrData_);
         ar.blob(gcrWrBuf_);
+        ar(pwmSpindle_, pwmCount1_, pwmCountTotal_, pwmRpmSeen_, pwmRpmPrev_, pwmRpm_);
         cellsDirty_ = true;                      // cells_ is derived from flux_
     }
 
@@ -228,7 +233,6 @@ private:
     // Scan a decoded GCR nibble sequence for D5 AA AD data fields and
     // commit every checksum-valid sector; returns the commit count.
     int decodeGcrBytes(const uint8_t* nib, size_t n, bool side1);
-    int rpmNow() const;
     int64_t nominalCells() const;
     int64_t spinCyclesPerRev() const;
     size_t imageOffset(int track, int side, int sector) const;
@@ -291,11 +295,13 @@ private:
     int64_t spin_ = 0;                           // motor-on time, CPU cycles
     int64_t cycles_ = 0;                         // free-running tick time
     FloppySoundSink* sound_ = nullptr;
-    // PWM spindle servo. Deliberately NOT in visit(), on the same reasoning
-    // `cells_` is not: it is a reading of state that IS carried. The window
-    // refills from the guest's own sound buffer — which is RAM, and so is
-    // saved — in 100 scan lines, a quarter of one frame, and pwmRpmSeen_ is
-    // re-derived from it. pwmSpindle_ stays false until the guest actually
+    // PWM spindle servo. In visit() since 2026-09-14 (save-state v16): it
+    // was left out on the reasoning held for `cells_` — a reading that
+    // re-derives from the guest's sound buffer within 100 scan lines — but
+    // the adopted speed is what rpmNow() answers the tachometer with, and a
+    // restored 128K ran at 300 rpm for a quarter of a frame while the 64 K
+    // ROM measured it. Six integers cost nothing; a speed the guest set is
+    // guest state. pwmSpindle_ stays false until the guest actually
     // commands a duty, so every non-PWM machine keeps the zone table below.
     bool pwmSpindle_ = false;
     int pwmCount1_ = 0, pwmCountTotal_ = 0;      // MAME m_pwm_count_1/_total

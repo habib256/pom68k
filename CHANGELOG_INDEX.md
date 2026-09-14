@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 514 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 517 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,16 +11,16 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 85 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 86 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
-| [Save states](#save-states) | 7 |
+| [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 59 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 34 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 95 |
+| [Cross-cutting](#cross-cutting) | 96 |
 
 ---
 
@@ -285,6 +285,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-14** — [« POM68K Disques »: the guest agent mounts and unmounts on request, and what the Quadra taught on the way](CHANGELOG.md#2026-09-14-guest-agent-mounts-on-request)
 - **2026-09-14 (fifth)** — [The agent ships: `share/POM68KDisques.bin` rides in every package, and a gate keeps it equal to what Retro68 builds](CHANGELOG.md#2026-09-14-agent-shipped-in-share)
 - **2026-09-14 (fourth)** — [The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac](CHANGELOG.md#2026-09-14-agent-startup-items)
+- **2026-09-14 (seventh)** — [The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned](CHANGELOG.md#2026-09-14-daynaport-executed-on-m4)
 - **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](CHANGELOG.md#2026-09-14-relaunch-ids-and-journal-names)
 
 ## Video — decoders, the raster beam, DAFB
@@ -351,6 +352,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-01 (late night)** — [The IIfx is the 34th profile: GUI, save states, and an input gate whose thresholds were measured, not invented](CHANGELOG.md#2026-08-01-iifx-profile)
 - **2026-08-12 (later)** — [The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer](CHANGELOG.md#2026-08-12-savestate-writebuffer)
 - **2026-08-29 (tenth)** — [Real sessions become replayable benchmarks: the input journal records every GUI input at its machine clock, and a recorded session replays bit-identically from its snapshot](CHANGELOG.md#2026-08-29-input-journal)
+- **2026-09-14 (eighth)** — [Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug](CHANGELOG.md#2026-09-14-three-small-debts)
 
 ## Machine bring-ups
 
@@ -576,4 +578,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-12 (eighth)** — [The backlog names its next two chantiers, absorbs twelve items that existed only in this file, and stops being addressable by section number](CHANGELOG.md#2026-09-12-todo-reorg)
 - **2026-09-13 (later)** — [The Mac 128K's Sad Mac was a division by zero in the disk's speed calibration, and the RAM it named was innocent](CHANGELOG.md#2026-09-13-mac128k-zero-divide)
 - **2026-09-13 (sixth)** — [The network services' identity is edited live in the window, and the relaunch line carries it: the second product control of the chantier lands](CHANGELOG.md#2026-09-13-network-config-editable)
+- **2026-09-14 (sixth)** — [The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too](CHANGELOG.md#2026-09-14-ouverture-au-demarrage)
 
