@@ -12,6 +12,17 @@ Macintosh**. The compiled source of truth for present coverage is
 > **ROMs and system disks are copyrighted and are never distributed with
 > POM68K.** You must provide your own dumps and disk images.
 
+![A Macintosh LC II running System 7.5.5 in POM68K, with the Disques window docked beside it](docs/images/lcii-gistperso-disques.png)
+
+*Macintosh LC II, System 7.5.5: the Finder on its own volume, and POM68K's
+« Bibliothèque de disques » docked beside it — floppy drives, the CD bay and
+the six SCSI bays, hot-swappable where the hardware allows.*
+
+![A Quadra 950 running DOOM II at 640×480 in 8-bit color in POM68K](docs/images/quadra950-doom2.png)
+
+*Quadra 950, 68040 at 33 MHz: DOOM II at 640×480 in 8-bit color through the
+accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
+
 ## Contents
 
 - [Highlights](#highlights)
@@ -40,6 +51,29 @@ Macintosh**. The compiled source of truth for present coverage is
   the required user-provided firmware is present, with an explicit HLE/LLE
   status in the interface.
 - Linux x86-64/AArch64, macOS Universal 2 and Windows x64 packages.
+
+### New in 0.2
+
+- **Macintosh 128K and 512K**: the two machines below the Plus boot a 400 K
+  System floppy to the Finder, single-sided drive and PWM spindle included.
+- **SCSI hot-plug**: the Disques window reads the guest's own drive and
+  volume queues, attaches and detaches fixed disks with the machine running,
+  and « POM68K Disques » — a guest agent shipped in every package — mounts
+  and unmounts them on request. It is installed into the boot volume's
+  Startup Items by POM68K itself, so it runs from the first Finder.
+- **EtherTalk on by default**: with a DaynaPort SCSI/Link on the bus the
+  built-in AppleTalk node is also a router on the Ethernet segment; the
+  guest joins its zone the moment it selects EtherTalk, and the cable can be
+  unplugged and plugged back from the window.
+- **Beyond-boot proof on 38 of 39 profiles**: every boot gate can require
+  that the Finder launched an application and that a live-attached disk was
+  mounted through the guest's own File Manager.
+- **The Toby declaration ROM fallback describes the emulated card
+  truthfully**, so the Mac II, IIx and IIcx boot System 7.0 without the
+  342-0008-a dump; System 7.5.5 still needs it.
+- The 400 K drive's spindle servo travels in save states (format v16), and
+  the network services' identity and the EtherTalk switch ride the relaunch
+  line.
 
 POM68K uses the [Moira](https://github.com/dirkwhoffmann/Moira) CPU core,
 vendored through NeoST. The local fork and its provenance are documented in

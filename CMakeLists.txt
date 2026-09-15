@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
-project(POM68K VERSION 0.1 LANGUAGES CXX)
+# No VERSION here: project() defines a normal variable POM68K_VERSION either
+# way (the given version, or EMPTY), and a normal variable shadows the cache
+# entry a packager passes with -DPOM68K_VERSION= — the banner read the
+# project's 0.1 through the 0.2.0 bump (2026-09-15). The version stamp below
+# reads the cache entry by name and the repo-root VERSION file otherwise.
+project(POM68K LANGUAGES CXX)
 
 # Whole tree is C++20: Moira requires it (std::rotr, map::contains) and
 # Cpu68k.h includes Moira.h. (POMIIGS is C++17; divergence documented in
@@ -500,9 +505,25 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     # source of truth: the repo-root VERSION file; packagers override with
     # -DPOM68K_VERSION=<tag>. Target-scoped so bumping it recompiles one TU.
     file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" POM68K_VERSION_DEFAULT LIMIT_COUNT 1)
-    set(POM68K_VERSION "${POM68K_VERSION_DEFAULT}" CACHE STRING "Package version string")
+    # The packager's -DPOM68K_VERSION= is a CACHE entry, read by name so the
+    # empty normal variable project() leaves cannot shadow it; otherwise the
+    # file, read at every configure — never cached, so a bump takes on the
+    # next configure.
+    # A build tree configured before 2026-09-15 carries the old cached
+    # default (help string « Package version string »): drop it, or the tree
+    # would print 0.1.0 forever. A packager's -D entry has no such string.
+    get_property(POM68K_VERSION_OLD_HELP CACHE POM68K_VERSION PROPERTY HELPSTRING)
+    if(POM68K_VERSION_OLD_HELP STREQUAL "Package version string")
+        unset(POM68K_VERSION CACHE)
+    endif()
+    get_property(POM68K_VERSION_OVERRIDE CACHE POM68K_VERSION PROPERTY VALUE)
+    if(POM68K_VERSION_OVERRIDE)
+        set(POM68K_VERSION_STAMP "${POM68K_VERSION_OVERRIDE}")
+    else()
+        set(POM68K_VERSION_STAMP "${POM68K_VERSION_DEFAULT}")
+    endif()
     target_compile_definitions(${PROJECT_NAME} PRIVATE
-        POM68K_VERSION_STRING="${POM68K_VERSION}")
+        POM68K_VERSION_STRING="${POM68K_VERSION_STAMP}")
     # OpenGL remains the intentional portable GUI backend. Apple deprecated
     # the API at the SDK level in 10.14, which otherwise emits the same warning
     # for every GL call and hides actionable AppleClang diagnostics.

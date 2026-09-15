@@ -453,6 +453,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-15 (fifth)** — [POM68K 0.2.0](#2026-09-15-release-0-2-0)
 - **2026-09-15 (fourth)** — [System 7.5.5 on the synthetic Toby ROM: what the real driver does, why a copy of it did not help, and the rule that settles it](#2026-09-15-synthetic-toby-is-a-fallback)
 - **2026-09-15 (third)** — [The synthetic Toby sResource lied about its frame buffer: base 0 and 80 bytes per row where the card serves `$20` and 128, and System 7 was the first to ask](#2026-09-15-synthetic-toby-params)
 - **2026-09-15 (later)** — [The IIx/IIcx « unreadable screen » was the synthetic Toby declaration ROM under System 7: with the real dump the roster reaches 38](#2026-09-15-synthetic-toby-under-system7)
@@ -964,6 +965,34 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-15-release-0-2-0"></a>
+## 2026-09-15 (fifth) — POM68K 0.2.0
+
+The annotated tag `v0.2.0` is pushed on a green CI and macOS run of the
+merge `7d3e49c`, triggering `release.yml` to build the four packages and
+publish the GitHub Release. `VERSION` reads `0.2.0`; `README.md` opens on
+two screenshots — the LC II on its System 7.5.5 volume with the Disques
+window docked, and DOOM II on the Quadra 950 — and lists what the version
+brings: the Macintosh 128K/512K, the SCSI hot-plug chain with the guest
+agent shipped in every package and installed into Startup Items by the
+host, EtherTalk on by default with the cable toggle, the beyond-boot
+proof on 38 of 39 profiles, the truthful Toby declaration ROM fallback,
+save-state v16, and the relaunch line carrying the network identity.
+Since 0.1.0 (2026-09-08) the gate registry grew from 279 to 334 in union.
+
+The version banner needed the bump to be found out: `POM68K --version`
+printed « POM68K 0.1 — (37 profiles, Mac Plus to Quadra 950) » on a tree
+whose `VERSION` said 0.2.0 and whose catalogue holds 39. Three causes, all
+in the stamp: `project(POM68K VERSION 0.1)` defined a normal variable
+`POM68K_VERSION` that shadowed both the repo-root file and the cache
+entry a packager passes with `-DPOM68K_VERSION=`; the file's value was
+`set(... CACHE)` once and frozen; and the banner's count was a literal.
+Now `project()` carries no version, the stamp reads a packager's cache
+entry by name and the file otherwise at every configure, a build tree
+configured before this drops its frozen entry by its help string, and the
+count is `kMachineProfileCount`. Both paths are checked: a fresh configure
+with `-DPOM68K_VERSION=9.9.9` stamps 9.9.9, without it 0.2.0.
 
 <a id="2026-09-15-synthetic-toby-is-a-fallback"></a>
 ## 2026-09-15 (fourth) — System 7.5.5 on the synthetic Toby ROM: what the real driver does, why a copy of it did not help, and the rule that settles it

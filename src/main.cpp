@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "GuiMachineRuntime.h"
+#include "MachineCatalog.h"
 #include "MachineFactory.h"
 #include "MachineSession.h"
 #include "ProcessEnvironment.h"
@@ -17,9 +18,11 @@ int main(int argc, char** argv) {
     pom68k::app::RuntimeConfig config =
         pom68k::app::RuntimeConfig::parse(argc, argv, startup);
     if (config.showVersion()) {
+        // The count is the catalogue's own (kMachineProfiles): this line
+        // said « 37 profiles, Mac Plus » through the arrival of the 128K/512K.
         std::printf("POM68K %s — Macintosh 68k emulator "
-                    "(37 profiles, Mac Plus to Quadra 950)\n",
-                    POM68K_VERSION_STRING);
+                    "(%zu profiles, Macintosh 128K to Quadra 950)\n",
+                    POM68K_VERSION_STRING, pom68k::kMachineProfileCount);
         return 0;
     }
 

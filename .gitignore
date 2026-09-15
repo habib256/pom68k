@@ -54,6 +54,8 @@ compile_commands.json
 # checkout (AppImage hicolor icon, macOS .icns via sips), and *.png above
 # silently kept it out of the repo until the first release run.
 !packaging/POM68K.png
+# …and the README's screenshots, which are documentation, not gate dumps.
+!docs/images/*.png
 # q605_trace debug artifacts (VRAM snapshot + PRAM dump)
 q605_vram.raw
 q605_trace.pram
