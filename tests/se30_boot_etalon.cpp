@@ -5,6 +5,7 @@
 // ID = VIA1 PA $C1 + VIA2 PB $87 (MAME macse30 config). Soft-skips without
 // the ROM, the video ROM and a bootable hdv/ image.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "FinderSignature.h"
 #include "MacIIMemory.h"
@@ -24,7 +25,8 @@ static std::string find(const char* rel) {
 int main() {
     std::string rom = find("roms/256KB ROMs/1988-09 - 97221136 - Mac II FDHD & IIx & IIcx.ROM");
     std::string vrom = find("roms/se30/se30vrom.uk6");
-    std::string img = find("hdv/HD20SC.vhd");
+    std::string img = testasset::overrideImage();   // POM68K_BEYOND_IMG, the agent variant's
+    if (img.empty()) img = find("hdv/HD20SC.vhd");
     if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (rom.empty() || vrom.empty() || img.empty()) {
@@ -54,6 +56,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
 
     const int64_t kFrame = 800 * 525;
     const long kFrames = getenv("POM68K_FRAMES") ? atol(getenv("POM68K_FRAMES"))
@@ -98,7 +101,8 @@ int main() {
     // identical desktop. `FinderSignature.h` carries the whole story.
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
            && menuRun > findersig::menuBarRunFloor(W)
-           && app == "Finder";
+           && agentboot::finderOrAgent(app);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

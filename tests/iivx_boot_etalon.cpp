@@ -12,6 +12,7 @@
 // 4957EB49 ROM or a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "VaspMemory.h"
 #include "VaspVideo.h"
@@ -90,6 +91,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -146,6 +148,7 @@ int main() {
            && menuBar < 0.30 && desktop > 0.35 && desktop < 0.85
            && mem.scsi().commands > 50;
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED",
                 vi ? "IIvi" : "IIvx",
                 ok ? "booted to the Finder" : "did not reach the Finder");

@@ -21,6 +21,7 @@
 // Exit 0 = pass / soft-skip, 1 = fail.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "V8Memory.h"
 #include "V8Video.h"
@@ -100,6 +101,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     // Egret holds the CPU at power-on; release it, then run enough
@@ -138,6 +140,7 @@ int main() {
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
            && mem.scsi().commands > 50;
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to the Finder" : "FAILED");
     return ok ? 0 : 1;
 }

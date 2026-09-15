@@ -11,6 +11,12 @@ target_link_libraries(boot_trace PRIVATE pom68k_core)
 add_executable(dasm EXCLUDE_FROM_ALL tests/dasm.cpp)
 target_link_libraries(dasm PRIVATE pom68k_core)
 
+# Dev tool: list a declaration ROM's sResources as the Slot Manager reads
+# them (byte lanes, relative offsets), synthetic or from a card ROM file;
+# --code writes each driver's code block dense, for dasm.
+add_executable(declrom_dump EXCLUDE_FROM_ALL tests/declrom_dump.cpp)
+target_link_libraries(declrom_dump PRIVATE pom68k_core)
+
 # Dev harness: ROM×disk Finder matrix (not a CTest gate).
 add_executable(finder_boot_matrix EXCLUDE_FROM_ALL tests/finder_boot_matrix.cpp)
 target_link_libraries(finder_boot_matrix PRIVATE pom68k_core)

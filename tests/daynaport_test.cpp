@@ -411,6 +411,11 @@ int main() {
         mem.card.command(en, 6, out, none);
         AtalkHub hub;
         hub.setService("stack", false);
+        // AppleTalk off is off on BOTH wires: since 2026-09-14 the node
+        // rides the card by default (ethertalk), which this NAT-only
+        // scenario — POM68K_APPLETALK=0, GuiHostServices — switches off
+        // with the stack. The IPv4 path below owes nothing to AppleTalk.
+        hub.setService("ethertalk", false);
         // 1 MHz here, so the hub's 1 ms Ethernet latency is 1000 cycles.
         hub.attach(mem, 1000000, nullptr);
         int64_t now = 0;

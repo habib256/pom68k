@@ -45,6 +45,7 @@ inline void applyNetworkConfig(AtalkHub& hub, const app::NetworkConfig& network)
     if (network.spoolDirectory) next.spoolDir = *network.spoolDirectory;
     if (network.gateway) AtalkHub::parseCidr(*network.gateway, next.gwIp, next.gwMask);
     if (network.dns) AtalkHub::parseIpv4(*network.dns, next.dns);
+    if (network.etherTalk) next.ethertalk = *network.etherTalk != "0";
     hub.reconfigure(next);
 }
 inline app::NetworkConfig networkConfigOf(const AtalkHub::Config& cfg) {
@@ -56,6 +57,7 @@ inline app::NetworkConfig networkConfigOf(const AtalkHub::Config& cfg) {
     network.spoolDirectory = cfg.spoolDir;
     network.gateway = AtalkHub::formatCidr(cfg.gwIp, cfg.gwMask);
     network.dns = AtalkHub::formatIpv4(cfg.dns);
+    network.etherTalk = cfg.ethertalk ? "1" : "0";
     return network;
 }
 
@@ -122,6 +124,10 @@ public:
         if (hub || ethernet) {
             if (hub) configureAppleTalk();
             state_.network.atalk.setService("stack", hub);
+            // AppleTalk off (POM68K_APPLETALK=0) is off on the card too;
+            // otherwise the relaunch key / the window's switch decides.
+            state_.network.atalk.setService(
+                "ethertalk", hub && state_.network.atalk.config().ethertalk);
             state_.network.atalk.attach(
                 mem, hubHz, cable ? &state_.network.ltoudp : nullptr);
         }

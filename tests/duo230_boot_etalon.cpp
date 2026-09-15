@@ -7,6 +7,7 @@
 // without the ROM, the PG&E dump or the 7.5.5 image.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "MscCpu.h"
 #include "JitTestConfig.h"
@@ -48,6 +49,7 @@ int main() {
     MscCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, false);
     mem.setCpu(&cpu);
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     cpu.hardReset();
 
     // The PMU boots first: run the machine until the PG&E releases the
@@ -98,6 +100,7 @@ int main() {
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.80
            && mem.scsi().commands > 500;
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }

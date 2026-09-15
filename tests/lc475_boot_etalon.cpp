@@ -8,6 +8,7 @@
 // ROM, MEMCjr/DAFB, Cuda firmware LLE, PrimeTime IOSB ASC, pseudo-VIA2 and
 // TurboSCSI are shared with q605_boot_etalon. Soft-skips without assets.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
@@ -142,6 +143,7 @@ int main() {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
+    if (!agentboot::install(mem)) return 1;
 
     // Confirm the machine really identifies as the LC 475 ($A55A2221).
     uint32_t id = peek32(mem, 0x5FFFFFFC);
@@ -207,5 +209,6 @@ int main() {
                   menu.mean - desktop.mean > 35;
     bool ok = geometry && finder && mem.scsi().commands > 4000;
     std::printf("%s\n", ok ? "PASSED — LC 475 Finder in 256 colors" : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrameCycles, ok);
     return ok ? 0 : 1;
 }

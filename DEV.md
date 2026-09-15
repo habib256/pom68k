@@ -913,7 +913,12 @@ needed research, and a dated `CHANGELOG.md` entry.
   beyond pair (2026-08-27). Use the same lookup its sibling gates use, and check
   with `tools/gate_execution_census.py` that the gate actually RAN.
 - **the declaration ROM**: a NuBus board on the synthetic decl ROM boots System
-  6 and draws no System 7 Finder (2026-08-27).
+  6 and, since 2026-09-15, System 7.0 too — the synthetic sResource declared a
+  frame buffer at offset 0 with 80 bytes per row where the card serves `$20`
+  and 128, which System 6 never asked and System 7 did. System 7.5.5 needs
+  the real 342-0008-a: it parks a slot VBL task the fallback never releases,
+  and the fallback is not firmware to invent (TODO § Fidélité). `declrom_dump`
+  (dev tool) lists any declaration ROM's sResources beside the synthetic one.
 - **the volume**: read `drVolAtrb` bit 8 on the image before theorising about
   the code. Every gate prints it.
 
@@ -1158,8 +1163,11 @@ non-extended LocalTalk form and is dropped on this segment. Everything
 above DDP is the existing stack: NBP, ATP, ASP, AFP and ZIP need nothing
 of their own. The hub demuxes the card by frame shape (802.3 with an
 AppleTalk SNAP header here, DIX IPv4/ARP to `EtherLink`) and the
-`ethertalk` service turns it on; it is OFF by default because it changes
-which wire AppleTalk lives on.
+`ethertalk` service switches it; it is ON by default since 2026-09-14 — a
+machine without a card builds no link, and every LocalTalk gate runs on a
+card-less machine — and off with AppleTalk itself (`POM68K_APPLETALK=0`),
+through the window's « AppleTalk sur la carte » box, or through the
+relaunch key `--atalk-ethertalk=0`.
 
 Measured against Dayna's own driver (`q605_dayna_driver_etalon`): a
 Macintosh with no router probes `$FFF9.1` ten times and stays in the
@@ -1167,7 +1175,12 @@ startup range. When the bridge starts beaconing, the guest says so
 itself — "Access to your AppleTalk internet has now become available" —
 re-probes (AARP 10 → 30), moves onto net 2, reads back "Current Zone:
 POM68K" in the Network control panel, and its Chooser lists this node's
-AppleShare server. From there the gate runs the same chain
+AppleShare server. With the bridge beaconing from power-on
+(`q605_dayna_hubfirst_etalon`, the product default) the same guest joins
+at the moment it selects EtherTalk — the panel reads the zone at once and
+no dialog is raised; the 2026-09-10 note that the Finder « stopped opening
+control panels » in that case was the gate's own alert-dismissing
+keystroke landing on a Finder with no alert. From there the gate runs the same chain
 `q605_afp_live_etalon` drives over LocalTalk: Guest login, the volume
 mounted, and a folder the guest creates in it appearing on the HOST
 filesystem — NBP, ATP, ASP and AFP over 802.3/SNAP, with the SCC idle
@@ -1291,6 +1304,17 @@ switch.
   input and mounts on request) and `lc520_agent_autostart_etalon` (the
   same on a French System 7.5.5 — GISTPERSO's « Ouverture au démarrage »
   — over the NCR 5380 and the Cuda). `docs/SCSI_HOTPLUG.md` § 8.
+- **The agent on the whole roster** (`tests/AgentBootProbe.h`,
+  `cmake/Pom68kAgentGates.cmake`): `POM68K_TEST_AGENT=1` makes any boot
+  etalon install the agent into its boot volume in memory and, on top of
+  its Finder verdict, require the first poll and a live-attached blank
+  disk mounted by name. 38 `<profile>_agent_boot_etalon` variants, the
+  DaynaBootProbe.h pattern; a boot-time alert is dismissed with Return
+  after ten idle seconds; a verdict that names the front application
+  accepts the agent there (`finderOrAgent`); the compacts and the Glue
+  boards boot the System 7.0 volume (`POM68K_BEYOND_IMG`) and chase its
+  AppleTalk CautionAlerts the way `macii_sys7_boot_etalon` does. `docs/68K_FAMILY_SCOPE.md`
+  § 5 has the roster and what is still boot-only.
 
 ### 3.5 Input: M0110 keyboard + quadrature mouse
 
@@ -2010,6 +2034,14 @@ one gets re-measured without paying for the mount again),
 `POM68K_AFP_OUTAGE` = `data|resource` (`q605_afp_live_etalon`: interrupt AFP
 during the selected fork's first copy, then exercise guest reconnection and
 a fresh two-fork copy; unset keeps the clean-disconnect scenario),
+`POM68K_TEST_AGENT` = `1` (`tests/AgentBootProbe.h`: a boot etalon installs
+« POM68K Disques » into its boot volume's Startup Items in memory and, on top
+of its Finder verdict, requires the agent's first mailbox poll and a blank
+disk attached live mounted by name — the `<profile>_agent_boot_etalon`
+variants of `cmake/Pom68kAgentGates.cmake`; unset, the etalon is the gate it
+was), `POM68K_TEST_TOBY_SYNTHETIC` = `1` (`tests/iix_boot_etalon.cpp`: boot on the
+synthetic Toby declaration ROM even when the 342-0008-a dump is on hand — what
+proves the synthetic sResource on a System 7 volume),
 `POM68K_TEST_DAYNAPORT` = `0-6` (`tests/DaynaBootProbe.h`: the
 `<family>_dayna_boot_etalon` variants put a DaynaPort SCSI/Link at that ID
 on a boot etalon's bus and also require the guest's SCSI traffic to have

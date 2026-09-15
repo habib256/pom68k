@@ -185,7 +185,14 @@ static int bootPlus(const std::vector<uint8_t>& rom, const char* disk) {
 static int bootMacII(const std::vector<uint8_t>& rom, const char* disk, long frames = 20000) {
     MacIIMemory mem(pom68k::defaultCoreConfig());
     if (!mem.loadRom(rom)) return 1;
-    mem.installTobyVideo();
+    // The real Toby declaration ROM when the dump is on hand: System 7.5.5
+    // parks a slot VBL task the synthetic fallback never releases (2026-09-15).
+    std::string toby;
+    for (const char* p : { "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin",
+                           "tests/data/342-0008-a.bin", "roms/342-0008-a.bin" })
+        if (toby.empty() && std::ifstream(p, std::ios::binary)) toby = p;
+    if (!mem.installTobyVideo(toby)) return 1;
+    std::printf("macii Toby declaration ROM: %s\n", toby.empty() ? "synthetic" : toby.c_str());
     Cpu020 cpu(mem, jit::defaultResolvedConfig(),
                pom68k::defaultCoreConfig().cpu, true);
     mem.setCpu(&cpu);
@@ -234,12 +241,17 @@ static int bootMacII(const std::vector<uint8_t>& rom, const char* disk, long fra
     // The guest's own word, not a raw SCSI floor: `commands > 500` passed a
     // System 6 volume that never reached a Finder and failed a System 7 one
     // that had (TODO § 1.2). Physical peek is right on a stock Mac II.
+    // The front application at one instant is whatever the volume's Startup
+    // Items left there — 7.5.5's Stickies made this cell UNSTABLE on
+    // 2026-09-02. The question is whether the Finder RUNS: sampled across a
+    // second (FinderSignature.h finderRuns), it does either way.
     const std::string front = findersig::curApName(mem);
-    std::printf("macii menu=%.2f desk=%.2f SCSI=%ld front=\"%s\" %dx%d "
+    const bool finder = findersig::finderRuns(mem, [&] { cpu.runCycles(kFrame); });
+    std::printf("macii menu=%.2f desk=%.2f SCSI=%ld front=\"%s\" Finder %s %dx%d "
                 "PC=$%08X frames=%ld\n",
-                menu, desk, mem.scsi().commands, front.c_str(), W, H,
-                cpu.getPC(), frames);
-    bool ok = menu < 0.35 && desk > 0.20 && desk < 0.70 && front == "Finder";
+                menu, desk, mem.scsi().commands, front.c_str(),
+                finder ? "runs" : "NOT running", W, H, cpu.getPC(), frames);
+    bool ok = menu < 0.35 && desk > 0.20 && desk < 0.70 && finder;
     std::printf("%s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

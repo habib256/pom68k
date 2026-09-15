@@ -41,10 +41,11 @@ public:
         if (p_ & 1) emit(0);
     }
 
-    uint32_t vModeParms(uint16_t w, uint16_t h, uint16_t rowBytes, uint8_t pixelSize) {
+    uint32_t vModeParms(uint16_t w, uint16_t h, uint16_t rowBytes, uint8_t pixelSize,
+                        uint32_t baseOffset = 0) {
         uint32_t ret = pos();
         long_(50);
-        long_(0);
+        long_(baseOffset);
         word(rowBytes);
         word(0); word(0); word(h); word(w); word(0); word(0);
         long_(0);
@@ -162,24 +163,48 @@ std::vector<uint8_t> DeclRom::buildSynthetic(uint32_t fbBase) {
     // bytes: four fields and five offsets). The old $1C..$24 offsets landed
     // beyond this block in the following declaration-ROM directory, so the
     // synthetic-only path executed data when the video driver was opened.
+    //
+    // This is a FALLBACK for a missing 342-0008-a dump, not firmware to
+    // write: POM68K emulates computers that existed, and the card's own
+    // ROM is the only driver that ever ran on a Toby. What the stubs owe is
+    // honesty — Open, Prime, Close say noErr; Control and Status answer
+    // the Device Manager's « not supported » codes (controlErr −17,
+    // statusErr −18) rather than noErr over an untouched parameter block,
+    // so a System that asks cscGetMode falls back instead of being handed
+    // garbage. System 6 and 7.0 boot on this; System 7.5.5 does not — it
+    // parks a slot VBL task and spins on its count (Mac II ROM $40806C36),
+    // and a slot interrupt handler modelled on the real driver's (SIntInstall,
+    // acknowledge, JVBLTask) ran 132 times without releasing it (2026-09-15).
+    // The real dump is the answer there, and the console says when the
+    // synthetic is in use (MacIIMemory::installTobyVideo).
     b.long_(0x2A);
     b.word(0x4C00); b.word(0); b.word(0); b.word(0);
     b.word(0x12); b.word(0x16); b.word(0x1A); b.word(0x1E); b.word(0x22);
-    for (int i = 0; i < 5; ++i) {
-        b.word(0x7000);   // moveq #noErr,D0
-        b.word(0x4E75);   // rts
-    }
+    b.word(0x7000); b.word(0x4E75);            // open:   moveq #0,d0 ; rts
+    b.word(0x7000); b.word(0x4E75);            // prime:  moveq #0,d0 ; rts
+    b.word(0x70EF); b.word(0x4E75);            // ctl:    moveq #-17,d0 ; rts
+    b.word(0x70EE); b.word(0x4E75);            // status: moveq #-18,d0 ; rts
+    b.word(0x7000); b.word(0x4E75);            // close:  moveq #0,d0 ; rts
 
     uint32_t vidDrvrDir = b.pos();
     b.offs(0x02, videoDrvr);
     b.endOfList();
 
+    // MinorBaseOS is an offset WITHIN the slot, not an address: the real
+    // 342-0008-a says 0 (VRAM from the slot's first byte) and the emulated
+    // card serves VRAM at slot offsets 0–$7FFFF (TobyVideo::write). The
+    // mode parameters are the real ROM's 1-bpp mode, read back with
+    // declrom_dump: the visible origin $20 into VRAM and 128 bytes per row
+    // — TobyVideo::decodeRows reads exactly that. Until 2026-09-15 this
+    // block said base 0, rowBytes 80 and an absolute MinorBaseOS: System 6
+    // never asked, System 7 drew a sheared screen (TODO § Fidélité).
+    (void)fbBase;
     uint32_t minorBase = b.pos();
-    b.long_(fbBase);
+    b.long_(0);
     uint32_t minorLen = b.pos();
     b.long_(0x80000);
 
-    uint32_t vidParms1 = b.vModeParms(640, 480, 80, 1);
+    uint32_t vidParms1 = b.vModeParms(640, 480, 128, 1, 0x20);
     uint32_t vidMode1 = b.pos();
     b.offs(0x01, vidParms1);
     b.rsrc(0x03, 1);

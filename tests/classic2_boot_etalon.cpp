@@ -10,6 +10,7 @@
 // path is the Egret firmware LLE (default since 2026-07-24). Soft-skips
 // without the 3193670E ROM or a bootable hdv/ image.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "V8Video.h"
@@ -75,6 +76,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -106,5 +108,6 @@ int main() {
            && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASSED — Classic II (Eagle) booted to the Finder"
                            : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

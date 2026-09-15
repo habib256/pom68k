@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 517 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 524 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,16 +9,16 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 47 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 48 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 86 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 17 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 21 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
 | [Save states](#save-states) | 8 |
-| [Machine bring-ups](#machine-bring-ups) | 59 |
+| [Machine bring-ups](#machine-bring-ups) | 60 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 34 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 35 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 96 |
 
@@ -162,6 +162,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-05 (fourth)** — [`POM68K_DATA_WINDOW` was a dead path on the 68030 for five weeks; wiring it found that `mmuRead` also serves program space, and the measured result is the opposite of the 68040 precedent that made it opt-in](CHANGELOG.md#2026-09-05-030-data-window)
 - **2026-09-06 (later)** — [One MOVE form is 70 % of everything the 68030 generator cannot compile, and it is worth 0.87 % — under this host's floor, so it stays uncompiled](CHANGELOG.md#2026-09-06-030-admission-gap-priced)
 - **2026-09-07** — [The FPU general window stops ending a block: exact Moira replay inside native blocks, −11.6 % on Speedometer's isolated FPU phase, and the cross-binary comparison that had to be thrown away](CHANGELOG.md#2026-09-07-fpu-block-member)
+- **2026-09-15** — [The four compacts join the beyond-boot roster on System 7.0: a 68000 runs the agent, 36 profiles carry the proof](CHANGELOG.md#2026-09-15-compacts-agent-proof)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -307,6 +308,10 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-24 (fourth)** — [Mac II and IIfx share the Toby/NuBus lifecycle: nine wrappers behind one seam, 3923 → 3460 lines](CHANGELOG.md#2026-08-24-toby-gui-extraction)
 - **2026-08-24 (later)** — [The DAFB GUI lifecycle left `main.cpp` behind twelve explicit services: 4641 → 4243 lines](CHANGELOG.md#2026-08-24-gui-runner-extraction)
 - **2026-09-04 (fourth)** — [The LC II's framebuffer was refused by the data TLB on a stale premise, and every QuickDraw store from generated code paid a whole interpreted instruction — 4.75 million of them in one SimCity session, and not one measurable second](CHANGELOG.md#2026-09-04-v8-vram-dataspan)
+- **2026-09-14 (ninth)** — [`declrom_test` no longer counts « executed » while skipping its three Toby checks: two gates, and the dump found where the lock says it is](CHANGELOG.md#2026-09-14-declrom-split)
+- **2026-09-15 (fourth)** — [System 7.5.5 on the synthetic Toby ROM: what the real driver does, why a copy of it did not help, and the rule that settles it](CHANGELOG.md#2026-09-15-synthetic-toby-is-a-fallback)
+- **2026-09-15 (later)** — [The IIx/IIcx « unreadable screen » was the synthetic Toby declaration ROM under System 7: with the real dump the roster reaches 38](CHANGELOG.md#2026-09-15-synthetic-toby-under-system7)
+- **2026-09-15 (third)** — [The synthetic Toby sResource lied about its frame buffer: base 0 and 80 bytes per row where the card serves $20 and 128, and System 7 was the first to ask](CHANGELOG.md#2026-09-15-synthetic-toby-params)
 
 ## Sound
 
@@ -414,6 +419,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-09 (third)** — [The LC II mounts a 1.44 MB SuperDrive medium once the ISM follows the drive's actual HDSEL line; a VCB/MDB gate replaces the trace-only proof](CHANGELOG.md#2026-09-09-lcii-floppy144-mount)
 - **2026-09-13 (ninth)** — [The menu bar belonged to nobody: six runners each pasted five bare items into it, and the shell now owns one Machine / Périphériques / CPU / Fenêtres bar](CHANGELOG.md#2026-09-13-menu-bar-owned-by-the-shell)
 - **2026-09-13 (third)** — [The two 64K machines get real gates: the registry goes to 279 here, 283 in union](CHANGELOG.md#2026-09-13-mac128k-gates-registered)
+- **2026-09-14 (eleventh)** — [The agent is a beyond-boot proof on 32 profiles: one header, the DaynaBootProbe pattern, and three things the roster taught](CHANGELOG.md#2026-09-14-agent-beyond-boot-roster)
 - **2026-09-14 (later)** — [The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it](CHANGELOG.md#2026-09-14-scsi-detach-live)
 
 ## Build, packaging and release
@@ -468,6 +474,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-08 (seventh)** — [Save-state relaunch is gated on all three CPU families](CHANGELOG.md#2026-09-08-plus-relaunch)
 - **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](CHANGELOG.md#2026-09-09-chooser-appleshare-proof)
 - **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](CHANGELOG.md#2026-09-12-docs-vs-code-sweep)
+- **2026-09-14 (tenth)** — [EtherTalk on by default: the router heard from power-on is joined at the switch, and the « Finder stopped opening control panels » of 2026-09-10 was the gate's own keystroke](CHANGELOG.md#2026-09-14-ethertalk-on-by-default)
 
 ## Documentation, audits and reviews
 

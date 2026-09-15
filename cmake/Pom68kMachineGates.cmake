@@ -43,6 +43,13 @@ add_test(NAME q605_dayna_driver_etalon COMMAND q605_dayna_driver_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 # ~210 s on AArch64, 529 s on x86-64: install, restarts, EtherTalk, MacTCP, AFP.
 set_tests_properties(q605_dayna_driver_etalon PROPERTIES TIMEOUT 2400)
+# The same chain with the hub — router beacon, services, NAT — attached
+# BEFORE the first boot, the product default since EtherTalk went on by
+# default (2026-09-14): the guest joins the router's network at the moment
+# it selects EtherTalk, no dialog, and everything after runs the same.
+add_test(NAME q605_dayna_hubfirst_etalon COMMAND q605_dayna_driver_etalon hubfirst
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_dayna_hubfirst_etalon PROPERTIES TIMEOUT 2400)
 
 # Q8 gate: same Finder boot under POM68K_Q605_NOFPU (real 68LC040, no
 # 68882) — UniversalInfo FPU bit cleared so System installs PACK 4.
@@ -850,9 +857,15 @@ add_test(NAME jit_restart_write_030_test COMMAND jit_restart_write_030_test)
 set_tests_properties(jit_restart_write_030_test PROPERTIES LABELS "jit;unit")
 
 # Mac II gates: declaration ROM, NuBus, Toby video HLE.
+# declrom_test is the synthetic ROM alone (asset-none); toby_declrom_test is
+# the same binary on the real Toby 342-0008-a dump, asset-optional and
+# soft-skipping loudly without it. One gate used to carry both and exit 0
+# with the Toby checks silently skipped (2026-09-02 → 2026-09-14).
 add_executable(declrom_test tests/declrom_test.cpp)
 target_link_libraries(declrom_test PRIVATE pom68k_core)
 add_test(NAME declrom_test COMMAND declrom_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME toby_declrom_test COMMAND declrom_test toby
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(nubus_test tests/nubus_test.cpp)

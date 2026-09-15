@@ -95,6 +95,24 @@ inline std::string curApName(const Mem& mem) {
 }
 
 // Longest horizontal run of light pixels inside the menu-bar band.
+// « The Finder runs » — the guest's own word a gate can rely on once the
+// desktop is up. CurApName names the process RUNNING when it is sampled;
+// a volume whose Startup Items launched something (Stickies, the POM68K
+// agent) leaves that something in front, and every foreground process
+// still hands the Finder time slices: sampled once per frame across a
+// second, the Finder's name shows up whether or not it owns the menu bar.
+// `runFrame` advances the machine by one frame the way the caller's own
+// loop does. The Q605 harness's runningProcesses/processRuns pair is the
+// same idea; this is the one-question form for boot verdicts.
+template <class Mem, class Frame>
+inline bool finderRuns(const Mem& mem, Frame runFrame, int frames = 300) {
+    for (int f = 0; f < frames; f++) {
+        runFrame();
+        if (curApName(mem) == "Finder") return true;
+    }
+    return false;
+}
+
 inline int menuBarRun(const std::vector<uint32_t>& fb, int W, int H) {
     int best = 0;
     for (int y = 2; y < 20 && y < H; y++) {

@@ -12,6 +12,7 @@
 // CUDA_V2XX 341s0060 — Cuda 2.40; 2.37 livelocks on pseudo-cmd $0E, see
 // docs/LC520_BRINGUP.md). Soft-skips without the ROM or a bootable image.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
@@ -90,6 +91,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -263,5 +265,6 @@ int main() {
            && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASSED — Macintosh LC 520 booted to the Finder"
                            : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

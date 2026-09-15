@@ -297,6 +297,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
 - **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
 - **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **why does System 7.5.5 stop at « Welcome to Macintosh » on a Mac II without the Toby dump, and what does the real video driver do at Open?** → [2026-09-15 (fourth) — System 7.5.5 on the synthetic Toby ROM…](#2026-09-15-synthetic-toby-is-a-fallback)
+- **what exactly did the synthetic Toby sResource get wrong, and how do I list a declaration ROM's sResources?** → [2026-09-15 (third) — The synthetic Toby sResource lied about its frame buffer…](#2026-09-15-synthetic-toby-params)
+- **why does a IIx with no Toby dump draw bands under System 7 while System 6 is fine?** → [2026-09-15 (later) — The IIx/IIcx « unreadable screen » was the synthetic Toby declaration ROM…](#2026-09-15-synthetic-toby-under-system7)
+- **how does a profile get a proof past the Finder without its own harness, and why do the LC III and Duo sit idle after the Finder?** → [2026-09-14 (eleventh) — The agent is a beyond-boot proof on 32 profiles…](#2026-09-14-agent-beyond-boot-roster)
+- **why is EtherTalk on by default now, what does a guest do with a router it hears from power-on, and what really blocked the Finder on 2026-09-10?** → [2026-09-14 (tenth) — EtherTalk on by default…](#2026-09-14-ethertalk-on-by-default)
 - **why does a restored 128K spin at 300 rpm for a quarter of a frame, and what does save-state v16 add?** → [2026-09-14 (eighth) — Three debts paid…](#2026-09-14-three-small-debts)
 - **what is the French Startup Items folder called, and why did machfs and a leaf-chain walk both fail on a real System 7.5 catalog?** → [2026-09-14 (sixth) — The French Startup Items folder is « Ouverture au démarrage »…](#2026-09-14-ouverture-au-demarrage)
 - **where does a package get the guest agent from, and why is a binary committed?** → [2026-09-14 (fifth) — The agent ships…](#2026-09-14-agent-shipped-in-share)
@@ -448,6 +453,13 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-15 (fourth)** — [System 7.5.5 on the synthetic Toby ROM: what the real driver does, why a copy of it did not help, and the rule that settles it](#2026-09-15-synthetic-toby-is-a-fallback)
+- **2026-09-15 (third)** — [The synthetic Toby sResource lied about its frame buffer: base 0 and 80 bytes per row where the card serves `$20` and 128, and System 7 was the first to ask](#2026-09-15-synthetic-toby-params)
+- **2026-09-15 (later)** — [The IIx/IIcx « unreadable screen » was the synthetic Toby declaration ROM under System 7: with the real dump the roster reaches 38](#2026-09-15-synthetic-toby-under-system7)
+- **2026-09-15** — [The four compacts join the beyond-boot roster on System 7.0: a 68000 runs the agent, 36 profiles carry the proof](#2026-09-15-compacts-agent-proof)
+- **2026-09-14 (eleventh)** — [The agent is a beyond-boot proof on 32 profiles: one header, the DaynaBootProbe pattern, and three things the roster taught](#2026-09-14-agent-beyond-boot-roster)
+- **2026-09-14 (tenth)** — [EtherTalk on by default: the router heard from power-on is joined at the switch, and the « Finder stopped opening control panels » of 2026-09-10 was the gate's own keystroke](#2026-09-14-ethertalk-on-by-default)
+- **2026-09-14 (ninth)** — [`declrom_test` no longer counts « executed » while skipping its three Toby checks: two gates, and the dump found where the lock says it is](#2026-09-14-declrom-split)
 - **2026-09-14 (eighth)** — [Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug](#2026-09-14-three-small-debts)
 - **2026-09-14 (seventh)** — [The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned](#2026-09-14-daynaport-executed-on-m4)
 - **2026-09-14 (sixth)** — [The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too](#2026-09-14-ouverture-au-demarrage)
@@ -952,6 +964,272 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-15-synthetic-toby-is-a-fallback"></a>
+## 2026-09-15 (fourth) — System 7.5.5 on the synthetic Toby ROM: what the real driver does, why a copy of it did not help, and the rule that settles it
+
+The (third) entry's residue was the five-`rts` driver. On `System 7.5.5
+HD.dsk` the IIx with the corrected synthetic sResource draws « Welcome to
+Macintosh » and stops after 228 SCSI commands; with the real 342-0008-a
+it reaches the Finder (Stickies in front, 3 513 commands). The stall,
+read with the IIx etalon's new `POM68K_DIAG` disassembly, is the Mac II
+ROM at `$40806C36`: `move.w ($10,A0),D0 / bgt` — a spin on a slot VBL
+task's count, and the card's VBL had never been enabled (0 register
+writes on the synthetic against 52, and 149 VBL enables, on the real).
+
+**What the real driver does**, read with `declrom_dump --code` and
+`dasm` on a padded image (`drvdasm` in the scratchpad linked against
+`libmoira`): Open allocates a 16-byte slot-interrupt queue element
+(`_NewPtrSysClear`), fills `sqType` 6, `sqAddr` = its handler, `sqParm` =
+`dCtlDevBase`, calls `_SIntInstall` with `dCtlSlot`, then clears a byte at
+`devBase+$A0000` — the VBL enable TobyVideo decodes. The handler, entered
+with A1 = `sqParm`, clears that byte again (acknowledge), derives the slot
+from the address (`rol.l #8 / andi.w #$f`), calls `JVBLTask` (`$0D28`) to
+run the slot's VBL tasks and returns 1. Close writes `devBase+$A0004`
+(disable) and `_SIntRemove`s the element.
+
+**The copy did not release the loop.** Assembled word for word into the
+synthetic block (148 bytes, verified by disassembly), Open installed the
+handler and enabled the VBL; the handler ran 132 times during the boot —
+`JVBLTask` was being called — and System 7.5.5 still spun at `$40806C36`
+with 228 SCSI commands. Whatever it waits for is not the slot 9 VBL
+queue alone, and the next step would have been a second round of guest
+disassembly of a real System, for a card ROM that never existed.
+
+**The rule.** POM68K emulates computers that existed; the synthetic
+declaration ROM is a *fallback* for a missing dump, and the invariant
+that governs fallbacks is « never silent », not « as good as the
+firmware ». The hand-assembled driver is withdrawn. What stays: the
+truthful geometry of the (third) entry, and Control/Status that answer
+controlErr/statusErr rather than noErr over an untouched block. System
+6 and 7.0 boot on it; System 7.5.5 needs the dump, which
+`iix_boot_etalon` says on a System 7 image (`SKIP:`) and the console
+says at launch. `finder_boot_matrix`'s Mac II leg installs the real ROM
+when the dump is on hand, like the etalon, and its verdict asks whether
+the Finder *runs* (`findersig::finderRuns`, sampled across five seconds)
+rather than whether it is in front — the 2026-09-02 UNSTABLE cell was
+Stickies in front of a Finder that had finished. `POM68K_TEST_TOBY_SYNTHETIC`
+forces the fallback with the dump present.
+
+<a id="2026-09-15-synthetic-toby-params"></a>
+## 2026-09-15 (third) — The synthetic Toby sResource lied about its frame buffer: base 0 and 80 bytes per row where the card serves $20 and 128, and System 7 was the first to ask
+
+The (later) entry left a question: what does a System 7 ask of the
+synthetic Toby declaration ROM that it does not get? The answer needed a
+reader first. `declrom_dump` (a dev tool, `cmake/Pom68kDevTools.cmake`)
+lists a declaration ROM's sResources the way the Slot Manager reads them
+— byte lanes from the format block, offsets relative to the field that
+holds them, mode entries as the lists they are — for the synthetic image
+or a card ROM file. Side by side:
+
+| | synthetic (before) | real 342-0008-a |
+|---|---|---|
+| `MinorBaseOS` | `$F9000000`, an absolute address | `0`, an offset in the slot |
+| mode `$80` `vpBaseOffset` | `0` | `$20` |
+| mode `$80` `vpRowBytes` | `80` | `128` |
+| driver | five `moveq #0 ; rts` | 2 090 bytes; a 290-byte `PrimaryInit` on the board |
+
+`TobyVideo::decodeRows` reads the 1-bpp screen at `$20 + y × 128`: the
+emulated card and the real ROM agree, the synthetic disagreed with both.
+System 6 never consulted the sResource's video parameters for its main
+screen — its boot on the synthetic has been green since the Mac II
+arrived — where System 7's Display Manager does, and drew a 640-wide
+screen at 80 bytes a row into a card decoded at 128: the dithered bands
+and the black lower half of the (later) entry, and the 468 K VRAM writes
+against 1.45 M.
+
+`DeclRom::buildSynthetic` now says `$20`, 128 and `MinorBaseOS` 0 (the
+`fbBase` argument is kept for the callers and ignored). On the IIx with
+`POM68K_TEST_TOBY_SYNTHETIC=1` — the dump on hand, deliberately not
+used — System 7.0 boots to the Finder (menu 0.12, desktop 0.50,
+`CurApName` « Finder »), the agent variant passes with the same window
+and mount as on the real ROM (VRAM writes 1.13 M), and System 6 is
+unchanged. The five-`rts` driver stays, and stays an item: System 7
+tolerates a Control/Status that answers noErr without writing its block
+at one bit per pixel; a depth switch or a palette would not.
+
+<a id="2026-09-15-synthetic-toby-under-system7"></a>
+## 2026-09-15 (later) — The IIx/IIcx « unreadable screen » was the synthetic Toby declaration ROM under System 7: with the real dump the roster reaches 38
+
+Yesterday's third lesson, elucidated by isolation. Three variables
+separated the IIx from the Mac II on the same System 7.0 volume: the
+CPU, the board model, the declaration ROM. `POM68K_MACII_020=1` — the
+IIx board with a 68020 — drew the same bands (VRAM writes 470 K, Toby
+mode `$00` 640×480 on both), so not the CPU; the model then differed
+only by the ROM the etalon installed: `installTobyVideo()` with no path,
+the **synthetic** sResource of `DeclRom::buildSynthetic`, where
+`macii_sys7_boot_etalon` loads the real 342-0008-a. With the real dump the
+IIx draws the desktop (VRAM writes 1.45 M, menu bar 0.06, desktop 0.47),
+launches the agent and mounts — and its own System 6 gate is unchanged.
+The synthetic driver is System 6-grade; what a System 7 asks of it and
+does not get is the open item in `TODO.md` § Fidélité, with the
+reproducer.
+
+**And the « stall » of GISTPERSO on the Glue boards** — 89 to 91 SCSI
+commands then nothing, on the Mac II, IIx, IIcx and SE/30 — is a dialog,
+not a hang. With the real Toby ROM the IIx draws it: « Le fichier System
+du disque de démarrage ne dispose pas des ressources nécessaires pour ce
+Macintosh. Utilisez l'application “Installation” pour mettre à jour le
+fichier System. » — the volume's System 7.5.5 was installed for its own
+machines and carries no Mac II family resources. The System 7.0 volume is
+these boards' System 7, and the Sad-looking cell was the volume's choice.
+
+`iix_boot_etalon` installs the real ROM when the dump is on hand and, on
+a System 7 image without it, soft-skips loudly rather than fail on a
+screen it cannot draw. `iix_agent_boot_etalon` and
+`iicx_agent_boot_etalon` are registered; 38 profiles carry the beyond-boot
+proof, the 128K/512K alone stay at the signature.
+
+<a id="2026-09-15-compacts-agent-proof"></a>
+## 2026-09-15 — The four compacts join the beyond-boot roster on System 7.0: a 68000 runs the agent, 36 profiles carry the proof
+
+The (eleventh) entry of yesterday left the compacts boot-only for want of
+a System 7 image. `System 7.0 HD.dsk`, the Mac II's volume, runs on a Plus
+with 4 MB. `scsi_boot_etalon` — the compacts' SCSI boot, Plus / SE / SE
+FDHD / Classic by `POM68K_COMPACT_MODEL` — takes the image through
+`POM68K_BEYOND_IMG`, a longer boot through `POM68K_FRAMES`, and the
+AppleTalk CautionAlert dismissal ported from `macii_sys7_boot_etalon`: six
+alerts on the Plus, three on the others, each answered with a real Return
+on a stalled SCSI count with a modal up. One more thing the verdict had
+to learn: by the time it reads the desktop band, the Finder has already
+launched the agent and its status window sits in that band — the 50 %
+weave reads 0.44 through it, under the 0.45 floor; with the probe on the
+floor is 0.30, the bare-desktop band stays for the gate it otherwise is.
+`agentboot::checkWith` takes the compacts' `MacFrameClock` frame as a
+callable, where every other board passes a cycle count.
+
+All four then poll at once and mount « Branche » on SCSI 1 — on the
+Plus, a 68000: the agent's binary carries no 68020 instruction. 36
+profiles carry the proof; still boot-only, the IIx/IIcx (yesterday's
+display question) and the 128K/512K, whose System 1.1/2.0 has no Startup
+Items.
+
+<a id="2026-09-14-agent-beyond-boot-roster"></a>
+## 2026-09-14 (eleventh) — The agent is a beyond-boot proof on 32 profiles: one header, the DaynaBootProbe pattern, and three things the roster taught
+
+`docs/68K_FAMILY_SCOPE.md` § 5 called it the biggest gap: most profiles
+were proven only to the point where the Finder appears. The agent's
+autostart (§ 8 of the hot-plug note) is a beyond-boot proof that needs no
+per-machine code — the Finder launches an application, the SCSI Manager
+carries its vendor commands, the File Manager mounts a volume the
+application's own driver serves — so it went onto every boot etalon the
+way the DaynaPort card did: a header, an environment variable, a cmake
+function.
+
+**The mechanism.** `tests/AgentBootProbe.h`: with `POM68K_TEST_AGENT=1`
+a boot etalon installs « POM68K Disques » into its boot volume's Startup
+Items in memory right after the attach (`agentboot::install`, the product
+path of `GuiAgentAutostart.h`), and after its own Finder verdict requires
+the agent's first mailbox poll and a blank volume, attached live on the
+first free SCSI ID, mounted on request by name (`agentboot::check`).
+`cmake/Pom68kAgentGates.cmake` registers `<profile>_agent_boot_etalon`
+on 32 profiles: every 68030/68040 board on its own image, the shared
+binaries with their model environments (IIvi, Centris 610, Quadra
+610/650/800, LC 580) and arguments (Quadra 900/950), the Duo, the SE/30
+and the Mac II on `System 7.0 HD.dsk` (their own boots are System 6).
+First full run: 30 of 34; the four failures were three lessons, not
+three defects.
+
+**Lesson one — a boot-time alert is a Finder that launches nothing.** The
+LC III and the Duo installed the agent, reached their Finder verdict, and
+then sat for 120 s with `CurApName` « Finder » and **zero SCSI
+commands** — a modal alert on the System 7.5 volume, tolerated by the
+pixel signature, and a modal Finder runs no Startup Items. The probe now
+presses Return once after ten idle seconds; both then polled within a
+second and mounted « Branche ». The 8.1 volume's startup-alias alert in
+`q605_dayna_driver_etalon` is the same thing.
+
+**Lesson two — on a fast board the agent is already in front.** The Color
+Classic II reached its verdict with `CurApName` « POM68KDisques »: its
+signature demanded « Finder ». `agentboot::finderOrAgent` accepts either
+when the probe is on; either name is the Finder having finished its
+startup.
+
+**Lesson three — the IIx and IIcx on System 7.0 show something that is
+not a desktop.** Their own image is System 6 (no Startup Items) and
+GISTPERSO stalls on them after 91 SCSI commands (as on the Mac II); on
+`System 7.0 HD.dsk` — with the Mac II's own CautionAlert dismissal
+ported into their boot loop — the agent launches (`CurApName`
+« POM68KDisques », SCSI 1876) but the frame `TobyVideo::decode` returns
+is dithered bands over a black lower half, where the same image, probe
+and decoder on the Mac II give a clean System 7 desktop with the agent's
+window (« sondages : 1296 »). Same Glue board, 68020 against 68030. Not
+forced through: the variant is withdrawn and the question is in `TODO.md`
+§ Fidélité, with the reproducer.
+
+**What the roster reads now.** 32 profiles carry the proof. Still
+boot-only: the IIx and IIcx, the compacts on their System 6 images (a
+System 7 volume for the Plus would cover them), the 128K/512K.
+
+<a id="2026-09-14-ethertalk-on-by-default"></a>
+## 2026-09-14 (tenth) — EtherTalk on by default: the router heard from power-on is joined at the switch, and the « Finder stopped opening control panels » of 2026-09-10 was the gate's own keystroke
+
+The item in `TODO.md` § Services réseau was waiting on two things: the
+zone multicast addresses, and a product decision that a note in
+`q605_dayna_driver_etalon` made uneasy — « with the hub present from
+power-on the guest's Finder stopped opening control panels (measured
+2026-09-10) ». That note was the thing to elucidate before any default.
+
+**What a router heard from power-on does to the guest.** A `hubfirst`
+mode of the driver etalon attaches the hub — RTMP beacon, services, NAT —
+before the first boot instead of after the MacTCP leg, and runs the same
+chain. Screen 8, taken as the guest selects « EtherTalk Alternative »,
+reads **Current Zone: POM68K** at once: the guest joined the router's
+network at the switch, and no dialog was raised — the alert of the other
+mode says « has *now* become available », a router arriving after the
+fact. The run then failed exactly where the 2026-09-10 note had looked:
+at the leg that presses Return to dismiss that alert and re-types
+« network » into a Control Panels window — on a Finder with no alert, the
+Return landed elsewhere and the type-select missed. The Finder had not
+stopped anything; the gate had pressed a key for a dialog that was not
+there. `q605_dayna_hubfirst_etalon` now registers that mode as a gate,
+with the join leg skipping the dismissal it does not need.
+
+**The default, and its switches.** `AtalkHub::Config::ethertalk` is true.
+A machine without a card builds no EtherTalk link, so nothing changes
+there — and every LocalTalk gate runs on a card-less machine, which is
+what the old « calibrated on the SCC » caution actually meant. With a
+card, the node is also a router on the Ethernet segment, and a guest that
+selects EtherTalk gets zone POM68K and the services. Off with AppleTalk
+itself: `daynaport_test`, the NAT-only scenario, showed the seam — its
+« Ethernet does not secretly enable LocalTalk services » failed the
+moment the default flipped, because the hub's node lives on *either*
+wire — so `POM68K_APPLETALK=0` now switches the card's AppleTalk off with
+the stack (`GuiHostServices`), the AppleTalk / Ethernet window has an
+« AppleTalk sur la carte (EtherTalk) » box, and the relaunch line carries
+`--atalk-ethertalk=0|1` (`atalk_hub_test` reads it back).
+
+**Zone multicast, left where it belongs.** The internal router answers
+UseBroadcast and the card's segment is point-to-point, so the list `SET
+MULTICAST ADDRESS` receives is accepted and ignored, as before. It would
+matter under an external router that does not say UseBroadcast — the
+netatalk/TashRouter item, where the sentence now lives.
+
+<a id="2026-09-14-declrom-split"></a>
+## 2026-09-14 (ninth) — `declrom_test` no longer counts « executed » while skipping its three Toby checks: two gates, and the dump found where the lock says it is
+
+Noted on 2026-09-02 as « hors périmètre du jour »: without the Toby
+342-0008-a video card ROM the gate skipped three checks in silence and
+exited 0 — green, counted executed by the census, proving nothing about
+the card. The same class of defect as the lying `asset-none` labels of
+that day.
+
+**Two gates from one binary.** `declrom_test` keeps the synthetic
+declaration ROM alone — format block, directory, the video driver's
+in-block routine offsets, the CRC — and stays `asset-none`.
+`toby_declrom_test` (`declrom_test toby`) carries the three checks on the
+real dump, is declared in `POM68K_OPTIONAL_ASSET_GATES` (asset-optional)
+and prints `SKIP:` without the file, so the census sees a soft-skip
+instead of a pass.
+
+**And the dump was never looked for where it is.** The search list held
+`tests/data/`, `../tests/data/` and `roms/342-0008-a.bin`; `assets.lock`
+pins the ROM at `roms/archive/macroms/Misc/Video cards/Apple Macintosh II
+Video Card/342-0008-a.bin`, which is where it sits on this host. So the
+Toby half had been silently skipped here too, on a host that HAS the
+asset. The lock's path leads the list now; `toby_declrom_test` executes
+on the M4 (file size, format block, the ×4 NuBus lane install) and
+reports the fingerprint.
 
 <a id="2026-09-14-three-small-debts"></a>
 ## 2026-09-14 (eighth) — Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug

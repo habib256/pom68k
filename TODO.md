@@ -78,6 +78,27 @@ preuve. Items : § Services réseau.
 Items cadrés qui ne peuvent avancer sans matériel de référence
 (désassemblage/schéma/spec), un actif absent, ou du matériel physique.
 
+- [ ] **Dumps et images manquants — l'état exact, hôte par hôte.** Ce qui
+  manque se dit ici, pas dans un soft-skip. Sur le M4 (2026-09-15) : les
+  **42 identités d'`assets.lock` sont toutes présentes** — aucune ROM
+  machine, aucun micrologiciel MCU (Cuda, Egret, PIC), aucune ROM de
+  déclaration ne manque ; la carte Toby `342-0008-a.bin` est là sous
+  `roms/archive/`. Manquent des **images**, pas des dumps :
+  `disks35/System 1.1.dsk` et `disks35/System 2.0.dsk` (les seules
+  disquettes 400 K, présentes sur l'hôte x86-64 seulement — `mac128k_boot_etalon`
+  et `mac512k_boot_etalon` se sautent ici, item « Décider si les deux images
+  400 K s'épinglent » ci-dessous), et les volumes `hdv/lc3-boot.vhd`,
+  `hdv/lcii-boot.vhd`, `hdv/iisi-boot.vhd`, `hdv/lc-boot.vhd`,
+  `hdv/classic2-boot.vhd`, `hdv/cclassic-boot.vhd`, `hdv/mactv-boot.vhd`,
+  `hdv/iici-boot.vhd`, premiers choix de leurs etalons, que les replis
+  (`GISTPERSO`, `System 7.5 HD.dsk`, `boot.vhd`) remplacent sans le dire
+  autrement que par la ligne `ASSET disk` du gate. Pour un **utilisateur du
+  paquet**, deux dumps changent ce qu'il voit : sans `342-0008-a.bin` les
+  Mac II, IIx et IIcx tournent sur la ROM de déclaration synthétique —
+  System 6 et 7.0 oui, System 7.5.5 figé à « Welcome to Macintosh » (item
+  § Fidélité) ; sans les micrologiciels MCU, l'ADB passe en HLE (strict LLE
+  refuse). `README.md` § ROM porte la liste des dumps optionnels ; ce qui n'y
+  est pas encore, c'est la conséquence machine par machine d'un dump absent.
 - [ ] **Créer `duo230_sleep_etalon`.** Sommeil clapet, arrêt CPU, flush disque,
   réveil complet. Milestone 6 de `docs/DUO_BRINGUP.md` : fermer le clapet
   gèle le CPU mais le System ne lance aucune procédure de sommeil (aucune
@@ -123,6 +144,21 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 
+- [ ] **System 7.5.5 sur Mac II/IIx/IIcx demande le vrai dump Toby — l'acter
+  dans le produit.** La ROM de déclaration synthétique (`DeclRom::
+  buildSynthetic`) est un repli quand `342-0008-a.bin` manque, pas un
+  micrologiciel à inventer : POM68K émule des machines qui ont existé. Depuis
+  le 2026-09-15 elle décrit la carte émulée telle qu'elle est (origine $20,
+  128 octets par ligne, `MinorBaseOS` 0) et ses Control/Status répondent
+  « non supporté » ; System 6 et 7.0 bootent dessus. System 7.5.5 non : il
+  gare une tâche VBL de slot et tourne sur son compteur (ROM Mac II
+  $40806C36), et un gestionnaire d'interruption calqué sur le vrai pilote
+  (`SIntInstall`, acquittement, `JVBLTask`) a tourné 132 fois sans le
+  libérer — expérience close, non retenue. Reste à le dire à l'utilisateur
+  au bon endroit : le message console « no Toby decl ROM — using synthetic »
+  existe ; un System 7.5 figé à « Welcome to Macintosh » sur ces cartes
+  mérite une ligne dans `README.md` § ROM et, si la GUI sait que le dump
+  manque, un mot dans la fenêtre machine.
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** Couvrir IRQ,
   VBL, VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. Inclut la question ouverte du Classic II : le bloc derrière
@@ -244,10 +280,6 @@ consommateur observé.
   l'épinglage de la date et les chiffres 171,67 s / 165,17 s sont antérieurs au
   correctif du reliquat FCS. Produire d'abord une référence x86-64
   date-épinglée.
-- [ ] **Activer EtherTalk par défaut.** Le bridge porte une session AFP réelle
-  et un transfert mesuré à 18,6 Kio/s de temps invité contre 8,6 sur le SCC ;
-  reste à joindre les adresses multicast de zone et à décider du défaut
-  produit.
 - [ ] **Compléter MacIP : window scaling TCP.** Le réassemblage IP est fait le
   2026-09-12 : un premier fragment passait le test d'offset et était livré
   **tronqué** à la socket hôte, la queue étant jetée — le gate le prouve rouge
@@ -263,7 +295,12 @@ consommateur observé.
   sessions réelles du 2026-09-09 et du 2026-09-11 passent par le serveur
   **in-process** (LocalTalk puis EtherTalk sur la carte) : ce qui n'a jamais
   tourné, c'est netatalk/TashRouter. Lancer l'un des deux, monter « Input »
-  depuis le Chooser et vérifier un transfert.
+  depuis le Chooser et vérifier un transfert. C'est aussi là que les adresses
+  multicast de zone (`09:00:07:00:00:xx`) se poseraient : le routeur interne
+  répond UseBroadcast et le segment de la carte est point à point, si bien
+  que la liste que `SET MULTICAST ADDRESS` reçoit est acceptée et ignorée
+  (`DaynaPort.h`) ; un routeur externe qui n'annonce pas UseBroadcast la
+  rendrait nécessaire.
 - [ ] **Tester l'interop Mini vMac LToUDP.** Utiliser le même groupe multicast
   et vérifier les deux directions.
 - [ ] **Étendre le sous-ensemble AFP — seulement sur consommateur observé.**
@@ -289,12 +326,14 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 Section ouverte le 2026-09-12 : douze de ces items étaient du travail ouvert
 consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
 
-- [ ] **Donner une preuve au-delà du boot aux 28 profils qui n'en ont pas.**
-  37 profils sur 37 ont un etalon Finder ; **9 sur 37** seulement ont un gate
-  *après* la signature. `docs/68K_FAMILY_SCOPE.md` § 5 appelle cela le plus
-  gros écart du projet, et son § 6 le classe premier en retour sur effort —
-  devant toute nouvelle machine. Le compromis est explicite : ajouter un 38e
-  profil coûte moins cher que durcir les 37 existants.
+- [ ] **Donner une preuve au-delà du boot aux profils qui n'en ont toujours
+  pas.** Depuis le 2026-09-15, 36 profils portent `<profil>_agent_boot_etalon`
+  (`tests/AgentBootProbe.h`, `cmake/Pom68kAgentGates.cmake`) : le Finder lance
+  l'agent installé par l'hôte, l'agent monte un disque attaché à chaud —
+  Process Manager, SCSI Manager et File Manager après la signature ; les
+  compacts et le IIx/IIcx y compris, sur le volume System 7.0. Reste au boot
+  seul le 128K/512K (System 1.1/2.0, sans Startup Items).
+  `docs/68K_FAMILY_SCOPE.md` § 5.
 - [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.** Le
   GUI n'a toujours aucun gate : `--version` passe, l'arbre compile, `-L unit`
   et `-L smoke` sont verts, et rien de tout cela n'ouvre une fenêtre. Une passe
@@ -302,10 +341,6 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
   floppy/CD, save/restore) reste la validation due — c'est le même reliquat que
   la passe save-state GUI, jamais fermée, que les trois gates de relance du
   2026-09-08 ne couvrent pas (ils sont hors GUI).
-- [ ] **Réparer `declrom_test`, qui compte « exécuté » en perdant trois
-  assertions.** Sans sa ROM il en saute trois et sort quand même 0 : même
-  classe de défaut que les étiquettes `asset-none` menteuses, et invisible au
-  census. Consigné le 2026-09-02 comme « hors périmètre du jour ».
 - [ ] **Trancher la cellule `finder_boot_matrix` macii × 7.5.5**, enregistrée
   UNSTABLE le 2026-09-02 (Stickies au premier plan).
 - [ ] **Décider le sort d'`assets.lock` mono-hôte, et tenir la jambe AArch64.**

@@ -10,6 +10,7 @@
 // docs/LC520_BRINGUP.md). Comes up 8-bpp color like the LC 520/550.
 // Soft-skips without the ROM or a bootable hdv/ image.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "FinderSignature.h"
 #include "SonoraMemory.h"
@@ -77,6 +78,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -143,8 +145,9 @@ int main() {
 
     bool ok = W == 512 && H == 384 && mem.videoDepth() == 3
            && menuBar < 0.30 && menuRun >= findersig::menuBarRunFloor(W)
-           && app == "Finder" && mem.scsi().commands > 50;
+           && agentboot::finderOrAgent(app) && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASSED — Macintosh Color Classic II booted to the Finder"
                            : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

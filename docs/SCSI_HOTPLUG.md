@@ -201,6 +201,7 @@ fixture. The pieces:
 | `ScsiDisk::hostWrite` — the guest WRITE path without its counters: write log and write-back apply | `src/ScsiDisk.cpp` | — |
 | The runner hook after the boot attach, on the twelve platforms; `POM68K_NO_AGENT_AUTOSTART=1` opts out; every outcome printed | `src/GuiAgentAutostart.h` | — (the GUI has no gate) |
 | Cold launch → Finder → the agent polls with no input → « Monter » works | — | `scsi_agent_autostart_etalon` (Quadra 605, Mac OS 8.1 US, 53C96) and `lc520_agent_autostart_etalon` (LC 520, System 7.5.5 French, NCR 5380, Cuda) — first poll one frame after the Finder on both |
+| The same as a beyond-boot proof on every boot etalon: `POM68K_TEST_AGENT=1` installs, then requires the first poll and a live-attached blank mounted by name | `tests/AgentBootProbe.h` | `<profile>_agent_boot_etalon`, 38 profiles (`cmake/Pom68kAgentGates.cmake`; `docs/68K_FAMILY_SCOPE.md` § 5) |
 
 Rules and limits:
 

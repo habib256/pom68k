@@ -345,7 +345,12 @@ long countLiteral(const std::string& path, const char* needle) {
 
 }  // namespace
 
-int main() {
+// `hubfirst`: the hub — router beacon, services, NAT — is attached before
+// the first boot, as a product default would have it, instead of after the
+// MacTCP configuration. What the guest does with a router it hears from
+// power-on is the question behind « EtherTalk on by default ».
+int main(int argc, char** argv) {
+    const bool hubFirst = argc > 1 && std::string(argv[1]) == "hubfirst";
     const std::string romPath = testasset::findAny({
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",
         "roms/mame/macqd605/ff7439ee.bin",
@@ -429,6 +434,42 @@ int main() {
                    mactcpBound && icmpOut && received && unplugged && !halted;
         }
     } r;
+
+    AtalkHub hub;
+    auto attachHub = [&]() {
+        // The card's uplink, attached the way the GUI attaches it live. The
+        // default mode attaches it here, after the MacTCP configuration, so
+        // the guest hears the router AFTER it went on EtherTalk and raises
+        // the « has now become available » alert the next leg dismisses;
+        // `hubfirst` attaches it before the first boot, the product default
+        // since 2026-09-14, and the guest joins at the switch instead. (The
+        // 2026-09-10 note that « the Finder stopped opening control
+        // panels » with the hub present from power-on was this gate's own
+        // alert-dismissing keystroke landing on a Finder with no alert.)
+        hub.setService("afp", false);
+        hub.setService("pap", false);
+        hub.setService("macip", true);
+        hub.setService("stack", false);          // no LocalTalk peer
+        // AppleTalk on the CARD instead: AARP, extended RTMP and DDP over
+        // 802.3/SNAP (EtherTalkLink.h). The guest is already running EtherTalk
+        // in the startup range; the restart below is where it hears a router.
+        hub.setService("ethertalk", true);
+        hub.setService("afp", true);
+        // The folder's own NAME becomes the AFP volume name (AtalkHub::
+        // folderName), so the guest mounts a volume called "Echange".
+        hub.setDefaultShareDir(shareDir.string());
+        const int byteCycles = int(mem.cpuHz() / 28800);
+        hub.attach(mem, int64_t(byteCycles) * 28800, nullptr);
+        gAfterFrame = [&] { hub.tick(cpu.machineClock()); };
+        {   // Sniff in FRONT of the link EtherLink installed, never instead of it.
+            auto uplink = mem.daynaPort().sendFrame;
+            mem.daynaPort().sendFrame = [&sniffer, uplink](const uint8_t* d, size_t n) {
+                sniffer(d, n);
+                if (uplink) uplink(d, n);
+            };
+        }
+    };
+    if (hubFirst) attachHub();
 
     // ── boot ─────────────────────────────────────────────────────────────
     r.finder = bootTo755Finder(14000);
@@ -557,57 +598,42 @@ int main() {
     dump("q605_dayna_11_address.ppm");
     command(adbFor('w'), 600);               // close: MacTCP writes its config
 
-    // The card's uplink, attached the way the GUI attaches it live. With
-    // the hub present from power-on the guest's Finder stopped opening
-    // control panels (measured 2026-09-10), and every leg above needs no
-    // network at all.
-    AtalkHub hub;
-    hub.setService("afp", false);
-    hub.setService("pap", false);
-    hub.setService("macip", true);
-    hub.setService("stack", false);          // no LocalTalk peer
-    // AppleTalk on the CARD instead: AARP, extended RTMP and DDP over
-    // 802.3/SNAP (EtherTalkLink.h). The guest is already running EtherTalk
-    // in the startup range; the restart below is where it hears a router.
-    hub.setService("ethertalk", true);
-    hub.setService("afp", true);
-    // The folder's own NAME becomes the AFP volume name (AtalkHub::
-    // folderName), so the guest mounts a volume called "Echange".
-    hub.setDefaultShareDir(shareDir.string());
-    const int byteCycles = int(mem.cpuHz() / 28800);
-    hub.attach(mem, int64_t(byteCycles) * 28800, nullptr);
-    gAfterFrame = [&] { hub.tick(cpu.machineClock()); };
-    {   // Sniff in FRONT of the link EtherLink installed, never instead of it.
-        auto uplink = mem.daynaPort().sendFrame;
-        mem.daynaPort().sendFrame = [&sniffer, uplink](const uint8_t* d, size_t n) {
-            sniffer(d, n);
-            if (uplink) uplink(d, n);
-        };
-    }
+    if (!hubFirst) attachHub();
+
     // ── the guest joins the network the bridge advertises ────────────────
     // The RTMP beacon reaches a Macintosh that came up with no router, and
     // it says so itself: "Access to your AppleTalk internet has now become
     // available. To use the internet, please open the Network icon in the
     // Control Panels Folder, then click the selected AppleTalk connection
     // icon." That instruction IS the gesture below — no restart needed.
-    runFrames(1800);
-    dump("q605_dayna_13_internet.ppm");
-    keyHold(0x24, 8);                        // OK
-    runFrames(300);
-    if (!openWindow("network", "Network", 1800)) {
-        std::fprintf(stderr, "FAIL: the Network control panel did not reopen\n");
-        return 1;
+    if (!hubFirst) {
+        runFrames(1800);
+        dump("q605_dayna_13_internet.ppm");
+        keyHold(0x24, 8);                    // OK
+        runFrames(300);
+        if (!openWindow("network", "Network", 1800)) {
+            std::fprintf(stderr, "FAIL: the Network control panel did not reopen\n");
+            return 1;
+        }
+        click(209, 110, 300);                // EtherTalk Alternative, again
+        click(322, 190, 900);                // the change-connection OK
+        runFrames(3600);
+        dump("q605_dayna_14_joined.ppm");
+    } else {
+        // Heard from power-on, the router was there when EtherTalk was
+        // selected above: the panel read « Current Zone: POM68K » at once
+        // and no dialog was raised (measured 2026-09-14) — the alert of the
+        // other mode is « has NOW become available », a router arriving
+        // after the fact. Nothing to dismiss, nothing to reopen.
+        runFrames(1800);
+        dump("q605_dayna_14_joined.ppm");
     }
-    click(209, 110, 300);                    // EtherTalk Alternative, again
-    click(322, 190, 900);                    // the change-connection OK
-    runFrames(3600);
-    dump("q605_dayna_14_joined.ppm");
     r.joinedNetwork = sniffer.ddpFromRouterNet > 0;
     std::printf("ethertalk: DDP from the startup range %ld, from the router's "
                 "network %ld, AARP %ld — the node %s\n",
                 sniffer.ddpFromStartupRange, sniffer.ddpFromRouterNet,
                 sniffer.aarp, r.joinedNetwork ? "JOINED" : "did NOT join");
-    command(adbFor('w'), 300);               // close the Network panel
+    if (!hubFirst) command(adbFor('w'), 300);  // close the Network panel
 
     // ── and the services on it ───────────────────────────────────────────
     // The Chooser is the guest's own name lookup: selecting AppleShare
@@ -711,6 +737,7 @@ int main() {
         std::fprintf(stderr, "FAIL: no Finder after the MacTCP restart\n");
         return 1;
     }
+    dump("q605_dayna_24_hubboot.ppm");      // a boot with the router already there
     std::printf("mactcp: restart served %ld SCSI commands\n",
                 mem.scsi().commands - before);
 

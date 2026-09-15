@@ -8,6 +8,7 @@
 // Same Cuda 341S0060 firmware LLE and 8-bpp color Finder signature as
 // lc520_boot_etalon. Soft-skips without the ROM or a bootable hdv/ image.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
@@ -83,6 +84,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -128,5 +130,6 @@ int main() {
            && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASSED — Macintosh LC 550 booted to the Finder"
                            : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

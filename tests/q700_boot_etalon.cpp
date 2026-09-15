@@ -10,6 +10,7 @@
 // q605/centris signature). Soft-skips without the ROM or a bootable image.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "Q700Memory.h"
 #include "Q700Cpu.h"
@@ -163,6 +164,7 @@ int main(int argc, char** argv) {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     // On the Eclipse the Egret holds the 68040 in reset until its firmware
     // releases it — advance the MCU alone until it does. Under the firmware
     // LLE that release is the 68HC05's own PC3 edge, so a machine still held
@@ -390,6 +392,7 @@ int main(int argc, char** argv) {
         }
     }
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,
                 ok ? "booted to the Finder" : "did not reach the Finder");
     return ok ? 0 : 1;

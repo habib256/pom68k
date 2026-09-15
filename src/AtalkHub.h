@@ -49,10 +49,17 @@ public:
 
     struct Config {
         bool stack = true;               // the node/router itself
-        // The node ALSO on the Ethernet segment a DaynaPort provides.
-        // Off by default: it changes which wire AppleTalk lives on, and
-        // every LocalTalk gate is calibrated on the SCC (EtherTalkLink.h).
-        bool ethertalk = false;
+        // The node ALSO on the Ethernet segment a DaynaPort provides
+        // (EtherTalkLink.h). ON by default since 2026-09-14: a machine
+        // without a card is unchanged (no link is built), and a guest that
+        // hears the router from power-on joins its network at the moment
+        // it selects EtherTalk — « Current Zone: POM68K », no dialog —
+        // where one that hears it later gets the « internet has now become
+        // available » alert first (q605_dayna_driver_etalon, both modes).
+        // It was off while every LocalTalk gate was being calibrated on the
+        // SCC; none of them carries a card. The window and the relaunch
+        // line (`--atalk-ethertalk=`) switch it.
+        bool ethertalk = true;
         // The DaynaPort's CABLE. Plugged by default, and unplugging it is
         // the only honest host-side switch this card has: the target stays
         // on the SCSI bus (`present()` stays true, the ROM's boot-time probe
@@ -388,7 +395,7 @@ private:
     // cfg_.ethertalk as the machine thread may read it without mu_: the
     // card's TX demux above. Kept equal to cfg_.ethertalk by setService()
     // and attach(); the closed race of 2026-09-14 (TODO § Services réseau).
-    std::atomic<bool> ethertalkLive_{false};
+    std::atomic<bool> ethertalkLive_{true};
     AtalkStack stack_;
     AfpServer afp_;
     PapServer pap_;
