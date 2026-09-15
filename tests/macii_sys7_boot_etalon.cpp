@@ -1,6 +1,7 @@
 // POM68K — Mac II System 7 → Finder gate (EtherTalk alert dismiss path).
 // Soft-skips without Mac II ROM + System 7.0/7.1 HD .dsk.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
@@ -48,6 +49,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
 
     // Sys7 Welcome + two AppleTalk CautionAlerts need more frames than Sys6.
     // The alerts are dismissed the way a user would: the TEST injects real
@@ -85,6 +87,13 @@ int main() {
     TobyVideo* tv = mem.toby();
     std::vector<uint32_t> fb;
     tv->decode(fb);
+    if (const char* d = getenv("POM68K_DUMP")) {   // the screen the verdict reads
+        if (std::FILE* f = std::fopen(d, "wb")) {
+            std::fprintf(f, "P6\n%d %d\n255\n", tv->hres(), tv->vres());
+            for (uint32_t p : fb) { unsigned char c[3] = {(unsigned char)(p >> 16), (unsigned char)(p >> 8), (unsigned char)p}; std::fwrite(c, 1, 3, f); }
+            std::fclose(f);
+        }
+    }
     const int W = tv->hres();
     const int H = tv->vres();
     auto blackRatio = [&](int x0, int x1, int y0, int y1) {
@@ -97,13 +106,16 @@ int main() {
     double menuBar = blackRatio(0, W, 2, 20);
     double desktop = blackRatio(W / 2, W, 40, H - 40);
 
-    std::printf("menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
-                menuBar, desktop, mem.scsi().commands);
+    std::printf("menu bar black %.2f, desktop %.2f, SCSI commands %ld — Toby mode $%02X "
+                "%dx%d, VRAM writes %ld\n",
+                menuBar, desktop, mem.scsi().commands, tv->mode(), tv->hres(), tv->vres(),
+                tv->vramWrites);
 
     // Stall at EtherTalk CautionAlert: SCSI≈274, menu often dark. Finder
     // after dismiss: SCSI>500, menu light, desk mid-grey.
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
            && mem.scsi().commands > 500;
     std::printf("%s\n", ok ? "PASSED — Sys7 Finder" : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

@@ -21,6 +21,7 @@
 //
 // Soft-skips without assets.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
@@ -166,6 +167,7 @@ int main() {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
+    if (!agentboot::install(mem)) return 1;
 
     // Confirm the machine really identifies as the LC 575 ($A55A222E).
     uint32_t id = peek32(mem, 0x5FFFFFFC);
@@ -222,5 +224,6 @@ int main() {
     bool ok = geometry && booted && isFinder(screen) &&
               mem.scsi().commands > 4000;
     std::printf("%s\n", ok ? "PASSED — LC 575 Finder in 256 colors" : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrameCycles, ok);
     return ok ? 0 : 1;
 }

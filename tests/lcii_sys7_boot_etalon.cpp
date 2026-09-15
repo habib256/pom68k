@@ -1,6 +1,7 @@
 // POM68K — LC II System 7.1 → Finder gate (SPConfig AppleTalk-inactive).
 // Soft-skips without LC II ROM + System 7.1 HD .dsk.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "V8Video.h"
@@ -58,6 +59,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
     while (mem.cpuHeld()) mem.tick(1000);
 
@@ -90,5 +92,6 @@ int main() {
     // Stall at AppleTalk alert: SCSI≈277, menu≈0.50. Finder: SCSI>500.
     bool ok = menu < 0.30 && desk > 0.35 && desk < 0.65 && mem.scsi().commands > 500;
     std::printf("%s\n", ok ? "PASSED — Sys7 Finder" : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

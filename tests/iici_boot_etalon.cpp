@@ -18,6 +18,7 @@
 // - POM68K_FRAMES=<n> — override the 16 000-frame budget.
 // - POM68K_DUMP=1     — write iici_screen.ppm at the end.
 
+#include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "RbvMemory.h"
 #include "RbvVideo.h"
@@ -86,6 +87,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -225,5 +227,6 @@ int main() {
     bool ok = menuBar < 0.30 && desktopAlive && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASSED — Macintosh IIci booted to the Finder"
                            : "FAILED");
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
 }

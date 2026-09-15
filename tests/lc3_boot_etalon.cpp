@@ -9,6 +9,7 @@
 // lc_boot_etalon. Soft-skips without the ROM or a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
@@ -78,6 +79,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -112,6 +114,7 @@ int main() {
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
            && mem.scsi().commands > 50;
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — Macintosh LC III booted to the Finder"
                            : "FAILED");
     return ok ? 0 : 1;

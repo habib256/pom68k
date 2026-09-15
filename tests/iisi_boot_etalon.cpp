@@ -18,6 +18,7 @@
 // - POM68K_DUMP=1     — write iisi_screen.ppm at the end.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "RbvMemory.h"
 #include "RbvVideo.h"
@@ -87,6 +88,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
     while (mem.cpuHeld()) mem.tick(1000);
@@ -226,6 +228,7 @@ int main() {
 
     bool ok = menuBar < 0.30 && desktopAlive && mem.scsi().commands > 50;
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — Macintosh IIsi booted to the Finder"
                            : "FAILED");
     return ok ? 0 : 1;

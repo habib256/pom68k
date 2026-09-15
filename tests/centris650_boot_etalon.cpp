@@ -14,6 +14,7 @@
 #include "AssetFingerprint.h"
 #include "CentrisMemory.h"
 #include "CentrisCpu.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "JitTestConfig.h"
 
@@ -148,6 +149,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
 
     const int64_t kFrame = cpuHz / 60;
     long limit = 16000;
@@ -282,6 +284,7 @@ int main() {
                      : q610 ? "Quadra 610"
                      : c610 ? "Centris 610" : "Centris 650";
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,
                 ok ? "booted to the Finder" : "did not reach the Finder");
     return ok ? 0 : 1;

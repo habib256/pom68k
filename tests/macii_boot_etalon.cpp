@@ -2,6 +2,7 @@
 // Soft-skips without ROM + bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "FinderSignature.h"
 #include "MacIIMemory.h"
@@ -24,7 +25,8 @@ int main() {
     std::string rom = find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
     if (rom.empty()) rom = find("roms/256KB ROMs/1987-03 - 97851DB6 - MacII (800k v1).ROM");
     // Prefer System 6 (HD20SC) — original Mac II target; System 7.5 next.
-    std::string img = find("hdv/HD20SC.vhd");
+    std::string img = testasset::overrideImage();   // POM68K_BEYOND_IMG, the agent variant's
+    if (img.empty()) img = find("hdv/HD20SC.vhd");
     if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
@@ -48,6 +50,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
 
     const int64_t kFrame = 800 * 525;
     const long kFrames = 20000;
@@ -91,6 +94,7 @@ int main() {
            && menuRun > findersig::menuBarRunFloor(W)
            && app == "Finder";
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }

@@ -9,6 +9,7 @@
 // without the real slot resource the ROM never reaches StartBoot.
 
 #include "AssetFingerprint.h"
+#include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "IIfxMemory.h"
 #include "IIfxCpu.h"
@@ -60,6 +61,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+    if (!agentboot::install(mem)) return 1;
 
     // One 60.15 Hz frame at 40 MHz; metrics polled every 60 frames with
     // an early exit once the Finder shape holds.
@@ -123,6 +125,7 @@ int main() {
     std::printf("IIfx: f=%ld menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
                 f, menuBar, desktop, mem.scsi().commands);
     ok = daynaboot::check(mem, ok);
+    ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }
