@@ -47,6 +47,7 @@ struct NetworkConfig {
     std::optional<std::string> spoolDirectory;// --atalk-spool=
     std::optional<std::string> gateway;       // --atalk-gateway=a.b.c.d/n
     std::optional<std::string> dns;           // --atalk-dns=a.b.c.d
+    std::optional<std::string> etherTalk;     // --atalk-ethertalk=0|1 (the node on the card)
 };
 
 enum class SerialTransportKind {

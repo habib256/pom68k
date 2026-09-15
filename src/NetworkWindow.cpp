@@ -241,6 +241,12 @@ void drawEthernetSection(GuiNetworkState& state,
         state.atalk.setService("ethernet", cable);
     ImGui::TextDisabled(
         "Débranché, la carte reste sur le bus et ne porte plus rien.");
+    bool etalk = snapshot.cfg.ethertalk;
+    if (ImGui::Checkbox("AppleTalk sur la carte (EtherTalk)", &etalk))
+        state.atalk.setService("ethertalk", etalk);
+    ImGui::TextDisabled(
+        "Le noeud POM68K est aussi routeur sur l'Ethernet : l'invité qui "
+        "choisit EtherTalk rejoint sa zone.");
     ImGui::Text("Invité → réseau : %ld trames (%ld o)   ·   réseau → invité : "
                 "%ld trames (%ld o)",
                 card.framesFromGuest, card.bytesFromGuest,

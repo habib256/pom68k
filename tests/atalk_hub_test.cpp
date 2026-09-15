@@ -120,17 +120,18 @@ int main() {
         net.spoolDirectory = "/srv/spool";
         net.gateway = "10.1.2.1/16";
         net.dns = "10.1.2.53";
+        net.etherTalk = "0";
         const std::vector<std::string> line = pom68k::app::atalkArguments(
             {"--atalk-server=Old", "rom.bin", "disk.dsk"}, net);
-        CHECK(line.size() == 9 && line[7] == "rom.bin" && line[8] == "disk.dsk",
-              "seven --atalk-* arguments, one per key, ahead of the media, the old one gone");
+        CHECK(line.size() == 10 && line[8] == "rom.bin" && line[9] == "disk.dsk",
+              "eight --atalk-* arguments, one per key, ahead of the media, the old one gone");
         const RuntimeConfig back = parse(line);
         const pom68k::app::NetworkConfig& n = back.network();
         CHECK(n.shareDirectory == "/srv/share" && n.serverName == "Bureau" &&
               n.volumeName == std::string() && n.printerName == "Laser" &&
               n.spoolDirectory == "/srv/spool" && n.gateway == "10.1.2.1/16" &&
-              n.dns == "10.1.2.53",
-              "…and read back field for field, an empty volume included");
+              n.dns == "10.1.2.53" && n.etherTalk == "0",
+              "…and read back field for field, an empty volume and the EtherTalk switch included");
         CHECK(back.romPath() == "rom.bin", "the ROM and media arguments are untouched");
         const RuntimeConfig none = parse({"rom.bin"});
         CHECK(!none.network().serverName && none.network().shareDirectory.empty(),
