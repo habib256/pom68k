@@ -329,6 +329,28 @@ Re-derived from the CMake gate modules on 2026-08-12:
   carry an explicit `interp_*_boot_etalon` interpreter reference (q605,
   centris650, q630, q700).
 
+**2026-09-14 — the agent as a beyond-boot proof, on the whole roster.**
+The guest agent « POM68K Disques » is written into the boot volume's
+Startup Items by the host (`docs/SCSI_HOTPLUG.md` § 8), and
+`tests/AgentBootProbe.h` makes any boot etalon require, on top of its own
+Finder signature, that the Finder launched it (its first mailbox poll) and
+that it mounts a blank disk attached live, by name — the Process Manager,
+the SCSI Manager and the File Manager past the signature, with one header
+and no per-machine code. `cmake/Pom68kAgentGates.cmake` registers
+`<profile>_agent_boot_etalon` on **38 profiles**: every 68030 and 68040
+board's own image, the Mac II on its System 7.0 volume (`macii_sys7`),
+the SE/30, the IIx/IIcx and the four compacts — Plus, SE, SE FDHD,
+Classic — on the same (2026-09-15: the 68000 runs the agent too), the
+Duo. Three lessons from the first run: a
+System 7.5 volume can hold a boot-time alert that keeps the Finder from
+launching anything (the probe presses Return after ten idle seconds); on
+the fast boards the agent is already in front when the verdict reads
+`CurApName` (`finderOrAgent`); and the IIx/IIcx on a System 7.0 image
+draw no desktop on the *synthetic* Toby declaration ROM where the real
+342-0008-a draws one — their variant needs the dump and says so
+(`TODO.md` § Fidélité holds what the synthetic driver lacks).
+Still boot-only: the 128K/512K.
+
 Adding a 40th machine is cheaper than hardening the 39 that exist. Read the
 roadmap below against that trade — and against
 `TODO.md` § Preuve, outillage et dettes de mesure, whose first item is that

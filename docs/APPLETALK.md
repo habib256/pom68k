@@ -227,7 +227,7 @@ wanted. Four traits explain most of the surprises:
 | Session | **ASP**, **PAP**, **ZIP**; **ADSP** (not implemented) | `AfpServer` / `PapServer` / `AtalkStack` | netatalk / guest ROM |
 | Transport | **ATP**, **NBP**, **AEP**, **RTMP** | `AtalkStack` | netatalk / TashRouter |
 | Network | **DDP** | `AtalkStack` | TashRouter |
-| Data link | **LLAP**; **ELAP+AARP** (opt-in, over the DaynaPort — §6.4bis); TLAP (n/a) | **`Scc8530`** + `AtalkStack` node, `EtherTalkLink` | `Scc8530` |
+| Data link | **LLAP**; **ELAP+AARP** (over the DaynaPort, on by default — §6.4bis); TLAP (n/a) | **`Scc8530`** + `AtalkStack` node, `EtherTalkLink` | `Scc8530` |
 | Physical | LocalTalk RS-422 230.4 kbps | **`Scc8530` SDLC** | + `LtoUdp` cable |
 
 Two numbering spaces trip everyone up; keep them separate.
@@ -998,8 +998,11 @@ carries AARP and DDP over 802.3/SNAP and beacons an extended RTMP, so
 everything in §§1-5 above can travel on the card instead of the SCC. The
 guest joins the advertised network by itself, reads back the zone name in
 its Network control panel, and its Chooser lists this node's AppleShare
-server with LocalTalk switched off. It is opt-in (`AtalkHub`'s `ethertalk`
-service, off by default). The Ethernet uplink works with
+server with LocalTalk switched off. It is on by default since 2026-09-14
+(`AtalkHub`'s `ethertalk` service; off with AppleTalk itself, through the
+window or `--atalk-ethertalk=0`), and a guest that hears the router from
+power-on joins at the moment it selects EtherTalk, with no dialog
+(`q605_dayna_hubfirst_etalon`). The Ethernet uplink works with
 `POM68K_APPLETALK=0`: attachment, scheduling and NAT activation are independent
 of the LocalTalk services. Disabling MacIP preserves Ethernet leases and
 in-flight UDP/TCP flows; removing the Ethernet sink retires its own flows.

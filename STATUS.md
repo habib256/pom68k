@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 294 gates
+## Union across hosts — 334 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 161 |
+| `etalon` | 200 |
 | `etalon-core` | 12 |
 | `gui` | 1 |
 | `jit` | 44 |
 | `jit-fast` | 8 |
-| `m030` | 69 |
-| `m040` | 65 |
+| `m030` | 85 |
+| `m040` | 79 |
 | `smoke` | 9 |
-| `unit` | 132 |
+| `unit` | 133 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -37,51 +37,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-289 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+329 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 102 |
-| assets | optional | 15 |
-| assets | required | 172 |
+| assets | optional | 16 |
+| assets | required | 211 |
 | host | a64 | 4 |
-| host | any | 279 |
+| host | any | 319 |
 | host | native | 6 |
-| scope | component | 104 |
+| scope | component | 105 |
 | scope | engine | 21 |
-| scope | profile | 161 |
+| scope | profile | 200 |
 | scope | repository | 3 |
 | tier | daily | 102 |
-| tier | full | 175 |
+| tier | full | 215 |
 | tier | platform | 12 |
-| slots_src | assumed | 173 |
+| slots_src | assumed | 213 |
 | slots_src | measured | 116 |
 
-Scheduling cost if every gate ran at once: 516 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 556 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-290 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+330 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 101 |
-| assets | optional | 15 |
-| assets | required | 174 |
-| host | any | 279 |
+| assets | optional | 16 |
+| assets | required | 213 |
+| host | any | 319 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 104 |
+| scope | component | 105 |
 | scope | engine | 22 |
-| scope | profile | 161 |
+| scope | profile | 200 |
 | scope | repository | 3 |
 | tier | daily | 101 |
-| tier | full | 177 |
+| tier | full | 217 |
 | tier | platform | 12 |
-| slots_src | assumed | 177 |
+| slots_src | assumed | 217 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 649 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 689 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -175,3 +175,6 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 13 18:29 +04 | aarch64 | default | 96 | 96 | 0 | 0 | asset-none on the M4 (aarch64), editable network configuration + atalk_hub_test |
 | Sep 14 18:54 +04 | aarch64 | default | 18 | 16 | 2 | 0 | the sixteen DaynaPort gates on the M4 (aarch64): daynaport_test, both controller tests, q605_dayna_driver_etalon and the twelve dayna_boot etalons all EXECUTED (16/18; the two 64 K boot etalons soft-skip here for want of disks35/System 1.1.dsk) |
 | Sep 14 19:27 +04 | aarch64 | default | 1 | 1 | 0 | 0 | q605_dayna_driver_etalon with its new cable phase on the M4: 231 s, EXECUTED (cable out: 8 guest ICMP requests, 0 frames back; in: 6 frames back) |
+| Sep 14 21:48 +04 | aarch64 | default | 32 | 32 | 0 | 0 | the 32 <profile>_agent_boot_etalon variants on the M4 (aarch64): the agent installed by the host, launched by the Finder, mounting a live disk — every 68030/68040 board, the Mac II and SE/30 on System 7.0, the Duo |
+| Sep 15 08:08 +04 | aarch64 | default | 4 | 4 | 0 | 0 | the four compact agent variants (Plus, SE, SE FDHD, Classic) on System 7.0 HD.dsk, M4: all EXECUTED, the 68000 Plus polls and mounts |
+| Sep 15 08:14 +04 | aarch64 | default | 2 | 2 | 0 | 0 | iix/iicx base boot gates after the real Toby ROM install, M4 |

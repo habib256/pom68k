@@ -243,7 +243,7 @@ set(POM68K_OPTIONAL_ASSET_GATES
     sst68000 sst68030 sst68040
     cuda_lle_test egret_lle_test m68hc05_test cuda_restart_test
     scsi_disk_test ncr5380_test ncr53c96_test scsi_pdma_test
-    scsi_hfs_facade_test sound_test
+    scsi_hfs_facade_test sound_test toby_declrom_test
     savestate_030_test savestate_68k_test)
 # ── What a gate COSTS, so `ctest -j` can schedule the suite ──────────
 # Same shape as performance_budgets.tsv: a versioned, per-host, reviewed
