@@ -21,6 +21,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
+#include <bit>
 #include <vector>
 
 static std::string find(const char* rel) {
@@ -125,7 +126,7 @@ int main() {
         for (int i = 0; i < 12; i++) {
             uint8_t diff = uint8_t(ram[0x174 + i] ^ before[i]);
             while (diff) {
-                const int b = __builtin_ctz(diff);
+                const int b = std::countr_zero(diff);   // <bit>: MSVC has no __builtin_ctz
                 diff = uint8_t(diff & (diff - 1));
                 bits.push_back(i * 8 + b);
             }

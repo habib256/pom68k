@@ -6,6 +6,20 @@
 #include "AtomicReplace.h"              // portable Windows header setup
 #elif defined(__linux__)
 #include <fcntl.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+// statx(2) reached glibc in 2.28; the release AppImages are built against
+// bionic's 2.27 (packaging/linux/build_in_bionic.sh), whose kernel headers
+// (4.15) still carry struct statx and the STATX_* masks. There the raw
+// syscall does the same work — same fields, same validity mask — on any
+// kernel from 4.11, which every host the AppImage targets runs (2026-09-16,
+// the 0.2.0 release build: « 'STATX_INO' was not declared »).
+#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 28))
+#define POM68K_STATX_WRAPPER 1
+#else
+#include <linux/stat.h>
+#define POM68K_STATX_WRAPPER 0
+#endif
 #endif
 
 std::string AfpServer::hostIdentity(const std::string& relative) const {
@@ -32,7 +46,13 @@ std::string AfpServer::hostIdentity(const std::string& relative) const {
     // https://man7.org/linux/man-pages/man2/statx.2.html
     struct statx info{};
     constexpr unsigned fields = STATX_INO | STATX_BTIME;
-    if (::statx(AT_FDCWD, path.c_str(), AT_SYMLINK_NOFOLLOW, fields, &info) != 0) {
+#if POM68K_STATX_WRAPPER
+    const int rc = ::statx(AT_FDCWD, path.c_str(), AT_SYMLINK_NOFOLLOW, fields, &info);
+#else
+    const int rc = int(::syscall(SYS_statx, AT_FDCWD, path.c_str(), AT_SYMLINK_NOFOLLOW,
+                                 fields, &info));
+#endif
+    if (rc != 0) {
         if (errno == ENOENT || errno == ENOTDIR) return {};
         throw CatalogError("Cannot inspect AFP host identity with statx");
     }

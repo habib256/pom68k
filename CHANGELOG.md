@@ -969,9 +969,17 @@ Newest first.
 <a id="2026-09-15-release-0-2-0"></a>
 ## 2026-09-15 (fifth) — POM68K 0.2.0
 
-The annotated tag `v0.2.0` is pushed on a green CI and macOS run of the
-merge `7d3e49c`, triggering `release.yml` to build the four packages and
-publish the GitHub Release. `VERSION` reads `0.2.0`; `README.md` opens on
+The annotated tag `v0.2.0` is pushed on a green CI and macOS run,
+triggering `release.yml` to build the four packages and publish the GitHub
+Release — on the second cut. The first tag, on `881f487`, built the macOS
+package and failed the three others on two things the ordinary CI never
+compiles: the bionic (glibc 2.27) AppImage builders had no `statx`
+wrapper (`AfpHostIdentity.cpp` now calls the raw syscall there, same
+fields, same validity mask), and MSVC's first compile of the test tree
+met `__builtin_ctz` in `input_etalon.cpp` (`std::countr_zero`). No
+release had been published, so the tag was removed and re-cut on the
+commit carrying this paragraph, after a manual `release.yml` dispatch —
+the dry run the workflow offers — came back green on all four. `VERSION` reads `0.2.0`; `README.md` opens on
 two screenshots — the LC II on its System 7.5.5 volume with the Disques
 window docked, and DOOM II on the Quadra 950 — and lists what the version
 brings: the Macintosh 128K/512K, the SCSI hot-plug chain with the guest
