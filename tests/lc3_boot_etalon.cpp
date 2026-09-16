@@ -51,7 +51,10 @@ int main() {
     // grey System 7.5 desktop. GISTPERSO's desktop pattern reads ~0.93
     // here and rejects a live Finder (measured 2026-09-02), so it is NOT
     // in this chain; MacPack stays as the compatible last resort.
-    std::string img = find("hdv/System 7.5 HD.dsk");
+    // Stock System 7.5.3 first (Infinite Mac image, pinned 2026-09-16): the
+    // System these machines shipped with, enablers built in.
+    std::string img = find("hdv/System 7.5.3 HD.dsk");
+    if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 1 MB LC III ROM + a bootable hdv/ image\n");

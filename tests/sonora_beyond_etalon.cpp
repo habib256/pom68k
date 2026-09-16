@@ -30,6 +30,9 @@ int main() {
     if (rom.empty())
         rom = testasset::find("roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM");
     std::string img = testasset::overrideImage();
+    // Stock System 7.5.3 first (pinned 2026-09-16); the older references
+    // keep their place behind it.
+    if (img.empty()) img = testasset::find("hdv/System 7.5.3 HD.dsk");
     // The SMALL clean reference for this 1bpp signature family: the plain
     // grey System 7.5 desktop. GISTPERSO's desktop pattern reads ~0.93
     // here and rejects a live Finder (measured 2026-09-02), so it is NOT

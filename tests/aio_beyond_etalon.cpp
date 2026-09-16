@@ -166,7 +166,15 @@ int main() {
         return !cpu.isHalted() && finderUp();
     };
 
-    if (!boot()) { std::fprintf(stderr, "FAIL: no Finder after boot\n"); return 1; }
+    if (!boot()) {
+        // What the screen showed instead — the first question of any red.
+        SonoraVideo video(mem);
+        std::vector<uint32_t> fb;
+        video.decode(fb);
+        beyondboot::dumpPpm("aio_boot_fail.ppm", fb, W, H);
+        std::fprintf(stderr, "FAIL: no Finder after boot (POM68K_DUMP=1 writes aio_boot_fail.ppm)\n");
+        return 1;
+    }
     std::printf("Finder up %dx%d depth %d, TC=$%08X, ADB %s, SCSI %ld\n", W, H,
                 mem.videoDepth(), cpu.getTC(),
                 mem.egretLleActive() ? "LLE" : "HLE", mem.scsi().commands);

@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (tenth)** — [Stock System 7.5.3 is the LC III's first choice and is pinned; the LC 520 boots it too, but the Finder signature reads its solid desktop as white](#2026-09-16-system-753-adopted-lc3)
 - **2026-09-16 (ninth)** — [The Plus boots System 3.3 from an 800 K floppy, in drive A and in drive B: the cell the backlog waited on, unblocked by the TEST drive](#2026-09-16-plus-system33-floppy-cells)
 - **2026-09-16 (eighth)** — [The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed](#2026-09-16-census-corrected-sst)
 - **2026-09-16 (seventh)** — [Nine boot-volume names that never existed leave the search chains: every gate's first choice is now the pinned reference it actually boots](#2026-09-16-phantom-volume-names-retired)
@@ -976,6 +977,35 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-system-753-adopted-lc3"></a>
+## 2026-09-16 (tenth) — Stock System 7.5.3 is the LC III's first choice and is pinned; the LC 520 boots it too, but the Finder signature reads its solid desktop as white
+
+The Infinite Mac `System 7.5.3 HD.dsk` (100 MB, stock, enablers built in)
+was tried on the four beyond-boot gates that honour `POM68K_BEYOND_IMG`:
+LC III, IIvx and IIsi soak green on it; the LC 520 (`aio_beyond_etalon`)
+red with "no Finder after boot". The boot gates do NOT honour the
+override — they had booted `System 7.5 HD.dsk` while the variable said
+7.5.3 — so the adoption went through their search chains instead.
+
+**Adopted where it proves something today.** `lc3_boot_etalon`,
+`lc3plus_boot_etalon` and the Sonora beyond gate (`sonora_soak_etalon`,
+`sonora_persist_etalon`) name `hdv/System 7.5.3 HD.dsk` first, ahead of the
+7.5 references they keep as fallbacks; all four pass on it (61 s, 77 s,
+113 s, 139 s). `hdv/ref/System 7.5.3 HD.dsk` is pinned as a
+`reference-disk` for `lc3,lc3plus` — 46/46 strict — and mirrored to the
+TEST drive.
+
+**The LC 520 red is the gate's, not the machine's.** `POM68K_DUMP=1` now
+writes `aio_boot_fail.ppm` on a failed boot (before, nothing said what the
+screen showed), and the capture is a finished 640×480 7.5.3 desktop —
+Control Strip, the Stickies note, the disk and the Trash — with the menu
+bar read at 0.09 and the desktop at 0.02: 7.5.3's default colour desktop
+is a solid mid-grey, which the black-pixel ratio the signature was
+calibrated on (the dithered 1-bit desktops of GISTPERSO and System 7.5)
+counts as white. A `run` of 640 is that same solid field. The machine is
+fine; the signature cannot see a solid desktop. TODO § Preuve carries it:
+until the signature reads colour, 7.5.3 stays off the 640×480 all-in-ones.
 
 <a id="2026-09-16-plus-system33-floppy-cells"></a>
 ## 2026-09-16 (ninth) — The Plus boots System 3.3 from an 800 K floppy, in drive A and in drive B: the cell the backlog waited on, unblocked by the TEST drive
