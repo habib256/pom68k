@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (twenty-second)** — [The 512/2048 CD-image rule is the one already in the tree, and it stays](#2026-09-16-cd-block-rule)
 - **2026-09-16 (twenty-first)** — [The bare LC II re-tested: HWCfgFlags keeps the FPU bit because VIA1 PA0 was hardwired high; with PA0 low the ROM enters its serial test monitor where MAME does not — and the CUE/BIN item is ruled](#2026-09-16-bare-lcii-retested)
 - **2026-09-16 (twentieth)** — [The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles](#2026-09-16-afp-date-mechanism)
 - **2026-09-16 (nineteenth)** — [The relaunch is observed, not serialized: a smoke generation stages the DaynaPort card, re-executes, and the next generation sees the card](#2026-09-16-relaunch-observed)
@@ -988,6 +989,27 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-cd-block-rule"></a>
+## 2026-09-16 (twenty-second) — The 512/2048 CD-image rule is the one already in the tree, and it stays
+
+The TODO asked to "establish the rule" before touching the mount. The
+rule has been in `ScsiDisk::openCdrom` since 2026-08-15 and is stated in
+its comment: the medium says how big its blocks are. An Apple driver
+descriptor (`ER` at 0) declares `sbBlkSize`; no descriptor with an HFS
+`BD` at byte 1024 is a bare volume dumped at 512; anything else — ISO
+9660, a de-framed MODE1/2352 rip — is a real 2048-byte disc. A 512-byte
+image is attached as a removable disk behind the flat-HFS façade (DDM
+plus a borrowed Apple_Driver43), not as a CD, because the real Apple
+CD-ROM driver in the guest probes such images (4 blocks) and ignores
+them when served at 2048 (2026-08-15, `TIM_3.iso`, the bare `.toast`
+images) — that measurement is the comparison the item wanted, and it
+was made with the real driver, not MAME. Nothing changes.
+
+One edge is named rather than fixed: a bare HFS volume mastered at 2048
+also carries `BD` at byte 1024 and matches the 512 rule, so it mounts as
+a disk rather than a CD. It mounts; a consumer that needs it to be a CD
+(a mixed-mode disc, say) belongs to the CDDA item. The item closes.
 
 <a id="2026-09-16-bare-lcii-retested"></a>
 ## 2026-09-16 (twenty-first) — The bare LC II re-tested: HWCfgFlags keeps the FPU bit because VIA1 PA0 was hardwired high; with PA0 low the ROM enters its serial test monitor where MAME does not — and the CUE/BIN item is ruled

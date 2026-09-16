@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 546 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 547 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 38 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 103 |
+| [Cross-cutting](#cross-cutting) | 104 |
 
 ---
 
@@ -608,4 +608,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live](CHANGELOG.md#2026-09-16-kiosk-and-crt)
 - **2026-09-16 (sixth)** — [The backlog drops the closed diary, the census counts and the second copy of every jalon bullet](CHANGELOG.md#2026-09-16-todo-open-only)
 - **2026-09-16 (twelfth)** — [The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder](CHANGELOG.md#2026-09-16-128k-teachtext)
+- **2026-09-16 (twenty-second)** — [The 512/2048 CD-image rule is the one already in the tree, and it stays](CHANGELOG.md#2026-09-16-cd-block-rule)
 

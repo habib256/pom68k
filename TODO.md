@@ -233,8 +233,6 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 
 ## Médias optiques
 
-- [ ] **Établir la règle des images 512/2048 octets.** Comparer hybrides et
-  bare-HFS avec un vrai pilote/MAME avant de modifier le montage.
 - [ ] **Ajouter CDDA.** TOC audio, PLAY/PAUSE et le chemin sonore vers
   l'ASC avec un gate consommateur. Y inclure le seul cas `.cue/.bin`
   encore ouvert (tranché le 2026-09-16) : un BIN unique en mode mixte dont
