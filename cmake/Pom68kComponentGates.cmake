@@ -36,6 +36,13 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     target_compile_definitions(gui_windows_test PRIVATE IMGUI_ENABLE_TEST_ENGINE)
     target_link_libraries(gui_windows_test PRIVATE pom68k_core pom68k_app)
     add_test(NAME gui_windows_test COMMAND gui_windows_test)
+else()
+    # Registered on every configure so the registry (STATUS.md, docs_test)
+    # does not depend on whether setup_imgui.sh ran: without Dear ImGui the
+    # gate soft-skips, and the census counts it as such.
+    add_test(NAME gui_windows_test
+             COMMAND ${CMAKE_COMMAND} -E echo
+                     "SKIP: Dear ImGui absent (${IMGUI_DIR}) - run ./setup_imgui.sh")
 endif()
 
 # M1 gate: Moira boots the demo ROM through the real machine path.

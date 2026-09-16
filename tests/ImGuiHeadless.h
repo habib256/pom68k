@@ -27,6 +27,8 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
