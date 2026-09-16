@@ -33,6 +33,12 @@ pour le mécanisme de deadline périphérique, devenu « Nouvelles machines ».
   moteur accéléré identiques dans le même processus), la reprise save-state
   inter-instances est gatée sur les trois familles, `asset-none` est vert sur
   toutes les toolchains, et **la version 0.1.0 est taguée et publiée**.
+- **La jambe AArch64 est tenue le 2026-09-16** : premier run tout-vert du
+  registre complet sur le M4 — 332/332 en 3 946 s (`ctest -j6`, commit
+  `41912d1`), census 332 exécutés / 0 soft-skip / 0 rouge, après
+  `assets.lock` strict 44/44. Le critère de sortie du jalon 1 a donc ses deux
+  jambes (x86-64 le 2026-09-01, AArch64 le 2026-09-16). La version 0.2.0 est
+  taguée et publiée le 2026-09-15.
 - **La suite est décidée le 2026-09-12** : deux chantiers dotés en parallèle,
   le **Mac 128K/512K** (§ Nouvelles machines) et la **fin des services
   réseau** (§ Services réseau). Les autres thèmes restent ouverts et non
@@ -334,13 +340,6 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
   2026-09-08 ne couvrent pas (ils sont hors GUI).
 - [ ] **Trancher la cellule `finder_boot_matrix` macii × 7.5.5**, enregistrée
   UNSTABLE le 2026-09-02 (Stickies au premier plan).
-- [ ] **Décider le sort d'`assets.lock` mono-hôte, et tenir la jambe AArch64.**
-  Quatre volumes sont nés sur x86-64 ; les options posées le 2026-09-02 sont le
-  transport (~660 Mo), un verrou par hôte, ou une recette reproductible — le
-  2026-09-03 n'a accordé qu'un *waiver de séquencement*, pas une fermeture. Tant
-  que ce n'est pas tranché, **la seconde jambe du critère de sortie du jalon 1
-  n'a pas d'item** : deux runs tout-verts existent sur x86-64 (2026-09-01/02),
-  aucun sur AArch64.
 - [ ] **Fermer le `-Wstringop-overflow` de GCC 13 + LTO sur
   `EtherLink::sendToGuest`.** Latent parce que le job `-Werror` construit sans
   LTO : la combinaison qui l'expose n'est couverte par aucun gate.

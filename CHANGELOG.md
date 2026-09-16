@@ -453,6 +453,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (fourth)** — [The AArch64 leg: first all-green full registry run on the M4, 332 executed, 0 soft-skipped, 0 failed](#2026-09-16-aarch64-full-registry-all-green)
 - **2026-09-16 (third)** — [The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back](#2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate)
 - **2026-09-16 (later)** — [The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place](#2026-09-16-400k-floppies-pinned)
 - **2026-09-16** — [The Toby declaration ROM is a firmware choice the product reports: the missing dump is said in the window, and the dump on this host was not being found](#2026-09-16-toby-decl-rom-is-a-firmware-choice)
@@ -968,6 +969,35 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-aarch64-full-registry-all-green"></a>
+## 2026-09-16 (fourth) — The AArch64 leg: first all-green full registry run on the M4, 332 executed, 0 soft-skipped, 0 failed
+
+`ctest -j6` over the whole registry on the Apple M4, at commit `41912d1`
+(the MFS reader and the two 128K/512K duplicate-file gates included):
+**332/332 passed in 3945.89 s wall**, started 11:19 +04. The census
+(`tools/gate_execution_census.py` on the preserved `LastTest.log`,
+`scratchpad/2026-09-16/LastTest-full-aarch64.log`, untracked): **332
+executed, 0 soft-skipped, 0 failed**. Nothing abstained — every agent boot
+gate (38 profiles plus the two MFS ones), every Dayna, persist, soak,
+floppy and AFP etalon, the JIT locksteps and the A64 store guard all ran
+on their assets; `assets.lock --strict` had answered 44/44 the same
+morning, the two 400 K floppies pinned and the ten `hdv/ref/` volumes on
+hand.
+
+**What it closes.** The 2026-09-02 question — four reference volumes born
+on the x86-64 host, an `assets.lock` that only that host could satisfy,
+and "the second leg of the milestone-1 exit criterion has no item" — is
+answered by transport: the TEST drive carried the volumes here and the
+floppies both ways, and this run is the AArch64 all-green the criterion
+asked for (x86-64 had its two on 2026-09-01/02). The TODO item is retired;
+the Statut block carries the fact.
+
+**Reds attributed: none.** The x86-64 runs of August each carried two
+fixture reds on drifted volumes and one gate sitting on its timeout; here
+the slowest gates were the Sonora persist (138.80 s) and the LC II
+persist/floppy/soak chain, all well inside their bounds at `-j6`. Recorded
+in `STATUS.md` § Recorded runs.
 
 <a id="2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate"></a>
 ## 2026-09-16 (third) — The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back
