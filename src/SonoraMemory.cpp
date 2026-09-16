@@ -62,8 +62,8 @@ SonoraMemory::SonoraMemory(const pom68k::CoreConfig& coreConfig,
             pom68k::lle::HleEgretCuda,
             cudaAdb ? pom68k::FirmwareTarget::Cuda
                     : pom68k::FirmwareTarget::Egret};
-        req.name = cudaAdb ? "Cuda — MCU ADB / PRAM / horloge"
-                           : "Egret — MCU ADB / PRAM / horloge";
+        req.name = cudaAdb ? "Cuda - MCU ADB / PRAM / horloge"
+                           : "Egret - MCU ADB / PRAM / horloge";
         req.enableKnob = cudaAdb ? "POM68K_CUDA_LLE"
                                  : "POM68K_EGRET_LLE";
         req.pathKnob = "POM68K_CUDA_FW";

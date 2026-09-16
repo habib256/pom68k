@@ -1996,7 +1996,12 @@ RAM sub-test its encoding suggests). The beyond-boot sibling
 `POM68K_MFS_ICON_Y` (where the desktop icon sits, default 472,105 on the
 System 1.1 desktop) and `POM68K_MFS_TRACE` (the pointer's homing, one
 quadrature step a frame — the 1.1 mouse driver scales a burst and a
-sub-frame remainder never lands). `POM68K_MAC128K_EXC` exits 0 whether or not an
+sub-frame remainder never lands). The headless window gate
+(`tests/gui_windows_test.cpp`, `tests/ImGuiHeadless.h`, § 6) reads
+`POM68K_GUI_LABELS` (list every labelled ImGui item of a frame with its
+rectangle — what a new click scenario is written from) and
+`POM68K_GUI_TRACE` (the hovered window and ids at each step of a click).
+`POM68K_MAC128K_EXC` exits 0 whether or not an
 exception fires: it reports, it never judges, so it must not be registered
 as a gate in that mode.
 Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
@@ -2280,8 +2285,22 @@ de machines ou de contextes statiques, et l'arène garantit des adresses
 stables aux callbacks
 natifs comme Emscripten. `gui_smoke_test` couvre maintenant le cycle GUI
 commun avec une vraie fenêtre cachée : rendu, changement de moteur, sauvegarde,
-fermeture RAII et relance interceptée. Les panneaux propres à chaque famille
-restent seulement compile-vérifiés.
+fermeture RAII et relance interceptée — mais il se saute sur tout runner sans
+surface GL et ne regarde aucune fenêtre. Depuis le 2026-09-16,
+`gui_windows_test` (`tests/ImGuiHeadless.h`) dessine les fenêtres
+Périphériques, AppleTalk / Ethernet, Disques et Moteur par leurs vraies
+fonctions **sans système de fenêtres** : ImGui compilé avec ses hooks de
+test-engine (libellé et rectangle de chaque item), un rastériseur CPU pour
+l'image (captures `gui_<fenêtre>.ppm` dans le dossier de build, pour l'œil),
+des clics injectés (radio LLE/HLE puis « Appliquer » jusqu'au callback de
+relance typé ; sélecteur DaynaPort jusqu'à `relaunchWithDaynaPort(3)` ;
+disquette déposée puis choisie dans le sélecteur SWIM jusqu'à `insertFloppy`).
+Il vérifie aussi que chaque caractère non ASCII des chaînes affichées a un
+glyphe dans la police en usage : la police par défaut d'ImGui n'a ni tiret
+cadratin ni flèche, qui s'affichaient en « ? » — les chaînes d'interface les
+écrivent en ASCII (`-`, `->`). `POM68K_GUI_LABELS=1` liste les items d'une
+frame, `POM68K_GUI_TRACE=1` suit chaque clic. Les panneaux machine (menus,
+framebuffer) restent hors de ce gate.
 Le parsing derrière cette façade est lui-même séparé :
 `StartupSnapshot` possède et valide les valeurs capturées, tandis que
 `StartupDomainView` n'en fournit que les lectures typées autorisées,

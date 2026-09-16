@@ -35,7 +35,7 @@ VaspMemory::VaspMemory(const pom68k::CoreConfig& coreConfig,
     {
         pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
                                 pom68k::FirmwareTarget::Egret};
-        req.name = "Egret — MCU ADB / PRAM / horloge";
+        req.name = "Egret - MCU ADB / PRAM / horloge";
         req.enableKnob = "POM68K_EGRET_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Vasp";

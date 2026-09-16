@@ -22,6 +22,22 @@ set_tests_properties(gui_smoke_test PROPERTIES
                      SKIP_RETURN_CODE 77 TIMEOUT 60 RUN_SERIAL TRUE
                      LABELS "gui")
 
+# The product windows without a window system: Dear ImGui's core compiled
+# with its test-engine hooks (item labels and rectangles), a CPU rasteriser
+# for the frames, the four window .cpp files by their real draw functions.
+# Runs on every runner; gui_smoke_test above needs a GL surface and skips.
+if(EXISTS "${IMGUI_DIR}/imgui.cpp")
+    add_executable(gui_windows_test tests/gui_windows_test.cpp
+        src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp
+        ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
+    target_include_directories(gui_windows_test PRIVATE ${IMGUI_DIR})
+    target_compile_definitions(gui_windows_test PRIVATE IMGUI_ENABLE_TEST_ENGINE)
+    target_link_libraries(gui_windows_test PRIVATE pom68k_core pom68k_app)
+    add_test(NAME gui_windows_test COMMAND gui_windows_test)
+endif()
+
 # M1 gate: Moira boots the demo ROM through the real machine path.
 add_executable(cpu_smoke tests/cpu_smoke.cpp)
 target_link_libraries(cpu_smoke PRIVATE pom68k_core)

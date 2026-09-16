@@ -133,7 +133,7 @@ void drawServiceConfiguration(GuiNetworkState& state,
         return;
     }
     ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
-                       "Modifications en attente — appliquées à chaud, ce qui "
+                       "Modifications en attente - appliquées à chaud, ce qui "
                        "coupe les sessions AFP, le travail d'impression en "
                        "cours et les baux MacIP.");
     if (ImGui::Button("Appliquer")) {
@@ -194,7 +194,7 @@ void drawDaynaPortSelector(GuiNetworkState& state) {
         return;
     }
     ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
-                       "Modification en attente — le Mac ne sonde le bus "
+                       "Modification en attente - le Mac ne sonde le bus "
                        "qu'au démarrage");
     ImGui::BeginDisabled(!state.relaunchWithDaynaPort);
     if (ImGui::Button("Appliquer et redémarrer")) {
@@ -247,7 +247,7 @@ void drawEthernetSection(GuiNetworkState& state,
     ImGui::TextDisabled(
         "Le noeud POM68K est aussi routeur sur l'Ethernet : l'invité qui "
         "choisit EtherTalk rejoint sa zone.");
-    ImGui::Text("Invité → réseau : %ld trames (%ld o)   ·   réseau → invité : "
+    ImGui::Text("Invité -> réseau : %ld trames (%ld o)   ·   réseau -> invité : "
                 "%ld trames (%ld o)",
                 card.framesFromGuest, card.bytesFromGuest,
                 card.framesToGuest, card.bytesToGuest);
@@ -371,7 +371,7 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
                 snapshot.pap.jobs,
                 snapshot.pap.lastJob.empty() ? "-"
                                              : snapshot.pap.lastJob.c_str());
-    ImGui::TextDisabled("Spool → CUPS (lp) si présent, sinon %s/",
+    ImGui::TextDisabled("Spool -> CUPS (lp) si présent, sinon %s/",
                         snapshot.pap.spoolDir.c_str());
 
     ImGui::SeparatorText("Internet (MacIP / IP-in-DDP)");
@@ -393,7 +393,7 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
                 snapshot.macip.udpFlows, snapshot.macip.tcpConns);
     ImGui::Text("IP invite -> net %ld   -   net -> invite %ld",
                 snapshot.macip.ipFromGuest, snapshot.macip.ipToGuest);
-    ImGui::TextDisabled("HTTP uniquement (TLS 2026 hors d'atteinte) — "
+    ImGui::TextDisabled("HTTP uniquement (TLS 2026 hors d'atteinte) - "
                         "frogfind.com, theoldnet.com");
 
     drawServiceConfiguration(state, snapshot);

@@ -45,7 +45,7 @@ void drawEngineWindow(GuiCpuPanelState& state) {
         ImGui::Text("Instructions/s : %.2f M", state.jitRate / 1e6);
     else
         ImGui::TextDisabled(
-            "Instructions/s : — (compteurs du moteur accéléré, à l'arrêt)");
+            "Instructions/s : - (compteurs du moteur accéléré, à l'arrêt)");
 
     ImGui::SeparatorText("Répartition");
     const double all = double(total ? total : 1);

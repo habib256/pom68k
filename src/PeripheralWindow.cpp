@@ -5,6 +5,7 @@
 
 #include "imgui.h"
 
+#include <cfloat>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -102,9 +103,9 @@ std::string reasonText(const lle::Device& d) {
                    ? std::string("firmware d'origine en cours d'exécution")
                    : "firmware d'origine : " + d.firmware;
     case lle::Why::HleNoDump:
-        return "aucun dump trouvé — substitut HLE non conformant";
+        return "aucun dump trouvé - substitut HLE non conformant";
     case lle::Why::HleForced:
-        return d.knob + "=0 — substitut HLE non conformant forcé";
+        return d.knob + "=0 - substitut HLE non conformant forcé";
     }
     return {};
 }
@@ -123,8 +124,13 @@ void peripheralWindow(const PeripheralHost& host) {
     openIfFallback(devs);
     if (!gOpen) return;
 
-    ImGui::SetNextWindowSize(ImVec2(560, 0), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(kPeripheralWindowTitle, &gOpen)) {
+    // Auto-height: the footer (« Appliquer et redémarrer ») appears only
+    // once something is staged, and a height fixed on the first frame hid
+    // it behind a scrollbar (found by gui_windows_test, 2026-09-16). The
+    // width is pinned so the rows keep their layout; long lines wrap to it.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(560, 0), ImVec2(560, FLT_MAX));
+    if (!ImGui::Begin(kPeripheralWindowTitle, &gOpen,
+                      ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
@@ -166,6 +172,7 @@ void peripheralWindow(const PeripheralHost& host) {
         ImGui::TextUnformatted(d.name.c_str());
 
         ImGui::Indent();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 520);
         ImGui::TextDisabled("%s", reasonText(d).c_str());
         // The device's own statement of what its substitute cannot do — the
         // Toby fallback boots System 7.0 but not 7.5.5, and a user staring
@@ -173,6 +180,7 @@ void peripheralWindow(const PeripheralHost& host) {
         // changelog.
         if (d.mode == lle::Mode::Hle && !d.consequence.empty())
             ImGui::TextColored(kOrange, "%s", d.consequence.c_str());
+        ImGui::PopTextWrapPos();
 
         // The selector. LLE is offered only when a dump exists — a radio the
         // user can click into a state the relaunch would silently undo is
@@ -225,7 +233,7 @@ void peripheralWindow(const PeripheralHost& host) {
                     char row[320];
                     std::snprintf(row, sizeof row, "%s%s%s", shortName(p).c_str(),
                                   isCandidate(d, p) ? "   (d'origine)" : "",
-                                  p == d.firmware ? "   ← chargé" : "");
+                                  p == d.firmware ? "   <- chargé" : "");
                     if (ImGui::Selectable(row, want.firmware == p)) {
                         want.firmware = p;
                         stage(want);
@@ -250,12 +258,12 @@ void peripheralWindow(const PeripheralHost& host) {
         }
 
         if (want.mode != d.mode)
-            ImGui::TextColored(kOrange, "→ %s au prochain démarrage (%s=%s)",
+            ImGui::TextColored(kOrange, "-> %s au prochain démarrage (%s=%s)",
                                want.mode == lle::Mode::Lle ? "LLE" : "HLE",
                                d.knob.c_str(),
                                want.mode == lle::Mode::Lle ? "1" : "0");
         if (want.firmware != d.firmwareForced)
-            ImGui::TextColored(kOrange, "→ dump : %s",
+            ImGui::TextColored(kOrange, "-> dump : %s",
                                want.firmware.empty()
                                    ? "automatique (choix imposé retiré)"
                                    : want.firmware.c_str());
@@ -269,9 +277,11 @@ void peripheralWindow(const PeripheralHost& host) {
     const int pending = lle::pendingCount(devs, gStaged);
     if (pending > 0) {
         ImGui::TextColored(kOrange, "%d modification(s) en attente", pending);
+        ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 540);
         ImGui::TextDisabled("Les périphériques sont construits une seule fois, "
-                            "avant la première instruction :\nappliquer "
+                            "avant la première instruction : appliquer "
                             "redémarre l'émulateur sur la même machine.");
+        ImGui::PopTextWrapPos();
         ImGui::BeginDisabled(!host.relaunch);
         if (ImGui::Button("Appliquer et redémarrer")) {
             auto overrides =

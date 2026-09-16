@@ -114,8 +114,8 @@ void drawCpuMenu(GuiSessionState& state, double speed, bool engineLocked) {
     const bool codeGenerator =
         cpu.jitBackend && std::strcmp(cpu.jitBackend, "threaded");
     std::snprintf(label, sizeof label,
-                  codeGenerator ? "Moteur accéléré — JIT %s"
-                                : "Moteur accéléré — fenêtres (%s)",
+                  codeGenerator ? "Moteur accéléré - JIT %s"
+                                : "Moteur accéléré - fenêtres (%s)",
                   cpu.jitBackend ? cpu.jitBackend : "?");
     if (ImGui::MenuItem(label, nullptr, engine == 1, hasAcceleratedEngine) &&
         engine != 1)
@@ -124,7 +124,7 @@ void drawCpuMenu(GuiSessionState& state, double speed, bool engineLocked) {
     ImGui::MenuItem("Statistiques du moteur...", nullptr, &cpu.showJit,
                     hasAcceleratedEngine);
     if (!hasAcceleratedEngine)
-        ImGui::TextDisabled("(interrupteur : machines 68030/68040 —\n"
+        ImGui::TextDisabled("(interrupteur : machines 68030/68040 -\n"
                             "Mac II / compacts : interpréteur seul)");
     ImGui::EndMenu();
 }

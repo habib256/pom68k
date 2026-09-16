@@ -59,7 +59,7 @@ inline std::vector<std::uint8_t> selectDeclRom(const CoreFirmwareConfig& firmwar
                                                const char* logTag) {
     std::vector<std::uint8_t> image;
     fw::Request req{lle::HleTobyDeclRom, FirmwareTarget::TobyDecl};
-    req.name = "Toby — ROM de déclaration de la carte vidéo Macintosh II "
+    req.name = "Toby - ROM de déclaration de la carte vidéo Macintosh II "
                "(342-0008-a)";
     req.enableKnob = "POM68K_TOBY_DECL_LLE";
     req.pathKnob = "POM68K_TOBY_DECL";

@@ -134,6 +134,9 @@ struct DiskBaysHost {
 // A checkable entry that toggles the window, inside an already-open menu.
 // The label is the caller's: "Disques..." under Périphériques, the window
 // title under Fenêtres.
+// The window title, shared with the Fenêtres menu and the headless gate.
+extern const char* kDiskWindowTitle;
+
 void diskBaysMenuItem(const char* label);
 
 // Draw the window itself (no-op while closed). Call once per frame, after
@@ -141,8 +144,12 @@ void diskBaysMenuItem(const char* label);
 void diskBaysWindow(DiskBaysHost& host);
 
 // Install the GLFW drop callback so images can be dragged onto the window.
-// Safe to call once per runner at start-up.
+// Safe to call once per runner at start-up (DiskBaysDrop.cpp).
 void diskBaysInstallDrop(GLFWwindow* window);
+// What the drop callback does with one path: a disk image joins the
+// session's list and the window opens; anything else is ignored (false).
+// Public so a headless gate can exercise the window without a drop.
+bool diskBaysOfferDroppedImage(const std::string& path);
 
 // Images discoverable from the usual places (hdv/ref/, hdv/work/, hdv/,
 // disks35/, cd/, the boot image's own directory) plus anything the user

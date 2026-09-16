@@ -497,7 +497,8 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/PlatformDafb.cpp
         src/PlatformDuo.cpp
         src/miniaudio_impl.cpp
-        src/FloppySound.cpp src/DiskBays.cpp src/PeripheralWindow.cpp
+        src/FloppySound.cpp src/DiskBays.cpp src/DiskBaysDrop.cpp
+        src/PeripheralWindow.cpp
         src/NetworkWindow.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core pom68k_app)

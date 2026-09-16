@@ -7,7 +7,6 @@
 
 #include "imgui.h"
 
-#include <GLFW/glfw3.h>
 
 #include <algorithm>
 #include <cctype>
@@ -226,7 +225,7 @@ bool imageCombo(const char* label, const std::string& current,
             bool sel = samePath(d, current);
             std::string item = fileName(d) + "   " + sizeLabel(d);
             if (isCd(d)) item += "   CD";
-            if (isReferenceFixturePath(d)) item += "   référence → work";
+            if (isReferenceFixturePath(d)) item += "   référence -> work";
             if (ImGui::Selectable(item.c_str(), sel)) {
                 chosen = d;
                 picked = true;
@@ -260,7 +259,7 @@ void guestBayLine(const DiskBaysHost& host, int id) {
                            "invité : lecteur %d installé, aucun volume monté",
                            bay.driveNum);
     else
-        ImGui::TextColored(grey, "invité : aucun lecteur — invisible pour le System");
+        ImGui::TextColored(grey, "invité : aucun lecteur - invisible pour le System");
 }
 
 // A fixed disk may leave the bus live only when the machine offers the
@@ -336,18 +335,17 @@ bool diskBaysPathIsCd(const std::string& path) { return isCd(path); }
 
 // ── Drag and drop ──────────────────────────────────────────────────────────
 
-void diskBaysInstallDrop(GLFWwindow* window) {
-    glfwSetDropCallback(window, [](GLFWwindow*, int count, const char** paths) {
-        for (int i = 0; i < count; i++) {
-            std::string p = paths[i];
-            if (!isDiskImage(p)) continue;
-            bool known = false;
-            for (const std::string& s : gSessionImages)
-                if (samePath(s, p)) { known = true; break; }
-            if (!known) gSessionImages.push_back(p);
-            gOpen = true;           // dropping an image is a request to use it
-        }
-    });
+// The GLFW callback lives in DiskBaysDrop.cpp so that this file, and the
+// headless window gate that links it (gui_windows_test), carry no window
+// system; the callback feeds each path through here.
+bool diskBaysOfferDroppedImage(const std::string& path) {
+    if (!isDiskImage(path)) return false;
+    bool known = false;
+    for (const std::string& s : gSessionImages)
+        if (samePath(s, path)) { known = true; break; }
+    if (!known) gSessionImages.push_back(path);
+    gOpen = true;               // dropping an image is a request to use it
+    return true;
 }
 
 // ── Menu entry ─────────────────────────────────────────────────────────────
@@ -535,7 +533,7 @@ void diskBaysWindow(DiskBaysHost& host) {
     ImGui::Separator();
 
     // ── Secondary bays.
-    ImGui::TextDisabled("Disques durs (SCSI 1-%d) — pas le lecteur CD", kMaxBays);
+    ImGui::TextDisabled("Disques durs (SCSI 1-%d) - pas le lecteur CD", kMaxBays);
 
     const std::vector<std::string>& extras = activeExtras(host);
     for (int i = 0; i < kMaxBays; i++) {
@@ -556,7 +554,7 @@ void diskBaysWindow(DiskBaysHost& host) {
                 // A live bay is a CD drive; a hard-disk image in it would
                 // mount garbage. Staging it wouldn't help either — tell.
                 gLastError = "Baie " + std::to_string(i + 1)
-                           + ": lecteur CD — un vrai CD (.iso 2048) seulement.";
+                           + ": lecteur CD - un vrai CD (.iso 2048) seulement.";
             } else if (live && host.insertBay && !pick.empty()) {
                 // Occupied bay, hooks present: swap the medium on the spot.
                 if (host.insertBay(i + 1, pick)) {
@@ -608,7 +606,7 @@ void diskBaysWindow(DiskBaysHost& host) {
                     gLastError.clear();
                 }
                 if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Quitte le bus maintenant — l'invité n'a "
+                    ImGui::SetTooltip("Quitte le bus maintenant - l'invité n'a "
                                       "aucun volume monté sur cette cible");
             } else {
                 if (ImGui::SmallButton("Retirer")) {
@@ -617,7 +615,7 @@ void diskBaysWindow(DiskBaysHost& host) {
                 }
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip(host.detachBay
-                        ? "Prendra effet au prochain redémarrage — un volume "
+                        ? "Prendra effet au prochain redémarrage - un volume "
                           "est monté dessus : « Démonter » ou Ranger dans le "
                           "Finder pour le retirer sans redémarrer"
                         : "Prendra effet au prochain redémarrage");
@@ -651,7 +649,7 @@ void diskBaysWindow(DiskBaysHost& host) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
     ImGui::TextWrapped(host.attachBay
         ? "Un disque choisi ici rejoint le bus aussitôt ; le Finder ne monte "
-          "un disque fixe qu'au démarrage — « Redémarrer la machine » (le "
+          "un disque fixe qu'au démarrage - « Redémarrer la machine » (le "
           "ROM re-sonde le bus) ou un montage depuis l'invité (SCSIProbe). "
           "« Retirer » le débranche aussitôt quand aucun volume n'est monté "
           "dessus. "
@@ -675,7 +673,7 @@ void diskBaysWindow(DiskBaysHost& host) {
             : "absent (lancer « POM68K Disques » dans le Mac)");
         ImGui::PopStyleColor();
         if (rep.reported)
-            ImGui::TextWrapped("Agent : %s SCSI %d → %s%s%s (err %d)",
+            ImGui::TextWrapped("Agent : %s SCSI %d -> %s%s%s (err %d)",
                                rep.lastKind == 1 ? "montage" : "démontage",
                                rep.lastId, rep.lastText.empty() ? "" : "« ",
                                rep.lastText.c_str(), rep.lastText.empty() ? "" : " »",

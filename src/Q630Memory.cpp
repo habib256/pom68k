@@ -84,7 +84,7 @@ Q630Memory::Q630Memory(const pom68k::CoreConfig& coreConfig,
         // Cuda 2.40 the LC 520 family runs.
         pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
                                 pom68k::FirmwareTarget::Cuda};
-        req.name = "Cuda — MCU ADB / PRAM / horloge";
+        req.name = "Cuda - MCU ADB / PRAM / horloge";
         req.enableKnob = "POM68K_CUDA_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Q630";

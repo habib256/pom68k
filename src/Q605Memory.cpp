@@ -76,7 +76,7 @@ Q605Memory::Q605Memory(const pom68k::CoreConfig& coreConfig,
     {
         pom68k::fw::Request req{pom68k::lle::HleEgretCuda,
                                 pom68k::FirmwareTarget::Cuda};
-        req.name = "Cuda — MCU ADB / PRAM / horloge";
+        req.name = "Cuda - MCU ADB / PRAM / horloge";
         req.enableKnob = "POM68K_CUDA_LLE";
         req.pathKnob = "POM68K_CUDA_FW";
         req.logTag = "Q605";
