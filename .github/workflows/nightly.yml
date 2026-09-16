@@ -71,9 +71,13 @@ jobs:
         # no ISA floor raised, but the cross-TU inlining kept. Both are stated
         # rather than inherited -- inheriting is what cost the release
         # binaries their LTO in the first place.
+        # -Werror here too, since 2026-09-16: GCC's LTO pass (lto1) emits
+        # warnings the per-TU -Werror job never sees and no source pragma
+        # reaches (the -Wstringop-overflow on EtherLink::sendToGuest, TODO
+        # § Preuve). This is the only build where that combination occurs.
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=ON
+          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=ON -DPOM68K_WERROR=ON
 
       - name: Build everything under LTO
         run: cmake --build build --parallel "$(nproc)"

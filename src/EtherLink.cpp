@@ -7,6 +7,7 @@
 #include "EtherLink.h"
 #include "DaynaPort.h"
 #include "MacIpGateway.h"
+#include <algorithm>
 #include <cstring>
 
 namespace {
@@ -35,27 +36,24 @@ void EtherLink::attach() {
     });
 }
 
-// GCC 13's LTO -Wstringop-overflow pass loses the vector's fresh
-// kEthHdr+n allocation and reports the 6-byte MAC copy as writing into
-// size 0 — the SaveState.h false-positive class (2026-09-01 census).
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
-#pragma GCC diagnostic ignored "-Warray-bounds"
-#endif
+// Built by appending ranges, never by memcpy into a freshly sized vector:
+// GCC 13's LTO -Wstringop-overflow pass lost that allocation and reported
+// the 6-byte MAC copy as writing into a region of size 0 (the SaveState.h
+// false-positive class, 2026-09-01 census), from lto1 where a source pragma
+// no longer reaches. The nightly LTO build carries -Werror since 2026-09-16.
 void EtherLink::sendToGuest(const std::array<std::uint8_t, 6>& dst,
                             std::uint16_t ethType,
                             const std::uint8_t* payload, std::size_t n) {
-    std::vector<std::uint8_t> f(kEthHdr + n);
-    std::memcpy(f.data(), dst.data(), 6);
-    std::memcpy(f.data() + 6, gwMac_.data(), 6);
-    wr16(f.data() + 12, ethType);
-    if (n) std::memcpy(f.data() + kEthHdr, payload, n);
+    std::uint8_t hdr[kEthHdr];
+    std::copy(dst.begin(), dst.end(), hdr);
+    std::copy(gwMac_.begin(), gwMac_.end(), hdr + 6);
+    wr16(hdr + 12, ethType);
+    std::vector<std::uint8_t> f;
+    f.reserve(kEthHdr + n);
+    f.insert(f.end(), hdr, hdr + kEthHdr);
+    if (n) f.insert(f.end(), payload, payload + n);
     deliver(std::move(f));
 }
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
 
 // Straight to the card when the owner set no latency (a unit test with no
 // clock); otherwise onto the wire, to be released by tick().
