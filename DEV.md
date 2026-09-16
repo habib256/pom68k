@@ -2337,6 +2337,25 @@ la fenêtre AppleTalk complète sur un hub attaché à une carte Plus sans ROM,
 case « Activer AppleShare » jusqu'au hub, nom de serveur et dossier partagé
 tapés puis « Appliquer » jusqu'à `reconfigure()` — l'affichage se redimensionne
 à 1024×1000 pour elle).
+`gui_machine_window_test` (même harnais, 2026-09-16) fait de même pour la
+fenêtre machine sur une machine factice qui enregistre ce que le GUI lui
+pousse : la barre de menus par `drawShellFrame` (`GuiShellMenu.cpp`, sans
+GLFW — Redémarrer, Pause, Sauver l'état, l'enregistrement, « Changer de
+machine » jusqu'au profil relancé et à la demande de fermeture,
+l'interrupteur de moteur, les presets CRT, « Réglages CRT », le mode borne
+et sa sortie par Ctrl+Alt+F ou Alt+F4), le tableau de bord ancré, et la
+surface écran de `GuiScreen.h` : une texture fournie au rastériseur sous le
+nom GL du runner, dont les pixels sont relus là où la fenêtre les met
+(ratio conservé, letterbox en borne), le survol et le clic traduits en
+`MouseMove`/`MouseButton` au zoom près, la capture par clic molette avec
+le curseur hôte factice et sa libération par Suppr, le clavier compact
+jusqu'au code Mac. Le côté fenêtre (`GlfwScreenHost`, le changement de
+moniteur, `relaunch.closeWindow`) reste dans `GuiShell.cpp`. Le gate a
+trouvé deux défauts le jour de sa naissance : le tableau de bord posé à
+y = 830 dans une fenêtre de 800 px (un liseré de barre de titre — il
+s'ancre désormais sous la bibliothèque de disques) et le Ctrl du chord
+borne lu comme Cmd sur macOS (ImGui permute Ctrl et Cmd à `AddKeyEvent` ;
+le chord accepte les deux).
 Il vérifie aussi que chaque caractère non ASCII des chaînes affichées a un
 glyphe dans la police en usage : la police par défaut d'ImGui n'a ni tiret
 cadratin ni flèche, qui s'affichaient en « ? » — les chaînes d'interface les

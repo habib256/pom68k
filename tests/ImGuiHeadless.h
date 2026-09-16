@@ -151,6 +151,14 @@ public:
         return st ? std::string(st->TextA.Data ? st->TextA.Data : "") : std::string("<no state>");
     }
     ImGuiID activeId() const { return ctx_->ActiveId; }
+    // A texture drawn by the code under test through an ImTextureID of its
+    // own (the emulated screen: the runner's GL name), supplied as pixels.
+    void setTexture(std::uintptr_t id, int w, int h, std::vector<std::uint32_t> rgba) {
+        Texture& t = extra_[id];
+        t.w = w;
+        t.h = h;
+        t.rgba = std::move(rgba);
+    }
     // A taller display for a window that outgrows 1024x768 (the attached
     // AppleTalk window with its services form runs to ~820 px).
     void resize(int width, int height) {
@@ -283,6 +291,10 @@ private:
                 const ImTextureID id = cmd.GetTexID();
                 for (const auto& [k, t] : textures_)
                     if (ImTextureID(reinterpret_cast<std::uintptr_t>(k)) == id) tex = &t;
+                if (!tex) {
+                    const auto ex = extra_.find(std::uintptr_t(id));
+                    if (ex != extra_.end()) tex = &ex->second;
+                }
                 const int cx0 = std::max(0, int(cmd.ClipRect.x)), cy0 = std::max(0, int(cmd.ClipRect.y));
                 const int cx1 = std::min(w_, int(cmd.ClipRect.z)), cy1 = std::min(h_, int(cmd.ClipRect.w));
                 for (unsigned i = 0; i + 2 < cmd.ElemCount; i += 3) {
@@ -339,6 +351,7 @@ private:
     int w_, h_;
     std::vector<std::uint32_t> frame_;
     std::map<ImTextureData*, Texture> textures_;
+    std::map<std::uintptr_t, Texture> extra_;
 };
 
 } // namespace headless

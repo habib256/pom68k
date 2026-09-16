@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// The cabinet mode's frame (Ctrl+Alt+F, the quit chords, the monitor switch), the
+// The cabinet mode's chords (Ctrl+Alt+F, the quit chords), the
 // « Affichage » menu and the « Réglages CRT » window — see GuiDisplay.h.
 // Out of GuiShell.cpp so the shell stays the menu bar's owner and nothing
 // more; ported from NeoST's kiosk and CRT controls on 2026-09-16.
@@ -10,51 +10,32 @@
 
 #include "imgui.h"
 
-#include <GLFW/glfw3.h>
-
-#include <cstdio>
 
 namespace pom68k::gui {
 
 // ── Cabinet mode ─────────────────────────────────────────────────────
-// Ctrl+Alt+F toggles at any time (the twin of Ctrl+Alt+G, the mouse grab); Alt+F4 and a Ctrl+Shift+Q chord held ~0.7 s leave
-// (an exclusive full screen does not always relay the window manager's
-// close). The monitor switch happens here, between two frames, and only on
-// a visible window: the smoke scenario's hidden window is never sent to a
-// monitor (GLFW would show it).
-void kioskFrame(GuiDisplayState& d, GLFWwindow* window) {
+// Ctrl+Alt+F toggles at any time (the twin of Ctrl+Alt+G, the mouse grab);
+// Alt+F4 and a Ctrl+Shift+Q chord held ~0.7 s leave (an exclusive full
+// screen does not always relay the window manager's close).
+bool kioskChords(GuiDisplayState& d) {
     ImGuiIO& io = ImGui::GetIO();
     const bool alt = ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt);
-    const bool ctrlHeld = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    // The physical Ctrl key, like the Ctrl+Alt+G grab reads it from GLFW:
+    // with ConfigMacOSXBehaviors ImGui swaps Ctrl and Cmd at AddKeyEvent
+    // (imgui.cpp), so on macOS the key called Ctrl here is Cmd — accept
+    // both, and the chord reads Ctrl+Alt+F on every host.
+    const bool ctrlHeld = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl) ||
+                          ImGui::IsKeyDown(ImGuiKey_LeftSuper) || ImGui::IsKeyDown(ImGuiKey_RightSuper);
     if (!io.WantTextInput && ctrlHeld && alt && ImGui::IsKeyPressed(ImGuiKey_F, false)) d.kiosk = !d.kiosk;
-    if (d.kiosk) {
-        if (alt && ImGui::IsKeyPressed(ImGuiKey_F4, false)) glfwSetWindowShouldClose(window, GLFW_TRUE);
-        const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
-        d.quitHold = (ctrlHeld && shift && ImGui::IsKeyDown(ImGuiKey_Q)) ? d.quitHold + 1 : 0;
-        if (d.quitHold >= 42) glfwSetWindowShouldClose(window, GLFW_TRUE);   // ~0.7 s at 60 Hz
+    if (!d.kiosk) {
+        d.quitHold = 0;
+        return false;
     }
-    if (d.kiosk == d.kioskApplied) {
-        kioskFlag().store(d.kiosk, std::memory_order_relaxed);
-        return;
-    }
-    const bool visible = glfwGetWindowAttrib(window, GLFW_VISIBLE) == GLFW_TRUE;
-    if (d.kiosk) {
-        glfwGetWindowPos(window, &d.windowedX, &d.windowedY);
-        glfwGetWindowSize(window, &d.windowedW, &d.windowedH);
-        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-        const GLFWvidmode* mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
-        if (visible && monitor && mode)
-            glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-        std::fprintf(stderr, "[kiosk] cabinet mode ON%s - Ctrl+Alt+F, Alt+F4 or Ctrl+Shift+Q (held) leaves\n",
-                     visible ? "" : " (window hidden: no monitor switch)");
-    } else {
-        if (visible)
-            glfwSetWindowMonitor(window, nullptr, d.windowedX, d.windowedY,
-                                 d.windowedW, d.windowedH, 0);
-        std::fprintf(stderr, "[kiosk] cabinet mode OFF\n");
-    }
-    d.kioskApplied = d.kiosk;
-    kioskFlag().store(d.kiosk, std::memory_order_relaxed);
+    bool quit = alt && ImGui::IsKeyPressed(ImGuiKey_F4, false);
+    const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
+    d.quitHold = (ctrlHeld && shift && ImGui::IsKeyDown(ImGuiKey_Q)) ? d.quitHold + 1 : 0;
+    if (d.quitHold >= 42) quit = true;   // ~0.7 s at 60 Hz
+    return quit;
 }
 
 // « Affichage »: the cabinet mode and the CRT glass, presets and the
@@ -71,8 +52,8 @@ void drawDisplayMenu(GuiDisplayState& d) {
         if (ImGui::MenuItem(labels[i], nullptr, current)) d.selectPreset(kCrtPresetNames[i]);
     }
     ImGui::MenuItem("Réglages CRT...", nullptr, &d.showCrtWindow);
-    if (d.crtOn && d.stack.attempted() && !d.stack.available())
-        ImGui::TextDisabled("(shader indisponible : écran brut — %s)", d.stack.lastError().c_str());
+    if (const std::string err = d.crtOn && d.passError ? d.passError() : std::string(); !err.empty())
+        ImGui::TextDisabled("(shader indisponible : écran brut — %s)", err.c_str());
     ImGui::EndMenu();
 }
 
@@ -112,9 +93,9 @@ void drawCrtWindow(GuiDisplayState& d) {
     touched |= ImGui::SliderFloat("Netteté", &p.sharpness, 0.0f, 1.0f);
     ImGui::PopItemWidth();
     if (touched) { d.crtPreset = "custom"; d.crtOn = true; }
-    if (d.crtOn && d.stack.attempted() && !d.stack.available())
+    if (const std::string err = d.crtOn && d.passError ? d.passError() : std::string(); !err.empty())
         ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.35f, 1), "Shader indisponible : %s",
-                           d.stack.lastError().c_str());
+                           err.c_str());
     ImGui::End();
 }
 

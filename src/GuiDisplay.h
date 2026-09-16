@@ -23,13 +23,11 @@
 
 #pragma once
 
-#include "CrtEffectStack.h"
 #include "CrtParams.h"
 
 #include <atomic>
+#include <functional>
 #include <string>
-
-struct GLFWwindow;
 
 namespace pom68k::gui {
 
@@ -50,19 +48,20 @@ struct GuiDisplayState {
     bool crtOn = false;
     std::string crtPreset = "off";   // last preset applied, "custom" after a slider
     CrtParams crt{};
-    CrtEffectStack stack;
+    // The CRT pass, bound by GuiHostServices in the GL build over its
+    // CrtEffectStack: (tex, srcW, srcH, dstW, dstH) → the texture to draw,
+    // 0 when the pass is unavailable. Unbound in the headless gates, where
+    // the raw texture is shown. `passError` says why a bound pass could
+    // not start (empty: fine, or not tried yet) — the menu prints it.
+    std::function<unsigned int(unsigned int, int, int, int, int)> pass;
+    std::function<std::string()> passError;
     bool showCrtWindow = false;
 
     // The texture to draw for a srcW × srcH frame shown at dstW × dstH: the
     // CRT pass's output, or the raw texture when the pass is off or failed.
     unsigned int shown(unsigned int tex, int srcW, int srcH, int dstW, int dstH) {
-        if (!crtOn || tex == 0) return tex;
-        if (!stack.available()) {
-            if (stack.attempted()) return tex;
-            if (!stack.initialize()) return tex;
-        }
-        stack.setParams(crt);
-        const unsigned int out = stack.process(tex, srcW, srcH, dstW, dstH);
+        if (!crtOn || tex == 0 || !pass) return tex;
+        const unsigned int out = pass(tex, srcW, srcH, dstW, dstH);
         return out ? out : tex;
     }
 
@@ -92,8 +91,9 @@ inline Letterbox letterbox(float availW, float availH, float srcW, float srcH) {
 }
 
 // GuiDisplayWindow.cpp: once per frame, before anything is drawn — the
-// Ctrl+Alt+F / quit chords and the monitor switch (only on a visible window).
-void kioskFrame(GuiDisplayState& d, GLFWwindow* window);
+// Ctrl+Alt+F toggle and the quit chords. Returns true when a quit chord
+// fired; the monitor switch itself is GuiShell.cpp's (it needs the window).
+bool kioskChords(GuiDisplayState& d);
 // The « Affichage » menu (inside an open menu bar) and the settings window.
 void drawDisplayMenu(GuiDisplayState& d);
 void drawCrtWindow(GuiDisplayState& d);

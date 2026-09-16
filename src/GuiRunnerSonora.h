@@ -216,7 +216,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
         screenWindowBegin(services.shell().display(), c.spec.name.c_str());
-        c.input.frame(services.shell().display(), c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
+        c.input.frame(services.shell().display(), GlfwScreenHost{c.window}, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) {
                         c.m.push({MachineT::Cmd::MouseMove, dx, dy});
                     },

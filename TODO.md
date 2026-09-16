@@ -88,10 +88,14 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 - [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.**
   Les quatre fenêtres (Périphériques, AppleTalk / Ethernet, Disques,
   Moteur) sont sous `gui_windows_test`, le formulaire « Configuration des
-  services » compris (hub attaché à une carte Plus sans ROM, 2026-09-16).
-  Reste : la fenêtre machine (menus, upload framebuffer, hot-swap floppy/CD,
-  save/restore) et la passe save-state GUI — les trois gates de relance du
-  2026-09-08 sont hors GUI.
+  services » compris ; la fenêtre machine (barre de menus, tableau de bord,
+  surface écran et clavier, mode borne, presets CRT) sous
+  `gui_machine_window_test` sur une machine factice (2026-09-16). Reste :
+  l'upload du framebuffer et le hot-swap floppy/CD par les bindings des six
+  runners (`compactDiskBaysHost` et ses pairs, jamais instanciés hors GL),
+  et la passe save-state GUI de bout en bout — le gate voit la demande
+  arriver dans le slot, pas le fichier écrit ; les trois gates de relance
+  du 2026-09-08 sont hors GUI.
 - [ ] **Trancher la cellule `finder_boot_matrix` macii × 7.5.5**, enregistrée
   UNSTABLE le 2026-09-02 (Stickies au premier plan).
 - [ ] **Fermer le `-Wstringop-overflow` de GCC 13 + LTO sur

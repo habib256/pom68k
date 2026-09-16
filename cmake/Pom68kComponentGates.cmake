@@ -29,18 +29,41 @@ set_tests_properties(gui_smoke_test PROPERTIES
 if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     add_executable(gui_windows_test tests/gui_windows_test.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
-        src/GuiEngineWindow.cpp src/DockLayout.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
     target_include_directories(gui_windows_test PRIVATE ${IMGUI_DIR})
     target_compile_definitions(gui_windows_test PRIVATE IMGUI_ENABLE_TEST_ENGINE)
     target_link_libraries(gui_windows_test PRIVATE pom68k_core pom68k_app)
     add_test(NAME gui_windows_test COMMAND gui_windows_test)
+    # The machine window itself: the menu bar (GuiShellMenu.cpp), the screen
+    # window with its mouse surface and keyboards (GuiScreen.h), the cabinet
+    # mode and the CRT presets — driven headlessly on a fake machine.
+    add_executable(gui_machine_window_test tests/gui_machine_window_test.cpp
+        src/GuiShellMenu.cpp src/GuiMachineControls.cpp src/GuiDisplayWindow.cpp
+        src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp
+        src/FloppySound.cpp src/miniaudio_impl.cpp
+        ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
+    target_include_directories(gui_machine_window_test PRIVATE ${IMGUI_DIR})
+    target_compile_definitions(gui_machine_window_test PRIVATE IMGUI_ENABLE_TEST_ENGINE)
+    target_link_libraries(gui_machine_window_test PRIVATE pom68k_core pom68k_app)
+    # The session state carries the drive-sound players (miniaudio, loaded
+    # at run time through dlopen): the same host libraries as the GUI.
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(gui_machine_window_test PRIVATE ${CMAKE_DL_LIBS} Threads::Threads m)
+    endif()
+    add_test(NAME gui_machine_window_test COMMAND gui_machine_window_test)
 else()
     # Registered on every configure so the registry (STATUS.md, docs_test)
     # does not depend on whether setup_imgui.sh ran: without Dear ImGui the
     # gate soft-skips, and the census counts it as such.
     add_test(NAME gui_windows_test
+             COMMAND ${CMAKE_COMMAND} -E echo
+                     "SKIP: Dear ImGui absent (${IMGUI_DIR}) - run ./setup_imgui.sh")
+    add_test(NAME gui_machine_window_test
              COMMAND ${CMAKE_COMMAND} -E echo
                      "SKIP: Dear ImGui absent (${IMGUI_DIR}) - run ./setup_imgui.sh")
 endif()

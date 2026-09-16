@@ -99,7 +99,7 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
         screenWindowBegin(c.services.shell().display(), c.spec.machineName.c_str());
-        c.input.frame(c.services.shell().display(), c.window, c.tex,
+        c.input.frame(c.services.shell().display(), GlfwScreenHost{c.window}, c.tex,
                       ImVec2(float(frameWidth * 2), float(frameHeight * 2)),
                       [&](int dx, int dy) {
                           machine.push(

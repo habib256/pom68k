@@ -10,7 +10,7 @@ CLAUDE.md                                230
 cmake/Pom68kAfpGates.cmake               19
 cmake/Pom68kAgentGates.cmake             74
 cmake/Pom68kAudioGates.cmake             12
-cmake/Pom68kComponentGates.cmake         550
+cmake/Pom68kComponentGates.cmake         573
 cmake/Pom68kDaynaGates.cmake             36
 cmake/Pom68kDevTools.cmake               149
 cmake/Pom68kGatePolicy.cmake             400
@@ -22,7 +22,7 @@ cmake/Pom68kSerialGates.cmake            8
 cmake/Pom68kStorageGates.cmake           26
 CMakeLists.txt                           618
 src/AfpServer.cpp                        1122
-src/GuiHostServices.cpp                  193
+src/GuiHostServices.cpp                  198
 src/GuiMachineRuntime.cpp                47
 src/GuiRunnerCompact.h                   145
 src/GuiRunnerCompactStorage.h            41
@@ -31,8 +31,8 @@ src/GuiRunnerDuo.h                       217
 src/GuiRunnerSonora.h                    265
 src/GuiRunnerToby.h                      243
 src/GuiRunnerV8.h                        277
-src/GuiShell.cpp                         248
-src/GuiShellCommon.h                     411
+src/GuiShell.cpp                         95
+src/GuiShellCommon.h                     135
 src/GuiTobyStatus.h                      41
 src/jit/backends/JitBackendA64.cpp       5111
 src/jit/backends/JitBackendX64.cpp       5595

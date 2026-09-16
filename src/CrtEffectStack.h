@@ -16,6 +16,7 @@
 #pragma once
 
 #include "CrtParams.h"
+#include "GuiDisplay.h"
 
 #include <string>
 
@@ -67,5 +68,10 @@ private:
     bool firstFrame_ = true;
     CrtParams params_{};
 };
+
+// Binds `display.pass` / `display.passError` over `stack`: the shader is
+// compiled lazily on the first frame that wants it, the parameters are the
+// display's current sliders. Both must outlive the display state.
+void bindCrtPass(GuiDisplayState& display, CrtEffectStack& stack);
 
 } // namespace pom68k::gui

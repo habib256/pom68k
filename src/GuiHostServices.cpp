@@ -2,6 +2,8 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "GuiHostServices.h"
+
+#include "CrtEffectStack.h"
 #include "DiskBays.h"
 #include "GuiShell.h"
 #include "MachineHost.h"
@@ -50,6 +52,9 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     state_.peripherals.registry = config_.core().firmware.registry;
     state_.relaunch.launchArguments = config_.launchArguments();
     state_.display.kiosk = config_.devices().kiosk;
+    // The CRT glass pass: the stack lives in the arena (its GL objects die
+    // with the window's context), the display state gets the callbacks.
+    gui::bindCrtPass(state_.display, own<gui::CrtEffectStack>());
     if (!config_.devices().crtPreset.empty() &&
         !state_.display.selectPreset(config_.devices().crtPreset))
         std::fprintf(stderr, "POM68K_CRT=%s: unknown preset (off, light, arcade, phosphor)\n",

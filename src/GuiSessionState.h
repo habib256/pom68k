@@ -60,7 +60,10 @@ struct GuiRelaunchState {
     // environment, the command line or the window.
     std::optional<int> daynaPortId;
     bool showWindow = false;
-
+    // The frame asked the window to close (a staged relaunch, a machine
+    // switch, the speed measurement done, a kiosk quit chord); the shell
+    // carries it to GLFW. GuiShellMenu.cpp sets it, GuiShell.cpp clears it.
+    bool closeWindow = false;
     // Relaunch on the session's own command line: the machine comes back
     // identical apart from what the caller staged just before.
     void stageOwnCommandLine() {

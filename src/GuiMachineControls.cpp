@@ -61,7 +61,7 @@ void drawMachineControlItems(GuiMachineControls& controls) {
 
 void drawMachineControlWindow(GuiMachineControls& controls) {
     if (!controls.bound() || !controls.showWindow) return;
-    ImGui::SetNextWindowPos(ImVec2(20, 830), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(20, 560), ImGuiCond_FirstUseEver);   // undocked fallback, inside a 1100x800 window
     if (!ImGui::Begin(kMachineControlWindowTitle, &controls.showWindow,
                       ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();

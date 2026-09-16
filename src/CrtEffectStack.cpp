@@ -407,4 +407,15 @@ unsigned int CrtEffectStack::process(unsigned int srcTex, int srcW, int srcH, in
     return outputTex_[writeIdx];
 }
 
+void bindCrtPass(GuiDisplayState& display, CrtEffectStack& stack) {
+    display.pass = [&stack, &display](unsigned tex, int sw, int sh, int dw, int dh) -> unsigned {
+        if (!stack.available() && (stack.attempted() || !stack.initialize())) return 0;
+        stack.setParams(display.crt);
+        return stack.process(tex, sw, sh, dw, dh);
+    };
+    display.passError = [&stack] {
+        return stack.attempted() && !stack.available() ? stack.lastError() : std::string();
+    };
+}
+
 } // namespace pom68k::gui

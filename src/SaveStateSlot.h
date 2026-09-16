@@ -56,6 +56,12 @@ struct SaveStateSlot {
         std::lock_guard<std::mutex> l(mu_);
         return message_;
     }
+    // What the GUI queued and the machine thread has not taken yet
+    // (bit 0 = save, bit 1 = load) — gui_machine_window_test reads it.
+    int pending() {
+        std::lock_guard<std::mutex> l(mu_);
+        return pending_;
+    }
 
     // Machine-thread side, called from applyCmds() (between quanta).
     // Returns what actually happened (bit 0 = saved, bit 1 = restored) so

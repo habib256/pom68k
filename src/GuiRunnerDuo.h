@@ -170,7 +170,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                          frameWidth, frameHeight, 0,
                          GL_BGRA, GL_UNSIGNED_BYTE, framebuffer.data());
-            c.input.frame(c.services.shell().display(), c.window, c.texture,
+            c.input.frame(c.services.shell().display(), GlfwScreenHost{c.window}, c.texture,
                 ImVec2(float(frameWidth * 2), float(frameHeight * 2)),
                 [&](int dx, int dy) {
                     machine.push({MachineT::Cmd::MouseMove, dx, dy});

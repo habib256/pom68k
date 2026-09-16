@@ -148,7 +148,12 @@ int main() {
         testasset::find("src/GuiRunnerToby.h"),
         testasset::find("src/GuiRunnerV8.h"),
         testasset::find("src/GuiRunnerDuo.h")};
+    // The shell is three units since 2026-09-16: the GLFW wrapper, the
+    // GLFW-free menu bar (GuiShellMenu.cpp) and the screen/input header
+    // (GuiScreen.h) the headless machine-window gate compiles.
     const std::string guiShellCpp = testasset::find("src/GuiShell.cpp");
+    const std::string guiShellMenuCpp = testasset::find("src/GuiShellMenu.cpp");
+    const std::string guiScreenHeader = testasset::find("src/GuiScreen.h");
     const std::string guiHostServices =
         testasset::find("src/GuiHostServices.h");
     const std::string guiHostServicesCpp =
@@ -297,13 +302,13 @@ int main() {
     const int rows = int(pom68k::kMachineProfileCount);
     const std::string mainSource = slurp(mainCpp);
     const std::string guiRuntimeSource = slurp(guiRuntimeCpp);
-    std::string shellHeaderSource = slurp(guiShellCommon);
-    bool guiRunnersPresent = !guiShellCommon.empty();
+    std::string shellHeaderSource = slurp(guiShellCommon) + slurp(guiScreenHeader);
+    bool guiRunnersPresent = !guiShellCommon.empty() && !guiScreenHeader.empty();
     for (const std::string& runner : guiRunners) {
         guiRunnersPresent = guiRunnersPresent && !runner.empty();
         shellHeaderSource += slurp(runner);
     }
-    const std::string shellSource = slurp(guiShellCpp);
+    const std::string shellSource = slurp(guiShellCpp) + slurp(guiShellMenuCpp);
     const std::string hostServicesSource =
         slurp(guiHostServices) + slurp(guiHostServicesCpp);
     const std::string peripheralWindowSource =

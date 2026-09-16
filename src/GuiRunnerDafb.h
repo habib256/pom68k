@@ -217,7 +217,7 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
         screenWindowBegin(services.shell().display(), context.spec.name.c_str());
-        context.input.frame(services.shell().display(), context.window, context.texture,
+        context.input.frame(services.shell().display(), GlfwScreenHost{context.window}, context.texture,
             ImVec2(float(hres * 2), float(vres * 2)),
             [&](int dx, int dy) {
                 machine.push({MachineT::Cmd::MouseMove, dx, dy});

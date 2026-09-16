@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (seventeenth)** — [The machine window under a headless gate: the menu bar, the dashboard, the screen surface and the keyboard on a fake machine, and two defects it found on its first run](#2026-09-16-machine-window-gate)
 - **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live](#2026-09-16-kiosk-and-crt)
 - **2026-09-16 (fifteenth)** — [The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied](#2026-09-16-services-form-rendered)
 - **2026-09-16 (fourteenth)** — [The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog](#2026-09-16-guest-keyboard-table)
@@ -983,6 +984,43 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-machine-window-gate"></a>
+## 2026-09-16 (seventeenth) — The machine window under a headless gate: the menu bar, the dashboard, the screen surface and the keyboard on a fake machine, and two defects it found on its first run
+
+`gui_machine_window_test` drives what every runner shows and
+`gui_windows_test` left out: the menu bar, « Tableau de bord », the screen
+window with its mouse surface and the compact keyboard, the cabinet mode
+and the CRT presets. No window system: the harness of
+`tests/ImGuiHeadless.h`, a fake machine that records the commands the GUI
+pushes (reset, pause, save request in the slot, recording, engine
+switch, mouse and key codes) and a texture supplied under the runner's
+GL name so a pixel of the emulated screen is read back where the window
+put it — docked at its 512:342 ratio, letterboxed and centred in kiosk.
+
+**What moved for it.** The shell is three units: `GuiShell.cpp` keeps
+GLFW (the window, the kiosk monitor switch, the close), `GuiShellMenu.cpp`
+draws the bar and the windows and leaves the close as
+`relaunch.closeWindow`, `GuiScreen.h` holds the screen window, `ScreenInput`
+and the keyboards with the host window abstracted into a small object
+(`GlfwScreenHost` in the product, a fake in the gate). The CRT pass is
+bound on the display state as callbacks (`bindCrtPass`), so the state
+needs no GL; the headless gate shows the raw texture.
+
+**Found on the first run.** (1) « Tableau de bord » was placed at
+y = 830 on first use, in a window 800 px tall: ImGui clamped it to a
+19 px title-bar sliver at the bottom edge of every fresh layout. It now
+docks under the disk library (`DockLayout.cpp`), and its floating
+fallback is inside the window. (2) The kiosk chord read Cmd on macOS:
+with `ConfigMacOSXBehaviors` ImGui swaps Ctrl and Cmd at `AddKeyEvent`,
+so `IsKeyDown(ImGuiKey_LeftCtrl)` is the Cmd key there while the Ctrl+Alt+G
+grab reads GLFW's physical Ctrl. The chord accepts both keys and reads
+Ctrl+Alt+F on every host.
+
+**Not covered here.** The framebuffer upload (`glTexImage2D` in each
+runner) and the floppy/CD hot-swap bindings of the six runners are
+templates instantiated only in the GL build; the save request is seen in
+the slot, the file itself is the smoke's. The TODO item says so.
 
 <a id="2026-09-16-kiosk-and-crt"></a>
 ## 2026-09-16 (sixteenth) — Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live

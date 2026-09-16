@@ -1,6 +1,7 @@
 // DockLayout -- see DockLayout.h for the shape of the shell.
 
 #include "DockLayout.h"
+#include "GuiMachineControls.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"     // DockBuilder* lives in the internal API
@@ -113,8 +114,15 @@ void dockLayoutFrame()
     ImGuiID left  = ImGui::DockBuilderSplitNode(root, ImGuiDir_Left, ratio,
                                                 nullptr, &right);
 
+    // The dashboard (« Tableau de bord ») takes the bottom of the right
+    // column: floating at its first-use position it was a title-bar sliver
+    // clamped to the bottom edge of a fresh 1100x800 window, which the
+    // headless machine-window gate saw on 2026-09-16.
+    ImGuiID bottom = 0;
+    ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.34f, &bottom, &right);
     ImGui::DockBuilderDockWindow(screenWindow, left);
     ImGui::DockBuilderDockWindow(kDiskWindowTitle, right);
+    ImGui::DockBuilderDockWindow(gui::kMachineControlWindowTitle, bottom);
     ImGui::DockBuilderFinish(root);
 }
 

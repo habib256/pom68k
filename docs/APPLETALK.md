@@ -38,7 +38,7 @@ change AppleTalk behaviour are repeated here.
 
 | Knob | Default | Effect |
 |---|---|---|
-| `POM68K_APPLETALK=0` | (unset = on) | is captured once by `ProcessEnvironment`, parsed by `RuntimeConfig`, and kills the in-process stack; the **Périphériques → Réseau : AppleTalk / Ethernet** window stays reachable, says so, and still stages a DaynaPort card for the next boot (`src/GuiShell.cpp:194-201`, `src/NetworkWindow.cpp:157-166`) |
+| `POM68K_APPLETALK=0` | (unset = on) | is captured once by `ProcessEnvironment`, parsed by `RuntimeConfig`, and kills the in-process stack; the **Périphériques → Réseau : AppleTalk / Ethernet** window stays reachable, says so, and still stages a DaynaPort card for the next boot (`src/GuiShellMenu.cpp:183-194`, `src/NetworkWindow.cpp:157-166`) |
 | `POM68K_APPLETALK=1` | — | *different job*: seeds PRAM SPConfig `$21` = LocalTalk **active at boot** (`src/Egret.cpp:70-76`, `src/Rtc.cpp:53-57`). Unset seeds `$22` (async) — a fresh PRAM then needs the Chooser's AppleTalk radio button, or an image whose prefs already have it on |
 | `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/GuiHostServices.cpp:80-105`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:356-361`). Editable live in the window (§0.3), and `--atalk-share=/path` on the relaunch line overrides the variable |
 | `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/GuiHostServices.h:122-127`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s and no `setLosslessRx`, so the wire can drop again. See §0.4 |

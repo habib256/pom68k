@@ -20,8 +20,9 @@ JITs in the strict sense; `auto` selects one of them for the default 68040
 path when the host supports it. Their exactness is why the wins are bounded
 (§ 7). The GUI
 says "Moteur accéléré", distinguishes "JIT `<backend>`" from
-"fenêtres (threaded)" and names the backend (`GuiShell.cpp:189-227`, gauge
-window `drawJitWindow()` at `GuiShell.cpp:45-119`);
+"fenêtres (threaded)" and names the backend (`drawCpuMenu()`,
+`GuiShellMenu.cpp:85-118`). The gauge window is `drawEngineWindow()`,
+`GuiEngineWindow.cpp:15-89`;
 the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode
 (`docs/HLE_OVERLAY.md`) would build on. The five relaxations a classic 68k
