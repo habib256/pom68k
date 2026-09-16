@@ -96,9 +96,6 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
   et la passe save-state GUI de bout en bout — le gate voit la demande
   arriver dans le slot, pas le fichier écrit ; les trois gates de relance
   du 2026-09-08 sont hors GUI.
-- [ ] **Fermer le `-Wstringop-overflow` de GCC 13 + LTO sur
-  `EtherLink::sendToGuest`.** Latent parce que le job `-Werror` construit
-  sans LTO : la combinaison qui l'expose n'est couverte par aucun gate.
 - [ ] **Exécuter les locksteps sur un hôte Windows.** Préalable nommé de
   « `threaded` est le plancher Windows » : tant qu'aucun hôte Windows ne
   les exécute, le choix reste une décision et non une mesure.

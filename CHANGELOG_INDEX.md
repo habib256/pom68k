@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 548 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 549 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 22 |
 | [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 62 |
-| [Build, packaging and release](#build-packaging-and-release) | 13 |
+| [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 38 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 104 |
@@ -450,6 +450,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-07 (ninth)** — [The first MSVC run of the asset-free tier: POM68K.exe builds with /GL + /LTCG in six minutes, the gate tree compiles once three POSIX-isms are shimmed or fenced, and 75 of 82 gates pass — the seven reds are configuration findings, read and filed](CHANGELOG.md#2026-09-07-msvc-first-run)
 - **2026-09-07 (seventh)** — [LTO enters the artifacts: the universal macOS package builds, passes lipo and runs with it, and MSVC gets /GL + /LTCG through CMake's IPO, probed rather than assumed](CHANGELOG.md#2026-09-07-lto-artifacts)
 - **2026-09-07 (tenth)** — [The Windows release job goes green end to end: seven configuration reds closed, a 16 MB MSVC stack, and a release pipeline that builds all four packages from a manual dispatch without publishing](CHANGELOG.md#2026-09-07-windows-green)
+- **2026-09-16 (twenty-fourth)** — [The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma](CHANGELOG.md#2026-09-16-lto-werror-green)
 
 ## Tests, gates and measurement
 

@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (twenty-fourth)** — [The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma](#2026-09-16-lto-werror-green)
 - **2026-09-16 (twenty-third)** — [The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way](#2026-09-16-dfac2-ruled)
 - **2026-09-16 (twenty-second)** — [The 512/2048 CD-image rule is the one already in the tree, and it stays](#2026-09-16-cd-block-rule)
 - **2026-09-16 (twenty-first)** — [The bare LC II re-tested: HWCfgFlags keeps the FPU bit because VIA1 PA0 was hardwired high; with PA0 low the ROM enters its serial test monitor where MAME does not — and the CUE/BIN item is ruled](#2026-09-16-bare-lcii-retested)
@@ -990,6 +991,23 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-lto-werror-green"></a>
+## 2026-09-16 (twenty-fourth) — The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma
+
+The warning lived only where GCC's `lto1` runs — the per-TU `-Werror` job
+never saw it and the source pragma could not reach it. Two moves close
+it. `EtherLink::sendToGuest` no longer `memcpy`s into a freshly sized
+vector: the 14-byte header is built in a local array and the frame is
+`reserve`d and appended by ranges, the same bytes on the wire, and no
+`-Wstringop-overflow` shape left for the LTO pass to misread. And the
+nightly's release-shape build (`-DPOM68K_LTO=ON`, GCC, the default
+linker) now configures with `-DPOM68K_WERROR=ON`, the only build where
+the combination occurs. Dispatched on the commit that made both changes
+(90f54bb), nightly run 35123600385 is green: LTO core (aarch64) and LTO
+core (x86_64) both success — the x86_64 leg is the GCC that emitted the
+warning — with the coverage and both sanitizer jobs. The item closes;
+the gate that keeps it closed is the nightly itself.
 
 <a id="2026-09-16-dfac2-ruled"></a>
 ## 2026-09-16 (twenty-third) — The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way
