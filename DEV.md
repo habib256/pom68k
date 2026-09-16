@@ -1989,7 +1989,14 @@ how the Sad Mac `$0F0004` was read off the screen) and
 `POM68K_MAC128K_EXC` (trap the exception stubs at `$4001AA` and print the
 vector, the faulting PC and the registers — what proved `$0F0004` to be
 vector 5, a zero divide in the 400K spindle calibration, rather than the
-RAM sub-test its encoding suggests). `_EXC` exits 0 whether or not an
+RAM sub-test its encoding suggests). The beyond-boot sibling
+(`tests/mac128k_mfs_etalon.cpp`: the Finder duplicates `Welcome!` on the
+400 K MFS floppy and `src/MfsVolume.h` reads the copy back) shares
+`POM68K_MAC128K_MODEL` and `_PPM` and adds `POM68K_MFS_ICON_X` /
+`POM68K_MFS_ICON_Y` (where the desktop icon sits, default 472,105 on the
+System 1.1 desktop) and `POM68K_MFS_TRACE` (the pointer's homing, one
+quadrature step a frame — the 1.1 mouse driver scales a burst and a
+sub-frame remainder never lands). `POM68K_MAC128K_EXC` exits 0 whether or not an
 exception fires: it reports, it never judges, so it must not be registered
 as a gate in that mode.
 Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,

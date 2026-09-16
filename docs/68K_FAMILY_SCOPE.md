@@ -349,7 +349,13 @@ the fast boards the agent is already in front when the verdict reads
 draw no desktop on the *synthetic* Toby declaration ROM where the real
 342-0008-a draws one — their variant needs the dump and says so
 (`TODO.md` § Fidélité holds what the synthetic driver lacks).
-Still boot-only: the 128K/512K.
+The 128K/512K, which carry no SCSI bus and no Startup Items for the
+agent, got their own proof on 2026-09-16: `mac128k_mfs_etalon` /
+`mac512k_mfs_etalon` click the `Welcome!` document on the desktop, press
+Cmd-D, and `src/MfsVolume.h` reads `Copy of Welcome!` back from the
+in-memory floppy — a new MFS directory entry whose data fork is
+byte-identical to the original, still there after a reboot. No profile is
+boot-only any more.
 
 Adding a 40th machine is cheaper than hardening the 39 that exist. Read the
 roadmap below against that trade — and against

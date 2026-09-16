@@ -38,6 +38,9 @@ public:
     bool insertImage(std::vector<uint8_t> data); // in-memory image
     void eject();                                // clear image (sense CSTIN)
     bool hasDisk() const { return !image_.empty(); }
+    // The medium as the guest has left it (write-back is off in gates, so
+    // this is where a host-side check of a guest write reads — MfsVolume.h).
+    const std::vector<uint8_t>& image() const { return image_; }
     const std::string& backingPath() const { return path_; }
     bool doubleSided() const { return doubleSided_; }
     bool isHd() const { return hd_; }

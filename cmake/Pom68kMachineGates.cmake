@@ -631,6 +631,20 @@ add_test(NAME mac512k_boot_etalon COMMAND mac128k_boot_etalon
 set_tests_properties(mac128k_boot_etalon PROPERTIES TIMEOUT 1800)
 set_tests_properties(mac512k_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_MAC128K_MODEL=mac512k" TIMEOUT 1800)
+# Beyond the boot on the same two machines: the Finder duplicates a file on
+# the 400 K MFS floppy (mouse on the desktop icon, Cmd-D) and the host reads
+# the new entry and its data fork back with MfsVolume.h — the File Manager
+# proven on the medium these machines have, since they carry no SCSI bus
+# and no Startup Items for the agent probe (2026-09-16).
+add_executable(mac128k_mfs_etalon tests/mac128k_mfs_etalon.cpp)
+target_link_libraries(mac128k_mfs_etalon PRIVATE pom68k_core)
+add_test(NAME mac128k_mfs_etalon COMMAND mac128k_mfs_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME mac512k_mfs_etalon COMMAND mac128k_mfs_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(mac128k_mfs_etalon PROPERTIES TIMEOUT 1800)
+set_tests_properties(mac512k_mfs_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_MAC128K_MODEL=mac512k" TIMEOUT 1800)
 
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kStorageGates.cmake)
 

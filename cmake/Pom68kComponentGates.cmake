@@ -278,6 +278,13 @@ add_test(NAME machinehost_test COMMAND machinehost_test)
 # walk on a synthetic low-memory image — refNum → SCSI ID, a mounted
 # volume's name, and the bounds that keep a half-built System from being
 # misread. No ROM, no image.
+# The MFS reader (src/MfsVolume.h): a volume built in the test, then the
+# pinned System 1.1 floppy when present (soft — the asset is private).
+add_executable(mfs_volume_test tests/mfs_volume_test.cpp)
+target_link_libraries(mfs_volume_test PRIVATE pom68k_core)
+add_test(NAME mfs_volume_test COMMAND mfs_volume_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_executable(guest_scsi_view_test tests/guest_scsi_view_test.cpp)
 target_link_libraries(guest_scsi_view_test PRIVATE pom68k_core)
 add_test(NAME guest_scsi_view_test COMMAND guest_scsi_view_test)

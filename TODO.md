@@ -57,10 +57,10 @@ System 400 K jusqu'au bureau du Finder — exécutés sur x86-64 le 2026-09-13
 (7,40 s chacun) et sur le M4 le 2026-09-16 (5,3 s et 4,4 s) depuis que les
 deux images 400 K y sont arrivées du lecteur TEST, épinglées le jour même
 dans `assets.lock` (rôle `reference-floppy`, `disks35/ref/`, jumeau `work/`
-comme `hdv/ref/`). Ce que l'épinglage ne donne pas : elles sont en MFS et
-l'arbre n'a aucun parseur MFS, donc pas de vérification hôte d'un fichier
-écrit par l'invité — le modèle de `lcii_floppy_etalon` reste hors d'atteinte
-sur ces deux machines. La sérialisation PWM du lecteur 400 K est livrée
+comme `hdv/ref/`). L'arbre lit le MFS depuis le 2026-09-16
+(`src/MfsVolume.h`, `mfs_volume_test`, `tools/mfs_ls.py`) : la vérification
+hôte d'un fichier écrit par l'invité existe, `mac128k_mfs_etalon` /
+`mac512k_mfs_etalon`. La sérialisation PWM du lecteur 400 K est livrée
 (format v16, 2026-09-15). Le paragraphe précédent disait encore, le
 2026-09-14, qu'`assets.lock` n'avait aucune ligne 64 K : il datait du
 2026-09-12.
@@ -318,9 +318,13 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
   (`tests/AgentBootProbe.h`, `cmake/Pom68kAgentGates.cmake`) : le Finder lance
   l'agent installé par l'hôte, l'agent monte un disque attaché à chaud —
   Process Manager, SCSI Manager et File Manager après la signature ; les
-  compacts et le IIx/IIcx y compris, sur le volume System 7.0. Reste au boot
-  seul le 128K/512K (System 1.1/2.0, sans Startup Items).
-  `docs/68K_FAMILY_SCOPE.md` § 5.
+  compacts et le IIx/IIcx y compris, sur le volume System 7.0. Le 128K/512K
+  (System 1.1, sans Startup Items ni SCSI) ont la leur depuis le 2026-09-16 :
+  `mac128k_mfs_etalon` / `mac512k_mfs_etalon`, le Finder duplique un fichier
+  sur la disquette MFS et l'hôte relit la copie (`src/MfsVolume.h`). Aucun
+  profil n'est plus « boot seul » ; l'item reste ouvert pour la profondeur
+  (une application lancée, pas seulement le File Manager) sur ces deux
+  machines. `docs/68K_FAMILY_SCOPE.md` § 5.
 - [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.** Le
   GUI n'a toujours aucun gate : `--version` passe, l'arbre compile, `-L unit`
   et `-L smoke` sont verts, et rien de tout cela n'ouvre une fenêtre. Une passe

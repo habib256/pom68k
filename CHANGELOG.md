@@ -453,6 +453,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (third)** — [The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back](#2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate)
 - **2026-09-16 (later)** — [The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place](#2026-09-16-400k-floppies-pinned)
 - **2026-09-16** — [The Toby declaration ROM is a firmware choice the product reports: the missing dump is said in the window, and the dump on this host was not being found](#2026-09-16-toby-decl-rom-is-a-firmware-choice)
 - **2026-09-15 (fifth)** — [POM68K 0.2.0](#2026-09-15-release-0-2-0)
@@ -967,6 +968,47 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate"></a>
+## 2026-09-16 (third) — The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back
+
+Pinning the two 400 K floppies this morning left one sentence in the
+TODO: "the tree has no MFS parser, so no gate can verify a file the guest
+wrote". `src/MfsVolume.h` removes it — a header-only reader for the flat
+file system of System 1.x/2.x (Inside Macintosh II-119..123): the volume
+information at sector 2, the 12-bit block map behind it, the packed file
+directory whose entries never straddle a sector, and forks followed block
+by block with every step bounded (a chain that leaves the volume or loops
+yields no bytes, never a crash). `tools/mfs_ls.py` is the same reader for a
+terminal; it listed both reference floppies before the C++ was written and
+is what the C++ was checked against.
+
+`mfs_volume_test` (asset-none) builds a volume byte by byte — an
+out-of-order three-block chain, a second directory sector, a locked entry —
+and drives the faults: loop, chain off the volume, chain shorter than
+flLgLen, HFS signature, straddling entry, a lying drNmFls (a note, not a
+refusal), an empty image. With the pinned System 1.1 on hand it reads the
+real thing: 13 files, the System's 124 KB resource fork whole, `Welcome!`'s
+8906-byte TeachText.
+
+**The gate.** `mac128k_mfs_etalon` / `mac512k_mfs_etalon`: the Finder up,
+the quadrature mouse homes on the `Welcome!` icon (472,105 on the 1.1
+desktop) and clicks, Cmd-D. Finder 1.1g writes `Copy of Welcome!` — a new
+directory entry, file #15 where drNxtFNum said 15, 9 allocation blocks
+consumed, a data fork byte-identical to the original on a different chain —
+and after a hard reset the floppy still boots to the Finder with the copy on
+it. Both machines pass (128K and 512K, ~25 s each). MFS has no folders (they
+live only in the Finder's DeskTop file), which is why the observable is a
+duplicated file and not the `folderprobe` count of the HFS gates. No profile
+is boot-only any more.
+
+**Two things learned on the way.** The 1.1 mouse driver scales a burst:
+eight quadrature steps a frame landed sixteen pixels and a sub-frame
+remainder never landed at all, so the pointer stalled five pixels short of
+the icon for as long as the loop ran. One step a frame is one pixel,
+exactly. And a looping chain that still covers flLgLen reads as bytes —
+which is what the guest would read too — so the reader's loop guard is a
+bound on the walk, not a diagnosis; the test says so.
 
 <a id="2026-09-16-400k-floppies-pinned"></a>
 ## 2026-09-16 (later) — The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place
