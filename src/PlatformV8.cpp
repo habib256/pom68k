@@ -168,6 +168,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     Cpu030& cpu = services.own<Cpu030>(mem, services.config().jit().resolved,
         services.config().core().cpu,
         services.config().cpu().fpu && !macTv, lc);
+    mem.setFpuFitted(services.config().cpu().fpu && !macTv);   // VIA1 PA0, what the ROM reads
     V8Video& video = services.own<V8Video>(mem);
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);

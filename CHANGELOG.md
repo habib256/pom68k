@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (twenty-first)** — [The bare LC II re-tested: HWCfgFlags keeps the FPU bit because VIA1 PA0 was hardwired high; with PA0 low the ROM enters its serial test monitor where MAME does not — and the CUE/BIN item is ruled](#2026-09-16-bare-lcii-retested)
 - **2026-09-16 (twentieth)** — [The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles](#2026-09-16-afp-date-mechanism)
 - **2026-09-16 (nineteenth)** — [The relaunch is observed, not serialized: a smoke generation stages the DaynaPort card, re-executes, and the next generation sees the card](#2026-09-16-relaunch-observed)
 - **2026-09-16 (eighteenth)** — [The macii × 7.5.5 matrix cell is ruled PASS: six identical runs, Stickies in front and the Finder running](#2026-09-16-macii-755-cell-ruled)
@@ -987,6 +988,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-bare-lcii-retested"></a>
+## 2026-09-16 (twenty-first) — The bare LC II re-tested: HWCfgFlags keeps the FPU bit because VIA1 PA0 was hardwired high; with PA0 low the ROM enters its serial test monitor where MAME does not — and the CUE/BIN item is ruled
+
+The TODO asked to re-test, not re-diagnose, the 68030 no-FPU SANE path.
+Re-tested it is, and the answer is not the one expected.
+
+**Measured.** `POM68K_NOFPU=1 lcii_boot_etalon` (which now honours
+`POM68K_BEYOND_IMG` as its header promised, and dumps its screen with
+`POM68K_LCII_BOOT_PPM`) bombs on the clean System 7.1 reference with
+« bad F-Line instruction » after 86 SCSI commands, on System 7.5 the
+same, on MacPack « error type 10 » after 8 338 — the same exception, the
+first FPU instruction the System runs. With the 68882 the same volumes
+reach the Finder. After the crash `HWCfgFlags` ($B22) reads `$FC00`: bit
+12, "FPU fitted", is set, so InitResources promotes combo 4 to 3 and
+binds the FPU `PACK 4`. The ROM's own probe is fine: `lcii_trace`
+(`FLINE_FRAME=1`) shows `F200 4000` at `$47CA8` taking vector 11 with a
+format-0 frame (`$002C`), the handler at `$48284` reading it, setting
+D5 = 1 and resuming on the no-FPU branch — exactly what WinUAE stacks for
+a 68020/030 F-line (`newcpu_common.c`, `Exception_build_stack_frame(…,
+0x0)`). The bit comes from elsewhere: **VIA1 port A bit 0**. MAME's
+`v8_device::via_in_a` returns `0xd4 | (config & 1)` and the same config
+bit enables the CPU's FPU (maclc.cpp:172,327-329); POM68K returned `$D5`
+unconditionally — "FPU present" on every LC II, bare or not. The Eagle
+(Classic II) has the same bit (`0x92 | config`).
+
+**Wired, and what it did.** `V8Memory::setFpuFitted` drives PA0 from the
+socket; `PlatformV8` passes the product's FPU choice, the etalon and
+`lcii_trace` pass theirs. With PA0 low the bare boot no longer bombs —
+it never leaves the ROM: at `$4644C` the ROM makes PA0 an input, drives
+PA1 low, reads PA0 = 0 and sets D7 bit 26, then initialises the SCC and
+waits forever for a character on the modem port in a T2-timed loop
+(`$49FB0`), the Universal ROM's serial test monitor (command table at
+`$49954`). MAME's maclc2, same ROM, PA0 = 0 by default, never executes
+`$4641C` at all: tapped at both, its first call of the init dispatcher
+`$A02F18` comes from `$A4652E` where POM68K's comes from `$A4667A`, and
+POM68K's cold init bus-errors at `$A463D4` reading `$50FC0000` (the
+documented I/O-hole policy, docs/BASILISK_ROM_NOTES.md § 8.3) where MAME
+serves the read. Both then boot with an FPU; only the bare machine tells
+them apart. Which early path is the hardware's is the open question, and
+the TODO item is rewritten around it with the reproducer, the tools
+(`lcii_trace --probe` now prints D5-D7 and A5; `RING_AT`, `VIA1_REGS`,
+`FLINE_FRAME`) and the MAME romset recipe. The bare gate
+`lcii_barefpu_boot_etalon` is written but not registered: it would be
+red.
+
+**CUE/BIN, ruled by inspection.** `ScsiDisk::openCdrom` reads a `.cue`
+sheet, takes the FILE of the first MODE1 track, de-frames `MODE1/2352`
+(sync check, 2048 of 2352) and accepts one file per track;
+`scsi_cdrom_test` gates it. "ISO/CUE/BIN handling" therefore does not
+over-promise for data. What is not handled is a single BIN whose data
+track is not the first (an `INDEX 01` offset) and the audio tracks — both
+now live in the CDDA item, and the ruling item closes.
 
 <a id="2026-09-16-afp-date-mechanism"></a>
 ## 2026-09-16 (twentieth) — The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles

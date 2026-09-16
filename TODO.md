@@ -203,11 +203,24 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   première lecture qui diffère, ce qui demande l'hôte x86-64. Repro :
   `POM68K_BEYOND=floppy build/lcii_beyond_etalon`. Évidence :
   `scratchpad/2026-09-12/floppy/`.
-- [ ] **Re-tester le chemin 030 de « SANE sans FPU ».** Sur la forme LC II
-  le mécanisme existe et est correctement paramétré. Ce qui n'est pas su :
-  le 030 a-t-il besoin de la sélection `UniversalInfo`/`defaultRSRCs` qui
-  a réparé le côté 040 ? Question à re-tester, pas à re-diagnostiquer
-  (`docs/BASILISK_ROM_NOTES.md` § 8.5).
+- [ ] **Faire booter le LC II nu (68030 sans 68882).** Re-testé le
+  2026-09-16 : `POM68K_NOFPU=1 lcii_boot_etalon` bombe « bad F-Line » dès
+  le début du System 7.1 propre (et « error type 10 » plus tard sur
+  MacPack) parce que la ROM laisse `HWCfgFlags` bit 12 (FPU) levé : la
+  sonde F-line du ROM (`F200 4000` à `$47CA8`, trame format 0, vecteur 11)
+  prend bien le chemin « pas de FPU », mais le bit vient du bit 0 de VIA1
+  PA que POM68K forçait à 1 — MAME (v8.cpp:251) y met le bit de config
+  « FPU présent ». PA0 suit désormais le socket (`setFpuFitted`), et le
+  ROM prend alors son moniteur série de test (`$4644C` : PA1 en sortie
+  basse, lecture de PA0 = 0 → `bset #26,D7`, attente d'un caractère SCC),
+  routine que MAME n'exécute jamais : les deux émulateurs divergent dès la
+  première init à froid (premier appel du répartiteur `$A02F18` depuis
+  `$A4667A` ici, `$A4652E` sous MAME ; POM68K bus-erre à `$50FC0000`,
+  `$A463D4`, où MAME sert la lecture). À attribuer sur la Guide/schéma :
+  quel chemin est celui du matériel, puis le gate `lcii_barefpu_boot_etalon`
+  (7.1 propre, `POM68K_NOFPU=1`). Outils : `lcii_trace` (`FLINE_FRAME`,
+  `RING_AT`, `VIA1_REGS`, `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`,
+  le romset `maclc2` MAME reconstruit depuis notre ROM (mémoire).
 - [ ] **Décider les échéanciers Mac II et Duo avec un gate sensible à la
   gigue.** Garder les options expérimentales tant qu'aucun observable ne
   justifie leur coût. Leçon du Q605 : un gate qui écrit la valeur qu'il
@@ -223,11 +236,12 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 - [ ] **Établir la règle des images 512/2048 octets.** Comparer hybrides et
   bare-HFS avec un vrai pilote/MAME avant de modifier le montage.
 - [ ] **Ajouter CDDA.** TOC audio, PLAY/PAUSE et le chemin sonore vers
-  l'ASC avec un gate consommateur.
-- [ ] **Trancher ce que « supporter `.cue/.bin` » veut dire, puis les rips
-  2352.** Le balayage média du 2026-09-09 affirme couvrir « ISO/CUE/BIN
-  handling » : ou bien cet item se réduit aux pistes multiples en 2352, ou
-  bien cette affirmation sur-promet. Trancher avant d'écrire du code.
+  l'ASC avec un gate consommateur. Y inclure le seul cas `.cue/.bin`
+  encore ouvert (tranché le 2026-09-16) : un BIN unique en mode mixte dont
+  la piste de données n'est pas la première (décalage `INDEX 01` à
+  calculer) — la feuille `.cue` est déjà lue, sa première piste MODE1
+  chargée, `MODE1/2352` dé-tramé, un fichier par piste accepté
+  (`ScsiDisk.cpp`, `scsi_cdrom_test`).
 
 ---
 

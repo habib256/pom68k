@@ -70,7 +70,8 @@ int main() {
     // reads 0.75 where the thresholds expect a plain desktop): no silent
     // fallback onto a foreign-signature volume — soft-skip instead, and
     // POM68K_BEYOND_IMG stays the explicit override for other images.
-    std::string img = find("hdv/boot.vhd");
+    std::string img = testasset::overrideImage();   // POM68K_BEYOND_IMG, as promised above
+    if (img.empty()) img = find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");
         return 0;
@@ -96,6 +97,7 @@ int main() {
     const bool withFpu = std::getenv("POM68K_NOFPU") == nullptr;
     Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
                withFpu, false);
+    mem.setFpuFitted(withFpu);                   // VIA1 PA0: the bit the ROM reads
     if (!withFpu) std::printf("cpu: 68030 without the 68882 (POM68K_NOFPU)\n");
     mem.setCpu(&cpu);
     cpu.hardReset();
@@ -135,9 +137,34 @@ int main() {
 
     std::printf("menu bar black %.2f (want <0.30), desktop %.2f (want 0.35-0.65), "
                 "SCSI commands %ld\n", menuBar, desktop, mem.scsi().commands);
+    // POM68K_LCII_BOOT_PPM=<path>: the final screen as a PGM, for the eye —
+    // what a bare 68030 shows instead of the Finder (2026-09-16).
+    if (const char* ppm = std::getenv("POM68K_LCII_BOOT_PPM")) {
+        std::ofstream out(ppm, std::ios::binary);
+        out << "P5\n" << W << " " << 384 << "\n255\n";
+        for (int y = 0; y < 384; y++)
+            for (int x = 0; x < W; x++) out.put(char(fb[y * W + x] & 0xFF));
+        std::printf("screen: %s\n", ppm);
+    }
 
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
            && mem.scsi().commands > 50;
+    if (!ok) {
+        // The UniversalInfo hwCfgWord copies the ROM left in RAM: $CC00
+        // (bit 12 clear, no FPU) or $DC00 (FPU fitted), both followed by
+        // $530D — the q605_barefpu_boot_etalon diagnostic, for the bare
+        // 68030 question (TODO § Fidélité, « SANE sans FPU »).
+        int stale = 0, clean = 0;
+        for (uint32_t a = 0; a + 4 <= (4u << 20); a += 4) {
+            const uint32_t v = uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a + 1)) << 16 |
+                               uint32_t(mem.peek8(a + 2)) << 8 | mem.peek8(a + 3);
+            if (v == 0xDC00530Du || v == 0xDD00530Du) stale++;
+            if (v == 0xCC00530Du || v == 0xCD00530Du) clean++;
+        }
+        const unsigned hwCfgFlags = unsigned(mem.peek8(0xB22)) << 8 | mem.peek8(0xB23);
+        std::printf("hwCfgWord copies in RAM: FPU-fitted %d, no-FPU %d; HWCfgFlags($B22)=$%04X "
+                    "(bit 12 = FPU fitted) pc=$%08X\n", stale, clean, hwCfgFlags, cpu.getPC());
+    }
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to the Finder" : "FAILED");

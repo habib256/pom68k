@@ -317,24 +317,7 @@ void V8Memory::reset() {
         frameTotalLines_ = 407;
     }
     vblState_ = false;
-    // VIA1 port A input = V8-family machine ID | diag bit: $D4 for the
-    // V8 proper (LC/LC II, v8.cpp:249-252), $92 for the Classic II's
-    // Eagle (v8.cpp:657-660). The Color Classic's Spice reads a plain
-    // $82 — no diag-bit OR, no config port at all (v8.cpp:703-704,
-    // 755-758); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
-    // (legacy RTC lines) and PB6-PB7 keep the 6522 pull-up default 1
-    // (review 2026-07-16: they read 0 before, incl. to the ROM's
-    // old-clock probe). PB4/PB5 (VIA_FULL/SYS_SESSION) are HOST-driven
-    // handshake lines and must idle LOW here: portB() is fed into
-    // Egret::portBChanged, whose HLE is edge-triggered — pulled-up 1s
-    // while DDRB is still 0 at reset read as a phantom session rise and
-    // wedge the transport (validated: pull-ups on PB4/PB5 black-screen
-    // the boot etalon).
-    // Tinker Bell reads a plain $84 (v8.cpp:946-949, no diag bit OR).
-    via_.setInA(model_ == Model::ClassicII     ? 0x93
-                : model_ == Model::ColorClassic ? 0x82
-                : model_ == Model::MacTv        ? 0x84
-                                                : 0xD5);
+    applyMachineId();
     via_.setInB(uint8_t(0xC7 | (xcvrSession_() << 3)));
 }
 
@@ -997,4 +980,28 @@ void V8Memory::tick(int cpuCycles) {
                                              // must lower the line too (updateIrq
                                              // below applies it); was latch-high only
     updateIrq();
+}
+
+void V8Memory::applyMachineId() {
+    // VIA1 port A input = V8-family machine ID | diag bit: $D4 for the
+    // V8 proper (LC/LC II, v8.cpp:249-252), $92 for the Classic II's
+    // Eagle (v8.cpp:657-660). The Color Classic's Spice reads a plain
+    // $82 — no diag-bit OR, no config port at all (v8.cpp:703-704,
+    // 755-758); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
+    // (legacy RTC lines) and PB6-PB7 keep the 6522 pull-up default 1
+    // (review 2026-07-16: they read 0 before, incl. to the ROM's
+    // old-clock probe). PB4/PB5 (VIA_FULL/SYS_SESSION) are HOST-driven
+    // handshake lines and must idle LOW here: portB() is fed into
+    // Egret::portBChanged, whose HLE is edge-triggered — pulled-up 1s
+    // while DDRB is still 0 at reset read as a phantom session rise and
+    // wedge the transport (validated: pull-ups on PB4/PB5 black-screen
+    // the boot etalon).
+    // Tinker Bell reads a plain $84 (v8.cpp:946-949, no diag bit OR).
+    // Bit 0 of the V8's and the Eagle's byte is the FPU-present config
+    // bit (v8.cpp:251, :659) — see setFpuFitted.
+    const uint8_t fpu = fpuFitted_ ? 1 : 0;
+    via_.setInA(model_ == Model::ClassicII     ? uint8_t(0x92 | fpu)
+                : model_ == Model::ColorClassic ? uint8_t(0x82)
+                : model_ == Model::MacTv        ? uint8_t(0x84)
+                                                : uint8_t(0xD4 | fpu));
 }

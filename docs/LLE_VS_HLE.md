@@ -153,7 +153,7 @@ caught it.
   sub-480-line mode still fires once per frame. (The old `vtotal_ > 480`
   guard that pinned such modes to the legacy 60 Hz / 525-line shape is
   gone — `Dafb.cpp:403-408`.)
-- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:559`, `:552-558`:
+- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:574`, `:552-558`:
   `montype_` defaults to 2, 512×384, and the frame constants are computed
   from that dot clock) whatever the monitor sense says. MAME pins the 13"
   instead, and of the four gate arrays only **RBV** re-derives the frame

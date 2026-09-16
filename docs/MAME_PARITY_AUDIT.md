@@ -68,7 +68,7 @@ documents : voir § 2.2 (persistance PRAM).
 | # | Sév. | Puce | Description | POM68K | MAME |
 |---|------|------|-------------|--------|------|
 | 1 | M | ASC | Quadra 700/900/950 : ASC Sonora `$BC` au lieu de l'EASC `$B0` — aucun modèle EASC (pas de SRC, pas de CD-XA ADPCM, mauvais registres version/idle/clock) | `src/Q700Memory.h:313` | `sound/asc.cpp:1420-1771`, `macquadra700.cpp:805` |
-| 2 | M | V8/TinkerBell | Mac TV : `ram_size` V8 réutilisé — 4 Mo utilisables au lieu de 8 sous config `$C0`, RAM fantôme à `$800000` que Tinker Bell ne décode pas | `src/V8Memory.cpp:341-360` | `apple/v8.cpp:1065-1101` |
+| 2 | M | V8/TinkerBell | Mac TV : `ram_size` V8 réutilisé — 4 Mo utilisables au lieu de 8 sous config `$C0`, RAM fantôme à `$800000` que Tinker Bell ne décode pas | `src/V8Memory.cpp:335-354` | `apple/v8.cpp:1065-1101` |
 | 3 | M | NCR 5380 | DRQ parasite en STATUS/MSG_IN sous MODE_DMA après réception ; un `dmaRead` en STATUS consomme l'octet de statut comme donnée | `src/Ncr5380.cpp:310-315,290-291` | `machine/ncr5380.cpp:227-245` |
 | 4 | M | NCR 5380 | Aucune phase DATA OUT hors WRITE(6)/(10) : les octets paramètres de MODE SELECT / FORMAT UNIT sont perdus, saut direct en STATUS | `src/Ncr5380.cpp:76-99` | `bus/nscsi/hd.cpp:622-631` |
 | 5 | M | NCR 5380 | Bus reset (ICR_RST) : pas d'IRQ, pas de latch RST lisible dans ICR/CSR (sur Mac II, l'edge IRQ VIA2 manque à chaque SCSIReset) | `src/Ncr5380.cpp:240-242` | `machine/ncr5380.cpp:330-355,449-463` |
@@ -395,7 +395,7 @@ la gate la plus étroite. Le statut vérifié de chaque action est en tête de l
 | 2 | ✅ | `PseudoVia.cpp:100-108` — cas `v == 0xFF && Flavour::Base` ⇒ `$1F`, commentaire refait |
 | 3 | ✅ | `SonyDrive.cpp:1036-1052` — cas `0b011` ajouté, MFM-on découplé de DskchgClear ; sense `f..c` à `:907-913` |
 | 4 | ✅ | `Scc8530.cpp:515` (TxIP sur écriture data), `:615-623` (re-présentation Ext/Status), `:635-652` (IUS : plus aucun IP jeté) ; **plus** #33 à `:658-661` |
-| 5 | ✅ | `V8Memory.cpp:349-366` — override Tinker Bell dans `applyRamConfig`, pas d'alias `$800000` |
+| 5 | ✅ | `V8Memory.cpp:332-349` — override Tinker Bell dans `applyRamConfig`, pas d'alias `$800000` |
 | 6 | ✅ | `Ncr5380.cpp:355-364,391-395` — `drqActive()` directionnel, l'octet de statut n'est plus consommé |
 | 7 | ✅ | `Q700Memory.cpp:553-586` — hold-off /DTACK gaté sur `scsiCtrl` bits 7/8, cap ~20 ms puis /BERR ; `$28` bus 2 à `:432-435` |
 | 8 | ✅ | `Asc.h:243` — flavour `AscEasc`, gate `asc_easc_test` |

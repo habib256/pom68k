@@ -73,6 +73,7 @@ POM68K_FIRMWARE_ROOT	product	gate:peripheral_lle_test
 POM68K_FLOPPY	product	gate:floppy_persist_test
 POM68K_FLOPPY_BOOST_GATE	diagnostic	owner:src/StartupOptions.h
 POM68K_FLOPPY_IMG	test	owner:tests/lcii_beyond_etalon.cpp
+POM68K_LCII_BOOT_PPM	test	owner:tests/lcii_boot_etalon.cpp
 POM68K_FLOPPY_RO	product	gate:floppy_persist_test
 POM68K_FLOPPY_SETTLE	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_FLUX_JITTER	product	gate:flux_pll_test

@@ -46,7 +46,7 @@ src/PlatformDafb.cpp                     599
 src/PlatformDuo.cpp                      142
 src/PlatformSonora.cpp                   289
 src/PlatformToby.cpp                     311
-src/PlatformV8.cpp                       206
+src/PlatformV8.cpp                       207
 src/Q700Memory.cpp                       1091
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    169
@@ -62,4 +62,4 @@ src/StartupOptions.h                     394
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88
-src/V8Memory.cpp                         1000
+src/V8Memory.cpp                         1007

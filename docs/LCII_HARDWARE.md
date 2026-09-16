@@ -232,7 +232,7 @@ the boot beep, and BERR generation for unmapped space and the SCSI DRQ window.
 
 | Port bit | Dir | Function | Source |
 |---|---|---|---|
-| PA (in) | — | machine ID \| diag bit: V8 `$D4` (LC/LC II) | v8.cpp:249-252 |
+| PA (in) | — | machine ID: V8 `$D4` (LC/LC II), **PA0 = FPU-present config bit** (`0xd4 \| config`; the same bit enables the CPU's FPU in maclc.cpp:172,327-329). POM68K drives PA0 from `V8Memory::setFpuFitted` since 2026-09-16; it read 1 unconditionally before | v8.cpp:249-252 |
 | PA5 (out) | O | floppy **HDSEL** (head select) | v8.cpp:264-267 |
 | PB3 (in) | I | Egret **XCVR_SESSION** (active low) | v8.cpp:254-257; via-cuda.c:57-72 |
 | PB4 (out) | O | Egret **VIA_FULL** (byte ack, active high) | v8.cpp:269-273 |

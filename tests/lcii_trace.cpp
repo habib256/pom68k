@@ -55,6 +55,12 @@ struct TraceCpu : Cpu030 {
                         (long long)getClock(), getPC0());
     }
     std::function<void(int)> onOddException;   // vectors 3/4/10/11…
+    // FLINE_FRAME=1: after the frame of a vector-11 trap is stacked, hand
+    // the tool the SP so it can print the frame the ROM's FPU probe reads.
+    std::function<void(uint32_t sp)> onFlineFrame;
+    void didExecute(moira::M68kException, moira::u16 vector) override {
+        if (vector == 11 && onFlineFrame) onFlineFrame(getSP());
+    }
     void willExecute(moira::M68kException exc, moira::u16 vector) override {
         if (vector < 64) vecHist[vector]++;
         if (vector >= 24 && vector <= 31 && irqLog++ < 30) {
@@ -139,6 +145,7 @@ int main(int argc, char** argv) {
     TraceCpu cpu(mem, jit::defaultResolvedConfig(),
                  pom68k::defaultCoreConfig().cpu,
                  getenv("LCII_FPU") != nullptr);
+    mem.setFpuFitted(getenv("LCII_FPU") != nullptr);   // VIA1 PA0 follows the socket
     mem.setCpu(&cpu);
     cpu.hardReset();
 
@@ -298,6 +305,28 @@ int main(int argc, char** argv) {
     // Instruction ring: dumped when the unexpected fault hits
     std::vector<std::string> iring(220);
     size_t iringIdx = 0;
+    int flineFrames = 0;
+    if (getenv("FLINE_FRAME"))
+        cpu.onFlineFrame = [&](uint32_t sp) {
+            if (flineFrames++ >= 4) return;
+            const uint32_t fv = peek32(sp + 4) >> 16;   // SR(2) PC(4) format/vector(2)
+            std::printf("[%10lld] vector-11 frame: SP=$%08X SR=%04X PC=$%08X format/vector=$%04X "
+                        "(format %u, vector %u) D5=%08X D6=%08X D7=%08X A0=%08X pc0=$%08X\n",
+                        (long long)cpu.getClock(), sp, peek32(sp) >> 16, peek32(sp + 2),
+                        fv, fv >> 12, (fv & 0xFFF) / 4, cpu.getD(5), cpu.getD(6), cpu.getD(7),
+                        cpu.getA(0), cpu.getPC0());
+        };
+    // RING_AT=<hex pc0>: dump the instruction ring the first time that pc
+    // is reached (needs --ring-from to have armed the ring).
+    const uint32_t ringAt = getenv("RING_AT") ? uint32_t(std::strtoul(getenv("RING_AT"), nullptr, 16)) : 0;
+    auto dumpRing = [&](const char* why) {
+        std::printf("[%10lld] ring dump: %s at PC=$%08X\n  --- ring before it:\n",
+                    (long long)cpu.getClock(), why, cpu.getPC0());
+        for (size_t i = 0; i < iring.size(); i++) {
+            auto& s = iring[(iringIdx + i) % iring.size()];
+            if (!s.empty()) std::printf("  %s\n", s.c_str());
+        }
+    };
     cpu.onOddException = [&](int vec) {
         if (walked || ringFrom < 0 || cpu.getClock() <= ringFrom) return;
         walked = true;
@@ -363,6 +392,7 @@ int main(int argc, char** argv) {
             std::snprintf(line, sizeof line,
                           "$%08X  %-44s A2=%08X A4=%08X A6=%08X A7=%08X",
                           pc, da, cpu.getA(2), cpu.getA(4), cpu.getA(6), cpu.getA(7));
+            if (ringAt && !walked && cpu.getPC0() == ringAt && ringFrom >= 0) { walked = true; dumpRing("RING_AT"); }
             iring[iringIdx++ % iring.size()] = line;
             if (walked && postFault == 40) {
                 std::printf("  --- instructions around the fault:\n");
@@ -589,12 +619,13 @@ int main(int argc, char** argv) {
         static int probeHits = 0;
         if (probePc && pc == probePc && probeHits++ < 5) {
             std::printf("[%10lld] PROBE $%08X SR=%04X D0=%08X D1=%08X D2=%08X "
-                        "D3=%08X D4=%08X\n    A0=%08X A1=%08X A2=%08X A3=%08X "
-                        "A4=%08X A6=%08X A7=%08X\n",
+                        "D3=%08X D4=%08X D5=%08X D6=%08X D7=%08X\n    A0=%08X A1=%08X A2=%08X A3=%08X "
+                        "A4=%08X A5=%08X A6=%08X A7=%08X\n",
                         (long long)cpu.getClock(), pc, cpu.getSR(), cpu.getD(0),
                         cpu.getD(1), cpu.getD(2), cpu.getD(3), cpu.getD(4),
+                        cpu.getD(5), cpu.getD(6), cpu.getD(7),
                         cpu.getA(0), cpu.getA(1), cpu.getA(2), cpu.getA(3),
-                        cpu.getA(4), cpu.getA(6), cpu.getA(7));
+                        cpu.getA(4), cpu.getA(5), cpu.getA(6), cpu.getA(7));
             uint32_t sp = cpu.getA(7);
             std::printf("    (A7)@%08X: %08X %08X %08X %08X | +$10: %08X +$12: %08X\n",
                         sp, peek32(sp), peek32(sp+4), peek32(sp+8), peek32(sp+12),
@@ -685,6 +716,15 @@ int main(int argc, char** argv) {
                      : mem.asc().irqAsserted()) ? 1 : 0);
 
     mem.egret().savePram("lcii_trace.pram");
+    if (getenv("VIA1_REGS")) {
+        // Via6522::read has the documented side effects (IFR clears on
+        // T1/T2 low reads); ACR through its accessor, the rest as the ROM
+        // would read them at this instant.
+        std::printf("VIA1: ACR=%02X", mem.via1().acr());
+        for (int r : {13, 14, 8, 9, 0, 1, 2, 3, 12})
+            std::printf(" r%X=%02X", r, mem.via1().read(r));
+        std::printf("\n");
+    }
     std::printf("exception vector histogram (vector: count):\n ");
     for (int v = 0; v < 64; v++)
         if (cpu.vecHist[v]) std::printf(" [%d]=%ld", v, cpu.vecHist[v]);

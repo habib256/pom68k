@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 545 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 546 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 48 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 49 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 91 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
@@ -163,6 +163,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-06 (later)** — [One MOVE form is 70 % of everything the 68030 generator cannot compile, and it is worth 0.87 % — under this host's floor, so it stays uncompiled](CHANGELOG.md#2026-09-06-030-admission-gap-priced)
 - **2026-09-07** — [The FPU general window stops ending a block: exact Moira replay inside native blocks, −11.6 % on Speedometer's isolated FPU phase, and the cross-binary comparison that had to be thrown away](CHANGELOG.md#2026-09-07-fpu-block-member)
 - **2026-09-15** — [The four compacts join the beyond-boot roster on System 7.0: a 68000 runs the agent, 36 profiles carry the proof](CHANGELOG.md#2026-09-15-compacts-agent-proof)
+- **2026-09-16 (twenty-first)** — [The bare LC II re-tested: HWCfgFlags keeps the FPU bit because VIA1 PA0 was hardwired high; with PA0 low the ROM enters its serial test monitor where MAME does not — and the CUE/BIN item is ruled](CHANGELOG.md#2026-09-16-bare-lcii-retested)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

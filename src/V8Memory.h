@@ -125,6 +125,19 @@ public:
     // IFR/IER change, extBusError() on unmapped I/O, E-clock stalls.
     void setCpu(Cpu030* cpu) { cpu_ = cpu; }
 
+    // Whether a 68882 sits in the PDS/FPU socket: VIA1 PA0 reports it to
+    // the ROM (MAME v8.cpp:251 and eagle_device::via_in_a — `0xd4 |
+    // config`, `0x92 | config`; maclc.cpp:172,327-329 wire the same
+    // config bit into the CPU). The ROM's StartInit resolves the FPU
+    // record from it: PA0 high with no coprocessor made a bare LC II bind
+    // the FPU SANE and bomb on its first F-line (2026-09-16). Spice and
+    // Tinker Bell have no such bit. Default true, the 68882 the product
+    // attaches; callers building a bare 68030 say so before or after reset.
+    void setFpuFitted(bool on) {
+        fpuFitted_ = on;
+        applyMachineId();
+    }
+
     // ── JIT hooks (src/jit/POM68K_JIT.md) ──────────────────────────────
     // Same contract as Q605Memory's: codeSpan hands the JIT a host pointer
     // to PLAIN memory only (RAM through the bank remap, ROM once the
@@ -530,6 +543,8 @@ private:
 
     uint32_t totalRam_;
     Model model_ = Model::LcII;
+    bool fpuFitted_ = true;
+    void applyMachineId();
     int64_t cpuHz_ = kCpuHz;                 // C15M; Mac TV = C32M
     int viaDiv_ = 20;                        // cpuHz_ / 783.36 kHz (20 or 40)
     uint32_t romSize_ = kRomSize;            // 512 KB; Spice ROMs are 1 MB
