@@ -192,10 +192,11 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   aucune marque GCR `D5 AA 96` — donc avant le dossier que le gate observe.
   Écartés : horloge hôte (aucune dans ce chemin), flottant (chemin entier),
   dérive de l'image, et le changement `senseAddr()` (le rouge lui est
-  antérieur). **Premier pas, non fait** : rejouer le gate sur le M4 pour
-  confirmer qu'il y passe encore — c'est ce qui ferait de « divergence entre
-  hôtes » un fait plutôt qu'une hypothèse. Ensuite instrumenter IWM/SWIM1 des
-  deux côtés depuis la première lecture qui diffère. Repro :
+  antérieur). **Premier pas fait le 2026-09-16** : `lcii_floppy_etalon` passe
+  sur le M4 (30,2 s, au commit `9196a50`, après le routage réf/work des
+  disquettes) — « divergence entre hôtes » est donc un fait, plus une
+  hypothèse. Suite : instrumenter IWM/SWIM1 des deux côtés depuis la
+  première lecture qui diffère, ce qui demande l'hôte x86-64. Repro :
   `POM68K_BEYOND=floppy build/lcii_beyond_etalon` (65 s). Évidence :
   `scratchpad/2026-09-12/floppy/`.
 - [ ] **Re-tester le chemin 030 de « SANE sans FPU ».** Sur la forme LC II,
