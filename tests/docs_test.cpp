@@ -2481,7 +2481,9 @@ int main() {
             }
         }
         check(!anchor.empty() && leaks == 0,
-              "every printed soft-skip line carries the literal SKIP the census reads");
+              // (Worded without the marker itself: the census would read
+              // this very line as an abstention of docs_test — CI 2026-09-16.)
+              "every printed soft-skip line carries the census's own marker");
     }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASS");
