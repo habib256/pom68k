@@ -39,10 +39,11 @@ pour le mécanisme de deadline périphérique, devenu « Nouvelles machines ».
   `assets.lock` strict 44/44. Le critère de sortie du jalon 1 a donc ses deux
   jambes (x86-64 le 2026-09-01, AArch64 le 2026-09-16). La version 0.2.0 est
   taguée et publiée le 2026-09-15.
-- **La suite est décidée le 2026-09-12** : deux chantiers dotés en parallèle,
-  le **Mac 128K/512K** (§ Nouvelles machines) et la **fin des services
-  réseau** (§ Services réseau). Les autres thèmes restent ouverts et non
-  dotés ; aucun item n'est sur un chemin critique.
+- **Le jalon 1 est clos et les jalons 2 à 5 sont inscrits le 2026-09-16**
+  (section suivante). Les deux chantiers dotés du 2026-09-12 y sont
+  absorbés : le Mac 128K/512K est livré (profils, gates de boot et de
+  fichier MFS, disquettes épinglées), la fin des services réseau est le
+  jalon 3.
 - Règles d'admission, inchangées : une nouvelle machine part d'un gate produit
   réutilisable de sa plateforme ; un ajout LLE part d'une trace, d'un
   observable invité ou d'un consommateur réel ; une optimisation dépend d'un
@@ -51,35 +52,71 @@ pour le mécanisme de deadline périphérique, devenu « Nouvelles machines ».
 
 ---
 
-## La suite — les deux chantiers dotés
+## Jalons 2 à 5 — décidés le 2026-09-16
 
-Ce bloc ne porte que la décision et le premier pas ; le travail lui-même vit
-dans les sections thématiques, en un seul exemplaire.
+Chaque jalon porte un critère de sortie mesurable ; le travail lui-même vit
+dans les sections thématiques, en un seul exemplaire. Ordre recommandé
+2 → 3 → 4 → 5 : le jalon 2 rend chaque jalon suivant vérifiable par
+quelqu'un d'autre que l'hôte qui l'a produit.
 
-**1. Le Mac 128K/512K — livré pour l'essentiel.** Les profils 38 et 39
-sont au catalogue, les deux identités 64 K sont épinglées dans `assets.lock`
-et `mac128k_boot_etalon` / `mac512k_boot_etalon` bootent une disquette
-System 400 K jusqu'au bureau du Finder — exécutés sur x86-64 le 2026-09-13
-(7,40 s chacun) et sur le M4 le 2026-09-16 (5,3 s et 4,4 s) depuis que les
-deux images 400 K y sont arrivées du lecteur TEST, épinglées le jour même
-dans `assets.lock` (rôle `reference-floppy`, `disks35/ref/`, jumeau `work/`
-comme `hdv/ref/`). L'arbre lit le MFS depuis le 2026-09-16
-(`src/MfsVolume.h`, `mfs_volume_test`, `tools/mfs_ls.py`) : la vérification
-hôte d'un fichier écrit par l'invité existe, `mac128k_mfs_etalon` /
-`mac512k_mfs_etalon`. La sérialisation PWM du lecteur 400 K est livrée
-(format v16, 2026-09-15). Le paragraphe précédent disait encore, le
-2026-09-14, qu'`assets.lock` n'avait aucune ligne 64 K : il datait du
-2026-09-12.
+**Jalon 2 — Le produit prouvé, pas seulement le moteur.** Ce que
+l'utilisateur touche n'a de gate que `gui_smoke_test` (une fenêtre GLFW
+cachée, trois images, un changement de moteur, une sauvegarde), qui se saute
+sur tout runner sans surface GL et ne regarde aucune fenêtre.
+- Faire tomber les fenêtres sous un gate sans écran : rendu ImGui hors écran
+  des fenêtres Périphériques, AppleTalk/Ethernet, Disques et Moteur par leurs
+  vraies fonctions de dessin, interactions injectées (clic, saisie),
+  captures PPM pour l'œil — puis un re-exec de relance observé avec une carte
+  DaynaPort et un invité qui la retrouve (§ Services réseau, première dette).
+- Runner auto-hébergé avec les assets : le palier complet déclenchable par
+  push, `LastTest.log` et le census publiés (§ Bloqué).
+- Locksteps exécutés sur un hôte Windows : « `threaded` est le plancher
+  Windows » devient une mesure (§ Preuve).
+- Profondeur sur le 128K/512K : une application lancée (TeachText sur
+  `Welcome!`) après le File Manager (§ Preuve, item beyond-boot).
+- Dettes de preuve transverses : `docs_test` capable de voir une citation
+  fausse ; la table KCHR pour que les harnais tapent autre chose que des
+  lettres (§ Preuve).
+Sortie : chaque fenêtre a un gate ou une passe manuelle datée ; un run
+complet publié par la CI sur un runner à assets ; version 0.3.
 
-**2. Finir les services réseau.** Le parcours invité est prouvé de bout en
-bout — Chooser, montage, énumération, copie des deux forks, Put Away, sur
-LocalTalk puis sur EtherTalk — et le serveur ne refuse plus rien qu'un invité
-demande. Ce qui manque est au-dessus et au-dessous : les contrôles produit et
-deux mécanismes non élucidés. **Les deux contrôles produit sont livrés le
-2026-09-13** — l'attache DaynaPort (présence et ID stagés, appliqués par
-relaunch) et la configuration des services éditable à chaud, chacune portée
-par la ligne de relance. Restent les mécanismes non élucidés et les dettes de
-preuve. Items : § Services réseau.
+**Jalon 3 — Les services réseau clos.** Le chantier doté encore ouvert ;
+il reste des mécanismes non élucidés, pas des fonctions (§ Services réseau).
+- Élucider la seconde trajectoire AFP sous date mouvante ; localiser l'écart
+  interp/A64 à la frontière 14 avant toute attribution à l'hôte ; refaire la
+  référence x86-64 date-épinglée.
+- Une session AppleShare complète sur un bridge réel (netatalk ou
+  TashRouter), montage depuis le Sélecteur, transfert vérifié ; interop
+  Mini vMac LToUDP dans les deux sens.
+- Trancher le window scaling TCP de MacIP ; UAM DHX quand un invité refuse
+  le cleartext ; fin de PAP.
+Sortie : session réelle sur bridge externe verte, zéro opcode refusé sur les
+sessions live, les deux mécanismes expliqués ou tranchés.
+
+**Jalon 4 — Fidélité matérielle et médias** (§ Fidélité, § Médias optiques).
+- Bus et timings V8 contre matériel réel (IRQ, VBL, VIA, mémoire, le bloc
+  `$50F18038` du Classic II) ; VIA/RTC des compacts au cycle ; son des
+  compacts par scanline ; décision DFAC2.
+- Élucider la divergence entre hôtes de `lcii_floppy_etalon`, désormais un
+  fait ; zones GCR sur symptôme ; SANE sans FPU côté 030.
+- Etalons pixel-accurate sur captures stables.
+- Optique : règle 512/2048, CDDA avec un jeu consommateur, sens de
+  `.cue/.bin` tranché avant tout code.
+Sortie : un jeu CD avec audio joué de bout en bout, la divergence LC II
+attribuée, N profils sous etalon pixel-accurate.
+
+**Jalon 5 — Les portables** (§ Nouvelles machines).
+- `duo230_sleep_etalon` (bloqué par la spec PMU ou le code System de gestion
+  d'énergie), puis Duo 210/250, 270c (CSC couleur), 280 (040).
+- PowerBook 150 (LCD/GSC, IDE, PMU 68HC05), puis 140–180 et Portable/PB100
+  avec le Power Manager M50753 comme brique partagée.
+- ATA/IDE du Q630/LC 580 avec un gate de boot sans SCSI ; NuBus au-delà du
+  Mac II.
+Sortie : la famille PowerBook boote au Finder avec preuve au-delà du boot,
+catalogue et save-state câblés.
+
+**Hors jalon.** § Moteur reste conditionné à un profil temporel
+reproductible ; § Recherche conditionnelle derrière la voie conforme.
 
 ---
 
@@ -238,13 +275,16 @@ consommateur observé.
   `--daynaport=<id>`, les ID tenus par un disque grisés. Le débranchement est
   traversé par un vrai invité depuis le 2026-09-14 (`q605_dayna_driver_etalon`
   : câble sorti, 8 requêtes ICMP émises et rien en retour ; rentré, 6 trames
-  reviennent, la cible et le bit ENABLE du pilote intacts). Restent : aucun
-  invité n'a traversé un relaunch avec carte ; la fenêtre n'a
-  jamais été **rendue** — elle compile et lie, sa mise en page (sélecteur
-  compris, et le formulaire « Configuration des services » du même jour)
-  n'est pas vérifiée à l'œil ; et le relaunch lui-même n'est couvert que par
-  sa sérialisation (`daynaport_test` et `atalk_hub_test` prouvent l'aller-retour
-  argument → `RuntimeConfig`), pas par un re-exec observé. S'y ajoute, pour le
+  reviennent, la cible et le bit ENABLE du pilote intacts). La fenêtre est
+  **rendue et cliquée sous gate depuis le 2026-09-16** (`gui_windows_test` :
+  sélecteur ouvert, ID SCSI 3 choisi, « Appliquer » jusqu'au callback de
+  relance) — mais seulement sous sa forme « pile désactivée » : le formulaire
+  « Configuration des services » demande un hub attaché à une machine, donc
+  reste non rendu. Restent : aucun invité n'a traversé un relaunch avec
+  carte ; le formulaire n'est pas rendu ; et le relaunch lui-même n'est
+  couvert que par sa sérialisation (`daynaport_test` et `atalk_hub_test`
+  prouvent l'aller-retour argument → `RuntimeConfig`), pas par un re-exec
+  observé. S'y ajoute, pour le
   formulaire : « Révéler » lance `open` / `xdg-open` / `explorer` sans gate
   possible, et aucun invité n'a remonté un serveur AFP renommé à chaud —
   `afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur.
@@ -331,13 +371,17 @@ consigné au `CHANGELOG` sans jamais avoir d'entrée au backlog.
   profil n'est plus « boot seul » ; l'item reste ouvert pour la profondeur
   (une application lancée, pas seulement le File Manager) sur ces deux
   machines. `docs/68K_FAMILY_SCOPE.md` § 5.
-- [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.** Le
-  GUI n'a toujours aucun gate : `--version` passe, l'arbre compile, `-L unit`
-  et `-L smoke` sont verts, et rien de tout cela n'ouvre une fenêtre. Une passe
-  à la main sur les fenêtres machine (menus, upload framebuffer, hot-swap
-  floppy/CD, save/restore) reste la validation due — c'est le même reliquat que
-  la passe save-state GUI, jamais fermée, que les trois gates de relance du
-  2026-09-08 ne couvrent pas (ils sont hors GUI).
+- [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.**
+  Depuis le 2026-09-16 les quatre fenêtres (Périphériques, AppleTalk /
+  Ethernet, Disques, Moteur) sont dessinées, cliquées et capturées sans
+  écran par `gui_windows_test` (`tests/ImGuiHeadless.h`), qui a trouvé deux
+  défauts le jour même (hauteur figée cachant « Appliquer », tirets et
+  flèches en « ? »). Reste hors gate : la fenêtre machine (menus, upload
+  framebuffer, hot-swap floppy/CD depuis les menus, save/restore) et le
+  formulaire « Configuration des services » (hub attaché requis) — la passe
+  à la main sur ces panneaux reste la validation due, comme la passe
+  save-state GUI jamais fermée que les trois gates de relance du 2026-09-08
+  ne couvrent pas (ils sont hors GUI).
 - [ ] **Trancher la cellule `finder_boot_matrix` macii × 7.5.5**, enregistrée
   UNSTABLE le 2026-09-02 (Stickies au premier plan).
 - [ ] **Fermer le `-Wstringop-overflow` de GCC 13 + LTO sur

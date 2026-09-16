@@ -453,6 +453,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (fifth)** — [The product windows fall under a gate without a screen, and the gate finds two defects on its first run](#2026-09-16-headless-window-gate)
 - **2026-09-16 (fourth)** — [The AArch64 leg: first all-green full registry run on the M4, 332 executed, 0 soft-skipped, 0 failed](#2026-09-16-aarch64-full-registry-all-green)
 - **2026-09-16 (third)** — [The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back](#2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate)
 - **2026-09-16 (later)** — [The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place](#2026-09-16-400k-floppies-pinned)
@@ -969,6 +970,56 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-headless-window-gate"></a>
+## 2026-09-16 (fifth) — The product windows fall under a gate without a screen, and the gate finds two defects on its first run
+
+Jalon 2's first item. Until today the GUI's only gate was `gui_smoke_test`
+— a hidden GLFW window that skips on every runner without a GL surface and
+never looked at a window's contents; the AppleTalk / Ethernet window with
+its DaynaPort selector had never been rendered anywhere but on the author's
+screen.
+
+**`gui_windows_test`, on every runner.** `tests/ImGuiHeadless.h` is Dear
+ImGui with no window system: a context of fixed display size, the 1.92
+dynamic-texture contract served from pixel buffers, and a CPU rasteriser
+that turns `ImDrawData` into an RGBA frame — textured triangles, vertex
+colours, clip rects, alpha — saved as `gui_<window>.ppm` beside the binary
+for the eye. ImGui's core is compiled with `IMGUI_ENABLE_TEST_ENGINE`, and
+the harness satisfies the hooks: every frame records each item's rectangle
+(clipped to its window) and label, so a scenario clicks by label —
+`click("Appliquer et redémarrer")` — or by the ID a label-less combo gets
+from its window. The four windows are drawn by their real functions with
+fake hosts: Périphériques (a registry with a Cuda on firmware and the
+Toby substitute) opens by itself, the Cuda row's HLE radio stages,
+« Appliquer » hands the typed override set to the host callback;
+AppleTalk / Ethernet (stack off) opens the selector, picks ID SCSI 3,
+applies, and the host is asked to relaunch with 3; Disques takes a
+dropped 800 K floppy, lists it in the SWIM picker, and choosing it calls
+`insertFloppy`; Moteur renders its counters. 30 checks, ~1 s.
+
+**Defect one: a fixed height hid « Appliquer ».** Périphériques set its
+size once (`FirstUseEver`, height auto from the first frame); the footer
+only appears after a change is staged, so it lived below a scrollbar — in
+the capture, invisible. The window is now `AlwaysAutoResize` at a pinned
+width of 560, and its long lines wrap to it.
+
+**Defect two: « — » and « → » drew as « ? ».** No font is loaded; ImGui's
+default ProggyClean covers Latin-1 and nothing of U+2014 / U+2190 / U+2192.
+Twenty-three em-dashes and arrows in the windows' string literals, and the
+device names every board reports (« Cuda — MCU ADB … »), rendered as
+question marks in the product. They are ASCII now (`-`, `->`), and the
+gate scans the windows' sources — and the boards' `name =` lines — decoding
+every non-ASCII character of a string literal and asking the font in use
+for its glyph (`FindGlyphNoFallback`): 265 characters, 0 missing, with a
+control that the em-dash is indeed absent so the rule cannot rot.
+
+**Structural.** The GLFW drop callback moved from `DiskBays.cpp` to
+`DiskBaysDrop.cpp` behind `diskBaysOfferDroppedImage()`, so the window
+links without a window system; `kDiskWindowTitle` is declared in
+`DiskBays.h`. What stays out of the gate: the machine window (menus,
+framebuffer texture) and the services form, which needs a hub attached to
+a machine — both named in the TODO.
 
 <a id="2026-09-16-aarch64-full-registry-all-green"></a>
 ## 2026-09-16 (fourth) — The AArch64 leg: first all-green full registry run on the M4, 332 executed, 0 soft-skipped, 0 failed
