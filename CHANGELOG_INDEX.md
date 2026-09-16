@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 530 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 533 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,16 +11,16 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 48 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 88 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 89 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 23 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
 | [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 60 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 35 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 36 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 98 |
+| [Cross-cutting](#cross-cutting) | 99 |
 
 ---
 
@@ -289,6 +289,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-14 (seventh)** — [The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned](CHANGELOG.md#2026-09-14-daynaport-executed-on-m4)
 - **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](CHANGELOG.md#2026-09-14-relaunch-ids-and-journal-names)
 - **2026-09-16 (later)** — [The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place](CHANGELOG.md#2026-09-16-400k-floppies-pinned)
+- **2026-09-16 (seventh)** — [Nine boot-volume names that never existed leave the search chains: every gate's first choice is now the pinned reference it actually boots](CHANGELOG.md#2026-09-16-phantom-volume-names-retired)
 - **2026-09-16 (third)** — [The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back](CHANGELOG.md#2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate)
 
 ## Video — decoders, the raster beam, DAFB
@@ -479,6 +480,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-09 (tenth)** — [The Chooser AppleShare goal was already real; the gate now asserts the mount before it accepts the guest-created host directory](CHANGELOG.md#2026-09-09-chooser-appleshare-proof)
 - **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](CHANGELOG.md#2026-09-12-docs-vs-code-sweep)
 - **2026-09-14 (tenth)** — [EtherTalk on by default: the router heard from power-on is joined at the switch, and the « Finder stopped opening control panels » of 2026-09-10 was the gate's own keystroke](CHANGELOG.md#2026-09-14-ethertalk-on-by-default)
+- **2026-09-16 (eighth)** — [The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed](CHANGELOG.md#2026-09-16-census-corrected-sst)
 
 ## Documentation, audits and reviews
 
@@ -592,4 +594,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-14 (sixth)** — [The French Startup Items folder is « Ouverture au démarrage », and a French System launches the agent too](CHANGELOG.md#2026-09-14-ouverture-au-demarrage)
 - **2026-09-15 (fifth)** — [POM68K 0.2.0](CHANGELOG.md#2026-09-15-release-0-2-0)
 - **2026-09-16 (fourth)** — [The AArch64 leg: first all-green full registry run on the M4, 332 executed, 0 soft-skipped, 0 failed](CHANGELOG.md#2026-09-16-aarch64-full-registry-all-green)
+- **2026-09-16 (sixth)** — [The backlog drops the closed diary, the census counts and the second copy of every jalon bullet](CHANGELOG.md#2026-09-16-todo-open-only)
 

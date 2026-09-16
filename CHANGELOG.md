@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
 - **"the Cmd-N folder ON the floppy stays printed-not-asserted" (lcii_floppy_etalon since 2026-08-05) — the Finder did create it every time; the gate's own host-forced eject discarded the catalog write still in the guest's cache** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
@@ -417,6 +418,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **why did the TODO stop carrying closed palier diaries, census counts and a second copy of every jalon bullet?** → [2026-09-16 (sixth) — The backlog drops the closed diary…](#2026-09-16-todo-open-only)
 - **why does a PRODUCT_LLE configure have a larger registry without changing the default STATUS totals?** → [2026-09-03 (twelfth) — PRODUCT_LLE becomes a first-class registry…](#2026-09-03-product-lle-registry)
 - **which document owns user setup, developer internals, live gate state, open work and dated history — and how did that split expose the stale x64/030 `auto` claim?** → [2026-09-01 (eighth) — README, DEV and CLAUDE stop competing…](#2026-09-01-doc-ownership)
 - **where do GUI host I/O, typed machine construction and rendering live, and where are their environment options captured?** → [2026-08-26 — The 2,683-line GUI runtime becomes three injected responsibilities…](#2026-08-26-gui-runtime-split)
@@ -453,6 +455,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (eighth)** — [The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed](#2026-09-16-census-corrected-sst)
+- **2026-09-16 (seventh)** — [Nine boot-volume names that never existed leave the search chains: every gate's first choice is now the pinned reference it actually boots](#2026-09-16-phantom-volume-names-retired)
+- **2026-09-16 (sixth)** — [The backlog drops the closed diary, the census counts and the second copy of every jalon bullet](#2026-09-16-todo-open-only)
 - **2026-09-16 (fifth)** — [The product windows fall under a gate without a screen, and the gate finds two defects on its first run](#2026-09-16-headless-window-gate)
 - **2026-09-16 (fourth)** — [The AArch64 leg: first all-green full registry run on the M4, 332 executed, 0 soft-skipped, 0 failed](#2026-09-16-aarch64-full-registry-all-green)
 - **2026-09-16 (third)** — [The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back](#2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate)
@@ -970,6 +975,94 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-census-corrected-sst"></a>
+## 2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed
+
+> **Corrects:** [2026-09-16 (fourth)](#2026-09-16-aarch64-full-registry-all-green).
+
+Looking on the TEST drive for what the M4 still lacked turned up
+`pom68k-prive-20260906/depot-ignore/tests/data` — 1.5 GB of SST vectors
+(`sst68000`, 124 files, a million vectors; the oracle-generated `sst68030`
+and `sst68040`) — and the question of why this morning's census had not
+missed them. It had: `sst68000`, `sst68030` and `sst68040` print
+`[sst68000] no data at '…' — soft skip` and exit 0, and
+`tools/gate_execution_census.py` reads the literal `SKIP`. Lower-case
+"soft skip" is invisible to it. The three gates counted as executed on a
+host that had never held a vector. The lockstep gates
+(`jit_lockstep_68000`, `jit_lockstep`, `jit_lockstep_030`) abstain the same
+way when their ROM is absent — not the case here, but the same leak.
+
+**Three things done.** The six gates' whole-gate abstentions now begin
+with `SKIP:` (the tag kept after it). `docs_test` scans `tests/*.cpp` for
+a printed line saying "soft skip" without `SKIP` and fails on one — the
+phrase, not the hyphenated aside `q605_floppy_boot_etalon` prints for an
+optional path inside a gate that still runs. And the STATUS row of the
+morning run is corrected in place: 329 executed / 3 soft-skipped / 0
+failed. The run was all green either way; the number it was quoted with
+was wrong by three.
+
+**Then the corpus came over** (with `debug/mame-traces`, 718 MB of the MAME
+oracle's traces, the `refs/` reference sources to `~/src/refs`, and
+`WarcraftII.sit` to `input/logiciels/`) and the three gates executed on
+the M4: `sst68000` 1 000 058/1 000 058 across 124 files in 5.4 s,
+`sst68030` and `sst68040` green — the row after the corrected one. With
+that, every gate of the registry has executed on this host across the two
+runs; the AArch64 leg holds on the census, not only on the green.
+
+<a id="2026-09-16-phantom-volume-names-retired"></a>
+## 2026-09-16 (seventh) — Nine boot-volume names that never existed leave the search chains: every gate's first choice is now the pinned reference it actually boots
+
+`hdv/lc3-boot.vhd`, `lcii-boot.vhd`, `iisi-boot.vhd`, `iici-boot.vhd`,
+`lc-boot.vhd`, `classic2-boot.vhd`, `cclassic-boot.vhd`, `mactv-boot.vhd`
+and `q605-boot.vhd` were the first choice of forty-odd gates and of the
+Sonora GUI runner's default. Searched today on the M4, the TEST drive
+(including the July/August layouts and the Infinite Mac clone),
+PARTAGESAVE and TRANSFERT: none of the nine has ever existed. Every gate
+fell through to `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`, `boot.vhd` or
+`System 7.5 HD.dsk` and said so only on its `ASSET disk` line — and the
+TODO listed the nine as "missing volumes", which read as work to do.
+
+**Decision: retire the names, pin nothing new.** The two honest options
+were to fabricate nine per-machine volumes (Infinite Mac's `System 7.5.3
+HD.dsk` would have served the LC III, Color Classic and Mac TV, whose 7.1
+needs a System Enabler the generic image lacks) or to make each gate name
+the volume it boots. Fabricating adds nine identities to pin and transport
+for no new proof: the 332 gates are green on the references already
+pinned. So the chains lose their phantoms — a first line promoted to the
+first real fallback, list elements dropped, `sys75Image()` asked for
+`GISTPERSO-boot.vhd`, the IIsi/IIci runner spec pointing at the same —
+forty-six files, behaviour unchanged (a name that resolves to nothing
+never chose anything). The TODO item goes; what it also carried (what a
+package user sees without the Toby or MCU dumps) lives in README
+§ Additional firmware.
+
+<a id="2026-09-16-todo-open-only"></a>
+## 2026-09-16 (sixth) — The backlog drops the closed diary, the census counts and the second copy of every jalon bullet
+
+`TODO.md` said it contained open work only, then opened with Palier B clos,
+Palier C clos, jalon 1 clos, the 332/332 AArch64 census, and a second
+copy of every jalon-2-to-5 bullet that the thematic sections already
+owned. The 2026-09-12 pass had named the rule — « le travail lui-même vit
+dans les sections thématiques, en un seul exemplaire » — and the jalons
+block written this morning broke it the same day.
+
+**What left.** Closed palier recap and the 332/332 figure: `CHANGELOG.md`
+and `STATUS.md` already own them (`docs_test` § 13 forbids a second
+registry). The numbered-section anecdote of 2026-09-12: same file, same
+day's eighth entry. The « chantier doté (Mac 128K/512K) » banner: that
+work shipped this morning. Inside each remaining item, the « déjà fait le
+DATE » paragraphs that sent the next reader to re-derive a settled fact.
+
+**What stayed, and moved.** All 51 unchecked items. Section *names* are
+untouched (`§ Fidélité`, `§ Réseau`, `§ Preuve`, `§ Machines`, `§ Moteur`)
+so the pointers repaired on 2026-09-12 still resolve. Section *order*
+follows the jalons: Bloqué, then Preuve (2), Réseau (3), Fidélité + Médias
+(4), Machines (5), Moteur and Recherche hors jalon. The jalons block is
+now four exit criteria and four pointers.
+
+This supersedes one sentence of [this morning's fourth entry](#2026-09-16-aarch64-full-registry-all-green):
+the AArch64 all-green does not live in the Statut block.
 
 <a id="2026-09-16-headless-window-gate"></a>
 ## 2026-09-16 (fifth) — The product windows fall under a gate without a screen, and the gate finds two defects on its first run
