@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (twentieth)** — [The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles](#2026-09-16-afp-date-mechanism)
 - **2026-09-16 (nineteenth)** — [The relaunch is observed, not serialized: a smoke generation stages the DaynaPort card, re-executes, and the next generation sees the card](#2026-09-16-relaunch-observed)
 - **2026-09-16 (eighteenth)** — [The macii × 7.5.5 matrix cell is ruled PASS: six identical runs, Stickies in front and the Finder running](#2026-09-16-macii-755-cell-ruled)
 - **2026-09-16 (seventeenth)** — [The machine window under a headless gate: the menu bar, the dashboard, the screen surface and the keyboard on a fake machine, and two defects it found on its first run](#2026-09-16-machine-window-gate)
@@ -986,6 +987,43 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-afp-date-mechanism"></a>
+## 2026-09-16 (twentieth) — The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles
+
+The open question of 2026-09-12 (seventh) was *why* a moving server date
+ever produced a second AFP trajectory. `q605_afp_live_etalon` gained
+`POM68K_AFP_DATE` (`moving` | `host` | `host±N` | a Unix time) and ran
+seven times on the M4 against the 2026-09-13 reference trace, all seven
+green with zero retransmissions:
+
+| server date | runs | against the reference | against each other |
+|---|---|---|---|
+| pinned 1000000000 (2001, the default) | 1 | identical, 22/22 boundaries | — |
+| moving (host clock) | 3 | first divergence at boundary 16 | bit-identical |
+| host, pinned once | 1 | boundary 16 | identical to moving |
+| host + 3600, host − 3600 | 2 | boundary 16 | identical to moving |
+
+Boundary 16 is « volumes » after the reconnection through the Chooser.
+There the 2026-dated runs read the machine clock 293 cycles *before* the
+2001-dated reference, then 415 k cycles after it at « mounted », 4.5 M
+cycles (0.18 s) after it by the copy; every AFP, DDP, ATP and wire
+counter is identical at every boundary. So the **value** of the date the
+server reports selects the guest's timing from the second login on — a
+2001 date and a 2026 date make the AppleShare client do a different
+amount of work there (the first login shows no such difference: only
+the reconnection, where the client already holds a server-time offset, is
+date-sensitive) — and a moving date therefore shifts that timing from
+run to run as the clock advances. That is the mechanism by which the
+unpinned gate could land on either side of the guest's ATP timer; the
+second trajectory itself (one retransmit, a reply 1.44 s late) did not
+reproduce in seven runs today, which is consistent with a shift of a few
+hundred cycles needing a host that is also slow at that instant
+(2026-09-12 (fifth), the -j64 run).
+
+Corrects 2026-09-12 (seventh)'s "the value is irrelevant": it is
+irrelevant to the outcome, not to the timing. The pinned default stays,
+and the reference trace stays valid. The TODO item closes.
 
 <a id="2026-09-16-relaunch-observed"></a>
 ## 2026-09-16 (nineteenth) — The relaunch is observed, not serialized: a smoke generation stages the DaynaPort card, re-executes, and the next generation sees the card

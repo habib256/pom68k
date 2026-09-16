@@ -12,6 +12,7 @@ POM68K_ADB_PIC_TRACE	diagnostic	owner:src/StartupOptions.h
 POM68K_AFP_AS_X	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_AS_Y	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_CHOOSER_Y	test	owner:tests/q605_afp_live_etalon.cpp
+POM68K_AFP_DATE	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_CLOSE_X	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_CLOSE_Y	test	owner:tests/q605_afp_live_etalon.cpp
 POM68K_AFP_GUEST_X	test	owner:tests/q605_afp_live_etalon.cpp

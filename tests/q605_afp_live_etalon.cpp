@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -200,10 +201,30 @@ int main() {
     // FPGetSrvrParms reports the server's clock. Unpinned, that put host
     // wall-time into a guest-visible reply and this gate ran two different
     // trajectories: 4.15 s with no retransmit, or 5.15 s with one, the second
-    // failing the § 0.4 zero-retransmission rule. Nine runs across four fixed
-    // dates and an advancing counter are bit-identical, so the value does not
-    // matter — only that it stops moving. 2026-09-12.
-    hub.setAfpFixedDate(1000000000);
+    // failing the § 0.4 zero-retransmission rule (2026-09-12). Measured on
+    // 2026-09-16 with POM68K_AFP_DATE: the VALUE shifts the guest's timing
+    // from the post-reconnect « volumes » boundary on (a 2026 date, fixed or
+    // moving, lands 293 cycles before the pinned 2001 date there and 4.5 M
+    // cycles after it by the copy; the command and frame counts are the
+    // same), and a moving date therefore shifts it from run to run. Pinned,
+    // the run is bit-identical to the reference trace.
+    // POM68K_AFP_DATE (investigation knob, TODO § Services réseau): `moving`
+    // leaves the server on the host clock; `host` pins it at the host clock
+    // read once here; `host+N` / `host-N` offset that by N seconds; a bare
+    // number pins that Unix time. Default: the pinned 1000000000.
+    {
+        const char* knob = getenv("POM68K_AFP_DATE");
+        const std::string date = knob ? knob : "";
+        int64_t pinned = 1000000000;
+        if (date == "moving") pinned = 0;
+        else if (date.rfind("host", 0) == 0)
+            pinned = int64_t(std::time(nullptr)) + (date.size() > 4 ? atol(date.c_str() + 4) : 0);
+        else if (!date.empty()) pinned = atol(date.c_str());
+        std::printf("afp: server date %s (POM68K_AFP_DATE=%s)\n",
+                    pinned ? std::to_string(pinned).c_str() : "moving with the host clock",
+                    knob ? knob : "");
+        hub.setAfpFixedDate(pinned);
+    }
     hub.setService("pap", false);
     hub.setService("macip", false);
     const int byteCycles = int(mem.cpuHz() / 28800);

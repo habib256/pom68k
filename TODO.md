@@ -124,11 +124,6 @@ observé.
   « Révéler » lance `open` / `xdg-open` / `explorer` sans gate possible ;
   aucun invité n'a remonté un serveur AFP renommé à chaud
   (`afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur).
-- [ ] **Élucider pourquoi une date serveur mouvante produisait une seconde
-  trajectoire AFP.** Le gate est déterministe (date épinglée) ; le
-  mécanisme reste ouvert : on ne sait pas par quoi une date qui avance
-  faisait diverger le montage post-reconnexion (2 commandes AFP, 9 trames,
-  une réponse en retard de 1,44 s).
 - [ ] **Rejouer sur x86-64 date-épinglé la comparaison entre hôtes de
   `q605_afp_live_etalon`.** Référence M4 :
   `scratchpad/2026-09-13/afp_live_trace_aarch64.txt` ;

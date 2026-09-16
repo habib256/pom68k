@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 544 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 545 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -14,7 +14,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 91 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
 | [Sound](#sound) | 8 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 22 |
 | [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 62 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
@@ -355,6 +355,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-12 (fourth)** — [MacIP reassembles fragmented datagrams, and the old path had been delivering the first fragment truncated](CHANGELOG.md#2026-09-12-macip-reassembly)
 - **2026-09-12 (seventh)** — [Correction: the AFP outage red was host wall-clock reaching the guest, not `-j64` contention, and `RUN_SERIAL` is reverted](CHANGELOG.md#2026-09-12-afp-date-nondeterminism)
 - **2026-09-12 (sixth)** — [What the AFP server refuses is now visible, and it turns out Mac OS 8.1 never asks for anything it lacks](CHANGELOG.md#2026-09-12-afp-refusals-observable)
+- **2026-09-16 (twentieth)** — [The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles](CHANGELOG.md#2026-09-16-afp-date-mechanism)
 
 ## Save states
 
