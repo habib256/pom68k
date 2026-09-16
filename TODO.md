@@ -54,11 +54,11 @@ dans les sections thématiques, en un seul exemplaire.
 sont au catalogue, les deux identités 64 K sont épinglées dans `assets.lock`
 et `mac128k_boot_etalon` / `mac512k_boot_etalon` bootent une disquette
 System 400 K jusqu'au bureau du Finder — exécutés sur x86-64 le 2026-09-13
-(7,40 s chacun) ; sur le M4 ils se sautent faute de `disks35/System 1.1.dsk`,
-ce que tranche l'item « Décider si les deux images 400 K s'épinglent »
-(§ Bloqué). Reliquat propre à ces deux machines : la sérialisation PWM du
-lecteur 400 K (§ Nouvelles machines). Le paragraphe précédent disait encore,
-le 2026-09-14, qu'`assets.lock` n'avait aucune ligne 64 K : il datait du
+(7,40 s chacun) et sur le M4 le 2026-09-16 (5,3 s et 4,4 s) depuis que les
+deux images 400 K y sont arrivées du lecteur TEST ; reste à trancher si elles
+s'épinglent (§ Bloqué). La sérialisation PWM du lecteur 400 K est livrée
+(format v16, 2026-09-15). Le paragraphe précédent disait encore, le
+2026-09-14, qu'`assets.lock` n'avait aucune ligne 64 K : il datait du
 2026-09-12.
 
 **2. Finir les services réseau.** Le parcours invité est prouvé de bout en
@@ -79,26 +79,31 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
 (désassemblage/schéma/spec), un actif absent, ou du matériel physique.
 
 - [ ] **Dumps et images manquants — l'état exact, hôte par hôte.** Ce qui
-  manque se dit ici, pas dans un soft-skip. Sur le M4 (2026-09-15) : les
+  manque se dit ici, pas dans un soft-skip. Sur le M4 (2026-09-16) : les
   **42 identités d'`assets.lock` sont toutes présentes** — aucune ROM
   machine, aucun micrologiciel MCU (Cuda, Egret, PIC), aucune ROM de
   déclaration ne manque ; la carte Toby `342-0008-a.bin` est là sous
-  `roms/archive/`. Manquent des **images**, pas des dumps :
-  `disks35/System 1.1.dsk` et `disks35/System 2.0.dsk` (les seules
-  disquettes 400 K, présentes sur l'hôte x86-64 seulement — `mac128k_boot_etalon`
-  et `mac512k_boot_etalon` se sautent ici, item « Décider si les deux images
-  400 K s'épinglent » ci-dessous), et les volumes `hdv/lc3-boot.vhd`,
-  `hdv/lcii-boot.vhd`, `hdv/iisi-boot.vhd`, `hdv/lc-boot.vhd`,
-  `hdv/classic2-boot.vhd`, `hdv/cclassic-boot.vhd`, `hdv/mactv-boot.vhd`,
-  `hdv/iici-boot.vhd`, premiers choix de leurs etalons, que les replis
-  (`GISTPERSO`, `System 7.5 HD.dsk`, `boot.vhd`) remplacent sans le dire
-  autrement que par la ligne `ASSET disk` du gate. Pour un **utilisateur du
-  paquet**, deux dumps changent ce qu'il voit : sans `342-0008-a.bin` les
-  Mac II, IIx et IIcx tournent sur la ROM de déclaration synthétique —
-  System 6 et 7.0 oui, System 7.5.5 figé à « Welcome to Macintosh » (item
-  § Fidélité) ; sans les micrologiciels MCU, l'ADB passe en HLE (strict LLE
-  refuse). `README.md` § ROM porte la liste des dumps optionnels ; ce qui n'y
-  est pas encore, c'est la conséquence machine par machine d'un dump absent.
+  `roms/archive/macroms/Misc/Video cards/…`, chemin que le produit cherche
+  lui-même depuis le 2026-09-16 (avant, seuls les etalons le connaissaient et
+  une session GUI sur cet hôte tournait sur la ROM synthétique sans le
+  savoir). Les deux disquettes 400 K `disks35/System 1.1.dsk` et
+  `System 2.0.dsk` sont arrivées du lecteur TEST le 2026-09-16 :
+  `mac128k_boot_etalon` et `mac512k_boot_etalon` s'exécutent désormais ici.
+  Manquent encore des **images**, pas des dumps : les volumes
+  `hdv/lc3-boot.vhd`, `hdv/lcii-boot.vhd`, `hdv/iisi-boot.vhd`,
+  `hdv/lc-boot.vhd`, `hdv/classic2-boot.vhd`, `hdv/cclassic-boot.vhd`,
+  `hdv/mactv-boot.vhd`, `hdv/iici-boot.vhd`, premiers choix de leurs
+  etalons, que les replis (`GISTPERSO`, `System 7.5 HD.dsk`, `boot.vhd`)
+  remplacent sans le dire autrement que par la ligne `ASSET disk` du gate.
+  Pour un **utilisateur du paquet**, deux dumps changent ce qu'il voit, et
+  les deux sont maintenant dits dans le produit : sans `342-0008-a.bin` les
+  Mac II, IIx, IIcx et IIfx tournent sur la ROM de déclaration synthétique —
+  System 6 et 7.0 oui, System 7.5.5 figé à « Welcome to Macintosh » — et la
+  fenêtre Périphériques s'ouvre d'elle-même pour le dire (`README.md`
+  § Additional firmware, `TobyDeclChoice.h`) ; sans les micrologiciels MCU,
+  l'ADB passe en HLE (strict LLE refuse). Le lecteur TEST
+  (`/Volumes/TEST/pom68K`) porte depuis le 2026-09-16 les dix volumes de
+  `hdv/ref/` et `cd/MacThemePark.toast` pour l'hôte x86-64.
 - [ ] **Créer `duo230_sleep_etalon`.** Sommeil clapet, arrêt CPU, flush disque,
   réveil complet. Milestone 6 de `docs/DUO_BRINGUP.md` : fermer le clapet
   gèle le CPU mais le System ne lance aucune procédure de sommeil (aucune
@@ -106,8 +111,12 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
   oracle » pour ce chemin. Débloqué par le code System de gestion d'énergie ou
   la spec PMU.
 - [ ] **Introduire Retro68 comme oracle invité différentiel.** Sondes
-  Toolbox/Device Manager/XPRAM comparées sous MAME et POM68K. Bloqué : la
-  toolchain Retro68 n'est pas installée.
+  Toolbox/Device Manager/XPRAM comparées sous MAME et POM68K. La toolchain
+  est installée sur le M4 depuis le 2026-09-14 (`dev/Retro68-build`, elle a
+  compilé l'agent « POM68K Disques ») ; ce qui bloque encore est le côté
+  MAME de la comparaison — un romset `maclc2` bâti depuis notre ROM et un
+  tap Lua, la recette du co-trace SWIM du LC II — et la première sonde à
+  écrire.
 - [ ] **Installer un runner auto-hébergé avec les assets.** Rendre le palier
   `full` déclenchable par push et publier `LastTest.log` + le census
   exécutés/soft-skips — ce qui transforme une preuve personnelle en preuve
@@ -144,21 +153,6 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
 Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
 consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 
-- [ ] **System 7.5.5 sur Mac II/IIx/IIcx demande le vrai dump Toby — l'acter
-  dans le produit.** La ROM de déclaration synthétique (`DeclRom::
-  buildSynthetic`) est un repli quand `342-0008-a.bin` manque, pas un
-  micrologiciel à inventer : POM68K émule des machines qui ont existé. Depuis
-  le 2026-09-15 elle décrit la carte émulée telle qu'elle est (origine $20,
-  128 octets par ligne, `MinorBaseOS` 0) et ses Control/Status répondent
-  « non supporté » ; System 6 et 7.0 bootent dessus. System 7.5.5 non : il
-  gare une tâche VBL de slot et tourne sur son compteur (ROM Mac II
-  $40806C36), et un gestionnaire d'interruption calqué sur le vrai pilote
-  (`SIntInstall`, acquittement, `JVBLTask`) a tourné 132 fois sans le
-  libérer — expérience close, non retenue. Reste à le dire à l'utilisateur
-  au bon endroit : le message console « no Toby decl ROM — using synthetic »
-  existe ; un System 7.5 figé à « Welcome to Macintosh » sur ces cartes
-  mérite une ligne dans `README.md` § ROM et, si la GUI sait que le dump
-  manque, un mot dans la fenêtre machine.
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** Couvrir IRQ,
   VBL, VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. Inclut la question ouverte du Classic II : le bloc derrière

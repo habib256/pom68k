@@ -453,6 +453,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16** — [The Toby declaration ROM is a firmware choice the product reports: the missing dump is said in the window, and the dump on this host was not being found](#2026-09-16-toby-decl-rom-is-a-firmware-choice)
 - **2026-09-15 (fifth)** — [POM68K 0.2.0](#2026-09-15-release-0-2-0)
 - **2026-09-15 (fourth)** — [System 7.5.5 on the synthetic Toby ROM: what the real driver does, why a copy of it did not help, and the rule that settles it](#2026-09-15-synthetic-toby-is-a-fallback)
 - **2026-09-15 (third)** — [The synthetic Toby sResource lied about its frame buffer: base 0 and 80 bytes per row where the card serves `$20` and 128, and System 7 was the first to ask](#2026-09-15-synthetic-toby-params)
@@ -965,6 +966,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-toby-decl-rom-is-a-firmware-choice"></a>
+## 2026-09-16 — The Toby declaration ROM is a firmware choice the product reports: the missing dump is said in the window, and the dump on this host was not being found
+
+The 2026-09-15 rule — the synthetic Toby sResource is a fallback for a
+missing `342-0008-a` dump, never firmware to complete — left one thing
+undone: telling the user. The console line "no Toby decl ROM — using
+synthetic" was the only notice, and a desktop launch never shows it, so a
+Mac II, IIx, IIcx or IIfx frozen at « Welcome to Macintosh » under
+System 7.5.5 had no visible explanation.
+
+**The choice now goes through `fw::select`** (`src/TobyDeclChoice.h`), the
+one search every MCU dump already runs: an injected path, then the
+candidate list, then the substitute — reported to the LLE registry as a
+new module, `HleTobyDeclRom`, with the target `FirmwareTarget::TobyDecl`.
+Everything the Périphériques window does for an Egret follows for free:
+it opens by itself on the substitute, the row is orange, product mode
+(`--lle-aarch64`) refuses the session, the LLE radio is offered when a dump
+exists and the picker lists the files beside the candidates, and the
+choice is applied by relaunch as `--firmware-override=toby:<mode>:<path>`.
+The legacy startup syntax is `POM68K_TOBY_DECL=<path>` and
+`POM68K_TOBY_DECL_LLE=0`; `iix_boot_etalon`'s `POM68K_TEST_TOBY_SYNTHETIC`
+now forces the fallback through that typed policy instead of an empty
+path, because an empty path no longer means "synthetic" — it means "search".
+
+**One field the registry did not have: the consequence.** An Egret
+substitute is functionally complete; the Toby one is not, and "aucun dump
+trouvé" does not tell a user why 7.5.5 hangs. `lle::Device::consequence`
+carries the device's own sentence, rendered under the row when it runs HLE:
+System 6 and 7.0 boot, System 7.5.5 stays on « Welcome to Macintosh ».
+README § Additional firmware lists the dump with the same sentence.
+
+**The defect found on the way.** The product's candidate list was
+`roms/342-0008-a.bin` and `tests/data/`; every Mac II etalon also searched
+the MAME archive layout (`roms/archive/macroms/Misc/Video cards/…`), which
+is where the dump sits on this host. So the gates ran the real card while
+every GUI session on the same machine ran the synthetic one — the ledger of
+2026-09-15 said "the dump is there" and was right only for the tests. The
+archive path is now a product candidate; `iix_agent_boot_etalon` and
+`iicx_agent_boot_etalon`, which need the dump for their System 7 volume,
+pass here without being told where it is.
+
+Also today: the two 400 K images (`disks35/System 1.1.dsk`, `2.0.dsk`)
+arrived from the TEST drive, so `mac128k_boot_etalon` and
+`mac512k_boot_etalon` execute on the M4 (5.3 s, 4.4 s); the ten `hdv/ref/`
+volumes and `cd/MacThemePark.toast` went the other way for the x86-64 host.
+
+Gates: `peripheral_lle_test` (the three outcomes of the Toby choice on a
+registry it owns; the LLE side only when the private dump is present),
+`docs_test` (the `toby` target parses and the knobs seed the config; 139
+startup options), `config_test` (the two knobs registered and documented),
+and the twelve Mac II / IIfx / SE/30 / 128K / 512K boot and agent gates
+green, plus the synthetic variant of `iix_boot_etalon`.
 
 <a id="2026-09-15-release-0-2-0"></a>
 ## 2026-09-15 (fifth) — POM68K 0.2.0

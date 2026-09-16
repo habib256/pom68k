@@ -64,6 +64,8 @@ q605_trace.pram
 # AppleShare export dir: the AFP server's runtime share (user disks/games,
 # .AppleDouble sidecars, Network Trash Folder) — user data, never source
 AppleShare/
+# Third-party guest software fetched from the asset backup (installers, images)
+software/
 
 # Sound capture artifacts (sound_test)
 *.wav
