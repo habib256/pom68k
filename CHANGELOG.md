@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (twelfth)** — [The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder](#2026-09-16-128k-teachtext)
 - **2026-09-16 (eleventh)** — [The Infinite Mac images open an alias to « Infinite HD » at every boot; a blank companion of that name answers it, and the Finder signature now reads a colour desktop](#2026-09-16-infinite-hd-alias-and-colour-signature)
 - **2026-09-16 (tenth)** — [Stock System 7.5.3 is the LC III's first choice and is pinned; the LC 520 boots it too, but the Finder signature reads its solid desktop as white](#2026-09-16-system-753-adopted-lc3)
 - **2026-09-16 (ninth)** — [The Plus boots System 3.3 from an 800 K floppy, in drive A and in drive B: the cell the backlog waited on, unblocked by the TEST drive](#2026-09-16-plus-system33-floppy-cells)
@@ -978,6 +979,27 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-128k-teachtext"></a>
+## 2026-09-16 (twelfth) — The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder
+
+The last "depth" gap of the beyond-boot roster. `mac128k_mfs_etalon` /
+`mac512k_mfs_etalon` add an act between the duplicate and the reboot: the
+mouse homes on `Welcome!` again and double-clicks; System 1.1 quits the
+Finder into TeachText, which reads the 8 906-byte document off the 400 K
+floppy and opens it. The guest's word is CurApName (`$910`, a Str31 the 64
+KB ROM's System keeps like every later one): « TeachText »; the screen's is
+the document's white body, a 504-pixel light run where a desktop dither
+holds 8. Cmd-Q, and CurApName reads « Finder » again with the desktop
+signature back. Both machines pass; the reboot leg still finds the copy.
+
+**One number learned.** Fifteen seconds of guest time were not enough:
+the menu bar read « File Edit » under a watch cursor with no window yet
+(mfs-teachtext.ppm). TeachText and its document come off the floppy in
+about twenty seconds on a 128K; the gate polls the window for up to sixty.
+The « Donner une preuve au-delà du boot » item leaves § Preuve: every
+profile has a Finder gate, every profile has a proof past it, and the two
+oldest now launch and quit a program.
 
 <a id="2026-09-16-infinite-hd-alias-and-colour-signature"></a>
 ## 2026-09-16 (eleventh) — The Infinite Mac images open an alias to « Infinite HD » at every boot; a blank companion of that name answers it, and the Finder signature now reads a colour desktop

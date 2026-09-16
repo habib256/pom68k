@@ -28,6 +28,7 @@
 #include "MacVideo.h"
 #include "MacFrame.h"
 #include "MfsVolume.h"
+#include "FinderSignature.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -215,6 +216,55 @@ int main() {
              copy->dataStart != original->dataStart;
     }
 
+    // ── An application: double-click Welcome!, TeachText opens it, Cmd-Q ──
+    // The Finder's part (Process Manager there is none: System 1.1 runs one
+    // application at a time, the Finder quits into it) and the File
+    // Manager's again — TeachText reads the document off the floppy. The
+    // guest's own word is CurApName ($910), a Str31 the 64 KB ROM's System
+    // keeps like every later one; the screen adds the document window,
+    // whose white body is the near-white run no desktop dither can hold.
+    if (!moveTo(iconX, iconY)) { std::fprintf(stderr, "FAIL: mouse did not reach the icon\n"); return 1; }
+    click();
+    runFrames(6);
+    click();                               // the second click of a double-click
+    // TeachText and its 8 KB document come off a 400 K floppy at 62 rpm
+    // groups: the menu bar reads « File Edit » under a watch cursor for a
+    // good while before the window opens (15 s was not enough, 2026-09-16).
+    // Poll for the window's white body, up to ~60 s.
+    auto widestLightRun = [&]() {
+        MacVideo video;
+        const uint32_t* fb = video.render(mem);
+        int best = 0;
+        for (int y = 30; y < 342 - 30; y += 2) {
+            int run = 0;
+            for (int x = 0; x < 512; x++) {
+                if (fb[y * 512 + x] & 0xFF) { if (++run > best) best = run; }
+                else run = 0;
+            }
+        }
+        return best;
+    };
+    int documentRun = 0;
+    long launchFrames = 0;
+    for (; launchFrames < 3600 && documentRun < 200; launchFrames += 300) {
+        runFrames(300);
+        documentRun = widestLightRun();
+    }
+    const std::string app = findersig::curApName(mem);
+    screen("teachtext");
+    std::printf("launch: CurApName \"%s\", widest light run %d px after %ld frames\n",
+                app.c_str(), documentRun, launchFrames);
+    const bool launched = app == "TeachText" && documentRun >= 200;
+    ok = ok && launched;
+    mem.keyEvent(0x37, true);              // Cmd
+    runFrames(6);
+    keyTap(0x0C);                          // 'q' — Quit, back to the Finder
+    mem.keyEvent(0x37, false);
+    runFrames(600);
+    const std::string back = findersig::curApName(mem);
+    std::printf("quit: CurApName \"%s\"\n", back.c_str());
+    ok = ok && back == "Finder" && finderUp("quit");
+
     // ── Reboot on the modified floppy: still the Finder, copy still there ──
     cpu.hardReset();
     gClock.resync(cpu);
@@ -228,7 +278,7 @@ int main() {
     ok = ok && rebooted && kept;
 
     std::printf("%s: %s\n", ok ? "PASS" : "FAIL",
-                ok ? "the Finder duplicated a file on the MFS floppy and the host read it back"
+                ok ? "the Finder duplicated a file on the MFS floppy, TeachText opened it, and the host read the copy back"
                    : "see above");
     return ok ? 0 : 1;
 }

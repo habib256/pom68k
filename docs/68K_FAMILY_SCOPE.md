@@ -354,8 +354,12 @@ agent, got their own proof on 2026-09-16: `mac128k_mfs_etalon` /
 `mac512k_mfs_etalon` click the `Welcome!` document on the desktop, press
 Cmd-D, and `src/MfsVolume.h` reads `Copy of Welcome!` back from the
 in-memory floppy — a new MFS directory entry whose data fork is
-byte-identical to the original, still there after a reboot. No profile is
-boot-only any more.
+byte-identical to the original, still there after a reboot. Since the
+same evening they double-click `Welcome!` too: TeachText opens the
+document (CurApName « TeachText », the window's white body on screen after
+~20 s off the 400 K floppy) and Cmd-Q returns to the Finder — the
+one-application-at-a-time System 1.1 launching and quitting a program. No
+profile is boot-only any more, and none is File-Manager-only either.
 
 Adding a 40th machine is cheaper than hardening the 39 that exist. Read the
 roadmap below against that trade — and against

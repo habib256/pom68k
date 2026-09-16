@@ -85,12 +85,6 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
 
 Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 
-- [ ] **Donner une preuve au-delà du boot aux profils qui n'en ont toujours
-  pas.** Aucun profil n'est plus « boot seul » : 36 portent
-  `<profil>_agent_boot_etalon`, le 128K/512K a `mac128k_mfs_etalon` /
-  `mac512k_mfs_etalon`. Reste la profondeur sur ces deux machines : une
-  application lancée (TeachText sur `Welcome!`), pas seulement le File
-  Manager. `docs/68K_FAMILY_SCOPE.md` § 5.
 - [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.**
   Les quatre fenêtres (Périphériques, AppleTalk / Ethernet, Disques,
   Moteur) sont sous `gui_windows_test`. Reste : la fenêtre machine (menus,
