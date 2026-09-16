@@ -87,10 +87,11 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 
 - [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.**
   Les quatre fenêtres (Périphériques, AppleTalk / Ethernet, Disques,
-  Moteur) sont sous `gui_windows_test`. Reste : la fenêtre machine (menus,
-  upload framebuffer, hot-swap floppy/CD, save/restore), le formulaire
-  « Configuration des services » (hub attaché requis), et la passe
-  save-state GUI — les trois gates de relance du 2026-09-08 sont hors GUI.
+  Moteur) sont sous `gui_windows_test`, le formulaire « Configuration des
+  services » compris (hub attaché à une carte Plus sans ROM, 2026-09-16).
+  Reste : la fenêtre machine (menus, upload framebuffer, hot-swap floppy/CD,
+  save/restore) et la passe save-state GUI — les trois gates de relance du
+  2026-09-08 sont hors GUI.
 - [ ] **Trancher la cellule `finder_boot_matrix` macii × 7.5.5**, enregistrée
   UNSTABLE le 2026-09-02 (Stickies au premier plan).
 - [ ] **Fermer le `-Wstringop-overflow` de GCC 13 + LTO sur
@@ -111,13 +112,10 @@ observé.
 - [ ] **Payer les dettes de preuve du contrôle DaynaPort au GUI.** Le
   contrôle est complet (ligne d'état, bascule câble, ID SCSI sans variable
   d'environnement) et la fenêtre est cliquée sous gate — mais seulement
-  pile désactivée. Restent : aucun invité n'a traversé un relaunch avec
-  carte ; le formulaire « Configuration des services » n'est pas rendu
-  (hub attaché requis) ; le relaunch n'est couvert que par sa
-  sérialisation, pas par un re-exec observé ; « Révéler » lance
-  `open` / `xdg-open` / `explorer` sans gate possible ; aucun invité n'a
-  remonté un serveur AFP renommé à chaud (`afp_server_test` prouve la
-  ré-inscription NBP, pas le Sélecteur).
+  pile désactivée, puis, le soir même, sous sa forme complète : hub attaché,
+  formulaire rendu, case AppleShare et « Appliquer » jusqu'au hub
+  (`gui_windows_test`). Restent : aucun invité n'a traversé un relaunch
+  avec carte.
 - [ ] **Élucider pourquoi une date serveur mouvante produisait une seconde
   trajectoire AFP.** Le gate est déterministe (date épinglée) ; le
   mécanisme reste ouvert : on ne sait pas par quoi une date qui avance

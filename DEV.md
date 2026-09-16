@@ -2325,7 +2325,11 @@ test-engine (libellé et rectangle de chaque item), un rastériseur CPU pour
 l'image (captures `gui_<fenêtre>.ppm` dans le dossier de build, pour l'œil),
 des clics injectés (radio LLE/HLE puis « Appliquer » jusqu'au callback de
 relance typé ; sélecteur DaynaPort jusqu'à `relaunchWithDaynaPort(3)` ;
-disquette déposée puis choisie dans le sélecteur SWIM jusqu'à `insertFloppy`).
+disquette déposée puis choisie dans le sélecteur SWIM jusqu'à `insertFloppy` ;
+la fenêtre AppleTalk complète sur un hub attaché à une carte Plus sans ROM,
+case « Activer AppleShare » jusqu'au hub, nom de serveur et dossier partagé
+tapés puis « Appliquer » jusqu'à `reconfigure()` — l'affichage se redimensionne
+à 1024×1000 pour elle).
 Il vérifie aussi que chaque caractère non ASCII des chaînes affichées a un
 glyphe dans la police en usage : la police par défaut d'ImGui n'a ni tiret
 cadratin ni flèche, qui s'affichaient en « ? » — les chaînes d'interface les

@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (fifteenth)** — [The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied](#2026-09-16-services-form-rendered)
 - **2026-09-16 (fourteenth)** — [The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog](#2026-09-16-guest-keyboard-table)
 - **2026-09-16 (thirteenth)** — [`docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them](#2026-09-16-citation-anchors)
 - **2026-09-16 (twelfth)** — [The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder](#2026-09-16-128k-teachtext)
@@ -981,6 +982,30 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-services-form-rendered"></a>
+## 2026-09-16 (fifteenth) — The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied
+
+The AppleTalk / Ethernet window had been under `gui_windows_test` since
+this morning only in its « pile désactivée » shape; the full window with
+« Configuration des services » needs `AtalkHub::attach`, which takes a
+board for its SCC. A `MacMemory` with no ROM is a board: the hub attaches,
+`snapshot().attached` turns true, and the form draws — the first time it
+was ever rendered anywhere but on the author's screen (TODO § Services
+réseau, 2026-09-13).
+
+**Driven, not only drawn.** « Activer AppleShare » clicked turns
+`cfg.afp` off in the hub and back on; « Serveur AFP (nom NBP) » clicked
+and typed (End, sixteen Backspaces, `POMTEST`) shows « Appliquer »;
+« Dossier partagé » typed too, because the form refuses an empty share
+(« Dossier partagé : vide ») and a hub attached with no default has none;
+« Appliquer » reaches `reconfigure()` — the snapshot reads `POMTEST` and
+`AppleShare`. Three harness gains on the way: a resizable display (the
+full window runs to ~820 px and « Appliquer » sat below 768, unfound), the
+pointer parked inside a combo popup before wheeling it (the wheel scrolls
+the hovered window, and `disks35/` had grown past the eight visible rows
+since the morning), and `inputText(id)` reading an InputText's edit state
+for a trace. The window itself needed no fix.
 
 <a id="2026-09-16-guest-keyboard-table"></a>
 ## 2026-09-16 (fourteenth) — The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog
