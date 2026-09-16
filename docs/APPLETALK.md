@@ -1051,7 +1051,10 @@ alongside, and the guest simply sees two responders and de-dups.
 **The NAT** (`src/MacIpGateway.h:13-26`) is slirp-style: one connected host
 socket per UDP flow (DNS is just UDP 53 through it); a miniature TCP
 endpoint facing the guest (SYN-ACK, ordered delivery,
-retransmit-on-timeout, FIN both ways, MSS 536, in-order only) proxied
+retransmit-on-timeout, FIN both ways, MSS 536, in-order only; a guest
+SYN carrying an RFC 1323 window-scale option is counted in
+`MacIpGateway::Status::tcpSynWindowScale`, the signal on which scaling
+would be built — 2026-09-16) proxied
 onto a non-blocking host socket; ICMP echo answered for the gateway
 address itself only — raw sockets need privileges, and TCP/UDP is what
 era software uses.

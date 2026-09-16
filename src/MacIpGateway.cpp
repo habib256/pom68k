@@ -474,6 +474,20 @@ void MacIpGateway::handleTcpFromGuest(const uint8_t* p, size_t n) {
                                            // byte stream sent to the host
     const uint8_t* pay = t + th;
     size_t plen = n - ihl - th;
+    // A pure SYN's options: count the window-scale request (kind 3) so the
+    // status says whether any guest ever asked for RFC 1323.
+    if ((flags & 0x02) && !(flags & 0x10)) {
+        for (size_t o = 20; o < th;) {
+            const uint8_t kind = t[o];
+            if (kind == 0) break;
+            if (kind == 1) { o++; continue; }
+            if (o + 1 >= th) break;
+            const uint8_t len = t[o + 1];
+            if (len < 2 || o + len > th) break;
+            if (kind == 3 && len == 3) { stat_.tcpSynWindowScale++; stat_.lastWindowScale = t[o + 2]; }
+            o += len;
+        }
+    }
 
     TcpConn* c = nullptr;
     for (auto& cc : tcp_)

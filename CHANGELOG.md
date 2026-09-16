@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (twenty-fifth)** — [TCP window scaling in MacIP is ruled the way the AFP subset was: a counter first, code only on a consumer](#2026-09-16-macip-window-scale-ruled)
 - **2026-09-16 (twenty-fourth)** — [The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma](#2026-09-16-lto-werror-green)
 - **2026-09-16 (twenty-third)** — [The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way](#2026-09-16-dfac2-ruled)
 - **2026-09-16 (twenty-second)** — [The 512/2048 CD-image rule is the one already in the tree, and it stays](#2026-09-16-cd-block-rule)
@@ -991,6 +992,24 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-macip-window-scale-ruled"></a>
+## 2026-09-16 (twenty-fifth) — TCP window scaling in MacIP is ruled the way the AFP subset was: a counter first, code only on a consumer
+
+The item asked whether the in-order-only endpoint (MSS 536) should fall
+before window scaling is built. It should not, and scaling is not
+built: the gateway already caps what it puts in flight at 32 × MSS
+(≈ 17 KB) under the guest's 16-bit advertised window, so a scale factor
+would change nothing until a guest asked for one and the endpoint grew
+out-of-order delivery too — and no guest this tree runs (MacTCP under
+System 7, Open Transport 1.x under 8.1) is known to send RFC 1323
+options. Known is not measured, so the same move as for FPCopyFile on
+2026-09-12: `MacIpGateway` now parses a pure SYN's options and counts the
+window-scale requests in `Status::tcpSynWindowScale` (with the last
+shift asked); `macip_gw_test` sends a plain SYN (0 counted) and one with
+MSS + NOP + WS 2 (1 counted, shift 2). The day a live session reports a
+non-zero counter, the item reopens with its consumer; the ICMP half
+stays as the host-blocked item it was.
 
 <a id="2026-09-16-lto-werror-green"></a>
 ## 2026-09-16 (twenty-fourth) — The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma

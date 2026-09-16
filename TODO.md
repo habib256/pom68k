@@ -131,12 +131,14 @@ observé.
   référence `scratchpad/2026-09-11/afp_live_trace_x86_64.txt` est
   antérieure à l'épinglage : produire d'abord une référence x86-64
   date-épinglée.
-- [ ] **Compléter MacIP : window scaling TCP.** Le réassemblage IP est
-  fait. Reste le window scaling, au-dessus d'un endpoint volontairement
-  in-order-only (MSS 536) : décider d'abord si cette simplification tombe.
-  ICMP sortant est bloqué par l'hôte (`net.ipv4.ping_group_range` = `1 0`) :
-  un gate ne pourrait que se sauter. À rouvrir sur un hôte dont la plage
-  couvre le gid, ou avec `CAP_NET_RAW`.
+- [ ] **MacIP : ICMP sortant.** Bloqué par l'hôte
+  (`net.ipv4.ping_group_range` = `1 0`) : un gate ne pourrait que se
+  sauter. À rouvrir sur un hôte dont la plage couvre le gid, ou avec
+  `CAP_NET_RAW`. Le window scaling TCP est tranché le 2026-09-16 : rien à
+  bâtir tant qu'aucun invité ne le demande — le compteur
+  `Status::tcpSynWindowScale` (option kind 3 sur un SYN invité,
+  `macip_gw_test`) est le signal ; l'endpoint reste in-order-only, MSS 536,
+  32 × MSS en vol.
 - [ ] **Exécuter une session AppleShare complète sur le bridge réel.** Les
   sessions passées vont au serveur in-process. Lancer netatalk ou
   TashRouter, monter « Input » depuis le Chooser, vérifier un transfert.
@@ -226,7 +228,10 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 ## Médias optiques
 
 - [ ] **Ajouter CDDA.** TOC audio, PLAY/PAUSE et le chemin sonore vers
-  l'ASC avec un gate consommateur. Y inclure le seul cas `.cue/.bin`
+  l'ASC avec un gate consommateur. **Dump manquant** (constaté le
+  2026-09-16) : aucune image de `cd/` ne porte de piste audio (`.cue/.bin`
+  en mode mixte) — sans un tel disque réel, ni la TOC audio ni PLAY ne
+  peuvent être prouvés ; à fournir avant d'écrire du code. Y inclure le seul cas `.cue/.bin`
   encore ouvert (tranché le 2026-09-16) : un BIN unique en mode mixte dont
   la piste de données n'est pas la première (décalage `INDEX 01` à
   calculer) — la feuille `.cue` est déjà lue, sa première piste MODE1

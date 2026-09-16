@@ -90,6 +90,13 @@ public:
         long ipReassembled = 0;          // fragmented datagrams put back together
         int udpFlows = 0, tcpConns = 0;
         int fragSets = 0;                // partial datagrams held right now
+        // Guest SYNs that carried a window-scale option (RFC 1323 kind 3)
+        // and the last shift asked: the consumer signal the TCP window
+        // scaling item waits for (TODO § Services réseau, 2026-09-16). The
+        // endpoint is in-order-only with a 32×MSS in-flight cap, so a scale
+        // would change nothing until a guest asks — nobody has yet.
+        long tcpSynWindowScale = 0;
+        int lastWindowScale = -1;
         int64_t lastActivity = -1;       // emuCycles of last IP datagram
     };
     Status status() const;
