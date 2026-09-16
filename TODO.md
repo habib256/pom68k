@@ -115,7 +115,10 @@ observé.
   pile désactivée, puis, le soir même, sous sa forme complète : hub attaché,
   formulaire rendu, case AppleShare et « Appliquer » jusqu'au hub
   (`gui_windows_test`). Restent : aucun invité n'a traversé un relaunch
-  avec carte.
+  avec carte ; le relaunch n'est couvert que par sa sérialisation, pas par
+  un re-exec observé ; « Révéler » lance `open` / `xdg-open` / `explorer`
+  sans gate possible ; aucun invité n'a remonté un serveur AFP renommé à
+  chaud (`afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur).
 - [ ] **Élucider pourquoi une date serveur mouvante produisait une seconde
   trajectoire AFP.** Le gate est déterministe (date épinglée) ; le
   mécanisme reste ouvert : on ne sait pas par quoi une date qui avance
