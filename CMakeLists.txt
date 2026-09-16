@@ -498,6 +498,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/PlatformDuo.cpp
         src/miniaudio_impl.cpp
         src/FloppySound.cpp src/DiskBays.cpp src/DiskBaysDrop.cpp
+        src/CrtEffectStack.cpp src/OpenGLShader.cpp src/GuiDisplayWindow.cpp
         src/PeripheralWindow.cpp
         src/NetworkWindow.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)

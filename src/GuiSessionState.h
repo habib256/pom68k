@@ -10,6 +10,7 @@
 #include "AtalkHub.h"
 #include "FloppySound.h"
 #include "FirmwareConfig.h"
+#include "GuiDisplay.h"
 #include "GuiMachineControls.h"
 #include "GuiSpeedGauge.h"
 #include "LtoUdp.h"
@@ -90,6 +91,7 @@ struct GuiDiagnosticState {
 };
 
 struct GuiSessionState {
+    pom68k::gui::GuiDisplayState display;
     GuiNetworkState network;
     GuiAudioState audio;
     GuiRelaunchState relaunch;

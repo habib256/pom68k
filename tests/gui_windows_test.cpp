@@ -23,6 +23,7 @@
 #include "ImGuiHeadless.h"
 
 #include "DiskBays.h"
+#include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiSessionState.h"
 #include "NetworkWindow.h"
@@ -30,6 +31,7 @@
 #include "AssetFingerprint.h"
 #include "MacMemory.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -287,6 +289,26 @@ int main() {
         check(ui.distinctColours(r) > 12, "the window is drawn, not blank");
         capture(ui, "engine");
         dumpLabels("engine");
+    }
+
+    // ── Display: the CRT presets and the kiosk letterbox (pure) ──────
+    {
+        pom68k::gui::CrtParams p;
+        bool on = false;
+        check(pom68k::gui::applyCrtPreset("arcade", p, on) && on &&
+                  p.shadowMask == pom68k::gui::CrtParams::ShadowMask::Triad && p.scanlines > 0.4f,
+              "the arcade preset turns the pass on with a triad mask");
+        check(pom68k::gui::applyCrtPreset("off", p, on) && !on && p.scanlines > 0.4f,
+              "« off » turns the pass off and keeps the sliders");
+        check(!pom68k::gui::applyCrtPreset("plasma", p, on), "an unknown preset is refused");
+        check(pom68k::gui::applyCrtPreset("light", p, on) && on && p.shadowMask == pom68k::gui::CrtParams::ShadowMask::Off,
+              "the light preset has no mask");
+        const pom68k::gui::Letterbox wide = pom68k::gui::letterbox(1920, 1080, 512, 342);
+        check(wide.h == 1080 && wide.y == 0 && wide.x > 0 && std::abs(wide.w / wide.h - 512.0f / 342.0f) < 0.01f,
+              "a 512x342 screen on a 1920x1080 monitor fills the height, pillarboxed");
+        const pom68k::gui::Letterbox tall = pom68k::gui::letterbox(640, 1000, 640, 480);
+        check(tall.w == 640 && tall.x == 0 && tall.y > 0, "a 640x480 screen on a tall surface fills the width, letterboxed");
+        check(pom68k::gui::letterbox(0, 0, 512, 342).w == 0, "an empty surface yields an empty box");
     }
 
     // ── Glyphs: every non-ASCII character in the windows' string literals

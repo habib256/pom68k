@@ -216,10 +216,8 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         }
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        dockLayoutScreenWindow(context.spec.name.c_str());
-        ImGui::Begin(context.spec.name.c_str());
-        context.input.frame(
-            context.window, context.texture,
+        screenWindowBegin(services.shell().display(), context.spec.name.c_str());
+        context.input.frame(services.shell().display(), context.window, context.texture,
             ImVec2(float(hres * 2), float(vres * 2)),
             [&](int dx, int dy) {
                 machine.push({MachineT::Cmd::MouseMove, dx, dy});

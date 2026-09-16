@@ -73,6 +73,11 @@ struct DeviceConfig {
     bool floppyWriteBack = true;
     std::optional<std::string> startupFloppy;
     std::optional<int> monitorWidth;
+    // Cabinet mode and the CRT glass pass (GuiDisplay.h): POM68K_KIOSK=1,
+    // POM68K_CRT=off|light|arcade|phosphor. The menu and F8 change both
+    // live; these only set the session's start.
+    bool kiosk = false;
+    std::string crtPreset;
     SerialPortConfig serialPrinter;
     SerialPortConfig serialModem;
 };

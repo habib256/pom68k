@@ -11,6 +11,7 @@
 #include "GuiMachineControls.h"
 #include "MachineCatalog.h"
 #include "GuiSessionObjects.h"
+#include "GuiDisplay.h"
 #include "GuiSessionState.h"
 #include "GuiSmokeScenario.h"
 #include "GuiWindowSession.h"
@@ -78,8 +79,11 @@ public:
     }
 
     // Menu bar, dock space and every shell-owned window, once per frame,
-    // before the runner draws the screen window.
+    // before the runner draws the screen window. In kiosk mode: the F8 /
+    // quit chords and the monitor switch, nothing drawn.
     void drawMachineMenu(SnapMachine current, GLFWwindow* window);
+    GuiDisplayState& display() noexcept { return state_.display; }
+
 
     // Drives the command-line GUI smoke scenario once per rendered frame.
     // Normal sessions pay one predictable empty-optional branch.
@@ -98,9 +102,36 @@ private:
     GuiSmokeScenario smoke_;
 };
 
+// The window the runner draws the screen in: the docked one on the
+// desktop, a chromeless window covering the whole viewport in kiosk mode.
+// Every runner calls this instead of dockLayoutScreenWindow + Begin, and
+// ImGui::End as before.
+inline void screenWindowBegin(const GuiDisplayState& display, const char* title) {
+    if (display.kiosk) {
+        const ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->Pos);
+        ImGui::SetNextWindowSize(vp->Size);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::Begin(title, nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+                     ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoScrollbar |
+                     ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::PopStyleVar(2);
+        return;
+    }
+    pom68k::dockLayoutScreenWindow(title);
+    ImGui::Begin(title);
+}
+
 // An emulated screen is an InvisibleButton with the image drawn over it.
 // A drag started on the Mac screen owns the mouse until release.  The middle
 // mouse button, Ctrl+Alt+G, or Delete toggles hard GLFW cursor capture.
+// In kiosk mode the capture is imposed and the image fills the monitor
+// (letterboxed, pixel ratio kept); with the CRT pass on, the texture drawn
+// is the pass's output at the drawn size (GuiDisplay.h).
 struct ScreenInput {
     bool captured = false;
     bool midWas = false;
@@ -111,13 +142,21 @@ struct ScreenInput {
     double lastX = 0;
     double lastY = 0;
 
+    bool kioskCaptured = false;   // the capture this mode imposed, to undo on exit
+
     template <typename MoveFn, typename ButtonFn>
-    void frame(GLFWwindow* win, GLuint tex, ImVec2 size,
+    void frame(GuiDisplayState& display, GLFWwindow* win, GLuint tex, ImVec2 size,
                MoveFn move, ButtonFn button) {
         ImGuiIO& io = ImGui::GetIO();
         const ImVec2 native(size.x * 0.5f, size.y * 0.5f);
         const ImVec2 avail = ImGui::GetContentRegionAvail();
-        if (size.x > 0 && size.y > 0 && avail.x > 32 && avail.y > 32) {
+        ImVec2 offset(0, 0);
+        if (display.kiosk) {
+            // The whole surface, the image centred with its pixel ratio.
+            const Letterbox box = letterbox(avail.x, avail.y, size.x, size.y);
+            size = ImVec2(box.w, box.h);
+            offset = ImVec2(box.x, box.y);
+        } else if (size.x > 0 && size.y > 0 && avail.x > 32 && avail.y > 32) {
             float scale = avail.x / size.x;
             if (avail.y / size.y < scale) scale = avail.y / size.y;
             size = ImVec2(size.x * scale, size.y * scale);
@@ -125,10 +164,18 @@ struct ScreenInput {
         zoom = native.x > 0 ? size.x / native.x : 2.0f;
         if (zoom < 0.05f) zoom = 0.05f;
 
-        const ImVec2 pos = ImGui::GetCursorScreenPos();
-        ImGui::InvisibleButton("screen", size);
+        // Kiosk imposes the capture; leaving it releases what it imposed.
+        if (display.kiosk && !captured) { setCaptured(win, true); kioskCaptured = true; }
+        if (!display.kiosk && kioskCaptured) { setCaptured(win, false); kioskCaptured = false; }
+
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        const ImVec2 pos(origin.x + offset.x, origin.y + offset.y);
+        if (offset.x > 0 || offset.y > 0) ImGui::SetCursorScreenPos(pos);
+        ImGui::InvisibleButton("screen", ImVec2(std::max(size.x, 1.0f), std::max(size.y, 1.0f)));
+        const GLuint shown = display.shown(tex, int(native.x), int(native.y),
+                                           int(size.x + 0.5f), int(size.y + 0.5f));
         ImGui::GetWindowDrawList()->AddImage(
-            ImTextureID(intptr_t(tex)), pos,
+            ImTextureID(intptr_t(shown)), pos,
             ImVec2(pos.x + size.x, pos.y + size.y));
 
         // GLFW polling remains active while ImGui mouse input is disabled,

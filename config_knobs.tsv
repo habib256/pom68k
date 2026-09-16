@@ -56,6 +56,7 @@ POM68K_CENTRIS_MODEL	product	gate:centris650_boot_etalon
 POM68K_CHIME_FRAMES	test	owner:tests/lcii_asc_chime_etalon.cpp
 POM68K_COMPACT_MODEL	test	owner:tests/compact_boot_etalon.cpp
 POM68K_CPU_ENGINE	product	gate:jit_backend_test
+POM68K_CRT	product	gate:gui_windows_test,docs_test
 POM68K_CUDA_FW	product	gate:peripheral_lle_test
 POM68K_CUDA_LLE	product	gate:cuda_lle_test,peripheral_lle_test
 POM68K_DAFB_CLOCK_TRACE	diagnostic	owner:src/StartupOptions.h
@@ -149,6 +150,7 @@ POM68K_JIT_WATCH_OPCODE	diagnostic	owner:src/StartupOptions.h
 POM68K_JIT_WINDOW_KILL	diagnostic	owner:src/StartupOptions.h
 POM68K_KEYS_DEBUG	test	owner:tests/Q605ApplicationHarness.h
 POM68K_KEY_TRACE	diagnostic	owner:src/StartupOptions.h
+POM68K_KIOSK	product	gate:gui_windows_test,docs_test
 POM68K_LC3_PLUS	product	gate:lc3plus_boot_etalon
 POM68K_LLE_AARCH64_CHECK_ONLY	product	gate:peripheral_lle_test
 POM68K_LLE_AARCH64_FULL	product	gate:savestate_040_test

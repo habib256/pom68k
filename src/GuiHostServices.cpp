@@ -8,6 +8,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include <cstdio>
 #include <ctime>
 #include <system_error>
 
@@ -48,6 +49,11 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     // and the qualification verdict all read that one.
     state_.peripherals.registry = config_.core().firmware.registry;
     state_.relaunch.launchArguments = config_.launchArguments();
+    state_.display.kiosk = config_.devices().kiosk;
+    if (!config_.devices().crtPreset.empty() &&
+        !state_.display.selectPreset(config_.devices().crtPreset))
+        std::fprintf(stderr, "POM68K_CRT=%s: unknown preset (off, light, arcade, phosphor)\n",
+                     config_.devices().crtPreset.c_str());
     state_.relaunch.daynaPortId = config_.core().bus.daynaPortId;
     state_.peripherals.relaunch = [this](std::vector<FirmwareOverride> overrides) {
         state_.relaunch.firmwareOverrides = std::move(overrides);

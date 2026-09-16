@@ -322,6 +322,16 @@ large inputs are split at 1,900 MB by default. Run
   the network and controller windows, the engine statistics — and reset the
   docked layout.
 
+- **Affichage:** **Mode borne** (`F8`) — exclusive full screen on the
+  primary monitor, no menu bar, no window, the mouse captured; `F8` again,
+  `Alt+F4` or `Ctrl+Shift+Q` held for a moment leaves. **Effets CRT** —
+  the glass of an old monitor in front of the pixels: barrel geometry,
+  scanlines, shadow mask, phosphor persistence, with the presets *Léger*,
+  *Arcade* and *Phosphore* and every slider live in **Réglages CRT**. Both
+  start from the command line too: `POM68K_KIOSK=1` and
+  `POM68K_CRT=light|arcade|phosphor`. If the shader cannot compile you
+  simply get the raw screen.
+
 The right edge of the menu bar reads live: the LLE qualification badge when a
 strict session asked for one, the speed ratio, and the mouse-capture reminder.
 

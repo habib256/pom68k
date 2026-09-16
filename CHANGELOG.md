@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: F8 to the whole monitor, presets light / arcade / phosphor, every slider live](#2026-09-16-kiosk-and-crt)
 - **2026-09-16 (fifteenth)** — [The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied](#2026-09-16-services-form-rendered)
 - **2026-09-16 (fourteenth)** — [The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog](#2026-09-16-guest-keyboard-table)
 - **2026-09-16 (thirteenth)** — [`docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them](#2026-09-16-citation-anchors)
@@ -982,6 +983,47 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-kiosk-and-crt"></a>
+## 2026-09-16 (sixteenth) — Cabinet mode and the CRT glass, ported from NeoST: F8 to the whole monitor, presets light / arcade / phosphor, every slider live
+
+NeoST's two display features come to POM68K, on the same author's code
+(`gui/CrtEffectStack`, `gui/OpenGLShader`, `gui/CrtParams`, the kiosk
+invariants of NeoST's DEV.md): the shader bodies are unchanged; the GL
+binding is not.
+
+**What differs from NeoST.** NeoST draws in an OpenGL 2.1 compatibility
+context (immediate-mode blits, Apple's EXT framebuffer names); POM68K's GUI
+is Dear ImGui on a 3.2 core context on macOS, 3.0 elsewhere. So: a VAO is
+always bound (core requires one), the pass restores every GL state the
+ImGui OpenGL3 backend depends on (program, VAO, both texture units, FBO,
+viewport, blend/depth/cull/scissor), and the entry points come from a
+self-contained loader (`GlEntryPoints.h`: `<OpenGL/gl3.h>` on macOS,
+`glfwGetProcAddress` with local typedefs elsewhere — no `glext.h`, which
+the MSVC SDK lacks). The full-screen surface is an ImGui window without
+chrome covering the viewport rather than a raw quad, so the six runners
+change three lines each (`screenWindowBegin`, the display passed to
+`ScreenInput::frame`) and the Disques window asks `kioskActive()` before
+drawing. On this M4 the driver reports GLSL 4.10 and the cascade picks
+150; « [CRT] CRT effect stack ready ».
+
+**What is kept.** F8 toggles at any time; Alt+F4 and Ctrl+Shift+Q held
+~0.7 s leave (an exclusive full screen does not always relay the window
+manager's close); the switch is a GLFW monitor change between two frames
+with the windowed geometry remembered; the mouse is captured and the
+cursor hidden; the docked layout is kept alive for the return. The pass is
+opt-in and fails soft — an uncompilable shader shows the raw screen and
+the menu says why. `POM68K_KIOSK=1` and `POM68K_CRT=<preset>` set the
+session's start; the « Affichage » menu and « Réglages CRT » change both
+live. Not ported: the in-game gamepad menu, the adaptive zoom (a Mac has
+no overscan), the frozen-config invariant (POM68K has no config file).
+
+**Seen, not only compiled.** A windowed Plus with the arcade preset and a
+kiosk Plus with the phosphor preset, screen-captured on the M4 at boot:
+barrel, scanlines and mask on the grey desktop, the bezel black, no chrome.
+`gui_windows_test` gates the presets and the letterbox; the smoke scenario
+with `POM68K_CRT=arcade POM68K_KIOSK=1` compiles the shader on a hidden
+window, which is never sent to a monitor.
 
 <a id="2026-09-16-services-form-rendered"></a>
 ## 2026-09-16 (fifteenth) — The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied

@@ -161,8 +161,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             diskBaysWindow(host);
         }
 
-        dockLayoutScreenWindow(c.spec.name);
-        ImGui::Begin(c.spec.name);
+        screenWindowBegin(c.services.shell().display(), c.spec.name);
         std::vector<uint32_t> framebuffer;
         int frameWidth = 0, frameHeight = 0;
         if (machine.latchFrame(framebuffer, frameWidth, frameHeight) &&
@@ -171,8 +170,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                          frameWidth, frameHeight, 0,
                          GL_BGRA, GL_UNSIGNED_BYTE, framebuffer.data());
-            c.input.frame(
-                c.window, c.texture,
+            c.input.frame(c.services.shell().display(), c.window, c.texture,
                 ImVec2(float(frameWidth * 2), float(frameHeight * 2)),
                 [&](int dx, int dy) {
                     machine.push({MachineT::Cmd::MouseMove, dx, dy});

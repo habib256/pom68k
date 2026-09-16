@@ -19,6 +19,7 @@
 
 #include "GuiShell.h"
 
+#include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiMachineControls.h"
 #include "LleSession.h"
@@ -172,6 +173,16 @@ void GuiShell::drawMachineMenu(SnapMachine current, GLFWwindow* window) {
     const double speed = realtimeRatio(state_.cpu);
     if (state_.cpu.speedMeasurementDone)
         glfwSetWindowShouldClose(window, GLFW_TRUE);
+    kioskFrame(state_.display, window);
+    if (state_.display.kiosk) {
+        // No bar, no dock space, no window: the machine owns the monitor.
+        // A relaunch staged before the switch still goes through.
+        if (state_.relaunch.showWindow) {
+            state_.relaunch.showWindow = false;
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
+        return;
+    }
     // The session's registry, carried by the same struct the Périphériques
     // window renders — one binding, not two.
     lle::Registry& registry = state_.peripherals.registry
@@ -203,6 +214,7 @@ void GuiShell::drawMachineMenu(SnapMachine current, GLFWwindow* window) {
             ImGui::EndMenu();
         }
         drawCpuMenu(state_, speed, registry.requested() && registry.qualified());
+        drawDisplayMenu(state_.display);
         if (ImGui::BeginMenu("Fenêtres")) {
             ImGui::MenuItem(kMachineControlWindowTitle, nullptr,
                             &state_.machine.showWindow, state_.machine.bound());
@@ -222,6 +234,7 @@ void GuiShell::drawMachineMenu(SnapMachine current, GLFWwindow* window) {
     }
 
     dockLayoutFrame();
+    drawCrtWindow(state_.display);
     drawMachineControlWindow(state_.machine);
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);

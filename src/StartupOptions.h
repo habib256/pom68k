@@ -88,6 +88,9 @@ concept IntegerStartupOption =
       startup_policy::Text)                                                  \
     X(Monitor, "POM68K_MONITOR", StartupDomain::Product,                   \
       startup_policy::DecimalInteger)                                        \
+    X(Kiosk, "POM68K_KIOSK", StartupDomain::Product,                       \
+      startup_policy::EnabledBoolean)                                        \
+    X(CrtPreset, "POM68K_CRT", StartupDomain::Product, startup_policy::Text)\
     X(FpuLog, "POM68K_FPU_LOG", StartupDomain::Product,                    \
       startup_policy::Text)                                                  \
     X(KeyTrace, "POM68K_KEY_TRACE", StartupDomain::Product,                \

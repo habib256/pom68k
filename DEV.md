@@ -2003,7 +2003,14 @@ rectangle — what a new click scenario is written from) and
 `POM68K_GUI_TRACE` (the hovered window and ids at each step of a click).
 `system_boot_etalon` (the Plus on a System floppy: the 6.0.5 cell, the
 System 3.3 cells in drive A and drive B) dumps its final screen with
-`POM68K_SYSTEM_BOOT_PPM` (`<path>` of a PGM).
+`POM68K_SYSTEM_BOOT_PPM` (`<path>` of a PGM). The GUI's display knobs,
+ported from NeoST on 2026-09-16 (`GuiDisplay.h`): `POM68K_KIOSK` (`1` =
+start in cabinet mode — exclusive full screen on the primary monitor, no
+menu bar, no window, mouse captured; F8 toggles at any time, Alt+F4 or
+Ctrl+Shift+Q held ~0.7 s leaves) and `POM68K_CRT` (`off` | `light` |
+`arcade` | `phosphor` — the CRT glass pass of `CrtEffectStack`, also the
+« Affichage » menu and its « Réglages CRT » window; an uncompilable shader
+leaves the raw screen and the menu says so).
 `POM68K_MAC128K_EXC` exits 0 whether or not an
 exception fires: it reports, it never judges, so it must not be registered
 as a gate in that mode.
@@ -2336,6 +2343,24 @@ cadratin ni flèche, qui s'affichaient en « ? » — les chaînes d'interface l
 écrivent en ASCII (`-`, `->`). `POM68K_GUI_LABELS=1` liste les items d'une
 frame, `POM68K_GUI_TRACE=1` suit chaque clic. Les panneaux machine (menus,
 framebuffer) restent hors de ce gate.
+
+**Mode borne et effets CRT** (`GuiDisplay.h`, `GuiDisplayWindow.cpp`,
+`CrtEffectStack.*`, `OpenGLShader.*`, `GlEntryPoints.h` — portés de NeoST le
+2026-09-16). Le runner dessine l'écran par `screenWindowBegin` : la fenêtre
+ancrée sur le bureau, une fenêtre sans chrome couvrant tout le viewport en
+borne (`ScreenInput::frame` y centre l'image à ratio conservé, capture la
+souris et cache le curseur). Le shell gère F8, les chords de sortie et le
+changement de moniteur GLFW entre deux trames, sur une fenêtre visible
+seulement (le smoke garde sa fenêtre cachée). La passe CRT — shader de NeoST
+inchangé, contexte OpenGL 3 core de POM68K, un VAO obligatoire, chaque état
+GL touché restauré pour le backend ImGui — rend dans un FBO à la taille
+affichée (scanlines et masque anti-aliasés analytiquement) et
+`GuiDisplayState::shown()` renvoie sa sortie ou la texture brute ; les points
+d'entrée GL 2/3 viennent de `GlEntryPoints.h` (gl3.h sur macOS,
+`glfwGetProcAddress` ailleurs, sans glext.h). `gui_windows_test` gate les
+presets et le letterbox ; le shader lui-même ne se prouve que sur une
+surface GL (`gui_smoke_test` avec `POM68K_CRT=arcade` : « [CRT] CRT effect
+stack ready »).
 Le parsing derrière cette façade est lui-même séparé :
 `StartupSnapshot` possède et valide les valeurs capturées, tandis que
 `StartupDomainView` n'en fournit que les lectures typées autorisées,

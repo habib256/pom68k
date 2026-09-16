@@ -1,6 +1,7 @@
 // DiskBays -- the one "Disques" window. See DiskBays.h for the contract.
 
 #include "DiskBays.h"
+#include "GuiDisplay.h"
 #include "DockLayout.h"
 #include "HfsBlankVolume.h"
 #include "ScsiDisk.h"
@@ -358,7 +359,7 @@ void diskBaysMenuItem(const char* label) {
 // ── The window ─────────────────────────────────────────────────────────────
 
 void diskBaysWindow(DiskBaysHost& host) {
-    if (!gOpen) return;
+    if (!gOpen || pom68k::gui::kioskActive()) return;
 
     if (!ImGui::Begin(kDiskWindowTitle, &gOpen)) {
         ImGui::End();

@@ -225,9 +225,8 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
         }
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        dockLayoutScreenWindow(c.spec.name.c_str());
-        ImGui::Begin(c.spec.name.c_str());
-        c.input.frame(c.window, c.texture,
+        screenWindowBegin(c.services.shell().display(), c.spec.name.c_str());
+        c.input.frame(c.services.shell().display(), c.window, c.texture,
                     ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) {
                         machine.push({MachineT::Cmd::MouseMove, dx, dy});
