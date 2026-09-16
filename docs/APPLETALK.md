@@ -879,7 +879,7 @@ the wire spec in practice; `MacIpGateway` implements the same):
   and reclaims after 10 misses (`macip.c:79-81,604-626`); `MacIpGateway`
   instead expires a lease after **3600 s** of silence, so a quiet but
   live MacTCP node keeps its address (`kLeaseLifetimeSec`,
-  `src/MacIpGateway.h:101`).
+  `src/MacIpGateway.h:108`).
 - **Data — DDP type 22**, ≤586 bytes of IP per datagram.
 
 **Two ways to run it.** In-process (default, no root): `MacIpGateway`

@@ -296,19 +296,6 @@ int main() {
         }
         CHECK(as >= 0, "host connection accepted");
         CHECK(!synAck.empty(), "SYN-ACK reached the guest");
-        CHECK(gw.status().tcpSynWindowScale == 0, "a plain SYN asks for no window scale");
-        {
-            // The same SYN with RFC 1323 options (MSS 1460, NOP, WS 2): the
-            // consumer signal is counted and the shift remembered.
-            std::vector<uint8_t> ws = tcpSeg(3001, port, 5000, 0, 0x02);
-            const uint8_t opts[] = {2, 4, 0x05, 0xB4, 1, 3, 3, 2};
-            ws.insert(ws.begin() + 20, std::begin(opts), std::end(opts));
-            ws[12] = 0x70;                                    // data offset 7
-            sendPacket(ipPkt(kGuest, kLo, 6, ws));
-            pump(1);
-            CHECK(gw.status().tcpSynWindowScale == 1 && gw.status().lastWindowScale == 2,
-                  "a SYN with a window-scale option is counted (shift 2)");
-        }
         if (as < 0 || synAck.empty()) { std::printf("%d failure(s)\n", failures); return 1; }
         ::fcntl(as, F_SETFL, O_NONBLOCK);
         uint32_t isn = get32(synAck.data() + 24);
@@ -375,6 +362,26 @@ int main() {
 
     CHECK(gw.status().ipFromGuest > 0 && gw.status().ipToGuest > 0,
           "GUI counters run");
+
+    // ── The window-scale signal (TODO § Services réseau, 2026-09-16) ──
+    // Every SYN this test sent so far was a plain 20-byte header: nothing
+    // counted. One SYN with RFC 1323 options (MSS 1460, NOP, WS 2) to a
+    // port nobody listens on — the connection dies, the count stays.
+    {
+        const auto before = gw.status();
+        std::printf("window-scale SYNs before: %ld (last shift %d)\n", before.tcpSynWindowScale, before.lastWindowScale);
+        CHECK(before.tcpSynWindowScale == 0, "no plain SYN asked for a window scale");
+        std::vector<uint8_t> ws = tcpSeg(3002, 9, 7000, 0, 0x02);
+        const uint8_t opts[] = {2, 4, 0x05, 0xB4, 1, 3, 3, 2};
+        ws.insert(ws.begin() + 20, std::begin(opts), std::end(opts));
+        ws[12] = 0x70;                                        // data offset 7
+        w.sendDdp(47, 72, 72, 22, ipPkt(kGuest, kLo, 6, ws));   // the DDP path
+        pump(2);
+        const auto st = gw.status();
+        std::printf("window-scale SYNs: %ld (last shift %d)\n", st.tcpSynWindowScale, st.lastWindowScale);
+        CHECK(st.tcpSynWindowScale == 1 && st.lastWindowScale == 2,
+              "a SYN with a window-scale option is counted (shift 2)");
+    }
 
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }
     std::printf("macip_gw_test OK\n");
