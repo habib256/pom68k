@@ -10,6 +10,7 @@
 // Soft-skips without the LC III ROM + a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "InfiniteHdCompanion.h"
 #include "BeyondBoot.h"
 #include "FinderSignature.h"
 #include "Mmu030Peek.h"
@@ -67,6 +68,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!infinitehd::attach(mem, img)) return 1;   // the Startup Items alias
     beyondboot::ensureBootDriverType(mem.scsiDisk().image());
     const int64_t kFrame = SonoraMemory::kCpuHz / 60;
 
@@ -109,15 +111,52 @@ int main() {
         // still wide. Both numbers are from this gate's own output.
         return menu < 0.30 && desk > 0.35 && desk < 0.65 && run < 250;
     };
+    // A window the volume opens at boot — stock 7.5.3's Startup Items alias
+    // opens the "Infinite HD" companion (InfiniteHdCompanion.h) — reads as a
+    // light run the dialog rule rejects. Cmd-Option-W closes every Finder
+    // window and is harmless to an alert; both W codes are sent (US $0D,
+    // AZERTY $06), the aio gate's lesson. Tried twice at most, so a real
+    // alert falls through to the Return dismissal below.
+    int closes = 0;
+    auto closeWindows = [&]() {
+        // The Finder must be front (stock 7.5.3 launches Stickies at boot):
+        // one click on the lower-right desktop first, the aio gate's gesture,
+        // after a Return that clears any modal box the click would hit.
+        mem.keyEvent(0x24, true);
+        frames(12);
+        mem.keyEvent(0x24, false);
+        frames(90);
+        for (int i = 0; i < 90; i++) { mem.mouseMove(8, 6); frames(2); }
+        for (int i = 0; i < 6; i++) { mem.mouseMove(-6, -5); frames(2); }
+        mem.mouseButton(true);
+        frames(10);
+        mem.mouseButton(false);
+        frames(60);
+        for (uint8_t w : { uint8_t(0x0D), uint8_t(0x06) }) {
+            mem.keyEvent(0x37, true);        // Cmd
+            frames(12);
+            mem.keyEvent(0x3A, true);        // Option
+            frames(12);
+            mem.keyEvent(w, true);
+            frames(75);
+            mem.keyEvent(w, false);
+            mem.keyEvent(0x3A, false);
+            mem.keyEvent(0x37, false);
+            frames(300);
+        }
+        closes++;
+    };
     auto boot = [&]() {
         while (mem.cpuHeld()) mem.tick(1000);
         frames(16000);
-        // Poll and dismiss, the shape the rest of the roster uses: a
-        // 150-frame Return hold (above a Slow Keys acceptance delay),
-        // then look again.
+        // Poll and dismiss, the shape the rest of the roster uses: close
+        // the windows first, then a 150-frame Return hold (above a Slow
+        // Keys acceptance delay), then look again.
+        closes = 0;
         for (int poll = 0; poll < 16; poll++) {
             if (cpu.isHalted()) return false;
             if (finderUp()) return true;
+            if (closes < 3) { closeWindows(); continue; }
             mem.keyEvent(0x24, true);
             frames(150);
             mem.keyEvent(0x24, false);

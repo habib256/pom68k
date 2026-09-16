@@ -15,6 +15,7 @@
 // 030. Soft-skips without the 1 MB EDE66CBD ROM + a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "InfiniteHdCompanion.h"
 #include "BeyondBoot.h"
 #include "FinderSignature.h"
 #include "Mmu030Peek.h"
@@ -37,6 +38,9 @@ int main() {
     // Versioned reference before the unversioned mutable image — the § 1
     // fixture rule, applied here from day one instead of retrofitted: this
     // gate's signature is ratio-based and image-tolerant.
+    // Stock System 7.5.3 first (pinned 2026-09-16, the all-in-ones' own
+    // System generation); the GIST PERSO references behind it.
+    if (img.empty()) img = testasset::find("hdv/System 7.5.3 HD.dsk");
     if (img.empty()) img = testasset::find("hdv/ref/GISTPERSO-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/boot.vhd");
@@ -66,6 +70,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!infinitehd::attach(mem, img)) return 1;   // the Startup Items alias
     beyondboot::ensureBootDriverType(mem.scsiDisk().image());
     const int64_t kFrame = SonoraMemory::kCpuHz / 60;
 
@@ -77,35 +82,21 @@ int main() {
     // roster's own no-modal-dialog rule. lightRun keys on the BLUE channel,
     // which stays honest here too: the orange/green weave is blue-poor, an
     // alert's white body is not.
-    struct Screen { double menu, desk; int run; };
+    // beyondboot::desktopSignature (BeyondBoot.h): the menu bar white with
+    // glyphs, the desktop strip mostly ink — dither, weave or the grey
+    // checkerboard of stock 7.5.3 alike — and no near-white run.
+    using Screen = beyondboot::DesktopSignature;
     auto screen = [&]() {
         SonoraVideo video(mem);
         std::vector<uint32_t> fb;
         video.decode(fb);
         video.size(W, H);
-        auto darkRatio = [&](int x0, int x1, int y0, int y1) {
-            long dark = 0;
-            for (int y = y0; y < y1; y++)
-                for (int x = x0; x < x1; x++) {
-                    uint32_t p = fb[size_t(y) * W + x];
-                    int luma = (2 * int((p >> 16) & 0xFF) + 5 * int((p >> 8) & 0xFF)
-                              + int(p & 0xFF)) / 8;
-                    if (luma < 0x80) dark++;
-                }
-            return double(dark) / (double(x1 - x0) * (y1 - y0));
-        };
-        Screen s{ darkRatio(0, W, 2, 16),
-                  darkRatio(W - 112, W, 40, H - 44),
-                  beyondboot::lightRun(fb, W, H) };
-        std::fprintf(stderr, "[finder] menu %.2f desk %.2f run %d\n",
-                     s.menu, s.desk, s.run);
+        const Screen s = beyondboot::desktopSignature(fb, W, H, W - 112, W, 40, H - 44);
+        std::fprintf(stderr, "[finder] menu dark %.2f white %.2f, desk dark %.2f ink %.2f, run %d\n",
+                     s.menuDark, s.menuWhite, s.deskDark, s.deskInk, s.lightRun);
         return s;
     };
-    auto finderUp = [&]() {
-        const Screen s = screen();
-        return s.menu < 0.30 && s.desk > 0.35 && s.desk < 0.80 &&
-               s.run < beyondboot::kDialogRun;
-    };
+    auto finderUp = [&]() { return screen().finder; };
     // The GIST PERSO reference volume AUTO-OPENS two Finder windows at boot
     // ("GIST PERSO" and the ~400-px-wide "JEUX"), and a window's white body
     // is indistinguishable from an alert's to lightRun (402 measured against
@@ -122,6 +113,23 @@ int main() {
     // Finder is harmless.
     int closeAttempt = 0;
     auto closeWindows = [&]() {
+        // The Finder must be FRONT: stock 7.5.3 launches Stickies from its
+        // Startup Items and it keeps the front, so Cmd-Option-W went to
+        // Stickies (aio_close_2.ppm, 2026-09-16: a Stickies error box). One
+        // click on the lower-right desktop — the focus gesture below —
+        // brings the Finder back before the keys — after a Return, because
+        // a modal box Stickies may already have up (the −20003 error the
+        // first gesture provoked) swallows the click and every key after.
+        mem.keyEvent(0x24, true);
+        frames(12);
+        mem.keyEvent(0x24, false);
+        frames(90);
+        for (int i = 0; i < 90; i++) { mem.mouseMove(8, 6); frames(2); }
+        for (int i = 0; i < 6; i++) { mem.mouseMove(-6, -5); frames(2); }
+        mem.mouseButton(true);
+        frames(10);
+        mem.mouseButton(false);
+        frames(60);
         for (uint8_t w : { uint8_t(0x06), uint8_t(0x0D) }) {
             mem.keyEvent(0x37, true);        // Cmd
             frames(12);
@@ -147,9 +155,10 @@ int main() {
         for (int poll = 0; poll < 16; poll++) {
             if (cpu.isHalted()) return false;
             const Screen s = screen();
-            const bool ratios = s.menu < 0.30 && s.desk > 0.35 && s.desk < 0.80;
-            if (ratios && s.run < beyondboot::kDialogRun) return true;
-            if (ratios && closes < 2) {
+            const bool ratios = s.menuDark > 0.01 && s.menuDark < 0.30 &&
+                                s.menuWhite > 0.60 && s.deskInk > 0.35;
+            if (ratios && s.lightRun < beyondboot::kDialogRun) return true;
+            if (ratios && closes < 3) {
                 // Desktop is up behind open windows — close them, then
                 // re-judge. A real alert survives Cmd-Option-W (twice at
                 // most, so this cannot alternate forever) and falls through

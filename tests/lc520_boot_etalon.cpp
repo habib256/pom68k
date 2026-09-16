@@ -14,6 +14,8 @@
 
 #include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
+#include "InfiniteHdCompanion.h"
+#include "BeyondBoot.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
@@ -49,7 +51,9 @@ int main() {
     std::string rom = find("roms/maclc520.rom");
     if (rom.empty())
         rom = find("roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM");
-    std::string img = find("hdv/GISTPERSO-boot.vhd");
+    // Stock System 7.5.3 first (pinned 2026-09-16); GIST PERSO behind it.
+    std::string img = find("hdv/System 7.5.3 HD.dsk");
+    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {
@@ -90,6 +94,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!infinitehd::attach(mem, img)) return 1;   // the Startup Items alias
     if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
@@ -222,9 +227,52 @@ int main() {
 
     SonoraVideo video(mem);
     std::vector<uint32_t> fb;
-    video.decode(fb);
     int W = 0, H = 0;
-    video.size(W, H);
+    // A near-white run wider than a dialog is either a Finder window the
+    // volume opens at boot (stock 7.5.3's Startup Items alias opens the
+    // "Infinite HD" companion, 2026-09-16) or a modal alert. Cmd-Option-W
+    // closes every window and is harmless to an alert; Return takes an
+    // alert's default button. Alternate them, at most three gestures, and
+    // a clean desktop passes straight through — the beyond gate's boot
+    // loop, in miniature.
+    for (int attempt = 0; attempt < 4; attempt++) {
+        video.decode(fb);
+        video.size(W, H);
+        const int run = beyondboot::lightRun(fb, W, H);
+        if (attempt == 3 || run < beyondboot::kDialogRun) break;
+        const bool closeWindows = (attempt % 2) == 0;
+        std::printf("window or alert on screen (run %d) — %s\n", run,
+                    closeWindows ? "Cmd-Option-W" : "Return");
+        if (closeWindows) {
+            // The Finder front first (Stickies is a Startup Item of the
+            // stock image): a Return for any modal box, then a click on
+            // the lower-right desktop.
+            mem.keyEvent(0x24, true);
+            for (int f = 0; f < 12; f++) cpu.runCycles(kFrame);
+            mem.keyEvent(0x24, false);
+            for (int f = 0; f < 90; f++) cpu.runCycles(kFrame);
+            for (int i = 0; i < 90; i++) { mem.mouseMove(8, 6); for (int f = 0; f < 2; f++) cpu.runCycles(kFrame); }
+            for (int i = 0; i < 6; i++) { mem.mouseMove(-6, -5); for (int f = 0; f < 2; f++) cpu.runCycles(kFrame); }
+            mem.mouseButton(true);
+            for (int f = 0; f < 10; f++) cpu.runCycles(kFrame);
+            mem.mouseButton(false);
+            for (int f = 0; f < 60; f++) cpu.runCycles(kFrame);
+            mem.keyEvent(0x37, true);            // Cmd
+            for (int f = 0; f < 6; f++) cpu.runCycles(kFrame);
+            mem.keyEvent(0x3A, true);            // Option
+            for (int f = 0; f < 6; f++) cpu.runCycles(kFrame);
+            mem.keyEvent(0x0D, true);            // W (US layout on the stock image)
+            for (int f = 0; f < 30; f++) cpu.runCycles(kFrame);
+            mem.keyEvent(0x0D, false);
+            mem.keyEvent(0x3A, false);
+            mem.keyEvent(0x37, false);
+        } else {
+            mem.keyEvent(0x24, true);
+            for (int f = 0; f < 6; f++) cpu.runCycles(kFrame);
+            mem.keyEvent(0x24, false);
+        }
+        for (int f = 0; f < 240; f++) cpu.runCycles(kFrame);
+    }
     // Luminance-based signature: the LC 520 comes up in 8-bpp COLOR and the
     // System 7.5 desktop pattern is an orange/green weave — the sibling
     // gates' blue-channel blackRatio reads it as near-solid black. Menu bar
@@ -243,6 +291,10 @@ int main() {
     };
     double menuBar = darkRatio(0, W, 2, 16);
     double desktop = darkRatio(W - 112, W, 40, H - 44);
+    // The shared signature reads a light colour desktop too (the grey
+    // checkerboard of stock 7.5.3) — BeyondBoot.h, 2026-09-16.
+    const beyondboot::DesktopSignature sig =
+        beyondboot::desktopSignature(fb, W, H, W - 112, W, 40, H - 44);
     if (getenv("POM68K_DUMP")) {          // screenshot for eyeballing
         FILE* fp = fopen("lc520_screen.ppm", "wb");
         std::fprintf(fp, "P6\n%d %d\n255\n", W, H);
@@ -255,13 +307,19 @@ int main() {
         fclose(fp);
     }
 
-    std::printf("mode %dx%d depth %d; menu bar dark %.2f (want <0.30), "
-                "desktop %.2f (want 0.35-0.80), SCSI commands %ld\n",
-                W, H, mem.videoDepth(), menuBar, desktop, mem.scsi().commands);
+    std::printf("mode %dx%d depth %d; menu bar dark %.2f (want <0.30) white %.2f, "
+                "desktop dark %.2f ink %.2f (want ink >0.35), run %d, SCSI commands %ld\n",
+                W, H, mem.videoDepth(), menuBar, sig.menuWhite, desktop, sig.deskInk,
+                sig.lightRun, mem.scsi().commands);
 
+    // Under the agent probe « POM68K Disques » is front with its own window,
+    // a light run the dialog rule cannot tell from an alert: the probe's
+    // own check (agentboot::check) says whether the Finder launched it.
+    const bool finder = sig.finder ||
+        (agentboot::enabled() && sig.menuDark > 0.01 && sig.menuDark < 0.30 &&
+         sig.menuWhite > 0.60 && sig.deskInk > 0.35);
     bool ok = W == 640 && H == 480 && mem.videoDepth() == 3
-           && menuBar < 0.30 && desktop > 0.35 && desktop < 0.80
-           && mem.scsi().commands > 50;
+           && finder && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASSED — Macintosh LC 520 booted to the Finder"
                            : "FAILED");
     ok = agentboot::check(mem, cpu, kFrame, ok);

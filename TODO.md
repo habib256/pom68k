@@ -109,16 +109,6 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
   8.1, `$1B40` pointe dans le code Système ; la recherche a été abandonnée
   plutôt que devinée. Conséquence : les gates ne tapent que lettres et
   espaces, et ouvrent à la souris ce qui demande un tiret.
-- [ ] **Faire lire un bureau uni à la signature Finder.** La signature des
-  gates (`menu < 0.30`, `desk` = ratio de pixels noirs 0.35–0.65, `run` de
-  blanc < seuil) est calibrée sur des bureaux 1 bit tramés (GISTPERSO,
-  System 7.5 HD). Le bureau par défaut de System 7.5.3 en couleur est un
-  gris uni : sur le LC 520 en 640×480 il se lit `desk 0.02`, `run 640`, et
-  `aio_beyond_etalon` dit « no Finder » devant un Finder fini
-  (`aio_boot_fail.ppm`, 2026-09-16). Tant que la signature ne sait pas
-  reconnaître un aplat, 7.5.3 reste hors des tout-en-un 640×480 ; l'adopter
-  là demande un critère couleur (aplat uniforme non blanc, barre de menus,
-  Control Strip) et non un seuil de trame. `CHANGELOG` 2026-09-16 (tenth).
 - [ ] **Rendre `docs_test` capable de voir une citation fausse.** Son § 10
   ne prouve que l'existence de la plage citée, pas qu'elle dise ce que la
   phrase affirme. Piste : exiger de toute citation un ancrage vérifiable —

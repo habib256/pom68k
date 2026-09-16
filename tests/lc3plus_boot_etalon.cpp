@@ -10,6 +10,7 @@
 
 #include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
+#include "InfiniteHdCompanion.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
@@ -91,6 +92,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!infinitehd::attach(mem, img)) return 1;   // the Startup Items alias
     if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 

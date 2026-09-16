@@ -293,6 +293,58 @@ inline double darkRatio(const std::vector<uint32_t>& fb, int W,
     return double(dark) / (double(x1 - x0) * (y1 - y0));
 }
 
+// Fraction of pixels whose luminance is at or above `floor` (near-white
+// when floor is 0xE0): the menu bar's white, an alert's body.
+inline double lightRatio(const std::vector<uint32_t>& fb, int W,
+                         int x0, int x1, int y0, int y1, int floor = 0xE0) {
+    if (fb.size() < size_t(W) * y1) return -1.0;
+    long light = 0;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            uint32_t p = fb[size_t(y) * W + x];
+            int luma = (2 * int((p >> 16) & 0xFF) + 5 * int((p >> 8) & 0xFF)
+                      + int(p & 0xFF)) / 8;
+            if (luma >= floor) light++;
+        }
+    return double(light) / (double(x1 - x0) * (y1 - y0));
+}
+
+// ── The Finder signature, colour desktops included ──────────────────────
+// The historical pair — menu bar dark ratio < 0.30, desktop dark ratio in
+// a band — reads a 1-bit dither (0.50) and the GIST PERSO orange/green
+// weave (mid luminance) but not a desktop that is LIGHT and uniform: stock
+// System 7.5.3 on an 8-bpp all-in-one draws a checkerboard of (192,192,192)
+// and (135,135,135), luma 0x87-0xC0, dark 0.02 — and read as "no Finder" on
+// a finished desktop (2026-09-16, aio_boot_fail.ppm). Two facts separate a
+// desktop from a white screen or a hung "Welcome to Macintosh":
+//   • the MENU BAR is mostly near-white AND carries dark glyphs;
+//   • the DESKTOP strip is mostly INK — anything below near-white: a
+//     dither's black half (0.50), a weave (1.0), a grey checkerboard (1.0),
+//     where a white window body or an alert is 0.
+// The dialog rule keeps its run length, on NEAR-WHITE (blue >= 0xE0) so a
+// light grey desktop cannot fake an alert's body.
+struct DesktopSignature {
+    double menuDark = 0, menuWhite = 0, deskDark = 0, deskInk = 0;
+    int lightRun = 0;
+    bool finder = false;
+};
+inline int lightRun(const std::vector<uint32_t>& fb, int W, int H);
+inline constexpr int kDialogRun = 200;
+inline DesktopSignature desktopSignature(const std::vector<uint32_t>& fb,
+                                         int W, int H,
+                                         int deskX0, int deskX1,
+                                         int deskY0, int deskY1) {
+    DesktopSignature s;
+    s.menuDark = darkRatio(fb, W, 0, W, 2, 16);
+    s.menuWhite = lightRatio(fb, W, 0, W, 2, 16);
+    s.deskDark = darkRatio(fb, W, deskX0, deskX1, deskY0, deskY1);
+    s.deskInk = 1.0 - lightRatio(fb, W, deskX0, deskX1, deskY0, deskY1);
+    s.lightRun = lightRun(fb, W, H);
+    s.finder = s.menuDark > 0.01 && s.menuDark < 0.30 && s.menuWhite > 0.60 &&
+               s.deskInk > 0.35 && s.lightRun < kDialogRun;
+    return s;
+}
+
 // ── "Is a modal dialog up?" ─────────────────────────────────────────────
 // The longest horizontal run of LIGHT pixels below the menu bar. Every
 // boot signature here is a pair of dark ratios, and every one of them is
@@ -310,7 +362,9 @@ inline int lightRun(const std::vector<uint32_t>& fb, int W, int H) {
         if (fb.size() < size_t(y) * size_t(W) + size_t(W)) break;
         int run = 0;
         for (int x = 0; x < W; x++) {
-            if ((fb[size_t(y) * W + x] & 0xFF) >= 0x80) {
+            // Near-white, not merely light: stock 7.5.3's grey desktop
+            // (blue 0x87/0xC0) held a 640-wide "run" at 0x80 (2026-09-16).
+            if ((fb[size_t(y) * W + x] & 0xFF) >= 0xE0) {
                 if (++run > best) best = run;
             } else {
                 run = 0;
@@ -322,8 +376,7 @@ inline int lightRun(const std::vector<uint32_t>& fb, int W, int H) {
 // 200, not 120: a desktop can put two icon LABELS side by side (measured
 // 129 on a Mac II desktop carrying two volume icons in adjacent columns),
 // and that must not read as a dialog. The alert measures 381, so the gap
-// is wide either way.
-inline constexpr int kDialogRun = 200;
+// is wide either way. (kDialogRun is declared with desktopSignature above.)
 
 inline void dumpPpm(const char* name, const std::vector<uint32_t>& fb,
                     int W, int H) {

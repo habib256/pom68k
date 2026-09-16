@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (eleventh)** — [The Infinite Mac images open an alias to « Infinite HD » at every boot; a blank companion of that name answers it, and the Finder signature now reads a colour desktop](#2026-09-16-infinite-hd-alias-and-colour-signature)
 - **2026-09-16 (tenth)** — [Stock System 7.5.3 is the LC III's first choice and is pinned; the LC 520 boots it too, but the Finder signature reads its solid desktop as white](#2026-09-16-system-753-adopted-lc3)
 - **2026-09-16 (ninth)** — [The Plus boots System 3.3 from an 800 K floppy, in drive A and in drive B: the cell the backlog waited on, unblocked by the TEST drive](#2026-09-16-plus-system33-floppy-cells)
 - **2026-09-16 (eighth)** — [The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed](#2026-09-16-census-corrected-sst)
@@ -977,6 +978,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-infinite-hd-alias-and-colour-signature"></a>
+## 2026-09-16 (eleventh) — The Infinite Mac images open an alias to « Infinite HD » at every boot; a blank companion of that name answers it, and the Finder signature now reads a colour desktop
+
+> **Corrects:** the 2026-09-16 (tenth) reading of the LC 520 red as "the
+> signature cannot see a solid desktop" — that was half of it. The other
+> half was an alert.
+
+`POM68K_DUMP=1` on `lc520_boot_etalon` showed what the beyond gate's first
+screen had been hiding behind a `run` of 381: « The alias "Infinite HD"
+could not be opened, because the disk "Infinite HD" could not be found »,
+Stop / Continue, over a finished desktop. The Infinite Mac System images
+carry, in their Startup Items, an alias to the site's software library —
+a second disk the site mounts at every session (`src/app/Mac.tsx`,
+`INFINITE_HD` and its MFS / System 6 / Mac OS X subsets) and that nothing
+here provides. Booted alone, every one of these images asks for it at
+every boot. The LC III gates had passed because their boot loop presses
+Return, which is Continue.
+
+**The companion.** `tests/InfiniteHdCompanion.h` attaches, on SCSI 1, a
+5 MB blank HFS volume named "Infinite HD" built by the host
+(`HfsBlankVolume.h`) whenever the boot volume is one of those images. The
+alias resolves; the Finder opens the empty volume's window instead of an
+alert — and closes it on Cmd-Option-W, which the LC 520 boot gate now
+sends when a near-white run wider than a dialog is on screen, alternating
+with Return for a real alert, and which the Sonora beyond gate's boot loop
+now tries before its Return presses. The pinned image is untouched.
+
+**Second Startup Item: Stickies.** The stock image also launches Stickies
+at boot (the yellow « Placeholder text » note), and Stickies keeps the
+front — so the first Cmd-Option-W went to Stickies, which answered with
+« Could not insert text because the text would be longer than its maximum
+possible length, −20003 » (aio_close_2.ppm), and the LC 520 persist leg
+failed its reboot on the window it never closed. Every window-closing
+gesture now starts with a Return — a modal box Stickies already has up
+swallows a click and every key after it — then the focus click the aio
+gate already owned, one click on the lower-right desktop, the Finder
+front, and only then the keys; three closes are allowed before the Return
+polls. The companion's temp file is per process and removed once
+attached, after two 1 s reds under `ctest -j` on a shared name. Nine LC III
+/ LC 520 cells on 7.5.3 green six at a time; the eighteen beyond-boot cells
+of the roster pass on the near-white run.
+
+**The colour signature.** `beyondboot::desktopSignature` (BeyondBoot.h)
+replaces the dark-ratio pair on the LC 520 gates: the menu bar must be
+mostly near-white AND carry dark glyphs, the desktop strip mostly INK —
+anything below near-white, so a 1-bit dither reads 0.50, the GIST PERSO
+weave and 7.5.3's grey checkerboard 1.0, a white window body 0 — and the
+dialog rule's run counts NEAR-white (blue ≥ 0xE0) rather than light, so a
+grey desktop cannot fake an alert's body. The 1-bit and orange/green
+desktops measure as before. With it, `lc520_boot_etalon`, `lc520_soak` and
+`lc520_persist` take stock 7.5.3 as their first choice too; the pin covers
+`lc3,lc3plus,lc520`. The TODO item opened an hour earlier closes.
 
 <a id="2026-09-16-system-753-adopted-lc3"></a>
 ## 2026-09-16 (tenth) — Stock System 7.5.3 is the LC III's first choice and is pinned; the LC 520 boots it too, but the Finder signature reads its solid desktop as white

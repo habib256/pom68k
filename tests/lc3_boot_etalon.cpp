@@ -9,6 +9,7 @@
 // lc_boot_etalon. Soft-skips without the ROM or a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "InfiniteHdCompanion.h"
 #include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "SonoraMemory.h"
@@ -80,6 +81,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    if (!infinitehd::attach(mem, img)) return 1;   // the Startup Items alias
     if (!agentboot::install(mem)) return 1;
     ensureBootDriverType(mem.scsiDisk().image());
 
