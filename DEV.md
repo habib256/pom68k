@@ -2183,6 +2183,20 @@ anchor's occurrence nearest the old line, width kept and clamped to the
 file — read the diff before committing. The two implementations carry the
 same rule; change them together.
 
+**Typing into the guest.** ADB and M0110 codes name key positions; the
+character a position yields is the guest's KCHR's business, and the
+reference volumes run two layouts — the stock US one, and the French
+(AZERTY) one GIST PERSO and the Mac OS 8.1 reference select. The harnesses
+type through `tests/GuestKeyboard.h`: one table per layout giving, for every
+printable ASCII character, the physical key and whether Shift is held
+(digits are shifted on AZERTY, `.` is Shift on the US `,` key, `-` sits on
+the US `=` key, A/Q and Z/W are swapped). It is a table of the Apple French
+keyboard, not the guest's KCHR read from memory (`$1B40` points into System
+code on 8.1); `q605_persist_etalon` proves it against the guest by naming a
+folder « Pom 1990-2.5 ok » through the keyboard and reading that exact name
+back from the HFS catalog. Dead keys and characters outside ASCII are not
+offered.
+
 `jitdev` builds only the binaries selected by the smoke working loop; its
 registrations re-run those binaries under several environments.
 

@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #pragma once
+#include "GuestKeyboard.h"
 
 #include "AssetFingerprint.h"
 #include "BenchHarness.h"
@@ -142,15 +143,12 @@ inline uint8_t adbForGuest(char c) {
     return adbFor(c);
 }
 
+// Since 2026-09-16 the whole printable ASCII set through the layout table
+// of GuestKeyboard.h — digits and punctuation on AZERTY included.
 inline void typeText(const char* value) {
-    for (const char* p = value; *p; p++) {
-        const uint8_t code = adbForGuest(*p);
-        if (code == 0xFF) continue;
-        gMem->keyEvent(code, true);
-        runFrames(3);
-        gMem->keyEvent(code, false);
-        runFrames(3);
-    }
+    guestkbd::type(value, gAzertyGuest,
+                   [](uint8_t code, bool down) { gMem->keyEvent(code, down); },
+                   [](long frames) { runFrames(frames); });
 }
 
 inline void keyHold(uint8_t code, long frames) {

@@ -25,6 +25,7 @@
 #include "BenchHarness.h"
 #include "Cpu040.h"
 #include "FinderSignature.h"
+#include "GuestKeyboard.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
 
@@ -319,12 +320,13 @@ inline void keyHold(uint8_t code, long frames) {
 }
 
 // Ordinary typing: 3 frames down, 3 up — inside Finder's type-select
-// window. Requires Slow Keys OFF (see ensureFastKeys).
+// window. Requires Slow Keys OFF (see ensureFastKeys). Since 2026-09-16
+// the whole printable ASCII set, shifted keys included, through the
+// layout table of GuestKeyboard.h (digits and punctuation on AZERTY).
 inline void typeText(const char* value) {
-    for (const char* p = value; *p; p++) {
-        const uint8_t code = adbFor(*p);
-        if (code != 0xFF) keyHold(code, 3);
-    }
+    guestkbd::type(value, gAzertyGuest,
+                   [](uint8_t code, bool down) { gMem->keyEvent(code, down); },
+                   [](long frames) { runFrames(frames); });
 }
 
 // Cmd + shortcut (a PHYSICAL code — pass adbFor(letter) so the chord follows

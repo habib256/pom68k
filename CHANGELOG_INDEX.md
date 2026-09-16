@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 538 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 539 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 62 |
 | [Build, packaging and release](#build-packaging-and-release) | 13 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 37 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 38 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 100 |
 
@@ -484,6 +484,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-12 (ninth)** — [Twenty agents read every document against the code: 197 corrections, and the one gate that watches citations could not see a single one of them](CHANGELOG.md#2026-09-12-docs-vs-code-sweep)
 - **2026-09-14 (tenth)** — [EtherTalk on by default: the router heard from power-on is joined at the switch, and the « Finder stopped opening control panels » of 2026-09-10 was the gate's own keystroke](CHANGELOG.md#2026-09-14-ethertalk-on-by-default)
 - **2026-09-16 (eighth)** — [The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed](CHANGELOG.md#2026-09-16-census-corrected-sst)
+- **2026-09-16 (fourteenth)** — [The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog](CHANGELOG.md#2026-09-16-guest-keyboard-table)
 - **2026-09-16 (thirteenth)** — [`docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them](CHANGELOG.md#2026-09-16-citation-anchors)
 
 ## Documentation, audits and reviews

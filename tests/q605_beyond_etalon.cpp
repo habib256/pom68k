@@ -23,6 +23,7 @@
 
 #include "AssetFingerprint.h"
 #include "FolderProbe.h"
+#include "GuestKeyboard.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
 
@@ -374,6 +375,29 @@ int main() {
         runFrames(120);                      // let the rename field appear
         keyHold(0x24, 150);                  // Return — commit the name
         runFrames(900);                      // ~15 s: create + flush catalog
+        // A second folder, NAMED through the keyboard: digits, a dash, a
+        // dot and a capital, which on this AZERTY guest are shifted or
+        // moved keys (GuestKeyboard.h). The catalog holds the exact name
+        // twice (record + thread), so the host reads the layout table's
+        // truth off the disk — the KCHR question the backlog carried.
+        static const char* kTypedName = "Pom 1990-2.5 ok";
+        const long typedBefore = folderprobe::count(disk, kTypedName);
+        mem.keyEvent(0x37, true);
+        runFrames(6);
+        keyHold(0x2D, 150);                  // Cmd-N again
+        mem.keyEvent(0x37, false);
+        runFrames(120);
+        // The 8.1 reference selects the French layout: AZERTY keys.
+        const int untypeable = guestkbd::type(
+            kTypedName, /*azertyGuest=*/true,
+            [&](uint8_t code, bool down) { mem.keyEvent(code, down); },
+            [&](long frames) { runFrames(frames); });
+        keyHold(0x24, 150);                  // Return — commit it
+        runFrames(900);
+        const long typedAfter = folderprobe::count(disk, kTypedName);
+        std::printf("typed: '%s' x%ld -> x%ld in the catalog (%d untypeable)\n", kTypedName,
+                    typedBefore, typedAfter, untypeable);
+        const bool typedOk = typedAfter > typedBefore;
         long after[folderprobe::kCount];
         folderprobe::sample(disk, after, "after");
         const size_t grew = folderprobe::grew(before, after);
@@ -402,7 +426,10 @@ int main() {
         std::printf("persist: reboot %s, folder %s\n",
                     rebooted ? "reached the Finder" : "FAILED",
                     kept ? "survived" : "did NOT survive");
-        ok = wrote && grew < folderprobe::kCount && rebooted && kept;
+        const bool typedKept = folderprobe::count(disk, kTypedName) > typedBefore;
+        std::printf("typed: '%s' %s the reboot\n", kTypedName,
+                    typedKept ? "survived" : "did NOT survive");
+        ok = wrote && grew < folderprobe::kCount && rebooted && kept && typedOk && typedKept;
     } else {
         std::fprintf(stderr, "FAIL: unknown POM68K_BEYOND=%s\n", mode.c_str());
         return 1;

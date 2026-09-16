@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (fourteenth)** — [The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog](#2026-09-16-guest-keyboard-table)
 - **2026-09-16 (thirteenth)** — [`docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them](#2026-09-16-citation-anchors)
 - **2026-09-16 (twelfth)** — [The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder](#2026-09-16-128k-teachtext)
 - **2026-09-16 (eleventh)** — [The Infinite Mac images open an alias to « Infinite HD » at every boot; a blank companion of that name answers it, and the Finder signature now reads a colour desktop](#2026-09-16-infinite-hd-alias-and-colour-signature)
@@ -980,6 +981,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-guest-keyboard-table"></a>
+## 2026-09-16 (fourteenth) — The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog
+
+Since 2026-09-08 the gates typed letters and spaces only: on the French
+layout the 8.1 reference and GIST PERSO select, digits are shifted and
+punctuation moved, the harnesses mapped them to "no key", and anything
+that needed a dash or a digit was opened with the mouse. The KCHR that
+would answer the question could not be found from low memory (`$1B40`
+points into System code on 8.1), and the search was dropped rather than
+guessed.
+
+**A table, then.** `tests/GuestKeyboard.h` gives, per layout, the physical
+key and the Shift state of every printable ASCII character — the Apple
+French keyboard from its US positions: `&é"'(§è!çà)-` unshifted on the
+digit row, `1`–`0` above them, `-` on the US `=` key, `.` as Shift on the US
+`,` key, `:` on the US `.` key, `?` as Shift on the US `M` key, A/Q and Z/W
+swapped. Both harnesses' `typeText` go through it, holding Shift around a
+shifted key; dead keys and non-ASCII characters are the honest gap.
+
+**Proven on the guest, not on paper.** `q605_persist_etalon` names its
+second folder through the keyboard — « Pom 1990-2.5 ok »: a capital, four
+digits, a dash, a dot — and the host finds that exact string in the HFS
+catalog twice (record and thread), 0 → 2, still there after the hard
+reset. The KCHR item leaves § Preuve; the guess it refused is replaced by
+a table the guest has signed.
 
 <a id="2026-09-16-citation-anchors"></a>
 ## 2026-09-16 (thirteenth) — `docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them

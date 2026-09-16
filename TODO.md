@@ -99,10 +99,6 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 - [ ] **Exécuter les locksteps sur un hôte Windows.** Préalable nommé de
   « `threaded` est le plancher Windows » : tant qu'aucun hôte Windows ne
   les exécute, le choix reste une décision et non une mesure.
-- [ ] **Résoudre la table KCHR de l'invité pour la frappe des harnais.** Sur
-  8.1, `$1B40` pointe dans le code Système ; la recherche a été abandonnée
-  plutôt que devinée. Conséquence : les gates ne tapent que lettres et
-  espaces, et ouvrent à la souris ce qui demande un tiret.
 
 ---
 
