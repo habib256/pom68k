@@ -49,8 +49,8 @@ src/PlatformToby.cpp                     311
 src/PlatformV8.cpp                       206
 src/Q700Memory.cpp                       1091
 src/R65c02.cpp                           1420
-src/RuntimeConfig.cpp                    160
-src/RuntimeConfigCore.cpp                180
+src/RuntimeConfig.cpp                    165
+src/RuntimeConfigCore.cpp                183
 src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             55
@@ -58,7 +58,7 @@ src/Scc8530.cpp                          1071
 src/ScsiDisk.cpp                         1353
 src/SonyDrive.cpp                        1348
 src/StartupDomainView.h                  73
-src/StartupOptions.h                     387
+src/StartupOptions.h                     391
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88

@@ -1834,7 +1834,15 @@ it predates the generalisation and is kept rather than renamed under a
 documented script. An unusable path warns and falls through to the factory
 list — a diagnostic left in the environment must not stop a machine
 booting), `POM68K_ADB_FW` (the same for the PIC1654S ADB transceiver),
-`POM68K_ADB_LLE`, `POM68K_ADB_KBD_ID` (`AdbLine`'s
+`POM68K_ADB_LLE`, `POM68K_TOBY_DECL` / `POM68K_TOBY_DECL_LLE` (the Toby
+video card's declaration ROM on the Mac II, IIx, IIcx and IIfx: `<path>` =
+load THIS 342-0008-a dump ahead of `roms/342-0008-a.bin` and the archive
+layout; `0` = run the synthetic fallback even when a dump is present. Chosen
+and reported through `fw::select` like the MCU dumps — `TobyDeclChoice.h` —
+so the Périphériques window shows which one the card carries, states what
+the substitute cannot do (System 7.5.5 never leaves « Welcome to
+Macintosh »), and applies a change by relaunch as `--firmware-override=toby:`),
+`POM68K_ADB_KBD_ID` (`AdbLine`'s
 power-on keyboard handler ID: 1 = Apple Standard, the default, 2 = Extended
 Keyboard II, 3 = the extended protocol with distinct right-hand modifier
 codes — a guest can select any of them itself with a Listen R3, this only
@@ -2381,7 +2389,8 @@ Three design points, each of which is a rule rather than a preference:
 - **Changes are staged and applied by a relaunch**, because the devices are
   built once from injected `CoreFirmwareConfig` before the first instruction
   — there is no live toggle to offer. Apply emits the complete live set as
-  typed `FirmwareOverride` values (`Adb`, `Egret`, `Cuda`); `GuiHostServices`
+  typed `FirmwareOverride` values (`Adb`, `Egret`, `Cuda`, `TobyDecl`);
+  `GuiHostServices`
   normalizes them into `--firmware-override=<target>:<mode>:<path>` arguments
   on the process's exact launch arguments. Empty path means automatic and
   explicitly defeats an inherited legacy `POM68K_*_FW` value. Egret and Cuda

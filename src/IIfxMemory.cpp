@@ -4,6 +4,7 @@
 #include "IIfxMemory.h"
 #include "IIfxCpu.h"
 #include <algorithm>
+#include "TobyDeclChoice.h"
 #include <cstdio>
 
 IIfxMemory::~IIfxMemory() { delete toby_; }
@@ -12,6 +13,7 @@ IIfxMemory::IIfxMemory(const pom68k::CoreConfig& coreConfig,
                        uint32_t ramSize)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize) {
     lle_ = coreConfig.firmware.registry;
+    firmware_ = coreConfig.firmware;
     ioTrace_ = coreConfig.peripherals.iifxIoTrace;
     adbTrace_ = coreConfig.peripherals.iifxAdbTrace;
     scsiTrace_ = coreConfig.peripherals.iifxScsiTrace;
@@ -93,25 +95,9 @@ bool IIfxMemory::loadRom(const std::vector<uint8_t>& data) {
 bool IIfxMemory::installTobyVideo(const std::string& declRomPath) {
     if (toby_) return true;
     toby_ = new TobyVideo(nubus_, 9);
-    std::vector<uint8_t> decl;
-    if (!declRomPath.empty())
-        decl = DeclRom::loadTobyRaw(declRomPath);
-    if (decl.empty()) {
-        static const char* paths[] = {
-            "tests/data/342-0008-a.bin",
-            "../tests/data/342-0008-a.bin",
-            "roms/342-0008-a.bin",
-            "../roms/342-0008-a.bin",
-        };
-        for (const char* p : paths) {
-            decl = DeclRom::loadTobyRaw(p);
-            if (!decl.empty()) break;
-        }
-    }
-    if (decl.empty()) {
-        std::fprintf(stderr, "IIfxMemory: no Toby decl ROM — using synthetic\n");
-        decl = DeclRom::buildSynthetic(nubus_.slotBase(9));
-    }
+    // Same choice as MacIIMemory::installTobyVideo (TobyDeclChoice.h).
+    const std::vector<uint8_t> decl = pom68k::toby::selectDeclRom(
+        firmware_, declRomPath, nubus_.slotBase(9), "IIfx");
     nubus_.installCard(9, toby_, decl);
     return true;
 }

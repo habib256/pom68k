@@ -3,6 +3,7 @@
 
 #include "MacIIMemory.h"
 #include "Cpu020.h"
+#include "TobyDeclChoice.h"
 #include <cstdio>
 #include <cstring>
 
@@ -12,6 +13,7 @@ MacIIMemory::MacIIMemory(const pom68k::CoreConfig& coreConfig,
                          uint32_t ramSize, Model model)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize), model_(model) {
     lle_ = coreConfig.firmware.registry;
+    firmware_ = coreConfig.firmware;
     adbViaTrace_ = coreConfig.peripherals.adbPicTrace;
     via1_.configureTrace(coreConfig.peripherals.adbLleTrace);
     via2_.configureTrace(coreConfig.peripherals.adbLleTrace);
@@ -47,30 +49,11 @@ bool MacIIMemory::loadRom(const std::vector<uint8_t>& data) {
 bool MacIIMemory::installTobyVideo(const std::string& declRomPath) {
     if (toby_) return true;
     toby_ = new TobyVideo(nubus_, 9);
-    std::vector<uint8_t> decl;
-    if (!declRomPath.empty())
-        decl = DeclRom::loadTobyRaw(declRomPath);
-    if (decl.empty()) {
-        // CTest / tools often run from build/; keep repo-root and ../ variants.
-        static const char* paths[] = {
-            "tests/data/342-0008-a.bin",
-            "../tests/data/342-0008-a.bin",
-            "roms/342-0008-a.bin",
-            "../roms/342-0008-a.bin",
-        };
-        for (const char* p : paths) {
-            decl = DeclRom::loadTobyRaw(p);
-            if (!decl.empty()) break;
-        }
-    }
-    if (decl.empty()) {
-        std::fprintf(stderr, "MacIIMemory: no Toby decl ROM — using synthetic\n");
-        // buildSynthetic() already emits a guest-ordered image with byteLanes
-        // $0F; installRaw() expects the REVERSED MAME file dump, so it read the
-        // lane byte off the wrong end ($00) and returned {} — the fallback
-        // installed no declaration ROM at all and the Slot Manager saw no card.
-        decl = DeclRom::buildSynthetic(nubus_.slotBase(9));
-    }
+    // The real 342-0008-a when it loads, the truthful synthetic fallback
+    // otherwise — chosen, reported and overridable like the MCU dumps
+    // (TobyDeclChoice.h). An etalon's explicit path outranks the config.
+    const std::vector<uint8_t> decl = pom68k::toby::selectDeclRom(
+        firmware_, declRomPath, nubus_.slotBase(9), "MacII");
     nubus_.installCard(9, toby_, decl);
     return true;
 }

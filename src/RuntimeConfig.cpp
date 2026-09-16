@@ -19,6 +19,7 @@ std::optional<FirmwareTarget> firmwareTarget(std::string_view slug) {
     if (slug == "adb") return FirmwareTarget::Adb;
     if (slug == "egret") return FirmwareTarget::Egret;
     if (slug == "cuda") return FirmwareTarget::Cuda;
+    if (slug == "toby") return FirmwareTarget::TobyDecl;
     return std::nullopt;
 }
 
@@ -56,6 +57,10 @@ void applyFirmwareOverride(pom68k::CoreFirmwareConfig& firmware,
     case FirmwareTarget::Cuda:
         firmware.cudaLle = policy.lle;
         firmware.cudaPath = policy.path;
+        break;
+    case FirmwareTarget::TobyDecl:
+        firmware.tobyDeclLle = policy.lle;
+        firmware.tobyDeclPath = policy.path;
         break;
     }
 }

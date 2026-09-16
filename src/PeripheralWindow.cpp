@@ -167,6 +167,12 @@ void peripheralWindow(const PeripheralHost& host) {
 
         ImGui::Indent();
         ImGui::TextDisabled("%s", reasonText(d).c_str());
+        // The device's own statement of what its substitute cannot do — the
+        // Toby fallback boots System 7.0 but not 7.5.5, and a user staring
+        // at "Welcome to Macintosh" deserves that sentence here, not in a
+        // changelog.
+        if (d.mode == lle::Mode::Hle && !d.consequence.empty())
+            ImGui::TextColored(kOrange, "%s", d.consequence.c_str());
 
         // The selector. LLE is offered only when a dump exists — a radio the
         // user can click into a state the relaunch would silently undo is

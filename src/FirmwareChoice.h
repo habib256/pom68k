@@ -62,6 +62,7 @@ struct Request {
     std::vector<std::string> candidates;     // factory part first
     bool enabled = true;                     // resolved startup policy
     std::string forcedPath;                  // resolved per-module override
+    std::string consequence;                 // what the substitute costs (window)
     // Where the outcome is reported. Null means the process registry,
     // which is what a fixture that never composed a machine gets.
     lle::Registry* registry = nullptr;
@@ -105,7 +106,7 @@ inline bool select(const Request& req, const Loader& load) {
         }
         if (loaded.empty())
             std::fprintf(stderr,
-                         "%s: no MCU firmware dump found — running the "
+                         "%s: no firmware dump found — running the "
                          "NON-CONFORMANT HLE substitute "
                          "(docs/LLE_VS_HLE.md §2)\n", req.logTag.c_str());
     } else {
@@ -127,6 +128,7 @@ inline bool select(const Request& req, const Loader& load) {
     d.candidates = req.candidates;
     d.pathKnob = req.pathKnob;
     d.firmwareForced = forcedPath;
+    d.consequence = req.consequence;
     // Into the registry the caller named, not into a process-wide one:
     // `Request::registry` comes from CoreConfig, which the composition
     // root points at the session's instance.

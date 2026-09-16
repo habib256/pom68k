@@ -201,6 +201,10 @@ concept IntegerStartupOption =
       startup_policy::NumericBoolean)                                        \
     X(AdbFirmware, "POM68K_ADB_FW", StartupDomain::Core, startup_policy::Text)\
     X(CudaFirmware, "POM68K_CUDA_FW", StartupDomain::Core, startup_policy::Text)\
+    X(TobyDeclLle, "POM68K_TOBY_DECL_LLE", StartupDomain::Core,             \
+      startup_policy::NumericBoolean)                                        \
+    X(TobyDeclRom, "POM68K_TOBY_DECL", StartupDomain::Core,                 \
+      startup_policy::Text)                                                  \
     X(FirmwareRoot, "POM68K_FIRMWARE_ROOT", StartupDomain::Core,           \
       startup_policy::Text)                                                  \
     X(AdbKeyboardId, "POM68K_ADB_KBD_ID", StartupDomain::Core,             \

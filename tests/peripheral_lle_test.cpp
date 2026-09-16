@@ -20,6 +20,7 @@
 //      device searched, never on a second copy of that list.
 
 #include "FirmwareChoice.h"
+#include "TobyDeclChoice.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -301,6 +302,66 @@ int main() {
         check(pom68k::fw::discoverDumps({"no/such/dir/x.bin"}).empty(),
               "a missing dump directory discovers nothing, quietly");
         fs::remove_all(dir);
+    }
+
+    // ── The Toby declaration ROM is a firmware choice like the others ────
+    // Reported into a registry the test owns, so the outcome is read back
+    // the way the window reads it, and never through the process one.
+    {
+        namespace fs = std::filesystem;
+        pom68k::lle::Registry own;
+        own.beginSession();
+        pom68k::CoreFirmwareConfig cfg;
+        cfg.registry = &own;
+        // A name nothing loads: the substitute, with its consequence stated.
+        cfg.tobyDeclPath = "no/such/342-0008-a.bin";
+        const fs::path cwd = fs::current_path();
+        const fs::path empty = fs::temp_directory_path() / "pom68k_toby_lle_test";
+        fs::create_directories(empty);
+        fs::current_path(empty);   // no candidate resolves from here
+        auto image = pom68k::toby::selectDeclRom(cfg, "", 0xF9000000, "test");
+        fs::current_path(cwd);
+        fs::remove_all(empty);
+        check(!image.empty() && own.devices().size() == 1,
+              "the Toby choice installs an image and reports one device");
+        const Device d = own.devices()[0];   // devices() returns a copy
+        check(d.module == HleTobyDeclRom &&
+                  d.target == pom68k::FirmwareTarget::TobyDecl &&
+                  d.mode == Mode::Hle && d.why == Why::HleNoDump &&
+                  !d.consequence.empty() && d.pathKnob == "POM68K_TOBY_DECL" &&
+                  d.firmwareForced == "no/such/342-0008-a.bin",
+              "no dump -> synthetic fallback, reported HLE with its consequence");
+        check((own.activeHleModules() & HleTobyDeclRom) != 0 && !own.qualified(),
+              "the synthetic declaration ROM refuses product qualification");
+
+        // The typed refusal (POM68K_TOBY_DECL_LLE=0 / the window's HLE
+        // radio) is HleForced, dumps notwithstanding.
+        own.beginSession();
+        cfg.tobyDeclLle = false;
+        cfg.tobyDeclPath.reset();
+        image = pom68k::toby::selectDeclRom(cfg, "", 0xF9000000, "test");
+        check(!image.empty() && own.devices().size() == 1 &&
+                  own.devices()[0].why == Why::HleForced,
+              "a forced substitute is reported as forced");
+
+        // With the dump on hand (private asset — checked only when present)
+        // the row is LLE and names the file it loaded.
+        own.beginSession();
+        cfg.tobyDeclLle = true;
+        std::string real;
+        for (const std::string& p : pom68k::toby::declRomCandidates())
+            if (real.empty() && std::ifstream(p, std::ios::binary)) real = p;
+        if (real.empty()) {
+            std::printf("note: 342-0008-a.bin absent — the LLE side is not "
+                        "exercised here\n");
+        } else {
+            image = pom68k::toby::selectDeclRom(cfg, "", 0xF9000000, "test");
+            // installRaw spreads the 4 KB dump over the 32-bit NuBus lanes.
+            check(image.size() == 16384 && own.devices().size() == 1 &&
+                      own.devices()[0].mode == Mode::Lle &&
+                      own.devices()[0].firmware == real && own.activeHleModules() == 0,
+                  "the real dump is reported LLE with the path it loaded");
+        }
     }
 
     // ── A machine with no LLE-capable device is a real answer ────────────

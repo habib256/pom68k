@@ -20,6 +20,7 @@ std::string_view firmwareTargetSlug(FirmwareTarget target) {
     case FirmwareTarget::Adb: return "adb";
     case FirmwareTarget::Egret: return "egret";
     case FirmwareTarget::Cuda: return "cuda";
+    case FirmwareTarget::TobyDecl: return "toby";
     }
     return {};
 }

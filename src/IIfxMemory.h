@@ -241,6 +241,9 @@ public:
 
 private:
     pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
+    // The firmware policy this board was built with — what the Toby
+    // declaration ROM choice reads when the card is installed (TobyDeclChoice.h).
+    pom68k::CoreFirmwareConfig firmware_{};
 
     bool ioTrace_ = false;
     bool adbTrace_ = false;

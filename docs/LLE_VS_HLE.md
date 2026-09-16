@@ -1192,9 +1192,16 @@ Centris, Q700), or the PG&E's own internal RAM + 32 KB SRAM on the Duo
   a new image format), **not** an HLE hack — the guest sees a valid consistent
   SCSI disk and writes round-trip. The synthetic driver partition must stay
   byte-identical to `tools/wrap_hfs.py` output.
-- **`DeclRom::buildSynthetic`** (`MacIIMemory.cpp:62-67`): with no Toby DeclROM
-  dump, a minimal synthetic card ROM is installed so Slot Manager still
-  enumerates video. Missing-asset fallback — prefer a real DeclROM.
+- **`DeclRom::buildSynthetic`** (`TobyDeclChoice.h`, both Toby boards): with
+  no 342-0008-a dump, a synthetic card ROM describing the emulated frame
+  buffer as it is (origin `$20`, 128 bytes per row, `MinorBaseOS` 0,
+  Control/Status unsupported) is installed so Slot Manager still enumerates
+  video. Missing-asset fallback, reported to the LLE registry as the
+  `HleTobyDeclRom` substitute since 2026-09-16 — so the Périphériques window
+  opens on it, product mode refuses it, and its consequence is stated in the
+  row: System 6 and 7.0 boot, System 7.5.5 parks a slot VBL task the fallback
+  never releases (CHANGELOG 2026-09-15). It is never completed into firmware
+  Apple did not ship.
 
 ---
 

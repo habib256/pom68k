@@ -12,7 +12,10 @@
 
 namespace pom68k {
 
-enum class FirmwareTarget { Adb, Egret, Cuda };
+// `TobyDecl` is the Toby video card's declaration ROM (342-0008-a): not an
+// MCU, but the same choice — the real dump or a non-conformant substitute —
+// reported and overridden through the same typed path.
+enum class FirmwareTarget { Adb, Egret, Cuda, TobyDecl };
 
 // Presence of this value means both fields are authoritative. A missing path
 // explicitly requests automatic candidate selection; it does not mean

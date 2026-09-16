@@ -29,8 +29,9 @@
 namespace pom68k::lle {
 
 enum Module : std::uint32_t {
-    HleEgretCuda = 1u << 0,
-    HleAdbModem  = 1u << 1,
+    HleEgretCuda   = 1u << 0,
+    HleAdbModem    = 1u << 1,
+    HleTobyDeclRom = 1u << 2,   // synthetic declaration ROM in place of 342-0008-a
 };
 
 // ── Peripheral registry — what the "Périphériques" window renders ───────
@@ -66,6 +67,10 @@ struct Device {
     // a pending change every time automatic mode picked a file.
     std::string pathKnob{};
     std::string firmwareForced{};
+    // What the substitute costs the user, in the device's own words — shown
+    // under the row when the device runs HLE. Empty when the fallback is
+    // functionally complete for every supported guest.
+    std::string consequence{};
 };
 
 // ── The state itself, as a TYPE ─────────────────────────────────────────

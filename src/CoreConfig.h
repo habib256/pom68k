@@ -83,9 +83,13 @@ struct CoreFirmwareConfig {
     bool adbLle = true;
     bool egretLle = true;
     bool cudaLle = true;
+    // The Toby card's declaration ROM: the real 342-0008-a dump, or the
+    // synthetic fallback when `tobyDeclLle` is false or no dump loads.
+    bool tobyDeclLle = true;
     std::optional<std::string> adbPath;
     std::optional<std::string> egretPath;
     std::optional<std::string> cudaPath;
+    std::optional<std::string> tobyDeclPath;
     std::optional<std::string> root;
 };
 

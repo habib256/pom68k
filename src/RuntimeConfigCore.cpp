@@ -121,6 +121,9 @@ pom68k::CoreConfig parseCoreStartup(
     options.firmware.adbPath = values.text(startup_option::AdbFirmware);
     options.firmware.egretPath = values.text(startup_option::CudaFirmware);
     options.firmware.cudaPath = options.firmware.egretPath;
+    options.firmware.tobyDeclLle =
+        values.boolean(startup_option::TobyDeclLle, true);
+    options.firmware.tobyDeclPath = values.text(startup_option::TobyDeclRom);
     options.firmware.root = values.text(startup_option::FirmwareRoot);
 
     options.peripherals.appleTalkPram =

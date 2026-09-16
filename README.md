@@ -224,10 +224,19 @@ LLE requires user-provided dumps in these locations:
 | Cuda 341S0060 | LC 520 family, Quadra 630/LC 580 | `roms/cuda/341s0060.bin` |
 | Cuda 341S0788 | LC 475/575 and Quadra 605 | `roms/cuda/341s0788.bin` |
 | PG&E power manager | PowerBook Duo 230 | `roms/pge/pge_boot.bin` |
+| Toby video card declaration ROM 342-0008-a | Macintosh II, IIx, IIcx, IIfx | `roms/342-0008-a.bin` |
 
 The SE/30 additionally uses `roms/se30/se30vrom.uk6` for its video declaration
 ROM. The Duo firmware is required for the PMU handshake; without it, that
-machine cannot complete its boot. `assets.lock` records the hashes required by
+machine cannot complete its boot.
+
+Without the Toby dump the Mac II, IIx, IIcx and IIfx run a synthetic
+declaration ROM that describes the emulated card and nothing more: System 6
+and System 7.0 boot on it, **System 7.5.5 stays on « Welcome to Macintosh »**.
+The Périphériques window opens by itself in that case and says so; drop the
+4 KB MAME dump at the path above (or point `POM68K_TOBY_DECL` at it) and
+restart. POM68K emulates machines that existed, so the substitute is never
+completed into firmware Apple did not ship. `assets.lock` records the hashes required by
 strict product qualification; runtime fallback order and implementation
 details are documented in [`DEV.md`](DEV.md) and the corresponding memory
 classes.

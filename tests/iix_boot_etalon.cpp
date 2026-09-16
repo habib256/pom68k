@@ -41,7 +41,17 @@ int main() {
 
     bool iicx = getenv("POM68K_IICX") != nullptr;
     bool force020 = getenv("POM68K_MACII_020") != nullptr;   // isolation knob
-    MacIIMemory mem(pom68k::defaultCoreConfig(), 0x800000,
+    // POM68K_TEST_TOBY_SYNTHETIC=1: boot on the synthetic declaration ROM
+    // even when the dump is on hand — the way to prove the fallback itself
+    // on a System 7 volume. Since 2026-09-16 the board searches the dump on
+    // its own, so the refusal goes through the typed policy the GUI uses.
+    const bool forceSynthetic = [] {
+        const char* v = getenv("POM68K_TEST_TOBY_SYNTHETIC");
+        return v && *v == '1';
+    }();
+    pom68k::CoreConfig core = pom68k::defaultCoreConfig();
+    core.firmware.tobyDeclLle = !forceSynthetic;
+    MacIIMemory mem(core, 0x800000,
                     force020 ? MacIIMemory::Model::MacII
                     : iicx ? MacIIMemory::Model::IIcx
                            : MacIIMemory::Model::IIx);
@@ -55,10 +65,8 @@ int main() {
     for (const char* p : { "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin",
                            "tests/data/342-0008-a.bin", "roms/342-0008-a.bin" })
         if (toby.empty() && std::ifstream(p, std::ios::binary)) toby = p;
-    // POM68K_TEST_TOBY_SYNTHETIC=1: ignore the dump and boot on the synthetic
-    // sResource — the way to prove the synthetic itself on a System 7 volume.
-    if (const char* v = getenv("POM68K_TEST_TOBY_SYNTHETIC"); v && *v == '1') toby.clear();
-    if (toby.empty() && !testasset::overrideImage().empty() && !getenv("POM68K_TEST_TOBY_SYNTHETIC")) {
+    if (forceSynthetic) toby.clear();
+    if (toby.empty() && !testasset::overrideImage().empty() && !forceSynthetic) {
         // A System 7 boot on the synthetic sResource draws no desktop: the
         // agent variant is an asset gate, and says so.
         std::printf("SKIP: a System 7 boot on this board needs the Toby 342-0008-a declaration ROM\n");

@@ -547,7 +547,7 @@ int main() {
                                           pom68k::StartupDomain::Jit))
             ++jitOptionCount;
     check(sizeof(pom68k::startup_option::kAll) /
-                  sizeof(pom68k::startup_option::kAll[0]) == 137 &&
+                  sizeof(pom68k::startup_option::kAll[0]) == 139 &&
               jitOptionCount == 41 &&
               jitDecoder.find("option::JitProfile") != std::string::npos &&
               jitDecoder.find("kConfigurationKeys") == std::string::npos &&
@@ -901,6 +901,28 @@ int main() {
         check(cudaPolicy.core().firmware.cudaLle &&
                   !cudaPolicy.core().firmware.cudaPath,
               "typed Cuda policy overrides inherited HLE and path independently");
+
+        // The Toby declaration ROM rides the same typed path as the MCU
+        // dumps: `toby` is a target, POM68K_TOBY_DECL_LLE / POM68K_TOBY_DECL
+        // its legacy startup syntax, and a typed override beats both.
+        char tobyPolicyArg[] = "--firmware-override=toby:hle:";
+        char* tobyPolicyArgv[] = {a0, tobyPolicyArg};
+        pom68k::StartupSnapshot inheritedTobyPolicy{
+            {"POM68K_TOBY_DECL_LLE", "1"},
+            {"POM68K_TOBY_DECL", "legacy-342-0008-a.bin"}};
+        auto tobyPolicy = pom68k::app::RuntimeConfig::parse(
+            2, tobyPolicyArgv, inheritedTobyPolicy);
+        check(!tobyPolicy.core().firmware.tobyDeclLle &&
+                  !tobyPolicy.core().firmware.tobyDeclPath,
+              "typed Toby declaration ROM policy overrides the inherited knobs");
+        char* tobyLegacyArgv[] = {a0};
+        auto tobyLegacy = pom68k::app::RuntimeConfig::parse(
+            1, tobyLegacyArgv, inheritedTobyPolicy);
+        check(tobyLegacy.core().firmware.tobyDeclLle &&
+                  tobyLegacy.core().firmware.tobyDeclPath &&
+                  *tobyLegacy.core().firmware.tobyDeclPath ==
+                      "legacy-342-0008-a.bin",
+              "POM68K_TOBY_DECL seeds the Toby declaration ROM path");
 
         auto normalizedFirmware = pom68k::app::firmwareOverrideArguments(
             {"--firmware-override=adb:hle:old.bin",
