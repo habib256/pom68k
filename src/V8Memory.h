@@ -209,6 +209,12 @@ public:
     // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
     // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
     DaynaPort& daynaPort() { return dayna_; }
+    // The original three-wire DFAC sits on the LC/LC II/Classic II only;
+    // the Color Classic's DFAC2 is the Cuda's I2C slave and the Mac TV has
+    // none (cclassic_asc_chime_etalon reads this).
+    bool hasOriginalDfac() const {
+        return model_ != Model::ColorClassic && model_ != Model::MacTv;
+    }
     ScsiDisk& scsiDiskAt(int id) { return scsiDisks_[id & 7]; }
     // Attach a disk image at a SCSI ID (0 = boot drive, 1-6 = secondary
     // volumes picked up by the System's boot-time bus scan).
@@ -522,9 +528,7 @@ private:
     Egret egret_;
     CudaLle egretLle_;
     bool egretLleOn_ = false;
-    bool hasOriginalDfac() const {
-        return model_ != Model::ColorClassic && model_ != Model::MacTv;
-    }
+
     uint8_t xcvrSession_() const {           // → VIA1 PB3 (active path)
         return egretLleOn_ ? egretLle_.xcvrSession() : egret_.xcvrSession();
     }

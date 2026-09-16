@@ -177,11 +177,6 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 - [ ] **Améliorer la précision sonore des compacts.** Le DAC hôte et la
   courbe DFAC/V8 sont faits. Reste propre aux compacts : lecture du buffer
   par scanline et modélisation du PWM disque.
-- [ ] **Trancher le DFAC2 et les machines sans DFAC.** Payload DFAC2
-  (Color Classic, Color Classic II) volontairement ACK-only — l'interpréter
-  rendrait la machine muette ; le Mac TV n'a pas de DFAC ; aucun filtre
-  analogique n'est synthétisé. Décider défaut vs contrat, avec un
-  observable invité.
 - [ ] **Étendre les commandes Cuda du Q605/LC 475 uniquement depuis des
   traces ROM/pilote.** Timing pin-level 040 et commandes réellement
   observées, pas une nouvelle approximation.

@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (twenty-third)** — [The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way](#2026-09-16-dfac2-ruled)
 - **2026-09-16 (twenty-second)** — [The 512/2048 CD-image rule is the one already in the tree, and it stays](#2026-09-16-cd-block-rule)
 - **2026-09-16 (twenty-first)** — [The bare LC II re-tested: HWCfgFlags keeps the FPU bit because VIA1 PA0 was hardwired high; with PA0 low the ROM enters its serial test monitor where MAME does not — and the CUE/BIN item is ruled](#2026-09-16-bare-lcii-retested)
 - **2026-09-16 (twentieth)** — [The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles](#2026-09-16-afp-date-mechanism)
@@ -989,6 +990,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-dfac2-ruled"></a>
+## 2026-09-16 (twenty-third) — The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way
+
+The TODO asked whether the ACK-only DFAC2 (the Cuda's I2C slave on the
+Color Classic, which accepts and discards every write because its
+register semantics are still being reverse-engineered upstream) and the
+absence of any synthesised analog stage were a default or a contract,
+and asked for a guest observable to decide. `cclassic_asc_chime_etalon`
+is that observable: the twin of `lcii_asc_chime_etalon` on the Color
+Classic ROM and the clean System 7.5 reference, pulling the ASC every
+frame across power-on and judging the rendered samples. First capture:
+one audible span of 1 860 ms from power-on, RMS 12 746, a 440 ms DC park
+then 1 400 ms of tonal windows reading 500-1 250 Hz at the chord's
+attack and 100-450 Hz through its decay (the zero-crossing estimator on
+a chord; the LC II's reads 300-1 500). The window straddling the park
+and the attack reads one crossing and is not counted as a note.
+
+So the machine is not mute, and what it plays is the ASC's stream —
+`V8Memory::ascPop` applies the original DFAC stage on the LC/LC II/
+Classic II only (`hasOriginalDfac`, public now, is what the gate reads).
+Ruling: contract. Interpreting the DFAC2 payload (volume, mute) would
+change the level of a sound that is already heard, on register meanings
+nobody has yet established; that is the "wider approximation without
+proof" the section's rule forbids. The Mac TV has no DFAC at all and the
+same stream reaches its ASC. The item closes; the gate keeps it true.
 
 <a id="2026-09-16-cd-block-rule"></a>
 ## 2026-09-16 (twenty-second) — The 512/2048 CD-image rule is the one already in the tree, and it stays

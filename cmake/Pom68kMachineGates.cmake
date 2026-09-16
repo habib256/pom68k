@@ -855,6 +855,14 @@ add_test(NAME lcii_asc_chime_etalon COMMAND lcii_asc_chime_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(lcii_asc_chime_etalon PROPERTIES TIMEOUT 900)
 
+# The Color Classic's chime through the Sonora-class ASC with the DFAC2
+# ACK-only: the guest observable the DFAC2 decision asked for (2026-09-16).
+add_executable(cclassic_asc_chime_etalon tests/cclassic_asc_chime_etalon.cpp)
+target_link_libraries(cclassic_asc_chime_etalon PRIVATE pom68k_core)
+add_test(NAME cclassic_asc_chime_etalon COMMAND cclassic_asc_chime_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(cclassic_asc_chime_etalon PROPERTIES TIMEOUT 900)
+
 # O6 slice 1 gate: external /BERR + RTE $A/$B on the 68030 (the LC II
 # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).
 add_executable(berr030_test tests/berr030_test.cpp)
