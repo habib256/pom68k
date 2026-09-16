@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
     const std::string romPath = findAsset({ "roms/macplus.rom",
                                             "roms/mac128k/macplus.rom" });
     if (romPath.empty()) {
-        std::printf("[jit_lockstep_68000] no Mac Plus ROM — soft skip\n");
+        std::printf("SKIP: [jit_lockstep_68000] no Mac Plus ROM\n");
         return 0;
     }
     const std::vector<uint8_t> rom = readFile(romPath);
@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
-        std::printf("[jit_lockstep_68000] loadRom failed — soft skip\n");
+        std::printf("SKIP: [jit_lockstep_68000] loadRom failed\n");
         return 0;
     }
 

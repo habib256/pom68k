@@ -52,8 +52,7 @@ int main() {
     std::string rom = find("roms/maciivx.rom");
     if (rom.empty())
         rom = find("roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM");
-    std::string img = find("hdv/lc3-boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {

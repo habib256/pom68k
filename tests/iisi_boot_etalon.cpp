@@ -57,9 +57,7 @@ int main() {
     std::string rom = find("roms/maciisi.rom");
     if (rom.empty())
         rom = find("roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM");
-    std::string img = find("hdv/iisi-boot.vhd");
-    if (img.empty()) img = find("hdv/lc3-boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {

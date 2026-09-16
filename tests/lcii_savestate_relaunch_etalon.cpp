@@ -83,8 +83,7 @@ bool boot(V8Memory& mem, Cpu030& cpu) {
 
 int main() {
     std::string rom = find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
-    std::string img = find("hdv/lcii-boot.vhd");
-    if (img.empty()) img = find("hdv/boot.vhd");
+    std::string img = find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");
         return 0;

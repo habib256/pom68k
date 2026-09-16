@@ -300,12 +300,12 @@ int main(int argc, char** argv) {
         "roms/maclcii.rom"
     });
     if (romPath.empty()) {
-        std::printf("[jit_lockstep_030] no Mac LC II ROM — soft skip\n");
+        std::printf("SKIP: [jit_lockstep_030] no Mac LC II ROM\n");
         return 0;
     }
     const std::vector<uint8_t> rom = readFile(romPath);
     if (rom.size() < V8Memory::kRomSize) {
-        std::printf("[jit_lockstep_030] ROM too small (%zu) — soft skip\n", rom.size());
+        std::printf("SKIP: [jit_lockstep_030] ROM too small (%zu)\n", rom.size());
         return 0;
     }
 
@@ -322,7 +322,7 @@ int main(int argc, char** argv) {
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
-        std::printf("[jit_lockstep_030] loadRom failed — soft skip\n");
+        std::printf("SKIP: [jit_lockstep_030] loadRom failed\n");
         return 0;
     }
     // The ROM alone only reaches the power-on self test, where every access
@@ -332,7 +332,7 @@ int main(int argc, char** argv) {
     // and the whole SCSI/PMMU path with it.
     std::string diskPath = testasset::overrideImage();
     if (diskPath.empty())
-        diskPath = findAsset({ "hdv/lcii-boot.vhd", "hdv/boot.vhd",
+        diskPath = findAsset({ "hdv/boot.vhd",
                                "hdv/GISTPERSO-boot.vhd" });
     if (!diskPath.empty()) {
         memRef.attachScsi(diskPath);

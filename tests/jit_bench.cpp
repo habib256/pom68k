@@ -94,7 +94,7 @@ int main() {
     });
     const std::string diskPath = std::getenv("POM68K_BENCH_DISK")
         ? std::getenv("POM68K_BENCH_DISK")
-        : findAsset({ "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd" });
+        : findAsset({ "hdv/MacOS-8.1-boot.vhd" });
     if (romPath.empty() || diskPath.empty()) {
         std::printf("SKIP: needs the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;

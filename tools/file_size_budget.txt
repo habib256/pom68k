@@ -28,7 +28,7 @@ src/GuiRunnerCompact.h                   146
 src/GuiRunnerCompactStorage.h            41
 src/GuiRunnerDafb.h                      270
 src/GuiRunnerDuo.h                       219
-src/GuiRunnerSonora.h                    267
+src/GuiRunnerSonora.h                    266
 src/GuiRunnerToby.h                      245
 src/GuiRunnerV8.h                        278
 src/GuiShell.cpp                         235

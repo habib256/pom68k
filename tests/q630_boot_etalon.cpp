@@ -125,7 +125,7 @@ int main() {
         if (!alt.empty()) romPath = alt;
     }
     std::string diskPath = findAsset({
-        "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd"
+        "hdv/MacOS-8.1-boot.vhd"
     });
     if (romPath.empty() || diskPath.empty()) {
         std::printf("SKIP: needs the 06684214 ROM + hdv/MacOS-8.1-boot.vhd\n");

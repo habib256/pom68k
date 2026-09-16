@@ -350,11 +350,11 @@ int main(int argc, char** argv) {
     }
 
     namespace fs = std::filesystem;
-    if (!fs::exists(dir)||!fs::is_directory(dir)) { std::fprintf(stderr,"[sst68040] no data at '%s' — soft skip (run oracle/fuzz/fuzz040.py)\n",dir.c_str()); return 0; }
+    if (!fs::exists(dir)||!fs::is_directory(dir)) { std::fprintf(stderr,"SKIP: [sst68040] no data at '%s' (run oracle/fuzz/fuzz040.py)\n",dir.c_str()); return 0; }
     std::vector<fs::path> files;
     for (const auto& e : fs::directory_iterator(dir)) if (e.is_regular_file()&&e.path().extension()==".json") files.push_back(e.path());
     std::sort(files.begin(),files.end());
-    if (files.empty()) { std::fprintf(stderr,"[sst68040] '%s' holds no .json — soft skip\n",dir.c_str()); return 0; }
+    if (files.empty()) { std::fprintf(stderr,"SKIP: [sst68040] '%s' holds no .json\n",dir.c_str()); return 0; }
 
     TestCpu cpu;
     std::printf("[sst68040] dir=%s files=%zu cycles=%s mmu=%s\n", dir.c_str(), files.size(),
@@ -394,6 +394,6 @@ int main(int argc, char** argv) {
     std::printf("[sst68040] %s: %ld/%ld across %ld file(s), %ld mmu-skipped%s\n",
                 anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, grandMmuSkip,
                 anyFail?"  <<< MISMATCH":"");
-    if (filesRun==0) { std::fprintf(stderr,"[sst68040] no files matched — soft skip\n"); return 0; }
+    if (filesRun==0) { std::fprintf(stderr,"SKIP: [sst68040] no files matched\n"); return 0; }
     return anyFail?1:0;
 }

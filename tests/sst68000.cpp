@@ -243,11 +243,11 @@ int main(int argc, char** argv) {
     }
 
     namespace fs = std::filesystem;
-    if (!fs::exists(dir)||!fs::is_directory(dir)) { std::fprintf(stderr,"[sst68000] no data at '%s' — soft skip (run tests/fetch_sst_68000.sh)\n",dir.c_str()); return 0; }
+    if (!fs::exists(dir)||!fs::is_directory(dir)) { std::fprintf(stderr,"SKIP: [sst68000] no data at '%s' (run tests/fetch_sst_68000.sh)\n",dir.c_str()); return 0; }
     std::vector<fs::path> files;
     for (const auto& e : fs::directory_iterator(dir)) if (e.is_regular_file()&&e.path().extension()==".json") files.push_back(e.path());
     std::sort(files.begin(),files.end());
-    if (files.empty()) { std::fprintf(stderr,"[sst68000] '%s' holds no .json — soft skip\n",dir.c_str()); return 0; }
+    if (files.empty()) { std::fprintf(stderr,"SKIP: [sst68000] '%s' holds no .json\n",dir.c_str()); return 0; }
 
     TestCpu cpu;
     std::printf("[sst68000] dir=%s files=%zu cycles=%s\n", dir.c_str(), files.size(), checkCycles?"on":"off");
@@ -277,6 +277,6 @@ int main(int argc, char** argv) {
         if (!fileOk||verbose) for (auto& mm:firstFew) std::printf("        x \"%s\"  %s\n",mm.first.c_str(),mm.second.c_str());
     }
     std::printf("[sst68000] %s: %ld/%ld across %ld file(s)%s\n", anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, anyFail?"  <<< MISMATCH":"");
-    if (filesRun==0) { std::fprintf(stderr,"[sst68000] no files matched — soft skip\n"); return 0; }
+    if (filesRun==0) { std::fprintf(stderr,"SKIP: [sst68000] no files matched\n"); return 0; }
     return anyFail?1:0;
 }

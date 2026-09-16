@@ -109,7 +109,7 @@ int main() {
     std::string romPath = findAsset({
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",
         "roms/mame/macqd605/ff7439ee.bin", "roms/quadra605.rom" });
-    std::string diskPath = findAsset({ "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd" });
+    std::string diskPath = findAsset({ "hdv/MacOS-8.1-boot.vhd" });
     // A disc whose driver descriptor map declares 2048-byte blocks. The
     // 512-byte-DDM hybrids in hdv/ are read but not mounted by Mac OS —
     // observed 2026-07-29, cause not yet established (TODO).

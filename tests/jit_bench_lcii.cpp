@@ -106,7 +106,7 @@ int main() {
     });
     const std::string diskPath = std::getenv("POM68K_BENCH_DISK")
         ? std::getenv("POM68K_BENCH_DISK") : findAsset({
-        "hdv/lcii-boot.vhd", "hdv/boot.vhd", "hdv/GISTPERSO-boot.vhd"
+        "hdv/boot.vhd", "hdv/GISTPERSO-boot.vhd"
     });
     if (romPath.empty() || diskPath.empty()) {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");

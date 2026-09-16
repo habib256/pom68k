@@ -161,7 +161,6 @@ int main() {
     std::string rom = find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     if (rom.empty()) rom = find("docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     std::string img = testasset::overrideImage();
-    if (img.empty()) img = find("hdv/lcii-boot.vhd");
     // MacPack IS this gate's calibration (the boot signature and every
     // click target were measured on it, and GISTPERSO's desktop pattern
     // reads 0.75 where the thresholds expect a plain desktop): no silent

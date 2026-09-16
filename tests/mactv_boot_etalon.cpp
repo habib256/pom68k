@@ -53,13 +53,10 @@ int main() {
     if (rom.empty()) rom = find("roms/mactv/eaf1678d.bin");
     if (rom.empty())
         rom = find("roms/1MB ROMs/1994 - EAF1678D - Macintosh TV.ROM");
-    std::string img = find("hdv/mactv-boot.vhd");
-    if (img.empty()) img = find("hdv/cclassic-boot.vhd");
-    if (img.empty()) img = find("hdv/lcii-boot.vhd");
     // The qualified hdv/ref GISTPERSO outranks the mutable MacPack volume;
     // boot.vhd stays as a LAST resort for a host that carries only it
     // (its dirty 1.4 GB working copy is nobody's reference — TODO § 1.2).
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {

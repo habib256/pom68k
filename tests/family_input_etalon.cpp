@@ -76,8 +76,6 @@ void ensureBootDriverType(std::vector<uint8_t>& img) {
 
 std::string sys75Image(const char* preferred) {
     std::string img = find(preferred);
-    if (img.empty()) img = find("hdv/lc3-boot.vhd");
-    if (img.empty()) img = find("hdv/lcii-boot.vhd");
     if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
@@ -213,7 +211,7 @@ int main(int argc, char** argv) {
             ? find("roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM")
             : find("roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM");
         if (rom.empty()) rom = find(aio ? "roms/maclc520.rom" : "roms/maclc3.rom");
-        std::string img = sys75Image("hdv/lc3-boot.vhd");
+        std::string img = sys75Image("hdv/GISTPERSO-boot.vhd");
         if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM + Sys 7.5 image\n"); return 0; }
         testasset::report({ rom, img });
         std::vector<uint8_t> romData = loadRomFile(rom);
@@ -236,7 +234,7 @@ int main(int argc, char** argv) {
     if (which == "iivx") {
         std::string rom = find("roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM");
         if (rom.empty()) rom = find("roms/maciivx.rom");
-        std::string img = sys75Image("hdv/lc3-boot.vhd");
+        std::string img = sys75Image("hdv/GISTPERSO-boot.vhd");
         if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM + Sys 7.5 image\n"); return 0; }
         std::vector<uint8_t> romData = loadRomFile(rom);
         VaspMemory mem(pom68k::defaultCoreConfig(), 0x800000);
@@ -255,7 +253,7 @@ int main(int argc, char** argv) {
     if (which == "iisi") {
         std::string rom = find("roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM");
         if (rom.empty()) rom = find("roms/maciisi.rom");
-        std::string img = sys75Image("hdv/iisi-boot.vhd");
+        std::string img = sys75Image("hdv/GISTPERSO-boot.vhd");
         if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM + Sys 7.5 image\n"); return 0; }
         std::vector<uint8_t> romData = loadRomFile(rom);
         RbvMemory mem(pom68k::defaultCoreConfig(), 0x800000);

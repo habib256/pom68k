@@ -197,7 +197,7 @@ int main() {
         "roms/quadra605.rom", "roms/q605.rom"
     });
     std::string diskPath = findAsset({
-        "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd"
+        "hdv/MacOS-8.1-boot.vhd"
     });
     std::string roguePath = findAsset({
         "dev/mac-rogue/build/Rogue.dsk", "disks35/Rogue.dsk"

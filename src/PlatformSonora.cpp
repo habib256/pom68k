@@ -234,7 +234,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     const SonoraRunnerSpec spec{
         iici ? "Macintosh IIci" : "Macintosh IIsi",
         iici ? "iici" : "iisi",
-        iici ? "hdv/iici-boot.vhd" : "hdv/iisi-boot.vhd",
+        "hdv/GISTPERSO-boot.vhd",       // the pinned reference both boot
         std::string("68030 @ ") + (iici ? "25" : "20") + " MHz (Moira + PMMU)",
         iici ? MachineKind::IIci : MachineKind::IIsi,
         iici ? pom68k::SnapMachine::IIci : pom68k::SnapMachine::IIsi,

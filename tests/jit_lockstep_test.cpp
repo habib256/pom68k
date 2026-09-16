@@ -163,12 +163,12 @@ int main(int argc, char** argv) {
         "roms/quadra605.rom", "roms/q605.rom"
     });
     if (romPath.empty()) {
-        std::printf("[jit_lockstep] no Quadra 605 ROM — soft skip\n");
+        std::printf("SKIP: [jit_lockstep] no Quadra 605 ROM\n");
         return 0;
     }
     const std::vector<uint8_t> rom = readFile(romPath);
     if (rom.size() < Q605Memory::kRomSize) {
-        std::printf("[jit_lockstep] ROM too small (%zu) — soft skip\n", rom.size());
+        std::printf("SKIP: [jit_lockstep] ROM too small (%zu)\n", rom.size());
         return 0;
     }
 
@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
-        std::printf("[jit_lockstep] loadRom failed — soft skip\n");
+        std::printf("SKIP: [jit_lockstep] loadRom failed\n");
         return 0;
     }
     // The ROM alone only ever reaches the power-on self test, where every
@@ -193,8 +193,7 @@ int main(int argc, char** argv) {
     // never exercised. Attach the boot disk when it is there — READ-ONLY, so
     // both machines see identical media — and the comparison then covers the
     // System loading, the Finder, and the whole SCSI/paging path with it.
-    const std::string diskPath = findAsset({ "hdv/MacOS-8.1-boot.vhd",
-                                             "hdv/q605-boot.vhd" });
+    const std::string diskPath = findAsset({ "hdv/MacOS-8.1-boot.vhd" });
     if (!diskPath.empty()) {
         memRef.attachScsi(diskPath);
         memJit.attachScsi(diskPath);

@@ -78,7 +78,6 @@ int main() {
     std::string rom = find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     if (rom.empty()) rom = find("docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     std::string img = testasset::overrideImage();
-    if (img.empty()) img = find("hdv/lcii-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     std::string floppySrc;
     if (const char* o = getenv("POM68K_FLOPPY_IMG")) floppySrc = find(o);

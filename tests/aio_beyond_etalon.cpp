@@ -34,7 +34,6 @@ int main() {
     if (rom.empty())
         rom = testasset::find("roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM");
     std::string img = testasset::overrideImage();
-    if (img.empty()) img = testasset::find("hdv/lc3-boot.vhd");
     // Versioned reference before the unversioned mutable image — the § 1
     // fixture rule, applied here from day one instead of retrofitted: this
     // gate's signature is ratio-based and image-tolerant.

@@ -19,8 +19,7 @@ static std::string find(const char* rel) {
 
 int main() {
     std::string rom = find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
-    std::string img = find("hdv/lcii-boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM+disk\n"); return 0; }
 

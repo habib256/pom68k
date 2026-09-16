@@ -144,8 +144,7 @@ int main(int argc, char** argv) {
 
     std::string rom = find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     if (rom.empty()) rom = find("docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
-    std::string boot = find("hdv/lcii-boot.vhd");
-    if (boot.empty()) boot = find("hdv/boot.vhd");
+    std::string boot = find("hdv/boot.vhd");
     if (boot.empty()) boot = find("hdv/System 7.5 HD.dsk");
     std::string floppySrc = imgArg.empty() ? find("disks35/Disk605.dsk") : find(imgArg.c_str());
     if (rom.empty() || boot.empty() || floppySrc.empty()) {

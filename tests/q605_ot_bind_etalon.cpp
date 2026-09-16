@@ -45,7 +45,7 @@ int main() {
         "roms/quadra605.rom", "roms/q605.rom"
     });
     std::string diskPath = findAsset({
-        "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd"
+        "hdv/MacOS-8.1-boot.vhd"
     });
     if (romPath.empty() || diskPath.empty()) {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");

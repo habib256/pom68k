@@ -42,7 +42,6 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
 
     std::string hddPath = !media.empty() ? media.front()
         : (spec.defaultHdd.empty() ? std::string() : services.locate(spec.defaultHdd));
-    if (hddPath.empty()) hddPath = services.locate("hdv/lc3-boot.vhd");
     if (hddPath.empty()) hddPath = services.locate("hdv/GISTPERSO-boot.vhd");
     if (hddPath.empty()) hddPath = services.locate("hdv/boot.vhd");
     if (hddPath.empty()) hddPath = services.locate("hdv/HD20SC.vhd");

@@ -2455,6 +2455,35 @@ int main() {
               path + " requires non-null JIT configuration injection");
     }
 
+    // ── Every whole-gate abstention says SKIP, the census's one marker ──
+    // tools/gate_execution_census.py reads the literal `SKIP` in a gate's
+    // output. On 2026-09-16 the three SST corpus gates and the lockstep
+    // gates printed "— soft skip" instead, exited 0, and the first
+    // AArch64 full-registry census counted them as executed. A printed
+    // line that says "soft skip" (the phrase, not the hyphenated aside a
+    // partial path prints) must carry SKIP as well.
+    {
+        namespace fs = std::filesystem;
+        const std::string anchor = testasset::find("tests/docs_test.cpp");
+        const fs::path testsDir = fs::path(anchor).parent_path();
+        int leaks = 0;
+        std::error_code ec;
+        for (const fs::directory_entry& e : fs::directory_iterator(testsDir, ec)) {
+            if (!e.is_regular_file(ec) || e.path().extension() != ".cpp") continue;
+            std::ifstream in(e.path());
+            std::string line;
+            while (std::getline(in, line)) {
+                if (line.find("soft skip") == std::string::npos) continue;
+                if (line.find("printf") == std::string::npos) continue;
+                if (line.find("SKIP") != std::string::npos) continue;
+                std::printf("  %s: %s\n", e.path().filename().string().c_str(), line.c_str());
+                leaks++;
+            }
+        }
+        check(!anchor.empty() && leaks == 0,
+              "every printed soft-skip line carries the literal SKIP the census reads");
+    }
+
     std::printf("%s\n", gFails ? "FAILED" : "PASS");
     return gFails ? 1 : 0;
 }

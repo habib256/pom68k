@@ -46,8 +46,7 @@ int main() {
     std::string rom = find("roms/maclc520.rom");
     if (rom.empty())
         rom = find("roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM");
-    std::string img = find("hdv/lc3-boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {
