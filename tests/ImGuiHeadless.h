@@ -127,6 +127,39 @@ public:
         return clickAt(it->bb.GetCenter(), draw);
     }
 
+    // A combo popup shows a handful of rows and scrolls the rest: wheel
+    // the pointer's window down until an item containing `part` is
+    // visible (or give up after `turns`).
+    template <class Draw> const Item* scrollTo(const char* part, Draw&& draw, int turns = 40) {
+        for (int t = 0; t < turns; t++) {
+            if (const Item* it = findContaining(part)) return it;
+            // The wheel scrolls the HOVERED window: park the pointer inside
+            // the popup (its own item is labelled ##Combo_NN) first.
+            if (const Item* popup = findContaining("##Combo")) {
+                const ImVec2 c = popup->bb.GetCenter();
+                mouseTo(c.x, c.y);
+                frame(draw);
+            }
+            ImGui::GetIO().AddMouseWheelEvent(0.0f, -2.0f);
+            frame(draw);
+        }
+        return findContaining(part);
+    }
+    // The text an InputText currently holds (its edit state), for a trace.
+    std::string inputText(ImGuiID id) const {
+        ImGuiInputTextState* st = ImGui::GetInputTextState(id);
+        return st ? std::string(st->TextA.Data ? st->TextA.Data : "") : std::string("<no state>");
+    }
+    ImGuiID activeId() const { return ctx_->ActiveId; }
+    // A taller display for a window that outgrows 1024x768 (the attached
+    // AppleTalk window with its services form runs to ~820 px).
+    void resize(int width, int height) {
+        w_ = width;
+        h_ = height;
+        ImGui::GetIO().DisplaySize = ImVec2(float(width), float(height));
+        frame_.assign(size_t(width) * size_t(height), 0xFF303030u);
+    }
+
     // Move, press, release, settle — four frames through `draw`.
     template <class Draw> bool click(const char* label, Draw&& draw, int nth = 0) {
         const Item* it = find(label, nth);

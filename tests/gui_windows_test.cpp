@@ -28,6 +28,7 @@
 #include "NetworkWindow.h"
 #include "PeripheralWindow.h"
 #include "AssetFingerprint.h"
+#include "MacMemory.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -169,6 +170,62 @@ int main() {
         check(staged && *staged && **staged == 3, "the host is asked to relaunch with the card at SCSI 3");
     }
 
+    // ── AppleTalk / Ethernet, hub attached: the services form ────────
+    // The full window needs a hub attached to a machine (AtalkHub::attach
+    // takes the board for its SCC); a Plus board with no ROM is enough for
+    // the window, which only ever reads the hub's snapshot. Never rendered
+    // before today (TODO § Services réseau, 2026-09-13).
+    {
+        ui.resize(1024, 1000);            // the full window runs past 768 px
+        GuiNetworkState state;
+        state.showWindow = true;
+        state.ethernetScsiId = -1;
+        MacMemory board(pom68k::defaultCoreConfig());
+        state.atalk.attach(board, 7833600, nullptr);
+        auto draw = [&] { pom68k::gui::drawAppleTalkWindow(state); };
+        ui.frame(draw);
+        ui.frame(draw);
+        ImRect r;
+        check(windowShown(pom68k::gui::kNetworkWindowTitle, &r) && state.atalk.snapshot().attached,
+              "the full AppleTalk window renders on an attached hub");
+        check(ui.find("Réseau AppleTalk actif") && ui.find("Activer AppleShare") &&
+                  ui.find("Serveur AFP (nom NBP)") && ui.find("Dossier partagé"),
+              "the services form is on screen");
+        capture(ui, "network-services");
+        dumpLabels("network-services");
+        // A live service toggle goes straight to the hub.
+        check(state.atalk.snapshot().cfg.afp, "AppleShare starts enabled");
+        check(ui.click("Activer AppleShare", draw), "click « Activer AppleShare »");
+        check(!state.atalk.snapshot().cfg.afp, "the checkbox turned AppleShare off in the hub");
+        check(ui.click("Activer AppleShare", draw) && state.atalk.snapshot().cfg.afp,
+              "and back on");
+        // The form: rename the server, apply — reconfigure() reaches the hub.
+        check(ui.click("Serveur AFP (nom NBP)", draw), "focus the AFP server name field");
+        ui.key(ImGuiKey_End, true); ui.frame(draw); ui.key(ImGuiKey_End, false); ui.frame(draw);
+        for (int i = 0; i < 16; i++) { ui.key(ImGuiKey_Backspace, true); ui.frame(draw); ui.key(ImGuiKey_Backspace, false); ui.frame(draw); }
+        ui.type("POMTEST");
+        ui.frame(draw);
+        ui.frame(draw);
+        check(ui.inputText(ui.activeId()) == "POMTEST", "the field's edit state holds the typed name");
+        check(ui.find("Appliquer") != nullptr, "an edited field shows « Appliquer »");
+        // The form refuses an empty shared folder (« Dossier partagé :
+        // vide ») — a hub attached without a default share has none — so
+        // the folder is typed too, the way a user would.
+        check(ui.click("Dossier partagé", draw), "focus the shared-folder field");
+        ui.type("AppleShare");
+        ui.frame(draw);
+        ui.frame(draw);
+        capture(ui, "network-services-edited");
+        dumpLabels("network-services-edited");
+        check(ui.click("Appliquer", draw), "click « Appliquer »");
+        const std::string server = state.atalk.snapshot().cfg.serverName;
+        const std::string share = state.atalk.snapshot().cfg.shareDir;
+        std::printf("  after apply: server '%s', shared folder '%s'\n", server.c_str(), share.c_str());
+        check(server == "POMTEST" && share == "AppleShare",
+              "the hub was reconfigured with the typed server name and folder");
+        ui.resize(1024, 768);
+    }
+
     // ── Disques ──────────────────────────────────────────────────────
     {
         const std::string dropped = "gui_windows_test_dropped.dsk";
@@ -201,7 +258,9 @@ int main() {
         const ImGuiID fd = ui.idIn(pom68k::kDiskWindowTitle, "##fdpick");
         check(ui.clickId(fd, draw), "open the internal floppy picker");
         dumpLabels("disks-combo");
-        const headless::Item* row = ui.findContaining("gui_windows_test_dropped");
+        // Session images are listed after disks35/, which grew past the
+        // popup's eight visible rows on 2026-09-16: scroll until it shows.
+        const headless::Item* row = ui.scrollTo("gui_windows_test_dropped", draw);
         check(row != nullptr, "the dropped floppy is offered by the picker");
         if (row) ui.clickAt(row->bb.GetCenter(), draw);
         check(floppyIn && inserted == dropped, "choosing it inserts it live through the host hook");
