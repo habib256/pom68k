@@ -100,6 +100,11 @@ struct DiagnosticConfig {
     // scenario. It is command-line only so a normal process environment can
     // never enable test behaviour accidentally.
     std::optional<std::string> smokeReport;
+    // `--gui-smoke-relaunch=<report>`: the relaunch scenario — the first
+    // generation stages the DaynaPort card the AppleTalk window would and
+    // really re-executes; the second (told apart by the `--daynaport=` the
+    // relaunch line carries) attests the card and closes. gui_relaunch_smoke_test.
+    bool smokeRelaunch = false;
 };
 
 // One normalized selection per ROM-sharing machine family. Raw environment

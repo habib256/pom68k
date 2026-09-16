@@ -153,8 +153,12 @@ void GuiHostServices::requestRelaunch(
 
 int GuiHostServices::processRelaunch() const {
 #if !defined(__EMSCRIPTEN__)
-    if (shell_.smokeEnabled()) return shell_.finishSmoke(
-        !state_.relaunch.switchArguments.empty());
+    if (shell_.smokeEnabled()) {
+        // The lifecycle smoke stops at the relaunch boundary; the relaunch
+        // smoke's first generation writes its report and goes through it.
+        const int verdict = shell_.finishSmoke(!state_.relaunch.switchArguments.empty());
+        if (!shell_.smokeExecs() || verdict != 0) return verdict;
+    }
     if (state_.relaunch.switchArguments.empty()) return 0;
     auto relaunchArguments = app::atalkArguments(
         app::daynaPortArguments(

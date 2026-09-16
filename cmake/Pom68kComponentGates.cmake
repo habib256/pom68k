@@ -21,6 +21,20 @@ set_tests_properties(gui_smoke_test PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
                      SKIP_RETURN_CODE 77 TIMEOUT 60 RUN_SERIAL TRUE
                      LABELS "gui")
+# The relaunch observed, not serialized: the first generation stages the
+# DaynaPort card as the AppleTalk window's « Appliquer » does and really
+# re-executes through processRelaunch(); the second generation, told apart
+# by the `--daynaport=3` the relaunch line carries, attests the card the
+# session sees and closes. Same wrapper, same SKIP rules (a GL surface).
+add_test(NAME gui_relaunch_smoke_test
+         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_gui_smoke.sh"
+                 "${POM68K_GUI_SMOKE_EXE}"
+                 "${CMAKE_CURRENT_BINARY_DIR}/gui_relaunch_smoke_report.txt"
+                 "${CMAKE_CURRENT_BINARY_DIR}/gui-smoke-missing.rom" relaunch)
+set_tests_properties(gui_relaunch_smoke_test PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                     SKIP_RETURN_CODE 77 TIMEOUT 90 RUN_SERIAL TRUE
+                     LABELS "gui")
 
 # The product windows without a window system: Dear ImGui's core compiled
 # with its test-engine hooks (item labels and rectangles), a CPU rasteriser

@@ -6,6 +6,12 @@ set -uo pipefail
 exe=${1:-}
 report=${2:-}
 missing_rom=${3:-}
+# lifecycle (default): open/render/engine/save/close, relaunch intercepted.
+# relaunch: the first generation stages the DaynaPort card and really
+# re-executes; the second generation must attest the card and close.
+mode=${4:-lifecycle}
+option="--gui-smoke=$report"
+if [ "$mode" = relaunch ]; then option="--gui-smoke-relaunch=$report"; fi
 
 if [ -z "$exe" ] || [ ! -x "$exe" ]; then
     echo "SKIP: POM68K GUI executable is not built"
@@ -35,10 +41,10 @@ esac
 
 smoke_log="$report.log"
 if [ "${#runner[@]}" -gt 0 ]; then
-    "${runner[@]}" "$exe" "--gui-smoke=$report" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
+    "${runner[@]}" "$exe" "$option" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
     status=${PIPESTATUS[0]}
 else
-    "$exe" "--gui-smoke=$report" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
+    "$exe" "$option" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
     status=${PIPESTATUS[0]}
 fi
 if [ "$status" -ne 0 ]; then
@@ -63,6 +69,17 @@ if ! grep -qx 'result=PASS' "$report"; then
     echo "FAIL: GUI smoke report does not attest the complete lifecycle" >&2
     sed -n '1,40p' "$report" >&2
     exit 1
+fi
+if [ "$mode" = relaunch ]; then
+    # The report is the second generation's; the first is in the log. A
+    # process that never re-executed would have left a generation=1 report.
+    if ! grep -qx 'generation=2' "$report" || ! grep -qx 'card_seen=1' "$report" ||
+       ! grep -qx 'daynaport_id=3' "$report" ||
+       ! grep -q 'gui-smoke: generation 1 PASS, re-executing' "$smoke_log"; then
+        echo "FAIL: the relaunch was not observed end to end (generation 1 exec, generation 2 with the card)" >&2
+        sed -n '1,40p' "$report" >&2
+        exit 1
+    fi
 fi
 
 sed -n '1,40p' "$report"

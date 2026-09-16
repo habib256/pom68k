@@ -112,6 +112,7 @@ RuntimeConfig RuntimeConfig::parse(
         }
 
         constexpr std::string_view smokePrefix = "--gui-smoke=";
+        constexpr std::string_view smokeRelaunchPrefix = "--gui-smoke-relaunch=";
         const std::string_view argument(arg);
         if (argument.starts_with(kMachineProfileOption)) {
             const std::string_view slug =
@@ -131,9 +132,12 @@ RuntimeConfig RuntimeConfig::parse(
             continue;
         }
         if (applyAtalkArgument(config.network_, argument)) continue;
-        if (argument.starts_with(smokePrefix)) {
-            const std::string_view report = argument.substr(smokePrefix.size());
+        if (argument.starts_with(smokePrefix) || argument.starts_with(smokeRelaunchPrefix)) {
+            const bool relaunch = argument.starts_with(smokeRelaunchPrefix);
+            const std::string_view report = argument.substr(
+                relaunch ? smokeRelaunchPrefix.size() : smokePrefix.size());
             if (!report.empty()) {
+                config.diagnostics_.smokeRelaunch = relaunch;
                 config.diagnostics_.smokeReport = std::string(report);
                 // The gate exercises GUI lifecycle, not host devices.
                 config.network_.appleTalk = false;

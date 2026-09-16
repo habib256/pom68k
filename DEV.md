@@ -2324,7 +2324,14 @@ stables aux callbacks
 natifs comme Emscripten. `gui_smoke_test` couvre maintenant le cycle GUI
 commun avec une vraie fenêtre cachée : rendu, changement de moteur, sauvegarde,
 fermeture RAII et relance interceptée — mais il se saute sur tout runner sans
-surface GL et ne regarde aucune fenêtre. Depuis le 2026-09-16,
+surface GL et ne regarde aucune fenêtre. `gui_relaunch_smoke_test`
+(`--gui-smoke-relaunch=<rapport>`, 2026-09-16) ne l'intercepte pas : la
+première génération met la carte DaynaPort en attente comme « Appliquer »
+de la fenêtre AppleTalk (`relaunchWithDaynaPort(3)`) et `processRelaunch()`
+ré-exécute vraiment le processus avec la ligne de relance ; la seconde
+génération, reconnue au `--daynaport=3` que la ligne porte, atteste la carte
+que la session voit (`ethernetScsiId`) puis ferme. Le wrapper lit le dernier
+rapport (génération 2) et le journal pour la première. Depuis le 2026-09-16,
 `gui_windows_test` (`tests/ImGuiHeadless.h`) dessine les fenêtres
 Périphériques, AppleTalk / Ethernet, Disques et Moteur par leurs vraies
 fonctions **sans système de fenêtres** : ImGui compilé avec ses hooks de

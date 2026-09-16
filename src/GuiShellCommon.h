@@ -54,7 +54,8 @@ public:
     GuiShell(GuiSessionState& state, GuiSessionObjects& objects,
              const app::RuntimeConfig& config)
         : state_(state), objects_(objects),
-          smoke_(config.diagnostics().smokeReport) {}
+          smoke_(config.diagnostics().smokeReport, config.diagnostics().smokeRelaunch,
+                 config.core().bus.daynaPortId) {}
 
     GuiWindowSession* openWindow(int width, int height,
                                  const std::string& title);
@@ -95,6 +96,7 @@ public:
     }
     void noteWindowClosed() noexcept { smoke_.noteWindowClosed(); }
     bool smokeEnabled() const noexcept { return smoke_.enabled(); }
+    bool smokeExecs() const noexcept { return smoke_.execs(); }
     int finishSmoke(bool relaunchRequested) const {
         return smoke_.finish(relaunchRequested);
     }

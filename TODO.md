@@ -116,11 +116,14 @@ observé.
   d'environnement) et la fenêtre est cliquée sous gate — mais seulement
   pile désactivée, puis, le soir même, sous sa forme complète : hub attaché,
   formulaire rendu, case AppleShare et « Appliquer » jusqu'au hub
-  (`gui_windows_test`). Restent : aucun invité n'a traversé un relaunch
-  avec carte ; le relaunch n'est couvert que par sa sérialisation, pas par
-  un re-exec observé ; « Révéler » lance `open` / `xdg-open` / `explorer`
-  sans gate possible ; aucun invité n'a remonté un serveur AFP renommé à
-  chaud (`afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur).
+  (`gui_windows_test`). Le re-exec est observé depuis le 2026-09-16
+  (`gui_relaunch_smoke_test` : la génération 1 met la carte en attente comme
+  « Appliquer » et se ré-exécute, la génération 2 voit la carte en SCSI 3 —
+  sur surface GL seulement, la ROM de démonstration, l'invité ne la sonde
+  pas). Restent : aucun invité n'a sondé la carte après un relaunch ;
+  « Révéler » lance `open` / `xdg-open` / `explorer` sans gate possible ;
+  aucun invité n'a remonté un serveur AFP renommé à chaud
+  (`afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur).
 - [ ] **Élucider pourquoi une date serveur mouvante produisait une seconde
   trajectoire AFP.** Le gate est déterministe (date épinglée) ; le
   mécanisme reste ouvert : on ne sait pas par quoi une date qui avance

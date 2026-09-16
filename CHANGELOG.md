@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (nineteenth)** — [The relaunch is observed, not serialized: a smoke generation stages the DaynaPort card, re-executes, and the next generation sees the card](#2026-09-16-relaunch-observed)
 - **2026-09-16 (eighteenth)** — [The macii × 7.5.5 matrix cell is ruled PASS: six identical runs, Stickies in front and the Finder running](#2026-09-16-macii-755-cell-ruled)
 - **2026-09-16 (seventeenth)** — [The machine window under a headless gate: the menu bar, the dashboard, the screen surface and the keyboard on a fake machine, and two defects it found on its first run](#2026-09-16-machine-window-gate)
 - **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live](#2026-09-16-kiosk-and-crt)
@@ -985,6 +986,30 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-relaunch-observed"></a>
+## 2026-09-16 (nineteenth) — The relaunch is observed, not serialized: a smoke generation stages the DaynaPort card, re-executes, and the next generation sees the card
+
+The DaynaPort control's debt read "the relaunch is covered only by its
+serialization, not by an observed re-exec". `gui_relaunch_smoke_test`
+closes it: `--gui-smoke-relaunch=<report>` runs a scenario whose first
+generation, after three rendered frames, calls the very binding the
+AppleTalk window's « Appliquer » calls (`relaunchWithDaynaPort(3)`), lets
+the shell close the window, writes its report and — unlike the lifecycle
+smoke, which stops at the boundary — goes through `processRelaunch()`'s
+`execv` with the relaunch line. The second generation, told apart by the
+`--daynaport=3` that line carries, renders three frames, attests
+`ethernetEnabled` and `ethernetScsiId == 3` from the session state, and
+closes. The wrapper reads the last report (generation 2) and the log for
+the first; a process that never re-executed leaves a generation-1 report
+and fails.
+
+On the M4 the whole thing takes a few seconds on the demonstration ROM:
+« generation 1 stages the DaynaPort card at SCSI 3 and relaunches »,
+« generation 1 PASS, re-executing », « generation 2 sees the card:
+enabled=1 id=3 (line carried 3) ». Like `gui_smoke_test` it needs a GL
+surface and soft-skips on every CI runner; the guest is the demonstration
+ROM and does not probe the card — that debt stays in the TODO.
 
 <a id="2026-09-16-macii-755-cell-ruled"></a>
 ## 2026-09-16 (eighteenth) — The macii × 7.5.5 matrix cell is ruled PASS: six identical runs, Stickies in front and the Finder running
