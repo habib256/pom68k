@@ -322,8 +322,8 @@ large inputs are split at 1,900 MB by default. Run
   the network and controller windows, the engine statistics — and reset the
   docked layout.
 
-- **Affichage:** **Mode borne** (`F8`) — exclusive full screen on the
-  primary monitor, no menu bar, no window, the mouse captured; `F8` again,
+- **Affichage:** **Mode borne** (`Ctrl+Alt+F`, the twin of `Ctrl+Alt+G`) — exclusive full screen on the
+  primary monitor, no menu bar, no window, the mouse captured; `Ctrl+Alt+F` again,
   `Alt+F4` or `Ctrl+Shift+Q` held for a moment leaves. **Effets CRT** —
   the glass of an old monitor in front of the pixels: barrel geometry,
   scanlines, shadow mask, phosphor persistence, with the presets *Léger*,

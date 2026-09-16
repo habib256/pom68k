@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// The cabinet mode's frame (F8, the quit chords, the monitor switch), the
+// The cabinet mode's frame (Ctrl+Alt+F, the quit chords, the monitor switch), the
 // « Affichage » menu and the « Réglages CRT » window — see GuiDisplay.h.
 // Out of GuiShell.cpp so the shell stays the menu bar's owner and nothing
 // more; ported from NeoST's kiosk and CRT controls on 2026-09-16.
@@ -17,20 +17,20 @@
 namespace pom68k::gui {
 
 // ── Cabinet mode ─────────────────────────────────────────────────────
-// F8 toggles at any time; Alt+F4 and a Ctrl+Shift+Q chord held ~0.7 s leave
+// Ctrl+Alt+F toggles at any time (the twin of Ctrl+Alt+G, the mouse grab); Alt+F4 and a Ctrl+Shift+Q chord held ~0.7 s leave
 // (an exclusive full screen does not always relay the window manager's
 // close). The monitor switch happens here, between two frames, and only on
 // a visible window: the smoke scenario's hidden window is never sent to a
 // monitor (GLFW would show it).
 void kioskFrame(GuiDisplayState& d, GLFWwindow* window) {
     ImGuiIO& io = ImGui::GetIO();
-    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F8, false)) d.kiosk = !d.kiosk;
+    const bool alt = ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt);
+    const bool ctrlHeld = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    if (!io.WantTextInput && ctrlHeld && alt && ImGui::IsKeyPressed(ImGuiKey_F, false)) d.kiosk = !d.kiosk;
     if (d.kiosk) {
-        const bool alt = ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt);
         if (alt && ImGui::IsKeyPressed(ImGuiKey_F4, false)) glfwSetWindowShouldClose(window, GLFW_TRUE);
-        const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
         const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
-        d.quitHold = (ctrl && shift && ImGui::IsKeyDown(ImGuiKey_Q)) ? d.quitHold + 1 : 0;
+        d.quitHold = (ctrlHeld && shift && ImGui::IsKeyDown(ImGuiKey_Q)) ? d.quitHold + 1 : 0;
         if (d.quitHold >= 42) glfwSetWindowShouldClose(window, GLFW_TRUE);   // ~0.7 s at 60 Hz
     }
     if (d.kiosk == d.kioskApplied) {
@@ -45,7 +45,7 @@ void kioskFrame(GuiDisplayState& d, GLFWwindow* window) {
         const GLFWvidmode* mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
         if (visible && monitor && mode)
             glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-        std::fprintf(stderr, "[kiosk] cabinet mode ON%s - F8, Alt+F4 or Ctrl+Shift+Q (held) leaves\n",
+        std::fprintf(stderr, "[kiosk] cabinet mode ON%s - Ctrl+Alt+F, Alt+F4 or Ctrl+Shift+Q (held) leaves\n",
                      visible ? "" : " (window hidden: no monitor switch)");
     } else {
         if (visible)
@@ -61,8 +61,8 @@ void kioskFrame(GuiDisplayState& d, GLFWwindow* window) {
 // settings window.
 void drawDisplayMenu(GuiDisplayState& d) {
     if (!ImGui::BeginMenu("Affichage")) return;
-    if (ImGui::MenuItem("Mode borne (plein écran)", "F8", d.kiosk)) d.kiosk = !d.kiosk;
-    ImGui::TextDisabled("Sortie : F8, Alt+F4 ou Ctrl+Maj+Q maintenu");
+    if (ImGui::MenuItem("Mode borne (plein écran)", "Ctrl+Alt+F", d.kiosk)) d.kiosk = !d.kiosk;
+    ImGui::TextDisabled("Sortie : Ctrl+Alt+F, Alt+F4 ou Ctrl+Maj+Q maintenu");
     ImGui::Separator();
     ImGui::TextDisabled("Effets CRT");
     const char* labels[] = {"Aucun", "Léger", "Arcade", "Phosphore"};

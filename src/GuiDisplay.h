@@ -6,9 +6,9 @@
 // glass pass on either. Ported from NeoST's kiosk mode and CRT look on
 // 2026-09-16 (docs/KIOSK.md there); what POM68K keeps of it:
 //
-//   • --kiosk / POM68K_KIOSK=1, or F8 at any time: exclusive full screen on
+//   • --kiosk / POM68K_KIOSK=1, or Ctrl+Alt+F at any time: exclusive full screen on
 //     the primary monitor, no menu bar, no window, the mouse captured and
-//     the cursor hidden. F8 again, Alt+F4 or Ctrl+Shift+Q (held ~0.7 s)
+//     the cursor hidden. Ctrl+Alt+F again, Alt+F4 or Ctrl+Shift+Q (held ~0.7 s)
 //     leave. The switch is a GLFW monitor change between two frames; the
 //     machine runs on, the docked layout is kept alive for the return.
 //   • --crt=<preset> / POM68K_CRT, or the Affichage menu: the CrtEffectStack
@@ -42,7 +42,7 @@ inline std::atomic<bool>& kioskFlag() {
 inline bool kioskActive() { return kioskFlag().load(std::memory_order_relaxed); }
 
 struct GuiDisplayState {
-    bool kiosk = false;              // requested state (F8, menu, startup)
+    bool kiosk = false;              // requested state (Ctrl+Alt+F, menu, startup)
     bool kioskApplied = false;       // the window is on its monitor
     int windowedX = 100, windowedY = 100, windowedW = 1280, windowedH = 800;
     int quitHold = 0;                // Ctrl+Shift+Q frames held
@@ -92,7 +92,7 @@ inline Letterbox letterbox(float availW, float availH, float srcW, float srcH) {
 }
 
 // GuiDisplayWindow.cpp: once per frame, before anything is drawn — the
-// F8 / quit chords and the monitor switch (only on a visible window).
+// Ctrl+Alt+F / quit chords and the monitor switch (only on a visible window).
 void kioskFrame(GuiDisplayState& d, GLFWwindow* window);
 // The « Affichage » menu (inside an open menu bar) and the settings window.
 void drawDisplayMenu(GuiDisplayState& d);

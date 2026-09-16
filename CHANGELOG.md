@@ -455,7 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
-- **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: F8 to the whole monitor, presets light / arcade / phosphor, every slider live](#2026-09-16-kiosk-and-crt)
+- **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live](#2026-09-16-kiosk-and-crt)
 - **2026-09-16 (fifteenth)** — [The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied](#2026-09-16-services-form-rendered)
 - **2026-09-16 (fourteenth)** — [The harnesses type digits and punctuation on the AZERTY guest: a layout table instead of the KCHR, proven by a folder name read back from the catalog](#2026-09-16-guest-keyboard-table)
 - **2026-09-16 (thirteenth)** — [`docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them](#2026-09-16-citation-anchors)
@@ -985,7 +985,7 @@ Newest first.
 ---
 
 <a id="2026-09-16-kiosk-and-crt"></a>
-## 2026-09-16 (sixteenth) — Cabinet mode and the CRT glass, ported from NeoST: F8 to the whole monitor, presets light / arcade / phosphor, every slider live
+## 2026-09-16 (sixteenth) — Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live
 
 NeoST's two display features come to POM68K, on the same author's code
 (`gui/CrtEffectStack`, `gui/OpenGLShader`, `gui/CrtParams`, the kiosk
@@ -1007,7 +1007,7 @@ change three lines each (`screenWindowBegin`, the display passed to
 drawing. On this M4 the driver reports GLSL 4.10 and the cascade picks
 150; « [CRT] CRT effect stack ready ».
 
-**What is kept.** F8 toggles at any time; Alt+F4 and Ctrl+Shift+Q held
+**What is kept.** The toggle is Ctrl+Alt+F — NeoST's F8 was replaced the same day at the user's request, so the two host chords sit side by side: Ctrl+Alt+G grabs the mouse, Ctrl+Alt+F takes the monitor. It works at any time; Alt+F4 and Ctrl+Shift+Q held
 ~0.7 s leave (an exclusive full screen does not always relay the window
 manager's close); the switch is a GLFW monitor change between two frames
 with the windowed geometry remembered; the mouse is captured and the

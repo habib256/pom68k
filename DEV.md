@@ -2006,7 +2006,7 @@ System 3.3 cells in drive A and drive B) dumps its final screen with
 `POM68K_SYSTEM_BOOT_PPM` (`<path>` of a PGM). The GUI's display knobs,
 ported from NeoST on 2026-09-16 (`GuiDisplay.h`): `POM68K_KIOSK` (`1` =
 start in cabinet mode — exclusive full screen on the primary monitor, no
-menu bar, no window, mouse captured; F8 toggles at any time, Alt+F4 or
+menu bar, no window, mouse captured; Ctrl+Alt+F toggles at any time, Alt+F4 or
 Ctrl+Shift+Q held ~0.7 s leaves) and `POM68K_CRT` (`off` | `light` |
 `arcade` | `phosphor` — the CRT glass pass of `CrtEffectStack`, also the
 « Affichage » menu and its « Réglages CRT » window; an uncompilable shader
@@ -2349,7 +2349,7 @@ framebuffer) restent hors de ce gate.
 2026-09-16). Le runner dessine l'écran par `screenWindowBegin` : la fenêtre
 ancrée sur le bureau, une fenêtre sans chrome couvrant tout le viewport en
 borne (`ScreenInput::frame` y centre l'image à ratio conservé, capture la
-souris et cache le curseur). Le shell gère F8, les chords de sortie et le
+souris et cache le curseur). Le shell gère Ctrl+Alt+F, les chords de sortie et le
 changement de moniteur GLFW entre deux trames, sur une fenêtre visible
 seulement (le smoke garde sa fenêtre cachée). La passe CRT — shader de NeoST
 inchangé, contexte OpenGL 3 core de POM68K, un VAO obligatoire, chaque état

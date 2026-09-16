@@ -600,7 +600,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-15 (fifth)** — [POM68K 0.2.0](CHANGELOG.md#2026-09-15-release-0-2-0)
 - **2026-09-16 (fifteenth)** — [The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied](CHANGELOG.md#2026-09-16-services-form-rendered)
 - **2026-09-16 (fourth)** — [The AArch64 leg: first all-green full registry run on the M4, 332 executed, 0 soft-skipped, 0 failed](CHANGELOG.md#2026-09-16-aarch64-full-registry-all-green)
-- **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: F8 to the whole monitor, presets light / arcade / phosphor, every slider live](CHANGELOG.md#2026-09-16-kiosk-and-crt)
+- **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live](CHANGELOG.md#2026-09-16-kiosk-and-crt)
 - **2026-09-16 (sixth)** — [The backlog drops the closed diary, the census counts and the second copy of every jalon bullet](CHANGELOG.md#2026-09-16-todo-open-only)
 - **2026-09-16 (twelfth)** — [The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder](CHANGELOG.md#2026-09-16-128k-teachtext)
 
