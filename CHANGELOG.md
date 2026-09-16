@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (thirteenth)** — [`docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them](#2026-09-16-citation-anchors)
 - **2026-09-16 (twelfth)** — [The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder](#2026-09-16-128k-teachtext)
 - **2026-09-16 (eleventh)** — [The Infinite Mac images open an alias to « Infinite HD » at every boot; a blank companion of that name answers it, and the Finder signature now reads a colour desktop](#2026-09-16-infinite-hd-alias-and-colour-signature)
 - **2026-09-16 (tenth)** — [Stock System 7.5.3 is the LC III's first choice and is pinned; the LC 520 boots it too, but the Finder signature reads its solid desktop as white](#2026-09-16-system-753-adopted-lc3)
@@ -979,6 +980,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-citation-anchors"></a>
+## 2026-09-16 (thirteenth) — `docs_test` sees a false citation: fifty-nine `file:line` ranges had drifted off the code they named, and a tool rewrites them
+
+The 2026-09-12 sweep measured what § 10 could not see — dozens of
+citations pointing at other code while the gate stayed green — and the
+TODO asked for a verifiable anchor. The anchor is the sentence itself: it
+names identifiers in backticks, and one of them must occur inside the
+cited range (three lines of slack). None there but a FUNCTION, MEMBER or
+MACRO among them elsewhere in the file: the citation has DRIFTED. A type
+name can confirm a range but never accuse it — `Cpu030` is on every other
+line of Cpu030.h and the first draft dragged twenty citations to first
+mentions; a prose word in backticks counts for nothing; a citation whose
+sentence names no identifier stays trusted (189 of the 424 in-tree
+citations, the honest limit of the rule).
+
+**Measured, then repaired.** `tools/refresh_citations.py` is the rule as a
+script: 424 in-tree citations, 140 anchored, **59 drifted**, the rest
+unanchored. `--fix` moved each drifted range onto its anchor's occurrence
+nearest the old line, width kept and clamped to the file — thirteen
+documents, fifty-nine ranges (`MacMemory.h:149-150` → `:179-180` for
+`loadPram`/`savePram`, the pair the TODO had quoted; `MscMemory.h:1-31` →
+`:179-209` for `runDuo`). Two repairs overshot the file's end before the
+clamp existed and were trimmed by hand. `docs_test` § 10 carries the same
+rule in C++ and names, for a drifted citation, the anchor and the line it
+now lives on, with the tool to run. Change the two together.
 
 <a id="2026-09-16-128k-teachtext"></a>
 ## 2026-09-16 (twelfth) — The 128K and 512K launch an application: TeachText opens « Welcome! » and Cmd-Q returns to the Finder

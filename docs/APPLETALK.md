@@ -41,7 +41,7 @@ change AppleTalk behaviour are repeated here.
 | `POM68K_APPLETALK=0` | (unset = on) | is captured once by `ProcessEnvironment`, parsed by `RuntimeConfig`, and kills the in-process stack; the **Périphériques → Réseau : AppleTalk / Ethernet** window stays reachable, says so, and still stages a DaynaPort card for the next boot (`src/GuiShell.cpp:194-201`, `src/NetworkWindow.cpp:157-166`) |
 | `POM68K_APPLETALK=1` | — | *different job*: seeds PRAM SPConfig `$21` = LocalTalk **active at boot** (`src/Egret.cpp:70-76`, `src/Rtc.cpp:53-57`). Unset seeds `$22` (async) — a fresh PRAM then needs the Chooser's AppleTalk radio button, or an image whose prefs already have it on |
 | `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/GuiHostServices.cpp:80-105`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:356-361`). Editable live in the window (§0.3), and `--atalk-share=/path` on the relaunch line overrides the variable |
-| `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/GuiHostServices.h:77-82`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s and no `setLosslessRx`, so the wire can drop again. See §0.4 |
+| `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/GuiHostServices.h:122-127`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s and no `setLosslessRx`, so the wire can drop again. See §0.4 |
 | `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — the boost block runs only with the hub up and **no** cable (`src/GuiHostServices.h:78`) |
 | `POM68K_ATALK_DEBUG=1` | off | DDP/NBP/ATP tracer + one line per client retransmit with its lag (`src/AtalkStack.cpp:126-129`, retransmit lag at `:462-467`) |
 | `POM68K_MACIP_DEBUG=1` | off | every IP datagram both ways, with TCP flags/seq/ack (`src/MacIpGateway.cpp:61-68`) |
@@ -266,7 +266,7 @@ most detail. `AtalkStack` sits directly on it as a second node.
 - **The in-process wire is boosted.** A real 230 kbit/s cable makes a
   multi-MB Finder copy take minutes. With the hub up and no external
   cable, `setWirePace(byteCycles / 8)` (floor 64) plus `setLosslessRx`
-  give a fast lossless virtual wire (`src/GuiHostServices.h:78-82`). What stays
+  give a fast lossless virtual wire (`src/GuiHostServices.h:122-126`). What stays
   at **real** pace: the prompt-response gap, the LLAP IDG and the Tx-underrun
   grace — those are guest-code turnaround windows, not wire properties.
   Async serial is untouched (the override applies in SDLC mode only).
@@ -288,10 +288,10 @@ most detail. `AtalkStack` sits directly on it as a second node.
 - 3-byte header, total frame 5-603 bytes.
 - **FCS** = CRC-16/X.25 (poly `$1021` reflected, init/xorout `$FFFF`)
   over dst+src+type+data, appended **low byte first** —
-  `crc16x25()` at `src/Scc8530.cpp:88`, applied in `injectRxFrame`
+  `crc16x25()` at `src/Scc8530.cpp:80`, applied in `injectRxFrame`
   (`src/Scc8530.cpp:299-337`, whose `badFcs` argument can also inject a
   deliberately corrupt FCS to model wire damage) and verified on the Rx
-  side at `src/Scc8530.cpp:233-237`.
+  side at `src/Scc8530.cpp:291-295`.
 - **Node IDs**: `0` invalid, **1-127 user/workstation**, **128-254
   server**, **255 broadcast**. The split lets a busier server use a
   slower, more thorough address probe.
@@ -351,7 +351,7 @@ still lives by:**
   window. Only `AddressDefence` identifies a real peer. Prompt responses are
   placed ahead of ordinary queued frames so backlog cannot consume the IFG.
 - Every *other* injected frame defers a full **IDG** — `kIdgBytes = 12`
-  byte-times ≈ 417 µs (`src/Scc8530.h:384-387`) — and that idle is evaluated
+  byte-times ≈ 417 µs (`src/Scc8530.h:304-307`) — and that idle is evaluated
   **at dequeue** from the `rxIdle` counter (`src/Scc8530.cpp:995-1005`),
   never baked in at injection.
   When two frames are injected in one poll (the router's LkUp broadcast,
@@ -364,11 +364,11 @@ still lives by:**
   answering, relaying a BrRq as a segment LkUp put our broadcast and our
   own LkUpReply back-to-back in the guest's Rx FIFO. Hence
   `setBridgeRelay` — **off unless the LToUDP cable is up**
-  (`AtalkStack.h:94-100`, `AtalkHub.h:76-77`).
+  (`AtalkStack.h:94-100`, `AtalkHub.h:92-93`).
 - Replies generated inside the guest's TX callback would hit a deaf
   receiver, so `AtalkHub::sendFrame` **queues** and flushes from `tick()`,
   after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:96-110`, flush at
-  `AtalkHub.h:189-193`). This is why finer quantum slicing matters:
+  `AtalkHub.h:165-169`). This is why finer quantum slicing matters:
   64 slices/frame ≈ 260 µs of latency per AFP round-trip
   (`slices`, `src/GuiHostServices.h:143-149`; 16 slices without the hub).
 
@@ -405,7 +405,7 @@ segment with one zone. Gate: `atalk_stack_test`.
 ### 3.1 DDP — the datagram everything rides on
 
 Connectionless best-effort delivery. Two header forms, and replies
-**mirror the requester's form** (`AtalkStack.h:50-51`):
+**mirror the requester's form** (`AtalkStack.h:32-33`):
 
 - **Short (5 bytes)** — LLAP type `0x01`, same network: length(10 bits)
   + dest socket + source socket + DDP type.
@@ -504,7 +504,7 @@ Two hard-won responder details:
   calling `respond()` used to sit forever and swallow every later TReq
   reusing that (client, tid) — the guest's 16-bit tid counter wraps, so
   the socket wedged permanently. `pendingTxns_` now carries the same
-  30 s release timer as the XO cache (`AtalkStack.h:210-218`).
+  30 s release timer as the XO cache (`AtalkStack.h:223-226`).
 - MacIP needs ATP *and* a raw DDP handler on the same socket 72, so ATP
   only claims type 3 where a transaction handler is bound
   (`src/AtalkStack.cpp:203-213`).

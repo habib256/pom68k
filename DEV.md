@@ -384,8 +384,8 @@ emulators just mirror via a mask and let the ROM discover it.
   XPRAM on every platform, and the compact ROMs only touch the low end.
   **PRAM persists on all twelve platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
-  family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:147` for
-  the compacts) (`MacMemory.h:149-150`).
+  family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:156` for
+  the compacts) (`MacMemory.h:179-180`).
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256`),
   unlike MAME's constant.
 
@@ -793,7 +793,7 @@ KeyMap through the IOP firmware), save states in `savestate_030_test`.
 profile (`MachineCatalog.h:125`, `runDuo` at `PlatformDuo.cpp:99`, `SnapMachine::Duo230`), a
 68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
-`MscMemory.h:1-31` — the LC-family `$50Fxxxxx` shape with three deltas: a
+`MscMemory.h:179-209` — the LC-family `$50Fxxxxx` shape with three deltas: a
 **GSC** LCD controller (regs `$50F20000`, 128 KB VRAM at `$60000000`),
 `$50FA0000` power_cycle_w, and no floppy at all (the Duo Dock carries it).
 Box IDs at `$5FFFFFFC`: Duo 210 `$A55A1004`, **230 `$A55A1005`**, 250
@@ -1893,7 +1893,7 @@ MCU fall back to HLE, which is the point when qualifying a packaged build).
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, captured by
 `RuntimeConfig` and passed directly to `lle::beginSession` and the JIT policy:
 `POM68K_LLE_AARCH64_FULL` (`StartupOptions.h:107-108`, consumed by
-`lle::beginSession`, `LleSession.h:83`; the run must be on the
+`lle::beginSession`, `LleSession.h:88`; the run must be on the
 AArch64 code generator with every MCU on real firmware, and any HLE
 fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`
 (`--lle-aarch64-check`: run the preflight, print, exit 0 without opening a
@@ -1972,7 +1972,7 @@ protocol is in `docs/RASPBERRY_PI.md` § 3.
 metrics, `src/jit/JitMetrics.h:27` — semantics in `POM68K_JIT.md` § 6).
 Four legacy non-prefixed diagnostics predate the namespace and are kept
 as-is: `EGRET_CMD_LOG`, `RTCDBG` and `SCCDBG`, now declared with the rest
-in `StartupOptions.h:212-214`, and `NEOST_EXC_DIAG` (Moira exception diag,
+in `StartupOptions.h:220-222`, and `NEOST_EXC_DIAG` (Moira exception diag,
 `Moira.cpp:1271`), still a direct `getenv`.
 
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
@@ -2168,6 +2168,20 @@ backend, so this tier cannot pass by selecting `threaded` or soft-skipping.
 The same lockstep binary writes `pom68k.jit.metrics.v1`; the Linux x86-64 and
 macOS AArch64 jobs validate and archive identical fields (backend, guest/host,
 cycles, wall time, block/native/fallback counters and native share).
+
+`docs_test` § 10 judges every in-tree `file:line` citation the documents
+make, and since 2026-09-16 not only that the range exists: the sentence
+around a citation names identifiers in backticks, and one of them must occur
+inside the cited lines (three of slack). When none does but a function,
+member or macro among them occurs elsewhere in the file, the code moved and
+the number did not — the citation has drifted and the gate fails, naming the
+anchor and the line it now lives on. A type name confirms a range but never
+accuses it; a prose word in backticks counts for nothing; a citation whose
+sentence names no identifier is trusted as before. `tools/refresh_citations.py`
+lists the drifted citations, and `--fix` rewrites each range onto the
+anchor's occurrence nearest the old line, width kept and clamped to the
+file — read the diff before committing. The two implementations carry the
+same rule; change them together.
 
 `jitdev` builds only the binaries selected by the smoke working loop; its
 registrations re-run those binaries under several environments.

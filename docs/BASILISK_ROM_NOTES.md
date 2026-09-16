@@ -62,7 +62,7 @@ build/rominfo roms/maclcii.rom [--resources] [--traps] [--trap A053] [--all]
 ```
 
 Those four, plus a no-op `--universal`, are the flags `main()` parses
-(`tools/rominfo.cpp:265-284`); since 2026-08-12 an unrecognised flag is refused
+(`tools/rominfo.cpp:261-280`); since 2026-08-12 an unrecognised flag is refused
 by name ("rominfo: unknown option --whatever"), and only a non-flag argument is
 taken as the ROM *path*. The header, the PACK-4 count and the **whole universal
 table + DecoderInfo dump print unconditionally**, so `--universal` asks for what
@@ -253,7 +253,7 @@ them**:
    `Egret::factoryDefaults` reseeds `$13` even when `'NuMc'` is already there.
 
 `lcii_trace` logs the WarmStart `'WLSC'` milestone at `$CFC` (§4.3) — the ROM's
-own "low memory is valid" marker (`tests/lcii_trace.cpp:458-466`) — and applies
+own "low memory is valid" marker (`tests/lcii_trace.cpp:138-146`) — and applies
 the same factory defaults as the GUI (`tests/lcii_trace.cpp:138`).
 
 ---

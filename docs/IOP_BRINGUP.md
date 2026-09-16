@@ -96,7 +96,7 @@ MAME feeds this to its HLE `macadb`; POM68K wires it to the real
 **`gpout1` is NOT floppy head-select.** A 2026-08 static note suspected it
 was; current MAME disproves it — SWIM1's own `hdsel_cb` drives
 `eclipse_state::fdc_hdsel` (`macquadra700.cpp:815,819`), and in ISM mode that
-output is mode bit 5 (`swim1.cpp:341-342`), which POM68K already consumes
+output is mode bit 5 (`swim1.cpp:306-307`), which POM68K already consumes
 through `Swim1::onHdsel` (`Swim1.h:77-81`). Wiring `gpout1` to `Iwm::setSel`
 would invent a board connection.
 

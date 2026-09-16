@@ -487,7 +487,7 @@ us. Wired 2026-08-10; it named both cells within one run:
   **every** `MOVE <ea>,(xxx).W`: 47.4 % of all block fallbacks.
 * `CMPA` charges `kEaRead + 2`, not `kEaRead` — `execCmpa` holds a `SYNC(2)`
   that the `ADDA`/`SUBA` path takes only for a word or register source
-  (`MoiraExec_cpp.h:2196` vs `:421-423`). This refused **every** `CMPA`: a
+  (`MoiraExec_cpp.h:2176` vs `:421-423`). This refused **every** `CMPA`: a
   further 12 %.
 
 Fixing the two took the native share 96.2 → 97.6 % and block fallbacks from
@@ -1264,7 +1264,7 @@ six across the two — exist because each covers something the others cannot:
 | `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
 | `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
-| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:322-327`), which is also why it is the one smoke gate an x86-64 developer never sees |
+| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:331-336`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
 Two things this gate learned the hard way, both worth keeping in mind when
 extending it:
@@ -1812,7 +1812,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2215-2274`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2199-2258`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;
@@ -2176,7 +2176,7 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
   coverage.
 * **2026-08-09/10 — the default flipped on the 68040.** `defaultEngine()`
   stopped being a constant and became a per-family answer
-  (`JitConfig.h:203`, `JitEngine.cpp:163`): `jit/auto` on 68040, interpreter
+  (`JitConfig.h:309`, `JitEngine.cpp:191`): `jit/auto` on 68040, interpreter
   everywhere else, `POM68K_CPU_ENGINE` overriding either way. The plain
   `q605/centris650/q630/q700_boot_etalon` gates therefore now run the
   engine, and four `interp_*` registrations preserve one explicit

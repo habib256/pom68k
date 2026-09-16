@@ -91,7 +91,7 @@ find.
   `sst68040` 7 200, and every historical figure below) are **not reproducible
   from a clean clone**: the corpora live outside the repo, under
   `POM68K_SST_DIR` / `POM68K_SST030_DIR` / `POM68K_SST040_DIR`
-  (`cmake/Pom68kComponentGates.cmake:348-368`, included by the repository
+  (`cmake/Pom68kComponentGates.cmake:444-464`, included by the repository
   root — not either CMake file beside this document — defaulting to
   `tests/data/sst680*`, absent here).
   Without them those gates soft-skip. Treat the counts as a record of what was
@@ -1567,7 +1567,7 @@ accounting at all.
     compiled block owes `pomJitSync`.
 
     Opt-in on purpose, and only on the **68030** branch of `pomJitExecOne`
-    (`Moira.cpp:328`): ordinary interpretation pays one predictable
+    (`Moira.cpp:319`): ordinary interpretation pays one predictable
     `[[unlikely]]` false branch and nothing else. The 030 is the family
     where the i-cache overlay makes "how many cycles did that instruction
     cost" a question the clock delta alone cannot answer.

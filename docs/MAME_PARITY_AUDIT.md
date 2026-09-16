@@ -44,7 +44,7 @@ Egret/Cuda de l'**action 9**, a fermé le 2026-08-13. Un `RESET_SYSTEM $11`
 firmware atteint désormais le 68k sur les **six** plateformes portant un
 Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630 — le Centris n'a pas
 d'Egret et l'Eclipse tournait alors sur celui HLE, sans seam ; il a reçu le
-sien le 2026-08-14, ce qui porte le compte à **sept** — `Q700Memory.cpp:78`,
+sien le 2026-08-14, ce qui porte le compte à **sept** — `Q700Memory.cpp:91`,
 `Q700Cpu.cpp:50`). Reset **différé** par
 construction : le handler PC3 décide, `CudaLle::hostReset()` agit, la machine
 réarme son overlay et verrouille `restartPending_`, le wrapper CPU consomme
@@ -68,7 +68,7 @@ documents : voir § 2.2 (persistance PRAM).
 | # | Sév. | Puce | Description | POM68K | MAME |
 |---|------|------|-------------|--------|------|
 | 1 | M | ASC | Quadra 700/900/950 : ASC Sonora `$BC` au lieu de l'EASC `$B0` — aucun modèle EASC (pas de SRC, pas de CD-XA ADPCM, mauvais registres version/idle/clock) | `src/Q700Memory.h:313` | `sound/asc.cpp:1420-1771`, `macquadra700.cpp:805` |
-| 2 | M | V8/TinkerBell | Mac TV : `ram_size` V8 réutilisé — 4 Mo utilisables au lieu de 8 sous config `$C0`, RAM fantôme à `$800000` que Tinker Bell ne décode pas | `src/V8Memory.cpp:236-255` | `apple/v8.cpp:1065-1101` |
+| 2 | M | V8/TinkerBell | Mac TV : `ram_size` V8 réutilisé — 4 Mo utilisables au lieu de 8 sous config `$C0`, RAM fantôme à `$800000` que Tinker Bell ne décode pas | `src/V8Memory.cpp:341-360` | `apple/v8.cpp:1065-1101` |
 | 3 | M | NCR 5380 | DRQ parasite en STATUS/MSG_IN sous MODE_DMA après réception ; un `dmaRead` en STATUS consomme l'octet de statut comme donnée | `src/Ncr5380.cpp:310-315,290-291` | `machine/ncr5380.cpp:227-245` |
 | 4 | M | NCR 5380 | Aucune phase DATA OUT hors WRITE(6)/(10) : les octets paramètres de MODE SELECT / FORMAT UNIT sont perdus, saut direct en STATUS | `src/Ncr5380.cpp:76-99` | `bus/nscsi/hd.cpp:622-631` |
 | 5 | M | NCR 5380 | Bus reset (ICR_RST) : pas d'IRQ, pas de latch RST lisible dans ICR/CSR (sur Mac II, l'edge IRQ VIA2 manque à chaque SCSIReset) | `src/Ncr5380.cpp:240-242` | `machine/ncr5380.cpp:330-355,449-463` |
@@ -112,15 +112,15 @@ documents : voir § 2.2 (persistance PRAM).
 | 43 | L | ASC | Écriture FIFO B classique ignore le gate stéréo CONTROL (bits `$804` 2/3 + IRQ parasites en mono) | `src/Asc.cpp:84-104` | `sound/asc.cpp:704-739` |
 | 44 | L | ASC | Écriture FIFO A (V8/classique) ignore le gate record-mode R_PLAYRECA sur les bits de statut | `src/Asc.cpp:106-127` | `sound/asc.cpp:386-404` |
 | 45 | L | Apple PIC | Lectures du trou de registres `$F000-$F7FF` renvoient `$FF` vs `$00` chez MAME (même classe que le wedge Sonora ProductInfo) | `src/ApplePic.cpp:187` | `machine/applepic.cpp:63-77,345-351` |
-| 46 | L | M68hc05 | L'acquittement TOF/CPI clear le latch d'interruption pendant ; MAME le garde jusqu'à la prise (« 6805 latches internally ») | `src/M68hc05.cpp:112-121` | `m6805/m6805.cpp:541-546,656-667` |
+| 46 | L | M68hc05 | L'acquittement TOF/CPI clear le latch d'interruption pendant ; MAME le garde jusqu'à la prise (« 6805 latches internally ») | `src/M68hc05.cpp:130-139` | `m6805/m6805.cpp:541-546,656-667` |
 | 47 | L | M68hc05 | `onesec_w` ne ré-arme pas la phase du timer 1 Hz à chaque écriture (le commentaire prétend la parité, le code arme une fois) | `src/M68hc05.cpp:118-123,447-461` | `m6805/m68hc05e1.cpp:199-208` |
 | 48 | L | PG&E | Port H lit `$FF` ; MAME retourne le latch (départ `$00`, précondition config DFAC du boot ROM PGE) | `src/PgePmu.cpp:267-272` | `apple/macpwrbkmsc.cpp:129,543-546` |
-| 49 | L | PG&E | RTC PMU jamais seedée (`setSeconds` sans appelant) — horloge guest Duo à l'époque 1904 | `src/PgePmu.h:67` | `m6805/m68hc05pge.cpp:185-187` |
+| 49 | L | PG&E | RTC PMU jamais seedée (`setSeconds` sans appelant) — horloge guest Duo à l'époque 1904 | `src/PgePmu.h:86` | `m6805/m68hc05pge.cpp:185-187` |
 | 50 | L | DAFB | Bus TurboSCSI 2 (Eclipse) : registre `$28` sans DRQ vivant bit 9 ni latch wait-states (écho brut) | `src/Q700Memory.cpp:405-435` | `apple/dafb.cpp:424,533-576` |
 | 51 | L | DAFB | Registre version câblé 3 partout ; MAME retourne 1 sur Q700/Q900 (le driver Apple branche sur ce champ) | `src/Dafb.cpp:69` | `apple/dafb.cpp:84,426-427` |
 | 52 | L | DAFB | Danse Antelope PCBR1/x555 appliquée à tous les flavours ; Q950 reçoit l'ID Antelope `$02` au lieu d'AC842a `$01` | `src/Dafb.cpp:87-90,144-161` | `apple/dafb.cpp:712-747,1123-1174` |
-| 53 | L | DAFB | Quirk Q700 512×384 (base=0x1000, vres=384 en version 1) absent de `recalcMode` | `src/Dafb.cpp:174-195` | `apple/dafb.cpp:833-839` |
-| 54 | L | DAFB | Timing CRTC programmé ignoré si vtotal ≤ 480 : les modes 512×384 tournent sur la trame legacy 60.15 Hz | `src/Dafb.cpp:329-347` | `apple/dafb.cpp:869-875` |
+| 53 | L | DAFB | Quirk Q700 512×384 (base=0x1000, vres=384 en version 1) absent de `recalcMode` | `src/Dafb.cpp:207-228` | `apple/dafb.cpp:833-839` |
+| 54 | L | DAFB | Timing CRTC programmé ignoré si vtotal ≤ 480 : les modes 512×384 tournent sur la trame legacy 60.15 Hz | `src/Dafb.cpp:221-239` | `apple/dafb.cpp:869-875` |
 | 55 | L | DAFB | L'appelant Q700 omet le clamp 12 bits que le contrat de la cellule Dafb suppose (stride/base/Swatch non tronqués) | `src/Q700Memory.cpp:417-435` | `apple/dafb.cpp:435,625-626` |
 | 56 | L | Ariel | La lecture du registre d'adresse ne reset pas la phase RGB (comportement Brooktree standard) | `src/Ariel.h:26-27` | `video/ariel.cpp:96-106` |
 | 57 | L | V8/Spice | VIA1 port A Color Classic lit `$83` ; MAME retourne `$82` (PA0 en plus, non documenté comme divergence) | `src/V8Memory.cpp:222-225` | `apple/v8.cpp:755-758` |
@@ -162,9 +162,9 @@ polarité enable — tout à parité. **Aucun bug-suspect.**
 **Simplifications** :
 - Pas d'onde carrée CKO : les machines pulsent CA2 à 1 Hz depuis `cpuHz` (nuance de phase demi-seconde perdue).
 - ~~**Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo)~~ — **FINDING FAUX,
-  retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:149`,
-  `MacIIMemory.h:193`, `IIfxMemory.h:120`, `MscMemory.h:167`, et les huit autres) et **chacun des
-  runners** câble la paire (`GuiRunnerToby.h:52` / `:229`, `GuiRunnerV8.h:86` / `:255`,
+  retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:179`,
+  `MacIIMemory.h:208`, `IIfxMemory.h:120`, `MscMemory.h:182`, et les huit autres) et **chacun des
+  runners** câble la paire (`GuiRunnerToby.h:52` / `:229`, `GuiRunnerV8.h:92` / `:255`,
   `GuiRunnerSonora.h:86` / `:244`, `GuiRunnerDafb.h:97` / `:248`, `GuiRunnerDuo.h:68` / `:200`, et les
   compacts à `PlatformCompact.cpp:147` / `GuiRunnerCompact.h:136`). Le fichier est
   `<image>.<tag-profil>.pram`. Ce qui varie est le **magasin**, pas la
@@ -209,7 +209,7 @@ la simplification cellule-idéale-vs-flux est celle documentée § 1.3.
 
 **Simplifications** :
 - ~~Moteur de lecture ISM du SWIM1 réduit au shifter SWIM2 : bits d'erreur CSM `0x08/0x20/0x40` jamais levés — **medium**, inventorié § 1.3.~~ — **FERMÉ le 2026-08-14** (F7) : moteur LS-pair/CSM/TSM porté, les trois bits sont levés (`Swim1.cpp:483`, `:501`, `:547`). Gate : `swim1_test`.
-- ~~Cellules discrètes à cadence programmée au lieu de flux attotime + `fdc_pll` (§ 1.3).~~ — **FERMÉ le 2026-08-14** (F7) : le flux est devenu le médium, les deux générations résolvent leurs cellules sur la vue flux du lecteur (`SonyDrive.h:123`, `Swim2.cpp:244`, `Swim1.cpp:439`).
+- ~~Cellules discrètes à cadence programmée au lieu de flux attotime + `fdc_pll` (§ 1.3).~~ — **FERMÉ le 2026-08-14** (F7) : le flux est devenu le médium, les deux générations résolvent leurs cellules sur la vue flux du lecteur (`SonyDrive.h:123`, `Swim2.cpp:339`, `Swim1.cpp:439`).
 - Nibble output-enable du registre phases non modélisé ; ligne SEL35 (et son kill moteur) ignorée.
 
 **Cosmétique** : pas de DAT1BYTE sur Swim2 (aucun consommateur MAME non plus) ; seed CRC/préservation d'état ISM au reset ; underrun-avec-erreur-pendante termine quand même l'ACTION ; span d'écriture sans transition n'efface pas la piste.
@@ -395,9 +395,9 @@ la gate la plus étroite. Le statut vérifié de chaque action est en tête de l
 | 2 | ✅ | `PseudoVia.cpp:100-108` — cas `v == 0xFF && Flavour::Base` ⇒ `$1F`, commentaire refait |
 | 3 | ✅ | `SonyDrive.cpp:1036-1052` — cas `0b011` ajouté, MFM-on découplé de DskchgClear ; sense `f..c` à `:907-913` |
 | 4 | ✅ | `Scc8530.cpp:515` (TxIP sur écriture data), `:615-623` (re-présentation Ext/Status), `:635-652` (IUS : plus aucun IP jeté) ; **plus** #33 à `:658-661` |
-| 5 | ✅ | `V8Memory.cpp:321-338` — override Tinker Bell dans `applyRamConfig`, pas d'alias `$800000` |
+| 5 | ✅ | `V8Memory.cpp:349-366` — override Tinker Bell dans `applyRamConfig`, pas d'alias `$800000` |
 | 6 | ✅ | `Ncr5380.cpp:355-364,391-395` — `drqActive()` directionnel, l'octet de statut n'est plus consommé |
-| 7 | ✅ | `Q700Memory.cpp:608-641` — hold-off /DTACK gaté sur `scsiCtrl` bits 7/8, cap ~20 ms puis /BERR ; `$28` bus 2 à `:432-435` |
+| 7 | ✅ | `Q700Memory.cpp:553-586` — hold-off /DTACK gaté sur `scsiCtrl` bits 7/8, cap ~20 ms puis /BERR ; `$28` bus 2 à `:432-435` |
 | 8 | ✅ | `Asc.h:243` — flavour `AscEasc`, gate `asc_easc_test` |
 | 9 | ⚠️ **moitié** | Duo fait (`PgePmu.h:71`, `PgePmu.cpp:338`, `MscMemory.cpp:88`) ; **Egret/Cuda PC3 toujours ouvert** (`CudaLle.cpp:273-297`) — seul reliquat de tout l'audit |
 | 10 | ✅ | `Ncr53c96.cpp:377-400` — file 2 niveaux, `S_GROSS_ERROR`, pop-and-chain ; gate `ncr53c96_queue_test` |

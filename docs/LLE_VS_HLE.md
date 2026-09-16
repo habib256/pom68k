@@ -153,11 +153,11 @@ caught it.
   sub-480-line mode still fires once per frame. (The old `vtotal_ > 480`
   guard that pinned such modes to the legacy 60 Hz / 525-line shape is
   gone — `Dafb.cpp:403-408`.)
-- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:544`, `:552-558`:
+- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:559`, `:552-558`:
   `montype_` defaults to 2, 512×384, and the frame constants are computed
   from that dot clock) whatever the monitor sense says. MAME pins the 13"
   instead, and of the four gate arrays only **RBV** re-derives the frame
-  from the sense (`RbvMemory::recalcFrame`, `RbvMemory.h:287`,
+  from the sense (`RbvMemory::recalcFrame`, `RbvMemory.h:302`,
   `RbvMemory.cpp:129`). A
   *different* choice from MAME's, not a lesser one — neither is
   sense-driven. → **Reopen when** the V8 monitor sense becomes selectable
@@ -359,7 +359,7 @@ Both workarounds are retired (`RbvCpu` back to the shared default;
 `POM68K_Q605_CACHE_BOOST` re-measured green at 2/4/8 across the 040 family).
 The audit found one more boosted-clock reader: `AdbVia::syncTo` fed the
 PIC1654S co-step the raw core clock — every boosted call site now passes
-`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:117`
+`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:159`
 passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
 **Any new consumer of the CPU clock must ask which domain it is in.**
 
@@ -555,7 +555,7 @@ TSS half-cycle times too (`flush_write`), the PLL write side belongs to
 the WD-style FDCs.
 
 *Not a gap (corrected 2026-07-31)*: **host-file persistence exists.**
-`SonyDrive::flushToFile` (`SonyDrive.cpp:958`) writes committed sectors back on
+`SonyDrive::flushToFile` (`SonyDrive.cpp:1010`) writes committed sectors back on
 eject and at exit via temp+rename, regenerating the DiskCopy 4.2 header and
 data checksum. It is **on by default in every floppy-capable GUI path** —
 the runners call the shared
@@ -818,7 +818,7 @@ share the file, each pinned by the version byte its `$800` returns:
 integrations and `$E9` on the Duo (`MscMemory.h:269`)
 and version `$00` on the Mac II / IIfx / IIci **discrete** cell, which is
 exactly what `AscV8::classic()` tests (`Asc.h:146`, `MacIIMemory.h:300`);
-`AscSonora` (`$BC`, Spice/Sonora — `Asc.cpp:572`),
+`AscSonora` (`$BC`, Spice/Sonora — `Asc.cpp:246`),
 `AscIosb` (`$BB`, Q605 stereo — `:393`) and `AscEasc` (`$B0`, the real EASC
 on the discrete-040 Quadra 700/900/950 — `:754`, landed as MAME-audit action
 8, gate `asc_easc_test`).
@@ -830,7 +830,7 @@ on the discrete-040 Quadra 700/900/950 — `:754`, landed as MAME-audit action
 **Closed 2026-08-02** — the drain follows the **$807 CLOCK RATE** register
 (`AscV8::drainHz`): 0 = the Mac's 22 257 Hz, 2 = 22 050, 3 = 44 100; code 1 is
 undefined and keeps the Mac rate rather than inventing one. MAME *documents*
-the register (`asc.cpp:30`) and does not implement it, so here the manual is
+the register (`asc.cpp:207`) and does not implement it, so here the manual is
 the reference, not the oracle.
 
 It is free on every machine that boots today, and that is a property of the
@@ -999,7 +999,7 @@ escapes.
 | Device | Files | Default today | Fallback triggers |
 |---|---|---|---|
 | **Egret / Cuda** | `Egret.*` (HLE) vs `M68hc05.*` + `CudaLle.*` (LLE) | **Firmware LLE** on every Egret/Cuda machine: CC factory `341s0417` (2.35), Mac TV `341s0789` (2.38), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II + Q630/LC 580 `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`), LC II `341s0850`, Q605 `341s0788`, **Eclipse Q900/Q950 `341s0851` (2026-08-14)** | `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0`, or missing dump |
-| **ADB modem** (every machine holding an `AdbVia`: the ADB compacts SE / SE FDHD / Classic, Mac II / IIx / IIcx / SE/30, IIci, Centris + Quadra 610/650/800, Quadra 700 — the Eclipse Q900/Q950 attach one too but their Egret owns the ADB bus, and since 2026-08-14 it owns it as firmware on a real 68HC05, gated by `q900_input_etalon`) | `AdbVia.*` (HLE byte SM on VIA SR) vs `Pic1654s.*` + `AdbLine.*` (LLE) | **Firmware LLE** when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia::attach`, `AdbVia.cpp:53-67`); `Via6522::extShiftCB1` is the wire | `POM68K_ADB_LLE=0`, or missing dump |
+| **ADB modem** (every machine holding an `AdbVia`: the ADB compacts SE / SE FDHD / Classic, Mac II / IIx / IIcx / SE/30, IIci, Centris + Quadra 610/650/800, Quadra 700 — the Eclipse Q900/Q950 attach one too but their Egret owns the ADB bus, and since 2026-08-14 it owns it as firmware on a real 68HC05, gated by `q900_input_etalon`) | `AdbVia.*` (HLE byte SM on VIA SR) vs `Pic1654s.*` + `AdbLine.*` (LLE) | **Firmware LLE** when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia::attach`, `AdbVia.cpp:107-121`); `Via6522::extShiftCB1` is the wire | `POM68K_ADB_LLE=0`, or missing dump |
 | **ADB bus** (Egret/Cuda machines) | `AdbBus.*` | Unused — both machines feed `AdbLine` under the firmware LLE | Retires with the Egret HLE |
 
 Gates: `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `egret_test`,
@@ -1068,7 +1068,7 @@ and that Egret/Cuda remain distinct typed targets; the window itself is
 compile-verified only, like every GUI surface here).
 
 **One HLE-only hack survives inside the byte-model fallback.**
-`MacIIMemory.cpp:349-355`: on VIA1 ORB writes, if ACR shift-in is armed and
+`MacIIMemory.cpp:345-351`: on VIA1 ORB writes, if ACR shift-in is armed and
 soft-flag bit 5 at `ADBBase($CF8)+$15D` is set, call
 `Via6522::armShiftComplete()`. Required for the HLE ADB POST wait (Slot Manager
 clocks SR after slot select). **Poisonous under LLE** — `$CF8` is ADBBase and
@@ -1174,8 +1174,8 @@ trace tools, PRAM file persistence, LToUDP peer bridging, `FloppySound.*`.
 old "absent on the compacts, Mac II, IIfx and Duo" claim, which also reached
 `MAME_PARITY_AUDIT.md` § 2.2 and `SIMPLIFICATIONS_REVIEW.md` F1, was false).
 Every `*Memory` declares `loadPram`/`savePram` and every GUI lifecycle wires
-both (the Mac II/IIfx pair at `GuiRunnerToby.h:52` / `GuiRunnerToby.h:229`; the
-four DAFB profiles at `GuiRunnerDafb.h:97` / `GuiRunnerDafb.h:248`, and the three
+both (the Mac II/IIfx pair at `GuiRunnerToby.h:52` / `GuiRunnerToby.h:54`; the
+four DAFB profiles at `GuiRunnerDafb.h:103` / `GuiRunnerDafb.h:103`, and the three
 Sonora-style platforms at `GuiRunnerSonora.h:86` / `GuiRunnerSonora.h:244`; V8 at
 `GuiRunnerV8.h:86` / `GuiRunnerV8.h:255`, and Duo at
 `GuiRunnerDuo.h:68` / `GuiRunnerDuo.h:200`); the file is

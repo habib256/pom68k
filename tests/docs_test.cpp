@@ -2376,6 +2376,7 @@ int main() {
                 const size_t end = text.find('`', i + 1);
                 if (end == std::string::npos) break;
                 const std::string token = text.substr(i + 1, end - i - 1);
+                const size_t open = i;
                 i = end;
                 // `<path>.<ext>:<first>[-<last>]`, nothing else.
                 const size_t colon = token.rfind(':');
@@ -2411,9 +2412,91 @@ int main() {
                 if (resolved.empty()) continue;          // not ours to judge
                 cited++;
                 const int lines = lineCount(resolved);
-                if (std::max(first, last) > lines)
+                if (std::max(first, last) > lines) {
                     stale.push_back(token + " (" + path + " has " +
                                     std::to_string(lines) + " lines)");
+                    continue;
+                }
+                // ── The SOUND half, since 2026-09-16: the anchor rule ──
+                // The sentence around the citation names identifiers in
+                // backticks; one of them must occur inside the cited range
+                // (three lines of slack). When none does but a FUNCTION,
+                // MEMBER or MACRO among them occurs elsewhere in the file,
+                // the code moved and the number did not: the citation has
+                // DRIFTED. A type name can confirm a range but never accuse
+                // it (`Cpu030` is on every other line of Cpu030.h), and a
+                // prose word in backticks (`save`) counts for nothing.
+                // tools/refresh_citations.py is the same rule with --fix;
+                // the two must agree, so change them together.
+                {
+                    const size_t from = open > 200 ? open - 200 : 0;
+                    const size_t to = std::min(text.size(), end + 200);
+                    const std::string window = text.substr(from, to - from);
+                    const std::string stem = [&] {
+                        const std::string base = path.substr(path.rfind('/') + 1);
+                        return base.substr(0, base.rfind('.'));
+                    }();
+                    std::vector<std::string> anchors, accusers;
+                    for (size_t a = window.find('`'); a != std::string::npos;
+                         a = window.find('`', a + 1)) {
+                        const size_t b = window.find('`', a + 1);
+                        if (b == std::string::npos) break;
+                        std::string name = window.substr(a + 1, b - a - 1);
+                        a = b;
+                        bool called = false;
+                        if (name.size() > 2 && name.compare(name.size() - 2, 2, "()") == 0) {
+                            called = true;
+                            name.resize(name.size() - 2);
+                        }
+                        if (name.empty() || name == path) continue;
+                        bool identifier = std::isalpha(uint8_t(name[0])) || name[0] == '_';
+                        bool upper = false, underscore = false, scoped = false;
+                        for (size_t k = 0; identifier && k < name.size(); k++) {
+                            const unsigned char c = uint8_t(name[k]);
+                            if (c == ':' ) { scoped = true; continue; }
+                            if (!(std::isalnum(c) || c == '_')) identifier = false;
+                            if (std::isupper(c)) upper = true;
+                            if (c == '_') underscore = true;
+                        }
+                        if (!identifier) continue;
+                        const std::string leaf = name.substr(name.rfind(':') + 1);
+                        const bool codeLike = name.size() >= 4 && (upper || underscore || scoped);
+                        if (!(codeLike || called) || leaf.size() < 4 || leaf == stem) continue;
+                        if (std::find(anchors.begin(), anchors.end(), leaf) == anchors.end())
+                            anchors.push_back(leaf);
+                        bool leafUpper = false;
+                        for (char c : leaf) if (std::isupper(uint8_t(c))) leafUpper = true;
+                        const bool accuses = called || leaf.find('_') != std::string::npos ||
+                                             (std::islower(uint8_t(leaf[0])) && leafUpper);
+                        if (accuses && std::find(accusers.begin(), accusers.end(), leaf) == accusers.end())
+                            accusers.push_back(leaf);
+                    }
+                    if (!anchors.empty()) {
+                        std::vector<std::string> fileLines;
+                        {
+                            std::ifstream f(resolved);
+                            for (std::string line; std::getline(f, line); ) fileLines.push_back(line);
+                        }
+                        const int lo = std::max(1, first - 3), hi = std::min(int(fileLines.size()), last + 3);
+                        bool anchored = false;
+                        for (const std::string& a : anchors)
+                            for (int ln = lo; !anchored && ln <= hi; ln++)
+                                if (fileLines[size_t(ln - 1)].find(a) != std::string::npos) anchored = true;
+                        if (!anchored) {
+                            for (const std::string& a : accusers) {
+                                int at = 0;
+                                for (size_t ln = 0; ln < fileLines.size() && !at; ln++)
+                                    if (fileLines[ln].find(a) != std::string::npos) at = int(ln + 1);
+                                if (at) {
+                                    stale.push_back(token + " — `" + a + "` is at line " +
+                                                    std::to_string(at) + ", not in the cited range "
+                                                    "(tools/refresh_citations.py --fix)");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
             for (const std::string& one : stale)
                 check(false, doc + " cites `" + one + "`");

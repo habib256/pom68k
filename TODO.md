@@ -103,10 +103,6 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
   8.1, `$1B40` pointe dans le code Système ; la recherche a été abandonnée
   plutôt que devinée. Conséquence : les gates ne tapent que lettres et
   espaces, et ouvrent à la souris ce qui demande un tiret.
-- [ ] **Rendre `docs_test` capable de voir une citation fausse.** Son § 10
-  ne prouve que l'existence de la plage citée, pas qu'elle dise ce que la
-  phrase affirme. Piste : exiger de toute citation un ancrage vérifiable —
-  un symbole ou un fragment que le gate retrouve dans la plage.
 
 ---
 

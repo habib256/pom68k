@@ -323,8 +323,8 @@ Re-derived from the CMake gate modules on 2026-08-12:
 - **15 of 39** are additionally gated on the **second execution engine**
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
   iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` in
-  `cmake/Pom68kJitGates.cmake:475-521`, plus `jit_classic_boot_etalon`
-  registered on its own at `cmake/Pom68kJitGates.cmake:648-652` because it
+  `cmake/Pom68kJitGates.cmake:656-660`, plus `jit_classic_boot_etalon`
+  registered on its own at `cmake/Pom68kJitGates.cmake:656-660` because it
   shares the compact binary); four of those also
   carry an explicit `interp_*_boot_etalon` interpreter reference (q605,
   centris650, q630, q700).

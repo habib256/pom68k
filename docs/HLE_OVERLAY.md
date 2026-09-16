@@ -191,12 +191,12 @@ Checked against the vendored core on 2026-07-31. The study's original claim
 | Hook | Where | Reality |
 |---|---|---|
 | `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:1143` (virtual) / `:1332`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == Instr::STOP \|\| I == Instr::TAS \|\| I == Instr::BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
-| `didReachSoftwareTrap(addr)` | `Moira.h:1291` (virtual) / `:1383`, fired from `execLineA` (`MoiraExec_cpp.h:47`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
+| `didReachSoftwareTrap(addr)` | `Moira.h:1291` (virtual) / `:1383`, fired from `execLineA` (`MoiraExec_cpp.h:32`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
 | `MoiraDebugger` breakpoints / softstops | `MoiraDebugger.*`, checked at `Moira.cpp:667` | **The zero-cost-when-unused route**: `State::CHECK_BP` is set only while a breakpoint exists (`MoiraDebugger.cpp:190-192`), so an unarmed build pays one already-hot flag test. **Caveat:** the check sits at the `done:` label — *after* the instruction retires, reporting `reg.pc0`. An entry-address hook therefore fires with the routine's first instruction **already executed**; the handler must either account for that or hook the instruction before the entry |
 
 Also corrected: `Cpu68k` derives from `MoiraSnapshot` (`src/MoiraSnapshot.h:32`),
 not from `moira::Moira` directly; `MacMemory::loadRom` is at
-`src/MacMemory.cpp:43`.
+`src/MacMemory.cpp:65`.
 
 ### 5.2 Two attach strategies — support both
 
@@ -209,7 +209,7 @@ Recommendation: **address hook for v1** (no checksum handling, instant toggle).
 Move a module to byte-patch only with *patch-before-compile* + *region
 invalidation* guaranteed.
 
-A byte-patch pass would run inside `MacMemory::loadRom` (`src/MacMemory.cpp:43`)
+A byte-patch pass would run inside `MacMemory::loadRom` (`src/MacMemory.cpp:65`)
 and its per-machine equivalents, **after** the signature scan and **before** the
 first fetch or JIT compile sees the page.
 
