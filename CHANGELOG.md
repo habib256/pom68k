@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (eighteenth)** — [The macii × 7.5.5 matrix cell is ruled PASS: six identical runs, Stickies in front and the Finder running](#2026-09-16-macii-755-cell-ruled)
 - **2026-09-16 (seventeenth)** — [The machine window under a headless gate: the menu bar, the dashboard, the screen surface and the keyboard on a fake machine, and two defects it found on its first run](#2026-09-16-machine-window-gate)
 - **2026-09-16 (sixteenth)** — [Cabinet mode and the CRT glass, ported from NeoST: Ctrl+Alt+F to the whole monitor, presets light / arcade / phosphor, every slider live](#2026-09-16-kiosk-and-crt)
 - **2026-09-16 (fifteenth)** — [The services form is rendered and driven for the first time: a hub attached to a ROM-less Plus board, a checkbox that reaches the hub, a typed server name and folder applied](#2026-09-16-services-form-rendered)
@@ -984,6 +985,28 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-macii-755-cell-ruled"></a>
+## 2026-09-16 (eighteenth) — The macii × 7.5.5 matrix cell is ruled PASS: six identical runs, Stickies in front and the Finder running
+
+The cell recorded UNSTABLE on 2026-09-02 asked who was in front at one
+instant and got Stickies, the volume's Startup Item. Since the criterion
+became the guest's own word sampled across a second (`finderRuns`,
+`FinderSignature.h`), the cell was never re-run in numbers. Today, on the
+qualified `hdv/ref/System 7.5.5 HD.dsk` and the Mac II ROM 9779D2C4, six
+runs of `finder_boot_matrix macii` — three with the real Toby declaration
+ROM 342-0008-a, three with the synthetic fallback — print the same line:
+
+```
+macii menu=0.12 desk=0.50 SCSI=3508 front="Stickies" Finder runs 640x480 PC=$007AA9D2 frames=20000
+PASS
+```
+
+Byte-identical SCSI count and PC across the six: the boot is
+deterministic, the Finder runs behind Stickies, and the 2026-09-02
+"UNSTABLE" was the old instant-front criterion, not the machine. The TODO
+item is closed; the matrix reads plus × HD20SC / 7.1 / 7.5, macii × HD20SC
+/ 7.0 / 7.1 / 7.5.5, lcii × MacPack / 7.1 / 7.5, q605 × 8.1, all PASS.
 
 <a id="2026-09-16-machine-window-gate"></a>
 ## 2026-09-16 (seventeenth) — The machine window under a headless gate: the menu bar, the dashboard, the screen surface and the keyboard on a fake machine, and two defects it found on its first run

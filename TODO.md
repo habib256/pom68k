@@ -96,8 +96,6 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
   et la passe save-state GUI de bout en bout — le gate voit la demande
   arriver dans le slot, pas le fichier écrit ; les trois gates de relance
   du 2026-09-08 sont hors GUI.
-- [ ] **Trancher la cellule `finder_boot_matrix` macii × 7.5.5**, enregistrée
-  UNSTABLE le 2026-09-02 (Stickies au premier plan).
 - [ ] **Fermer le `-Wstringop-overflow` de GCC 13 + LTO sur
   `EtherLink::sendToGuest`.** Latent parce que le job `-Werror` construit
   sans LTO : la combinaison qui l'expose n'est couverte par aucun gate.
