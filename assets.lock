@@ -50,3 +50,4 @@ reference-disk | DaynaPORT installer disk | 1474560 | c1b256d6f89389abf60caaab24
 reference-disk | MacTCP Ping tools volume | 4250112 | e616c34227b6098e6bd549fcfe598314ed4c01a159edabc7ffba884bb30262fa | hdv/ref/TOOLS.vhd | q605
 reference-floppy | System 1.1 400K MFS | 409600 | 1e098bcb46d58bd35821afe0c5aebc2ae3f8394e6f7a20bf0409c838fd1d3386 | disks35/ref/System 1.1.dsk | mac128k,mac512k
 reference-floppy | System 2.0 400K MFS | 409600 | 0655aa5ac47a8bb750af162b5feeb5e336ec11a2f435b7f40f49bcfa079aa680 | disks35/ref/System 2.0.dsk | mac512k
+reference-floppy | System 3.3 800K | 819200 | 8fdc677cc9f24bab3eff8b2707544c2487b47235326cfc2df82c7642badb145f | disks35/ref/System 3.3.dsk | plus

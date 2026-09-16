@@ -239,6 +239,7 @@ POM68K_SPEEDO_TRACE	test	owner:tests/lcii_speedometer_census.cpp
 POM68K_SPEED_LOG	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_COUNT	diagnostic	owner:src/StartupOptions.h
 POM68K_SPEED_LOG_SKIP	diagnostic	owner:src/StartupOptions.h
+POM68K_SYSTEM_BOOT_PPM	test	owner:tests/system_boot_etalon.cpp
 POM68K_TEACHTEXT_DISCOVER	test	owner:tests/compact_teachtext_etalon.cpp
 POM68K_TEST_AGENT	test	owner:tests/AgentBootProbe.h
 POM68K_TEST_DAYNAPORT	test	owner:tests/DaynaBootProbe.h

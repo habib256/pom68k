@@ -78,10 +78,6 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
   invité fixe, empreintes archivées, `-mtune`/LTO/PGO séparés). Le paquet
   Cortex-A76 est archivé depuis le 2026-09-07 ; il ne manque que
   l'exécution. Bloqué : la carte physique.
-- [ ] **Ajouter la cellule Plus/System 4.1 sur floppy.** Le chemin est gaté
-  (`external_floppy_boot_etalon` boote la ROM Plus depuis le drive B, drive
-  A vide). Bloqué par l'actif : `hdv/System 4.1.dsk` est une image SCSI,
-  pas une disquette 800 K.
 
 ---
 

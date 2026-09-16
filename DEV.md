@@ -2001,6 +2001,9 @@ sub-frame remainder never lands). The headless window gate
 `POM68K_GUI_LABELS` (list every labelled ImGui item of a frame with its
 rectangle — what a new click scenario is written from) and
 `POM68K_GUI_TRACE` (the hovered window and ids at each step of a click).
+`system_boot_etalon` (the Plus on a System floppy: the 6.0.5 cell, the
+System 3.3 cells in drive A and drive B) dumps its final screen with
+`POM68K_SYSTEM_BOOT_PPM` (`<path>` of a PGM).
 `POM68K_MAC128K_EXC` exits 0 whether or not an
 exception fires: it reports, it never judges, so it must not be registered
 as a gate in that mode.

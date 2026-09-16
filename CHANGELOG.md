@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (ninth)** — [The Plus boots System 3.3 from an 800 K floppy, in drive A and in drive B: the cell the backlog waited on, unblocked by the TEST drive](#2026-09-16-plus-system33-floppy-cells)
 - **2026-09-16 (eighth)** — [The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed](#2026-09-16-census-corrected-sst)
 - **2026-09-16 (seventh)** — [Nine boot-volume names that never existed leave the search chains: every gate's first choice is now the pinned reference it actually boots](#2026-09-16-phantom-volume-names-retired)
 - **2026-09-16 (sixth)** — [The backlog drops the closed diary, the census counts and the second copy of every jalon bullet](#2026-09-16-todo-open-only)
@@ -975,6 +976,29 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-plus-system33-floppy-cells"></a>
+## 2026-09-16 (ninth) — The Plus boots System 3.3 from an 800 K floppy, in drive A and in drive B: the cell the backlog waited on, unblocked by the TEST drive
+
+"Ajouter la cellule Plus/System 4.1 sur floppy" had sat under § Bloqué since
+2026-09-09 for one reason: no 800 K System image on hand — `hdv/System
+4.1.dsk` is a SCSI image. The Infinite Mac clone on the TEST drive
+(`sauvegarde-20260906/refs/infinite-mac/Images`) carries `System 2.1`,
+`3.0`, `3.2` and `3.3` as 819 200-byte floppies; the whole set of System
+images the M4 lacked (1.0 to 7.5.3, floppies to `disks35/`, hard disks to
+`hdv/`, the DiskCopy 4.2 ones told apart by their `$0100` at +$52) came over
+this afternoon and went back to `TEST/pom68K` for the x86-64 host.
+
+**`system_boot_etalon` takes an image and a drive.** The M5 gate that boots
+`Disk605.dsk` (System 6.0.5) in drive A now accepts `[--external]
+[disks35/<image>]`; two cells are registered on it —
+`plus_system33_boot_etalon` and `plus_system33_external_boot_etalon` — and
+both reach the Finder 5.4 desktop of "System Tools" in 4.4 s (menu bar
+0.08, desktop 0.50, track 1). The drive-B cell asserts the nibbles came from
+the external mechanism with drive A empty, the same fact
+`external_floppy_boot_etalon` proves on a synthetic boot block.
+`disks35/ref/System 3.3.dsk` is pinned (`reference-floppy`, profile
+`plus`): 45/45 strict. `POM68K_SYSTEM_BOOT_PPM` dumps the screen.
 
 <a id="2026-09-16-census-corrected-sst"></a>
 ## 2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped, not 332 / 0: three corpus gates abstained without saying SKIP — fixed, corpus fetched, gates executed

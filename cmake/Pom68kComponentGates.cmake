@@ -145,6 +145,18 @@ add_executable(system_boot_etalon tests/system_boot_etalon.cpp)
 target_link_libraries(system_boot_etalon PRIVATE pom68k_core)
 add_test(NAME system_boot_etalon COMMAND system_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# The Plus on an 800 K System 3.3 floppy (pinned disks35/ref/System 3.3.dsk,
+# from the Infinite Mac clone, 2026-09-16): the "Plus/System on floppy"
+# cell the backlog waited on, in drive A and — the ROM discovering it with
+# drive A empty — in drive B.
+add_test(NAME plus_system33_boot_etalon
+         COMMAND system_boot_etalon "disks35/System 3.3.dsk"
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME plus_system33_external_boot_etalon
+         COMMAND system_boot_etalon --external "disks35/System 3.3.dsk"
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(plus_system33_boot_etalon
+                     plus_system33_external_boot_etalon PROPERTIES TIMEOUT 600)
 
 # M7 gate: SCSI target device in isolation (soft-skips without image).
 add_executable(scsi_disk_test tests/scsi_disk_test.cpp)
