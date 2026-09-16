@@ -55,8 +55,12 @@ sont au catalogue, les deux identités 64 K sont épinglées dans `assets.lock`
 et `mac128k_boot_etalon` / `mac512k_boot_etalon` bootent une disquette
 System 400 K jusqu'au bureau du Finder — exécutés sur x86-64 le 2026-09-13
 (7,40 s chacun) et sur le M4 le 2026-09-16 (5,3 s et 4,4 s) depuis que les
-deux images 400 K y sont arrivées du lecteur TEST ; reste à trancher si elles
-s'épinglent (§ Bloqué). La sérialisation PWM du lecteur 400 K est livrée
+deux images 400 K y sont arrivées du lecteur TEST, épinglées le jour même
+dans `assets.lock` (rôle `reference-floppy`, `disks35/ref/`, jumeau `work/`
+comme `hdv/ref/`). Ce que l'épinglage ne donne pas : elles sont en MFS et
+l'arbre n'a aucun parseur MFS, donc pas de vérification hôte d'un fichier
+écrit par l'invité — le modèle de `lcii_floppy_etalon` reste hors d'atteinte
+sur ces deux machines. La sérialisation PWM du lecteur 400 K est livrée
 (format v16, 2026-09-15). Le paragraphe précédent disait encore, le
 2026-09-14, qu'`assets.lock` n'avait aucune ligne 64 K : il datait du
 2026-09-12.
@@ -88,7 +92,8 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
   une session GUI sur cet hôte tournait sur la ROM synthétique sans le
   savoir). Les deux disquettes 400 K `disks35/System 1.1.dsk` et
   `System 2.0.dsk` sont arrivées du lecteur TEST le 2026-09-16 :
-  `mac128k_boot_etalon` et `mac512k_boot_etalon` s'exécutent désormais ici.
+  `mac128k_boot_etalon` et `mac512k_boot_etalon` s'exécutent désormais ici,
+  et elles sont épinglées (`disks35/ref/`, rôle `reference-floppy`).
   Manquent encore des **images**, pas des dumps : les volumes
   `hdv/lc3-boot.vhd`, `hdv/lcii-boot.vhd`, `hdv/iisi-boot.vhd`,
   `hdv/lc-boot.vhd`, `hdv/classic2-boot.vhd`, `hdv/cclassic-boot.vhd`,
@@ -132,19 +137,6 @@ Items cadrés qui ne peuvent avancer sans matériel de référence
   `external_floppy_boot_etalon` boote la ROM Plus depuis le drive B avec le
   drive A vide. Bloqué par le seul actif : `hdv/System 4.1.dsk` est une image
   SCSI, pas une disquette 800 K.
-- [ ] **Décider si les deux images 400 K s'épinglent dans `assets.lock`.** La
-  recherche, elle, est close depuis le 2026-09-13 : `disks35/System 1.1.dsk` et
-  `disks35/System 2.0.dsk` font 409 600 octets, portent des blocs de boot
-  `'LK'` et sont en **MFS** (`d2d7` à l'offset 1024), non en HFS. L'arbre n'a
-  aucun parseur MFS, ce qui n'empêche pas le boot — `SonyDrive` sert des
-  secteurs et c'est la ROM invitée qui lit le système de fichiers — mais
-  interdit toute vérification hôte d'un fichier écrit par l'invité sur la
-  disquette, donc le modèle de `lcii_floppy_etalon` est hors d'atteinte ici.
-  Elles viennent du clone Infinite Mac, sont ignorées par git
-  (`.gitignore:18`) et ne sont **pas** épinglées : `disks35/` n'a aucun
-  précédent d'épinglage. La géométrie simple face, elle, est acquise et gatée
-  (`SonyDrive.cpp:188` dérive `doubleSided_` de la taille,
-  `iwm_write_test.cpp:255-257`).
 
 ---
 

@@ -7,6 +7,7 @@
 // floppy.cpp:3452-3477). Cross-checked against pce gcr-mac.c — see DEV.md.
 
 #include "SonyDrive.h"
+#include "FixtureStore.h"
 #include "AtomicReplace.h"
 #include <algorithm>
 #include <cstdio>
@@ -153,7 +154,13 @@ bool SonyDrive::insert(const std::string& path) {
     // media's committed sectors are lost when the user picks a second image
     // straight from the Disques menu (no eject in between).
     if (hasDisk()) flushToFile();
-    std::ifstream in(path, std::ios::binary);
+    // The same contract as ScsiDisk::open: a writable session on a
+    // disks35/ref/ fixture works on its disks35/work/ clone; the reference
+    // bytes assets.lock pins are never opened for writing.
+    bool writeBack = writeBack_;
+    const std::string backing =
+        pom68k::routeWritableOpen(path, "Floppy", writeBack);
+    std::ifstream in(backing, std::ios::binary);
     if (!in) return false;
     std::vector<uint8_t> raw((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
@@ -171,7 +178,7 @@ bool SonyDrive::insert(const std::string& path) {
         raw.assign(raw.begin() + 0x54, raw.begin() + 0x54 + size_t(dataSize));
     }
     if (!insertImage(std::move(raw))) return false;
-    path_ = path;                  // remember the source for flushToFile
+    path_ = backing;               // remember the source for flushToFile
     dc42Header_ = std::move(header);
     dirty_ = false;
     return true;
@@ -1002,6 +1009,19 @@ static uint32_t dc42Checksum(const uint8_t* d, size_t n) {
 
 bool SonyDrive::flushToFile() {
     if (!writeBack_ || !dirty_ || path_.empty() || image_.empty()) return false;
+    // Write-back switched on after the insert (the DAFB runner inserts its
+    // floppy before configureFloppyWriteBack): the reference is still never
+    // written in place — the flush goes to the work clone, which the next
+    // insert of the same reference then reopens.
+    if (pom68k::isReferenceFixturePath(path_)) {
+        const pom68k::WritableFixture routed = pom68k::writableFixture(path_);
+        if (!routed.reference || !routed.writable) {
+            std::fprintf(stderr, "Floppy: immutable reference %s not flushed: %s\n",
+                         path_.c_str(), routed.error.c_str());
+            return false;
+        }
+        path_ = routed.path;
+    }
     const std::string tmp = path_ + ".tmp";
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);

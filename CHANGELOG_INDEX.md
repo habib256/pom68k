@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 526 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 527 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 48 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 86 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 87 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 22 |
 | [Sound](#sound) | 8 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 21 |
@@ -288,6 +288,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-14 (fourth)** — [The host writes « POM68K Disques » into the boot volume's Startup Items, and the Finder launches it with no gesture in the Mac](CHANGELOG.md#2026-09-14-agent-startup-items)
 - **2026-09-14 (seventh)** — [The sixteen DaynaPort gates execute on the M4, and the roadmap stops saying the 64 K ROMs are unpinned](CHANGELOG.md#2026-09-14-daynaport-executed-on-m4)
 - **2026-09-14 (third)** — [The two debts the detach left are paid: the relaunch line keeps every SCSI id in place, and the input journal names every command](CHANGELOG.md#2026-09-14-relaunch-ids-and-journal-names)
+- **2026-09-16 (later)** — [The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place](CHANGELOG.md#2026-09-16-400k-floppies-pinned)
 
 ## Video — decoders, the raster beam, DAFB
 

@@ -453,6 +453,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-16 (later)** — [The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place](#2026-09-16-400k-floppies-pinned)
 - **2026-09-16** — [The Toby declaration ROM is a firmware choice the product reports: the missing dump is said in the window, and the dump on this host was not being found](#2026-09-16-toby-decl-rom-is-a-firmware-choice)
 - **2026-09-15 (fifth)** — [POM68K 0.2.0](#2026-09-15-release-0-2-0)
 - **2026-09-15 (fourth)** — [System 7.5.5 on the synthetic Toby ROM: what the real driver does, why a copy of it did not help, and the rule that settles it](#2026-09-15-synthetic-toby-is-a-fallback)
@@ -966,6 +967,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-16-400k-floppies-pinned"></a>
+## 2026-09-16 (later) — The two 400 K System floppies are pinned: `disks35/ref/` gets the `hdv/ref/` contract, and a reference floppy is never written in place
+
+The question left open on 2026-09-13 — do `disks35/System 1.1.dsk` and
+`System 2.0.dsk` go into `assets.lock`? — had two obstacles: the images
+existed on one host only, and `disks35/` had no precedent for pinning. The
+first fell this morning (the TEST drive brought them to the M4, byte-identical
+to the x86-64 copies). The second is what this entry settles.
+
+**Pinned, as `reference-floppy` rows below `disks35/ref/`.** `verify_assets.py`
+learns the role (root `disks35/ref`, `.dsk`/`.img`/`.image`), `check_volume_state.py`
+reports drift on it, and `--strict` answers 44/44 on this host. `mac128k_boot_etalon`
+and `mac512k_boot_etalon` find them through the same `preferReferenceFixture`
+the hard disks use, since `FixtureStore.h` now treats `hdv/` and `disks35/`
+alike as media roots.
+
+**The immutability that makes a pin honest.** A gate never writes a floppy
+(`SonyDrive::writeBack_` is false outside the GUI), but a GUI session does:
+`configureFloppyWriteBack` follows the user's setting, and a 128K booted from
+the picker would have rewritten the pinned bytes on eject. So the floppy gets
+the `ScsiDisk::open` contract: `routeWritableOpen` — the routing factored out
+of `ScsiDisk` and shared — sends a writable insert of `disks35/ref/x` to
+`disks35/work/x`, cloning once. One more case than SCSI has: the DAFB runner
+inserts its floppy *before* it switches write-back on, so `flushToFile` also
+routes a reference path to the clone at flush time. `floppy_persist_test`
+proves both orders leave the reference bytes intact and the guest's sector on
+the clone; `fixture_store_test` covers the `disks35` twin and refuses a
+`ref/` directory outside the two media roots. The picker lists
+`disks35/ref/` and `disks35/work/`.
+
+**What the pin does not give.** Both images are MFS; the tree has no MFS
+parser, so no gate can verify a file the guest wrote to the floppy — the
+`lcii_floppy_etalon` model stays out of reach on these two machines, and the
+TODO says so where the 128K/512K chantier is summarised.
 
 <a id="2026-09-16-toby-decl-rom-is-a-firmware-choice"></a>
 ## 2026-09-16 — The Toby declaration ROM is a firmware choice the product reports: the missing dump is said in the window, and the dump on this host was not being found

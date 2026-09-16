@@ -208,23 +208,8 @@ bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
 }
 
 bool ScsiDisk::open(const std::string& path, bool writeBack) {
-    std::string backingPath = path;
-    if (writeBack) {
-        const pom68k::WritableFixture routed = pom68k::writableFixture(path);
-        if (routed.reference) {
-            if (!routed.writable) {
-                std::fprintf(stderr, "SCSI: immutable reference %s: %s; "
-                                     "session is read-only\n",
-                             path.c_str(), routed.error.c_str());
-                writeBack = false;
-            } else {
-                backingPath = routed.path;
-                std::fprintf(stderr, "SCSI: immutable reference %s -> work %s%s\n",
-                             path.c_str(), backingPath.c_str(),
-                             routed.copied ? " (cloned)" : "");
-            }
-        }
-    }
+    const std::string backingPath =
+        pom68k::routeWritableOpen(path, "SCSI", writeBack);
     std::ifstream in(backingPath, std::ios::binary);
     if (!in) return false;
     // Block read, not istreambuf_iterator: byte-wise iteration measured

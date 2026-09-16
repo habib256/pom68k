@@ -11,6 +11,7 @@
 #include "SonyDrive.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -145,6 +146,46 @@ int main() {
 
     std::remove(raw.c_str());
     std::remove(dc42.c_str());
+    {   // ── a disks35/ref/ fixture is never written in place ──
+        // Both orders the runners use: write-back on before the insert
+        // (V8/Sonora/Toby) routes the insert to the work clone; write-back
+        // on after the insert (DAFB) routes the flush. The reference bytes
+        // assets.lock pins survive either way.
+        namespace fs = std::filesystem;
+        const fs::path root = "floppy_persist_ref_tmp";
+        const fs::path ref = root / "disks35" / "ref" / "System.dsk";
+        const fs::path work = root / "disks35" / "work" / "System.dsk";
+        std::error_code ec;
+        fs::remove_all(root, ec);
+        fs::create_directories(ref.parent_path(), ec);
+        writeAll(ref.string(), std::vector<uint8_t>(SonyDrive::kSize400K, 0));
+        const auto pristine = readAll(ref.string());
+
+        SonyDrive before;
+        before.reset();
+        before.setWriteBack(true);
+        CHECK(before.insert(ref.string()), "insert a reference floppy, write-back on");
+        CHECK(fs::is_regular_file(work, ec), "write-back before insert: work clone made");
+        CHECK(before.writeSector(3, 0, 1, sec), "write a sector on the clone");
+        before.eject();
+        CHECK(readAll(ref.string()) == pristine, "reference untouched (routed at insert)");
+        auto cloned = readAll(work.string());
+        CHECK(cloned.size() == SonyDrive::kSize400K && cloned != pristine,
+              "work clone carries the guest's sector");
+
+        fs::remove_all(root / "disks35" / "work", ec);
+        SonyDrive after;
+        after.reset();
+        CHECK(after.insert(ref.string()), "insert a reference floppy, write-back off");
+        after.setWriteBack(true);             // the DAFB runner's order
+        CHECK(after.writeSector(3, 0, 1, sec), "write a sector after enabling write-back");
+        after.eject();
+        CHECK(readAll(ref.string()) == pristine, "reference untouched (routed at flush)");
+        CHECK(fs::is_regular_file(work, ec) && readAll(work.string()) != pristine,
+              "the late flush lands on the work clone");
+        fs::remove_all(root, ec);
+    }
+
     std::printf(fails ? "FAILED (%d)\n" : "PASSED — floppy write persistence\n",
                 fails);
     return fails ? 1 : 0;

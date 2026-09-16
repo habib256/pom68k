@@ -299,6 +299,10 @@ std::vector<std::string> diskBaysKnownImages(const std::string& nearPath) {
     scanInto(probeDir("hdv/ref"), out);
     scanInto(probeDir("hdv/work"), out);
     scanInto(probeDir("hdv"), out);
+    // Floppies have the same twin since 2026-09-16: SonyDrive routes a
+    // writable insert of disks35/ref/ to disks35/work/.
+    scanInto(probeDir("disks35/ref"), out);
+    scanInto(probeDir("disks35/work"), out);
     scanInto(probeDir("disks35"), out);
     // `cd/` is to CDs what `disks35/` is to floppies. Before it was scanned,
     // an .iso sitting in the obvious place was invisible to the window and

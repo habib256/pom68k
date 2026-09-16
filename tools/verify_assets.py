@@ -4,7 +4,8 @@
 Missing files are reported but accepted by default because clean clones cannot
 ship Apple firmware. --strict turns missing entries into failures for a private
 asset-bearing runner. Present files never soft-pass a size or digest mismatch.
-Reference disks must live below hdv/ref so a GUI session cannot write them.
+Reference disks must live below hdv/ref, reference floppies below disks35/ref,
+so a GUI session cannot write them (it works on the work/ twin).
 """
 
 from __future__ import annotations
@@ -33,6 +34,11 @@ ROLE_ROOTS = {
     "machine-rom": ("roms",),
     "declaration-rom": ("roms",),
     "reference-disk": ("hdv", "ref"),
+    "reference-floppy": ("disks35", "ref"),
+}
+DISK_SUFFIXES = {
+    "reference-disk": {".dsk", ".vhd"},
+    "reference-floppy": {".dsk", ".img", ".image"},
 }
 PROFILE_RE = re.compile(r"[a-z0-9]+")
 CATALOG_ROW_RE = re.compile(
@@ -68,8 +74,9 @@ def parse_manifest(path: Path):
         if rel.parts[:len(root_parts)] != root_parts:
             expected = "/".join(root_parts) + "/"
             raise ValueError(f"{path}:{number}: {role} path must be below {expected}")
-        if role == "reference-disk" and rel.suffix.lower() not in {".dsk", ".vhd"}:
-            raise ValueError(f"{path}:{number}: reference disk must be a .dsk or .vhd image")
+        if role in DISK_SUFFIXES and rel.suffix.lower() not in DISK_SUFFIXES[role]:
+            allowed = "/".join(sorted(DISK_SUFFIXES[role]))
+            raise ValueError(f"{path}:{number}: {role} must be a {allowed} image")
         if relpath in seen:
             raise ValueError(f"{path}:{number}: duplicate asset path {relpath}")
         seen.add(relpath)

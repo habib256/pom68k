@@ -59,6 +59,23 @@ int main() {
     check(fs::path(pom68k::preferReferenceFixture(legacyHdv.string())) == legacyHdv,
           "legacy hdv path remains the fallback when no reference exists");
 
+    // disks35/ is the floppies' media root, with the same twin (2026-09-16).
+    const fs::path legacyFloppy = root / "disks35" / "System 1.1.dsk";
+    const fs::path refFloppy = root / "disks35" / "ref" / "System 1.1.dsk";
+    fs::create_directories(refFloppy.parent_path(), ec);
+    { std::ofstream f(legacyFloppy, std::ios::binary); f << "MUTABLE"; }
+    { std::ofstream f(refFloppy, std::ios::binary); f << "REFERENCE"; }
+    check(fs::path(pom68k::preferReferenceFixture(legacyFloppy.string())) == refFloppy,
+          "well-known disks35 path prefers its immutable reference twin");
+    check(pom68k::isReferenceFixturePath(refFloppy.string()),
+          "exact disks35/ref path is classified as a reference fixture");
+    check(!pom68k::isReferenceFixturePath((root / "other" / "ref" / "x.dsk").string()),
+          "a ref/ directory outside the media roots is not a reference fixture");
+    auto floppyWork = pom68k::writableFixture(refFloppy.string());
+    check(floppyWork.reference && floppyWork.writable &&
+              fs::path(floppyWork.path) == root / "disks35" / "work" / "System 1.1.dsk",
+          "a reference floppy clones to disks35/work/");
+
     fs::remove_all(root, ec);
     std::printf("%s\n", fails ? "FAILED" : "PASS");
     return fails ? 1 : 0;

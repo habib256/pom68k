@@ -2472,8 +2472,14 @@ never copyrighted bytes.
 `python3 tools/verify_assets.py` validates the manifest schema and every
 present entry (size + SHA-256; `--strict` also refuses missing files). Roles are
 structural: firmware and ROMs stay below `roms/`, while a `reference-disk` row
-is rejected unless its path is below `hdv/ref/`. A disk fixture placed there
-is immutable by construction. The verifier also cross-checks profile slugs
+is rejected unless its path is below `hdv/ref/` and a `reference-floppy` row
+(since 2026-09-16: the two 400 K MFS System floppies of the 128K/512K) unless
+below `disks35/ref/`. A fixture placed there is immutable by construction:
+`FixtureStore.h` treats `hdv/` and `disks35/` alike, `ScsiDisk::open` and
+`SonyDrive::insert` route a writable open to the `work/` twin through
+`routeWritableOpen`, and a floppy whose write-back is switched on after the
+insert (the DAFB runner's order) is routed at flush time instead —
+`floppy_persist_test` proves both orders leave the reference bytes intact. The verifier also cross-checks profile slugs
 against `MachineCatalog.h` and requires its 39 profiles to be covered exactly
 once by `machine-rom` rows. Every normal
 `hdv/<name>` lookup now prefers that twin (`FixtureStore.h:23-39`) in both the

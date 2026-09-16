@@ -276,7 +276,9 @@ external rows in **Disques…**; each can be inserted or ejected live, and the
 external mechanism follows the profile's 800K/SuperDrive capability. The
 PowerBook Duo 230 has no floppy mechanism. SCSI images passed explicitly are
 writable. Repository fixtures under `hdv/ref/` remain immutable: the GUI
-creates its working copy under `hdv/work/`.
+creates its working copy under `hdv/work/`. Floppies under `disks35/ref/`
+follow the same rule with `disks35/work/` — the two 400 K System floppies
+the Macintosh 128K and 512K boot are pinned there by `assets.lock`.
 
 PRAM is stored beside the boot volume as `<disk>.<profile>.pram`. Save states
 use `<disk>.<profile>.pomss`; incompatible profile, ROM or RAM configurations

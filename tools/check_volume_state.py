@@ -101,7 +101,7 @@ def reference_disks(root: Path) -> dict:
         return out
     for line in lock.read_text(encoding="utf-8").splitlines():
         cells = [c.strip() for c in line.split("|")]
-        if len(cells) != 6 or cells[0] != "reference-disk":
+        if len(cells) != 6 or cells[0] not in ("reference-disk", "reference-floppy"):
             continue
         _, _, _, digest, relpath, _ = cells
         out[Path(relpath).name] = (relpath, digest)
