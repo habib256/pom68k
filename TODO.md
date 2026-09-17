@@ -221,14 +221,24 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   « FPU présent ». PA0 suit désormais le socket (`setFpuFitted`), et le
   ROM prend alors son moniteur série de test (`$4644C` : PA1 en sortie
   basse, lecture de PA0 = 0 → `bset #26,D7`, attente d'un caractère SCC),
-  routine que MAME n'exécute jamais : les deux émulateurs divergent dès la
-  première init à froid (premier appel du répartiteur `$A02F18` depuis
-  `$A4667A` ici, `$A4652E` sous MAME ; POM68K bus-erre à `$50FC0000`,
-  `$A463D4`, où MAME sert la lecture). À attribuer sur la Guide/schéma :
-  quel chemin est celui du matériel, puis le gate `lcii_barefpu_boot_etalon`
-  (7.1 propre, `POM68K_NOFPU=1`). Outils : `lcii_trace` (`FLINE_FRAME`,
-  `RING_AT`, `VIA1_REGS`, `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`,
-  le romset `maclc2` MAME reconstruit depuis notre ROM (mémoire).
+  routine que MAME n'exécute jamais. **Deux pistes fermées le 2026-09-17.**
+  (a) Le bus error à `$50FC0000` (`$A463D4`) est exonéré : le servir en bus
+  ouvert comme MAME ne change rien au boot nu et ne casse pas le boot FPU —
+  c'était un symptôme. (b) Le pilotage de PA0 par le socket FPU est REVENU :
+  en `$A46420` la ROM teste `D2.b` et, pour 5 ou 7 (le nôtre est
+  `$70000D07`), met PA0 en entrée et **exige qu'il soit haut** ; bas, elle
+  tombe dans le moniteur de test usine. Un LC II à socket vide démarrait,
+  donc PA0 n'est pas le bit FPU sur ce chemin et le `0xd4 | config` de MAME
+  n'est jamais exercé par ce code — ce n'était pas une preuve. PA0 est
+  revenu à `$D5` ; le nu retrouve sa bombe F-line (`HWCfgFlags $FC00`,
+  86 commandes SCSI) au lieu du moniteur. **Reste la vraie question** : la
+  ROM lève le bit 12 de `HWCfgFlags` sur une machine sans FPU, donc lie la
+  SANE FPU. Le mécanisme est la sélection du enregistrement `UniversalInfo`
+  (`docs/BASILISK_ROM_NOTES.md` § 8.5 : le enregistrement `$FD` en `$3BE6`
+  porte `hwCfgWord $CC00`), et il faut trouver pourquoi la ROM n'élit pas
+  celui-là. Outils : `lcii_trace` (`FLINE_FRAME`, `RING_AT`, `VIA1_REGS`,
+  `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`, le romset `maclc2` MAME
+  reconstruit depuis notre ROM (mémoire).
 - [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Assets
   privés soft-skippables, captures stables. Le WASM n'a aujourd'hui que
   des stubs inactifs.

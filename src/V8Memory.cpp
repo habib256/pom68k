@@ -998,11 +998,11 @@ void V8Memory::applyMachineId() {
     // wedge the transport (validated: pull-ups on PB4/PB5 black-screen
     // the boot etalon).
     // Tinker Bell reads a plain $84 (v8.cpp:946-949, no diag bit OR).
-    // Bit 0 of the V8's and the Eagle's byte is the FPU-present config
-    // bit (v8.cpp:251, :659) — see setFpuFitted.
-    const uint8_t fpu = fpuFitted_ ? 1 : 0;
-    via_.setInA(model_ == Model::ClassicII     ? uint8_t(0x92 | fpu)
+    // PA0 reads HIGH, never from the FPU socket: the ROM requires it high at
+    // $A4644C (low = factory test monitor), so MAME's `0xd4 | config` is code
+    // it never reaches. CHANGELOG 2026-09-17 (fourth).
+    via_.setInA(model_ == Model::ClassicII     ? uint8_t(0x93)
                 : model_ == Model::ColorClassic ? uint8_t(0x82)
                 : model_ == Model::MacTv        ? uint8_t(0x84)
-                                                : uint8_t(0xD4 | fpu));
+                                                : uint8_t(0xD5));
 }

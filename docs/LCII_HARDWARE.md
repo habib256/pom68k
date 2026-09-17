@@ -232,7 +232,7 @@ the boot beep, and BERR generation for unmapped space and the SCSI DRQ window.
 
 | Port bit | Dir | Function | Source |
 |---|---|---|---|
-| PA (in) | — | machine ID: V8 `$D4` (LC/LC II), **PA0 = FPU-present config bit** (`0xd4 \| config`; the same bit enables the CPU's FPU in maclc.cpp:172,327-329). POM68K drives PA0 from `V8Memory::setFpuFitted` since 2026-09-16; it read 1 unconditionally before | v8.cpp:249-252 |
+| PA (in) | — | machine ID: V8 `$D5` (LC/LC II), Eagle `$93`. MAME ORs its FPU config port into **PA0** (`0xd4 \| config`, v8.cpp:251), but that model is never exercised: the only ROM code reading PA0 is `$A46440`-`$A4644C`, reached when `D2.b` is 5 or 7, and it REQUIRES PA0 high — low means the factory serial test monitor at `$A46462`. A real LC II with an empty socket booted, so PA0 is not the FPU bit here. POM68K drove it from the socket for one day (2026-09-16) and reverted 2026-09-17; FPU presence reaches the ROM through the UniversalInfo record (§ 8.5) | v8.cpp:249-252 |
 | PA5 (out) | O | floppy **HDSEL** (head select) | v8.cpp:264-267 |
 | PB3 (in) | I | Egret **XCVR_SESSION** (active low) | v8.cpp:254-257; via-cuda.c:57-72 |
 | PB4 (out) | O | Egret **VIA_FULL** (byte ack, active high) | v8.cpp:269-273 |

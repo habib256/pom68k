@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (fourth)** — [PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated](#2026-09-17-lcii-pa0-reverted)
 - **2026-09-17 (third)** — [The stack cliff is gone and measured, and neither consequence is undone: /STACK stays, the fixtures stay on the heap](#2026-09-17-stack-consequences-ruled)
 - **2026-09-17 (later)** — [The dispatch cache moves to the heap and drops to a quarter megabyte: the ABBA pass reads 0.2 % against a 1.2 % floor](#2026-09-17-dispatch-cache-shrunk)
 - **2026-09-17** — [The dispatch cache measured at last: sixteen times the memory buys 0.39 points, and the "3.3 % at 4096" note was wrong](#2026-09-17-dispatch-cache-measured)
@@ -998,6 +999,48 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-lcii-pa0-reverted"></a>
+## 2026-09-17 (fourth) — PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated
+
+> **Corrects [2026-09-16 (twenty-first)](#2026-09-16-bare-lcii-retested)**, which
+> wired VIA1 PA0 to the FPU socket on MAME's authority. Measurement says that
+> was wrong, and the wiring is gone.
+
+Two candidate causes for the bare LC II (no 68882) failing to boot were
+tested today and both are closed — neither is the answer, and one was mine.
+
+**The `$50FC0000` bus error is exonerated.** POM68K raised /BERR reading the
+window just above the 512 KB of VRAM (the LC II's VRAM-expansion region);
+MAME serves it as open bus, since its v8 map decodes VRAM at device
+`0x540000-0x5bffff` (CPU `$F40000-$FBFFFF`, the same range POM68K uses) and
+nothing above. Serving it as open bus here changes **nothing**: the bare
+boot still enters the ROM's test monitor and the FPU boot still reaches the
+Finder. A symptom, not a cause; the change was reverted rather than kept as
+an unproven bus-semantics edit.
+
+**PA0 is not the FPU-present bit, and the ROM says so.** At `$A46420` the
+ROM tests `D2.b` against 3, 5, 6 and 7; for 5 or 7 — ours is `$70000D07` —
+it clears DDRA bit 0 at `$A46440`, making PA0 an input, reads it at
+`$A4644C`, and branches to the factory serial test monitor at `$A46462`
+when it reads LOW. A real LC II with an empty FPU socket booted to the
+Finder in 1992, so PA0 cannot be the FPU-present bit on this path. MAME ORs
+its FPU config port into PA0 (`v8.cpp:251`), but MAME never executes
+`$A4641C` at all — tapped at both, its cold init dispatches elsewhere — so
+that model is untested code, not evidence. Wiring POM68K's PA0 to the
+socket yesterday therefore rested on nothing, and it made the bare machine
+strictly less faithful: it dropped into a diagnostic monitor with 0 SCSI
+commands and a black screen instead of attempting a boot. Reverted, the
+bare machine is back to its honest failure — 86 SCSI commands,
+`HWCfgFlags $FC00`, the F-line bomb at `$40A02A38` — and the FPU control
+still reaches the Finder.
+
+**What is left is the real question**, now unobstructed: the ROM raises
+`HWCfgFlags` bit 12 ("FPU fitted") on a machine that has none, and so binds
+the FPU `PACK 4`. That is a UniversalInfo record election
+(`docs/BASILISK_ROM_NOTES.md` § 8.5 — the `$FD` record at `$3BE6` carries
+`hwCfgWord $CC00`, no FPU), and the open item now names it instead of two
+exonerated suspects.
 
 <a id="2026-09-17-stack-consequences-ruled"></a>
 ## 2026-09-17 (third) — The stack cliff is gone and measured, and neither consequence is undone: /STACK stays, the fixtures stay on the heap

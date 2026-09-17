@@ -97,7 +97,6 @@ int main() {
     const bool withFpu = std::getenv("POM68K_NOFPU") == nullptr;
     Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
                withFpu, false);
-    mem.setFpuFitted(withFpu);                   // VIA1 PA0: the bit the ROM reads
     if (!withFpu) std::printf("cpu: 68030 without the 68882 (POM68K_NOFPU)\n");
     mem.setCpu(&cpu);
     cpu.hardReset();

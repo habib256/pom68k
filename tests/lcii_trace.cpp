@@ -145,7 +145,6 @@ int main(int argc, char** argv) {
     TraceCpu cpu(mem, jit::defaultResolvedConfig(),
                  pom68k::defaultCoreConfig().cpu,
                  getenv("LCII_FPU") != nullptr);
-    mem.setFpuFitted(getenv("LCII_FPU") != nullptr);   // VIA1 PA0 follows the socket
     mem.setCpu(&cpu);
     cpu.hardReset();
 
