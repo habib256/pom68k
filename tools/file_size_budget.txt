@@ -36,8 +36,8 @@ src/GuiShellCommon.h                     137
 src/GuiTobyStatus.h                      41
 src/jit/backends/JitBackendA64.cpp       5111
 src/jit/backends/JitBackendX64.cpp       5595
-src/jit/JitConfig.h                      559
-src/jit/JitEngine.cpp                    1599
+src/jit/JitConfig.h                      562
+src/jit/JitEngine.cpp                    1601
 src/jit/JitIr.h                          2180
 src/main.cpp                             34
 src/PlatformCompact.cpp                  175

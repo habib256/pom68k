@@ -180,7 +180,7 @@ public:
     };
     DispatchCacheStats dispatchCacheStats() const {
         return { dispatchCache_.hits(), dispatchCache_.genMiss(),
-                 dispatchCache_.miss(), DispatchCache<Block>::kSize };
+                 dispatchCache_.miss(), dispatchCache_.size() };
     }
 
 private:

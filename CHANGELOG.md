@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (later)** — [The dispatch cache moves to the heap and drops to a quarter megabyte: the ABBA pass reads 0.2 % against a 1.2 % floor](#2026-09-17-dispatch-cache-shrunk)
 - **2026-09-17** — [The dispatch cache measured at last: sixteen times the memory buys 0.39 points, and the "3.3 % at 4096" note was wrong](#2026-09-17-dispatch-cache-measured)
 - **2026-09-17** — [Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings](#2026-09-17-five-todo-settled)
 - **2026-09-17** — [A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated](#2026-09-17-dayna-guest-probe-ruled)
@@ -996,6 +997,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-dispatch-cache-shrunk"></a>
+## 2026-09-17 (later) — The dispatch cache moves to the heap and drops to a quarter megabyte: the ABBA pass reads 0.2 % against a 1.2 % floor
+
+The measurement earlier today said 1 MB was not justified by the hit rate;
+the size change it owed an ABBA pass now has one, and the cache is smaller.
+
+**The structure first.** `DispatchCache` held `std::array<Entry, 65536>` —
+a megabyte *inline in the Engine object*, which is what forced
+`/STACK:16777216` on MSVC and pushed 15+154 fixtures onto the heap. It now
+holds a `std::vector<Entry>` sized at construction, so `Engine` carries a
+pointer instead, and the size becomes a RUNTIME field
+(`ResolvedConfig::dispatchCacheSlots`). That is not only tidier: it is what
+makes an intra-binary ABBA possible at all, since `docs/MEASURING.md`
+refuses to read a cross-binary pair as a timing claim. The heap move is
+semantically inert — the same counters (78 746 hits / 71 284 miss) and the
+same fingerprint as the inline array.
+
+**The ABBA pass.** `jit_bench` gained a `POM68K_BENCH_DISPATCH_SLOTS=<n>`
+arm: both arms run the jit engine, arm A at the compiled default and arm B
+at n slots, fresh machine each run, ABBA order. The null experiment put
+this host's floor at 1.3 %, and 4096 against 65536 over five repeats read
+**|delta| 0.2 % against a 1.2 % floor** — inside the floor, fingerprint
+`778dd7ad558108fd` identical on every run. No measurable wall cost.
+
+**The new default is 16384 slots (256 KB).** Not the smallest measured: the
+sweep is flat, so the choice is margin, not speed — 16384 sits within 0.07
+hit points of the megabyte while cutting its memory fourfold, leaving room
+for working sets larger than Rogue's. Asset-none 106/106 and the JIT tier
+39/39 stay green, and the boot bench reports 78 739 hits against the
+megabyte's 78 746 with an unchanged fingerprint.
+
+What this unblocks is now the TODO item: `/STACK:16777216` and the 15+154
+heap fixtures were consequences of an inline megabyte that no longer
+exists, and both can be reopened — the first needs a Windows host.
 
 <a id="2026-09-17-dispatch-cache-measured"></a>
 ## 2026-09-17 — The dispatch cache measured at last: sixteen times the memory buys 0.39 points, and the "3.3 % at 4096" note was wrong

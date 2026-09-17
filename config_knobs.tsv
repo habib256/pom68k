@@ -31,6 +31,7 @@ POM68K_AUDIO	diagnostic	owner:src/StartupOptions.h
 POM68K_BENCH_ARMS	test	owner:tests/jit_bench_lcii.cpp
 POM68K_BENCH_COMPARE	test	owner:tests/BenchHarness.h
 POM68K_BENCH_DISK	test	owner:tests/jit_bench.cpp
+POM68K_BENCH_DISPATCH_SLOTS	test	owner:tests/jit_bench.cpp
 POM68K_BENCH_FLOOR	test	owner:tests/BenchHarness.h
 POM68K_BENCH_FRAMES	test	owner:tests/BenchHarness.h
 POM68K_BENCH_JIT_PROGRESS	test	owner:tests/jit_bench_lcii.cpp

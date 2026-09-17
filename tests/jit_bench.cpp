@@ -112,19 +112,31 @@ int main() {
         const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
         constexpr int64_t kCmpFrameCycles = 416667;    // 25 MHz / ~60 Hz
         const int cmpFrames = bench::frames(3000);
+        // POM68K_BENCH_DISPATCH_SLOTS=<n>: the two arms become two dispatch
+        // cache SIZES on the jit engine (arm 0 = the compiled default, arm 1
+        // = n) instead of interp vs jit. The size is a runtime field, so this
+        // is the ABBA intra-binary pass a size change owes
+        // (docs/MEASURING.md; the hit-rate sweep is CHANGELOG 2026-09-17).
+        const char* slotsEnv = std::getenv("POM68K_BENCH_DISPATCH_SLOTS");
+        const int slotsB = slotsEnv ? std::atoi(slotsEnv) : 0;
+        char armBName[32] = "jit";
+        if (slotsB > 0) std::snprintf(armBName, sizeof armBName, "%d-slot", slotsB);
         std::printf("q605 %s, %d repeats x 2 arms ABBA, %d frames per run, "
                     "built %s\n",
                     bench::nullExperiment() ? "NULL experiment (A vs A)"
                                             : "interleaved A/B",
                     bench::compareRepeats(), cmpFrames, bench::buildStamp());
-        return bench::compare("q605", "interp", "jit", [&](int arm) {
+        return bench::compare("q605", slotsB > 0 ? "default" : "interp",
+                              armBName, [&](int arm) {
             Q605Memory m(pom68k::defaultCoreConfig(), 32u << 20);
             m.loadRom(rom);
             m.attachScsi(diskPath);
-            Cpu040 c(m, jitConfig, pom68k::defaultCoreConfig().cpu,
+            jit::ResolvedConfig armConfig = jitConfig;
+            if (slotsB > 0 && arm == 1) armConfig.dispatchCacheSlots = slotsB;
+            Cpu040 c(m, armConfig, pom68k::defaultCoreConfig().cpu,
                      pom68k::defaultCoreConfig().diagnostics);
             m.setCpu(&c);
-            c.setEngine(arm);                          // 0 interp, 1 jit
+            c.setEngine(slotsB > 0 ? 1 : arm);         // size arms: both jit
             c.hardReset();
             while (m.cpuHeld()) m.tick(1000);
             const bench::Result r = bench::run(c, cmpFrames, kCmpFrameCycles);

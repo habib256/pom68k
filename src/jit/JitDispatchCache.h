@@ -5,8 +5,9 @@
 
 #include "JitShiftVersions.h"
 
-#include <array>
+#include <algorithm>
 #include <cstdint>
+#include <vector>
 
 namespace jit {
 
@@ -35,26 +36,44 @@ class DispatchCache {
 public:
     struct Entry { uint64_t key = 0; BlockT* block = nullptr; };
 
-    // 65536 slots (1 MB, Entry = 16 B). MEASURED 2026-09-17 and the size is
-    // NOT what the 2026-09-02 note claimed ("4096 slots = 3.3 % hits"): on
-    // the Rogue gameplay census — that note's own workload — a size sweep
-    // over identical guest work (40 571 024 lookups, identical fingerprint
-    // at every size) reads 78.82 / 79.01 / 79.15 / 79.20 / 79.22 % hits at
-    // 4096 / 8192 / 16384 / 32768 / 65536. Sixteen times the memory buys
-    // 0.39 points. The boot+idle bench agrees (58.63 → 59.09 %), wall clock
-    // flat within noise. So 1 MB is not justified by the hit rate; shrinking
-    // it (and revisiting /STACK:16777216 on MSVC plus the 15+154 heap
-    // fixtures it forced) needs only an ABBA timing pass — TODO § Moteur.
+    // 16384 slots (256 KB, Entry = 16 B). It was 65536 (1 MB) until
+    // 2026-09-17 on the strength of a 2026-09-02 note claiming "4096 slots =
+    // 3.3 % hits"; measurement refuted it. On the Rogue gameplay census —
+    // that note's own workload — a sweep over identical guest work
+    // (40 571 024 lookups, identical fingerprint at every size) reads
+    // 78.82 / 79.01 / 79.15 / 79.20 / 79.22 % hits at 4096 / 8192 / 16384 /
+    // 32768 / 65536: sixteen times the memory buys 0.39 points. The ABBA
+    // pass a size change owes then read |delta| 0.2 % against a 1.2 % floor
+    // (5 repeats, identical fingerprints) — no measurable wall cost. 16384
+    // takes the 4x memory cut while staying within 0.07 points of the
+    // megabyte, keeping margin for working sets larger than Rogue's.
     // POM68K_JIT_DISPATCH_CACHE_SLOTS (a -D, power of two >= 4096 so the
     // super bit at 1<<11 still lands inside the table) sweeps that choice:
     // the hit rate is a deterministic counter over identical guest work, so
     // sizes compare without the ABBA timing protocol (docs/MEASURING.md).
 #ifndef POM68K_JIT_DISPATCH_CACHE_SLOTS
-#define POM68K_JIT_DISPATCH_CACHE_SLOTS 65536
+#define POM68K_JIT_DISPATCH_CACHE_SLOTS 16384
 #endif
-    static constexpr uint32_t kSize = POM68K_JIT_DISPATCH_CACHE_SLOTS;
-    static_assert(kSize >= 4096 && (kSize & (kSize - 1)) == 0,
+    static constexpr uint32_t kDefaultSize = POM68K_JIT_DISPATCH_CACHE_SLOTS;
+    static_assert(kDefaultSize >= 4096 && (kDefaultSize & (kDefaultSize - 1)) == 0,
                   "dispatch cache: power of two, at least 4096");
+
+    // Heap, not an inline array: 65536 slots is a megabyte, and an Engine
+    // carrying it inline is what forced /STACK:16777216 on MSVC and pushed
+    // 15+154 fixtures onto the heap. A vector also makes the size a RUNTIME
+    // choice, which is what lets two sizes be compared ABBA inside one
+    // binary (docs/MEASURING.md forbids reading a cross-binary pair as a
+    // timing claim) — jit_bench's POM68K_BENCH_DISPATCH_SLOTS arm.
+    DispatchCache() { resize(kDefaultSize); }
+
+    // Power of two, at least 4096 so the super bit at 1<<11 lands inside the
+    // table; anything else is refused and the previous size kept.
+    void resize(uint32_t slots) {
+        if (slots < 4096 || (slots & (slots - 1)) != 0) return;
+        entries_.assign(slots, Entry{});
+        mask_ = slots - 1;
+    }
+    uint32_t size() const { return uint32_t(entries_.size()); }
 
     // The block filed under `plainKey`, or nullptr when the slot is cold or
     // holds a block whose proved MMU generation is no longer `gen`.
@@ -76,7 +95,7 @@ public:
         if (e.key == blockKey) e = {};
     }
 
-    void clear() { entries_.fill({}); }
+    void clear() { std::fill(entries_.begin(), entries_.end(), Entry{}); }
 
     // Census visibility: how often the fast slot answered, how often the
     // MMU generation forced the slow path anyway, how often the slot was
@@ -88,14 +107,15 @@ public:
     void resetPhase() { hits_ = genMiss_ = miss_ = 0; }
 
 private:
-    static uint32_t index(uint32_t pc, bool super) {
-        return ((pc >> 1) ^ (uint32_t(super) << 11)) & (kSize - 1);
+    uint32_t index(uint32_t pc, bool super) const {
+        return ((pc >> 1) ^ (uint32_t(super) << 11)) & mask_;
     }
     Entry& slot(uint64_t plainKey) {
         return entries_[index(uint32_t(plainKey),
                               ((plainKey >> 32) & 1) != 0)];
     }
-    std::array<Entry, kSize> entries_{};
+    std::vector<Entry> entries_;
+    uint32_t mask_ = 0;
     uint64_t hits_ = 0, genMiss_ = 0, miss_ = 0;
 };
 

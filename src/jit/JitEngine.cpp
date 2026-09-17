@@ -59,6 +59,8 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
       config_(config) {
     // The family comes from the wrapper, not from cpu.getModel(): see the
     // ordering note on the declaration in JitEngine.h.
+    if (config_.dispatchCacheSlots > 0)
+        dispatchCache_.resize(uint32_t(config_.dispatchCacheSlots));
     backend_ = selectBackend(config_.backend.c_str(), guestFamily,
                              config_.unsafeBackend);
     if (Backend* instance = backend_->clone()) {

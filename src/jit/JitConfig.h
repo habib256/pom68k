@@ -70,6 +70,9 @@ struct ResolvedConfig {
     bool cache040LinePairs = true;
     bool cache040LineReadStats = false;
     bool cache040LatePoll = false;
+    // Dispatch-cache slots (power of two >= 4096); runtime so two sizes
+    // compare ABBA in one binary (CHANGELOG 2026-09-17). 0 = compiled default.
+    int dispatchCacheSlots = 0;
     // FPU general-window instructions ($F200-$F23F) are exact-replay block
     // members instead of block boundaries (Kind::Fpu, 2026-09-06). Explicit
     // 0 is the attribution/veto arm: every F-line form ends a block again.

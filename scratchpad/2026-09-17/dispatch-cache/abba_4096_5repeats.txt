@@ -1,0 +1,13 @@
+  q605 pair1  default    3.29s   4096-slot   3.26s   (default first)
+  q605 pair2  default    3.25s   4096-slot   3.25s   (4096-slot first)
+  q605 pair3  default    3.26s   4096-slot   3.26s   (default first)
+  q605 pair4  default    3.27s   4096-slot   3.26s   (4096-slot first)
+  q605 pair5  default    3.27s   4096-slot   3.27s   (default first)
+
+  default  median   3.27s  (3.25-3.29, spread 1.2%)
+  4096-slot median   3.26s  (3.25-3.27, spread 0.7%)
+  delta -0.2%  ·  floor 1.2% (arm spreads 1.2/0.7%, host 1.1%)  ·  5 repeats ABBA
+  fp=778dd7ad558108fd  ·  built Sep 17 2026 09:02:59  ·  load 1.93 2.00 3.54 -> load 1.86 1.97 3.46
+  knobs: POM68K_BENCH_COMPARE=5  POM68K_BENCH_DISPATCH_SLOTS=4096
+  NOT A CLAIM: |delta| 0.2% is inside this host's noise floor of 1.2% (docs/MEASURING.md § R2).
+  Raise POM68K_BENCH_FRAMES or the repeat count; do not raise your confidence.
