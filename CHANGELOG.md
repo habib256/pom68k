@@ -1009,6 +1009,31 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-gui-savestate-pass"></a>
+## 2026-09-17 (twenty-second) — The GUI's save-state pass now reaches the file, not just the slot
+
+`gui_machine_window_test` proved that clicking « Sauver l'état » queued a
+request in the slot. What the machine thread then did with it — write a
+snapshot, atomically, and read it back — was outside every GUI gate, and
+`TODO.md` said so in those words.
+
+The same slot is now handed to a **real** machine in the same gate: a
+Macintosh Plus with no ROM, since a snapshot carries RAM and devices and
+never the ROM. A marker byte goes into guest RAM through the overlay's RAM
+alias (with no ROM loaded, low memory is the ROM mirror and writes there
+drop — which is why the first attempt looked like a broken restore and was
+a broken write). Then: the queued save is taken, a state file is on disk,
+the `.tmp` it was written through is gone, the slot is empty again, a queued
+load is taken, and the marker comes back. Finally a file of plain text is
+put in its place and refused with a message rather than a crash — the user
+picks that file, so it is a correctness path.
+
+Still outside a gate, and `TODO.md` keeps it: the framebuffer upload and the
+floppy/CD hot-swap bindings of the six runners, which are never instantiated
+outside GL.
+
+---
+
 <a id="2026-09-17-ata-knob"></a>
 ## 2026-09-17 (twenty-first) — The IDE port is reachable from the product, not only from a test
 

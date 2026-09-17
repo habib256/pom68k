@@ -16,18 +16,22 @@
 #define POM68K_IMGUI_HEADLESS_HOOKS
 #include "ImGuiHeadless.h"
 
+#include "Cpu68k.h"
 #include "DockLayout.h"
 #include "GuiMachineControls.h"
 #include "GuiScreen.h"
 #include "GuiSessionState.h"
 #include "GuiShellMenu.h"
 #include "MachineCatalog.h"
+#include "MacMemory.h"
 #include "MachineFactory.h"
+#include "SaveStateMachines.h"
 
 #include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -272,6 +276,54 @@ int main() {
         ui.click("Machine", draw);
         check(clickMenuItem(ui, "Sauver l'état", draw) && (machine.state.pending() & 1),
               "Sauver l'état queues a save for the machine thread");
+
+        // ── And the other half of the pass: the FILE ────────────────────
+        // The click above only proves the request reached the slot. What
+        // the machine thread does with it — write a snapshot, atomically,
+        // and read it back — was outside every GUI gate until now, so the
+        // same slot is handed to a REAL machine here (a Plus with no ROM:
+        // a snapshot carries RAM and devices, never the ROM).
+        {
+            const std::string path = "gui_machine_window_state.pomss";
+            std::remove(path.c_str());
+            std::remove((path + ".tmp").c_str());
+            pom68k::CoreConfig core;
+            MacMemory mem(core, MacMemory::Model::Plus);
+            Cpu68k cpu(mem, jit::defaultResolvedConfig());
+            machine.state.kind = pom68k::SnapMachine::Plus;
+            machine.state.setPath(path);
+            // With no ROM the overlay still maps the ROM image over low
+            // memory, where writes drop; RAM answers at its alias (the
+            // classic compact overlay), so the marker goes there.
+            mem.write8(0x600000, 0x5A);
+
+            const int saved = machine.state.apply(mem, cpu);
+            check((saved & 1) != 0, "the machine thread takes the queued save");
+            std::ifstream f(path, std::ios::binary | std::ios::ate);
+            const long size = f ? long(f.tellg()) : -1;
+            check(size > 0, "and a state file is on disk afterwards");
+            check(!std::ifstream(path + ".tmp").good(),
+                  "written through a temp file that no longer exists");
+            check(machine.state.pending() == 0, "the slot is empty again");
+
+            // Change the machine, then load: the byte must come back.
+            mem.write8(0x600000, 0xA5);
+            machine.state.request(true);
+            const int restored = machine.state.apply(mem, cpu);
+            check((restored & 2) != 0, "a queued load is taken too");
+            check(mem.read8(0x600000) == 0x5A,
+                  "and the guest's RAM is what the snapshot held");
+
+            // A corrupt file is refused with a message, not a crash: this
+            // is a user-facing path (they pick the file).
+            { std::ofstream bad(path, std::ios::binary);
+              bad << "not a snapshot at all"; }
+            machine.state.request(true);
+            const int refused = machine.state.apply(mem, cpu);
+            check((refused & 2) == 0 && !machine.state.message().empty(),
+                  "a corrupt file is refused, and the slot says why");
+            std::remove(path.c_str());
+        }
         ui.click("Machine", draw);
         check(ui.click("Démarrer l'enregistrement", draw) && machine.recording,
               "Démarrer l'enregistrement asks the machine to record");
