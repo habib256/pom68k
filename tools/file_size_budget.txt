@@ -6,7 +6,7 @@
 #
 # Regenerate with: tools/check_file_sizes.sh --update
 
-CLAUDE.md                                230
+CLAUDE.md                                231
 cmake/Pom68kAfpGates.cmake               27
 cmake/Pom68kAgentGates.cmake             74
 cmake/Pom68kAudioGates.cmake             12
@@ -46,7 +46,7 @@ src/PlatformDafb.cpp                     599
 src/PlatformDuo.cpp                      142
 src/PlatformSonora.cpp                   289
 src/PlatformToby.cpp                     311
-src/PlatformV8.cpp                       207
+src/PlatformV8.cpp                       206
 src/Q700Memory.cpp                       1091
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    169

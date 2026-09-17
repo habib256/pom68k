@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (eighth)** — [Apple's ROM source becomes a first-class reference: the ProductInfo layout, the hwCfgFlags bit numbers, and three opaque words decoded](#2026-09-17-apple-rom-source-notes)
 - **2026-09-17 (seventh)** — [Apple shared one table entry between the LC and the LC II, so POM68K's VIA ID is right after all](#2026-09-17-lcii-shared-table)
 - **2026-09-17 (sixth)** — [Apple's own ROM source answers it: the product is elected by the VIA input lines, and POM68K's VIA ID elects the LC, not the LC II](#2026-09-17-lcii-via-election)
 - **2026-09-17 (fifth)** — [The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2](#2026-09-17-lcii-election-traced)
@@ -1002,6 +1003,45 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-apple-rom-source-notes"></a>
+## 2026-09-17 (eighth) — Apple's ROM source becomes a first-class reference: the ProductInfo layout, the hwCfgFlags bit numbers, and three opaque words decoded
+
+The LC II investigation reached for `github.com/elliotnunn/mac-rom` to settle
+one question; the source answers several this project had been carrying as
+inference. `docs/BASILISK_ROM_NOTES.md` gains § 8.9 for it, ranked above both
+the Basilisk study (§ 1-§ 7) and our own `rominfo` firsthand tier (§ 8.1-§ 8.8).
+
+**The `ProductInfo` layout** is now Apple's, not ours: `hwCfgFlags` at `+$10`,
+product kind (BoxFlag) at `+$12`, decoder kind at `+$13`, `defaultRSRCs` at
+`+$16`, `VIAIdMask`/`VIAIdMatch` at `+$30`/`+$34`. Every offset this project
+had reverse-engineered is confirmed, including the `+$12` that the cold-init
+dispatcher matches against `D2.w`.
+
+**The election is by VIA input lines.** `FindDecoder` finds the address
+decoder by bus-error probing; `GetVIAInputs` forces VIA1 ports A and B to
+inputs, reads them and restores; candidates are filtered on decoder kind and
+then `VIAIdMask`/`VIAIdMatch`. The VIA bytes an emulator presents *are* the
+machine identity — a sharper statement of what `setInA`/`setInB` mean than
+anything in our notes before.
+
+**And the `hwCfgFlags` bits are named**: `hwCbSCSI` 15, `hwCbClock` 14,
+`hwCbExPRAM` 13, `hwCbFPU` **12**, `hwCbMMU` 11, `hwCbADB` 10, `hwCbAUX` 9,
+`hwCbPwrMgr` 8. Three words this project had been quoting opaquely now read:
+`$DC00` is SCSI+Clock+FPU+MMU+ADB; `$CC00` is the same without the FPU; and
+the `$FC00` a booted LC II leaves in low memory is `$DC00` plus `hwCbExPRAM`
+set at runtime — the discrepancy § 8.5 had noted and could not explain.
+
+Two smaller confirmations: `CPUIDReg EQU $5FFFFFFC` with signature `$A55A`
+matches the form POM68K already presents on the Q605/Q630/VASP/MSC machines,
+and the LC II ROM references that address nowhere — its identity really is a
+VIA question. No code changed: the Color Classic and Mac TV ROMs do read
+`$5FFFFFFC`, where POM68K bus-errors after masking, and both boot to the
+Finder, so there is no observable consumer for altering that.
+
+Sources: `https://github.com/elliotnunn/mac-rom` — `OS/UniversalTables.a`,
+`OS/Universal.a`, `OS/StartMgr/StartInit.a`, `Internal/Asm/UniversalEqu.a`,
+`Internal/Asm/HardwarePrivateEqu.a`.
 
 <a id="2026-09-17-lcii-shared-table"></a>
 ## 2026-09-17 (seventh) — Apple shared one table entry between the LC and the LC II, so POM68K's VIA ID is right after all

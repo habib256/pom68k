@@ -210,6 +210,7 @@ Before considering a change complete:
 
 External hardware sources, in order:
 
+0. Apple's own ROM source (`elliotnunn/mac-rom`) where it covers the question; it outranks all below (`docs/BASILISK_ROM_NOTES.md` § 8.9).
 1. MAME Apple machine/device models and the Motorola 68k family.
 2. *Guide to the Macintosh Family Hardware* and *Inside Macintosh III*.
 3. Hatari/WinUAE for CPU timing and differential behaviour.

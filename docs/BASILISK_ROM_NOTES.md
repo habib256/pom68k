@@ -256,6 +256,76 @@ them**:
 own "low memory is valid" marker (`tests/lcii_trace.cpp:138-146`) — and applies
 the same factory defaults as the GUI (`tests/lcii_trace.cpp:138`).
 
+### 8.9 The primary source: Apple's own ROM tables (2026-09-17)
+
+§1-§7 are Basilisk's reading and §8.1-§8.8 are `rominfo` on our dumps. This
+section is neither: it is Apple's ROM source, published at
+`github.com/elliotnunn/mac-rom`, and it **outranks both**. It was fetched to
+settle the bare LC II (CHANGELOG 2026-09-17, fourth to seventh); what it
+settles is broader.
+
+**A `ProductInfo` record's layout**, from `OS/UniversalTables.a`'s
+`InfoNewWorld` — the field order §2.2 had only by inference:
+
+| offset | field | note |
+|---|---|---|
+| `+$00` | DecoderInfo offset | self-relative |
+| `+$04` | RAM bank info offset | |
+| `+$08` | video info offset | |
+| `+$0C` | NuBus info offset | |
+| `+$10` | **hwCfgFlags** | the `hwCfgWord` of §8.3's table |
+| `+$12` | **product kind** | the BoxFlag |
+| `+$13` | **decoder kind** | |
+| `+$14` | ROM85 | |
+| `+$16` | **default ROM Resource configuration** | §8.5's `defaultRSRCs` |
+| `+$17` | ProductInfo version | |
+| `+$18`/`+$1C`/`+$20` | base-address valid bit vectors | 0-31 / 32-63 / 64-95 |
+| `+$24`/`+$28`/`+$2C` | external-feature flags | 0-31 / 32-63 / 64-95 |
+| `+$30` | **VIAIdMask** | |
+| `+$34` | **VIAIdMatch** | |
+| `+$38` | VIA1 init info | |
+
+**How a product is elected** (`OS/Universal.a`): `FindDecoder` identifies the
+address decoder by *bus-error probing* (each DecoderInfo carries a
+`CheckForProc`), then `GetVIAInputs` saves `vDirA`/`vDirB`, forces the pins to
+inputs sparing whatever `AvoidVIA1A` protects, reads VIA1 ports A and B into
+D1 and restores; each candidate is filtered by `cmp.b DecoderKind(a1),d2`,
+then `and.l VIAIdMask(a1),d0` / `cmp.l VIAIdMatch(a1),d0`. **The VIA input
+bytes an emulator presents therefore ARE the machine identity.** D2 then
+carries hwCfgFlags in 31-16, BoxFlag in 15-8, decoder kind in 7-0, and
+`OS/StartMgr/StartInit.a` stores it with `swap d2 ; move.w d2,HwCfgFlags`.
+
+**The `hwCfgFlags` bit numbers** (`Internal/Asm/HardwarePrivateEqu.a`), which
+§8.5 previously asserted only for bit 12:
+
+| bit | equate | meaning |
+|---|---|---|
+| 15 | `hwCbSCSI` | SCSI port present |
+| 14 | `hwCbClock` | new clock chip present |
+| 13 | `hwCbExPRAM` | extra parameter RAM valid |
+| **12** | **`hwCbFPU`** | **FPU chip present** |
+| 11 | `hwCbMMU` | some kind of MMU present |
+| 10 | `hwCbADB` | Apple Desktop Bus present |
+| 9 | `hwCbAUX` | running A/UX |
+| 8 | `hwCbPwrMgr` | Power Manager present |
+
+That decodes the values this project had been reading as opaque words:
+`$DC00` (§8.3's LC record) is SCSI+Clock+**FPU**+MMU+ADB; `$CC00` (the
+LC II-shaped `$FD` record at `$3BE6`) is the same **without FPU**; and the
+`$FC00` a booted LC II leaves in low memory is `$DC00` plus bit 13,
+`hwCbExPRAM`, set at runtime — the discrepancy §8.5 noted but could not name.
+
+**Two cautions the source also settles.** `CPUIDReg EQU $5FFFFFFC` with
+`cpuIDSig EQU $A55A` in bits 31-16 (`Internal/Asm/UniversalEqu.a`) confirms
+the form POM68K already presents for the Q605/Q630/VASP/MSC machines; and the
+LC II ROM contains no reference to that address at all, which is why §8.3's
+"resolved at runtime" is a VIA question on that machine, not a CPU-ID one.
+Finally, `OS/UniversalTables.a`'s history records that the LC and the LC II
+**shared one `InfoMacLC` entry** — `<SM18>` "Made the LC table work with LC II
+again. This will prevent the normal LC from booting" — with the boxflag only
+becoming `boxMacLCII` in `<SM25>`, October 1992. A March 1992 LC II ROM
+reporting `boxMacLC` is therefore faithful, not a bug.
+
 ---
 
 # Secondhand tier — the Basilisk II study (§1-§7, §9)
