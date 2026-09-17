@@ -1115,6 +1115,19 @@ models the wiring:
   against a control arm with an empty tray. `docs_test` holds every board
   with SCSI disks to advancing and cabling its transport.
 
+**ATA/IDE (`AtaDisk.h`, `Q630Memory`).** The F108 machines (Quadra 630,
+LC/Performa 580) are the only 68k Macs whose internal disk is ATA, and their
+ROM carries the driver for it. The port is at `+$1A000` with a four-byte
+stride — `+$00` Data … `+$1C` Status, and the control block's Device Control
+/ Alternate Status at `+$38`. `AtaDisk` is a PIO task-file target: SRST and
+the post-reset signature, IDENTIFY DEVICE, READ/WRITE SECTORS (LBA or CHS),
+READ/WRITE BUFFER, EXECUTE DEVICE DIAGNOSTIC and INITIALIZE DEVICE
+PARAMETERS. The board puts a sector's FIRST byte on D15-D8 — measured, since
+the other order makes the ROM's driver read a geometry of zeroes and give up
+(CHANGELOG 2026-09-17). Gate: `ata_disk_test`, asset-free. Booting from it
+needs a driver partition the ROM will accept; `TODO.md` records what the ROM
+demands and what is missing.
+
 ### 3.3bis What else can live on the bus: `ScsiTarget` + `DaynaPort`
 
 `ScsiTarget.h` is the four-method interface both controllers hold

@@ -1009,6 +1009,60 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-ata-target"></a>
+## 2026-09-17 (twentieth) — The Quadra 630's IDE port has a drive on it now, and the ROM tells us exactly what a bootable ATA disk must carry
+
+POM68K's F108 ATA port used to read back zero, which is BSY=0 / DRDY=0 —
+"no device" — so the ROM fell through to SCSI. Behaviourally right, and
+completely useless. There is a drive there now.
+
+**`AtaDisk`** is a PIO task-file target: the software-reset pulse and the
+post-reset signature (`01 01 00 00`, which is how a driver tells ATA from
+ATAPI from an empty bus), Status with DRDY, IDENTIFY DEVICE, READ and WRITE
+SECTORS in LBA or CHS, READ/WRITE BUFFER, EXECUTE DEVICE DIAGNOSTIC, and
+INITIALIZE DEVICE PARAMETERS. Unknown commands are ABORTED, which is how a
+driver discovers what a drive does not do; a read past the last sector is ID
+NOT FOUND rather than zeroes. Gate: `ata_disk_test`, asset-free.
+
+**The byte order was measured, not assumed.** The data register is 16 bits
+and the 68k reads it as two byte accesses, so which half of an ATA word lands
+on D15-D8 is a real question with two plausible answers. With the sector's
+SECOND byte there, the ROM's own driver read heads=0 and sectors/track=0 out
+of IDENTIFY and gave up after two commands. With the FIRST byte there, it
+read the geometry we advertise and wrote it straight back in INITIALIZE
+DEVICE PARAMETERS — `$91` with 16 heads and 63 sectors, exactly what our
+IDENTIFY says — and went on to READ SECTORS. A scan of guest RAM afterwards
+finds block 0 in its natural order. So the board puts a sector's first byte
+on D15-D8, which is the sane wiring for a big-endian CPU.
+
+**What a bootable ATA disk must carry, from the ROM itself.** With a real
+disk image attached the ROM read block 0 and then started the whole probe
+again, forever. The cause is in the Driver Descriptor Record: the ROM's ATA
+boot path only accepts a disk whose DDR holds a driver descriptor of **type
+`$0701`**. The negative controls are what make this a finding rather than a
+guess — `$0702`, `$0001` and `$0101` each leave it looping on
+IDENTIFY / INIT / READ block 0, while `$0701` makes it read the partition
+map (blocks 1-3) and then load the driver (19 blocks at 64, which is what
+that entry points at).
+
+**And then it stops.** The driver our images carry is Apple's SCSI one
+(`Apple_Driver43`): the ROM loads it and halts on the blinking floppy,
+because the code it just installed talks to the SCSI Manager. A driver
+partition that is absent, empty, or zero-filled gets no further.
+
+**So there is a missing dump, and `TODO.md` says so:** an `Apple_Driver_ATA`
+partition carrying Apple's real ATA driver — in practice, an image of a
+Macintosh disk formatted in IDE by Drive Setup. No ROM we hold contains it;
+the Quadra 630's has `ATALOAD`, which is the code that loads that driver
+*from the disk*. The alternative, if the dump stays out of reach, is to write
+a block driver here with Retro68, the way `share/` already ships a guest-side
+agent.
+
+`asset-none` is 108/108 and all seven Quadra 630 etalons pass: with no drive
+attached the port still reads back zero, so the SCSI boot is untouched.
+
+---
+
 <a id="2026-09-17-cdda-cd-extra"></a>
 ## 2026-09-17 (nineteenth) — The last CDDA case: a disc whose data track is not the first, and an eject that was not emptying the drive
 

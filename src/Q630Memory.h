@@ -49,6 +49,7 @@
 #include "Scc8530.h"
 #include "Ncr53c96.h"
 #include "CdAudioPump.h"
+#include "AtaDisk.h"
 #include "ScsiDisk.h"
 #include "Asc.h"
 #include "Swim2.h"
@@ -135,6 +136,17 @@ public:
     DaynaPort& daynaPort() { return dayna_; }
 
     // Attach a SCSI target from a backing image (boot drive = ID 0).
+    // ── The IDE disk ────────────────────────────────────────────────────
+    // The F108 machines are the only 68k Macs whose internal disk is ATA,
+    // and their ROM carries the driver (`ATA_MGR` and friends are in the
+    // dump). A raw image of 512-byte sectors, partition map and all, the
+    // same shape attachScsi takes.
+    bool attachIde(const std::string& path, bool writeBack = false) {
+        return ata_.open(path, writeBack);
+    }
+    AtaDisk& ide() { return ata_; }
+    const AtaDisk& ide() const { return ata_; }
+
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
         scsi_.attach(&scsiDisks_[id], id);
@@ -411,6 +423,12 @@ private:
 
     uint16_t iosbRegs_[0x20] = {}; // $50018000, u16 every $100
     bool ataIrq_ = false;          // F108 ATA IRQ → PrimeTime II $1A100 bit 5
+    AtaDisk ata_;                  // the IDE drive (absent unless attached)
+    // The data register is 16 bits and the 68k reads it as two bytes; the
+    // latch holds the word between them. Which byte lands on D15-D8 is the
+    // board's business and is measured — see the read path in
+    // Q630Memory.cpp.
+    uint16_t ataDataLatch_ = 0;
 
     // TurboSCSI wait-state cell (LLE step 9 — MAME iosb.cpp:144-148 defaults,
     // :482-495 register stalls, :498-552 waitstated DMA alias, :606-618

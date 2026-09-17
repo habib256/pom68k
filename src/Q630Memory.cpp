@@ -353,10 +353,33 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
         return uint8_t(iosbRegs_[reg] >> (8 * (1 - byteInWord)));
     }
     if ((sub & ~0xF00000u) >= 0x1A000 && (sub & ~0xF00000u) < 0x1A100) {
-        // F108 ATA/IDE port (f108.cpp:38-41). No drive is modelled, so the
-        // bus reads back 0 — the ROM's IDE probe then finds no device and
-        // falls through to SCSI, which is where POM68K's disks live.
-        return 0;
+        // F108 ATA/IDE port (f108.cpp:38-41): the task file at a four-byte
+        // stride, `+$00` = Data … `+$1C` = Status, with the control block's
+        // Alternate Status at `+$38`. With no drive attached every register
+        // reads back 0 — BSY=0, DRDY=0, "no device" — and the ROM falls
+        // through to SCSI, which is what it did before there was a drive.
+        const uint32_t off = (sub & ~0xF00000u) - 0x1A000;
+        const uint8_t reg = uint8_t((off >> 2) & 0x0F);
+        if (!ata_.present()) return 0;
+        if (reg == AtaDisk::kData) {
+            // Two byte accesses make one 16-bit word, and the board puts
+            // the sector's FIRST byte on D15-D8 — so word moves land a
+            // sector in memory in its natural order, which is the sane
+            // wiring for a big-endian CPU. Measured, not assumed: with the
+            // other order the ROM's own driver read heads=0 and
+            // sectors/track=0 out of IDENTIFY and gave up after two
+            // commands; with this one it reads the geometry it wrote back
+            // in INITIALIZE DEVICE PARAMETERS ($91, 16 heads, 63 sectors)
+            // and goes on to READ SECTORS (2026-09-17).
+            if ((off & 1) == 0) {
+                ataDataLatch_ = ata_.readData();
+                return uint8_t(ataDataLatch_ & 0xFF);
+            }
+            return uint8_t(ataDataLatch_ >> 8);
+        }
+        const uint8_t v = ata_.readRegister(reg);
+        if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); updateIrq(); }
+        return v;
     }
     if ((sub & ~0xF00000u) >= 0x1A100 && (sub & ~0xF00000u) < 0x1A110) {
         // PrimeTime II special interrupt status (iosb.cpp:662-675):
@@ -450,8 +473,23 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
         swim_.write((sub >> 9) & 0x0F, v);
         return;
     }
-    if ((sub & ~0xF00000u) >= 0x1A000 && (sub & ~0xF00000u) < 0x1A110)
-        return;                                   // ATA port: no drive
+    if ((sub & ~0xF00000u) >= 0x1A000 && (sub & ~0xF00000u) < 0x1A100) {
+        const uint32_t off = (sub & ~0xF00000u) - 0x1A000;
+        const uint8_t reg = uint8_t((off >> 2) & 0x0F);
+        if (!ata_.present()) return;              // no drive: writes drop
+        if (reg == AtaDisk::kData) {
+            // Same order on the way out (see the read side above).
+            if ((off & 1) == 0) { ataDataLatch_ = v; }
+            else { ataDataLatch_ = uint16_t((ataDataLatch_ & 0x00FF) | (v << 8));
+                   ata_.writeData(ataDataLatch_); }
+            return;
+        }
+        ata_.writeRegister(reg, v);
+        if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); updateIrq(); }
+        return;
+    }
+    if ((sub & ~0xF00000u) >= 0x1A100 && (sub & ~0xF00000u) < 0x1A110)
+        return;                                   // PrimeTime II status: read-only
     if ((sub & ~0xF00000u) >= 0x24000 && (sub & ~0xF00000u) < 0x26000) {
         // RAMDAC: the payload is the TOP byte of the u32 (valkyrie.cpp
         // ramdac_w does `data >>= 24`), so commit on lane 0 only.

@@ -234,29 +234,24 @@ Finder **plus** le câblage GUI et save-state. Le Mac 128K/512K est livré.
   M50753 et framebuffer LCD comme nouvelle brique partagée.
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
-- [ ] **Ajouter le target ATA/IDE du Q630/LC580.** Brancher un disque et
-  créer un gate de boot qui n'utilise pas SCSI. **Consommateur observé et
-  protocole relevé le 2026-09-17** sur `q630_boot_etalon` : le port F108 est
-  à pas de 4 octets (`+$1A000` = reg 0 … `+$1C` = reg 7), et l'ATA Manager
-  de l'invité fait, à chaque boot, une impulsion de reset logiciel
-  (Device Control en `+$38` : `$0E` puis `$0A`), puis **3 994 lectures du
-  registre Status** (`+$1C`) en attente de disponibilité, puis une lecture
-  des registres 1 à 6 (`+$04`…`+$18`) pour la signature post-reset. Le stub
-  actuel rend 0, soit BSY=0/DRDY=0 = « pas de disque », ce qui est
-  comportementalement correct et fait retomber la ROM sur SCSI. Une
-  implémentation doit donc servir : la signature ATA après SRST
-  (`$01,$01,$00,$00,$00` ; `$14/$EB` pour ATAPI), un Status avec DRDY, puis
-  IDENTIFY DEVICE et READ/WRITE SECTORS. **L'actif est fabricable** (2026-09-17) : aucune
-  image de `hdv/` n'est amorçable en IDE (les nôtres portent un pilote SCSI
-  Apple_Driver43), mais il n'y a rien à télécharger — la ROM du Q630
-  contient son propre ATA Manager, ses chaînes le disent : `ATA_MGR`,
-  `ATABusReset`, `ATARegAccess`, `ATATaskFile`, `ATALOAD` et le type de
-  partition `APPLE_DRIVER_ATA` (aucune n'existe dans la ROM du LC II, qui
-  n'a pas d'IDE). Un disque IDE se synthétise donc comme nos images SCSI :
-  un Driver Descriptor Record en bloc 0 plus une carte de partitions avec
-  la partition HFS — la ROM pilote le port elle-même. À vérifier en le
-  construisant : si une partition `Apple_Driver_ATA` porteuse de vrai code
-  Apple est exigée en plus, alors seulement il y aura un dump manquant.
+- [ ] **Rendre un disque IDE amorçable sur le Q630/LC 580.** Le target ATA
+  est livré et prouvé (`AtaDisk`, `ata_disk_test`, port F108 câblé dans
+  `Q630Memory`) : la ROM le voit, lit IDENTIFY, écrit INITIALIZE DEVICE
+  PARAMETERS avec la géométrie qu'on annonce, puis lit des secteurs. Ce qui
+  manque est côté MÉDIA, et c'est mesuré (2026-09-17, `IDE_TRACE` sur une
+  sonde) : la ROM n'accepte un disque ATA que si son Driver Descriptor
+  Record porte une entrée de **type `$0701`** — contrôles négatifs :
+  `$0702`, `$0001` et `$0101` la laissent boucler indéfiniment sur
+  IDENTIFY/INIT/READ bloc 0, `$0701` la fait passer à la carte des
+  partitions (blocs 1-3) puis charger le pilote. Avec le pilote SCSI de nos
+  images (`Apple_Driver43`, 19 blocs) elle le charge et s'arrête sur la
+  disquette « ? » : le code chargé parle au SCSI Manager. **Il manque donc
+  un dump** : une partition `Apple_Driver_ATA` portant le vrai pilote ATA
+  d'Apple, c'est-à-dire une image de disque Macintosh formatée en IDE par
+  Drive Setup. Aucune ROM que nous avons ne la contient (le Q630 a
+  `ATALOAD`, qui charge ce pilote depuis le disque). L'alternative, si ce
+  dump reste introuvable : écrire notre propre pilote de bloc ATA avec
+  Retro68, comme l'agent Disques de `share/`.
 
 ---
 

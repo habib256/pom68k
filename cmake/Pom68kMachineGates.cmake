@@ -711,6 +711,11 @@ add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
 target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
 add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)
 
+# The ATA task file, driven the way the Quadra 630's ROM driver drives it.
+add_executable(ata_disk_test tests/ata_disk_test.cpp)
+target_link_libraries(ata_disk_test PRIVATE pom68k_core)
+add_test(NAME ata_disk_test COMMAND ata_disk_test)
+
 # An audio CD in front of a real Mac OS: the guest's own CD extension is
 # the consumer, and the disc is synthesized by the gate itself.
 add_executable(q605_cdaudio_etalon tests/q605_cdaudio_etalon.cpp)
