@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 568 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 570 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,11 +9,11 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 52 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 53 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 92 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
-| [Sound](#sound) | 12 |
+| [Sound](#sound) | 13 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 23 |
 | [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 67 |
@@ -167,6 +167,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17 (eleventh)** — [The bare LC II is closed: POM68K is faithful, and this ROM has no path that clears the FPU bit](CHANGELOG.md#2026-09-17-lcii-closed)
 - **2026-09-17 (fifth)** — [The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2](CHANGELOG.md#2026-09-17-lcii-election-traced)
 - **2026-09-17 (fourth)** — [PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated](CHANGELOG.md#2026-09-17-lcii-pa0-reverted)
+- **2026-09-17 (sixteenth)** — [Every board can play a CD now, the volume knob works, and the cost was moved off the 68000's hottest loop](CHANGELOG.md#2026-09-17-cdda-fourth-stage)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -339,6 +340,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-16 (twenty-third)** — [The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way](CHANGELOG.md#2026-09-16-dfac2-ruled)
 - **2026-09-17 (fifteenth)** — [CD audio reaches the speaker, and the plan it was written against was wrong: CD-DA never goes through the sound chip](CHANGELOG.md#2026-09-17-cdda-third-stage)
 - **2026-09-17 (fourteenth)** — [CD audio, second stage: the transport runs on machine time, and READ SUBCHANNEL reports a position that really moves](CHANGELOG.md#2026-09-17-cdda-second-stage)
+- **2026-09-17 (seventeenth)** — [Building a consumer gate for CD audio found two defects first: an audio CD would not mount at all, and every real cue sheet was read two seconds early](CHANGELOG.md#2026-09-17-cdda-fifth-stage)
 - **2026-09-17 (thirteenth)** — [CD audio, first stage: the disc is synthesized, the whole cue sheet is read, and the TOC finally admits its audio tracks](CHANGELOG.md#2026-09-17-cdda-first-stage)
 
 ## Serial, LocalTalk and AppleTalk

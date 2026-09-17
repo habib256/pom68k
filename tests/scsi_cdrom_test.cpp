@@ -315,11 +315,11 @@ int main() {
         for (uint32_t i = 0; i < kAudio; i++, lba++) raw(true, lba, 0x5A);
         { std::ofstream f("scsi_cdrom_mixed.bin", std::ios::binary);
           f.write(reinterpret_cast<const char*>(bin.data()), std::streamsize(bin.size())); }
-        const uint32_t am = audioStart + 150;
+        const uint32_t am = audioStart;   // cue times are file-relative
         char cue[512];
         std::snprintf(cue, sizeof cue,
             "FILE \"scsi_cdrom_mixed.bin\" BINARY\n"
-            "  TRACK 01 MODE1/2352\n    INDEX 01 00:02:00\n"
+            "  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n"
             "  TRACK 02 AUDIO\n    INDEX 01 %02u:%02u:%02u\n",
             am / (60 * 75), (am / 75) % 60, am % 75);
         { std::ofstream f("scsi_cdrom_mixed.cue"); f << cue; }

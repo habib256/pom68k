@@ -1009,6 +1009,109 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-cdda-fifth-stage"></a>
+## 2026-09-17 (seventeenth) — Building a consumer gate for CD audio found two defects first: an audio CD would not mount at all, and every real cue sheet was read two seconds early
+
+The last open CDDA item is a gate, not code: the AppleCD Audio Player, on a
+System volume, judged on the host output. Preparing the disc it would need
+turned up two defects that had nothing to do with gates.
+
+**An audio CD did not mount.** Not a mis-mount — no mount at all. `openCdrom`
+judged "is there a disc in the tray?" by counting user-data blocks, and an
+audio CD has **none**: it is its TOC and its tracks, with no data track
+anywhere on it. That is the most ordinary CD-DA disc there is, and the one
+the AppleCD Audio Player exists for. A sheet whose tracks are all AUDIO now
+mounts with zero data blocks: TEST UNIT READY answers GOOD, READ TOC returns
+the tracks, READ CAPACITY answers with the lead-out address (which is what a
+real drive does when there is no last data block), and READ(6)/(10) is
+refused with ILLEGAL REQUEST / `$64` — SCSI-2 § 14.2.6's "illegal mode for
+this track" — rather than handing back a volume made of silence. Presence is
+now `discLoaded()`, "user data OR audio tracks", not `blocks_ > 0`.
+
+**Every real cue sheet was read two seconds early.** A cue sheet's `INDEX`
+times are measured from the start of the FILE it names, not as absolute disc
+addresses (Cue Sheet File Format Specification, § INDEX; Hydrogenaudio's cue
+sheet page agrees). `cueMsfToLba` subtracted 150 sectors — the two-second
+lead-in — and `tools/make_mixed_cd.py` compensated by ADDING 150 when it
+wrote sheets of its own. The pair round-tripped POM68K's own discs perfectly,
+which is exactly why the gates never saw it, and started every track of a
+real rip 150 sectors early. Both sides corrected, and the synthesized sheets
+in `scsi_cdrom_test` and `cd_audio_test` now say `INDEX 01 00:00:00` for a
+track that begins at the start of its file, like a real one.
+
+This is the shape of defect that only appears when you try to feed the code
+something you did not make yourself.
+
+**Also:** `tools/make_mixed_cd.py` builds a pure audio CD (`--tone` with no
+`--data`), which is what the consumer gate will mount.
+
+**Gates.** `cd_audio_test` grew the audio-only disc end to end. `asset-none`
+is 107/107. Every board's tick changed in this run of work, so all **129 boot
+etalons** were re-run across the twelve boards: no failures.
+`q605_cdrom_etalon`, `q605_cdboot_etalon` and `q605_cdhot_etalon` pass on the
+corrected cue convention.
+
+**Still open:** the consumer gate itself. Both reference volumes carry the
+AppleCD Audio Player, and `lcii_beyond_etalon` already drives the guest's own
+pointer in a closed loop, so the pieces exist.
+
+---
+
+<a id="2026-09-17-cdda-fourth-stage"></a>
+## 2026-09-17 (sixteenth) — Every board can play a CD now, the volume knob works, and the cost was moved off the 68000's hottest loop
+
+Three finishing pieces on the CD-audio lead, and one of them was a defect I
+had written myself an hour earlier.
+
+**The defect: CD audio was a property of which controller the machine used.**
+The transport was wired into the four 53C96 boards because that is where a
+per-slice tick already existed. That is not a reason, it is an accident of
+where the code was convenient. The other eight boards — Compact, Glue, OSS,
+V8, RBV, Sonora, VASP, MSC — all hold `ScsiDisk scsiDisks_[7]` and all have a
+`tick(int cpuCycles)`; they simply never advanced their transports. Worse,
+the failure is invisible: **a stopped transport looks exactly like a disc
+nobody asked to play.** All twelve boards now advance and cable their drives,
+and `docs_test` holds the invariant ("every board with SCSI disks advances
+and cables its CD transport") because nothing else can — a board's tick
+cannot be exercised without that board's ROM, so the check is source-level on
+purpose.
+
+**The cost, and where it was about to land.** A board's `tick()` is not a
+periodic timer. On the 68000 boards it is `Cpu68k::catchUp()`, called from
+the bus-access path — the emulator's hottest loop. Walking seven SCSI targets
+there on every bus access would charge every machine, forever, for a disc
+almost none of them have in the tray. `CdAudioPump` grains the work to **one
+millisecond of machine time**: one add and one compare per tick, the seven-
+target walk a thousand times a second. CD-DA is 75 sectors a second, so a
+1 ms grain is thirteen times finer than the thing being modelled, and the
+accumulator carries the leftover cycles — the head lands on exactly the sector
+it would have, just decided less often. The gate proves that rather than
+asserting it: fifty milliseconds delivered in 37-cycle dribbles through the
+pump, against the same total handed over in one lump, must end on the same
+sector. Host time is never consulted.
+
+**The volume knob was decoration.** MODE SENSE has reported page `$0E` (CD
+Audio Control) since the CD-ROM personality existed, and MODE SELECT threw
+away everything written to it — which means the Sound control panel's CD
+slider and the AppleCD Audio Player's volume moved nothing. The page is now
+honoured per output port: each port carries a channel mask (bit 0 = audio
+channel 0, bit 1 = channel 1) and a level, a port selecting no channel is
+muted, and the strongest port feeding a channel wins it. The result is the
+DRIVE's gain and multiplies with the host user's, exactly as two knobs in
+series do. Everything else MODE SELECT carries is still accepted and ignored,
+with the same reasoning as before.
+
+**Gates.** `cd_audio_test` grew the volume page (default full level, per-port
+routing, both-channel ports, and the level reaching the mix) and the grain
+equivalence. `asset-none` is 107/107; `q605_cdrom_etalon` and
+`q605_cdboot_etalon` pass. `DEV.md` § 3.3 now carries the whole path.
+
+**Still open, and it is the last one:** a real consumer gate — the AppleCD
+Audio Player on a System volume, judged on the host output rather than on the
+commands the drive received.
+
+---
+
 <a id="2026-09-17-cdda-third-stage"></a>
 ## 2026-09-17 (fifteenth) — CD audio reaches the speaker, and the plan it was written against was wrong: CD-DA never goes through the sound chip
 

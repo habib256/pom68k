@@ -750,6 +750,11 @@ int MacIIMemory::cyclesToNextEvent() const {
 }
 
 void MacIIMemory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, and every sector the head passes goes out on the
+    // drive's own audio lead (ScsiDisk::advanceAudioCycles, CdAudioSink.h).
+    cdPump_.advance(scsiDisks_, cpuCycles, cpuHz());
+
     tickCalls_++;
     viaPhase_ += cpuCycles;
     int t = viaPhase_ / 20;

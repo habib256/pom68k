@@ -47,6 +47,7 @@
 #include "Ncr5380.h"
 #include "Rtc.h"
 #include "Scc8530.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "SonyDrive.h"
 #include "Swim1.h"
@@ -153,6 +154,13 @@ public:
         drive_.setSoundSink(floppy);
         externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
+    }
+    // The CD-audio lead. A playing disc is decoded by the drive and
+    // mixed as analog on a real machine, so its samples go to the host
+    // beside the mechanisms, never through the sound chip
+    // (CdAudioSink.h).
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
     }
     bool overlay() const { return overlay_; }
     uint8_t ossReg(int off) const { return ossRegs_[off & 0x3FF]; }
@@ -275,6 +283,7 @@ private:
     SonyDrive externalDrive_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     IIfxCpu* cpu_ = nullptr;
     jit::CodeGuard* jitGuard_ = nullptr;   // not serialized: machine wiring

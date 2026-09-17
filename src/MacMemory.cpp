@@ -114,6 +114,11 @@ void MacMemory::updateIrq() {
 }
 
 void MacMemory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, and every sector the head passes goes out on the
+    // drive's own audio lead (ScsiDisk::advanceAudioCycles, CdAudioSink.h).
+    cdPump_.advance(scsiDisks_, cpuCycles, cpuHz());
+
     // The RTC 1 Hz heartbeat comes from the 343-0042's own 32.768 kHz crystal,
     // NOT from video: driving it off 60 video frames (60 x 130240 = 7 814 400
     // cycles) ran the emulated clock 1.0025x fast, ~3.5 min/day. Every other

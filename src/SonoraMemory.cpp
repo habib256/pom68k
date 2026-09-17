@@ -578,6 +578,11 @@ uint8_t SonoraMemory::peek8(uint32_t addr) const {
 }
 
 void SonoraMemory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, and every sector the head passes goes out on the
+    // drive's own audio lead (ScsiDisk::advanceAudioCycles, CdAudioSink.h).
+    cdPump_.advance(scsiDisks_, cpuCycles, cpuHz());
+
     // VIA1 timers at 783.36 kHz (25 MHz / 31.914 — Bresenham).
     viaAcc_ += int64_t(cpuCycles) * kViaHz;
     int viaCycles = int(viaAcc_ / cpuHz_);

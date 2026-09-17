@@ -76,6 +76,7 @@
 #include "CudaLle.h"
 #include "Scc8530.h"
 #include "Ncr53c96.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "Asc.h"
 #include "Swim1.h"
@@ -420,6 +421,7 @@ private:
     int64_t scsiDebt_ = 0;
     void flushScsi();
     ScsiDisk scsiDisks_[7];
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     // Eclipse front end (constructed always, wired only when eclipse()).
     ApplePic sccPic_, swimPic_;

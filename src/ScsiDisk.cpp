@@ -281,11 +281,18 @@ static bool deframeMode1_2352(std::vector<uint8_t>& img) {
 // did not exist as far as the guest could tell.
 struct CueTrack { unsigned number; bool audio; uint32_t startLba; };
 
+// A cue sheet's INDEX times are measured from the start of the FILE it
+// names, NOT as absolute disc addresses — so MM:SS:FF converts straight to
+// a sector offset into the .bin, with no two-second lead-in to take off.
+// (Cue Sheet File Format Specification, § INDEX; Hydrogenaudio's cue sheet
+// page says the same.) POM68K used to subtract 150 here and compensate by
+// ADDING 150 when it wrote sheets of its own, which round-tripped its own
+// discs perfectly and started every track of a real rip two seconds early
+// — corrected 2026-09-17.
 static uint32_t cueMsfToLba(const std::string& s) {
     unsigned m = 0, ss = 0, f = 0;
     if (std::sscanf(s.c_str(), "%u:%u:%u", &m, &ss, &f) != 3) return 0;
-    const uint32_t abs = (m * 60 + ss) * 75 + f;
-    return abs >= 150 ? abs - 150 : 0;          // MSF 00:02:00 is LBA 0
+    return (m * 60 + ss) * 75 + f;
 }
 
 static std::string cueDataFile(const std::string& cuePath, bool& mode1_2352,
@@ -348,6 +355,7 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     tracks_.clear();
     discLba_ = 0;
     rawPath_.clear();
+    audioOnly_ = false;
     if (rawFile_.is_open()) rawFile_.close();
     if (cdAudio_ && audio_ != Audio::Stopped) cdAudio_->cdAudioStopped();
     audio_ = Audio::Stopped;
@@ -402,6 +410,23 @@ bool ScsiDisk::openCdrom(const std::string& path) {
         }
     }
 
+    // ── An audio CD: no user data anywhere on it ────────────────────────
+    // The most ordinary CD-DA case, and the one the AppleCD Audio Player
+    // exists for. There is no data track to de-frame and nothing to mount
+    // as a volume; the disc is its TOC and its tracks. Judged from the
+    // sheet, not from the bytes — a `.bin` of audio sectors looks like
+    // arbitrary data by construction.
+    audioOnly_ = !tracks_.empty();
+    for (const CdTrack& t : tracks_) if (!t.audio) audioOnly_ = false;
+    if (audioOnly_) {
+        kind_ = Kind::Cdrom;
+        image_.clear();
+        blocks_ = 0;
+        hfsPrefixBlocks_ = 0;
+        unitAttention_ = mediumChange;
+        return true;
+    }
+
     // A 2352-multiple that starts with the MODE1 sync pattern is a raw rip:
     // de-frame it. Anything else must already be 2048-byte user data —
     // guessing would mount a mis-framed volume, which looks to the guest
@@ -448,6 +473,7 @@ bool ScsiDisk::openCdrom(const std::string& path) {
 void ScsiDisk::attachCdromEmpty() {
     kind_ = Kind::Cdrom;
     attached_ = true;
+    audioOnly_ = false;
     unitAttention_ = false;
     if (file_.is_open()) file_.close();
     writeBack_ = false;
@@ -457,8 +483,6 @@ void ScsiDisk::attachCdromEmpty() {
     setSense(kNotReady, 0x3A);                   // MEDIUM NOT PRESENT
 }
 
-// CD-DA runs at 75 sectors a second, so one sector is 13 333 us. Machine
-// time, not host time: a paused emulator must not let the disc run on.
 // One raw sector straight from the medium. The audio tracks were cut out
 // of image_ at open() (de-framing them would turn music into user data),
 // so a play reads them back from the file the .cue named. 75 reads a
@@ -476,6 +500,8 @@ bool ScsiDisk::readRawSector(uint32_t lba, uint8_t* out) {
     return rawFile_.gcount() == 2352;
 }
 
+// CD-DA runs at 75 sectors a second, so one sector is 13 333 us. Machine
+// time, not host time: a paused emulator must not let the disc run on.
 void ScsiDisk::advanceAudio(uint64_t micros) {
     if (audio_ != Audio::Playing) return;
     audioFrac_ += micros;
@@ -804,6 +830,48 @@ static bool appendCdModePage(std::vector<uint8_t>& body, uint8_t page,
     }
 }
 
+// ── MODE SELECT, page $0E: the drive's own volume ───────────────────────
+// The CD Audio Control page is not decoration: it is what the Sound control
+// panel's CD slider and the AppleCD Audio Player's volume actually move,
+// and a drive that reports the page in MODE SENSE (we do, above) but throws
+// away what MODE SELECT sets is a drive whose volume control does nothing.
+//
+// Layout (SCSI-2 § 14.3.3.2, and the MODE SENSE twin above): four output
+// ports, each a selection byte and a volume byte at page offsets 8/9,
+// 10/11, 12/13, 14/15. The selection is a channel mask — bit 0 is audio
+// channel 0 (left), bit 1 is channel 1 (right) — so a port contributes its
+// volume to every channel it names, and a port selecting 0 is muted. Taking
+// the strongest port per channel is what a mixer does with parallel feeds.
+// No sink (a headless gate, a machine with no audio host) means nothing to
+// tell, so the page is parsed only when someone is listening.
+void ScsiDisk::modeSelect(const std::vector<uint8_t>& params, bool ten) {
+    if (kind_ != Kind::Cdrom || !cdAudio_) return;
+    const size_t header = ten ? 8u : 4u;
+    if (params.size() < header + 2) return;
+    const size_t bdLen = ten ? size_t((params[6] << 8) | params[7])
+                             : size_t(params[3]);
+    size_t at = header + bdLen;
+    while (at + 1 < params.size()) {
+        const uint8_t page = params[at] & 0x3F;
+        const size_t len = size_t(params[at + 1]) + 2;
+        if (page == 0x0E && at + 12 <= params.size()) {
+            unsigned left = 0, right = 0;
+            for (int port = 0; port < 4; port++) {
+                const size_t sel = at + 8 + size_t(port) * 2;
+                if (sel + 1 >= params.size()) break;
+                const uint8_t channels = params[sel] & 0x0F;
+                const uint8_t volume = params[sel + 1];
+                if (channels & 0x01) left = std::max(left, unsigned(volume));
+                if (channels & 0x02) right = std::max(right, unsigned(volume));
+            }
+            cdAudio_->cdAudioVolume(uint8_t(left), uint8_t(right));
+        }
+        at += len;                                    // len >= 2 always:
+                                                      // the length byte counts
+                                                      // from page offset 2
+    }
+}
+
 // MODE SENSE(6) $1A and MODE SENSE(10) $5A differ only in header shape and
 // allocation-length width, so they share one body — and both personalities
 // share the header, differing only in their page set, their block size and
@@ -1019,7 +1087,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
     if (kind_ == Kind::Cdrom) {
         switch (cdb[0]) {
             case 0x00:                               // TEST UNIT READY
-                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
                 return kGood;
 
             case 0x12: {                             // INQUIRY
@@ -1042,7 +1110,17 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             }
 
             case 0x25: {                             // READ CAPACITY (10)
-                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (audioOnly_) {
+                    // No data track, so there is no last data block: real
+                    // drives answer with the lead-out address. The driver
+                    // uses it to size the disc, never to read it.
+                    const uint32_t last = discLba_ ? discLba_ - 1 : 0;
+                    dataOut = { uint8_t(last >> 24), uint8_t(last >> 16),
+                                uint8_t(last >> 8), uint8_t(last),
+                                0, 0, 0x08, 0x00 };
+                    return kGood;
+                }
                 uint32_t last = blocks_ - 1;
                 dataOut = { uint8_t(last >> 24), uint8_t(last >> 16),
                             uint8_t(last >> 8), uint8_t(last),
@@ -1056,7 +1134,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
 
             case 0x45:                               // PLAY AUDIO (10)
             case 0x47: {                             // PLAY AUDIO MSF
-                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
                 uint32_t start = 0, end = discLba_ ? discLba_ : blocks_;
                 if (cdb[0] == 0x45) {
                     start = uint32_t(cdb[2]) << 24 | uint32_t(cdb[3]) << 16 |
@@ -1093,7 +1171,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             }
 
             case 0x43: {                             // READ TOC
-                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
                 const bool msf = (cdb[1] & 0x02) != 0;
                 // Format lives in cdb[2] low nibble; when zero, the SFF8020
                 // legacy field in cdb[9] bits 7-6 (MAME cd.cpp:803). Mac OS
@@ -1161,7 +1239,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 // carries the CD-DA transport: the audio status byte and a
                 // position that MOVES while a play runs, which is what the
                 // AppleCD Audio Player watches.
-                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
                 const bool msf  = (cdb[1] & 0x02) != 0;
                 const bool subq = (cdb[2] & 0x40) != 0;
                 const uint8_t param = cdb[3];
@@ -1206,8 +1284,12 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 if ((cdb[4] & 0x02) && !(cdb[4] & 0x01)) eject();
                 return kGood;
 
-            case 0x1E:                               // PREVENT/ALLOW REMOVAL
             case 0x15:                               // MODE SELECT(6)
+            case 0x55:                               // MODE SELECT(10)
+                modeSelect(dataIn, cdb[0] == 0x55);
+                return kGood;
+
+            case 0x1E:                               // PREVENT/ALLOW REMOVAL
             case 0x2B:                               // SEEK(10)
                 return kGood;
 
@@ -1228,7 +1310,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 // and not compared — the shared path's comparison indexes
                 // 512-byte blocks, which would be silently wrong here, and a
                 // disc that reads at all reads correctly.
-                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
                 uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                              | (uint32_t(cdb[4]) << 8) | cdb[5];
                 uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
@@ -1240,7 +1322,15 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             }
 
             case 0x08: case 0x28:                    // READ(6)/(10)
-                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
+                if (audioOnly_) {
+                    // There is no user data on an audio CD. SCSI-2 § 14.2.6
+                    // calls this ILLEGAL MODE FOR THIS TRACK, and a drive
+                    // that answered zeroes instead would hand the guest a
+                    // "volume" made of silence.
+                    setSense(kIllegalRequest, 0x64);
+                    return kCheck;
+                }
                 break;                               // shared path below
 
             default:

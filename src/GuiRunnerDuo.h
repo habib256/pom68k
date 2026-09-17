@@ -86,6 +86,9 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     // internal floppy. The shared audio host still owns ASC output; the
     // session owns the drive-sound menu state even though no sources attach.
     services.prepareAudioHost(audioHost);
+    // No mechanisms to cable, but the CD-audio lead still applies: a Duo
+    // plays a disc through its Dock's SCSI port like any other machine.
+    services.attachCdAudio(mem, 0);
     if (!audioHost.start())
         std::fprintf(stderr, "audio: no output device (silent)\n");
 

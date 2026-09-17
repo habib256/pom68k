@@ -41,6 +41,7 @@
 #include "PgePmu.h"
 #include "Asc.h"
 #include "Ncr5380.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "Scc8530.h"
 #include <cstdint>
@@ -130,6 +131,12 @@ public:
     int16_t ascPop() { return asc_.pop(); }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    // The CD-audio lead. The Duo has no internal optical bay, but its Dock
+    // and its external SCSI port both take one, and a CD plays on machine
+    // time whatever it is plugged into (CdAudioSink.h).
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
+    }
     // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus
     // (DaynaPortBus.h); AtalkHub wires it to the in-process NAT.
     DaynaPort& daynaPort() { return dayna_; }
@@ -284,6 +291,7 @@ private:
     AscV8 asc_{0xE9};
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     Scc8530 scc_;
     MscCpu* cpu_ = nullptr;

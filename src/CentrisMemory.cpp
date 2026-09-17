@@ -630,7 +630,7 @@ void CentrisMemory::tick(int cpuCycles) {
     // advances (ScsiDisk::advanceAudioCycles). Only the 53C96 platforms run
     // this; the 5380 boards have no per-slice tick reaching their targets,
     // and their CD bays therefore report a transport that never moves.
-    for (ScsiDisk& d : scsiDisks_) d.advanceAudioCycles(cpuCycles, cpuHz_);
+    cdPump_.advance(scsiDisks_, cpuCycles, cpuHz_);
 
     // VIA1 φ2 is the board's fixed 783.36 kHz E clock, not a divisor of
     // the CPU — an integer ratio is an approximation here (ViaEClock.h).

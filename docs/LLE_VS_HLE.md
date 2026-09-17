@@ -153,11 +153,11 @@ caught it.
   sub-480-line mode still fires once per frame. (The old `vtotal_ > 480`
   guard that pinned such modes to the legacy 60 Hz / 525-line shape is
   gone — `Dafb.cpp:403-408`.)
-- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:565`, `:552-558`:
+- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:572`, `:552-558`:
   `montype_` defaults to 2, 512×384, and the frame constants are computed
   from that dot clock) whatever the monitor sense says. MAME pins the 13"
   instead, and of the four gate arrays only **RBV** re-derives the frame
-  from the sense (`RbvMemory::recalcFrame`, `RbvMemory.h:302`,
+  from the sense (`RbvMemory::recalcFrame`, `RbvMemory.h:309`,
   `RbvMemory.cpp:129`). A
   *different* choice from MAME's, not a lesser one — neither is
   sense-driven. → **Reopen when** the V8 monitor sense becomes selectable
@@ -359,7 +359,7 @@ Both workarounds are retired (`RbvCpu` back to the shared default;
 `POM68K_Q605_CACHE_BOOST` re-measured green at 2/4/8 across the 040 family).
 The audit found one more boosted-clock reader: `AdbVia::syncTo` fed the
 PIC1654S co-step the raw core clock — every boosted call site now passes
-`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:159`
+`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:164`
 passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
 **Any new consumer of the CPU clock must ask which domain it is in.**
 

@@ -63,6 +63,17 @@ public:
 
     void cdAudioStopped() override { reset(); }
 
+    void cdAudioVolume(std::uint8_t left, std::uint8_t right) override {
+        guestLeft_.store(left, std::memory_order_relaxed);
+        guestRight_.store(right, std::memory_order_relaxed);
+    }
+    std::uint8_t guestVolumeLeft() const {
+        return guestLeft_.load(std::memory_order_relaxed);
+    }
+    std::uint8_t guestVolumeRight() const {
+        return guestRight_.load(std::memory_order_relaxed);
+    }
+
     // Drop everything in flight: STOP, an eject, a machine reset. The
     // resampler's phase goes with it — the next play starts a new stream.
     void reset() {
@@ -82,12 +93,16 @@ public:
     void mixStereo(float* out, int frames) override {
         const float gain = muted_.load(std::memory_order_relaxed)
                          ? 0.0f : volume_.load(std::memory_order_relaxed);
+        // Two knobs in series: the drive's own level, which the guest sets
+        // with MODE SELECT page $0E, and the host user's.
+        const float gl = gain * float(guestLeft_.load(std::memory_order_relaxed)) / 255.0f;
+        const float gr = gain * float(guestRight_.load(std::memory_order_relaxed)) / 255.0f;
         for (int i = 0; i < frames; i++) {
             const std::size_t r = read_.load(std::memory_order_relaxed);
             if (r == write_.load(std::memory_order_acquire)) return;  // dry
             if (gain > 0.0f) {
-                out[i * 2]     += ring_[r].left  * gain;
-                out[i * 2 + 1] += ring_[r].right * gain;
+                out[i * 2]     += ring_[r].left  * gl;
+                out[i * 2 + 1] += ring_[r].right * gr;
             }
             read_.store((r + 1) % kRing, std::memory_order_release);
         }
@@ -123,6 +138,7 @@ private:
     std::atomic<std::size_t> dropped_{0};
     std::atomic<float> volume_{1.0f};
     std::atomic<bool>  muted_{false};
+    std::atomic<std::uint8_t> guestLeft_{255}, guestRight_{255};
     std::uint32_t outputRate_ = 0;
     pom68k::HostAudioResampler resampler_;
 };

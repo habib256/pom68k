@@ -43,6 +43,7 @@
 #include "Scc8530.h"
 #include "Ncr53c96.h"
 #include "DaynaPortBus.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "Asc.h"
 #include "Swim2.h"
@@ -402,6 +403,7 @@ private:
     bool scsiEventDriven_ = true;  // host tuning, fixed at construction
     void flushScsi();
     ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (POM68K_DAYNAPORT)
     Cpu040* cpu_ = nullptr;
 

@@ -27,7 +27,7 @@ src/GuiMachineRuntime.cpp                47
 src/GuiRunnerCompact.h                   145
 src/GuiRunnerCompactStorage.h            41
 src/GuiRunnerDafb.h                      268
-src/GuiRunnerDuo.h                       217
+src/GuiRunnerDuo.h                       220
 src/GuiRunnerSonora.h                    265
 src/GuiRunnerToby.h                      243
 src/GuiRunnerV8.h                        277
@@ -55,11 +55,11 @@ src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071
-src/ScsiDisk.cpp                         1503
+src/ScsiDisk.cpp                         1593
 src/SonyDrive.cpp                        1368
 src/StartupDomainView.h                  73
 src/StartupOptions.h                     394
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88
-src/V8Memory.cpp                         1008
+src/V8Memory.cpp                         1013

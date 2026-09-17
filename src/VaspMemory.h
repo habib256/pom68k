@@ -29,6 +29,7 @@
 #include "Ariel.h"
 #include "Asc.h"
 #include "Ncr5380.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "Swim1.h"
 #include "SonyDrive.h"
@@ -188,6 +189,13 @@ public:
         externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // The CD-audio lead. A playing disc is decoded by the drive and
+    // mixed as analog on a real machine, so its samples go to the host
+    // beside the mechanisms, never through the sound chip
+    // (CdAudioSink.h).
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
+    }
     // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
     // "Restart"). One-shot: the CPU wrapper consumes it at a run boundary
     // and resets itself there, never from inside the memory callback that
@@ -329,6 +337,7 @@ private:
     AscV8 asc_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     Swim1 swim_;
     SonyDrive drive_;

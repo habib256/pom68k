@@ -1212,6 +1212,36 @@ int main() {
               guiRuntimeSource.find("getenv(") == std::string::npos,
           "the GUI runtime consumes injected configuration without getenv");
     {
+        // Every board that can hold a SCSI disk can hold a CD-ROM, and a CD
+        // plays on MACHINE time: its transport only moves if the board's own
+        // tick advances it (ScsiDisk::advanceAudioCycles). Four boards had
+        // that wiring and eight did not, which made CD audio a property of
+        // which controller the machine happened to use — invisible from the
+        // outside, because a stopped transport looks exactly like a disc
+        // nobody asked to play. The check is source-level on purpose: a
+        // board's tick cannot be exercised without that board's ROM.
+        std::vector<std::string> silentBoards;
+        const std::filesystem::path sourceRoot =
+            std::filesystem::path(runtimeConfig).parent_path();
+        for (const auto& entry :
+             std::filesystem::directory_iterator(sourceRoot)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().extension().string() != ".h") continue;
+            const std::string header = slurp(entry.path().string());
+            if (header.find("ScsiDisk scsiDisks_") == std::string::npos) continue;
+            const std::string stem = entry.path().stem().string();
+            const std::string source = slurp((sourceRoot / (stem + ".cpp")).string());
+            if (source.empty()) continue;            // header-only board
+            if (source.find("cdPump_.advance(") == std::string::npos ||
+                header.find("attachCdAudioSink") == std::string::npos)
+                silentBoards.push_back(stem);
+        }
+        check(silentBoards.empty(),
+              "every board with SCSI disks advances and cables its CD transport");
+        for (const std::string& board : silentBoards)
+            check(false, board + " never moves a playing CD");
+    }
+    {
         std::vector<std::string> policyLeaks;
         const std::filesystem::path sourceRoot =
             std::filesystem::path(runtimeConfig).parent_path();

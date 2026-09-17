@@ -493,6 +493,11 @@ uint8_t IIfxMemory::peek8(uint32_t addr) const {
 // ── Time ──────────────────────────────────────────────────────────────────
 
 void IIfxMemory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, and every sector the head passes goes out on the
+    // drive's own audio lead (ScsiDisk::advanceAudioCycles, CdAudioSink.h).
+    cdPump_.advance(scsiDisks_, cpuCycles, cpuHz());
+
     // 40 MHz → C15M: ×15667200/40000000 = ×9792/25000, remainder carried.
     c15Acc_ += int64_t(cpuCycles) * 9792;
     const int c15 = int(c15Acc_ / 25000);

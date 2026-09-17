@@ -34,4 +34,13 @@ public:
     // dropped rather than played out. A play that simply REACHES ITS END
     // does not call this: those last frames are part of the recording.
     virtual void cdAudioStopped() {}
+
+    // The guest set the drive's own output level (MODE SELECT page $0E, the
+    // CD Audio Control page — this is what the Sound control panel's CD
+    // slider and the AppleCD Audio Player's volume actually move). 0-255
+    // per output channel, already routed through the page's port/channel
+    // selection. It is the DRIVE's gain, multiplied by whatever the host
+    // user chose: a guest at half volume and a user at half volume give a
+    // quarter, exactly as two knobs in series do.
+    virtual void cdAudioVolume(std::uint8_t /*left*/, std::uint8_t /*right*/) {}
 };

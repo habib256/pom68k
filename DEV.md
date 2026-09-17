@@ -1076,6 +1076,34 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   knew only WRITE(6)/(10). A parameter-list command on any 53C96 machine
   therefore reached STATUS while the driver still had its list to send.
 
+**CD audio (`CdAudioSink.h`, `CdAudioSource.h`, `CdAudioPump.h`).** A CD
+does not play through the sound chip. The AppleCD drive decodes CD-DA
+itself and puts it out as analog on a cable of its own, beside the SCSI
+cable (*Macintosh Quadra 900 Developer Note*); the guest starts the play
+with a SCSI command and then hears music the CPU never reads. POM68K
+models the wiring:
+
+- `PLAY AUDIO (10)` `$45`, `PLAY AUDIO MSF` `$47`, `PAUSE/RESUME` `$4B`
+  and `READ SUB-CHANNEL` `$42`. A play aimed at a data track is refused
+  (ILLEGAL REQUEST / `$64`), never faked.
+- The head advances on **machine time**, 75 sectors a second. Every board
+  pumps its transports from its own `tick()` in 1 ms grains
+  (`CdAudioPump` — a board's tick is the bus-access path on the 68000
+  boards, and CD-DA needs no finer resolution). The transport is snapshot
+  state; the track table is not, being an attachment property.
+- The samples are not in `image_`: `open()` cuts a mixed disc down to the
+  data track, since de-framing audio would turn music into user data, so a
+  play reads them back from the `.bin` the `.cue` named.
+- `MODE SELECT` page `$0E` (CD Audio Control) is honoured per output port
+  and channel mask — the Sound control panel's CD slider — and multiplies
+  with the host user's own volume.
+- The host end (`CdAudioSource`) is an `AudioFxSource`, mixed beside the
+  mechanical sounds rather than through the ASC: lock-free SPSC ring,
+  44.1 kHz → host DAC through `HostAudioResampler`, stereo.
+- Gates: `cd_audio_test` (asset-free, synthesizes its own mixed disc),
+  `scsi_cdrom_test`; `docs_test` holds every board with SCSI disks to
+  advancing and cabling its transport.
+
 ### 3.3bis What else can live on the bus: `ScsiTarget` + `DaynaPort`
 
 `ScsiTarget.h` is the four-method interface both controllers hold

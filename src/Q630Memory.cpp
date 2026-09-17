@@ -708,7 +708,7 @@ void Q630Memory::tick(int cpuCycles) {
     // advances (ScsiDisk::advanceAudioCycles). Only the 53C96 platforms run
     // this; the 5380 boards have no per-slice tick reaching their targets,
     // and their CD bays therefore report a transport that never moves.
-    for (ScsiDisk& d : scsiDisks_) d.advanceAudioCycles(cpuCycles, kCpuHz);
+    cdPump_.advance(scsiDisks_, cpuCycles, kCpuHz);
 
     // VIA1 φ2 = 783.36 kHz, fixed (iosb.cpp:74) — see viaSync above for why
     // the divider tracks kCpuHz instead of being the Q605's constant 32.

@@ -118,6 +118,11 @@ public:
         return kind_ == Kind::Disk ? blocks_ > 0 : attached_;
     }
     uint32_t blocks() const { return blocks_; }
+    // A disc is in the tray when it carries user data OR audio tracks. An
+    // AUDIO CD has zero data blocks and is very much present: the Apple
+    // CD-ROM extension mounts it from the TOC alone, and judging presence
+    // by `blocks_` alone made every audio disc read as an empty drive.
+    bool discLoaded() const { return blocks_ > 0 || audioOnly_; }
     // Per-target traffic. A gate that asserts on the CONTROLLER's total
     // cannot tell a mounted CD from an ignored one — the boot volume's
     // traffic drowns it (measured: 9619 vs 9618).
@@ -284,6 +289,10 @@ private:
     uint8_t effectiveLun(const uint8_t* cdb, int cdbLen) const;
     // MODE SENSE(6) and (10) share a body; `ten` picks the header shape.
     uint8_t modeSense(const uint8_t* cdb, bool ten, std::vector<uint8_t>& out);
+    // MODE SELECT's parameter list, for the one page a CD-ROM must really
+    // honour: $0E, the CD Audio Control page. Everything else is still
+    // accepted and ignored — see the command handler for why.
+    void modeSelect(const std::vector<uint8_t>& params, bool ten);
     bool applyFlatHfsFacade(const std::string& imagePath);
 
     // One entry per .cue TRACK, in sheet order: the TOC a mixed-mode disc
@@ -323,6 +332,7 @@ private:
     bool writeBack_ = false;
     Kind kind_ = Kind::Disk;
     bool attached_ = false;          // CD drive exists (disc may be absent)
+    bool audioOnly_ = false;         // every track is AUDIO: no user data
     // One CHECK CONDITION / $28 owed on the next command after a medium
     // change (not serialized: a pending attention is a mount edge, not
     // guest state — re-inserting after a restore re-arms it).

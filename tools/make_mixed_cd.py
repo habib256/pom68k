@@ -8,6 +8,7 @@ builds an equivalent from nothing, so the asset is reproducible, tiny and
 free of any rights question (TODO § Médias optiques, CHANGELOG 2026-09-17).
 
     tools/make_mixed_cd.py out.cue --data volume.iso --tone 440:2 --tone 660:2
+    tools/make_mixed_cd.py audio.cue --tone 440:20 --tone 660:20   # audio CD
 
 Each --tone is frequency_hz:seconds, written as 44.1 kHz 16-bit stereo.
 MODE1/2352 framing is sync + header (MSF, mode 1) + 2048 user bytes + a
@@ -36,39 +37,51 @@ def tone(freq: float, secs: float) -> bytes:
     return bytes(out)
 
 def msf(lba: int) -> str:
-    f = lba + 150
-    return "%02d:%02d:%02d" % (f // (60 * 75), (f // 75) % 60, f % 75)
+    # A cue sheet's INDEX times are FILE-relative (Cue Sheet File Format
+    # Specification), so a sector offset converts directly. The +150 that
+    # used to be here made sheets only POM68K could read.
+    return "%02d:%02d:%02d" % (lba // (60 * 75), (lba // 75) % 60, lba % 75)
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("cue")
-    ap.add_argument("--data", required=True, help="2048-byte-sector volume for track 1")
+    ap.add_argument("--data", help="2048-byte-sector volume for track 1; omit "
+                                   "for a pure AUDIO CD (no data track at all, "
+                                   "which is what most CD-DA discs are)")
     ap.add_argument("--tone", action="append", default=[], metavar="HZ:SECONDS")
     args = ap.parse_args()
 
-    data = open(args.data, "rb").read()
+    data = open(args.data, "rb").read() if args.data else b""
     if len(data) % USER:
         print("data image is not a whole number of 2048-byte sectors", file=sys.stderr)
+        return 1
+    if not data and not args.tone:
+        print("nothing to write: give --data, --tone, or both", file=sys.stderr)
         return 1
 
     binPath = args.cue[:-4] + ".bin" if args.cue.endswith(".cue") else args.cue + ".bin"
     lba, blob, cue = 0, bytearray(), ["FILE \"%s\" BINARY" % binPath.split("/")[-1]]
-    cue += ["  TRACK 01 MODE1/2352", "    INDEX 01 %s" % msf(0)]
-    for s in range(len(data) // USER):
-        blob += mode1(data[s * USER:(s + 1) * USER], lba); lba += 1
+    first = 1
+    if data:
+        cue += ["  TRACK 01 MODE1/2352", "    INDEX 01 %s" % msf(0)]
+        for s in range(len(data) // USER):
+            blob += mode1(data[s * USER:(s + 1) * USER], lba); lba += 1
+        first = 2
 
-    for n, spec in enumerate(args.tone, start=2):
+    for n, spec in enumerate(args.tone, start=first):
         hz, secs = spec.split(":")
         pcm = tone(float(hz), float(secs))
-        lba += 150                                  # 2 s pregap before audio
-        blob += b"\0" * (150 * RAW)
+        if n > 1:                                   # 2 s pregap between tracks
+            lba += 150
+            blob += b"\0" * (150 * RAW)
         cue += ["  TRACK %02d AUDIO" % n, "    INDEX 01 %s" % msf(lba)]
         blob += pcm; lba += len(pcm) // RAW
 
     open(binPath, "wb").write(bytes(blob))
     open(args.cue, "w").write("\n".join(cue) + "\n")
-    print("%s: %d tracks, %d sectors (%.1f MB)"
-          % (args.cue, 1 + len(args.tone), lba, len(blob) / 1e6))
+    print("%s: %d tracks, %d sectors (%.1f MB)%s"
+          % (args.cue, (1 if data else 0) + len(args.tone), lba,
+             len(blob) / 1e6, "" if data else " — audio only"))
     return 0
 
 if __name__ == "__main__":

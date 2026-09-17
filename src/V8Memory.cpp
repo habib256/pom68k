@@ -930,6 +930,11 @@ void V8Memory::scsiDmaW_(uint8_t v) {
 // on pseudo-VIA slot bit $40 in O6.4). 60.15 Hz = 1203/20 Hz exactly,
 // Bresenham on 20 × kCpuHz / 1203.
 void V8Memory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, and every sector the head passes goes out on the
+    // drive's own audio lead (ScsiDisk::advanceAudioCycles, CdAudioSink.h).
+    cdPump_.advance(scsiDisks_, cpuCycles, cpuHz());
+
     viaPhase_ += cpuCycles;
     int viaCycles = viaPhase_ / viaDiv_;
     viaPhase_ %= viaDiv_;

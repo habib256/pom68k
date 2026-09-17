@@ -506,6 +506,11 @@ uint8_t RbvMemory::peek8(uint32_t addr) const {
 }
 
 void RbvMemory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, and every sector the head passes goes out on the
+    // drive's own audio lead (ScsiDisk::advanceAudioCycles, CdAudioSink.h).
+    cdPump_.advance(scsiDisks_, cpuCycles, cpuHz());
+
     // VIA1 timers at 783.36 kHz (Bresenham on cpuHz_).
     viaAcc_ += int64_t(cpuCycles) * kViaHz;
     int viaCycles = int(viaAcc_ / cpuHz_);

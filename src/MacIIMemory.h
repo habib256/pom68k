@@ -17,6 +17,7 @@
 #include "AdbBus.h"
 #include "Asc.h"
 #include "Ncr5380.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "Swim1.h"
 #include "SonyDrive.h"
@@ -201,6 +202,13 @@ public:
         externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // The CD-audio lead. A playing disc is decoded by the drive and
+    // mixed as analog on a real machine, so its samples go to the host
+    // beside the mechanisms, never through the sound chip
+    // (CdAudioSink.h).
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
+    }
     Scc8530& scc() { return scc_; }
     Rtc& rtc() { return rtc_; }
     // Battery file (Rtc.h) — the extended XPRAM the Mac II ROM actually
@@ -318,6 +326,7 @@ private:
     AscV8 asc_{0x00};   // Mac II discrete ASC (version $00), not V8
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     Swim1 swim_;
     SonyDrive drive_;

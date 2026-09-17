@@ -256,13 +256,35 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   `cd_audio_test` (disque synthétisé, secteurs identifiables) : bons
   secteurs, dans l'ordre, bruts, rien pendant une pause, mixage additif,
   volume, coupure.
-  **Reste** : (a) un gate consommateur réel — l'AppleCD Audio Player d'un
-  volume System qui joue, mesuré sur la sortie hôte, pas seulement les
-  commandes ; (b) MODE SELECT page `$0E` (CD Audio Control) : le volume CD
-  du tableau de bord Son ne nous parvient pas encore ; (c) les plateformes
-  5380 (Compact, Glue, V8, RBV, Sonora, VASP, MSC) n'ont pas de tick
-  atteignant leurs cibles SCSI, donc leur baie CD annonce un transport
-  immobile et ne met rien sur le câble.
+  **Quatrième étage livré le 2026-09-17** : les douze cartes avancent leur
+  transport et câblent leur lecteur, pas seulement les quatre à 53C96 — un
+  invariant de `docs_test` le tient désormais (« every board with SCSI disks
+  advances and cables its CD transport »), parce qu'un transport immobile
+  ressemble exactement à un disque que personne n'a demandé de jouer.
+  L'avance se fait par grains d'une milliseconde de temps machine
+  (`CdAudioPump`) : le `tick()` d'une carte 68000 est le chemin d'accès bus,
+  et 75 secteurs/seconde n'exige pas plus fin ; le gate prouve que les
+  grains et un seul bloc tombent sur le même secteur. MODE SELECT page `$0E`
+  est honorée port par port et canal par canal — c'est le curseur CD du
+  tableau de bord Son — et se multiplie avec le volume de l'hôte.
+  **Cinquième étage livré le 2026-09-17, et il a ouvert deux vrais défauts**
+  : (1) un CD **audio seul** — le cas le plus ordinaire du CD-DA, celui pour
+  lequel l'AppleCD Audio Player existe — ne montait pas du tout, parce que
+  la présence d'un disque se jugeait au nombre de blocs de données et un CD
+  audio n'en a aucun ; il monte désormais (TEST UNIT READY positif, READ
+  TOC, READ CAPACITY qui rend le lead-out, READ refusé avec `$64` — il n'y a
+  aucune donnée utilisateur à rendre) ; (2) les temps `INDEX` d'une feuille
+  `.cue` sont **relatifs au fichier**, pas des adresses disque absolues (Cue
+  Sheet File Format Specification) : on retranchait 150 secteurs à la
+  lecture et on en rajoutait 150 à l'écriture, si bien que nos propres
+  disques bouclaient parfaitement et que toute copie réelle démarrait chaque
+  piste deux secondes trop tôt. `tools/make_mixed_cd.py` sait aussi
+  fabriquer un CD purement audio (`--tone` sans `--data`).
+  **Reste** : un seul point, et c'est un gate, pas du code — un consommateur
+  réel : l'AppleCD Audio Player d'un volume System qui joue, jugé sur la
+  sortie hôte et pas seulement sur les commandes reçues. Les deux volumes de
+  référence le portent (`MacOS-8.1-boot.vhd`, `GISTPERSO-boot.vhd`) et la
+  souris en boucle fermée existe déjà (`lcii_beyond_etalon`).
   Y inclure le seul cas `.cue/.bin` encore ouvert (tranché le 2026-09-16) :
   un BIN unique en mode mixte dont la piste de données n'est pas la première
   (décalage `INDEX 01` à calculer) — la feuille `.cue` est déjà lue, sa

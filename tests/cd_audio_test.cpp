@@ -12,9 +12,11 @@
 // The disc is synthesized, not found: a flat 2048-byte image cannot carry
 // an audio track, and real mixed discs are other people's music.
 
+#include "CdAudioPump.h"
 #include "CdAudioSource.h"
 #include "ScsiDisk.h"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -74,11 +76,11 @@ int main() {
         raw(true, lba, int16_t(0x1000 + i));          // one value per sector
     { std::ofstream f("cd_audio_test.bin", std::ios::binary);
       f.write(reinterpret_cast<const char*>(bin.data()), std::streamsize(bin.size())); }
-    const uint32_t am = audioStart + 150;
+    const uint32_t am = audioStart;   // cue times are file-relative
     char cue[512];
     std::snprintf(cue, sizeof cue,
         "FILE \"cd_audio_test.bin\" BINARY\n"
-        "  TRACK 01 MODE1/2352\n    INDEX 01 00:02:00\n"
+        "  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n"
         "  TRACK 02 AUDIO\n    INDEX 01 %02u:%02u:%02u\n",
         am / (60 * 75), (am / 75) % 60, am % 75);
     { std::ofstream f("cd_audio_test.cue"); f << cue; }
@@ -158,6 +160,137 @@ int main() {
 
     source.reset();
     check(source.buffered() == 0, "reset drops everything in flight");
+
+    // ── MODE SELECT page $0E: the drive's own volume knob ───────────────
+    // What the Sound control panel's CD slider and the AppleCD Audio
+    // Player's volume actually move. A drive that reports the page and then
+    // throws away what is written to it has a volume control that does
+    // nothing.
+    {
+        CdAudioSource guestVol;
+        guestVol.setSampleRate(44100);
+        disc.setCdAudioSink(&guestVol);
+        check(guestVol.guestVolumeLeft() == 255 &&
+              guestVol.guestVolumeRight() == 255,
+              "a drive nobody has touched plays at full level");
+
+        // Header(4) + page $0E: port 0 → channel 0 at $40, port 1 → channel
+        // 1 at $20, ports 2 and 3 muted.
+        const uint8_t sel[4 + 16] = {
+            0, 0, 0, 0,
+            0x0E, 0x0E, 0x04, 0, 0, 0, 0, 0,
+            0x01, 0x40, 0x02, 0x20, 0x00, 0xFF, 0x00, 0xFF };
+        const uint8_t modeSelect6[6] = { 0x15, 0x10, 0, 0, sizeof sel, 0 };
+        std::vector<uint8_t> params(sel, sel + sizeof sel);
+        check(disc.command(modeSelect6, 6, out, params) == 0,
+              "MODE SELECT (6) with page $0E is accepted");
+        check(guestVol.guestVolumeLeft() == 0x40 &&
+              guestVol.guestVolumeRight() == 0x20,
+              "each output port's level lands on the channel it selects");
+
+        // A port selecting no channel is muted, and the strongest port wins
+        // a channel it shares.
+        const uint8_t both[4 + 16] = {
+            0, 0, 0, 0,
+            0x0E, 0x0E, 0x04, 0, 0, 0, 0, 0,
+            0x03, 0x10, 0x03, 0x80, 0x00, 0xFF, 0x00, 0xFF };
+        std::vector<uint8_t> p2(both, both + sizeof both);
+        disc.command(modeSelect6, 6, out, p2);
+        check(guestVol.guestVolumeLeft() == 0x80 &&
+              guestVol.guestVolumeRight() == 0x80,
+              "a port feeding both channels is heard on both, loudest wins");
+
+        // And it reaches the mix, in series with the host user's knob.
+        guestVol.cdAudioSector(sink.sectors[0].data());
+        float m[4 * 2] = {};
+        guestVol.setVolume(1.0f);
+        guestVol.mixStereo(m, 4);
+        check(std::fabs(m[0] - want * (128.0f / 255.0f)) < 1e-3f,
+              "the guest's level scales the host mix");
+    }
+
+    // ── The 1 ms grain loses nothing ────────────────────────────────────
+    // A board does not look at its transports on every bus access
+    // (CdAudioPump.h). The grain must be an optimisation and not a change:
+    // the same machine time delivered in bus-sized dribbles through the
+    // pump, and in one lump straight to the disc, must land the play head
+    // on exactly the same sector.
+    {
+        const int64_t hz = 25000000;                  // a 25 MHz board
+        std::array<ScsiDisk, 1> pumped;
+        pumped[0].openCdrom("cd_audio_test.cue");
+        ScsiDisk lump;
+        lump.openCdrom("cd_audio_test.cue");
+
+        const uint32_t whole = 5;
+        const uint8_t playAll[10] = { 0x45, 0,
+            uint8_t(audioStart >> 24), uint8_t(audioStart >> 16),
+            uint8_t(audioStart >> 8), uint8_t(audioStart),
+            0, uint8_t(whole >> 8), uint8_t(whole), 0 };
+        pumped[0].command(playAll, 10, out, in);
+        lump.command(playAll, 10, out, in);
+
+        CdAudioPump pump;
+        int64_t delivered = 0;
+        while (delivered + 37 <= hz / 20) {           // 50 ms, 37 cycles at a time
+            pump.advance(pumped, 37, hz);
+            delivered += 37;
+        }
+        lump.advanceAudioCycles(delivered, hz);
+        check(pumped[0].audioLba() == lump.audioLba(),
+              "dribbled cycles and one lump land on the same sector");
+        check(lump.audioLba() > audioStart,
+              "and the play actually moved, so the comparison means something");
+    }
+
+    // ── An audio CD: no user data anywhere on it ────────────────────────
+    // The most ordinary CD-DA case, and the one the AppleCD Audio Player
+    // exists for. Nothing to mount as a volume — the disc IS its TOC and
+    // its tracks — so a drive that judges "is a disc present?" by counting
+    // user-data blocks reports an empty tray for every audio CD there is.
+    {
+        std::vector<uint8_t> abin;
+        for (uint32_t i = 0; i < 300; i++) {
+            std::vector<uint8_t> sector(2352, 0);
+            for (int f = 0; f < 588; f++) sector[f * 4] = uint8_t(i);
+            abin.insert(abin.end(), sector.begin(), sector.end());
+        }
+        { std::ofstream f("cd_audio_only.bin", std::ios::binary);
+          f.write(reinterpret_cast<const char*>(abin.data()), std::streamsize(abin.size())); }
+        { std::ofstream f("cd_audio_only.cue");
+          f << "FILE \"cd_audio_only.bin\" BINARY\n"
+               "  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n"
+               "  TRACK 02 AUDIO\n    INDEX 01 00:02:00\n"; }
+
+        ScsiDisk only;
+        check(only.openCdrom("cd_audio_only.cue"), "an audio-only .cue mounts");
+        check(only.present(), "the drive answers selection");
+        const uint8_t tur[6] = { 0x00, 0, 0, 0, 0, 0 };
+        check(only.command(tur, 6, out, in) == 0,
+              "TEST UNIT READY says the disc is there, with no data blocks");
+        check(only.blocks() == 0, "and it really has none");
+
+        const uint8_t toc[10] = { 0x43, 0x02, 0, 0, 0, 0, 0, 0, 40, 0 };
+        check(only.command(toc, 10, out, in) == 0 && out.size() >= 20,
+              "READ TOC returns the audio tracks");
+        check(only.trackCount() == 2 && only.trackIsAudio(0) && only.trackIsAudio(1),
+              "both tracks are audio");
+
+        const uint8_t cap[10] = { 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        check(only.command(cap, 10, out, in) == 0 && out.size() == 8,
+              "READ CAPACITY answers with the lead-out, not NOT READY");
+
+        const uint8_t read10[10] = { 0x28, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+        check(only.command(read10, 10, out, in) == 2,
+              "READ is refused: there is no user data to hand back");
+
+        const uint8_t playFirst[10] = { 0x45, 0, 0, 0, 0, 0, 0, 0, 2, 0 };
+        check(only.command(playFirst, 10, out, in) == 0 && only.audioState() == 1,
+              "and the first track plays, which is the whole point of the disc");
+
+        std::remove("cd_audio_only.bin");
+        std::remove("cd_audio_only.cue");
+    }
 
     std::remove("cd_audio_test.bin");
     std::remove("cd_audio_test.cue");

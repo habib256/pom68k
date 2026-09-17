@@ -27,6 +27,7 @@
 #include "Asc.h"
 #include "Dfac.h"
 #include "Ncr5380.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "Swim1.h"
 #include "Swim2.h"
@@ -284,6 +285,13 @@ public:
         externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // The CD-audio lead. A playing disc is decoded by the drive and
+    // mixed as analog on a real machine, so its samples go to the host
+    // beside the mechanisms, never through the sound chip
+    // (CdAudioSink.h).
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
+    }
     // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
     // "Restart"). One-shot: the CPU wrapper consumes it at a run boundary
     // and resets itself there, never from inside the memory callback that
@@ -526,6 +534,7 @@ private:
     Dfac dfac_;                      // original three-wire stage (not DFAC2)
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];          // by SCSI ID; [0] = boot drive
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     Swim1 swim_;
     Swim2 swim2_;                    // Spice-integrated SWIM2 (Color Classic)

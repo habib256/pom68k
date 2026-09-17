@@ -21,6 +21,7 @@
 #include "AdbVia.h"
 #include "AdbBus.h"
 #include "Ncr5380.h"
+#include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "jit/JitGuard.h"
 #include <cstdint>
@@ -249,6 +250,13 @@ public:
         externalDrive_.setSoundSink(floppy);
         for (ScsiDisk& disk : scsiDisks_) disk.setSoundSink(hdd);
     }
+    // The CD-audio lead. A playing disc is decoded by the drive and
+    // mixed as analog on a real machine, so its samples go to the host
+    // beside the mechanisms, never through the sound chip
+    // (CdAudioSink.h).
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
+    }
 
     // ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────
     // The compacts' map is flat and 24-bit, so the address the window probe
@@ -316,6 +324,7 @@ private:
     Scc8530 scc_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
+    CdAudioPump cdPump_;      // see CdAudioPump.h: 1 ms grain
     DaynaPort dayna_;              // opt-in Ethernet target (DaynaPortBus.h)
     MacKeyboard kbd_;
     MacMouse mouse_;
