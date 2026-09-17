@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 571 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 572 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 40 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 108 |
+| [Cross-cutting](#cross-cutting) | 109 |
 
 ---
 
@@ -632,5 +632,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17** — [A guest remounts a server renamed live: the Chooser lists only the new name, logs in and copies](CHANGELOG.md#2026-09-17-afp-rename-remounted)
 - **2026-09-17 (eighth)** — [Apple's ROM source becomes a first-class reference: the ProductInfo layout, the hwCfgFlags bit numbers, and three opaque words decoded](CHANGELOG.md#2026-09-17-apple-rom-source-notes)
 - **2026-09-17 (later)** — [The dispatch cache moves to the heap and drops to a quarter megabyte: the ABBA pass reads 0.2 % against a 1.2 % floor](CHANGELOG.md#2026-09-17-dispatch-cache-shrunk)
+- **2026-09-17 (nineteenth)** — [The last CDDA case: a disc whose data track is not the first, and an eject that was not emptying the drive](CHANGELOG.md#2026-09-17-cdda-cd-extra)
 - **2026-09-17 (ninth)** — [The XPRAM combo lever is closed, and a watch that had been lying by omission is fixed](CHANGELOG.md#2026-09-17-lcii-xpram-closed)
 

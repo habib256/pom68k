@@ -1009,6 +1009,44 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-cdda-cd-extra"></a>
+## 2026-09-17 (nineteenth) — The last CDDA case: a disc whose data track is not the first, and an eject that was not emptying the drive
+
+**CD Extra puts the audio in session 1 and the data track thousands of
+sectors in.** POM68K cut the data extent out of a mixed `.bin` only when
+track 1 was the data track, so such a disc was classified as audio-only and
+mounted nothing. The data track is now *found* rather than assumed, and the
+next track's start (the smallest one above it, sorted sheet or not) closes
+its extent.
+
+That exposed the real difficulty: **READ(10) carries absolute disc
+addresses.** A volume whose data track begins at LBA 120 is read at LBA 120,
+not at 0, while the image in memory starts at the track. `dataStartLba_`
+holds the offset, the read path takes it off, and every range check now runs
+against the data region `[dataStartLba_, dataStartLba_ + blocks_)` — which is
+`[0, blocks_)` for every hard disk and nearly every CD, so nothing else
+changes. A read aimed *inside* an audio track is refused with ILLEGAL
+REQUEST / `$64`, not answered with zeroes: a drive that zero-fills hands the
+guest a volume made of silence and lets it believe the disc is corrupt rather
+than wrongly addressed.
+
+**And an eject that did not empty the drive.** `eject()` cleared the data
+blocks but not the audio state — the track table's raw path, the audio-only
+flag, the transport. Since presence became "user data OR audio tracks"
+earlier today, an ejected audio CD went on answering TEST UNIT READY as
+though it were still in the tray. It now clears all of it and tells the audio
+lead to drop what is in flight, which is the same rule stated when the lead
+was built: music from a disc that has left the machine is not played out.
+
+**Gates.** `cd_audio_test` mounts a data-track-second disc, reads its first
+block at the track's absolute address, is refused inside the audio region,
+and finds an empty tray after eject. `asset-none` is 107/107 and all 23 CD
+and SCSI gates pass, the six CD etalons included.
+
+With this the optical-media section of `TODO.md` is empty.
+
+---
+
 <a id="2026-09-17-cdda-consumer"></a>
 ## 2026-09-17 (eighteenth) — CDDA is done: Mac OS 8.1 mounts a synthesized audio CD and plays it by itself, and the last missing piece was a READ TOC format we refused on principle
 

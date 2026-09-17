@@ -217,22 +217,6 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 
 ---
 
-## Médias optiques
-
-- [ ] **Piste de données qui n'est pas la première dans un `.bin` mixte.**
-  Le seul cas `.cue/.bin` encore ouvert (tranché le 2026-09-16) : un BIN
-  unique en mode mixte dont la piste 1 est audio et la piste de données
-  vient après — `open()` ne découpe l'étendue de données que lorsque
-  `tracks_[0]` n'est pas audio, sinon le disque est traité comme purement
-  audio. Tout le reste de la chaîne est là : la feuille `.cue` est lue en
-  entier, `MODE1/2352` dé-tramé, un fichier par piste accepté, les temps
-  `INDEX` sont relatifs au fichier (`ScsiDisk.cpp`, `scsi_cdrom_test`). Le
-  CDDA lui-même est livré et prouvé par un consommateur réel : Mac OS 8.1
-  monte un CD audio synthétisé et le joue seul (`q605_cdaudio_etalon`, plus
-  son bras témoin à tiroir vide).
-
----
-
 ## Nouvelles machines
 
 Les nouveaux contrôleurs sont prouvés sur le premier profil consommateur

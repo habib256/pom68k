@@ -356,6 +356,7 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     discLba_ = 0;
     rawPath_.clear();
     audioOnly_ = false;
+    dataStartLba_ = 0;
     if (rawFile_.is_open()) rawFile_.close();
     if (cdAudio_ && audio_ != Audio::Stopped) cdAudio_->cdAudioStopped();
     audio_ = Audio::Stopped;
@@ -400,11 +401,21 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     if (!tracks_.empty() && image_.size() % 2352 == 0) {
         discLba_ = uint32_t(image_.size() / 2352);
         rawPath_ = data;                     // the audio tracks stay on disk
-        if (!tracks_[0].audio) {
-            uint32_t end = discLba_;             // to EOF if it is the only track
+        // The data track is not always the first one: a CD Extra disc puts
+        // its audio in session 1 and its data track thousands of sectors in.
+        // Find it rather than assuming, and remember where it starts —
+        // READ(10) addresses are absolute disc LBAs, not offsets into the
+        // track (see dataStartLba_).
+        const CdTrack* dataTrack = nullptr;
+        for (const CdTrack& t : tracks_)
+            if (!t.audio) { dataTrack = &t; break; }
+        if (dataTrack) {
+            uint32_t end = discLba_;             // to EOF if it is the last
             for (const CdTrack& t : tracks_)
-                if (t.startLba > tracks_[0].startLba) { end = t.startLba; break; }
-            const size_t from = size_t(tracks_[0].startLba) * 2352;
+                if (t.startLba > dataTrack->startLba && t.startLba < end)
+                    end = t.startLba;            // the NEXT start, sorted or not
+            dataStartLba_ = dataTrack->startLba;
+            const size_t from = size_t(dataStartLba_) * 2352;
             const size_t to = std::min(size_t(end) * 2352, image_.size());
             if (to > from) image_.assign(image_.begin() + from, image_.begin() + to);
         }
@@ -527,6 +538,13 @@ void ScsiDisk::eject() {
     blocks_ = 0;
     tracks_.clear();
     discLba_ = 0;
+    // An audio disc has no data blocks, so without these an ejected one
+    // would still answer "medium present" through discLoaded().
+    rawPath_.clear();
+    audioOnly_ = false;
+    dataStartLba_ = 0;
+    if (rawFile_.is_open()) rawFile_.close();
+    if (cdAudio_ && audio_ != Audio::Stopped) cdAudio_->cdAudioStopped();
     audio_ = Audio::Stopped;
     audioLba_ = audioEnd_ = 0;
     hfsPrefixBlocks_ = 0;
@@ -558,7 +576,9 @@ void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
     readBlocks += count;
     if (kind_ == Kind::Cdrom) {
         out.assign(size_t(count) * 2048, 0);
-        uint64_t off = uint64_t(lba) * 2048;
+        // Absolute disc LBA → offset into the data track's image.
+        if (lba < dataStartLba_) return;         // before the data track
+        uint64_t off = uint64_t(lba - dataStartLba_) * 2048;
         if (off < image_.size()) {
             uint64_t n = uint64_t(count) * 2048;
             uint64_t avail = image_.size() - off;
@@ -1371,24 +1391,31 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                              | (uint32_t(cdb[4]) << 8) | cdb[5];
                 uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
-                if (uint64_t(lba) + cnt > blocks_) {
+                if (uint64_t(lba) + cnt > dataEndLba()) {
                     setSense(kIllegalRequest, 0x24);
                     return kCheck;
                 }
                 return kGood;
             }
 
-            case 0x08: case 0x28:                    // READ(6)/(10)
+            case 0x08: case 0x28: {                  // READ(6)/(10)
                 if (!discLoaded()) { setSense(kNotReady, 0x3A); return kCheck; }
-                if (audioOnly_) {
-                    // There is no user data on an audio CD. SCSI-2 § 14.2.6
-                    // calls this ILLEGAL MODE FOR THIS TRACK, and a drive
-                    // that answered zeroes instead would hand the guest a
-                    // "volume" made of silence.
+                const uint32_t at = cdb[0] == 0x08
+                    ? ((uint32_t(cdb[1] & 0x1F) << 16) |
+                       (uint32_t(cdb[2]) << 8) | cdb[3])
+                    : ((uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16) |
+                       (uint32_t(cdb[4]) << 8) | cdb[5]);
+                if (audioOnly_ || at < dataStartLba_) {
+                    // No user data lives here: the disc is all audio, or
+                    // the address is inside an audio track ahead of the
+                    // data one. SCSI-2 § 14.2.6 calls this ILLEGAL MODE FOR
+                    // THIS TRACK, and a drive that answered zeroes instead
+                    // would hand the guest a "volume" made of silence.
                     setSense(kIllegalRequest, 0x64);
                     return kCheck;
                 }
                 break;                               // shared path below
+            }
 
             default:
                 break;                               // shared path below
@@ -1469,7 +1496,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             // FIELD IN CDB $24 (MAME hd.cpp:216-222), never a silent
             // zero-fill + GOOD — a driver probing past the end must see
             // the error, not a phantom block of zeroes.
-            if (uint64_t(lba) + cnt > blocks_) {
+            if (uint64_t(lba) + cnt > dataEndLba()) {
                 setSense(kIllegalRequest, 0x24);
                 return kCheck;
             }
@@ -1481,7 +1508,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
             uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
-            if (uint64_t(lba) + cnt > blocks_) {     // MAME hd.cpp:567-580
+            if (uint64_t(lba) + cnt > dataEndLba()) {     // MAME hd.cpp:567-580
                 setSense(kIllegalRequest, 0x24);
                 return kCheck;
             }
@@ -1507,7 +1534,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             // (MAME hd.cpp:225-241). The 5380 has already collected the
             // DATA OUT bytes by the time this runs — the status byte is
             // where the initiator learns the write never landed.
-            if (uint64_t(lba) + cnt > blocks_) {
+            if (uint64_t(lba) + cnt > dataEndLba()) {
                 setSense(kIllegalRequest, 0x24);
                 return kCheck;
             }
@@ -1522,7 +1549,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
             uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
-            if (uint64_t(lba) + cnt > blocks_) {     // MAME hd.cpp:584-600
+            if (uint64_t(lba) + cnt > dataEndLba()) {     // MAME hd.cpp:584-600
                 setSense(kIllegalRequest, 0x24);
                 return kCheck;
             }
@@ -1571,13 +1598,13 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
         case 0x0B: {                                 // SEEK(6)
             uint32_t lba = (uint32_t(cdb[1] & 0x1F) << 16)
                          | (uint32_t(cdb[2]) << 8) | cdb[3];
-            if (lba >= blocks_) { setSense(kIllegalRequest, 0x24); return kCheck; }
+            if (lba >= dataEndLba()) { setSense(kIllegalRequest, 0x24); return kCheck; }
             return kGood;
         }
         case 0x2B: {                                 // SEEK(10)
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
-            if (lba >= blocks_) { setSense(kIllegalRequest, 0x24); return kCheck; }
+            if (lba >= dataEndLba()) { setSense(kIllegalRequest, 0x24); return kCheck; }
             return kGood;
         }
 
@@ -1587,7 +1614,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
             uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
-            if (uint64_t(lba) + cnt > blocks_) {
+            if (uint64_t(lba) + cnt > dataEndLba()) {
                 setSense(kIllegalRequest, 0x24);
                 return kCheck;
             }
@@ -1599,7 +1626,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
             uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
-            if (uint64_t(lba) + cnt > blocks_) {
+            if (uint64_t(lba) + cnt > dataEndLba()) {
                 setSense(kIllegalRequest, 0x24);
                 return kCheck;
             }

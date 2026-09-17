@@ -292,6 +292,64 @@ int main() {
         std::remove("cd_audio_only.cue");
     }
 
+    // ── A disc whose DATA track is not the first ────────────────────────
+    // CD Extra puts the audio in session 1 and the data track thousands of
+    // sectors in; POM68K used to cut the data extent only when track 1 was
+    // the data one, so such a disc read as audio-only and mounted nothing.
+    // READ(10) carries ABSOLUTE disc addresses, so the data track's start
+    // has to come off before the image is indexed.
+    {
+        const uint32_t kAudioSectors = 120, kDataSectors = 6;
+        std::vector<uint8_t> bin;
+        for (uint32_t i = 0; i < kAudioSectors; i++) {
+            std::vector<uint8_t> s2(2352, 0x33);
+            bin.insert(bin.end(), s2.begin(), s2.end());
+        }
+        const uint32_t dataStart = kAudioSectors;
+        for (uint32_t i = 0; i < kDataSectors; i++) {
+            std::vector<uint8_t> s2(2352, uint8_t(0x70 + i));
+            static const uint8_t sync[12] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
+            std::memcpy(s2.data(), sync, 12);
+            s2[15] = 0x01;
+            bin.insert(bin.end(), s2.begin(), s2.end());
+        }
+        { std::ofstream f("cd_audio_extra.bin", std::ios::binary);
+          f.write(reinterpret_cast<const char*>(bin.data()), std::streamsize(bin.size())); }
+        char sheet[512];
+        std::snprintf(sheet, sizeof sheet,
+            "FILE \"cd_audio_extra.bin\" BINARY\n"
+            "  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n"
+            "  TRACK 02 MODE1/2352\n    INDEX 01 %02u:%02u:%02u\n",
+            dataStart / (60 * 75), (dataStart / 75) % 60, dataStart % 75);
+        { std::ofstream f("cd_audio_extra.cue"); f << sheet; }
+
+        ScsiDisk extra;
+        check(extra.openCdrom("cd_audio_extra.cue"),
+              "a disc whose data track comes second mounts");
+        check(extra.blocks() == kDataSectors,
+              "only the data track's sectors count as user data");
+        // The volume's first block is at the DATA TRACK's absolute address.
+        const uint8_t rd[10] = { 0x28, 0,
+            uint8_t(dataStart >> 24), uint8_t(dataStart >> 16),
+            uint8_t(dataStart >> 8), uint8_t(dataStart), 0, 0, 1, 0 };
+        check(extra.command(rd, 10, out, in) == 0 && out.size() == 2048 &&
+              out[0] == 0x70,
+              "READ at the data track's absolute LBA returns its first block");
+        const uint8_t rd0[10] = { 0x28, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+        check(extra.command(rd0, 10, out, in) == 2,
+              "a READ inside the audio region is refused, not zero-filled");
+
+        // And ejecting really empties the drive, audio tracks included.
+        extra.eject();
+        const uint8_t tur2[6] = { 0x00, 0, 0, 0, 0, 0 };
+        check(extra.command(tur2, 6, out, in) == 2,
+              "after eject the drive reports an empty tray");
+
+        std::remove("cd_audio_extra.bin");
+        std::remove("cd_audio_extra.cue");
+    }
+
     std::remove("cd_audio_test.bin");
     std::remove("cd_audio_test.cue");
     std::printf(failures ? "FAIL\n" : "PASS\n");

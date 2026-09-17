@@ -333,6 +333,17 @@ private:
     Kind kind_ = Kind::Disk;
     bool attached_ = false;          // CD drive exists (disc may be absent)
     bool audioOnly_ = false;         // every track is AUDIO: no user data
+    // Where the data track begins on the DISC. Zero for every ordinary
+    // disc, where track 1 is the data one; non-zero on a mixed .bin whose
+    // audio comes first (CD Extra puts its data track in a second session,
+    // thousands of sectors in). READ(10) addresses are absolute disc LBAs,
+    // so the image — which starts at the data track — needs the offset
+    // taken off before it is indexed.
+    uint32_t dataStartLba_ = 0;
+    // The absolute-LBA range the data region occupies. Identical to
+    // [0, blocks_) for every disc whose data track is the first one, which
+    // is every hard disk and nearly every CD.
+    uint64_t dataEndLba() const { return uint64_t(dataStartLba_) + blocks_; }
     // One CHECK CONDITION / $28 owed on the next command after a medium
     // change (not serialized: a pending attention is a mount edge, not
     // guest state — re-inserting after a restore re-arms it).

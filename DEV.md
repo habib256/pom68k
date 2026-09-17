@@ -1093,7 +1093,10 @@ models the wiring:
   state; the track table is not, being an attachment property.
 - The samples are not in `image_`: `open()` cuts a mixed disc down to the
   data track, since de-framing audio would turn music into user data, so a
-  play reads them back from the `.bin` the `.cue` named.
+  play reads them back from the `.bin` the `.cue` named. The data track is
+  found, not assumed to be track 1 — CD Extra puts it in a second session —
+  and `dataStartLba_` holds where it begins, because READ(10) carries
+  absolute disc addresses while the image starts at the track.
 - `MODE SELECT` page `$0E` (CD Audio Control) is honoured per output port
   and channel mask — the Sound control panel's CD slider — and multiplies
   with the host user's own volume.

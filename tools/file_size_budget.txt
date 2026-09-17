@@ -55,7 +55,7 @@ src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071
-src/ScsiDisk.cpp                         1650
+src/ScsiDisk.cpp                         1677
 src/SonyDrive.cpp                        1368
 src/StartupDomainView.h                  73
 src/StartupOptions.h                     394
