@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"there is a missing dump: an `Apple_Driver_ATA` partition with Apple's real ATA driver" (2026-09-17 (twentieth)) — the driver ships inside Drive Setup, which is on the reference volume and on the retail CD; what actually blocks an IDE boot is that the F108 ATA interrupt reaches no interrupt level** → [2026-09-17 (twenty-fourth) — The ATA driver is not a missing dump…](#2026-09-17-ata-driver-not-missing)
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
@@ -1009,6 +1010,56 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-ata-driver-not-missing"></a>
+## 2026-09-17 (twenty-fourth) — The ATA driver is not a missing dump: it is inside Drive Setup, on volumes we already have. What blocks the IDE boot is an interrupt line
+
+Three hours after declaring a missing dump, the dump turned out to be on the
+disk all along, and the real blocker turned out to be ours.
+
+**`Apple_Driver_ATA` is in Drive Setup.** The string is on `MacOS-8.1-boot.vhd`
+(32 occurrences) and on the retail 8.1 CD (149), because Drive Setup is the
+tool that *installs* that driver. Nothing needs to be found: the Macintosh way
+to get a bootable IDE disk is to attach a blank one and let the guest's own
+Drive Setup initialize it. `POM68K_IDE` already attaches one.
+
+**And Drive Setup runs.** Driven by the mouse — the desktop volume, the
+Utilities folder, then the application — it comes up, and it talks to our ATA
+target: IDENTIFY DEVICE, INITIALIZE DEVICE PARAMETERS with the geometry we
+advertise, then READ/WRITE pairs stepping by 100 sectors, which is a surface
+test. It writes back exactly what it read, so a blank image comes out
+byte-identical. The target answers Apple's own tool.
+
+**A note on driving the Finder:** a double-click never took in this harness —
+the Finder selects the icon and stops. Single-click to select, then
+**Command-O**, opens every time. That is worth remembering: it is the gesture
+a person would use anyway, and it removes the double-click interval from the
+list of things a headless run can get wrong.
+
+**What blocks it.** The scan advances about **one sector pair per 25 seconds
+of machine time** and never finishes; left alone, the machine idles long
+enough for Energy Saver to blank the screen. That cadence is the shape of a
+driver timing out on an interrupt. And there is one to time out on: the F108
+ATA interrupt is latched and reported in PrimeTime II's special-status
+register at `$1A101`, and reaches **no interrupt level at all**.
+
+**The obvious fix is wrong, and that is the useful part.** PrimeTime II
+reports the video IRQ on bit 6 of that register and the ATA one on bit 5, and
+the video IRQ is NuBus bit 6 active low — so ATA should be NuBus bit 5,
+summarised into the pseudo-VIA slot IFR exactly as `vblIrq` does. Wired that
+way, **the machine stops booting at the first IDENTIFY**: the command
+completes, INTRQ asserts, and nothing survives it (0 SCSI commands, where a
+healthy boot has 2 245 in the same 3 000 frames). So either the line is not
+NuBus bit 5, or there is an enable at `$1A100`/`$1A101` that the ROM sets and
+we do not model — POM68K answers that register's *status* and nothing else.
+Reverted; the tree is back to the line being latched and readable but inert,
+which is what let Drive Setup get as far as it did.
+
+`TODO.md` carries the corrected statement: no dump is missing, the ATA
+interrupt path is the open work, and a source for the F108 interrupt wiring
+is what would settle it.
+
+---
+
 <a id="2026-09-17-disk-bay-bindings"></a>
 ## 2026-09-17 (twenty-third) — Five copies of the disk-bay bindings became one, and the one is under a gate
 
@@ -1100,6 +1151,11 @@ and the GUI gates pass.
 
 <a id="2026-09-17-ata-target"></a>
 ## 2026-09-17 (twentieth) — The Quadra 630's IDE port has a drive on it now, and the ROM tells us exactly what a bootable ATA disk must carry
+
+> **Superseded:** the "missing dump" conclusion below is wrong. The ATA driver
+> is inside Drive Setup, on volumes this tree already uses — see
+> [2026-09-17 (twenty-fourth)](#2026-09-17-ata-driver-not-missing). Everything
+> else in this entry, including what the ROM demands of a DDR, still holds.
 
 POM68K's F108 ATA port used to read back zero, which is BSY=0 / DRDY=0 —
 "no device" — so the ROM fell through to SCSI. Behaviourally right, and

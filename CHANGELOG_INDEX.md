@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 576 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 577 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 53 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 92 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 93 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 23 |
@@ -299,6 +299,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-16 (seventh)** — [Nine boot-volume names that never existed leave the search chains: every gate's first choice is now the pinned reference it actually boots](CHANGELOG.md#2026-09-16-phantom-volume-names-retired)
 - **2026-09-16 (third)** — [The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back](CHANGELOG.md#2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate)
 - **2026-09-17** — [A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated](CHANGELOG.md#2026-09-17-dayna-guest-probe-ruled)
+- **2026-09-17 (twenty-fourth)** — [The ATA driver is not a missing dump: it is inside Drive Setup, on volumes we already have. What blocks the IDE boot is an interrupt line](CHANGELOG.md#2026-09-17-ata-driver-not-missing)
 
 ## Video — decoders, the raster beam, DAFB
 

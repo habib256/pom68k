@@ -235,26 +235,29 @@ Finder **plus** le câblage GUI et save-state. Le Mac 128K/512K est livré.
   M50753 et framebuffer LCD comme nouvelle brique partagée.
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
-- [ ] **Rendre un disque IDE amorçable sur le Q630/LC 580.** Le target ATA
-  est livré et prouvé (`AtaDisk`, `ata_disk_test`, port F108 câblé dans
-  `Q630Memory`) : la ROM le voit, lit IDENTIFY, écrit INITIALIZE DEVICE
-  PARAMETERS avec la géométrie qu'on annonce, puis lit des secteurs. Ce qui
-  manque est côté MÉDIA, et c'est mesuré (2026-09-17, `IDE_TRACE` sur une
-  sonde) : la ROM n'accepte un disque ATA que si son Driver Descriptor
-  Record porte une entrée de **type `$0701`** — contrôles négatifs :
-  `$0702`, `$0001` et `$0101` la laissent boucler indéfiniment sur
-  IDENTIFY/INIT/READ bloc 0, `$0701` la fait passer à la carte des
-  partitions (blocs 1-3) puis charger le pilote. Avec le pilote SCSI de nos
-  images (`Apple_Driver43`, 19 blocs) elle le charge et s'arrête sur la
-  disquette « ? » : le code chargé parle au SCSI Manager. **Il manque donc
-  un dump** : une partition `Apple_Driver_ATA` portant le vrai pilote ATA
-  d'Apple, c'est-à-dire une image de disque Macintosh formatée en IDE par
-  Drive Setup. Aucune ROM que nous avons ne la contient (le Q630 a
-  `ATALOAD`, qui charge ce pilote depuis le disque). L'alternative, si ce
-  dump reste introuvable : écrire notre propre pilote de bloc ATA avec
-  Retro68, comme l'agent Disques de `share/`. Pour trier une image candidate
-  en une seconde : `tools/inspect_apm.py <image>` imprime le descripteur de
-  pilotes et la carte des partitions, et dit si `Apple_Driver_ATA` est là.
+- [ ] **Rendre un disque IDE amorçable sur le Q630/LC 580 : câbler
+  l'interruption ATA.** Le target est livré et prouvé (`AtaDisk`,
+  `ata_disk_test`, port F108 câblé, `POM68K_IDE=<chemin>`), et **aucun dump
+  ne manque** — correction du 2026-09-17 : le pilote `Apple_Driver_ATA` est
+  à l'intérieur de Drive Setup, présent sur `hdv/ref/MacOS-8.1-boot.vhd`
+  comme sur le CD 8.1, puisque c'est l'outil qui l'installe. Drive Setup se
+  lance dans l'invité (souris : le volume, le dossier Utilities, puis
+  l'application ; un double-clic ne prend jamais dans ce harnais, il faut un
+  clic simple puis Commande-O) et parle à notre lecteur : IDENTIFY,
+  INITIALIZE DEVICE PARAMETERS, puis des paires lecture/écriture par pas de
+  100 secteurs. **Ce qui bloque** : le balayage avance d'une paire toutes
+  les ~25 secondes de temps machine et n'aboutit pas, la forme exacte d'un
+  pilote qui expire sur une interruption. L'interruption ATA du F108 est
+  bien retenue et lisible dans le registre d'état spécial de PrimeTime II
+  (`$1A101`, bit 5) mais n'atteint aucun niveau d'interruption. La déduction
+  évidente est fausse et c'est mesuré : la câbler sur le bit NuBus 5 (par
+  symétrie avec l'IRQ vidéo en bit 6) arrête la machine au premier IDENTIFY.
+  Donc soit la ligne est autre, soit il existe un bit d'activation en
+  `$1A100`/`$1A101` que la ROM pose et que nous ne modélisons pas — nous ne
+  servons que l'état de ce registre. **Il faut une source** sur le câblage
+  d'interruption du F108 (MAME `f108.cpp`/`iosb.cpp`, ou la ROM elle-même).
+  `tools/inspect_apm.py <image>` dit d'un coup d'œil si une image porte déjà
+  `Apple_Driver_ATA`.
 
 ---
 

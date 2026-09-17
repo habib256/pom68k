@@ -1125,8 +1125,12 @@ READ/WRITE BUFFER, EXECUTE DEVICE DIAGNOSTIC and INITIALIZE DEVICE
 PARAMETERS. The board puts a sector's FIRST byte on D15-D8 — measured, since
 the other order makes the ROM's driver read a geometry of zeroes and give up
 (CHANGELOG 2026-09-17). Gate: `ata_disk_test`, asset-free. Booting from it
-needs a driver partition the ROM will accept; `TODO.md` records what the ROM
-demands and what is missing. `tools/inspect_apm.py <image>` answers the
+needs a driver partition the ROM will accept — a Driver Descriptor Record
+entry of type `$0701` — and the driver that writes one is Drive Setup, which
+ships on the reference volume. Drive Setup runs in the guest and drives the
+target, but its scan stalls on the ATA interrupt, which is latched at
+`$1A101` bit 5 and reaches no interrupt level; `TODO.md` carries the
+measurements and what a source would settle. `tools/inspect_apm.py <image>` answers the
 question for any candidate image: it prints the driver descriptor record's
 entries and the partition map, and says whether an `Apple_Driver_ATA`
 partition is there.
