@@ -21,13 +21,13 @@
 #include "Cpu040.h"
 #include "Q605Memory.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -154,7 +154,10 @@ bool writeAudioDisc(const std::string& cue, const std::string& bin,
             uint8_t sector[2352];
             for (int f = 0; f < 588; f++) {
                 const double t = double((s * 588 + f)) / 44100.0;
-                const auto v = int16_t(20000.0 * std::sin(2 * M_PI * hz * t));
+                // M_PI is a POSIX extension, not standard C++; spelling it
+                // out keeps the gate compiling under a strict dialect.
+                constexpr double kTwoPi = 6.283185307179586;
+                const auto v = int16_t(20000.0 * std::sin(kTwoPi * hz * t));
                 sector[f * 4]     = uint8_t(v & 0xFF);
                 sector[f * 4 + 1] = uint8_t((v >> 8) & 0xFF);
                 sector[f * 4 + 2] = uint8_t(v & 0xFF);
