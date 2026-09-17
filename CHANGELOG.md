@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17** — [A guest remounts a server renamed live: the Chooser lists only the new name, logs in and copies](#2026-09-17-afp-rename-remounted)
 - **2026-09-16 (twenty-fifth)** — [TCP window scaling in MacIP is ruled the way the AFP subset was: a counter first, code only on a consumer](#2026-09-16-macip-window-scale-ruled)
 - **2026-09-16 (twenty-fourth)** — [The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma](#2026-09-16-lto-werror-green)
 - **2026-09-16 (twenty-third)** — [The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way](#2026-09-16-dfac2-ruled)
@@ -992,6 +993,30 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-afp-rename-remounted"></a>
+## 2026-09-17 — A guest remounts a server renamed live: the Chooser lists only the new name, logs in and copies
+
+`afp_server_test` proved that a live rename re-registers the NBP name;
+what nobody had seen was a guest acting on it. `q605_afp_rename_etalon`
+is `q605_afp_live_etalon` with `POM68K_AFP_RENAME=POM68K-2`: after the
+first cycle's Put Away, the hub is reconfigured with the new server
+name — the same `reconfigure()` the AppleTalk window's « Appliquer »
+calls — and the second cycle walks the Chooser again. The Chooser's
+list shows one server, `POM68K-2` (the screenshot has it selected), the
+login opens an AFP session, « Echange » mounts, and the two-fork copy
+that closes every cycle succeeds. Seen at 64 s on the M4, green with the
+unchanged live gate.
+
+The first run failed one step past the mount: the first click on the
+Chooser's close box landed on a redraw — with a new name the Chooser
+re-runs its lookup as the volume mounts — and the folder creation went
+to the desk accessory. Phase 6 now asks the guest what is in front
+(WindowList `$9D6`, a desk accessory's windowKind is negative) and
+clicks the box again, up to three times; the plain and the outage gates
+take the same path and stay green. The DaynaPort control's debt list
+loses that line; two remain (a guest probing the card after a relaunch,
+« Révéler »).
 
 <a id="2026-09-16-macip-window-scale-ruled"></a>
 ## 2026-09-16 (twenty-fifth) — TCP window scaling in MacIP is ruled the way the AFP subset was: a counter first, code only on a consumer

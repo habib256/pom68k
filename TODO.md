@@ -117,10 +117,11 @@ observé.
   (`gui_relaunch_smoke_test` : la génération 1 met la carte en attente comme
   « Appliquer » et se ré-exécute, la génération 2 voit la carte en SCSI 3 —
   sur surface GL seulement, la ROM de démonstration, l'invité ne la sonde
-  pas). Restent : aucun invité n'a sondé la carte après un relaunch ;
-  « Révéler » lance `open` / `xdg-open` / `explorer` sans gate possible ;
-  aucun invité n'a remonté un serveur AFP renommé à chaud
-  (`afp_server_test` prouve la ré-inscription NBP, pas le Sélecteur).
+  pas). Le serveur renommé à chaud est remonté par l'invité depuis le
+  2026-09-17 (`q605_afp_rename_etalon` : `hub.reconfigure()` entre les
+  deux cycles, le Sélecteur ne liste que le nouveau nom, login et copie).
+  Restent : aucun invité n'a sondé la carte après un relaunch ;
+  « Révéler » lance `open` / `xdg-open` / `explorer` sans gate possible.
 - [ ] **Rejouer sur x86-64 date-épinglé la comparaison entre hôtes de
   `q605_afp_live_etalon`.** Référence M4 :
   `scratchpad/2026-09-13/afp_live_trace_aarch64.txt` ;

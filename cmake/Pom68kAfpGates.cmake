@@ -15,5 +15,13 @@ foreach(fork data resource)
                          ENVIRONMENT "POM68K_AFP_OUTAGE=${fork};POM68K_AFP_PHASE=99")
     list(APPEND pom68k_afp_gates ${gate})
 endforeach()
+# The server renamed live between the two cycles (hub.reconfigure, what the
+# AppleTalk window's « Appliquer » does): the second Chooser walk finds the
+# new name, logs in and copies — a guest remounting a renamed server.
+add_test(NAME q605_afp_rename_etalon COMMAND q605_afp_live_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_afp_rename_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_AFP_OUTAGE=;POM68K_AFP_PHASE=99;POM68K_AFP_RENAME=POM68K-2")
+list(APPEND pom68k_afp_gates q605_afp_rename_etalon)
 set_tests_properties(${pom68k_afp_gates} PROPERTIES
                      TIMEOUT 1800 RESOURCE_LOCK afp_live_share)

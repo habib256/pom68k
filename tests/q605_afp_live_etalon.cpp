@@ -156,6 +156,14 @@ int main() {
     const int stopPhase = getenv("POM68K_AFP_PHASE")
                         ? atoi(getenv("POM68K_AFP_PHASE")) : 99;
     const std::string outageMode = getenv("POM68K_AFP_OUTAGE") ? getenv("POM68K_AFP_OUTAGE") : "";
+    // POM68K_AFP_RENAME=<name>: between the two connection cycles, once the
+    // guest has put the volume away, the server is renamed live through
+    // hub.reconfigure() — what the AppleTalk window's « Appliquer » does.
+    // The second cycle then walks the Chooser again: the only server NBP
+    // advertises is the new name, so a login and a copy in that cycle are
+    // the guest mounting the renamed server (TODO § Services réseau, the
+    // DaynaPort control's last proof debt; q605_afp_rename_etalon).
+    const std::string renameTo = getenv("POM68K_AFP_RENAME") ? getenv("POM68K_AFP_RENAME") : "";
     if (!outageMode.empty() && outageMode != "data" && outageMode != "resource") {
         std::fprintf(stderr, "FAIL: POM68K_AFP_OUTAGE must be data or resource\n"); return 1;
     }
@@ -514,6 +522,19 @@ int main() {
         const int cbY = getenv("POM68K_AFP_CLOSE_Y") ? atoi(getenv("POM68K_AFP_CLOSE_Y")) : 40;
         if (!click(cbX, cbY)) { std::fprintf(stderr, "FAIL: chooser close\n"); return 1; }
         frames(300);
+        // Ask the guest whether the Chooser is still in front: a desk
+        // accessory's window has a negative windowKind (WindowList $9D6 →
+        // WindowRecord +108). After a server rename the Chooser re-runs its
+        // lookup as the volume mounts and the first close click can land on
+        // a redraw (2026-09-17) — click the box again, up to three times.
+        for (int again = 0; again < 3; ++again) {
+            const uint32_t w = peek32(mem, 0x09D6);
+            const int16_t kind = int16_t(mem.peek8(w + 108) << 8 | mem.peek8(w + 109));
+            if (!w || kind >= 0) break;
+            std::printf("phase 6: a desk accessory is still in front (kind %d), closing again\n", kind);
+            if (!click(cbX, cbY)) { std::fprintf(stderr, "FAIL: chooser close\n"); return 1; }
+            frames(300);
+        }
         Screen desk1 = snap("afp_live_6_mounted.ppm");
         const auto mounted = hub.snapshot();
         std::printf("phase 6: chooser closed, AFP sessions=%d mounted=%d commands=%ld\n",
@@ -756,7 +777,19 @@ int main() {
             }
             if (stopPhase <= 10) return 0;
             frames(300);
+            if (!renameTo.empty()) {
+                auto cfg = hub.config();
+                cfg.serverName = renameTo;
+                hub.reconfigure(cfg);
+                frames(120);
+                std::printf("rename: server is now \"%s\" (was \"%s\"); the Chooser walk repeats\n",
+                            hub.snapshot().afp.serverName.c_str(), cycleStart.afp.serverName.c_str());
+                std::fflush(stdout);
+            }
         }
+    }
+    if (!renameTo.empty() && hub.snapshot().afp.serverName != renameTo) {
+        std::fprintf(stderr, "FAIL: the server does not carry the new name\n"); return 1;
     }
     if (!interruptedCopies.empty()) {
         // Finder offsets duplicates by 16 px: the incomplete copy's icon is
@@ -785,6 +818,9 @@ int main() {
             std::fprintf(stderr, "FAIL: abandoned AFP staging file after retry\n"); return 1;
         }
     }
+    if (!renameTo.empty())
+        std::printf("rename: the guest found \"%s\" in the Chooser, logged in and copied — "
+                    "the renamed server was remounted live\n", renameTo.c_str());
     std::printf("PASSED — Finder transferred both forks after guest reconnection\n");
     return 0;
 }

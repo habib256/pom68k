@@ -2061,7 +2061,9 @@ settle before judging the mount), `POM68K_AFP_PHASE` +
 `POM68K_AFP_GUEST_Y`, `POM68K_AFP_CLOSE_X`, `POM68K_AFP_CLOSE_Y`,
 `POM68K_AFP_DATE` (`moving` | `host` | `host±N` | a Unix time: the server
 date the etalon pins, for the moving-date investigation — default the
-pinned 1000000000)
+pinned 1000000000), `POM68K_AFP_RENAME` (`<name>`: rename the server live
+between the two connection cycles, so the second Chooser walk mounts it
+under its new name — `q605_afp_rename_etalon`)
 (`q605_afp_live_etalon`: stop after phase N, and the nine mouse coordinates
 its Chooser walk clicks — a scripted GUI drive fails at a pixel far more
 often than at a protocol, so each click is a knob and the phase stop is how
