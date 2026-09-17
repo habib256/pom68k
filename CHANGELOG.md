@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (seventh)** — [Apple shared one table entry between the LC and the LC II, so POM68K's VIA ID is right after all](#2026-09-17-lcii-shared-table)
 - **2026-09-17 (sixth)** — [Apple's own ROM source answers it: the product is elected by the VIA input lines, and POM68K's VIA ID elects the LC, not the LC II](#2026-09-17-lcii-via-election)
 - **2026-09-17 (fifth)** — [The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2](#2026-09-17-lcii-election-traced)
 - **2026-09-17 (fourth)** — [PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated](#2026-09-17-lcii-pa0-reverted)
@@ -1001,6 +1002,50 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-lcii-shared-table"></a>
+## 2026-09-17 (seventh) — Apple shared one table entry between the LC and the LC II, so POM68K's VIA ID is right after all
+
+> **Corrects [2026-09-17 (sixth)](#2026-09-17-lcii-via-election)**, which
+> concluded that POM68K presents a VIA ID electing the LC rather than the
+> LC II. `OS/UniversalTables.a` says there was no separate LC II entry to
+> elect.
+
+The previous entry established the mechanism — the product is elected by the
+VIA input lines, matched through `VIAIdMask`/`VIAIdMatch` — and inferred that
+POM68K's port A `$D5` must therefore be electing the wrong record. Apple's
+table source refutes the inference:
+
+> `<SM18>` 9/25/92 RB — *"Made the LC table work with LC II again. This will
+> prevent the normal LC from booting, but at this point we need LC II to boot
+> and not LC."*
+>
+> `<SM25>` 10/25/92 HY — *"Changed boxflag for InfoMacLC product info table to
+> boxMacLCII."*
+
+The LC and the LC II **share one `InfoMacLC` ProductInfo entry**, and Apple
+could only make it serve one machine at a time — they chose the LC II and
+accepted that the plain LC would stop booting. The boxflag only became
+`boxMacLCII` in October 1992, and our ROM is `$35C28F5F`, March 1992. So
+electing `boxMacLC` (`$0D`) is faithful to this ROM, not a POM68K identity
+bug, and the shared record carries `hwCfgWord $DC00` — FPU fitted — for both
+machines.
+
+That leaves one lever, and it is no longer about identity. With bit 12 set
+and no runtime `TestForFPU` in a March 1992 ROM, the FPU `PACK 4` is bound
+through the XPRAM `$AE` combo path of `BASILISK_ROM_NOTES` § 8.5: POM68K
+seeds `$AE = 0`, which falls back to `defaultRSRCs` = 4, which is then
+promoted 4 -> 3 precisely because bit 12 says "FPU fitted". Whether an
+explicit `$AE` = 4 escapes that promotion is the next thing to try, and it is
+a one-line experiment rather than an archaeology problem.
+
+The wider lesson is about method: two rounds running, comparing POM68K with
+MAME produced agreement and no answer, because both emulators inherit the
+same ambiguity. The primary source settled in one fetch what cross-emulator
+comparison could not settle at all.
+
+Sources: `https://github.com/elliotnunn/mac-rom` — `OS/UniversalTables.a`,
+`OS/Universal.a`, `OS/StartMgr/StartInit.a`.
 
 <a id="2026-09-17-lcii-via-election"></a>
 ## 2026-09-17 (sixth) — Apple's own ROM source answers it: the product is elected by the VIA input lines, and POM68K's VIA ID elects the LC, not the LC II

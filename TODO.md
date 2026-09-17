@@ -245,28 +245,31 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   jamais `HWCfgFlags`. **MAME calcule le même `D2`** et lit `HWCfgFlags
   $FC00` avec sa config FPU à zéro : aucun des deux n'explique ce qui ferait
   tomber un vrai LC II sur `$FD07`, donc les comparer ne tranchera pas.
-  **Répondu le 2026-09-17 par le source ROM d'Apple** (elliotnunn/mac-rom,
-  `OS/Universal.a`, `OS/StartMgr/StartInit.a`) : l'élection du produit se
-  fait par les **lignes d'entrée de la VIA**. `FindDecoder` trouve d'abord le
-  décodeur par sondage de bus errors, puis `GetVIAInputs` sauve DDRA/DDRB,
-  force les broches en entrée (en respectant `AvoidVIA1A`), lit les ports A
-  et B dans D1 et restaure ; chaque `ProductInfo` est alors filtré par
-  `cmp.b DecoderKind(a1),d2` puis `and.l VIAIdMask(a1),d0` /
-  `cmp.l VIAIdMatch(a1),d0`. D2 porte ensuite hwCfgFlags en 31-16, le
-  BoxFlag en 15-8, le décodeur en 7-0, et `StartInit.a` fait
-  `swap d2 ; move.w d2,HwCfgFlags`. Notre `$70000D07` = BoxFlag `$0D` =
-  `boxMacLC` : POM68K présente donc un ID VIA (port A `$D5`) qui élit
-  l'enregistrement du **LC**, à `hwCfgWord $DC00` (avec FPU), au lieu de
-  celui du LC II. Et il n'y a pas de rattrapage : dans cette version
-  `CheckOptionals` fait seulement `move.l HwCfgWord(a1),d2`, et le patch
-  `TestForFPU` pour les machines sans FPU est daté d'octobre 1992 alors que
-  notre ROM est de mars 1992 — la note d'Apple « HwCfgFlags gets read from
-  d2, not from the universal tables. With an optional FPU, the table may not
-  have the correct value » décrit exactement ce trou. **Reste à obtenir** les
-  `VIAIdMask`/`VIAIdMatch` de la famille LC dans la table `ProductLookup`
-  (pas dans l'extrait `Universal.a` récupéré), puis à présenter l'ID VIA du
-  LC II. MAME a le même `0xd4`, donc il élit le même enregistrement : c'est
-  une lacune partagée, pas une divergence.
+  **Élucidé le 2026-09-17 par le source ROM d'Apple** (elliotnunn/mac-rom).
+  L'élection du produit se fait par les **lignes d'entrée de la VIA** :
+  `FindDecoder` trouve le décodeur par sondage de bus errors, `GetVIAInputs`
+  force les broches en entrée et lit les ports A/B dans D1, puis chaque
+  `ProductInfo` est filtré par `cmp.b DecoderKind(a1),d2` puis
+  `and.l VIAIdMask(a1),d0` / `cmp.l VIAIdMatch(a1),d0`. D2 porte hwCfgFlags
+  en 31-16, le BoxFlag en 15-8, le décodeur en 7-0, et `StartInit.a` fait
+  `swap d2 ; move.w d2,HwCfgFlags`. **Mais POM68K n'a pas de mauvais ID VIA** :
+  `<SM18>` (25/09/92) dit « Made the LC table work with LC II again. This will
+  prevent the normal LC from booting, but at this point we need LC II to boot
+  and not LC » et `<SM25>` (25/10/92) « Changed boxflag for InfoMacLC product
+  info table to boxMacLCII » : le LC et le LC II **partagent une seule entrée**
+  de table, qu'Apple ne pouvait faire marcher que pour l'un des deux, et le
+  basculement du boxflag vers `boxMacLCII` date d'octobre 1992 — notre ROM est
+  de mars 1992. Élire `boxMacLC` (`$0D`) est donc **fidèle à cette ROM**, et
+  l'enregistrement partagé porte `hwCfgWord $DC00` (avec FPU). Il n'y a pas non
+  plus de rattrapage runtime : `CheckOptionals` se réduit à
+  `move.l HwCfgWord(a1),d2`, et le `TestForFPU` qui corrigerait cela est daté
+  d'octobre 1992 (`<SM28>`). La note d'Apple `<15>` nomme le trou : « HwCfgFlags
+  gets read from d2, not from the universal tables. With an optional FPU, the
+  table may not have the correct value ». **Seul levier restant** : la sélection
+  de la PACK 4 par le combo XPRAM `$AE` (§ 8.5) — POM68K sème `$AE = 0`, donc
+  repli sur `defaultRSRCs` = 4, puis promotion 4→3 parce que le bit 12 est levé,
+  donc PACK 4 FPU. Tester `$AE` = 4 explicite (et les autres combos) avant de
+  conclure que le nu ne peut pas booter sur cette ROM.
   Accessoirement `$50FC0000` est lu en `$A463D0` depuis DecoderInfo+$4,
   pas codé en dur. Outils : `lcii_trace` (`FLINE_FRAME`, `RING_AT`, `VIA1_REGS`,
   `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`, le romset `maclc2` MAME
