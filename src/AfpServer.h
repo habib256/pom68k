@@ -71,12 +71,8 @@ public:
         // would ever say so.
         long refusedCount = 0;
         std::string lastRefused;
-        // A guest that refused cleartext and chose a secure UAM (DHX,
-        // Randnum, Kerberos) the server does not offer — it advertises only
-        // "No User Authent". The consumer signal a UAM implementation waits
-        // for (TODO § Services réseau); 0 until a guest asks (2026-09-17).
-        long secureUamLogins = 0;
-        std::string lastUam;
+        long secureUamLogins = 0;    // guest chose a UAM we do not offer (DHX…)
+        std::string lastUam;         // the UAM signal a real guest would send
         int64_t lastActivity = -1;   // emuCycles
     };
     Status status() const;

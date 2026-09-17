@@ -543,17 +543,10 @@ uint8_t V8Memory::read8(uint32_t addr) {
     // catcher installed — any BERR there lands on a zero vector → DS 1.
     // Bring-up eyes (POM68K_V8_IOHOLE=1): what does the guest actually DO
     // in the map holes? The Classic II's ROM dereferences $50F18038; the
-    // block behind it is IDENTIFIED (2026-09-17): nothing. MAME's Eagle
-    // uses v8_device::map unchanged (v8.cpp:57 EAGLE, no map override), and
-    // that map has no decode in $518xxx — only spice_device::map (the Sonora
-    // AIO) adds $518000-$518001 for its built-in display's brightness/
-    // contrast (v8.cpp:700 bright_contrast_w), which the Eagle's fixed
-    // 512x342 monitor lacks. So $50F18038 is unmapped hardware on the
-    // Classic II — open bus — and the ROM's dereference of it is a wild/
-    // defensive pointer with no consumer: classic2_boot_etalon boots to the
-    // Finder without touching $F18xxx at all (POM68K_V8_IOHOLE=200: zero
-    // hits). The forgiving-bus value stays a knob (POM68K $FF vs MAME's
-    // address_space default 0) since no observable separates them.
+    // block behind it is IDENTIFIED nothing (2026-09-17): MAME's Eagle uses
+    // v8_device::map with no $518xxx decode (only the Sonora maps $518000 for
+    // its built-in-display brightness, which the Eagle lacks), so it is open
+    // bus — classic2_boot_etalon boots without touching $F18xxx. Value = knob.
     if (ioHoleTraceLimit_ > 0) {
         if (ioHoleTraceCount_++ < ioHoleTraceLimit_)
             std::fprintf(stderr, "[iohole] rd $%06X pc=$%08X\n", addr,

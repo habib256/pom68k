@@ -21,7 +21,7 @@ cmake/Pom68kProductRegistry.cmake        23
 cmake/Pom68kSerialGates.cmake            8
 cmake/Pom68kStorageGates.cmake           26
 CMakeLists.txt                           618
-src/AfpServer.cpp                        1122
+src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  202
 src/GuiMachineRuntime.cpp                47
 src/GuiRunnerCompact.h                   145
@@ -62,4 +62,4 @@ src/StartupOptions.h                     394
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88
-src/V8Memory.cpp                         1007
+src/V8Memory.cpp                         1008
