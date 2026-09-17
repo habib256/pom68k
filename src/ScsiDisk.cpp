@@ -274,14 +274,28 @@ static bool deframeMode1_2352(std::vector<uint8_t>& img) {
     return true;
 }
 
-// A .cue sheet: find the FILE it names (resolved beside the sheet) and
-// the first MODE1 track. Multi-track audio discs load their data track;
-// the audio tracks have no consumer yet.
-static std::string cueDataFile(const std::string& cuePath, bool& mode1_2352) {
+// A .cue sheet, read WHOLE: the FILE it names (resolved beside the sheet),
+// the first MODE1 track's framing, and every track with its INDEX 01 start,
+// so a mixed-mode disc can answer READ TOC for its audio tracks. Before
+// 2026-09-17 this stopped at the first data track and the rest of the disc
+// did not exist as far as the guest could tell.
+struct CueTrack { unsigned number; bool audio; uint32_t startLba; };
+
+static uint32_t cueMsfToLba(const std::string& s) {
+    unsigned m = 0, ss = 0, f = 0;
+    if (std::sscanf(s.c_str(), "%u:%u:%u", &m, &ss, &f) != 3) return 0;
+    const uint32_t abs = (m * 60 + ss) * 75 + f;
+    return abs >= 150 ? abs - 150 : 0;          // MSF 00:02:00 is LBA 0
+}
+
+static std::string cueDataFile(const std::string& cuePath, bool& mode1_2352,
+                               std::vector<CueTrack>* tracks) {
     std::ifstream in(cuePath);
     if (!in) return {};
     std::string line, file;
     mode1_2352 = false;
+    bool firstData = true, pendingAudio = false;
+    unsigned pendingNumber = 0;
     while (std::getline(in, line)) {
         size_t a = line.find_first_not_of(" \t\r");
         if (a == std::string::npos) continue;
@@ -292,9 +306,21 @@ static std::string cueDataFile(const std::string& cuePath, bool& mode1_2352) {
             if (q1 != std::string::npos && q2 != std::string::npos)
                 file = t.substr(q1 + 1, q2 - q1 - 1);
         } else if (t.rfind("TRACK", 0) == 0) {
-            if (t.find("MODE1/2352") != std::string::npos) mode1_2352 = true;
-            else if (t.find("MODE1/2048") != std::string::npos) mode1_2352 = false;
-            if (t.find("MODE1") != std::string::npos) break;   // first data track
+            if (firstData && t.find("MODE1") != std::string::npos) {
+                mode1_2352 = t.find("MODE1/2352") != std::string::npos;
+                firstData = false;
+            }
+            pendingNumber = 0;
+            std::sscanf(t.c_str(), "TRACK %u", &pendingNumber);
+            pendingAudio = t.find("AUDIO") != std::string::npos;
+            if (!tracks) { if (!firstData) break; }   // legacy: data track only
+        } else if (tracks && pendingNumber &&
+                   t.rfind("INDEX 01", 0) == 0) {
+            const size_t sp = t.find_last_of(' ');
+            if (sp != std::string::npos)
+                tracks->push_back({ pendingNumber, pendingAudio,
+                                    cueMsfToLba(t.substr(sp + 1)) });
+            pendingNumber = 0;
         }
     }
     if (file.empty()) return {};
@@ -319,6 +345,8 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     hfsPrefixBlocks_ = 0;
     image_.clear();
     blocks_ = 0;
+    tracks_.clear();
+    discLba_ = 0;
 
     std::string data = path;
     auto endsWith = [](const std::string& s, const char* e) {
@@ -330,7 +358,10 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     };
     if (endsWith(path, ".cue")) {
         bool raw = false;
-        data = cueDataFile(path, raw);
+        std::vector<CueTrack> cue;
+        data = cueDataFile(path, raw, &cue);
+        for (const CueTrack& t : cue)
+            tracks_.push_back({ uint8_t(t.number), t.audio, t.startLba });
         if (data.empty()) {
             std::fprintf(stderr, "CD-ROM: %s names no usable FILE/TRACK\n",
                          path.c_str());
@@ -348,6 +379,22 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     if (!image_.empty() &&
         !in.read(reinterpret_cast<char*>(image_.data()), image_.size()))
         return false;
+
+    // A mixed-mode sheet: the whole .bin is raw 2352, but only track 1 is
+    // MODE1 — de-framing the audio sectors would turn music into "user
+    // data". Cut the file down to the data track's extent first, and
+    // remember the whole disc's length for the TOC's lead-out.
+    if (!tracks_.empty() && image_.size() % 2352 == 0) {
+        discLba_ = uint32_t(image_.size() / 2352);
+        if (!tracks_[0].audio) {
+            uint32_t end = discLba_;             // to EOF if it is the only track
+            for (const CdTrack& t : tracks_)
+                if (t.startLba > tracks_[0].startLba) { end = t.startLba; break; }
+            const size_t from = size_t(tracks_[0].startLba) * 2352;
+            const size_t to = std::min(size_t(end) * 2352, image_.size());
+            if (to > from) image_.assign(image_.begin() + from, image_.begin() + to);
+        }
+    }
 
     // A 2352-multiple that starts with the MODE1 sync pattern is a raw rip:
     // de-frame it. Anything else must already be 2048-byte user data —
@@ -410,6 +457,8 @@ void ScsiDisk::eject() {
     if (kind_ == Kind::Removable) kind_ = Kind::Cdrom;
     image_.clear();
     blocks_ = 0;
+    tracks_.clear();
+    discLba_ = 0;
     hfsPrefixBlocks_ = 0;
     if (file_.is_open()) file_.close();
     writeBack_ = false;
@@ -977,27 +1026,39 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     p[2] = uint8_t((f / 75) % 60); p[3] = uint8_t(f % 75);
                 };
                 uint16_t alloc = uint16_t(cdb[7] << 8 | cdb[8]);
+                // A .cue names every track; a flat image is one data track
+                // by construction. ADR 1 with control $4 = data, $0 = audio
+                // (SFF8020 § 9.2), which is what tells AppleCD Audio Player
+                // a track is playable at all.
+                const bool sheet = !tracks_.empty();
+                const uint8_t firstTrk = sheet ? tracks_.front().number : 1;
+                const uint8_t lastTrk  = sheet ? tracks_.back().number : 1;
+                const uint32_t leadOut = sheet && discLba_ ? discLba_ : blocks_;
                 if (format == 0) {
-                    // One MODE1 data track plus the lead-out — a data CD as
-                    // the Mac sees it (MAME cd.cpp:773 format 0).
-                    dataOut.assign(20, 0);
-                    dataOut[0] = 0; dataOut[1] = 18; // TOC data length
-                    dataOut[2] = 1; dataOut[3] = 1;  // first / last track
-                    dataOut[5] = 0x14;               // ADR 1, data track
-                    dataOut[6] = 1;                  // track number
-                    addr(0, &dataOut[8]);
-                    dataOut[13] = 0x14;
-                    dataOut[14] = 0xAA;              // lead-out
-                    addr(blocks_, &dataOut[16]);
+                    const size_t count = sheet ? tracks_.size() : 1;
+                    dataOut.assign(4 + 8 * (count + 1), 0);
+                    const uint16_t len = uint16_t(dataOut.size() - 2);
+                    dataOut[0] = uint8_t(len >> 8); dataOut[1] = uint8_t(len);
+                    dataOut[2] = firstTrk; dataOut[3] = lastTrk;
+                    size_t o = 4;
+                    for (size_t i = 0; i < count; i++, o += 8) {
+                        const bool audio = sheet && tracks_[i].audio;
+                        dataOut[o + 1] = audio ? 0x10 : 0x14;
+                        dataOut[o + 2] = sheet ? tracks_[i].number : 1;
+                        addr(sheet ? tracks_[i].startLba : 0, &dataOut[o + 4]);
+                    }
+                    dataOut[o + 1] = 0x14;
+                    dataOut[o + 2] = 0xAA;           // lead-out
+                    addr(leadOut, &dataOut[o + 4]);
                 } else if (format == 1) {
-                    // Session info: one session holding that one track
+                    // Session info: one session, from its first track
                     // (MAME cd.cpp:866).
                     dataOut.assign(12, 0);
                     dataOut[0] = 0; dataOut[1] = 10; // length
                     dataOut[2] = 1; dataOut[3] = 1;  // first / last session
-                    dataOut[5] = 0x14;               // ADR 1, data
-                    dataOut[6] = 1;                  // first track of session
-                    addr(0, &dataOut[8]);
+                    dataOut[5] = sheet && tracks_.front().audio ? 0x10 : 0x14;
+                    dataOut[6] = firstTrk;           // first track of session
+                    addr(sheet ? tracks_.front().startLba : 0, &dataOut[8]);
                 } else {
                     // Full TOC / PMA / ATIP: MAME leaves these unhandled and
                     // answers CHECK CONDITION (cd.cpp:890-900). Matching that

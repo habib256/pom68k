@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 565 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 566 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -13,7 +13,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 92 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
-| [Sound](#sound) | 9 |
+| [Sound](#sound) | 10 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 23 |
 | [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 67 |
@@ -337,6 +337,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-07 (sixth)** — [Tier C's sweep: five more machines in the boot matrix, the Duo's input and the LC II's chime as gates, three real boots clean under ASan, the product tier's coverage, a Cortex-A76 package, a scriptable turbo and an AppleTalk hub that costs nothing measurable](CHANGELOG.md#2026-09-07-tier-c-sweep)
 - **2026-09-09 (seventh)** — [The LC II sound path reaches the real DFAC, and the host DAC owns playback time](CHANGELOG.md#2026-09-09-dfac-host-clock)
 - **2026-09-16 (twenty-third)** — [The DFAC2 ACK-only is a contract, heard: the Color Classic's boot chime comes out of the Sonora-class ASC with nothing in the way](CHANGELOG.md#2026-09-16-dfac2-ruled)
+- **2026-09-17 (thirteenth)** — [CD audio, first stage: the disc is synthesized, the whole cue sheet is read, and the TOC finally admits its audio tracks](CHANGELOG.md#2026-09-17-cdda-first-stage)
 
 ## Serial, LocalTalk and AppleTalk
 

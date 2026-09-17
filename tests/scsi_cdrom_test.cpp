@@ -287,6 +287,69 @@ int main() {
     }
 
     std::remove(path.c_str());
+    // ── A mixed-mode disc: the TOC must show its audio tracks ────────
+    // Synthesized here rather than found: a flat 2048-byte image cannot
+    // carry an audio track at all, and real mixed discs are other people's
+    // music (tools/make_mixed_cd.py builds the full-size twin).
+    {
+        const uint32_t kData = 8, kAudio = 4, kPregap = 150;
+        std::vector<uint8_t> bin;
+        auto raw = [&](bool audio, uint32_t lba, uint8_t fill) {
+            std::vector<uint8_t> s(2352, fill);
+            if (!audio) {
+                static const uint8_t sync[12] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                                  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
+                std::memcpy(s.data(), sync, 12);
+                const uint32_t f = lba + 150;
+                s[12] = uint8_t((((f / (60 * 75)) / 10) << 4) | ((f / (60 * 75)) % 10));
+                s[13] = uint8_t(((((f / 75) % 60) / 10) << 4) | (((f / 75) % 60) % 10));
+                s[14] = uint8_t((((f % 75) / 10) << 4) | ((f % 75) % 10));
+                s[15] = 0x01;
+            }
+            bin.insert(bin.end(), s.begin(), s.end());
+        };
+        uint32_t lba = 0;
+        for (uint32_t i = 0; i < kData; i++, lba++) raw(false, lba, uint8_t(0xA0 + i));
+        for (uint32_t i = 0; i < kPregap; i++, lba++) raw(true, lba, 0);
+        const uint32_t audioStart = lba;
+        for (uint32_t i = 0; i < kAudio; i++, lba++) raw(true, lba, 0x5A);
+        { std::ofstream f("scsi_cdrom_mixed.bin", std::ios::binary);
+          f.write(reinterpret_cast<const char*>(bin.data()), std::streamsize(bin.size())); }
+        const uint32_t am = audioStart + 150;
+        char cue[512];
+        std::snprintf(cue, sizeof cue,
+            "FILE \"scsi_cdrom_mixed.bin\" BINARY\n"
+            "  TRACK 01 MODE1/2352\n    INDEX 01 00:02:00\n"
+            "  TRACK 02 AUDIO\n    INDEX 01 %02u:%02u:%02u\n",
+            am / (60 * 75), (am / 75) % 60, am % 75);
+        { std::ofstream f("scsi_cdrom_mixed.cue"); f << cue; }
+
+        ScsiDisk mixed;
+        check(mixed.openCdrom("scsi_cdrom_mixed.cue"), "a mixed-mode .cue mounts");
+        check(mixed.trackCount() == 2, "both tracks are read from the sheet");
+        if (mixed.trackCount() == 2) {
+            check(!mixed.trackIsAudio(0) && mixed.trackIsAudio(1),
+                  "track 1 is data, track 2 is audio");
+            check(mixed.trackStartLba(1) == audioStart,
+                  "the audio track starts where INDEX 01 put it");
+        }
+        std::vector<uint8_t> o, i2;
+        const uint8_t toc[10] = { 0x43, 0, 0, 0, 0, 0, 0, 0, 40, 0 };
+        check(mixed.command(toc, 10, o, i2) == 0 && o.size() == 28,
+              "READ TOC returns two tracks and a lead-out");
+        if (o.size() == 28) {
+            check(o[2] == 1 && o[3] == 2, "first track 1, last track 2");
+            check(o[5] == 0x14 && o[6] == 1, "track 1 is flagged data (control $4)");
+            check(o[13] == 0x10 && o[14] == 2, "track 2 is flagged AUDIO (control $0)");
+            check(o[22] == 0xAA, "the lead-out closes the TOC");
+        }
+        const uint8_t rd10[10] = { 0x28, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+        check(mixed.command(rd10, 10, o, i2) == 0 && o.size() == 2048 && o[0] == 0xA0,
+              "the data track still reads as 2048-byte user data");
+        std::remove("scsi_cdrom_mixed.bin");
+        std::remove("scsi_cdrom_mixed.cue");
+    }
+
     if (fails) { std::printf("FAILED (%d)\n", fails); return 1; }
     std::printf("PASS\n");
     return 0;

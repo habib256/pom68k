@@ -230,8 +230,14 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   octets ne porte aucune piste audio. Le consommateur est l'AppleCD Audio
   Player d'un volume System que nous avons déjà, et notre lecteur présente
   déjà une identité de la famille AppleCD (`SONY CD-ROM CDU-8003A1.0i`),
-  donc l'extension Apple CD-ROM se charge. Reste à servir READ TOC avec les
-  pistes audio, PLAY/PAUSE/STOP et le chemin audio vers l'ASC. Y inclure le seul cas `.cue/.bin`
+  donc l'extension Apple CD-ROM se charge. **Premier étage livré le
+  2026-09-17** : `tools/make_mixed_cd.py` fabrique le disque, la feuille
+  `.cue` est lue en entier (toutes les pistes, type et `INDEX 01`), seule
+  l'étendue de la piste de données est dé-tramée — dé-tramer les secteurs
+  audio changerait de la musique en « données » — et READ TOC rapporte les
+  pistes audio avec le contrôle `$0` qui les rend jouables, lead-out
+  compris (`scsi_cdrom_test`). **Reste** : PLAY AUDIO / PAUSE / STOP,
+  READ SUBCHANNEL pour la position, et le chemin audio vers l'ASC. Y inclure le seul cas `.cue/.bin`
   encore ouvert (tranché le 2026-09-16) : un BIN unique en mode mixte dont
   la piste de données n'est pas la première (décalage `INDEX 01` à
   calculer) — la feuille `.cue` est déjà lue, sa première piste MODE1

@@ -85,7 +85,9 @@ public:
     // present, so the guest sees an empty drive rather than no device.
     // Accepts: raw MODE1 (.iso/.cdr/.toast, 2048-byte sectors), raw
     // MODE1/2352 (.bin — sync+header+data+ECC, user data extracted), and
-    // a .cue sheet naming a .bin (first data track only; audio tracks are
+    // a .cue sheet naming a .bin — read WHOLE since 2026-09-17, so a
+    // mixed-mode disc answers READ TOC for its audio tracks. READ(10) still
+    // serves the data track only, and playback is not built; audio tracks are
     // catalogued for READ TOC but not played — see the CDDA TODO).
     bool openCdrom(const std::string& path);
     // An empty CD drive on the bus: the target answers INQUIRY and reports
@@ -126,6 +128,12 @@ public:
     long writeCommands = 0, writeBlocks = 0;
 
     // True when open() applied the in-memory HFS-flat → SCSI façade.
+    // The disc's tracks as the .cue described them (empty for a flat image).
+    // `scsi_cdrom_test` reads these; the audio path will too.
+    std::size_t trackCount() const { return tracks_.size(); }
+    bool trackIsAudio(std::size_t i) const { return tracks_[i].audio; }
+    uint32_t trackStartLba(std::size_t i) const { return tracks_[i].startLba; }
+
     bool flatHfsFacade() const { return hfsPrefixBlocks_ != 0; }
     uint32_t hfsPrefixBlocks() const { return hfsPrefixBlocks_; }
 
@@ -249,6 +257,17 @@ private:
     // MODE SENSE(6) and (10) share a body; `ten` picks the header shape.
     uint8_t modeSense(const uint8_t* cdb, bool ten, std::vector<uint8_t>& out);
     bool applyFlatHfsFacade(const std::string& imagePath);
+
+    // One entry per .cue TRACK, in sheet order: the TOC a mixed-mode disc
+    // owes the guest. Empty for a flat image, which is one data track by
+    // construction and answers from `blocks_` as it always did.
+    struct CdTrack {
+        uint8_t number = 0;
+        bool audio = false;
+        uint32_t startLba = 0;       // absolute, from INDEX 01
+    };
+    std::vector<CdTrack> tracks_;
+    uint32_t discLba_ = 0;           // lead-out: sectors on the whole disc
 
     std::vector<uint8_t> image_;     // raw sectors (possibly façade-prefixed)
     std::fstream file_;              // write-back stream (open iff writeBack_)

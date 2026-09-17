@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (thirteenth)** — [CD audio, first stage: the disc is synthesized, the whole cue sheet is read, and the TOC finally admits its audio tracks](#2026-09-17-cdda-first-stage)
 - **2026-09-17 (twelfth)** — [The Quadra 630's ATA port has an observed consumer: the guest resets it and polls Status 3 994 times every boot](#2026-09-17-q630-ata-probe)
 - **2026-09-17 (eleventh)** — [The bare LC II is closed: POM68K is faithful, and this ROM has no path that clears the FPU bit](#2026-09-17-lcii-closed)
 - **2026-09-17 (tenth)** — [Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder](#2026-09-17-lcii-fpu-bit-proven)
@@ -1007,6 +1008,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-cdda-first-stage"></a>
+## 2026-09-17 (thirteenth) — CD audio, first stage: the disc is synthesized, the whole cue sheet is read, and the TOC finally admits its audio tracks
+
+The CDDA item had been parked on a missing asset. It was never missing —
+a flat 2048-byte image *cannot* carry an audio track, so no amount of
+searching would have produced one, and a real mixed-mode disc is someone
+else's music. `tools/make_mixed_cd.py` builds an equivalent from nothing:
+a MODE1/2352 data track wrapping any 2048-byte volume, then generated
+44.1 kHz 16-bit stereo tones as CD-DA tracks, with the `.cue` to match.
+Reproducible, tiny, and free of any rights question.
+
+**What the emulator learned.** `ScsiDisk` read a `.cue` only as far as the
+first data track; everything after it did not exist as far as the guest
+could tell. It now reads the sheet whole — every `TRACK` with its type and
+`INDEX 01` start — into a track table. Two consequences matter:
+
+- **Only the data track's extent is de-framed.** The whole `.bin` is raw
+  2352, but only track 1 is MODE1; running the de-framer over the audio
+  sectors would turn music into "user data". The extent is cut first, and
+  the disc's full length is kept for the lead-out.
+- **READ TOC is driven by the table.** Format 0 now reports every track
+  with ADR 1 and control `$4` for data, `$0` for audio — that control
+  nibble is what tells AppleCD Audio Player a track is playable at all —
+  then the `$AA` lead-out at the disc's end. A flat image is still one data
+  track and answers byte-identically to before.
+
+`scsi_cdrom_test` synthesizes its own two-track disc inline and gates all
+of it: the sheet's tracks, the audio flag, the `INDEX 01` start, the TOC
+shape, and that the data track still reads back as 2048-byte user data.
+The real-asset `q605_cdrom_etalon` still mounts and boots its disc.
+
+Not built, and not pretended: PLAY AUDIO, PAUSE/STOP, READ SUBCHANNEL, and
+the path from an audio track to the ASC. The TOC is the half that makes a
+disc *look* right; the audio is the half that makes it sound right.
 
 <a id="2026-09-17-q630-ata-probe"></a>
 ## 2026-09-17 (twelfth) — The Quadra 630's ATA port has an observed consumer: the guest resets it and polls Status 3 994 times every boot
