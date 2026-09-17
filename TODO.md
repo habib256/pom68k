@@ -232,11 +232,23 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   n'est jamais exercé par ce code — ce n'était pas une preuve. PA0 est
   revenu à `$D5` ; le nu retrouve sa bombe F-line (`HWCfgFlags $FC00`,
   86 commandes SCSI) au lieu du moniteur. **Reste la vraie question** : la
-  ROM lève le bit 12 de `HWCfgFlags` sur une machine sans FPU, donc lie la
-  SANE FPU. Le mécanisme est la sélection du enregistrement `UniversalInfo`
-  (`docs/BASILISK_ROM_NOTES.md` § 8.5 : le enregistrement `$FD` en `$3BE6`
-  porte `hwCfgWord $CC00`), et il faut trouver pourquoi la ROM n'élit pas
-  celui-là. Outils : `lcii_trace` (`FLINE_FRAME`, `RING_AT`, `VIA1_REGS`,
+  ROM lève le bit 12 de `HWCfgFlags` sans FPU. **Chaîne tracée le
+  2026-09-17, réduite à un mot.** L'élection se fait en `$A02F2C`-`$A02F34` :
+  le répartiteur prend le premier enregistrement dont le mot en `+$12` égale
+  `D2.w`. Candidats : `$3BA6` (`+$12 = $0D07`, `hwCfgWord $DC00`, **avec**
+  FPU) et `$3BE6` (`+$12 = $FD07`, `$CC00`, sans FPU). `D2 = $70000D07`,
+  donc productKind `$0D` = LC : l'enregistrement à FPU gagne, et le bit 12
+  vient de là — la promotion du § 8.5 lie ensuite la PACK 4 FPU. **Ce n'est
+  pas la sonde FPU** : en `$A48200` la ROM confronte le `D6=2` de la sonde à
+  une table de productKinds en `$A48220`, y trouve `$0D`, met `D6=-1` et
+  continue — l'absence est détectée et acceptée, elle n'atteint simplement
+  jamais `HWCfgFlags`. **MAME calcule le même `D2`** et lit `HWCfgFlags
+  $FC00` avec sa config FPU à zéro : aucun des deux n'explique ce qui ferait
+  tomber un vrai LC II sur `$FD07`, donc les comparer ne tranchera pas.
+  Seul point ouvert : d'où vient `D2.w = $0D07`, déjà posé à l'entrée de
+  `$A46680`. Demande une preuve hors émulateur (Guide, schéma, machine).
+  Accessoirement `$50FC0000` est lu en `$A463D0` depuis DecoderInfo+$4,
+  pas codé en dur. Outils : `lcii_trace` (`FLINE_FRAME`, `RING_AT`, `VIA1_REGS`,
   `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`, le romset `maclc2` MAME
   reconstruit depuis notre ROM (mémoire).
 - [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Assets

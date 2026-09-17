@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (fifth)** — [The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2](#2026-09-17-lcii-election-traced)
 - **2026-09-17 (fourth)** — [PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated](#2026-09-17-lcii-pa0-reverted)
 - **2026-09-17 (third)** — [The stack cliff is gone and measured, and neither consequence is undone: /STACK stays, the fixtures stay on the heap](#2026-09-17-stack-consequences-ruled)
 - **2026-09-17 (later)** — [The dispatch cache moves to the heap and drops to a quarter megabyte: the ABBA pass reads 0.2 % against a 1.2 % floor](#2026-09-17-dispatch-cache-shrunk)
@@ -999,6 +1000,40 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-lcii-election-traced"></a>
+## 2026-09-17 (fifth) — The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2
+
+With PA0 and the `$50FC0000` bus error exonerated, the bare LC II's F-line
+bomb was traced end to end today. The chain is now fully known and the open
+question is a single word.
+
+**The election.** At `$A02F2C`-`$A02F34` the cold-init dispatcher walks the
+UniversalInfo records and takes the first whose word at `+$12` equals
+`D2.w`. The two candidates in this ROM are `$3BA6` — `+$12 = $0D07`,
+`hwCfgWord $DC00`, FPU fitted — and `$3BE6`, the LC II-shaped record —
+`+$12 = $FD07`, `hwCfgWord $CC00`, no FPU. `D2` is `$70000D07`, so `D2.w`
+is `$0D07`: productKind `$0D` = LC, and the FPU-bearing record wins. That
+is where `HWCfgFlags` bit 12 comes from, and § 8.5's promotion rule then
+binds the FPU `PACK 4`, whose first `fmove` is the bomb.
+
+**It is not the FPU probe.** The `F200` probe at `$47CA8` works: vector 11,
+a format-0 frame, the handler at `$48284`. And the ROM handles the result
+properly — at `$A48200` it compares the probe's `D6 = 2` against a table of
+productKinds at `$A48220`, finds `$0D` there, sets `D6 = -1` and carries on.
+The absence of an FPU is detected and accepted; it simply never reaches
+`HWCfgFlags`, because that bit came from the record, not the probe.
+
+**MAME computes the same `D2`.** Tapped at the dispatcher entry, MAME's
+maclc2 reads `D2 = 70000D07` exactly as POM68K does, and elects the same
+record — its `HWCfgFlags` reads `$FC00` too, with its FPU config off. So
+neither emulator models whatever makes a real FPU-less LC II fall through
+to `$FD07`, and comparing the two cannot settle it: the next evidence has
+to come from outside them — the Guide, a schematic, or the machine.
+
+One incidental correction: `$50FC0000` is not a hard-coded address. The ROM
+loads it at `$A463D0` from `DecoderInfo+$4` (`$A03AE6`), then reads a
+descriptor through it with `movem.l (A1)+`.
 
 <a id="2026-09-17-lcii-pa0-reverted"></a>
 ## 2026-09-17 (fourth) — PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated
