@@ -9,6 +9,21 @@
 
 namespace pom68k::gui {
 
+// Only the F108 boards have an ATA port; the same runner composes the
+// DjMemc, MemcJr and Spike ones, which do not. SFINAE lets one call site
+// serve both.
+template <class Mem>
+auto attachIdeDisk(Mem& mem, const std::optional<std::string>& path, int)
+    -> decltype(mem.attachIde(std::string(), true), void()) {
+    if (!path || path->empty()) return;
+    if (mem.attachIde(*path, true))
+        std::printf("IDE: %s (write-back)\n", path->c_str());
+    else
+        std::fprintf(stderr, "IDE: %s FAILED\n", path->c_str());
+}
+template <class Mem>
+void attachIdeDisk(Mem&, const std::optional<std::string>&, long) {}
+
 struct DafbRunnerSpec {
     std::string name;
     std::string pramTag;
@@ -96,6 +111,10 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         }
     }
     ensureCdDrive(mem, extraDisks, services.config().core().storage.cdBay);
+    // The IDE disk, on the boards that have an ATA port at all (F108: the
+    // Quadra 630 and LC/Performa 580). Detected, not declared — the same
+    // runner composes boards without one.
+    attachIdeDisk(mem, services.config().core().storage.ideDisk, 0);
 
     std::string pramPath =
         (hddPath.empty() ? spec.pramTag

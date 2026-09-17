@@ -62,6 +62,11 @@ struct CoreBusConfig {
 
 struct CoreStorageConfig {
     bool cdBay = true;
+    // The F108 machines' IDE disk (Quadra 630, LC/Performa 580): a raw image
+    // of 512-byte sectors, partition map and all. Only those boards have an
+    // ATA port; everywhere else this is ignored. What a bootable one must
+    // carry is recorded in TODO.md — the ROM is specific about it.
+    std::optional<std::string> ideDisk;
     // Put « POM68K Disques » into the boot volume's Startup Items at launch
     // when the agent's MacBinary is found (GuiAgentAutostart.h).
     bool agentAutostart = true;

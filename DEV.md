@@ -1928,6 +1928,11 @@ Startup Items of the session
 image — the work clone for a reference volume — so the agent polls from
 the first Finder without a gesture, `GuiAgentAutostart.h`, § 3.4bis),
 `POM68K_SCSI_DDM_TEMPLATE`,
+`POM68K_IDE` (`<path>` = the raw image, 512-byte sectors and partition map
+and all, to put on the F108 boards' ATA port — Quadra 630 and LC/Performa
+580, the only 68k Macs with one; ignored everywhere else, write-back on, and
+what a BOOTABLE image must carry is in `TODO.md`, since the ROM is specific
+about it — [§3.3](#33-scsi-ncr-5380)),
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort

@@ -1009,6 +1009,26 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-ata-knob"></a>
+## 2026-09-17 (twenty-first) — The IDE port is reachable from the product, not only from a test
+
+A device nothing can attach to is a device nobody can try. `POM68K_IDE=<path>`
+puts a raw image — 512-byte sectors, partition map and all — on the F108
+boards' ATA port, write-back on, and the DAFB runner attaches it the way it
+already attaches SCSI media. The Quadra 630 and the LC/Performa 580 are the
+only 68k Macs with an ATA port, and the same runner composes three other
+board families that have none, so the call site is SFINAE-detected rather
+than declared: a board without `attachIde` simply has nothing to cable.
+
+This is the knob the missing dump will be tested through. Someone holding an
+image of a Mac disk formatted in IDE by Drive Setup can now point POM68K at
+it and see whether the ROM boots it — which is the one question `TODO.md`
+still has open on this subject.
+
+`asset-none` is 108/108; the Quadra 630 boot etalons and the GUI gates pass.
+
+---
+
 <a id="2026-09-17-ata-target"></a>
 ## 2026-09-17 (twentieth) — The Quadra 630's IDE port has a drive on it now, and the ROM tells us exactly what a bootable ATA disk must carry
 

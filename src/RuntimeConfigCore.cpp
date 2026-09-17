@@ -109,6 +109,7 @@ pom68k::CoreConfig parseCoreStartup(
         values.integer(startup_option::FluxJitter).value_or(0);
     options.storage.ddmTemplate =
         values.text(startup_option::ScsiDdmTemplate);
+    options.storage.ideDisk = values.text(startup_option::IdeDisk);
     options.storage.scsiTrace = values.present(startup_option::ScsiTrace);
     options.storage.cdTrace = values.present(startup_option::CdTrace);
     options.storage.ownScsiInquiry =

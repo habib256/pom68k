@@ -26,7 +26,7 @@ src/GuiHostServices.cpp                  203
 src/GuiMachineRuntime.cpp                47
 src/GuiRunnerCompact.h                   145
 src/GuiRunnerCompactStorage.h            41
-src/GuiRunnerDafb.h                      268
+src/GuiRunnerDafb.h                      287
 src/GuiRunnerDuo.h                       220
 src/GuiRunnerSonora.h                    265
 src/GuiRunnerToby.h                      243
@@ -50,7 +50,7 @@ src/PlatformV8.cpp                       206
 src/Q700Memory.cpp                       1098
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    169
-src/RuntimeConfigCore.cpp                183
+src/RuntimeConfigCore.cpp                184
 src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
@@ -58,7 +58,7 @@ src/Scc8530.cpp                          1071
 src/ScsiDisk.cpp                         1677
 src/SonyDrive.cpp                        1368
 src/StartupDomainView.h                  73
-src/StartupOptions.h                     394
+src/StartupOptions.h                     396
 src/StartupSnapshot.h                    93
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88

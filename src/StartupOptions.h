@@ -190,6 +190,8 @@ concept IntegerStartupOption =
       startup_policy::autoBounded(0, 45))                                    \
     X(ScsiDdmTemplate, "POM68K_SCSI_DDM_TEMPLATE", StartupDomain::Core,    \
       startup_policy::Text)                                                  \
+    X(IdeDisk, "POM68K_IDE", StartupDomain::Core,                          \
+      startup_policy::Text)                                                  \
     X(ScsiTrace, "POM68K_SCSI_TRACE", StartupDomain::Core,                 \
       startup_policy::Presence)                                              \
     X(CdTrace, "POM68K_CD_TRACE", StartupDomain::Core,                     \

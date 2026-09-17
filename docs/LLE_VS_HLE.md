@@ -1175,7 +1175,7 @@ old "absent on the compacts, Mac II, IIfx and Duo" claim, which also reached
 `MAME_PARITY_AUDIT.md` § 2.2 and `SIMPLIFICATIONS_REVIEW.md` F1, was false).
 Every `*Memory` declares `loadPram`/`savePram` and every GUI lifecycle wires
 both (the Mac II/IIfx pair at `GuiRunnerToby.h:52` / `GuiRunnerToby.h:54`; the
-four DAFB profiles at `GuiRunnerDafb.h:103` / `GuiRunnerDafb.h:103`, and the three
+four DAFB profiles at `GuiRunnerDafb.h:122` / `GuiRunnerDafb.h:122`, and the three
 Sonora-style platforms at `GuiRunnerSonora.h:86` / `GuiRunnerSonora.h:244`; V8 at
 `GuiRunnerV8.h:86` / `GuiRunnerV8.h:255`, and Duo at
 `GuiRunnerDuo.h:68` / `GuiRunnerDuo.h:200`); the file is
