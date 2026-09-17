@@ -231,7 +231,8 @@ int main() {
     if (screen.pixels.empty()) { std::fprintf(stderr, "FAIL: no PixMap\n"); return 1; }
     std::printf("%dx%d@%dbpp; %u tracks; audio state %d; lead %ld sectors "
                 "(%.1f s, peak %.2f); drive volume %d/%d\n",
-                screen.width, screen.height, screen.depth, drive.trackCount(),
+                screen.width, screen.height, screen.depth,
+                unsigned(drive.trackCount()),
                 drive.audioState(), lead.sectors, lead.sectors / 75.0,
                 lead.peak, lead.volumeLeft, lead.volumeRight);
 
