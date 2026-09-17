@@ -245,8 +245,28 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   jamais `HWCfgFlags`. **MAME calcule le même `D2`** et lit `HWCfgFlags
   $FC00` avec sa config FPU à zéro : aucun des deux n'explique ce qui ferait
   tomber un vrai LC II sur `$FD07`, donc les comparer ne tranchera pas.
-  Seul point ouvert : d'où vient `D2.w = $0D07`, déjà posé à l'entrée de
-  `$A46680`. Demande une preuve hors émulateur (Guide, schéma, machine).
+  **Répondu le 2026-09-17 par le source ROM d'Apple** (elliotnunn/mac-rom,
+  `OS/Universal.a`, `OS/StartMgr/StartInit.a`) : l'élection du produit se
+  fait par les **lignes d'entrée de la VIA**. `FindDecoder` trouve d'abord le
+  décodeur par sondage de bus errors, puis `GetVIAInputs` sauve DDRA/DDRB,
+  force les broches en entrée (en respectant `AvoidVIA1A`), lit les ports A
+  et B dans D1 et restaure ; chaque `ProductInfo` est alors filtré par
+  `cmp.b DecoderKind(a1),d2` puis `and.l VIAIdMask(a1),d0` /
+  `cmp.l VIAIdMatch(a1),d0`. D2 porte ensuite hwCfgFlags en 31-16, le
+  BoxFlag en 15-8, le décodeur en 7-0, et `StartInit.a` fait
+  `swap d2 ; move.w d2,HwCfgFlags`. Notre `$70000D07` = BoxFlag `$0D` =
+  `boxMacLC` : POM68K présente donc un ID VIA (port A `$D5`) qui élit
+  l'enregistrement du **LC**, à `hwCfgWord $DC00` (avec FPU), au lieu de
+  celui du LC II. Et il n'y a pas de rattrapage : dans cette version
+  `CheckOptionals` fait seulement `move.l HwCfgWord(a1),d2`, et le patch
+  `TestForFPU` pour les machines sans FPU est daté d'octobre 1992 alors que
+  notre ROM est de mars 1992 — la note d'Apple « HwCfgFlags gets read from
+  d2, not from the universal tables. With an optional FPU, the table may not
+  have the correct value » décrit exactement ce trou. **Reste à obtenir** les
+  `VIAIdMask`/`VIAIdMatch` de la famille LC dans la table `ProductLookup`
+  (pas dans l'extrait `Universal.a` récupéré), puis à présenter l'ID VIA du
+  LC II. MAME a le même `0xd4`, donc il élit le même enregistrement : c'est
+  une lacune partagée, pas une divergence.
   Accessoirement `$50FC0000` est lu en `$A463D0` depuis DecoderInfo+$4,
   pas codé en dur. Outils : `lcii_trace` (`FLINE_FRAME`, `RING_AT`, `VIA1_REGS`,
   `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`, le romset `maclc2` MAME

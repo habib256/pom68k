@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (sixth)** — [Apple's own ROM source answers it: the product is elected by the VIA input lines, and POM68K's VIA ID elects the LC, not the LC II](#2026-09-17-lcii-via-election)
 - **2026-09-17 (fifth)** — [The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2](#2026-09-17-lcii-election-traced)
 - **2026-09-17 (fourth)** — [PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated](#2026-09-17-lcii-pa0-reverted)
 - **2026-09-17 (third)** — [The stack cliff is gone and measured, and neither consequence is undone: /STACK stays, the fixtures stay on the heap](#2026-09-17-stack-consequences-ruled)
@@ -1000,6 +1001,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-lcii-via-election"></a>
+## 2026-09-17 (sixth) — Apple's own ROM source answers it: the product is elected by the VIA input lines, and POM68K's VIA ID elects the LC, not the LC II
+
+The previous entry left the bare LC II at one word — where `D2.w = $0D07`
+comes from — and said the next evidence had to come from outside the
+emulators. It did: Apple's ROM source is public (`elliotnunn/mac-rom`), and
+`OS/Universal.a` with `OS/StartMgr/StartInit.a` answer the question outright.
+
+**The election is by VIA input lines.** `FindDecoder` first identifies the
+address decoder by bus-error probing (each `DecoderInfo` carries a
+`CheckForProc`). Then:
+
+```
+    bsr6    GetVIAInputs        ; read all of the VIA input lines
+    move.b  AddrMap(a0),d2      ; the address map to search for
+    biglea  ProductLookup,a0
+@MatchLoop
+    cmp.b   DecoderKind(a1),d2  ; see if address decoders match
+    bne.s   @MatchLoop
+    move.l  d1,d0               ; get the VIA inputs
+    and.l   VIAIdMask(a1),d0    ; mask them
+    cmp.l   VIAIdMatch(a1),d0   ; see if they match
+    bne.s   @MatchLoop
+```
+
+`GetVIAInputs` saves VIA1 `vDirA`/`vDirB`, forces the pins to inputs (sparing
+whatever `AvoidVIA1A` protects), reads ports A and B into D1, and restores.
+So the machine identity an emulator presents through `setInA`/`setInB` **is**
+the product election. D2 then carries hwCfgFlags in 31-16, the BoxFlag in
+15-8 and the decoder kind in 7-0, and `StartInit.a` stores it with
+`swap d2 ; move.w d2,HwCfgFlags`.
+
+**So POM68K elects the LC.** Our `D2 = $70000D07` is BoxFlag `$0D` =
+`boxMacLC` (the source renamed `boxElsie` to `boxMacLC` in <49>), whose
+record carries `hwCfgWord $DC00` — FPU fitted. The LC II-shaped record at
+`$3BE6` carries `$CC00`. POM68K presents VIA1 port A `$D5`, which matches the
+LC, and MAME presents `0xd4` for the same V8, which is why both emulators
+elect the same record and read `HwCfgFlags $FC00` with no FPU. A shared gap,
+not a divergence.
+
+**And this ROM has no runtime rescue.** In this source `CheckOptionals` is
+just `move.l HwCfgWord(a1),d2` — the record's word, verbatim. The
+`TestForFPU` that would correct it is dated <SM28> 1992-10-27 ("a Horror
+patch for TestForFPU that also works for 040's without an FPU"), and our
+LC II ROM is 1992-03 (`$35C28F5F`). Apple's own change <15> names the hole
+exactly: *"HwCfgFlags gets read from d2, not from the universal tables. With
+an optional FPU, the table may not have the correct value."*
+
+What is still needed is narrow and concrete: the `VIAIdMask` / `VIAIdMatch`
+pair for the LC family in the `ProductLookup` table (not in the `Universal.a`
+excerpt fetched), and then the VIA ID a real LC II presents. The item no
+longer asks an open-ended question; it asks for two numbers.
+
+Sources: `https://github.com/elliotnunn/mac-rom` — `OS/Universal.a`,
+`OS/StartMgr/StartInit.a`.
 
 <a id="2026-09-17-lcii-election-traced"></a>
 ## 2026-09-17 (fifth) — The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2
