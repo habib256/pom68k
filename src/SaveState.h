@@ -288,7 +288,7 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // integers after the GCR write buffer. The adopted speed is what the 64 K
 // ROM's tachometer calibration reads; a v15 reader would shift every field
 // after the drives.
-inline constexpr u32      kVersion   = 17;  // v17: CD-DA transport state
+inline constexpr u32      kVersion   = 18;  // v18: the ATA task file
 
 struct Header {
     u32 version     = kVersion;

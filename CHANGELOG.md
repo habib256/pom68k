@@ -1025,7 +1025,14 @@ image of a Mac disk formatted in IDE by Drive Setup can now point POM68K at
 it and see whether the ROM boots it — which is the one question `TODO.md`
 still has open on this subject.
 
-`asset-none` is 108/108; the Quadra 630 boot etalons and the GUI gates pass.
+**And the task file is snapshot state.** It was not: `Q630Memory::visit`
+carried the ATA interrupt line but not the drive behind it, so a snapshot
+taken between a command and its data would have restored a drive that had
+forgotten what it was doing. The format goes to **v18**. The image stays
+host-owned, exactly as on the SCSI side.
+
+`asset-none` is 108/108; the Quadra 630 boot etalons, the save-state gates
+and the GUI gates pass.
 
 ---
 

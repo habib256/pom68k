@@ -336,7 +336,8 @@ public:
     }
 
     // ── Save states: the machine chunk (V8Memory pattern) ───────────────
-    // Valkyrie replaces DAFB and the F108 ATA IRQ line travels too. Out:
+    // Valkyrie replaces DAFB, the F108 ATA IRQ line and the ATA task file
+    // travel too. Out:
     // rom_, machineId_/cudaLleOn_ (profile + MCU wiring), cpu_/jitGuard_.
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
@@ -344,6 +345,10 @@ public:
         ar(via1_, cuda_, cudaLle_, adb_, scc_, asc_, swim_,
            drive0_, drive1_, scsi_, video_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
+        // The ATA task file is guest state like any other device's: a
+        // snapshot taken between a command and its data must resume there.
+        // The image behind it is host-owned, exactly as on the SCSI side.
+        ar(ata_);
         ar(totalRam_, overlay_, sccIrq_,
            pvIfr_, pvIer_, pvPortB_, nubusIrqs_, ascLine_,
            iosbRegs_, ataIrq_,
