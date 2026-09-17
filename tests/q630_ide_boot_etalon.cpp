@@ -77,6 +77,16 @@ int main() {
     std::string romPath = testasset::findAny({
         "roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM",
         "roms/mame/macqd630/06684214.bin", "roms/quadra630.rom" });
+    // POM68K_Q630_ROM=lc580 runs the other F108 profile — the LC/Performa
+    // 580's own dump, a later ROM on the same board. The IDE path should
+    // not care which of the two is in the socket, and this is how that is
+    // checked rather than assumed.
+    if (std::getenv("POM68K_Q630_ROM")) {
+        const std::string alt = testasset::findAny({
+            "roms/1MB ROMs/1995-04 - 064DC91D - LC, Performa 580 & Performa 588.ROM",
+            "roms/mame/maclc580/064dc91d.bin" });
+        if (!alt.empty()) romPath = alt;
+    }
     std::string diskPath = testasset::findAny({ "hdv/MacOS-8.1-boot.vhd" });
     if (romPath.empty() || diskPath.empty()) {
         std::printf("SKIP: needs the 06684214 ROM + hdv/MacOS-8.1-boot.vhd\n");
@@ -86,7 +96,8 @@ int main() {
 
     // Room for the reference volume (300 MB) plus the driver and patch
     // partitions Drive Setup puts in front of it.
-    const std::string idePath = "q630_ide_boot.img";
+    const std::string idePath = std::getenv("POM68K_Q630_ROM")
+                              ? "lc580_ide_boot.img" : "q630_ide_boot.img";
     {
         std::ofstream f(idePath, std::ios::binary);
         f.seekp(std::streamoff(330) * 1024 * 1024 - 1);
@@ -213,6 +224,6 @@ int main() {
 
     std::remove(idePath.c_str());
     std::printf(failures ? "FAILED\n"
-                         : "PASSED — a Quadra 630 booted from its IDE disk\n");
+                         : "PASSED — an F108 machine booted from its IDE disk\n");
     return failures ? 1 : 0;
 }

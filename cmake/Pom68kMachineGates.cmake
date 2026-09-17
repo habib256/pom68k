@@ -719,6 +719,13 @@ target_link_libraries(q630_ide_boot_etalon PRIVATE pom68k_core)
 add_test(NAME q630_ide_boot_etalon COMMAND q630_ide_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(q630_ide_boot_etalon PROPERTIES TIMEOUT 2400)
+# The other F108 profile, a later ROM on the same board: the IDE path must
+# not care which of the two is in the socket. Its own image file, since
+# ctest runs the two together.
+add_test(NAME lc580_ide_boot_etalon COMMAND q630_ide_boot_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(lc580_ide_boot_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_Q630_ROM=lc580" TIMEOUT 2400)
 
 # Mac OS formats and mounts a disk on the Quadra 630's IDE port, with a
 # control arm that clicks nothing.

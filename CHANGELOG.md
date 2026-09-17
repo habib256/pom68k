@@ -1037,6 +1037,13 @@ Drive Setup wrote a map, the driver partition is `Apple_Driver_ATA`, the
 HFS partition is big enough, the clone completed, the SCSI bus stayed empty,
 megabytes came off the ATA disk, and the desktop is drawn at 8 bits.
 
+**Both F108 profiles.** `lc580_ide_boot_etalon` is the same gate with the
+LC/Performa 580's own dump (`064DC91D`) in the socket — a later ROM on the
+same board — and it passes with the same traffic to the sector: 365 ATA
+commands and 5 244 sectors in the format, 5 574 and 24 319 in the boot. The
+IDE path does not care which of the two ROMs is fitted, which is the useful
+thing to know about a second profile on one board.
+
 **What this closes.** Yesterday's "missing dump" was wrong twice over: the
 driver ships inside Drive Setup, and the thing actually missing was an
 interrupt forward in our own board. `TODO.md`'s IDE item is gone, and the
