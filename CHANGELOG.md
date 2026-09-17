@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (twelfth)** — [The Quadra 630's ATA port has an observed consumer: the guest resets it and polls Status 3 994 times every boot](#2026-09-17-q630-ata-probe)
 - **2026-09-17 (eleventh)** — [The bare LC II is closed: POM68K is faithful, and this ROM has no path that clears the FPU bit](#2026-09-17-lcii-closed)
 - **2026-09-17 (tenth)** — [Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder](#2026-09-17-lcii-fpu-bit-proven)
 - **2026-09-17 (ninth)** — [The XPRAM combo lever is closed, and a watch that had been lying by omission is fixed](#2026-09-17-lcii-xpram-closed)
@@ -1006,6 +1007,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-q630-ata-probe"></a>
+## 2026-09-17 (twelfth) — The Quadra 630's ATA port has an observed consumer: the guest resets it and polls Status 3 994 times every boot
+
+`Q630Memory` decodes the F108 ATA/IDE port and answers 0 with the note that
+"the ROM's IDE probe then finds no device and falls through to SCSI". That
+was true but unmeasured, and the TODO asked for a drive and a non-SCSI boot
+gate without saying what a drive would have to answer. Instrumenting the
+window across `q630_boot_etalon` says exactly what:
+
+| access | meaning |
+|---|---|
+| W `+$38` = `$0E` then `$0A` | Device Control: a software-reset (SRST) pulse |
+| R `+$1C` x **3 994** | the Status register, polled for readiness |
+| R `+$04` … `+$18` | registers 1-6, the post-reset signature |
+
+So the port is on a 4-byte stride (`+$1A000` = reg 0 … `+$1C` = reg 7), and
+the guest's ATA Manager runs the standard sequence on every boot. Returning 0
+means BSY=0 and DRDY=0 — "no device" — which is why the fall-through to SCSI
+works and why the stub is behaviourally right rather than merely inert.
+
+An implementation now has a specification instead of a guess: answer the ATA
+signature after SRST (`$01,$01,$00,$00,$00`, or `$14/$EB` for ATAPI), a Status
+with DRDY set, then IDENTIFY DEVICE and READ/WRITE SECTORS.
+
+What it does **not** have is a disk. No image under `hdv/` is IDE-bootable —
+ours carry an Apple_Driver43 SCSI driver — so the non-SCSI boot gate cannot
+be written yet, and the TODO now names that missing dump rather than implying
+the work is only code. No production code changed: the instrumentation was a
+throwaway, and the Q630 etalon still reaches its 256-colour Finder.
 
 <a id="2026-09-17-lcii-closed"></a>
 ## 2026-09-17 (eleventh) — The bare LC II is closed: POM68K is faithful, and this ROM has no path that clears the FPU bit

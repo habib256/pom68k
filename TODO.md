@@ -250,7 +250,21 @@ Finder **plus** le câblage GUI et save-state. Le Mac 128K/512K est livré.
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
 - [ ] **Ajouter le target ATA/IDE du Q630/LC580.** Brancher un disque et
-  créer un gate de boot qui n'utilise pas SCSI.
+  créer un gate de boot qui n'utilise pas SCSI. **Consommateur observé et
+  protocole relevé le 2026-09-17** sur `q630_boot_etalon` : le port F108 est
+  à pas de 4 octets (`+$1A000` = reg 0 … `+$1C` = reg 7), et l'ATA Manager
+  de l'invité fait, à chaque boot, une impulsion de reset logiciel
+  (Device Control en `+$38` : `$0E` puis `$0A`), puis **3 994 lectures du
+  registre Status** (`+$1C`) en attente de disponibilité, puis une lecture
+  des registres 1 à 6 (`+$04`…`+$18`) pour la signature post-reset. Le stub
+  actuel rend 0, soit BSY=0/DRDY=0 = « pas de disque », ce qui est
+  comportementalement correct et fait retomber la ROM sur SCSI. Une
+  implémentation doit donc servir : la signature ATA après SRST
+  (`$01,$01,$00,$00,$00` ; `$14/$EB` pour ATAPI), un Status avec DRDY, puis
+  IDENTIFY DEVICE et READ/WRITE SECTORS. **Dump manquant** : aucune image
+  disque amorçable en IDE dans `hdv/` (les nôtres portent un pilote SCSI
+  Apple_Driver43) — le gate de boot sans SCSI ne peut pas être écrit avant
+  d'en avoir une.
 
 ---
 
