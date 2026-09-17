@@ -292,14 +292,6 @@ se déduit d'une autre.
   68k commune vit dans l'IR/coût partagé, jamais dans un emitter.
   Évidence : `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`. La moitié
   `a64` n'a jamais tourné.
-- [ ] **Rouvrir `/STACK:16777216` (MSVC) et les 15+154 fixtures sur le tas.**
-  Le mégaoctet qui les avait forcées n'existe plus : le cache de dispatch est
-  passé sur le tas avec une taille runtime et son défaut est descendu de
-  65536 à 16384 slots (1 Mo → 256 Ko) le 2026-09-17, mesure et passe ABBA à
-  l'appui. `Engine` ne porte donc plus qu'un pointeur. Reste à vérifier sur
-  un hôte Windows que `/STACK:16777216` peut revenir à son défaut, et à
-  rendre au stack les fixtures qui n'avaient été déplacées que pour ce
-  mégaoctet. Évidence : `scratchpad/2026-09-17/dispatch-cache/`.
 - [ ] **Attribuer les +6 % du bras natif a64 sur le Q605** contre la
   référence du 2026-08-23, et le delta de banc borné mais non attribué du
   2026-09-03 : les deux sont « notés plutôt que poursuivis ».

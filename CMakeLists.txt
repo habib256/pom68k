@@ -82,13 +82,13 @@ if(MSVC AND POM68K_LTO)
     endif()
 endif()
 
-# The MSVC linker's default stack is 1 MB. A CPU wrapper carries jit::Engine,
-# whose inline dispatch cache alone is 1 MB (CHANGELOG 2026-09-04 (second):
-# five gates segfaulted on x86-64 for the same reason before their fixtures
-# moved to the heap), and the component gates still build machines on the
-# stack. Seven of them died with SegFault on the 2026-09-07 Windows release
-# dispatch (run 34153492565). 16 MB is what the POSIX hosts give a main
-# thread; the GUI holds the same machines, so every executable gets it.
+# The MSVC linker's default stack is 1 MB and the component gates build
+# machines on the stack: seven SegFaulted on the 2026-09-07 Windows release
+# (run 34153492565). 16 MB is what POSIX hosts give a main thread. The
+# 2026-09-04 cause (a 1 MB cache inline in jit::Engine) is gone since
+# 2026-09-17 — sizeof(Engine) 1768 B, a fixture 88 920 B, the eight-fixture
+# frame back to ~695 KB — but the flag STAYS: ~32 % headroom under a 1 MB
+# default, and /STACK reserves address space committed on demand (CHANGELOG).
 if(MSVC)
     add_link_options(/STACK:16777216)
 endif()

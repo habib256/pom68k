@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (third)** — [The stack cliff is gone and measured, and neither consequence is undone: /STACK stays, the fixtures stay on the heap](#2026-09-17-stack-consequences-ruled)
 - **2026-09-17 (later)** — [The dispatch cache moves to the heap and drops to a quarter megabyte: the ABBA pass reads 0.2 % against a 1.2 % floor](#2026-09-17-dispatch-cache-shrunk)
 - **2026-09-17** — [The dispatch cache measured at last: sixteen times the memory buys 0.39 points, and the "3.3 % at 4096" note was wrong](#2026-09-17-dispatch-cache-measured)
 - **2026-09-17** — [Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings](#2026-09-17-five-todo-settled)
@@ -997,6 +998,37 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-stack-consequences-ruled"></a>
+## 2026-09-17 (third) — The stack cliff is gone and measured, and neither consequence is undone: /STACK stays, the fixtures stay on the heap
+
+Moving the dispatch cache to the heap removed the megabyte that had forced
+`/STACK:16777216` on MSVC and 15+154 fixtures into dynamic storage. The TODO
+asked to reopen both. Measured, the answer is to reopen neither, and the
+reason is worth more than the cleanup.
+
+**The cause is gone, by the numbers.** `sizeof(jit::Engine)` is **1 768 B**
+against 1 050 408 before; `sizeof(GateCpu)` — the copyback gate fixture the
+2026-09-04 (second) diagnosis measured at 1 137 568 B — is **88 920 B**. The
+eight-fixture frame that entry computed at 0x8ae000 (9 104 744 B) is back to
+~695 KB, which is the 0xae000 (712 KB) that same bisect read at the
+pre-regression commits. The cliff is not mitigated, it is absent.
+
+**`/STACK:16777216` stays.** On 64-bit Windows `/STACK` sets a RESERVE of
+address space, committed page by page on demand, so 16 MB costs nothing to
+keep. Dropping it would leave that ~695 KB frame against MSVC's 1 MB
+default — about 32 % headroom — on a host this project cannot run locally
+and only the release workflow builds. Insurance that is free stays.
+
+**The fixtures stay on the heap.** A `make_unique` for an 89 KB object is
+right on its own terms, cache or no cache, and returning 154 of them to
+automatic storage would rebuild exactly the pressure the flag guards. The
+churn has a cost and no benefit.
+
+What actually changed is the two comments that had become false: CMakeLists
+still justified the flag by "an inline dispatch cache alone is 1 MB", and
+the gate still told the next reader a GateCpu is ~1.1 MB. Both now carry the
+measurement and the reason the decision survives its original cause.
 
 <a id="2026-09-17-dispatch-cache-shrunk"></a>
 ## 2026-09-17 (later) — The dispatch cache moves to the heap and drops to a quarter megabyte: the ABBA pass reads 0.2 % against a 1.2 % floor

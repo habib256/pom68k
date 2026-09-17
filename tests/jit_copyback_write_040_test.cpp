@@ -39,13 +39,15 @@ const jit::ResolvedConfig& injectedJitConfig() {
     return config;
 }
 
-// A fixture embeds a whole jit::Engine, whose direct-mapped dispatch cache
-// alone is 1 MB (jit::DispatchCache::kSize), so one GateCpu is ~1.1 MB.
-// Several fixtures are live at once here and the compiler inlines the check
-// bodies into main(), which sums their frames: automatic storage puts main's
-// own frame past the 8 MB default stack limit and every registration of this
-// gate dies in main's stack-clash probe before its first check runs. Fixtures
-// therefore live in dynamic storage — never as locals.
+// A fixture embeds a whole jit::Engine and several are live at once, with the
+// compiler inlining the check bodies into main() so their frames sum. When the
+// dispatch cache was a 1 MB inline array a GateCpu was ~1.1 MB and that sum
+// put main past the 8 MB stack limit: every registration died in main's
+// stack-clash probe before its first check (CHANGELOG 2026-09-04 (second)).
+// The cache moved to the heap on 2026-09-17 and a GateCpu is now 88 920 B, so
+// the cliff is gone — but fixtures STAY in dynamic storage: 89 KB each is
+// worth a make_unique on its own, and returning them to automatic storage
+// would rebuild the pressure /STACK:16777216 still guards on MSVC.
 class GateCpu final : public moira::Moira {
 public:
     GateCpu()
