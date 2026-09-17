@@ -137,6 +137,15 @@ int main() {
           (ata.readRegister(AtaDisk::kError) & AtaDisk::kAbrt) != 0,
           "an unsupported command is ABORTED, which is how a driver probes");
 
+    // The counters are what an investigation reads: "the guest issued READ
+    // SECTORS" and "the guest actually pulled the bytes" are different
+    // claims, and only the second one proves a data path.
+    std::printf("  (counters: %ld commands, %ld sectors read, %ld written, "
+                "%ld data words)\n", ata.commands, ata.sectorsRead,
+                ata.sectorsWritten, ata.dataWords);
+    check(ata.dataWords > ata.sectorsRead * 200 && ata.sectorsWritten == 1,
+          "the counters distinguish commands issued from data transferred");
+
     // ── The interrupt line ──────────────────────────────────────────────
     // Device Control bit 1 is nIEN, and it DISABLES interrupts: the $0E/$0A
     // pulse the guest sends keeps it set, so its reset is polled, not
