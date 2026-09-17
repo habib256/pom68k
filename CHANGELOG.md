@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (eleventh)** — [The bare LC II is closed: POM68K is faithful, and this ROM has no path that clears the FPU bit](#2026-09-17-lcii-closed)
 - **2026-09-17 (tenth)** — [Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder](#2026-09-17-lcii-fpu-bit-proven)
 - **2026-09-17 (ninth)** — [The XPRAM combo lever is closed, and a watch that had been lying by omission is fixed](#2026-09-17-lcii-xpram-closed)
 - **2026-09-17 (eighth)** — [Apple's ROM source becomes a first-class reference: the ProductInfo layout, the hwCfgFlags bit numbers, and three opaque words decoded](#2026-09-17-apple-rom-source-notes)
@@ -1005,6 +1006,45 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-lcii-closed"></a>
+## 2026-09-17 (eleventh) — The bare LC II is closed: POM68K is faithful, and this ROM has no path that clears the FPU bit
+
+The cause was proven an entry ago — one bit, `hwCbFPU`, and the machine boots
+with it clear. What remained was whether a real FPU-less LC II avoids setting
+it. Following the ROM's own verdict path says no: **this ROM never clears
+that bit**, and POM68K reproduces it exactly.
+
+**The probe works; its verdict goes nowhere.** The ROM does test for an FPU
+at `$A47CA8` and correctly finds none (`D6 = 2`). That verdict is then run
+against a table of productKinds at `$A48220` holding `$0C` and `$0D` — IIsi
+and LC, the two machines of that era with an **optional** FPU. Our
+productKind is `$0D`, it matches, and `D6` becomes `-1`. Both routines that
+consume the verdict then decline it: `$A46604` branches straight past on `0`
+or `-1`, and `$A48DEA` opens with `cmpi.l #-1,D6 ; rts`. No path in this ROM
+writes the probe's answer back into `hwCfgFlags`.
+
+**And no election could route around it.** Both candidate records carry
+`VIAIdMask` and `VIAIdMatch` of zero and the same decoder kind `$07`, so
+`$3BA6` (LC, `$DC00`, FPU) wins unconditionally and the `$CC00` record is
+unreachable.
+
+**Apple fixed this later, not here.** `TestForFPU` for machines without an
+FPU is `<SM28>`, 1992-10-27; the LC II's own boxflag arrives in `<SM25>`,
+1992-10-25. Our ROM is `$35C28F5F`, March 1992 — it predates both. A real
+LC II of that vintage, with an empty FPU socket and System code that trusts
+`hwCbFPU`, would bomb exactly as POM68K does.
+
+So the item closes as *faithful*, not as *fixed*. No `lcii_barefpu_boot_etalon`
+is registered: it could only pass by holding a guest memory bit down, which is
+non-conformant HLE and would encode a workaround as a milestone. The knob
+stays as an investigation tool, documented as exactly that. Reopen only on a
+later LC II ROM, or on hardware evidence to the contrary.
+
+Five hypotheses were closed by measurement to get here — PA0, the `$50FC0000`
+bus error, the record election, the XPRAM combo, and finally the verdict path
+— and three instruments were repaired along the way, each of which had been
+quietly reporting nothing and being read as evidence of absence.
 
 <a id="2026-09-17-lcii-fpu-bit-proven"></a>
 ## 2026-09-17 (tenth) — Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder
