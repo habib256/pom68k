@@ -229,29 +229,13 @@ Finder **plus** le câblage GUI et save-state. Le Mac 128K/512K est livré.
   catalogue/gates (après `duo230_sleep_etalon`).
 - [ ] **Ajouter Duo 270c puis Duo 280.** CSC couleur puis le chemin 68040,
   après validation des variantes proches.
-- [ ] **Ajouter PowerBook 150.** Framebuffer LCD/GSC, IDE, box ID et PMU
-  68HC05 à partir de sa ROM.
+- [ ] **Ajouter PowerBook 150.** Framebuffer LCD/GSC, IDE (le target ATA
+  existe et amorce déjà un Q630 : `AtaDisk`, `q630_ide_boot_etalon`), box ID
+  et PMU 68HC05 à partir de sa ROM.
 - [ ] **Ajouter PowerBook 140–180 puis Portable/PB100.** Power Manager
   M50753 et framebuffer LCD comme nouvelle brique partagée.
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
-- [ ] **Amorcer depuis le disque IDE du Q630/LC 580.** Tout le reste est
-  livré et prouvé : le target ATA (`AtaDisk`, `ata_disk_test`), le port
-  F108, `POM68K_IDE=<chemin>`, et depuis le 2026-09-18 **Mac OS formate et
-  monte un disque IDE tout seul** — il le sonde, le déclare illisible,
-  propose « Mac OS Standard 100 Mo » (la taille vient de notre IDENTIFY),
-  écrit 3 243 secteurs et monte le volume (`q630_ide_etalon`, plus son bras
-  témoin sans clic). Ce que le Finder écrit est un volume HFS nu, sans carte
-  de partitions : le balayage d'amorçage de la ROM n'en veut pas, il lui
-  faut une entrée de type `$0701` dans le descripteur de pilotes et un
-  pilote qui s'installe. C'est Drive Setup qui écrit tout cela, il est sur
-  nos volumes, il se lance dans l'invité (souris : le volume, Utilities,
-  puis l'application ; clic simple puis Commande-O, jamais un double-clic)
-  et parle au lecteur. **Prochain pas** : reprendre son balayage de disques
-  maintenant que ses interruptions arrivent, et le laisser initialiser le
-  disque. `tools/inspect_apm.py <image>` dit si une image porte déjà
-  `Apple_Driver_ATA`.
-
 ---
 
 ## Moteur — études conditionnées à un profil temporel

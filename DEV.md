@@ -1129,13 +1129,12 @@ and the slot IRQ (`iosb.cpp:712-716`, `:354-373`), and it must be forwarded
 after DATA-register accesses too: the last word of a transfer is what
 raises INTRQ, and a guest waiting on it otherwise waits out its timeout
 (CHANGELOG 2026-09-18). Gate: `ata_disk_test`, asset-free. Mac OS formats and mounts an IDE disk on its own
-(`q630_ide_etalon`, with a no-click control arm). Booting from it
-needs a driver partition the ROM will accept — a Driver Descriptor Record
-entry of type `$0701` — and the driver that writes one is Drive Setup, which
-ships on the reference volume. Drive Setup runs in the guest and drives the
-target, but its scan stalls on the ATA interrupt, which is latched at
-`$1A101` bit 5 and reaches no interrupt level; `TODO.md` carries the
-measurements and what a source would settle. `tools/inspect_apm.py <image>` answers the
+(`q630_ide_etalon`, with a no-click control arm), and a Quadra 630 **boots**
+from one (`q630_ide_boot_etalon`): the guest's own Drive Setup writes the
+partition map, the `$0701` driver descriptor and Apple's `Apple_Driver_ATA`,
+the reference volume is cloned into the HFS partition, and the machine
+reaches the Finder with zero SCSI commands. Nothing about the driver is
+synthesized here — Drive Setup ships on the reference volume. `tools/inspect_apm.py <image>` answers the
 question for any candidate image: it prints the driver descriptor record's
 entries and the partition map, and says whether an `Apple_Driver_ATA`
 partition is there.

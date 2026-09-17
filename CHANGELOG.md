@@ -1010,6 +1010,40 @@ Newest first.
 
 ---
 
+<a id="2026-09-18-ide-boots"></a>
+## 2026-09-18 (later) — A Quadra 630 boots from its IDE disk, with nothing on the SCSI bus
+
+The F108 machines are the only 68k Macs whose internal disk is ATA, and
+POM68K had never booted one. It does now, and the whole path is the one a
+person would take — nothing in it is synthesized by us.
+
+1. A blank IDE image and the reference SCSI volume.
+2. The guest's own **Drive Setup**, launched by mouse, lists the drive as
+   ATA and initializes it: a `$0701` driver descriptor, two
+   `Apple_Driver_ATA` partitions, a patch partition and an HFS one. Apple's
+   tool writing Apple's driver.
+3. The reference volume is cloned into that HFS partition host-side, which
+   is what cloning a disk is.
+4. The machine is rebuilt with the IDE disk **alone** and reaches the
+   Finder: 5 574 ATA commands, 24 319 sectors read, **zero SCSI commands**.
+
+That last number is the load-bearing one. A Finder drawn from an IDE disk
+and one drawn from a SCSI disk look identical; what tells them apart is that
+the SCSI controller saw nothing at all.
+
+**`q630_ide_boot_etalon`** runs all four steps in one gate — two machines,
+a full format and a 300 MB clone, minutes of wall clock — and checks each:
+Drive Setup wrote a map, the driver partition is `Apple_Driver_ATA`, the
+HFS partition is big enough, the clone completed, the SCSI bus stayed empty,
+megabytes came off the ATA disk, and the desktop is drawn at 8 bits.
+
+**What this closes.** Yesterday's "missing dump" was wrong twice over: the
+driver ships inside Drive Setup, and the thing actually missing was an
+interrupt forward in our own board. `TODO.md`'s IDE item is gone, and the
+PowerBook 150 line now says its ATA half already exists.
+
+---
+
 <a id="2026-09-18-ide-mounts"></a>
 ## 2026-09-18 — Mac OS formats and mounts a disk on the Quadra 630's IDE port. The blocker was one missing line: the drive raised its interrupt and the machine never heard it
 

@@ -711,6 +711,15 @@ add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
 target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
 add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)
 
+# The whole IDE path: the guest's own Drive Setup partitions the ATA disk,
+# the reference volume is cloned into it, and the machine boots from IDE
+# with nothing on the SCSI bus.
+add_executable(q630_ide_boot_etalon tests/q630_ide_boot_etalon.cpp)
+target_link_libraries(q630_ide_boot_etalon PRIVATE pom68k_core)
+add_test(NAME q630_ide_boot_etalon COMMAND q630_ide_boot_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q630_ide_boot_etalon PROPERTIES TIMEOUT 2400)
+
 # Mac OS formats and mounts a disk on the Quadra 630's IDE port, with a
 # control arm that clicks nothing.
 add_executable(q630_ide_etalon tests/q630_ide_etalon.cpp)
