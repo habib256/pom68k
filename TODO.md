@@ -219,77 +219,17 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 
 ## Médias optiques
 
-- [ ] **Ajouter CDDA.** TOC audio, PLAY/PAUSE et le chemin sonore vers
-  l'ASC avec un gate consommateur. **L'actif est fabricable, pas à trouver**
-  (2026-09-17) : aucune image de `cd/` ne porte de piste audio, mais un
-  disque mixte de test se **synthétise** — une `.cue` décrivant une piste 1
-  `MODE1/2352` (notre ISO existante re-tramée) suivie de pistes `AUDIO`
-  brutes 44,1 kHz 16 bits stéréo engendrées (tonalités), le tout dans un
-  `.bin`. Reproductible, minuscule, sans question de droits, et c'est le
-  format que le CD audio exige de toute façon : une image plate de 2048
-  octets ne porte aucune piste audio. Le consommateur est l'AppleCD Audio
-  Player d'un volume System que nous avons déjà, et notre lecteur présente
-  déjà une identité de la famille AppleCD (`SONY CD-ROM CDU-8003A1.0i`),
-  donc l'extension Apple CD-ROM se charge. **Premier étage livré le
-  2026-09-17** : `tools/make_mixed_cd.py` fabrique le disque, la feuille
-  `.cue` est lue en entier (toutes les pistes, type et `INDEX 01`), seule
-  l'étendue de la piste de données est dé-tramée — dé-tramer les secteurs
-  audio changerait de la musique en « données » — et READ TOC rapporte les
-  pistes audio avec le contrôle `$0` qui les rend jouables, lead-out compris
-  (`scsi_cdrom_test`).
-  **Deuxième étage livré le 2026-09-17** : PLAY AUDIO (10) et MSF,
-  PAUSE/RESUME, et un transport qui avance sur le temps MACHINE (75
-  secteurs/seconde, `advanceAudioCycles`), donc READ SUBCHANNEL rapporte
-  `$11/$12/$13/$15`, la piste sous la tête et une position qui bouge
-  vraiment ; l'état du transport entre dans l'instantané (v17). Un PLAY
-  visant la piste de données est refusé, pas simulé. **Troisième étage livré
-  le 2026-09-17, avec une correction de matériel** : le chemin n'est PAS «
-  vers l'ASC ». Sur une vraie machine le lecteur AppleCD décode lui-même le
-  CD-DA et sort en ANALOGIQUE par un câble à lui, à côté du câble SCSI
-  (Macintosh Quadra 900 Developer Note) ; la puce son ne voit jamais ces
-  échantillons. POM68K le modélise donc comme tel : `AudioFxSource` remplace
-  les deux emplacements typés `FloppySound*` (quatre emplacements, mixage
-  stéréo), `CdAudioSink` est le câble, `CdAudioSource` le côté hôte (anneau
-  SPSC sans verrou, rééchantillonnage 44,1 kHz → DAC, volume et coupure), et
-  `ScsiDisk` relit les secteurs audio depuis le `.bin` — ils ne sont pas en
-  mémoire, `open()` ayant réduit l'image à la piste de données. Gate
-  `cd_audio_test` (disque synthétisé, secteurs identifiables) : bons
-  secteurs, dans l'ordre, bruts, rien pendant une pause, mixage additif,
-  volume, coupure.
-  **Quatrième étage livré le 2026-09-17** : les douze cartes avancent leur
-  transport et câblent leur lecteur, pas seulement les quatre à 53C96 — un
-  invariant de `docs_test` le tient désormais (« every board with SCSI disks
-  advances and cables its CD transport »), parce qu'un transport immobile
-  ressemble exactement à un disque que personne n'a demandé de jouer.
-  L'avance se fait par grains d'une milliseconde de temps machine
-  (`CdAudioPump`) : le `tick()` d'une carte 68000 est le chemin d'accès bus,
-  et 75 secteurs/seconde n'exige pas plus fin ; le gate prouve que les
-  grains et un seul bloc tombent sur le même secteur. MODE SELECT page `$0E`
-  est honorée port par port et canal par canal — c'est le curseur CD du
-  tableau de bord Son — et se multiplie avec le volume de l'hôte.
-  **Cinquième étage livré le 2026-09-17, et il a ouvert deux vrais défauts**
-  : (1) un CD **audio seul** — le cas le plus ordinaire du CD-DA, celui pour
-  lequel l'AppleCD Audio Player existe — ne montait pas du tout, parce que
-  la présence d'un disque se jugeait au nombre de blocs de données et un CD
-  audio n'en a aucun ; il monte désormais (TEST UNIT READY positif, READ
-  TOC, READ CAPACITY qui rend le lead-out, READ refusé avec `$64` — il n'y a
-  aucune donnée utilisateur à rendre) ; (2) les temps `INDEX` d'une feuille
-  `.cue` sont **relatifs au fichier**, pas des adresses disque absolues (Cue
-  Sheet File Format Specification) : on retranchait 150 secteurs à la
-  lecture et on en rajoutait 150 à l'écriture, si bien que nos propres
-  disques bouclaient parfaitement et que toute copie réelle démarrait chaque
-  piste deux secondes trop tôt. `tools/make_mixed_cd.py` sait aussi
-  fabriquer un CD purement audio (`--tone` sans `--data`).
-  **Reste** : un seul point, et c'est un gate, pas du code — un consommateur
-  réel : l'AppleCD Audio Player d'un volume System qui joue, jugé sur la
-  sortie hôte et pas seulement sur les commandes reçues. Les deux volumes de
-  référence le portent (`MacOS-8.1-boot.vhd`, `GISTPERSO-boot.vhd`) et la
-  souris en boucle fermée existe déjà (`lcii_beyond_etalon`).
-  Y inclure le seul cas `.cue/.bin` encore ouvert (tranché le 2026-09-16) :
-  un BIN unique en mode mixte dont la piste de données n'est pas la première
-  (décalage `INDEX 01` à calculer) — la feuille `.cue` est déjà lue, sa
-  première piste MODE1 chargée, `MODE1/2352` dé-tramé, un fichier par piste
-  accepté (`ScsiDisk.cpp`, `scsi_cdrom_test`).
+- [ ] **Piste de données qui n'est pas la première dans un `.bin` mixte.**
+  Le seul cas `.cue/.bin` encore ouvert (tranché le 2026-09-16) : un BIN
+  unique en mode mixte dont la piste 1 est audio et la piste de données
+  vient après — `open()` ne découpe l'étendue de données que lorsque
+  `tracks_[0]` n'est pas audio, sinon le disque est traité comme purement
+  audio. Tout le reste de la chaîne est là : la feuille `.cue` est lue en
+  entier, `MODE1/2352` dé-tramé, un fichier par piste accepté, les temps
+  `INDEX` sont relatifs au fichier (`ScsiDisk.cpp`, `scsi_cdrom_test`). Le
+  CDDA lui-même est livré et prouvé par un consommateur réel : Mac OS 8.1
+  monte un CD audio synthétisé et le joue seul (`q605_cdaudio_etalon`, plus
+  son bras témoin à tiroir vide).
 
 ---
 

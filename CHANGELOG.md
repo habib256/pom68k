@@ -1009,6 +1009,69 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-cdda-consumer"></a>
+## 2026-09-17 (eighteenth) — CDDA is done: Mac OS 8.1 mounts a synthesized audio CD and plays it by itself, and the last missing piece was a READ TOC format we refused on principle
+
+The consumer gate exists, and it found the defect that had been blocking it.
+
+**What the gate does.** `q605_cdaudio_etalon` synthesizes a two-track audio
+CD — 440 Hz and 660 Hz, 20 seconds each, raw 2352-byte sectors, which is the
+only form CD-DA has — boots a Quadra 605 from the reference Mac OS 8.1 volume
+with an empty bay, and drops the disc in after the Finder is up. **POM68K
+then sends nothing.** Every command the drive sees comes from the guest's own
+Apple CD-ROM extension. Measured: the disc mounts on the desktop as
+"Audio CD 1", and **2999 sectors — forty seconds, the whole disc — cross the
+drive's audio lead at peak 0.61**, with the transport ending in Completed.
+Mac OS mounted it and played it on its own.
+
+There is a **control arm** (`q605_cdaudio_silent_etalon`, the same binary with
+an empty tray): nothing on the lead, no play. Without it, "the guest played
+the disc" cannot be told from "this machine emits sectors anyway".
+
+**The defect it found.** Before this, the same run ended at a dialog: *"This
+disk is unreadable by this computer. Name: untitled, Format: ProDOS OK —
+Eject / Initialize."* Mac OS was treating an audio CD as an unformatted disk.
+The CDB log says why. After the TOC header and the format-0 TOC, the driver
+asks:
+
+```
+43 02 00 00 00 00 01 00 30 80      READ TOC, format 2 (full TOC)
+```
+
+and POM68K answered CHECK CONDITION / `$24`, with a comment explaining that
+MAME refuses it too and that "a made-up reply is worse than an honest
+refusal". That reasoning is sound for a format nobody asks for. It is wrong
+for one **Apple's own driver asks for on every disc it sees**: a refusal is
+not a neutral answer to a consumer that uses the reply to decide what kind of
+disc it is holding. The driver fell back to treating the disc as data, tried
+READ(10) at blocks 0 and 16, got the correct `$64`, and handed the disc to
+the File Manager, which offered to initialize a CD.
+
+Format 2 is now implemented to the spec (SCSI-2 § 14.2.8 / SFF8020 § 9.2):
+an 11-byte descriptor per entry, POINT `$A0` carrying the first track number
+and the disc type, `$A1` the last track, `$A2` the lead-out, then one per
+track. With it, the disc mounts and plays. PMA and ATIP (formats 3 and 4)
+are still refused — those describe a recordable disc's unfinished areas, and
+POM68K holds finished images only.
+
+**A second defect, found on the way and fixed but not sufficient on its own:**
+the TOC's lead-out entry always carried control `$14`, "data", even on a disc
+with nothing but audio on it. A driver that classifies a disc by scanning
+control nibbles sees one data entry there. It now follows the last track.
+
+**What this closes.** Every piece of the CDDA work now has a consumer: the
+TOC (the extension mounts from it), the transport (the guest starts and runs
+a play), the lead (forty seconds of the disc's own music), and MODE SELECT
+page `$0E` (the guest sets the drive's level to 223/223 at startup — the
+Sound control panel's CD slider). `asset-none` is 107/107, and all six CD
+etalons pass, the four data ones included: format 2 answers for them too now.
+
+**Still open, and it is the last of it:** a single mixed-mode `.bin` whose
+data track is not the first one. `open()` only cuts the data extent when
+track 1 is not audio.
+
+---
+
 <a id="2026-09-17-cdda-fifth-stage"></a>
 ## 2026-09-17 (seventeenth) — Building a consumer gate for CD audio found two defects first: an audio CD would not mount at all, and every real cue sheet was read two seconds early
 

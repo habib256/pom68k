@@ -1100,9 +1100,17 @@ models the wiring:
 - The host end (`CdAudioSource`) is an `AudioFxSource`, mixed beside the
   mechanical sounds rather than through the ASC: lock-free SPSC ring,
   44.1 kHz → host DAC through `HostAudioResampler`, stereo.
+- `READ TOC` answers formats 0 (track list), 1 (session) and **2 (full
+  TOC)**. Format 2 used to be refused, copying MAME — until Mac OS 8.1's
+  own CD-ROM driver was observed asking for it on every disc, and taking
+  the refusal as "not an audio disc" (CHANGELOG 2026-09-17). PMA and ATIP
+  stay refused. The lead-out's control follows the last track, so an
+  all-audio disc has no data entry anywhere in its TOC.
 - Gates: `cd_audio_test` (asset-free, synthesizes its own mixed disc),
-  `scsi_cdrom_test`; `docs_test` holds every board with SCSI disks to
-  advancing and cabling its transport.
+  `scsi_cdrom_test`, and `q605_cdaudio_etalon` — a consumer gate: Mac OS
+  mounts a synthesized audio CD and plays it with no command from POM68K,
+  against a control arm with an empty tray. `docs_test` holds every board
+  with SCSI disks to advancing and cabling its transport.
 
 ### 3.3bis What else can live on the bus: `ScsiTarget` + `DaynaPort`
 
@@ -2084,7 +2092,11 @@ Plus cell's System-6 budget for a System 7 image), `POM68K_BENCH_*`,
 `POM68K_INPUT_ANYPATH`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_IIFX_SHOT`
 (debug PPM out of `iifx_boot_etalon`), `POM68K_IIFX_POST_CYCLES`,
 `POM68K_CD_HOT` (`q605_cdrom_etalon`: insert the disc AFTER the Finder is
-up instead of at power-on), `POM68K_FLOPPY_IMG` / `POM68K_FLOPPY_SETTLE`
+up instead of at power-on), `POM68K_CDAUDIO_NOINSERT` (`q605_cdaudio_etalon`:
+the control arm — the same run with an EMPTY tray, which is what tells "the
+guest played the disc" from "this machine emits sectors anyway"),
+`POM68K_CDAUDIO_CDB` (that gate's CDB log: what Mac OS asks the drive,
+opcode by opcode) and `POM68K_CDAUDIO_DUMP` (its screen, for eyeballing), `POM68K_FLOPPY_IMG` / `POM68K_FLOPPY_SETTLE`
 (`lcii_beyond_etalon`'s floppy scenario: which 800K image, and how long to
 settle before judging the mount), `POM68K_AFP_PHASE` +
 `POM68K_AFP_CHOOSER_Y`, `POM68K_AFP_AS_X`, `POM68K_AFP_AS_Y`,

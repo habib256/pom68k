@@ -1207,7 +1207,13 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                         dataOut[o + 2] = sheet ? tracks_[i].number : 1;
                         addr(sheet ? tracks_[i].startLba : 0, &dataOut[o + 4]);
                     }
-                    dataOut[o + 1] = 0x14;
+                    // The lead-out's control follows the LAST TRACK, it is
+                    // not always data: a driver that classifies a disc by
+                    // scanning the control nibbles sees one data entry on an
+                    // all-audio disc and hands it to the File Manager, which
+                    // finds no volume and offers to initialize the CD
+                    // (observed on Mac OS 8.1, 2026-09-17).
+                    dataOut[o + 1] = (sheet && tracks_.back().audio) ? 0x10 : 0x14;
                     dataOut[o + 2] = 0xAA;           // lead-out
                     addr(leadOut, &dataOut[o + 4]);
                 } else if (format == 1) {
@@ -1219,11 +1225,62 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     dataOut[5] = sheet && tracks_.front().audio ? 0x10 : 0x14;
                     dataOut[6] = firstTrk;           // first track of session
                     addr(sheet ? tracks_.front().startLba : 0, &dataOut[8]);
+                } else if (format == 2) {
+                    // Full TOC, the raw lead-in Q the drive read off the
+                    // disc. MAME refuses this (cd.cpp:890-900) and POM68K
+                    // used to copy that refusal — but Mac OS 8.1's Apple
+                    // CD-ROM driver ASKS FOR IT on every disc it sees
+                    // (43 02 00 00 00 00 01 00 30 80, observed 2026-09-17),
+                    // and a refusal is not a neutral answer to a consumer
+                    // that uses the reply to decide what kind of disc it is
+                    // holding.
+                    //
+                    // Layout (SCSI-2 § 14.2.8 / SFF8020 § 9.2): a four-byte
+                    // header, then 11-byte descriptors — session, ADR/CTRL,
+                    // TNO, POINT, the descriptor's own MSF, a zero, and the
+                    // POINT's MSF. POINT $A0 carries the first track number
+                    // and the disc type, $A1 the last, $A2 the lead-out;
+                    // then one descriptor per track.
+                    const size_t count = sheet ? tracks_.size() : 1;
+                    dataOut.assign(4 + 11 * (count + 3), 0);
+                    const uint16_t len = uint16_t(dataOut.size() - 2);
+                    dataOut[0] = uint8_t(len >> 8); dataOut[1] = uint8_t(len);
+                    dataOut[2] = 1; dataOut[3] = 1;   // first / last session
+                    size_t o = 4;
+                    auto point = [&](uint8_t ctrl, uint8_t pt,
+                                     uint8_t pmin, uint8_t psec, uint8_t pfrm) {
+                        dataOut[o] = 1;               // session 1
+                        dataOut[o + 1] = ctrl;
+                        dataOut[o + 3] = pt;
+                        dataOut[o + 8] = pmin;
+                        dataOut[o + 9] = psec;
+                        dataOut[o + 10] = pfrm;
+                        o += 11;
+                    };
+                    const uint8_t firstCtrl = (sheet && tracks_.front().audio) ? 0x10 : 0x14;
+                    const uint8_t lastCtrl  = (sheet && tracks_.back().audio) ? 0x10 : 0x14;
+                    // $A0: PMIN = first track, PSEC = disc type (0 = CD-DA
+                    // or CD-ROM, which is every disc POM68K can hold).
+                    point(firstCtrl, 0xA0, firstTrk, 0x00, 0);
+                    point(lastCtrl, 0xA1, lastTrk, 0, 0);
+                    {
+                        const uint32_t f = leadOut + 150;
+                        point(lastCtrl, 0xA2, uint8_t(f / (60 * 75)),
+                              uint8_t((f / 75) % 60), uint8_t(f % 75));
+                    }
+                    for (size_t i = 0; i < count; i++) {
+                        const bool audio = sheet && tracks_[i].audio;
+                        const uint32_t f =
+                            (sheet ? tracks_[i].startLba : 0) + 150;
+                        point(audio ? 0x10 : 0x14,
+                              sheet ? tracks_[i].number : uint8_t(1),
+                              uint8_t(f / (60 * 75)), uint8_t((f / 75) % 60),
+                              uint8_t(f % 75));
+                    }
                 } else {
-                    // Full TOC / PMA / ATIP: MAME leaves these unhandled and
-                    // answers CHECK CONDITION (cd.cpp:890-900). Matching that
-                    // matters — a made-up reply is worse than an honest
-                    // refusal, which real drives also give on old discs.
+                    // PMA and ATIP describe a recordable disc's unfinished
+                    // areas; POM68K holds finished images only, and MAME
+                    // refuses them too (cd.cpp:890-900).
                     setSense(kIllegalRequest, 0x24);
                     return kCheck;
                 }

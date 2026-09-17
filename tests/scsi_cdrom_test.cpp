@@ -124,11 +124,22 @@ int main() {
     check(cd.command(tocSess, 10, out, in) == 0 && out.size() == 12,
           "READ TOC format 1 (session info) replies");
     check(out[2] == 1 && out[3] == 1, "one session, first = last = 1");
-    // Full TOC (2) is unhandled in MAME too, and answering honestly beats
-    // inventing a reply (cd.cpp:890-900).
+    // Full TOC (2): MAME refuses it and POM68K used to copy that refusal,
+    // until Mac OS 8.1's own CD-ROM driver was observed asking for it on
+    // every disc it sees (2026-09-17). A consumer that decides what kind of
+    // disc it holds from this reply is not served by a refusal.
     const uint8_t tocFull[10] = { 0x43, 0x02, 0x02, 0, 0, 0, 0, 0, 48, 0 };
-    check(cd.command(tocFull, 10, out, in) == 2,
-          "READ TOC format 2 (full TOC) → CHECK CONDITION, as MAME does");
+    check(cd.command(tocFull, 10, out, in) == 0 && out.size() >= 15,
+          "READ TOC format 2 (full TOC) replies");
+    check(out[2] == 1 && out[3] == 1, "one session there too");
+    check(out[4 + 3] == 0xA0 && out[4 + 8] == 1,
+          "POINT $A0 carries the first track number");
+    check(out[4 + 11 + 3] == 0xA1 && out[4 + 22 + 3] == 0xA2,
+          "then $A1 (last track) and $A2 (lead-out)");
+    // PMA and ATIP describe a recordable disc's unfinished areas.
+    const uint8_t tocPma[10] = { 0x43, 0x02, 0x03, 0, 0, 0, 0, 0, 48, 0 };
+    check(cd.command(tocPma, 10, out, in) == 2,
+          "READ TOC format 3 (PMA) is still refused");
 
     // A CD is read-only, and must say so the way drivers expect.
     const uint8_t wr[10] = { 0x2A, 0, 0, 0, 0, 0, 0, 0, 1, 0 };

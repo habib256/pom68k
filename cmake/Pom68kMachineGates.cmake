@@ -711,6 +711,20 @@ add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
 target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
 add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)
 
+# An audio CD in front of a real Mac OS: the guest's own CD extension is
+# the consumer, and the disc is synthesized by the gate itself.
+add_executable(q605_cdaudio_etalon tests/q605_cdaudio_etalon.cpp)
+target_link_libraries(q605_cdaudio_etalon PRIVATE pom68k_core)
+add_test(NAME q605_cdaudio_etalon COMMAND q605_cdaudio_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_cdaudio_etalon PROPERTIES TIMEOUT 1800)
+# The control arm: the same run with an empty tray. Without it, "the guest
+# played the disc" cannot be told from "this machine emits sectors anyway".
+add_test(NAME q605_cdaudio_silent_etalon COMMAND q605_cdaudio_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_cdaudio_silent_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_CDAUDIO_NOINSERT=1" TIMEOUT 1800)
+
 # The CD-audio lead: the drive hands the sectors it passes to the host
 # mixer (never through the ASC — see CdAudioSink.h). Synthesizes its own
 # mixed disc, so it is asset-free.
