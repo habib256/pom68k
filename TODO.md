@@ -235,28 +235,21 @@ Finder **plus** le câblage GUI et save-state. Le Mac 128K/512K est livré.
   M50753 et framebuffer LCD comme nouvelle brique partagée.
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
-- [ ] **Rendre un disque IDE amorçable sur le Q630/LC 580 : câbler
-  l'interruption ATA.** Le target est livré et prouvé (`AtaDisk`,
-  `ata_disk_test`, port F108 câblé, `POM68K_IDE=<chemin>`), et **aucun dump
-  ne manque** — correction du 2026-09-17 : le pilote `Apple_Driver_ATA` est
-  à l'intérieur de Drive Setup, présent sur `hdv/ref/MacOS-8.1-boot.vhd`
-  comme sur le CD 8.1, puisque c'est l'outil qui l'installe. Drive Setup se
-  lance dans l'invité (souris : le volume, le dossier Utilities, puis
-  l'application ; un double-clic ne prend jamais dans ce harnais, il faut un
-  clic simple puis Commande-O) et parle à notre lecteur : IDENTIFY,
-  INITIALIZE DEVICE PARAMETERS, puis des paires lecture/écriture par pas de
-  100 secteurs. **Ce qui bloque** : le balayage avance d'une paire toutes
-  les ~25 secondes de temps machine et n'aboutit pas, la forme exacte d'un
-  pilote qui expire sur une interruption. L'interruption ATA du F108 est
-  bien retenue et lisible dans le registre d'état spécial de PrimeTime II
-  (`$1A101`, bit 5) mais n'atteint aucun niveau d'interruption. La déduction
-  évidente est fausse et c'est mesuré : la câbler sur le bit NuBus 5 (par
-  symétrie avec l'IRQ vidéo en bit 6) arrête la machine au premier IDENTIFY.
-  Donc soit la ligne est autre, soit il existe un bit d'activation en
-  `$1A100`/`$1A101` que la ROM pose et que nous ne modélisons pas — nous ne
-  servons que l'état de ce registre. **Il faut une source** sur le câblage
-  d'interruption du F108 (MAME `f108.cpp`/`iosb.cpp`, ou la ROM elle-même).
-  `tools/inspect_apm.py <image>` dit d'un coup d'œil si une image porte déjà
+- [ ] **Amorcer depuis le disque IDE du Q630/LC 580.** Tout le reste est
+  livré et prouvé : le target ATA (`AtaDisk`, `ata_disk_test`), le port
+  F108, `POM68K_IDE=<chemin>`, et depuis le 2026-09-18 **Mac OS formate et
+  monte un disque IDE tout seul** — il le sonde, le déclare illisible,
+  propose « Mac OS Standard 100 Mo » (la taille vient de notre IDENTIFY),
+  écrit 3 243 secteurs et monte le volume (`q630_ide_etalon`, plus son bras
+  témoin sans clic). Ce que le Finder écrit est un volume HFS nu, sans carte
+  de partitions : le balayage d'amorçage de la ROM n'en veut pas, il lui
+  faut une entrée de type `$0701` dans le descripteur de pilotes et un
+  pilote qui s'installe. C'est Drive Setup qui écrit tout cela, il est sur
+  nos volumes, il se lance dans l'invité (souris : le volume, Utilities,
+  puis l'application ; clic simple puis Commande-O, jamais un double-clic)
+  et parle au lecteur. **Prochain pas** : reprendre son balayage de disques
+  maintenant que ses interruptions arrivent, et le laisser initialiser le
+  disque. `tools/inspect_apm.py <image>` dit si une image porte déjà
   `Apple_Driver_ATA`.
 
 ---

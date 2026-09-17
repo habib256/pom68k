@@ -711,6 +711,18 @@ add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
 target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
 add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)
 
+# Mac OS formats and mounts a disk on the Quadra 630's IDE port, with a
+# control arm that clicks nothing.
+add_executable(q630_ide_etalon tests/q630_ide_etalon.cpp)
+target_link_libraries(q630_ide_etalon PRIVATE pom68k_core)
+add_test(NAME q630_ide_etalon COMMAND q630_ide_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q630_ide_etalon PROPERTIES TIMEOUT 1800)
+add_test(NAME q630_ide_untouched_etalon COMMAND q630_ide_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q630_ide_untouched_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_IDE_NOCLICK=1" TIMEOUT 1800)
+
 # The disk-bay bindings, outside GL: one window gesture, one request.
 add_executable(gui_disk_bindings_test tests/gui_disk_bindings_test.cpp)
 target_link_libraries(gui_disk_bindings_test PRIVATE pom68k_core)

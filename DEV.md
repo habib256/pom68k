@@ -1122,9 +1122,14 @@ stride — `+$00` Data … `+$1C` Status, and the control block's Device Control
 / Alternate Status at `+$38`. `AtaDisk` is a PIO task-file target: SRST and
 the post-reset signature, IDENTIFY DEVICE, READ/WRITE SECTORS (LBA or CHS),
 READ/WRITE BUFFER, EXECUTE DEVICE DIAGNOSTIC and INITIALIZE DEVICE
-PARAMETERS. The board puts a sector's FIRST byte on D15-D8 — measured, since
-the other order makes the ROM's driver read a geometry of zeroes and give up
-(CHANGELOG 2026-09-17). Gate: `ata_disk_test`, asset-free. Booting from it
+PARAMETERS. The board puts a sector's FIRST byte on D15-D8 — measured, and since
+confirmed by MAME's `cs0_swap`/`cs1_swap` accessors (`f108.cpp:39-41`).
+The ATA interrupt takes `via2_irq_w<0x10>` into the active-low NuBus set
+and the slot IRQ (`iosb.cpp:712-716`, `:354-373`), and it must be forwarded
+after DATA-register accesses too: the last word of a transfer is what
+raises INTRQ, and a guest waiting on it otherwise waits out its timeout
+(CHANGELOG 2026-09-18). Gate: `ata_disk_test`, asset-free. Mac OS formats and mounts an IDE disk on its own
+(`q630_ide_etalon`, with a no-click control arm). Booting from it
 needs a driver partition the ROM will accept — a Driver Descriptor Record
 entry of type `$0701` — and the driver that writes one is Drive Setup, which
 ships on the reference volume. Drive Setup runs in the guest and drives the
@@ -2124,7 +2129,10 @@ up instead of at power-on), `POM68K_CDAUDIO_NOINSERT` (`q605_cdaudio_etalon`:
 the control arm — the same run with an EMPTY tray, which is what tells "the
 guest played the disc" from "this machine emits sectors anyway"),
 `POM68K_CDAUDIO_CDB` (that gate's CDB log: what Mac OS asks the drive,
-opcode by opcode) and `POM68K_CDAUDIO_DUMP` (its screen, for eyeballing), `POM68K_FLOPPY_IMG` / `POM68K_FLOPPY_SETTLE`
+opcode by opcode), `POM68K_CDAUDIO_DUMP` (its screen, for eyeballing) and
+`POM68K_IDE_NOCLICK` (`q630_ide_etalon`'s control arm: the same run with no
+click on the Finder's initialize dialog, which is what tells "the guest
+formatted the disk" from "something formats it anyway"), `POM68K_FLOPPY_IMG` / `POM68K_FLOPPY_SETTLE`
 (`lcii_beyond_etalon`'s floppy scenario: which 800K image, and how long to
 settle before judging the mount), `POM68K_AFP_PHASE` +
 `POM68K_AFP_CHOOSER_Y`, `POM68K_AFP_AS_X`, `POM68K_AFP_AS_Y`,

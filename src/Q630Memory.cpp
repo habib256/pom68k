@@ -193,6 +193,21 @@ void Q630Memory::vblIrq(bool s) {
     via2Recalc();
 }
 
+// The F108 ATA interrupt. MAME settles the wiring that guesswork got wrong
+// on 2026-09-17: `primetimeii_device::ata_irq_w` does `via2_irq_w<0x10>` and
+// latches the state for the special-status register (iosb.cpp:712-716), and
+// `via2_irq_w` clears that bit in the active-low NuBus line set before
+// summarising it into the slot IRQ (iosb.cpp:354-373) — the same path
+// `vblIrq` takes with 0x40. Mask 0x10, not the 0x20 that symmetry with the
+// status register's bit 5 suggested; that guess hung the machine at the
+// first IDENTIFY.
+void Q630Memory::ataIrq(bool s) {
+    if (s) nubusIrqs_ &= ~0x10; else nubusIrqs_ |= 0x10;
+    if ((nubusIrqs_ & 0x79) != 0x79) pvIfr_ |= 0x02;
+    else                             pvIfr_ &= ~0x02;
+    via2Recalc();
+}
+
 void Q630Memory::scsiIrq(bool s) {
     if (s) pvIfr_ |= 0x08;                   // CB2 bit (pseudovia.cpp:148)
     else   pvIfr_ &= ~0x08;
@@ -371,14 +386,24 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
             // commands; with this one it reads the geometry it wrote back
             // in INITIALIZE DEVICE PARAMETERS ($91, 16 heads, 63 sectors)
             // and goes on to READ SECTORS (2026-09-17).
+            uint8_t half;
             if ((off & 1) == 0) {
                 ataDataLatch_ = ata_.readData();
-                return uint8_t(ataDataLatch_ & 0xFF);
+                half = uint8_t(ataDataLatch_ & 0xFF);
+            } else {
+                half = uint8_t(ataDataLatch_ >> 8);
             }
-            return uint8_t(ataDataLatch_ >> 8);
+            // The last word of a transfer is what completes the command and
+            // raises INTRQ, so the line has to be looked at HERE too. It was
+            // only forwarded from the task-file branch below, which meant a
+            // drive raised its interrupt and the machine never heard it —
+            // and a guest waiting on that interrupt waited out its timeout
+            // instead (Drive Setup: one sector pair per ~25 s, 2026-09-18).
+            if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); ataIrq(ataIrq_); }
+            return half;
         }
         const uint8_t v = ata_.readRegister(reg);
-        if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); updateIrq(); }
+        if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); ataIrq(ataIrq_); }
         return v;
     }
     if ((sub & ~0xF00000u) >= 0x1A100 && (sub & ~0xF00000u) < 0x1A110) {
@@ -482,10 +507,11 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
             if ((off & 1) == 0) { ataDataLatch_ = v; }
             else { ataDataLatch_ = uint16_t((ataDataLatch_ & 0x00FF) | (v << 8));
                    ata_.writeData(ataDataLatch_); }
+            if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); ataIrq(ataIrq_); }
             return;
         }
         ata_.writeRegister(reg, v);
-        if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); updateIrq(); }
+        if (ataIrq_ != ata_.irq()) { ataIrq_ = ata_.irq(); ataIrq(ataIrq_); }
         return;
     }
     if ((sub & ~0xF00000u) >= 0x1A100 && (sub & ~0xF00000u) < 0x1A110)

@@ -308,6 +308,7 @@ public:
     // VIA2 IFR device lines (Quadra pseudo-VIA: CA1=slot/VBL summary,
     // bit encodings identical to a real VIA's IFR)
     void vblIrq(bool s);
+    void ataIrq(bool s);
     void scsiIrq(bool s);
     void ascIrq(bool s);                         // EASC half-empty → IFR bit 4
     void sccIrqLine(bool s) { sccIrq_ = s; updateIrq(); }

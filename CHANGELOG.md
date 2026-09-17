@@ -1010,6 +1010,60 @@ Newest first.
 
 ---
 
+<a id="2026-09-18-ide-mounts"></a>
+## 2026-09-18 — Mac OS formats and mounts a disk on the Quadra 630's IDE port. The blocker was one missing line: the drive raised its interrupt and the machine never heard it
+
+Yesterday's entry said the IDE boot was blocked by an interrupt line that
+reached no interrupt level, and that wiring it to NuBus bit 5 hung the
+machine. Both halves were right about the symptom and wrong about the cause.
+
+**MAME settles the wiring.** `primetimeii_device::ata_irq_w` is two lines:
+`via2_irq_w<0x10>(state)` and latch the state for the special-status
+register (`iosb.cpp:712-716`). `via2_irq_w` clears that bit in the
+**active-low NuBus set** and summarises it into the slot IRQ
+(`iosb.cpp:354-373`) — exactly the path `vblIrq` already took with `0x40`.
+So the mask is **`0x10`**, not the `0x20` that symmetry with the status
+register's bit 5 suggested. With `0x10` the machine boots normally. (While
+reading it, two more facts fell out and confirmed measurements made blind:
+the F108 maps the task file at `$1A000` and the control block at `$1A020`
+with `cs0_swap`/`cs1_swap` accessors — the byte order POM68K had already
+found by trying both — and `$1A000-$1A003` is a 32-bit data path that
+transfers two ATA words per longword.)
+
+**But the wiring alone changed nothing, and that was the real find.** The
+board only looked at `AtaDisk::irq()` after a TASK-FILE access. The last
+word of a data transfer is what completes a command and raises INTRQ, and
+the data register's branch returned before the check — so the drive raised
+its interrupt, the machine never heard it, and a guest waiting on that
+interrupt waited out its timeout instead. That is what the cadence had been
+saying all along: Drive Setup advanced **exactly one sector pair every
+~1 500 frames**, twice, four times, six times, never varying. A fixed rate
+is a timer, not a busy loop.
+
+**With the interrupt forwarded from the data register too**, the machine
+does this on its own: at boot the System reads 36 sectors off the IDE disk
+instead of 1, decides it is unreadable, and puts up *"This disk is
+unreadable by this Computer. Do you want to initialize the disk? Name:
+untitled, Format: **Mac OS Standard 100 MB**"* — the right size, read from
+our IDENTIFY. Click Initialize, then Continue on the erase warning, and the
+guest writes **3 243 sectors**, lays down an HFS Master Directory Block at
+byte 1024, and mounts *untitled* on the desktop beside the boot volume.
+
+**Gates.** `q630_ide_etalon` does exactly that and judges the image
+afterwards: the guest probes the port unprompted, reads the disk, writes
+nothing until clicked, then writes thousands of sectors and leaves a `BD`
+signature that Mac OS wrote. `q630_ide_untouched_etalon` is the control arm
+— the same run with no click — and it must stay at zero writes and no
+volume. Each arm owns its own image file, since ctest runs them together.
+`asset-none` is 109/109 and all nine Quadra 630 gates pass.
+
+**Still not done:** booting *from* the IDE disk. The Finder's initialize
+writes a bare HFS volume with no partition map, which the ROM's boot scan
+will not take — that needs Drive Setup, whose own drive scan is the next
+thing to look at now that its interrupts arrive.
+
+---
+
 <a id="2026-09-17-ata-driver-not-missing"></a>
 ## 2026-09-17 (twenty-fourth) — The ATA driver is not a missing dump: it is inside Drive Setup, on volumes we already have. What blocks the IDE boot is an interrupt line
 

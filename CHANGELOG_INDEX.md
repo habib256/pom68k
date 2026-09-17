@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 577 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 578 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 23 |
 | [Save states](#save-states) | 8 |
-| [Machine bring-ups](#machine-bring-ups) | 68 |
+| [Machine bring-ups](#machine-bring-ups) | 69 |
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -452,6 +452,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17 (tenth)** — [Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder](CHANGELOG.md#2026-09-17-lcii-fpu-bit-proven)
 - **2026-09-17 (twelfth)** — [The Quadra 630's ATA port has an observed consumer: the guest resets it and polls Status 3 994 times every boot](CHANGELOG.md#2026-09-17-q630-ata-probe)
 - **2026-09-17 (twentieth)** — [The Quadra 630's IDE port has a drive on it now, and the ROM tells us exactly what a bootable ATA disk must carry](CHANGELOG.md#2026-09-17-ata-target)
+- **2026-09-18** — [Mac OS formats and mounts a disk on the Quadra 630's IDE port. The blocker was one missing line: the drive raised its interrupt and the machine never heard it](CHANGELOG.md#2026-09-18-ide-mounts)
 
 ## Build, packaging and release
 
