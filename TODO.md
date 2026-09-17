@@ -292,10 +292,19 @@ se déduit d'une autre.
   68k commune vit dans l'IR/coût partagé, jamais dans un emitter.
   Évidence : `scratchpad/2026-09-05/b3probe/ADMISSION_GAP.md`. La moitié
   `a64` n'a jamais tourné.
-- [ ] **Mesurer le cache de dispatch de `jit::Engine`.** Le sortir des 1 Mo
-  en ligne a guéri les fixtures qui segfaultaient ; la mesure n'a jamais
-  été faite. Conséquences déjà payées : `/STACK:16777216` sur MSVC et
-  15+154 fixtures déplacées sur le tas.
+- [ ] **Rétrécir le cache de dispatch de `jit::Engine` après une passe ABBA.**
+  La mesure manquante est faite le 2026-09-17 (`POM68K_JIT_DISPATCH_CACHE_SLOTS`,
+  un `-D`) : sur le census Rogue — le workload même du chiffre « 3,3 % à
+  4096 » de 2026-09-02, qui est donc faux — le balayage à travail invité
+  identique (40 571 024 lookups, empreinte identique partout) lit 78,82 /
+  79,01 / 79,15 / 79,20 / 79,22 % de hits à 4096 / 8192 / 16384 / 32768 /
+  65536 slots. Seize fois la mémoire achète **0,39 point** ; le banc
+  boot+idle dit pareil (58,63 → 59,09 %) et le mur reste plat dans le bruit.
+  Reste donc une seule décision, bien plus étroite que l'item d'origine :
+  descendre à 4096 ou 8192 (64 Ko ou 128 Ko au lieu de 1 Mo) sous protocole
+  ABBA intra-binaire, puis rouvrir `/STACK:16777216` (MSVC) et les 15+154
+  fixtures que le 1 Mo avait poussées sur le tas. Évidence :
+  `scratchpad/2026-09-17/dispatch-cache/`.
 - [ ] **Attribuer les +6 % du bras natif a64 sur le Q605** contre la
   référence du 2026-08-23, et le delta de banc borné mais non attribué du
   2026-09-03 : les deux sont « notés plutôt que poursuivis ».

@@ -35,10 +35,26 @@ class DispatchCache {
 public:
     struct Entry { uint64_t key = 0; BlockT* block = nullptr; };
 
-    // 65536 slots (1 MB): the Rogue gameplay working set is ~16k live
-    // blocks and a 4096-slot table measured 3.3 % hits from pure
-    // direct-map collision thrash (2026-09-02, the counters below).
-    static constexpr uint32_t kSize = 65536;
+    // 65536 slots (1 MB, Entry = 16 B). MEASURED 2026-09-17 and the size is
+    // NOT what the 2026-09-02 note claimed ("4096 slots = 3.3 % hits"): on
+    // the Rogue gameplay census — that note's own workload — a size sweep
+    // over identical guest work (40 571 024 lookups, identical fingerprint
+    // at every size) reads 78.82 / 79.01 / 79.15 / 79.20 / 79.22 % hits at
+    // 4096 / 8192 / 16384 / 32768 / 65536. Sixteen times the memory buys
+    // 0.39 points. The boot+idle bench agrees (58.63 → 59.09 %), wall clock
+    // flat within noise. So 1 MB is not justified by the hit rate; shrinking
+    // it (and revisiting /STACK:16777216 on MSVC plus the 15+154 heap
+    // fixtures it forced) needs only an ABBA timing pass — TODO § Moteur.
+    // POM68K_JIT_DISPATCH_CACHE_SLOTS (a -D, power of two >= 4096 so the
+    // super bit at 1<<11 still lands inside the table) sweeps that choice:
+    // the hit rate is a deterministic counter over identical guest work, so
+    // sizes compare without the ABBA timing protocol (docs/MEASURING.md).
+#ifndef POM68K_JIT_DISPATCH_CACHE_SLOTS
+#define POM68K_JIT_DISPATCH_CACHE_SLOTS 65536
+#endif
+    static constexpr uint32_t kSize = POM68K_JIT_DISPATCH_CACHE_SLOTS;
+    static_assert(kSize >= 4096 && (kSize & (kSize - 1)) == 0,
+                  "dispatch cache: power of two, at least 4096");
 
     // The block filed under `plainKey`, or nullptr when the slot is cold or
     // holds a block whose proved MMU generation is no longer `gen`.

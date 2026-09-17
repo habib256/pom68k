@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17** — [The dispatch cache measured at last: sixteen times the memory buys 0.39 points, and the "3.3 % at 4096" note was wrong](#2026-09-17-dispatch-cache-measured)
 - **2026-09-17** — [Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings](#2026-09-17-five-todo-settled)
 - **2026-09-17** — [A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated](#2026-09-17-dayna-guest-probe-ruled)
 - **2026-09-17** — [A guest remounts a server renamed live: the Chooser lists only the new name, logs in and copies](#2026-09-17-afp-rename-remounted)
@@ -995,6 +996,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-dispatch-cache-measured"></a>
+## 2026-09-17 — The dispatch cache measured at last: sixteen times the memory buys 0.39 points, and the "3.3 % at 4096" note was wrong
+
+`jit::Engine`'s dispatch cache has shipped at 65536 slots (1 MB inline,
+`Entry` = 16 B) on the strength of a 2026-09-02 note claiming a 4096-slot
+table "measured 3.3 % hits from pure direct-map collision thrash". That
+size forced `/STACK:16777216` on MSVC and pushed 15+154 fixtures onto the
+heap, and the TODO recorded that the measurement itself had never been
+made. It is made now.
+
+`POM68K_JIT_DISPATCH_CACHE_SLOTS` (a `-D`, power of two >= 4096 so the
+super bit at 1<<11 still lands inside the table) sweeps the size, and the
+benches print the cache counters beside every result. Hit rate is a
+deterministic counter over identical guest work, not a stopwatch, so sizes
+compare without the ABBA protocol. On the **Rogue gameplay census** — the
+2026-09-02 note's own workload — every size ran the same 40 571 024
+lookups and printed the same architectural fingerprint; only the split
+moved:
+
+| slots | inline size | hits | gameplay hit rate |
+|---|---|---|---|
+| 4096 | 64 KB | 31 979 430 | 78.82 % |
+| 8192 | 128 KB | 32 053 887 | 79.01 % |
+| 16384 | 256 KB | 32 110 573 | 79.15 % |
+| 32768 | 512 KB | 32 131 468 | 79.20 % |
+| 65536 | 1 MB | 32 141 257 | 79.22 % |
+
+Sixteen times the memory buys **0.39 points**. The fixed-budget Q605
+boot+idle bench agrees (58.63 % at 4096 against 59.09 % at 65536, same
+1 719 565 lookups, same fingerprint `778dd7ad558108fd` at every size) and
+its wall clock is flat within noise (2.95-2.98 s). So the "3.3 %" figure
+does not reproduce on the workload it was attributed to, and 1 MB is not
+justified by the hit rate.
+
+Nothing is shrunk here: a size change is a timing claim and owes an ABBA
+intra-binary pass (docs/MEASURING.md). What changes is that the decision is
+now informed and narrow — drop to 4096 or 8192 and reopen `/STACK` and the
+heap fixtures — and the stale comment in `JitDispatchCache.h` is corrected
+rather than left to justify a megabyte.
 
 <a id="2026-09-17-five-todo-settled"></a>
 ## 2026-09-17 — Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings

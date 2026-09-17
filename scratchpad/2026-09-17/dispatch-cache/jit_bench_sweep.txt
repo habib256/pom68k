@@ -1,0 +1,10 @@
+4096|q605 engine=jit    cycles=1250001000 machine (5000019564 core, boost ×4.0)  wall=2.95s for 50.00s of guest time  ×16.93 real time  1693.5 core MHz  fp=778dd7ad558108fd
+  dispatch cache: 4096 slots, 1008232 hits, 0 gen-miss, 711333 miss (58.63 % hit)
+8192|q605 engine=jit    cycles=1250001000 machine (5000019564 core, boost ×4.0)  wall=2.97s for 50.00s of guest time  ×16.85 real time  1685.5 core MHz  fp=778dd7ad558108fd
+  dispatch cache: 8192 slots, 1010539 hits, 0 gen-miss, 709026 miss (58.77 % hit)
+16384|q605 engine=jit    cycles=1250001000 machine (5000019564 core, boost ×4.0)  wall=2.98s for 50.00s of guest time  ×16.80 real time  1679.6 core MHz  fp=778dd7ad558108fd
+  dispatch cache: 16384 slots, 1013438 hits, 0 gen-miss, 706127 miss (58.94 % hit)
+32768|q605 engine=jit    cycles=1250001000 machine (5000019564 core, boost ×4.0)  wall=2.98s for 50.00s of guest time  ×16.80 real time  1679.9 core MHz  fp=778dd7ad558108fd
+  dispatch cache: 32768 slots, 1015769 hits, 0 gen-miss, 703796 miss (59.07 % hit)
+65536|q605 engine=jit    cycles=1250001000 machine (5000019564 core, boost ×4.0)  wall=2.96s for 50.00s of guest time  ×16.92 real time  1691.8 core MHz  fp=778dd7ad558108fd
+  dispatch cache: 65536 slots, 1016021 hits, 0 gen-miss, 703544 miss (59.09 % hit)

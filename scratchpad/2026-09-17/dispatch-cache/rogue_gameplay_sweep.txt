@@ -1,0 +1,5 @@
+slots=4096 [jit] dispatch cache: 31979430 hits, 0 gen-miss, 8591594 miss
+slots=8192 [jit] dispatch cache: 32053887 hits, 0 gen-miss, 8517137 miss
+slots=16384 [jit] dispatch cache: 32110573 hits, 0 gen-miss, 8460451 miss
+slots=32768 [jit] dispatch cache: 32131468 hits, 0 gen-miss, 8439556 miss
+slots=65536 [jit] dispatch cache: 32141257 hits, 0 gen-miss, 8429767 miss

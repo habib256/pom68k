@@ -139,6 +139,16 @@ void report(const char* machine, const char* workload, const char* cpuFamily,
                 r.secs, guestSecs, r.secs > 0 ? guestSecs / r.secs : 0.0,
                 core / 1e6, (unsigned long long)r.fp);
 
+    if (cpu.engine()) {
+        const auto dc = cpu.jit().dispatchCacheStats();
+        const double total = double(dc.hits + dc.genMiss + dc.miss);
+        std::printf("  dispatch cache: %u slots, %llu hits, %llu gen-miss, "
+                    "%llu miss (%.2f %% hit)\n", dc.slots,
+                    (unsigned long long)dc.hits, (unsigned long long)dc.genMiss,
+                    (unsigned long long)dc.miss,
+                    total > 0 ? 100.0 * double(dc.hits) / total : 0.0);
+    }
+
     jit::MetricsRecord metrics;
     metrics.gate = "jit_fixed_cycle_bench";
     metrics.workload = workload;

@@ -170,6 +170,19 @@ public:
     // indexed-mode question). No-op when the census is off.
     void censusPhase(const char* label);
 
+    // The dispatch cache as a measurement subject: how often the fast slot
+    // answered, how often the proved MMU generation forced the slow path,
+    // how often the slot was cold, and how many slots were compiled in.
+    // Read by the benches so a size sweep can be reported (TODO § Moteur).
+    struct DispatchCacheStats {
+        uint64_t hits = 0, genMiss = 0, miss = 0;
+        uint32_t slots = 0;
+    };
+    DispatchCacheStats dispatchCacheStats() const {
+        return { dispatchCache_.hits(), dispatchCache_.genMiss(),
+                 dispatchCache_.miss(), DispatchCache<Block>::kSize };
+    }
+
 private:
     friend struct EngineGuardIndexProbe;
 
