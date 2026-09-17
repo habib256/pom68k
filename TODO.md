@@ -120,8 +120,19 @@ observé.
   pas). Le serveur renommé à chaud est remonté par l'invité depuis le
   2026-09-17 (`q605_afp_rename_etalon` : `hub.reconfigure()` entre les
   deux cycles, le Sélecteur ne liste que le nouveau nom, login et copie).
-  Restent : aucun invité n'a sondé la carte après un relaunch ;
-  « Révéler » lance `open` / `xdg-open` / `explorer` sans gate possible.
+  La sonde invité de la carte après un relaunch est tranchée le 2026-09-17
+  et n'appelle pas de gate léger : la DaynaPort est une cible SCSI qui
+  n'est pas un disque, que le Mac ignore au démarrage tant que l'ADEV
+  SCSI/Link de Dayna n'est pas installé et n'ouvre pas la carte (mesuré :
+  zéro CDB vers l'ID 3 sur un boot complet sans le pilote). « Sonder la
+  carte » est donc indissociable de l'installation du pilote, que
+  `q605_dayna_driver_etalon` fait déjà (present -> enabled -> AARP, ~400 s) ;
+  et une carte arrivée par `--daynaport=3` (ligne de relance) ou par
+  attache directe est identique sur le bus. La paire
+  `gui_relaunch_smoke_test` + `q605_dayna_driver_etalon` couvre la dette ;
+  un boot GUI en avance rapide n'atteint pas l'état pilote-chargé dans un
+  budget de smoke. Reste : « Révéler » lance `open` / `xdg-open` /
+  `explorer` sans gate possible.
 - [ ] **Rejouer sur x86-64 date-épinglé la comparaison entre hôtes de
   `q605_afp_live_etalon`.** Référence M4 :
   `scratchpad/2026-09-13/afp_live_trace_aarch64.txt` ;

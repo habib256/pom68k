@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17** — [A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated](#2026-09-17-dayna-guest-probe-ruled)
 - **2026-09-17** — [A guest remounts a server renamed live: the Chooser lists only the new name, logs in and copies](#2026-09-17-afp-rename-remounted)
 - **2026-09-16 (twenty-fifth)** — [TCP window scaling in MacIP is ruled the way the AFP subset was: a counter first, code only on a consumer](#2026-09-16-macip-window-scale-ruled)
 - **2026-09-16 (twenty-fourth)** — [The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma](#2026-09-16-lto-werror-green)
@@ -993,6 +994,32 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-dayna-guest-probe-ruled"></a>
+## 2026-09-17 — A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated
+
+The DaynaPort control's last-but-one proof debt asked for a guest that
+probes the card the GUI staged on a relaunch. Built as a guest-waiting
+relaunch smoke (a second generation that fast-forwards the boot and
+watches the hub's card meter), it did not converge: on the M4 a hidden
+Quadra 605 window reaches ~0.9 G guest cycles in a 90 s turbo budget,
+far short of the ~5.8 G a 68LC040 needs to reach the Finder, and the
+card meter stayed 0. Tracing every CDB the DaynaPort answers during a
+full real-time boot with `--daynaport=3` confirmed the reason, and it is
+not the budget: zero CDBs reach ID 3. The DaynaPort is a non-disk SCSI
+target; the Mac ROM's startup bus scan ignores it, and nothing touches
+the card until Dayna's SCSI/Link ADEV is installed in the System file and
+opens it, which is precisely why `q605_dayna_driver_etalon` runs Dayna's
+installer over ~400 s before the card ever answers.
+
+So a guest probing the card is inseparable from installing the driver,
+and a card that arrived via `--daynaport=3` (a relaunch line) is
+byte-for-byte the same on the bus as one attached directly. The debt is
+therefore covered by the pair already green -- `gui_relaunch_smoke_test`
+(the GUI re-executes carrying the card) and `q605_dayna_driver_etalon`
+(a guest opens and drives a card at ID 3) -- with no lightweight gate
+able to add to it. The guest-waiting smoke experiment was reverted; the
+TODO keeps only the host-side « Révéler ».
 
 <a id="2026-09-17-afp-rename-remounted"></a>
 ## 2026-09-17 — A guest remounts a server renamed live: the Chooser lists only the new name, logs in and copies

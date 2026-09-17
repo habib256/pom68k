@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 551 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 552 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 86 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 49 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 91 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 92 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
 | [Sound](#sound) | 9 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 23 |
@@ -294,6 +294,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-16 (ninth)** — [The Plus boots System 3.3 from an 800 K floppy, in drive A and in drive B: the cell the backlog waited on, unblocked by the TEST drive](CHANGELOG.md#2026-09-16-plus-system33-floppy-cells)
 - **2026-09-16 (seventh)** — [Nine boot-volume names that never existed leave the search chains: every gate's first choice is now the pinned reference it actually boots](CHANGELOG.md#2026-09-16-phantom-volume-names-retired)
 - **2026-09-16 (third)** — [The tree reads MFS: the 128K/512K Finder duplicates a file on its 400 K floppy and the host reads the copy back](CHANGELOG.md#2026-09-16-mfs-reader-and-the-128k-beyond-boot-gate)
+- **2026-09-17** — [A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated](CHANGELOG.md#2026-09-17-dayna-guest-probe-ruled)
 
 ## Video — decoders, the raster beam, DAFB
 
