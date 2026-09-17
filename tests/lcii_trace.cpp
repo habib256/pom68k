@@ -173,6 +173,14 @@ int main(int argc, char** argv) {
         mem.ascSonora().onWrite = tapW; mem.ascSonora().onRead = tapR;
     }
 
+    // The XPRAM hooks live on the Egret HLE only: under the firmware LLE the
+    // PRAM is the MCU's internal RAM and nothing routes through them, so this
+    // watch would print nothing and read as "the guest never touched XPRAM".
+    // It cost a wrong conclusion on 2026-09-17; say so instead of lying.
+    if (getenv("WATCH_XPRAM") && mem.egretLleActive())
+        std::printf("WATCH_XPRAM: Egret firmware LLE is active — XPRAM traffic "
+                    "does NOT pass the HLE hooks and cannot be traced here. "
+                    "Re-run with POM68K_EGRET_LLE=0 for the HLE.\n");
     if (getenv("WATCH_XPRAM"))
         mem.egret().onXPramRead = [&](int addr, int count) {
             if (xpramLog++ > 400) return;

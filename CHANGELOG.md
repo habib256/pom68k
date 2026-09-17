@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (ninth)** — [The XPRAM combo lever is closed, and a watch that had been lying by omission is fixed](#2026-09-17-lcii-xpram-closed)
 - **2026-09-17 (eighth)** — [Apple's ROM source becomes a first-class reference: the ProductInfo layout, the hwCfgFlags bit numbers, and three opaque words decoded](#2026-09-17-apple-rom-source-notes)
 - **2026-09-17 (seventh)** — [Apple shared one table entry between the LC and the LC II, so POM68K's VIA ID is right after all](#2026-09-17-lcii-shared-table)
 - **2026-09-17 (sixth)** — [Apple's own ROM source answers it: the product is elected by the VIA input lines, and POM68K's VIA ID elects the LC, not the LC II](#2026-09-17-lcii-via-election)
@@ -1003,6 +1004,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-lcii-xpram-closed"></a>
+## 2026-09-17 (ninth) — The XPRAM combo lever is closed, and a watch that had been lying by omission is fixed
+
+The previous entry named the XPRAM `$AE` ROM-resource combo as the one
+remaining lever on the bare LC II. It is not one.
+
+**Swept and flat.** Seeding `$AE` with each combo 1 to 5 after reset
+(`setPramByte`) changes nothing: the same F-line bomb, the same 86 SCSI
+commands, the same `HwCfgFlags $FC00` every time.
+
+**And the reason is upstream.** Tracing XPRAM traffic across a full bare boot
+shows **zero reads** — so the machine bombs before the combo is ever
+consulted. The `PACK 4` selection of § 8.5 sits downstream of the failure,
+not at it, which is exactly why the sweep was flat.
+
+**A watch that lied.** Getting that answer took a detour worth recording:
+`lcii_trace`'s `WATCH_XPRAM` hooks `Egret::onXPramRead`, which exists only on
+the HLE. With the Egret firmware LLE active — the default, since the dumps
+are present — PRAM lives in the MCU's internal RAM and nothing passes those
+hooks, so the watch printed nothing and read as *"the guest never touched
+XPRAM"*. It now says so instead, naming `POM68K_EGRET_LLE=0` as the way to
+get the HLE. An instrument that is silent when it cannot see is worse than no
+instrument; this one had a whole hypothesis resting on its silence.
+
+**The next lead is concrete and out of the ROM.** `FLINE_FRAME=1` shows two
+vector-11 events: the first at `$A47CA8` is the ROM's own deliberate FPU
+probe and works; the second is the bomb, at `PC=$0000CAC8` with
+`pc0=$40A02702` — System code in RAM, not ROM. Identifying what `$CAC8` is
+no longer needs ROM archaeology at all.
 
 <a id="2026-09-17-apple-rom-source-notes"></a>
 ## 2026-09-17 (eighth) — Apple's ROM source becomes a first-class reference: the ProductInfo layout, the hwCfgFlags bit numbers, and three opaque words decoded

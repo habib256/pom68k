@@ -265,11 +265,17 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   `move.l HwCfgWord(a1),d2`, et le `TestForFPU` qui corrigerait cela est daté
   d'octobre 1992 (`<SM28>`). La note d'Apple `<15>` nomme le trou : « HwCfgFlags
   gets read from d2, not from the universal tables. With an optional FPU, the
-  table may not have the correct value ». **Seul levier restant** : la sélection
-  de la PACK 4 par le combo XPRAM `$AE` (§ 8.5) — POM68K sème `$AE = 0`, donc
-  repli sur `defaultRSRCs` = 4, puis promotion 4→3 parce que le bit 12 est levé,
-  donc PACK 4 FPU. Tester `$AE` = 4 explicite (et les autres combos) avant de
-  conclure que le nu ne peut pas booter sur cette ROM.
+  **Levier XPRAM fermé le 2026-09-17.** Le combo `$AE` (§ 8.5) balayé de 1 à 5
+  via `setPramByte` ne change rien : même bombe F-line, mêmes 86 commandes
+  SCSI. Et la trace montre **zéro lecture XPRAM** sur tout le boot nu (LLE
+  comme HLE forcé par `POM68K_EGRET_LLE=0`) : la bombe survient donc **avant**
+  que la sélection du combo soit consultée — ce levier est en aval de la
+  panne, pas sa cause. **Piste suivante, concrète** : `FLINE_FRAME=1` montre
+  deux vecteurs 11. Le premier en `$A47CA8` est la sonde FPU délibérée de la
+  ROM (elle fonctionne) ; le second est la bombe, à `PC=$0000CAC8` avec
+  `pc0=$40A02702` — donc du code System en RAM, pas la ROM. Identifier ce
+  qu'est `$CAC8` (quel composant du System exécute cette instruction F-line)
+  est la prochaine question, et elle ne demande plus d'archéologie ROM.
   Accessoirement `$50FC0000` est lu en `$A463D0` depuis DecoderInfo+$4,
   pas codé en dur. Outils : `lcii_trace` (`FLINE_FRAME`, `RING_AT`, `VIA1_REGS`,
   `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`, le romset `maclc2` MAME
