@@ -610,6 +610,13 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         }
         rdP(user);                                       // absent for guest
         stat_.lastUser = user.empty() ? "Guest" : user;
+        // Record which UAM the client chose. Everything but the two we honour
+        // as an open share ("No User Authent", "Cleartxt Passwrd") is a secure
+        // UAM the server does not implement: count it so a real guest that
+        // refuses cleartext becomes visible instead of being silently let in.
+        stat_.lastUam = uam;
+        if (!uam.empty() && uam != "No User Authent" && uam != "Cleartxt Passwrd")
+            stat_.secureUamLogins++;
         ok();
         return;
     }

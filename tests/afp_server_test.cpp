@@ -82,6 +82,25 @@ int main() {
         putP(cmd, "AFPVersion 2.1");
         putP(cmd, "No User Authent");
         CHECK(aspCmd(w, sid, seq++, cmd, d) == 0, "guest FPLogin accepted");
+        CHECK(afp.status().secureUamLogins == 0 && afp.status().lastUam == "No User Authent",
+              "a guest UAM login is not counted as a secure-UAM request");
+    }
+
+    // ── A guest that refuses cleartext (the UAM consumer signal) ──
+    // The server offers only "No User Authent"; a client that insists on a
+    // secure UAM (DHX here) is the observed consumer any UAM work would need.
+    // It is counted and named — 0 in a live session today (TODO § Services
+    // réseau, the DHX/random-number item).
+    {
+        const long before = afp.status().secureUamLogins;
+        std::vector<uint8_t> cmd = { 18 };
+        putP(cmd, "AFPVersion 2.1");
+        putP(cmd, "DHCAST128");
+        aspCmd(w, sid, seq++, cmd, d);
+        CHECK(afp.status().secureUamLogins == before + 1,
+              "a secure-UAM login request is counted");
+        CHECK(afp.status().lastUam == "DHCAST128",
+              "and the requested UAM is named, for the day a guest sends one");
     }
 
     // ── An unimplemented opcode is refused VISIBLY ──

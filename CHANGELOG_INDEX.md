@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 552 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 553 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 9 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 23 |
 | [Save states](#save-states) | 8 |
-| [Machine bring-ups](#machine-bring-ups) | 62 |
+| [Machine bring-ups](#machine-bring-ups) | 63 |
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 38 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -436,6 +436,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-14 (later)** — [The cable comes out: a fixed disk leaves the bus with the machine running, once the guest has let go of it](CHANGELOG.md#2026-09-14-scsi-detach-live)
 - **2026-09-16 (eleventh)** — [The Infinite Mac images open an alias to « Infinite HD » at every boot; a blank companion of that name answers it, and the Finder signature now reads a colour desktop](CHANGELOG.md#2026-09-16-infinite-hd-alias-and-colour-signature)
 - **2026-09-16 (tenth)** — [Stock System 7.5.3 is the LC III's first choice and is pinned; the LC 520 boots it too, but the Finder signature reads its solid desktop as white](CHANGELOG.md#2026-09-16-system-753-adopted-lc3)
+- **2026-09-17** — [Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings](CHANGELOG.md#2026-09-17-five-todo-settled)
 
 ## Build, packaging and release
 

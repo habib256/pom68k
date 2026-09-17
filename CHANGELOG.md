@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17** — [Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings](#2026-09-17-five-todo-settled)
 - **2026-09-17** — [A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated](#2026-09-17-dayna-guest-probe-ruled)
 - **2026-09-17** — [A guest remounts a server renamed live: the Chooser lists only the new name, logs in and copies](#2026-09-17-afp-rename-remounted)
 - **2026-09-16 (twenty-fifth)** — [TCP window scaling in MacIP is ruled the way the AFP subset was: a counter first, code only on a consumer](#2026-09-16-macip-window-scale-ruled)
@@ -994,6 +995,45 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-five-todo-settled"></a>
+## 2026-09-17 — Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings
+
+Five open items closed or narrowed in one pass.
+
+**AFP subset (closed).** The condition the item set for itself is met: the
+server counts refused opcodes (`refusedCount`/`lastRefused`, 2026-09-12) and
+a live Mac OS 8.1 session reports `refused=0/-` at all 22 boundaries. The
+trigger is in place and reads zero, so `FPCopyFile`/`FPCatSearch` stay
+unbuilt until a guest asks; nothing more to do here.
+
+**Safe UAMs (closed by adding the consumer signal).** The same move as the
+TCP window-scale counter: `AfpServer` now records the UAM a client chose at
+FPLogin and counts `secureUamLogins` when it is not one of the two the open
+share honours ("No User Authent", "Cleartxt Passwrd"). `afp_server_test`
+sends a guest login (0 counted) and a DHX login (1 counted, `lastUam`
+"DHCAST128"). DHX/Randnum are built the day that counter is non-zero, not
+before.
+
+**Classic II $50F18038 (identified).** The block the ROM dereferences is
+nothing: MAME's Eagle uses `v8_device::map` unchanged, which has no `$518xxx`
+decode; only the Sonora/Spice maps `$518000` for its built-in display's
+brightness/contrast, absent on the Eagle's fixed 512x342 monitor. So it is
+open bus, a wild pointer with no consumer -- `classic2_boot_etalon` boots to
+the Finder without touching `$F18xxx` (POM68K_V8_IOHOLE=200: zero hits). The
+V8 bus item keeps only its cycle-timing-vs-hardware part.
+
+**GUI RTC from host (confirmed done).** The clock is seeded from
+`services.hostMacSeconds()` on all six GUI platforms (Compact, Toby, V8,
+Dafb, Sonora, Duo), and tests stay deterministic by never calling
+`setSeconds` (the factory image seeds 0). The VIA/RTC item keeps only the
+one-cycle latency part.
+
+**Mac II / Duo schedulers (ruled).** Kept experimental. The Q605 lesson
+stands: a jitter gate that writes the value it checks proves nothing about
+the component, and no guest-visible observable justifies the schedulers'
+cost, so the experimental options stay behind their knobs and the item
+closes rather than grow a circular gate.
 
 <a id="2026-09-17-dayna-guest-probe-ruled"></a>
 ## 2026-09-17 — A guest cannot probe the DaynaPort without its driver: the guest-probe-after-relaunch debt is ruled, not gated

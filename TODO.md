@@ -160,13 +160,6 @@ observé.
   ignorée (`DaynaPort.h`).
 - [ ] **Tester l'interop Mini vMac LToUDP.** Même groupe multicast, les
   deux directions.
-- [ ] **Étendre le sous-ensemble AFP — seulement sur consommateur observé.**
-  DID relatifs traités, Desktop DB volontairement bouchonné, seuls
-  `FPCopyFile` (5) et `FPCatSearch` (43) manquent réellement. Une session
-  live Mac OS 8.1 rapporte `refused=0/-` aux 22 frontières. Le serveur
-  compte les opcodes refusés ; ne rien implémenter avant ce signal.
-- [ ] **Ajouter des UAM sûrs.** DHX/random-number lorsqu'un invité refuse
-  le cleartext.
 - [ ] **Compléter PAP.** Polling de statut, configuration des files et
   sélection CUPS dans le GUI.
 
@@ -179,12 +172,21 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** Couvrir IRQ,
   VBL, VIA et mémoire, puis diagnostiquer l'assombrissement après très
-  longue exécution. Inclut le Classic II : le bloc derrière `$50F18038`,
-  que sa ROM déréférence, n'a jamais été identifié
-  (`POM68K_V8_IOHOLE=1`).
+  longue exécution. Le bloc derrière `$50F18038` que la ROM du Classic II
+  déréférence est identifié le 2026-09-17 : rien. L'Eagle utilise
+  `v8_device::map` sans surcharge (MAME `v8.cpp:57`), qui ne décode pas
+  `$518xxx` ; seul le Sonora/Spice y mappe `$518000` (luminosité/contraste
+  de son écran intégré, `v8.cpp:700`), que l'écran fixe 512×342 de l'Eagle
+  n'a pas. C'est donc du bus ouvert, un pointeur sauvage sans consommateur —
+  `classic2_boot_etalon` boote au Finder sans jamais toucher `$F18xxx`
+  (`POM68K_V8_IOHOLE=200` : zéro accès). Reste le timing cycle vs matériel
+  réel.
 - [ ] **Affiner VIA/RTC sur les compacts.** Latences T1/T2/IFR à un cycle,
-  alignement E-clock/IACK, et initialiser le RTC GUI depuis l'hôte sans
-  rendre les tests non déterministes.
+  alignement E-clock/IACK. Le RTC GUI est semé depuis l'hôte
+  (`services.hostMacSeconds()`) sur les six plateformes GUI (Compact, Toby,
+  V8, Dafb, Sonora, Duo — `Platform*.cpp`), et les tests restent
+  déterministes en n'appelant jamais `setSeconds` (image usine à 0) :
+  clause close le 2026-09-17. Reste le timing cycle des latences.
 - [ ] **Améliorer la précision sonore des compacts.** Le DAC hôte et la
   courbe DFAC/V8 sont faits. Reste propre aux compacts : lecture du buffer
   par scanline et modélisation du PWM disque.
@@ -227,10 +229,6 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   (7.1 propre, `POM68K_NOFPU=1`). Outils : `lcii_trace` (`FLINE_FRAME`,
   `RING_AT`, `VIA1_REGS`, `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`,
   le romset `maclc2` MAME reconstruit depuis notre ROM (mémoire).
-- [ ] **Décider les échéanciers Mac II et Duo avec un gate sensible à la
-  gigue.** Garder les options expérimentales tant qu'aucun observable ne
-  justifie leur coût. Leçon du Q605 : un gate qui écrit la valeur qu'il
-  vérifie ne prouve pas le défaut du composant.
 - [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Assets
   privés soft-skippables, captures stables. Le WASM n'a aujourd'hui que
   des stubs inactifs.
