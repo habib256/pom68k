@@ -220,10 +220,18 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 ## Médias optiques
 
 - [ ] **Ajouter CDDA.** TOC audio, PLAY/PAUSE et le chemin sonore vers
-  l'ASC avec un gate consommateur. **Dump manquant** (constaté le
-  2026-09-16) : aucune image de `cd/` ne porte de piste audio (`.cue/.bin`
-  en mode mixte) — sans un tel disque réel, ni la TOC audio ni PLAY ne
-  peuvent être prouvés ; à fournir avant d'écrire du code. Y inclure le seul cas `.cue/.bin`
+  l'ASC avec un gate consommateur. **L'actif est fabricable, pas à trouver**
+  (2026-09-17) : aucune image de `cd/` ne porte de piste audio, mais un
+  disque mixte de test se **synthétise** — une `.cue` décrivant une piste 1
+  `MODE1/2352` (notre ISO existante re-tramée) suivie de pistes `AUDIO`
+  brutes 44,1 kHz 16 bits stéréo engendrées (tonalités), le tout dans un
+  `.bin`. Reproductible, minuscule, sans question de droits, et c'est le
+  format que le CD audio exige de toute façon : une image plate de 2048
+  octets ne porte aucune piste audio. Le consommateur est l'AppleCD Audio
+  Player d'un volume System que nous avons déjà, et notre lecteur présente
+  déjà une identité de la famille AppleCD (`SONY CD-ROM CDU-8003A1.0i`),
+  donc l'extension Apple CD-ROM se charge. Reste à servir READ TOC avec les
+  pistes audio, PLAY/PAUSE/STOP et le chemin audio vers l'ASC. Y inclure le seul cas `.cue/.bin`
   encore ouvert (tranché le 2026-09-16) : un BIN unique en mode mixte dont
   la piste de données n'est pas la première (décalage `INDEX 01` à
   calculer) — la feuille `.cue` est déjà lue, sa première piste MODE1
@@ -261,10 +269,17 @@ Finder **plus** le câblage GUI et save-state. Le Mac 128K/512K est livré.
   comportementalement correct et fait retomber la ROM sur SCSI. Une
   implémentation doit donc servir : la signature ATA après SRST
   (`$01,$01,$00,$00,$00` ; `$14/$EB` pour ATAPI), un Status avec DRDY, puis
-  IDENTIFY DEVICE et READ/WRITE SECTORS. **Dump manquant** : aucune image
-  disque amorçable en IDE dans `hdv/` (les nôtres portent un pilote SCSI
-  Apple_Driver43) — le gate de boot sans SCSI ne peut pas être écrit avant
-  d'en avoir une.
+  IDENTIFY DEVICE et READ/WRITE SECTORS. **L'actif est fabricable** (2026-09-17) : aucune
+  image de `hdv/` n'est amorçable en IDE (les nôtres portent un pilote SCSI
+  Apple_Driver43), mais il n'y a rien à télécharger — la ROM du Q630
+  contient son propre ATA Manager, ses chaînes le disent : `ATA_MGR`,
+  `ATABusReset`, `ATARegAccess`, `ATATaskFile`, `ATALOAD` et le type de
+  partition `APPLE_DRIVER_ATA` (aucune n'existe dans la ROM du LC II, qui
+  n'a pas d'IDE). Un disque IDE se synthétise donc comme nos images SCSI :
+  un Driver Descriptor Record en bloc 0 plus une carte de partitions avec
+  la partition HFS — la ROM pilote le port elle-même. À vérifier en le
+  construisant : si une partition `Apple_Driver_ATA` porteuse de vrai code
+  Apple est exigée en plus, alors seulement il y aura un dump manquant.
 
 ---
 
