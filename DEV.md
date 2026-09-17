@@ -1126,7 +1126,10 @@ PARAMETERS. The board puts a sector's FIRST byte on D15-D8 — measured, since
 the other order makes the ROM's driver read a geometry of zeroes and give up
 (CHANGELOG 2026-09-17). Gate: `ata_disk_test`, asset-free. Booting from it
 needs a driver partition the ROM will accept; `TODO.md` records what the ROM
-demands and what is missing.
+demands and what is missing. `tools/inspect_apm.py <image>` answers the
+question for any candidate image: it prints the driver descriptor record's
+entries and the partition map, and says whether an `Apple_Driver_ATA`
+partition is there.
 
 ### 3.3bis What else can live on the bus: `ScsiTarget` + `DaynaPort`
 

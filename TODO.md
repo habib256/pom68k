@@ -252,7 +252,9 @@ Finder **plus** le câblage GUI et save-state. Le Mac 128K/512K est livré.
   Drive Setup. Aucune ROM que nous avons ne la contient (le Q630 a
   `ATALOAD`, qui charge ce pilote depuis le disque). L'alternative, si ce
   dump reste introuvable : écrire notre propre pilote de bloc ATA avec
-  Retro68, comme l'agent Disques de `share/`.
+  Retro68, comme l'agent Disques de `share/`. Pour trier une image candidate
+  en une seconde : `tools/inspect_apm.py <image>` imprime le descripteur de
+  pilotes et la carte des partitions, et dit si `Apple_Driver_ATA` est là.
 
 ---
 
