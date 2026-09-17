@@ -28,6 +28,7 @@
 // window; step events keep it alive.
 
 #pragma once
+#include "AudioFxSource.h"
 #include "FloppySoundSink.h"
 
 #include <array>
@@ -37,7 +38,7 @@
 #include <string>
 #include <vector>
 
-class FloppySound : public FloppySoundSink {
+class FloppySound : public FloppySoundSink, public AudioFxSource {
 public:
     enum class FormFactor { FF35, FF525 };
 
@@ -51,7 +52,7 @@ public:
 
     /// Host DAC rate (MacAudioHost runs 22 254 Hz). Sources resample on
     /// the fly (linear interpolation) from their native 44.1 kHz.
-    void setSampleRate(uint32_t hz) { if (hz) outputSampleRate_ = hz; }
+    void setSampleRate(uint32_t hz) override { if (hz) outputSampleRate_ = hz; }
 
     // ── FloppySoundSink (emulator thread) ───────────────────────────
     void motor(bool on, bool withDisk) override;
@@ -73,6 +74,22 @@ public:
     // ── Audio thread ────────────────────────────────────────────────
     /// Mix additively into `output` (mono, caller-zeroed).
     void fillAudioBuffer(float* output, int frameCount);
+    /// AudioFxSource: a mechanism is centred, so the mono mix goes to both
+    /// channels. Chunked through a small scratch — no allocation on the
+    /// audio thread.
+    void mixStereo(float* out, int frames) override {
+        int done = 0;
+        while (done < frames) {
+            float buf[256] = {};
+            const int n = frames - done < 256 ? frames - done : 256;
+            fillAudioBuffer(buf, n);
+            for (int i = 0; i < n; i++) {
+                out[(done + i) * 2]     += buf[i];
+                out[(done + i) * 2 + 1] += buf[i];
+            }
+            done += n;
+        }
+    }
 
     // Diagnostics (gate: tests/floppy_sound_test.cpp).
     bool audioMotorOn() const { return audioMotorOn_; }

@@ -347,6 +347,9 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     blocks_ = 0;
     tracks_.clear();
     discLba_ = 0;
+    rawPath_.clear();
+    if (rawFile_.is_open()) rawFile_.close();
+    if (cdAudio_ && audio_ != Audio::Stopped) cdAudio_->cdAudioStopped();
     audio_ = Audio::Stopped;
     audioLba_ = audioEnd_ = 0;
 
@@ -388,6 +391,7 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     // remember the whole disc's length for the TOC's lead-out.
     if (!tracks_.empty() && image_.size() % 2352 == 0) {
         discLba_ = uint32_t(image_.size() / 2352);
+        rawPath_ = data;                     // the audio tracks stay on disk
         if (!tracks_[0].audio) {
             uint32_t end = discLba_;             // to EOF if it is the only track
             for (const CdTrack& t : tracks_)
@@ -455,12 +459,36 @@ void ScsiDisk::attachCdromEmpty() {
 
 // CD-DA runs at 75 sectors a second, so one sector is 13 333 us. Machine
 // time, not host time: a paused emulator must not let the disc run on.
+// One raw sector straight from the medium. The audio tracks were cut out
+// of image_ at open() (de-framing them would turn music into user data),
+// so a play reads them back from the file the .cue named. 75 reads a
+// second of 2352 bytes each: the host page cache absorbs it.
+bool ScsiDisk::readRawSector(uint32_t lba, uint8_t* out) {
+    if (rawPath_.empty()) return false;
+    if (!rawFile_.is_open()) {
+        rawFile_.open(rawPath_, std::ios::binary);
+        if (!rawFile_.is_open()) { rawPath_.clear(); return false; }
+    }
+    rawFile_.clear();
+    rawFile_.seekg(std::streamoff(lba) * 2352);
+    if (!rawFile_) return false;
+    rawFile_.read(reinterpret_cast<char*>(out), 2352);
+    return rawFile_.gcount() == 2352;
+}
+
 void ScsiDisk::advanceAudio(uint64_t micros) {
     if (audio_ != Audio::Playing) return;
     audioFrac_ += micros;
     const uint64_t perSector = 1000000ull / 75;
     while (audioFrac_ >= perSector && audio_ == Audio::Playing) {
         audioFrac_ -= perSector;
+        // The sector the head is ON is the one that sounds, so hand it over
+        // BEFORE stepping off it. A sink is optional: a headless gate plays
+        // the transport with nothing listening.
+        if (cdAudio_) {
+            uint8_t raw[2352];
+            if (readRawSector(audioLba_, raw)) cdAudio_->cdAudioSector(raw);
+        }
         if (++audioLba_ >= audioEnd_) { audioLba_ = audioEnd_; audio_ = Audio::Completed; }
     }
 }

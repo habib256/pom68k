@@ -31,6 +31,7 @@
 #pragma once
 #include "CoreConfig.h"
 #include "FloppySoundSink.h"
+#include "CdAudioSink.h"
 #include "SaveState.h"
 #include "ScsiTarget.h"
 #include <cstddef>
@@ -206,6 +207,11 @@ public:
     // retires the spin loop once the disk goes idle.
     void setSoundSink(FloppySoundSink* s) { sound_ = s; }
 
+    // The CD-audio lead (GUI only; tests attach a counting stub). Every
+    // sector the play head passes over is handed over raw — see
+    // CdAudioSink.h for why this is not the ASC's business.
+    void setCdAudioSink(CdAudioSink* s) { cdAudio_ = s; }
+
     // ── Save states ─────────────────────────────────────────────────────
     // A snapshot must not carry the image: it is hundreds of megabytes and
     // it already exists on the host. It carries what the GUEST has changed
@@ -301,6 +307,16 @@ private:
     uint32_t audioLba_ = 0, audioEnd_ = 0;
     uint64_t audioFrac_ = 0;         // sub-sector micros carried between ticks
     int64_t  audioCycAcc_ = 0;       // cycle→micro remainder (advanceAudioCycles)
+    CdAudioSink* cdAudio_ = nullptr;
+
+    // The audio tracks are NOT in image_: open() cuts a mixed disc down to
+    // the data track's extent, because de-framing audio sectors would turn
+    // music into "user data". Playing them means going back to the file,
+    // which is what these two are for — the path the .cue named and a
+    // stream held open while a disc is loaded.
+    std::string rawPath_;            // empty unless a 2352-framed .bin
+    std::ifstream rawFile_;
+    bool readRawSector(uint32_t lba, uint8_t* out2352);
 
     std::vector<uint8_t> image_;     // raw sectors (possibly façade-prefixed)
     std::fstream file_;              // write-back stream (open iff writeBack_)

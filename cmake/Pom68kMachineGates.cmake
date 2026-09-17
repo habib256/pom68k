@@ -711,6 +711,13 @@ add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
 target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
 add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)
 
+# The CD-audio lead: the drive hands the sectors it passes to the host
+# mixer (never through the ASC — see CdAudioSink.h). Synthesizes its own
+# mixed disc, so it is asset-free.
+add_executable(cd_audio_test tests/cd_audio_test.cpp)
+target_link_libraries(cd_audio_test PRIVATE pom68k_core)
+add_test(NAME cd_audio_test COMMAND cd_audio_test)
+
 add_executable(floppy_persist_test tests/floppy_persist_test.cpp)
 target_link_libraries(floppy_persist_test PRIVATE pom68k_core)
 add_test(NAME floppy_persist_test COMMAND floppy_persist_test)

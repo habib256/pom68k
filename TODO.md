@@ -241,19 +241,33 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   PAUSE/RESUME, et un transport qui avance sur le temps MACHINE (75
   secteurs/seconde, `advanceAudioCycles`), donc READ SUBCHANNEL rapporte
   `$11/$12/$13/$15`, la piste sous la tête et une position qui bouge
-  vraiment ; l'état du transport entre dans l'instantané (format v17). Un
-  PLAY visant la piste de données est refusé, pas simulé. **Reste** : le
-  chemin d'une piste audio vers l'ASC — `MacAudioHost::attachFx` n'a que
-  deux emplacements typés `FloppySound*`, il faut une source mixable
-  générique traversant le seuil machine/audio ; et les plateformes 5380
-  (Compact, Glue, V8, RBV, Sonora, VASP, MSC) n'ont pas de tick atteignant
-  leurs cibles SCSI, donc leur baie CD annonce un transport immobile. Y
-  inclure le seul cas `.cue/.bin` encore ouvert (tranché le 2026-09-16) : un
-  BIN unique en mode mixte dont
-  la piste de données n'est pas la première (décalage `INDEX 01` à
-  calculer) — la feuille `.cue` est déjà lue, sa première piste MODE1
-  chargée, `MODE1/2352` dé-tramé, un fichier par piste accepté
-  (`ScsiDisk.cpp`, `scsi_cdrom_test`).
+  vraiment ; l'état du transport entre dans l'instantané (v17). Un PLAY
+  visant la piste de données est refusé, pas simulé. **Troisième étage livré
+  le 2026-09-17, avec une correction de matériel** : le chemin n'est PAS «
+  vers l'ASC ». Sur une vraie machine le lecteur AppleCD décode lui-même le
+  CD-DA et sort en ANALOGIQUE par un câble à lui, à côté du câble SCSI
+  (Macintosh Quadra 900 Developer Note) ; la puce son ne voit jamais ces
+  échantillons. POM68K le modélise donc comme tel : `AudioFxSource` remplace
+  les deux emplacements typés `FloppySound*` (quatre emplacements, mixage
+  stéréo), `CdAudioSink` est le câble, `CdAudioSource` le côté hôte (anneau
+  SPSC sans verrou, rééchantillonnage 44,1 kHz → DAC, volume et coupure), et
+  `ScsiDisk` relit les secteurs audio depuis le `.bin` — ils ne sont pas en
+  mémoire, `open()` ayant réduit l'image à la piste de données. Gate
+  `cd_audio_test` (disque synthétisé, secteurs identifiables) : bons
+  secteurs, dans l'ordre, bruts, rien pendant une pause, mixage additif,
+  volume, coupure.
+  **Reste** : (a) un gate consommateur réel — l'AppleCD Audio Player d'un
+  volume System qui joue, mesuré sur la sortie hôte, pas seulement les
+  commandes ; (b) MODE SELECT page `$0E` (CD Audio Control) : le volume CD
+  du tableau de bord Son ne nous parvient pas encore ; (c) les plateformes
+  5380 (Compact, Glue, V8, RBV, Sonora, VASP, MSC) n'ont pas de tick
+  atteignant leurs cibles SCSI, donc leur baie CD annonce un transport
+  immobile et ne met rien sur le câble.
+  Y inclure le seul cas `.cue/.bin` encore ouvert (tranché le 2026-09-16) :
+  un BIN unique en mode mixte dont la piste de données n'est pas la première
+  (décalage `INDEX 01` à calculer) — la feuille `.cue` est déjà lue, sa
+  première piste MODE1 chargée, `MODE1/2352` dé-tramé, un fichier par piste
+  accepté (`ScsiDisk.cpp`, `scsi_cdrom_test`).
 
 ---
 

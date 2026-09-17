@@ -186,6 +186,14 @@ public:
         drive1_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // The CD-audio lead. A playing disc is decoded by the drive and
+    // mixed as analog on a real machine, so the samples go to the
+    // host beside the mechanisms, never through the ASC
+    // (CdAudioSink.h). Only the bays can play: a hard disk that
+    // never gets PLAY AUDIO hands over nothing.
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
+    }
     // No reset-holding MCU (the adbmodem does not gate the CPU) — the 040
     // runs from power-on, so the machine is never "held".
     bool cpuHeld() const { return false; }

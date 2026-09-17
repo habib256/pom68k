@@ -141,6 +141,7 @@ void GuiHostServices::initializeDriveSounds(MacAudioHost& audioHost) {
     }
     audioHost.attachFx(&state_.audio.floppySfx);
     audioHost.attachFx(&state_.audio.hddSfx);
+    audioHost.attachFx(&state_.audio.cdAudio);
 }
 void GuiHostServices::requestRelaunch(
     GLFWwindow* window, const std::string& romName, const std::string& boot,

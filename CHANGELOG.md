@@ -1009,6 +1009,66 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-cdda-third-stage"></a>
+## 2026-09-17 (fifteenth) — CD audio reaches the speaker, and the plan it was written against was wrong: CD-DA never goes through the sound chip
+
+`TODO.md` had said, for weeks, "le chemin sonore vers l'ASC". That is not how
+a Macintosh plays a CD. **The correction, with a source:** the AppleCD drive
+decodes CD-DA itself and puts it out as ANALOG on a cable of its own, beside
+the SCSI cable — the *Macintosh Quadra 900 Developer Note* describes exactly
+that additional lead from the drive to the main logic board. The guest starts
+the play with a SCSI command and then hears music the CPU never reads. The
+Apple Sound Chip is not in the path at all, and an implementation that pushed
+CD samples through it would have been wrong in a way no gate on our side
+would have caught.
+
+**So the model follows the wiring.** Three small pieces, each named after the
+thing it is:
+
+- `AudioFxSource` — what `MacAudioHost` mixes AFTER the machine's own ring.
+  Both slots used to be typed `FloppySound*`, which said "the only sound
+  outside the guest's stream is a mechanism". Now it is an interface, there
+  are four slots, and the mix is **stereo**: a mechanism is centred, but a
+  CD is not, and folding a disc to mono is a change to the recording.
+- `CdAudioSink` — the lead itself. `ScsiDisk::advanceAudio` hands over the
+  sector the head is ON, raw, 2352 bytes, before stepping off it.
+- `CdAudioSource` — the host end. Machine thread decodes 588 frames and
+  resamples 44.1 kHz → the host DAC through the same `HostAudioResampler`
+  the ASC path uses; audio thread drains a lock-free SPSC ring and mixes
+  additively with volume and mute. A full ring drops the newest frames: a
+  stalled audio device must never become a stalled emulation.
+
+**Where the samples come from.** They are not in `image_`. `open()` cuts a
+mixed disc down to the data track's extent, because de-framing audio sectors
+would turn music into "user data" — so a play goes back to the `.bin` the
+`.cue` named, 75 reads of 2352 bytes a second, which the host page cache
+absorbs. `eject()` closes that stream and tells the lead to drop what is in
+flight; a play that simply reaches its END does not, because those last
+frames are part of the recording.
+
+**A consequence, stated rather than hidden:** the play head runs on machine
+time. A machine running at half speed produces half the sectors per second
+and the ring runs dry, so the music slows with the machine. That follows from
+"machine time is guest CPU time"; it is not an oversight.
+
+**Gate.** `cd_audio_test` (asset-free — it synthesizes its own mixed disc,
+each audio sector carrying its own identifying sample value, so "wrong sector"
+and "de-framed sector" are visible failures rather than silence that reads as
+success): three sectors of machine time deliver three sectors, in order, raw
+at 2352 bytes; a paused disc puts nothing on the lead; one sector yields one
+sector of frames; the mix carries both channels distinctly; mute adds nothing;
+volume scales; sources mix additively over samples already in the buffer.
+`asset-none` is 107/107, and `q605_cdrom_etalon`, `q605_cdboot_etalon`,
+`q605_cdhot_etalon` and `q605_cdinstall_etalon` all pass.
+
+**Still open** (`TODO.md` says so): a real consumer gate — the AppleCD Audio
+Player on a System volume, judged on the host output rather than on the
+commands; MODE SELECT page `$0E`, so the Sound control panel's CD volume
+reaches us; and the 5380 boards, which have no tick reaching their SCSI
+targets and therefore put nothing on the lead.
+
+---
+
 <a id="2026-09-17-cdda-second-stage"></a>
 ## 2026-09-17 (fourteenth) — CD audio, second stage: the transport runs on machine time, and READ SUBCHANNEL reports a position that really moves
 

@@ -14,6 +14,7 @@
 // Pattern: POMIIGS AudioOut. GUI-only (not built for headless/WASM here).
 
 #pragma once
+#include "AudioFxSource.h"
 #include "FloppySound.h"
 #include "HostAudioResampler.h"
 #include "MacAudio.h"
@@ -41,8 +42,8 @@ public:
         resampler_.configure(inputRate_, outputRate_);
         read_.store(0, std::memory_order_relaxed);
         write_.store(0, std::memory_order_relaxed);
-        for (FloppySound* fx : fx_)
-            if (fx) fx->setSampleRate(int(outputRate_));
+        for (AudioFxSource* fx : fx_)
+            if (fx) fx->setSampleRate(outputRate_);
         // An init'd-but-not-started device still owns backend handles: without
         // this uninit they leak for the process lifetime, since stop() is
         // gated on started_.
@@ -60,7 +61,7 @@ public:
     void stop() {
         if (started_) ma_device_uninit(&device_);
         started_ = false;
-        fx_[0] = fx_[1] = nullptr;         // any in-flight callback mixes nothing
+        for (AudioFxSource*& slot : fx_) slot = nullptr;  // in-flight callback mixes nothing
     }
     bool started() const { return started_; }
 
@@ -71,15 +72,17 @@ public:
     }
     uint32_t outputSampleRate() const { return outputRate_; }
 
-    // Mechanical-sound sources (FloppySound), mixed into the callback
+    // Sound that is not in the guest's sample stream (AudioFxSource:
+    // the mechanisms, and the CD drive's own analog output), mixed into
+    // the callback
     // after the machine's sample ring — they play even while the ring
     // is silent (a seeking drive on a quiet desktop). Attach BEFORE
     // start(); the callback reads the array without locks.
-    void attachFx(FloppySound* fx) {
-        for (FloppySound*& slot : fx_)
+    void attachFx(AudioFxSource* fx) {
+        for (AudioFxSource*& slot : fx_)
             if (!slot) {
                 slot = fx;
-                fx->setSampleRate(int(outputRate_));
+                fx->setSampleRate(outputRate_);
                 return;
             }
     }
@@ -170,21 +173,8 @@ private:
             out[i * 2 + 1] = ring_[r].right;
             read_.store((r + 1) % kRing, std::memory_order_release);
         }
-        // Mechanical FX overlay, chunked through a small mono scratch.
-        for (FloppySound* fx : fx_) {
-            if (!fx) continue;
-            ma_uint32 done = 0;
-            while (done < frames) {
-                float buf[256] = {};
-                const ma_uint32 n = std::min<ma_uint32>(256, frames - done);
-                fx->fillAudioBuffer(buf, int(n));
-                for (ma_uint32 i = 0; i < n; i++) {
-                    out[(done + i) * 2] += buf[i];
-                    out[(done + i) * 2 + 1] += buf[i];
-                }
-                done += n;
-            }
-        }
+        // Out-of-stream overlay: each source mixes itself additively.
+        for (AudioFxSource* fx : fx_) if (fx) fx->mixStereo(out, int(frames));
     }
 
     static constexpr size_t kRing = 1 << 16;        // 64k native-rate frames
@@ -195,5 +185,7 @@ private:
     uint32_t inputRate_ = 22254;             // legacy Mac Plus default
     uint32_t outputRate_ = 22254;            // replaced after device init
     pom68k::HostAudioResampler resampler_;
-    FloppySound* fx_[2] = { nullptr, nullptr };     // floppy + HDD proxy
+    // Four slots: floppy, hard disk, CD audio, and one spare — the array
+    // is read without locks by the realtime callback, so it never grows.
+    AudioFxSource* fx_[4] = {};
 };

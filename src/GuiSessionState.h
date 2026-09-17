@@ -8,6 +8,7 @@
 #pragma once
 
 #include "AtalkHub.h"
+#include "CdAudioSource.h"
 #include "FloppySound.h"
 #include "FirmwareConfig.h"
 #include "GuiDisplay.h"
@@ -46,6 +47,9 @@ struct GuiNetworkState {
 struct GuiAudioState {
     FloppySound floppySfx;
     FloppySound hddSfx;
+    // The CD-audio lead: a playing disc never passes through the ASC on a
+    // real Macintosh, so it is mixed beside the mechanisms (CdAudioSource.h).
+    CdAudioSource cdAudio;
     bool initialized = false;
 };
 

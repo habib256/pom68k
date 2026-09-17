@@ -230,6 +230,14 @@ public:
         drive1_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // The CD-audio lead. A playing disc is decoded by the drive and
+    // mixed as analog on a real machine, so the samples go to the
+    // host beside the mechanisms, never through the ASC
+    // (CdAudioSink.h). Only the bays can play: a hard disk that
+    // never gets PLAY AUDIO hands over nothing.
+    void attachCdAudioSink(CdAudioSink* cd) {
+        for (ScsiDisk& d : scsiDisks_) d.setCdAudioSink(cd);
+    }
     // The Spike has no reset-holding MCU; the Eclipse's Egret does hold it
     // (the firmware's own PC3 edge under the LLE, a timer under the HLE).
     bool cpuHeld() const {

@@ -251,7 +251,18 @@ public:
     void prepareDriveSounds(Mem& mem, AudioHost& audioHost) {
         initializeDriveSounds(audioHost);
         mem.attachDriveSounds(&state_.audio.floppySfx, &state_.audio.hddSfx);
+        attachCdAudio(mem, 0);
     }
+
+    // The CD-audio lead, on platforms that have a CD bay. Detected rather
+    // than declared: a board without attachCdAudioSink() simply has no
+    // drive to cable, and SFINAE lets the same call compile for both.
+    template <class Mem>
+    auto attachCdAudio(Mem& mem, int) -> decltype(mem.attachCdAudioSink(nullptr), void()) {
+        mem.attachCdAudioSink(&state_.audio.cdAudio);
+    }
+    template <class Mem>
+    void attachCdAudio(Mem&, long) {}
 
     template <class Cpu>
     bool qualify(const char* machine, const char* firmware,
