@@ -163,32 +163,11 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         window, machine, screenTex, std::vector<uint32_t>{}, romName,
         hddPath, floppyPath, std::move(extraDisks), floppyOk, spec, services,
         DiskBaysHost{}, ScreenInput{}, AdbKeyboard{});
-    ctx.diskHost = [&ctx] {
-        DiskBaysHost value;
-        value.extras = &ctx.extraDisks;
-        value.hardReset = [&ctx] {
-            ctx.machine.push({MachineT::Cmd::HardReset});
-        };
-        value.bayIsCd = [&ctx](int id) {
-            return ctx.machine.bayIsCdrom(id);
-        };
-        value.insertBay = [&ctx](int id, const std::string& disk) {
-            if (!ctx.machine.bayIsCdrom(id)) return false;
-            ctx.machine.requestInsertBay(id, disk);
-            return true;
-        };
-        value.ejectBay = [&ctx](int id) {
-            ctx.machine.requestEjectBay(id);
-        };
-        value.relaunch = [&ctx](const std::string& boot,
-                                const std::vector<std::string>& extras) {
-            ctx.services.requestRelaunch(
-                ctx.window, ctx.romName, boot, extras);
-        };
-        bindFloppyBays(value, ctx.machine);
-        bindScsiBays(value, ctx.machine);
-        return value;
-    }();
+    ctx.diskHost = diskBaysHostFor<MachineT>(ctx.machine, &ctx.extraDisks);
+    ctx.diskHost.relaunch = [&ctx](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+        ctx.services.requestRelaunch(ctx.window, ctx.romName, boot, extras);
+    };
     services.shell().bindMachineControls(machine, [&ctx] {
         const auto status = ctx.machine.status();
         ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine.c_str(),

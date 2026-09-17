@@ -115,22 +115,13 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     Ctx& ctx = services.template own<Ctx>(
         window, machine, screenTex, ScreenInput{}, romName, hddPath,
         std::move(extraDisks), spec, services, DiskBaysHost{}, AdbKeyboard{});
-    ctx.diskHost = [&ctx] {
-        DiskBaysHost h;
-        h.extras = &ctx.extraDisks;
-        h.hardReset = [&ctx] {
-            ctx.machine.push({MachineT::Cmd::HardReset});
-        };
-        h.relaunch = [&ctx](const std::string& boot,
-                            const std::vector<std::string>& extras) {
-            ctx.services.requestRelaunch(
-                ctx.window, ctx.romName, boot, extras);
-        };
-        h.hasFloppyDrive = false;
-        h.supportsEmptyCdDrive = false;
-        bindScsiBays(h, ctx.machine);
-        return h;
-    }();
+    // The Duo has no internal floppy, and its bays hold fixed disks only.
+    ctx.diskHost = diskBaysHostFor<MachineT>(ctx.machine, &ctx.extraDisks,
+                                             {false, false});
+    ctx.diskHost.relaunch = [&ctx](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+        ctx.services.requestRelaunch(ctx.window, ctx.romName, boot, extras);
+    };
     services.shell().bindMachineControls(machine, [&ctx] {
         const auto status = ctx.machine.status();
         ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine,

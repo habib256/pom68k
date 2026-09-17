@@ -16,7 +16,7 @@ cmake/Pom68kDevTools.cmake               149
 cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
-cmake/Pom68kMachineGates.cmake           986
+cmake/Pom68kMachineGates.cmake           991
 cmake/Pom68kProductRegistry.cmake        23
 cmake/Pom68kSerialGates.cmake            8
 cmake/Pom68kStorageGates.cmake           26
@@ -25,12 +25,12 @@ src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  203
 src/GuiMachineRuntime.cpp                47
 src/GuiRunnerCompact.h                   145
-src/GuiRunnerCompactStorage.h            41
-src/GuiRunnerDafb.h                      287
-src/GuiRunnerDuo.h                       220
-src/GuiRunnerSonora.h                    265
-src/GuiRunnerToby.h                      243
-src/GuiRunnerV8.h                        277
+src/GuiRunnerCompactStorage.h            29
+src/GuiRunnerDafb.h                      266
+src/GuiRunnerDuo.h                       211
+src/GuiRunnerSonora.h                    248
+src/GuiRunnerToby.h                      222
+src/GuiRunnerV8.h                        256
 src/GuiShell.cpp                         95
 src/GuiShellCommon.h                     137
 src/GuiTobyStatus.h                      41

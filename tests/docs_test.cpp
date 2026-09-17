@@ -1292,10 +1292,14 @@ int main() {
                   testCapture.find("resolveConfigFrom") == std::string::npos,
               "standalone JIT gates inject their own test-boundary snapshot");
     }
-    check(shellHeaderSource.find("h.hasFloppyDrive = false") !=
-              std::string::npos &&
-              shellHeaderSource.find("h.supportsEmptyCdDrive = false") !=
-                  std::string::npos,
+    // The Duo has no internal floppy and no bay whose medium can change
+    // live. Six runners used to spell their bay bindings out by hand and
+    // this check watched the Duo's two lines; they are one shared function
+    // now (`diskBaysHostFor`), so what is watched is that the Duo still asks
+    // for neither. What those options MEAN is held by
+    // `gui_disk_bindings_test`, which calls every hook.
+    check(shellHeaderSource.find("{false, false}") != std::string::npos &&
+              shellHeaderSource.find("diskBaysHostFor") != std::string::npos,
           "Duo shell preserves no-floppy and staged-CD capabilities");
 
     // The build graph follows the same one-responsibility rule as the GUI.

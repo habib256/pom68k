@@ -10,11 +10,10 @@ namespace pom68k::gui {
 
 template <class MachineT, class Ctx>
 pom68k::DiskBaysHost compactDiskBaysHost(Ctx& ctx) {
-    pom68k::DiskBaysHost host;
-    host.extras = &ctx.spec.extraDisks;
-    host.hardReset = [&ctx] {
-        ctx.machine.push({MachineT::Cmd::HardReset});
-    };
+    pom68k::DiskBaysHost host =
+        diskBaysHostFor<MachineT>(ctx.machine, &ctx.spec.extraDisks);
+    // The compacts relaunch with the FLOPPY path where the others carry the
+    // boot disk: on a 128K/512K there may be no SCSI at all.
     host.relaunch = [&ctx](const std::string& boot,
                            const std::vector<std::string>& extras) {
         std::vector<std::string> scsiMedia;
@@ -24,17 +23,6 @@ pom68k::DiskBaysHost compactDiskBaysHost(Ctx& ctx) {
         ctx.services.requestRelaunch(
             ctx.window, ctx.spec.romName, ctx.spec.floppyPath, scsiMedia);
     };
-    host.bayIsCd = [&ctx](int id) {
-        return ctx.machine.bayIsCdrom(id);
-    };
-    host.insertBay = [&ctx](int id, const std::string& disk) {
-        if (!ctx.machine.bayIsCdrom(id)) return false;
-        ctx.machine.requestInsertBay(id, disk);
-        return true;
-    };
-    host.ejectBay = [&ctx](int id) { ctx.machine.requestEjectBay(id); };
-    bindFloppyBays(host, ctx.machine);
-    bindScsiBays(host, ctx.machine);
     return host;
 }
 

@@ -711,6 +711,11 @@ add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
 target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
 add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)
 
+# The disk-bay bindings, outside GL: one window gesture, one request.
+add_executable(gui_disk_bindings_test tests/gui_disk_bindings_test.cpp)
+target_link_libraries(gui_disk_bindings_test PRIVATE pom68k_core)
+add_test(NAME gui_disk_bindings_test COMMAND gui_disk_bindings_test)
+
 # The ATA task file, driven the way the Quadra 630's ROM driver drives it.
 add_executable(ata_disk_test tests/ata_disk_test.cpp)
 target_link_libraries(ata_disk_test PRIVATE pom68k_core)

@@ -1009,6 +1009,43 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-disk-bay-bindings"></a>
+## 2026-09-17 (twenty-third) — Five copies of the disk-bay bindings became one, and the one is under a gate
+
+`gui_windows_test` draws the Disques window against a hand-built
+`DiskBaysHost`, so what the window does with the hooks is proven. What
+nothing reached was the other side: the code that fills those hooks from a
+runner's machine. It lived inside six runner functions that cannot be
+instantiated without a GL context — and four of the six were **character for
+character the same**, the other two differing only in what the context
+happened to call its machine.
+
+`diskBaysHostFor` is that code, once, taking the machine directly instead of
+a runner context. Two options carry the only real differences: whether the
+board has floppy drives and whether any bay's medium can change live. The
+`relaunch` hook stays the caller's, because it genuinely differs — the
+compacts carry the floppy path where the others carry the boot disk.
+
+`gui_disk_bindings_test` then calls **every hook** against a recording
+machine, which is what the window can never check: one gesture must become
+one request on one bay. It pins the refusals too — `insertBay` on a bay that
+is not a CD is refused rather than silently dropped, `attachBay`/`detachBay`
+reject an id outside 1-6 and an empty path before the machine hears about
+them, ejecting one floppy leaves the other alone, and the internal drive is 0
+while the external is 1 and they are not swapped. A board configured like the
+Duo gets **null** live-swap hooks rather than ones that do nothing, and still
+attaches fixed disks.
+
+`docs_test`'s Duo invariant moved with the code: it used to watch two literal
+lines in the Duo's runner and now watches that the Duo still asks for neither
+floppies nor live bays, with the meaning of those options held by the new
+gate.
+
+`asset-none` is 109/109; the GUI gates and a boot etalon per affected runner
+pass.
+
+---
+
 <a id="2026-09-17-gui-savestate-pass"></a>
 ## 2026-09-17 (twenty-second) — The GUI's save-state pass now reaches the file, not just the slot
 

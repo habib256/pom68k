@@ -127,28 +127,11 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
         window, machine, screenTex, std::vector<uint32_t>{}, romName,
         hddPath, std::string{}, false, std::move(extraDisks), spec, services,
         DiskBaysHost{}, ScreenInput{}, AdbKeyboard{});
-    ctx.diskHost = [&ctx] {
-        DiskBaysHost h;
-        h.extras = &ctx.extraDisks;
-        h.hardReset = [&ctx] {
-            ctx.m.push({MachineT::Cmd::HardReset});
-        };
-        h.relaunch = [&ctx](const std::string& boot,
-                            const std::vector<std::string>& extras) {
-            ctx.services.requestRelaunch(
-                ctx.window, ctx.romName, boot, extras);
-        };
-        h.bayIsCd = [&ctx](int id) { return ctx.m.bayIsCdrom(id); };
-        h.insertBay = [&ctx](int id, const std::string& disk) {
-            if (!ctx.m.bayIsCdrom(id)) return false;
-            ctx.m.requestInsertBay(id, disk);
-            return true;
-        };
-        h.ejectBay = [&ctx](int id) { ctx.m.requestEjectBay(id); };
-        bindFloppyBays(h, ctx.m);
-        bindScsiBays(h, ctx.m);
-        return h;
-    }();
+    ctx.diskHost = diskBaysHostFor<MachineT>(ctx.m, &ctx.extraDisks);
+    ctx.diskHost.relaunch = [&ctx](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+        ctx.services.requestRelaunch(ctx.window, ctx.romName, boot, extras);
+    };
     services.shell().bindMachineControls(machine, [&ctx] {
         const auto st = ctx.m.status();
         ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine.c_str(),

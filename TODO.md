@@ -88,14 +88,15 @@ Ce que les gates ne prouvent pas encore, et ce qui rend une preuve fragile.
 - [ ] **Faire tomber le GUI sous un gate, et lui passer la main dessus.**
   Les quatre fenêtres (Périphériques, AppleTalk / Ethernet, Disques, Moteur)
   sont sous `gui_windows_test`, le formulaire « Configuration des services »
-  compris ; la fenêtre machine (barre de menus, tableau de bord, surface
-  écran et clavier, mode borne, presets CRT) sous `gui_machine_window_test`
-  sur une machine factice (2026-09-16), et depuis le 2026-09-17 la passe
-  save-state y va jusqu'au FICHIER : le même slot est confié à un vrai Plus,
-  l'instantané est écrit par temp+rename, rechargé, la RAM invitée revient,
-  et un fichier corrompu est refusé avec un message. **Reste** : l'upload du
-  framebuffer et le hot-swap floppy/CD par les bindings des six runners
-  (`compactDiskBaysHost` et ses pairs, jamais instanciés hors GL).
+  compris ; la fenêtre machine sous `gui_machine_window_test` sur une
+  machine factice (2026-09-16), et depuis le 2026-09-17 la passe save-state
+  y va jusqu'au FICHIER (écrit par temp+rename, rechargé, RAM invitée
+  revenue, fichier corrompu refusé). Les liaisons des baies, que les six
+  runners recopiaient à la main hors de toute portée d'un gate, sont une
+  seule fonction (`diskBaysHostFor`) tenue par `gui_disk_bindings_test` :
+  chaque crochet appelé, une gestuelle = une requête sur une seule baie.
+  **Reste** : l'upload du framebuffer, seul morceau du GUI encore
+  inaccessible hors GL.
 - [ ] **Exécuter les locksteps sur un hôte Windows.** Préalable nommé de
   « `threaded` est le plancher Windows » : tant qu'aucun hôte Windows ne
   les exécute, le choix reste une décision et non une mesure.

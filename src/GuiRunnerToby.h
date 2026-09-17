@@ -141,32 +141,11 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         floppyPath, std::move(extraDisks), floppyOk, spec,
         std::forward<ReadStatus>(readStatus), services, DiskBaysHost{},
         AdbKeyboard{});
-    ctx.diskHost = [&ctx] {
-        DiskBaysHost h;
-        h.extras = &ctx.extraDisks;
-        h.hardReset = [&ctx] {
-            ctx.machine.push({MachineT::Cmd::HardReset});
-        };
-        h.relaunch = [&ctx](const std::string& boot,
-                            const std::vector<std::string>& extras) {
-            ctx.services.requestRelaunch(
-                ctx.window, ctx.romName, boot, extras);
-        };
-        h.bayIsCd = [&ctx](int id) {
-            return ctx.machine.bayIsCdrom(id);
-        };
-        h.insertBay = [&ctx](int id, const std::string& disk) {
-            if (!ctx.machine.bayIsCdrom(id)) return false;
-            ctx.machine.requestInsertBay(id, disk);
-            return true;
-        };
-        h.ejectBay = [&ctx](int id) {
-            ctx.machine.requestEjectBay(id);
-        };
-        bindFloppyBays(h, ctx.machine);
-        bindScsiBays(h, ctx.machine);
-        return h;
-    }();
+    ctx.diskHost = diskBaysHostFor<MachineT>(ctx.machine, &ctx.extraDisks);
+    ctx.diskHost.relaunch = [&ctx](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+        ctx.services.requestRelaunch(ctx.window, ctx.romName, boot, extras);
+    };
     services.shell().bindMachineControls(machine, [&ctx] {
         drawTobyStatus(ctx.spec.cpuLine, ctx.readStatus(ctx.machine));
     });
