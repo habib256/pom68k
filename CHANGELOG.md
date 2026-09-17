@@ -1009,6 +1009,58 @@ Newest first.
 
 ---
 
+<a id="2026-09-17-cdda-second-stage"></a>
+## 2026-09-17 (fourteenth) — CD audio, second stage: the transport runs on machine time, and READ SUBCHANNEL reports a position that really moves
+
+The first stage gave the drive a disc with audio tracks on it and a TOC that
+admits they exist. It could not play them. This stage builds the transport —
+still no samples, and the header says so rather than letting a moving counter
+imply sound.
+
+**What the drive now answers.** `PLAY AUDIO (10)` (`$45`) and `PLAY AUDIO MSF`
+(`$47`) start a play; `PAUSE/RESUME` (`$4B`) holds and releases it. A play
+aimed at the data track is **refused** with ILLEGAL REQUEST / `$64` (illegal
+mode for this track), not silently accepted: a drive that pretends to play
+data would teach the guest a lie it cannot detect. `READ SUB-CHANNEL` (`$42`)
+was already implemented for the disc-present probe, so the transport was
+**merged into the existing handler** rather than added beside it — audio
+status `$11` playing, `$12` paused, `$13` completed, `$15` stopped, the track
+under the head, and both the absolute and track-relative addresses.
+
+**The position moves on machine time.** `ScsiDisk::advanceAudio(micros)`
+advances one sector per 1/75 s and carries the sub-sector remainder between
+calls; `advanceAudioCycles(cycles, cpuHz)` is the platform form, carrying its
+own cycle remainder so a long play cannot drift. It is wired into the four
+53C96 platform ticks (`Q605Memory::tick`, `Q630Memory::tick`,
+`CentrisMemory::tick`, `Q700Memory::tick`) where a per-slice tick already
+existed. **Stated rather than hidden:** the 5380 boards (Compact, Glue, V8,
+RBV, Sonora, VASP, MSC) have no tick reaching their SCSI targets, so their CD
+bays report a transport that never moves. That is a gap, and `TODO.md` names
+it.
+
+**The transport is guest state.** A snapshot taken mid-play must resume
+mid-play, at the same sector, so `audio_`, the position, the end address and
+both remainders enter `ScsiDisk::visit` and the snapshot format goes to
+**v17**. The track table does not: it came from the `.cue` the machine was
+set up with, like the image path, and attachment properties have never been
+restored from a snapshot.
+
+**Gates.** `scsi_cdrom_test` drives the whole sequence on the synthesized
+mixed disc: stopped reports `$15`, PLAY is accepted and names track 2 under
+the head, two sectors' worth of machine time moves the position by exactly
+two, PAUSE freezes it against a full second of time, RESUME restarts it, the
+play completes at the end address and reports `$13`, and a PLAY aimed at the
+data track is refused. `q605_cdrom_etalon`, `q605_cdboot_etalon`,
+`q605_cdhot_etalon` and `q605_savestate_etalon` all pass with the version
+bump.
+
+**Not built, and not pretended:** the path from an audio track to the ASC.
+`MacAudioHost::attachFx` has two mixing slots and both are typed
+`FloppySound*`; a generic mixable source crossing the machine/audio thread
+boundary is the next piece of work, not a detail of this one.
+
+---
+
 <a id="2026-09-17-cdda-first-stage"></a>
 ## 2026-09-17 (thirteenth) — CD audio, first stage: the disc is synthesized, the whole cue sheet is read, and the TOC finally admits its audio tracks
 

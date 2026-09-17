@@ -703,6 +703,13 @@ uint8_t Q630Memory::peek8(uint32_t addr) const {
 }
 
 void Q630Memory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, so READ SUBCHANNEL reports a position that really
+    // advances (ScsiDisk::advanceAudioCycles). Only the 53C96 platforms run
+    // this; the 5380 boards have no per-slice tick reaching their targets,
+    // and their CD bays therefore report a transport that never moves.
+    for (ScsiDisk& d : scsiDisks_) d.advanceAudioCycles(cpuCycles, kCpuHz);
+
     // VIA1 φ2 = 783.36 kHz, fixed (iosb.cpp:74) — see viaSync above for why
     // the divider tracks kCpuHz instead of being the Q605's constant 32.
     // VIA1 φ2 is the board's fixed 783.36 kHz E clock, not a divisor of

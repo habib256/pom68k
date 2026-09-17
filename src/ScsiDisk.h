@@ -128,6 +128,24 @@ public:
     long writeCommands = 0, writeBlocks = 0;
 
     // True when open() applied the in-memory HFS-flat → SCSI façade.
+    // Move a running CD-DA play on by `micros` of MACHINE time. A no-op
+    // unless a play is in flight; sets Completed at the end address.
+    void advanceAudio(uint64_t micros);
+    // The platform form: machine time arrives as CPU cycles, and the
+    // conversion carries its remainder so a long play cannot drift away
+    // from 75 sectors a second. Cheap when nothing is playing.
+    void advanceAudioCycles(int64_t cycles, int64_t cpuHz) {
+        if (audio_ != Audio::Playing || cycles <= 0 || cpuHz <= 0) return;
+        audioCycAcc_ += cycles * 1000000;
+        const int64_t micros = audioCycAcc_ / cpuHz;
+        audioCycAcc_ -= micros * cpuHz;
+        if (micros > 0) advanceAudio(uint64_t(micros));
+    }
+    // Transport state for the gates: 0 stopped, 1 playing, 2 paused,
+    // 3 completed — the same order READ SUBCHANNEL reports.
+    int audioState() const { return int(audio_); }
+    uint32_t audioLba() const { return audioLba_; }
+
     // The disc's tracks as the .cue described them (empty for a flat image).
     // `scsi_cdrom_test` reads these; the audio path will too.
     std::size_t trackCount() const { return tracks_.size(); }
@@ -209,6 +227,10 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar(blocks_, hfsPrefixBlocks_, senseKey_, senseAsc_, senseAscq_,
            identifyLun_, readCommands, readBlocks);
+        // The CD-DA transport is guest state: a snapshot taken mid-play must
+        // resume mid-play, at the same sector. The TRACK TABLE is not — it
+        // came from the .cue the machine was set up with, like the path.
+        ar(audio_, audioLba_, audioEnd_, audioFrac_, audioCycAcc_);
         // Attachment properties (path, kind, write-back, the backing
         // stream) belong to the machine's setup, not to guest state, and
         // are deliberately NOT restored from a snapshot.
@@ -268,6 +290,17 @@ private:
     };
     std::vector<CdTrack> tracks_;
     uint32_t discLba_ = 0;           // lead-out: sectors on the whole disc
+
+    // CD-DA transport. The guest starts a play with PLAY AUDIO and watches
+    // it with READ SUBCHANNEL, so the position has to MOVE: advanceAudio()
+    // is driven by the machine's own tick, never by host wall time. No
+    // samples leave the drive yet — the ASC path is the next step and the
+    // header says so rather than letting a moving counter imply sound.
+    enum class Audio : uint8_t { Stopped, Playing, Paused, Completed };
+    Audio audio_ = Audio::Stopped;
+    uint32_t audioLba_ = 0, audioEnd_ = 0;
+    uint64_t audioFrac_ = 0;         // sub-sector micros carried between ticks
+    int64_t  audioCycAcc_ = 0;       // cycle→micro remainder (advanceAudioCycles)
 
     std::vector<uint8_t> image_;     // raw sectors (possibly façade-prefixed)
     std::fstream file_;              // write-back stream (open iff writeBack_)

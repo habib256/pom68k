@@ -346,6 +346,53 @@ int main() {
         const uint8_t rd10[10] = { 0x28, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
         check(mixed.command(rd10, 10, o, i2) == 0 && o.size() == 2048 && o[0] == 0xA0,
               "the data track still reads as 2048-byte user data");
+        // ── The CD-DA transport ──────────────────────────────────────
+        // PLAY AUDIO starts it, advanceAudio() moves it on MACHINE time
+        // (75 sectors a second), READ SUBCHANNEL is what the AppleCD Audio
+        // Player watches. No samples leave the drive yet.
+        {
+            const uint8_t stopped[10] = { 0x42, 0x02, 0x40, 0x01, 0, 0, 0, 0, 16, 0 };
+            check(mixed.command(stopped, 10, o, i2) == 0 && o.size() >= 2 && o[1] == 0x15,
+                  "an idle drive reports audio status $15 (stopped)");
+
+            // Play the whole audio track: PLAY AUDIO(10) from its start.
+            const uint32_t len = 4;
+            const uint8_t play[10] = { 0x45, 0,
+                uint8_t(audioStart >> 24), uint8_t(audioStart >> 16),
+                uint8_t(audioStart >> 8), uint8_t(audioStart),
+                0, uint8_t(len >> 8), uint8_t(len), 0 };
+            check(mixed.command(play, 10, o, i2) == 0, "PLAY AUDIO (10) is accepted");
+            check(mixed.audioState() == 1 && mixed.audioLba() == audioStart,
+                  "the transport is playing, at the track's first sector");
+            check(mixed.command(stopped, 10, o, i2) == 0 && o[1] == 0x11,
+                  "READ SUBCHANNEL reports $11 (playing)");
+            if (o.size() >= 16) check(o[6] == 2, "and names track 2 under the head");
+
+            mixed.advanceAudio(1000000ull / 75 * 2);       // two sectors
+            check(mixed.audioLba() == audioStart + 2, "the position advances at 75 sectors/s");
+
+            const uint8_t pause[10] = { 0x4B, 0, 0, 0, 0, 0, 0, 0, 0x00, 0 };
+            check(mixed.command(pause, 10, o, i2) == 0 && mixed.audioState() == 2,
+                  "PAUSE holds the transport");
+            mixed.advanceAudio(1000000ull);                 // a paused disc does not run
+            check(mixed.audioLba() == audioStart + 2, "a paused disc does not advance");
+            check(mixed.command(stopped, 10, o, i2) == 0 && o[1] == 0x12,
+                  "READ SUBCHANNEL reports $12 (paused)");
+
+            const uint8_t resume[10] = { 0x4B, 0, 0, 0, 0, 0, 0, 0, 0x01, 0 };
+            check(mixed.command(resume, 10, o, i2) == 0 && mixed.audioState() == 1,
+                  "RESUME sets it playing again");
+            mixed.advanceAudio(1000000ull);                 // past the end
+            check(mixed.audioState() == 3, "the play completes at the end address");
+            check(mixed.command(stopped, 10, o, i2) == 0 && o[1] == 0x13,
+                  "READ SUBCHANNEL reports $13 (completed)");
+
+            // A play aimed at the data track is refused, not faked.
+            const uint8_t bad[10] = { 0x45, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+            check(mixed.command(bad, 10, o, i2) == 2,
+                  "PLAY AUDIO on a data track is refused");
+        }
+
         std::remove("scsi_cdrom_mixed.bin");
         std::remove("scsi_cdrom_mixed.cue");
     }

@@ -347,6 +347,8 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     blocks_ = 0;
     tracks_.clear();
     discLba_ = 0;
+    audio_ = Audio::Stopped;
+    audioLba_ = audioEnd_ = 0;
 
     std::string data = path;
     auto endsWith = [](const std::string& s, const char* e) {
@@ -451,6 +453,18 @@ void ScsiDisk::attachCdromEmpty() {
     setSense(kNotReady, 0x3A);                   // MEDIUM NOT PRESENT
 }
 
+// CD-DA runs at 75 sectors a second, so one sector is 13 333 us. Machine
+// time, not host time: a paused emulator must not let the disc run on.
+void ScsiDisk::advanceAudio(uint64_t micros) {
+    if (audio_ != Audio::Playing) return;
+    audioFrac_ += micros;
+    const uint64_t perSector = 1000000ull / 75;
+    while (audioFrac_ >= perSector && audio_ == Audio::Playing) {
+        audioFrac_ -= perSector;
+        if (++audioLba_ >= audioEnd_) { audioLba_ = audioEnd_; audio_ = Audio::Completed; }
+    }
+}
+
 void ScsiDisk::eject() {
     // Back to a plain empty tray: the next medium re-decides the kind (a
     // 2048 disc and a 512 dump can follow each other in the same drive).
@@ -459,6 +473,8 @@ void ScsiDisk::eject() {
     blocks_ = 0;
     tracks_.clear();
     discLba_ = 0;
+    audio_ = Audio::Stopped;
+    audioLba_ = audioEnd_ = 0;
     hfsPrefixBlocks_ = 0;
     if (file_.is_open()) file_.close();
     writeBack_ = false;
@@ -1010,6 +1026,44 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             // same header, CD page set (audio control + the Apple
             // signature), 2048-byte block descriptor.
 
+            case 0x45:                               // PLAY AUDIO (10)
+            case 0x47: {                             // PLAY AUDIO MSF
+                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                uint32_t start = 0, end = discLba_ ? discLba_ : blocks_;
+                if (cdb[0] == 0x45) {
+                    start = uint32_t(cdb[2]) << 24 | uint32_t(cdb[3]) << 16 |
+                            uint32_t(cdb[4]) << 8 | cdb[5];
+                    const uint32_t len = uint32_t(cdb[7]) << 8 | cdb[8];
+                    if (len) end = start + len;
+                } else {
+                    auto msfLba = [](const uint8_t* p) -> uint32_t {
+                        const uint32_t f = (uint32_t(p[0]) * 60 + p[1]) * 75 + p[2];
+                        return f >= 150 ? f - 150 : 0;
+                    };
+                    start = msfLba(&cdb[3]);
+                    end = msfLba(&cdb[6]);
+                }
+                // A play that names no audio is refused rather than faked:
+                // ILLEGAL REQUEST / $64 "illegal mode for this track".
+                bool onAudio = false;
+                for (const CdTrack& t : tracks_)
+                    if (t.audio && start >= t.startLba) onAudio = true;
+                if (!onAudio) { setSense(kIllegalRequest, 0x64); return kCheck; }
+                audioLba_ = start;
+                audioEnd_ = std::max(end, start);
+                audioFrac_ = 0;
+                audio_ = audioLba_ < audioEnd_ ? Audio::Playing : Audio::Completed;
+                return kGood;
+            }
+
+            case 0x4B: {                             // PAUSE / RESUME
+                if (audio_ == Audio::Stopped) { setSense(kIllegalRequest, 0x64); return kCheck; }
+                const bool resume = (cdb[8] & 1) != 0;
+                if (resume) { if (audio_ == Audio::Paused) audio_ = Audio::Playing; }
+                else        { if (audio_ == Audio::Playing) audio_ = Audio::Paused; }
+                return kGood;
+            }
+
             case 0x43: {                             // READ TOC
                 if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
                 const bool msf = (cdb[1] & 0x02) != 0;
@@ -1075,8 +1129,10 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 // The Apple CD extension sends this right after a hot
                 // insert (42 02 40 01 — MSF, SubQ, current position); a
                 // CHECK CONDITION here aborts the mount it had already
-                // started. MAME cd.cpp:709-770; no CDDA yet, so the
-                // answer is always "no audio, position = start of disc".
+                // started. MAME cd.cpp:709-770. Since 2026-09-17 it also
+                // carries the CD-DA transport: the audio status byte and a
+                // position that MOVES while a play runs, which is what the
+                // AppleCD Audio Player watches.
                 if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
                 const bool msf  = (cdb[1] & 0x02) != 0;
                 const bool subq = (cdb[2] & 0x40) != 0;
@@ -1084,15 +1140,35 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 uint16_t alloc = uint16_t(cdb[7] << 8 | cdb[8]);
                 dataOut.assign(alloc ? alloc : 4, 0);
                 if (dataOut.size() > 1)
-                    dataOut[1] = 0x15;               // no audio status to return
+                    dataOut[1] = audio_ == Audio::Playing   ? 0x11
+                               : audio_ == Audio::Paused    ? 0x12
+                               : audio_ == Audio::Completed ? 0x13
+                                                            : 0x15;
                 if (subq && param == 0x01 && dataOut.size() >= 16) {
                     dataOut[3] = 12;                 // sub-channel data length
                     dataOut[4] = 0x01;               // format: current position
-                    dataOut[5] = 0x14;               // Q: data track, position
-                    dataOut[6] = 1;                  // track
-                    dataOut[7] = 0;                  // index (MAME puts 0)
-                    if (msf) dataOut[10] = 2;        // LBA 0 = 00:00:02:00 MSF
-                    // relative address stays 0 either way
+                    // The track under the play head, and the addresses that
+                    // go with it; a disc that never played answers exactly as
+                    // it did before (track 1, position 0).
+                    uint8_t trk = 1;
+                    uint32_t base = 0;
+                    bool onAudio = false;
+                    for (const CdTrack& t : tracks_)
+                        if (audioLba_ >= t.startLba) {
+                            trk = t.number; base = t.startLba; onAudio = t.audio;
+                        }
+                    dataOut[5] = onAudio ? 0x10 : 0x14;   // Q: audio / data
+                    dataOut[6] = trk;
+                    dataOut[7] = audio_ == Audio::Stopped ? 0 : 1;   // index
+                    auto put = [&](uint32_t lba, uint8_t* p) {
+                        if (!msf) { p[0] = uint8_t(lba >> 24); p[1] = uint8_t(lba >> 16);
+                                    p[2] = uint8_t(lba >> 8);  p[3] = uint8_t(lba); return; }
+                        const uint32_t f = lba + 150;
+                        p[0] = 0; p[1] = uint8_t(f / (60 * 75));
+                        p[2] = uint8_t((f / 75) % 60); p[3] = uint8_t(f % 75);
+                    };
+                    put(audioLba_, &dataOut[8]);                 // absolute
+                    put(audioLba_ - base, &dataOut[12]);         // track-relative
                 }
                 return kGood;
             }

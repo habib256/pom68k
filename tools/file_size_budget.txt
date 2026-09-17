@@ -47,7 +47,7 @@ src/PlatformDuo.cpp                      142
 src/PlatformSonora.cpp                   289
 src/PlatformToby.cpp                     311
 src/PlatformV8.cpp                       206
-src/Q700Memory.cpp                       1091
+src/Q700Memory.cpp                       1098
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    169
 src/RuntimeConfigCore.cpp                183
@@ -55,7 +55,7 @@ src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071
-src/ScsiDisk.cpp                         1399
+src/ScsiDisk.cpp                         1475
 src/SonyDrive.cpp                        1368
 src/StartupDomainView.h                  73
 src/StartupOptions.h                     394

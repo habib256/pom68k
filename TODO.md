@@ -235,10 +235,21 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   `.cue` est lue en entier (toutes les pistes, type et `INDEX 01`), seule
   l'étendue de la piste de données est dé-tramée — dé-tramer les secteurs
   audio changerait de la musique en « données » — et READ TOC rapporte les
-  pistes audio avec le contrôle `$0` qui les rend jouables, lead-out
-  compris (`scsi_cdrom_test`). **Reste** : PLAY AUDIO / PAUSE / STOP,
-  READ SUBCHANNEL pour la position, et le chemin audio vers l'ASC. Y inclure le seul cas `.cue/.bin`
-  encore ouvert (tranché le 2026-09-16) : un BIN unique en mode mixte dont
+  pistes audio avec le contrôle `$0` qui les rend jouables, lead-out compris
+  (`scsi_cdrom_test`).
+  **Deuxième étage livré le 2026-09-17** : PLAY AUDIO (10) et MSF,
+  PAUSE/RESUME, et un transport qui avance sur le temps MACHINE (75
+  secteurs/seconde, `advanceAudioCycles`), donc READ SUBCHANNEL rapporte
+  `$11/$12/$13/$15`, la piste sous la tête et une position qui bouge
+  vraiment ; l'état du transport entre dans l'instantané (format v17). Un
+  PLAY visant la piste de données est refusé, pas simulé. **Reste** : le
+  chemin d'une piste audio vers l'ASC — `MacAudioHost::attachFx` n'a que
+  deux emplacements typés `FloppySound*`, il faut une source mixable
+  générique traversant le seuil machine/audio ; et les plateformes 5380
+  (Compact, Glue, V8, RBV, Sonora, VASP, MSC) n'ont pas de tick atteignant
+  leurs cibles SCSI, donc leur baie CD annonce un transport immobile. Y
+  inclure le seul cas `.cue/.bin` encore ouvert (tranché le 2026-09-16) : un
+  BIN unique en mode mixte dont
   la piste de données n'est pas la première (décalage `INDEX 01` à
   calculer) — la feuille `.cue` est déjà lue, sa première piste MODE1
   chargée, `MODE1/2352` dé-tramé, un fichier par piste accepté

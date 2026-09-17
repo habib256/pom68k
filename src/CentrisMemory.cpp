@@ -625,6 +625,13 @@ uint8_t CentrisMemory::peek8(uint32_t addr) const {
 }
 
 void CentrisMemory::tick(int cpuCycles) {
+    // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
+    // 75 sectors a second, so READ SUBCHANNEL reports a position that really
+    // advances (ScsiDisk::advanceAudioCycles). Only the 53C96 platforms run
+    // this; the 5380 boards have no per-slice tick reaching their targets,
+    // and their CD bays therefore report a transport that never moves.
+    for (ScsiDisk& d : scsiDisks_) d.advanceAudioCycles(cpuCycles, cpuHz_);
+
     // VIA1 φ2 is the board's fixed 783.36 kHz E clock, not a divisor of
     // the CPU — an integer ratio is an approximation here (ViaEClock.h).
     const int viaCycles = viaEClock_.advance(cpuCycles, cpuHz_);
