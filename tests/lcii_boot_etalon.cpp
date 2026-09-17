@@ -112,8 +112,23 @@ int main() {
     while (mem.cpuHeld()) mem.tick(1000);
     const int64_t kFrame = 640 * 407;        // 60.15 Hz @ 15.6672 MHz
     const long kFrames = 16000;              // ≈4.17e9 cycles
-    for (long f = 0; f < kFrames && !cpu.isHalted(); f++)
+    // POM68K_LCII_CLRFPU=1 (investigation knob, TODO § Fidélité): hold
+    // HwCfgFlags bit 12 — hwCbFPU, BASILISK_ROM_NOTES § 8.9 — clear once the
+    // ROM has stored it. The System tests exactly that bit at $CAB2 before
+    // the FPU instruction at $CAC8, so with it clear a bare 68030 reaches the
+    // Finder (proof, 2026-09-17). This is a guest-memory poke, NOT modelled
+    // hardware: it names the single bit the bare machine turns on, it is not
+    // a fix, and nothing in the product does it.
+    const bool clrFpu = std::getenv("POM68K_LCII_CLRFPU") != nullptr;
+    for (long f = 0; f < kFrames && !cpu.isHalted(); f++) {
+        if (clrFpu) {
+            // Only once the ROM has actually stored HwCfgFlags (the observed
+            // $FC00); touching $B22 earlier clobbers low memory mid-init.
+            const uint32_t w = uint32_t(mem.peek8(0x0B22)) << 8 | mem.peek8(0x0B23);
+            if (w == 0xFC00) mem.write8(0x0B22, 0xEC);   // clear bit 12 only
+        }
         cpu.runCycles(kFrame);
+    }
 
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: CPU halted (double fault)\n"); return 1; }
 

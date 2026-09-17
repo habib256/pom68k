@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 562 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 563 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 9 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 23 |
 | [Save states](#save-states) | 8 |
-| [Machine bring-ups](#machine-bring-ups) | 65 |
+| [Machine bring-ups](#machine-bring-ups) | 66 |
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 40 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -441,6 +441,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17** — [Five TODO items settled: a UAM consumer signal, the Classic II $50F18038 block identified, the GUI RTC-from-host confirmed, and two rulings](CHANGELOG.md#2026-09-17-five-todo-settled)
 - **2026-09-17 (seventh)** — [Apple shared one table entry between the LC and the LC II, so POM68K's VIA ID is right after all](CHANGELOG.md#2026-09-17-lcii-shared-table)
 - **2026-09-17 (sixth)** — [Apple's own ROM source answers it: the product is elected by the VIA input lines, and POM68K's VIA ID elects the LC, not the LC II](CHANGELOG.md#2026-09-17-lcii-via-election)
+- **2026-09-17 (tenth)** — [Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder](CHANGELOG.md#2026-09-17-lcii-fpu-bit-proven)
 
 ## Build, packaging and release
 

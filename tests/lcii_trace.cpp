@@ -316,7 +316,10 @@ int main(int argc, char** argv) {
     if (getenv("FLINE_FRAME"))
         cpu.onFlineFrame = [&](uint32_t sp) {
             if (flineFrames++ >= 4) return;
-            const uint32_t fv = peek32(sp + 4) >> 16;   // SR(2) PC(4) format/vector(2)
+            // 68020/030 frame: SR at +0 (word), PC at +2 (LONG), format/vector
+            // at +6. Reading +4 gave the PC's own low word and printed it as a
+            // format — fixed 2026-09-17, it had made every dump nonsense.
+            const uint32_t fv = peek32(sp + 6) >> 16;
             std::printf("[%10lld] vector-11 frame: SP=$%08X SR=%04X PC=$%08X format/vector=$%04X "
                         "(format %u, vector %u) D5=%08X D6=%08X D7=%08X A0=%08X pc0=$%08X\n",
                         (long long)cpu.getClock(), sp, peek32(sp) >> 16, peek32(sp + 2),

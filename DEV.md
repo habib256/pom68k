@@ -2004,8 +2004,11 @@ rectangle — what a new click scenario is written from) and
 `system_boot_etalon` (the Plus on a System floppy: the 6.0.5 cell, the
 System 3.3 cells in drive A and drive B) dumps its final screen with
 `POM68K_SYSTEM_BOOT_PPM` (`<path>` of a PGM); `lcii_boot_etalon` does the
-same with `POM68K_LCII_BOOT_PPM`, and `POM68K_NOFPU` (any value) boots it
-on a bare 68030 without the 68882. The GUI's display knobs,
+same with `POM68K_LCII_BOOT_PPM`, `POM68K_NOFPU` (any value) boots it on a
+bare 68030 without the 68882, and `POM68K_LCII_CLRFPU` holds HwCfgFlags bit
+12 (`hwCbFPU`) clear once the ROM has stored it — a guest-memory poke, not
+modelled hardware, which proves that bit is the only thing stopping a bare
+LC II from reaching the Finder (CHANGELOG 2026-09-17 (tenth)). The GUI's display knobs,
 ported from NeoST on 2026-09-16 (`GuiDisplay.h`): `POM68K_KIOSK` (`1` =
 start in cabinet mode — exclusive full screen on the primary monitor, no
 menu bar, no window, mouse captured; Ctrl+Alt+F toggles at any time, Alt+F4 or

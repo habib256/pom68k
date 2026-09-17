@@ -265,17 +265,22 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   `move.l HwCfgWord(a1),d2`, et le `TestForFPU` qui corrigerait cela est daté
   d'octobre 1992 (`<SM28>`). La note d'Apple `<15>` nomme le trou : « HwCfgFlags
   gets read from d2, not from the universal tables. With an optional FPU, the
-  **Levier XPRAM fermé le 2026-09-17.** Le combo `$AE` (§ 8.5) balayé de 1 à 5
-  via `setPramByte` ne change rien : même bombe F-line, mêmes 86 commandes
-  SCSI. Et la trace montre **zéro lecture XPRAM** sur tout le boot nu (LLE
-  comme HLE forcé par `POM68K_EGRET_LLE=0`) : la bombe survient donc **avant**
-  que la sélection du combo soit consultée — ce levier est en aval de la
-  panne, pas sa cause. **Piste suivante, concrète** : `FLINE_FRAME=1` montre
-  deux vecteurs 11. Le premier en `$A47CA8` est la sonde FPU délibérée de la
-  ROM (elle fonctionne) ; le second est la bombe, à `PC=$0000CAC8` avec
-  `pc0=$40A02702` — donc du code System en RAM, pas la ROM. Identifier ce
-  qu'est `$CAC8` (quel composant du System exécute cette instruction F-line)
-  est la prochaine question, et elle ne demande plus d'archéologie ROM.
+  **Cause prouvée le 2026-09-17, et le nu boote.** Le System teste
+  `btst #$4,$b22.w` en `$CAB2` — c'est-à-dire **HwCfgFlags bit 12**
+  (`hwCbFPU`, § 8.9) — et n'exécute l'instruction FPU de `$CAC8` que si le
+  bit est levé ; c'est elle qui bombe. Avec `POM68K_LCII_CLRFPU=1`, qui
+  maintient ce bit à zéro une fois la ROM passée, le **LC II nu atteint le
+  Finder** sur 7.1 propre (748 commandes SCSI, barre 0,06, bureau 0,46).
+  Toute la panne tient donc à ce seul bit. Il vient de l'enregistrement élu
+  `$3BA6` (`hwCfgWord $DC00`), et l'élection **ne peut pas** choisir l'autre :
+  les deux candidats (`$3BA6` et le `$3BE6` sans FPU, `$CC00`) ont
+  `VIAIdMask` et `VIAIdMatch` **à zéro** dans notre dump et le même decoder
+  kind `$07`, donc le premier gagne inconditionnellement — aucun ID VIA ne
+  peut les départager. **Seule question restante** : par quoi un vrai LC II
+  sans FPU évite ce bit. Pistes : le `DynamicBoxFlag` que `StartInit.a`
+  mentionne, ou un decoder kind distinct trouvé par le sondage de bus errors
+  de `FindDecoder`. Le poke de `POM68K_LCII_CLRFPU` n'est **pas** un
+  correctif — c'est du HLE non conforme — et rien dans le produit ne le fait.
   Accessoirement `$50FC0000` est lu en `$A463D0` depuis DecoderInfo+$4,
   pas codé en dur. Outils : `lcii_trace` (`FLINE_FRAME`, `RING_AT`, `VIA1_REGS`,
   `--probe` avec D5-D7), `POM68K_LCII_BOOT_PPM`, le romset `maclc2` MAME

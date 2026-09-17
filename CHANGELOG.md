@@ -455,6 +455,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-17 (tenth)** — [Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder](#2026-09-17-lcii-fpu-bit-proven)
 - **2026-09-17 (ninth)** — [The XPRAM combo lever is closed, and a watch that had been lying by omission is fixed](#2026-09-17-lcii-xpram-closed)
 - **2026-09-17 (eighth)** — [Apple's ROM source becomes a first-class reference: the ProductInfo layout, the hwCfgFlags bit numbers, and three opaque words decoded](#2026-09-17-apple-rom-source-notes)
 - **2026-09-17 (seventh)** — [Apple shared one table entry between the LC and the LC II, so POM68K's VIA ID is right after all](#2026-09-17-lcii-shared-table)
@@ -1004,6 +1005,52 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-17-lcii-fpu-bit-proven"></a>
+## 2026-09-17 (tenth) — Proven: one bit stops the bare LC II, and with it clear the machine boots to the Finder
+
+Four hypotheses were closed by measurement today — PA0, the `$50FC0000` bus
+error, the record election, the XPRAM combo. The fifth attempt found the
+cause, and it is a single bit.
+
+**The faulting instruction, and the test in front of it.** The bomb is the
+second vector 11 of the boot (the first is the ROM's own FPU probe at
+`$A47CA8`, which works). It is System code in RAM:
+
+```
+    $CAB2   btst    #$4, $b22.w    ; HwCfgFlags bit 12 = hwCbFPU
+    $CAB8   beq     $caf6          ; no FPU -> take the other path
+    $CAC6   movea.l A7, A0         ; save SP, a trap may follow
+    $CAC8   F280 3017              ; the FPU instruction -> bombs
+```
+
+The System asks exactly one question — is `hwCbFPU` set? — and only then
+executes an FPU instruction. So `POM68K_LCII_CLRFPU=1` holds that bit clear
+once the ROM has stored it, and the **bare 68030 LC II reaches the Finder**
+on the clean System 7.1 reference: 748 SCSI commands, menu bar 0.06, desktop
+0.46. Nothing else about the machine needed changing.
+
+**And the election genuinely cannot avoid the bit.** Read straight out of our
+own dump, both candidate records carry `VIAIdMask` and `VIAIdMatch` of
+**zero** — Apple's own idiom for "don't check any VIA bits, anything with
+this decoder matches" — and both carry decoder kind `$07`. `$3BA6` (LC,
+`$DC00`, FPU) comes first and therefore wins unconditionally; `$3BE6` (the
+LC II-shaped `$FD` record, `$CC00`, no FPU) is unreachable by that path. No
+VIA identity POM68K could present would change it, which retires the last
+trace of the 2026-09-17 (sixth) idea for good.
+
+**What is not done.** The knob is a guest-memory poke, non-conformant HLE by
+this project's own rules, and nothing in the product does it — shipping it
+would be inventing hardware to pass a gate. The open question is now as small
+as it can get: by what mechanism does a real FPU-less LC II avoid setting
+`hwCbFPU`? Two named candidates remain — the `DynamicBoxFlag` that
+`StartInit.a` mentions, and a distinct decoder kind found by `FindDecoder`'s
+bus-error probing.
+
+Along the way a second instrument was repaired: the `FLINE_FRAME` dump read
+the exception frame's format/vector word at `+$4` instead of `+$6`, so it had
+been printing the faulting PC's own low word as a frame format. Both frames
+now decode as format 0, vector 11, which is what a 68030 F-line stacks.
 
 <a id="2026-09-17-lcii-xpram-closed"></a>
 ## 2026-09-17 (ninth) — The XPRAM combo lever is closed, and a watch that had been lying by omission is fixed
