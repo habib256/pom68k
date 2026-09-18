@@ -44,6 +44,8 @@ POM68K_BERR	test	owner:tests/centris650_boot_etalon.cpp
 POM68K_BEYOND	test	owner:tests/BeyondBoot.h
 POM68K_BEYOND_IMG	test	owner:tests/AssetFingerprint.h
 POM68K_BOXID	test	owner:tests/iivx_boot_etalon.cpp
+POM68K_BRIDGE_KEEP	test	owner:tests/q605_afp_bridge_probe.cpp
+POM68K_BRIDGE_SHARE	test	owner:tests/q605_afp_bridge_probe.cpp
 POM68K_CACHE_BOOST	product	gate:lcii_boot_etalon
 POM68K_CDINSTALL_DISCOVER	test	owner:tests/q605_cdinstall_etalon.cpp
 POM68K_CDINSTALL_MENU	test	owner:tests/q605_cdinstall_etalon.cpp

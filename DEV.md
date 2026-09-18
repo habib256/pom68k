@@ -2149,6 +2149,11 @@ one gets re-measured without paying for the mount again),
 `POM68K_AFP_OUTAGE` = `data|resource` (`q605_afp_live_etalon`: interrupt AFP
 during the selected fork's first copy, then exercise guest reconnection and
 a fresh two-fork copy; unset keeps the clean-disconnect scenario),
+`POM68K_BRIDGE_SHARE` (`q605_afp_bridge_probe`: the folder the REAL server
+serves — `afpd`'s own `AppleVolumes.default`, default `input` — since that
+probe's proof is what appears in it) and `POM68K_BRIDGE_KEEP` = `1` (leave
+what the guest created on that share; without it the probe puts someone's
+real folder back as it found it),
 `POM68K_TEST_AGENT` = `1` (`tests/AgentBootProbe.h`: a boot etalon installs
 « POM68K Disques » into its boot volume's Startup Items in memory and, on top
 of its Finder verdict, requires the agent's first mailbox poll and a blank
