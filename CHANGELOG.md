@@ -456,6 +456,20 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-18 (release)** — [0.3.0](#2026-09-18-release-030)
+- **2026-09-18 (later)** — [A Quadra 630 boots from its IDE disk, with nothing on the SCSI bus](#2026-09-18-ide-boots)
+- **2026-09-18** — [Mac OS formats and mounts a disk on the Quadra 630's IDE port. The blocker was one missing line: the drive raised its interrupt and the machine never heard it](#2026-09-18-ide-mounts)
+- **2026-09-17 (twenty-fourth)** — [The ATA driver is not a missing dump: it is inside Drive Setup, on volumes we already have. What blocks the IDE boot is an interrupt line](#2026-09-17-ata-driver-not-missing)
+- **2026-09-17 (twenty-third)** — [Five copies of the disk-bay bindings became one, and the one is under a gate](#2026-09-17-disk-bay-bindings)
+- **2026-09-17 (twenty-second)** — [The GUI's save-state pass now reaches the file, not just the slot](#2026-09-17-gui-savestate-pass)
+- **2026-09-17 (twenty-first)** — [The IDE port is reachable from the product, not only from a test](#2026-09-17-ata-knob)
+- **2026-09-17 (twentieth)** — [The Quadra 630's IDE port has a drive on it now, and the ROM tells us exactly what a bootable ATA disk must carry](#2026-09-17-ata-target)
+- **2026-09-17 (nineteenth)** — [The last CDDA case: a disc whose data track is not the first, and an eject that was not emptying the drive](#2026-09-17-cdda-cd-extra)
+- **2026-09-17 (eighteenth)** — [CDDA is done: Mac OS 8.1 mounts a synthesized audio CD and plays it by itself, and the last missing piece was a READ TOC format we refused on principle](#2026-09-17-cdda-consumer)
+- **2026-09-17 (seventeenth)** — [Building a consumer gate for CD audio found two defects first: an audio CD would not mount at all, and every real cue sheet was read two seconds early](#2026-09-17-cdda-fifth-stage)
+- **2026-09-17 (sixteenth)** — [Every board can play a CD now, the volume knob works, and the cost was moved off the 68000's hottest loop](#2026-09-17-cdda-fourth-stage)
+- **2026-09-17 (fifteenth)** — [CD audio reaches the speaker, and the plan it was written against was wrong: CD-DA never goes through the sound chip](#2026-09-17-cdda-third-stage)
+- **2026-09-17 (fourteenth)** — [CD audio, second stage: the transport runs on machine time, and READ SUBCHANNEL reports a position that really moves](#2026-09-17-cdda-second-stage)
 - **2026-09-17 (thirteenth)** — [CD audio, first stage: the disc is synthesized, the whole cue sheet is read, and the TOC finally admits its audio tracks](#2026-09-17-cdda-first-stage)
 - **2026-09-17 (twelfth)** — [The Quadra 630's ATA port has an observed consumer: the guest resets it and polls Status 3 994 times every boot](#2026-09-17-q630-ata-probe)
 - **2026-09-17 (eleventh)** — [The bare LC II is closed: POM68K is faithful, and this ROM has no path that clears the FPU bit](#2026-09-17-lcii-closed)
