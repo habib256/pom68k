@@ -1,0 +1,40 @@
+sniffing 239.192.76.84:1954 for 90s
+23:33:13 tag=43D4D32C 25->128 [local] NBP sock 254->2 BrRq x1 | =:AFPServer@* at 2.25:254
+23:33:13 tag=8BF64E50 128->255 [local] NBP sock 2->2 LkUp x1 | =:AFPServer@* at 2.25:254
+23:33:13 tag=8BF64E50 128->25 [local] NBP sock 2->254 LkUp-Reply x1 | POMTEST:AFPServer@POM68K at 2.128:132
+23:33:14 tag=43D4D32C 25->128 [local] NBP sock 254->2 BrRq x1 | =:AFPServer@* at 2.25:254
+23:33:14 tag=8BF64E50 128->255 [local] NBP sock 2->2 LkUp x1 | =:AFPServer@* at 2.25:254
+23:33:14 tag=8BF64E50 128->25 [local] NBP sock 2->254 LkUp-Reply x1 | POMTEST:AFPServer@POM68K at 2.128:132
+23:33:15 tag=43D4D32C 25->254 [local] NBP sock 254->2 BrRq x1 | =:AFPServer@* at 1.25:254
+23:33:15 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | =:AFPServer@* at 1.25:254
+23:33:15 tag=0000485A 254->25 [2.125->1.25] NBP sock 2->254 LkUp-Reply x1 | POM68K:AFPServer@* at 2.125:128
+23:33:15 tag=8BF64E50 128->25 [local] NBP sock 2->254 LkUp-Reply x1 | POMTEST:AFPServer@POM68K at 2.128:132
+23:33:16 tag=43D4D32C 25->254 [local] NBP sock 254->2 BrRq x1 | =:AFPServer@* at 1.25:254
+23:33:16 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | =:AFPServer@* at 1.25:254
+23:33:16 tag=0000485A 254->25 [2.125->1.25] NBP sock 2->254 LkUp-Reply x1 | POM68K:AFPServer@* at 2.125:128
+23:33:16 tag=8BF64E50 128->25 [local] NBP sock 2->254 LkUp-Reply x1 | POMTEST:AFPServer@POM68K at 2.128:132
+23:33:16 tag=43D4D32C 25->254 [1.25->2.128] AEP sock 252->4
+23:33:26 tag=43D4D32C 25->254 [1.25->2.128] ATP sock 252->132
+23:33:30 tag=43D4D32C 25->128 [local] ATP sock 252->132
+23:33:30 tag=8BF64E50 128->25 [local] ATP sock 132->252
+23:34:18 tag=43D4D32C 25->254 [1.25->2.128] ATP sock 251->132
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 251->132
+23:34:22 tag=8BF64E50 128->25 [local] ATP sock 132->251
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 251->132
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->132
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=8BF64E50 128->25 [local] ATP sock 130->252
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=8BF64E50 128->25 [local] ATP sock 130->252
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=8BF64E50 128->25 [local] ATP sock 130->252
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=8BF64E50 128->25 [local] ATP sock 130->252
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+23:34:22 tag=8BF64E50 128->25 [local] ATP sock 130->252
+23:34:22 tag=43D4D32C 25->128 [local] ATP sock 252->130
+56 datagrams seen

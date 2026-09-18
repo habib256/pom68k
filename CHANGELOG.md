@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"the LToUDP cable is our own format, so interop is assumed" (TODO § Services réseau since the LToUDP work) — it is now demonstrated: Mini vMac 37.03's guest mounted a volume served by POM68K's own AppleTalk stack and read a file from it, node to node, no router in the path** → [2026-09-18 (eighth) — Mini vMac mounts a POM68K volume…](#2026-09-18-minivmac-interop)
 - **"the Chooser lists no file server, so the bridge is broken" (2026-09-18) — every frame was on the cable with a verified DDP checksum; what dropped them was the guest's own half-duplex receiver window, and the Rx queue that exists for exactly that was armed only for the in-process hub** → [2026-09-18 (seventh) — A real AppleShare server answers the guest…](#2026-09-18-bridge-session)
 - **"the second divergence between hosts" — `q605_afp_live_etalon`'s hosts never disagreed: x86-64 interp, x86-64 `x64` and AArch64 interp are identical at all 22 boundaries, and the AArch64 `a64` default is the arm that leaves the oracle at boundary 14** → [2026-09-18 (sixth) — The AFP live trace has no difference between hosts…](#2026-09-18-afp-a64-gap)
 - **"x64 default and interpreter — both fail identically" (2026-09-12), and "mounting opens the volume's window" (the floppy leg since 2026-08-05) — the rig never reads the engine knob, so both runs were the interpreter; and the mount paints an icon, not a window, so Cmd-N had been creating the folder in the boot volume's Games window** → [2026-09-18 (fourth) — `lcii_floppy_etalon`'s red on x86-64 was never the floppy…](#2026-09-18-floppy-window)
@@ -459,6 +460,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-18 (eighth)** — [Mini vMac mounts a POM68K volume: the LToUDP interop goes both ways, and the hub's network number turns out to be asserted rather than learned](#2026-09-18-minivmac-interop)
 - **2026-09-18 (seventh)** — [A real AppleShare server answers the guest: netatalk mounts, the Finder copies both forks, and the wire was never the problem](#2026-09-18-bridge-session)
 - **2026-09-18 (sixth)** — [The AFP live trace has no difference between hosts: two engines on two machines agree to the cycle, and the a64 backend is the one that steps away from the oracle](#2026-09-18-afp-a64-gap)
 - **2026-09-18 (fifth)** — [The last corner of the GUI that only existed inside a GL context is behind a seam, and the six copies of it had drifted three ways](#2026-09-18-frame-upload)
@@ -1028,6 +1030,57 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-18-minivmac-interop"></a>
+## 2026-09-18 (eighth) — Mini vMac mounts a POM68K volume: the LToUDP interop goes both ways, and the hub's network number turns out to be asserted rather than learned
+
+`docs/APPLETALK.md` has called our cable "the Mini vMac / TashTalk LToUDP
+format" since it was written. That was a claim about a wire format; this is
+the demonstration, at the level that settles it: **a foreign emulator's guest
+mounted a volume served by POM68K's own AppleTalk stack, and read a file from
+it.**
+
+Mini vMac **37.03** builds with LocalTalk over UDP out of Gryphel's own
+source (`./setup_t -t lx64 -m Plus -lt -lto udp`); its `src/LTOVRUDP.h`
+joins 239.192.76.84:1954 and tags each datagram with its pid, which is the
+wire `src/LtoUdp.cpp` already speaks. Its guest — System 7.0 on a Plus,
+under Xvfb, driven with xdotool — and a POM68K Plus ran side by side with
+the day's netatalk bridge still up: three AppleTalk nodes on one virtual
+cable.
+
+**Both directions, on the wire and on the screen.** Two servers answered the
+same Chooser lookup:
+
+> `128->25 [local]       LkUp-Reply | POMTEST:AFPServer@POM68K at 2.128:132`
+> `254->25 [2.125->1.25] LkUp-Reply | POM68K:AFPServer@*      at 2.125:128`
+
+The first is ours, replying directly on the segment; the second is netatalk
+through the router. They are one name apart because both default to
+"POM68K" and the AppleTalk window's own form renamed ours to POMTEST live —
+`Appliquer`, no restart — which is also that control's first exercise against
+a foreign client. Mini vMac's guest then logged in as Guest, mounted the
+volume `AppleShare`, opened it and listed its seven items, `HELLO.txt`
+included. The session is node to node, no router in the path (`25->128
+[local]` ×10, `128->25` ×5), and POM68K's own window agreed in its own
+words: *Sessions : 1 (volume monté) • utilisateur : Guest*, *Dernière
+commande : GetVolParms*, *Invité vu : 25*.
+
+**What it exposed.** `AtalkHub::attach` configures the stack as **net 2,
+node 128** — hard-coded, whatever the segment is. Here the LToUDP segment is
+net 1 (TashRouter seeds it) and netatalk's TAP segment is net 2, so two
+different networks carried the same number and our hub sat on the wrong one
+by construction. Nothing failed — NBP replies carry the address and node 128
+is reachable locally — but the trace shows the cost: Mini vMac's first
+connection attempt went to `25->125 local`, trying netatalk's node number on
+the local wire, before retrying through the router. Recorded as open work
+(TODO § Services réseau): the hub should learn its net from RTMP instead of
+asserting one, and that wants a gate of its own.
+
+Evidence, including the build recipe and the one trap in it — the setup
+tool's output must not be named `Makefile`, because the script rewrites that
+name while bash is reading it: `scratchpad/2026-09-18/minivmac/`.
 
 ---
 
