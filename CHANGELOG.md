@@ -1042,6 +1042,17 @@ taken between an ATA command and its data resumes there.
 Since 0.2.0 (2026-09-15): 75 commits, and the gate registry stands at 349 on
 this host.
 
+**Cut twice.** The first dry run of `release.yml` on this commit built Linux
+x86-64, Linux AArch64 and macOS green and failed on Windows:
+`CrtEffectStack.cpp` reads back four pieces of GL state to leave the host's
+context as it found it — `GL_ACTIVE_TEXTURE`, `GL_ARRAY_BUFFER_BINDING`,
+`GL_CURRENT_PROGRAM`, `GL_VERTEX_ARRAY_BINDING` — and none of them is in
+OpenGL 1.1. Mesa's `<GL/gl.h>` pulls `<GL/glext.h>` in by default, so Linux
+never noticed; the Windows SDK's header stops at 1.1, and the release job is
+the only one that compiles with it. Added to `GlEntryPoints.h` beside the
+constants that were already there for exactly this reason. That is what the
+dry run is for, and why 0.2.0's tag says the same thing.
+
 ---
 
 <a id="2026-09-18-ide-boots"></a>

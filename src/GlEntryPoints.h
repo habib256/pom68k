@@ -58,6 +58,23 @@ inline bool load() { return true; }
 #ifndef GL_RGBA8
 #  define GL_RGBA8 0x8058
 #endif
+// The four the CRT pass reads back to leave the host's GL state exactly as
+// it found it. Mesa's <GL/gl.h> pulls <GL/glext.h> in by default, so Linux
+// never noticed they were missing here; the Windows SDK's gl.h stops at 1.1
+// and the release build is the only job that compiles with it (found on the
+// 0.3.0 dry run, 2026-09-18).
+#ifndef GL_ACTIVE_TEXTURE
+#  define GL_ACTIVE_TEXTURE 0x84E0          // 1.3
+#endif
+#ifndef GL_ARRAY_BUFFER_BINDING
+#  define GL_ARRAY_BUFFER_BINDING 0x8894    // 1.5
+#endif
+#ifndef GL_CURRENT_PROGRAM
+#  define GL_CURRENT_PROGRAM 0x8B8D         // 2.0
+#endif
+#ifndef GL_VERTEX_ARRAY_BINDING
+#  define GL_VERTEX_ARRAY_BINDING 0x85B5    // 3.0
+#endif
 
 namespace pom68k::gl {
 typedef char GLcharT;
