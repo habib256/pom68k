@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 586 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 587 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -14,7 +14,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 95 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
 | [Sound](#sound) | 14 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 24 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 25 |
 | [Save states](#save-states) | 8 |
 | [Machine bring-ups](#machine-bring-ups) | 69 |
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
@@ -375,6 +375,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-16 (twentieth)** — [The server date's value moves the guest's post-reconnect timing: what a moving AFP date changed, measured in cycles](CHANGELOG.md#2026-09-16-afp-date-mechanism)
 - **2026-09-16 (twenty-fifth)** — [TCP window scaling in MacIP is ruled the way the AFP subset was: a counter first, code only on a consumer](CHANGELOG.md#2026-09-16-macip-window-scale-ruled)
 - **2026-09-18 (seventh)** — [A real AppleShare server answers the guest: netatalk mounts, the Finder copies both forks, and the wire was never the problem](CHANGELOG.md#2026-09-18-bridge-session)
+- **2026-09-19** — [A System 7.0 client on the AFP server: zero refused opcodes against a second client generation, and one absurd size that belongs to the client](CHANGELOG.md#2026-09-19-afp-system7)
 
 ## Save states
 

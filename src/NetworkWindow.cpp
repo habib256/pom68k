@@ -364,6 +364,18 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
                 snapshot.afp.lastCmd.empty() ? "-"
                                              : snapshot.afp.lastCmd.c_str(),
                 snapshot.afp.bytesRead, snapshot.afp.bytesWritten);
+    // A refused command is the one thing a guest cannot tell you about: the
+    // client swallows kErrNoOp and simply does less. The live gate has
+    // printed this count since it existed; the window never did, so a
+    // session with an older System — a Mac OS 7 client asks for things 8.1
+    // does not — could quietly lose a feature with nothing said. Silent at
+    // zero, which is where every session so far has sat.
+    if (snapshot.afp.refusedCount)
+        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1),
+                           "Commandes refusées : %ld   ·   dernière : %s",
+                           snapshot.afp.refusedCount,
+                           snapshot.afp.lastRefused.empty()
+                               ? "-" : snapshot.afp.lastRefused.c_str());
 
     ImGui::SeparatorText("Imprimante (LaserWriter / PAP)");
     bool papOn = snapshot.cfg.pap;

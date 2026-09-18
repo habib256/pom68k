@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"the AppleShare server is proven, it serves Mac OS 8.1" — one client generation is one client: a System 7.0 Finder mounted, enumerated, got info and duplicated both forks with `refusedCount` at zero, and the absurd size it displays is its own, reproduced against netatalk** → [2026-09-19 — A System 7.0 client on the AFP server…](#2026-09-19-afp-system7)
 - **"the in-process stack seeds net 2" (since AtalkStack was written) — a seed is a claim about a segment, and on a shared cable it was someone else's: it now adopts the number a foreign router announces, and stops beaconing while that router is there** → [2026-09-18 (ninth) — The stack stops asserting a network number it does not own…](#2026-09-18-learned-net)
 - **"the LToUDP cable is our own format, so interop is assumed" (TODO § Services réseau since the LToUDP work) — it is now demonstrated: Mini vMac 37.03's guest mounted a volume served by POM68K's own AppleTalk stack and read a file from it, node to node, no router in the path** → [2026-09-18 (eighth) — Mini vMac mounts a POM68K volume…](#2026-09-18-minivmac-interop)
 - **"the Chooser lists no file server, so the bridge is broken" (2026-09-18) — every frame was on the cable with a verified DDP checksum; what dropped them was the guest's own half-duplex receiver window, and the Rx queue that exists for exactly that was armed only for the in-process hub** → [2026-09-18 (seventh) — A real AppleShare server answers the guest…](#2026-09-18-bridge-session)
@@ -461,6 +462,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-19** — [A System 7.0 client on the AFP server: zero refused opcodes against a second client generation, and one absurd size that belongs to the client](#2026-09-19-afp-system7)
 - **2026-09-18 (ninth)** — [The in-process stack stops asserting a network number it does not own: it learns one from the router that owns the segment](#2026-09-18-learned-net)
 - **2026-09-18 (eighth)** — [Mini vMac mounts a POM68K volume: the LToUDP interop goes both ways, and the hub's network number turns out to be asserted rather than learned](#2026-09-18-minivmac-interop)
 - **2026-09-18 (seventh)** — [A real AppleShare server answers the guest: netatalk mounts, the Finder copies both forks, and the wire was never the problem](#2026-09-18-bridge-session)
@@ -1032,6 +1034,45 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-19-afp-system7"></a>
+## 2026-09-19 — A System 7.0 client on the AFP server: zero refused opcodes against a second client generation, and one absurd size that belongs to the client
+
+`TODO`'s jalon 3 asks for "zéro opcode refusé sur les sessions live", and
+every live session so far had the same client — Mac OS 8.1's AppleShare
+3.7.4. A criterion measured against one client is a statement about that
+client. Mini vMac put a **System 7.0** Finder on the cable, seven years
+older and the first of its generation this server has answered, and the
+whole route was walked with it: mount as Guest, enumerate, Get Info, and a
+Duplicate that copied both forks (`POM68KProber.bin copy`, 65 664 B, landed
+on the host beside its `.AppleDouble` sidecar). The server's own count at
+the end: *lu 65 664 o / écrit 98 304 o*, **`refusedCount` 0**.
+
+The watch list had been drawn up first, by diffing our dispatch against the
+AFP 2.x command set: `FPGetForkParms` (13), `FPMapID`/`FPMapName` (21/22),
+`FPLoginCont` (19), `FPChangePassword` (36) are not implemented and would
+have counted as refusals. The System 7.0 Finder asked for none of them.
+`FPOpenDir` (25) stays correctly absent — the server advertises fixed DIDs
+(volume signature 2), which forbids the call.
+
+**The window now says when a command is refused.** `AfpServer` has counted
+refusals since it existed and `q605_afp_live_etalon` prints them, but the
+AppleTalk window never did: a session with an older System could lose a
+feature silently. The line is silent at zero, which is where both client
+generations leave it — and it is how this measurement was read.
+
+**One oddity, and it is not ours.** Get Info on a 65 664-byte file reports
+"Size: **1,024 MB on disk** (65,664 bytes used)". That looked like a
+malformed parameter reply until the same client, on the same desktop, was
+pointed at netatalk's volume: `harry.bin`, 6 413 568 B, "1,030 MB on disk".
+Both volumes also report the same header, *zero K in disk, 2,047.9 MB
+available*. It is the System 7.0 Finder's arithmetic on a 2 GB AFP volume,
+reproduced by the reference implementation — recorded so the next person
+who sees it does not go looking for it in our code.
+
+Evidence: `scratchpad/2026-09-19/afp-system7/`.
 
 ---
 

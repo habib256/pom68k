@@ -39,8 +39,13 @@ assets ; version 0.3. Travail : § Preuve, § Bloqué (runner, locksteps
 Windows).
 
 **Jalon 3 — Les services réseau clos.** Sortie : session réelle sur bridge
-externe verte, zéro opcode refusé sur les sessions live, les deux
-mécanismes expliqués ou tranchés. Travail : § Services réseau.
+externe verte **(faite le 2026-09-18 : netatalk 2.4.9, volume monté, copie
+deux-fourches vérifiée sur l'hôte)**, zéro opcode refusé sur les sessions
+live **(mesuré le 2026-09-19 sur DEUX générations de client : Mac OS 8.1 et
+System 7.0 sous Mini vMac — `refusedCount` reste à 0, montage, énumération,
+Get Info et duplication deux-fourches)**, les deux mécanismes expliqués ou
+tranchés **(reste la bisection du bras `a64` à la frontière 14, qui demande
+un hôte AArch64)**. Travail : § Services réseau.
 
 **Jalon 4 — Fidélité matérielle et médias.** Sortie : un jeu CD avec audio
 joué de bout en bout, la divergence LC II attribuée, N profils sous etalon
