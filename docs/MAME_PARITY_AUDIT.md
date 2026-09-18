@@ -164,9 +164,9 @@ polarité enable — tout à parité. **Aucun bug-suspect.**
 - ~~**Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo)~~ — **FINDING FAUX,
   retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:179`,
   `MacIIMemory.h:215`, `IIfxMemory.h:120`, `MscMemory.h:188`, et les huit autres) et **chacun des
-  runners** câble la paire (`GuiRunnerToby.h:52` / `:229`, `GuiRunnerV8.h:92` / `:255`,
-  `GuiRunnerSonora.h:86` / `:244`, `GuiRunnerDafb.h:97` / `:248`, `GuiRunnerDuo.h:68` / `:200`, et les
-  compacts à `PlatformCompact.cpp:147` / `GuiRunnerCompact.h:136`). Le fichier est
+  runners** câble la paire (`GuiRunnerToby.h:54` / `:210`, `GuiRunnerV8.h:92` / `:238`,
+  `GuiRunnerSonora.h:90` / `:229`, `GuiRunnerDafb.h:122` / `:248`, `GuiRunnerDuo.h:75` / `:197`, et les
+  compacts à `PlatformCompact.cpp:156` / `GuiRunnerCompact.h:133`). Le fichier est
   `<image>.<tag-profil>.pram`. Ce qui varie est le **magasin**, pas la
   persistance : `Rtc` discret, XPRAM Egret/Cuda, ou RAM interne + SRAM du PG&E sur le Duo. L'erreur venait
   d'une ligne périmée de la table `CLAUDE.md` et a été recopiée dans `SIMPLIFICATIONS_REVIEW.md` (F1) —

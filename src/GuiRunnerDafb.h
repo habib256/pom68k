@@ -196,12 +196,9 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
 
         int hres = 0;
         int vres = 0;
-        if (machine.latchFrame(context.framebuffer, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, context.texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE,
-                         context.framebuffer.data());
-        }
+        if (machine.latchFrame(context.framebuffer, hres, vres))
+            uploadFrameTexture(GlTextureHost{}, context.texture,
+                               context.framebuffer, hres, vres);
 
         services.shell().drawMachineMenu(context.spec.snap, context.window);
 

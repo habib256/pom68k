@@ -457,6 +457,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-18 (fifth)** — [The last corner of the GUI that only existed inside a GL context is behind a seam, and the six copies of it had drifted three ways](#2026-09-18-frame-upload)
 - **2026-09-18 (fourth)** — [`lcii_floppy_etalon`'s red on x86-64 was never the floppy: the .Sony driver refuses nothing, and what differed between hosts is which window was frontmost when Cmd-N arrived](#2026-09-18-floppy-window)
 - **2026-09-18 (release)** — [0.3.0](#2026-09-18-release-030)
 - **2026-09-18 (later)** — [A Quadra 630 boots from its IDE disk, with nothing on the SCSI bus](#2026-09-18-ide-boots)
@@ -1023,6 +1024,71 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-18-frame-upload"></a>
+## 2026-09-18 (fifth) — The last corner of the GUI that only existed inside a GL context is behind a seam, and the six copies of it had drifted three ways
+
+`TODO` § Preuve had one line left on the GUI: "the framebuffer upload, the
+only piece still unreachable outside GL". It is reachable now, and closing
+it read the six copies side by side for the first time.
+
+**What the copies disagreed about.** Every family runner latched a frame
+and called `glTexImage2D` itself. Two of the six guarded the geometry
+(`frameWidth > 0 && frameHeight > 0`) and four did not. One uploaded
+`GL_RGBA` where five uploaded `GL_BGRA` — which has never shown, because
+that one is the compact runner and `MacVideo` writes `$FF000000` or
+`$FFFFFFFF` per pixel, where both orders are the same four bytes; it would
+have shown the day a compact gained a colour path. And none of the six
+checked that the buffer holds the pixels the geometry promises, which is
+the one that has no diagnostic at all: `glTexImage2D` takes a bare pointer
+and a geometry and reads w × h × 4 bytes from it.
+
+**One function.** `uploadFrameTexture` (`GuiScreen.h`) decides and copies;
+`GlTextureHost` (new `src/GlTextureHost.h`) makes the two driver calls and
+is the only place in the GUI that sends a frame to OpenGL. Same seam as
+`ScreenInput::frame` above it: the runners pass the real host, the gate
+passes a fake. `gui_machine_window_test` now seeds its screen texture
+**through the product's own upload**, so the check that has been reading
+back "white | red where the window put them" since 2026-09-16 runs through
+the shipped path, and four new checks pin the refusals — an empty frame, a
+zero geometry, and a frame shorter than its own geometry.
+
+**The gate was run against the defect.** With the size guard removed and
+nothing else changed, the gate does not fail — it **segfaults**, on the
+first empty frame. In the product that same read is `glTexImage2D` taking
+700 416 bytes off the heap and drawing them.
+
+**The budget refused the growth, and it was right.** `GuiShellCommon.h` sat
+exactly on its 137-line ceiling, so the driver side did not belong there:
+it became its own header, the `GL_BGRA` shim moved with its only user, and
+the ceiling FELL to 132. `docs_test` now pins the shape — no runner calls
+the driver itself — the way it pins `diskBaysHostFor`.
+
+**And it caught a second thing.** Shortening six runners moved every
+`file:line` citation below the edit; `docs_test` refused the one that ran
+off the end of `GuiRunnerV8.h`. Repairing them by hand found that five of
+the `loadPram`/`savePram` pairs cited across `LLE_VS_HLE.md`,
+`MAME_PARITY_AUDIT.md` and `SIMPLIFICATIONS_REVIEW.md` had already drifted
+off their lines — three of them pointing at a comment, a blank line and a
+`machine.start()`. All six pairs are now measured: Toby 54/210, V8 92/238,
+Sonora 90/229, DAFB 122/248, Duo 75/197, and the compacts at
+`PlatformCompact.cpp:156` / `GuiRunnerCompact.h:133`. A citation that lands
+inside its file is gated; a citation that lands on the right LINE is not.
+
+**The two lines no gate here can execute** — `glBindTexture` and
+`glTexImage2D` — got the dated manual pass the milestone allows instead:
+both runners launched under Xvfb on software GL and photographed at the
+Finder, the Macintosh Plus (the compact, the one whose source format moved)
+and the LC II. `scratchpad/2026-09-18/frame-upload/`.
+
+With this, `TODO` § Preuve keeps only the Windows locksteps, which no host
+here can run — and jalon 2's first exit criterion, every window under a
+gate, is met. Green: `gui_smoke_test`, `gui_relaunch_smoke_test`,
+`gui_windows_test`, `gui_machine_window_test`, `gui_disk_bindings_test`,
+`machinehost_test`, `docs_test`, `file_size_budget_test`, and the GUI
+application builds.
 
 ---
 

@@ -16,7 +16,9 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace pom68k::gui {
 
@@ -42,6 +44,41 @@ inline void screenWindowBegin(const GuiDisplayState& display, const char* title)
     }
     pom68k::dockLayoutScreenWindow(title);
     ImGui::Begin(title);
+}
+
+// ── The frame upload, with the driver held at arm's length ──────────────
+// The last piece of the GUI that lived only inside a GL context, and the
+// sixth copy of one block: every family runner latched a frame and called
+// glTexImage2D itself, and the copies had drifted apart. Two guarded the
+// geometry (`w > 0 && h > 0`) and four did not; one uploaded `GL_RGBA`
+// where five uploaded `GL_BGRA` — indistinguishable only because a compact
+// publishes greyscale, where both orders are the same four bytes; and none
+// of them checked that the buffer holds the pixels the geometry promises.
+// That last one has no diagnostic when it is wrong: glTexImage2D takes a
+// bare pointer and reads w × h × 4 bytes from it.
+//
+// `Host` is the driver side — `GlTextureHost` in GuiShellCommon.h for the
+// product, a recording fake in gui_machine_window_test. Same seam as
+// ScreenInput::frame above.
+
+// A frame may be uploaded when the driver can read exactly what it is told
+// to read: a positive geometry, and a buffer that holds it.
+inline bool frameUploadable(const std::vector<std::uint32_t>& fb,
+                            int w, int h) {
+    return w > 0 && h > 0 &&
+           fb.size() >= std::size_t(w) * std::size_t(h);
+}
+
+// True when the frame reached the texture — the two runners that draw the
+// screen only on a fresh frame test it exactly as they tested their own
+// condition before.
+template <class Host>
+bool uploadFrameTexture(Host host, unsigned int texture,
+                        const std::vector<std::uint32_t>& fb, int w, int h) {
+    if (!frameUploadable(fb, w, h)) return false;
+    host.bindTexture(texture);
+    host.uploadBgra(w, h, fb.data());
+    return true;
 }
 
 // An emulated screen is an InvisibleButton with the image drawn over it.

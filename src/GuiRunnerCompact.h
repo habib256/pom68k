@@ -78,11 +78,9 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
         int frameWidth = c.spec.initialWidth;
         int frameHeight = c.spec.initialHeight;
         std::vector<std::uint32_t> framebuffer;
-        if (machine.latchFrame(framebuffer, frameWidth, frameHeight)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frameWidth, frameHeight,
-                         0, GL_RGBA, GL_UNSIGNED_BYTE, framebuffer.data());
-        }
+        if (machine.latchFrame(framebuffer, frameWidth, frameHeight))
+            uploadFrameTexture(GlTextureHost{}, c.tex, framebuffer,
+                               frameWidth, frameHeight);
 
         c.services.shell().drawMachineMenu(c.machine.state.kind, c.window);
         {

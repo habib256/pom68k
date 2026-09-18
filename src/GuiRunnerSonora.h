@@ -179,11 +179,8 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
 #endif
 
         int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
+        if (c.m.latchFrame(c.fb, hres, vres))
+            uploadFrameTexture(GlTextureHost{}, c.tex, c.fb, hres, vres);
 
         services.shell().drawMachineMenu(c.spec.snap, c.window);
 

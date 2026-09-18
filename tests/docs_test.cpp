@@ -1302,6 +1302,24 @@ int main() {
               shellHeaderSource.find("diskBaysHostFor") != std::string::npos,
           "Duo shell preserves no-floppy and staged-CD capabilities");
 
+    // The frame upload was the last corner of the GUI that existed only
+    // inside a GL context, and the sixth copy of one block (2026-09-18).
+    // The runners now share `uploadFrameTexture` (GuiScreen.h, driver-free
+    // and therefore gated by gui_machine_window_test) and the driver call
+    // lives once, in `GlTextureHost`. What that gate cannot see is a runner
+    // that goes back to calling the driver itself, which is this line.
+    {
+        std::string runnersOnly;
+        for (const std::string& runner : guiRunners) runnersOnly += slurp(runner);
+        check(runnersOnly.find("glTexImage2D") == std::string::npos &&
+                  runnersOnly.find("uploadFrameTexture") != std::string::npos &&
+                  slurp(guiScreenHeader).find("uploadFrameTexture") !=
+                      std::string::npos &&
+                  slurp(testasset::find("src/GlTextureHost.h"))
+                      .find("glTexImage2D") != std::string::npos,
+              "the six runners upload frames through one function, not six copies");
+    }
+
     // The build graph follows the same one-responsibility rule as the GUI.
     const std::size_t componentInclude =
         cmakeRootSource.find("include(cmake/Pom68kComponentGates.cmake)");

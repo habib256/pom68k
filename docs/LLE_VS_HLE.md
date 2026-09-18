@@ -95,7 +95,7 @@ placed. `decode()` (whole frame, state as of now) stays for stills and tests.
 **Converted — all nine**: `V8Video`, `SonoraVideo`, `VaspVideo`, `RbvVideo`,
 `TobyVideo` (its own CRTC clock), `Se30Video` (no CRTC of its own — it rides
 `MacIIMemory`'s 60 Hz accumulator), `Dafb` and `Valkyrie` (both through the
-one `DafbMachine` template and GUI lifecycle — `GuiRunnerDafb.h:26-256`,
+one `DafbMachine` template and GUI lifecycle — `GuiRunnerDafb.h:26-253`,
 four wrapper instantiations at `PlatformDafb.cpp:427-578`
 covering **thirteen** profiles: Q605×3, Centris×5, Q700×3, Q630×2), and
 `MacVideo`.
@@ -1174,11 +1174,11 @@ trace tools, PRAM file persistence, LToUDP peer bridging, `FloppySound.*`.
 old "absent on the compacts, Mac II, IIfx and Duo" claim, which also reached
 `MAME_PARITY_AUDIT.md` § 2.2 and `SIMPLIFICATIONS_REVIEW.md` F1, was false).
 Every `*Memory` declares `loadPram`/`savePram` and every GUI lifecycle wires
-both (the Mac II/IIfx pair at `GuiRunnerToby.h:52` / `GuiRunnerToby.h:54`; the
-four DAFB profiles at `GuiRunnerDafb.h:122` / `GuiRunnerDafb.h:122`, and the three
-Sonora-style platforms at `GuiRunnerSonora.h:86` / `GuiRunnerSonora.h:244`; V8 at
-`GuiRunnerV8.h:86` / `GuiRunnerV8.h:255`, and Duo at
-`GuiRunnerDuo.h:68` / `GuiRunnerDuo.h:200`); the file is
+both (the Mac II/IIfx pair at `GuiRunnerToby.h:54` / `GuiRunnerToby.h:210`; the
+four DAFB profiles at `GuiRunnerDafb.h:122` / `GuiRunnerDafb.h:248`, and the three
+Sonora-style platforms at `GuiRunnerSonora.h:90` / `GuiRunnerSonora.h:229`; V8 at
+`GuiRunnerV8.h:92` / `GuiRunnerV8.h:238`, and Duo at
+`GuiRunnerDuo.h:75` / `GuiRunnerDuo.h:197`); the file is
 `<image>.<profile-tag>.pram`, profile-tagged so two profiles sharing a boot
 image do not share a battery (`GuiRunnerToby.h:46-50`). What varies is the
 **store**, not the persistence: a discrete `Rtc` (compacts, Mac II family,

@@ -11,6 +11,7 @@
 #include "GuiMachineControls.h"
 #include "MachineCatalog.h"
 #include "GuiSessionObjects.h"
+#include "GlTextureHost.h"
 #include "GuiDisplay.h"
 #include "GuiScreen.h"
 #include "GuiShellMenu.h"
@@ -39,12 +40,6 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-#endif
-
-#ifdef _WIN32
-#ifndef GL_BGRA
-#define GL_BGRA 0x80E1
-#endif
 #endif
 
 namespace pom68k::gui {

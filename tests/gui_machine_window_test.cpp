@@ -121,6 +121,27 @@ struct FakeHost {
     void setCursorCaptured(bool on) const { s->captured = on; s->captureCalls++; }
 };
 
+// The driver side of uploadFrameTexture (GuiScreen.h): GlTextureHost in
+// the product, here a recorder that also feeds the harness's own texture
+// store — so the pixels the runner would have sent through GL are the
+// pixels this window is then checked to draw.
+struct TextureCalls {
+    int binds = 0, uploads = 0;
+    unsigned int tex = 0;
+    int w = 0, h = 0;
+    std::uint32_t first = 0;
+};
+struct FakeTextureHost {
+    TextureCalls* calls;
+    headless::Context* ui = nullptr;
+    void bindTexture(unsigned int t) const { calls->binds++; calls->tex = t; }
+    void uploadBgra(int w, int h, const std::uint32_t* px) const {
+        calls->uploads++; calls->w = w; calls->h = h; calls->first = px[0];
+        if (ui) ui->setTexture(calls->tex, w, h,
+                               std::vector<std::uint32_t>(px, px + size_t(w) * size_t(h)));
+    }
+};
+
 constexpr std::uintptr_t kScreenTex = 0x1000;
 constexpr int kW = 512, kH = 342;
 constexpr std::uint32_t kWhite = 0xFFFFFFFFu, kRed = 0xFF0000FFu;
@@ -132,13 +153,47 @@ int main() {
     // The runner opens 1100x800; the dashboard's first position assumes it.
     headless::Context ui(1100, 800);
     pom68k::dockLayoutInit();   // what GuiWindowSession does before the first frame
-    // The emulated screen: left half white, right half red, 512x342 — a
-    // frame the runner would have uploaded under GL name 0x1000.
+    // The emulated screen: left half white, right half red, 512x342 — the
+    // frame a runner latches. It reaches the texture through the SAME call
+    // the six runners make (uploadFrameTexture), so the pixel check further
+    // down reads back what the product's upload put there.
+    TextureCalls texCalls;
     {
         std::vector<std::uint32_t> px(size_t(kW) * kH);
         for (int y = 0; y < kH; y++)
             for (int x = 0; x < kW; x++) px[size_t(y) * kW + x] = x < kW / 2 ? kWhite : kRed;
-        ui.setTexture(kScreenTex, kW, kH, std::move(px));
+        check(uploadFrameTexture(FakeTextureHost{&texCalls, &ui},
+                                 unsigned(kScreenTex), px, kW, kH),
+              "a published frame reaches the texture");
+        check(texCalls.binds == 1 && texCalls.uploads == 1 &&
+              texCalls.tex == unsigned(kScreenTex) &&
+              texCalls.w == kW && texCalls.h == kH && texCalls.first == kWhite,
+              "the upload carries the runner's texture name, the published "
+              "geometry and the published pixels");
+    }
+
+    // ── What the upload REFUSES ──────────────────────────────────────
+    // glTexImage2D takes a bare pointer and a geometry and reads w × h × 4
+    // bytes from it: a frame published shorter than its own geometry is an
+    // overread with no diagnostic anywhere. Four of the six runners had no
+    // guard at all and two guarded only the dimensions; the one function
+    // they now share refuses all three shapes before the driver sees them.
+    {
+        TextureCalls t;
+        const std::vector<std::uint32_t> none;
+        const std::vector<std::uint32_t> full(size_t(kW) * kH, kWhite);
+        const std::vector<std::uint32_t> shortOfIt(size_t(kW) * kH - 1, kWhite);
+        check(!uploadFrameTexture(FakeTextureHost{&t}, 7, none, kW, kH) &&
+              t.binds == 0, "an empty frame is not uploaded");
+        check(!uploadFrameTexture(FakeTextureHost{&t}, 7, full, 0, kH) &&
+              !uploadFrameTexture(FakeTextureHost{&t}, 7, full, kW, 0) &&
+              t.binds == 0, "a zero geometry is not uploaded");
+        check(!uploadFrameTexture(FakeTextureHost{&t}, 7, shortOfIt, kW, kH) &&
+              t.binds == 0,
+              "a frame shorter than its own geometry is refused, not read past");
+        check(uploadFrameTexture(FakeTextureHost{&t}, 7, full, kW, kH) &&
+              t.binds == 1 && t.uploads == 1 && t.tex == 7,
+              "and the frame that does hold its geometry goes through");
     }
 
     GuiSessionState state;

@@ -187,11 +187,9 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
 #endif
 
         int hres = 0, vres = 0;
-        if (machine.latchFrame(c.framebuffer, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.framebuffer.data());
-        }
+        if (machine.latchFrame(c.framebuffer, hres, vres))
+            uploadFrameTexture(GlTextureHost{}, c.texture, c.framebuffer,
+                               hres, vres);
 
         c.services.shell().drawMachineMenu(c.spec.snap, c.window);
 
