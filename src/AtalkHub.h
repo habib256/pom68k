@@ -244,6 +244,12 @@ public:
         long wireHoldMaxMs = 0;         // holdMax converted with cpuHz
         std::string zone;
         uint8_t node = 0;
+        // The network number this node is actually on, and the router it
+        // learned it from (0 = we are the router). The window used to print
+        // a literal "Reseau 2" — the seed — which stopped being true the
+        // moment a real router shared the segment (2026-09-18).
+        std::uint16_t netNumber = 0;
+        std::uint8_t routerNode = 0;
         AfpServer::Status afp;
         PapServer::Status pap;
         MacIpGateway::Status macip;
@@ -258,6 +264,8 @@ public:
         s.net = stack_.stats();
         s.zone = stack_.zone();
         s.node = stack_.node();
+        s.netNumber = stack_.net();
+        s.routerNode = stack_.routerSeenNode();
         s.afp = afp_.status();
         s.pap = pap_.status();
         s.macip = macip_.status();

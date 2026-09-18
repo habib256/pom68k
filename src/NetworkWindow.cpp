@@ -298,10 +298,17 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
         std::snprintf(guest, sizeof guest, "%u", snapshot.net.guestNode);
     else
         std::strcpy(guest, "aucun");
-    char routerLine[80];
-    std::snprintf(routerLine, sizeof routerLine,
-                  "Reseau 2, noeud serveur %u, zone \"%s\"", snapshot.node,
-                  snapshot.zone.c_str());
+    char routerLine[120];
+    if (snapshot.routerNode)
+        std::snprintf(routerLine, sizeof routerLine,
+                      "Reseau %u appris du routeur %u, noeud serveur %u, "
+                      "zone \"%s\"", snapshot.netNumber, snapshot.routerNode,
+                      snapshot.node, snapshot.zone.c_str());
+    else
+        std::snprintf(routerLine, sizeof routerLine,
+                      "Reseau %u, noeud serveur %u, zone \"%s\" (ce noeud "
+                      "route)", snapshot.netNumber, snapshot.node,
+                      snapshot.zone.c_str());
     statusDot(snapshot.cfg.stack, routerLine);
     ImGui::Text("Invite vu : %s   -   trames recues %ld / emises %ld", guest,
                 snapshot.net.framesIn, snapshot.net.framesOut);

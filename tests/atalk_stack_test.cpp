@@ -177,6 +177,73 @@ int main() {
         CHECK(calls == 2, "after TRel the transaction re-executes");
     }
 
+    // ── a foreign router owns the network number ──
+    // configure() seeds net 2 so a guest alone on a cable gets a number at
+    // all. On a SHARED cable that seed is a claim about someone else's
+    // segment: measured 2026-09-18 against TashRouter, which seeded net 1
+    // while this stack kept saying 2 — netatalk's own segment number — so a
+    // foreign guest had to ROUTE to reach a node on its own wire.
+    {
+        Wire r;                                     // fresh: net 2, node 128
+        r.run(11);
+        CHECK(r.st.net() == 2 && !r.st.deferring(),
+              "alone on the cable, the stack seeds its own net");
+
+        // RTMP Data from node 254 seeding net 1: [net][ID len 8][node][tuple]
+        r.clear();
+        r.sendDdp(254, 1, 1, 1, { 0, 1, 8, 254, 0, 1, 0 });
+        CHECK(r.st.net() == 1, "the router's number is adopted");
+        CHECK(r.st.deferring() && r.st.routerSeenNode() == 254,
+              "the router that owns the segment is named");
+        CHECK(r.st.seededNet() == 2, "the seed we would use alone is kept");
+
+        // Silent on the router sockets while it is there: no beacon, no
+        // RTMP Response, no ZIP GetNetInfo — one answer per segment.
+        r.clear();
+        r.run(11);
+        bool beacon = false;
+        for (auto& g : r.out)
+            if (g.ddpType == 1 && g.dstSock == 1 && g.dstNode == 0xFF) beacon = true;
+        CHECK(!beacon, "no second beacon while another router is live");
+        r.clear();
+        r.sendDdp(47, 1, 1, 5, { 1 });              // RTMP Request
+        CHECK(r.out.empty(), "RTMP Request left to the router that owns it");
+        r.clear();
+        std::vector<uint8_t> gni = { 5, 0, 0, 0, 0, 0 };
+        putP(gni, "POM68K");
+        r.sendDdp(47, 6, 6, 6, gni, 0xFF);
+        CHECK(r.out.empty(), "ZIP GetNetInfo left to the router that owns it");
+
+        // NBP still answers — we are a node on ITS network now, and the
+        // reply must carry that number or the requester cannot reach us.
+        r.clear();
+        r.st.nbpRegister("POMTEST", "AFPServer", 132);
+        std::vector<uint8_t> lkup = { 0x21, 7 };
+        lkup.insert(lkup.end(), { 0, 1, 47, 253, 0 });
+        putP(lkup, "=");
+        putP(lkup, "AFPServer");
+        putP(lkup, "*");
+        r.sendDdp(47, 2, 2, 2, lkup, 0xFF);
+        bool reply = false;
+        for (auto& g : r.out)
+            if (g.ddpType == 2 && !g.pay.empty() && (g.pay[0] >> 4) == 3
+                && g.pay.size() >= 7 && get16(g.pay.data() + 2) == 1)
+                reply = true;
+        CHECK(reply, "NBP replies carry the adopted network number");
+
+        // Gone quiet: after the hold (60 s + node%30, staggered so two
+        // stacks that deferred to each other do not resume in the same
+        // second) we are the router again, on our own seed.
+        r.clear();
+        r.run(60 + 128 % 30 + 2);
+        CHECK(!r.st.deferring() && r.st.net() == 2,
+              "a router that stops beaconing hands the segment back");
+        bool again = false;
+        for (auto& g : r.out)
+            if (g.ddpType == 1 && g.dstSock == 1 && g.dstNode == 0xFF) again = true;
+        CHECK(again, "and the beacon resumes");
+    }
+
     // ── stats surface for the GUI ──
     CHECK(w.st.stats().guestNode == 47, "guest node tracked");
     CHECK(w.st.stats().framesIn > 0 && w.st.stats().framesOut > 0,

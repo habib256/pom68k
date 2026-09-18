@@ -504,7 +504,7 @@ Two hard-won responder details:
   calling `respond()` used to sit forever and swallow every later TReq
   reusing that (client, tid) — the guest's 16-bit tid counter wraps, so
   the socket wedged permanently. `pendingTxns_` now carries the same
-  30 s release timer as the XO cache (`AtalkStack.h:223-226`).
+  30 s release timer as the XO cache (`AtalkStack.h:254-257`).
 - MacIP needs ATP *and* a raw DDP handler on the same socket 72, so ATP
   only claims type 3 where a transaction handler is bound
   (`src/AtalkStack.cpp:203-213`).

@@ -66,6 +66,9 @@ bool nbpMatch(const std::string& pat, const std::string& name) {
 void AtalkStack::configure(uint16_t net, uint8_t node, const std::string& zone,
                            int64_t cpuHz, bool debug) {
     net_ = net;
+    seededNet_ = net;
+    routerSeen_ = 0;
+    routerNode_ = 0;
     node_ = node;
     zone_ = zone;
     cpuHz_ = cpuHz > 0 ? cpuHz : 15667200;
@@ -169,8 +172,24 @@ void AtalkStack::tick(int64_t nowCycles, bool runProtocols) {
     now_ = nowCycles;
     if (!runProtocols) return;
     if (now_ >= nextRtmp_) {
-        sendRtmpData(true, {});
+        // Silent while another router owns this segment: two routers
+        // beaconing different numbers on one wire is the conflict that
+        // sent a foreign guest routing to reach its own neighbour
+        // (2026-09-18). We resume — and re-seed our own number — only
+        // once its beacon has been gone for routerHoldCycles().
+        if (!deferring()) sendRtmpData(true, {});
         nextRtmp_ = now_ + 10 * cpuHz_;   // RTMP broadcast period: 10 s
+    }
+    if (routerSeen_ && !deferring()) {
+        // Its beacon has been gone for the hold: we route again, on our own
+        // seed. Cleared whether or not the number changed — a router that
+        // happened to seed the same number still left this state behind.
+        if (debug_)
+            std::fprintf(stderr, "[atalk] router %u gone — re-seeding net %u\n",
+                         routerNode_, seededNet_);
+        net_ = seededNet_;
+        routerSeen_ = 0;
+        routerNode_ = 0;
     }
     // XO cache release sweep
     for (auto it = xoCache_.begin(); it != xoCache_.end();)
@@ -214,7 +233,11 @@ void AtalkStack::handleDdp(const Addr& src, uint8_t dstSock, uint8_t type,
     if (it != ddpHandlers_.end()) { it->second(src, type, p, n); return; }
     switch (dstSock) {
     case kSockRtmp:
-        if (type == kDdpRtmpReq) handleRtmpReq(src, p, n);
+        if (type == kDdpRtmpData) noteForeignRouter(src, p, n);
+        // The router sockets are answered by the router. While another one
+        // owns the segment, ours must not double-answer with a different
+        // network number.
+        else if (type == kDdpRtmpReq && !deferring()) handleRtmpReq(src, p, n);
         return;
     case kSockNbp:
         if (type == kDdpNbp) handleNbp(src, p, n);
@@ -227,7 +250,7 @@ void AtalkStack::handleDdp(const Addr& src, uint8_t dstSock, uint8_t type,
         }
         return;
     case kSockZip:
-        if (type == kDdpZip) handleZipDdp(src, p, n);
+        if (type == kDdpZip && !deferring()) handleZipDdp(src, p, n);
         return;
     default:
         return;
@@ -248,6 +271,28 @@ void AtalkStack::sendRtmpData(bool broadcast, const Addr& to) {
     Addr dst = broadcast ? Addr{ net_, 0xFF, kSockRtmp, false } : to;
     dst.sock = kSockRtmp;
     sendDdp(dst, kSockRtmp, kDdpRtmpData, p.data(), p.size());
+}
+
+// RTMP Data from another node: someone else routes this segment. Its
+// header opens with the network number it is seeding (Inside AppleTalk,
+// RTMP ch.5), which is the number the guests on this wire will use — so it
+// is the number this node must use too, whatever configure() asked for.
+void AtalkStack::noteForeignRouter(const Addr& src, const uint8_t* p, size_t n) {
+    if (src.node == node_ || n < 2) return;
+    const uint16_t announced = uint16_t(p[0]) << 8 | p[1];
+    if (!announced) return;
+    const bool first = !deferring();
+    routerSeen_ = now_ ? now_ : 1;        // 0 means "never heard one"
+    routerNode_ = src.node;
+    if (net_ != announced) {
+        if (debug_)
+            std::fprintf(stderr, "[atalk] router %u seeds net %u — adopting "
+                         "(was %u)\n", src.node, announced, net_);
+        net_ = announced;
+    } else if (first && debug_) {
+        std::fprintf(stderr, "[atalk] router %u seeds net %u — deferring\n",
+                     src.node, announced);
+    }
 }
 
 void AtalkStack::handleRtmpReq(const Addr& src, const uint8_t* p, size_t n) {

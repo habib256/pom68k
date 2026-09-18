@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"the in-process stack seeds net 2" (since AtalkStack was written) — a seed is a claim about a segment, and on a shared cable it was someone else's: it now adopts the number a foreign router announces, and stops beaconing while that router is there** → [2026-09-18 (ninth) — The stack stops asserting a network number it does not own…](#2026-09-18-learned-net)
 - **"the LToUDP cable is our own format, so interop is assumed" (TODO § Services réseau since the LToUDP work) — it is now demonstrated: Mini vMac 37.03's guest mounted a volume served by POM68K's own AppleTalk stack and read a file from it, node to node, no router in the path** → [2026-09-18 (eighth) — Mini vMac mounts a POM68K volume…](#2026-09-18-minivmac-interop)
 - **"the Chooser lists no file server, so the bridge is broken" (2026-09-18) — every frame was on the cable with a verified DDP checksum; what dropped them was the guest's own half-duplex receiver window, and the Rx queue that exists for exactly that was armed only for the in-process hub** → [2026-09-18 (seventh) — A real AppleShare server answers the guest…](#2026-09-18-bridge-session)
 - **"the second divergence between hosts" — `q605_afp_live_etalon`'s hosts never disagreed: x86-64 interp, x86-64 `x64` and AArch64 interp are identical at all 22 boundaries, and the AArch64 `a64` default is the arm that leaves the oracle at boundary 14** → [2026-09-18 (sixth) — The AFP live trace has no difference between hosts…](#2026-09-18-afp-a64-gap)
@@ -460,6 +461,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-18 (ninth)** — [The in-process stack stops asserting a network number it does not own: it learns one from the router that owns the segment](#2026-09-18-learned-net)
 - **2026-09-18 (eighth)** — [Mini vMac mounts a POM68K volume: the LToUDP interop goes both ways, and the hub's network number turns out to be asserted rather than learned](#2026-09-18-minivmac-interop)
 - **2026-09-18 (seventh)** — [A real AppleShare server answers the guest: netatalk mounts, the Finder copies both forks, and the wire was never the problem](#2026-09-18-bridge-session)
 - **2026-09-18 (sixth)** — [The AFP live trace has no difference between hosts: two engines on two machines agree to the cycle, and the a64 backend is the one that steps away from the oracle](#2026-09-18-afp-a64-gap)
@@ -1030,6 +1032,51 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-18-learned-net"></a>
+## 2026-09-18 (ninth) — The in-process stack stops asserting a network number it does not own: it learns one from the router that owns the segment
+
+`AtalkStack::configure` seeds **net 2, node 128**, and that is right exactly
+once: alone on a cable, this node is the only router the guest will ever
+hear, and the guest learns net and zone from it as it would from a real one.
+On a SHARED cable the same seed is a claim about someone else's segment —
+which the Mini vMac interop of the same evening made visible. TashRouter
+seeded net 1 on the LToUDP group; our hub kept announcing net 2, which was
+*also* netatalk's TAP segment number. Two different networks carried one
+number, and the cost is in the trace: Mini vMac's guest, offered our server
+at "2.128", first tried `25->125 local` — netatalk's node number on its own
+wire — and then routed through TashRouter to reach a node that was sitting
+one hop from it on the same cable.
+
+**Any foreign router heard on the segment now wins.** RTMP Data from another
+node carries the network number it seeds (Inside AppleTalk, RTMP ch.5); the
+stack adopts it, stops its own 10 s beacon, and stops answering the router
+sockets — RTMP Request and ZIP GetNetInfo — because one segment gets one
+answer. It keeps answering NBP, as a node on the router's network, and its
+replies carry the adopted number, which is what a requester needs to reach
+it at all. The seed is remembered, not discarded: if the router's beacon
+goes quiet for the hold, the stack re-seeds its own number and routes again.
+
+The hold is **60 s plus the node number modulo 30**, and the stagger is the
+point: two of these stacks on one cable would otherwise defer to each other,
+fall silent together, resume together and defer again forever. Staggered,
+the lower node resumes first, becomes the router, and the other hears it and
+stays a node.
+
+Live witness, against the real TashRouter on the bridge: *« Réseau 1 appris
+du routeur 254, nœud serveur 128, zone "POM68K" »*. That line used to print
+a literal `Reseau 2` — the window never read the stack at all, so it could
+not have shown this even when it was true. It reads `netNumber` and the
+router's node now.
+
+Gate: `atalk_stack_test`, six checks — the number adopted, the router named,
+no second beacon, RTMP Request and ZIP GetNetInfo left alone, NBP replies
+carrying the adopted number, and the hand-back after the hold. Verified to
+bite: with the RTMP-Data dispatch neutralised, all six fail.
+`q605_afp_live_etalon` is bit-identical to its 2026-09-18 reference at all 22
+boundaries — no router shares that gate's cable, so nothing about it moved.
 
 ---
 

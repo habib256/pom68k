@@ -151,21 +151,6 @@ observé.
   copie deux-fourches vérifiée octet à octet sur l'hôte, deux passes aux
   mêmes chiffres ; harnais `q605_afp_bridge_probe`, évidence
   `scratchpad/2026-09-18/bridge/`.
-- [ ] **Faire apprendre au hub son numéro de réseau au lieu de l'affirmer.**
-  `AtalkHub::attach` configure la pile en **réseau 2, nœud 128** en dur
-  (`stack_.configure(2, 128, …)`), quel que soit le segment. Constaté le
-  2026-09-18 pendant l'interop Mini vMac : le segment LToUDP est le réseau 1
-  (semé par TashRouter) et celui de netatalk le réseau 2 — deux réseaux
-  différents portant le même numéro, notre hub sur le mauvais par
-  construction. Rien n'a échoué (NBP porte l'adresse, et le nœud 128 est
-  joignable localement), mais un invité qui se fie au numéro serait induit
-  en erreur, et la trace le montre : la première tentative de Mini vMac est
-  partie en `25->125 local` avant de repasser par le routeur. Le correctif
-  est d'apprendre le réseau par RTMP ; il demande un gate à lui.
-  L'interop Mini vMac elle-même est close : Mini vMac 37.03 (`-lt -lto
-  udp`) a monté le volume servi par NOTRE pile et y a lu un fichier, session
-  ATP de nœud à nœud sans routeur. Évidence :
-  `scratchpad/2026-09-18/minivmac/`.
 - [ ] **Compléter PAP.** Polling de statut, configuration des files et
   sélection CUPS dans le GUI.
 

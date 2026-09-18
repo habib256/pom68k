@@ -62,6 +62,24 @@ public:
                    int64_t cpuHz, bool debug = false);
     uint16_t net() const { return net_; }
     uint8_t node() const { return node_; }
+    // ── who owns the network number ──
+    // configure() SEEDS a network: alone on a cable, this node is the only
+    // router the guest will ever hear, and the guest learns net/zone from
+    // it exactly as it would from a real one. On a SHARED cable that seed
+    // is a claim about someone else's segment: measured 2026-09-18 on the
+    // LToUDP group, TashRouter seeded net 1 while this stack kept asserting
+    // net 2 — which was also netatalk's TAP segment number, so two
+    // different networks carried one number and a foreign guest had to
+    // route to reach a node on its own wire. So: any foreign router heard
+    // on the segment WINS. We adopt its number, stop beaconing and stop
+    // answering the router sockets, and resume seeding only if it goes
+    // quiet (see kRouterHold*). routerSeenNode() is 0 when we are the
+    // router.
+    uint8_t routerSeenNode() const { return deferring() ? routerNode_ : 0; }
+    uint16_t seededNet() const { return seededNet_; }
+    bool deferring() const {
+        return routerSeen_ != 0 && now_ - routerSeen_ < routerHoldCycles();
+    }
     const std::string& zone() const { return zone_; }
     int64_t cpuHz() const { return cpuHz_; }
     int64_t now() const { return now_; }
@@ -197,7 +215,20 @@ private:
              | uint64_t(a.sock) << 16 | tid;
     }
 
+    // A foreign router's beacon is worth six of its own periods before we
+    // call it gone (RTMP Data is a 10 s broadcast), staggered by our node
+    // number so two stacks that deferred to each other do not resume in
+    // the same second and defer again forever: the lower node resumes
+    // first and becomes the router, the higher hears it and stays a node.
+    int64_t routerHoldCycles() const {
+        return (60 + int64_t(node_) % 30) * cpuHz_;
+    }
+    void noteForeignRouter(const Addr& src, const uint8_t* p, size_t n);
+
     uint16_t net_ = 2;
+    uint16_t seededNet_ = 2;              // what configure() asked for
+    int64_t routerSeen_ = 0;              // cycles; 0 = never heard one
+    uint8_t routerNode_ = 0;
     uint8_t node_ = 128;
     std::string zone_ = "POM68K";
     int64_t cpuHz_ = 15667200;
