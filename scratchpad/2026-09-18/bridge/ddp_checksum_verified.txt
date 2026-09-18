@@ -1,0 +1,2 @@
+LLAP 254->1 len=39 checksum carried=$E3E8 computed=$E3E8 -> OK
+  hex: 04 27 e3 e8 00 01 00 02 01 dc fd 02 02 31 0d 00 02 dc 80 00 06 50 4f 4d 36 38 4b 09 41 46 50 53 65 72 76 65 72 01 2a

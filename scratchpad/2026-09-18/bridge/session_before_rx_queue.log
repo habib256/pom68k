@@ -1,0 +1,24 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+LToUDP: joined 239.192.76.84:1954 (tag 505FF237)
+trace: afp_bridge_0_finder.ppm clock=2250457184 fp=3fcf751d1b6b9a45 wire=378/6 rx=0/1 drops=0
+phase 0: Finder up, SCSI=5414, front "Finder", wire tx=378 rx=6
+phase 0: a modal dialog is in front — Return
+trace: afp_bridge_1_attempt00.ppm clock=2390052447 fp=b7545f39ba6960e3 wire=378/7 rx=0/1 drops=0
+trace: afp_bridge_1_attempt01.ppm clock=2650075292 fp=b14a2720c8aa669c wire=378/7 rx=0/1 drops=0
+trace: afp_bridge_1_applemenu.ppm clock=2908015280 fp=65e1a9e46414c292 wire=378/7 rx=0/1 drops=0
+trace: afp_bridge_2_chooser.ppm clock=3193053131 fp=4da2d04d0cd81dde wire=380/10 rx=0/1 drops=0
+phase 2: Chooser open (panel 253.6, front application "")
+trace: afp_bridge_3_servers.ppm clock=3600606103 fp=3976afe733ffeb57 wire=399/44 rx=0/2 drops=0
+phase 3: server list — 19 frames sent looking up, 398 dark pixels in the list panel
+trace: afp_bridge_4_login.ppm clock=3900645352 fp=0140e3ff9a1933e3 wire=413/73 rx=0/2 drops=0
+phase 4: login dialog (panel 248.8)
+trace: afp_bridge_5_volumes.ppm clock=4222764776 fp=d89dab1909b7abeb wire=424/87 rx=0/2 drops=0
+phase 5: volume list
+trace: afp_bridge_6_mounted.ppm clock=4625732379 fp=d89154100cbf7556 wire=442/106 rx=0/2 drops=0
+phase 6: chooser closed, wire tx=442 rx=106
+trace: afp_bridge_7_window.ppm clock=5039533650 fp=3a644668f8166e2d wire=442/107 rx=0/2 drops=0
+phase 7: Cmd-O; volumes mounted: "Mac-8.1-US"
+trace: afp_bridge_8_created.ppm clock=6578468858 fp=dd5d0f89e3fa0479 wire=442/112 rx=0/2 drops=0
+phase 8: host saw NOTHING
+FAIL: the guest's new folder never reached the host filesystem

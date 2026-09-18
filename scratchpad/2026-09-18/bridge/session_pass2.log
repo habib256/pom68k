@@ -1,0 +1,29 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+LToUDP: joined 239.192.76.84:1954 (tag 505FECB8)
+trace: afp_bridge_0_finder.ppm clock=2250456502 fp=bd814e641af9d616 wire=378/8 rx=0/1 drops=0
+phase 0: Finder up, SCSI=5414, front "Finder", wire tx=378 rx=8
+phase 0: a modal dialog is in front — Return
+trace: afp_bridge_1_attempt00.ppm clock=2389635558 fp=9164cc6eeec6c95f wire=378/8 rx=0/1 drops=0
+trace: afp_bridge_1_applemenu.ppm clock=2647158966 fp=a872bb9ba496bcfb wire=378/8 rx=0/1 drops=0
+trace: afp_bridge_2_chooser.ppm clock=2937613997 fp=c9de3878ae3b7b49 wire=380/11 rx=0/1 drops=0
+phase 2: Chooser open (panel 253.6, front application "MyEyes Extension")
+trace: afp_bridge_3_servers.ppm clock=3338916239 fp=2a3f444346cc59fe wire=399/45 rx=0/2 drops=0
+phase 3: server list — 19 frames sent looking up, 129 dark pixels in the list panel
+trace: afp_bridge_4_login.ppm clock=3636446678 fp=f635cea18dcfa94c wire=406/60 rx=0/2 drops=0
+phase 4: login dialog (panel 226.5)
+trace: afp_bridge_5_volumes.ppm clock=3961479579 fp=68d6630d00f32818 wire=420/67 rx=0/2 drops=0
+phase 5: volume list
+trace: afp_bridge_6_mounted.ppm clock=4367776065 fp=765b8ba910e03ea5 wire=510/136 rx=0/2 drops=0
+phase 6: chooser closed, wire tx=510 rx=136
+trace: afp_bridge_7_window.ppm clock=4781565490 fp=fb41a4dc9548f889 wire=531/147 rx=0/2 drops=0
+phase 7: Cmd-O; volumes mounted: "Mac-8.1-US", "Input"
+trace: afp_bridge_8_created.ppm clock=4832822527 fp=d1e06425a7ca8412 wire=574/169 rx=0/2 drops=0
+phase 8: host saw "untitled folder"
+[keys] key-down reaches KeyMap after 3 frames
+trace: afp_bridge_9_selected.ppm clock=4956584742 fp=a8de95296f5234e3 wire=574/169 rx=0/2 drops=0
+trace: afp_bridge_9_copied.ppm clock=5057846925 fp=876265e0336dec42 wire=637/203 rx=0/2 drops=0
+phase 9: duplicate="BONJOUR.txt copy" data=32791 resource=8317
+phase 9: 41108 bytes in 4.05 s of guest time (9.9 KiB/s), wire tx=63 rx=34
+phase 9: the source file is still byte-exact: yes
+PASS: a real AppleShare server, a real wire, a guest that created "untitled folder" and copied both forks into "BONJOUR.txt copy"

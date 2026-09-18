@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"the Chooser lists no file server, so the bridge is broken" (2026-09-18) — every frame was on the cable with a verified DDP checksum; what dropped them was the guest's own half-duplex receiver window, and the Rx queue that exists for exactly that was armed only for the in-process hub** → [2026-09-18 (seventh) — A real AppleShare server answers the guest…](#2026-09-18-bridge-session)
 - **"the second divergence between hosts" — `q605_afp_live_etalon`'s hosts never disagreed: x86-64 interp, x86-64 `x64` and AArch64 interp are identical at all 22 boundaries, and the AArch64 `a64` default is the arm that leaves the oracle at boundary 14** → [2026-09-18 (sixth) — The AFP live trace has no difference between hosts…](#2026-09-18-afp-a64-gap)
 - **"x64 default and interpreter — both fail identically" (2026-09-12), and "mounting opens the volume's window" (the floppy leg since 2026-08-05) — the rig never reads the engine knob, so both runs were the interpreter; and the mount paints an icon, not a window, so Cmd-N had been creating the folder in the boot volume's Games window** → [2026-09-18 (fourth) — `lcii_floppy_etalon`'s red on x86-64 was never the floppy…](#2026-09-18-floppy-window)
 - **"the Cmd-N folder ON the floppy stays printed-not-asserted" (lcii_floppy_etalon since 2026-08-05) — the Finder did create it every time; the gate's own host-forced eject discarded the catalog write still in the guest's cache** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
@@ -458,6 +459,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-18 (seventh)** — [A real AppleShare server answers the guest: netatalk mounts, the Finder copies both forks, and the wire was never the problem](#2026-09-18-bridge-session)
 - **2026-09-18 (sixth)** — [The AFP live trace has no difference between hosts: two engines on two machines agree to the cycle, and the a64 backend is the one that steps away from the oracle](#2026-09-18-afp-a64-gap)
 - **2026-09-18 (fifth)** — [The last corner of the GUI that only existed inside a GL context is behind a seam, and the six copies of it had drifted three ways](#2026-09-18-frame-upload)
 - **2026-09-18 (fourth)** — [`lcii_floppy_etalon`'s red on x86-64 was never the floppy: the .Sony driver refuses nothing, and what differed between hosts is which window was frontmost when Cmd-N arrived](#2026-09-18-floppy-window)
@@ -1026,6 +1028,92 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-18-bridge-session"></a>
+## 2026-09-18 (seventh) — A real AppleShare server answers the guest: netatalk mounts, the Finder copies both forks, and the wire was never the problem
+
+Every AFP gate in this tree talks to the in-process server: `AtalkHub` owns
+`AtalkStack` + `AfpServer` and answers inside the same process. `TODO`
+§ Services réseau asked for the other thing — a complete session against a
+REAL server — and it is done, twice:
+
+> `phase 7: Cmd-O; volumes mounted: "Mac-8.1-US", "Input"`
+> `phase 8: host saw "untitled folder"`
+> `phase 9: duplicate="BONJOUR.txt copy" data=32791 resource=8317`
+> `phase 9: 41108 bytes in 4.05 s of guest time (9.9 KiB/s)`
+
+The wire is real from end to end: the guest's SCC speaks LLAP onto the
+LToUDP multicast group, TashRouter routes it to `pomtap0`, the kernel's own
+DDP stack carries it, and netatalk 2.4.9's `atalkd` + `afpd` serve `input/`
+as the volume "Input". The proof is not a counter but the host's
+FILESYSTEM, checked independently of the probe's own oracle: data fork
+identical (32 791 B), resource fork identical (8 317 B), Finder info
+`TEXTttxt` identical, inside netatalk's `.AppleDouble` — which is the same
+layout `afplive::seed` writes for the in-process server, because `AfpServer`
+was built to netatalk's. Both passes agree to the figure, so the route is
+deterministic in guest time.
+
+The harness is `q605_afp_bridge_probe`: the live gate's calibrated Chooser
+choreography and `Q605ApplicationHarness`, with the hub taken out and an
+`LtoUdp` cable in its place. It is a dev tool, not a gate — it needs a
+daemon brought up with sudo, and a gate that can only soft-skip proves
+asset detection, nothing else.
+
+**The defect it found is the product's.** `GuiHostServices` armed the SCC's
+Rx queue only for the in-process hub *without* a cable, bundled with the
+wire boost in one condition. LocalTalk is half-duplex: the driver drops its
+receiver while transmitting and re-arms it on the EOM interrupt, and
+`Scc8530` drops a frame that lands in that window — "receiver off = no ear",
+which is the truth on a real wire, where no peer can answer inside the
+sender's own transmission. A peer behind a SOCKET answers in microseconds,
+so TashRouter's reply to the Chooser's `BrRq` landed in the deaf window
+essentially every time. Measured on the bridge: **128 `BrRq` sent, 60
+`LkUp-Reply` back on the cable** — `POM68K:AFPServer@* at 2.220:128`, DDP
+checksum carried `$E3E8` = computed — and an empty "Select a file server"
+list. The arrival instant is a property of the host socket, not of the
+wire, so dropping on it models nothing; queueing does, and playback still
+defers to LLAP's 400 µs inter-dialog gap. The two decisions are now
+separate — a cable gets the queue and keeps the real 230.4 kbit/s pace —
+and `docs_test` holds the split. `Scc8530.cpp` had already recorded this
+exact symptom from a 2026-07-22 live capture ("the Chooser re-sent the
+AFPServer lookup forever and never listed the server"); what was missing
+was the arming.
+
+**Three failures came from one stale path.** The checkout was renamed
+`POM68K` → `pom68k` after netatalk was built, and netatalk bakes absolute
+paths in: `atalkd: error while loading shared libraries: libatalk.so.0`
+(RUNPATH), `Cannot create .../afp_signature.conf` (the signature), and the
+one that reached the guest — a UAM directory that no longer existed, so
+`afpd` loaded no authentication module at all and the AppleShare client
+said so in its own words, **"This file server does not use a recognizable
+log on sequence"**, after the Chooser had listed the server. `appleshare.sh`
+now derives `LD_LIBRARY_PATH` from the install tree it actually has and
+names `-uampath` and `-signature` explicitly; `macip.sh` carries the
+library half, since `macipgw` links the same library.
+
+**Two of the probe's own instruments had to be replaced**, and both lessons
+generalise. The guest's `WindowList` ($09D6) is per-LAYER: sampled while the
+Finder is the current process it describes the FINDER's front window —
+kind 8, title "" — with the Chooser plainly open, and the retry loop it fed
+clicked the Apple menu on top of an open Chooser three times. And a
+dark-pixel count over the server list counted the list's own frame and
+scrollbar: 398 dark pixels on an EMPTY list, read as an entry. What holds
+instead is calibrated and measured — the list panel's mean luminance (253.6
+with the Chooser open, 234.9 on the bare desktop, 123.2 under the startup
+alert) — plus the guest's own VCB queue for what is actually mounted.
+
+A guest that brought its stack up with no router and then hears one also
+puts up a modal alert, "Your AppleTalk network is now available", which eats
+every gesture behind it; the in-process hub is attached before the guest
+boots and never raises it. The probe dismisses whatever dialog is up,
+aimed by the front window's kind, because a blind Return on the desktop
+renames the selected icon instead.
+
+Evidence: `scratchpad/2026-09-18/bridge/`. The cable decoder that found it
+is `tools/netatalk2/llap_sniff.py` (NBP tuples and DDP checksums, no
+privileges — it can run beside a session).
 
 ---
 

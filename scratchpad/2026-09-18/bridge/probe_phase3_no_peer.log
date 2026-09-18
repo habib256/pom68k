@@ -1,0 +1,13 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+LToUDP: joined 239.192.76.84:1954 (tag 505F9C59)
+trace: afp_bridge_0_finder.ppm clock=2450426339 fp=4f33356bb4569e84 wire=377/0
+phase 0: Finder up, SCSI=5406, front "MyEyes Extension", wire tx=377 rx=0
+[bridge] nothing heard on the segment yet — is `sudo tools/netatalk2/appleshare.sh` running?
+trace: afp_bridge_1_applemenu.ppm clock=2486676471 fp=52fb9ac3b087e65d wire=377/0
+trace: afp_bridge_2_chooser.ppm clock=2775427529 fp=ff6a8a5bcb0a04c5 wire=377/0
+phase 2: Chooser open
+trace: afp_bridge_3_servers.ppm clock=3179595751 fp=2b1a05513bab7547 wire=396/0
+phase 3: server list (guest sent 19 frames looking up)
+
+[exited with code 0]

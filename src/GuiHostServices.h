@@ -120,6 +120,25 @@ public:
             mem.scc().setWirePace(
                 std::max(byteCycles / state_.network.appleTalkWireBoost, 64));
             mem.scc().setLosslessRx(true);
+        } else if (cable) {
+            // A real cable keeps the real 230.4 kbit/s pace — that fidelity is
+            // the point — but it still needs the Rx QUEUE, and the two used to
+            // be one decision. LocalTalk is half-duplex: the driver drops its
+            // receiver while transmitting and re-arms it on the EOM interrupt,
+            // so a frame injected in that window is dropped ("receiver off =
+            // no ear", Scc8530.cpp). A peer on the far side of a socket answers
+            // in MICROSECONDS — TashRouter replies to the Chooser's NBP BrRq
+            // faster than any wire could — so its reply lands in the deaf
+            // window essentially every time: measured 2026-09-18 on the
+            // netatalk bridge, 128 BrRq sent, 60 LkUp-Replies back on the cable
+            // with correct DDP checksums, and an empty « Select a file server »
+            // list. The arrival instant is a property of the HOST SOCKET, not
+            // of the wire, so dropping on it models nothing; queueing does,
+            // and playback still defers to LLAP's 400 us inter-dialog gap
+            // measured from the previous frame's end. With the queue the same
+            // Chooser lists POM68K, logs in as Guest, mounts the volume and
+            // copies both forks (q605_afp_bridge_probe).
+            mem.scc().setLosslessRx(true);
         }
         if (hub || ethernet) {
             if (hub) configureAppleTalk();

@@ -1,0 +1,30 @@
+20:41:59 tag=0000485A 254->1 [2.125->1.1] NBP sock 2->253 LkUp-Reply x1 | POM68K:AFPServer@* at 2.125:128
+20:42:00 tag=F7215E50 1->254 [local] NBP sock 253->2 BrRq x1 | =:AFPServer@* at 1.1:253
+20:42:00 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | =:AFPServer@* at 1.1:253
+20:42:00 tag=0000485A 254->1 [2.125->1.1] NBP sock 2->253 LkUp-Reply x1 | POM68K:AFPServer@* at 2.125:128
+20:42:00 tag=F7215E50 1->254 [local] NBP sock 253->2 BrRq x1 | =:AFPServer@* at 1.1:253
+20:42:00 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | =:AFPServer@* at 1.1:253
+20:42:00 tag=0000485A 254->1 [2.125->1.1] NBP sock 2->253 LkUp-Reply x1 | POM68K:AFPServer@* at 2.125:128
+20:42:01 tag=F7215E50 1->254 [local] NBP sock 253->2 BrRq x1 | =:AFPServer@* at 1.1:253
+20:42:01 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | =:AFPServer@* at 1.1:253
+20:42:01 tag=0000485A 254->1 [2.125->1.1] NBP sock 2->253 LkUp-Reply x1 | POM68K:AFPServer@* at 2.125:128
+20:42:59 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:00 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:00 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:00 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:00 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:01 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:01 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:01 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:02 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:02 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:02 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:03 tag=B8EC5F50 1->255 [local] NBP sock 251->2 LkUp x1 | POM68K:AFPServer@POM68K at 0.1:251
+20:43:07 tag=B8EC5F50 1->254 [local] NBP sock 251->2 BrRq x1 | :ARA - Client-Only@* at 1.1:251
+20:43:07 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | :ARA - Client-Only@* at 1.1:251
+20:43:08 tag=B8EC5F50 1->254 [local] NBP sock 251->2 BrRq x1 | :ARA - Client-Only@* at 1.1:251
+20:43:08 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | :ARA - Client-Only@* at 1.1:251
+20:43:08 tag=B8EC5F50 1->254 [local] NBP sock 251->2 BrRq x1 | :ARA - Client-Only@* at 1.1:251
+20:43:08 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | :ARA - Client-Only@* at 1.1:251
+20:43:09 tag=B8EC5F50 1->254 [local] NBP sock 251->2 BrRq x1 | :ARA - Client-Only@* at 1.1:251
+20:43:09 tag=0000485A 254->255 [local] NBP sock 2->2 LkUp x1 | :ARA - Client-Only@* at 1.1:251

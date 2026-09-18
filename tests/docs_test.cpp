@@ -615,6 +615,29 @@ int main() {
               guiRuntimeSource.find("static FloppySound") ==
                   std::string::npos,
           "GUI runtime owns decomposed host/UI process state with RAII");
+    // The Rx queue and the wire boost are two decisions, not one
+    // (2026-09-18). A real LToUDP cable keeps the real 230.4 kbit/s pace,
+    // and still needs the queue: LocalTalk is half-duplex, so a reply that
+    // a peer behind a socket produces in microseconds lands while the
+    // guest's receiver is down and is dropped — measured on the netatalk
+    // bridge as a Chooser that never lists a server whose LkUp-Replies are
+    // on the cable. The boost must NOT follow: that one is fidelity.
+    {
+        const std::string services = slurp(guiHostServices);
+        const std::size_t cableArm = services.find("} else if (cable) {");
+        const std::size_t queueOnCable =
+            cableArm == std::string::npos
+                ? std::string::npos
+                : services.find("setLosslessRx(true)", cableArm);
+        const std::size_t paceOnCable =
+            cableArm == std::string::npos
+                ? std::string::npos
+                : services.find("setWirePace", cableArm);
+        check(cableArm != std::string::npos &&
+                  queueOnCable != std::string::npos &&
+                  paceOnCable == std::string::npos,
+              "a real cable gets the Rx queue and keeps the real wire pace");
+    }
     const std::string guiWindowHeader = slurp(guiWindowSession);
     check(guiRuntimeSource.find("gGuiSessionState") == std::string::npos &&
               composersSource.find("runQuantumWithWire(GuiHostServices&") !=

@@ -142,13 +142,15 @@ observé.
   `Status::tcpSynWindowScale` (option kind 3 sur un SYN invité,
   `macip_gw_test`) est le signal ; l'endpoint reste in-order-only, MSS 536,
   32 × MSS en vol.
-- [ ] **Exécuter une session AppleShare complète sur le bridge réel.** Les
-  sessions passées vont au serveur in-process. Lancer netatalk ou
-  TashRouter, monter « Input » depuis le Chooser, vérifier un transfert.
-  C'est aussi là que les adresses multicast de zone
-  (`09:00:07:00:00:xx`) se poseraient : le routeur interne répond
-  UseBroadcast et la liste de `SET MULTICAST ADDRESS` est acceptée et
-  ignorée (`DaynaPort.h`).
+- [ ] **Poser les adresses multicast de zone (`09:00:07:00:00:xx`).** Le
+  routeur interne répond UseBroadcast et la liste de `SET MULTICAST
+  ADDRESS` est acceptée et ignorée (`DaynaPort.h`). Rouvrir sur un
+  consommateur : la session sur bridge réel, faite le 2026-09-18, ne l'a
+  pas demandée (LocalTalk, pas EtherTalk). La session elle-même est close
+  — netatalk 2.4.9 via TashRouter, volume « Input » monté, dossier créé et
+  copie deux-fourches vérifiée octet à octet sur l'hôte, deux passes aux
+  mêmes chiffres ; harnais `q605_afp_bridge_probe`, évidence
+  `scratchpad/2026-09-18/bridge/`.
 - [ ] **Tester l'interop Mini vMac LToUDP.** Même groupe multicast, les
   deux directions.
 - [ ] **Compléter PAP.** Polling de statut, configuration des files et

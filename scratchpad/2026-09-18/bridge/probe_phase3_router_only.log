@@ -1,0 +1,12 @@
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" 1048576 B sha256 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34
+ASSET disk   "hdv/ref/MacOS-8.1-boot.vhd" 314621952 B sha256 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  HFS "Mac-8.1-US" drVolAtrb $0100 clean
+LToUDP: joined 239.192.76.84:1954 (tag 505FB7ED)
+trace: afp_bridge_0_finder.ppm clock=2250425684 fp=bc0fddb3f5f948c5 wire=378/2
+phase 0: Finder up, SCSI=5414, front "Finder", wire tx=378 rx=2
+phase 0: a modal dialog is in front — Return
+trace: afp_bridge_1_attempt0.ppm clock=2389592817 fp=d8133ea8711a1465 wire=378/2
+trace: afp_bridge_1_applemenu.ppm clock=2647093670 fp=84c83e05db814d0b wire=378/3
+trace: afp_bridge_2_chooser.ppm clock=2927511428 fp=a3f6a59a8c7f0089 wire=380/5
+phase 2: Chooser open (front window kind -16)
+trace: afp_bridge_3_servers.ppm clock=3332096166 fp=032c131aeb90ff39 wire=399/26
+phase 3: server list (guest sent 19 frames looking up)
