@@ -147,3 +147,11 @@ target_link_libraries(lcii_shutdown_flush PRIVATE pom68k_core)
 # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,
 # see docs/BASILISK_ROM_NOTES.md. Standalone, no emulator core.
 add_executable(rominfo EXCLUDE_FROM_ALL tools/rominfo.cpp)
+
+# Dev tool (not a gate): the AppleShare session over the REAL bridge —
+# netatalk's afpd through TashRouter and the kernel's DDP stack instead of
+# the in-process AtalkHub (TODO § Services réseau). It needs a daemon
+# brought up with sudo (tools/netatalk2/appleshare.sh), so a registered test
+# could only soft-skip; run it by hand.
+add_executable(q605_afp_bridge_probe EXCLUDE_FROM_ALL tests/q605_afp_bridge_probe.cpp)
+target_link_libraries(q605_afp_bridge_probe PRIVATE pom68k_core)

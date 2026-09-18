@@ -55,10 +55,23 @@ inline std::string find(const char* rel) { return testasset::find(rel); }
 // of freezing it for the length of a dialog.
 inline std::function<void()> gAfterFrame;
 
+// How many pieces a frame is run in before the hook is called. One — the
+// whole frame at a time — for a rig whose outside clock only has to follow
+// guest time, which is every gate that owns the in-process hub. A rig whose
+// hook drains a REAL SOCKET needs main.cpp's own granularity instead
+// (runQuantumWithWire, 64 slices): a reply that arrives mid-frame and is
+// injected 16 ms later, bunched with the ones behind it, overruns the
+// guest's Rx FIFO — and the SCC drops on overrun by default, because that
+// is what the hardware does. Left at 1 the loop is the single runCycles it
+// has always been, so no existing gate's trajectory moves.
+inline int gFrameSlices = 1;
+
 inline void runFrames(long n) {
     for (long f = 0; f < n && !gCpu->isHalted(); f++) {
-        gCpu->runCycles(kFrameCycles);
-        if (gAfterFrame) gAfterFrame();
+        for (int slice = 0; slice < gFrameSlices; slice++) {
+            gCpu->runCycles(kFrameCycles / gFrameSlices);
+            if (gAfterFrame) gAfterFrame();
+        }
     }
 }
 
