@@ -52,28 +52,36 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
   status in the interface.
 - Linux x86-64/AArch64, macOS Universal 2 and Windows x64 packages.
 
-### New in 0.2
+### New in 0.3
 
-- **Macintosh 128K and 512K**: the two machines below the Plus boot a 400 K
-  System floppy to the Finder, single-sided drive and PWM spindle included.
-- **SCSI hot-plug**: the Disques window reads the guest's own drive and
-  volume queues, attaches and detaches fixed disks with the machine running,
-  and « POM68K Disques » — a guest agent shipped in every package — mounts
-  and unmounts them on request. It is installed into the boot volume's
-  Startup Items by POM68K itself, so it runs from the first Finder.
-- **EtherTalk on by default**: with a DaynaPort SCSI/Link on the bus the
-  built-in AppleTalk node is also a router on the Ethernet segment; the
-  guest joins its zone the moment it selects EtherTalk, and the cable can be
-  unplugged and plugged back from the window.
-- **Beyond-boot proof on 38 of 39 profiles**: every boot gate can require
-  that the Finder launched an application and that a live-attached disk was
-  mounted through the guest's own File Manager.
-- **The Toby declaration ROM fallback describes the emulated card
-  truthfully**, so the Mac II, IIx and IIcx boot System 7.0 without the
-  342-0008-a dump; System 7.5.5 still needs it.
-- The 400 K drive's spindle servo travels in save states (format v16), and
-  the network services' identity and the EtherTalk switch ride the relaunch
-  line.
+- **Booting from IDE**: the Quadra 630 and the LC/Performa 580 start from
+  their ATA disk with nothing on the SCSI bus. POM68K writes no driver of
+  its own — the guest's own Drive Setup partitions the disk and installs
+  Apple's `Apple_Driver_ATA`, exactly as it would on the real machine.
+- **Audio CDs play.** A disc with audio tracks mounts, and Mac OS starts the
+  music itself; the drive decodes it and puts it on its own analog lead, the
+  way an AppleCD does, so it never passes through the sound chip. The Sound
+  control panel's CD volume reaches the drive, and every board advances its
+  transport on machine time.
+- **Cabinet mode and the CRT glass**, ported from NeoST: Ctrl+Alt+F throws
+  the machine onto the whole monitor, with light, arcade and phosphor
+  presets and every slider live. Ctrl+Alt+G grabs the mouse.
+- **The interface is under test.** The four windows, the machine window with
+  its menu bar, dashboard, screen surface and keyboard, the disk-bay
+  bindings the six runners used to copy by hand, and the save-state pass all
+  the way to the file written and read back.
+- **AppleTalk**: a file server renamed while the guest is connected is found
+  and remounted through the Chooser; MacIP reads a guest's TCP window-scale
+  option.
+- **The Color Classic's boot chime** comes out of the Sonora-class sound
+  chip, with its DFAC2 answering as the hardware does.
+- **The Macintosh 128K and 512K launch an application**, and the Plus boots
+  System 3.3 from an 800 K floppy in either drive.
+- The bare Macintosh LC II — no FPU fitted — was investigated to a ruling:
+  POM68K is faithful, and this ROM has no path that clears the FPU
+  configuration bit. `CHANGELOG.md` carries the evidence.
+- Save states are format v18; the CD transport and the ATA task file travel
+  with them.
 
 POM68K uses the [Moira](https://github.com/dirkwhoffmann/Moira) CPU core,
 vendored through NeoST. The local fork and its provenance are documented in

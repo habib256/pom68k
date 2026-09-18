@@ -1010,6 +1010,40 @@ Newest first.
 
 ---
 
+<a id="2026-09-18-release-030"></a>
+## 2026-09-18 (release) — 0.3.0
+
+`VERSION` 0.3.0, and the README opens on what the version brings.
+
+**The headline is IDE.** The Quadra 630 and the LC/Performa 580 boot from
+their ATA disk with nothing on the SCSI bus — the first time POM68K has
+started a 68k Macintosh from anything but SCSI or a floppy. Nothing about it
+is synthesized: the guest's own Drive Setup partitions the disk and installs
+Apple's `Apple_Driver_ATA`, and both F108 profiles are gated
+(`q630_ide_boot_etalon`, `lc580_ide_boot_etalon`).
+
+**The second is sound.** An audio CD mounts and Mac OS plays it by itself,
+through the drive's own analog lead rather than the sound chip, which is how
+the hardware does it. The Sound control panel's CD volume reaches the drive,
+and all twelve boards advance their transports on machine time.
+
+Also in this cycle: cabinet mode and the CRT glass from NeoST; the interface
+under gates down to the save-state file itself and the disk-bay bindings the
+six runners used to copy by hand; an AppleShare server renamed live and
+remounted through the Chooser; the Color Classic's chime through its own
+sound chip; the 128K and 512K launching an application; the Plus booting
+System 3.3 from either 800 K drive; and the bare LC II investigated to a
+ruling rather than a workaround.
+
+Save states are format **v18** — the CD transport and the ATA task file
+travel with them, so a snapshot taken mid-play resumes mid-play and one
+taken between an ATA command and its data resumes there.
+
+Since 0.2.0 (2026-09-15): 75 commits, and the gate registry stands at 349 on
+this host.
+
+---
+
 <a id="2026-09-18-ide-boots"></a>
 ## 2026-09-18 (later) — A Quadra 630 boots from its IDE disk, with nothing on the SCSI bus
 
