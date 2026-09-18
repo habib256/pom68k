@@ -122,20 +122,22 @@ observé.
   un boot GUI en avance rapide n'atteint pas l'état pilote-chargé dans un
   budget de smoke. Reste : « Révéler » lance `open` / `xdg-open` /
   `explorer` sans gate possible.
-- [ ] **Rejouer sur x86-64 date-épinglé la comparaison entre hôtes de
-  `q605_afp_live_etalon`.** Référence M4 :
-  `scratchpad/2026-09-13/afp_live_trace_aarch64.txt` ;
-  `tools/afp_trace_diff.py` situe la première frontière. Le rejeu A64
-  retrouve les 22 frontières ; sous `POM68K_CPU_ENGINE=interp` le gate
-  passe mais diverge à la frontière 14 (serveurs après reconnexion).
-  Localiser cet écart interp/A64 avant toute attribution à l'hôte. La
-  référence `scratchpad/2026-09-11/afp_live_trace_x86_64.txt` est
-  antérieure à l'épinglage : produire d'abord une référence x86-64
-  date-épinglée.
+- [ ] **Situer l'écart `a64` de `q605_afp_live_etalon` à la frontière 14.**
+  Tranché le 2026-09-18 : il n'y a **pas** d'écart entre hôtes. Interp
+  x86-64, `x64` x86-64 et interp AArch64 sont identiques aux 22 frontières
+  (horloge ET empreinte) ; seul le défaut `a64` du 2026-09-13 s'en écarte,
+  dès `afp_live_3_servers` après reconnexion — 8 cycles de retard là, puis
+  des totaux réseau différents en fin de course (afp 210 vs 209, trames
+  678/507 vs 676/506). Le gate passe dans tous les bras : seule la trace le
+  voit. Reste à bisecter le bras `a64` entre les frontières 13 et 14 (du
+  Sélecteur rouvert à la liste de serveurs repeinte), ce qui demande un
+  hôte AArch64. Références date-épinglées :
+  `scratchpad/2026-09-18/afp/`.
 - [ ] **MacIP : ICMP sortant.** Bloqué par l'hôte
   (`net.ipv4.ping_group_range` = `1 0`) : un gate ne pourrait que se
-  sauter. À rouvrir sur un hôte dont la plage couvre le gid, ou avec
-  `CAP_NET_RAW`. Le window scaling TCP est tranché le 2026-09-16 : rien à
+  sauter. Mesuré aussi sur l'hôte x86-64 le 2026-09-18 — même `1 0`, gid
+  1000 : les deux hôtes du projet le refusent, inutile de revérifier. À
+  rouvrir sur un hôte dont la plage couvre le gid, ou avec `CAP_NET_RAW`. Le window scaling TCP est tranché le 2026-09-16 : rien à
   bâtir tant qu'aucun invité ne le demande — le compteur
   `Status::tcpSynWindowScale` (option kind 3 sur un SYN invité,
   `macip_gw_test`) est le signal ; l'endpoint reste in-order-only, MSS 536,

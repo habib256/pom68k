@@ -1,0 +1,24 @@
+22 vs 22 boundaries
+    0 afp_live_0_finder.ppm        identical
+    1 afp_live_1_applemenu.ppm     identical
+    2 afp_live_2_chooser.ppm       identical
+    3 afp_live_3_servers.ppm       identical
+    4 afp_live_4_login.ppm         identical
+    5 afp_live_5_volumes.ppm       identical
+    6 afp_live_6_mounted.ppm       identical
+    7 afp_live_7_window.ppm        identical
+    8 afp_live_8_created.ppm       identical
+    9 afp_live_9_selected.ppm      identical
+   10 afp_live_9_copied.ppm        identical
+   11 afp_live_10_disconnected.ppm identical
+   12 afp_live_1_applemenu.ppm     identical
+   13 afp_live_2_chooser.ppm       identical
+!! 14 afp_live_3_servers.ppm       clock:5867689809|5867689801 fp:db27d9a76bab9d58|7cccf6f6e5118480
+!! 15 afp_live_4_login.ppm         clock:6170637258|6170638117 fp:6e6028b250a45734|d39fd426e583857a
+!! 16 afp_live_5_volumes.ppm       clock:6573595143|6555260596 fp:55bb294e5b81b19d|1616bac0918193f3
+!! 17 afp_live_6_mounted.ppm       clock:7031981514|7012395124 fp:2c638f54d92bf35f|388b70a17ea62e3f
+!! 18 afp_live_7_window.ppm        clock:7448271821|7428685698 fp:69ba7f61fbf66aee|332c667dd2c6babc
+!! 19 afp_live_8_created.ppm       clock:7502029147|7482442597 fp:48d4dcdc36a1fa6b|a52de7e0e2ceb18c frames:498/370|498/369 ddp:498/370|498/369
+!! 20 afp_live_9_selected.ppm      clock:7657878149|7649959279 fp:7f4010d9d620bf59|c2d52336be2cb63d
+!! 21 afp_live_9_copied.ppm        clock:7761649051|7766230817 fp:19d11ae6cd88db70|8058155fce90ef57 afp:209|210 frames:676/506|678/507 ddp:676/506|678/507 atp:228|229
+first divergence: boundary 14

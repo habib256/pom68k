@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"the second divergence between hosts" — `q605_afp_live_etalon`'s hosts never disagreed: x86-64 interp, x86-64 `x64` and AArch64 interp are identical at all 22 boundaries, and the AArch64 `a64` default is the arm that leaves the oracle at boundary 14** → [2026-09-18 (sixth) — The AFP live trace has no difference between hosts…](#2026-09-18-afp-a64-gap)
 - **"x64 default and interpreter — both fail identically" (2026-09-12), and "mounting opens the volume's window" (the floppy leg since 2026-08-05) — the rig never reads the engine knob, so both runs were the interpreter; and the mount paints an icon, not a window, so Cmd-N had been creating the folder in the boot volume's Games window** → [2026-09-18 (fourth) — `lcii_floppy_etalon`'s red on x86-64 was never the floppy…](#2026-09-18-floppy-window)
 - **"the Cmd-N folder ON the floppy stays printed-not-asserted" (lcii_floppy_etalon since 2026-08-05) — the Finder did create it every time; the gate's own host-forced eject discarded the catalog write still in the guest's cache** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
 - **"the SimCity census plays BLACK FOREST MONSTRE" (2026-08-27) — it had been playing TED CITY, the alphabetical neighbour of a prefix typed into the wrong window; and every LC II type-select on GISTPERSO had been sending QWERTY key codes to an AZERTY System, so "black forest m" arrived as "blqck forest ,"** → [2026-09-07 (third) — SimCity 2000 becomes a gate…](#2026-09-07-simcity-etalon)
@@ -457,6 +458,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-18 (sixth)** — [The AFP live trace has no difference between hosts: two engines on two machines agree to the cycle, and the a64 backend is the one that steps away from the oracle](#2026-09-18-afp-a64-gap)
 - **2026-09-18 (fifth)** — [The last corner of the GUI that only existed inside a GL context is behind a seam, and the six copies of it had drifted three ways](#2026-09-18-frame-upload)
 - **2026-09-18 (fourth)** — [`lcii_floppy_etalon`'s red on x86-64 was never the floppy: the .Sony driver refuses nothing, and what differed between hosts is which window was frontmost when Cmd-N arrived](#2026-09-18-floppy-window)
 - **2026-09-18 (release)** — [0.3.0](#2026-09-18-release-030)
@@ -1024,6 +1026,55 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-18-afp-a64-gap"></a>
+## 2026-09-18 (sixth) — The AFP live trace has no difference between hosts: two engines on two machines agree to the cycle, and the a64 backend is the one that steps away from the oracle
+
+`TODO` § Services réseau carried this as a host question — "replay the
+comparison between hosts on a date-pinned x86-64, locate the interp/A64 gap
+**before any attribution to the host**". The gap is located, and it dissolves
+the question: nothing is attributable to a host.
+
+**Four arms, three identical.** All 22 boundaries, machine clock **and**
+architectural fingerprint:
+
+> x86-64 interpreter ≡ x86-64 `x64` ≡ AArch64 interpreter (2026-09-13)
+
+Against those three, the AArch64 **`a64`** default recorded on 2026-09-13 —
+the trace that had been serving as "the reference" — diverges from
+**boundary 14**, `afp_live_3_servers.ppm`, the server list after the
+reconnection. There it is 8 machine cycles late (5 867 689 809 against
+5 867 689 801) with every network counter still equal; by the last boundary
+it has exchanged different totals: `afp` 210 against 209, frames 678/507
+against 676/506, `atp` 229 against 228.
+
+So the two hosts never disagreed. Two independent engines, on two different
+machines, land on the same cycle and the same fingerprint at every one of
+the 22 boundaries; the fourth arm is alone. What the trace shows is an
+**engine** difference, and the engine that steps away is the accelerated
+one — `CLAUDE.md`'s rule is that the interpreter is the oracle and an
+accelerated path must match it at the boundary its gate claims.
+
+**What this does not say.** The gate PASSES in every arm. The divergence is
+invisible to its assertions and only the trace sees it, which is what the
+trace was built for on 2026-09-11. Nothing here says the a64 arm is wrong
+about AppleShare — it says it is out of step with the oracle, from a
+nameable boundary, on a route that reproduces in 2 min 24 s.
+
+**Two references recorded**, both date-pinned (after the 2026-09-12
+`setAfpFixedDate` pin): this host's default and this host's interpreter.
+The x86-64 file of 2026-09-11 that `TODO` called "prior to the pin" is
+superseded by them. The comparison crosses trees — `07b00cc` for the
+AArch64 pair, `e2a9498` here — and the two interpreter traces being
+identical across those five days is itself evidence that everything landed
+in between (IDE, CD audio, the GUI splits) moves nothing this gate can see.
+
+Next needs an AArch64 host, and it is narrow: boundaries 12 and 13 are still
+identical, so whatever separates the a64 arm happens between the Chooser
+reopening and the server list being painted a second time. Evidence:
+`scratchpad/2026-09-18/afp/`.
 
 ---
 
