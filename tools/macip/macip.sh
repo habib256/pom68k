@@ -85,6 +85,13 @@ stop_macip() {
 if [ "${1:-}" = "stop" ]; then stop_macip; echo "MacIP layer stopped."; exit 0; fi
 
 [ -x "$BIN" ] || { echo "macipgw not built — run tools/macip/build_macipgw.sh first"; exit 1; }
+
+# macipgw links the vendored libatalk, whose RUNPATH is absolute and breaks
+# when the checkout is renamed or moved (appleshare.sh carries the same
+# block, same reason, 2026-09-18).
+NA_LIBS="$NA/lib"
+for libdir in "$NA"/lib/*/; do NA_LIBS="$NA_LIBS:${libdir%/}"; done
+export LD_LIBRARY_PATH="$NA_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 command -v iptables >/dev/null || { echo "iptables not found (needed for NAT)"; exit 1; }
 pgrep -f "$NA/sbin/atalkd" >/dev/null || {
     echo "atalkd is not running — start the bridge first:"

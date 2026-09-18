@@ -54,6 +54,19 @@ for arg in "$@"; do
 done
 
 [ -x "$NA/sbin/afpd" ] || { echo "run tools/netatalk2/build_netatalk2.sh first"; exit 1; }
+
+# The vendored binaries carry an ABSOLUTE RUNPATH, baked in wherever the tree
+# stood when it was built, so renaming or moving the checkout breaks them:
+# "atalkd: error while loading shared libraries: libatalk.so.0" (2026-09-18 —
+# the RUNPATH still said .../src/POM68K, the tree is at .../src/pom68k). Point
+# the loader at the install tree we actually have. The glob covers the arch
+# triplet subdirectory autotools installs into (x86_64-linux-gnu here,
+# aarch64-linux-gnu on the M4). sudo strips LD_LIBRARY_PATH from the caller's
+# environment, which is why this is set HERE and passed explicitly through
+# every `sudo -u` below.
+NA_LIBS="$NA/lib"
+for libdir in "$NA"/lib/*/; do NA_LIBS="$NA_LIBS:${libdir%/}"; done
+export LD_LIBRARY_PATH="$NA_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 mkdir -p "$CONF"
 # run/ may have been created by a previous sudo run — the router writes its
 # pid/log there as the real user.
@@ -94,8 +107,23 @@ EOF
 # — and could not write into it anyway. The DDP segment is local-only,
 # so mapping guest to $REAL_USER is safe and gives read/write with
 # correct file ownership.
+# -uampath and -signature, both because afpd's own defaults are ABSOLUTE
+# paths compiled in at build time (the same stale prefix that breaks the
+# library search above). With the UAM directory missing, afpd loads NO
+# authentication module and advertises none — and the guest says exactly
+# that: « This file server does not use a recognizable log on sequence »
+# (measured 2026-09-18, the AppleShare client's own words, after the
+# Chooser had listed the server). The signature file is the same story,
+# announced in the log as "Cannot create .../afp_signature.conf": pinning
+# it here also keeps the server's identity stable across restarts instead
+# of a one-time value.
+UAMS=""
+for dir in "$NA"/lib/*/netatalk "$NA"/lib/netatalk; do
+    [ -d "$dir" ] && UAMS="$dir"
+done
+[ -n "$UAMS" ] || { echo "no UAM directory under $NA/lib — rebuild netatalk"; exit 1; }
 cat > "$CONF/afpd.conf" <<EOF
-"POM68K" -ddp -notcp -uamlist uams_guest.so -nosavepassword -guestname "$REAL_USER"
+"POM68K" -ddp -notcp -uamlist uams_guest.so -uampath "$UAMS" -signature user:POM68K -nosavepassword -guestname "$REAL_USER"
 EOF
 cat > "$CONF/AppleVolumes.default" <<EOF
 $ROOT/input "Input" options:usedots
@@ -116,7 +144,8 @@ sleep 3
 # an ASP tickle timeout). Run it as the real user so the .AppleDB it
 # creates under the share is owned correctly, and point -s at our
 # vendored cnid_dbd (custom prefix). -h/-p match afpd's default.
-sudo -u "$REAL_USER" "$NA/sbin/cnid_metad" \
+sudo -u "$REAL_USER" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+    "$NA/sbin/cnid_metad" \
     -h localhost -p 4700 -s "$NA/sbin/cnid_dbd" -l LOG_INFO
 sleep 1
 
