@@ -1,0 +1,12 @@
+boost1: == summary: 24 primes, 2 controls, 0 failures
+boost1: == IWM: polls 609532 hits 59737 (9.8%) overwritten 181440 reReads 493
+boost1: == drive: track 10, motor on, CSTIN=0, nibbles 239609, personality IWM
+boost1: == screen: icon strip delta 1388 px, centre white 0.65 -> MOUNTED
+boost2: == summary: 24 primes, 2 controls, 0 failures
+boost2: == IWM: polls 609532 hits 59737 (9.8%) overwritten 181440 reReads 493
+boost2: == drive: track 10, motor on, CSTIN=0, nibbles 239609, personality IWM
+boost2: == screen: icon strip delta 1388 px, centre white 0.65 -> MOUNTED
+boost3: == summary: 24 primes, 2 controls, 0 failures
+boost3: == IWM: polls 609532 hits 59737 (9.8%) overwritten 181440 reReads 493
+boost3: == drive: track 10, motor on, CSTIN=0, nibbles 239609, personality IWM
+boost3: == screen: icon strip delta 1388 px, centre white 0.65 -> MOUNTED

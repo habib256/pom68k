@@ -84,3 +84,16 @@ for the two runs it names.
 Instrument the IWM/SWIM1 read path on both machines from the first read that
 differs, which is at the insert and well before the folder the gate asserts.
 Reproducer here: `POM68K_BEYOND=floppy build/lcii_beyond_etalon`, 65 s.
+
+---
+
+**Corrected 2026-09-18.** Two claims above are wrong, and the answer is in
+`scratchpad/2026-09-18/floppy/`. (1) "this host, current tree, x64 default
+and interpreter — both fail identically" was two runs of the *same* engine:
+the rig's CPU takes `jit::defaultResolvedConfig()`, whose `engine` defaults
+to `EngineKind::Interp`, and `POM68K_CPU_ENGINE` never reaches it. (2) "no
+GCR address mark in the last 512 nibbles" and "the head parked on track 10"
+are effects, not the failure: the .Sony driver completes 24 Primes and 2
+Controls with zero failures and `_MountVol` returns `noErr`. What differed
+is that the Finder's frontmost window was the boot volume's, so Cmd-N
+created the folder there.

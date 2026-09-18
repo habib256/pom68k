@@ -1,0 +1,141 @@
+lcii_sony_trace: boost=4 (default), boot=hdv/boot.vhd, floppy=disks35/Disk605.dsk
+UTableBase=$0173F0 UnitNtryCnt=96
+  unit  1: dce=$004A2C flags=$4F20 refNum=-5 drvr=$A6C3E0 '.Sony'
+    refNum -5 raw dCtlDriver=$00A6C3E0  as ptr -> $A6C3E0 '.Sony'  as handle -> $000000 ''
+  unit  3: dce=$004EC0 flags=$4E20 refNum=-4 drvr=$A51410 '.Sound'
+  unit  4: dce=$004A2C flags=$4F20 refNum=-5 drvr=$A6C3E0 '.Sony'
+    refNum -5 raw dCtlDriver=$00A6C3E0  as ptr -> $A6C3E0 '.Sony'  as handle -> $000000 ''
+  unit  5: dce=$005134 flags=$4D00 refNum=-6 drvr=$A6ABCA '.AIn'
+  unit  6: dce=$005174 flags=$4E00 refNum=-7 drvr=$A6ABE2 '.AOut'
+  unit  7: dce=$0051B0 flags=$4D00 refNum=-8 drvr=$A6ABFA '.BIn'
+  unit  8: dce=$0051EC flags=$4E00 refNum=-9 drvr=$A6AC12 '.BOut'
+  unit  9: dce=$0F25DC flags=$4C00 refNum=-10 drvr=$09FE3C '.MPP'
+  unit 10: dce=$0CC1B8 flags=$4400 refNum=-11 drvr=$0A22CC '.ATP'
+  unit 32: dce=$00927C flags=$4F24 refNum=-33 drvr=$006772 '.ASYC00'
+  unit 40: dce=$0EE970 flags=$4400 refNum=-41 drvr=$0A34C8 '.XPP'
+  unit 48: dce=$004F10 flags=$4C20 refNum=-49 drvr=$0889FC '.Display_Video_Apple_V8'
+  unit 50: dce=$0053E8 flags=$4D20 refNum=-51 drvr=$086CA8 '.AppleSoundInput'
+  unit 51: dce=$0EE8A4 flags=$4400 refNum=-52 drvr=$0B78CC '.DSP'
+driver .Sony at $A6C3E0, prime=$A6C406 ctl=$A6C414
+inserted at machine clock 4167703110
+
+[4168918847] _PostEvent diskEvt msg=$00000001 (drive 1, hi-word err 0 noErr)
+[4168926984] _MountVol pb=$9C3C14 ioVRefNum=1 caller=$A1C81E
+[4168942309] PRIME #1 READ off=$400 (sector 2) req=$200 buf=$00D0C4 posMode=1 pb=$9C3B96 caller=$A0B69E track=0
+[4188997028] PRIME #1 -> 0 noErr  (20054719 machine cycles, nib +79065, polls +107481, hits +10984, lost +68319, track 0 -> 0)
+             mid-data-field losses: 12
+[4189001675] PRIME #2 READ off=$400 (sector 2) req=$200 buf=$06FEB4 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4191382888] PRIME #2 -> 0 noErr  (2381213 machine cycles, nib +9405, polls +32464, hits +3025, lost +6403, track 0 -> 0)
+             mid-data-field losses: 1
+[4191407154] PRIME #3 READ off=$400 (sector 2) req=$200 buf=$9EDE00 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4193768748] PRIME #3 -> 0 noErr  (2361594 machine cycles, nib +9330, polls +31582, hits +2940, lost +6411, track 0 -> 0)
+             mid-data-field losses: 1
+[4193796672] PRIME #4 READ off=$800 (sector 4) req=$200 buf=$9EDE00 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4193803714] PRIME #4 -> 0 noErr  (7042 machine cycles, nib +25, polls +29, hits +13, lost +16, track 0 -> 0)
+             mid-data-field losses: 0
+[4193824223] PRIME #5 READ off=$2000 (sector 16) req=$200 buf=$9F1000 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4194540531] PRIME #5 -> 0 noErr  (716308 machine cycles, nib +2848, polls +28663, hits +2819, lost +38, track 0 -> 0)
+             mid-data-field losses: 3
+[4194546538] PRIME #6 READ off=$400 (sector 2) req=$200 buf=$9EE400 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4196154588] PRIME #6 -> 0 noErr  (1608050 machine cycles, nib +6336, polls +64264, hits +6241, lost +109, track 0 -> 0)
+             mid-data-field losses: 7
+[4196160043] PRIME #7 WRITE off=$400 (sector 2) req=$200 buf=$9EE400 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4198562382] PRIME #7 -> 0 noErr  (2402339 machine cycles, nib +8748, polls +25214, hits +2304, lost +6465, track 0 -> 0)
+             mid-data-field losses: 0
+[4198565340] CTL   #1 csCode=23 (driveInfo) pb=$9C3BA6 caller=$A0B69E csParam=0000 0000
+[4198566761] CTL #1 -> 0 noErr  (1421 machine cycles, nib +6, polls +0, hits +0, lost +6, track 0 -> 0)
+[4198601959] _MountVol RETURNED 0 noErr
+[4199661755] PRIME #8 READ off=$2600 (sector 19) req=$200 buf=$9EEE00 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4200733608] PRIME #8 -> 0 noErr  (1071853 machine cycles, nib +4199, polls +43055, hits +4163, lost +50, track 0 -> 0)
+             mid-data-field losses: 5
+[4200748881] PRIME #9 READ off=$2E00 (sector 23) req=$200 buf=$9F0A00 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4200755957] PRIME #9 -> 0 noErr  (7076 machine cycles, nib +25, polls +29, hits +14, lost +15, track 0 -> 0)
+             mid-data-field losses: 0
+[4200869031] PRIME #10 READ off=$2A00 (sector 21) req=$200 buf=$9F0800 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4201505128] PRIME #10 -> 0 noErr  (636097 machine cycles, nib +2526, polls +25360, hits +2501, lost +34, track 0 -> 0)
+             mid-data-field losses: 3
+[4201533321] PRIME #11 READ off=$2200 (sector 17) req=$200 buf=$9F3800 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4202083768] PRIME #11 -> 0 noErr  (550447 machine cycles, nib +2190, polls +22158, hits +2175, lost +23, track 0 -> 0)
+             mid-data-field losses: 2
+[4202130985] PRIME #12 READ off=$2800 (sector 20) req=$200 buf=$9F2200 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4202138057] PRIME #12 -> 0 noErr  (7072 machine cycles, nib +26, polls +29, hits +15, lost +16, track 0 -> 0)
+             mid-data-field losses: 0
+[4202330405] PRIME #13 READ off=$2400 (sector 18) req=$200 buf=$9F4400 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4202337477] PRIME #13 -> 0 noErr  (7072 machine cycles, nib +23, polls +29, hits +14, lost +13, track 0 -> 0)
+             mid-data-field losses: 0
+[4202781019] PRIME #14 READ off=$1D200 (sector 233) req=$200 buf=$9EEC00 posMode=1 pb=$0003A4 caller=$A0B69E track=0
+[4204469628] PRIME #14 -> 0 noErr  (1688609 machine cycles, nib +6695, polls +66232, hits +6560, lost +170, track 0 -> 9)
+             mid-data-field losses: 8
+[4204601117] PRIME #15 READ off=$1E400 (sector 242) req=$200 buf=$9F3600 posMode=1 pb=$0003A4 caller=$A0B69E track=9
+[4205698188] PRIME #15 -> 0 noErr  (1097071 machine cycles, nib +4299, polls +43311, hits +4195, lost +117, track 9 -> 10)
+             mid-data-field losses: 5
+[4205707426] PRIME #16 READ off=$1E600 (sector 243) req=$200 buf=$9EF400 posMode=1 pb=$0003A4 caller=$A0B69E track=10
+[4206086423] PRIME #16 -> 0 noErr  (378997 machine cycles, nib +1508, polls +15223, hits +1491, lost +23, track 10 -> 10)
+             mid-data-field losses: 1
+[4206207619] PRIME #17 READ off=$1D400 (sector 234) req=$200 buf=$9F1C00 posMode=1 pb=$0003A4 caller=$A0B69E track=10
+[4207505696] PRIME #17 -> 0 noErr  (1298077 machine cycles, nib +5098, polls +51310, hits +4986, lost +130, track 10 -> 9)
+             mid-data-field losses: 6
+[4207684223] PRIME #18 READ off=$1D600 (sector 235) req=$200 buf=$9F4C00 posMode=1 pb=$0003A4 caller=$A0B69E track=9
+[4207891168] PRIME #18 -> 0 noErr  (206945 machine cycles, nib +817, polls +8085, hits +808, lost +16, track 9 -> 9)
+             mid-data-field losses: 1
+[4208067464] PRIME #19 READ off=$1D800 (sector 236) req=$200 buf=$9F2400 posMode=1 pb=$0003A4 caller=$A0B69E track=9
+[4208277088] PRIME #19 -> 0 noErr  (209624 machine cycles, nib +827, polls +8192, hits +816, lost +17, track 9 -> 9)
+             mid-data-field losses: 1
+[4208468785] PRIME #20 READ off=$1DA00 (sector 237) req=$200 buf=$9EE200 posMode=1 pb=$0003A4 caller=$A0B69E track=9
+[4208662688] PRIME #20 -> 0 noErr  (193903 machine cycles, nib +769, polls +7516, hits +759, lost +16, track 9 -> 9)
+             mid-data-field losses: 1
+[4208904153] PRIME #21 READ off=$1DC00 (sector 238) req=$200 buf=$9F2E00 posMode=1 pb=$0003A4 caller=$A0B69E track=9
+[4208911325] PRIME #21 -> 0 noErr  (7172 machine cycles, nib +25, polls +29, hits +13, lost +16, track 9 -> 9)
+             mid-data-field losses: 0
+[4209085777] PRIME #22 READ off=$1DE00 (sector 239) req=$200 buf=$9F0E00 posMode=1 pb=$0003A4 caller=$A0B69E track=9
+[4209092965] PRIME #22 -> 0 noErr  (7188 machine cycles, nib +25, polls +29, hits +15, lost +15, track 9 -> 9)
+             mid-data-field losses: 0
+[4209479209] PRIME #23 READ off=$1E000 (sector 240) req=$200 buf=$9F1600 posMode=1 pb=$0003A4 caller=$A0B69E track=9
+[4209698368] PRIME #23 -> 0 noErr  (219159 machine cycles, nib +850, polls +7721, hits +783, lost +76, track 9 -> 10)
+             mid-data-field losses: 1
+[4209823201] PRIME #24 READ off=$1E200 (sector 241) req=$200 buf=$9F3400 posMode=1 pb=$0003A4 caller=$A0B69E track=10
+[4210084416] PRIME #24 -> 0 noErr  (261215 machine cycles, nib +1036, polls +10360, hits +1025, lost +18, track 10 -> 10)
+             mid-data-field losses: 1
+[4211573629] CTL   #2 csCode=22 (mediaIcon) pb=$9C3638 caller=$A0B69E csParam=0000 0001
+[4211575037] CTL #2 -> 0 noErr  (1408 machine cycles, nib +5, polls +0, hits +0, lost +5, track 10 -> 10)
+
+== summary: 24 primes, 2 controls, 0 failures
+   result      0 noErr        x26
+== MountVol: returned (0 noErr)
+== IWM: polls 609532 hits 59737 (9.8%) overwritten 181440 reReads 493
+== drive: track 10, motor on, CSTIN=0, nibbles 239609, personality IWM
+== top IWM poll sites (pc: polls, hits):
+   $A6E1CE  move.b  (A4), D5                         163148 polls, 14206 hits
+   $A6E332  move.b  (A4), D3                         131646 polls, 10089 hits
+   $A6E34C  move.b  (A4), D3                         123903 polls, 10089 hits
+   $A6E368  move.b  (A4), D3                         109603 polls, 10030 hits
+   $A6E324  move.b  (A4), D3                         40690 polls, 10089 hits
+   $A6E296  move.b  (A4), D3                         6708 polls, 531 hits
+   $A6E2D0  move.b  (A4), D3                         2973 polls, 236 hits
+   $A6E2EA  move.b  (A4), D3                         2815 polls, 236 hits
+== DUPLICATE nibbles (re-read inside the 14-tick hold; 493 total):
+   $A6D41C  tst.b   ($600,A0)                        372 duplicates
+   $A6D44A  tst.b   ($400,A0)                        44 duplicates
+   $A6D74E  tst.b   ($1200,A0)                       41 duplicates
+   $A6EB18  move.b  D0, ($800,A0)                    22 duplicates
+   $A6D424  tst.b   ($a00,A0)                        12 duplicates
+   $A6D42A  tst.b   ($800,A0)                        1 duplicates
+   $A6EB1C  cmp.b   ($1800,A0), D0                   1 duplicates
+== WHERE nibbles were lost (pc the CPU was at, 181440 total, 7922 sites):
+   $A0BB8C  move.w  ($10,A0), D0                     45112 lost (24.9%)
+   $A0BB90  bgt     $a0bb8c                          38514 lost (21.2%)
+   $A0E156  bra     $a0e148                          1441 lost (0.8%)
+   $A0E148  cmpa.l  (A6), A1                         1147 lost (0.6%)
+   $A0E14E  tst.b   (A1)                             878 lost (0.5%)
+   $A09A04  jsr     ([$400, D2.w*4], $0)             860 lost (0.5%)
+   $06B2FE  movem.l (A7)+, D0-D2/A0-A1               841 lost (0.5%)
+   $A0E14C  move.l  (A1), D1                         752 lost (0.4%)
+   $02C6FA  movem.l (-$1c,A6), D6-D7                 741 lost (0.4%)
+   $06B2DE  movem.l D0-D2/A0-A1, -(A7)               720 lost (0.4%)
+   $03E614  movem.l (A7)+, D1/A0-A1                  644 lost (0.4%)
+   $031236  dc.w    $abf7; opcode 1010               630 lost (0.3%)
+   $A099C6  move.l  ($1e00, D2.w*4), ($8,A7)         624 lost (0.3%)
+   $032660  movem.l (-$c,A6), D7/A3-A4               623 lost (0.3%)
+   $A09A0A  movea.l (A7)+, A0                        543 lost (0.3%)
+   $A0E14A  bcc     $a0e172                          542 lost (0.3%)
+== screen: icon strip delta 1388 px, centre white 0.65 -> MOUNTED

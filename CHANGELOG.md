@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"x64 default and interpreter — both fail identically" (2026-09-12), and "mounting opens the volume's window" (the floppy leg since 2026-08-05) — the rig never reads the engine knob, so both runs were the interpreter; and the mount paints an icon, not a window, so Cmd-N had been creating the folder in the boot volume's Games window** → [2026-09-18 (fourth) — `lcii_floppy_etalon`'s red on x86-64 was never the floppy…](#2026-09-18-floppy-window)
 - **"the Cmd-N folder ON the floppy stays printed-not-asserted" (lcii_floppy_etalon since 2026-08-05) — the Finder did create it every time; the gate's own host-forced eject discarded the catalog write still in the guest's cache** → [2026-09-07 (fifth) — The guest writes to its floppies and puts them away…](#2026-09-07-floppy-guest-write)
 - **"the SimCity census plays BLACK FOREST MONSTRE" (2026-08-27) — it had been playing TED CITY, the alphabetical neighbour of a prefix typed into the wrong window; and every LC II type-select on GISTPERSO had been sending QWERTY key codes to an AZERTY System, so "black forest m" arrived as "blqck forest ,"** → [2026-09-07 (third) — SimCity 2000 becomes a gate…](#2026-09-07-simcity-etalon)
 - **"the whole F-line stays out of a block" — the FPU general window `$F200-$F23F` changes FPU state only; it is now an exact-replay block member, −11.6 % on Speedometer's isolated direct-FPU phase, and a cross-binary "before" that seemed to contradict the knob turned out to be a fresh configure's LTO+native defaults** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
@@ -456,6 +457,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-18 (fourth)** — [`lcii_floppy_etalon`'s red on x86-64 was never the floppy: the .Sony driver refuses nothing, and what differed between hosts is which window was frontmost when Cmd-N arrived](#2026-09-18-floppy-window)
 - **2026-09-18 (release)** — [0.3.0](#2026-09-18-release-030)
 - **2026-09-18 (later)** — [A Quadra 630 boots from its IDE disk, with nothing on the SCSI bus](#2026-09-18-ide-boots)
 - **2026-09-18** — [Mac OS formats and mounts a disk on the Quadra 630's IDE port. The blocker was one missing line: the drive raised its interrupt and the machine never heard it](#2026-09-18-ide-mounts)
@@ -1021,6 +1023,77 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-18-floppy-window"></a>
+## 2026-09-18 (fourth) — `lcii_floppy_etalon`'s red on x86-64 was never the floppy: the .Sony driver refuses nothing, and what differed between hosts is which window was frontmost when Cmd-N arrived
+
+The gate is green on this host. What it took was naming the window the
+gesture types into, and what that cost is one paragraph of belief.
+
+**The driver was never failing.** `lcii_sony_trace` on the failing run:
+24 Primes, 2 Controls, **zero failures**, every one `0 noErr`; `_MountVol`
+returns `noErr`; the last call of the session is Control csCode 22
+(mediaIcon), the Finder asking for the desktop icon it then paints. The two
+figures the 2026-09-12 note built its case on — the head parked on track 10
+and "0 address marks in the last 512 nibbles" — are what a *finished* read
+leaves behind, not a failing one: the last sector the Finder asked for was
+243, on track 10, and the nibbles after it are the ones the stopped motor
+kept turning past. Effect, not cause.
+
+**The cause is on screen.** `POM68K_DUMP=1` on the failing run shows
+"untitled folder" created inside MacPack's own **Games** window — 14 items
+before the gesture, 15 after — on the boot volume, while the floppy sits on
+the desktop as an icon whose window never opened. The leg's comment had
+said since 2026-08-05 that "mounting opens the volume's window, so it is
+frontmost"; on this host the mount paints the icon and nothing else. The
+leg now closes every Finder window (Cmd-Option-W), type-selects the volume
+by name on the desktop and opens it (Cmd-O) before Cmd-N — the two gestures
+its own Put Away already depends on, and the explicit open
+`q605_hotfloppy_etalon` has done on the Rogue volume since 2026-09-07.
+
+**Then the two hosts agree to the pixel.** With the window named, this
+host's downstream figures are the committed reference's: Cmd-N repaints
+**3066 px** over x 17..503 (reference: 3066 px), centre white **0.91**
+(0.91), `'untitled folder' 0 → 2` in the host file, HFS intact, re-insert
+OK. Whatever separated the two runs lived entirely upstream of the
+gesture, in whether that window was open.
+
+**What the red was NOT**, each measured rather than argued: run-to-run
+noise (two runs byte-identical); the boost cliff (`POM68K_CACHE_BOOST`
+1, 2 and 3 produce identical counters to the digit — the floppy boost gate
+freezes the ratio to 1 while the motor runs, so the knob cannot reach this);
+the compiler (`-march=native` + LTO and a plain `-O2` build produce
+byte-identical logs); and a budget too tight (`POM68K_FLOPPY_SETTLE=3600`,
+60 further emulated seconds, opens no window).
+
+**A correction.** The 2026-09-12 note's "x64 default and interpreter — both
+fail identically" was two runs of the *same* engine. This rig builds its CPU
+with `jit::defaultResolvedConfig()`, whose `engine` field defaults to
+`EngineKind::Interp`, and no environment knob reaches a default-constructed
+config: `POM68K_CPU_ENGINE` is inert here. Every figure ever recorded for
+this gate — the committed reference's included — is the interpreter's, which
+is also why no JIT backend can be the difference between the hosts.
+
+**And a second one**, in the leg's own output: `floppy: hard disk image
+untouched by the Cmd-N (tells us which window was frontmost)` told us
+nothing of the sort. It printed "untouched" on the failing runs too, the
+ones where the folder *was* created on the boot volume — the Finder's
+catalog write sat in the guest's cache exactly as the floppy's did until
+the 2026-09-07 Put Away fix. The line now claims only what it measures.
+
+Still open, and no longer in anyone's way: why the Finder had that window
+open on the run committed at `662a64f`, whose host was never recorded. The
+mechanism to look at first is the Finder's own habit of reopening the
+windows a volume had open when it was last ejected, which is volume state,
+not host state.
+
+Green under CTest: `lcii_floppy_etalon` (56 s), and with it the ten
+neighbours that could have noticed the change — `lcii_soak/persist/launch`,
+`q605_hotfloppy_etalon`, `external_floppy_boot_etalon`, `floppy_persist_test`,
+`swim1_test`, `iwm_read/write_test`, `lcii_floppy144_etalon` (asset-absent).
+Evidence: `scratchpad/2026-09-18/floppy/`.
 
 ---
 

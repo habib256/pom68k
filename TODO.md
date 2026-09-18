@@ -201,17 +201,18 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
 - [ ] **Revalider l'arithmétique de zones GCR.** La survie des flux hors
   cadence est faite (`SonyDriveFlux.cpp`). Ne reste que les zones GCR, et
   seulement avec un symptôme ou un corpus.
-- [ ] **Élucider la divergence entre hôtes de `lcii_floppy_etalon`.** Même
-  gate, même code, mêmes actifs : l'hôte x86-64 échoue (309 598 quartets,
-  éjection en 60 images, aucun dossier) là où le journal committé à
-  `662a64f` passe (586 503 quartets, 180 images, `untitled folder` 0 → 2)
-  — l'hôte de ce run passant n'est pas consigné. L'invité éjecte ; c'est
-  le dossier qui échoue. La divergence commence dès l'insertion (moitié
-  des quartets, TKO=1, aucune marque GCR `D5 AA 96`). **Fait :** le gate
-  passe sur le M4. Suite : instrumenter IWM/SWIM1 des deux côtés depuis la
-  première lecture qui diffère, ce qui demande l'hôte x86-64. Repro :
-  `POM68K_BEYOND=floppy build/lcii_beyond_etalon`. Évidence :
-  `scratchpad/2026-09-12/floppy/`.
+- [ ] **Expliquer la réouverture de la fenêtre de volume à l'insertion.**
+  Le rouge x86-64 de `lcii_floppy_etalon` est tranché le 2026-09-18 et le
+  gate est vert : le lecteur ne refusait rien (24 Primes, 2 Controls, zéro
+  échec, `_MountVol` noErr), c'est la fenêtre au premier plan qui différait
+  — le Cmd-N créait le dossier dans la fenêtre Games du volume de
+  démarrage. Le geste nomme désormais la sienne. Reste la question de
+  fidélité, sans consommateur pressé : un Mac réel rouvre les fenêtres
+  qu'un volume avait ouvertes à son éjection, donc de l'état de VOLUME et
+  non d'hôte. Première expérience : éjecter fenêtre racine ouverte,
+  réinsérer l'image écrite, regarder si le Finder la rouvre
+  (`lcii_sony_trace --img`, la ligne « centre white » tranche seule : 0,65
+  sans fenêtre, 0,91 avec). Évidence : `scratchpad/2026-09-18/floppy/`.
 - [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Assets
   privés soft-skippables, captures stables. Le WASM n'a aujourd'hui que
   des stubs inactifs.

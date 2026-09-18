@@ -566,9 +566,9 @@ int main() {
         std::printf("floppy: System responded: %s — centre white %.2f, icon "
                     "strip Δ%ld px → %s\n", responded ? "yes" : "NO",
                     centreWhite, stripDelta, verdict);
-        // Mounting opens the volume's window, so it is frontmost and Cmd-N
-        // creates the folder ON THE FLOPPY — the same gesture `persist`
-        // uses on the hard disk, no desktop-icon hunting needed.
+        // Cmd-N creates the folder in the FRONTMOST window, so the leg
+        // names that window instead of inheriting it — see the explicit
+        // open below.
         long before[folderprobe::kCount];
         folderprobe::sample(floppyOrig, before, "floppy/before");
         std::vector<uint8_t> hdSnap = mem.scsiDisk().image();
@@ -586,6 +586,49 @@ int main() {
             std::printf("floppy: +%d settle frames before Cmd-N\n", extra);
             runFrames(extra);
         }
+        // Open the volume's window BY GESTURE. Mounting paints the
+        // desktop ICON; it does not necessarily open the volume's WINDOW,
+        // and this leg used to assume it did. Measured here on 2026-09-18:
+        // after the mount the frontmost window is still MacPack's own
+        // Games window, so Cmd-N created "untitled folder" THERE (14 → 15
+        // items in `lcii_beyond_floppy_cmdn.ppm`) and the floppy never saw
+        // it — while the .Sony driver reported 24 Primes, 2 Controls and
+        // zero failures, MountVol noErr (`lcii_sony_trace`). Nothing in
+        // the storage path was refusing anything. So: close every Finder
+        // window (Cmd-Option-W), type-select the volume on the desktop by
+        // name and open it (Cmd-O) — the same two gestures the Put Away
+        // below already depends on, and the same explicit open
+        // `q605_hotfloppy_etalon` does on the Rogue volume.
+        mem.keyEvent(0x37, true);            // Cmd
+        runFrames(12);
+        mem.keyEvent(0x3A, true);            // Option
+        runFrames(12);
+        mem.keyEvent(0x0D, true);            // 'w' — close every window
+        runFrames(75);
+        mem.keyEvent(0x0D, false);
+        mem.keyEvent(0x3A, false);
+        mem.keyEvent(0x37, false);
+        runFrames(300);
+        std::vector<uint32_t> preOpen;
+        screen(preOpen);
+        for (uint8_t code : {uint8_t(0x01), uint8_t(0x10), uint8_t(0x01),
+                             uint8_t(0x11), uint8_t(0x0E), uint8_t(0x2E),
+                             uint8_t(0x31), uint8_t(0x11)})
+            keyTap(code);                    // "system t"
+        runFrames(30);
+        mem.keyEvent(0x37, true);            // Cmd
+        runFrames(6);
+        keyTap(0x1F);                        // 'o' — File ▸ Open
+        mem.keyEvent(0x37, false);
+        runFrames(600);                      // ~10 s: window + catalog read
+        std::vector<uint32_t> afterOpen;
+        screen(afterOpen);
+        dump("lcii_beyond_floppy_open.ppm", afterOpen);
+        const double openDelta = diffRatio(preOpen, afterOpen);
+        std::printf("floppy: Cmd-O changed %.3f of the screen, centre white "
+                    "%.2f → volume window %s\n", openDelta,
+                    1.0 - blackRatio(afterOpen, 120, 380, 90, 200),
+                    openDelta > 0.02 ? "OPEN" : "did NOT open");
         bool keymapSaw = false;
         auto runWatched = [&](long n) {
             for (long f = 0; f < n && !gCpu->isHalted(); f++) {
@@ -634,8 +677,13 @@ int main() {
             dump("lcii_beyond_floppy_cmdn.ppm", postGesture);
         }
         bool guestWrote = drv.dirty();
-        std::printf("floppy: hard disk image %s by the Cmd-N (tells us which "
-                    "window was frontmost)\n",
+        // What this does NOT establish is which window was frontmost: when
+        // the folder landed in MacPack's Games window instead (before the
+        // explicit open above) this still printed "untouched", because the
+        // Finder's catalog write sat in the guest's cache exactly as the
+        // floppy's did until the 2026-09-07 Put Away fix. It is a
+        // "the boot volume was not disturbed" check, nothing more.
+        std::printf("floppy: hard disk image %s by the Cmd-N\n",
                     mem.scsiDisk().image() != hdSnap ? "CHANGED" : "untouched");
         std::printf("floppy: guest wrote to the medium: %s\n",
                     guestWrote ? "yes (sectors committed)" : "NO");
