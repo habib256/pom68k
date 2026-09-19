@@ -1,0 +1,12 @@
+CD-ROM: cd/BattleChessEnhanced/BattleChessEnhanced.cue → cd/BattleChessEnhanced/BATTLECHESSENHANCED.BIN
+cd/BattleChessEnhanced/BattleChessEnhanced.cue
+  data blocks 20634 of 2048 bytes (40.3 MB)
+  22 track(s)
+    1 DATA  start LBA        0  (00:00:00)
+    2 AUDIO start LBA    20634  (04:35:09)
+    3 AUDIO start LBA    90072  (20:00:72)
+    4 AUDIO start LBA    99492  (22:06:42)
+   …  16 more
+   21 AUDIO start LBA   184282  (40:57:07)
+   22 AUDIO start LBA   190682  (42:22:32)
+  21 audio track(s), first at 04:35:09, last starts 42:22:32

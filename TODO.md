@@ -48,8 +48,13 @@ tranchés **(reste la bisection du bras `a64` à la frontière 14, qui demande
 un hôte AArch64)**. Travail : § Services réseau.
 
 **Jalon 4 — Fidélité matérielle et médias.** Sortie : un jeu CD avec audio
-joué de bout en bout, la divergence LC II attribuée, N profils sous etalon
-pixel-accurate. Travail : § Fidélité, § Médias optiques.
+joué de bout en bout **(fait le 2026-09-19 : disque pressé 22 pistes, 1 de
+données + 21 audio, sur LC 475 — musiques, paroles et bruitages joués,
+constaté par l'utilisateur ; il a fallu d'abord croire la feuille cue
+plutôt que la carte de partitions)**, la divergence LC II attribuée
+**(faite le 2026-09-18 : la fenêtre au premier plan, pas le lecteur)**, N
+profils sous etalon pixel-accurate **(six le 2026-09-19 ; l'extension aux
+autres familles reste en § Fidélité)**. Travail : § Fidélité.
 
 **Jalon 5 — Les portables.** Sortie : la famille PowerBook boote au Finder
 avec preuve au-delà du boot, catalogue et save-state câblés. Travail :

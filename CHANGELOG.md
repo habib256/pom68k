@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"CD audio plays — the gate says so" (2026-09-17) — the gate said so about a disc this tree wrote. A pressed game disc, 21 audio tracks, played its music, its speech and its effects on an LC 475, and the archive page for it says emulation cannot reach that partition at all** → [2026-09-19 (fourth) — A pressed CD game, played…](#2026-09-19-cd-game)
 - **"CD audio is done, the guest mounts a disc and plays it" (2026-09-17) — against discs this tree SYNTHESIZED. The first pressed mixed-mode disc opened as a 512-byte removable hard disk: no TOC, no audio, because its Apple partition map declares 512 and the reader believed the map over the cue sheet** → [2026-09-19 (third) — A pressed Apple CD declares 512-byte blocks…](#2026-09-19-pressed-cd)
 - **"the boot etalons prove the Finder is drawn" — they prove something that LOOKS like one: a menu bar mostly white and a desktop in a dithered band survive a wrong font, a shifted icon and a scrambled CLUT. Six profiles now pin the exact pixels, and the pin is identical under the interpreter and the JIT** → [2026-09-19 (second) — Six profiles pinned by their pixels…](#2026-09-19-pixel-pins)
 - **"the AppleShare server is proven, it serves Mac OS 8.1" — one client generation is one client: a System 7.0 Finder mounted, enumerated, got info and duplicated both forks with `refusedCount` at zero, and the absurd size it displays is its own, reproduced against netatalk** → [2026-09-19 — A System 7.0 client on the AFP server…](#2026-09-19-afp-system7)
@@ -464,6 +465,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-19 (fourth)** — [A pressed CD game, played: music, speech and effects off its Red Book tracks on an LC 475 — jalon 4's first exit criterion](#2026-09-19-cd-game)
 - **2026-09-19 (third)** — [A pressed Apple CD declares 512-byte blocks in its map and is still a 2048-byte CD — the first real mixed-mode disc mounted as a hard disk](#2026-09-19-pressed-cd)
 - **2026-09-19 (second)** — [Six profiles pinned by their pixels, and the pin holds across engines](#2026-09-19-pixel-pins)
 - **2026-09-19** — [A System 7.0 client on the AFP server: zero refused opcodes against a second client generation, and one absurd size that belongs to the client](#2026-09-19-afp-system7)
@@ -1038,6 +1040,43 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-19-cd-game"></a>
+## 2026-09-19 (fourth) — A pressed CD game, played: music, speech and effects off its Red Book tracks on an LC 475
+
+Jalon 4's first exit criterion — "un jeu CD avec audio joué de bout en
+bout" — is met, and by the most direct measurement available: the running
+machine was handed to the user, who played the game and reported that the
+sounds, the speech and the music all work.
+
+The session: **Macintosh LC 475** (the MemcJr board, the Quadra 605's
+twin), 68040 at 25 MHz, 640×480 at 8 bpp, Mac OS 8.1 on `hdv/`, and in the
+CD bay a pressed mixed-mode disc — **22 tracks, 1 data (40.3 MB of
+2048-byte blocks) and 21 audio**, first audio at 04:35:09. What played came
+off those Red Book tracks, not out of the data partition: the CD-DA path
+end to end, TOC through PLAY AUDIO through the transport on machine time to
+the host DAC.
+
+Everything the CDDA work of 2026-09-17 had been gated on, it had
+synthesized itself. This is the first disc it did not write, and it needed
+the fix of the same day to mount at all: the disc's Apple partition map
+declares 512-byte blocks, our reader believed the map over the cue sheet,
+and the first launch — on a binary one commit older — attached the game as
+a removable hard disk with no TOC and no audio. The rule that a cue sheet
+is the disc's own word about its framing is what made this session
+possible; this game is that fix's second witness, after the 61-track disc
+that found it.
+
+Worth recording for the next person: the archive page for this image states
+that it must be burned to a physical CD because emulation cannot reach the
+audio partition. Here it did.
+
+Evidence, including the disc's table of contents as `ScsiDisk` reads it and
+the user's own capture of the running game:
+`scratchpad/2026-09-19/cdaudio-game/`. The disc stays a private input under
+`cd/`, which `.gitignore` keeps out of the repository.
 
 ---
 
