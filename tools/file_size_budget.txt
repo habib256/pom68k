@@ -12,7 +12,7 @@ cmake/Pom68kAgentGates.cmake             74
 cmake/Pom68kAudioGates.cmake             12
 cmake/Pom68kComponentGates.cmake         598
 cmake/Pom68kDaynaGates.cmake             36
-cmake/Pom68kDevTools.cmake               157
+cmake/Pom68kDevTools.cmake               164
 cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
@@ -55,7 +55,7 @@ src/RuntimeConfigMachine.cpp             110
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071
-src/ScsiDisk.cpp                         1677
+src/ScsiDisk.cpp                         1687
 src/SonyDrive.cpp                        1368
 src/StartupDomainView.h                  73
 src/StartupOptions.h                     396

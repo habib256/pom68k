@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 588 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 589 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 113 |
+| [Cross-cutting](#cross-cutting) | 114 |
 
 ---
 
@@ -650,4 +650,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-18 (fifth)** — [The last corner of the GUI that only existed inside a GL context is behind a seam, and the six copies of it had drifted three ways](CHANGELOG.md#2026-09-18-frame-upload)
 - **2026-09-18 (ninth)** — [The in-process stack stops asserting a network number it does not own: it learns one from the router that owns the segment](CHANGELOG.md#2026-09-18-learned-net)
 - **2026-09-18 (release)** — [0.3.0](CHANGELOG.md#2026-09-18-release-030)
+- **2026-09-19 (third)** — [A pressed Apple CD declares 512-byte blocks in its map and is still a 2048-byte CD: the first real mixed-mode disc mounted as a hard disk](CHANGELOG.md#2026-09-19-pressed-cd)
 

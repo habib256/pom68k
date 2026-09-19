@@ -463,6 +463,16 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     // de-framed raw rip — is a real 2048-byte disc.
     uint32_t bs = scsiAppleImageBlockSize(image_.data(), image_.size());
     if (!bs) bs = 2048;
+    // …unless a CUE SHEET already said what this is. A pressed Apple CD
+    // carries a partition map whose driver descriptor declares 512-byte
+    // blocks — that is the map's own unit, not the medium's, and the
+    // physical sectors are 2048 all the same (measured 2026-09-19 on the
+    // Apple CD-ROM Explorer: 1 MODE1/2352 data track, 60 audio tracks, and
+    // a map saying 512). Asking the bytes is the right question only for a
+    // bare dump with no sheet; where a sheet named the tracks, it is the
+    // disc's own word about its framing, and a CD that arrives as a
+    // 512-byte removable disk has no TOC and no audio for the guest.
+    if (!tracks_.empty()) bs = 2048;
     kind_ = bs == 2048 ? Kind::Cdrom : Kind::Removable;
     if (bs != 2048)
         std::fprintf(stderr, "CD-ROM: %s declares %u-byte blocks — attaching "

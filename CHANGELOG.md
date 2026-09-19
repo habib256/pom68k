@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"CD audio is done, the guest mounts a disc and plays it" (2026-09-17) — against discs this tree SYNTHESIZED. The first pressed mixed-mode disc opened as a 512-byte removable hard disk: no TOC, no audio, because its Apple partition map declares 512 and the reader believed the map over the cue sheet** → [2026-09-19 (third) — A pressed Apple CD declares 512-byte blocks…](#2026-09-19-pressed-cd)
 - **"the boot etalons prove the Finder is drawn" — they prove something that LOOKS like one: a menu bar mostly white and a desktop in a dithered band survive a wrong font, a shifted icon and a scrambled CLUT. Six profiles now pin the exact pixels, and the pin is identical under the interpreter and the JIT** → [2026-09-19 (second) — Six profiles pinned by their pixels…](#2026-09-19-pixel-pins)
 - **"the AppleShare server is proven, it serves Mac OS 8.1" — one client generation is one client: a System 7.0 Finder mounted, enumerated, got info and duplicated both forks with `refusedCount` at zero, and the absurd size it displays is its own, reproduced against netatalk** → [2026-09-19 — A System 7.0 client on the AFP server…](#2026-09-19-afp-system7)
 - **"the in-process stack seeds net 2" (since AtalkStack was written) — a seed is a claim about a segment, and on a shared cable it was someone else's: it now adopts the number a foreign router announces, and stops beaconing while that router is there** → [2026-09-18 (ninth) — The stack stops asserting a network number it does not own…](#2026-09-18-learned-net)
@@ -463,6 +464,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-19 (third)** — [A pressed Apple CD declares 512-byte blocks in its map and is still a 2048-byte CD — the first real mixed-mode disc mounted as a hard disk](#2026-09-19-pressed-cd)
 - **2026-09-19 (second)** — [Six profiles pinned by their pixels, and the pin holds across engines](#2026-09-19-pixel-pins)
 - **2026-09-19** — [A System 7.0 client on the AFP server: zero refused opcodes against a second client generation, and one absurd size that belongs to the client](#2026-09-19-afp-system7)
 - **2026-09-18 (ninth)** — [The in-process stack stops asserting a network number it does not own: it learns one from the router that owns the segment](#2026-09-18-learned-net)
@@ -1036,6 +1038,47 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-19-pressed-cd"></a>
+## 2026-09-19 (third) — A pressed Apple CD declares 512-byte blocks in its map and is still a 2048-byte CD: the first real mixed-mode disc mounted as a hard disk
+
+The CD-audio work of 2026-09-17 is gated against discs this tree writes
+itself: MODE1/2048 data, a few audio tracks, a cue sheet built to match.
+Jalon 4 wants a real one — "un jeu CD avec audio joué de bout en bout" —
+and the first pressed mixed-mode image put on the tray exposed a defect
+before any guest was booted.
+
+`ScsiDisk::openCdrom` read the sheet correctly: **61 tracks, 1 MODE1/2352
+data track and 60 audio tracks**, first audio at 28:27:55, and the data
+track cut at exactly the 128 080 sectors the sheet declares. Then it asked
+the BYTES how big their blocks are — and a pressed Apple CD carries a
+partition map whose driver descriptor says **512**. That is the map's own
+unit, not the medium's; the physical sectors are 2048 regardless. The disc
+was therefore attached as a 512-byte removable hard disk: 512 320 blocks of
+512 where the sheet says 128 080 of 2048, and for the guest, no TOC and no
+audio at all.
+
+The rule now: **where a cue sheet named the tracks, the sheet is the disc's
+word about its own framing.** Asking the bytes stays right for a bare dump
+with no sheet — a `.toast` taken at 512 really does declare its unit, and
+serving it at 2048 mounts nothing, which is the measurement that heuristic
+was built on (2026-08-15, `Apeiron_1_0_3.toast`). Both readings are now
+gated in `scsi_cdrom_test`, on a SYNTHESIZED disc carrying an `ER` map with
+sbBlkSize 512 plus an audio track: with a sheet it must open at 2048 with
+exactly the data track's blocks, and the same map as a bare dump must still
+be read at 512. Verified to bite: neutralising the rule fails both new
+checks.
+
+One naming trap found on the way, and left documented in the gate:
+`ScsiDisk::cdrom()` answers "removable", not "is a CD" — a 512-byte
+removable disk answers it too, so the discriminator is `blockSize()`.
+
+`cd_toc_probe` is the new dev tool that found this: it prints a CD image's
+table of contents exactly as `ScsiDisk` reads it — tracks, which are audio,
+where each starts — so a real disc can be confronted with our reader before
+a machine is involved.
 
 ---
 

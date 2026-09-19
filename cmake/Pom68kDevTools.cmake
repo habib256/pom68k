@@ -155,3 +155,10 @@ add_executable(rominfo EXCLUDE_FROM_ALL tools/rominfo.cpp)
 # could only soft-skip; run it by hand.
 add_executable(q605_afp_bridge_probe EXCLUDE_FROM_ALL tests/q605_afp_bridge_probe.cpp)
 target_link_libraries(q605_afp_bridge_probe PRIVATE pom68k_core)
+
+# Dev tool (not a gate): the TOC of a CD image as ScsiDisk reads it. The
+# CDDA work was gated against SYNTHESIZED discs; a pressed one brings
+# MODE1/2352, PREGAP/FLAGS and dozens of tracks, and this says whether our
+# reader agrees with the sheet before any guest is involved.
+add_executable(cd_toc_probe EXCLUDE_FROM_ALL tests/cd_toc_probe.cpp)
+target_link_libraries(cd_toc_probe PRIVATE pom68k_core)

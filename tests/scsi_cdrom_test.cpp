@@ -408,6 +408,70 @@ int main() {
         std::remove("scsi_cdrom_mixed.cue");
     }
 
+    // ── A pressed Apple CD declares 512-byte blocks in its MAP ───────
+    // …and it is still a 2048-byte CD. The driver descriptor's sbBlkSize is
+    // the map's unit, not the medium's, and asking the bytes — right for a
+    // bare dump, which is why that heuristic exists — turned a real disc
+    // into a removable hard disk with no TOC and no audio for the guest
+    // (measured 2026-09-19 on the Apple CD-ROM Explorer: 1 MODE1/2352 data
+    // track, 60 audio tracks, a map saying 512, and 512320 blocks of 512
+    // where the sheet says 128080 of 2048). Where a CUE SHEET named the
+    // tracks, the sheet is the disc's word about its framing.
+    {
+        const uint32_t kData = 8, kAudio = 4;
+        std::vector<uint8_t> bin;
+        auto raw = [&](bool audio, uint32_t lba, const uint8_t* user) {
+            std::vector<uint8_t> s(2352, audio ? 0x5A : 0x00);
+            if (!audio) {
+                static const uint8_t sync[12] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                                  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
+                std::memcpy(s.data(), sync, 12);
+                s[15] = 0x01;
+                if (user) std::memcpy(s.data() + 16, user, 4);
+            }
+            (void)lba;
+            bin.insert(bin.end(), s.begin(), s.end());
+        };
+        // 'ER' + sbBlkSize 512: what a pressed Apple CD really carries.
+        const uint8_t ddm[4] = { 'E', 'R', 0x02, 0x00 };
+        for (uint32_t i = 0; i < kData; i++) raw(false, i, i ? nullptr : ddm);
+        for (uint32_t i = 0; i < kAudio; i++) raw(true, kData + i, nullptr);
+        { std::ofstream f("scsi_cdrom_applemap.bin", std::ios::binary);
+          f.write(reinterpret_cast<const char*>(bin.data()), std::streamsize(bin.size())); }
+        { std::ofstream f("scsi_cdrom_applemap.cue");
+          f << "FILE \"scsi_cdrom_applemap.bin\" BINARY\n"
+               "  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n"
+               "  TRACK 02 AUDIO\n    INDEX 01 00:00:08\n"; }
+
+        ScsiDisk pressed;
+        check(pressed.openCdrom("scsi_cdrom_applemap.cue"),
+              "a sheet-described disc whose map says 512 still mounts");
+        // blockSize() is the discriminator, not cdrom(): that one answers
+        // "removable", which a 512-byte removable disk also does.
+        check(pressed.blockSize() == 2048,
+              "…as a CD — 2048-byte blocks, not a 512-byte removable disk");
+        check(pressed.blocks() == kData,
+              "…and exactly the data track's blocks");
+
+        // The control: the SAME bytes with no sheet keep the old reading.
+        // A bare dump taken at 512 does declare its own unit, and serving
+        // it at 2048 mounts nothing — that is the measurement the
+        // heuristic was built on, and this change must not undo it.
+        std::vector<uint8_t> flat(2048 * kData, 0);
+        std::memcpy(flat.data(), ddm, 4);
+        { std::ofstream f("scsi_cdrom_applemap.iso", std::ios::binary);
+          f.write(reinterpret_cast<const char*>(flat.data()), std::streamsize(flat.size())); }
+        ScsiDisk dump;
+        check(dump.openCdrom("scsi_cdrom_applemap.iso"),
+              "the same map as a bare dump still mounts");
+        check(dump.blockSize() == 512,
+              "…and is still read at the 512 bytes it declares");
+
+        std::remove("scsi_cdrom_applemap.bin");
+        std::remove("scsi_cdrom_applemap.cue");
+        std::remove("scsi_cdrom_applemap.iso");
+    }
+
     if (fails) { std::printf("FAILED (%d)\n", fails); return 1; }
     std::printf("PASS\n");
     return 0;
