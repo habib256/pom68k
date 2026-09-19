@@ -44,6 +44,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
 - **"the rate repeats run to run" (2026-09-11 (later)) — per host it does; across hosts the LocalTalk copy after reconnect does not: 171.67 s under every x86-64 engine, the interpreter included and at half the host's pace, against 165.17 s on AArch64** → [2026-09-11 (third) — The DaynaPort card replays on x86-64 figure for figure…](#2026-09-11-x86-dayna-leg)
+- **"the boot etalons prove the Finder is drawn" — they prove something that LOOKS like one: a menu bar mostly white and a desktop in a dithered band survive a wrong font, a shifted icon and a scrambled CLUT. Six profiles now pin the exact pixels, and the pin is identical under the interpreter and the JIT** → [2026-09-19 (second) — Six profiles pinned by their pixels…](#2026-09-19-pixel-pins)
 - **"the AppleShare server is proven, it serves Mac OS 8.1" — one client generation is one client: a System 7.0 Finder mounted, enumerated, got info and duplicated both forks with `refusedCount` at zero, and the absurd size it displays is its own, reproduced against netatalk** → [2026-09-19 — A System 7.0 client on the AFP server…](#2026-09-19-afp-system7)
 - **"the in-process stack seeds net 2" (since AtalkStack was written) — a seed is a claim about a segment, and on a shared cable it was someone else's: it now adopts the number a foreign router announces, and stops beaconing while that router is there** → [2026-09-18 (ninth) — The stack stops asserting a network number it does not own…](#2026-09-18-learned-net)
 - **"the LToUDP cable is our own format, so interop is assumed" (TODO § Services réseau since the LToUDP work) — it is now demonstrated: Mini vMac 37.03's guest mounted a volume served by POM68K's own AppleTalk stack and read a file from it, node to node, no router in the path** → [2026-09-18 (eighth) — Mini vMac mounts a POM68K volume…](#2026-09-18-minivmac-interop)
@@ -462,6 +463,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-19 (second)** — [Six profiles pinned by their pixels, and the pin holds across engines](#2026-09-19-pixel-pins)
 - **2026-09-19** — [A System 7.0 client on the AFP server: zero refused opcodes against a second client generation, and one absurd size that belongs to the client](#2026-09-19-afp-system7)
 - **2026-09-18 (ninth)** — [The in-process stack stops asserting a network number it does not own: it learns one from the router that owns the segment](#2026-09-18-learned-net)
 - **2026-09-18 (eighth)** — [Mini vMac mounts a POM68K volume: the LToUDP interop goes both ways, and the hub's network number turns out to be asserted rather than learned](#2026-09-18-minivmac-interop)
@@ -1034,6 +1036,55 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-19-pixel-pins"></a>
+## 2026-09-19 (second) — Six profiles pinned by their pixels, and the pin holds across engines
+
+Jalon 4 asks for "N profils sous etalon pixel-accurate". Until now a boot
+etalon judged its screen with luminance ratios: a menu bar mostly white, a
+desktop inside a dithered band. That answers "is this a Finder?" — and it
+survives a wrong font, a shifted icon, a lost colour and a permuted CLUT,
+because none of those move an average.
+
+Six profiles now also pin the exact pixels: **LC II** (V8, 1 bpp 512×384),
+**LC III** (Sonora), **Quadra 605** (DAFB, 8 bpp 640×480), and the three
+compacts **SE**, **SE FDHD** and **Classic**. The mechanism is
+`tests/PixelPin.h`, and two properties make the value meaningful:
+
+- **Settled, not counted.** The hash is taken when two captures a settle
+  apart are identical, never at a frame number. A pin taken at a fixed
+  frame would pin the engine's trajectory: the Q605 needed three settles
+  where the LC II needed one.
+- **Masked.** Mac OS draws a CLOCK in the menu bar, so the top rows never
+  reach the hash — which also spares the pin any one-pixel menu-title
+  difference, since the desktop is what it is about.
+
+The property that makes it a fidelity claim rather than a snapshot: the LC
+II's pin is **`674c4049ab7980f7` under both the interpreter and the x64
+JIT**. It pins the machine, not the engine.
+
+The expected values live in `tools/pixel_pins.tsv`, one row per gate, so
+re-pinning after a deliberate change is one edit and the diff names the
+profile that moved. A gate with no row prints its measured value and passes:
+that printed line is what gets pasted in, which is how each of the six was
+taken. The three compacts share one value — same System, same volume, same
+512×342 1 bpp screen; they differ in their floppy controller, not in what
+they draw — and the gate keys by MODEL so that stays a fact rather than an
+accident of whichever ran last.
+
+`pixel_pin_test` gates the mechanism with no asset and no machine, and its
+first check is the one that justifies the work: two frames with the SAME
+black ratio and different arrangements hash differently. It also pins the
+mask (a pixel among the menu rows never reaches the value, one below it
+always does) and the refusal (a screen still moving is not pinned).
+
+Measured, and worth stating plainly: booting the LC II gate against a
+different volume moves the pin (`32856f2660e106dd` against the pinned
+`674c4049ab7980f7`) — but that substitution also breaks the old desktop
+ratio, so it is a case both catch. The pin's own ground is the blind spot
+`pixel_pin_test` demonstrates, and the cross-engine identity above.
 
 ---
 

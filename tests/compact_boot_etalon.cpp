@@ -12,6 +12,7 @@
 // Soft-skips unless the model's ROM and disks35/Disk605.dsk are present.
 
 #include "AssetFingerprint.h"
+#include "PixelPin.h"
 #include "Cpu68k.h"
 #include "JitTestConfig.h"
 #include "MacMemory.h"
@@ -94,6 +95,24 @@ int main() {
     }
     if (desktop < 0.40 || desktop > 0.60) {
         std::fprintf(stderr, "FAIL: no gray desktop\n");
+        return 1;
+    }
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h). One
+    // binary serves several compacts, so the pin is keyed by MODEL: three
+    // machines sharing one row would pin whichever ran last.
+    std::string key = std::string("compact_boot_etalon/") + name;
+    for (char& c : key) if (c == ' ') c = '_';
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) {
+            const uint32_t* f = video.render(mem);
+            out.assign(f, f + 512 * 342);
+        },
+        [&](long frames) {
+            for (long f = 0; f < frames; f++) fc.runFrame(cpu, mem);
+        },
+        512, 342, /*menuRows=*/20);
+    if (!pixelpin::check(key, pin)) {
+        std::fprintf(stderr, "FAIL: the screen is not the pinned one\n");
         return 1;
     }
     std::printf("PASS: %s reaches the Finder\n", name);

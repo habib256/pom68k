@@ -1,0 +1,17 @@
+# POM68K pixel pins — see tests/PixelPin.h
+#
+# One row per gate: <gate name><TAB><16 hex digits>.
+# The value is an FNV-1a hash of the SETTLED screen with the menu bar rows
+# masked (the clock lives there). It answers "these exact pixels", where a
+# boot etalon's luminance ratios answer only "this looks like a Finder".
+#
+# A gate with no row prints its measured value and passes: that printed
+# line is what gets pasted here. A row of `-` leaves a profile unpinned on
+# purpose. Changing a value is a deliberate act — the diff names the
+# profile whose screen moved, and the commit says why.
+lcii_boot_etalon	674c4049ab7980f7
+lc3_boot_etalon	61c6c569d690f428
+q605_boot_etalon	eefb49d126a73732
+compact_boot_etalon/Macintosh_SE	b8027f427d3e997e
+compact_boot_etalon/Macintosh_SE_FDHD	b8027f427d3e997e
+compact_boot_etalon/Macintosh_Classic	b8027f427d3e997e

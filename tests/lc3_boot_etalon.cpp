@@ -9,6 +9,7 @@
 // lc_boot_etalon. Soft-skips without the ROM or a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "PixelPin.h"
 #include "InfiniteHdCompanion.h"
 #include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
@@ -114,8 +115,18 @@ int main() {
                 "desktop %.2f (want 0.35-0.65), SCSI commands %ld\n",
                 W, H, mem.videoDepth(), menuBar, desktop, mem.scsi().commands);
 
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { video.decode(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    const bool pinOk = pixelpin::check("lc3_boot_etalon", pin);
+
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
-           && mem.scsi().commands > 50;
+           && mem.scsi().commands > 50 && pinOk;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — Macintosh LC III booted to the Finder"

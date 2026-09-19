@@ -208,9 +208,16 @@ consommateur réel. Une approximation plus large sans preuve n'est pas un gain.
   réinsérer l'image écrite, regarder si le Finder la rouvre
   (`lcii_sony_trace --img`, la ligne « centre white » tranche seule : 0,65
   sans fenêtre, 0,91 avec). Évidence : `scratchpad/2026-09-18/floppy/`.
-- [ ] **Ajouter des etalons pixel-accurate et un build WASM.** Assets
-  privés soft-skippables, captures stables. Le WASM n'a aujourd'hui que
-  des stubs inactifs.
+- [ ] **Étendre les etalons pixel-accurate, et le build WASM.** Le
+  mécanisme est livré le 2026-09-19 (`tests/PixelPin.h`, table
+  `tools/pixel_pins.tsv`, gate `pixel_pin_test`) et **six profils** sont
+  épinglés : LC II (V8), LC III (Sonora), Quadra 605 (DAFB 8 bpp), SE, SE
+  FDHD et Classic (compacts 1 bpp). L'épingle est prise sur un écran
+  STABILISÉ et masque la barre de menus (l'horloge y vit) ; elle est
+  identique sous `interp` et sous le JIT x64, donc elle épingle la machine
+  et non le moteur. Reste : les autres familles (Toby, RBV, VASP, MemcJr,
+  DjMemc, Spike, F108, MSC), et le WASM, qui n'a toujours que des stubs
+  inactifs.
 
 ---
 

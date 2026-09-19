@@ -2266,6 +2266,20 @@ The same lockstep binary writes `pom68k.jit.metrics.v1`; the Linux x86-64 and
 macOS AArch64 jobs validate and archive identical fields (backend, guest/host,
 cycles, wall time, block/native/fallback counters and native share).
 
+**Pixel pins.** A boot etalon judges its screen by luminance ratios — a
+menu bar mostly white, a desktop in a dithered band — and that answer
+survives a wrong font, a shifted icon or a scrambled CLUT, because none of
+those move an average. Since 2026-09-19 six profiles also pin the exact
+pixels: `tests/PixelPin.h` hashes the SETTLED screen (two captures a settle
+apart must be identical, so the value does not depend on which frame an
+engine landed on — measured identical under `interp` and the x64 JIT on the
+LC II) with the menu-bar rows MASKED, because Mac OS draws a clock there.
+The expected values live in `tools/pixel_pins.tsv`, one row per gate, and a
+gate with no row prints its measured value and passes: that printed line is
+what gets pasted in. Changing a value is deliberate — the diff names the
+profile whose screen moved. `pixel_pin_test` gates the mechanism itself
+(same ratio, different pin; the mask; a moving screen refusing the pin).
+
 `docs_test` § 10 judges every in-tree `file:line` citation the documents
 make, and since 2026-09-16 not only that the range exists: the sentence
 around a citation names identifiers in backticks, and one of them must occur

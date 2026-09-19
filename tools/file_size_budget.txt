@@ -10,7 +10,7 @@ CLAUDE.md                                231
 cmake/Pom68kAfpGates.cmake               27
 cmake/Pom68kAgentGates.cmake             74
 cmake/Pom68kAudioGates.cmake             12
-cmake/Pom68kComponentGates.cmake         587
+cmake/Pom68kComponentGates.cmake         598
 cmake/Pom68kDaynaGates.cmake             36
 cmake/Pom68kDevTools.cmake               157
 cmake/Pom68kGatePolicy.cmake             400

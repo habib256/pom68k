@@ -450,6 +450,17 @@ add_test(NAME config_test COMMAND config_test)
 add_executable(store_inventory_test tests/store_inventory_test.cpp)
 add_test(NAME store_inventory_test COMMAND store_inventory_test)
 
+# tests/PixelPin.h — the pixel-accurate screen pin the boot etalons carry
+# (jalon 4). Gated here because the property that matters is the
+# MECHANISM's: two screens with the same luminance ratio and different
+# arrangements must pin differently, the masked menu-bar rows (where the
+# clock lives) must not reach the pin, and a screen still changing must
+# refuse to be pinned instead of recording a half-drawn frame. Reads
+# tools/pixel_pins.tsv; links nothing.
+add_executable(pixel_pin_test tests/pixel_pin_test.cpp)
+add_test(NAME pixel_pin_test COMMAND pixel_pin_test
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # tests/FolderProbe.h — "did the guest create a folder?", the observable
 # the three beyond-boot persist gates judge PASS/FAIL on. Gated here
 # rather than through three six-minute machine runs, and because the

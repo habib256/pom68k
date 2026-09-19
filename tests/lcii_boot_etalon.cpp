@@ -21,6 +21,7 @@
 // Exit 0 = pass / soft-skip, 1 = fail.
 
 #include "AssetFingerprint.h"
+#include "PixelPin.h"
 #include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "V8Memory.h"
@@ -161,8 +162,21 @@ int main() {
         std::printf("screen: %s\n", ppm);
     }
 
+    // …and the same screen pinned by its PIXELS. The ratios above say
+    // "this looks like a Finder"; they would not notice a wrong font, a
+    // shifted icon or a scrambled CLUT, because none of those move an
+    // average (tests/PixelPin.h, jalon 4).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { video.decode(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, 384, /*menuRows=*/20);
+    const bool pinOk = pixelpin::check("lcii_boot_etalon", pin);
+
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
-           && mem.scsi().commands > 50;
+           && mem.scsi().commands > 50 && pinOk;
     if (!ok) {
         // The UniversalInfo hwCfgWord copies the ROM left in RAM: $CC00
         // (bit 12 clear, no FPU) or $DC00 (FPU fitted), both followed by
