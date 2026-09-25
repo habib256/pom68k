@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"a pin names the machine" (2026-09-19, 2026-09-25 (later)) — it named the machine on whatever volume the host happened to hold: the LC III's pin was taken on its third-choice image, so a host holding the locked System 7.5.3 would fail a pin about another disk; pins are now keyed `<gate>@<volume>`** → [2026-09-26 — Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
 - **"there is a missing dump: an `Apple_Driver_ATA` partition with Apple's real ATA driver" (2026-09-17 (twentieth)) — the driver ships inside Drive Setup, which is on the reference volume and on the retail CD; what actually blocks an IDE boot is that the F108 ATA interrupt reaches no interrupt level** → [2026-09-17 (twenty-fourth) — The ATA driver is not a missing dump…](#2026-09-17-ata-driver-not-missing)
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
 - **"what the SCC path spends is turnaround — a handshake per frame — not bit rate" (2026-09-11 (later)) — it was the lossless wire waiting on FCS bytes the LAP driver never reads, an ATP retransmit per multi-packet reply; the same copy takes 4.65 s, not 165-241 s, and the card's lead is ×2.2** → [2026-09-11 (fourth) — LocalTalk copies paid an ATP retransmit per reply…](#2026-09-11-localtalk-fcs-residue)
@@ -465,6 +466,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-26** — [Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
 - **2026-09-25 (later)** — [Every platform pinned by its pixels: 22 profiles, one value per System and screen, and the agent variants red since the first pins](#2026-09-25-pins-every-platform)
 - **2026-09-25** — [TODO.md reorganised by jalon: each exit criterion sits over its own remaining work, and waiting items leave the plan](#2026-09-25-todo-by-jalon)
 - **2026-09-19 (fourth)** — [A pressed CD game, played: music, speech and effects off its Red Book tracks on an LC 475 — jalon 4's first exit criterion](#2026-09-19-cd-game)
@@ -1042,6 +1044,54 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-26-pins-by-volume"></a>
+## 2026-09-26 — Thirty-eight profiles pinned, and a pin names the volume too
+
+The seventeen profiles left unpinned the day before now carry a pin, bar
+one: **38 of 39** on this host (x86-64). Fifteen more boot etalons gained
+`tests/PixelPin.h` — LC, Classic II, Color Classic, Mac TV (V8); IIci
+(RBV); LC III+, LC 520, LC 550, Color Classic II (Sonora); LC 475, LC 575
+(MemcJr); IIx/IIcx, SE/30 (Glue); 128K/512K and the Plus
+(`system_boot_etalon`, System 6.0.5 from floppy — the M5 cell).
+
+**A pin now names the volume, not only the machine.** Measuring the new
+rows showed the LC III+ sharing the LC III's value on `System 7.5 HD.dsk`
+— and that image is the LC III etalon's THIRD choice. `assets.lock` pins
+stock System 7.5.3 as the reference for `lc3,lc3plus,lc520`; this host
+does not hold it, so `lc3_boot_etalon` fell back, and the 2026-09-19 pin
+was taken on the fallback. Keyed by gate alone, that pin would fail on any
+host holding the first choice (the M4), about a disk it never booted.
+`testasset::report` now records the base names of the disks, floppies and
+CDs a gate opens (roles `disk`/`floppy`/`cd` only — the IIfx reports its
+Toby declaration ROM as `declrom`, which a first, exclusion-based version
+took for the volume), and a row is keyed `<gate>[/<model>]@<volume>`. A
+host with another reference image finds no row and prints its value
+instead of failing. The 128K/512K and Plus keys, which had built the disk
+in by hand, lost that code. `pixel_pin_test` gates the keying.
+
+**The LC 520 is not pinned, on purpose.** On this host it boots its
+GISTPERSO fallback, where a window or alert survives the gate's three
+close attempts; the gate is red with or without the pin (identically
+under the interpreter, the JIT and `threaded`), and pinning that screen
+would pin a failure. It waits for `hdv/ref/System 7.5.3 HD.dsk`.
+
+What the values say, again by being few: 38 rows, 16 distinct values. The
+IIx and IIcx pin the Mac II's value on HD20SC; the IIci the IIsi's; the LC
+III+ the LC III's; the LC 550 and the Mac TV the IIvx's (GISTPERSO,
+640×480×8); the LC 475 the Quadra 605's. The LC 575 does NOT pin the LC
+475's value on the same volume, ROM and board: its desktop band measures
+129.6/31.3 (mean/deviation) against the 475's 145.9/64.8, so the two
+screens differ where the etalons look. Recorded as measured, not yet
+explained.
+
+Runs (x86-64, 2026-09-25/26): the 41 pinned base gates against the table
+under the default engines, `interp` and `threaded` — 38 compared and
+equal in each, the LC 520 red in each, the two System 3.3 gates skipped
+(image not on this host); 62 agent, Dayna and `jit_*` variants green (26
+pins compared, 32 agent pins standing aside); `asset-none` 109/109.
 
 ---
 

@@ -252,6 +252,16 @@ inline const char* roleOf(const std::string& path) {
     return "disk";
 }
 
+// The media this process reported, in order: the base names of every disk,
+// floppy and CD. A pixel pin (tests/PixelPin.h) names the machine AND the
+// volume it booted, because an etalon takes the first reference image the
+// host has — the LC III's pin was taken on its third choice — and the same
+// machine on another volume draws another desktop.
+inline std::vector<std::string>& reportedMedia() {
+    static std::vector<std::string> media;
+    return media;
+}
+
 // One line per asset, on stdout so CTest captures it with the rest of the
 // gate's output. `role` is free-form and short: "rom", "disk", "floppy",
 // "cd", "pram".
@@ -261,6 +271,10 @@ inline void report(const char* role, const std::string& path) {
         std::fflush(stdout);
         return;
     }
+    if (!std::strcmp(role, "disk") || !std::strcmp(role, "floppy") ||
+        !std::strcmp(role, "cd"))
+        reportedMedia().push_back(
+            path.substr(path.find_last_of("/\\") + 1));
     uint64_t size = fileSize(path);
     std::string digest = sha256File(path);
     std::printf("ASSET %-6s \"%s\" %llu B sha256 %s", role, path.c_str(),

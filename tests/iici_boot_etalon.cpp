@@ -23,6 +23,7 @@
 #include "RbvMemory.h"
 #include "RbvVideo.h"
 #include "RbvCpu.h"
+#include "PixelPin.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -223,6 +224,15 @@ int main() {
                 mem.scsi().commands);
 
     bool ok = menuBar < 0.30 && desktopAlive && mem.scsi().commands > 50;
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { video.decode(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    ok = pixelpin::check("iici_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — Macintosh IIci booted to the Finder"
                            : "FAILED");
     ok = agentboot::check(mem, cpu, kFrame, ok);

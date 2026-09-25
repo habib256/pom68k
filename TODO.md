@@ -86,18 +86,19 @@ consommateur observé (§ En sommeil).
 
 **Sortie :** un jeu CD avec audio joué de bout en bout (fait le
 2026-09-19), la divergence LC II attribuée (faite le 2026-09-18), N profils
-sous etalon pixel-accurate (22 le 2026-09-25, les douze plateformes).
-Tout ajout LLE part d'une trace ROM/pilote, d'un observable invité ou d'un
-consommateur réel ; une approximation plus large sans preuve n'est pas un
-gain.
+sous etalon pixel-accurate (38 sur 39 le 2026-09-25). Tout ajout LLE part
+d'une trace ROM/pilote, d'un observable invité ou d'un consommateur réel ;
+une approximation plus large sans preuve n'est pas un gain.
 
-- [ ] **Épingler les 17 profils restants, et le build WASM.** Mécanisme
-  `tests/PixelPin.h` + `tools/pixel_pins.tsv` + `pixel_pin_test` ; 22
-  profils épinglés, au moins un par plateforme (les douze), identiques
-  sous interpréteur et JIT. Reste : 128K, 512K, Plus, IIx, IIcx, SE/30,
-  LC, Classic II, Color Classic, Mac TV, IIci, LC III+, LC 520, LC 550,
-  Color Classic II, LC 475, LC 575 — et le WASM, qui n'a que des stubs
-  inactifs.
+- [ ] **Épingler le LC 520, relever la jambe M4, et le build WASM.** 38
+  profils sur 39 épinglés ici (`tools/pixel_pins.tsv`, clé
+  `<gate>@<volume>`). Le LC 520 démarre ici son repli GISTPERSO, qui laisse
+  une alerte : son gate est rouge et l'écran n'est pas épinglé — il attend
+  `hdv/ref/System 7.5.3 HD.dsk` (au lock, absent de cet hôte). Sur le M4,
+  relever les clés des volumes que cet hôte n'a pas (7.5.3 pour LC III,
+  III+ et 520 ; System 3.3 pour le Plus). Expliquer pourquoi le LC 575
+  n'épingle pas la valeur du LC 475 (même volume, ROM et carte ; bande de
+  bureau 129,6/31,3 contre 145,9/64,8). Le WASM n'a que des stubs inactifs.
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** IRQ, VBL,
   VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché

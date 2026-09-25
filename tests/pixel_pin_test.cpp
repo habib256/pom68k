@@ -128,9 +128,25 @@ int main() {
         (void)pixelpin::pinned("no_such_gate_in_the_table", known);
         check(!known, "a gate with no row is reported as unpinned");
         bool lcii = false;
-        const std::uint64_t v = pixelpin::pinned("lcii_boot_etalon", lcii);
+        const std::uint64_t v =
+            pixelpin::pinned("lcii_boot_etalon@boot.vhd", lcii);
         check(lcii && v == 0x674c4049ab7980f7ull,
               "tools/pixel_pins.tsv is read, and the LC II row is the pinned one");
+    }
+
+    // A pin names the machine AND the volume it booted: the first medium
+    // the gate reported joins the key, spaces as underscores. The LC III's
+    // first pin was taken on its third-choice image; keyed by gate alone,
+    // a host holding the first choice would fail a pin about another disk.
+    {
+        check(pixelpin::keyFor("lc3_boot_etalon") == "lc3_boot_etalon",
+              "a gate that reported no medium is keyed by its name alone");
+        testasset::reportedMedia().push_back("System 7.5 HD.dsk");
+        testasset::reportedMedia().push_back("Infinite HD.dsk");
+        check(pixelpin::keyFor("lc3_boot_etalon") ==
+                  "lc3_boot_etalon@System_7.5_HD.dsk",
+              "…and otherwise by its name and the FIRST volume it reported");
+        testasset::reportedMedia().clear();
     }
 
     if (failures) { std::printf("%d failure(s)\n", failures); return 1; }

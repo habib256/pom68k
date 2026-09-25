@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 592 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 593 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 88 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 53 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 95 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 96 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 25 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 25 |
@@ -304,6 +304,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17 (twenty-fourth)** — [The ATA driver is not a missing dump: it is inside Drive Setup, on volumes we already have. What blocks the IDE boot is an interrupt line](CHANGELOG.md#2026-09-17-ata-driver-not-missing)
 - **2026-09-18 (eighth)** — [Mini vMac mounts a POM68K volume: the LToUDP interop goes both ways, and the hub's network number turns out to be asserted rather than learned](CHANGELOG.md#2026-09-18-minivmac-interop)
 - **2026-09-18 (later)** — [A Quadra 630 boots from its IDE disk, with nothing on the SCSI bus](CHANGELOG.md#2026-09-18-ide-boots)
+- **2026-09-26** — [Thirty-eight profiles pinned, and a pin names the volume too](CHANGELOG.md#2026-09-26-pins-by-volume)
 
 ## Video — decoders, the raster beam, DAFB
 

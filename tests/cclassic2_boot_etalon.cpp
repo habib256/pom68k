@@ -16,6 +16,7 @@
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
+#include "PixelPin.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -145,6 +146,15 @@ int main() {
     bool ok = W == 512 && H == 384 && mem.videoDepth() == 3
            && menuBar < 0.30 && menuRun >= findersig::menuBarRunFloor(W)
            && agentboot::finderOrAgent(app) && mem.scsi().commands > 50;
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { video.decode(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    ok = pixelpin::check("cclassic2_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — Macintosh Color Classic II booted to the Finder"
                            : "FAILED");
     ok = agentboot::check(mem, cpu, kFrame, ok);

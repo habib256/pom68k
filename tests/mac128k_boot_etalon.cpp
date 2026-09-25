@@ -24,6 +24,7 @@
 #include "MacMemory.h"
 #include "MacVideo.h"
 #include "MacFrame.h"
+#include "PixelPin.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -228,6 +229,23 @@ int main() {
     }
     if (desktop < 0.40 || desktop > 0.60) {
         std::fprintf(stderr, "FAIL: no gray desktop\n");
+        return 1;
+    }
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    // Keyed by MODEL; the disk the gate found joins the key by itself.
+    std::string key = std::string("mac128k_boot_etalon/") + name;
+    for (char& c : key) if (c == ' ') c = '_';
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) {
+            const uint32_t* f = video.render(mem);
+            out.assign(f, f + 512 * 342);
+        },
+        [&](long frames) {
+            for (long f = 0; f < frames; f++) fc.runFrame(cpu, mem);
+        },
+        512, 342, /*menuRows=*/20);
+    if (!pixelpin::check(key, pin)) {
+        std::fprintf(stderr, "FAIL: the screen is not the pinned one\n");
         return 1;
     }
     std::printf("PASS: %s reaches the Finder\n", name);

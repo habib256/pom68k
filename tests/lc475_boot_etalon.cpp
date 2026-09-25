@@ -12,6 +12,7 @@
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "PixelPin.h"
 
 #include <cmath>
 #include <cstdint>
@@ -208,6 +209,15 @@ int main() {
                   desktop.deviation > 30 && desktop.deviation < 90 &&
                   menu.mean - desktop.mean > 35;
     bool ok = geometry && finder && mem.scsi().commands > 4000;
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { out = decodeScreen(mem).pixels; },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrameCycles);
+        },
+        screen.width, screen.height, /*menuRows=*/20);
+    ok = pixelpin::check("lc475_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — LC 475 Finder in 256 colors" : "FAILED");
     ok = agentboot::check(mem, cpu, kFrameCycles, ok);
     return ok ? 0 : 1;

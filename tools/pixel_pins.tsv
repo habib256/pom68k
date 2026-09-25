@@ -1,6 +1,9 @@
 # POM68K pixel pins — see tests/PixelPin.h
 #
-# One row per gate: <gate name><TAB><16 hex digits>.
+# One row per key: <gate>[/<model>]@<volume><TAB><16 hex digits>. The volume
+# is the first disk, floppy or CD the gate reported, spaces as underscores:
+# a pin names the machine AND what it booted, and a host holding another
+# reference image finds no row rather than a false red.
 # The value is an FNV-1a hash of the SETTLED screen with the menu bar rows
 # masked (the clock lives there). It answers "these exact pixels", where a
 # boot etalon's luminance ratios answer only "this looks like a Finder".
@@ -9,25 +12,41 @@
 # line is what gets pasted here. A row of `-` leaves a profile unpinned on
 # purpose. Changing a value is a deliberate act — the diff names the
 # profile whose screen moved, and the commit says why.
-lcii_boot_etalon	674c4049ab7980f7
-lc3_boot_etalon	61c6c569d690f428
-q605_boot_etalon	eefb49d126a73732
-compact_boot_etalon/Macintosh_SE	b8027f427d3e997e
-compact_boot_etalon/Macintosh_SE_FDHD	b8027f427d3e997e
-compact_boot_etalon/Macintosh_Classic	b8027f427d3e997e
-macii_boot_etalon	570d72109651bfeb
-iifx_boot_etalon	e0b819fc443c450d
-iisi_boot_etalon	39ee9527d2e7c244
-iivx_boot_etalon/IIvx	e0b819fc443c450d
-iivx_boot_etalon/IIvi	e0b819fc443c450d
-centris650_boot_etalon/c650	eefb49d126a73732
-centris650_boot_etalon/c610	eefb49d126a73732
-centris650_boot_etalon/q650	eefb49d126a73732
-centris650_boot_etalon/q610	eefb49d126a73732
-centris650_boot_etalon/q800	eefb49d126a73732
-q700_boot_etalon/q700	eefb49d126a73732
-q700_boot_etalon/q900	eefb49d126a73732
-q700_boot_etalon/q950	eefb49d126a73732
-q630_boot_etalon/q630	eefb49d126a73732
-q630_boot_etalon/lc580	eefb49d126a73732
-duo230_boot_etalon	92faf30f6e0f9293
+cclassic2_boot_etalon@GISTPERSO-boot.vhd	bdc08a27ce5145ab
+cclassic_boot_etalon@System_7.5_HD.dsk	7e6c655064b7d8dd
+centris650_boot_etalon/c610@MacOS-8.1-boot.vhd	eefb49d126a73732
+centris650_boot_etalon/c650@MacOS-8.1-boot.vhd	eefb49d126a73732
+centris650_boot_etalon/q610@MacOS-8.1-boot.vhd	eefb49d126a73732
+centris650_boot_etalon/q650@MacOS-8.1-boot.vhd	eefb49d126a73732
+centris650_boot_etalon/q800@MacOS-8.1-boot.vhd	eefb49d126a73732
+classic2_boot_etalon@System_7.5_HD.dsk	1c28e681408df9d1
+compact_boot_etalon/Macintosh_Classic@Disk605.dsk	b8027f427d3e997e
+compact_boot_etalon/Macintosh_SE@Disk605.dsk	b8027f427d3e997e
+compact_boot_etalon/Macintosh_SE_FDHD@Disk605.dsk	b8027f427d3e997e
+duo230_boot_etalon@System_7.5.5_HD.dsk	92faf30f6e0f9293
+iici_boot_etalon@GISTPERSO-boot.vhd	39ee9527d2e7c244
+iifx_boot_etalon@GISTPERSO-boot.vhd	e0b819fc443c450d
+iisi_boot_etalon@GISTPERSO-boot.vhd	39ee9527d2e7c244
+iivx_boot_etalon/IIvi@GISTPERSO-boot.vhd	e0b819fc443c450d
+iivx_boot_etalon/IIvx@GISTPERSO-boot.vhd	e0b819fc443c450d
+iix_boot_etalon/IIcx@HD20SC.vhd	570d72109651bfeb
+iix_boot_etalon/IIx@HD20SC.vhd	570d72109651bfeb
+lc3_boot_etalon@System_7.5_HD.dsk	61c6c569d690f428
+lc3plus_boot_etalon@System_7.5_HD.dsk	61c6c569d690f428
+lc475_boot_etalon@MacOS-8.1-boot.vhd	eefb49d126a73732
+lc550_boot_etalon@GISTPERSO-boot.vhd	e0b819fc443c450d
+lc575_boot_etalon@MacOS-8.1-boot.vhd	a00159beb5e6d4f9
+lc_boot_etalon@System_7.5_HD.dsk	e2b0dace8314512b
+lcii_boot_etalon@boot.vhd	674c4049ab7980f7
+mac128k_boot_etalon/Macintosh_128K@System_1.1.dsk	7cb22008b098190c
+mac128k_boot_etalon/Macintosh_512K@System_1.1.dsk	7cb22008b098190c
+macii_boot_etalon@HD20SC.vhd	570d72109651bfeb
+mactv_boot_etalon@GISTPERSO-boot.vhd	e0b819fc443c450d
+q605_boot_etalon@MacOS-8.1-boot.vhd	eefb49d126a73732
+q630_boot_etalon/lc580@MacOS-8.1-boot.vhd	eefb49d126a73732
+q630_boot_etalon/q630@MacOS-8.1-boot.vhd	eefb49d126a73732
+q700_boot_etalon/q700@MacOS-8.1-boot.vhd	eefb49d126a73732
+q700_boot_etalon/q900@MacOS-8.1-boot.vhd	eefb49d126a73732
+q700_boot_etalon/q950@MacOS-8.1-boot.vhd	eefb49d126a73732
+se30_boot_etalon@HD20SC.vhd	b12a172677993feb
+system_boot_etalon@Disk605.dsk	69cfb2d307c29044

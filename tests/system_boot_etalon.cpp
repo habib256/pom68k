@@ -24,6 +24,7 @@
 #include "MacMemory.h"
 #include "MacVideo.h"
 #include "MacFrame.h"
+#include "PixelPin.h"
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -110,6 +111,24 @@ int main(int argc, char** argv) {
     }
     if (menuBar > 0.30 || desktop < 0.45 || desktop > 0.55) {
         std::fprintf(stderr, "FAIL: not the Finder desktop\n");
+        return 1;
+    }
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    // The floppy joins the key by itself; the drive does not, and a volume
+    // in drive B may be drawn apart from the same one in drive A.
+    const std::string key = external ? "system_boot_etalon/external"
+                                     : "system_boot_etalon";
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) {
+            const uint32_t* f = video.render(mem);
+            out.assign(f, f + 512 * 342);
+        },
+        [&](long frames) {
+            for (long f = 0; f < frames; f++) fc.runFrame(cpu, mem);
+        },
+        512, 342, /*menuRows=*/20);
+    if (!pixelpin::check(key, pin)) {
+        std::fprintf(stderr, "FAIL: the screen is not the pinned one\n");
         return 1;
     }
     std::printf("system_boot_etalon: System booted to the Finder, gate passed\n");

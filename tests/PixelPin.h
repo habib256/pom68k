@@ -23,7 +23,13 @@
 //   the risk of a one-pixel menu-bar layout difference failing a gate about
 //   the desktop.
 //
-// The expected values live in `tools/pixel_pins.tsv`, one row per gate, so
+// A row is keyed `<gate>@<volume>`: the gate's name (plus a model when one
+// binary serves several) and the base name of the first disk, floppy or CD
+// the gate reported (testasset::reportedMedia), spaces as underscores. A
+// host that boots a different reference image finds no row and prints its
+// value, instead of failing a pin that was never about its volume.
+//
+// The expected values live in `tools/pixel_pins.tsv`, one row per key, so
 // re-pinning after a deliberate change is one edit and the diff names the
 // profile that moved. A gate with NO row prints its measured value and
 // passes — that is how a new profile is pinned: copy the printed line in.
@@ -165,9 +171,19 @@ inline std::uint64_t pinned(const std::string& gate, bool& known) {
     return 0;
 }
 
+// `gate@volume`, the volume being the first medium the gate reported.
+inline std::string keyFor(const std::string& gate) {
+    const std::vector<std::string>& media = testasset::reportedMedia();
+    if (media.empty()) return gate;
+    std::string key = gate + "@" + media.front();
+    for (char& c : key) if (c == ' ') c = '_';
+    return key;
+}
+
 // Prints the verdict and returns whether the gate may pass. An unpinned
 // gate always passes, loudly: its line is the one to paste into the table.
-inline bool check(const std::string& gate, const Result& r) {
+inline bool check(const std::string& gateName, const Result& r) {
+    const std::string gate = keyFor(gateName);
     if (r.notApplicable) {
         std::printf("pixel pin: %s not applicable — the agent is in this "
                     "boot; the base gate pins the desktop\n", gate.c_str());

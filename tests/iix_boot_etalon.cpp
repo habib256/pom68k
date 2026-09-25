@@ -10,6 +10,7 @@
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
+#include "PixelPin.h"
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -169,6 +170,16 @@ int main() {
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
            && menuRun > findersig::menuBarRunFloor(W)
            && agentboot::finderOrAgent(app);
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { tv->decode(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    ok = pixelpin::check(iicx ? "iix_boot_etalon/IIcx"
+                              : "iix_boot_etalon/IIx", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;
