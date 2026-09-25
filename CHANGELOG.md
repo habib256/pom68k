@@ -465,6 +465,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-25** — [TODO.md reorganised by jalon: each exit criterion sits over its own remaining work, and waiting items leave the plan](#2026-09-25-todo-by-jalon)
 - **2026-09-19 (fourth)** — [A pressed CD game, played: music, speech and effects off its Red Book tracks on an LC 475 — jalon 4's first exit criterion](#2026-09-19-cd-game)
 - **2026-09-19 (third)** — [A pressed Apple CD declares 512-byte blocks in its map and is still a 2048-byte CD — the first real mixed-mode disc mounted as a hard disk](#2026-09-19-pressed-cd)
 - **2026-09-19 (second)** — [Six profiles pinned by their pixels, and the pin holds across engines](#2026-09-19-pixel-pins)
@@ -1040,6 +1041,39 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-25-todo-by-jalon"></a>
+## 2026-09-25 — TODO.md reorganised by jalon: each exit criterion sits over its own remaining work, and waiting items leave the plan
+
+`TODO.md` had a "Jalons 2 à 5" summary pointing into thematic sections that
+pointed back at the jalons, so a jalon's actual remainder had to be
+assembled by hand — and jalons 3 and 4 were nearly closed without it being
+visible. It also broke its own "open work only" rule: many items spent most
+of their lines narrating what had been decided on the way.
+
+Three changes, one file:
+
+- **One section per jalon**, opening on its exit criterion. The thematic
+  names that code and docs cite (`§ Services réseau`, `§ Fidélité matérielle
+  et LLE`, `§ Preuve…`, `§ Nouvelles machines`, `§ Moteur`, `§ Recherche
+  conditionnelle`) stay as the section titles, so no reference moved.
+  Jalon 3 now reads as one blocked item (the `a64` bisection at frontier
+  14) plus PAP; jalon 4 as the pixel-pin extension plus three
+  timing/sound refinements. `§ Bloqué` is dissolved: each blocked item sits
+  in its jalon, tagged *Bloqué :* with the resource that frees it — which
+  shows one AArch64 session clears three items at once.
+- **History out.** Every removed passage was already recorded here
+  (DaynaPort relaunch probe and zero CDBs to ID 3, `$50F18038` open bus, the
+  host-seeded RTC, TCP window scaling, the bridge session). The DaynaPort
+  debt shrinks to its only ungatable remainder, a dated manual pass of
+  "Révéler". The file goes from 298 to about 230 lines.
+- **`§ En sommeil`** collects items waiting on a signal rather than a
+  resource — ICMP, zone multicast, SCC low tier, Cuda commands, GCR zones,
+  volume-window reopening — each with its "rouvrir sur" trigger.
+
+No gate changed; `docs_test` still holds the backlog to unchecked items.
 
 ---
 
