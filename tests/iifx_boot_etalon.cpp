@@ -14,6 +14,7 @@
 #include "IIfxMemory.h"
 #include "IIfxCpu.h"
 #include "JitTestConfig.h"
+#include "PixelPin.h"
 #include "TobyVideo.h"
 #include <cstdio>
 #include <cstdlib>
@@ -124,6 +125,18 @@ int main() {
 
     std::printf("IIfx: f=%ld menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
                 f, menuBar, desktop, mem.scsi().commands);
+
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h). The
+    // loop above stops at the first Finder-shaped frame; the settle, not
+    // that frame, decides what is hashed.
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { mem.toby()->decode(out); },
+        [&](long frames) {
+            for (long n = 0; n < frames && !cpu.isHalted(); n++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    ok = pixelpin::check("iifx_boot_etalon", pin) && ok;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");

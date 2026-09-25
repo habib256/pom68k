@@ -12,6 +12,7 @@
 #include "DaynaBootProbe.h"
 #include "Q630Cpu.h"
 #include "JitTestConfig.h"
+#include "PixelPin.h"
 #include "Q630Memory.h"
 
 #include <cmath>
@@ -218,7 +219,20 @@ int main() {
                   desktop.mean > 100 && desktop.mean < 190 &&
                   desktop.deviation > 30 && desktop.deviation < 90 &&
                   menu.mean - desktop.mean > 35;
-    bool ok = geometry && finder && mem.scsi().commands > 4000;
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    // One binary serves several models, so the pin is keyed by MODEL.
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { out = decodeScreen(mem).pixels; },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrameCycles);
+        },
+        screen.width, screen.height, /*menuRows=*/20);
+    const bool pinOk = pixelpin::check(getenv("POM68K_Q630_ROM")
+                                           ? "q630_boot_etalon/lc580"
+                                           : "q630_boot_etalon/q630", pin);
+
+    bool ok = geometry && finder && mem.scsi().commands > 4000 && pinOk;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrameCycles, ok);
     std::printf("%s\n", ok ? "PASSED — Quadra 630 Finder in 256 colors" : "FAILED");

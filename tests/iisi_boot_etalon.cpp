@@ -24,6 +24,7 @@
 #include "RbvVideo.h"
 #include "RbvCpu.h"
 #include "JitTestConfig.h"
+#include "PixelPin.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -224,7 +225,18 @@ int main() {
                 W, H, mem.videoDepth(), menuBar, deskDark, deskGray,
                 mem.scsi().commands);
 
-    bool ok = menuBar < 0.30 && desktopAlive && mem.scsi().commands > 50;
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { video.decode(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    const bool pinOk = pixelpin::check("iisi_boot_etalon", pin);
+
+    bool ok = menuBar < 0.30 && desktopAlive && mem.scsi().commands > 50
+           && pinOk;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — Macintosh IIsi booted to the Finder"

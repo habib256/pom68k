@@ -10,9 +10,11 @@
 // frame.
 
 #include "PixelPin.h"
+#include "PortableEnv.h"
 
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 namespace {
@@ -76,6 +78,24 @@ int main() {
         check(!r.settled, "a screen still moving is not pinned");
         check(!pixelpin::check("pixel_pin_test/moving", r),
               "…and the gate that asked for it fails");
+        check(r.changed == 2 && r.y0 == 5 && r.y1 == 5,
+              "…naming what moved: two pixels, on row 5");
+    }
+    // The settle looks where the hash looks. A clock ticking in the masked
+    // rows over a still desktop must not keep it from settling — the LC 580
+    // on Mac OS 8.1 failed exactly so, with 204 pixels moving at y 3-11.
+    {
+        int tick = 0;
+        auto clock = [&](std::vector<std::uint32_t>& out) {
+            out = halves;
+            out[std::size_t(1) * kW + (tick % kW)] = black;
+        };
+        auto advance = [&](long) { tick++; };
+        const pixelpin::Result r =
+            pixelpin::settleAndHash(clock, advance, kW, kH, 4, 4, 1);
+        check(r.settled && r.hash == hHalves,
+              "a clock in the masked rows does not keep a still desktop "
+              "from settling");
     }
     {
         auto still = [&](std::vector<std::uint32_t>& out) { out = halves; };
@@ -84,6 +104,21 @@ int main() {
             pixelpin::settleAndHash(still, advance, kW, kH, 4, 4, 1);
         check(r.settled && r.hash == hHalves && r.captures == 1,
               "a settled screen is pinned on the first comparison");
+    }
+
+    // Under the agent variant the pin stands aside: no frame is advanced
+    // (the variant runs as it did before pins) and the verdict passes.
+    {
+        setenv("POM68K_TEST_AGENT", "1", 1);
+        int advanced = 0;
+        auto still = [&](std::vector<std::uint32_t>& out) { out = halves; };
+        auto advance = [&](long) { advanced++; };
+        const pixelpin::Result r =
+            pixelpin::settleAndHash(still, advance, kW, kH, 4, 4, 1);
+        check(r.notApplicable && advanced == 0 &&
+                  pixelpin::check("pixel_pin_test/agent", r),
+              "under the agent, the pin advances nothing and stands aside");
+        unsetenv("POM68K_TEST_AGENT");
     }
 
     // The table: an unknown gate passes loudly (that is how a profile gets

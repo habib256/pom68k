@@ -11,6 +11,7 @@
 #include "DaynaBootProbe.h"
 #include "MscCpu.h"
 #include "JitTestConfig.h"
+#include "PixelPin.h"
 #include "MscMemory.h"
 #include <cstdio>
 #include <cstdlib>
@@ -97,8 +98,18 @@ int main() {
                 "GSC mode %d\n",
                 menuBar, desktop, mem.scsi().commands, mem.gscReg(4) & 3);
 
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { mem.decodeScreen(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    const bool pinOk = pixelpin::check("duo230_boot_etalon", pin);
+
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.80
-           && mem.scsi().commands > 500;
+           && mem.scsi().commands > 500 && pinOk;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");

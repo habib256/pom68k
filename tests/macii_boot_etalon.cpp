@@ -9,6 +9,7 @@
 #include "TobyVideo.h"
 #include "Cpu020.h"
 #include "JitTestConfig.h"
+#include "PixelPin.h"
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -90,9 +91,19 @@ int main() {
     // its `drVolAtrb` bit 8 is clear and 178 once it is set, and 200 sat
     // between them (and above the stall's ~235 besides). The count is
     // printed, not asserted — `FinderSignature.h` carries the whole story.
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { tv->decode(out); },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    const bool pinOk = pixelpin::check("macii_boot_etalon", pin);
+
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
            && menuRun > findersig::menuBarRunFloor(W)
-           && app == "Finder";
+           && app == "Finder" && pinOk;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");

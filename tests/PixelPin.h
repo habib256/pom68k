@@ -28,13 +28,23 @@
 // profile that moved. A gate with NO row prints its measured value and
 // passes — that is how a new profile is pinned: copy the printed line in.
 // A row whose value is `-` is a profile deliberately left unpinned.
+//
+// NOT UNDER THE AGENT — a boot etalon's `_agent_boot_etalon` variant has
+// the Finder launch « POM68K Disques » (tests/AgentBootProbe.h), which may
+// then be the front application: that screen is not the pinned desktop,
+// and what it shows depends on when the launch lands. The variant's proof
+// is the agent's; the pixels are pinned by the base gate. The pin there
+// is reported as not applicable and advances no frame, so the variant
+// runs exactly as it did before pins existed.
 
 #pragma once
 
 #include "AssetFingerprint.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -60,29 +70,75 @@ inline std::uint64_t hashRegion(const std::vector<std::uint32_t>& fb,
     return h;
 }
 
+// POM68K_TEST_AGENT=1, read as agentboot::enabled() reads it — that header
+// drags the HFS/SCSI stack in, and `pixel_pin_test` links nothing.
+inline bool agentInBoot() {
+    const char* v = std::getenv("POM68K_TEST_AGENT");
+    return v && *v == '1';
+}
+
 struct Result {
+    bool notApplicable = false;          // the agent variant: see above
     bool settled = false;
     std::uint64_t hash = 0;
     int captures = 0;                    // how many settles it took
+    // When the screen never settled: what moved between the last two
+    // captures, so the refusal names a region instead of just a verdict.
+    long changed = 0;                    // pixels that differed
+    int x0 = 0, y0 = 0, x1 = -1, y1 = -1; // their bounding box (inclusive)
 };
 
+// Fills the "what moved" fields of `r` from two same-size captures.
+inline void describeMotion(Result& r, const std::vector<std::uint32_t>& a,
+                           const std::vector<std::uint32_t>& b, int width) {
+    r.changed = 0;
+    r.x0 = r.y0 = 1 << 30; r.x1 = r.y1 = -1;
+    if (width <= 0 || a.size() != b.size()) return;
+    for (std::size_t i = 0; i < a.size(); i++) {
+        if (((a[i] ^ b[i]) & 0xFFFFFFu) == 0) continue;
+        const int x = int(i % std::size_t(width)), y = int(i / std::size_t(width));
+        r.changed++;
+        if (x < r.x0) r.x0 = x;
+        if (x > r.x1) r.x1 = x;
+        if (y < r.y0) r.y0 = y;
+        if (y > r.y1) r.y1 = y;
+    }
+}
+
+// Whether two captures agree where the hash looks: the masked menu rows are
+// excluded from the settle exactly as from the value, or a clock that the
+// hash ignores would keep a still desktop from ever settling.
+inline bool sameBelow(const std::vector<std::uint32_t>& a,
+                      const std::vector<std::uint32_t>& b,
+                      int width, int menuRows) {
+    if (a.empty() || a.size() != b.size() || width <= 0) return false;
+    const std::size_t from =
+        std::min(a.size(), std::size_t(width) * std::size_t(menuRows));
+    for (std::size_t i = from; i < a.size(); i++)
+        if ((a[i] ^ b[i]) & 0xFFFFFFu) return false;
+    return true;
+}
+
 // `capture(fb)` fills a frame; `run(frames)` advances the machine. The
-// screen is captured, advanced, captured again, until two agree.
+// screen is captured, advanced, captured again, until two agree below the
+// menu rows.
 template <class Capture, class Run>
 Result settleAndHash(Capture capture, Run run, int width, int height,
                      int menuRows, int tries = 8, long framesBetween = 120) {
     Result r;
+    if (agentInBoot()) { r.notApplicable = true; return r; }
     std::vector<std::uint32_t> a, b;
     capture(a);
     for (int i = 0; i < tries; i++) {
         run(framesBetween);
         capture(b);
         r.captures = i + 1;
-        if (!a.empty() && a == b) {
+        if (sameBelow(a, b, width, menuRows)) {
             r.settled = true;
             r.hash = hashRegion(b, width, height, menuRows);
             return r;
         }
+        describeMotion(r, a, b, width);
         a.swap(b);
     }
     if (!a.empty()) r.hash = hashRegion(a, width, height, menuRows);
@@ -112,10 +168,19 @@ inline std::uint64_t pinned(const std::string& gate, bool& known) {
 // Prints the verdict and returns whether the gate may pass. An unpinned
 // gate always passes, loudly: its line is the one to paste into the table.
 inline bool check(const std::string& gate, const Result& r) {
+    if (r.notApplicable) {
+        std::printf("pixel pin: %s not applicable — the agent is in this "
+                    "boot; the base gate pins the desktop\n", gate.c_str());
+        return true;
+    }
     if (!r.settled) {
         std::printf("pixel pin: %s NOT SETTLED after %d captures — the screen "
                     "was still changing, pin not taken\n", gate.c_str(),
                     r.captures);
+        if (r.changed > 0)
+            std::printf("pixel pin: last two captures differ in %ld pixels "
+                        "within x %d-%d, y %d-%d\n", r.changed, r.x0, r.x1,
+                        r.y0, r.y1);
         return false;
     }
     bool known = false;

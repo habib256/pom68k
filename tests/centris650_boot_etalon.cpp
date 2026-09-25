@@ -17,6 +17,7 @@
 #include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "JitTestConfig.h"
+#include "PixelPin.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -283,6 +284,18 @@ int main() {
     const char* name = q800 ? "Quadra 800" : q650 ? "Quadra 650"
                      : q610 ? "Quadra 610"
                      : c610 ? "Centris 610" : "Centris 650";
+    // …and the same screen pinned by its PIXELS (tests/PixelPin.h), read
+    // from the live GDevice only: the raw-VRAM fallback above is a
+    // diagnostic, and a screen it alone can decode is not a Finder.
+    // One binary serves several models, so the pin is keyed by MODEL.
+    const pixelpin::Result pin = pixelpin::settleAndHash(
+        [&](std::vector<uint32_t>& out) { out = decodeScreen(mem).pixels; },
+        [&](long frames) {
+            for (long f = 0; f < frames && !cpu.isHalted(); f++)
+                cpu.runCycles(kFrame);
+        },
+        W, H, /*menuRows=*/20);
+    ok = pixelpin::check(std::string("centris650_boot_etalon/") + model, pin) && ok;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,

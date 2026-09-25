@@ -465,6 +465,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-25 (later)** — [Every platform pinned by its pixels: 22 profiles, one value per System and screen, and the agent variants red since the first pins](#2026-09-25-pins-every-platform)
 - **2026-09-25** — [TODO.md reorganised by jalon: each exit criterion sits over its own remaining work, and waiting items leave the plan](#2026-09-25-todo-by-jalon)
 - **2026-09-19 (fourth)** — [A pressed CD game, played: music, speech and effects off its Red Book tracks on an LC 475 — jalon 4's first exit criterion](#2026-09-19-cd-game)
 - **2026-09-19 (third)** — [A pressed Apple CD declares 512-byte blocks in its map and is still a 2048-byte CD — the first real mixed-mode disc mounted as a hard disk](#2026-09-19-pressed-cd)
@@ -1041,6 +1042,62 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-25-pins-every-platform"></a>
+## 2026-09-25 (later) — Every platform pinned by its pixels: 22 profiles, one value per System and screen, and the agent variants red since the first pins
+
+Jalon 4's third criterion, "N profils sous etalon pixel-accurate", went
+from six profiles on four platforms to **22 profiles covering all twelve**.
+Eight boot etalons gained a pin (`tests/PixelPin.h`), keyed by model where
+one binary serves several: `macii` (Toby), `iifx` (Oss), `iisi` (RBV),
+`iivx` → IIvx/IIvi (VASP), `centris650` → C650/C610/Q650/Q610/Q800
+(DjMemc), `q700` → Q700/Q900/Q950 (Spike), `q630` → Q630/LC 580 (F108),
+`duo230` (MSC). MemcJr was already there — the Quadra 605 is that board.
+
+**The values say something by being few.** Sixteen new rows hold five
+distinct values. Every DjMemc, Spike and F108 profile pins
+`eefb49d126a73732` — the Quadra 605's own, pinned on 2026-09-19 — because
+they all boot `MacOS-8.1-boot.vhd` at 640×480, 8 bpp: nine machines, three
+video controllers (DAFB, Valkyrie, the 605's), one desktop to the pixel.
+The IIvx, IIvi and IIfx share `e0b819fc443c450d` on GISTPERSO at 8 bpp;
+the IIsi on the same volume at 1 bpp has its own. This is the compacts'
+shared row again, at scale: a pin names what the System draws, and
+different hardware that draws it identically is the fidelity claim.
+
+**Engine independence, re-measured on every new row.** All fifteen
+030/040 profiles give the same value under the interpreter as under their
+default JIT, the `jit_*` variants (native x64 required on the 030s) give
+it again, and the Mac II gives it under `threaded`. The Dayna variants
+(card at ID 4) pin the same values too.
+
+**Two faults in the mechanism, found by the new rows:**
+
+- **The settle compared what the hash ignores.** The LC 580 refused to
+  settle in eight captures. The refusal now names what moved — here 204
+  pixels at x 305-333, y 3-11, inside the masked menu rows. The hash had
+  always excluded those rows; the settle compared whole frames, so
+  anything animating in the menu bar kept a still desktop unpinnable.
+  The settle now compares below the mask, and the LC 580 settles in two.
+  No existing value moved. `pixel_pin_test` gates both: a ticking pixel in
+  the mask over a still desktop settles, and a refusal reports its region.
+  (The first LC 580 attempt, run by hand without the gate's
+  `POM68K_Q630_ID`, settled — one more reason to measure through ctest.)
+- **The agent variants were red since 2026-09-19.** `lcii`, `lc3` and
+  `q605_agent_boot_etalon` run the pinned binaries with « POM68K Disques »
+  in Startup Items; the Finder launches it, it may be the front
+  application (`agentboot::finderOrAgent`), and the screen is no longer
+  the desktop — per model, since it depends on when the launch lands (17
+  distinct failures once the new pins joined). Nobody had rerun those
+  variants after the first pins. The pin now stands aside under
+  `POM68K_TEST_AGENT=1`, loudly and without advancing a frame, so each
+  variant runs as it did before pins existed; the base gate pins the
+  desktop, the variant proves the agent. All 18 agent variants are green.
+
+Runs (x86-64): the 16 base gates twice (measure, then compare), plus the
+existing pins; 15 under `interp`; `macii` under `threaded`; 18 agent, 11
+Dayna and 3 compact gates; 11 `jit_*` — all green.
 
 ---
 

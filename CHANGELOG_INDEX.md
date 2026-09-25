@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 591 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 592 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -12,7 +12,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 53 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 95 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 24 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 25 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 25 |
 | [Save states](#save-states) | 8 |
@@ -331,6 +331,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-16** — [The Toby declaration ROM is a firmware choice the product reports: the missing dump is said in the window, and the dump on this host was not being found](CHANGELOG.md#2026-09-16-toby-decl-rom-is-a-firmware-choice)
 - **2026-09-16 (fifth)** — [The product windows fall under a gate without a screen, and the gate finds two defects on its first run](CHANGELOG.md#2026-09-16-headless-window-gate)
 - **2026-09-16 (seventeenth)** — [The machine window under a headless gate: the menu bar, the dashboard, the screen surface and the keyboard on a fake machine, and two defects it found on its first run](CHANGELOG.md#2026-09-16-machine-window-gate)
+- **2026-09-25 (later)** — [Every platform pinned by its pixels: 22 profiles, one value per System and screen, and the agent variants red since the first pins](CHANGELOG.md#2026-09-25-pins-every-platform)
 
 ## Sound
 
