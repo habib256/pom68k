@@ -31,9 +31,12 @@ iivx_boot_etalon/IIvi@GISTPERSO-boot.vhd	e0b819fc443c450d
 iivx_boot_etalon/IIvx@GISTPERSO-boot.vhd	e0b819fc443c450d
 iix_boot_etalon/IIcx@HD20SC.vhd	570d72109651bfeb
 iix_boot_etalon/IIx@HD20SC.vhd	570d72109651bfeb
+lc3_boot_etalon@System_7.5.3_HD.dsk	3537bb072c049592
 lc3_boot_etalon@System_7.5_HD.dsk	61c6c569d690f428
+lc3plus_boot_etalon@System_7.5.3_HD.dsk	3537bb072c049592
 lc3plus_boot_etalon@System_7.5_HD.dsk	61c6c569d690f428
 lc475_boot_etalon@MacOS-8.1-boot.vhd	eefb49d126a73732
+lc520_boot_etalon@System_7.5.3_HD.dsk	76a723e922b5d49e
 lc550_boot_etalon@GISTPERSO-boot.vhd	e0b819fc443c450d
 lc575_boot_etalon@MacOS-8.1-boot.vhd	eefb49d126a73732
 lc_boot_etalon@System_7.5_HD.dsk	e2b0dace8314512b
@@ -49,4 +52,6 @@ q700_boot_etalon/q700@MacOS-8.1-boot.vhd	eefb49d126a73732
 q700_boot_etalon/q900@MacOS-8.1-boot.vhd	eefb49d126a73732
 q700_boot_etalon/q950@MacOS-8.1-boot.vhd	eefb49d126a73732
 se30_boot_etalon@HD20SC.vhd	b12a172677993feb
+system_boot_etalon/external@System_3.3.dsk	51022ba701d8caef
 system_boot_etalon@Disk605.dsk	69cfb2d307c29044
+system_boot_etalon@System_3.3.dsk	51022ba701d8caef

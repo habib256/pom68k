@@ -467,6 +467,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-26 (evening)** — [All 39 profiles pinned: the LC 520 boots its reference once the TEST drive yields it](#2026-09-26-pins-all-39)
 - **2026-09-26 (later)** — [A still screen is not a finished boot: the LC 575 pinned a half-drawn desktop, and a settle now waits for a quiet disk](#2026-09-26-settle-quiet-disk)
 - **2026-09-26** — [Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
 - **2026-09-25 (later)** — [Every platform pinned by its pixels: 22 profiles, one value per System and screen, and the agent variants red since the first pins](#2026-09-25-pins-every-platform)
@@ -1046,6 +1047,44 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-26-pins-all-39"></a>
+## 2026-09-26 (evening) — All 39 profiles pinned: the LC 520 boots its reference once the TEST drive yields it
+
+The x86-64 host lacked two locked references: `hdv/ref/System 7.5.3 HD.dsk`
+(`lc3,lc3plus,lc520`) and `disks35/ref/System 3.3.dsk` (`plus`). Both were
+on the TEST USB drive under `pom68K/hdv/ref/` and `pom68K/disks35/ref/`, at
+the lock's digests (`847374700201…`, `8fdc677cc9f2…`), and are now copied
+read-only into the tree's gitignored reference folders. The TEST drive
+also holds a `pom68K/System 7.5.3 HD.dsk` at its root with ANOTHER digest
+(`9959e69b…`, modified 2026-09-16 18:36) — a booted copy, not the
+reference; the gates never see it.
+
+With the reference present, sixteen gates change volume and all pass: the
+LC 520 is green for the first time on this host (boot, agent, input, soak
+and persist), and the LC III and III+ boot their first choice instead of
+their third. New rows, keyed by volume beside the fallback rows, which
+stay valid for a host without the reference:
+
+- `lc3_boot_etalon` and `lc3plus_boot_etalon` @ System 7.5.3:
+  `3537bb072c049592`, equal under the default JIT, `interp`, `jit_*` and
+  with the DaynaPort card;
+- `lc520_boot_etalon` @ System 7.5.3: `76a723e922b5d49e`;
+- `system_boot_etalon` @ System 3.3, drive A and drive B:
+  `51022ba701d8caef` — the drive does not change what is drawn.
+
+**Every catalogue profile now has a pin on x86-64: 39 of 39.** The
+AArch64 leg (the M4, `a64` included) remains to be replayed against the
+same table.
+
+Runs (x86-64): the sixteen gates that changed volume, green (LC 520 boot,
+agent, input, soak, persist; LC III base, Dayna, agent, `interp_`,
+`jit_`; LC III+ base and agent; Plus System 3.3 in drive A and B); then
+the five new rows compared against the table under the default engine and
+`interp`, equal. `asset-none` 107/109 — the two GUI smoke tests still
+cannot create a GLX context on this host's display (previous entry).
 
 ---
 
