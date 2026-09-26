@@ -18,11 +18,13 @@ struct AtalkKey {
     std::optional<std::string> NetworkConfig::* field;
 };
 
-constexpr std::array<AtalkKey, 7> kAtalkKeys = {{
+constexpr std::array<AtalkKey, 9> kAtalkKeys = {{
     {"server", &NetworkConfig::serverName},
     {"volume", &NetworkConfig::volumeName},
     {"printer", &NetworkConfig::printerName},
     {"spool", &NetworkConfig::spoolDirectory},
+    {"queue", &NetworkConfig::printQueue},
+    {"print-options", &NetworkConfig::printOptions},
     {"gateway", &NetworkConfig::gateway},
     {"dns", &NetworkConfig::dns},
     {"ethertalk", &NetworkConfig::etherTalk},

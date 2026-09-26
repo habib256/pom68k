@@ -467,6 +467,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-26 (night)** — [The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs](#2026-09-26-pap-queues)
 - **2026-09-26 (evening)** — [All 39 profiles pinned: the LC 520 boots its reference once the TEST drive yields it](#2026-09-26-pins-all-39)
 - **2026-09-26 (later)** — [A still screen is not a finished boot: the LC 575 pinned a half-drawn desktop, and a settle now waits for a quiet disk](#2026-09-26-settle-quiet-disk)
 - **2026-09-26** — [Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
@@ -1049,6 +1050,66 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-26-pap-queues"></a>
+## 2026-09-26 (night) — The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs
+
+Closes TODO § Services « Compléter PAP » (status polling, queue
+configuration, CUPS selection in the GUI).
+
+**Before.** `PapServer` answered every `SendStatus` with a constant
+(`status: idle`, or `busy; source AppleTalk` during a job), always accepted
+`OpenConn`, and at EOF ran `lp -s` — the host's default queue, no options —
+*synchronously on the machine thread, under the hub's lock*: a slow `cupsd`
+froze both the Mac and the AppleTalk window for as long as `lp` took. The
+only other choice was the test hook `setSpoolToFileOnly`.
+
+**Now.** `src/PrintQueues.{h,cpp}` is the host half:
+
+- **Destination** — the CUPS default, a named queue, or files only;
+  text form `''` / `<queue>` / `#file` on `--atalk-queue=`, with
+  `--atalk-print-options=` carrying `lp -o` words. `#` is one of the
+  characters `cupsd`'s `validate_name` refuses, so the sentinel cannot be a
+  queue. Changes apply live through `AtalkHub::setPrintDestination` — no
+  NBP re-registration, an open job keeps its connection and takes the new
+  route at EOF.
+- **`PrintSpooler`**, its own thread: `LC_ALL=C lpstat -e/-d/-p Q/-a Q` at
+  start, on every change and every 5 s (host wall time: it watches the
+  host's queue, not a device of the machine), and `lp -d Q -o … -s` per
+  job with SIGPIPE blocked on that thread only (the old code swapped the
+  process-wide disposition around `popen`). A job `lp` refuses is written
+  to the spool folder instead. The machine thread only reads the cached
+  view.
+- **PAP, papd's way** (`extern/netatalk2 etc/papd/print_cups.c`
+  `cups_status_msg`, `main.c` PAP_OPEN): `SendStatus` and the OpenConnReply
+  carry `status: idle; info: "Q" is ready ; ` / `is processing a job` /
+  `is stopped, accepting jobs` / `is rejecting jobs` / `appears to be
+  offline.`, plus lpstat's reason line; a queue that rejects jobs or cannot
+  be found answers OpenConn busy (`0xFFFF`), so the Mac's driver reports a
+  busy printer instead of streaming a job into a refusal. Nothing is
+  refused before the first poll, and a default with no CUPS behind it stays
+  the old silent file fallback. The in-job line became `status: busy;
+  source: AppleTalk` (the LaserWriter's own spelling has the colon).
+- **Window** (Réseau → AppleTalk, Imprimante): a *Destination* combo fed by
+  the spooler's queue list, the `lp -o` field, whether the queue accepts
+  jobs, the exact status line the Mac is being sent, jobs still being
+  handed to CUPS, and where the last one went.
+
+**Gates.** New `print_queues_test` (unit, POSIX): the parsers on CUPS 2.x's
+shapes (this host's own `HP-LaserJet-M101-M106` idle/accepting lines among
+them), papd's wording, the destination round-trip, then — against FAKE
+`lp`/`lpstat` scripts in a private temp folder, so no gate can reach the
+host's real printer — the poll, the exact `lp` argument line and job bytes,
+the file fallback on `lp` exit 1, `SendStatus` in papd's words, OpenConn
+busy with the reason while the queue rejects, accepted again once it
+accepts, and a PAP job arriving at the chosen queue. Twenty consecutive runs
+green. `pap_server_test` now selects `#file`; `atalk_hub_test` pins the
+destination reaching the printer, the live queue change without
+unregistering, and the two new relaunch keys (ten `--atalk-*` arguments).
+
+**Not shown.** No guest-driven print to a real CUPS queue was run: this
+host's only queue is a physical printer. The PAP wire path is the one
+`pap_server_test` already pinned; what changed sits behind it.
 
 <a id="2026-09-26-pins-all-39"></a>
 ## 2026-09-26 (evening) — All 39 profiles pinned: the LC 520 boots its reference once the TEST drive yields it

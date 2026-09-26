@@ -9,9 +9,10 @@
 // shell another (menus, docking, the machine window).
 //
 // Two kinds of control live here, and the window keeps them apart:
-//   • LIVE — the AppleTalk services and the card's cable. Each goes through
-//     `AtalkHub::setService`, hub-owned, applied on the machine thread; no
-//     GUI path dereferences the machine (AtalkHub.h).
+//   • LIVE — the AppleTalk services, the printer's destination and the
+//     card's cable. Each goes through `AtalkHub::setService` or
+//     `setPrintDestination`, hub-owned; no GUI path dereferences the
+//     machine (AtalkHub.h).
 //   • STAGED + RELAUNCH — the card's presence and SCSI ID. A Mac probes its
 //     bus once, at boot (DiskBays.h), so the choice is serialized as
 //     `--daynaport=<id>` on the relaunch line (RuntimeConfig.h) and applied
@@ -260,6 +261,80 @@ void drawEthernetSection(GuiNetworkState& state,
     drawDaynaPortSelector(state);
 }
 
+// ── Where the LaserWriter's jobs go ──
+// LIVE, like the checkboxes: AtalkHub::setPrintDestination keeps the
+// printer registered and an open job open. The queue list and the queue's
+// state come from the spooler's own thread (PrintQueues.h) — this window
+// never runs lpstat. The status line is exactly what the Mac's
+// LaserWriter driver is told (SendStatus), so what the dialog on the Mac
+// says can be read here.
+char gPrintOptions[128] = "";
+bool gPrintOptionsEditing = false;
+
+void drawPrintDestination(GuiNetworkState& state, const AtalkHub::Snapshot& snapshot) {
+    state.atalk.watchPrintQueues();
+    const PapServer::Status& pap = snapshot.pap;
+    const PrintSpooler::View& host = pap.host;
+    using Kind = PrintDestination::Kind;
+    auto choose = [&](const std::string& queue) {
+        state.atalk.setPrintDestination(queue, snapshot.cfg.printOptions);
+    };
+
+    std::string current;
+    switch (pap.destination.kind) {
+    case Kind::File: current = "Fichier .ps seulement"; break;
+    case Kind::CupsQueue: current = "CUPS : " + pap.destination.queue; break;
+    case Kind::CupsDefault:
+        current = host.defaultQueue.empty() ? std::string("CUPS : file par défaut")
+                                            : "CUPS : défaut (" + host.defaultQueue + ")";
+        break;
+    }
+    ImGui::SetNextItemWidth(260);
+    if (ImGui::BeginCombo("Destination", current.c_str())) {
+        if (ImGui::Selectable("CUPS : file par défaut", pap.destination.kind == Kind::CupsDefault))
+            choose("");
+        for (const std::string& q : host.queues) {
+            const bool on = pap.destination.kind == Kind::CupsQueue && pap.destination.queue == q;
+            if (ImGui::Selectable(("CUPS : " + q).c_str(), on)) choose(q);
+        }
+        if (ImGui::Selectable("Fichier .ps seulement", pap.destination.kind == Kind::File))
+            choose(std::string(PrintDestination::kFile));
+        ImGui::EndCombo();
+    }
+
+    if (!gPrintOptionsEditing)
+        std::snprintf(gPrintOptions, sizeof gPrintOptions, "%s", pap.printOptions.c_str());
+    ImGui::SetNextItemWidth(260);
+    if (ImGui::InputTextWithHint("Options lp -o", "media=A4 sides=two-sided",
+                                 gPrintOptions, sizeof gPrintOptions))
+        gPrintOptionsEditing = true;
+    if (gPrintOptionsEditing) {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Appliquer##lpopts")) {
+            state.atalk.setPrintDestination(snapshot.cfg.printQueue, gPrintOptions);
+            gPrintOptionsEditing = false;
+        }
+    }
+
+    if (pap.destination.kind == Kind::File) {
+        ImGui::TextDisabled("Chaque travail -> %s/job_<n>_<i>.ps", pap.spoolDir.c_str());
+    } else if (!host.polled) {
+        ImGui::TextDisabled("Interrogation de CUPS...");
+    } else if (!host.cups && pap.destination.kind == Kind::CupsDefault) {
+        statusDot(false, "CUPS absent (lpstat) : les travaux vont dans le dossier de spool");
+    } else {
+        const bool ready = host.state.phase != QueueState::Phase::Unknown &&
+                           (host.state.accepting ||
+                            host.state.phase == QueueState::Phase::Processing);
+        statusDot(ready, ready ? "La file accepte les travaux"
+                               : "La file refuse les travaux : le Mac voit l'imprimante occupée");
+        ImGui::TextDisabled("Si CUPS refuse un travail, il va dans %s/", pap.spoolDir.c_str());
+    }
+    ImGui::TextWrapped("Statut envoyé au Mac : %s", pap.statusLine.c_str());
+    if (host.pending)
+        ImGui::Text("Travaux en cours de remise à CUPS : %ld", host.pending);
+}
+
 } // namespace
 
 const char* kNetworkWindowTitle = "AppleTalk / Ethernet";
@@ -390,8 +465,7 @@ void drawAppleTalkWindow(GuiNetworkState& state) {
                 snapshot.pap.jobs,
                 snapshot.pap.lastJob.empty() ? "-"
                                              : snapshot.pap.lastJob.c_str());
-    ImGui::TextDisabled("Spool -> CUPS (lp) si présent, sinon %s/",
-                        snapshot.pap.spoolDir.c_str());
+    if (papOn) drawPrintDestination(state, snapshot);
 
     ImGui::SeparatorText("Internet (MacIP / IP-in-DDP)");
     bool ipOn = snapshot.cfg.macip;

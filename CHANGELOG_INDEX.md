@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 595 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 596 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 115 |
+| [Cross-cutting](#cross-cutting) | 116 |
 
 ---
 
@@ -657,4 +657,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-18 (release)** — [0.3.0](CHANGELOG.md#2026-09-18-release-030)
 - **2026-09-19 (third)** — [A pressed Apple CD declares 512-byte blocks in its map and is still a 2048-byte CD: the first real mixed-mode disc mounted as a hard disk](CHANGELOG.md#2026-09-19-pressed-cd)
 - **2026-09-25** — [TODO.md reorganised by jalon: each exit criterion sits over its own remaining work, and waiting items leave the plan](CHANGELOG.md#2026-09-25-todo-by-jalon)
+- **2026-09-26 (night)** — [The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs](CHANGELOG.md#2026-09-26-pap-queues)
 

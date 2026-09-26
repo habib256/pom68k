@@ -392,14 +392,19 @@ queues and services.
 - **AppleShare:** exports `AppleShare/` as an AFP volume. In the guest, use
   Chooser → AppleShare and log in as Guest. Override the host directory with
   `POM68K_SHARE_DIR=/path`, or edit it in the window.
-- **LaserWriter:** sends PostScript to `lp` when CUPS is available, otherwise
-  stores `.ps` files under `run/print`.
+- **LaserWriter:** sends PostScript to a CUPS queue — the default, or one
+  chosen in the window — and otherwise stores `.ps` files under `run/print`.
+  The Mac's print dialog shows the queue's live CUPS status, and a queue
+  that refuses jobs reads as a busy printer.
 
 Server name, volume name, shared folder, printer name, spool folder, MacIP
 gateway and DNS are edited live in **Périphériques → Réseau : AppleTalk / Ethernet**; applying
 restarts the service concerned, which drops its current sessions. The same
 values are accepted on the command line as `--atalk-<key>=<value>` (`share`,
-`server`, `volume`, `printer`, `spool`, `gateway`, `dns`).
+`server`, `volume`, `printer`, `spool`, `queue`, `print-options`, `gateway`,
+`dns`). The printer's destination (`queue`: empty for the CUPS default,
+`#file` for the spool folder only, or a queue name) and its `lp -o` options
+change live without restarting the printer.
 - **MacIP:** proxies guest TCP/IP through a user-mode NAT. Classic Mac systems
   generally support plain HTTP, not modern TLS.
 

@@ -43,6 +43,8 @@ inline void applyNetworkConfig(AtalkHub& hub, const app::NetworkConfig& network)
     if (network.volumeName) next.volName = *network.volumeName;
     if (network.printerName) next.printerName = *network.printerName;
     if (network.spoolDirectory) next.spoolDir = *network.spoolDirectory;
+    if (network.printQueue) next.printQueue = *network.printQueue;
+    if (network.printOptions) next.printOptions = *network.printOptions;
     if (network.gateway) AtalkHub::parseCidr(*network.gateway, next.gwIp, next.gwMask);
     if (network.dns) AtalkHub::parseIpv4(*network.dns, next.dns);
     if (network.etherTalk) next.ethertalk = *network.etherTalk != "0";
@@ -55,6 +57,8 @@ inline app::NetworkConfig networkConfigOf(const AtalkHub::Config& cfg) {
     network.volumeName = cfg.volName;
     network.printerName = cfg.printerName;
     network.spoolDirectory = cfg.spoolDir;
+    network.printQueue = cfg.printQueue;
+    network.printOptions = cfg.printOptions;
     network.gateway = AtalkHub::formatCidr(cfg.gwIp, cfg.gwMask);
     network.dns = AtalkHub::formatIpv4(cfg.dns);
     network.etherTalk = cfg.ethertalk ? "1" : "0";

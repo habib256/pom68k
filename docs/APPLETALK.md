@@ -54,7 +54,7 @@ Nothing to start on the host. Launch the GUI, then in the guest:
 | Service | Guest steps |
 |---|---|
 | **File sharing** | Chooser → **AppleShare** → server *POM68K* → log in as **Guest** → the volume (named after the share folder) mounts |
-| **Printing** | Chooser → **LaserWriter 8** → printer *POM68K* → a generic/plain LaserWriter PPD. The job is spooled to CUPS via `lp -s -- -` when the host has it, else to `run/print/job_<n>_<i>.ps` (`src/PapServer.cpp:245-288`) |
+| **Printing** | Chooser → **LaserWriter 8** → printer *POM68K* → a generic/plain LaserWriter PPD. The job goes to the window's **Destination** — the CUPS default, a named queue (`lp -d <queue> -o …`) or files only — on the spooler's own thread; a job CUPS refuses, or any job on a host without CUPS, lands in `run/print/job_<n>_<i>.ps` (`src/PrintQueues.cpp`, §4.4) |
 | **Internet** | TCP/IP (Open Transport) or MacTCP control panel → *Connect via* **AppleTalk (MacIP)**, server zone **POM68K** — full steps and per-OS quirks in §6.4 |
 
 The internal node is a real terminated peer at **net 2, node 128**, zone
@@ -99,7 +99,8 @@ Six blocks. The first four each have a live enable checkbox and a green/red bull
   with; the guest chose it at boot. « Révéler » opens the shared or spool
   folder in the host's file manager. The relaunch line carries the result
   as `--atalk-<key>=<value>` (`share`, `server`, `volume`, `printer`,
-  `spool`, `gateway`, `dns`; `src/RuntimeConfigNetwork.cpp`), so an edit
+  `spool`, `queue`, `print-options`, `gateway`, `dns`, `ethertalk`;
+  `src/RuntimeConfigNetwork.cpp`), so an edit
   survives a disk swap; the same arguments work by hand on the command line
   and override `POM68K_SHARE_DIR`. Gates: `atalk_hub_test` (the hub and the
   family), `afp_server_test` (a live rename re-registers NBP).
@@ -191,6 +192,7 @@ disk assets and soft-skip without them.
 | `atalk_stack_test` | ENQ defence, RTMP/ZIP/NBP/AEP, ATP exactly-once |
 | `afp_server_test` | OpenSession→Login→OpenVol→Enumerate→Read; ASP SPWrite→WriteContinue→FPWrite; resource fork → `.AppleDouble` |
 | `pap_server_test` | OpenConn→SendData→PostScript→EOF→spool; `%%?Query` answered `*` |
+| `print_queues_test` | the lpstat parsers and papd's status wording; against fake `lp`/`lpstat` scripts: the poll, `lp -d … -o …`, the file fallback when lp refuses, SendStatus carrying the queue's state, OpenConn busy while the queue rejects jobs |
 | `macip_gw_test` | address assign, ICMP echo, a real UDP round-trip and a full TCP SYN→data→FIN both ways through the user-mode NAT on loopback |
 | `daynaport_test` | the SCSI/Link command set (READ/WRITE frame formats, the 6-byte header + more-data flag, SET MAC, the 37-byte INQUIRY) and the round trip guest → Ethernet frame → `EtherLink` → NAT → back, plus proxy-ARP refusing the guest's own address (§6.4bis) |
 | `llap_two_system_etalon` | two Macs acquire node IDs over real ENQ traffic |
@@ -364,10 +366,10 @@ still lives by:**
   answering, relaying a BrRq as a segment LkUp put our broadcast and our
   own LkUpReply back-to-back in the guest's Rx FIFO. Hence
   `setBridgeRelay` — **off unless the LToUDP cable is up**
-  (`AtalkStack.h:94-100`, `AtalkHub.h:92-93`).
+  (`AtalkStack.h:94-100`, `AtalkHub.h:97-98`).
 - Replies generated inside the guest's TX callback would hit a deaf
   receiver, so `AtalkHub::sendFrame` **queues** and flushes from `tick()`,
-  after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:96-110`, flush at
+  after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:116-130`, flush at
   `AtalkHub.h:165-169`). This is why finer quantum slicing matters:
   64 slices/frame ≈ 260 µs of latency per AFP round-trip
   (`slices`, `src/GuiHostServices.h:143-149`; 16 slices without the hub).
@@ -472,7 +474,7 @@ responder returns its tuple → its DDP address → the Chooser lists the
 In-process, the registry is `AtalkStack::nbpRegister` and the middle line
 happens **only when a real cable carries external peers** (§2.4). Three
 services register: `AFPServer` (`src/AfpServer.cpp:208`), `LaserWriter`
-(`src/PapServer.cpp:49`), `IPGATEWAY` (`src/MacIpGateway.cpp:125`).
+(`src/PapServer.cpp:79`), `IPGATEWAY` (`src/MacIpGateway.cpp:125`).
 
 ### 3.4 ATP — the reliable transaction (foundation of ASP and PAP)
 
@@ -726,10 +728,11 @@ A job, top-down then bottom-up:
    back as ATP `DATA`; the last packet carries **EOF**.
 4. **Status** — `SendStatus`/`Status` returns a Pascal string ("status:
    idle", "%%[ PrinterError… ]%%") readable *without* opening a
-   connection; that is the text the Chooser and PrintMonitor show.
+   connection; that is the text the Chooser and PrintMonitor show. The
+   OpenConnReply carries the same string.
 5. **Tickle** — each side runs a **2-minute connection timer** and
    tickles every **60 s**. `PapServer` implements exactly that
-   (`src/PapServer.cpp:81-90`).
+   (`src/PapServer.cpp:116-131`).
 6. **Close** — `CloseConn`/`CloseConnReply`; next job.
 
 The driver's authentication conventions ride *inside the PostScript
@@ -737,7 +740,31 @@ stream* as `%%?Begin…Query` comments (`NoUserAuthent`, `CleartxtPasswrd`,
 `RandnumExchange`). `PapServer` answers every query with the "unknown"
 reply **`*`**, so the driver downloads its own proc sets — a printer with
 no spooler smarts, which is exactly what we want since CUPS owns the last
-mile (`src/PapServer.h:8-13`).
+mile (`src/PapServer.h:8-17`).
+
+**The host side** (`src/PrintQueues.{h,cpp}`). The window's *Destination*
+is a CUPS queue, the CUPS default, or files only; it is serialized as
+`--atalk-queue=` (`''`, a queue name, or `#file` — `#` is one of the
+characters `cupsd` refuses in a queue name, so the sentinel cannot collide)
+with `--atalk-print-options=` carrying `lp -o` words. A `PrintSpooler`
+thread runs `LC_ALL=C lpstat -e/-d/-p/-a` now and every 5 s, and hands each
+finished job to `lp -d <queue> -o … -s`; the machine thread, which answers
+PAP under the hub's lock, only ever reads its cached view, so a slow
+`cupsd` cannot stall the Mac. From that view `PapServer` answers papd's
+way (`extern/netatalk2 etc/papd/print_cups.c`, `main.c` PAP_OPEN):
+
+| Queue | Status string | OpenConn |
+|---|---|---|
+| receiving our own job | `status: busy; source: AppleTalk` | busy to a second client |
+| ready | `status: idle; info: "Q" is ready ; ` | accepted |
+| printing | `status: busy; info: "Q" is processing a job ; ` | accepted |
+| disabled, accepting | `status: idle; info: "Q" is stopped, accepting jobs ; <reason>` | accepted |
+| not accepting | `status: busy; info: "Q" is rejecting jobs; <reason>` | **busy** (`0xFFFF`) |
+| not found | `status: busy; info: "Q" appears to be offline.` | **busy** |
+| files only, or no CUPS behind the default | `status: idle` | accepted |
+
+Nothing is refused before the first poll. A job `lp` refuses falls back to
+the spool folder, and the window reports where each job went.
 
 ---
 
@@ -1034,6 +1061,7 @@ guest Mac OS                                   POM68K process
 | ATP responder (XO cache, release timer, deferred replies) + requester (retries, bitmap fill) | `AtalkStack::AtpTxn` / `atpRequest` | `src/AtalkStack.cpp:407-573` |
 | ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.{h,cpp}` |
+| CUPS queues: list, live state, job hand-over off the machine thread | `PrintSpooler` | `src/PrintQueues.{h,cpp}` |
 | MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
 | SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/GuiHostServices.h:58-155`, `src/NetworkWindow.cpp` |
 
@@ -1069,7 +1097,9 @@ era software uses.
 - **AFP ≥ 3.0 / UTF-8** names; UAMs beyond guest/cleartext (§4.3).
 - **Background host filesystem watching** (§4.3); identity checks and rename
   reconciliation occur on access/rediscovery, not through host notifications.
-- PAP status-polling subtleties; MacIP outbound ICMP / raw sockets.
+- PAP: no per-job CUPS options from the Mac (copies, duplex chosen in the
+  Mac's dialog travel inside the PostScript, not as `lp -o`); MacIP
+  outbound ICMP / raw sockets.
 
 Backlog: `TODO.md` § Services réseau. Migration notes and the HLE/LLE gap list:
 `docs/LLE_VS_HLE.md`.

@@ -9,13 +9,7 @@
 
 #include "PapServer.h"
 
-#include <csignal>
-#include <cstdio>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-
-namespace fs = std::filesystem;
 
 namespace {
 constexpr uint8_t kPapSock = 131;
@@ -39,6 +33,42 @@ void PapServer::configure(const std::string& printerName,
     if (was) setEnabled(true);
 }
 
+void PapServer::setDestination(const PrintDestination& d, const std::string& options) {
+    dest_ = d;
+    options_ = options;
+    spooler_.setDestination(d, options);
+    // A CUPS destination is watched from the moment it is chosen, so the
+    // first OpenConn already knows whether the queue accepts jobs.
+    if (enabled_ && d.kind != PrintDestination::Kind::File) spooler_.start();
+}
+
+// papd's getstatus(): our own connection first (the job being received is
+// the printer's business), then the destination queue's live state. A
+// file destination — or no CUPS at all behind the default, where jobs
+// fall back to files — is a printer that is simply idle.
+std::string PapServer::statusLine() const {
+    if (open_) return "status: busy; source: AppleTalk";
+    if (dest_.kind == PrintDestination::Kind::File) return "status: idle";
+    const PrintSpooler::View v = spooler_.view();
+    if (!v.polled || v.activeQueue.empty() ||
+        (dest_.kind == PrintDestination::Kind::CupsDefault && !v.cups))
+        return "status: idle";
+    return papStatusLine(v.activeQueue, v.state);
+}
+
+// papd answers OpenConn busy when CUPS is not accepting jobs for the queue
+// (etc/papd/main.c PAP_OPEN, cups_get_printer_status() == 0) — rejecting,
+// or not found. Before the first poll nothing is known and nothing refused.
+bool PapServer::refusesJobs() const {
+    if (dest_.kind == PrintDestination::Kind::File) return false;
+    const PrintSpooler::View v = spooler_.view();
+    if (!v.polled || v.activeQueue.empty() ||
+        (dest_.kind == PrintDestination::Kind::CupsDefault && !v.cups))
+        return false;
+    return v.state.phase == QueueState::Phase::Unknown ||
+           (!v.state.accepting && v.state.phase != QueueState::Phase::Processing);
+}
+
 void PapServer::setEnabled(bool on) {
     if (on == enabled_) return;
     enabled_ = on;
@@ -48,6 +78,7 @@ void PapServer::setEnabled(bool on) {
         });
         st_.nbpRegister(name_, "LaserWriter", kPapSock);
         stat_.state = "idle";
+        if (dest_.kind != PrintDestination::Kind::File) spooler_.start();
     } else {
         st_.nbpUnregister(name_, "LaserWriter");
         open_ = false;
@@ -73,6 +104,12 @@ PapServer::Status PapServer::status() const {
     stat_.spoolDir = spoolDir_;
     stat_.busy = open_;
     if (!enabled_) stat_.state = "off";
+    stat_.destination = dest_;
+    stat_.printOptions = options_;
+    stat_.statusLine = statusLine();
+    stat_.host = spooler_.view();
+    // The last job's fate: a CUPS hand-over resolves on the spooler thread.
+    if (stat_.host.lastSerial > lastFileSerial_) stat_.lastJob = stat_.host.lastResult;
     return stat_;
 }
 
@@ -100,7 +137,7 @@ void PapServer::papHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
     case kOpen: {
         // data[0] = client responding socket, data[1] = client quantum
         if (t->req.size() < 6) return;
-        bool busy = open_ && cid != connId_;
+        bool busy = (open_ && cid != connId_) || (!open_ && refusesJobs());
         std::vector<uint8_t> pkt = { cid, kOpenReply,
                                      uint8_t(busy ? 0xFF : 0),
                                      uint8_t(busy ? 0xFF : 0) };
@@ -108,7 +145,7 @@ void PapServer::papHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
         pkt.push_back(8);                           // our flow quantum
         pkt.push_back(busy ? 0xFF : 0);
         pkt.push_back(busy ? 0xFF : 0);
-        statusStr(pkt, busy ? "status: busy" : "status: idle");
+        statusStr(pkt, (open_ && cid != connId_) ? "status: busy" : statusLine());
         t->respond({ std::move(pkt) });
         if (busy) return;
 
@@ -144,8 +181,7 @@ void PapServer::papHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
 
     case kSendStatus: {
         std::vector<uint8_t> pkt = { 0, kStatus, 0, 0, 0, 0, 0, 0 };
-        statusStr(pkt, open_ ? "status: busy; source AppleTalk"
-                             : "status: idle");
+        statusStr(pkt, statusLine());
         t->respond({ std::move(pkt) });
         return;
     }
@@ -245,45 +281,14 @@ void PapServer::flushClientRead() {
 void PapServer::finishJob() {
     if (job_.empty()) { stat_.state = "idle"; return; }
     stat_.jobs++;
-    bool spooled = false;
-#ifndef _WIN32
-    if (!fileOnly_) {
-        // CUPS last mile: hand the PostScript to lp(1) when available.
-        // popen() succeeds even with no CUPS installed — /bin/sh exits 127 and
-        // the read end is gone before we write, so fwrite raises SIGPIPE, whose
-        // default disposition KILLS the emulator mid-print. Ignore it for the
-        // duration and let pclose's status drive the file fallback.
-        struct sigaction ign {}, prev {};
-        ign.sa_handler = SIG_IGN;
-        // macOS exposes sigemptyset as a function-like macro, so qualifying
-        // it with the global namespace makes AppleClang expand invalid code.
-        sigemptyset(&ign.sa_mask);
-        ::sigaction(SIGPIPE, &ign, &prev);
-        FILE* lp = ::popen("lp -s -- - >/dev/null 2>&1", "w");
-        if (lp) {
-            size_t w = std::fwrite(job_.data(), 1, job_.size(), lp);
-            int rc = ::pclose(lp);
-            if (w == job_.size() && rc == 0) {
-                spooled = true;
-                stat_.lastJob = "CUPS (lp)";
-            }
-        }
-        ::sigaction(SIGPIPE, &prev, nullptr);
-    }
-#endif
-    if (!spooled) {
-        std::error_code ec;
-        fs::create_directories(spoolDir_, ec);
-        int i = 1;
-        std::string path;
-        do {
-            path = spoolDir_ + "/job_" + std::to_string(stat_.jobs) + "_"
-                 + std::to_string(i++) + ".ps";
-        } while (fs::exists(path, ec) && i < 1000);
-        std::ofstream out(path, std::ios::binary);
-        out.write(reinterpret_cast<const char*>(job_.data()),
-                  std::streamsize(job_.size()));
-        stat_.lastJob = path;
+    if (dest_.kind == PrintDestination::Kind::File) {
+        stat_.lastJob = writeSpoolFile(spoolDir_, stat_.jobs, job_);
+        lastFileSerial_ = stat_.jobs;
+    } else {
+        // CUPS last mile, off the machine thread; a refusal lands in the
+        // spool folder instead, and status() reports which.
+        stat_.lastJob = "CUPS (pending)";
+        spooler_.submit(stat_.jobs, std::move(job_), spoolDir_);
     }
     job_.clear();
     scanned_ = 0;

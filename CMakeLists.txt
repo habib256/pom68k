@@ -406,7 +406,7 @@ add_library(pom68k_core STATIC
     src/LtoUdp.cpp        # LLAP — LocalTalk-over-UDP multicast cable
     src/AtalkStack.cpp    # AppleTalk in-process node (DDP/RTMP/ZIP/NBP/ATP)
     src/AfpServer.cpp src/AfpCatalog.cpp src/AfpHostMutation.cpp src/AfpHostIdentity.cpp src/AfpAtomicFile.cpp
-    src/PapServer.cpp     # in-process LaserWriter (PAP → CUPS/fichier)
+    src/PapServer.cpp src/PrintQueues.cpp  # in-process LaserWriter (PAP → CUPS queue/file)
     src/MacIpGateway.cpp  # in-process MacIP gateway + user-mode NAT
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target

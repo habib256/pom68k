@@ -1597,7 +1597,7 @@ Only the SCC-side facts live here.
 - Gates: `scc_ext_test`, `scc_baud_test`, `scc_engine_test`,
   `llap_loop_test`, `llap_address_defense_test`, `ltoudp_test`,
   `llap_two_system_etalon`, `atalk_stack_test`, `afp_server_test`,
-  `pap_server_test`, `macip_gw_test`.
+  `pap_server_test`, `print_queues_test`, `macip_gw_test`.
 
 ### 3.8bis The raster beam (`VideoBeam.h`)
 

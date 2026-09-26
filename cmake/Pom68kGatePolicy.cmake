@@ -379,10 +379,10 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv "${pom68k_gate_list}")
 if(WIN32)
     string(APPEND pom68k_absent_gates
         "afp_server_test\tunit\npap_server_test\tunit\nmacip_gw_test\tunit\n"
-        "scc_serial_host_test\tunit\n")
+        "print_queues_test\tunit\nscc_serial_host_test\tunit\n")
 elseif(EMSCRIPTEN)
     string(APPEND pom68k_absent_gates
-        "scc_serial_host_test\tunit\n")
+        "print_queues_test\tunit\nscc_serial_host_test\tunit\n")
 endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv
      "${pom68k_absent_gates}")

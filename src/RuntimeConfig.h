@@ -45,6 +45,8 @@ struct NetworkConfig {
     std::optional<std::string> volumeName;    // --atalk-volume= ('' = folder's name)
     std::optional<std::string> printerName;   // --atalk-printer=
     std::optional<std::string> spoolDirectory;// --atalk-spool=
+    std::optional<std::string> printQueue;    // --atalk-queue= ('' CUPS default, #file, queue)
+    std::optional<std::string> printOptions;  // --atalk-print-options= (lp -o words)
     std::optional<std::string> gateway;       // --atalk-gateway=a.b.c.d/n
     std::optional<std::string> dns;           // --atalk-dns=a.b.c.d
     std::optional<std::string> etherTalk;     // --atalk-ethertalk=0|1 (the node on the card)
@@ -146,7 +148,7 @@ std::vector<std::string> daynaPortArguments(std::vector<std::string> arguments,
 
 // The in-process AppleTalk services' identity for the NEXT boot:
 // `--atalk-<key>=<value>` with key ∈ share, server, volume, printer, spool,
-// gateway, dns. The window edits them live (AtalkHub::reconfigure) and the
+// queue, print-options, gateway, dns, ethertalk. The window edits them live (AtalkHub::reconfigure) and the
 // relaunch line carries the session's effective values, so a rename made in
 // the window survives a disk swap. `applyAtalkArgument` returns false for a
 // key it does not know; `atalkArguments` replaces every previous one.

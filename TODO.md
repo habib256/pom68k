@@ -77,8 +77,6 @@ consommateur observé (§ En sommeil).
   `afp_live_3_servers` (8 cycles de retard, puis des totaux réseau
   différents). Le gate passe dans tous les bras : seule la trace le voit.
   Références : `scratchpad/2026-09-18/afp/`. *Bloqué : hôte AArch64.*
-- [ ] **Compléter PAP.** Polling de statut, configuration des files et
-  sélection CUPS dans le GUI.
 
 ---
 

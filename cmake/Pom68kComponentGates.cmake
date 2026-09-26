@@ -294,6 +294,11 @@ add_executable(macip_gw_test tests/macip_gw_test.cpp)
 target_link_libraries(macip_gw_test PRIVATE pom68k_core)
 add_test(NAME macip_gw_test COMMAND macip_gw_test)
 endif()
+if(NOT WIN32 AND NOT EMSCRIPTEN)   # fake lp/lpstat scripts: /bin/sh + popen()
+add_executable(print_queues_test tests/print_queues_test.cpp)
+target_link_libraries(print_queues_test PRIVATE pom68k_core)
+add_test(NAME print_queues_test COMMAND print_queues_test)
+endif()
 
 # DaynaPort SCSI/Link (Ethernet as a SCSI target) + the EtherLink bridge
 # onto the same NAT the MacIP gateway uses.

@@ -50,6 +50,12 @@ int main() {
         } mem;
         AtalkHub hub;
         hub.setDefaultShareDir("/tmp/pom68k_hub_share/Partage");
+        {
+            // Files only: this gate never hands a job to the host's CUPS.
+            AtalkHub::Config files = hub.config();
+            files.printQueue = "#file";
+            hub.reconfigure(files);
+        }
         hub.attach(mem, 1000000, nullptr);
         hub.tick(1000);
         AtalkHub::Snapshot s = hub.snapshot();
@@ -64,6 +70,7 @@ int main() {
         next.shareDir = "/tmp/pom68k_hub_share/Autre";
         next.printerName = "Laser";
         next.spoolDir = "/tmp/pom68k_hub_spool";
+        next.printOptions = "media=A4";
         CHECK(AtalkHub::parseCidr("10.1.2.1/16", next.gwIp, next.gwMask) &&
               AtalkHub::parseIpv4("10.1.2.53", next.dns), "the form's addresses parse");
         next.afp = false;                       // the form must NOT carry toggles
@@ -76,6 +83,16 @@ int main() {
         CHECK(s.pap.registered && s.pap.printerName == "Laser" &&
               s.pap.spoolDir == "/tmp/pom68k_hub_spool",
               "the printer re-registered under its new name and spool");
+        CHECK(s.pap.destination.kind == PrintDestination::Kind::File &&
+              s.pap.printOptions == "media=A4" && s.pap.statusLine == "status: idle",
+              "the destination and its options reach the printer, which reports idle");
+        hub.setPrintDestination("Bureau-Laser", "sides=two-sided");
+        s = hub.snapshot();
+        CHECK(s.cfg.printQueue == "Bureau-Laser" &&
+              s.pap.destination.kind == PrintDestination::Kind::CupsQueue &&
+              s.pap.destination.queue == "Bureau-Laser" && s.pap.registered,
+              "the queue changes live, without unregistering the printer");
+        hub.setPrintDestination("#file", "");
         CHECK(s.macip.registered && s.macip.gwIp == "10.1.2.1" && s.macip.dns == "10.1.2.53",
               "the gateway re-registered at its new address");
         CHECK(s.cfg.afp, "the AFP toggle stayed the checkbox's, not the form's");
@@ -118,18 +135,21 @@ int main() {
         net.volumeName = "";
         net.printerName = "Laser";
         net.spoolDirectory = "/srv/spool";
+        net.printQueue = "Bureau-Laser";
+        net.printOptions = "media=A4 sides=two-sided";
         net.gateway = "10.1.2.1/16";
         net.dns = "10.1.2.53";
         net.etherTalk = "0";
         const std::vector<std::string> line = pom68k::app::atalkArguments(
             {"--atalk-server=Old", "rom.bin", "disk.dsk"}, net);
-        CHECK(line.size() == 10 && line[8] == "rom.bin" && line[9] == "disk.dsk",
-              "eight --atalk-* arguments, one per key, ahead of the media, the old one gone");
+        CHECK(line.size() == 12 && line[10] == "rom.bin" && line[11] == "disk.dsk",
+              "ten --atalk-* arguments, one per key, ahead of the media, the old one gone");
         const RuntimeConfig back = parse(line);
         const pom68k::app::NetworkConfig& n = back.network();
         CHECK(n.shareDirectory == "/srv/share" && n.serverName == "Bureau" &&
               n.volumeName == std::string() && n.printerName == "Laser" &&
-              n.spoolDirectory == "/srv/spool" && n.gateway == "10.1.2.1/16" &&
+              n.spoolDirectory == "/srv/spool" && n.printQueue == "Bureau-Laser" &&
+              n.printOptions == "media=A4 sides=two-sided" && n.gateway == "10.1.2.1/16" &&
               n.dns == "10.1.2.53" && n.etherTalk == "0",
               "…and read back field for field, an empty volume and the EtherTalk switch included");
         CHECK(back.romPath() == "rom.bin", "the ROM and media arguments are untouched");

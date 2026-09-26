@@ -75,6 +75,11 @@ public:
         std::string shareDir;            // '' → default set at attach
         std::string printerName = "POM68K";
         std::string spoolDir = "run/print";
+        // Where finished print jobs go: PrintDestination's text form ('' =
+        // the CUPS default, "#file" = spoolDir only, else a CUPS queue), and
+        // the `lp -o` options each job carries ("media=A4 sides=two-sided").
+        std::string printQueue;
+        std::string printOptions;
         uint32_t gwIp = 0xC0A89701, gwMask = 0xFFFFFF00, dns = 0x08080808;
     };
 
@@ -294,6 +299,8 @@ public:
         cfg_.shareDir = next.shareDir;
         cfg_.printerName = next.printerName.empty() ? "POM68K" : next.printerName;
         cfg_.spoolDir = next.spoolDir.empty() ? "run/print" : next.spoolDir;
+        cfg_.printQueue = next.printQueue;
+        cfg_.printOptions = next.printOptions;
         cfg_.gwIp = next.gwIp;
         cfg_.gwMask = next.gwMask;
         cfg_.dns = next.dns;
@@ -347,6 +354,20 @@ public:
         std::lock_guard<std::mutex> l(mu_);
         afp_.setFixedDate(unixSecs);
     }
+    // The print destination alone, live and without the restart
+    // reconfigure() costs: an open connection keeps its job, whose EOF
+    // takes the new route.
+    void setPrintDestination(const std::string& queue, const std::string& options) {
+        std::lock_guard<std::mutex> l(mu_);
+        cfg_.printQueue = queue;
+        cfg_.printOptions = options;
+        pap_.setDestination(PrintDestination::parse(queue), options);
+    }
+    // Poll the host's print queues so the window can offer them.
+    void watchPrintQueues() {
+        std::lock_guard<std::mutex> l(mu_);
+        pap_.watchQueues();
+    }
     // Toggle a service live (from the GUI). key: "afp" | "pap" | "macip".
     void setService(const std::string& key, bool on) {
         std::lock_guard<std::mutex> l(mu_);
@@ -382,6 +403,7 @@ private:
                                                      : cfg_.volName;
         afp_.configure(cfg_.serverName, vol, cfg_.shareDir);
         pap_.configure(cfg_.printerName, cfg_.spoolDir);
+        pap_.setDestination(PrintDestination::parse(cfg_.printQueue), cfg_.printOptions);
         macip_.configure(cfg_.gwIp, cfg_.gwMask, cfg_.dns);
     }
 

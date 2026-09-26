@@ -19,7 +19,7 @@ int main() {
     Wire w;
     PapServer pap(w.st);
     pap.configure("POM68K Printer", spool);
-    pap.setSpoolToFileOnly(true);
+    pap.setDestination(PrintDestination::parse("#file"), "");
     pap.setEnabled(true);
 
     // ── the Chooser finds the printer ──
