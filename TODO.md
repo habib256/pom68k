@@ -96,9 +96,8 @@ une approximation plus large sans preuve n'est pas un gain.
   une alerte : son gate est rouge et l'écran n'est pas épinglé — il attend
   `hdv/ref/System 7.5.3 HD.dsk` (au lock, absent de cet hôte). Sur le M4,
   relever les clés des volumes que cet hôte n'a pas (7.5.3 pour LC III,
-  III+ et 520 ; System 3.3 pour le Plus). Expliquer pourquoi le LC 575
-  n'épingle pas la valeur du LC 475 (même volume, ROM et carte ; bande de
-  bureau 129,6/31,3 contre 145,9/64,8). Le WASM n'a que des stubs inactifs.
+  III+ et 520 ; System 3.3 pour le Plus). Le WASM n'a que des stubs
+  inactifs.
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** IRQ, VBL,
   VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché

@@ -126,6 +126,7 @@ int main(int argc, char** argv) {
         [&](long frames) {
             for (long f = 0; f < frames; f++) fc.runFrame(cpu, mem);
         },
+        [&] { return bootDrive.nibblesRead; },
         512, 342, /*menuRows=*/20);
     if (!pixelpin::check(key, pin)) {
         std::fprintf(stderr, "FAIL: the screen is not the pinned one\n");

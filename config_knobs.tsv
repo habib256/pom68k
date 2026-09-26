@@ -199,6 +199,7 @@ POM68K_PGE_SPINUS	chantier	expiry:docs/DUO_BRINGUP.md#host-stall-removal
 POM68K_PGE_TBTRACE	diagnostic	owner:src/StartupOptions.h
 POM68K_PGE_TRACE	diagnostic	owner:src/StartupOptions.h
 POM68K_PGE_TRAP	diagnostic	owner:src/StartupOptions.h
+POM68K_PIN_PPM	test	owner:tests/PixelPin.h
 POM68K_PROBE	test	owner:tests/iici_boot_etalon.cpp
 POM68K_PROBE_DUMPADB	test	owner:tests/adb_key_probe.cpp
 POM68K_PROBE_FRAMES	test	owner:tests/adb_key_probe.cpp

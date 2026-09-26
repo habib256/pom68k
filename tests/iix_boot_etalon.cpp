@@ -177,6 +177,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, H, /*menuRows=*/20);
     ok = pixelpin::check(iicx ? "iix_boot_etalon/IIcx"
                               : "iix_boot_etalon/IIx", pin) && ok;

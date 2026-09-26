@@ -113,6 +113,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, 384, /*menuRows=*/20);
     ok = pixelpin::check("lc_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — Macintosh LC (68020) booted to the Finder"

@@ -110,6 +110,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, H, /*menuRows=*/20);
     ok = pixelpin::check("se30_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");

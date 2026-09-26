@@ -142,7 +142,10 @@ bool checkWith(M& mem, C& cpu, F runFrame, bool ok) {
     for (int i = 1; i <= 6 && id < 0; i++)
         if (!mem.scsi().target(i)) id = i;
     if (id < 0) { std::fprintf(stderr, "FAIL: agent probe: no free SCSI ID\n"); return false; }
-    const std::string path = pom68kTempPath("agent_probe_blank.img");
+    // One file per process (PortableEnv.h): the variants run in parallel,
+    // and each removes its file once attached.
+    const std::string path =
+        pom68kProcessTempPath("agent_probe_blank", ".img");
     std::vector<uint8_t> blank = hfsblank::build(20ull << 20, "Branche");
     blank[1024 + 10] |= 0x01;                       // unmounted cleanly
     if (!hfsblank::writeFile(path, blank) || !mem.attachScsi(path, false, id)) {

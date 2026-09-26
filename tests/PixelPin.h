@@ -92,6 +92,7 @@ struct Result {
     // captures, so the refusal names a region instead of just a verdict.
     long changed = 0;                    // pixels that differed
     int x0 = 0, y0 = 0, x1 = -1, y1 = -1; // their bounding box (inclusive)
+    long activity = 0;                   // disk operations in the last span
 };
 
 // Fills the "what moved" fields of `r` from two same-size captures.
@@ -125,23 +126,49 @@ inline bool sameBelow(const std::vector<std::uint32_t>& a,
     return true;
 }
 
-// `capture(fb)` fills a frame; `run(frames)` advances the machine. The
-// screen is captured, advanced, captured again, until two agree below the
-// menu rows.
-template <class Capture, class Run>
-Result settleAndHash(Capture capture, Run run, int width, int height,
-                     int menuRows, int tries = 8, long framesBetween = 120) {
+// POM68K_PIN_PPM=<path> writes the frame that was hashed (menu rows
+// included) as a binary PPM: when a pin moves, or two profiles that should
+// agree do not, look at the pixels before reasoning about them.
+inline void dumpIfAsked(const std::vector<std::uint32_t>& fb, int width,
+                        int height) {
+    const char* path = std::getenv("POM68K_PIN_PPM");
+    if (!path || !*path || width <= 0 || height <= 0 ||
+        fb.size() < std::size_t(width) * std::size_t(height))
+        return;
+    std::ofstream out(path, std::ios::binary);
+    out << "P6\n" << width << " " << height << "\n255\n";
+    for (std::size_t i = 0; i < std::size_t(width) * std::size_t(height); i++) {
+        const char rgb[3] = { char(fb[i] >> 16), char(fb[i] >> 8), char(fb[i]) };
+        out.write(rgb, 3);
+    }
+}
+
+// `capture(fb)` fills a frame; `run(frames)` advances the machine;
+// `activity()` returns a counter of the machine's disk operations (SCSI
+// commands, floppy nibbles). The screen is captured, advanced, captured
+// again, until two captures agree below the menu rows AND the disk did
+// nothing in between. A still screen alone is not a finished boot: the
+// LC 575's Finder held its bare desktop for 170 frames while it issued
+// 123 SCSI commands, and a 120-frame screen-only settle pinned that
+// half-drawn desktop instead of the one the LC 475 draws.
+template <class Capture, class Run, class Activity>
+Result settleAndHash(Capture capture, Run run, Activity activity, int width,
+                     int height, int menuRows, int tries = 8,
+                     long framesBetween = 120) {
     Result r;
     if (agentInBoot()) { r.notApplicable = true; return r; }
     std::vector<std::uint32_t> a, b;
     capture(a);
     for (int i = 0; i < tries; i++) {
+        const long before = long(activity());
         run(framesBetween);
         capture(b);
         r.captures = i + 1;
-        if (sameBelow(a, b, width, menuRows)) {
+        r.activity = long(activity()) - before;
+        if (r.activity == 0 && sameBelow(a, b, width, menuRows)) {
             r.settled = true;
             r.hash = hashRegion(b, width, height, menuRows);
+            dumpIfAsked(b, width, height);
             return r;
         }
         describeMotion(r, a, b, width);
@@ -197,6 +224,9 @@ inline bool check(const std::string& gateName, const Result& r) {
             std::printf("pixel pin: last two captures differ in %ld pixels "
                         "within x %d-%d, y %d-%d\n", r.changed, r.x0, r.x1,
                         r.y0, r.y1);
+        if (r.activity != 0)
+            std::printf("pixel pin: the disk was still busy (%ld operations "
+                        "in the last span)\n", r.activity);
         return false;
     }
     bool known = false;

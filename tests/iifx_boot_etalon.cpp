@@ -135,6 +135,7 @@ int main() {
             for (long n = 0; n < frames && !cpu.isHalted(); n++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, H, /*menuRows=*/20);
     ok = pixelpin::check("iifx_boot_etalon", pin) && ok;
     ok = daynaboot::check(mem, ok);

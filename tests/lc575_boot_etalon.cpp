@@ -231,6 +231,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrameCycles);
         },
+        [&] { return mem.scsi().commands; },
         screen.width, screen.height, /*menuRows=*/20);
     ok = pixelpin::check("lc575_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — LC 575 Finder in 256 colors" : "FAILED");

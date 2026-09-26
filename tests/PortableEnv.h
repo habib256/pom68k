@@ -13,6 +13,14 @@
 
 #include <string>
 
+#if defined(_WIN32)
+#include <process.h>
+inline int pom68kProcessId() { return _getpid(); }
+#else
+#include <unistd.h>
+inline int pom68kProcessId() { return int(getpid()); }
+#endif
+
 // A scratch path the host can actually write: TMPDIR (POSIX), then TEMP/TMP
 // (Windows), then /tmp. Two gates wrote to a literal /tmp/… and the first
 // MSVC asset-none run found no such directory (2026-09-07).
@@ -22,6 +30,17 @@ inline std::string pom68kTempPath(const char* leaf) {
         if (dir && *dir) return std::string(dir) + "/" + leaf;
     }
     return std::string("/tmp/") + leaf;
+}
+
+// pom68kTempPath with the process id in the leaf: "<stem>_<pid><ext>". A
+// scratch file a gate writes, attaches and deletes must not be shared by
+// name — gates run in parallel under ctest -j, and one process removing the
+// file another is about to open lost the Infinite HD companion a race
+// (2026-09-16) and the agent probe's blank volume another (2026-09-26).
+inline std::string pom68kProcessTempPath(const char* stem, const char* ext) {
+    return pom68kTempPath((std::string(stem) + "_" +
+                           std::to_string(long(pom68kProcessId())) + ext)
+                              .c_str());
 }
 
 #ifdef _WIN32

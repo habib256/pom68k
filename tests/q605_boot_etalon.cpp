@@ -212,6 +212,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrameCycles);
         },
+        [&] { return mem.scsi().commands; },
         screen.width, screen.height, /*menuRows=*/20);
     const bool pinOk = pixelpin::check("q605_boot_etalon", pin);
 

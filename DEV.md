@@ -2072,7 +2072,9 @@ rectangle — what a new click scenario is written from) and
 `system_boot_etalon` (the Plus on a System floppy: the 6.0.5 cell, the
 System 3.3 cells in drive A and drive B) dumps its final screen with
 `POM68K_SYSTEM_BOOT_PPM` (`<path>` of a PGM); `lcii_boot_etalon` does the
-same with `POM68K_LCII_BOOT_PPM`, `POM68K_NOFPU` (any value) boots it on a
+same with `POM68K_LCII_BOOT_PPM`; every pixel-pinned boot etalon writes the
+frame its pin hashed with `POM68K_PIN_PPM` (`<path>` of a PPM,
+`tests/PixelPin.h` — look before re-pinning), `POM68K_NOFPU` (any value) boots it on a
 bare 68030 without the 68882, and `POM68K_LCII_CLRFPU` holds HwCfgFlags bit
 12 (`hwCbFPU`) clear once the ROM has stored it — a guest-memory poke, not
 modelled hardware, which proves that bit is the only thing stopping a bare

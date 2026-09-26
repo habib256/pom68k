@@ -37,6 +37,7 @@ double blackRatio(const std::vector<std::uint32_t>& fb, int fromRow) {
 
 int main() {
     const std::uint32_t black = 0x000000, white = 0xFFFFFF;
+    auto idle = [] { return 0L; };                 // a disk doing nothing
 
     // Two frames, same count of black pixels, different arrangement: the
     // left half black, versus every other column black. A ratio cannot
@@ -74,7 +75,7 @@ int main() {
         };
         auto advance = [&](long) { tick++; };
         const pixelpin::Result r =
-            pixelpin::settleAndHash(moving, advance, kW, kH, 4, 4, 1);
+            pixelpin::settleAndHash(moving, advance, idle, kW, kH, 4, 4, 1);
         check(!r.settled, "a screen still moving is not pinned");
         check(!pixelpin::check("pixel_pin_test/moving", r),
               "…and the gate that asked for it fails");
@@ -92,7 +93,7 @@ int main() {
         };
         auto advance = [&](long) { tick++; };
         const pixelpin::Result r =
-            pixelpin::settleAndHash(clock, advance, kW, kH, 4, 4, 1);
+            pixelpin::settleAndHash(clock, advance, idle, kW, kH, 4, 4, 1);
         check(r.settled && r.hash == hHalves,
               "a clock in the masked rows does not keep a still desktop "
               "from settling");
@@ -101,9 +102,33 @@ int main() {
         auto still = [&](std::vector<std::uint32_t>& out) { out = halves; };
         auto advance = [](long) {};
         const pixelpin::Result r =
-            pixelpin::settleAndHash(still, advance, kW, kH, 4, 4, 1);
+            pixelpin::settleAndHash(still, advance, idle, kW, kH, 4, 4, 1);
         check(r.settled && r.hash == hHalves && r.captures == 1,
               "a settled screen is pinned on the first comparison");
+    }
+
+    // A still screen over a busy disk is not settled. The LC 575's Finder
+    // held its bare desktop for 170 frames while it issued 123 SCSI
+    // commands; a screen-only settle pinned that half-drawn desktop. Here
+    // the screen never changes, the disk works for two spans, then stops:
+    // the pin must wait for the quiet span, and say why it waited.
+    {
+        long ops = 0;
+        int span = 0;
+        auto still = [&](std::vector<std::uint32_t>& out) { out = halves; };
+        auto advance = [&](long) { if (++span <= 2) ops += 40; };
+        auto disk = [&] { return ops; };
+        const pixelpin::Result r =
+            pixelpin::settleAndHash(still, advance, disk, kW, kH, 4, 4, 1);
+        check(r.settled && r.captures == 3 && r.hash == hHalves,
+              "a still screen settles only once the disk is quiet");
+        long ops2 = 0;
+        auto busy = [&](long) { ops2 += 40; };
+        auto disk2 = [&] { return ops2; };
+        const pixelpin::Result stuck =
+            pixelpin::settleAndHash(still, busy, disk2, kW, kH, 4, 4, 1);
+        check(!stuck.settled && stuck.activity == 40,
+              "…and a disk that never stops refuses the pin, naming it busy");
     }
 
     // Under the agent variant the pin stands aside: no frame is advanced
@@ -114,7 +139,7 @@ int main() {
         auto still = [&](std::vector<std::uint32_t>& out) { out = halves; };
         auto advance = [&](long) { advanced++; };
         const pixelpin::Result r =
-            pixelpin::settleAndHash(still, advance, kW, kH, 4, 4, 1);
+            pixelpin::settleAndHash(still, advance, idle, kW, kH, 4, 4, 1);
         check(r.notApplicable && advanced == 0 &&
                   pixelpin::check("pixel_pin_test/agent", r),
               "under the agent, the pin advances nothing and stands aside");

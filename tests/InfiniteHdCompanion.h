@@ -23,13 +23,6 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-#if defined(_WIN32)
-#include <process.h>
-#define POM68K_GETPID _getpid
-#else
-#include <unistd.h>
-#define POM68K_GETPID getpid
-#endif
 
 namespace infinitehd {
 
@@ -48,8 +41,8 @@ inline bool attach(Mem& mem, const std::string& imagePath, int id = 1) {
     // One file per process: gates run in parallel under ctest -j, and a
     // shared name lost a race twice (a 1 s red, 2026-09-16). The bytes are
     // in memory once attached (write-back off), so the file goes at once.
-    const std::string path = pom68kTempPath(
-        ("infinite_hd_companion_" + std::to_string(long(POM68K_GETPID())) + ".img").c_str());
+    const std::string path =
+        pom68kProcessTempPath("infinite_hd_companion", ".img");
     std::vector<uint8_t> blank = hfsblank::build(5ull << 20, "Infinite HD");
     blank[1024 + 10] |= 0x01;                       // unmounted cleanly
     const bool ok = hfsblank::writeFile(path, blank) && mem.attachScsi(path, false, id);

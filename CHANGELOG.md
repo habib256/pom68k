@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the LC 575 does not pin the LC 475's value; recorded as measured, not yet explained" (2026-09-26) — it does: the LC 575's pin was a half-drawn desktop, still for 170 frames while the Finder issued 123 SCSI commands; a settle now also waits for a quiet disk, and the LC 575 pins `eefb49d126a73732` like the LC 475 and the Quadra 605** → [2026-09-26 (later) — A still screen is not a finished boot](#2026-09-26-settle-quiet-disk)
 - **"a pin names the machine" (2026-09-19, 2026-09-25 (later)) — it named the machine on whatever volume the host happened to hold: the LC III's pin was taken on its third-choice image, so a host holding the locked System 7.5.3 would fail a pin about another disk; pins are now keyed `<gate>@<volume>`** → [2026-09-26 — Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
 - **"there is a missing dump: an `Apple_Driver_ATA` partition with Apple's real ATA driver" (2026-09-17 (twentieth)) — the driver ships inside Drive Setup, which is on the reference volume and on the retail CD; what actually blocks an IDE boot is that the F108 ATA interrupt reaches no interrupt level** → [2026-09-17 (twenty-fourth) — The ATA driver is not a missing dump…](#2026-09-17-ata-driver-not-missing)
 - **"census 332 executed / 0 soft-skipped" (2026-09-16 (fourth)) — `sst68000`, `sst68030` and `sst68040` had no corpus on the M4 and abstained with a lower-case "soft skip" the census tool does not read; 329 / 3 / 0, then the corpus was fetched and the three executed** → [2026-09-16 (eighth) — The AArch64 census was 329 executed / 3 soft-skipped…](#2026-09-16-census-corrected-sst)
@@ -466,6 +467,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-26 (later)** — [A still screen is not a finished boot: the LC 575 pinned a half-drawn desktop, and a settle now waits for a quiet disk](#2026-09-26-settle-quiet-disk)
 - **2026-09-26** — [Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
 - **2026-09-25 (later)** — [Every platform pinned by its pixels: 22 profiles, one value per System and screen, and the agent variants red since the first pins](#2026-09-25-pins-every-platform)
 - **2026-09-25** — [TODO.md reorganised by jalon: each exit criterion sits over its own remaining work, and waiting items leave the plan](#2026-09-25-todo-by-jalon)
@@ -1044,6 +1046,63 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-09-26-settle-quiet-disk"></a>
+## 2026-09-26 (later) — A still screen is not a finished boot: the LC 575 pinned a half-drawn desktop, and a settle now waits for a quiet disk
+
+The LC 575 and the LC 475 boot the same volume with the same ROM on the
+same board, yet pinned different values (`a00159beb5e6d4f9` against
+`eefb49d126a73732`). The emulation was not at fault; the pin was.
+
+`POM68K_PIN_PPM=<path>` (new in `tests/PixelPin.h`) writes the frame a pin
+hashed. The LC 475's is the finished Mac OS 8.1 desktop — picture, volume,
+aliases, Trash. The LC 575's is the default blue pattern with **no icon and
+no picture**, and a watch cursor: the Finder still loading. Its etalon
+latches the FIRST Finder-shaped frame, and the settle (two captures 120
+frames apart, identical below the menu rows) then accepted a pause:
+measured after the latch, the screen stayed still for 170 frames while the
+Finder issued 123 SCSI commands, then drew the desktop at frame 180. Run
+600 frames further, the LC 575's screen differs from the LC 475's only in
+the masked menu rows (the eyes and the clock), and its pin is
+`eefb49d126a73732` — the LC 475's and the Quadra 605's.
+
+**The settle now requires a quiet disk as well as a still screen.**
+`settleAndHash` takes a third callable, the machine's disk-operation
+counter — `scsi().commands` on 24 etalons, the boot floppy's
+`nibblesRead` on the three compacts — and only accepts a span in which the
+screen held AND the counter did not move. It is a required parameter, so
+no etalon can omit it; a refusal says when the disk was the reason.
+`pixel_pin_test` gates both cases (a still screen over a busy disk waits
+for the quiet span; a disk that never stops refuses the pin).
+
+Rerun against the table: **the LC 575 moved to `eefb49d126a73732`, and
+nothing else moved** — the 37 other pins had settled on finished screens,
+the compacts still in one capture. The LC 575 etalon's own comment blames
+a "not shut down properly" alert for its early latch; no such alert
+appeared in 7 200 frames on today's image — noted, not acted on.
+
+**A race the verification run found, not caused here.** One run of the
+eighteen agent variants at `-j8` failed `lcii_agent_boot_etalon` with
+"cannot attach the blank volume". Every variant wrote its probe volume to
+the same `$TMPDIR/agent_probe_blank.img` and deleted it once attached —
+so one process could remove the file another was about to open. It is the
+race the Infinite HD companion lost on 2026-09-16, fixed then with a
+process id in the name through a `getpid` macro local to that header. The
+helper now lives in `tests/PortableEnv.h` (`pom68kProcessTempPath`, with
+its Windows spelling) and both scratch volumes use it. Also caught by
+that run: `config_test` refused `POM68K_PIN_PPM` until it was classified
+in `config_knobs.tsv` and documented in `DEV.md` § 5.
+
+Runs (x86-64, after a full rebuild): the 41 pinned base gates under the
+default engines, `interp` and `threaded` — 38 pins compared and equal in
+each, the LC 520 red in each for its known missing reference; 62 agent,
+Dayna and `jit_*` variants green (26 pins compared, 32 standing aside);
+`asset-none` 107/109, the two reds `gui_smoke_test` and
+`gui_relaunch_smoke_test` failing in 0.04 s on "GLX: Failed to create
+context" — the host's display, with the `POM68K` executable of 2026-09-19
+that passed them the day before, untouched by this change.
 
 ---
 

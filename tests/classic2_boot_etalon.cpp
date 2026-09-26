@@ -112,6 +112,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, 342, /*menuRows=*/20);
     ok = pixelpin::check("classic2_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — Classic II (Eagle) booted to the Finder"

@@ -98,6 +98,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, H, /*menuRows=*/20);
     const bool pinOk = pixelpin::check("macii_boot_etalon", pin);
 

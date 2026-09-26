@@ -402,6 +402,7 @@ int main(int argc, char** argv) {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, H, /*menuRows=*/20);
     ok = pixelpin::check(std::string("q700_boot_etalon/") + which, pin) && ok;
     ok = daynaboot::check(mem, ok);

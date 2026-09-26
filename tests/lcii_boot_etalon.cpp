@@ -172,6 +172,7 @@ int main() {
             for (long f = 0; f < frames && !cpu.isHalted(); f++)
                 cpu.runCycles(kFrame);
         },
+        [&] { return mem.scsi().commands; },
         W, 384, /*menuRows=*/20);
     const bool pinOk = pixelpin::check("lcii_boot_etalon", pin);
 
