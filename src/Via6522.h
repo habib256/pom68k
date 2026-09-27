@@ -129,7 +129,7 @@ public:
         // t1_/t2_ hold "ticks remaining minus one": tick(n) underflows when
         // the counter goes negative, i.e. at n = counter + 1.
         if ((acr_ & 0x40) || t1armed_) best = std::min(best, int(t1_) + 1);
-        if (!(acr_ & 0x20) && t2armed_) best = std::min(best, int(t2_) + 1);
+        if (!(acr_ & 0x20) && t2armed_) best = std::min(best, int(t2_) + 1 + t2hold_);
         if (shiftCount_ > 0) best = std::min(best, shiftCount_);
         return std::max(best, 1);
     }
@@ -158,7 +158,7 @@ public:
            acr_, pcr_, sr_, ifr_, ier_,
            srHostWritten_, shiftCount_, extBits_, extCb1_, cb1_, cb2_,
            t1_, t2_, t1latch_, t2ll_, t1armed_, t2armed_, ca1Cleared,
-           pmuIntAsserted_, t1Pb7_);
+           pmuIntAsserted_, t1Pb7_, t2hold_);
     }
 
 private:
@@ -195,6 +195,8 @@ private:
     uint16_t t1latch_ = 0;
     uint8_t t2ll_ = 0;                          // T2 low-latch (staged by T2CL)
     bool t1armed_ = false, t2armed_ = false;   // one-shot IFR arming
+    uint8_t t2hold_ = 0;                        // T2 load ticks still to elapse
+    static constexpr uint8_t kT2LoadTicks = 2;
     bool trace_ = false;
 public:
     long ca1Cleared = 0;                        // diagnostic

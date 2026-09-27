@@ -107,8 +107,7 @@ Q630Memory::Q630Memory(const pom68k::CoreConfig& coreConfig,
     // line does on the board (the gate array and the CPU sit on it; the
     // Egret/Cuda is the one pulling it).
     cudaLle_.onCpuReset = [this] {
-        overlay_ = true;
-        jitMapChanged();
+        // consumeRestart() arms the overlay at the reset itself — see there.
         restartPending_ = true;
     };
 }

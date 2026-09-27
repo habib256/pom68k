@@ -490,8 +490,24 @@ int main() {
         // ── Phase 4: pick "POM68K", OK → login dialog ────────────────────────
         const int svX = getenv("POM68K_AFP_SV_X") ? atoi(getenv("POM68K_AFP_SV_X")) : 300;
         const int svY = getenv("POM68K_AFP_SV_Y") ? atoi(getenv("POM68K_AFP_SV_Y")) : 88;
-        if (!click(svX, svY, 2)) { std::fprintf(stderr, "FAIL: server row\n"); return 1; }
-        frames(600);
+        // The login dialog opens on the ASP GetStatus it sends — one ATP
+        // request at the node. A double-click the Chooser swallows (its
+        // server list is live) leaves that count unchanged, and then every
+        // later click lands on the wrong window. Seen on 2026-09-27 when the
+        // VIA T2 load latency moved the phase: the unshifted script missed
+        // on cycle 2, while shifts of 1-4 frames all passed — and without
+        // that change a 3-frame shift already failed further on. So look,
+        // and double-click again as a user would; say so when it happens.
+        bool dialog = false;
+        for (int attempt = 1; attempt <= 3 && !dialog; attempt++) {
+            const long atp0 = hub.snapshot().net.atpReqIn;
+            if (!click(svX, svY, 2)) { std::fprintf(stderr, "FAIL: server row\n"); return 1; }
+            frames(600);
+            dialog = hub.snapshot().net.atpReqIn > atp0;
+            if (!dialog)
+                std::printf("phase 4: double-click %d opened no login dialog, again\n", attempt);
+        }
+        if (!dialog) { std::fprintf(stderr, "FAIL: no login dialog\n"); return 1; }
         snap("afp_live_4_login.ppm");
         std::printf("phase 4: login dialog\n");
         std::fflush(stdout);

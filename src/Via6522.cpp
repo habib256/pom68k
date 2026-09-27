@@ -27,6 +27,7 @@ void Via6522::reset() {
     acr_ = pcr_ = sr_ = ifr_ = ier_ = 0;
     t1_ = t2_ = 0; t1latch_ = 0; t2ll_ = 0;
     t1armed_ = t2armed_ = false;
+    t2hold_ = 0;
     t1Pb7_ = true;                              // MAME 6522via.cpp:347
     srHostWritten_ = false;
     shiftCount_ = 0;
@@ -35,8 +36,9 @@ void Via6522::reset() {
 
 // T1: sets IFR6 on underflow; free-run mode (ACR6) reloads from the latch
 // and re-arms, one-shot keeps counting through $FFFF without re-flagging.
-// T2 (timer mode): one-shot only. Reload granularity is one VIA cycle —
-// fine-grained ±1-cycle 6522 reload latency is not modeled (DEV.md § VIA).
+// T2 (timer mode): one-shot only, N+3 ticks from the T2CH write to IFR (the
+// load ticks, see write()). T1's own write → IFR latency is still N+1 —
+// no guest observable has asked for it yet (DEV.md § VIA).
 bool Via6522::tick(int n) {
     bool hit = false;
     t1_ -= n;
@@ -79,7 +81,13 @@ bool Via6522::tick(int n) {
         }
     }
     if (!(acr_ & 0x20)) {                        // T2 timer mode (not PB6 pulses)
-        t2_ -= n;
+        int m = n;
+        if (t2hold_) {                           // the load ticks (T2CH write, below)
+            const int h = std::min(m, int(t2hold_));
+            t2hold_ = uint8_t(t2hold_ - h);
+            m -= h;
+        }
+        t2_ -= m;
         if (t2_ < 0) {
             if (t2armed_) { setIfr(TIMER2); hit = true; t2armed_ = false; }
             t2_ &= 0xFFFF;
@@ -219,6 +227,18 @@ void Via6522::write(int reg, uint8_t v) {
         case T2CL:   t2ll_ = v; break;          // stage the low latch (R6522 §5.6)
         case T2CH:   t2_ = int32_t((uint32_t(v) << 8) | t2ll_);   // latch → counter
                      t2armed_ = true;
+                     // Apple's SetUpTimeK (mac-rom OS/StartMgr/StartInit.a)
+                     // loads T2 with NTicks-3 so that the write → IRQ span
+                     // is exactly NTicks: "1 clock for the timer to load,
+                     // and 2 extra clocks because it has to count through
+                     // -1". MAME agrees (6522via.cpp IFR_DELAY 3, :962).
+                     // The counter reads N for the two load ticks, then
+                     // underflows N+1 ticks later: N+3 in all. With the
+                     // compacts' /VPA alignment this reproduces MAME's SE
+                     // and Classic TimeDBRA/TimeSCCDB exactly, where N+1
+                     // left every ROM calibration 0.26 % low
+                     // (compact_timing_etalon, via6522_parity_test).
+                     t2hold_ = (acr_ & 0x20) ? 0 : kT2LoadTicks;
                      ifr_ &= uint8_t(~TIMER2); break;
         case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true; extBits_ = 0;
                      // Internally-clocked shift modes (T2/φ2: ACR2-4 =

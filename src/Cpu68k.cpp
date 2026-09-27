@@ -55,11 +55,28 @@ void Cpu68k::updateIpl() {
     setIPL(moira::u8(ipl));
 }
 
-// Wait states for contended RAM accesses. Const because Moira's bus API is
-// const; the clock bump is real state, hence the cast (NeoST does the same
-// for Mega STE wait states).
+// The VIA answers /VPA, not /DTACK, so its access is a 6800-style cycle
+// that completes on the E clock (CPU ÷ 10, the grid MacMemory::tick counts
+// φ2 on): MAME m68000.cpp vpa_sync/vpa_after, mapped on the VIA range of
+// every compact (mac128.cpp:1109-1133) — land on the next E boundary, or
+// the one after when fewer than 4 clocks remain, then one more clock.
+// Observable: the ROM's SetUpTimeK VIA-timed loops (compact_timing_etalon).
+moira::i64 Cpu68k::vpaTarget(moira::i64 clock) {
+    const moira::i64 mod = clock % 10;
+    return clock - mod + (mod < 7 ? 10 : 20) + 1;
+}
+
+// Wait states for contended RAM accesses, and the VIA's /VPA cycle. Const
+// because Moira's bus API is const; the clock bump is real state, hence the
+// cast (NeoST does the same for Mega STE wait states).
 void Cpu68k::applyContention(moira::u32 addr) const {
     addr &= 0xFFFFFF;
+    if (addr >= 0xE80000 && addr < 0xF00000) {       // VIA: /VPA cycle
+        auto* self = const_cast<Cpu68k*>(this);
+        self->clock = vpaTarget(clock);
+        self->catchUp();
+        return;
+    }
     bool ram = (addr < 0x400000 && !mem_.overlay())
             || (addr >= 0x600000 && addr < 0x800000);
     if (!ram) return;

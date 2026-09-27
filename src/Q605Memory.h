@@ -212,18 +212,16 @@ public:
     bool consumeRestart() {
         bool r = restartPending_;
         restartPending_ = false;
-        // Re-arm the ROM overlay for the reset vector fetch that the CPU
-        // wrapper does immediately after this returns true. onCpuReset armed
-        // it when the firmware pulled /RESET, but every ROM instruction the
-        // guest fetched in the remainder of that run slice cleared it again
-        // (read8/read16 drop the overlay on any ROM-window access), so by the
-        // time reset() reads SSP/PC from $0/$4 the overlay was gone and the
-        // vector came from stale low RAM ($40810000 left by the OS) — an
-        // arbitrary ROM address whose boot double-faulted the 040 to a HALT
-        // instead of a clean restart (q605_restart_etalon, 2026-09-08). A
-        // real /RESET holds the overlay asserted across the vector fetch;
-        // model that by arming it exactly at the boundary, so the warm reset
-        // reads the ROM's own reset vector, as a cold reset does.
+        // The reset's own map — ROM overlaid at 0 for the SSP/PC fetch the
+        // CPU wrapper does right after this returns true — is applied HERE,
+        // at the reset, and nowhere earlier. It used to be armed in
+        // onCpuReset too, when the firmware pulled /RESET; but the CPU runs
+        // on to the end of its slice, and an exception taken in that window
+        // read its vector out of the ROM header: the Quadra 605 jumped to
+        // $067C4EFA (the ROM version word) and bus-errored there forever
+        // (q605_cdinstall_etalon, 2026-09-27). Arming only here also covers
+        // what the first fix handled (CHANGELOG 2026-09-08): ROM fetches in
+        // that window dropped the overlay again before the vector fetch.
         if (r) { overlay_ = true; jitMapChanged(); }
         return r;
     }

@@ -148,6 +148,8 @@ décodage pseudo-VIA et le quirk IER IIci réellement manquant (le commentaire i
 
 **Cosmétique** : période T1 N+2 (datasheet) vs N+3 MAME (~1,28 µs) ; `reset()` efface latches/SR/compteurs que MAME préserve.
 
+**Aligné le 2026-09-26** (observable invité, pas parité pour elle-même) : la latence écriture T2CH → IFR.T2 passe de N+1 à N+3 (`IFR_DELAY`, et le budget « NTicks-3 » de SetUpTimeK dans la source ROM d'Apple), et les accès VIA des compacts deviennent un cycle /VPA calé sur l'horloge E (`m68000_device::vpa_sync`/`vpa_after`). Ensemble ils redonnent le TimeDBRA/TimeSCCDB de MAME ($0312/$0165) sur SE, SE FDHD et Classic — `compact_timing_etalon`. Restent : la latence d'écriture T1 (N+1) et l'IACK autovecteur synchronisé E.
+
 **POM68K plus riche** :
 - Re-échantillonnage du niveau ASC à chaque recalc (flavours Level/Msc) — corrige une interruption que MAME perd (fix SimCity 2000, documenté in-file) ; la Base garde le latch-edge MAME. *(rapporté par 2 agents)*
 - Hold de niveau /PMU_INT sur IFR.CB1 (MSC) intégré à la classe de base, avec deadlock mesuré comme justification.

@@ -376,8 +376,12 @@ emulators just mirror via a mask and let the ROM discover it.
   busy slots); `contention_test` reproduces the 2.56 MB/s figure. RAM only,
   before each bus access (Moira precise-timing `sync` has already run).
 - VIA timers: φ2 ticks batched through `MacMemory::tick` from the CPU's
-  peripheral catch-up. The 6522's ±1-cycle reload/IFR latency is **not**
-  modelled, nor is E-clock (/VPA) alignment of VIA accesses — TODO M4.1.
+  peripheral catch-up. A VIA access is a /VPA cycle landed on the E clock
+  (`Cpu68k::vpaTarget`, MAME `vpa_sync`/`vpa_after`), and T2 interrupts N+3
+  ticks after its T2CH write (Apple's SetUpTimeK budget). Together they give
+  the ROM's own TimeDBRA/TimeSCCDB ($0312/$0165) exactly as MAME does on the
+  SE, SE FDHD and Classic (`compact_timing_etalon`). Not modelled: T1's
+  write → IRQ latency (N+1) and the E-synced autovector IACK.
 - RTC: full command/read/write serial protocol; seconds start at 0
   (deterministic tests). The silicon part here is the 343-0040 with 20
   bytes of NVRAM, but `Rtc` runs the -0042 superset — one flat 256-byte

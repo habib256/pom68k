@@ -78,7 +78,7 @@ void t2PulseCount() {
     t.setInB(0xBF); t.setInB(0xFF); t.setInB(0xBF);
     check(t.read(Via6522::T2CL) == 0x10,
           "#21: timer mode ignores PB6 edges (used path preserved)");
-    t.tick(0x11);
+    t.tick(0x13);                                // N+3 (t2OneShotLatency)
     check((t.ifrRaw() & Via6522::TIMER2) != 0,
           "#21: timer mode still counts phi2 (used path preserved)");
 }
@@ -206,7 +206,31 @@ void deliberateDivergences() {
           "reset clears the T2 counter (MAME preserves it)");
 }
 
+// T2 one-shot: N+3 ticks from the T2CH write to IFR.T2 — Apple's own
+// SetUpTimeK budget ("1 clock for the timer to load, and 2 extra clocks
+// because it has to count through -1", mac-rom StartInit.a) and MAME's
+// IFR_DELAY. The counter reads N through the two load ticks.
+void t2OneShotLatency() {
+    std::printf("via6522_parity — T2 one-shot write -> IRQ latency\n");
+    Via6522 via;
+    via.reset();
+    via.write(Via6522::T2CL, 0x05);
+    via.write(Via6522::T2CH, 0x00);              // N = 5
+    via.tick(2);
+    check(via.read(Via6522::T2CL) == 0x05, "T2 still reads N after the two load ticks");
+    via.tick(5);                                 // 7 = N+2 ticks
+    check(!(via.ifrRaw() & Via6522::TIMER2), "no IFR.T2 at N+2");
+    check(via.tick(1) && (via.ifrRaw() & Via6522::TIMER2), "IFR.T2 at exactly N+3");
+    Via6522 split;
+    split.reset();
+    split.write(Via6522::T2CL, 0x05);
+    split.write(Via6522::T2CH, 0x00);
+    check(split.cyclesToNextEvent() == 8, "the event deadline counts the load ticks");
+    check(!split.tick(7) && split.tick(1), "…and one batched slice agrees with single ticks");
+}
+
 int main() {
+    t2OneShotLatency();
     t2PulseCount();
     srRecirculate();
     t1Pb7Wave();

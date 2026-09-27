@@ -97,9 +97,11 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché
   le 2026-09-17.)
-- [ ] **Affiner les latences VIA sur les compacts.** T1/T2/IFR à un cycle,
-  alignement E-clock/IACK. (Le RTC semé depuis l'hôte est clos le
-  2026-09-17.)
+- [ ] **Affiner les latences VIA sur les compacts : T1 et l'IACK.** Reste
+  la latence écriture T1CH → IFR.T1 (N+1 ici, N+3 chez MAME) et l'IACK
+  autovecteur calé sur l'horloge E (`vpa_sync` chez MAME). Chacune attend
+  son observable invité, comme T2 et le cycle /VPA ont eu TimeDBRA/TimeSCCDB
+  (`compact_timing_etalon`, `CHANGELOG` 2026-09-26).
 - [ ] **Améliorer la précision sonore des compacts.** Lecture du buffer par
   scanline et modélisation du PWM disque (DAC hôte et courbe DFAC/V8
   faits).

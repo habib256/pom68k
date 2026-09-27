@@ -213,9 +213,7 @@ V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
     // applyRamConfig, so dropping the RAM windows here reproduces the
     // power-on order exactly.
     egretLle_.onCpuReset = [this] {
-        overlay_ = true;
-        simmMapped_ = mbMapped_ = false;
-        jitMapChanged();
+        // consumeRestart() applies the reset's map at the reset itself.
         restartPending_ = true;
     };
     reset();

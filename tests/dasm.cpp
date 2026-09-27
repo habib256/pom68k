@@ -53,7 +53,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    MacMemory mem(pom68k::defaultCoreConfig());
+    // A 256 KB image is an SE/SE FDHD ROM; the Plus profile refuses it.
+    MacMemory mem(pom68k::defaultCoreConfig(),
+                  rom.size() == 0x40000 ? MacMemory::Model::SE : MacMemory::Model::Plus);
     if (rom.empty() || !mem.loadRom(rom)) { std::fprintf(stderr, "bad ROM\n"); return 2; }
     Cpu68k cpu(mem, jit::defaultResolvedConfig());
     for (int i = 0; i < count; i++) {

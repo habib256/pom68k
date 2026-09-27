@@ -86,8 +86,7 @@ Q700Memory::Q700Memory(const pom68k::CoreConfig& coreConfig,
         // map comes back; the devices, the PRAM and the MCU keep running,
         // which is what the /RESET line does on the board.
         egretLle_.onCpuReset = [this] {
-            overlay_ = true;
-            jitMapChanged();
+            // consumeRestart() arms the overlay at the reset itself — see there.
             restartPending_ = true;
         };
         // The IIfx front end (docs/IOP_BRINGUP.md), grafted on the Spike

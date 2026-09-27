@@ -11,7 +11,9 @@
 // is why it survived — this is that gate.
 //
 // What must hold, and each half is a separate failure mode:
-//   1. the machine RE-ARMS its ROM overlay when the line is pulled;
+//   1. the machine re-arms its ROM overlay AT THE RESET, and leaves its map
+//      alone until then (an exception the CPU takes before the boundary
+//      must not read its vector out of the ROM header — 2026-09-27);
 //   2. the CPU resets, but only at a run boundary — never inside the memory
 //      callback that raised it, which would reset the MCU mid-instruction;
 //   3. the reset is one-shot;
@@ -82,7 +84,7 @@ void testRestart(const char* name, Mem& mem, Cpu& cpu, CudaLle& lle,
     // ── The firmware pulls /RESET ────────────────────────────────────────
     lle.hostReset();
 
-    check(mem.overlay(), name, "restart: the ROM overlay is re-armed");
+    check(!mem.overlay(), name, "restart: the map is untouched until the reset");
     check(lle.mcu().instructions == mcuBefore, name,
           "restart: the MCU is not reset by the line it pulls");
     check(lle.pram(0x8A) == pramBefore, name, "restart: PRAM survives");
@@ -112,18 +114,17 @@ void testRestart(const char* name, Mem& mem, Cpu& cpu, CudaLle& lle,
 
     // ── The race the 2026-09-08 Quadra 605 halt exposed ──────────────────
     // A real /RESET holds the overlay asserted across the reset-vector fetch.
-    // In the model onCpuReset arms the overlay, but the guest keeps fetching
-    // ROM in the rest of that run slice, and every ROM read drops the overlay
-    // again — so by the time the CPU wrapper honours consumeRestart and reads
-    // SSP/PC from $0/$4, the overlay is gone and the vector comes from RAM
-    // (stale $40810000 under a real OS → an odd/garbage PC → double-fault
-    // HALT). consumeRestart re-arms the overlay at that boundary; this proves
-    // it, and fails without the fix (the vector reads RAM zeros, PC leaves the
-    // ROM stub, the counter stops).
+    // The guest keeps running to the end of the slice after the pulse, and
+    // ROM fetches in that window drop any overlay armed early — so the
+    // overlay is armed by consumeRestart at the boundary, and only there.
+    // This fails if it is not (the vector reads RAM zeros, PC leaves the
+    // ROM stub, the counter stops). Arming it at the pulse as well was the
+    // 2026-09-27 cdinstall hang: a bus error in the window vectored through
+    // the ROM header.
     lle.hostReset();
-    check(mem.overlay(), name, "race: the /RESET pulse armed the overlay");
-    (void)mem.read8(romBase + 0x10);            // a guest ROM fetch clears it
-    check(!mem.overlay(), name, "race: an intervening ROM fetch cleared it");
+    check(!mem.overlay(), name, "race: the /RESET pulse leaves the map alone");
+    (void)mem.read8(romBase + 0x10);            // a guest ROM fetch meanwhile
+    check(!mem.overlay(), name, "race: the ROM fetch finds no overlay");
     const uint32_t raceC0 =
         uint32_t(mem.peek8(0x2000)) << 8 | mem.peek8(0x2001);
     cpu.runCycles(4000);                        // consumeRestart → reset → boot

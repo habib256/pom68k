@@ -609,6 +609,12 @@ set_tests_properties(sefdhd_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=sefdhd" TIMEOUT 1800)
 set_tests_properties(classic_boot_etalon PROPERTIES
                      ENVIRONMENT "POM68K_COMPACT_MODEL=classic" TIMEOUT 1800)
+# The same three ROMs' own bus calibration (TimeDBRA/TimeSCCDB) against
+# MAME's: the VIA T2 load latency and the /VPA E-clock cycle, no disk.
+add_executable(compact_timing_etalon tests/compact_timing_etalon.cpp)
+target_link_libraries(compact_timing_etalon PRIVATE pom68k_core)
+add_test(NAME compact_timing_etalon COMMAND compact_timing_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 # Below the Plus: 64 KB ROM, 128/512 KB RAM, no SCSI, single-sided 400K.
 # One binary, two registrations by model — the pattern compact_boot_etalon
 # uses three lines above. Both reach the Finder on a 400K/MFS System 1.1

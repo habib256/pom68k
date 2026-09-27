@@ -369,8 +369,14 @@ int main(int argc, char** argv) {
     std::fflush(stdout);
 
     // Fresh every run: what the guest writes here is this gate's artefact.
+    // One folder and one clone PER MODE: the two registrations are this
+    // binary, and ctest -j runs them side by side — sharing, each wiped the
+    // other's share folder and overwrote its disk mid-boot (the default
+    // mode's AppleShare session failed only when hubfirst overlapped it,
+    // 2026-09-27).
+    const std::string mode = hubFirst ? "-hubfirst" : "";
     const std::filesystem::path shareRoot =
-        std::filesystem::path("run") / "dayna-ethertalk";
+        std::filesystem::path("run") / ("dayna-ethertalk" + mode);
     const std::filesystem::path shareDir = shareRoot / "Echange";
     std::error_code ec;
     std::filesystem::remove_all(shareRoot, ec);
@@ -386,7 +392,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const std::string diskPath = "hdv/work/dayna-755.dsk";
+    const std::string diskPath = "hdv/work/dayna-755" + mode + ".dsk";
     if (!cloneVolume(refDisk, diskPath)) {
         std::fprintf(stderr, "FAIL: could not clone %s to %s\n",
                      refDisk.c_str(), diskPath.c_str());

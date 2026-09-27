@@ -77,6 +77,7 @@ private:
     void sync(int cycles) override;
 
     void applyContention(moira::u32 addr) const;
+    static moira::i64 vpaTarget(moira::i64 clock);   // /VPA completion (see .cpp)
     // The contention charge as Moira's fetch window can call it: a windowed
     // fetch performs no read16(), so the wait states it carries have to be
     // handed back explicitly (Moira.h § pomJitFetch000). Static so the hook

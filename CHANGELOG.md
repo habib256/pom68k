@@ -467,6 +467,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-26 (late night)** — [The compacts calibrate themselves as MAME's do: the VIA T2 load latency and the /VPA E-clock cycle, found through the ROM's own TimeDBRA — and a restart race on seven platforms it exposed](#2026-09-26-via-vpa-t2)
 - **2026-09-26 (night)** — [The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs](#2026-09-26-pap-queues)
 - **2026-09-26 (evening)** — [All 39 profiles pinned: the LC 520 boots its reference once the TEST drive yields it](#2026-09-26-pins-all-39)
 - **2026-09-26 (later)** — [A still screen is not a finished boot: the LC 575 pinned a half-drawn desktop, and a settle now waits for a quiet disk](#2026-09-26-settle-quiet-disk)
@@ -1050,6 +1051,109 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-26-via-vpa-t2"></a>
+## 2026-09-26 (late night) — The compacts calibrate themselves as MAME's do: the VIA T2 load latency and the /VPA E-clock cycle, found through the ROM's own TimeDBRA — and a restart race on seven platforms it exposed
+
+TODO § Fidélité « Affiner les latences VIA sur les compacts » had been left
+on 2026-07 as « unobservable to any gate ». It is observable: every ROM
+from the SE on times its own bus at boot (SetUpTimeK) and stores the result
+in low memory, where every later driver delay reads it.
+
+**The observable.** The SE ROM (`$400428`–`$4004A0`) loads VIA T2 with
+`$030F` = 783 E ticks (one millisecond) and counts DBRA iterations until T2
+interrupts — bare into TimeDBRA (`$0D00`), with a `btst` of the SCC in the
+loop into TimeSCCDB (`$0D02`). MAME 0.287 was made an oracle for the three
+compacts from the tree's own ROM images (the Plus halves, the SE, SE FDHD
+and Classic images all match MAME's CRCs; romsets under `roms/mame/`, a Lua
+read of the two words, no disk; the Plus ROM predates these globals):
+
+| | TimeDBRA | TimeSCCDB |
+|---|---|---|
+| MAME `macse`, `macsefd`, `macclasc` | `$0312` | `$0165` |
+| POM68K before | `$030F` | `$0164` |
+| + T2 load ticks only | `$0311` | `$0165` |
+| + /VPA cycle only | `$0310` | `$0164` |
+| both | **`$0312`** | **`$0165`** |
+
+**The two mechanisms**, both needed (the attribution rows above):
+
+- **T2 write → IRQ = N+3 ticks**, was N+1. Apple's source settles it
+  (rank 0): later ROMs load `NTicks-3` because « it takes 1 clock for the
+  timer to load, and 2 extra clocks because it has to count through -1 »
+  (`mac-rom OS/StartMgr/StartInit.a`, SetUpTimeK) — a correction Apple made
+  *because* loading N measured N+3. MAME's `IFR_DELAY 3` says the same.
+  Modelled as two load ticks during which the counter reads N
+  (`Via6522::t2hold_`), included in `cyclesToNextEvent`. This is the shared
+  6522: it applies to every platform, which is why the whole registry ran.
+  Snapshot format 18 → 19.
+- **VIA accesses are /VPA cycles on the compacts** — the E-clock alignment
+  DEV.md had listed as not modelled since M4. MAME maps
+  `m68000_device::vpa_sync`/`vpa_after` on the VIA range of every compact
+  (`mac128.cpp:1109-1133`): complete on the next E boundary, or the one
+  after when fewer than four clocks remain, plus one clock.
+  `Cpu68k::vpaTarget` is that rule on the grid `MacMemory::tick` counts φ2
+  on. A VIA access now costs 11–21 clocks instead of 4.
+
+**Not done, each still waiting for its own observable** (TODO keeps them):
+T1's write → IRQ latency (N+1 here, N+3 in MAME — T1 is the Time Manager's
+and the platform heartbeat's, and nothing measured it yet), and the
+autovector IACK, which MAME also E-syncs. T1's free-run period stays N+2,
+the datasheet's (via6522_parity_test).
+
+**The whole registry, and two things it caught.** The first full run
+(352 gates) went 350/352: `q605_afp_live_etalon` and
+`q605_cdinstall_etalon`, both reproducible, both gone with the T2 load
+ticks set to zero. Neither was a VIA defect; the shifted T2 phase landed
+guest events in two windows that were already wrong.
+
+- *AFP, a harness race.* On the reconnection cycle the Chooser's
+  double-click on « POM68K » opened no login dialog (the row only
+  selected; the next click then landed on the Color SW Pro icon). The
+  gate is phase-fragile without this change too: with T2 as before, a
+  3-frame shift of the script fails it (folder creation); with the new
+  T2, shifts of 1–4 frames all pass and only the unshifted script missed.
+  The login dialog costs one ATP request at the node (the ASP GetStatus),
+  so phase 4 now looks for it and double-clicks again, up to three times,
+  printing each retry.
+- *Restart, a model race on seven platforms.* After the install the
+  Finder's Restart reached the Cuda firmware, which pulsed /RESET, and the
+  machine then sat at `$067C4EFA` forever: vector 2 read from address `$8`
+  **through the ROM overlay** returns the ROM header's version word
+  `$067C` and the `4EFA` after it; the fetch there bus-errors; repeat.
+  Every platform's `onCpuReset` armed the overlay at the pulse while the
+  CPU ran on to the end of its slice, so any exception in that window
+  vectored through the ROM header. `consumeRestart()` has armed the
+  overlay at the reset boundary since 2026-09-08 (the first fix of this
+  window), which makes the early arming both redundant and harmful: it is
+  gone from Q605, Q630, Q700, Rbv, Sonora, V8 (whose SIMM/motherboard
+  unmapping moves with it) and Vasp. `cuda_restart_test`'s first contract
+  point said the opposite — « re-arms its overlay when the line is
+  pulled » — and is amended: the map is untouched until the reset.
+
+The second full run went 350/352 again: `docs_test` (a `V8Memory.cpp`
+citation moved by the edit above, refreshed) and `q605_dayna_driver_etalon`,
+green in the first run and green alone on the same binary. Run with its
+Dayna/AFP siblings at `-j8` it failed again — `appleshare: sessions=0` —
+and the reason predates all of the above: the default and `hubfirst`
+registrations are one binary using one share folder (`run/dayna-ethertalk`,
+wiped at start) and one clone (`hdv/work/dayna-755.dsk`), so whenever ctest
+scheduled them together each destroyed the other's inputs mid-run. Each
+mode now has its own folder and clone (`-hubfirst` suffix).
+
+**Evidence at commit.** Full registry, second run: 350/352, the two reds
+above, both explained and fixed; then the six Q605 Dayna/AFP gates together
+at `-j8` 6/6 (both Dayna modes side by side), the restart set
+(`cuda_restart_test` on Q605/LC II/Q900, `q605_restart_etalon`,
+`lcii_restart_etalon`, `jit_restart_write_030_test`,
+`q605_cdinstall_etalon`) green, and `asset-none` 110/110. Two gates
+soft-skip on this host for want of their assets (the Disques agent image and
+an LC II 1.44 MB HFS floppy), as before.
+
+**Gates.** New `compact_timing_etalon` (SE, SE FDHD, Classic: both words
+equal MAME's, no disk, seconds). `via6522_parity_test` pins N+3 by single
+ticks and by one batched slice, and the event deadline; its older « timer
+mode still counts φ2 » check had encoded N+1 and moves to N+3.
 
 <a id="2026-09-26-pap-queues"></a>
 ## 2026-09-26 (night) — The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs

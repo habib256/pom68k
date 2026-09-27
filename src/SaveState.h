@@ -288,7 +288,9 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // integers after the GCR write buffer. The adopted speed is what the 64 K
 // ROM's tachometer calibration reads; a v15 reader would shift every field
 // after the drives.
-inline constexpr u32      kVersion   = 18;  // v18: the ATA task file
+// v19 (2026-09-26): every VIA's T2 load ticks (Via6522::t2hold_) — a T2
+// written just before a snapshot has not started counting yet.
+inline constexpr u32      kVersion   = 19;  // v19: the VIA T2 load ticks
 
 struct Header {
     u32 version     = kVersion;
