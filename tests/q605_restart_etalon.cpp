@@ -87,8 +87,14 @@ int main() {
     bool left = false;
     for (int i = 0; i < 3000 && !left && !cpu.isHalted(); i++) {
         runFrames(1);
+        // Left = another application's name, or none: the ROM clears low
+        // memory at the reset, CurApName with it. The shutdown does not
+        // always show a transient name first — with the SCC synchronized to
+        // the VIA clock (2026-09-27) it reset straight from the Finder, and
+        // a gate waiting for a name saw the machine "never leave" while it
+        // was already rebooting.
         const std::string app = findersig::curApName(*gMem);
-        if (!app.empty() && app != "Finder" && app != "MyEyes Extension") left = true;
+        if (app != "Finder" && app != "MyEyes Extension") left = true;
     }
     std::printf("restart: machine %s the Finder after %ld frames (halted=%d)\n",
                 left ? "left" : "did NOT leave", 0L, cpu.isHalted());

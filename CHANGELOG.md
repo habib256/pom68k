@@ -467,6 +467,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-27 (later)** — [The Cuda 040 boards' SCC answers at the VIA's pace: TimeSCCDB was nine times too large — and on the PIC boards the same fix kills the mouse](#2026-09-27-scc-040)
 - **2026-09-27** — [The compacts' speaker hears the buffer the beam reads: 13 % of the boot chime was being read at the wrong moment](#2026-09-27-sound-per-line)
 - **2026-09-26 (late night)** — [The compacts calibrate themselves as MAME's do: the VIA T2 load latency and the /VPA E-clock cycle, found through the ROM's own TimeDBRA — and a restart race on seven platforms it exposed](#2026-09-26-via-vpa-t2)
 - **2026-09-26 (night)** — [The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs](#2026-09-26-pap-queues)
@@ -1052,6 +1053,60 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-27-scc-040"></a>
+## 2026-09-27 (later) — The Cuda 040 boards' SCC answers at the VIA's pace: TimeSCCDB was nine times too large — and on the PIC boards the same fix kills the mouse
+
+The same observable as the compacts' VIA work (SetUpTimeK's calibrations),
+taken to the 68040 boards. MAME 0.287 made an oracle from the tree's own
+ROM images (`macqd605`, `macqd700`, `macqd800` on the F1ACAD13 image,
+`macqd630`; CRCs match), Lua read, no disk:
+
+| | TimeSCCDB | TimeVIADB | TimeDBRA | TimeSCSIDB |
+|---|---|---|---|---|
+| MAME, all four | `$030E` | `$030E` | `$1866` / `$2035` | `$0619` / `$080D` |
+| POM68K Quadra 605 before | **`$1BDC`** | `$030F` | `$4101` | `$0E72` |
+| POM68K, all four with the sync | `$030F` | `$030F` | `$4102`–`$55D3` | — |
+
+TimeSCCDB counts DBRA iterations with an SCC read in the loop, and Apple's
+own comment says what it is for: « used by AppleTalk ». Here an SCC read
+cost nothing, so the constant came out nine times MAME's. On these boards
+the I/O glue synchronizes an SCC access to the VIA clock exactly as it does
+a VIA access — MAME calls `via_sync()` in the SCC handlers of every 040
+board (`macquadra605.cpp:90-97` PrimeTime, `macquadra800.cpp` IOSB,
+`macquadra700.cpp:375-384`, `f108.cpp:196-207` PrimeTime II) and of none of
+the 020/030 boards. The remaining one tick is TimeVIADB's residual from
+before. TimeDBRA and TimeSCSIDB are left: they follow the 040 cycle model,
+which MAME approximates differently from POM68K, not the glue.
+
+**Shipped on two boards, withheld on two.** With the sync on all four, the
+`m040` tier went 84/86. On the Centris 650 the soak's final screen was a
+screensaver that the wake gesture could not lift — because the mouse was
+dead: RawMouse (`$082C`) stayed at (15,15) through forty moves from the
+moment the Finder was up, while Ticks advanced; without the sync it moves.
+The Centris and the Quadra 700 take ADB through a PIC1654S; MAME runs the
+same PIC (`adbmodem`) on its Quadra 800 with the sync in place, and the
+ROM's ADB Manager times itself by TimeVIADB, which did not move — so this
+is a defect of POM68K's PIC path that correct SCC timing exposes, not a
+reason to keep the SCC free. Flushing the peripheral ticks before the sync
+(as the VIA path does) did not help. The sync ships on the Quadra 605 and
+Quadra 630 (Cuda ADB; the whole `m040` tier green on them) and is withheld
+on the Centris and the Quadra 700 — TODO § Fidélité.
+
+**What it moved.** `q605_restart_etalon` went red: with slower SCC
+accesses the shutdown reset the machine straight from the Finder, without
+the transient « CM Window » name the gate had been waiting for as its sign
+that the machine left the Finder — the reboot was already running (screen
+dumps: the second boot reaches the full desktop). The gate now counts a
+cleared CurApName (the ROM wipes low memory at reset) as leaving.
+
+The same `m040` run's other red, `q605_cdaudio_etalon`, was the Dayna
+pattern again: its control arm is the same binary and both wrote, read and
+finally deleted `q605_cdaudio.cue/.bin` in the source root. Each arm now
+has its own pair.
+
+**Gate.** New `calibration_040_etalon` — the Quadra 605's and Quadra 630's
+TimeSCCDB and TimeVIADB within one tick of MAME's `$030E`, no disk, seconds.
 
 <a id="2026-09-27-sound-per-line"></a>
 ## 2026-09-27 — The compacts' speaker hears the buffer the beam reads: 13 % of the boot chime was being read at the wrong moment

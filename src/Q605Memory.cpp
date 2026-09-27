@@ -373,6 +373,12 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if ((sub & ~0xF00000u) >= 0x02000 && (sub & ~0xF00000u) < 0x04000)
         return via2Access8(sub & 0x1FFF, false, 0);
     if (base >= 0x0C000 && base < 0x0E000) {     // SCC, byte on D8-15
+        // PrimeTime synchronizes an SCC access to the VIA clock exactly as
+        // it does a VIA access (MAME macquadra605.cpp:90-97, via_sync on
+        // both directions). Observable: the ROM's TimeSCCDB, the constant
+        // AppleTalk times its loops by (SetUpTimeK) — MAME $030E, and
+        // $1BDC here while SCC reads cost nothing (calibration_probe).
+        viaSync();
         flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
@@ -451,6 +457,7 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x0C000 && base < 0x0E000) {
+        viaSync();                               // as the read side, above
         flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);

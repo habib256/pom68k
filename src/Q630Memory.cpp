@@ -335,6 +335,10 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
     if ((sub & ~0xF00000u) >= 0x02000 && (sub & ~0xF00000u) < 0x04000)
         return via2Access8(sub & 0x1FFF, false, 0);
     if (base >= 0x0C000 && base < 0x0E000) {     // SCC, byte on D8-15
+        // The 040 boards' I/O glue syncs an SCC access to the VIA clock
+        // (MAME f108.cpp:196-207, PrimeTime II via_sync);
+        // Q605Memory's SCC read has the observable.
+        viaSync();
         flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
@@ -453,6 +457,7 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x0C000 && base < 0x0E000) {
+        viaSync();
         flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);

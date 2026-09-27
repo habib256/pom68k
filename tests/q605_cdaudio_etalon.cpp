@@ -181,7 +181,13 @@ int main() {
     }
     testasset::report({ romPath, diskPath });
 
-    const std::string cue = "q605_cdaudio.cue", bin = "q605_cdaudio.bin";
+    // One disc per registration: the control arm (POM68K_CDAUDIO_NOINSERT)
+    // is this binary too, and ctest -j runs the two side by side — sharing
+    // the pair, one rewrote the files the other was reading (the bay
+    // refused "q605_cdaudio.cue names no usable FILE/TRACK", 2026-09-27).
+    const std::string stem = std::getenv("POM68K_CDAUDIO_NOINSERT")
+                                 ? "q605_cdaudio_silent" : "q605_cdaudio";
+    const std::string cue = stem + ".cue", bin = stem + ".bin";
     if (!writeAudioDisc(cue, bin, 20)) {
         std::fprintf(stderr, "FAIL: could not synthesize the audio disc\n");
         return 1;

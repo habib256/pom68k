@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 598 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 599 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -10,7 +10,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 88 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 53 |
-| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 33 |
+| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 34 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 96 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 27 |
 | [Sound](#sound) | 14 |
@@ -206,6 +206,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-03 (eleventh)** — [The MSC closes B.4's original list: the PG&E owns no bus, and the Duo's CACR flush retires](CHANGELOG.md#2026-09-03-msc-inventory)
 - **2026-09-03 (sixteenth)** — [The 68HC05 ROM fetch stops crossing the whole internal map: −1.6 % on the measured Q605 pump workload](CHANGELOG.md#2026-09-03-m68hc05-rom-fast-path)
 - **2026-09-08 (later)** — [The warm-reset overlay fix reaches every Cuda/Egret memory, and its gate reproduces the race](CHANGELOG.md#2026-09-08-restart-sweep)
+- **2026-09-27 (later)** — [The Cuda 040 boards' SCC answers at the VIA's pace: TimeSCCDB was nine times too large — and on the PIC boards the same fix kills the mouse](CHANGELOG.md#2026-09-27-scc-040)
 
 ## Storage — SCSI, IWM, SWIM, media
 

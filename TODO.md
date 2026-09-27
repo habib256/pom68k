@@ -97,6 +97,12 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché
   le 2026-09-17.)
+- [ ] **Synchroniser le SCC sur l'horloge VIA au Centris et au Quadra 700.**
+  Fait sur Q605/Q630 (`calibration_040_etalon`), retenu ici : avec la
+  synchro, la souris ne bouge plus sur le Centris (RawMouse figé dès le
+  Finder, `centris_soak_etalon`), alors que MAME tourne le même PIC1654S
+  avec elle. D'abord comprendre ce qui casse dans notre chemin ADB PIC
+  (`CHANGELOG` 2026-09-27 (later)).
 - [ ] **Affiner les latences VIA sur les compacts : T1 et l'IACK.** Reste
   la latence écriture T1CH → IFR.T1 (N+1 ici, N+3 chez MAME) et l'IACK
   autovecteur calé sur l'horloge E (`vpa_sync` chez MAME). Chacune attend

@@ -615,6 +615,12 @@ add_executable(compact_timing_etalon tests/compact_timing_etalon.cpp)
 target_link_libraries(compact_timing_etalon PRIVATE pom68k_core)
 add_test(NAME compact_timing_etalon COMMAND compact_timing_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# The Cuda 040 boards' SCC and VIA timing by the same ROM measurement,
+# against MAME's macqd605/macqd630 — the SCC's VIA-clock sync, no disk.
+add_executable(calibration_040_etalon tests/calibration_040_etalon.cpp)
+target_link_libraries(calibration_040_etalon PRIVATE pom68k_core)
+add_test(NAME calibration_040_etalon COMMAND calibration_040_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 # Below the Plus: 64 KB ROM, 128/512 KB RAM, no SCSI, single-sided 400K.
 # One binary, two registrations by model — the pattern compact_boot_etalon
 # uses three lines above. Both reach the Finder on a 400K/MFS System 1.1
