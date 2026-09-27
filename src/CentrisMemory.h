@@ -53,6 +53,7 @@ class CentrisCpu;
 
 class CentrisMemory {
 public:
+    long diagScc = 0; bool diagNoSync = false;
     // The registry this machine reports its LLE/HLE outcomes into.
     // Injected with CoreConfig so a session owns it instead of the
     // process (2026-08-27); save states and the Périphériques window

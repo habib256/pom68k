@@ -95,6 +95,7 @@ int main() {
                                  std::istreambuf_iterator<char>());
     CentrisMemory mem(pom68k::defaultCoreConfig(), 36u << 20,
                       CentrisMemory::kCpuHz650, CentrisMemory::kIdCentris650);
+    if (getenv("DIAG_LATE_SYNC")) mem.diagNoSync = true;
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     CentrisCpu cpu(mem, jit::defaultResolvedConfig(),
                    pom68k::defaultCoreConfig().cpu);
@@ -166,5 +167,14 @@ int main() {
         mem.mouseButton(false);
         frames(300);
     };
+    if (getenv("DIAG_LATE_SYNC")) { mem.diagNoSync = false; std::printf("diag: SCC sync ON from the Finder\n"); }
+    if (getenv("DIAG_SCC")) {
+        for (int k = 0; k < 6; k++) {
+            const long a = mem.diagScc; frames(60);
+            std::printf("diag scc/s=%ld RawMouse=%02X%02X%02X%02X\n", mem.diagScc - a,
+                        mem.peek8(0x82C), mem.peek8(0x82D), mem.peek8(0x82E), mem.peek8(0x82F));
+            mem.mouseMove(20, 10);
+        }
+    }
     return beyondboot::run(h);
 }
