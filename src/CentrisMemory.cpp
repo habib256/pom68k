@@ -299,7 +299,9 @@ uint8_t CentrisMemory::ioRead8(uint32_t addr) {
         }
         return 0;
     }
-    if (base >= 0x0C000 && base < 0x0E000) {      // SCC
+    if (base >= 0x0C000 && base < 0x0E000) {
+        ++diagScc;      // SCC
+        if (!diagNoSync) viaSync();
         flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
@@ -353,6 +355,8 @@ void CentrisMemory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x0C000 && base < 0x0E000) {
+        ++diagScc;
+        if (!diagNoSync)         viaSync();
         flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
