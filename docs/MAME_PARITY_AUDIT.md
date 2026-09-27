@@ -164,7 +164,7 @@ polarité enable — tout à parité. **Aucun bug-suspect.**
 **Simplifications** :
 - Pas d'onde carrée CKO : les machines pulsent CA2 à 1 Hz depuis `cpuHz` (nuance de phase demi-seconde perdue).
 - ~~**Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo)~~ — **FINDING FAUX,
-  retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:179`,
+  retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:186`,
   `MacIIMemory.h:215`, `IIfxMemory.h:120`, `MscMemory.h:188`, et les huit autres) et **chacun des
   runners** câble la paire (`GuiRunnerToby.h:54` / `:210`, `GuiRunnerV8.h:92` / `:238`,
   `GuiRunnerSonora.h:90` / `:229`, `GuiRunnerDafb.h:122` / `:248`, `GuiRunnerDuo.h:75` / `:197`, et les

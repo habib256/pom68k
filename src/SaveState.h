@@ -290,7 +290,11 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // after the drives.
 // v19 (2026-09-26): every VIA's T2 load ticks (Via6522::t2hold_) — a T2
 // written just before a snapshot has not started counting yet.
-inline constexpr u32      kVersion   = 19;  // v19: the VIA T2 load ticks
+// v20 (2026-09-27): the compacts' scan-line phase of the sound/PWM fetch
+// (MacMemory pwmPhase_/pwmLine_). A restored machine restarted it at line
+// 0 wherever its clock stood, so the 400K spindle's duty and the speaker
+// read the wrong lines until the next power cycle.
+inline constexpr u32      kVersion   = 20;  // v20: the compacts' fetch line
 
 struct Header {
     u32 version     = kVersion;

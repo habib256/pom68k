@@ -24,6 +24,7 @@
 #include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "jit/JitGuard.h"
+#include <array>
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -85,6 +86,11 @@ public:
     // which the 64K ROM calibrates against the tachometer. The Plus's 800K
     // drive regulates itself, so its ROM never runs that calibration and
     // never reads the odd sound bytes back — see SonyDrive::pwmPush.
+    // One scan line's speaker fetch: the buffer's even byte, and the VIA
+    // bits that shape it at that moment — PA2-0 volume, PB7 /enable.
+    struct SoundLine { uint8_t sample = 0x80, via = 0x80; };
+    static constexpr int kSoundLines = 370;
+    const SoundLine& soundLine(int line) const { return soundLine_[size_t(line)]; }
     bool hasPwmSpindle() const {
         return model_ == Model::Mac128 || model_ == Model::Mac512;
     }
@@ -293,7 +299,7 @@ public:
            scsi_, kbd_, mouse_, dayna_);
         for (ScsiDisk& disk : scsiDisks_) ar(disk);
         ar(kbdPhase_, kbdCmd_, kbdResp_, kbdTimer_, kbdInquiryHold_,
-           viaPhase_, secAcc_, overlay_);
+           viaPhase_, secAcc_, overlay_, pwmPhase_, pwmLine_);
         if constexpr (Ar::loading) {
             // RAM and the overlay state just changed wholesale — no write
             // can express that (JitGuard.h § invalidate).
@@ -312,8 +318,11 @@ private:
     Model model_ = Model::Plus;
     uint32_t romSize_ = kRomSize;
     uint32_t ramSize_ = kRamSize;
-    // Scan-line phase of the sound/PWM word fetch (hasPwmSpindle only).
+    // Scan-line phase of the sound/PWM word fetch (tick()), and what each
+    // line of the current frame fetched for the speaker. The latches are
+    // host-audio staging, not guest state: they stay out of the snapshot.
     int pwmPhase_ = 0, pwmLine_ = 0;
+    std::array<SoundLine, kSoundLines> soundLine_{};
     Via6522 via_;
     AdbBus adb_;
     AdbVia adbVia_;

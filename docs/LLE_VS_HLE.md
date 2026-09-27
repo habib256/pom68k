@@ -359,7 +359,7 @@ Both workarounds are retired (`RbvCpu` back to the shared default;
 `POM68K_Q605_CACHE_BOOST` re-measured green at 2/4/8 across the 040 family).
 The audit found one more boosted-clock reader: `AdbVia::syncTo` fed the
 PIC1654S co-step the raw core clock — every boosted call site now passes
-`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:164`
+`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:172`
 passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
 **Any new consumer of the CPU clock must ask which domain it is in.**
 

@@ -72,6 +72,27 @@ int main() {
     std::printf("dominant frequency ~%.0f Hz\n", freq);
     CHECK(freq > 200 && freq < 4000, "tone in the beep range (200-4000 Hz)");
 
+    // ── The beam reads the buffer line by line ──
+    // Poke two samples mid-frame: the line already fetched keeps what the
+    // beam read, the line still to come plays the poke. A frame-end read of
+    // the buffer (the model before 2026-09-27) heard both pokes.
+    {
+        constexpr int kLine = 352, kFrame = 370 * kLine;
+        const moira::i64 frame0 = cpu.getClock() - cpu.getClock() % kFrame;
+        cpu.runUntil(frame0 + kFrame + 100 * kLine);  // next frame, line 100
+        const uint8_t pa = mem.via().portA();
+        const uint32_t base = (pa & 0x08) ? (mem.ramSize() - 0x0300)
+                                          : (mem.ramSize() - 0x5F00);
+        const uint8_t before50 = mem.ram()[base + 50 * 2];
+        mem.write8(base + 50 * 2, uint8_t(before50 ^ 0x5A));       // already read
+        mem.write8(base + 200 * 2, 0xC3);                            // still to come
+        cpu.runUntil(frame0 + 2 * kFrame);
+        CHECK(mem.soundLine(50).sample == before50,
+              "a line the beam has read keeps its sample");
+        CHECK(mem.soundLine(200).sample == 0xC3,
+              "a line still to come plays the mid-frame write");
+    }
+
     std::printf("sound_test: startup chime captured (chime.wav), gate passed\n");
     return 0;
 }

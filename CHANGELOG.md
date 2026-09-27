@@ -467,6 +467,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-09-27** — [The compacts' speaker hears the buffer the beam reads: 13 % of the boot chime was being read at the wrong moment](#2026-09-27-sound-per-line)
 - **2026-09-26 (late night)** — [The compacts calibrate themselves as MAME's do: the VIA T2 load latency and the /VPA E-clock cycle, found through the ROM's own TimeDBRA — and a restart race on seven platforms it exposed](#2026-09-26-via-vpa-t2)
 - **2026-09-26 (night)** — [The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs](#2026-09-26-pap-queues)
 - **2026-09-26 (evening)** — [All 39 profiles pinned: the LC 520 boots its reference once the TEST drive yields it](#2026-09-26-pins-all-39)
@@ -1051,6 +1052,37 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-09-27-sound-per-line"></a>
+## 2026-09-27 — The compacts' speaker hears the buffer the beam reads: 13 % of the boot chime was being read at the wrong moment
+
+TODO § Fidélité « Améliorer la précision sonore des compacts », first half.
+The compact board fetches one sound word per scan line (GttMFH; MAME
+`mac128.cpp` reads `mac_snd_buf_ptr[scanline]` in its scanline timer).
+`MacAudio::renderFrame` instead read all 370 samples out of RAM at the end
+of the frame, with the VIA's buffer-select, volume and enable sampled once.
+
+**The observable.** Latching each line's byte and VIA bits at the fetch and
+comparing with the frame-end read over the Plus's first 90 frames (the boot
+chime): **4 410 of 33 300 samples differ** — the Sound Driver rewrites the
+buffer while the beam reads it — and on **500 lines** the volume/enable in
+force at the fetch is not the frame-end one.
+
+**Change.** `MacMemory::tick` already stepped the per-line fetch for the
+400K spindle's duty byte (`pwmPhase_`/`pwmLine_`, Mac 128K/512K only); it
+now runs on every compact and also latches the even byte with PA2-0/PB7
+into `soundLine_`, and `MacAudio` renders from those latches. The latches
+are host-audio staging and stay out of the snapshot; the fetch phase does
+not — it was never serialized, so a restored machine restarted the fetch at
+line 0 wherever its clock stood (the 400K spindle read the wrong duty bytes
+until a power cycle). Snapshot format 19 → 20.
+
+**Gate.** `sound_test` keeps the chime checks (558 Hz, decaying) and adds
+the mechanism: two bytes poked at line 100 of a frame — line 50's keeps the
+sample the beam already read, line 200's plays the poke.
+
+Remaining in the TODO line: the output itself is 1-bit PWM into an
+integrator, still rendered as linear PCM.
 
 <a id="2026-09-26-via-vpa-t2"></a>
 ## 2026-09-26 (late night) — The compacts calibrate themselves as MAME's do: the VIA T2 load latency and the /VPA E-clock cycle, found through the ROM's own TimeDBRA — and a restart race on seven platforms it exposed

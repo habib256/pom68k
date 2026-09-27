@@ -102,9 +102,10 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   autovecteur calé sur l'horloge E (`vpa_sync` chez MAME). Chacune attend
   son observable invité, comme T2 et le cycle /VPA ont eu TimeDBRA/TimeSCCDB
   (`compact_timing_etalon`, `CHANGELOG` 2026-09-26).
-- [ ] **Améliorer la précision sonore des compacts.** Lecture du buffer par
-  scanline et modélisation du PWM disque (DAC hôte et courbe DFAC/V8
-  faits).
+- [ ] **Améliorer la précision sonore des compacts : la sortie PWM.** Le
+  son prend l'octet comme PCM linéaire là où la carte le rend en PWM 1 bit
+  dans un intégrateur. (Lecture par ligne faite le 2026-09-27, DAC hôte et
+  courbe DFAC/V8 faits.)
 
 ---
 

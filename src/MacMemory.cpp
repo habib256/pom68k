@@ -139,22 +139,30 @@ void MacMemory::tick(int cpuCycles) {
     drive_.tick(cpuCycles);
     externalDrive_.tick(cpuCycles);
     // The video counter fetches one sound/PWM word per scan line — 370 a
-    // frame, 352 cycles apart, which is exactly kCyclesPerFrame. The even
-    // byte is the audio sample (MacAudio reads it when there IS a GUI); the
-    // ODD byte is the 400K spindle duty, and the boot depends on it, so it
-    // is fetched here where every session ticks rather than in the audio
-    // path. MAME mac128.cpp:548 pwm_push(mac_snd_buf_ptr[scanline] & 0xff).
-    if (hasPwmSpindle()) {
+    // frame, 352 cycles apart, which is exactly kCyclesPerFrame. The ODD
+    // byte is the 400K spindle duty, and the boot depends on it (MAME
+    // mac128.cpp:548 pwm_push(mac_snd_buf_ptr[scanline] & 0xff)). The EVEN
+    // byte is the audio sample, latched here with the VIA's volume/enable
+    // bits AS THEY ARE at that line: the Sound Driver rewrites the buffer
+    // while the beam reads it, and a frame-end read of the buffer and the
+    // VIA got 13 % of the boot chime's samples and 500 lines' gain wrong
+    // (sound_test, 2026-09-27). MacAudio renders from these latches.
+    {
         pwmPhase_ += cpuCycles;
         while (pwmPhase_ >= 352) {
             pwmPhase_ -= 352;
             // VIA PA3 selects main/alt, both quoted from the top of RAM.
             const uint32_t base = (via_.portA() & 0x08) ? (ramSize_ - 0x0300)
                                                         : (ramSize_ - 0x5F00);
-            const uint8_t duty =
-                ram_[(base + uint32_t(pwmLine_) * 2 + 1) & (ramSize_ - 1)];
-            drive_.pwmPush(duty);
-            externalDrive_.pwmPush(duty);
+            const uint32_t word = base + uint32_t(pwmLine_) * 2;
+            if (hasPwmSpindle()) {
+                const uint8_t duty = ram_[(word + 1) & (ramSize_ - 1)];
+                drive_.pwmPush(duty);
+                externalDrive_.pwmPush(duty);
+            }
+            soundLine_[pwmLine_] = { ram_[word & (ramSize_ - 1)],
+                                     uint8_t((via_.portA() & 0x07) |
+                                             (via_.portB() & 0x80)) };
             if (++pwmLine_ >= 370) pwmLine_ = 0;
         }
     }
