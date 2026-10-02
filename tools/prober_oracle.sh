@@ -3,28 +3,36 @@
 #
 # The guest Prober (dev/prober) reports Gestalt, low memory, a bus-error
 # topology and the device inventory as a TSV next to itself at launch. This
-# script boots ONE prepared image — the LC II reference volume with the
-# Prober in Startup Items — under POM68K and under MAME `maclc2` (romset
-# built from the tree's own ROM), pulls both reports out with hfsutils and
-# diffs them.
+# script boots ONE prepared image — the LC II's locked reference volume
+# (hdv/ref/System 7.1 HD.dsk) with the Prober in Startup Items — under
+# POM68K and under MAME `maclc2` (romset built from the tree's own ROM),
+# reads both reports back out of the images and diffs them.
 #
 #   tools/prober_oracle.sh <work-dir> [mame-seconds]
 #
-# Needs: build/lcii_prober_oracle, dev/prober/build/POM68KProber.bin,
-# the Retro68 hfsutils (dev/Retro68-build/toolchain/bin), `mame` on PATH,
-# roms/512KB ROMs/…35C28F5F… and roms/egret/*.bin.
+# <work-dir>/mame.tsv is what `lcii_prober_oracle_etalon` compares POM68K
+# with: after a change to the Prober, the volume or the rig, copy it to
+# tools/prober_oracle_maclc2.tsv.
+#
+# Needs: build/lcii_prober_oracle, dev/prober/build/POM68KProber.bin, MAME,
+# roms/512KB ROMs/…35C28F5F… and roms/egret/*.bin. MAME is `$MAME` if set,
+# else `mame` on PATH, else the flatpak org.mamedev.MAME (the x86-64 host's).
 #
 # Read the diff with the MAME model's limits in mind: maclc raises no bus
 # error on unmapped space, so a probe MAME calls "present" there is not
-# evidence (CHANGELOG 2026-10-02 (night)).
+# evidence (CHANGELOG 2026-10-02 (night)); the gate's unjudged list says
+# which fields are not compared and why.
 set -euo pipefail
 
 work=${1:?usage: tools/prober_oracle.sh <work-dir> [mame-seconds]}
 secs=${2:-90}
 root=$(cd "$(dirname "$0")/.." && pwd)
-hfs="$root/dev/Retro68-build/toolchain/bin"
-report=':System 7.5.5:Startup Items:POM68K Prober.txt'
 mkdir -p "$work/roms/maclc2"
+work=$(cd "$work" && pwd)
+if [ -n "${MAME:-}" ]; then read -ra mame <<< "$MAME"
+elif command -v mame >/dev/null; then mame=(mame)
+else mame=(flatpak run "--filesystem=$work" org.mamedev.MAME)
+fi
 
 # MAME's four byte lanes, from the tree's ROM (CRCs match maclc2's set).
 python3 - "$root" "$work/roms/maclc2" <<'EOF'
@@ -37,7 +45,7 @@ for k, n in enumerate(["341-0476_ue2-hh.bin", "341-0475_ud2-mh.bin",
 EOF
 cp "$root"/roms/egret/*.bin "$work/roms/maclc2/"
 
-# POM68K half (writes prepared.hd and pom68k.hd).
+# POM68K half (writes prepared.hd, pom68k.hd and pom68k.tsv).
 (cd "$root" && ./build/lcii_prober_oracle "$work")
 
 # MAME half on a copy of the same prepared image. RAM matched to POM68K's
@@ -56,17 +64,12 @@ cat > "$work/cfg/maclc2.cfg" <<'CFG'
 </mameconfig>
 CFG
 cp "$work/prepared.hd" "$work/mame.hd"
-# The disk sits at SCSI ID 0 as on POM68K (MAME's default is ID 6).
-(cd "$work" && mame -rompath roms -cfg_directory cfg maclc2 -ramsize 10M \
-     -scsi:0 harddisk -scsi:6 "" -hard mame.hd \
+# The disk sits at SCSI ID 0 as on POM68K (MAME's default is ID 6), the
+# blank "Infinite HD" companion at ID 1 as on POM68K (InfiniteHdCompanion.h).
+(cd "$work" && "${mame[@]}" -rompath roms -cfg_directory cfg maclc2 -ramsize 10M \
+     -scsi:0 harddisk -scsi:1 harddisk -scsi:6 "" \
+     -hard1 mame.hd -hard2 companion.hd \
      -video none -sound none -nothrottle -seconds_to_run "$secs" >/dev/null)
 
-extract() {
-    "$hfs/hmount" "$1" 1 >/dev/null
-    "$hfs/hcopy" -t "$report" "$2.raw"
-    "$hfs/humount" >/dev/null
-    iconv -f MACROMAN -t UTF-8 "$2.raw" | tr '\r' '\n' > "$2"
-}
-extract "$work/mame.hd"   "$work/mame.tsv"
-extract "$work/pom68k.hd" "$work/pom68k.tsv"
+"$root/build/lcii_prober_oracle" --extract "$work/mame.hd" "$work/mame.tsv"
 diff "$work/mame.tsv" "$work/pom68k.tsv" || true

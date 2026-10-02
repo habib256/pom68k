@@ -67,10 +67,15 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
   a folder called `POM68K Logs` or the write returns `fnfErr`.
 
 **As a differential oracle.** `tools/prober_oracle.sh <work-dir>` puts the
-Prober in Startup Items of the LC II reference volume, boots the same image
-under POM68K (`build/lcii_prober_oracle`) and under MAME `maclc2` (romset
-built from the tree's ROM), and diffs the two TSVs. Needs `mame` on PATH and
-this toolchain's hfsutils (CHANGELOG 2026-10-02 (night)).
+Prober in Startup Items of the LC II's locked volume (`hdv/ref/System 7.1
+HD.dsk`), boots the same image under POM68K (`build/lcii_prober_oracle`)
+and under MAME `maclc2` (romset built from the tree's ROM), and diffs the
+two TSVs. MAME is `$MAME`, else `mame` on PATH, else the flatpak. The gate
+`lcii_prober_oracle_etalon` runs only the POM68K half and compares it with
+MAME's recorded report, `tools/prober_oracle_maclc2.tsv`; it needs
+`dev/prober/build/POM68KProber.bin`, so build the Prober before running it.
+After a change to the Prober, copy the script's `mame.tsv` over that file
+(CHANGELOG 2026-10-02 (night), (seventh)).
 
 House rules that apply here: artifacts (`build/`, `*.dsk`) are never
 committed; the toolchain is user-built like ROMs are user-provided; a

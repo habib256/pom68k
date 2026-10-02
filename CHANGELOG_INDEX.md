@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 605 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 606 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 90 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 55 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 56 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 34 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 97 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 27 |
@@ -174,6 +174,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17 (sixteenth)** — [Every board can play a CD now, the volume knob works, and the cost was moved off the 68000's hottest loop](CHANGELOG.md#2026-09-17-cdda-fourth-stage)
 - **2026-10-02 (late night)** — [Drive B only where there is a port: nine profiles, not thirty-eight — and the oracle's other differences traced to the CPU throughput model](CHANGELOG.md#2026-10-02-drive-b-port)
 - **2026-10-02 (night)** — [The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have](CHANGELOG.md#2026-10-02-prober-oracle)
+- **2026-10-02 (seventh)** — [The guest oracle becomes a gate: 71 fields of the LC II judged against MAME's report, on the locked System 7.1 volume, with AppleTalk open on both sides](CHANGELOG.md#2026-10-02-prober-gate)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
