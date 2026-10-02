@@ -55,11 +55,16 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
 - [ ] **Étendre l'oracle invité différentiel aux autres machines que MAME
-  porte** (Quadra 605/800, Centris 650). Le LC II a son gate,
-  `lcii_prober_oracle_etalon` : 71 champs jugés contre le rapport MAME
-  enregistré, 6 non jugés avec leur raison (`CHANGELOG` 2026-10-02
-  (seventh)). Chaque machine suivante part du même rig et de son propre
+  porte** (Quadra 800, Centris 650, Quadra 630, Quadra 700). Le LC II et
+  le Quadra 605 ont leur gate (`<profil>_prober_oracle_etalon`, 71 et 66
+  champs jugés, `CHANGELOG` 2026-10-02 (seventh), (eighth)). Chaque
+  machine suivante ajoute une branche à `tests/prober_oracle.cpp` et son
   rapport MAME.
+- [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
+  la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU
+  du 68040 : un hybride qu'aucun Mac n'a été. Passer à `$A55A2225` déplace
+  les traces et épingles qui en dépendent (`q605_afp_live_etalon`) ; le
+  profil produit, lui, est corrigé (`CHANGELOG` 2026-10-02 (eighth)).
 ---
 
 ## Jalon 3 — Services réseau

@@ -17,7 +17,7 @@ cmake/Pom68kGatePolicy.cmake             400
 cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
 cmake/Pom68kMachineGates.cmake           1031
-cmake/Pom68kOracleGates.cmake            17
+cmake/Pom68kOracleGates.cmake            21
 cmake/Pom68kProductRegistry.cmake        23
 cmake/Pom68kSerialGates.cmake            8
 cmake/Pom68kStorageGates.cmake           26
@@ -52,7 +52,7 @@ src/Q700Memory.cpp                       1098
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    169
 src/RuntimeConfigCore.cpp                184
-src/RuntimeConfigMachine.cpp             110
+src/RuntimeConfigMachine.cpp             115
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071

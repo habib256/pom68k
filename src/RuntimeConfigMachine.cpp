@@ -76,16 +76,20 @@ void applyMachineProfile(MachineSelectionConfig& selection, CpuConfig& cpu,
     case SnapMachine::IIvi:
         selection.vasp = profile;
         break;
+    // MEMCjr/F108 identity is the board-ID register alone ($5FFFFFFC, MAME
+    // macquadra605/630.cpp); docs_test, CHANGELOG 2026-10-02 (eighth).
     case SnapMachine::Lc475:
     case SnapMachine::Lc575:
         selection.memcJr = profile;
         cpu.q605Fpu = false;
         core.cpu.q605Fpu = pom68k::Q605FpuMode::Soft68882;
+        core.bus.q605MachineId = profile == SnapMachine::Lc575 ? 0xA55A222Eu : 0xA55A2221u;
         break;
     case SnapMachine::Q605:
         selection.memcJr = profile;
         cpu.q605Fpu = true;
         core.cpu.q605Fpu = pom68k::Q605FpuMode::Integrated;
+        core.bus.q605MachineId = 0xA55A2225u;
         break;
     case SnapMachine::Centris610:
     case SnapMachine::Centris650:
@@ -101,6 +105,7 @@ void applyMachineProfile(MachineSelectionConfig& selection, CpuConfig& cpu,
     case SnapMachine::Q630:
     case SnapMachine::Lc580:
         selection.f108 = profile;
+        core.bus.q630MachineId = profile == SnapMachine::Lc580 ? 0xA55A225Au : 0xA55A2252u;
         break;
     default:
         break;

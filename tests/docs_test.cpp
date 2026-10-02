@@ -859,6 +859,8 @@ int main() {
             3, profileArgv, inheritedProfile);
         check(commandLineProfile.machineSelection().memcJr ==
                   pom68k::SnapMachine::Lc575 &&
+                  commandLineProfile.core().bus.q605MachineId ==
+                      std::optional<std::uint32_t>(0xA55A222Eu) &&
                   !commandLineProfile.cpu().q605Fpu &&
                   commandLineProfile.core().cpu.q605Fpu ==
                       pom68k::Q605FpuMode::Soft68882 &&
@@ -874,10 +876,21 @@ int main() {
             2, q605Argv, inheritedLc040);
         check(q605Profile.machineSelection().memcJr ==
                   pom68k::SnapMachine::Q605 &&
+                  q605Profile.core().bus.q605MachineId ==
+                      std::optional<std::uint32_t>(0xA55A2225u) &&
                   q605Profile.cpu().q605Fpu &&
                   q605Profile.core().cpu.q605Fpu ==
                       pom68k::Q605FpuMode::Integrated,
-              "typed Q605 relaunch restores integrated 68040 FPU policy");
+              "typed Q605 relaunch restores the Quadra 605 board ID and integrated FPU");
+
+        char lc580Arg[] = "--machine-profile=lc580";
+        char* lc580Argv[] = {a0, lc580Arg};
+        auto lc580Profile = pom68k::app::RuntimeConfig::parse(
+            2, lc580Argv, pom68k::StartupSnapshot{});
+        check(lc580Profile.machineSelection().f108 == pom68k::SnapMachine::Lc580 &&
+                  lc580Profile.core().bus.q630MachineId ==
+                      std::optional<std::uint32_t>(0xA55A225Au),
+              "typed LC 580 relaunch selects the LC 580 board ID");
 
         auto normalizedRelaunch = pom68k::app::machineProfileArguments(
             {"--machine-profile=iix", "machine.rom", "boot.vhd"},

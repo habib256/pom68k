@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"three model identities by --machine-profile" (Machine menu, `PlatformDafb.cpp` `runQuadra`) — the profile chose the FPU and the title but not the board ID, so a Quadra 605 or LC 575 chosen from the menu answered Gestalt as an LC 475 (and an LC 580 as a Quadra 630); every `q605_*` gate still boots that default** → [2026-10-02 (eighth) — The oracle's second machine finds the Quadra 605 calling itself an LC 475…](#2026-10-02-q605-oracle)
 - **"the AArch64 interpreter trace of 2026-10-02 is `q605_afp_live_etalon`'s oracle" (2026-10-02 (later)) — it was, until drive B was unwired the same night: the Q605 has no port, every boundary moved from boundary 0, and the x86-64 interpreter trace at `25fed3b` replaces it** → [2026-10-02 (sixth) — `Disk605.dsk` is `6ea0c1c7…`…](#2026-10-02-x86-disk605-afp)
 - **"All 36 desktops get their external Sony drive" (2026-09-09 (sixth)) — the LC family has no external floppy port and MAME wires drive B on nine profiles only; drive B is now unwired on the other 29** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
 - **"The bare LC II is closed: POM68K is faithful" (2026-09-17 (eleventh)) — the LC II shipped without an FPU and ran System 7, and MAME elects the FPU-less `$CC00` record from the same ROM; reopened** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
@@ -472,6 +473,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (eighth)** — [The oracle's second machine finds the Quadra 605 calling itself an LC 475: the GUI profiles never set the board ID](#2026-10-02-q605-oracle)
 - **2026-10-02 (seventh)** — [The guest oracle becomes a gate: 71 fields of the LC II judged against MAME's report, on the locked System 7.1 volume, with AppleTalk open on both sides](#2026-10-02-prober-gate)
 - **2026-10-02 (sixth)** — [`Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary](#2026-10-02-x86-disk605-afp)
 - **2026-10-02 (late night)** — [Drive B only where there is a port: nine profiles, not thirty-eight — and the oracle's other differences traced to the CPU throughput model](#2026-10-02-drive-b-port)
@@ -1063,6 +1065,59 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-02-q605-oracle"></a>
+## 2026-10-02 (eighth) — The oracle's second machine finds the Quadra 605 calling itself an LC 475: the GUI profiles never set the board ID
+
+Extending [the guest oracle](#2026-10-02-prober-gate) to MAME `macqd605`,
+on the 040 family's locked `MacOS-8.1-boot.vhd` with 32 MB on both sides.
+The rig is now one binary, `prober_oracle <lcii|q605>`, with the shared
+reading and judging in `tests/ProberOracle.h`, and the script takes the
+machine as its first argument.
+
+**The first diff was the machine's identity.** Gestalt `machineType` read
+94 (Quadra 605) under MAME and 89 (LC 475) under POM68K. The MEMCjr board
+learns which of its three Macs it is from the board-ID register
+(`$5FFFFFFC`, MAME `macquadra605.cpp`), and POM68K's default is the LC 475's
+`$A55A2221`. The rig had not set it. But neither does the product:
+`--machine-profile=q605`, which is what the Machine menu relaunches with,
+selected the integrated FPU and the window title and left the board ID
+alone. Unless `POM68K_Q605_ID` was in the environment, the « Quadra 605 »
+was an LC 475 with a 68040 FPU, and the « LC 575 » an LC 475.
+`runCentris` passes the selected model's ID explicitly;
+`runQuadra` never did. The F108 board has the same gap: `lc580` left the
+Quadra 630's `$A55A2252`. `applyMachineProfile` now sets `q605MachineId`
+(`$2221`, `$2225`, `$222E`) and `q630MachineId` (`$2252`, `$225A`) with the
+FPU policy it already set, and `docs_test` holds the q605, lc575 (over an
+inherited `$2225`) and lc580 profiles to their IDs. The size ratchet's
+ceiling for `RuntimeConfigMachine.cpp` rises from 110 to 115 for those three
+assignments and their two-line comment: the profile's policy belongs there,
+where the FPU half of it already is.
+
+The gates are another matter. No `q605_*` gate sets the ID, so every one
+of them has booted that hybrid all along: `lc475_boot_etalon` and
+`lc575_boot_etalon` set theirs, `q605_boot_etalon` and the AFP, Dayna, CD
+and save-state family do not. Changing them moves the traces and pins that
+depend on them, so it is a TODO line of its own (§ Preuve).
+
+**With `$A55A2225`,** 66 fields agree and four are unjudged: the two clock
+rows; `memTop` (74 576 bytes, the heap-order symptom of the LC II, not
+attributed here); and `vol0.kbFree`, 5 KB apart because CalendarMenu
+rewrites its `Memo` preference when the RTC says a new day. The catalogue
+diff of the two images after the run shows it: MAME's clock is the host's,
+so the file grew from 19 677 to 21 781 bytes; POM68K's clock starts in 1904,
+so it did not. AppleTalk 60 opens on both (`.MPP` up, node 0, net 0), MacTCP
+4 on both. Every probe reads present on both sides, the Plus and V8
+addresses included. That agreement is not independent evidence:
+POM68K already reads unmapped PrimeTime I/O as 0, the way MAME does
+(`lc575_boot_etalon`'s note). The gate takes 27 s (6 000 guest frames), the
+interpreter agrees at the same guest second, and MAME's report repeats.
+
+Runs (x86-64): both oracle gates under the default engine and `interp`;
+two full `tools/prober_oracle.sh q605` runs (flatpak MAME 0.287); `docs_test`;
+the `asset-none` tier.
 
 ---
 
