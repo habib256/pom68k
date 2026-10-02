@@ -176,6 +176,15 @@ public:
         std::lock_guard<std::mutex> l(cmdMu_);
         cmds_.push_back({Cmd::EjectFloppy, drive});
     }
+    // Whether the board wires a drive B at all (immutable after construction,
+    // so any thread may ask). A board without the external floppy port leaves
+    // it unwired, and the GUI offers no second floppy row.
+    bool externalFloppyPort() const {
+        if constexpr (requires { mem.externalFloppyPort(); })
+            return mem.externalFloppyPort();
+        else
+            return false;
+    }
     bool floppyInserted(int drive = 0) const {
         return drive >= 0 && drive < int(floppyFlag_.size()) &&
                floppyFlag_[size_t(drive)].load(std::memory_order_acquire);
@@ -532,7 +541,7 @@ protected:
                     if constexpr (requires { mem.internalDrive().insert(c.path); })
                         if (mem.internalDrive().insert(c.path))
                             setFloppyInserted(true, c.path, 0);
-                } else if (!c.path.empty() && c.a == 1) {
+                } else if (!c.path.empty() && c.a == 1 && externalFloppyPort()) {
                     if constexpr (requires { mem.externalDrive().insert(c.path); })
                         if (mem.externalDrive().insert(c.path))
                             setFloppyInserted(true, c.path, 1);

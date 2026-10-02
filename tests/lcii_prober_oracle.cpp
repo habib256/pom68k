@@ -94,6 +94,11 @@ int main(int argc, char** argv) {
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: CPU halted\n"); return 1; }
 
     if (!writeFile(outDir + "/pom68k.hd", mem.scsiDisk().image())) return 1;
+    // Low memory at the end of the run, for a byte-level comparison with
+    // MAME's (tools/prober_oracle.sh dumps the same range there).
+    std::vector<uint8_t> low(0x40000);
+    for (uint32_t a = 0; a < low.size(); a++) low[a] = mem.peek8(a);
+    writeFile(outDir + "/pom68k.lowmem", low);
     std::printf("wrote %s/prepared.hd and %s/pom68k.hd after %ld frames\n",
                 outDir.c_str(), outDir.c_str(), frames);
     return 0;

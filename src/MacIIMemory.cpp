@@ -116,7 +116,7 @@ void MacIIMemory::reset() {
     swim_.configureSuperDrive(hasSuperDrive());
     swim_.reset();
     swim_.iwm().setClockHz(15667200);         // ticked in machine cycles, 2x C7M
-    swim_.attachDrive(&drive_, &externalDrive_);
+    swim_.attachDrive(&drive_, externalFloppyPort() ? &externalDrive_ : nullptr);
     drive_.reset();
     externalDrive_.reset();
     drive_.setSpinClockHz(15667200);         // machineTick unit (Mac II 68020)

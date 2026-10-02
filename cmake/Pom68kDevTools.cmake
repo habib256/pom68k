@@ -90,19 +90,13 @@ target_link_libraries(replay_bench_lcii PRIVATE pom68k_core)
 add_executable(sony_trace EXCLUDE_FROM_ALL tests/sony_trace.cpp)
 target_link_libraries(sony_trace PRIVATE pom68k_core)
 
-# Dev tool (not a gate): real LC II ROM boot trace on the O6 machine.
-add_executable(lcii_trace EXCLUDE_FROM_ALL tests/lcii_trace.cpp)
-
-# Dev tool (not a gate): the POM68K half of the Retro68 differential oracle —
-# boots the LC II with the guest Prober in Startup Items and saves the image
-# before and after (tools/prober_oracle.sh runs the MAME half and the diff).
-add_executable(lcii_prober_oracle EXCLUDE_FROM_ALL tests/lcii_prober_oracle.cpp)
-target_link_libraries(lcii_prober_oracle PRIVATE pom68k_core)
-
-# Dev tool (not a gate): .Sony driver give-up trace on the LC II —
-# the sony_trace pattern aimed at the TODO §1 boosted-030 mount bug.
-add_executable(lcii_sony_trace EXCLUDE_FROM_ALL tests/lcii_sony_trace.cpp)
-target_link_libraries(lcii_sony_trace PRIVATE pom68k_core)
+# Dev tools (not gates) on the LC II: the real-ROM boot trace (O6 machine),
+# the .Sony give-up trace (TODO §1 boosted-030 mount bug) and the guest
+# Prober oracle's POM68K half (tools/prober_oracle.sh).
+foreach(t lcii_trace lcii_sony_trace lcii_prober_oracle)
+    add_executable(${t} EXCLUDE_FROM_ALL tests/${t}.cpp)
+    target_link_libraries(${t} PRIVATE pom68k_core)
+endforeach()
 
 # Dev tool (not a gate): LC 475 / Quadra 605 ROM boot trace (Q5).
 add_executable(q605_trace EXCLUDE_FROM_ALL tests/q605_trace.cpp)
@@ -117,8 +111,6 @@ target_link_libraries(duo_trace PRIVATE pom68k_core)
 # milestone 3, docs/IOP_BRINGUP.md).
 add_executable(iifx_trace EXCLUDE_FROM_ALL tests/iifx_trace.cpp)
 target_link_libraries(iifx_trace PRIVATE pom68k_core)
-
-target_link_libraries(lcii_trace PRIVATE pom68k_core)
 
 add_executable(macii_trace EXCLUDE_FROM_ALL tests/macii_trace.cpp)
 target_link_libraries(macii_trace PRIVATE pom68k_core)

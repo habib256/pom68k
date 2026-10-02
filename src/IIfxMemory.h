@@ -137,6 +137,10 @@ public:
     AdbLine& adbLine() { return adbLine_; }
     SonyDrive& internalDrive() { return drive_; }
     SonyDrive& externalDrive() { return externalDrive_; }
+    // No external floppy port on this board: drive B stays unwired, as MAME's
+    // second connector is `add_35_nc` here (CHANGELOG 2026-10-02 (late night)).
+    // `storage_profile_test` holds this to the catalogue's externalFloppy.
+    static constexpr bool externalFloppyPort() { return false; }
 
     // Input events (UI thread → machine): the ADB devices hang off the
     // SWIM PIC's bit-banged line, LLE on both ends of the wire.
@@ -145,9 +149,7 @@ public:
     void mouseButton(bool down, int button = 0) { adbLine_.mouseButton(down, button); }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
-    bool insertExternalDisk(const std::string& path) {
-        return externalDrive_.insert(path);
-    }
+    bool insertExternalDisk(const std::string&) { return false; }   // no port
     void ejectExternalDisk() { externalDrive_.eject(); }
     // Mechanical drive sounds (GUI only; headless leaves the sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {

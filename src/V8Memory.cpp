@@ -293,10 +293,10 @@ void V8Memory::reset() {
     scsi_.reset();
     if (spiceClass()) {                      // Spice/Tinker Bell: SWIM2
         swim2_.reset();
-        swim2_.attachDrive(&drive_, &externalDrive_);
+        swim2_.attachDrive(&drive_, nullptr);
     } else {
         swim_.reset();
-        swim_.attachDrive(&drive_, &externalDrive_);
+        swim_.attachDrive(&drive_, nullptr);
     }
     drive_.setSpinClockHz(15667200);         // devices tick in the C15M domain
     externalDrive_.setSpinClockHz(15667200);

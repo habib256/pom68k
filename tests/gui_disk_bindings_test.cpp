@@ -49,6 +49,8 @@ struct RecordingMachine {
     // Floppies
     bool inserted[2] = { false, false };
     std::string paths[2];
+    bool externalPort = true;
+    bool externalFloppyPort() const { return externalPort; }
     bool floppyInserted(int d) const { return inserted[d & 1]; }
     std::string floppyPath(int d) const { return paths[d & 1]; }
     void requestInsertFloppy(const std::string& p, int d) {
@@ -126,6 +128,17 @@ int main() {
     pom68k::gui::refreshFloppyBays(host, machine);
     check(host.floppyPath.empty() && host.externalFloppyPath == "data.dsk",
           "and the refresh reports what the machine holds");
+    {
+        // A board without the external port (the LC family, every 040): no
+        // drive B row, and no callback that could queue an insert into it.
+        RecordingMachine portless;
+        portless.externalPort = false;
+        pom68k::DiskBaysHost h;
+        pom68k::gui::bindFloppyBays(h, portless);
+        check(h.hasFloppyDrive && !h.hasExternalFloppyDrive &&
+              !h.insertExternalFloppy && !h.externalFloppyInserted,
+              "a portless board offers drive A only");
+    }
 
     // ── The guest's view and the agent ──────────────────────────────────
     machine.message = "SCSI 1: monté";

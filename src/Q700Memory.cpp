@@ -207,7 +207,7 @@ Q700Memory::Q700Memory(const pom68k::CoreConfig& coreConfig,
     // is syncSwimFromCpu's, not the spindle's.
     drive0_.setSpinClockHz(cpuHz_);
     drive1_.setSpinClockHz(cpuHz_);
-    swim_.attachDrive(&drive0_, &drive1_);
+    swim_.attachDrive(&drive0_, nullptr);
     rtc_.factoryDefaults();
     rtc_.setXpram(0x8A, uint8_t(rtc_.xpram(0x8A) | 0x05));   // 32-bit clean
     // Eclipse: same seeding, in the Egret's PRAM — a cold (all-zero) store
@@ -298,7 +298,7 @@ void Q700Memory::reset() {
     sccDebt_ = scsiDebt_ = scsi2Debt_ = 0;
     asc_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive0_, &drive1_);
+    swim_.attachDrive(&drive0_, nullptr);
     drive0_.reset();
     drive1_.reset();
     ascCycAcc_ = 0;

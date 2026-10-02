@@ -196,6 +196,9 @@ public:
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
     SonyDrive& externalDrive() { return externalDrive_; }
+    // The FDHD-ROM trio connects drive B by default in MAME (maciihd:
+    // add_35_hd twice); the original Mac II leaves it `add_35_nc`.
+    bool externalFloppyPort() const { return model_ != Model::MacII; }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
@@ -218,7 +221,7 @@ public:
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
     bool insertExternalDisk(const std::string& path) {
-        return externalDrive_.insert(path);
+        return externalFloppyPort() && externalDrive_.insert(path);
     }
     void ejectExternalDisk() { externalDrive_.eject(); }
     bool overlay() const { return overlay_; }

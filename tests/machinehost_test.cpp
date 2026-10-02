@@ -220,24 +220,17 @@ int main() {
         m.stepTick();
         check(m.floppyPath().empty(), "eject clears the published media path");
 
-        // The external mechanism has its own command lane and publication
-        // slot.  A failure or eject on one drive must not mutate the other.
+        // The Quadra 605 has no external floppy port (MAME iosb.cpp wires
+        // drive B `add_35_nc`, CHANGELOG 2026-10-02 (late night)): a drive-B
+        // insert is refused and publishes nothing, and drive A is untouched.
+        // The lane semantics themselves are the compacts' and the FDHD Glue
+        // trio's, where the board wires drive B (storage_profile_test).
+        check(!m.externalFloppyPort(), "the Quadra 605 board has no drive B");
         m.requestInsertFloppy(fifoDisk, 1);
         m.stepTick();
-        check(m.floppyInserted(1) && mem.externalDrive().hasDisk() &&
-              !m.floppyInserted(0),
-              "external floppy insertion stays in drive lane 1");
-        check(m.floppyPath(1) == fifoDisk && m.floppyPath(0).empty(),
-              "external media path is published independently");
-        m.requestInsertFloppy(pom68kTempPath("pom68k_machinehost_missing.dsk"), 0);
-        m.stepTick();
-        check(m.floppyInserted(1) && !m.floppyInserted(0),
-              "failed internal insert does not disturb the external drive");
-        m.requestEjectFloppy(1);
-        m.stepTick();
         check(!m.floppyInserted(1) && m.floppyPath(1).empty() &&
-              !mem.externalDrive().hasDisk(),
-              "external eject clears only drive lane 1");
+              !mem.externalDrive().hasDisk() && !m.floppyInserted(0),
+              "a drive-B insert on a portless board is refused");
 
         // ── The GUEST ejects, and the GUI has to hear about it ───────────
         // The command queue is one direction only. A Finder "Ranger" reaches

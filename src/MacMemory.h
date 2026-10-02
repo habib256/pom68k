@@ -192,6 +192,9 @@ public:
     }
     SonyDrive& internalDrive() { return drive_; }
     SonyDrive& externalDrive() { return externalDrive_; }
+    // Every compact has the DB-19 external drive port (MAME mac128.cpp
+    // connects both drives by default).
+    static constexpr bool externalFloppyPort() { return true; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
     bool insertExternalDisk(const std::string& path) {

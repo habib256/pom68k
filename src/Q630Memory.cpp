@@ -48,7 +48,7 @@ Q630Memory::Q630Memory(const pom68k::CoreConfig& coreConfig,
     // in real time.
     drive0_.setSpinClockHz(kCpuHz);
     drive1_.setSpinClockHz(kCpuHz);
-    swim_.attachDrive(&drive0_, &drive1_);
+    swim_.attachDrive(&drive0_, nullptr);
     // A cold (unsigned) XPRAM makes the ROM run its LONG full-RAM
     // burn-in on every boot and boots B&W — seed the Basilisk-verified
     // 'NuMc' defaults (docs: macemu main.cpp:106-141)
@@ -137,7 +137,7 @@ void Q630Memory::reset() {
     sccDebt_ = scsiDebt_ = 0;
     asc_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive0_, &drive1_);
+    swim_.attachDrive(&drive0_, nullptr);
     drive0_.reset();
     drive1_.reset();
     ascLine_ = false;

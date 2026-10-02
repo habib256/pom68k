@@ -56,7 +56,9 @@ cat > "$work/cfg/maclc2.cfg" <<'CFG'
 </mameconfig>
 CFG
 cp "$work/prepared.hd" "$work/mame.hd"
-(cd "$work" && mame -rompath roms -cfg_directory cfg maclc2 -ramsize 10M -hard1 mame.hd \
+# The disk sits at SCSI ID 0 as on POM68K (MAME's default is ID 6).
+(cd "$work" && mame -rompath roms -cfg_directory cfg maclc2 -ramsize 10M \
+     -scsi:0 harddisk -scsi:6 "" -hard mame.hd \
      -video none -sound none -nothrottle -seconds_to_run "$secs" >/dev/null)
 
 extract() {

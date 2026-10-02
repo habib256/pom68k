@@ -173,7 +173,7 @@ void RbvMemory::reset() {
     asc_.reset();
     scsi_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive_, &externalDrive_);
+    swim_.attachDrive(&drive_, nullptr);
     drive_.setSpinClockHz(15667200);         // drive_.tick unit = C15M cycles
     externalDrive_.setSpinClockHz(15667200);
     videoConfig_ = 0;

@@ -16,7 +16,8 @@ void bindFloppyBays(DiskBaysHost& host, Machine& machine) {
     };
     host.ejectFloppy = [&machine] { machine.requestEjectFloppy(0); };
 
-    host.hasExternalFloppyDrive = true;
+    host.hasExternalFloppyDrive = machine.externalFloppyPort();
+    if (!host.hasExternalFloppyDrive) return;
     host.externalFloppyInserted = [&machine] {
         return machine.floppyInserted(1);
     };

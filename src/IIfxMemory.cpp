@@ -121,7 +121,7 @@ void IIfxMemory::reset() {
     scsi_.reset();
     adbLine_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive_, &externalDrive_);
+    swim_.attachDrive(&drive_, nullptr);
     drive_.reset();
     externalDrive_.reset();
     drive_.setSpinClockHz(kC15MHz);
