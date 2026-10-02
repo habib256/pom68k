@@ -66,16 +66,17 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
   share folder's own name (`AtalkHub.h`), so point `POM68K_SHARE_DIR` at
   a folder called `POM68K Logs` or the write returns `fnfErr`.
 
-**As a differential oracle.** `tools/prober_oracle.sh <work-dir>` puts the
-Prober in Startup Items of the LC II's locked volume (`hdv/ref/System 7.1
-HD.dsk`), boots the same image under POM68K (`build/lcii_prober_oracle`)
-and under MAME `maclc2` (romset built from the tree's ROM), and diffs the
-two TSVs. MAME is `$MAME`, else `mame` on PATH, else the flatpak. The gate
-`lcii_prober_oracle_etalon` runs only the POM68K half and compares it with
-MAME's recorded report, `tools/prober_oracle_maclc2.tsv`; it needs
-`dev/prober/build/POM68KProber.bin`, so build the Prober before running it.
-After a change to the Prober, copy the script's `mame.tsv` over that file
-(CHANGELOG 2026-10-02 (night), (seventh)).
+**As a differential oracle.** `tools/prober_oracle.sh <lcii|q605> <work-dir>`
+puts the Prober in Startup Items of the profile's locked volume, boots the
+same image under POM68K (`build/prober_oracle`) and under MAME (`maclc2`,
+`macqd605`; romsets built from the tree's ROMs), and diffs the two TSVs.
+MAME is `$MAME`, else `mame` on PATH, else the flatpak. The gates
+`lcii_prober_oracle_etalon` and `q605_prober_oracle_etalon` run only the
+POM68K half and compare it with MAME's recorded report,
+`tools/prober_oracle_<mame-system>.tsv`; they need
+`dev/prober/build/POM68KProber.bin`, so build the Prober before running
+them. After a change to the Prober, copy the script's `mame.tsv` over that
+file (CHANGELOG 2026-10-02 (night), (seventh), (eighth)).
 
 House rules that apply here: artifacts (`build/`, `*.dsk`) are never
 committed; the toolchain is user-built like ROMs are user-provided; a
