@@ -93,20 +93,80 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    CentrisMemory mem(pom68k::defaultCoreConfig(), 36u << 20,
+    auto coreCfg = pom68k::defaultCoreConfig();
+    coreCfg.peripherals.adbLleTrace = getenv("DIAG_ADB_TRACE") != nullptr;
+    coreCfg.peripherals.adbPicTrace = getenv("DIAG_PIC_TRACE") != nullptr;
+    if (const char* b = getenv("DIAG_BOOST")) coreCfg.cpu.centrisCacheBoost = std::atoi(b);
+    CentrisMemory mem(coreCfg, 36u << 20,
                       CentrisMemory::kCpuHz650, CentrisMemory::kIdCentris650);
     if (getenv("DIAG_LATE_SYNC")) mem.diagNoSync = true;
+    // DIAG_SYNC_BOOT: SCC sync on from reset. DIAG_SYNC_CAL: on only until the
+    // ROM has stored TimeSCCDB ($0D02). DIAG_SCCDB=<hex>: poke TimeSCCDB once stored.
+    if (getenv("DIAG_SYNC_BOOT") || getenv("DIAG_SYNC_CAL")) mem.diagNoSync = false;
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     CentrisCpu cpu(mem, jit::defaultResolvedConfig(),
-                   pom68k::defaultCoreConfig().cpu);
+                   coreCfg.cpu);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
     beyondboot::ensureBootDriverType(mem.scsiDisk().image());
     const int64_t kFrame = CentrisMemory::kCpuHz650 / 60;
 
+    const char* forceDb = getenv("DIAG_SCCDB");
+    // DIAG_ORB=<from>,<to>: log VIA1 ORB writes (ST bits) between machine clocks.
+    long long orbA = -1, orbB = -1;
+    if (const char* o = getenv("DIAG_ORB")) {
+        std::sscanf(o, "%lld,%lld", &orbA, &orbB);
+        mem.onIoAccess = [&, orbA, orbB](uint32_t a, bool w, uint32_t v) {
+            const long long now = (long long)cpu.machineClock();
+            if (now < orbA || now > orbB) return;
+            const uint32_t b = a & 0x3FFFF;
+            if (b < 0x2000 && ((b >> 9) & 0xF) == 0)
+                std::fprintf(stderr, "cpu: ORB %s %02X ST=%u pc=$%08X clk=%lld TimeVIADB=%02X%02X\n",
+                             w ? "W" : "R", w ? v & 0xFF : 0, w ? (v >> 4) & 3 : 9,
+                             cpu.getPC(), now, mem.peek8(0xCEA), mem.peek8(0xCEB));
+            else if (b >= 0xC000 && b < 0xE000)
+                std::fprintf(stderr, "cpu: SCC pc=$%08X clk=%lld\n", cpu.getPC(), now);
+        };
+    }
+    bool calSeen = false;
+    long gframe = 0, winA = -1, winB = -1;
+    if (const char* w = getenv("DIAG_SYNC_WIN")) std::sscanf(w, "%ld,%ld", &winA, &winB);
     auto frames = [&](long n) {
-        for (long f = 0; f < n && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+        for (long f = 0; f < n && !cpu.isHalted(); f++) {
+            if (winA >= 0) mem.diagNoSync = !(gframe >= winA && gframe < winB);
+            if (const char* ps = getenv("DIAG_PCSAMP")) {
+                long long a = 0, b = 0; std::sscanf(ps, "%lld,%lld", &a, &b);
+                const long long now = (long long)cpu.machineClock();
+                if (now + kFrame > a && now < b) {
+                    long long left = kFrame; uint32_t lastPc = 0;
+                    while (left > 0) {
+                        cpu.runCycles(8); left -= 8;
+                        const long long c = (long long)cpu.machineClock();
+                        if (c >= a && c <= b && cpu.getPC() != lastPc) {
+                            lastPc = cpu.getPC();
+                            std::fprintf(stderr, "pcs %08X sr=%04X clk=%lld\n", lastPc, cpu.getSR(), c);
+                        }
+                    }
+                    ++gframe;
+                    continue;
+                }
+            }
+            cpu.runCycles(kFrame);
+            ++gframe;
+            const unsigned viaDb = unsigned(mem.peek8(0xCEA)) << 8 | mem.peek8(0xCEB);
+            if (!calSeen && viaDb >= 0x100 && viaDb < 0x2000) {
+                calSeen = true;
+                std::printf("diag: TimeSCCDB=$%02X%02X TimeVIADB=$%02X%02X at frame %ld\n",
+                            mem.peek8(0xD02), mem.peek8(0xD03),
+                            mem.peek8(0xCEA), mem.peek8(0xCEB), f);
+                if (getenv("DIAG_SYNC_CAL")) mem.diagNoSync = true;
+                if (forceDb) {
+                    unsigned v = unsigned(strtoul(forceDb, nullptr, 16));
+                    mem.write8(0xD02, uint8_t(v >> 8)); mem.write8(0xD03, uint8_t(v));
+                }
+            }
+        }
     };
     auto finderUp = [&]() {
         Screen s = decodeScreen(mem);
@@ -136,6 +196,8 @@ int main() {
     };
 
     if (!boot()) { std::fprintf(stderr, "FAIL: no Finder after boot\n"); return 1; }
+    std::printf("diag: at Finder TimeSCCDB=$%02X%02X TimeVIADB=$%02X%02X\n",
+                mem.peek8(0xD02), mem.peek8(0xD03), mem.peek8(0xCEA), mem.peek8(0xCEB));
     std::printf("Finder up, ADB %s, SCSI %ld\n",
                 mem.adbLleActive() ? "PIC LLE" : "HLE", mem.scsi().commands);
 
