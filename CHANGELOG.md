@@ -473,6 +473,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (ninth)** — [Six machines under the guest oracle: the Quadra 800, Centris 650 and Quadra 700 agree with MAME; the Quadra 630 installs its SCSI driver elsewhere](#2026-10-02-oracle-six)
 - **2026-10-02 (eighth)** — [The oracle's second machine finds the Quadra 605 calling itself an LC 475: the GUI profiles never set the board ID](#2026-10-02-q605-oracle)
 - **2026-10-02 (seventh)** — [The guest oracle becomes a gate: 71 fields of the LC II judged against MAME's report, on the locked System 7.1 volume, with AppleTalk open on both sides](#2026-10-02-prober-gate)
 - **2026-10-02 (sixth)** — [`Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary](#2026-10-02-x86-disk605-afp)
@@ -1065,6 +1066,54 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-02-oracle-six"></a>
+## 2026-10-02 (ninth) — Six machines under the guest oracle: the Quadra 800, Centris 650 and Quadra 700 agree with MAME; the Quadra 630 installs its SCSI driver elsewhere
+
+[The oracle](#2026-10-02-q605-oracle) now covers every board family MAME
+and POM68K both run past the Finder: `prober_oracle <lcii|q605|q800|c650|q630|q700>`,
+a gate for each, all under both engines. The rig builds the « Infinite HD »
+companion itself through a standalone `ScsiDisk`, so a board needs no
+accessor for its second disk. The script knows each romset: `macqd800`/
+`macct650` on the tree's F1A6F343, MAME's bios `original`, with the
+`adbmodem` PIC; `macqd630` with Cuda 341S0060, its SCSI slots under
+`f108:scsi` because the internal disk is IDE there; `macqd700` with the PIC.
+
+| Gate | Volume, RAM | Judged | Unjudged |
+|---|---|---|---|
+| `q800_` | 8.1, 32 MB | 66 | clock ×2, `memTop`, `kbFree` |
+| `c650_` | 8.1, 32 MB | 66 | the same four |
+| `q630_` | 8.1, 32 MB | 65 | the same four, `drv1.refNum` |
+| `q700_` | 7.1, 8 MB | 74 | clock ×2, `memTop` |
+
+**`memTop` is never an identity.** It differs on all six boards, both ways
+(POM68K higher on the Centris 650, lower on the Quadra 800): the system
+heap's allocation order follows CPU time between device accesses, and that
+is the open throughput calibration (TODO § Fidélité). It is unjudged
+everywhere with that reason.
+
+**The Quadra 630 installs its SCSI disk's driver elsewhere.** MAME puts it at
+unit 53 (`refNum -54`), POM68K at the static unit 32 + ID (`-33`), the Quadra
+800 at `-33` on both. Apple's `BootItt.c` gives the two places: an old-style
+driver installs at 32 + ID, and a Driver43 one chooses its own unit,
+which `SOpenDriver` finds by searching up from 48. Whether the driver is
+Driver43 is read off the disk's partition map (`pmParType` `'43'`), so the
+ROM's boot path should decide the same way on both sides. The difference
+must come from somewhere else: the 630's ATA Manager, or a later
+reinstallation by the System. It is unjudged here and open (TODO § Preuve).
+
+**The Quadra 700 runs on System 7.1 in 8 MB.** MAME 0.287's `macqd700` stays
+black for 180 s with 20 or 36 MB and boots with 4 or 8. In 8 MB Mac OS 8.1
+stops on « not enough memory to load all of your extensions ». The locked
+7.1 volume with its companion fits, and POM68K's Spike runs the same 8 MB.
+That is a real Quadra 700 configuration: 4 MB soldered, 4 × 1 MB SIMMs.
+
+Runs (x86-64): the six oracle gates under the default engine (6/6, 6 to
+33 s each) and the four new ones under `interp`; the four new
+`tools/prober_oracle.sh` runs, the Quadra 700 and 630 twice (slot and RAM);
+MAME snapshots of `macqd700` at 4, 8, 20 and 36 MB; the `asset-none` tier.
 
 ---
 
