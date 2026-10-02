@@ -66,6 +66,12 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
   share folder's own name (`AtalkHub.h`), so point `POM68K_SHARE_DIR` at
   a folder called `POM68K Logs` or the write returns `fnfErr`.
 
+**As a differential oracle.** `tools/prober_oracle.sh <work-dir>` puts the
+Prober in Startup Items of the LC II reference volume, boots the same image
+under POM68K (`build/lcii_prober_oracle`) and under MAME `maclc2` (romset
+built from the tree's ROM), and diffs the two TSVs. Needs `mame` on PATH and
+this toolchain's hfsutils (CHANGELOG 2026-10-02 (night)).
+
 House rules that apply here: artifacts (`build/`, `*.dsk`) are never
 committed; the toolchain is user-built like ROMs are user-provided; a
 report that only exists inside the guest is not a result until it is

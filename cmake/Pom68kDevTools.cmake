@@ -93,6 +93,12 @@ target_link_libraries(sony_trace PRIVATE pom68k_core)
 # Dev tool (not a gate): real LC II ROM boot trace on the O6 machine.
 add_executable(lcii_trace EXCLUDE_FROM_ALL tests/lcii_trace.cpp)
 
+# Dev tool (not a gate): the POM68K half of the Retro68 differential oracle —
+# boots the LC II with the guest Prober in Startup Items and saves the image
+# before and after (tools/prober_oracle.sh runs the MAME half and the diff).
+add_executable(lcii_prober_oracle EXCLUDE_FROM_ALL tests/lcii_prober_oracle.cpp)
+target_link_libraries(lcii_prober_oracle PRIVATE pom68k_core)
+
 # Dev tool (not a gate): .Sony driver give-up trace on the LC II —
 # the sony_trace pattern aimed at the TODO §1 boosted-030 mount bug.
 add_executable(lcii_sony_trace EXCLUDE_FROM_ALL tests/lcii_sony_trace.cpp)
