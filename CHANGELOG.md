@@ -472,6 +472,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (seventh)** — [The guest oracle becomes a gate: 71 fields of the LC II judged against MAME's report, on the locked System 7.1 volume, with AppleTalk open on both sides](#2026-10-02-prober-gate)
 - **2026-10-02 (sixth)** — [`Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary](#2026-10-02-x86-disk605-afp)
 - **2026-10-02 (late night)** — [Drive B only where there is a port: nine profiles, not thirty-eight — and the oracle's other differences traced to the CPU throughput model](#2026-10-02-drive-b-port)
 - **2026-10-02 (night)** — [The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have](#2026-10-02-prober-oracle)
@@ -1062,6 +1063,66 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-02-prober-gate"></a>
+## 2026-10-02 (seventh) — The guest oracle becomes a gate: 71 fields of the LC II judged against MAME's report, on the locked System 7.1 volume, with AppleTalk open on both sides
+
+[The first oracle run](#2026-10-02-prober-oracle) diffed two TSVs by hand.
+`lcii_prober_oracle_etalon` now holds POM68K to MAME `maclc2`'s report,
+recorded in `tools/prober_oracle_maclc2.tsv`, on every field both
+models can judge.
+
+**The volume.** The rig booted `hdv/boot.vhd`, which is not in the lock and
+is not the same image on both hosts: here it is the « MacPack » volume. The
+gate uses the LC II's locked volume, `hdv/ref/System 7.1 HD.dsk`. That is an
+Infinite Mac image whose Startup Items holds an alias to « Infinite HD »:
+booted alone, the Finder stops on the alias alert before it ever launches
+the Prober. Both sides now attach the blank companion of
+`InfiniteHdCompanion.h` at SCSI 1. The rig saves it inside its
+partition-map façade for MAME, because a bare HFS volume is not mounted
+there.
+
+**AppleTalk was a configuration difference.** On 7.1, MAME reports
+`atalkVers $39` and `.MPP` open; POM68K reported neither. MAME's Egret
+starts from a cold PRAM that the ROM initialises with AppleTalk active;
+POM68K's factory XPRAM seeds SPConfig `$22` (both ports async) unless
+`appleTalkPram` is set. With it set on the POM68K half, the whole `net`
+section agrees: `.MPP` opens on the V8's SCC, node 0, net 0, three NBP
+lookups answered with 0, MacIP absent. Both reports have 77 findings.
+
+**Judged and unjudged.** 71 fields are judged, and all are equal: identity,
+CPU/MMU, `hwAttr`, `hwCfg` `$FC00`, the ROM rows, every real device probe,
+AppleTalk, ADB, three `.Sony`/SCSI drives, two volumes, sound, no slots. Six
+are listed in the gate with their reasons: the two `clock` rows (each side
+seeds its RTC differently); `fpu` (MAME's FSAVE frames are 68881); `memTop`
+(`$1E53E4` vs `$1D5A38`, 63 916 bytes, the CPU-throughput symptom of the
+[late-night entry](#2026-10-02-drive-b-port)); and the two unmapped-space
+probes, where maclc raises no bus error. A key on one side only fails like
+a different value.
+
+**The gate.** It runs the POM68K half only, reads the report back out of the
+image with `hfsinject::Volume::readFile`, and stops once the row count
+reaches the header's `findings=`. That takes 5 s (1 800 guest frames) under
+the default engine, and the interpreter passes too. It fails on a
+golden with `hwCfg` altered and one drive row removed (2 differ, exit 1).
+Two full oracle runs give the same MAME report apart from the clock rows and
+`time=`, `memTop` included. The script now extracts with the rig too
+(`--extract`): this host's iconv has no `MACROMAN`, and hfsutils is no longer
+needed. MAME is `$MAME`, `mame` or the flatpak. The gate soft-skips without
+`dev/prober/build/POM68KProber.bin`, a build output that stays uncommitted.
+The recorded report is `tools/prober_oracle_maclc2.tsv`, beside
+`pixel_pins.tsv` (`tests/data/` is ignored), and the registration lives in a
+new `cmake/Pom68kOracleGates.cmake`: `Pom68kMachineGates.cmake` sits at its
+size ceiling, and the next machines' oracles belong together.
+Rebuilt here, it is byte-identical to the 2026-08-09 binary apart from its
+MacBinary dates. Its old build directory pointed at `src/POM68K`, the
+tree's former name, and `RETRO68_ROOT` must be passed when configuring it.
+
+Runs (x86-64): `lcii_prober_oracle_etalon` default and `interp`, the
+negative golden, two full `tools/prober_oracle.sh` runs with flatpak MAME
+0.287; the `asset-none` tier after the registration.
 
 ---
 

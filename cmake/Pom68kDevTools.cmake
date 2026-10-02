@@ -90,10 +90,9 @@ target_link_libraries(replay_bench_lcii PRIVATE pom68k_core)
 add_executable(sony_trace EXCLUDE_FROM_ALL tests/sony_trace.cpp)
 target_link_libraries(sony_trace PRIVATE pom68k_core)
 
-# Dev tools (not gates) on the LC II: the real-ROM boot trace (O6 machine),
-# the .Sony give-up trace (TODO §1 boosted-030 mount bug) and the guest
-# Prober oracle's POM68K half (tools/prober_oracle.sh).
-foreach(t lcii_trace lcii_sony_trace lcii_prober_oracle)
+# Dev tools (not gates) on the LC II: the real-ROM boot trace (O6 machine)
+# and the .Sony give-up trace (TODO §1 boosted-030 mount bug).
+foreach(t lcii_trace lcii_sony_trace)
     add_executable(${t} EXCLUDE_FROM_ALL tests/${t}.cpp)
     target_link_libraries(${t} PRIVATE pom68k_core)
 endforeach()

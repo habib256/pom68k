@@ -54,12 +54,12 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   Le reste est couvert par `gui_windows_test`, `gui_relaunch_smoke_test`,
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
-- [ ] **Étendre l'oracle invité différentiel et en faire un gate.** Le
-  premier tourne : Prober sous MAME `maclc2` et POM68K LC II, même image,
-  `tools/prober_oracle.sh` (`CHANGELOG` 2026-10-02 (night), (late night)).
-  Reste : un gate sur les champs que les deux modèles savent juger (pas
-  `MemTop`, symptôme d'ordre d'allocation), puis les autres machines que
-  MAME porte (Quadra 605/800, Centris 650).
+- [ ] **Étendre l'oracle invité différentiel aux autres machines que MAME
+  porte** (Quadra 605/800, Centris 650). Le LC II a son gate,
+  `lcii_prober_oracle_etalon` : 71 champs jugés contre le rapport MAME
+  enregistré, 6 non jugés avec leur raison (`CHANGELOG` 2026-10-02
+  (seventh)). Chaque machine suivante part du même rig et de son propre
+  rapport MAME.
 ---
 
 ## Jalon 3 — Services réseau
