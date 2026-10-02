@@ -469,6 +469,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (evening)** — [The pixel pins hold on AArch64, except the compacts' floppy — and this host's `Disk605.dsk` is no longer the one both hosts shared on 2026-09-09](#2026-10-02-pins-aarch64)
 - **2026-10-02 (later)** — [The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it](#2026-10-02-a64-late-ipl)
 - **2026-10-02** — [The Centris mouse dies in a ROM race Apple fixed later, not in the PIC: our 040 reaches the PRAM read five times sooner than MAME's](#2026-10-02-centris-adb-race)
 - **2026-09-27 (later)** — [The Cuda 040 boards' SCC answers at the VIA's pace: TimeSCCDB was nine times too large — and on the PIC boards the same fix kills the mouse](#2026-09-27-scc-040)
@@ -1057,6 +1058,38 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-02-pins-aarch64"></a>
+## 2026-10-02 (evening) — The pixel pins hold on AArch64, except the compacts' floppy — and this host's `Disk605.dsk` is no longer the one both hosts shared on 2026-09-09
+
+`TODO` § Fidélité: replay the 39 x86-64 pins on the M4. All 132 gates
+matching `boot_etalon` ran here (default engines, the `jit_*` and `interp_*`
+variants, the agent variants) after the a64 late-IPL fix.
+
+**37 keys identical, 71 checks.** Every pin whose volume this host holds
+matched, under every engine that boots it: the 040 family on
+`MacOS-8.1-boot.vhd` (Q605, LC 475/575, Centris/Quadra 610-800, Q630/LC 580,
+Q700/900/950), the 030/020 family on GISTPERSO, `HD20SC.vhd`, `boot.vhd` and
+the System 7.5.x images, the Duo 230, the 128K/512K on System 1.1 and the Plus
+on System 3.3. No key missing, nothing unsettled; 32 agent variants not
+applicable by design.
+
+**Six reds, one cause.** SE, SE FDHD and Classic on `Disk605.dsk` all hash
+`a2c1d9676e6e0123` against the pinned `b8027f427d3e997e` — still one value for
+the three, as on x86-64 — and `system_boot_etalon@Disk605.dsk` (the Plus)
+hashes `1ac712bf75fdd238` against `69cfb2d307c29044`. Not the engine (the
+`jit_classic` variant agrees), not the 2026-09-27 compact VIA/sound commits
+(the tree before `7f53d58` gives the same values here), not
+`se_boot_etalon` or `system_boot_etalon` (both leave the image
+byte-identical). The input: this host's
+`disks35/Disk605.dsk` is sha256 `533a3e30…`, where 2026-09-09 recorded
+`6ea0c1c7…` on **both** hosts. Its mtime still says 19 August — the 16
+September two-way `rsync` keeps mtimes, so a content change after 09-09 can
+arrive with an August date. `Disk605.dsk` is the one gate floppy
+`assets.lock` does not pin, which is why nothing caught it.
+
+**Not changed.** The pins stay as recorded: which content is the reference
+needs the x86-64 copy (the transfer drive was not mounted).
 
 <a id="2026-10-02-a64-late-ipl"></a>
 ## 2026-10-02 (later) — The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it

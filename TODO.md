@@ -88,11 +88,14 @@ sous etalon pixel-accurate (les 39 le 2026-09-26, sur x86-64). Tout ajout
 LLE part d'une trace ROM/pilote, d'un observable invité ou d'un consommateur
 réel ; une approximation plus large sans preuve n'est pas un gain.
 
-- [ ] **Rejouer les épingles sur AArch64, et le build WASM.** Les 39
-  profils sont épinglés sur x86-64 (`tools/pixel_pins.tsv`, clé
-  `<gate>@<volume>`), identiques sous interpréteur, JIT et `threaded`.
-  Reste à montrer sur le M4 que l'hôte ne les déplace pas (bras `a64`
-  compris). Le WASM n'a que des stubs inactifs.
+- [ ] **Trancher le `Disk605.dsk` de référence, puis l'épingler dans
+  `assets.lock`.** Sur AArch64, 37 clés d'épingles sur 39 tiennent sous
+  tous les moteurs ; seules SE, SE FDHD, Classic et le Plus sur
+  `Disk605.dsk` bougent, parce que la copie locale (`533a3e30…`) n'est plus
+  celle des deux hôtes au 2026-09-09 (`6ea0c1c7…`) (`CHANGELOG`
+  2026-10-02 (evening)). *Bloqué : la copie x86-64 (lecteur de transfert).*
+- [ ] **Rejouer les épingles dans le build WASM.** Il n'a que des stubs
+  inactifs.
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** IRQ, VBL,
   VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché
