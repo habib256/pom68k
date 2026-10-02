@@ -4,6 +4,9 @@
 |---|---|
 | `afp_live_trace_aarch64_interp.txt` | this host, `POM68K_CPU_ENGINE=interp` — the accuracy oracle, 23 boundaries |
 | `afp_live_trace_aarch64_a64.txt` | this host, default (`a64`) after the fix — identical to the oracle at every boundary |
+| `afp_live_trace_x86_64_interp.txt` | x86-64 at `25fed3b`, interpreter — **the oracle since drive B was unwired**, 22 boundaries |
+| `afp_live_trace_x86_64_x64.txt` | x86-64 at `25fed3b`, default (`x64`) — identical to the line above |
+| `afp_live_trace_x86_64_x64_at_69cb4b4.txt` | x86-64 at `69cb4b4` (before drive B was unwired), `x64` — identical to the AArch64 interpreter reference at all 23 boundaries |
 
 They supersede `scratchpad/2026-09-18/afp/`: the Q605 SCC sync of 2026-09-27
 moved every clock, so the older traces differ from boundary 0.
@@ -21,4 +24,7 @@ to stop early, `POM68K_JIT_DENY_FROM/_TO` to halve the pc space, and
 `POM68K_AFP_IOLOG=<from>,<to>` to diff the guest I/O stream between two
 machine clocks.
 
-Open: the same comparison on x86-64, interpreter and `x64`.
+The AArch64 pair predates `bc37cab` (drive B unwired on the portless
+profiles, the Q605 among them), which moves every boundary from 0; the
+x86-64 pair is the reference at HEAD (CHANGELOG 2026-10-02 (sixth)).
+Open: the AArch64 interpreter and `a64` against the x86-64 pair.
