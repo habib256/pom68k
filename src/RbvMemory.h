@@ -196,6 +196,10 @@ public:
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
     SonyDrive& externalDrive() { return externalDrive_; }
+    // No external floppy port on this board: drive B stays unwired, as MAME's
+    // second connector is `add_35_nc` here (CHANGELOG 2026-10-02 (late night)).
+    // `storage_profile_test` holds this to the catalogue's externalFloppy.
+    static constexpr bool externalFloppyPort() { return false; }
     // Floppy boost gate input (RbvCpu::pollBoostGate) — the Cpu030/V8
     // pattern, CHANGELOG 2026-08-05 (eighth).
     bool floppyStreaming() const {
@@ -203,9 +207,7 @@ public:
     }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
-    bool insertExternalDisk(const std::string& path) {
-        return externalDrive_.insert(path);
-    }
+    bool insertExternalDisk(const std::string&) { return false; }   // no port
     void ejectExternalDisk() { externalDrive_.eject(); }
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);

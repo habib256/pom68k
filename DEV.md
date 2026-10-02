@@ -936,11 +936,17 @@ needed research, and a dated `CHANGELOG.md` entry.
 The Plus, original SE and original Mac II are the three shipped 800K-only
 profiles. All other floppy-equipped profiles retain this personality for
 400/800K GCR media inside a SWIM; the Duo 230 has no floppy mechanism.
-Every one of the other 36 catalogue profiles owns two `SonyDrive` mechanisms:
-drive A (internal) and drive B (external). IWM line SELECT and SWIM soft-select
-choose between them; `storage_profile_test` strobes STEP through every board
-implementation, and `external_floppy_boot_etalon` boots the Plus ROM with
-drive A empty and the synthetic 800K boot disk present only in drive B.
+Drive B (external) is wired where MAME connects a second mechanism by
+default — the six compacts and the IIx, IIcx and SE/30 — and left unwired
+(`nullptr` at the controller, `externalFloppyPort()` false, no GUI row)
+everywhere else, MAME's `add_35_nc`: the LC family has no external floppy
+port at all (CHANGELOG 2026-10-02 (late night)). IWM line SELECT and SWIM
+soft-select choose between the two mechanisms where both exist;
+`storage_profile_test` strobes STEP through every board implementation —
+drive B reached on the nine, reaching nothing on the rest — and holds each
+board to the catalogue's `externalFloppy`. `external_floppy_boot_etalon`
+boots the Plus ROM with drive A empty and the synthetic 800K boot disk
+present only in drive B.
 Full spec tables in the M5 research report (MAME `iwm.cpp` / `floppy.cpp` /
 `flopimg.cpp` / `ap_dsk35.cpp`, pce, Snow — cross-verified). What the
 implementation actually depends on, several found the hard way with

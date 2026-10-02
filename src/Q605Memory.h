@@ -131,6 +131,10 @@ public:
     Swim2& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive0_; }
     SonyDrive& externalDrive() { return drive1_; }
+    // No external floppy port on this board: drive B stays unwired, as MAME's
+    // second connector is `add_35_nc` here (CHANGELOG 2026-10-02 (late night)).
+    // `storage_profile_test` holds this to the catalogue's externalFloppy.
+    static constexpr bool externalFloppyPort() { return false; }
     bool insertDisk(const std::string& path) { return drive0_.insert(path); }
     void ejectDisk() { drive0_.eject(); }
     Ncr53c96& scsi() { flushScsi(); return scsi_; }

@@ -153,6 +153,37 @@ void checkSwimSelection(Swim& swim, SonyDrive& internal, SonyDrive& external,
           (std::string(name) + ": SWIM soft-select isolates drives A and B").c_str());
 }
 
+// A board without the external port leaves drive B unwired: selecting B and
+// stepping reaches no mechanism, even one holding media, and drive A stays
+// where it was.
+void checkIwmNoExternal(Iwm& iwm, SonyDrive& internal, SonyDrive& external,
+                        const char* name) {
+    internal.eject(); external.eject();
+    internal.reset(); external.reset();
+    external.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+    iwm.reset();
+    iwm.read(9);                                 // ENABLE on
+    iwm.read(11);                                // select drive B
+    pulseIwmStep(iwm);
+    check(external.currentTrack() == 0 && internal.currentTrack() == 0,
+          (std::string(name) + ": no external port, STEP on drive B reaches nothing").c_str());
+    external.eject();
+}
+
+template <class Swim>
+void checkSwimNoExternal(Swim& swim, SonyDrive& internal, SonyDrive& external,
+                         const char* name) {
+    internal.eject(); external.eject();
+    external.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+    swim.reset();
+    if constexpr (std::same_as<Swim, Swim1>) switchToIsm(swim);
+    swim.write(7, 0x84);                         // motor gate + drive B
+    swim.write(4, 0x01); swim.write(4, 0x09);   // STEP strobe
+    check(external.currentTrack() == 0 && internal.currentTrack() == 0,
+          (std::string(name) + ": no external port, STEP on drive B reaches nothing").c_str());
+    external.eject();
+}
+
 bool req(Ncr5380& scsi) {
     return (scsi.read(Ncr5380::R_CSR) & Ncr5380::CBS_REQ) != 0;
 }
@@ -248,7 +279,10 @@ void checkGlueModel(const pom68k::CoreConfig& core, MacIIMemory::Model model,
           (std::string(name) + (superDrive
               ? ": 1-0-1-1 enters SWIM ISM"
               : ": 1-0-1-1 remains plain IWM")).c_str());
-    checkIwmSelection(mem.iwm(), mem.internalDrive(), mem.externalDrive(), name);
+    if (mem.externalFloppyPort())
+        checkIwmSelection(mem.iwm(), mem.internalDrive(), mem.externalDrive(), name);
+    else
+        checkIwmNoExternal(mem.iwm(), mem.internalDrive(), mem.externalDrive(), name);
 }
 } // namespace
 
@@ -276,8 +310,40 @@ int main() {
     check(pom68k::kMachineProfileCount == 39, "catalogue contains all 39 profiles");
     check(none == 1 && gcr400 == 2 && gcr800 == 3 && super == 33,
           "floppy matrix = 1 none + 2 400K + 3 800K-only + 33 SuperDrive");
-    check(external == 38,
-          "all 38 desktop profiles expose an external floppy mechanism");
+    check(external == 9,
+          "drive B on the 9 profiles MAME connects it on: the six compacts "
+          "(128K to Classic) and IIx, IIcx, SE/30");
+    // The board decides what the guest sees; the catalogue decides what the
+    // GUI offers. One fact, so every profile is held to both.
+    for (const auto& profile : pom68k::kMachineProfiles) {
+        const bool want = pom68k::storageCapabilities(profile).externalFloppy;
+        bool board = false;
+        switch (profile.platform) {
+            case pom68k::PlatformKind::Compact: board = MacMemory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::Glue: {
+                const auto model =
+                    profile.snapshot == pom68k::SnapMachine::MacII ? MacIIMemory::Model::MacII :
+                    profile.snapshot == pom68k::SnapMachine::IIx   ? MacIIMemory::Model::IIx :
+                    profile.snapshot == pom68k::SnapMachine::IIcx  ? MacIIMemory::Model::IIcx :
+                                                                     MacIIMemory::Model::SE30;
+                MacIIMemory mem(pom68k::defaultCoreConfig(), 0x100000, model);
+                board = mem.externalFloppyPort();
+                break;
+            }
+            case pom68k::PlatformKind::Oss:    board = IIfxMemory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::V8:     board = V8Memory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::Rbv:    board = RbvMemory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::Sonora: board = SonoraMemory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::Vasp:   board = VaspMemory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::MemcJr: board = Q605Memory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::DjMemc: board = CentrisMemory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::Spike:  board = Q700Memory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::F108:   board = Q630Memory::externalFloppyPort(); break;
+            case pom68k::PlatformKind::Msc:    board = false; break;
+        }
+        check(board == want, (std::string(profile.slug) +
+                              ": board drive B matches the catalogue").c_str());
+    }
     // NOT "all profiles" any more: the SCSI bus arrived with the Plus, so the
     // Macintosh 128K and 512K are the two that answer no. This is the
     // assertion that would have caught a `scsi = true` copied onto them.
@@ -318,68 +384,67 @@ int main() {
     checkGlueModel(core, MacIIMemory::Model::IIcx, "IIcx", true);
     checkGlueModel(core, MacIIMemory::Model::SE30, "SE/30", true);
 
-    // One instance of every remaining board implementation proves that the
-    // catalogue promise is backed by a real second mechanism and that the
-    // controller wired to that board can address it independently.
+    // One instance of every remaining board implementation: none of them has
+    // the external port, so drive B must be unwired at the controller.
     {
         IIfxMemory mem(core, 1u << 20);
         mem.reset();
-        checkIwmSelection(mem.swim().iwm(), mem.internalDrive(),
-                          mem.externalDrive(), "IIfx/OSS");
+        checkIwmNoExternal(mem.swim().iwm(), mem.internalDrive(),
+                           mem.externalDrive(), "IIfx/OSS");
     }
     {
         RbvMemory mem(core, 1u << 20);
         mem.reset();
-        checkIwmSelection(mem.swim().iwm(), mem.internalDrive(),
-                          mem.externalDrive(), "RBV");
+        checkIwmNoExternal(mem.swim().iwm(), mem.internalDrive(),
+                           mem.externalDrive(), "RBV");
     }
     {
         V8Memory mem(core, 4u << 20, V8Memory::Model::LcII);
         mem.reset();
-        checkIwmSelection(mem.iwm(), mem.internalDrive(),
-                          mem.externalDrive(), "V8");
+        checkIwmNoExternal(mem.iwm(), mem.internalDrive(),
+                           mem.externalDrive(), "V8");
     }
     {
         V8Memory mem(core, 4u << 20, V8Memory::Model::ColorClassic);
         mem.reset();
-        checkSwimSelection(mem.swim2(), mem.internalDrive(),
-                           mem.externalDrive(), "V8 Spice");
+        checkSwimNoExternal(mem.swim2(), mem.internalDrive(),
+                            mem.externalDrive(), "V8 Spice");
     }
     {
         SonoraMemory mem(core, 1u << 20);
         mem.reset();
-        checkSwimSelection(mem.swim(), mem.internalDrive(),
-                           mem.externalDrive(), "Sonora");
+        checkSwimNoExternal(mem.swim(), mem.internalDrive(),
+                            mem.externalDrive(), "Sonora");
     }
     {
         VaspMemory mem(core, 1u << 20);
         mem.reset();
-        checkIwmSelection(mem.swim().iwm(), mem.internalDrive(),
-                          mem.externalDrive(), "VASP");
+        checkIwmNoExternal(mem.swim().iwm(), mem.internalDrive(),
+                           mem.externalDrive(), "VASP");
     }
     {
         Q605Memory mem(core, 1u << 20);
         mem.reset();
-        checkSwimSelection(mem.swim(), mem.internalDrive(),
-                           mem.externalDrive(), "MEMCjr");
+        checkSwimNoExternal(mem.swim(), mem.internalDrive(),
+                            mem.externalDrive(), "MEMCjr");
     }
     {
         CentrisMemory mem(core, 1u << 20);
         mem.reset();
-        checkSwimSelection(mem.swim(), mem.internalDrive(),
-                           mem.externalDrive(), "djMEMC");
+        checkSwimNoExternal(mem.swim(), mem.internalDrive(),
+                            mem.externalDrive(), "djMEMC");
     }
     {
         Q700Memory mem(core, 1u << 20);
         mem.reset();
-        checkSwimSelection(mem.swim(), mem.internalDrive(),
-                           mem.externalDrive(), "Spike");
+        checkSwimNoExternal(mem.swim(), mem.internalDrive(),
+                            mem.externalDrive(), "Spike");
     }
     {
         Q630Memory mem(core, 1u << 20);
         mem.reset();
-        checkSwimSelection(mem.swim(), mem.internalDrive(),
-                           mem.externalDrive(), "F108");
+        checkSwimNoExternal(mem.swim(), mem.internalDrive(),
+                            mem.externalDrive(), "F108");
     }
 
     // Exercise the newly exposed compact SCSI topology, including a target

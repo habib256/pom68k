@@ -135,7 +135,7 @@ void SonoraMemory::reset() {
     asc_.reset();
     scsi_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive_, &externalDrive_);
+    swim_.attachDrive(&drive_, nullptr);
     drive_.setSpinClockHz(cpuHz_);           // drive_.tick unit = CPU cycles
     externalDrive_.setSpinClockHz(cpuHz_);
     // mv_sonora device_reset: blanked, no modeline, sense drive released.

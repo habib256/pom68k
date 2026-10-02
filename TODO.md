@@ -56,16 +56,10 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   2026-09-16/17).
 - [ ] **Étendre l'oracle invité différentiel et en faire un gate.** Le
   premier tourne : Prober sous MAME `maclc2` et POM68K LC II, même image,
-  `tools/prober_oracle.sh` (`CHANGELOG` 2026-10-02 (night)). Reste : un
-  gate sur les champs que les deux modèles savent juger, l'écart `MemTop`
-  (6 256 octets) à expliquer, puis les autres machines que MAME porte
-  (Quadra 605/800, Centris 650).
-- [ ] **Décider du lecteur externe sur les profils qui n'ont pas de port.**
-  Le LC II présente un drive 2 au `.Sony` que MAME (`floppy[1]` non
-  connecté) et la machine réelle n'ont pas ; c'est le choix produit du
-  2026-09-09 (sixth) pour les 36 profils de bureau. Fidélité ou commodité :
-  à trancher, profil par profil.
-
+  `tools/prober_oracle.sh` (`CHANGELOG` 2026-10-02 (night), (late night)).
+  Reste : un gate sur les champs que les deux modèles savent juger (pas
+  `MemTop`, symptôme d'ordre d'allocation), puis les autres machines que
+  MAME porte (Quadra 605/800, Centris 650).
 ---
 
 ## Jalon 3 — Services réseau
@@ -106,6 +100,18 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché
   le 2026-09-17.)
+- [ ] **Calibrer le débit CPU des 030/040 (`cacheBoost` 4).** Sur le
+  LC II, TimeVIADB `$030F` contre `$0187` chez MAME, TimeDBRA `$28C9`
+  contre `$0F4A` : le corps de boucle tient dans un cycle E là où MAME en
+  prend deux (`CHANGELOG` 2026-10-02 (late night)). Même cause que la
+  course ADB du Centris ci-dessous et que l'ordre d'allocation du tas
+  système. Réglage global (épingles, perfs, JIT) : *Bloqué : un chiffre
+  matériel (TimeDBRA/TimeVIADB d'un vrai LC II, Centris ou Quadra).*
+- [ ] **Rouvrir le LC II sans FPU.** Clos « fidèle » le 2026-09-17, contredit
+  le 2026-10-02 : le LC II était livré sans FPU, et MAME élit `$CC00`
+  depuis la même ROM. Trouver où les chemins d'init à froid se séparent
+  avant `$A463EA` (POM68K passe par le test PA0 en `$A4644C`, MAME
+  jamais) ; une expérience PA0 + fenêtre `$FC0000` muette n'a pas suffi.
 - [ ] **Synchroniser le SCC sur l'horloge VIA au Centris et au Quadra 700.**
   Fait sur Q605/Q630 (`calibration_040_etalon`), retenu ici. La souris
   morte n'est pas un défaut du PIC : c'est une course de la ROM (`@sendCmd`

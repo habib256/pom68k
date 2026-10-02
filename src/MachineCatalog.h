@@ -147,10 +147,23 @@ constexpr StorageCapabilities storageCapabilities(const MachineProfile& profile)
             return {FloppyKind::Gcr400K, true, false, false};
         case SnapMachine::Plus:
         case SnapMachine::SE:
-        case SnapMachine::MacII:
             return {FloppyKind::Gcr800K, true, true, true};
-        default:
+        // MAME leaves the original Mac II's second connector `add_35_nc`.
+        case SnapMachine::MacII:
+            return {FloppyKind::Gcr800K, false, true, true};
+        // Drive B is wired where MAME connects a second mechanism by default:
+        // the compacts (mac128.cpp) and the FDHD-ROM Glue trio (maciihd).
+        // Every later board leaves it `add_35_nc` — the LC family has no
+        // external floppy port at all — and so does POM68K (CHANGELOG
+        // 2026-10-02 (late night)); `storage_profile_test` holds each board.
+        case SnapMachine::SEFDHD:
+        case SnapMachine::Classic:
+        case SnapMachine::IIx:
+        case SnapMachine::IIcx:
+        case SnapMachine::SE30:
             return {FloppyKind::SuperDrive, true, true, true};
+        default:
+            return {FloppyKind::SuperDrive, false, true, true};
     }
 }
 

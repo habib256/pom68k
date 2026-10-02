@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"All 36 desktops get their external Sony drive" (2026-09-09 (sixth)) — the LC family has no external floppy port and MAME wires drive B on nine profiles only; drive B is now unwired on the other 29** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
+- **"The bare LC II is closed: POM68K is faithful" (2026-09-17 (eleventh)) — the LC II shipped without an FPU and ran System 7, and MAME elects the FPU-less `$CC00` record from the same ROM; reopened** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
 - **"cacheless forms and single-poll memory instructions are unchanged" (`POM68K_JIT.md`, positioned polls, 2026-09-03) — a cacheless exact MMIO thunk advances device time between the two IPL samples too; a64 took the VIA2 interrupt one instruction late and left `q605_afp_live_etalon`'s oracle at boundary 5** → [2026-10-02 (later) — The a64 arm of the AFP trace was one instruction late…](#2026-10-02-a64-late-ipl)
 - **"a defect of POM68K's PIC path that correct SCC timing exposes" (2026-09-27 (later)) — the PIC is faithful; the ROM's `@sendCmd` toggles ST 3→0 in 17.8 µs, under the PIC's 23 µs scan, because our 040 reaches a PRAM read 74 µs after the autopoll where MAME's takes 379 µs; the sync-off default wins the same race by 63 cycles** → [2026-10-02 — The Centris mouse dies in a ROM race…](#2026-10-02-centris-adb-race)
 - **"the LC 575 does not pin the LC 475's value; recorded as measured, not yet explained" (2026-09-26) — it does: the LC 575's pin was a half-drawn desktop, still for 170 frames while the Finder issued 123 SCSI commands; a settle now also waits for a quiet disk, and the LC 575 pins `eefb49d126a73732` like the LC 475 and the Quadra 605** → [2026-09-26 (later) — A still screen is not a finished boot](#2026-09-26-settle-quiet-disk)
@@ -469,6 +471,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (late night)** — [Drive B only where there is a port: nine profiles, not thirty-eight — and the oracle's other differences traced to the CPU throughput model](#2026-10-02-drive-b-port)
 - **2026-10-02 (night)** — [The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have](#2026-10-02-prober-oracle)
 - **2026-10-02 (evening)** — [The pixel pins hold on AArch64, except the compacts' floppy — and this host's `Disk605.dsk` is no longer the one both hosts shared on 2026-09-09](#2026-10-02-pins-aarch64)
 - **2026-10-02 (later)** — [The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it](#2026-10-02-a64-late-ipl)
@@ -1059,6 +1062,65 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-02-drive-b-port"></a>
+## 2026-10-02 (late night) — Drive B only where there is a port: nine profiles, not thirty-eight — and the oracle's other differences traced to the CPU throughput model
+
+Acting on [the oracle's findings](#2026-10-02-prober-oracle).
+
+**Drive B.** [2026-09-09 (sixth)](#2026-09-09-external-floppy) gave all 36
+desktops an external Sony drive. The LC II's `.Sony` therefore listed a drive
+2 that the machine — no external floppy port — cannot have, and MAME does not
+show. MAME's default wiring is now the reference: a second mechanism is
+connected on the compacts (`mac128.cpp`, `add_35` twice) and on the FDHD-ROM
+Glue trio IIx, IIcx and SE/30 (`maciihd`, `add_35_hd` twice); everywhere else
+— the original Mac II, IIfx, IIci/IIsi, the whole V8, Sonora and VASP lines,
+every 040 board — it is `add_35_nc`. Each board now says so
+(`externalFloppyPort()`), attaches `nullptr` as drive B where it has none (the
+controllers' pull-up then reports no drive, as before 2026-09-09), refuses a
+drive-B insert, and the GUI offers no second floppy row there. The catalogue's
+`externalFloppy` is 9 of 39, and `storage_profile_test` holds every profile's
+board to it and proves STEP on drive B reaches nothing on the portless ones.
+The oracle's `drive` rows now agree, 63 findings on both sides.
+
+**The rig.** `tools/prober_oracle.sh` puts MAME's disk at SCSI ID 0 like
+POM68K's, so the SCSI rows agree too. What is left:
+
+| Field | Reading |
+|---|---|
+| `fpu` 1 vs 2 | MAME's 030 FPU produces 68881 FSAVE frames |
+| `$EFE1FE`, `$F02000` | MAME raises no bus error on unmapped space |
+| clock | each side seeds its RTC differently |
+| `MemTop` | follows a heap-order divergence, below |
+
+**`MemTop` is a timing symptom.** Low memory dumped from both at the end of
+the run: `BufPtr`, `ApplZone`, `HeapEnd`, `CurrentA5`, `ScrnBase` are equal;
+system-heap pointers (exception vectors included) differ by a uniform `$44`.
+Walking the system heap, the first 19 blocks match and block 20 holds the same
+68-byte request in both, with 8 bytes of absorbed padding in MAME only — the
+free space it was carved from was shaped by a different allocation **order**.
+The calibrations say why: TimeVIADB `$0187` (MAME) vs `$030F`, TimeDBRA
+`$0F4A` vs `$28C9`, TimeSCCDB `$058F` vs `$1178`, TimeSCSIDB `$0518` vs
+`$104E`. MAME's `via_sync` is POM68K's; the difference is the CPU time between
+two VIA accesses — MAME's 030 takes more than half an E cycle for the loop
+body and lands on every other edge, POM68K's `cacheBoost` 4 lands on every
+edge. The same throughput gap is the Centris ADB race of earlier today. No
+correction here: the boost is a whole-family model setting, and the tree holds
+no real-hardware figure to calibrate it against (TODO § Fidélité).
+
+**The bare LC II, reopened.** [2026-09-17 (eleventh)](#2026-09-17-lcii-closed)
+closed it as faithful: "this ROM has no path that clears the FPU bit", and a
+real FPU-less LC II "would bomb exactly as POM68K does". Two facts contradict
+it. The LC II shipped **without** an FPU as standard (`LCII_HARDWARE.md`'s own
+machine summary) and ran System 7. And MAME, given the same ROM and no FPU
+(`:config` bit 0 clear, VIA1 PA0 low), writes `$CC00` into HWCfgFlags at
+`$40A0012A` — the FPU-less record, same productKind `$0D` and decoder `$07` —
+and boots to the Finder; with the FPU it writes `$DC00` there. POM68K keeps PA0
+high because, low, its ROM path reaches the factory test monitor at
+`$A4644C`, a test MAME never executes. An experiment (PA0 from the socket, the
+`$FC0000` diagnostic-card window silent) still reached the monitor, with the
+`$DC00` election already made at `$A4644C`; it was reverted. Open: where the
+two cold-init paths part before `$A463EA` (TODO § Fidélité).
 
 <a id="2026-10-02-prober-oracle"></a>
 ## 2026-10-02 (night) — The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have

@@ -38,7 +38,7 @@ CentrisMemory::CentrisMemory(const pom68k::CoreConfig& coreConfig,
     drive1_.setSuperDrive(true);
     drive0_.setSpinClockHz(cpuHz_);
     drive1_.setSpinClockHz(cpuHz_);
-    swim_.attachDrive(&drive0_, &drive1_);
+    swim_.attachDrive(&drive0_, nullptr);
     rtc_.factoryDefaults();
     // 32-bit clean OS (Mac OS 7.x/8) — XPRAM $8A |= $05 (the Q605 seed).
     rtc_.setXpram(0x8A, uint8_t(rtc_.xpram(0x8A) | 0x05));
@@ -81,7 +81,7 @@ void CentrisMemory::reset() {
     sccDebt_ = scsiDebt_ = 0;
     asc_.reset();
     swim_.reset();
-    swim_.attachDrive(&drive0_, &drive1_);
+    swim_.attachDrive(&drive0_, nullptr);
     drive0_.reset();
     drive1_.reset();
     ascLine_ = false;
