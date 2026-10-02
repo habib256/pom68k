@@ -4773,30 +4773,17 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             a.b(slowStatic[i]);
             continue;
         }
-        // A cache fill can advance peripherals between the 040 loop-head
-        // IPL sample and an opcode handler's later sample. The IR carries
-        // each poll's access-relative position (Instr::iplPollMask): when
-        // every non-head poll fired after the instruction's FINAL data
-        // access, the body stays native and re-samples the pin once at
-        // the end of the body — the same architectural point, since no
-        // emitted code moves peripheral time between the last access
-        // thunk and the boundary. Any other placement — between two
-        // accesses, or a position the trace could not separate — keeps
-        // the exact interpreter path.
-        //
-        // The same holds with the cache model off: an exact MMIO thunk runs
-        // device catch-up from inside the access, so a VIA IFR read can raise
-        // the pin between the two samples. Without the re-sample, reg.ipl kept
-        // the head value, the next boundary's CHECK_IRQ exit reached Moira
-        // with a stale sample, and the interrupt was taken one instruction
-        // late (q605_afp_live_etalon, $40809BC6 → $40809BCA, CHANGELOG
-        // 2026-10-02). Off the cache path the poll-after-final-access class
-        // re-samples unconditionally — the knob only gates the cache-active
-        // admission it was measured on. Any other placement keeps the exact
-        // interpreter path on both: Moira's own mid-instruction SYNCs can
-        // cross a device deadline between the samples even on a RAM access,
-        // which a native body charging its cycles at the end cannot mirror
-        // (a RAM-native variant diverged at the same boundary).
+        // Device time can move between the 040 loop-head IPL sample and a
+        // handler's later one — a cache fill, or an exact MMIO thunk's own
+        // catch-up (a VIA IFR read raising VIA2: CHANGELOG 2026-10-02). The
+        // IR carries each poll's access-relative position (iplPollMask). When
+        // every non-head poll follows the FINAL data access, the body stays
+        // native and re-samples the pin at its end — the same architectural
+        // point; with the cache model off always, with it on behind the knob
+        // it was measured with. Any other placement takes the interpreter:
+        // Moira's mid-instruction SYNCs can cross a device deadline between
+        // the samples even on RAM, which a body charging its cycles at the end
+        // cannot mirror (a RAM-native variant diverged at the same boundary).
         bool lateIplPoll = false;
         if (!L.is030 && in.memory.count != 0 && in.iplPolls > 1) {
             const uint8_t n = in.memory.count;
@@ -4805,9 +4792,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
                 n >= 1 && n <= MemoryContract::MaxAccesses &&
                 in.iplPollMask == uint8_t(1u << (n - 1));
             if (!lateIplPoll) {
-                watchRefusal(L, ir, in, L.cache040Live
-                                 ? "cache040:positioned-ipl-poll"
-                                 : "positioned-ipl-poll");
+                watchRefusal(L, ir, in, "positioned-ipl-poll");
                 a.b(slowStatic[i]);
                 continue;
             }
