@@ -70,13 +70,13 @@ Mac OS 8.1 et System 7.0), les deux mécanismes expliqués ou tranchés. Puis
 livrer les contrôles produit, et n'ajouter du protocole que sur
 consommateur observé (§ En sommeil).
 
-- [ ] **Rejouer `q605_afp_live_etalon` sur x86-64 (interp et `x64`)
-  contre les références AArch64 du 2026-10-02.** Le bras `a64` est
-  identique à l'interpréteur aux 23 frontières depuis la correction du
-  ré-échantillonnage IPL hors cache (`CHANGELOG` 2026-10-02) ; le chemin
-  sans cache de l'émetteur `x64` n'a pas été revérifié pour la même
-  classe. Références : `scratchpad/2026-10-02/afp/`. *Bloqué : hôte
-  x86-64.*
+- [ ] **Rejouer `q605_afp_live_etalon` sur AArch64 (interp et `a64`)
+  contre les références x86-64 du 2026-10-02 (sixth).** Le drive B
+  débranché au Q605 a déplacé toutes les frontières dès la 0 ; sur x86-64
+  `x64` égale l'interpréteur aux 22 frontières, et avant ce changement
+  `x64` égalait la référence AArch64 aux 23 (`CHANGELOG` 2026-10-02
+  (sixth)). Références : `scratchpad/2026-10-02/afp/`. *Bloqué : hôte
+  AArch64.*
 
 ---
 
@@ -88,12 +88,11 @@ sous etalon pixel-accurate (les 39 le 2026-09-26, sur x86-64). Tout ajout
 LLE part d'une trace ROM/pilote, d'un observable invité ou d'un consommateur
 réel ; une approximation plus large sans preuve n'est pas un gain.
 
-- [ ] **Trancher le `Disk605.dsk` de référence, puis l'épingler dans
-  `assets.lock`.** Sur AArch64, 37 clés d'épingles sur 39 tiennent sous
-  tous les moteurs ; seules SE, SE FDHD, Classic et le Plus sur
-  `Disk605.dsk` bougent, parce que la copie locale (`533a3e30…`) n'est plus
-  celle des deux hôtes au 2026-09-09 (`6ea0c1c7…`) (`CHANGELOG`
-  2026-10-02 (evening)). *Bloqué : la copie x86-64 (lecteur de transfert).*
+- [ ] **Remplacer le `Disk605.dsk` du M4 par la référence, puis rejouer
+  ses six épingles rouges.** Tranché le 2026-10-02 (sixth) : `6ea0c1c7…`,
+  épinglé dans `assets.lock`, vert sur x86-64 ; la copie du M4
+  (`533a3e30…`) a dérivé. Source : `TEST/pom68K/disks35/ref/`. *Bloqué :
+  hôte AArch64.*
 - [ ] **Rejouer les épingles dans le build WASM.** Il n'a que des stubs
   inactifs.
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** IRQ, VBL,

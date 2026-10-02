@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the AArch64 interpreter trace of 2026-10-02 is `q605_afp_live_etalon`'s oracle" (2026-10-02 (later)) — it was, until drive B was unwired the same night: the Q605 has no port, every boundary moved from boundary 0, and the x86-64 interpreter trace at `25fed3b` replaces it** → [2026-10-02 (sixth) — `Disk605.dsk` is `6ea0c1c7…`…](#2026-10-02-x86-disk605-afp)
 - **"All 36 desktops get their external Sony drive" (2026-09-09 (sixth)) — the LC family has no external floppy port and MAME wires drive B on nine profiles only; drive B is now unwired on the other 29** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
 - **"The bare LC II is closed: POM68K is faithful" (2026-09-17 (eleventh)) — the LC II shipped without an FPU and ran System 7, and MAME elects the FPU-less `$CC00` record from the same ROM; reopened** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
 - **"cacheless forms and single-poll memory instructions are unchanged" (`POM68K_JIT.md`, positioned polls, 2026-09-03) — a cacheless exact MMIO thunk advances device time between the two IPL samples too; a64 took the VIA2 interrupt one instruction late and left `q605_afp_live_etalon`'s oracle at boundary 5** → [2026-10-02 (later) — The a64 arm of the AFP trace was one instruction late…](#2026-10-02-a64-late-ipl)
@@ -471,6 +472,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (sixth)** — [`Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary](#2026-10-02-x86-disk605-afp)
 - **2026-10-02 (late night)** — [Drive B only where there is a port: nine profiles, not thirty-eight — and the oracle's other differences traced to the CPU throughput model](#2026-10-02-drive-b-port)
 - **2026-10-02 (night)** — [The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have](#2026-10-02-prober-oracle)
 - **2026-10-02 (evening)** — [The pixel pins hold on AArch64, except the compacts' floppy — and this host's `Disk605.dsk` is no longer the one both hosts shared on 2026-09-09](#2026-10-02-pins-aarch64)
@@ -1060,6 +1062,49 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-02-x86-disk605-afp"></a>
+## 2026-10-02 (sixth) — `Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary
+
+Two items that [the evening](#2026-10-02-pins-aarch64) and
+[the a64 fix](#2026-10-02-a64-late-ipl) left blocked on the x86-64 host,
+run there.
+
+**`Disk605.dsk`.** Three copies: this host's `disks35/Disk605.dsk` and the
+TEST drive's `pom68K/disks35/Disk605.dsk` are both sha256 `6ea0c1c7…`
+(byte-identical, `cmp`), the M4's is `533a3e30…`. The 2026-09-09 value
+held by two copies of three is the reference; the M4's copy drifted. It is
+now `disks35/ref/Disk605.dsk` (read-only) and a `reference-floppy` row of
+`assets.lock` for `plus,se,sefdhd,classic`, so `FixtureStore` routes every
+writable open to a `work/` clone and a drift can no longer pass unseen. On
+that content the seven gates that boot it are green and match the table
+unchanged: `se_`, `sefdhd_`, `classic_`, `jit_classic_boot_etalon`
+`b8027f427d3e997e`; `system_boot_etalon`, `jit_system_boot_etalon`
+`69cfb2d307c29044`; `input_etalon`. The pins were right; the AArch64 reds
+were the input. `System 1.1.dsk` and `System 2.0.dsk`, already at their
+lock digests at the root of `disks35/`, joined `disks35/ref/` too:
+`verify_assets.py --strict` is 47/47 here. The reference was copied to
+`TEST/pom68K/disks35/ref/`; the drive then hit a UAS read timeout (USB
+`error -71`, FAT read failed) and nothing else was written to it.
+
+**`q605_afp_live_etalon` on x86-64.** At HEAD (`25fed3b`), the `x64`
+default and `POM68K_CPU_ENGINE=interp` are identical at all 22 boundaries:
+the cacheless exact-MMIO class that made a64 late has no `x64` counterpart
+on this trace. Both differ from the AArch64 references from boundary 0
+(clock `1725553368` → `1725553820`), and the second session needs one
+Chooser attempt fewer (22 boundaries, not 23). Not the host: a worktree at
+`69cb4b4`, the commit before [drive B was unwired](#2026-10-02-drive-b-port),
+gives an `x64` trace identical to the AArch64 interpreter reference at all
+23 boundaries. The Q605 has no external floppy port, and what its ROM finds
+on drive B at boot shifts every later clock. The AArch64 references are
+therefore pre-drive-B; the x86-64 interpreter trace is the oracle at HEAD.
+Traces: `scratchpad/2026-10-02/afp/`.
+
+Runs (x86-64): the seven `Disk605` gates, 7/7; `q605_afp_live_etalon`
+under `x64` (143 s) and `interp` (482 s), both passed; the `69cb4b4`
+worktree `x64` run, passed.
 
 ---
 
