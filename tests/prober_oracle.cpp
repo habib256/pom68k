@@ -23,7 +23,8 @@
 //     in tools/prober_oracle_<mame-system>.tsv, on every field both models
 //     can judge.
 //
-// <machine> is `lcii` (MAME maclc2) or `q605` (MAME macqd605). Each runs on
+// <machine> is `lcii` (MAME maclc2), `q605` (macqd605), `q800` (macqd800),
+// `c650` (macct650), `q630` (macqd630) or `q700` (macqd700). Each runs on
 // its profile's locked volume, POM68K_BEYOND_IMG overriding it for
 // exploration. The gate soft-skips without the ROM, that volume or the
 // built Prober.
@@ -31,12 +32,18 @@
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
 #include "Cpu030.h"
+#include "CentrisCpu.h"
+#include "CentrisMemory.h"
 #include "Cpu040.h"
 #include "HfsInject.h"
 #include "InfiniteHdCompanion.h"
 #include "JitTestConfig.h"
 #include "ProberOracle.h"
 #include "Q605Memory.h"
+#include "Q630Cpu.h"
+#include "Q630Memory.h"
+#include "Q700Cpu.h"
+#include "Q700Memory.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 
@@ -66,13 +73,35 @@ const Unjudged kLciiUnjudged = {
     { "probe.VIA2@II", "unmapped on the LC II; maclc raises no bus error there" },
 };
 
-const Unjudged kQ605Unjudged = {
+// The 040 boards on Mac OS 8.1 (CHANGELOG 2026-10-02 (eighth), (ninth)).
+// `memTop` moves with the system-heap allocation order on every board MAME
+// and POM68K both run, in either direction; it is a timing symptom, not an
+// identity, until the CPU throughput is calibrated (TODO § Fidélité).
+const char* const kHeap = "follows the system-heap allocation order, a CPU-throughput "
+                          "symptom (TODO § Fidélité, cacheBoost)";
+const char* const kCalendar = "CalendarMenu rewrites its Memo when the RTC says a new day: "
+                              "MAME's clock is the host's, POM68K's starts in 1904";
+const Unjudged k040Unjudged = {
     { "clock.macSeconds", kRtc },
     { "clock.dateTime", kRtc },
-    { "ident.memTop", "follows the system-heap allocation order, as on the LC II; "
-                      "not attributed on this board" },
-    { "volume.vol0.kbFree", "CalendarMenu rewrites its Memo when the RTC says a new day: "
-                            "MAME's clock is the host's, POM68K's starts in 1904" },
+    { "ident.memTop", kHeap },
+    { "volume.vol0.kbFree", kCalendar },
+};
+
+// The Quadra 630 also installs its SCSI disk's driver elsewhere: MAME at
+// unit 53 (the Driver43 path's free-slot search from 48), POM68K at the
+// static 32 + ID — same disk, same ROM. Open (TODO § Preuve).
+const Unjudged kQ630Unjudged = [] {
+    Unjudged u = k040Unjudged;
+    u["drive.drv1.refNum"] = "open: MAME's driver at unit 53, POM68K's at 32 + ID (TODO § Preuve)";
+    return u;
+}();
+
+// The Quadra 700 runs System 7.1, which has no CalendarMenu.
+const Unjudged kQ700Unjudged = {
+    { "clock.macSeconds", kRtc },
+    { "clock.dateTime", kRtc },
+    { "ident.memTop", kHeap },
 };
 
 struct Options {
@@ -80,6 +109,18 @@ struct Options {
     std::string outDir, golden;
     long frames = 20000;
 };
+
+// The blank "Infinite HD" as POM68K's SCSI disk presents it — inside the
+// partition-map façade a ROM needs — for MAME's SCSI ID 1.
+bool saveCompanion(const std::string& out) {
+    const std::string tmp = pom68kProcessTempPath("prober_companion", ".img");
+    std::vector<uint8_t> blank = hfsblank::build(5ull << 20, "Infinite HD");
+    blank[1024 + 10] |= 0x01;                       // unmounted cleanly
+    ScsiDisk disk;
+    const bool ok = hfsblank::writeFile(tmp, blank) && disk.open(tmp);
+    std::remove(tmp.c_str());
+    return ok && writeFile(out, disk.image().data(), disk.image().size());
+}
 
 // One machine's run, whatever its memory map and CPU: inject, boot until
 // the report is whole (gate) or for the full budget (rig), then judge or
@@ -96,10 +137,8 @@ int run(Mem& mem, Cpu& cpu, const Options& o, const std::string& img,
     // alert before it reaches the Prober; the blank companion resolves it.
     // The rig keeps a copy, inside its partition-map façade, for MAME.
     if (!infinitehd::attach(mem, img)) return 1;
-    if (!o.check && infinitehd::wants(img)) {
-        const std::vector<uint8_t>& c = mem.scsiDiskAt(1).image();
-        if (!writeFile(o.outDir + "/companion.hd", c.data(), c.size())) return 1;
-    }
+    if (!o.check && infinitehd::wants(img) && !saveCompanion(o.outDir + "/companion.hd"))
+        return 1;
 
     hfsinject::MacBinary app;
     std::string err;
@@ -224,8 +263,75 @@ int q605(const Options& o, const std::string& bin) {
     Q605Memory mem(config, 32u << 20);         // MAME is run with -ramsize 32M
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Cpu040 cpu(mem, testjit::resolveFromEnvironment(), config.cpu, config.diagnostics);
-    return run(mem, cpu, o, img, bin, 416667 /* 25 MHz / ~60 Hz */, kQ605Unjudged, [] {});
+    return run(mem, cpu, o, img, bin, 416667 /* 25 MHz / ~60 Hz */, k040Unjudged, [] {});
 }
+
+// djMEMC + IOSB, MAME macquadra800.cpp: the Quadra 800 (68040 @ 33 MHz,
+// ID $12) and the Centris 650 (68LC040 @ 25 MHz, ID $46), on the F1A6F343
+// ROM MAME calls bios "original".
+int djmemc(const Options& o, const std::string& bin, bool q800) {
+    const std::string rom = testasset::find("roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM");
+    const std::string img = image("hdv/MacOS-8.1-boot.vhd");
+    if (rom.empty() || img.empty()) {
+        std::printf("SKIP: needs the F1A6F343 ROM and hdv/ref/MacOS-8.1-boot.vhd\n");
+        return 0;
+    }
+    testasset::report({ rom, img });
+    pom68k::CoreConfig config = oracleConfig();
+    config.cpu.centrisFull040 = q800;
+    const int64_t hz = q800 ? CentrisMemory::kCpuHzQ650 : CentrisMemory::kCpuHz650;
+    CentrisMemory mem(config, 32u << 20, hz,
+                      q800 ? CentrisMemory::kIdQuadra800 : CentrisMemory::kIdCentris650);
+    if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    CentrisCpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
+    return run(mem, cpu, o, img, bin, hz / 60, k040Unjudged, [] {});
+}
+
+// F108 + PrimeTime II, MAME macquadra630.cpp: the Quadra 630 ($A55A2252).
+int q630(const Options& o, const std::string& bin) {
+    const std::string rom = testasset::find("roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM");
+    const std::string img = image("hdv/MacOS-8.1-boot.vhd");
+    if (rom.empty() || img.empty()) {
+        std::printf("SKIP: needs the 06684214 ROM and hdv/ref/MacOS-8.1-boot.vhd\n");
+        return 0;
+    }
+    testasset::report({ rom, img });
+    pom68k::CoreConfig config = oracleConfig();
+    config.bus.q630MachineId = 0xA55A2252u;
+    Q630Memory mem(config, 32u << 20);
+    if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    Q630Cpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
+    return run(mem, cpu, o, img, bin, Q630Memory::kCpuHz / 60, kQ630Unjudged, [] {});
+}
+
+// Spike, MAME macquadra700.cpp: the Quadra 700, on System 7.1 in 8 MB.
+// MAME 0.287's macqd700 stays black with 20 or 36 MB, and Mac OS 8.1 stops
+// on « not enough memory » in 8 (CHANGELOG 2026-10-02 (ninth)).
+int q700(const Options& o, const std::string& bin) {
+    const std::string rom = testasset::find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
+    const std::string img = image("hdv/System 7.1 HD.dsk");
+    if (rom.empty() || img.empty()) {
+        std::printf("SKIP: needs the 420DBFF3 ROM and hdv/ref/System 7.1 HD.dsk\n");
+        return 0;
+    }
+    testasset::report({ rom, img });
+    const pom68k::CoreConfig config = oracleConfig();
+    Q700Memory mem(config, 8u << 20, Q700Memory::kCpuHz, Q700Memory::Model::Spike);
+    if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    Q700Cpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
+    return run(mem, cpu, o, img, bin, Q700Memory::kCpuHz / 60, kQ700Unjudged, [] {});
+}
+
+int dispatch(const std::string& machine, const Options& o, const std::string& bin) {
+    if (machine == "lcii") return lcii(o, bin);
+    if (machine == "q605") return q605(o, bin);
+    if (machine == "q800") return djmemc(o, bin, true);
+    if (machine == "c650") return djmemc(o, bin, false);
+    if (machine == "q630") return q630(o, bin);
+    return q700(o, bin);
+}
+
+const char* const kMachines[] = { "lcii", "q605", "q800", "c650", "q630", "q700" };
 
 } // namespace
 
@@ -241,12 +347,12 @@ int main(int argc, char** argv) {
         return writeFile(argv[3], text.data(), text.size()) ? 0 : 1;
     }
     Options o;
-    const bool known = argc >= 3 && (std::strcmp(argv[1], "lcii") == 0 ||
-                                     std::strcmp(argv[1], "q605") == 0);
+    bool known = false;
+    for (const char* m : kMachines) known = known || (argc >= 3 && std::strcmp(argv[1], m) == 0);
     o.check = known && argc == 4 && std::strcmp(argv[2], "--check") == 0;
     if (!known || (!o.check && argv[2][0] == '-')) {
-        std::fprintf(stderr, "usage: prober_oracle <lcii|q605> <out-dir> [frames]\n"
-                             "       prober_oracle <lcii|q605> --check <mame.tsv>\n"
+        std::fprintf(stderr, "usage: prober_oracle <machine> <out-dir> [frames]\n"
+                             "       prober_oracle <machine> --check <mame.tsv>\n"
                              "       prober_oracle --extract <image> <out.tsv>\n");
         return 2;
     }
@@ -264,5 +370,5 @@ int main(int argc, char** argv) {
         std::printf("SKIP: needs dev/prober/build/POM68KProber.bin (dev/README.md)\n");
         return 0;
     }
-    return std::strcmp(argv[1], "lcii") == 0 ? lcii(o, bin) : q605(o, bin);
+    return dispatch(argv[1], o, bin);
 }

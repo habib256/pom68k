@@ -10,7 +10,8 @@
 # built Prober.
 add_executable(prober_oracle tests/prober_oracle.cpp)
 target_link_libraries(prober_oracle PRIVATE pom68k_core)
-foreach(pair lcii:maclc2 q605:macqd605)
+foreach(pair lcii:maclc2 q605:macqd605 q800:macqd800 c650:macct650
+             q630:macqd630 q700:macqd700)
     string(REPLACE ":" ";" pair "${pair}")
     list(GET pair 0 profile)
     list(GET pair 1 mame)

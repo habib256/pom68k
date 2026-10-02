@@ -54,12 +54,19 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   Le reste est couvert par `gui_windows_test`, `gui_relaunch_smoke_test`,
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
-- [ ] **Étendre l'oracle invité différentiel aux autres machines que MAME
-  porte** (Quadra 800, Centris 650, Quadra 630, Quadra 700). Le LC II et
-  le Quadra 605 ont leur gate (`<profil>_prober_oracle_etalon`, 71 et 66
-  champs jugés, `CHANGELOG` 2026-10-02 (seventh), (eighth)). Chaque
-  machine suivante ajoute une branche à `tests/prober_oracle.cpp` et son
-  rapport MAME.
+- [ ] **Étendre l'oracle invité différentiel aux profils frères.** Six
+  machines ont leur gate `<profil>_prober_oracle_etalon` (LC II, Quadra
+  605/800/630/700, Centris 650 ; `CHANGELOG` 2026-10-02 (seventh) à
+  (ninth)). MAME porte aussi les Centris 610, Quadra 610/650/900/950, LC
+  475/575/580, LC, LC III, Mac II… : chacun = une branche de
+  `tests/prober_oracle.cpp` et son rapport MAME.
+- [ ] **Trancher le `refNum` du disque SCSI au Quadra 630.** Même disque,
+  même ROM : MAME installe le pilote à l'unité 53 (chemin Driver43, unité
+  libre cherchée depuis 48, `BootItt.c` `SOpenDriver`), POM68K à l'unité
+  statique 32 + ID. `drvrIs43` se lit sur la carte de partitions, donc le
+  chemin `BootItt.c` devrait trancher pareil : l'écart naît ailleurs
+  (ATA Manager du 630, ou réinstallation du pilote par le System). Le
+  champ est non jugé dans `q630_prober_oracle_etalon` d'ici là.
 - [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
   la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU
   du 68040 : un hybride qu'aucun Mac n'a été. Passer à `$A55A2225` déplace

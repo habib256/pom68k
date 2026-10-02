@@ -8,19 +8,23 @@
 # under MAME (romset built from the tree's own ROM), reads both reports back
 # out of the images and diffs them.
 #
-#   tools/prober_oracle.sh <lcii|q605> <work-dir> [mame-seconds]
+#   tools/prober_oracle.sh <machine> <work-dir> [mame-seconds]
 #
 #   lcii  MAME maclc2,   hdv/ref/System 7.1 HD.dsk, 10 MB, FPU socket filled
 #   q605  MAME macqd605, hdv/ref/MacOS-8.1-boot.vhd, 32 MB
+#   q800  MAME macqd800, the same volume, 32 MB, bios "original" (F1A6F343)
+#   c650  MAME macct650, likewise
+#   q630  MAME macqd630, the same volume, 32 MB
+#   q700  MAME macqd700, hdv/ref/System 7.1 HD.dsk, 8 MB
 #
 # <work-dir>/mame.tsv is what `<profile>_prober_oracle_etalon` compares
 # POM68K with: after a change to the Prober, the volume or the rig, copy it
 # to tools/prober_oracle_<mame-system>.tsv.
 #
 # Needs: build/prober_oracle, dev/prober/build/POM68KProber.bin, MAME, the
-# profile's ROM and its MCU firmware (roms/egret, roms/cuda). MAME is
-# `$MAME` if set, else `mame` on PATH, else the flatpak org.mamedev.MAME
-# (the x86-64 host's).
+# profile's ROM and its MCU firmware (roms/egret, roms/cuda, roms/adbmodem).
+# MAME is `$MAME` if set, else `mame` on PATH, else the flatpak
+# org.mamedev.MAME (the x86-64 host's).
 #
 # Read the diff with the MAME model's limits in mind: maclc raises no bus
 # error on unmapped space, so a probe MAME calls "present" there is not
@@ -28,7 +32,7 @@
 # which fields are not compared and why.
 set -euo pipefail
 
-usage="usage: tools/prober_oracle.sh <lcii|q605> <work-dir> [mame-seconds]"
+usage="usage: tools/prober_oracle.sh <lcii|q605|q800|c650|q630|q700> <work-dir> [mame-seconds]"
 machine=${1:?$usage}
 work=${2:?$usage}
 secs=${3:-90}
@@ -40,6 +44,8 @@ elif command -v mame >/dev/null; then mame=(mame)
 else mame=(flatpak run "--filesystem=$work" org.mamedev.MAME)
 fi
 
+extra=()
+bus=scsi                                      # MAME's SCSI slot prefix
 case "$machine" in
 lcii)
     system=maclc2
@@ -78,6 +84,34 @@ q605)
     cp "$root"/roms/cuda/*.bin "$work/roms/cuda/"
     ram=32M                                   # POM68K's Q605 gates run 32 MB
     ;;
+q800|c650)
+    # macct650 is a clone of macqd800: one romset, and the tree's F1A6F343
+    # is MAME's bios "original" (its default is the later F1ACAD13).
+    [ "$machine" = q800 ] && system=macqd800 || system=macct650
+    mkdir -p "$work/roms/macqd800" "$work/roms/adbmodem"
+    cp "$root/roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM" \
+       "$work/roms/macqd800/f1a6f343.rom"
+    cp "$root/roms/adbmodem/342s0440-b.bin" "$work/roms/adbmodem/"
+    extra=(-bios original)
+    ram=32M
+    ;;
+q630)
+    system=macqd630
+    mkdir -p "$work/roms/macqd630" "$work/roms/cuda"
+    cp "$root/roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM" \
+       "$work/roms/macqd630/06684214.bin"
+    cp "$root"/roms/cuda/*.bin "$work/roms/cuda/"
+    bus=f108:scsi                             # the internal disk is IDE there
+    ram=32M
+    ;;
+q700)
+    system=macqd700
+    mkdir -p "$work/roms/macqd700" "$work/roms/adbmodem"
+    cp "$root/roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM" \
+       "$work/roms/macqd700/420dbff3.rom"
+    cp "$root/roms/adbmodem/342s0440-b.bin" "$work/roms/adbmodem/"
+    ram=8M                    # MAME 0.287's macqd700 is black with 20 or 36
+    ;;
 *) echo "$usage" >&2; exit 2 ;;
 esac
 
@@ -89,10 +123,10 @@ esac
 # as on POM68K (MAME's default is ID 6); the blank "Infinite HD" companion,
 # when there is one, at ID 1 as on POM68K (InfiniteHdCompanion.h).
 cp "$work/prepared.hd" "$work/mame.hd"
-disks=(-scsi:0 harddisk -scsi:6 "" -hard1 mame.hd)
-[ -f "$work/companion.hd" ] && disks=(-scsi:0 harddisk -scsi:1 harddisk -scsi:6 ""
+disks=("-$bus:0" harddisk "-$bus:6" "" -hard1 mame.hd)
+[ -f "$work/companion.hd" ] && disks=("-$bus:0" harddisk "-$bus:1" harddisk "-$bus:6" ""
                                       -hard1 mame.hd -hard2 companion.hd)
-(cd "$work" && "${mame[@]}" -rompath roms -cfg_directory cfg "$system" -ramsize "$ram" \
+(cd "$work" && "${mame[@]}" -rompath roms -cfg_directory cfg "$system" -ramsize "$ram" "${extra[@]}" \
      "${disks[@]}" -video none -sound none -nothrottle -seconds_to_run "$secs" >/dev/null)
 
 "$root/build/prober_oracle" --extract "$work/mame.hd" "$work/mame.tsv"
