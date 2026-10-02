@@ -98,14 +98,17 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché
   le 2026-09-17.)
 - [ ] **Synchroniser le SCC sur l'horloge VIA au Centris et au Quadra 700.**
-  Fait sur Q605/Q630 (`calibration_040_etalon`), retenu ici : avec la
-  synchro, la souris ne bouge plus sur le Centris (RawMouse figé dès le
-  Finder, `centris_soak_etalon`), alors que MAME tourne le même PIC1654S
-  avec elle. D'abord comprendre ce qui casse dans notre chemin ADB PIC
-  (`CHANGELOG` 2026-09-27 (later)). Acquis : pas d'orage SCC au Finder
-  (0-40 accès/s), et avec la synchro activée seulement une fois le Finder
-  atteint, la souris bouge et le soak passe — le dommage se fait pendant
-  le boot (init ADB). Sondes sur la branche `wip/centris-scc-adb`.
+  Fait sur Q605/Q630 (`calibration_040_etalon`), retenu ici. La souris
+  morte n'est pas un défaut du PIC : c'est une course de la ROM (`@sendCmd`
+  repasse ST 3→0 en 17,8 µs, sous le balayage de 23 µs du PIC), qu'Apple a
+  corrigée plus tard, et que notre 040 provoque parce qu'il atteint une
+  lecture PRAM 74 µs après l'autopoll contre 379 µs chez MAME (`CHANGELOG`
+  2026-10-02). Le défaut sans synchro gagne la même course de 63 cycles :
+  il est fragile aussi. Reste à trancher le débit réel du 68LC040 sur ce
+  chemin (`cacheBoost` 4 ; boost 2 passe la période PIC de justesse, boost
+  3 non) — *Bloqué : un chiffre matériel (TimeDBRA d'un vrai Centris 650 ou
+  Quadra 700, ou une mesure de la fenêtre ST).* Le Quadra 700 n'est pas
+  encore instrumenté.
 - [ ] **Affiner les latences VIA sur les compacts : T1 et l'IACK.** Reste
   la latence écriture T1CH → IFR.T1 (N+1 ici, N+3 chez MAME) et l'IACK
   autovecteur calé sur l'horloge E (`vpa_sync` chez MAME). Chacune attend

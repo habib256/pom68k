@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 599 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 600 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 25 |
 | [Save states](#save-states) | 8 |
-| [Machine bring-ups](#machine-bring-ups) | 72 |
+| [Machine bring-ups](#machine-bring-ups) | 73 |
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -467,6 +467,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-19 (fourth)** — [A pressed CD game, played: music, speech and effects off its Red Book tracks on an LC 475](CHANGELOG.md#2026-09-19-cd-game)
 - **2026-09-19 (second)** — [Six profiles pinned by their pixels, and the pin holds across engines](CHANGELOG.md#2026-09-19-pixel-pins)
 - **2026-09-26 (evening)** — [All 39 profiles pinned: the LC 520 boots its reference once the TEST drive yields it](CHANGELOG.md#2026-09-26-pins-all-39)
+- **2026-10-02** — [The Centris mouse dies in a ROM race Apple fixed later, not in the PIC: our 040 reaches the PRAM read five times sooner than MAME's](CHANGELOG.md#2026-10-02-centris-adb-race)
 
 ## Build, packaging and release
 

@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"a defect of POM68K's PIC path that correct SCC timing exposes" (2026-09-27 (later)) — the PIC is faithful; the ROM's `@sendCmd` toggles ST 3→0 in 17.8 µs, under the PIC's 23 µs scan, because our 040 reaches a PRAM read 74 µs after the autopoll where MAME's takes 379 µs; the sync-off default wins the same race by 63 cycles** → [2026-10-02 — The Centris mouse dies in a ROM race…](#2026-10-02-centris-adb-race)
 - **"the LC 575 does not pin the LC 475's value; recorded as measured, not yet explained" (2026-09-26) — it does: the LC 575's pin was a half-drawn desktop, still for 170 frames while the Finder issued 123 SCSI commands; a settle now also waits for a quiet disk, and the LC 575 pins `eefb49d126a73732` like the LC 475 and the Quadra 605** → [2026-09-26 (later) — A still screen is not a finished boot](#2026-09-26-settle-quiet-disk)
 - **"a pin names the machine" (2026-09-19, 2026-09-25 (later)) — it named the machine on whatever volume the host happened to hold: the LC III's pin was taken on its third-choice image, so a host holding the locked System 7.5.3 would fail a pin about another disk; pins are now keyed `<gate>@<volume>`** → [2026-09-26 — Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
 - **"there is a missing dump: an `Apple_Driver_ATA` partition with Apple's real ATA driver" (2026-09-17 (twentieth)) — the driver ships inside Drive Setup, which is on the reference volume and on the retail CD; what actually blocks an IDE boot is that the F108 ATA interrupt reaches no interrupt level** → [2026-09-17 (twenty-fourth) — The ATA driver is not a missing dump…](#2026-09-17-ata-driver-not-missing)
@@ -467,6 +468,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02** — [The Centris mouse dies in a ROM race Apple fixed later, not in the PIC: our 040 reaches the PRAM read five times sooner than MAME's](#2026-10-02-centris-adb-race)
 - **2026-09-27 (later)** — [The Cuda 040 boards' SCC answers at the VIA's pace: TimeSCCDB was nine times too large — and on the PIC boards the same fix kills the mouse](#2026-09-27-scc-040)
 - **2026-09-27** — [The compacts' speaker hears the buffer the beam reads: 13 % of the boot chime was being read at the wrong moment](#2026-09-27-sound-per-line)
 - **2026-09-26 (late night)** — [The compacts calibrate themselves as MAME's do: the VIA T2 load latency and the /VPA E-clock cycle, found through the ROM's own TimeDBRA — and a restart race on seven platforms it exposed](#2026-09-26-via-vpa-t2)
@@ -1053,6 +1055,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-02-centris-adb-race"></a>
+## 2026-10-02 — The Centris mouse dies in a ROM race Apple fixed later, not in the PIC: our 040 reaches the PRAM read five times sooner than MAME's
+
+Follow-up of [2026-09-27 (later)](#2026-09-27-scc-040), which blamed POM68K's
+PIC1654S path for the dead mouse when the SCC sync is on. It is not the PIC.
+`centris_beyond_etalon` gained probes (`DIAG_SYNC_WIN`, `DIAG_SCCDB`,
+`DIAG_ORB`, `DIAG_PCSAMP`, `DIAG_BOOST`, `DIAG_ADB_TRACE`/`DIAG_PIC_TRACE`)
+and MAME 0.289 `macct650 -bios original` (the same F1A6F343 image) was tapped
+from Lua on VIA1 ORB.
+
+**Not the value, not the SCC.** Without the sync but TimeSCCDB poked to
+`$030E` the mouse moves; with the sync and TimeSCCDB poked back to `$1BDC`
+it is dead. Bisecting the frames during which the sync is on: 264-280 kills
+it, every 4- or 8-frame sub-window passes — a phase effect, not a routine.
+
+**What breaks.** The ADB trace shows the mouse's Talk R3 (`$3F`) arriving on
+the bus as `$FC`, and the Listen R3 that moves the mouse to handler 4 never
+sent. ROM `$4080A958` ends ADB init (clears bit 5 of the ADB flags at
+`$15D`, the bit the boot code spins on at `$4080A870`) and starts the
+autopoll (`$FC`, ST=0). The boot code resumes and reaches a PRAM read
+(`$408B35D4`, RTC bit-bang at IPL 7 for ~300 µs) **74 µs** later — while the
+PIC is still clocking `$FC` in. The SHIFT interrupt waits for the RTC; then
+StartAutoPoll sets ST=3 and `@sendCmd` (in state 3, FDBInt idle) sets ST=0
+for the queued `$3F` **446 cycles (17.8 µs) later**. The PIC samples ST once
+per idle loop, 766 cycles (≈ 23 µs, 3.6864 MHz ÷ 8 as MAME): it sees the
+blip or not depending on phase. Missing it, it keeps the stale `$FC` and the
+`$3F` is lost. The run without the sync has the same 446-cycle window and
+the PIC caught it with 63 cycles to spare: **the shipping default is lucky,
+not right.**
+
+**The ROM knows.** Apple's later `ADBPrimitives.a` inserts a TimeViaDB-based
+wait after StartAutoPoll — « We have to give the xcvr processor time to
+recognize the state change into state 3 before we change back to state 0,
+otherwise it will be out of sync » — and this ROM already waits 49 VIA reads
+(`$408B2CAC`) on its other path. The `@sendCmd` path has no wait.
+
+**Where MAME differs.** MAME's PIC receive takes the same ~295 µs. Its
+68040 then reaches the PRAM read **after** ST=3 (+379 µs from the send,
+against our +74 µs): its first window is 554 µs and every later one 65-83 µs,
+never under the PIC period. POM68K's later windows are 1851 cycles (74 µs),
+like MAME's; only the first is short. The difference is CPU throughput on the
+non-I/O code between (a heap loop at `$4080EA7C`): the `cacheBoost` overlay
+(4) makes this path ~5× faster than MAME, as TimeDBRA already said (`$4101`,
+1.5 cycles a DBRA, against MAME's `$1866`). Measured minimum ST=3→0 window
+over a whole boot with the sync on, PIC period 766: boost 4 → 446, boost 3 →
+338, boost 2 → 842. Boost 2 and 3 both keep the mouse with the sync; only
+boost 2 is past the period, and narrowly.
+
+**Not changed.** The default stays sync-off on the Centris and Quadra 700.
+No PIC latch was added: PB4/PB5 reach RA0/RA1 directly on the board and in
+MAME. Which side of the race the real machine falls on is a question about
+the real 68LC040's throughput, for which the tree holds no hardware figure.
 
 <a id="2026-09-27-scc-040"></a>
 ## 2026-09-27 (later) — The Cuda 040 boards' SCC answers at the VIA's pace: TimeSCCDB was nine times too large — and on the PIC boards the same fix kills the mouse
