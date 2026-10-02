@@ -469,6 +469,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (night)** — [The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have](#2026-10-02-prober-oracle)
 - **2026-10-02 (evening)** — [The pixel pins hold on AArch64, except the compacts' floppy — and this host's `Disk605.dsk` is no longer the one both hosts shared on 2026-09-09](#2026-10-02-pins-aarch64)
 - **2026-10-02 (later)** — [The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it](#2026-10-02-a64-late-ipl)
 - **2026-10-02** — [The Centris mouse dies in a ROM race Apple fixed later, not in the PIC: our 040 reaches the PRAM read five times sooner than MAME's](#2026-10-02-centris-adb-race)
@@ -1058,6 +1059,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-02-prober-oracle"></a>
+## 2026-10-02 (night) — The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have
+
+`TODO` § Preuve listed four prerequisites for "Retro68 as a differential
+guest oracle"; none was a blocker on this host. The probe already existed:
+the POM68K Prober (`dev/prober`) writes Gestalt, low memory, a bus-error
+topology and the device inventory as a TSV next to itself the moment it
+launches.
+
+**The rig.** `lcii_prober_oracle` (dev tool) puts the Prober in Startup
+Items of the LC II reference volume (`boot.vhd`, `HfsInject`), saves that
+image, boots it to the Finder and saves it again. `tools/prober_oracle.sh`
+builds MAME's `maclc2` set from the tree's ROM (four byte lanes, CRCs
+match), boots a copy of the same prepared image there (10 MB, FPU socket
+filled through maclc's `:config` port), pulls both TSVs out with the
+Retro68 hfsutils and diffs them. 48 s end to end, identical on re-run.
+
+**What agrees.** Machine type `$25`, System `$0755`, ROM version, size,
+base, checksum and ID word, CPU, MMU, `hwAttr`, QuickDraw `$230`, `hwCfg`
+`$FC00`, every V8 and 32-bit device probe at its real address, the two ADB
+devices with their handlers, the volume, the Sound Manager attributes, no
+slots.
+
+**What differs, and who can judge it.**
+
+| Field | MAME | POM68K | Reading |
+|---|---|---|---|
+| `fpu` | 1 (68881) | 2 (68882) | Gestalt reads the FSAVE frame; MAME's 030 FPU produces 68881 frames. The LC II socket takes a 68882 — MAME's limit |
+| clock | host time | 1904 + 17 s | different RTC seeding, not compared |
+| `$EFE1FE`, `$F02000` probes | present | absent (bus error) | MAME maps nothing at either and maclc raises **no** bus error on unmapped space: its "present" is not evidence |
+| SCSI unit | ID 6 (`-39`) | ID 0 (`-33`) | rig configuration |
+| `.Sony` drive 2 | absent | **present** | MAME wires `floppy[1]` as not connected; POM68K gives every desktop an external drive since 2026-09-09 (sixth) — the LC II has no external floppy port |
+| `MemTop` | `$20BD48` | `$20D5B8` | 6 256 bytes, not explained |
+
+The bare LC II (no 68882) could not be compared: under POM68K it still
+does not reach the Finder from cold init (the open divergence of
+2026-09-17), so the Prober never runs.
 
 <a id="2026-10-02-pins-aarch64"></a>
 ## 2026-10-02 (evening) — The pixel pins hold on AArch64, except the compacts' floppy — and this host's `Disk605.dsk` is no longer the one both hosts shared on 2026-09-09

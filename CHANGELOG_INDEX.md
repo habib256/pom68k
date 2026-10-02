@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 602 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 603 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 89 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 53 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 54 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 34 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 97 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 27 |
@@ -171,6 +171,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17 (fifth)** — [The bare LC II narrowed to one word: the ROM elects its FPU record on productKind $0D, and MAME computes the same D2](CHANGELOG.md#2026-09-17-lcii-election-traced)
 - **2026-09-17 (fourth)** — [PA0 is not the LC II's FPU bit: the ROM requires it high, a day-old change of mine is reverted, and the $50FC0000 bus error is exonerated](CHANGELOG.md#2026-09-17-lcii-pa0-reverted)
 - **2026-09-17 (sixteenth)** — [Every board can play a CD now, the volume knob works, and the cost was moved off the 68000's hottest loop](CHANGELOG.md#2026-09-17-cdda-fourth-stage)
+- **2026-10-02 (night)** — [The first guest-side differential oracle: the same Prober, the same image, POM68K against MAME on the LC II — and the LC II has a floppy port it does not have](CHANGELOG.md#2026-10-02-prober-oracle)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

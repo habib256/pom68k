@@ -54,11 +54,17 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   Le reste est couvert par `gui_windows_test`, `gui_relaunch_smoke_test`,
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
-- [ ] **Introduire Retro68 comme oracle invité différentiel.** Sondes
-  Toolbox/Device Manager/XPRAM comparées sous MAME et POM68K ; la toolchain
-  est installée sur le M4 (`dev/Retro68-build`). *Bloqué : romset `maclc2`
-  bâti depuis notre ROM, tap Lua, recette du co-trace SWIM du LC II, et la
-  première sonde à écrire.*
+- [ ] **Étendre l'oracle invité différentiel et en faire un gate.** Le
+  premier tourne : Prober sous MAME `maclc2` et POM68K LC II, même image,
+  `tools/prober_oracle.sh` (`CHANGELOG` 2026-10-02 (night)). Reste : un
+  gate sur les champs que les deux modèles savent juger, l'écart `MemTop`
+  (6 256 octets) à expliquer, puis les autres machines que MAME porte
+  (Quadra 605/800, Centris 650).
+- [ ] **Décider du lecteur externe sur les profils qui n'ont pas de port.**
+  Le LC II présente un drive 2 au `.Sony` que MAME (`floppy[1]` non
+  connecté) et la machine réelle n'ont pas ; c'est le choix produit du
+  2026-09-09 (sixth) pour les 36 profils de bureau. Fidélité ou commodité :
+  à trancher, profil par profil.
 
 ---
 
