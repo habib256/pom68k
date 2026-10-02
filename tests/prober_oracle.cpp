@@ -88,15 +88,6 @@ const Unjudged k040Unjudged = {
     { "volume.vol0.kbFree", kCalendar },
 };
 
-// The Quadra 630 also installs its SCSI disk's driver elsewhere: MAME at
-// unit 53 (the Driver43 path's free-slot search from 48), POM68K at the
-// static 32 + ID — same disk, same ROM. Open (TODO § Preuve).
-const Unjudged kQ630Unjudged = [] {
-    Unjudged u = k040Unjudged;
-    u["drive.drv1.refNum"] = "open: MAME's driver at unit 53, POM68K's at 32 + ID (TODO § Preuve)";
-    return u;
-}();
-
 // The Quadra 700 runs System 7.1, which has no CalendarMenu.
 const Unjudged kQ700Unjudged = {
     { "clock.macSeconds", kRtc },
@@ -301,7 +292,7 @@ int q630(const Options& o, const std::string& bin) {
     Q630Memory mem(config, 32u << 20);
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Q630Cpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
-    return run(mem, cpu, o, img, bin, Q630Memory::kCpuHz / 60, kQ630Unjudged, [] {});
+    return run(mem, cpu, o, img, bin, Q630Memory::kCpuHz / 60, k040Unjudged, [] {});
 }
 
 // Spike, MAME macquadra700.cpp: the Quadra 700, on System 7.1 in 8 MB.
