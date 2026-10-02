@@ -102,6 +102,10 @@ q630)
        "$work/roms/macqd630/06684214.bin"
     cp "$root"/roms/cuda/*.bin "$work/roms/cuda/"
     bus=f108:scsi                             # the internal disk is IDE there
+    # MAME plugs an imageless IDE disk into ata:0 by default (f108.cpp); with
+    # it the SCSI disk's driver lands at unit 53, without it at 32 + ID as
+    # on POM68K's 630, which has no IDE device (CHANGELOG 2026-10-03).
+    extra=(-f108:ata:0 "")
     ram=32M
     ;;
 q700)

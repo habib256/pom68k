@@ -1,4 +1,4 @@
-POM68K-Prober v1	time=-421154406	findings=70
+POM68K-Prober v1	time=-421151125	findings=70
 # valeurs BRUTES telles que la machine les rend.
 # l'interpretation est a l'ecran, jamais ici.
 ident	machineType	0x00000062	INFO
@@ -17,9 +17,9 @@ ident	romChksum	0x06684214	INFO
 ident	romIdWord	0x067C	INFO
 ident	rom85	0x3FFF	INFO
 ident	hwCfg	0xFC80	INFO
-ident	memTop	0x00743500	INFO
-clock	macSeconds	-421154417	INFO
-clock	dateTime	2026-10-02 19:07:59	INFO
+ident	memTop	0x0071C740	INFO
+clock	macSeconds	-421151136	INFO
+clock	dateTime	2026-10-02 20:02:40	INFO
 probe	VIA1@Plus	present@0x00EFE1FE	INFO
 probe	SCC@Plus	present@0x009FFFF8	INFO
 probe	SCSI@Plus	present@0x00580000	INFO
@@ -58,7 +58,7 @@ drive	drv0.number	1	INFO
 drive	drv0.refNum	-5	INFO
 drive	drv0.fsid	0	INFO
 drive	drv1.number	8	INFO
-drive	drv1.refNum	-54	INFO
+drive	drv1.refNum	-33	INFO
 drive	drv1.fsid	0	INFO
 drive	drv1.blocks	614400	INFO
 drive	count	2	INFO
