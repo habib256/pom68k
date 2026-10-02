@@ -70,13 +70,13 @@ Mac OS 8.1 et System 7.0), les deux mécanismes expliqués ou tranchés. Puis
 livrer les contrôles produit, et n'ajouter du protocole que sur
 consommateur observé (§ En sommeil).
 
-- [ ] **Bisecter le bras `a64` de `q605_afp_live_etalon` entre les
-  frontières 13 et 14** (du Sélecteur rouvert à la liste de serveurs
-  repeinte). Interp x86-64, `x64` x86-64 et interp AArch64 sont identiques
-  aux 22 frontières ; seul le défaut `a64` s'en écarte, dès
-  `afp_live_3_servers` (8 cycles de retard, puis des totaux réseau
-  différents). Le gate passe dans tous les bras : seule la trace le voit.
-  Références : `scratchpad/2026-09-18/afp/`. *Bloqué : hôte AArch64.*
+- [ ] **Rejouer `q605_afp_live_etalon` sur x86-64 (interp et `x64`)
+  contre les références AArch64 du 2026-10-02.** Le bras `a64` est
+  identique à l'interpréteur aux 23 frontières depuis la correction du
+  ré-échantillonnage IPL hors cache (`CHANGELOG` 2026-10-02) ; le chemin
+  sans cache de l'émetteur `x64` n'a pas été revérifié pour la même
+  classe. Références : `scratchpad/2026-10-02/afp/`. *Bloqué : hôte
+  x86-64.*
 
 ---
 
