@@ -202,6 +202,19 @@ int main() {
     Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
                pom68k::defaultCoreConfig().diagnostics);
     mem.setCpu(&cpu);
+    // POM68K_AFP_IOLOG=<from>,<to>: every guest I/O access between two machine
+    // clocks to stderr — engines that disagree at a boundary are compared by
+    // their first differing access (the a64 bisection of 2026-10-02).
+    long long ioFrom = -1, ioTo = -1;
+    if (const char* k = getenv("POM68K_AFP_IOLOG"))
+        std::sscanf(k, "%lld,%lld", &ioFrom, &ioTo);
+    if (ioFrom >= 0)
+        mem.onIoAccess = [&cpu, ioFrom, ioTo](uint32_t a, bool w, uint32_t v) {
+            const long long c = (long long)cpu.machineClock();
+            if (c >= ioFrom && c <= ioTo)
+                std::fprintf(stderr, "io %c %08X %08X clk=%lld pc=%08X\n",
+                             w ? 'W' : 'R', a, w ? v : 0u, c, cpu.getPC());
+        };
 
     // ── The full stack, exactly main.cpp's wiring (ot_bind's rig + AFP) ──
     AtalkHub hub;

@@ -1956,8 +1956,28 @@ their native line-validation path loses to the fetch window that ran them
 before. The knob stays off until a workload shows the win, and x64 keeps
 the full refusal until its locksteps re-run on an x86-64 host.
 Register-only two-poll forms cannot advance peripheral
-time before their final charge and stay native; cacheless forms and
-single-poll memory instructions are unchanged. The copyback gate pins
+time before their final charge and stay native; single-poll memory
+instructions are unchanged.
+
+**Cacheless forms are not exempt (2026-10-02).** "A cache fill can advance
+the peripherals" was read as the only way time moves inside an instruction;
+an exact MMIO thunk does it too, through the board's own catch-up. On A64
+the cacheless body therefore skipped the post-access sample, and a pin raised
+by the access itself — the VIA1 IFR read `AND.B $1A00(A1),D0` at
+`$40809BC6` raising VIA2 — reached the next boundary as a `CHECK_IRQ` exit
+with a stale `reg.ipl`: Moira took the interrupt one instruction late, after
+`$40809BCA`. `q605_afp_live_etalon` stepped off the interpreter at boundary
+5, 39 cycles, and drifted from there; bisected with `POM68K_JIT_DENY_*` to
+the blocks entering that handler and with `POM68K_AFP_IOLOG` to the access.
+Off the cache path A64 now applies the same rule unconditionally — late
+re-sample for the poll-after-final-access class, exact fallback for any
+other placement — and the trace matches the interpreter at all 23
+boundaries. Price on `jit_bench` (Q605, same build configuration, ABBA ×6):
++1.35 %, fingerprint unchanged, 0.86 M more instructions replayed out of
+647 M. A variant that kept those RAM reads native was cost-free but diverged
+at the same boundary — Moira's own mid-instruction `SYNC`s can cross a device
+deadline between the samples. The x64 emitter's cacheless path has not been
+re-checked on an x86-64 host. The copyback gate pins
 `ADD.W (A0),D0` to one exact fallback with interpreter-identical result,
 flags, queue and cycles on both hosts. The original canonical replay is green
 past the failing checkpoint with native cache-line traffic still enabled;

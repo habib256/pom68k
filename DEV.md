@@ -2155,6 +2155,9 @@ one gets re-measured without paying for the mount again),
 `POM68K_AFP_OUTAGE` = `data|resource` (`q605_afp_live_etalon`: interrupt AFP
 during the selected fork's first copy, then exercise guest reconnection and
 a fresh two-fork copy; unset keeps the clean-disconnect scenario),
+`POM68K_AFP_IOLOG` = `<from>,<to>` (`q605_afp_live_etalon`: every guest I/O
+access between two machine clocks to stderr — two engines that disagree at
+a boundary are compared by their first differing access),
 `POM68K_BRIDGE_SHARE` (`q605_afp_bridge_probe`: the folder the REAL server
 serves — `afpd`'s own `AppleVolumes.default`, default `input` — since that
 probe's proof is what appears in it) and `POM68K_BRIDGE_KEEP` = `1` (leave

@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"cacheless forms and single-poll memory instructions are unchanged" (`POM68K_JIT.md`, positioned polls, 2026-09-03) — a cacheless exact MMIO thunk advances device time between the two IPL samples too; a64 took the VIA2 interrupt one instruction late and left `q605_afp_live_etalon`'s oracle at boundary 5** → [2026-10-02 (later) — The a64 arm of the AFP trace was one instruction late…](#2026-10-02-a64-late-ipl)
 - **"a defect of POM68K's PIC path that correct SCC timing exposes" (2026-09-27 (later)) — the PIC is faithful; the ROM's `@sendCmd` toggles ST 3→0 in 17.8 µs, under the PIC's 23 µs scan, because our 040 reaches a PRAM read 74 µs after the autopoll where MAME's takes 379 µs; the sync-off default wins the same race by 63 cycles** → [2026-10-02 — The Centris mouse dies in a ROM race…](#2026-10-02-centris-adb-race)
 - **"the LC 575 does not pin the LC 475's value; recorded as measured, not yet explained" (2026-09-26) — it does: the LC 575's pin was a half-drawn desktop, still for 170 frames while the Finder issued 123 SCSI commands; a settle now also waits for a quiet disk, and the LC 575 pins `eefb49d126a73732` like the LC 475 and the Quadra 605** → [2026-09-26 (later) — A still screen is not a finished boot](#2026-09-26-settle-quiet-disk)
 - **"a pin names the machine" (2026-09-19, 2026-09-25 (later)) — it named the machine on whatever volume the host happened to hold: the LC III's pin was taken on its third-choice image, so a host holding the locked System 7.5.3 would fail a pin about another disk; pins are now keyed `<gate>@<volume>`** → [2026-09-26 — Thirty-eight profiles pinned, and a pin names the volume too](#2026-09-26-pins-by-volume)
@@ -468,6 +469,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-02 (later)** — [The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it](#2026-10-02-a64-late-ipl)
 - **2026-10-02** — [The Centris mouse dies in a ROM race Apple fixed later, not in the PIC: our 040 reaches the PRAM read five times sooner than MAME's](#2026-10-02-centris-adb-race)
 - **2026-09-27 (later)** — [The Cuda 040 boards' SCC answers at the VIA's pace: TimeSCCDB was nine times too large — and on the PIC boards the same fix kills the mouse](#2026-09-27-scc-040)
 - **2026-09-27** — [The compacts' speaker hears the buffer the beam reads: 13 % of the boot chime was being read at the wrong moment](#2026-09-27-sound-per-line)
@@ -1055,6 +1057,61 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-02-a64-late-ipl"></a>
+## 2026-10-02 (later) — The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it
+
+`TODO` § Services réseau carried "bisect the a64 arm of
+`q605_afp_live_etalon` between boundaries 13 and 14 — blocked: AArch64
+host". This host is the AArch64 one.
+
+**Re-measured first.** On today's tree (the Q605 SCC sync of 2026-09-27
+moved every clock) the interpreter and the `a64` default part at
+**boundary 5**, `afp_live_5_volumes`, 39 cycles, then drift — the
+interpreter even takes an extra Chooser attempt the a64 run does not.
+`threaded` is identical to the interpreter through boundary 6, and the
+a64 arm repeats to the cycle: an a64 code-generation fault, not noise.
+
+**Bisected.** `POM68K_JIT_DENY_FROM/_TO` halving the pc space at ~42 s a
+probe (`POM68K_AFP_PHASE=6`): RAM no, ROM yes, down to
+`$40809B40-$40809B80`, then one entry at a time — denying `$40809B68`
+(`TST.B $CB2.W; BNE; JSR (A3)`) or `$40809B6E` (`JSR (A3)`) alone
+restores the oracle; both enter the VIA1 interrupt handler. A new
+`POM68K_AFP_IOLOG` knob logs every guest I/O access between two clocks:
+the first difference is at clock 2 816 168 353, the handler's
+`AND.B $1A00(A1),D0` (VIA1 IFR, `$40809BC6`). The interpreter's next
+access is VIA2's IFR — it took the level-2 interrupt right there; the a64
+run read VIA1's IER first (`$40809BCA`) and took it one instruction later.
+
+**Cause.** Moira's 040 handler for that read samples IPL twice: at the
+loop head and again after the access. The read went through an exact MMIO
+thunk whose catch-up raised VIA2 between the two samples. A64 had the
+post-access re-sample (`lateIplPoll`, 2026-09-03) only on the cache-active
+path; cacheless it did nothing, so the next boundary's `CHECK_IRQ` exit
+reached Moira with a stale `reg.ipl` and the interrupt waited one more
+instruction. `POM68K_JIT.md` had said "cacheless forms … are unchanged" —
+true of cache fills, false of a device read.
+
+**Fix.** Off the cache path, the poll-after-final-access class now
+re-samples at the end of the body unconditionally (the opt-in knob still
+gates only the cache-active admission it was measured on), and every other
+placement takes the exact interpreter path, as it already did with the
+cache on. A cheaper variant — keep those instructions native while their
+reads hit RAM, replay on anything else — cost nothing and diverged at the
+same boundary: Moira's own mid-instruction `SYNC`s cross device deadlines
+between the samples even on RAM.
+
+**Evidence.** `q605_afp_live_etalon` under a64: all **23 boundaries
+identical** to the interpreter, clock and fingerprint. `scope-engine` +
+`jit-fast` green, `m040` 86/86 with zero soft-skips. `jit_bench` (Q605)
+same-configuration ABBA ×6: **+1.35 %**, fingerprint `c9f007d9f1eccab7`
+unchanged, slow-path instructions 0.32 M → 1.18 M of 647 M. A first
+measurement read +14.8 %: its baseline came from a fresh worktree configure,
+which defaults to LTO + native — the trap 2026-09-07 already recorded;
+rebuilt in the same tree the variants read +1.35 % and +0.03 %.
+
+Not done: the x64 emitter's cacheless path was not re-checked (no x86-64
+host here). Interpreter reference trace: `scratchpad/2026-10-02/afp/`.
 
 <a id="2026-10-02-centris-adb-race"></a>
 ## 2026-10-02 — The Centris mouse dies in a ROM race Apple fixed later, not in the PIC: our 040 reaches the PRAM read five times sooner than MAME's
