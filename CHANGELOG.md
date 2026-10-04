@@ -1090,7 +1090,10 @@ this line of work on 2026-09-18 — the `a64` arm alone stepping off the oracle
 
 The same session put the reference `Disk605.dsk` (`6ea0c1c7…`, from the TEST
 drive) on this host: the seven gates that boot it pass with the pins recorded
-on x86-64, so all 39 pins now hold on AArch64.
+on x86-64, so all 39 pins now hold on AArch64. The six guest-oracle gates recorded on
+x86-64 (LC II, Quadra 605/800/630/700, Centris 650) pass here too, 0 fields
+differing — their goldens are host-independent. `STATUS.md` regenerated for
+the aarch64 registry (358 gates).
 
 <a id="2026-10-03-q630-ide"></a>
 ## 2026-10-03 — The Quadra 630's SCSI driver was not elsewhere: MAME's default 630 carries an imageless IDE disk
