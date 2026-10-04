@@ -75,14 +75,6 @@ Mac OS 8.1 et System 7.0), les deux mécanismes expliqués ou tranchés. Puis
 livrer les contrôles produit, et n'ajouter du protocole que sur
 consommateur observé (§ En sommeil).
 
-- [ ] **Rejouer `q605_afp_live_etalon` sur AArch64 (interp et `a64`)
-  contre les références x86-64 du 2026-10-02 (sixth).** Le drive B
-  débranché au Q605 a déplacé toutes les frontières dès la 0 ; sur x86-64
-  `x64` égale l'interpréteur aux 22 frontières, et avant ce changement
-  `x64` égalait la référence AArch64 aux 23 (`CHANGELOG` 2026-10-02
-  (sixth)). Références : `scratchpad/2026-10-02/afp/`. *Bloqué : hôte
-  AArch64.*
-
 ---
 
 ## Jalon 4 — Fidélité matérielle et LLE

@@ -474,6 +474,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-04** — [The AFP trace is one trace: interpreter and native engine on both hosts agree at all 22 boundaries](#2026-10-04-afp-four-arms)
 - **2026-10-03** — [The Quadra 630's SCSI driver was not elsewhere: MAME's default 630 carries an imageless IDE disk](#2026-10-03-q630-ide)
 - **2026-10-02 (ninth)** — [Six machines under the guest oracle: the Quadra 800, Centris 650 and Quadra 700 agree with MAME; the Quadra 630 installs its SCSI driver elsewhere](#2026-10-02-oracle-six)
 - **2026-10-02 (eighth)** — [The oracle's second machine finds the Quadra 605 calling itself an LC 475: the GUI profiles never set the board ID](#2026-10-02-q605-oracle)
@@ -1070,6 +1071,26 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-04-afp-four-arms"></a>
+## 2026-10-04 — The AFP trace is one trace: interpreter and native engine on both hosts agree at all 22 boundaries
+
+`TODO` § Services réseau asked for the AArch64 half of
+[2026-10-02 (sixth)](#2026-10-02-x86-disk605-afp): replay `q605_afp_live_etalon`
+here, interpreter and `a64`, against the x86-64 pair recorded at HEAD after
+drive B was unwired on the Quadra 605.
+
+At `3c4b674`, both AArch64 arms equal the x86-64 interpreter trace at all 22
+boundaries, machine clock and architectural fingerprint: x86-64 interpreter
+≡ x86-64 `x64` ≡ AArch64 interpreter ≡ AArch64 `a64`. The gap that opened
+this line of work on 2026-09-18 — the `a64` arm alone stepping off the oracle
+— is closed on the current tree, by the cacheless late-IPL fix of
+[2026-10-02 (later)](#2026-10-02-a64-late-ipl). Traces:
+`scratchpad/2026-10-02/afp/afp_live_trace_aarch64_{interp,a64}_at_3c4b674.txt`.
+
+The same session put the reference `Disk605.dsk` (`6ea0c1c7…`, from the TEST
+drive) on this host: the seven gates that boot it pass with the pins recorded
+on x86-64, so all 39 pins now hold on AArch64.
 
 <a id="2026-10-03-q630-ide"></a>
 ## 2026-10-03 — The Quadra 630's SCSI driver was not elsewhere: MAME's default 630 carries an imageless IDE disk
