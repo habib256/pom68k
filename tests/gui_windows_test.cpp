@@ -252,6 +252,11 @@ int main() {
         session.atBoundary(target);
         check(session.snapshot()->acked == acked, "and posts nothing");
         capture(ui, "debugger-memory");
+        // Close it like a user would, so no focus or input state leaks
+        // into the next window's scenario.
+        state.showWindow = false;
+        ui.frame(draw);
+        ui.frame(draw);
         check(pom68k::gui::parseGuestAddress("$40800000") == 0x40800000u &&
               pom68k::gui::parseGuestAddress("0x2000") == 0x2000u &&
               !pom68k::gui::parseGuestAddress("zz") &&
