@@ -26,6 +26,12 @@
 // fetch never stops; TRAP #0 and a filtered A-line stop at the handler's
 // first instruction with the stacked PC (and trap word); a non-matching
 // trap filter does not stop; and a catchpoint survives a CPU reset.
+// Step over/out on a recursive routine: step over a recursive BSR stops at
+// ITS return, not a deeper invocation's; step out of the middle level
+// ignores the deepest level's RTS; TRAP and A-line are stepped over
+// through their handlers; a breakpoint inside a stepped-over call wins and
+// leaves no stray step behind; a Pause cancels a step out that never
+// returns.
 
 #include "Cpu020.h"
 #include "Cpu030.h"
@@ -203,6 +209,23 @@ uint64_t catchCmd(pom68k::dbg::Session& s, Command::Kind k, uint8_t vector,
     c.catchpoint = {vector, trap};
     return s.post(c);
 }
+
+
+// The recursive program for step over/out, at $3200.
+constexpr uint32_t kRec = 0x3200, kRecCall = 0x3202, kRecAfter = 0x3206,
+                   kSub = 0x320C, kSubCmp = 0x320E, kSubRecurse = 0x3216,
+                   kSubRts = 0x321A;
+const std::vector<uint8_t> kRecursive = {
+    0x70, 0x00,                          // $3200 MOVEQ #0,D0
+    0x61, 0x00, 0x00, 0x08,              // $3202 BSR.W sub
+    0x52, 0x81,                          // $3206 ADDQ.L #1,D1
+    0x60, 0xF6,                          // $3208 BRA.S $3200
+    0x4E, 0x71,                          // $320A NOP
+    0x52, 0x80,                          // $320C sub: ADDQ.L #1,D0
+    0x0C, 0x80, 0x00, 0x00, 0x00, 0x03,  // $320E CMPI.L #3,D0
+    0x6C, 0x04,                          // $3214 BGE.S $321A
+    0x61, 0x00, 0xFF, 0xF4,              // $3216 BSR.W sub (recursion)
+    0x4E, 0x75};                         // $321A RTS
 
 template <class Mem, class Cpu>
 void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
@@ -515,6 +538,117 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         s = waitFor(dbg, [&](const Snapshot& x) {
             return x.acked >= c && x.stopped && x.reason == StopReason::Pause;
         });
+    }
+
+    // ── Step over / step out ───────────────────────────────────────────
+    if (s && s->stopped) {
+        id = poke(dbg, kRec, kRecursive);
+        s = ackedBy(dbg, id);
+        check(s && s->message.empty(), fam, "the recursive program is in place");
+        setReg(dbg, Reg(int(Reg::A0) + 7), 0x8000);
+        setReg(dbg, Reg(int(Reg::D0) + 1), 0);
+        id = setReg(dbg, Reg::PC, kRec);
+        s = ackedBy(dbg, id);
+        auto stepCmd = [&](Command::Kind k, StopReason want) {
+            const uint64_t g = dbg.snapshot()->generation;
+            const uint64_t c = post(dbg, k);
+            return waitFor(dbg, [&](const Snapshot& x) {
+                return x.generation > g && x.acked >= c && x.stopped &&
+                       x.reason == want;
+            });
+        };
+        auto runToBp = [&](uint32_t at) {
+            post(dbg, Command::Kind::AddBreakpoint, at);
+            const uint64_t g = dbg.snapshot()->generation;
+            const uint64_t c = post(dbg, Command::Kind::Continue);
+            SnapPtr r = waitFor(dbg, [&](const Snapshot& x) {
+                return x.generation > g && x.acked >= c && x.stopped &&
+                       x.reason == StopReason::Breakpoint;
+            });
+            post(dbg, Command::Kind::RemoveBreakpoint, at);
+            return r;
+        };
+
+        // Depth 1 is about to recurse (D0 = 1).
+        s = runToBp(kSubRecurse);
+        check(s && s->regs.pc == kSubRecurse && s->regs.d[0] == 1, fam,
+              "stopped on the recursive BSR at depth 1");
+        const uint32_t sp1 = s ? s->regs.a[7] : 0;
+        s = stepCmd(Command::Kind::StepOver, StopReason::Step);
+        check(s && s->regs.pc == kSubRts && s->regs.a[7] == sp1 && s->regs.d[0] == 3,
+              fam, "step over a recursive BSR stops at its own return, not a deeper one");
+        s = stepCmd(Command::Kind::StepOver, StopReason::Step);
+        check(s && s->regs.pc == kRecAfter && s->regs.a[7] == sp1 + 4, fam,
+              "step over an RTS is one step");
+
+        // Depth 2, mid-routine: step out ignores depth 3's RTS.
+        s = runToBp(kSubCmp);
+        s = s && s->regs.d[0] == 2 ? s : runToBp(kSubCmp);
+        check(s && s->regs.pc == kSubCmp && s->regs.d[0] == 2, fam,
+              "stopped at depth 2");
+        const uint32_t sp2 = s ? s->regs.a[7] : 0;
+        s = stepCmd(Command::Kind::StepOut, StopReason::Step);
+        check(s && s->regs.pc == kSubRts && s->regs.a[7] == sp2 + 4 && s->regs.d[0] == 3,
+              fam, "step out returns from depth 2 only (A7 back above it)");
+
+        // A plain instruction, TRAP and an A-line, through their handlers.
+        id = setReg(dbg, Reg::PC, kRec);
+        s = stepCmd(Command::Kind::StepOver, StopReason::Step);
+        check(s && s->regs.pc == kRecCall && s->regs.d[0] == 0, fam,
+              "step over a plain instruction is one step");
+        const uint32_t sp0 = s ? s->regs.a[7] : 0;
+        id = setReg(dbg, Reg::PC, kTrap);
+        s = stepCmd(Command::Kind::StepOver, StopReason::Step);
+        check(s && s->regs.pc == kALine && s->regs.a[7] == sp0, fam,
+              "step over TRAP #0 runs its handler and stops after it");
+        s = stepCmd(Command::Kind::StepOver, StopReason::Step);
+        check(s && s->regs.pc == kAfterALine && s->regs.a[7] == sp0, fam,
+              "step over an A-line runs the trap and stops after it");
+
+        // A breakpoint inside the call wins; no stray step stop follows.
+        id = setReg(dbg, Reg::PC, kRecCall);
+        s = ackedBy(dbg, id);
+        post(dbg, Command::Kind::AddBreakpoint, kSubCmp);
+        s = stepCmd(Command::Kind::StepOver, StopReason::Breakpoint);
+        check(s && s->regs.pc == kSubCmp, fam,
+              "a breakpoint inside a stepped-over call stops there");
+        post(dbg, Command::Kind::RemoveBreakpoint, kSubCmp);
+        auto runsFree = [&] {
+            const uint64_t c0 = post(dbg, Command::Kind::Continue);
+            waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c0 && !x.stopped; });
+            const long q0 = host.quanta.load();
+            waitFor(dbg, [&](const Snapshot&) { return host.quanta.load() > q0 + 2; });
+            const SnapPtr r = dbg.snapshot();
+            const bool free = !r->stopped && r->effectiveEngine == engine;
+            const uint64_t p0 = post(dbg, Command::Kind::Pause);
+            waitFor(dbg, [&](const Snapshot& x) {
+                return x.acked >= p0 && x.stopped && x.reason == StopReason::Pause;
+            });
+            return free;
+        };
+        s = runToBp(kRecAfter);
+        check(s && s->regs.pc == kRecAfter, fam,
+              "the next breakpoint is the next stop: the abandoned step over left none");
+
+        // A step out that never returns (the top-level loop) is cancelled
+        // by Pause, and the cancelled run leaves no stop behind.
+        id = setReg(dbg, Reg::PC, kRec);
+        id = setReg(dbg, Reg(int(Reg::A0) + 7), 0x8000);
+        s = ackedBy(dbg, id);
+        uint64_t c = post(dbg, Command::Kind::StepOut);
+        waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c && !x.stopped; });
+        const long q = host.quanta.load();
+        waitFor(dbg, [&](const Snapshot&) { return host.quanta.load() > q + 2; });
+        check(!dbg.snapshot()->stopped, fam, "a step out with no return keeps running");
+        c = post(dbg, Command::Kind::Pause);
+        s = waitFor(dbg, [&](const Snapshot& x) {
+            return x.acked >= c && x.stopped && x.reason == StopReason::Pause;
+        });
+        check(s != nullptr, fam, "Pause cancels it");
+        check(runsFree(), fam,
+              "after the cancelled run the machine runs free on the user's engine");
+        id = setReg(dbg, Reg::PC, kLoop);
+        s = ackedBy(dbg, id);
     }
 
     // ── Teardown releases a hold inside a quantum ──────────────────────

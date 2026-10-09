@@ -258,6 +258,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **an interactive debugger: where a stop may happen, why the JIT steps aside, and why inspection cannot touch a device** → [2026-10-09 (fourth) — A debugger at the machine boundary…](#2026-10-09-debugger-service)
 - **editing registers or memory from the debugger: why a PC edit does not use `Debugger::jump`, and what keeps the JIT from running the old code** → [2026-10-09 (fifth) — The debugger edits a stopped machine…](#2026-10-09-debugger-edits)
 - **watchpoints and exception stops: where they stop, what they ignore (opcode fetches, PC-relative operands), and how an A-line trap is filtered** → [2026-10-09 (sixth) — Access and exception stops…](#2026-10-09-debugger-stops)
+- **step over/out: why not a temporary PC, which stack decides, and why ending a run must consume its soft stop** → [2026-10-09 (seventh) — Step over and step out…](#2026-10-09-debugger-step-over-out)
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
@@ -484,6 +485,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (seventh)** — [Step over and step out, judged on the stack they started on; and a cancelled run's soft stop could wait dormant for the next breakpoint](#2026-10-09-debugger-step-over-out)
 - **2026-10-09 (sixth)** — [Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints](#2026-10-09-debugger-stops)
 - **2026-10-09 (fifth)** — [The debugger edits a stopped machine: the PC reloads its prefetch without a bus cycle, and a code write outlives no translated block](#2026-10-09-debugger-edits)
 - **2026-10-09 (fourth)** — [A debugger at the machine boundary: a breakpoint holds its quantum, Pause is a quantum boundary, inspection never reads a device](#2026-10-09-debugger-service)
@@ -1102,6 +1104,45 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-debugger-step-over-out"></a>
+## 2026-10-09 (seventh) — Step over and step out, judged on the stack they started on; and a cancelled run's soft stop could wait dormant for the next breakpoint
+
+Third piece of order 3 of `docs/SNOW_IMPLEMENTATION_PLAN.md`. Moira's own
+`Debugger::stepOver` sets a temporary PC after the call; the plan had
+already named why that is not enough: a recursive invocation reaches the
+same PC deeper in the stack. The gate's program is exactly that — a
+routine that calls itself until D0 = 3 — and a temporary-PC step over the
+depth-1 recursive BSR stops at the deepest RTS with A7 eight bytes low.
+
+**The rule.** A run is judged at every instruction boundary (the adapter
+keeps re-arming the step-into soft stop and returns from the hook without
+stopping until the condition holds) on the stack that was active when it
+was armed — USP, ISP or MSP, so an interrupt on another stack is
+invisible to it. Step over a call (BSR, JSR, TRAP #n, A-line, F-line —
+the last because the FPU or its emulation may trap) stops when that stack
+is back at its start depth with the PC on the next instruction, or has
+risen above it, which is how an auto-pop Toolbox trap returns. Step over
+anything else is one step. Step out stops after an RTS/RTD/RTR/RTE that
+began with that stack at or above the start depth, so the deeper level's
+return is ignored. Breakpoints, watchpoints and exception stops met on the
+way stop there and end the run; a Pause cancels it; a step out that never
+returns keeps running until then.
+
+**What the first draft missed.** Ending a run — a breakpoint inside the
+stepped-over call, or a Pause — left Moira's step-into soft stop armed.
+The test continued and saw the machine run free, because removing the
+last breakpoint recomputes `CHECK_BP` from the list alone and so hid the
+soft stop, still set. It would have fired as a "step" the next time any
+breakpoint was set. Moira has no cancel call; `softstopMatches()` is the
+one that consumes an armed step-into and recomputes the flag, and both
+endings now call it. The gate checks the case that exposed it: after the
+interrupted step over, the next stop is the next breakpoint. Mutations —
+a temporary-PC step over, a step out on the first RTS, either consume
+removed — each fail the gate.
+
+The window gains « Par-dessus l'appel » and « Jusqu'au retour » beside
+« Pas à pas ».
 
 <a id="2026-10-09-debugger-stops"></a>
 ## 2026-10-09 (sixth) — Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints

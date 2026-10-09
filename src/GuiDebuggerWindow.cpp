@@ -415,6 +415,10 @@ void drawDebuggerWindow(GuiDebuggerState& state) {
         if (ImGui::Button("Continuer")) post(state, Command::Kind::Continue);
         ImGui::SameLine();
         if (ImGui::Button("Pas à pas")) post(state, Command::Kind::Step);
+        ImGui::SameLine();
+        if (ImGui::Button("Par-dessus l'appel")) post(state, Command::Kind::StepOver);
+        ImGui::SameLine();
+        if (ImGui::Button("Jusqu'au retour")) post(state, Command::Kind::StepOut);
     } else if (ImGui::Button("Pause")) {
         post(state, Command::Kind::Pause);
     }

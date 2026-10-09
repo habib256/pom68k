@@ -67,9 +67,17 @@ public:
             if (pending_ != StopReason::None) {
                 reason = pending_;
                 detail = pendingDetail_;
+            } else if (run_ != Run::None && !runDone()) {
+                // Not there yet: one more instruction, silently.
+                cpu_.debugger.stepInto();
+                return;
             }
             pending_ = StopReason::None;
         }
+        // Any stop ends a run-until step; a breakpoint that interrupts one
+        // finds its soft stop re-armed for the next boundary.
+        if (!soft && run_ != Run::None) dropSoftStop();
+        run_ = Run::None;
         session_.onCpuStop(*this, reason, pc, detail);
     }
 
@@ -309,8 +317,27 @@ public:
         stepArmed_ = true;
         cpu_.debugger.stepInto();
     }
+    void armStepOver() override {
+        std::uint16_t op = 0;
+        if (!opcodeAt(cpu_.getPC(), op) || !isCall(op)) {
+            armStep();
+            return;
+        }
+        startRun(Run::Over);
+        target_ = cpu_.getPC() + disassemble(cpu_.getPC()).length;
+    }
+    void armStepOut() override {
+        startRun(Run::Out);
+        returning_ = atReturn();
+    }
+    void cancelRun() override {
+        if (run_ != Run::None) dropSoftStop();
+        run_ = Run::None;
+    }
+
     bool stopsArmed() const override {
-        return stepArmed_ || cpu_.debugger.breakpoints.elements() != 0 ||
+        return stepArmed_ || run_ != Run::None ||
+               cpu_.debugger.breakpoints.elements() != 0 ||
                !watches_.empty() || !catches_.empty();
     }
 
@@ -438,10 +465,70 @@ private:
         return (got & mask) == (want & mask);
     }
 
+    // ── Run-until steps ─────────────────────────────────────────────────
+    enum class Run : std::uint8_t { None, Over, Out };
+    // The stack a run is judged on: 0 USP, 1 ISP, 2 MSP.
+    int stackKind() const {
+        const std::uint16_t sr = cpu_.getSR();
+        return !(sr & 0x2000) ? 0 : (sr & 0x1000) ? 2 : 1;
+    }
+    // Moira has no "cancel": softstopMatches() is the call that consumes
+    // an armed step-into soft stop and recomputes CHECK_BP from the
+    // breakpoint list. Left armed, it would fire at the next boundary —
+    // or, once the last breakpoint is removed, lie dormant and fire the
+    // next time one is set — as a step nobody asked for.
+    void dropSoftStop() { cpu_.debugger.softstopMatches(cpu_.getPC()); }
+    void startRun(Run r) {
+        run_ = r;
+        stack0_ = stackKind();
+        sp0_ = cpu_.getA(7);
+        cpu_.debugger.stepInto();
+    }
+    bool opcodeAt(std::uint32_t pc, std::uint16_t& op) {
+        std::uint8_t b[2];
+        ByteState st[2];
+        readMemory(Space::Logical, pc, b, st, 2);
+        if (st[0] != ByteState::Ok || st[1] != ByteState::Ok) return false;
+        op = std::uint16_t(b[0] << 8 | b[1]);
+        return true;
+    }
+    static bool isCall(std::uint16_t op) {
+        return (op & 0xFF00) == 0x6100 ||          // BSR (.S/.W/.L)
+               (op & 0xFFC0) == 0x4E80 ||          // JSR
+               (op & 0xFFF0) == 0x4E40 ||          // TRAP #n
+               (op & 0xF000) == 0xA000 ||          // A-line: Toolbox/OS trap
+               (op & 0xF000) == 0xF000;            // F-line: FPU or its emulation
+    }
+    static bool isReturn(std::uint16_t op) {
+        return op == 0x4E75 || op == 0x4E74 ||     // RTS, RTD
+               op == 0x4E77 || op == 0x4E73;       // RTR, RTE
+    }
+    // The next instruction is a return of the frame the run started in.
+    bool atReturn() {
+        std::uint16_t op = 0;
+        return stackKind() == stack0_ && cpu_.getA(7) >= sp0_ &&
+               opcodeAt(cpu_.getPC(), op) && isReturn(op);
+    }
+    // At an instruction boundary: has the run arrived?
+    bool runDone() {
+        if (run_ == Run::Out) {
+            if (returning_) return true;       // the return just retired
+            returning_ = atReturn();
+            return false;
+        }
+        if (stackKind() != stack0_) return false;
+        const std::uint32_t sp = cpu_.getA(7);
+        return sp > sp0_ || (sp == sp0_ && cpu_.getPC() == target_);
+    }
+
     Cpu& cpu_;
     Mem& mem_;
     Session& session_;
     bool stepArmed_ = false;
+    Run run_ = Run::None;
+    bool returning_ = false;
+    int stack0_ = 0;
+    std::uint32_t sp0_ = 0, target_ = 0;
     std::vector<Watchpoint> watches_;
     std::vector<Catch> catches_;
     StopReason pending_ = StopReason::None;

@@ -80,7 +80,10 @@ public:
                    const StopDetail& detail = {});
 
 private:
-    struct Applied { bool changed = false, resume = false, step = false; };
+    struct Applied {
+        bool changed = false, resume = false, step = false;
+        Command::Kind run = Command::Kind::Pause;   // StepOver/StepOut, or none
+    };
     Applied apply(Target& target, std::deque<Command>& batch, bool inQuantum);
     void applyEdit(Target& target, const Command& c);
     void publish(Target& target);

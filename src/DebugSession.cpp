@@ -51,6 +51,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
         acked_ = std::max(acked_, c.id);
         switch (c.kind) {
         case Command::Kind::Pause:
+            target.cancelRun();
             if (!stopped_) {
                 stopped_ = true;
                 inQuantum_ = inQuantum;
@@ -67,6 +68,17 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
                 message_ = "Pas à pas : arrêter d'abord la machine";
             else
                 a.step = a.resume = resumePending_ = true;
+            break;
+        case Command::Kind::StepOver:
+        case Command::Kind::StepOut:
+            if (!blockingAvailable_)
+                message_ = "Pas à pas indisponible dans cette version";
+            else if (!stopped_)
+                message_ = "Pas à pas : arrêter d'abord la machine";
+            else {
+                a.resume = resumePending_ = true;
+                a.run = c.kind;
+            }
             break;
         case Command::Kind::AddBreakpoint:
             if (!blockingAvailable_)
@@ -125,6 +137,8 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
     // Breakpoint edits recompute Moira's CHECK_BP from the list alone, which
     // would drop a soft stop armed before them: arm the step last.
     if (a.step) target.armStep();
+    else if (a.run == Command::Kind::StepOver) target.armStepOver();
+    else if (a.run == Command::Kind::StepOut) target.armStepOut();
     resumePending_ = false;
     if (a.resume) {
         stopped_ = false;

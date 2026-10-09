@@ -103,6 +103,10 @@ struct FakeDebugTarget final : pom68k::dbg::Target {
     void clearBreakpoints() override { bps.clear(); }
     std::vector<std::uint32_t> breakpoints() const override { return bps; }
     void armStep() override { ++steps; }
+    void armStepOver() override { ++stepOvers; }
+    void armStepOut() override { ++stepOuts; }
+    void cancelRun() override {}
+    int stepOvers = 0, stepOuts = 0;
     bool stopsArmed() const override { return !bps.empty(); }
     bool setRegister(pom68k::dbg::Reg r, std::uint32_t v, std::string&) override {
         edits.push_back({int(r), v});
@@ -262,6 +266,20 @@ int main() {
             check(snap->requestedEngine == 1 && snap->effectiveEngine == 0,
                   "an armed stop publishes the effective engine beside the request");
         }
+        check(ui.click("Par-dessus l'appel", draw), "click « Par-dessus l'appel »");
+        session.atBoundary(target);
+        check(target.stepOvers == 1 && !session.snapshot()->stopped,
+              "« Par-dessus l'appel » arms a step over and resumes");
+        session.post([] { pom68k::dbg::Command c; c.kind = pom68k::dbg::Command::Kind::Pause; return c; }());
+        session.atBoundary(target);
+        ui.frame(draw);
+        check(ui.click("Jusqu'au retour", draw), "click « Jusqu'au retour »");
+        session.atBoundary(target);
+        check(target.stepOuts == 1 && !session.snapshot()->stopped,
+              "« Jusqu'au retour » arms a step out and resumes");
+        session.post([] { pom68k::dbg::Command c; c.kind = pom68k::dbg::Command::Kind::Pause; return c; }());
+        session.atBoundary(target);
+        ui.frame(draw);
         check(ui.click("Pas à pas", draw), "click « Pas à pas »");
         session.atBoundary(target);
         check(target.steps == 1 && !session.snapshot()->stopped,

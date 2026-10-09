@@ -131,6 +131,8 @@ struct MemoryView {
 struct Command {
     enum class Kind : std::uint8_t {
         Pause, Continue, Step,
+        StepOver,                    // a call (BSR/JSR/TRAP/A-line/F-line) as one step
+        StepOut,                     // run until the current routine returns
         AddBreakpoint, RemoveBreakpoint, ClearBreakpoints,
         ViewMemory,                  // addr, length, space
         ViewDisasm,                  // addr; followPc = true follows the PC
@@ -231,6 +233,21 @@ public:
     virtual std::vector<Catch> catches() const = 0;
     // Stop after the next instruction retires (Moira's soft stop).
     virtual void armStep() = 0;
+    // Run-until steps, both judged at every instruction boundary on the
+    // stack that was active when they were armed (USP, ISP or MSP), so a
+    // deeper invocation of the same code never satisfies them:
+    //   step over: if the instruction at PC is a call — BSR, JSR, TRAP #n,
+    //     an A-line or an F-line word — stop when that stack is back at
+    //     the start depth with the PC on the next instruction, or has
+    //     risen above it (an auto-pop trap returns to its caller's
+    //     caller); any other instruction is a plain step.
+    //   step out: stop after the first RTS/RTD/RTR/RTE that starts with
+    //     that stack at or above the start depth.
+    // A breakpoint, watchpoint or exception stop met on the way stops
+    // there and ends the run; so does cancelRun() (a Pause).
+    virtual void armStepOver() = 0;
+    virtual void armStepOut() = 0;
+    virtual void cancelRun() = 0;
     virtual bool stopsArmed() const = 0;
 };
 
