@@ -210,11 +210,30 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   machine after restore, never serialized); pure caches (Moira's ATC, JIT
   blocks — **flushed**, re-derivable); host-backed bulk data (ROM, disk
   images — the snapshot carries an identity checksum plus whatever the
-  guest has modified since, `ScsiDisk`'s copy-on-first-write log).
+  guest has modified since, `DiskTimeline`'s copy-on-first-write log).
+- **A state is (RAM, disk content).** `DiskTimeline.h` owns the history of
+  every writable `ScsiDisk`/`AtaDisk`: a content digest (XOR of keyed
+  per-block hashes, updated per write) that the state records and a restore
+  must reproduce exactly; the since-open write log; and, with write-back, a
+  reverse journal `<image>.pomundo` beside the backing file. Each save marks
+  an epoch; each later first write per block per epoch appends the old
+  bytes, flushed before the image changes. A restore is planned before it
+  mutates: log replay first, then the journal from the latest epoch with
+  the state's digest; the plan is applied through the disk's normal write
+  path, so the backing file is rewound too, in this process or a later one.
+  No candidate reaches the digest → the load is refused with a named
+  reason (`Reader::fail(why)`) and the transactional loader rolls back. The
+  journal trims a torn tail at attach and is cut at an epoch past 256 MB;
+  the oldest states then become refusable, never silently wrong. A state
+  saved without a disk loads over one; the reverse is refused. Gate:
+  `media_timeline_test`.
 - **Refusal is early and total.** The loader validates magic, format
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
+- **Format v28** replaces the SCSI and ATA modified-block payloads with
+  `DiskTimeline`'s: block size and count, the blocks written since open,
+  and the content digest (above). Older versions are refused.
 - **Format v27** adds the PA4 internal-connector line level and the second
   internal Sony mechanism to every compact chunk (§ 3.1).
 - **Format v26** carries the `FloppyTrackMedium` owner: all native tracks,
@@ -248,8 +267,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   `gcr_test` and `floppy_persist_test` check the physical fields and persistence.
 - **Format v21** restores ATA's PIO buffer, selected geometry and modified
   sectors together. `ata_disk_test` checks continuation into a fresh drive
-  and repeated rewind. The disk base must be unchanged: as on SCSI, restore
-  does not undo writes already committed to the host file.
+  and repeated rewind. (Since v28 a restore also rewinds the write-back file,
+  above.)
 - **Format v16** adds the 400K spindle PWM servo to every `SonyDrive`: six
   integers after the GCR write buffer — whether a duty was ever commanded,
   the running window's counts, the two speeds being debounced and the

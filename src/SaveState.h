@@ -162,6 +162,14 @@ public:
     u64  varint();
     bool ok() const noexcept { return ok_; }
     void fail() noexcept { ok_ = false; }
+    // A refusal that is not corruption (a disk whose content no longer
+    // matches the state, DiskTimeline.h) names itself, so the user reads
+    // why instead of "machine chunk is corrupt". The first reason wins.
+    void fail(std::string why) {
+        if (ok_ && reason_.empty()) reason_ = std::move(why);
+        ok_ = false;
+    }
+    const std::string& reason() const noexcept { return reason_; }
     std::size_t pos() const noexcept { return at_; }
     std::size_t remaining() const noexcept { return ok_ ? n_ - at_ : 0; }
 
@@ -217,6 +225,7 @@ private:
     std::size_t n_;
     std::size_t at_ = 0;
     bool        ok_ = true;
+    std::string reason_;
 };
 
 // ── Snapshot container ──────────────────────────────────────────────────
@@ -300,7 +309,7 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // v26: live IWM bit shifter, chip-clock deadlines and pending magnetic arc.
 // v27: the SE board's PA4 internal-connector line and its second internal
 // mechanism, serialized on every compact.
-inline constexpr u32      kVersion   = 27;
+inline constexpr u32      kVersion   = 28;
 
 struct Header {
     u32 version     = kVersion;

@@ -141,11 +141,11 @@ control rejects a missing native-data path but does not isolate a protection
 routine. This fulfills the selected nonstandard-program interaction gate;
 broader copy-protection claims still require independently identified cases.
 
-The disk base remains host-owned. As with existing SCSI states, restoring ATA
-rewinds the in-memory medium but does not undo writes already committed to a
-host backing file. Fresh-device restoration requires the same unchanged base;
-an immutable-base/overlay policy and a full IDE application rewind scenario
-remain separate work. No new CPU or fictional peripheral was introduced.
+The disk base remains the user's working file. Since the media timeline
+increment (below), restoring a SCSI or ATA state rewinds both memory and a
+write-back file to the state's exact content, including in a later process,
+or refuses by name. A full IDE *application* rewind scenario on the Q630
+remains separate work. No new CPU or fictional peripheral was introduced.
 Other items in this document are proposals, not adopted features.
 
 ## Work selection
@@ -153,7 +153,7 @@ Other items in this document are proposals, not adopted features.
 | Order | Work | Evidence | Scope | Completion condition |
 |---|---|---|---|---|
 | 0 | ATA transfer and media restoration — implemented | Regressions pass | M | Exact continuation and rewind, including a fresh process |
-| 1 | SCSI and ATA backing-image policy | Explicit SCSI caveat, ATA missing delta | L | A state cannot silently combine old RAM with later disk data |
+| 1 | SCSI and ATA backing-image policy — implemented | Content digest, since-open log, `.pomundo` reverse journal | Done | A state cannot silently combine old RAM with later disk data (`media_timeline_test`) |
 | 2 | Debugger service and basic views | Moira primitives present, GUI service absent | L | Pause, inspect, step and PC stop on representative CPU families |
 | 3 | Extended debugger and device inspection | Snow offers them; partial POM primitives | L | Defined stop semantics, bounded history, no inspection side effects |
 | 4 | Session files | Startup/relaunch data present, combined file absent | M | Reopen the same configured machine with validated paths |
@@ -216,6 +216,24 @@ Proposed `media_timeline_test` must cover changed-base rejection, missing
 files, fresh-process restore, failed clone/overlay creation and preserving
 reference fixtures. Keep the media owner outside the serializer's CPU/device
 visitor. Portable bundles, quick slots and thumbnails are follow-up features.
+
+**Implemented (format v28).** The selected representation is neither an
+overlay nor a clone: the working image stays the user's write-back file and
+`DiskTimeline` keeps a *reverse* history beside it (`<image>.pomundo`). Each
+save appends an epoch with the content digest; each later first write per
+block per epoch appends the block's previous bytes before the image changes.
+Cost is proportional to guest writes, with no image-sized I/O at save or load,
+and the user's file never needs an explicit commit. A restore plans, then
+applies through the disk's write path: the since-open log plus the state's
+blocks, or the journal from the latest epoch with the state's digest. Memory
+and backing file both land on the exact digest, or the load is refused by
+name and rolled back. `media_timeline_test` covers same-process and
+fresh-process rewinds, alternating states, a same-size changed base, deleted,
+torn, compacted and uncreatable journals, topology refusals and ATA. Reference
+fixtures stay immutable because `routeWritableOpen` journals only beside the
+work clone. The journal is capped at 256 MB, cut at an epoch boundary.
+A Q630 IDE *application* rewind scenario, portable bundles, quick slots and
+thumbnails remain follow-ups.
 
 ## Build a debugger at the machine ownership boundary
 

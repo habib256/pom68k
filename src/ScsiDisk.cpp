@@ -224,6 +224,7 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
         return false;
     hfsPrefixBlocks_ = 0;
     if (file_.is_open()) file_.close();
+    timeline_.detach();
     writeBack_ = false;
     if (unwrapDriverless512Dump(image_)) {
         writeBack = false;
@@ -235,9 +236,6 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
     if (blocks_ && looksBareHfs(image_))
         applyFlatHfsFacade(backingPath);
 
-    // The save-state write log is relative to the image as just loaded.
-    resetWriteLog();
-
     if (blocks_ && writeBack) {
         file_.open(backingPath, std::ios::in | std::ios::out | std::ios::binary);
         writeBack_ = file_.is_open();
@@ -248,7 +246,18 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
             std::fprintf(stderr, "SCSI: write-back maps LBA≥%u onto flat HFS file\n",
                          hfsPrefixBlocks_);
     }
+    // The save-state history is relative to the image as just loaded.
+    attachTimeline(backingPath);
     return blocks_ > 0;
+}
+
+// A write-back disk journals beside its backing file, so a state saved in
+// one process can rewind the file in the next (DiskTimeline.h).
+void ScsiDisk::attachTimeline(const std::string& backingPath) {
+    if (!blocks_) { timeline_.detach(); return; }
+    timeline_.attach(image_.data(), uint64_t(blocks_) * kBlockSize, kBlockSize,
+                     writeBack_ ? backingPath + ".pomundo" : std::string(),
+                     "SCSI " + std::filesystem::path(backingPath).filename().string());
 }
 
 // ── CD-ROM personality ────────────────────────────────────────────────
@@ -284,6 +293,7 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     attached_ = true;
     unitAttention_ = false;
     if (file_.is_open()) file_.close();
+    timeline_.detach();
     writeBack_ = false;
     hfsPrefixBlocks_ = 0;
     image_.clear();
@@ -415,6 +425,7 @@ void ScsiDisk::attachCdromEmpty() {
     audioOnly_ = false;
     unitAttention_ = false;
     if (file_.is_open()) file_.close();
+    timeline_.detach();
     writeBack_ = false;
     hfsPrefixBlocks_ = 0;
     image_.clear();
@@ -485,6 +496,7 @@ void ScsiDisk::eject() {
     audioLba_ = audioEnd_ = 0;
     hfsPrefixBlocks_ = 0;
     if (file_.is_open()) file_.close();
+    timeline_.detach();
     writeBack_ = false;
     // A CD drive with no disc is still a target; a disk image that is
     // closed is simply gone.
@@ -503,7 +515,7 @@ void ScsiDisk::close() {
     blocks_ = 0;
     hfsPrefixBlocks_ = 0;
     identifyLun_ = kNoIdentify;
-    resetWriteLog();
+    timeline_.detach();
     setSense(0, 0);
 }
 
@@ -537,57 +549,6 @@ void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
     }
 }
 
-// ── Save-state write log (design note in ScsiDisk.h § Save states) ──────
-// Copy-on-first-write: the first time the guest writes a block, its
-// pre-write bytes are appended to `pristine_`. That is what lets a restore
-// put the image back exactly as it was at snapshot time, including blocks
-// the guest modified AFTER the snapshot was taken — those are dirty now but
-// absent from the snapshot, so reverting is the only way to reach the
-// recorded state.
-void ScsiDisk::resetWriteLog() {
-    dirtyBits_.assign((std::size_t(blocks_) + 63) / 64, 0);
-    dirtyList_.clear();
-    pristine_.clear();
-}
-
-void ScsiDisk::markDirty(uint32_t lba, uint32_t count) {
-    const uint32_t bs = blockSize();
-    for (uint32_t i = 0; i < count; i++) {
-        const uint32_t blk = lba + i;
-        const std::size_t word = blk >> 6;
-        if (blk >= blocks_ || word >= dirtyBits_.size()) break;
-        const uint64_t bit = 1ull << (blk & 63);
-        if (dirtyBits_[word] & bit) continue;              // already logged
-        dirtyBits_[word] |= bit;
-        dirtyList_.push_back(blk);
-        const uint64_t off = uint64_t(blk) * bs;
-        // Keep one slot per list entry unconditionally, so slot i always
-        // belongs to dirtyList_[i] even for a block past the image end.
-        pristine_.resize(pristine_.size() + bs, 0);
-        if (off + bs <= image_.size())
-            std::memcpy(pristine_.data() + pristine_.size() - bs,
-                        image_.data() + off, bs);
-    }
-}
-
-void ScsiDisk::revertToPristine() {
-    const uint32_t bs = blockSize();
-    for (std::size_t i = 0; i < dirtyList_.size(); i++) {
-        const uint64_t off = uint64_t(dirtyList_[i]) * bs;
-        if (off + bs <= image_.size() && (i + 1) * bs <= pristine_.size())
-            std::memcpy(image_.data() + off, pristine_.data() + i * bs, bs);
-    }
-    resetWriteLog();
-}
-
-void ScsiDisk::applySnapshotBlock(uint32_t blk, const uint8_t* data) {
-    const uint32_t bs = blockSize();
-    markDirty(blk, 1);                    // logs the pristine bytes first
-    const uint64_t off = uint64_t(blk) * bs;
-    if (off + bs <= image_.size())
-        std::memcpy(image_.data() + off, data, bs);
-}
-
 // Writes land in the in-memory image; with write-back each one is also
 // written through to the backing file immediately, so nothing is lost
 // even if the process dies (no exit-time flush to miss). Flat-HFS façade:
@@ -613,9 +574,22 @@ void ScsiDisk::store(uint32_t lba, uint32_t count, const uint8_t* in, size_t inS
     uint64_t avail = image_.size() - off;
     uint64_t w = n < avail ? n : avail;
     if (w > inSize) w = inSize;
-    // Log the pre-write bytes BEFORE the memcpy — that ordering is the
-    // whole point of the copy-on-first-write log (ScsiDisk.h § Save states).
-    markDirty(lba, uint32_t((w + kBlockSize - 1) / kBlockSize));
+    // History BEFORE the memcpy — the timeline needs the pre-write bytes
+    // (DiskTimeline.h). A short final block keeps its unwritten tail.
+    if (timeline_.attached()) {
+        uint8_t next[kBlockSize];
+        for (uint64_t at = 0; at < w; at += kBlockSize) {
+            const uint64_t n = w - at < kBlockSize ? w - at : kBlockSize;
+            const uint8_t* cur = image_.data() + off + at;
+            const uint8_t* src = in + at;
+            if (n < kBlockSize) {
+                std::memcpy(next, cur, kBlockSize);
+                std::memcpy(next, src, size_t(n));
+                src = next;
+            }
+            timeline_.willWrite(uint32_t(lba + at / kBlockSize), cur, src);
+        }
+    }
     std::memcpy(image_.data() + off, in, size_t(w));
     if (!writeBack_ || !w) return;
 

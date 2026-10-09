@@ -178,7 +178,11 @@ int main() {
     check(hasDriver, "and the driver is Apple's own Apple_Driver_ATA");
     check(hfsStart && hfsBlocks >= 614400,
           "with an HFS partition big enough for the reference volume");
-    if (!hfsStart) { std::remove(idePath.c_str()); return 1; }
+    if (!hfsStart) {
+        std::remove(idePath.c_str());
+        std::remove((idePath + ".pomundo").c_str());
+        return 1;
+    }
 
     // ── Cloning the volume, which is what cloning a disk is ─────────────
     {
@@ -223,6 +227,7 @@ int main() {
           "the machine reaches a drawn 8-bit desktop");
 
     std::remove(idePath.c_str());
+    std::remove((idePath + ".pomundo").c_str());   // DiskTimeline's write-back journal
     std::printf(failures ? "FAILED\n"
                          : "PASSED — an F108 machine booted from its IDE disk\n");
     return failures ? 1 : 0;

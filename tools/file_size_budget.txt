@@ -24,7 +24,7 @@ cmake/Pom68kProductRegistry.cmake        23
 cmake/Pom68kProfileGates.cmake           31
 cmake/Pom68kProtectedFloppyGates.cmake     9
 cmake/Pom68kSerialGates.cmake            8
-cmake/Pom68kStorageGates.cmake           26
+cmake/Pom68kStorageGates.cmake           27
 CMakeLists.txt                           619
 src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  203

@@ -481,6 +481,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (third)** — [A save state is RAM *and* disk content: SCSI/ATA restores rewind the write-back file or refuse by name](#2026-10-09-disk-timeline)
 - **2026-10-09 (later)** — [The 128K wrote sector 6 into sector 1's slot: the IWM reader now re-parks when the revolution changes](#2026-10-09-iwm-repark)
 - **2026-10-09** — [The SE's VIA1 PA4 selects its internal floppy connector, and the boot floppy stops mounting twice](#2026-10-09-se-pa4-drives)
 - **2026-10-08 (fifteenth)** — [Passive Dayna PCAP records the real MacTCP conversation](#2026-10-08-ethernet-pcap)
@@ -1095,6 +1096,78 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-disk-timeline"></a>
+## 2026-10-09 (third) — A save state is RAM *and* disk content: SCSI/ATA restores rewind the write-back file or refuse by name
+
+Order 1 of `docs/SNOW_IMPLEMENTATION_PLAN.md`. Every GUI runner attaches its
+hard disk with write-back on, and `ScsiDisk::visit` said so: "a restore does
+not un-write the host file". Two concrete failures followed. In one process,
+a restore reverted memory, but the file kept the later writes, so the next
+launch booted a disk that disagreed with the state just restored. In a fresh
+process, the since-open log was empty: the state's blocks were replayed over
+a file that already held writes made *after* the save. Old RAM was combined
+with newer HFS structures, and no error was raised. ATA had the same gap
+(`AtaDisk` carried its own copy of the log).
+
+`DiskTimeline` (new, shared by both disks) binds a state to its content:
+
+- **Content digest.** The XOR of a keyed 64-bit hash of (LBA, bytes) over
+  every block. It is updated in O(block) on each write, recorded in the
+  state and checked on restore.
+- **Since-open log.** The former copy-on-first-write log, moved out of the
+  devices.
+- **Reverse journal.** With write-back, `<image>.pomundo` sits beside the
+  file. A save appends an epoch with the digest. The first write per block
+  per epoch appends the old bytes, flushed before the image changes. The
+  file is therefore a linear reverse-delta history. A restore's own writes
+  are journalled too, so alternating between states stays possible.
+
+A restore is planned before anything is mutated, from two candidates:
+
+1. Log replay plus the state's blocks.
+2. The journal, read from the latest epoch carrying the state's digest.
+
+A candidate is applied, through the disk's normal write path (the file
+follows), only if its computed digest equals the state's. Otherwise the
+Reader fails with a reason (`Reader::fail(why)`, new). The transactional
+loader rolls back and the GUI shows, for example, "disk SCSI s2.img: its
+content differs from the state's and its journal cannot rewind it". The
+journal trims a torn tail at attach and is cut at an epoch past 256 MB.
+
+I chose this over the plan's two options (overlay, private clone). Both
+would change the user's model, where the work clone *is* the disk, or cost
+image-sized I/O per save. This scheme costs I/O proportional to guest
+writes. Format **v28**. `V8Memory`'s lockstep device hash walks the same
+visit body without writing an epoch: only a real `sav::Writer` marks one.
+
+Gate: `media_timeline_test` (asset-free), covering:
+
+- same- and fresh-process rewinds, memory and file compared byte for byte;
+- alternating states across three processes;
+- a same-size replaced image refused without write-back;
+- deleted, torn, compacted and uncreatable journals;
+- the topology rule: a state with a disk refuses an empty slot, and a state
+  without one accepts a disk;
+- the ATA cross-process rewind through WRITE SECTORS.
+
+The first whole-machine run failed `q605_savestate_etalon` and its relaunch
+twin: load→save was no longer byte-identical. The restored log kept this
+process's first-write order and blocks it had put back to their opened
+content. `DiskTimeline::commitLoad` now rebuilds the log in the state's own
+order, and the gate checks load→save identity too. Across write-back
+processes the payload legitimately differs, because the log is relative to
+another opened file, while the content does not.
+
+On the M4 every disk and save-state gate passes, 67 of 67 executed with
+their assets present (every `*_savestate*`, `*_persist_etalon`, `q630_ide*`,
+`scsi_*`, `ata_disk_test`, the lockstep and GUI smoke gates). `asset-none`
+passes apart from `docs_test`'s STATUS drift, which is regenerated with the
+merge.
+
+Remaining: a Q630 IDE *application* rewind scenario (write a file, save,
+mutate, restore, read it back in the guest), portable state bundles, quick
+slots and thumbnails.
 
 <a id="2026-10-09-iwm-repark"></a>
 ## 2026-10-09 (later) — The 128K wrote sector 6 into sector 1's slot: the IWM reader now re-parks when the revolution changes
