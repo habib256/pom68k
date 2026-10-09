@@ -32,7 +32,54 @@ enum class ByteState : std::uint8_t {
     NotMemory        // I/O, unmapped, or a window a read would disturb
 };
 
-enum class StopReason : std::uint8_t { None, Pause, Step, Breakpoint };
+enum class StopReason : std::uint8_t {
+    None, Pause, Step, Breakpoint,
+    Watchpoint,      // after the instruction that made the access retired
+    Exception        // at the handler's first instruction, frame stacked
+};
+
+// A data-access stop. `addr` is LOGICAL — the address the program used,
+// after the CPU's own 24-bit masking, before any MMU translation — so it
+// follows the program, not the page. Only DATA-space accesses (function
+// codes 1 and 5) match. Program-space reads never do: opcode and extension
+// words, and also PC-relative operands, which the 68k reads in program
+// space too; an execution stop is a breakpoint. Device DMA is not a CPU
+// access and never matches. Exception processing's own stack and vector
+// accesses are data accesses and do match.
+enum class Access : std::uint8_t { Read = 1, Write = 2, ReadWrite = 3 };
+struct Watchpoint {
+    std::uint32_t addr = 0;
+    std::uint8_t length = 1;         // 1..kMaxWatchLength bytes
+    Access access = Access::Write;
+    bool operator==(const Watchpoint&) const = default;
+};
+
+// An exception stop: the CPU accepted `vector` (2 bus error … 10 A-line,
+// 11 F-line, 24-31 spurious/autovector interrupts, 32-47 TRAP #n …) and
+// stacked its frame. For vector 10 a non-zero `trap` narrows the stop to
+// one Toolbox/OS trap: the word at the stacked PC is compared with the
+// flag bits ignored — bit 10 (auto-pop) of a Toolbox trap ($A800-$AFFF),
+// bits 8-10 (the two flag bits and "don't preserve A0") of an OS trap
+// ($A000-$A7FF), per the trap word layout of Inside Macintosh II (The
+// Operating System Utilities, "The Trap Dispatcher").
+struct Catch {
+    std::uint8_t vector = 0;
+    std::uint16_t trap = 0;          // vector 10 only; 0 = every A-line
+    bool operator==(const Catch&) const = default;
+};
+
+// What the last stop was about, beyond its PC.
+struct StopDetail {
+    // Watchpoint: the access and the instruction that made it.
+    std::uint32_t accessAddr = 0;
+    std::uint8_t accessSize = 0;
+    bool accessWrite = false;
+    std::uint32_t instructionPc = 0;
+    // Exception: the vector, the stacked PC, and the A-line word if any.
+    std::uint8_t vector = 0;
+    std::uint32_t stackedPc = 0;
+    std::uint16_t trapWord = 0;
+};
 
 // The registers an edit can name. D0-D7/A0-A7 in order, so `Reg(D0 + n)`
 // works. A7 is the ACTIVE stack pointer, as the CPU sees it; USP/ISP/MSP
@@ -50,6 +97,9 @@ inline constexpr std::uint32_t kMaxMemoryBytes = 4096;
 inline constexpr int kMaxDisasmLines = 64;
 inline constexpr std::size_t kMaxBreakpoints = 256;
 inline constexpr std::size_t kMaxEditBytes = 256;
+inline constexpr std::size_t kMaxWatchpoints = 32;
+inline constexpr std::uint8_t kMaxWatchLength = 16;
+inline constexpr std::size_t kMaxCatches = 64;
 
 struct Registers {
     std::array<std::uint32_t, 8> d{}, a{};
@@ -87,6 +137,12 @@ struct Command {
         // Edits: only while stopped (refused otherwise, with a message).
         SetRegister,                 // reg, value
         WriteMemory,                 // addr, space, data — all bytes or none
+        AddWatchpoint,               // watch
+        RemoveWatchpoint,            // addr (every watchpoint starting there)
+        ClearWatchpoints,
+        AddCatch,                    // catch
+        RemoveCatch,                 // catch
+        ClearCatches,
     };
     Kind kind = Kind::Pause;
     std::uint64_t id = 0;            // assigned by Session::post
@@ -97,6 +153,8 @@ struct Command {
     Reg reg = Reg::D0;
     std::uint32_t value = 0;
     std::vector<std::uint8_t> data;  // WriteMemory, at most kMaxEditBytes
+    Watchpoint watch;
+    Catch catchpoint;
 };
 
 struct Snapshot {
@@ -109,6 +167,7 @@ struct Snapshot {
     // wait for the next quantum boundary. A Pause stop IS that boundary.
     bool inQuantum = false;
     StopReason reason = StopReason::None;
+    StopDetail detail;               // meaningful for Watchpoint/Exception
     std::string model;               // "68000" … "68040"
     std::int64_t machineClock = 0;
     std::int64_t coreClock = 0;
@@ -118,6 +177,8 @@ struct Snapshot {
     std::vector<DisasmLine> disasm;
     MemoryView memory;
     std::vector<std::uint32_t> breakpoints;   // logical PCs
+    std::vector<Watchpoint> watchpoints;
+    std::vector<Catch> catches;
     // Engine the user asked for (0 = interpreter, 1 = accelerated) and the
     // one that actually executes: with a stop armed every instruction goes
     // through Moira's interpreter (JitEngine.cpp: !pomJitIdle()).
@@ -158,6 +219,16 @@ public:
     virtual bool writeMemory(Space space, std::uint32_t addr,
                              const std::uint8_t* data, std::size_t n,
                              std::string& why) = 0;
+    // Access and exception stops. add* refuses (false + why) a malformed
+    // or excess entry; a duplicate is accepted and changes nothing.
+    virtual bool addWatchpoint(const Watchpoint& w, std::string& why) = 0;
+    virtual void removeWatchpoint(std::uint32_t addr) = 0;
+    virtual void clearWatchpoints() = 0;
+    virtual std::vector<Watchpoint> watchpoints() const = 0;
+    virtual bool addCatch(const Catch& c, std::string& why) = 0;
+    virtual void removeCatch(const Catch& c) = 0;
+    virtual void clearCatches() = 0;
+    virtual std::vector<Catch> catches() const = 0;
     // Stop after the next instruction retires (Moira's soft stop).
     virtual void armStep() = 0;
     virtual bool stopsArmed() const = 0;

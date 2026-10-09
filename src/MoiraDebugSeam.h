@@ -17,7 +17,10 @@
 //     while it does); it must not run guest code or touch the bus.
 //     Nothing calls it unless State::CHECK_BP is set, which only the
 //     debugger's own breakpoint list and soft stop do — a session without
-//     a debugger pays nothing.
+//     a debugger pays nothing. The access and exception notices
+//     (cpuAccess/cpuException) arrive MID-instruction from Moira's
+//     watchpoint and catchpoint sites; they never block, and a stop they
+//     decide on is delivered through cpuStopped() as a soft stop.
 //   - `disassembleWith` routes Moira's read16Dasm through a caller-supplied
 //     fetch for the duration of one call. Moira's own read16Dasm reads the
 //     PHYSICAL live bus (Cpu68k) or a physical peek8 (MoiraCpu); the
@@ -36,6 +39,15 @@ namespace pom68k::dbg {
 class StopHook {
 public:
     virtual void cpuStopped(bool soft, moira::u32 pc) = 0;
+    // Mid-instruction notices: they must NOT block. A watched address is
+    // about to be accessed (`bytes` wide; `program` = instruction-stream
+    // read), or the CPU just entered the handler of exception `vector`
+    // with its frame stacked. The adapter decides whether to stop and, if
+    // so, arms a soft stop that cpuStopped() delivers at the end of this
+    // execute() — after the instruction, at the handler's first one.
+    virtual void cpuAccess(moira::u32, int /*bytes*/, bool /*write*/,
+                           bool /*program*/) {}
+    virtual void cpuException(moira::u8 /*vector*/) {}
 
 protected:
     ~StopHook() = default;
@@ -91,6 +103,13 @@ protected:
     }
     void didReachBreakpoint(moira::u32 addr) override {
         if (debugHook_) debugHook_->cpuStopped(false, addr);
+    }
+    void pomDidReachWatchpoint(moira::u32 addr, moira::Size S, bool write,
+                               bool program) override {
+        if (debugHook_) debugHook_->cpuAccess(addr, int(S), write, program);
+    }
+    void didReachCatchpoint(moira::u8 vector) override {
+        if (debugHook_) debugHook_->cpuException(vector);
     }
 
     // Wrappers that override read16Dasm call this first.

@@ -19,6 +19,11 @@
 //                 (vblank edges, beam slices) resumes exactly where the CPU
 //                 stopped, so a stop is invisible to guest timing.
 //
+// Watchpoints and exception stops are noticed mid-instruction by the CPU
+// adapter, which only arms a soft stop there; the stop itself is delivered
+// through onCpuStop() at the end of that instruction (or exception entry),
+// so every stop the user sees is at an instruction boundary.
+//
 // Acknowledgement: a command is applied when `Snapshot::acked` reaches its
 // id. "Paused" means `stopped` in a snapshot whose `acked` covers the
 // Pause — the CPU is then at an instruction boundary, not merely flagged.
@@ -69,7 +74,10 @@ public:
     // True: hold this tick (the machine is stopped at the boundary).
     bool atBoundary(Target& target);
     // Blocks until the GUI resumes; returns at once after shutdown().
-    void onCpuStop(Target& target, bool soft, std::uint32_t pc);
+    // `reason` is Step, Breakpoint, Watchpoint or Exception; `detail`
+    // describes the last two.
+    void onCpuStop(Target& target, StopReason reason, std::uint32_t pc,
+                   const StopDetail& detail = {});
 
 private:
     struct Applied { bool changed = false, resume = false, step = false; };
@@ -92,6 +100,7 @@ private:
     bool resumePending_ = false;             // a Continue/Step earlier in this batch
     bool inQuantum_ = false;
     StopReason reason_ = StopReason::None;
+    StopDetail detail_;
     std::uint64_t acked_ = 0;
     std::uint64_t generation_ = 0;
     std::string message_;

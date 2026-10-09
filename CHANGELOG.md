@@ -257,6 +257,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **…and the UniversalInfo FPU masking that was deleted to get there** → [2026-07-21 — LLE step 5: UniversalInfo FPU masking deleted…](#2026-07-21--lle-step-5-universalinfo-fpu-masking-deleted-bare-no-fpu-fully-mapped)
 - **an interactive debugger: where a stop may happen, why the JIT steps aside, and why inspection cannot touch a device** → [2026-10-09 (fourth) — A debugger at the machine boundary…](#2026-10-09-debugger-service)
 - **editing registers or memory from the debugger: why a PC edit does not use `Debugger::jump`, and what keeps the JIT from running the old code** → [2026-10-09 (fifth) — The debugger edits a stopped machine…](#2026-10-09-debugger-edits)
+- **watchpoints and exception stops: where they stop, what they ignore (opcode fetches, PC-relative operands), and how an A-line trap is filtered** → [2026-10-09 (sixth) — Access and exception stops…](#2026-10-09-debugger-stops)
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
@@ -483,6 +484,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (sixth)** — [Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints](#2026-10-09-debugger-stops)
 - **2026-10-09 (fifth)** — [The debugger edits a stopped machine: the PC reloads its prefetch without a bus cycle, and a code write outlives no translated block](#2026-10-09-debugger-edits)
 - **2026-10-09 (fourth)** — [A debugger at the machine boundary: a breakpoint holds its quantum, Pause is a quantum boundary, inspection never reads a device](#2026-10-09-debugger-service)
 - **2026-10-09 (third)** — [A save state is RAM *and* disk content: SCSI/ATA restores rewind the write-back file or refuse by name](#2026-10-09-disk-timeline)
@@ -1100,6 +1102,66 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-debugger-stops"></a>
+## 2026-10-09 (sixth) — Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints
+
+Second piece of order 3 of `docs/SNOW_IMPLEMENTATION_PLAN.md`. Moira
+already had watchpoint and catchpoint guards; what it lacked was a
+delivery point and the facts to decide with.
+
+**Where the stop lands.** Moira's watchpoint check runs *before* the
+access, in the middle of the instruction, and its catchpoint check runs
+when the handler has been entered. Blocking at either place would hand
+the user a half-executed instruction. The adapter therefore only decides
+there and arms Moira's soft stop, which `execute()` evaluates after the
+instruction (or the exception entry) at its `done:` label. A write
+watchpoint on `MOVE.L D0,($2100).W` stops with the PC on the next
+instruction, the long already in memory, and the snapshot naming the
+access (address, size, direction) and the instruction that made it. A
+TRAP #0 stop is at the handler's first instruction with the frame stacked
+and the stacked PC read from it (SP+2 on every frame except the 68000's
+group-0 one, SP+10). An interrupt stop is an accepted-vector stop, 24–31;
+an IPL pin transition is not exposed.
+
+**What the bare hook could not say.** `didReachWatchpoint(addr)` carries
+neither the direction nor the address space, so a write watchpoint could
+not ignore reads, and a watch on code would stop on its own opcode fetch.
+Moira row 35 adds `pomDidReachWatchpoint(addr, S, write, program)` at all
+six sites, forwarding to the old delegate by default. Program space comes
+from the template on the plain cores, from the function-code pins in the
+030's `mmuRead`/`mmuWrite` (they serve both spaces) and from `!data` on
+the 040. Watchpoints are data-space only, so a PC-relative operand does not
+stop either — the 68k reads it in program space, and the hook cannot tell
+it from an extension word. The 68030 fetches opcodes through
+`mmuFetchWord`, which has no hook at all.
+
+**A-line stops filter by trap.** Vector 10 can carry a trap word, compared
+with the flag bits ignored (bit 10 of a Toolbox trap, bits 8–10 of an OS
+trap): a stop on `$A11E` catches `_NewPtr` in its `$A31E` form. The gate
+also runs a non-matching Toolbox filter and a watched opcode word to a
+breakpoint after the A-line — neither may stop.
+
+**The reset bug.** `Debugger::reset` re-armed `CHECK_BP` and `CHECK_WP`
+after `Moira::reset` cleared `flags`, but not `CHECK_CP`. The trap still
+fired, because `catchpointMatches` is evaluated unconditionally at the
+vector sites; what disappeared was the flag that keeps the accelerated
+engine out while an exception stop is armed. The first draft of the gate
+checked only that the trap fired and passed with the fix removed; it now
+also checks `!pomJitIdle()` after the reset, and fails without the fix.
+The other two mutations — no program-space filter, a trap match that
+always succeeds — fail the 68000, 68020 and 68040 rigs and all six rigs
+respectively.
+
+Both lists belong to the adapter, unlike breakpoints, which are Moira's own
+and outlive a host session. Their guards are therefore cleared when the
+adapter is destroyed after the machine thread is joined; otherwise
+`CHECK_WP`/`CHECK_CP` would keep the CPU on the interpreter with no stop
+anyone could see. The window gains « Surveillances » (address, length,
+direction) and « Exceptions » (presets for bus/address errors, illegal,
+zero divide/CHK/TRAPV, privilege, A-line with an optional trap, F-line,
+interrupts, TRAP #n, or a free vector), and the stop line describes the
+access or the vector.
 
 <a id="2026-10-09-debugger-edits"></a>
 ## 2026-10-09 (fifth) — The debugger edits a stopped machine: the PC reloads its prefetch without a bus cycle, and a code write outlives no translated block

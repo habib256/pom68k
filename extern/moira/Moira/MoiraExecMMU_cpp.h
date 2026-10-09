@@ -1019,7 +1019,8 @@ Moira::mmuRead(u32 addr)
     // under the MMU too (found chasing the Q605 _FP68K trap install).
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
-        didReachWatchpoint(addr & addrMask<C>());
+        pomDidReachWatchpoint(addr & addrMask<C>(), S, false,
+                              (fcl & 3) == FC::USER_PROG);
     }
 
     const bool log = mmuLogging;
@@ -1182,7 +1183,8 @@ Moira::mmuWrite(u32 addr, u32 val)
     // POM68K: logical-address watchpoint hook (see mmuRead above).
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
-        didReachWatchpoint(addr & addrMask<C>());
+        pomDidReachWatchpoint(addr & addrMask<C>(), S, true,
+                              (fcl & 3) == FC::USER_PROG);
     }
 
     const bool log = mmuLogging;
@@ -3117,7 +3119,8 @@ Moira::mmu040Read(u32 addr, bool data)
     // 040 bus path bypasses readM's check just like the 030 one).
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
-        didReachWatchpoint(addr & addrMask<C>());
+        pomDidReachWatchpoint(addr & addrMask<C>(), S, false,
+                              !data);
     }
 
     // JIT trace: one architectural data access, whatever its internal
@@ -3207,7 +3210,8 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     // POM68K: logical-address watchpoint hook (see mmuRead above).
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
-        didReachWatchpoint(addr & addrMask<C>());
+        pomDidReachWatchpoint(addr & addrMask<C>(), S, true,
+                              !data);
     }
 
     // JIT trace: see mmu040Read — one data access per call.

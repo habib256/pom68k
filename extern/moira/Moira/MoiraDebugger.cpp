@@ -245,6 +245,9 @@ Debugger::reset()
 {
     breakpoints.setNeedsCheck(breakpoints.elements() != 0);
     watchpoints.setNeedsCheck(watchpoints.elements() != 0);
+    // POM68K: catchpoints too — a reset clears `flags`, and without this
+    // an armed exception stop stayed listed but never fired again.
+    catchpoints.setNeedsCheck(catchpoints.elements() != 0);
 }
 
 void

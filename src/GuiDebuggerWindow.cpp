@@ -41,6 +41,8 @@ const char* reasonText(StopReason r) {
     case StopReason::Pause:      return "pause";
     case StopReason::Step:       return "pas à pas";
     case StopReason::Breakpoint: return "point d'arrêt";
+    case StopReason::Watchpoint: return "surveillance";
+    case StopReason::Exception:  return "exception";
     case StopReason::None:       break;
     }
     return "";
@@ -51,6 +53,16 @@ void drawStatus(const Snapshot& s) {
         ImGui::TextDisabled("Arrêts indisponibles dans cette version");
     if (s.stopped) {
         ImGui::Text("Arrêté (%s) à $%08X", reasonText(s.reason), s.regs.pc);
+        const auto& d = s.detail;
+        if (s.reason == StopReason::Watchpoint)
+            ImGui::Text("%s de %u octet(s) en $%08X par l'instruction en $%08X",
+                        d.accessWrite ? "Écriture" : "Lecture", d.accessSize,
+                        d.accessAddr, d.instructionPc);
+        else if (s.reason == StopReason::Exception && d.vector == 10)
+            ImGui::Text("Vecteur 10 (A-line $%04X), PC empilé $%08X",
+                        d.trapWord, d.stackedPc);
+        else if (s.reason == StopReason::Exception)
+            ImGui::Text("Vecteur %u, PC empilé $%08X", d.vector, d.stackedPc);
         if (s.inQuantum)
             ImGui::TextDisabled("Dans une tranche : redémarrage, états et "
                                 "moteur attendent la reprise");
@@ -163,6 +175,123 @@ void drawBreakpoints(GuiDebuggerState& state, const Snapshot& s) {
         ImGui::SameLine();
         if (ImGui::SmallButton("Retirer"))
             post(state, Command::Kind::RemoveBreakpoint, a);
+        ImGui::PopID();
+    }
+}
+
+const char* accessText(pom68k::dbg::Access a) {
+    switch (a) {
+    case pom68k::dbg::Access::Read:      return "lecture";
+    case pom68k::dbg::Access::Write:     return "écriture";
+    case pom68k::dbg::Access::ReadWrite: return "lecture/écriture";
+    }
+    return "";
+}
+
+void drawWatchpoints(GuiDebuggerState& state, const Snapshot& s) {
+    ImGui::SetNextItemWidth(110);
+    ImGui::InputText("##watch", state.watchText.data(), state.watchText.size());
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80);
+    ImGui::InputInt("octets", &state.watchLength);
+    const char* kinds[] = {"lecture", "écriture", "les deux"};
+    int kind = state.watchAccess - 1;
+    ImGui::SetNextItemWidth(110);
+    if (ImGui::Combo("##watchkind", &kind, kinds, 3)) state.watchAccess = kind + 1;
+    ImGui::SameLine();
+    if (ImGui::Button("Surveiller")) {
+        if (auto a = parseGuestAddress(state.watchText.data())) {
+            Command c;
+            c.kind = Command::Kind::AddWatchpoint;
+            c.watch.addr = *a;
+            c.watch.length = static_cast<std::uint8_t>(
+                state.watchLength < 0 ? 0 : state.watchLength > 255 ? 255
+                                                                    : state.watchLength);
+            c.watch.access = static_cast<pom68k::dbg::Access>(state.watchAccess);
+            state.session->post(c);
+            state.inputError.clear();
+        } else {
+            state.inputError = "Adresse hexadécimale attendue";
+        }
+    }
+    ImGui::TextDisabled("Adresses logiques ; accès aux données seulement "
+                        "(un fetch d'instruction ne s'arrête pas)");
+    for (const auto& w : s.watchpoints) {
+        ImGui::PushID(static_cast<int>(w.addr));
+        ImGui::Text("$%08X  %u octet(s)  %s", w.addr, w.length, accessText(w.access));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Retirer"))
+            post(state, Command::Kind::RemoveWatchpoint, w.addr);
+        ImGui::PopID();
+    }
+}
+
+// The window's ready-made exception stops. A free vector (or an A-line
+// word) is typed in the field instead.
+struct CatchPreset { const char* label; std::uint8_t first, last; };
+constexpr CatchPreset kCatchPresets[] = {
+    {"Erreurs bus/adresse (2-3)", 2, 3},
+    {"Instruction illégale (4)", 4, 4},
+    {"Division par zéro, CHK, TRAPV (5-7)", 5, 7},
+    {"Privilège (8)", 8, 8},
+    {"A-line (10) : trap Toolbox/OS", 10, 10},
+    {"F-line (11)", 11, 11},
+    {"Interruptions (24-31)", 24, 31},
+    {"TRAP #0-15 (32-47)", 32, 47},
+    {"Vecteur libre", 0, 0},
+};
+
+void drawCatches(GuiDebuggerState& state, const Snapshot& s) {
+    const int n = static_cast<int>(std::size(kCatchPresets));
+    ImGui::SetNextItemWidth(260);
+    if (ImGui::BeginCombo("##catch", kCatchPresets[state.catchPreset].label)) {
+        for (int i = 0; i < n; ++i)
+            if (ImGui::Selectable(kCatchPresets[i].label, i == state.catchPreset))
+                state.catchPreset = i;
+        ImGui::EndCombo();
+    }
+    const CatchPreset& p = kCatchPresets[state.catchPreset];
+    const bool aline = p.first == 10, free = p.first == 0;
+    if (aline || free) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(90);
+        ImGui::InputText("##catchtext", state.catchText.data(), state.catchText.size());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Arrêter sur")) {
+        std::optional<std::uint32_t> v;
+        if (state.catchText[0]) v = parseGuestAddress(state.catchText.data());
+        if (free && (!v || *v > 255)) {
+            state.inputError = "Vecteur hexadécimal attendu (2 à FF)";
+        } else if (aline && state.catchText[0] && (!v || (*v & 0xF000) != 0xA000 || *v > 0xFFFF)) {
+            state.inputError = "Mot de trap $Axxx attendu (vide : toutes)";
+        } else {
+            for (int vec = free ? int(*v) : p.first;
+                 vec <= (free ? int(*v) : p.last); ++vec) {
+                Command c;
+                c.kind = Command::Kind::AddCatch;
+                c.catchpoint.vector = static_cast<std::uint8_t>(vec);
+                if (aline && v) c.catchpoint.trap = static_cast<std::uint16_t>(*v);
+                state.session->post(c);
+            }
+            state.inputError.clear();
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Aucune")) post(state, Command::Kind::ClearCatches);
+    ImGui::TextDisabled("Arrêt à la première instruction du gestionnaire, "
+                        "cadre empilé");
+    for (const auto& c : s.catches) {
+        ImGui::PushID(c.vector << 16 | c.trap);
+        if (c.trap) ImGui::Text("Vecteur %u, trap $%04X", c.vector, c.trap);
+        else ImGui::Text("Vecteur %u", c.vector);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Retirer")) {
+            Command r;
+            r.kind = Command::Kind::RemoveCatch;
+            r.catchpoint = c;
+            state.session->post(r);
+        }
         ImGui::PopID();
     }
 }
@@ -298,6 +427,8 @@ void drawDebuggerWindow(GuiDebuggerState& state) {
     }
     if (ImGui::CollapsingHeader("Points d'arrêt", ImGuiTreeNodeFlags_DefaultOpen))
         drawBreakpoints(state, s);
+    if (ImGui::CollapsingHeader("Surveillances")) drawWatchpoints(state, s);
+    if (ImGui::CollapsingHeader("Exceptions")) drawCatches(state, s);
     if (ImGui::CollapsingHeader("Désassemblage", ImGuiTreeNodeFlags_DefaultOpen)) {
         // A bounded pane, so the memory section stays reachable.
         ImGui::BeginChild("##disasm",

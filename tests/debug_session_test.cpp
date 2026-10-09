@@ -21,6 +21,11 @@
 // device writes refused, edits refused while running, and a code write
 // that the accelerated engine must not outlive (translated blocks are
 // dropped: the edited loop's invariant holds across JIT-run quanta).
+// Access and exception stops: a write and a read watchpoint stop after
+// the accessing instruction with the access described; a watched opcode
+// fetch never stops; TRAP #0 and a filtered A-line stop at the handler's
+// first instruction with the stacked PC (and trap word); a non-matching
+// trap filter does not stop; and a catchpoint survives a CPU reset.
 
 #include "Cpu020.h"
 #include "Cpu030.h"
@@ -52,8 +57,11 @@ static void check(bool ok, const char* family, const char* what) {
 namespace {
 
 using pom68k::dbg::ByteState;
+using pom68k::dbg::Access;
+using pom68k::dbg::Catch;
 using pom68k::dbg::Command;
 using pom68k::dbg::Reg;
+using pom68k::dbg::Watchpoint;
 using pom68k::dbg::Snapshot;
 using pom68k::dbg::Space;
 using pom68k::dbg::StopReason;
@@ -158,6 +166,42 @@ SnapPtr ackedBy(pom68k::dbg::Session& s, uint64_t id) {
 // boundary of the loop except just before that ADDQ, where it is 2 lower.
 uint32_t loopInvariant(const Snapshot& x) {
     return x.regs.d[1] - 2 * x.regs.d[0] + (x.regs.pc == kBp ? 2 : 0);
+}
+
+
+// The access/exception program, at $3000, with its two handlers at $3100.
+constexpr uint32_t kProg2 = 0x3000, kRead = 0x3004, kTrap = 0x3008,
+                   kALine = 0x300A, kAfterALine = 0x300C, kData = 0x2100,
+                   kTrapHandler = 0x3100, kALineHandler = 0x3102;
+const std::vector<uint8_t> kProgram2 = {
+    0x21, 0xC0, 0x21, 0x00,      // MOVE.L D0,($2100).W
+    0x24, 0x38, 0x21, 0x00,      // MOVE.L ($2100).W,D2
+    0x4E, 0x40,                  // TRAP #0
+    0xA3, 0x1E,                  // an OS A-line (_NewPtr, flag bits 9/8)
+    0x52, 0x80,                  // ADDQ.L #1,D0
+    0x60, 0xF0};                 // BRA.S $3000
+const std::vector<uint8_t> kHandlers = {
+    0x4E, 0x73,                  // $3100: RTE
+    0x54, 0xAF, 0x00, 0x02,      // $3102: ADDQ.L #2,2(A7) — skip the A-line
+    0x4E, 0x73};                 //        RTE
+
+std::vector<uint8_t> be32(uint32_t v) {
+    return {uint8_t(v >> 24), uint8_t(v >> 16), uint8_t(v >> 8), uint8_t(v)};
+}
+
+uint64_t addWatch(pom68k::dbg::Session& s, uint32_t addr, uint8_t len, Access a) {
+    Command c;
+    c.kind = Command::Kind::AddWatchpoint;
+    c.watch = {addr, len, a};
+    return s.post(c);
+}
+
+uint64_t catchCmd(pom68k::dbg::Session& s, Command::Kind k, uint8_t vector,
+                  uint16_t trap = 0) {
+    Command c;
+    c.kind = k;
+    c.catchpoint = {vector, trap};
+    return s.post(c);
 }
 
 template <class Mem, class Cpu>
@@ -373,6 +417,106 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         check(s && s->message.empty(), fam, "the program is restored while paused");
     }
 
+    // ── Access and exception stops ─────────────────────────────────────
+    if (s && s->stopped) {
+        const uint32_t vbr = s->regs.vbr;
+        bool placed = true;
+        for (auto [addr, bytes] : {std::pair{kProg2, kProgram2},
+                                   std::pair{kTrapHandler, kHandlers},
+                                   std::pair{vbr + 0x80, be32(kTrapHandler)},
+                                   std::pair{vbr + 0x28, be32(kALineHandler)}}) {
+            id = poke(dbg, addr, bytes);
+            s = ackedBy(dbg, id);
+            placed = placed && s && s->message.empty();
+        }
+        setReg(dbg, Reg(int(Reg::A0) + 7), 0x8000);
+        setReg(dbg, Reg::D0, 5);
+        id = setReg(dbg, Reg::PC, kProg2);
+        s = ackedBy(dbg, id);
+        check(placed && s && s->regs.pc == kProg2 && s->regs.a[7] == 0x8000, fam,
+              "the access/exception program and its vectors are in place");
+        auto runToStop = [&](StopReason want) {
+            const uint64_t g = dbg.snapshot()->generation;
+            const uint64_t c = post(dbg, Command::Kind::Continue);
+            return waitFor(dbg, [&](const Snapshot& x) {
+                return x.generation > g && x.acked >= c && x.stopped &&
+                       x.reason == want;
+            });
+        };
+
+        addWatch(dbg, kData, 4, Access::Write);
+        s = runToStop(StopReason::Watchpoint);
+        check(s && s->regs.pc == kRead && s->detail.instructionPc == kProg2 &&
+                  s->detail.accessWrite && s->detail.accessAddr == kData &&
+                  s->detail.accessSize == 4,
+              fam, "a write watchpoint stops after the writing instruction");
+        check(s && s->effectiveEngine == 0 && s->watchpoints.size() == 1, fam,
+              "an armed watchpoint runs on the interpreter and is listed");
+        Command view;
+        view.kind = Command::Kind::ViewMemory;
+        view.addr = kData;
+        view.length = 4;
+        id = dbg.post(view);
+        s = ackedBy(dbg, id);
+        check(s && s->memory.bytes == be32(5), fam,
+              "the write has retired when the watchpoint stops");
+
+        post(dbg, Command::Kind::ClearWatchpoints);
+        addWatch(dbg, kData + 2, 1, Access::Read);
+        s = runToStop(StopReason::Watchpoint);
+        check(s && s->regs.pc == kTrap && s->detail.instructionPc == kRead &&
+                  !s->detail.accessWrite && s->detail.accessAddr == kData &&
+                  s->regs.d[2] == 5,
+              fam, "a one-byte read watchpoint inside a long read stops after it");
+
+        post(dbg, Command::Kind::ClearWatchpoints);
+        catchCmd(dbg, Command::Kind::AddCatch, 32);
+        s = runToStop(StopReason::Exception);
+        check(s && s->regs.pc == kTrapHandler && s->detail.vector == 32 &&
+                  s->detail.stackedPc == kALine && s->supervisor,
+              fam, "TRAP #0 stops at its handler with the stacked PC");
+        check(s && s->catches.size() == 1 && s->effectiveEngine == 0, fam,
+              "an armed exception stop is listed and runs on the interpreter");
+
+        // A Toolbox filter that does not match, and a watched opcode word:
+        // neither stops; the breakpoint after the A-line does.
+        catchCmd(dbg, Command::Kind::RemoveCatch, 32);
+        catchCmd(dbg, Command::Kind::AddCatch, 10, 0xA9F4);
+        addWatch(dbg, kALine, 2, Access::ReadWrite);   // prefetched by the RTE
+        post(dbg, Command::Kind::AddBreakpoint, kAfterALine);
+        s = runToStop(StopReason::Breakpoint);
+        check(s && s->regs.pc == kAfterALine, fam,
+              "a non-matching trap filter and a watched opcode fetch do not stop");
+        post(dbg, Command::Kind::ClearWatchpoints);
+        post(dbg, Command::Kind::RemoveBreakpoint, kAfterALine);
+        catchCmd(dbg, Command::Kind::ClearCatches, 0);
+        catchCmd(dbg, Command::Kind::AddCatch, 10, 0xA11E);
+        s = runToStop(StopReason::Exception);
+        check(s && s->regs.pc == kALineHandler && s->detail.vector == 10 &&
+                  s->detail.stackedPc == kALine && s->detail.trapWord == 0xA31E,
+              fam, "an OS trap filter matches its flag variants ($A11E stops $A31E)");
+        id = catchCmd(dbg, Command::Kind::AddCatch, 10, 0x1234);
+        s = ackedBy(dbg, id);
+        check(s && !s->message.empty() && s->catches.size() == 1, fam,
+              "a trap filter that is not an A-line word is refused");
+        id = addWatch(dbg, kData, 17, Access::Write);
+        s = ackedBy(dbg, id);
+        check(s && !s->message.empty() && s->watchpoints.empty(), fam,
+              "a watchpoint longer than 16 bytes is refused");
+
+        catchCmd(dbg, Command::Kind::ClearCatches, 0);
+        id = setReg(dbg, Reg::PC, kLoop);
+        s = ackedBy(dbg, id);
+        uint64_t c = post(dbg, Command::Kind::Continue);
+        s = waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c && !x.stopped; });
+        check(s && s->effectiveEngine == engine && s->catches.empty(), fam,
+              "with every stop removed the user's engine runs again");
+        c = post(dbg, Command::Kind::Pause);
+        s = waitFor(dbg, [&](const Snapshot& x) {
+            return x.acked >= c && x.stopped && x.reason == StopReason::Pause;
+        });
+    }
+
     // ── Teardown releases a hold inside a quantum ──────────────────────
     post(dbg, Command::Kind::AddBreakpoint, kBp);
     id = post(dbg, Command::Kind::Continue);
@@ -418,6 +562,45 @@ struct CountingHook final : pom68k::dbg::StopHook {
     void cpuStopped(bool, moira::u32) override { ++hits; }
 };
 
+// Moira-level: Debugger::reset re-arms CHECK_CP like CHECK_BP/WP, so an
+// exception stop survives a CPU reset (it used to stay listed, dead).
+struct ExceptionHook final : pom68k::dbg::StopHook {
+    int traps = 0;
+    void cpuStopped(bool, moira::u32) override {}
+    void cpuException(moira::u8 v) override { traps += v == 32; }
+};
+
+void catchSurvivesReset(MacMemory& mem, Cpu68k& cpu) {
+    const char* fam = "68000 reset";
+    ExceptionHook hook;
+    cpu.setDebugStopHook(&hook);
+    cpu.debugger.catchpoints.setAt(32);
+    cpu.hardReset();
+    mem.write8(0xEFE7FE, 0xFF);
+    mem.write8(0xEFE3FE, 0x00);                // overlay off, RAM at 0
+    uint32_t len = 0;
+    uint8_t* p = mem.dataSpan(kProg2, len, true);
+    std::memcpy(p, kProgram2.data(), kProgram2.size());
+    p = mem.dataSpan(kTrapHandler, len, true);
+    std::memcpy(p, kHandlers.data(), kHandlers.size());
+    p = mem.dataSpan(0x80, len, true);
+    std::memcpy(p, be32(kTrapHandler).data(), 4);
+    p = mem.dataSpan(0x28, len, true);
+    std::memcpy(p, be32(kALineHandler).data(), 4);
+    cpu.setSR(0x2700);
+    cpu.setA(7, 0x8000);
+    cpu.debugger.jump(kProg2);
+    cpu.setPC0(kProg2);
+    cpu.runCycles(2000);
+    check(hook.traps > 0, fam, "a catchpoint armed before a reset still fires");
+    // Moira calls catchpointMatches() unconditionally, so the trap above
+    // fires either way; what the reset used to lose was CHECK_CP itself —
+    // the flag that keeps the accelerated engine out while a stop is armed.
+    check(!cpu.pomJitIdle(), fam, "and still keeps the accelerated engine out");
+    cpu.debugger.catchpoints.removeAll();
+    cpu.setDebugStopHook(nullptr);
+}
+
 void saveStateIsolation(Q605Memory& mem, Cpu040& cpu) {
     const char* fam = "68040 state";
     (void)mem.read8(0x40000000);
@@ -461,6 +644,7 @@ int main() {
             mem.write8(0xEFE7FE, 0xFF);        // VIA DDRA: PA out
             mem.write8(0xEFE3FE, 0x00);        // VIA ORA: PA4 low, overlay off
         });
+        catchSurvivesReset(mem, cpu);
     }
     {
         static MacIIMemory mem(cfg);

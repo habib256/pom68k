@@ -17,6 +17,7 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
+2026-10-09 with row 35, the debugger's access-stop delegate; before that
 2026-09-05 with rows 33 and 34, the fused 68030 `ird`/`irc` fetch and the
 68030 interpreter data window; earlier counts predated the 040 FPU/cache
 completion, the JIT memory-contract work and the peripheral-phase alignment
@@ -24,13 +25,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **93** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **410** | `grep -rn POM68K Moira/ \| wc -l` |
-| source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **34** | this file |
+| distinct `pom*` extension identifiers | **94** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **412** | `grep -rn POM68K Moira/ \| wc -l` |
+| source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
+| patch groups in the inventory below | **35** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Thirty-four patch groups, two of which (the JIT seam, row 22, and the ATC
+Thirty-five patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -140,10 +141,11 @@ gate in the last column of each row.
 | 33 | **Fused 68030 `ird`/`irc` fetch** — `mmuExecuteStart` serves both opcode words from ONE `pomJitFetch(pc, 4)` with one pipe test and one in-flight stamp, and the i-cache overlay moves into `pomIcacheFetch<Words>`, the single body `mmuFetchWord` now calls too | `Moira.h`, `MoiraExecMMU_cpp.h` | the mode-5 loop head paid two full `mmuFetchWord` calls for a pair the window already covers, while `mmu040InstrStart` had done the fused thing since the seam was written; on x86-64 the 030's automatic backend was then `threaded` (`X64Backend::caps().autoFamilies` carried 68040 only; it carries 68030 as well since the 2026-09-06 re-promotion), so EVERY guest instruction paid the duplicated pipe test, four-store stamp, window probe and call. The fold is refused when the pre-switch pipe is live (row 32 — a shadow fetch must keep returning before the counters), when a watchpoint is armed, and when the window does not cover all four bytes: a word reaching `read16` can clear the ROM overlay or flush a device's ticks, and nothing may sit between the two i-cache charges. ONE overlay body is deliberate — a second copy of the tag/valid/line arithmetic is how the 2026-08-19 retained-cache divergence presented, agreeing counters over parted cache content | `jit_lockstep_030_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_x64_alignment_test` |
 
 | 34 | **68030 interpreter data window** — `mmuRead`/`mmuWrite` consult `pomJitData` for naturally aligned Byte/Word/Long, behind `POM68K_DATA_WINDOW`; `pomJitData030Ok()` owns the refusals and `pomJitData030Hits`/`pomJitData030Refusals` the instrument | `Moira.h`, `MoiraExecMMU_cpp.h` | J3 (point 11) wired the window from `mmu040Read`/`mmu040Write` only, so the knob was a **dead path** on the 68030 — knob on and knob off produced identical fingerprints and identical *zero* fills (`docs/JIT_BRINGUP.md` § C.2), which also left the C.2/C.3 030 probe and thunks without a direct interpreter-side exercise. The 030 owes a **wider** refusal set than the 040: `mmuRead` serves program space as well (`read<C, AddrSpace::PROG, …>` — prefetch, JSR/JMP targets) where `mmu040Read` takes `data` as an argument, and the DTLB is filled from a DATA-space probe whose `fc` the 030 ATC matches exactly, so `fcl != FC::USER_DATA` is refused alongside `fcSource != 0` and `mmuRmw`. `POLL_IPL` is reproduced at each size's own position — before a byte, after a word, **between** the halves of an aligned long — or interrupt recognition moves; unaligned and straddling forms keep the long path because they are the only ones that touch `mmuState[1]`/`mmuDataBuffer`. No in-flight stamp on a hit, same argument as `mmu040Read`, exactness inherited from J3b. **Default ON for this family since 2026-09-05** — the opposite of the 68040, on three independent admissions: bit-identical fingerprints knob on and off across three engines at two budgets, `-L m030` green 56/56 with the window on, and −5.5 % on `threaded` / −5.7 % on the interpreter arm. `POM68K_DATA_WINDOW=0` still refuses it, and `jit_lockstep_030_no_data_window_test` is the gate that keeps that path exercised now that it is no longer the default | `jit_lockstep_030_test`, `jit_lockstep_030_no_data_window_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_alignment_test` |
+| 35 | **Debugger access-stop delegate** `pomDidReachWatchpoint(addr, S, write, program)` at all six watchpoint sites (default forwards to `didReachWatchpoint`), and `Debugger::reset` re-arming `CHECK_CP` | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraDebugger.cpp` | the bare address could not say read from write nor data from program space, so no consumer could keep a write watchpoint from stopping on reads or on an opcode fetch; and a reset left catchpoints listed with `CHECK_CP` clear, so the accelerated engine no longer stepped aside for them | `debug_session_test` |
 
-Rows 2-21 and 25-34 are the accuracy work; rows 22-24 are pure seams (inert
-when nothing arms them). The twelve files carrying no `POM68K` marker at all —
-`MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.*` (2), `MoiraMacros.h`,
+Rows 2-21 and 25-34 are the accuracy work; rows 22-24 and 35 are seams (inert
+when nothing arms them). The eleven files carrying no `POM68K` marker at all —
+`MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
 still be taken as-is; everything else is ported by hand, per the fork decision
 above. One caveat on that list: `MoiraMacros.h` carries a **NeoST** patch
@@ -1151,6 +1153,27 @@ those models. Each of the four entry points now runs the same
 translation. Found (and used) while tracing who binds `_FP68K` ($15AC)
 during the Quadra bare no-FPU boot; debug-only, `flags & CHECK_WP` is
 clear unless a watchpoint is armed.
+
+## Debugger access and exception stops (2026-10-09)
+
+The product debugger (`src/DebugCpuTarget.h`) needs three facts the bare
+`didReachWatchpoint(addr)` does not carry: the access width, its direction,
+and whether it is a program-space access. Every site — `read`/`write` in
+`MoiraDataflow_cpp.h` and the four translated entry points of row 20 — now
+calls `pomDidReachWatchpoint(addr, S, write, program)`, whose default
+implementation forwards to the original delegate, so a consumer of the old
+hook is unchanged. `program` is the template `AS` on the plain cores, the
+function-code pins (`fcl`) in `mmuRead`/`mmuWrite` (which serve both
+spaces) and `!data` on the 040 paths. The 68030 fetches its opcode words
+through `mmuFetchWord`, which has no hook: opcode fetches never reach the
+debugger there, by construction.
+
+`Debugger::reset` re-armed `CHECK_BP` and `CHECK_WP` after `Moira::reset`
+cleared `flags`, but not `CHECK_CP`. `catchpointMatches` is evaluated
+unconditionally at the vector sites, so the stop still fired; what was lost
+is the flag that takes the CPU off the JIT's `pomJitIdle()` fast path while
+an exception stop is armed. `MoiraDebugger.cpp` therefore carries its first
+`POM68K` marker.
 
 ## External /BERR on the plain 68020 core (2026-07-24, Phase C — Mac LC)
 

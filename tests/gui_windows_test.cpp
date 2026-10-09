@@ -113,6 +113,24 @@ struct FakeDebugTarget final : pom68k::dbg::Target {
         pokes.push_back({addr, std::vector<std::uint8_t>(d, d + n)});
         return true;
     }
+    std::vector<pom68k::dbg::Watchpoint> watches;
+    std::vector<pom68k::dbg::Catch> catchList;
+    bool addWatchpoint(const pom68k::dbg::Watchpoint& w, std::string&) override {
+        watches.push_back(w);
+        return true;
+    }
+    void removeWatchpoint(std::uint32_t a) override {
+        std::erase_if(watches, [&](const auto& w) { return w.addr == a; });
+    }
+    void clearWatchpoints() override { watches.clear(); }
+    std::vector<pom68k::dbg::Watchpoint> watchpoints() const override { return watches; }
+    bool addCatch(const pom68k::dbg::Catch& c, std::string&) override {
+        catchList.push_back(c);
+        return true;
+    }
+    void removeCatch(const pom68k::dbg::Catch& c) override { std::erase(catchList, c); }
+    void clearCatches() override { catchList.clear(); }
+    std::vector<pom68k::dbg::Catch> catches() const override { return catchList; }
     std::vector<std::pair<int, std::uint32_t>> edits;
     std::vector<std::pair<std::uint32_t, std::vector<std::uint8_t>>> pokes;
 };
@@ -285,6 +303,34 @@ int main() {
         std::snprintf(state.pokeBytes.data(), state.pokeBytes.size(), "548");
         check(ui.click("Écrire", draw) && !state.inputError.empty(),
               "half a byte is refused in the window");
+        // Access and exception stops: each button posts typed entries.
+        check(ui.click("Mémoire", draw) && ui.click("Surveillances", draw),
+              "fold memory, open the watchpoint section");
+        std::snprintf(state.watchText.data(), state.watchText.size(), "$2100");
+        check(ui.click("Surveiller", draw), "click « Surveiller »");
+        session.atBoundary(target);
+        check(target.watches.size() == 1 && target.watches[0].addr == 0x2100 &&
+                  target.watches[0].length == 4 &&
+                  target.watches[0].access == pom68k::dbg::Access::Write,
+              "« Surveiller » posts a 4-byte write watchpoint");
+        check(ui.click("Surveillances", draw) && ui.click("Exceptions", draw),
+              "fold watchpoints, open the exception section");
+        state.catchPreset = 4;                 // A-line
+        std::snprintf(state.catchText.data(), state.catchText.size(), "$A11E");
+        ui.frame(draw);                        // the preset moves the button
+        check(ui.click("Arrêter sur", draw), "click « Arrêter sur » with an A-line filter");
+        state.catchPreset = 6;                 // interrupts 24-31
+        state.catchText[0] = 0;
+        ui.frame(draw);
+        check(ui.click("Arrêter sur", draw), "click « Arrêter sur » for interrupts");
+        session.atBoundary(target);
+        check(target.catchList.size() == 9 &&
+                  target.catchList[0] == pom68k::dbg::Catch{10, 0xA11E} &&
+                  target.catchList[1].vector == 24 && target.catchList[8].vector == 31,
+              "the presets post vector 10 with its trap, then vectors 24-31");
+        ui.frame(draw);
+        check(ui.find("Retirer") != nullptr, "armed exception stops are listed");
+        capture(ui, "debugger-stops");
         capture(ui, "debugger-memory");
         // Close it like a user would, so no focus or input state leaks
         // into the next window's scenario.

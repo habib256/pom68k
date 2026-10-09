@@ -2799,16 +2799,32 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   only, ROM and devices refused — and drop every translated block
   (`JitEngine::flushAll`). With `POM68K_040_DCACHE=1` writes are refused.
 
-Known limits of this service: access
-watchpoints, exception/trap stops, step over/out, histories, symbols and
-device snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
+- **Access and exception stops are decided mid-instruction, delivered at a
+  boundary.** Moira calls the adapter from its watchpoint sites (before the
+  access, with width, direction and program/data space —
+  `pomDidReachWatchpoint`, Moira row 35) and from its catchpoint sites
+  (handler entered, frame stacked). The adapter never blocks there: it
+  records the match and arms Moira's soft stop, which fires at the end of
+  that same `execute()` — after the accessing instruction retired, or at
+  the handler's first instruction. Watchpoints (≤ 32, 1–16 bytes,
+  read/write/both) are logical, data-space only: an opcode fetch or a
+  PC-relative operand never stops. Exception stops name a vector (2–255);
+  vector 10 may carry an A-line word, compared without its flag bits. The
+  snapshot's `detail` gives the access and its instruction, or the vector,
+  the stacked PC and the trap word. Both lists belong to the adapter, and
+  their Moira guards are cleared with it when the host session ends.
+
+Known limits of this service: step over/out, histories, symbols, MMU/cache
+register edits and device snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
 view shows RAM, not a newer dirty cache line; breakpoints belong to the
 CPU object, so a relaunch starts with none.
 
 Gated by `debug_session_test` (asset-free; a real machine thread per
 family — 68000, 68020, 68030 and 68040 rigs, the 030/040 also with the
 accelerated engine requested; edits, including a code write the
-accelerated engine had already translated) and `debug_inspection_test` (030 and 040
+accelerated engine had already translated; write/read watchpoints, a
+watched opcode fetch that must not stop, TRAP and filtered A-line stops,
+and a catchpoint surviving a reset) and `debug_inspection_test` (030 and 040
 table walks, untouched descriptors, I/O never read: whole-machine save
 bytes identical before and after inspection), plus the window in
 `gui_windows_test`.

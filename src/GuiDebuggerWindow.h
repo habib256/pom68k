@@ -29,6 +29,12 @@ struct GuiDebuggerState {
     std::array<char, 16> editValue{};
     std::array<char, 16> pokeAddress{};
     std::array<char, 64> pokeBytes{};
+    // Access and exception stops.
+    std::array<char, 16> watchText{};
+    int watchLength = 4;
+    int watchAccess = 2;                     // a pom68k::dbg::Access
+    int catchPreset = 0;                     // index into the window's list
+    std::array<char, 16> catchText{};        // vector, or the A-line word
     std::string inputError;
 
     bool bound() const noexcept { return session != nullptr; }

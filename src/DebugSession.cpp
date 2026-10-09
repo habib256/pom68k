@@ -93,6 +93,29 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             disasmFollowPc_ = c.followPc;
             disasmAddr_ = c.addr;
             break;
+        case Command::Kind::AddWatchpoint:
+        case Command::Kind::AddCatch: {
+            std::string why;
+            if (!blockingAvailable_)
+                message_ = "Arrêts indisponibles dans cette version";
+            else if (!(c.kind == Command::Kind::AddWatchpoint
+                           ? target.addWatchpoint(c.watch, why)
+                           : target.addCatch(c.catchpoint, why)))
+                message_ = why;
+            break;
+        }
+        case Command::Kind::RemoveWatchpoint:
+            target.removeWatchpoint(c.addr);
+            break;
+        case Command::Kind::ClearWatchpoints:
+            target.clearWatchpoints();
+            break;
+        case Command::Kind::RemoveCatch:
+            target.removeCatch(c.catchpoint);
+            break;
+        case Command::Kind::ClearCatches:
+            target.clearCatches();
+            break;
         case Command::Kind::SetRegister:
         case Command::Kind::WriteMemory:
             applyEdit(target, c);
@@ -144,19 +167,23 @@ bool Session::atBoundary(Target& target) {
     return stopped_;
 }
 
-void Session::onCpuStop(Target& target, bool soft, std::uint32_t pc) {
+void Session::onCpuStop(Target& target, StopReason reason, std::uint32_t pc,
+                        const StopDetail& detail) {
     if (!blockingAvailable_) return;
     {
         std::lock_guard<std::mutex> l(mu_);
         if (shutdown_) return;
     }
     const std::int64_t clock = target.clock();
-    if (!soft && clock == lastStopClock_ && pc == lastStopPc_) return;
+    if (reason == StopReason::Breakpoint && clock == lastStopClock_ &&
+        pc == lastStopPc_)
+        return;
     lastStopClock_ = clock;
     lastStopPc_ = pc;
     stopped_ = true;
     inQuantum_ = true;
-    reason_ = soft ? StopReason::Step : StopReason::Breakpoint;
+    reason_ = reason;
+    detail_ = detail;
     publish(target);
     for (;;) {
         std::deque<Command> batch;
@@ -185,10 +212,14 @@ void Session::publish(Target& target) {
     s.stopped = stopped_;
     s.inQuantum = stopped_ && inQuantum_;
     s.reason = stopped_ ? reason_ : StopReason::None;
+    if (s.reason == StopReason::Watchpoint || s.reason == StopReason::Exception)
+        s.detail = detail_;
     s.message = message_;
     target.capture(s);
     s.breakpoints = target.breakpoints();
     std::sort(s.breakpoints.begin(), s.breakpoints.end());
+    s.watchpoints = target.watchpoints();
+    s.catches = target.catches();
 
     // Both windows are read at an instruction boundary on the machine
     // thread, running or not: between quanta nothing else is executing.

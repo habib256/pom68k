@@ -1283,6 +1283,16 @@ protected:
     
     // Called when a watchpoint is hit
     virtual void didReachWatchpoint(u32 addr) { }
+
+    // POM68K (debugger access stops): every watchpoint site calls this,
+    // BEFORE the access, with what the bare address lacks — the width,
+    // the direction, and whether it is a program-space access (an
+    // instruction-stream read such as an extension word or a PC-relative
+    // operand). The default keeps Moira's original delegate.
+    virtual void pomDidReachWatchpoint(u32 addr, Size S, bool write, bool program) {
+        (void)S; (void)write; (void)program;
+        didReachWatchpoint(addr);
+    }
     
     // Called when a catchpoint is hit
     virtual void didReachCatchpoint(u8 vector) { }
@@ -1375,6 +1385,7 @@ protected:
     
     // Called when a watchpoint is hit
     void didReachWatchpoint(u32 addr);
+    void pomDidReachWatchpoint(u32 addr, Size, bool, bool) { didReachWatchpoint(addr); }
     
     // Called when a catchpoint is hit
     void didReachCatchpoint(u8 vector);

@@ -48,11 +48,62 @@ class CpuTarget final : public Target, public StopHook {
 public:
     CpuTarget(Cpu& cpu, Mem& mem, Session& session)
         : cpu_(cpu), mem_(mem), session_(session) {}
+    // Breakpoints are Moira's own list and outlive the host session; the
+    // watch and catch lists are this adapter's, so their guards go with
+    // it — otherwise CHECK_WP/CHECK_CP would keep the CPU on the
+    // interpreter with no stop anyone can see or remove. The host destroys
+    // the adapter after joining its machine thread.
+    ~CpuTarget() {
+        cpu_.debugger.watchpoints.removeAll();
+        cpu_.debugger.catchpoints.removeAll();
+    }
 
     // ── StopHook (machine thread, inside execute()) ─────────────────────
     void cpuStopped(bool soft, moira::u32 pc) override {
-        if (soft) stepArmed_ = false;
-        session_.onCpuStop(*this, soft, pc);
+        StopReason reason = soft ? StopReason::Step : StopReason::Breakpoint;
+        StopDetail detail;
+        if (soft) {
+            stepArmed_ = false;
+            if (pending_ != StopReason::None) {
+                reason = pending_;
+                detail = pendingDetail_;
+            }
+            pending_ = StopReason::None;
+        }
+        session_.onCpuStop(*this, reason, pc, detail);
+    }
+
+    // Mid-instruction: decide, record, and arm a soft stop; never block.
+    // The first match of an instruction wins.
+    void cpuAccess(moira::u32 addr, int bytes, bool write, bool program) override {
+        if (program || pending_ != StopReason::None) return;
+        const std::uint64_t lo = addr, hi = lo + std::uint64_t(bytes);
+        const auto want = std::uint8_t(write ? Access::Write : Access::Read);
+        for (const Watchpoint& w : watches_) {
+            if (!(std::uint8_t(w.access) & want)) continue;
+            if (lo >= std::uint64_t(w.addr) + w.length || w.addr >= hi) continue;
+            pendingDetail_ = {};
+            pendingDetail_.accessAddr = addr;
+            pendingDetail_.accessSize = std::uint8_t(bytes);
+            pendingDetail_.accessWrite = write;
+            pendingDetail_.instructionPc = cpu_.getPC0();
+            arm(StopReason::Watchpoint);
+            return;
+        }
+    }
+    void cpuException(moira::u8 vector) override {
+        if (pending_ != StopReason::None) return;
+        StopDetail d;
+        d.vector = vector;
+        bool framed = false;
+        for (const Catch& c : catches_) {
+            if (c.vector != vector) continue;
+            if (!framed) { readFrame(d); framed = true; }
+            if (c.trap && !trapMatches(c.trap, d.trapWord)) continue;
+            pendingDetail_ = d;
+            arm(StopReason::Exception);
+            return;
+        }
     }
 
     // ── Target ──────────────────────────────────────────────────────────
@@ -193,12 +244,74 @@ public:
             if (auto a = list.guardAddr(i)) v.push_back(*a);
         return v;
     }
+    bool addWatchpoint(const Watchpoint& w, std::string& why) override {
+        Watchpoint m = w;
+        m.addr = physMask(w.addr);
+        if (!m.length || m.length > kMaxWatchLength ||
+            std::uint64_t(m.addr) + m.length > 0x100000000ull) {
+            why = "Surveillance : 1 à 16 octets";
+            return false;
+        }
+        if (!(std::uint8_t(m.access) & 3) || std::uint8_t(m.access) > 3) {
+            why = "Surveillance : lecture, écriture ou les deux";
+            return false;
+        }
+        for (const Watchpoint& x : watches_) if (x == m) return true;
+        if (watches_.size() >= kMaxWatchpoints) {
+            why = "Trop de surveillances";
+            return false;
+        }
+        watches_.push_back(m);
+        rebuildWatchGuards();
+        return true;
+    }
+    void removeWatchpoint(std::uint32_t addr) override {
+        std::erase_if(watches_, [&](const Watchpoint& w) {
+            return w.addr == physMask(addr);
+        });
+        rebuildWatchGuards();
+    }
+    void clearWatchpoints() override {
+        watches_.clear();
+        rebuildWatchGuards();
+    }
+    std::vector<Watchpoint> watchpoints() const override { return watches_; }
+
+    bool addCatch(const Catch& c, std::string& why) override {
+        if (c.vector < 2) {
+            why = "Exception : vecteur 2 à 255";
+            return false;
+        }
+        if (c.trap && (c.vector != 10 || (c.trap & 0xF000) != 0xA000)) {
+            why = "Filtre de trap : un mot $Axxx sur le vecteur 10";
+            return false;
+        }
+        for (const Catch& x : catches_) if (x == c) return true;
+        if (catches_.size() >= kMaxCatches) {
+            why = "Trop d'arrêts sur exception";
+            return false;
+        }
+        catches_.push_back(c);
+        rebuildCatchGuards();
+        return true;
+    }
+    void removeCatch(const Catch& c) override {
+        std::erase(catches_, c);
+        rebuildCatchGuards();
+    }
+    void clearCatches() override {
+        catches_.clear();
+        rebuildCatchGuards();
+    }
+    std::vector<Catch> catches() const override { return catches_; }
+
     void armStep() override {
         stepArmed_ = true;
         cpu_.debugger.stepInto();
     }
     bool stopsArmed() const override {
-        return stepArmed_ || cpu_.debugger.breakpoints.elements() != 0;
+        return stepArmed_ || cpu_.debugger.breakpoints.elements() != 0 ||
+               !watches_.empty() || !catches_.empty();
     }
 
 private:
@@ -282,10 +395,57 @@ private:
         return true;
     }
 
+    // Moira's guards match one address each, so a watched range is one
+    // guard per byte: they only make Moira call cpuAccess(); the range,
+    // the direction and the instruction-stream filter are decided there.
+    void rebuildWatchGuards() {
+        auto& g = cpu_.debugger.watchpoints;
+        g.removeAll();
+        for (const Watchpoint& w : watches_)
+            for (std::uint32_t i = 0; i < w.length; ++i)
+                if (!g.isSetAt(w.addr + i)) g.setAt(w.addr + i);
+    }
+    void rebuildCatchGuards() {
+        auto& g = cpu_.debugger.catchpoints;
+        g.removeAll();
+        for (const Catch& c : catches_)
+            if (!g.isSetAt(c.vector)) g.setAt(c.vector);
+    }
+    void arm(StopReason r) {
+        pending_ = r;
+        cpu_.debugger.stepInto();
+    }
+
+    // The handler has been entered: the frame is on the active (super-
+    // visor) stack. Every 68k frame has SR at SP and the PC at SP+2,
+    // except the 68000's group-0 frame (bus/address error), whose PC
+    // follows the access address and instruction register (SP+10).
+    void readFrame(StopDetail& d) {
+        const bool group0 = model() == moira::Model::M68000 &&
+                            (d.vector == 2 || d.vector == 3);
+        std::uint8_t b[4];
+        ByteState st[4];
+        readMemory(Space::Logical, cpu_.getA(7) + (group0 ? 10 : 2), b, st, 4);
+        if (st[0] != ByteState::Ok || st[3] != ByteState::Ok) return;
+        d.stackedPc = std::uint32_t(b[0]) << 24 | b[1] << 16 | b[2] << 8 | b[3];
+        if (d.vector != 10) return;
+        readMemory(Space::Logical, d.stackedPc, b, st, 2);
+        if (st[0] == ByteState::Ok && st[1] == ByteState::Ok)
+            d.trapWord = std::uint16_t(b[0] << 8 | b[1]);
+    }
+    static bool trapMatches(std::uint16_t want, std::uint16_t got) {
+        const std::uint16_t mask = (want & 0x0800) ? 0xFBFF : 0xF8FF;
+        return (got & mask) == (want & mask);
+    }
+
     Cpu& cpu_;
     Mem& mem_;
     Session& session_;
     bool stepArmed_ = false;
+    std::vector<Watchpoint> watches_;
+    std::vector<Catch> catches_;
+    StopReason pending_ = StopReason::None;
+    StopDetail pendingDetail_;
 };
 
 } // namespace pom68k::dbg

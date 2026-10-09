@@ -545,7 +545,8 @@ Moira::read(u32 addr)
     // AVANT le test — sinon un accès I/O en court absolu ($8001.w → EA $FFFF8001) ne
     // matcherait jamais un watchpoint posé sur $FF8001. Cohérent avec le décodage du Bus.
     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
-        didReachWatchpoint(addr & addrMask<C>());
+        pomDidReachWatchpoint(addr & addrMask<C>(), S, false,
+                              AS == AddrSpace::PROG);
     }
 
     // POM68K Phase C (Mac LC/Mac II, 2026-07-24): record the in-flight
@@ -635,7 +636,8 @@ Moira::write(u32 addr, u32 val)
     // Check if a watchpoint has been reached
     // NEOST : adresse masquée au bus 24 bits avant le test (cf. peekM ci-dessus).
     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
-        didReachWatchpoint(addr & addrMask<C>());
+        pomDidReachWatchpoint(addr & addrMask<C>(), S, true,
+                              AS == AddrSpace::PROG);
     }
 
     // POM68K Phase C: in-flight sub-access recording on the plain
