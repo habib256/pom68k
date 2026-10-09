@@ -48,6 +48,9 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace pom68k::dbg {
 
@@ -60,6 +63,13 @@ public:
     // dashboard had paused; MachineHost clears its own pause on it.
     bool takeResumeRequest() {
         return resumeRequest_.exchange(false, std::memory_order_acq_rel);
+    }
+
+    // The session identity a history export carries (profile, ROM,
+    // media…), supplied once by the runner before the machine starts.
+    void setIdentity(std::vector<std::pair<std::string, std::string>> notes) {
+        std::lock_guard<std::mutex> l(mu_);
+        identity_ = std::move(notes);
     }
 
     // Builds without a second thread (Emscripten) cannot hold the machine
@@ -93,6 +103,7 @@ private:
     std::deque<Command> queue_;              // under mu_
     std::uint64_t nextId_ = 1;               // under mu_
     bool shutdown_ = false;                  // under mu_
+    std::vector<std::pair<std::string, std::string>> identity_;  // under mu_
     std::shared_ptr<const Snapshot> snap_ =  // under mu_
         std::make_shared<const Snapshot>();
     std::atomic<bool> resumeRequest_{false};

@@ -259,6 +259,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **editing registers or memory from the debugger: why a PC edit does not use `Debugger::jump`, and what keeps the JIT from running the old code** → [2026-10-09 (fifth) — The debugger edits a stopped machine…](#2026-10-09-debugger-edits)
 - **watchpoints and exception stops: where they stop, what they ignore (opcode fetches, PC-relative operands), and how an A-line trap is filtered** → [2026-10-09 (sixth) — Access and exception stops…](#2026-10-09-debugger-stops)
 - **step over/out: why not a temporary PC, which stack decides, and why ending a run must consume its soft stop** → [2026-10-09 (seventh) — Step over and step out…](#2026-10-09-debugger-step-over-out)
+- **debugger histories: what an entry is, why a disabled history costs nothing, and the export format** → [2026-10-09 (eighth) — Bounded instruction and exception histories…](#2026-10-09-debugger-histories)
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
@@ -485,6 +486,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (eighth)** — [Bounded instruction and exception histories, exported with the session identity; and a step out could be stranded by removing a breakpoint](#2026-10-09-debugger-histories)
 - **2026-10-09 (seventh)** — [Step over and step out, judged on the stack they started on; and a cancelled run's soft stop could wait dormant for the next breakpoint](#2026-10-09-debugger-step-over-out)
 - **2026-10-09 (sixth)** — [Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints](#2026-10-09-debugger-stops)
 - **2026-10-09 (fifth)** — [The debugger edits a stopped machine: the PC reloads its prefetch without a bus cycle, and a code write outlives no translated block](#2026-10-09-debugger-edits)
@@ -1104,6 +1106,55 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-debugger-histories"></a>
+## 2026-10-09 (eighth) — Bounded instruction and exception histories, exported with the session identity; and a step out could be stranded by removing a breakpoint
+
+Fourth piece of order 3 of `docs/SNOW_IMPLEMENTATION_PLAN.md`: opt-in
+rings for retired instructions and for exceptions, a documented export
+carrying machine and ROM identity, and no silent drop.
+
+**No cost when off, by construction.** The plan asked to measure the
+disabled overhead against the same binary. There is nothing to measure:
+recording rides the step-into soft stop the adapter already re-arms for
+step over/out, plus catchpoint guards on every vector, so a disabled
+history adds no instruction, branch or allocation to Moira's loop. The
+rings (16 384 instruction entries, 1 024 exception entries) are allocated
+when the history is switched on. Enabled, every instruction goes through
+the interpreter and one hook call that peeks its opcode; that cost is the
+user's choice and shows as the effective engine.
+
+**What an entry is.** An instruction entry is a boundary: the instruction
+about to execute, its opcode, SR and D0–A7 *before* it, and the core
+clock — the next entry shows its effect, which is how the window prints
+"registers changed by the previous instruction". An exception entry is an
+accepted vector with its stacked PC and, for vector 10, the trap word.
+Totals are kept beside the rings, so the window and the export always
+state how many of the oldest entries were dropped.
+
+**The export.** `src/DebugHistory.h` defines format v1: a header (format
+line, the identity notes the runner already gives input journals —
+profile, ROM, media — and the CPU model), the counted rings, `I` and `E`
+lines oldest first. The machine thread writes it when asked. The gate
+overflows the ring on every rig, exports, parses the file back, and finds
+the full ring, a drop count that adds up and a last entry at the paused
+PC.
+
+**The bug it found.** The first gate run recorded nothing after
+`RemoveBreakpoint`: removing the last breakpoint recomputes `CHECK_BP`
+from the list alone and silently parks the soft stop — the same mechanism
+as the seventh entry's dormant step, but here it also meant a
+step out that was still running when the user removed a breakpoint would
+never complete. `Target::maintain()` now re-asserts the soft stop after
+every command batch and at every quantum boundary (a reset clears `flags`
+too). The reset path is not separately gated, because the ROM-less rigs
+halt on reset. Mutations: without `maintain()`, the recording,
+newest-entry and export checks fail; without the record-only branch,
+every history check fails.
+
+The window gains « Historique »: record, clear, counters with drops,
+export path, the newest instructions with the registers each changed, and
+the newest exceptions.
 
 <a id="2026-10-09-debugger-step-over-out"></a>
 ## 2026-10-09 (seventh) — Step over and step out, judged on the stack they started on; and a cancelled run's soft stop could wait dormant for the next breakpoint

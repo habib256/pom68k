@@ -237,7 +237,8 @@ public:
     }
 
     // ── Input recording (src/InputJournal.h) ───────────────────────────
-    // Give the machine host the session identity its journals will carry —
+    // Give the machine host the session identity its journals (and the
+    // debugger's history exports) will carry —
     // profile, clocks, media, and whether an external wire (LToUDP /
     // AppleTalk hub) makes a session non-replayable — then auto-start a
     // recording when the configuration asks for one. Call after state.kind
@@ -261,6 +262,8 @@ public:
         notes.emplace_back("network",
                            (networkEnabled() ||
                             state_.network.ltoUdpEnabled) ? "1" : "0");
+        if constexpr (requires { machine.debug.setIdentity(notes); })
+            machine.debug.setIdentity(notes);
         machine.setRecordingIdentity(std::move(notes));
         const auto& rec = config_.diagnostics().inputRecord;
         if (rec && !rec->empty()) machine.requestRecordingStart(*rec);

@@ -31,7 +31,11 @@
 // ignores the deepest level's RTS; TRAP and A-line are stepped over
 // through their handlers; a breakpoint inside a stepped-over call wins and
 // leaves no stray step behind; a Pause cancels a step out that never
-// returns.
+// returns. Histories: instruction entries in loop order with the
+// registers before each instruction; recording outlives the removal of
+// the last breakpoint and overflows its ring with the drop counted; the
+// export carries the identity and parses back; exception entries name
+// TRAP #0 and the A-line word; switched off, the user's engine returns.
 
 #include "Cpu020.h"
 #include "Cpu030.h"
@@ -48,6 +52,9 @@
 
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -540,6 +547,22 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         });
     }
 
+    // Continue, let a few quanta pass, report whether the machine ran
+    // without a stop on the user's engine, and pause again.
+    auto runsFree = [&] {
+        const uint64_t c0 = post(dbg, Command::Kind::Continue);
+        waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c0 && !x.stopped; });
+        const long q0 = host.quanta.load();
+        waitFor(dbg, [&](const Snapshot&) { return host.quanta.load() > q0 + 2; });
+        const SnapPtr r = dbg.snapshot();
+        const bool free = !r->stopped && r->effectiveEngine == engine;
+        const uint64_t p0 = post(dbg, Command::Kind::Pause);
+        waitFor(dbg, [&](const Snapshot& x) {
+            return x.acked >= p0 && x.stopped && x.reason == StopReason::Pause;
+        });
+        return free;
+    };
+
     // ── Step over / step out ───────────────────────────────────────────
     if (s && s->stopped) {
         id = poke(dbg, kRec, kRecursive);
@@ -613,19 +636,6 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         check(s && s->regs.pc == kSubCmp, fam,
               "a breakpoint inside a stepped-over call stops there");
         post(dbg, Command::Kind::RemoveBreakpoint, kSubCmp);
-        auto runsFree = [&] {
-            const uint64_t c0 = post(dbg, Command::Kind::Continue);
-            waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c0 && !x.stopped; });
-            const long q0 = host.quanta.load();
-            waitFor(dbg, [&](const Snapshot&) { return host.quanta.load() > q0 + 2; });
-            const SnapPtr r = dbg.snapshot();
-            const bool free = !r->stopped && r->effectiveEngine == engine;
-            const uint64_t p0 = post(dbg, Command::Kind::Pause);
-            waitFor(dbg, [&](const Snapshot& x) {
-                return x.acked >= p0 && x.stopped && x.reason == StopReason::Pause;
-            });
-            return free;
-        };
         s = runToBp(kRecAfter);
         check(s && s->regs.pc == kRecAfter, fam,
               "the next breakpoint is the next stop: the abandoned step over left none");
@@ -649,6 +659,116 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
               "after the cancelled run the machine runs free on the user's engine");
         id = setReg(dbg, Reg::PC, kLoop);
         s = ackedBy(dbg, id);
+    }
+
+    // ── Histories ──────────────────────────────────────────────────────
+    if (s && s->stopped) {
+        dbg.setIdentity({{"profile", fam}, {"rom", "synthetic"}});
+        Command on;
+        on.kind = Command::Kind::SetHistory;
+        on.value = 1;
+        dbg.post(on);
+        post(dbg, Command::Kind::AddBreakpoint, kBp);
+        uint64_t c = 0;
+        for (int pass = 0; pass < 2; ++pass) {     // the second has a full loop
+            const uint64_t g = dbg.snapshot()->generation;
+            c = post(dbg, Command::Kind::Continue);
+            s = waitFor(dbg, [&](const Snapshot& x) {
+                return x.generation > g && x.acked >= c && x.stopped &&
+                       x.reason == StopReason::Breakpoint;
+            });
+        }
+        const auto& t = s ? s->historyTail : std::vector<pom68k::dbg::HistoryEntry>{};
+        const size_t n = t.size();
+        check(s && s->historyOn && s->effectiveEngine == 0 && n >= 4, fam,
+              "a history records while stops run on the interpreter");
+        check(n >= 4 && t[n - 1].pc == kBp && t[n - 2].pc == kLoop &&
+                  t[n - 3].pc == kBra && t[n - 4].pc == kBp &&
+                  t[n - 1].d[0] == t[n - 2].d[0] + 1 &&
+                  t[n - 1].clock > t[n - 2].clock && t[n - 1].opcode == 0x5281 &&
+                  s->historyText.back().find("addq") != std::string::npos,
+              fam, "entries follow the loop, registers before each instruction");
+
+        // Recording outlives the last breakpoint and overflows its ring.
+        post(dbg, Command::Kind::RemoveBreakpoint, kBp);
+        c = post(dbg, Command::Kind::Continue);
+        waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c && !x.stopped; });
+        const long q = host.quanta.load();
+        waitFor(dbg, [&](const Snapshot&) { return host.quanta.load() > q + 12; },
+                20000);
+        c = post(dbg, Command::Kind::Pause);
+        s = waitFor(dbg, [&](const Snapshot& x) {
+            return x.acked >= c && x.stopped && x.reason == StopReason::Pause;
+        });
+        check(s && s->historyRecorded > pom68k::dbg::kHistoryCapacity, fam,
+              "recording continues with no breakpoint left and overflows the ring");
+        check(s && !s->historyTail.empty() && s->historyTail.back().pc == s->regs.pc,
+              fam, "the newest entry is the boundary the machine paused at");
+
+        const std::string path = (std::filesystem::temp_directory_path() /
+            ("pom68k_history_" + std::to_string(engine) + "_" +
+             std::string(fam).substr(0, 5) + ".txt")).string();
+        Command ex;
+        ex.kind = Command::Kind::ExportHistory;
+        ex.path = path;
+        id = dbg.post(ex);
+        s = ackedBy(dbg, id);
+        std::ifstream in(path);
+        std::string line, lastI;
+        bool header = false, profile = false, model = false, counts = false;
+        size_t iLines = 0;
+        while (std::getline(in, line)) {
+            header |= line == "# POM68K debugger history v1";
+            profile |= line == std::string("# profile ") + fam;
+            model |= line.rfind("# model 680", 0) == 0;
+            if (line.rfind("# instructions ", 0) == 0) {
+                unsigned long long rec = 0, kept = 0, dropped = 0;
+                counts = std::sscanf(line.c_str(),
+                    "# instructions %llu recorded, %llu kept, %llu dropped",
+                    &rec, &kept, &dropped) == 3 &&
+                    kept == pom68k::dbg::kHistoryCapacity && rec == kept + dropped &&
+                    dropped > 0;
+            }
+            if (line.rfind("I ", 0) == 0) { ++iLines; lastI = line; }
+        }
+        unsigned long long clk = 0;
+        unsigned lastPc = 0;
+        std::sscanf(lastI.c_str(), "I %llu %x", &clk, &lastPc);
+        check(header && profile && model, fam,
+              "the export names its format, the session identity and the CPU");
+        check(counts && iLines == pom68k::dbg::kHistoryCapacity && s &&
+                  lastPc == s->regs.pc,
+              fam, "the export keeps the full ring, states the drop, ends at the PC");
+        std::filesystem::remove(path);
+
+        // Exception entries: TRAP #0 and the filtered-flag A-line.
+        id = setReg(dbg, Reg::PC, kProg2);
+        s = ackedBy(dbg, id);
+        c = post(dbg, Command::Kind::Continue);
+        waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c && !x.stopped; });
+        const long q2 = host.quanta.load();
+        waitFor(dbg, [&](const Snapshot&) { return host.quanta.load() > q2 + 2; });
+        c = post(dbg, Command::Kind::Pause);
+        s = waitFor(dbg, [&](const Snapshot& x) {
+            return x.acked >= c && x.stopped && x.reason == StopReason::Pause;
+        });
+        bool trap = false, aline = false;
+        if (s)
+            for (const auto& e : s->trapTail) {
+                trap |= e.vector == 32 && e.stackedPc == kALine;
+                aline |= e.vector == 10 && e.stackedPc == kALine && e.trapWord == 0xA31E;
+            }
+        check(trap && aline && s->trapsRecorded >= 2, fam,
+              "exception entries name TRAP #0 and the A-line word");
+
+        Command off;
+        off.kind = Command::Kind::SetHistory;
+        off.value = 0;
+        dbg.post(off);
+        id = setReg(dbg, Reg::PC, kLoop);
+        s = ackedBy(dbg, id);
+        check(s && !s->historyOn, fam, "the history is switched off");
+        check(runsFree(), fam, "and the machine runs free on the user's engine");
     }
 
     // ── Teardown releases a hold inside a quantum ──────────────────────

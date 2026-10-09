@@ -296,6 +296,66 @@ void drawCatches(GuiDebuggerState& state, const Snapshot& s) {
     }
 }
 
+void drawHistory(GuiDebuggerState& state, const Snapshot& s) {
+    bool on = s.historyOn;
+    if (ImGui::Checkbox("Enregistrer", &on)) {
+        Command c;
+        c.kind = Command::Kind::SetHistory;
+        c.value = on ? 1 : 0;
+        state.session->post(c);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Vider")) post(state, Command::Kind::ClearHistory);
+    const auto dropped = [](std::uint64_t n, std::size_t cap) {
+        return n > cap ? n - cap : 0;
+    };
+    ImGui::Text("%llu instructions (%llu perdues), %llu exceptions (%llu perdues)",
+                static_cast<unsigned long long>(s.historyRecorded),
+                static_cast<unsigned long long>(
+                    dropped(s.historyRecorded, pom68k::dbg::kHistoryCapacity)),
+                static_cast<unsigned long long>(s.trapsRecorded),
+                static_cast<unsigned long long>(
+                    dropped(s.trapsRecorded, pom68k::dbg::kTrapHistoryCapacity)));
+    ImGui::SetNextItemWidth(260);
+    ImGui::InputTextWithHint("##histpath", "pom68k-historique.txt",
+                             state.historyPath.data(), state.historyPath.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Exporter")) {
+        Command c;
+        c.kind = Command::Kind::ExportHistory;
+        c.path = state.historyPath[0] ? state.historyPath.data()
+                                      : "pom68k-historique.txt";
+        state.session->post(c);
+    }
+    ImGui::TextDisabled("Ligne : instruction à exécuter ; registres changés "
+                        "par la précédente");
+    const auto& t = s.historyTail;
+    for (std::size_t i = 0; i < t.size(); ++i) {
+        char line[256];
+        int n = std::snprintf(line, sizeof line, "%08X  %-28s",
+                              t[i].pc, i < s.historyText.size()
+                                           ? s.historyText[i].c_str() : "");
+        if (i) {      // what the previous instruction changed
+            for (int r = 0; r < 8 && n < int(sizeof line) - 16; ++r) {
+                if (t[i].d[r] != t[i - 1].d[r])
+                    n += std::snprintf(line + n, sizeof line - std::size_t(n),
+                                       " D%d=%08X", r, t[i].d[r]);
+                if (t[i].a[r] != t[i - 1].a[r])
+                    n += std::snprintf(line + n, sizeof line - std::size_t(n),
+                                       " A%d=%08X", r, t[i].a[r]);
+            }
+        }
+        ImGui::TextUnformatted(line);
+    }
+    for (const auto& e : s.trapTail) {
+        if (e.vector == 10)
+            ImGui::Text("Vecteur 10 (A-line $%04X) depuis $%08X", e.trapWord,
+                        e.stackedPc);
+        else
+            ImGui::Text("Vecteur %u depuis $%08X", e.vector, e.stackedPc);
+    }
+}
+
 void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
     ImGui::SetNextItemWidth(110);
     const bool enter = ImGui::InputText("##mem", state.memoryText.data(),
@@ -433,6 +493,7 @@ void drawDebuggerWindow(GuiDebuggerState& state) {
         drawBreakpoints(state, s);
     if (ImGui::CollapsingHeader("Surveillances")) drawWatchpoints(state, s);
     if (ImGui::CollapsingHeader("Exceptions")) drawCatches(state, s);
+    if (ImGui::CollapsingHeader("Historique")) drawHistory(state, s);
     if (ImGui::CollapsingHeader("Désassemblage", ImGuiTreeNodeFlags_DefaultOpen)) {
         // A bounded pane, so the memory section stays reachable.
         ImGui::BeginChild("##disasm",

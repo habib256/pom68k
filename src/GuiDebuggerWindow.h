@@ -35,6 +35,7 @@ struct GuiDebuggerState {
     int watchAccess = 2;                     // a pom68k::dbg::Access
     int catchPreset = 0;                     // index into the window's list
     std::array<char, 16> catchText{};        // vector, or the A-line word
+    std::array<char, 256> historyPath{};     // export file; empty = default
     std::string inputError;
 
     bool bound() const noexcept { return session != nullptr; }

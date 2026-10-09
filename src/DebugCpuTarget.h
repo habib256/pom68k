@@ -37,6 +37,7 @@
 #include "Mmu040Peek.h"
 #include "MoiraDebugSeam.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -54,6 +55,7 @@ public:
     // interpreter with no stop anyone can see or remove. The host destroys
     // the adapter after joining its machine thread.
     ~CpuTarget() {
+        if (run_ != Run::None || history_ || stepArmed_) dropSoftStop();
         cpu_.debugger.watchpoints.removeAll();
         cpu_.debugger.catchpoints.removeAll();
     }
@@ -63,6 +65,8 @@ public:
         StopReason reason = soft ? StopReason::Step : StopReason::Breakpoint;
         StopDetail detail;
         if (soft) {
+            if (history_) record();
+            const bool stepped = stepArmed_;
             stepArmed_ = false;
             if (pending_ != StopReason::None) {
                 reason = pending_;
@@ -71,13 +75,19 @@ public:
                 // Not there yet: one more instruction, silently.
                 cpu_.debugger.stepInto();
                 return;
+            } else if (run_ == Run::None && !stepped && history_) {
+                // Recording only: no stop was asked for.
+                cpu_.debugger.stepInto();
+                return;
             }
             pending_ = StopReason::None;
         }
         // Any stop ends a run-until step; a breakpoint that interrupts one
-        // finds its soft stop re-armed for the next boundary.
-        if (!soft && run_ != Run::None) dropSoftStop();
+        // finds its soft stop re-armed for the next boundary — kept only
+        // while a history still needs it.
+        if (!soft && run_ != Run::None && !history_) dropSoftStop();
         run_ = Run::None;
+        if (history_) cpu_.debugger.stepInto();
         session_.onCpuStop(*this, reason, pc, detail);
     }
 
@@ -100,10 +110,19 @@ public:
         }
     }
     void cpuException(moira::u8 vector) override {
-        if (pending_ != StopReason::None) return;
         StopDetail d;
         d.vector = vector;
         bool framed = false;
+        if (history_) {
+            readFrame(d);
+            framed = true;
+            TrapEntry& t = traps_[std::size_t(trapsRecorded_++ % kTrapHistoryCapacity)];
+            t.clock = cpu_.getClock();
+            t.vector = vector;
+            t.stackedPc = d.stackedPc;
+            t.trapWord = d.trapWord;
+        }
+        if (pending_ != StopReason::None) return;
         for (const Catch& c : catches_) {
             if (c.vector != vector) continue;
             if (!framed) { readFrame(d); framed = true; }
@@ -331,12 +350,44 @@ public:
         returning_ = atReturn();
     }
     void cancelRun() override {
-        if (run_ != Run::None) dropSoftStop();
+        if (run_ != Run::None && !history_) dropSoftStop();
         run_ = Run::None;
+    }
+    void maintain() override {
+        if (run_ != Run::None || history_) cpu_.debugger.stepInto();
+    }
+
+    // ── Histories ───────────────────────────────────────────────────────
+    // Recording rides the same per-instruction soft stop as a run, and
+    // the catchpoint guards on every vector: a disabled history adds no
+    // code to Moira's instruction loop. The rings are allocated here, when
+    // it is switched on, never in the hook.
+    void setHistory(bool on) override {
+        if (on == history_) return;
+        history_ = on;
+        if (on) {
+            ring_.assign(kHistoryCapacity, HistoryEntry{});
+            traps_.assign(kTrapHistoryCapacity, TrapEntry{});
+            recorded_ = trapsRecorded_ = 0;
+            cpu_.debugger.stepInto();
+        } else if (run_ == Run::None && !stepArmed_) {
+            dropSoftStop();
+        }
+        rebuildCatchGuards();
+    }
+    bool historyOn() const override { return history_; }
+    void clearHistory() override { recorded_ = trapsRecorded_ = 0; }
+    std::uint64_t historyRecorded() const override { return recorded_; }
+    std::uint64_t trapsRecorded() const override { return trapsRecorded_; }
+    void history(std::vector<HistoryEntry>& out, std::size_t tail) const override {
+        copyTail(ring_, recorded_, tail, out);
+    }
+    void traps(std::vector<TrapEntry>& out, std::size_t tail) const override {
+        copyTail(traps_, trapsRecorded_, tail, out);
     }
 
     bool stopsArmed() const override {
-        return stepArmed_ || run_ != Run::None ||
+        return stepArmed_ || run_ != Run::None || history_ ||
                cpu_.debugger.breakpoints.elements() != 0 ||
                !watches_.empty() || !catches_.empty();
     }
@@ -435,8 +486,31 @@ private:
     void rebuildCatchGuards() {
         auto& g = cpu_.debugger.catchpoints;
         g.removeAll();
+        if (history_) {                    // every vector feeds the history
+            for (int v = 2; v < 256; ++v) g.setAt(std::uint32_t(v));
+            return;
+        }
         for (const Catch& c : catches_)
             if (!g.isSetAt(c.vector)) g.setAt(c.vector);
+    }
+    void record() {
+        HistoryEntry& e = ring_[std::size_t(recorded_++ % kHistoryCapacity)];
+        e.clock = cpu_.getClock();
+        e.pc = cpu_.getPC();
+        e.sr = cpu_.getSR();
+        if (!opcodeAt(e.pc, e.opcode)) e.opcode = 0;
+        for (int n = 0; n < 8; ++n) { e.d[n] = cpu_.getD(n); e.a[n] = cpu_.getA(n); }
+    }
+    template <class T>
+    static void copyTail(const std::vector<T>& ring, std::uint64_t recorded,
+                         std::size_t tail, std::vector<T>& out) {
+        out.clear();
+        if (ring.empty()) return;
+        const std::uint64_t kept = std::min<std::uint64_t>(recorded, ring.size());
+        const std::uint64_t n = tail ? std::min<std::uint64_t>(kept, tail) : kept;
+        out.reserve(std::size_t(n));
+        for (std::uint64_t i = recorded - n; i < recorded; ++i)
+            out.push_back(ring[std::size_t(i % ring.size())]);
     }
     void arm(StopReason r) {
         pending_ = r;
@@ -527,6 +601,10 @@ private:
     bool stepArmed_ = false;
     Run run_ = Run::None;
     bool returning_ = false;
+    bool history_ = false;
+    std::vector<HistoryEntry> ring_;
+    std::vector<TrapEntry> traps_;
+    std::uint64_t recorded_ = 0, trapsRecorded_ = 0;
     int stack0_ = 0;
     std::uint32_t sp0_ = 0, target_ = 0;
     std::vector<Watchpoint> watches_;

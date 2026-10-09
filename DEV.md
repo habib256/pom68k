@@ -2827,8 +2827,23 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   surface later, even dormant across a breakpoint list emptied and refilled,
   as a step nobody asked for.
 
-Known limits of this service: histories, symbols, MMU/cache register edits
-and device snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
+- **Histories are opt-in rings that ride the same soft stop.** Switched on,
+  the adapter allocates a 16 384-entry instruction ring and a 1 024-entry
+  exception ring, keeps the soft stop re-armed and guards every vector;
+  switched off, nothing is added to Moira's instruction loop. An
+  instruction entry is a boundary — the instruction about to execute and
+  the registers before it; an exception entry is an accepted vector, its
+  stacked PC and the A-line word. Totals are kept beside the rings, so a
+  drop is always counted. The snapshot carries the newest 32 of each; the
+  export (`src/DebugHistory.h`, format v1) writes whole rings from the
+  machine thread under the session identity the runner gave
+  (`GuiHostServices::armInputRecording`). `Target::maintain()` re-asserts
+  the soft stop after every command batch and at every quantum boundary,
+  because a breakpoint-list edit or a reset recomputes `CHECK_BP` without
+  it — which also used to strand a running step out.
+
+Known limits of this service: symbols, MMU/cache register edits and device
+snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
 view shows RAM, not a newer dirty cache line; breakpoints belong to the
 CPU object, so a relaunch starts with none.
 
@@ -2839,7 +2854,7 @@ accelerated engine had already translated; write/read watchpoints, a
 watched opcode fetch that must not stop, TRAP and filtered A-line stops,
 a catchpoint surviving a reset; step over/out on a recursive routine,
 through TRAP and A-line handlers, interrupted by a breakpoint, cancelled
-by Pause) and `debug_inspection_test` (030 and 040
+by Pause; histories recorded, overflowed, exported and parsed back) and `debug_inspection_test` (030 and 040
 table walks, untouched descriptors, I/O never read: whole-machine save
 bytes identical before and after inspection), plus the window in
 `gui_windows_test`.

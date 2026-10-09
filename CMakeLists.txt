@@ -389,7 +389,7 @@ add_library(pom68k_core STATIC
     src/SaveState.cpp     # save states — archive core (visitor, chunks, RLE)
     src/SaveStateMachines.cpp  # save states — machine assembly + instantiations
     src/DiskTimeline.cpp  # save states — SCSI/ATA disk content history + .pomundo
-    src/DebugSession.cpp  # debugger — GUI commands ↔ machine-thread snapshots
+    src/DebugSession.cpp src/DebugHistory.cpp  # debugger — session, history export
     src/Cpu68k.cpp        # M1 — Moira wrapper + contention
     src/MacMemory.cpp     # M2 — Mac Plus memory map + overlay
     src/Via6522.cpp       # M2/M4 — VIA (ports, timers)

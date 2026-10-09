@@ -68,6 +68,30 @@ struct Catch {
     bool operator==(const Catch&) const = default;
 };
 
+// Opt-in histories (bounded rings, allocated when enabled). An instruction
+// entry is the machine at an instruction boundary: the instruction about
+// to execute and the registers before it — the next entry shows its
+// effect. An exception entry is an accepted vector with its stacked PC
+// (and the A-line word for vector 10). The rings keep the newest entries;
+// `recorded` counts every entry ever made, so recorded > capacity says how
+// many of the oldest were dropped — never silently.
+struct HistoryEntry {
+    std::int64_t clock = 0;          // Moira core clock at the boundary
+    std::uint32_t pc = 0;
+    std::uint16_t opcode = 0;        // 0 when the PC is not readable memory
+    std::uint16_t sr = 0;
+    std::array<std::uint32_t, 8> d{}, a{};
+};
+struct TrapEntry {
+    std::int64_t clock = 0;
+    std::uint32_t stackedPc = 0;
+    std::uint16_t trapWord = 0;
+    std::uint8_t vector = 0;
+};
+inline constexpr std::size_t kHistoryCapacity = 16384;
+inline constexpr std::size_t kTrapHistoryCapacity = 1024;
+inline constexpr std::size_t kHistoryTail = 32;      // entries per snapshot
+
 // What the last stop was about, beyond its PC.
 struct StopDetail {
     // Watchpoint: the access and the instruction that made it.
@@ -145,6 +169,9 @@ struct Command {
         AddCatch,                    // catch
         RemoveCatch,                 // catch
         ClearCatches,
+        SetHistory,                  // value: 0 off, 1 on
+        ClearHistory,
+        ExportHistory,               // path (written by the machine thread)
     };
     Kind kind = Kind::Pause;
     std::uint64_t id = 0;            // assigned by Session::post
@@ -157,6 +184,7 @@ struct Command {
     std::vector<std::uint8_t> data;  // WriteMemory, at most kMaxEditBytes
     Watchpoint watch;
     Catch catchpoint;
+    std::string path;                // ExportHistory
 };
 
 struct Snapshot {
@@ -181,6 +209,13 @@ struct Snapshot {
     std::vector<std::uint32_t> breakpoints;   // logical PCs
     std::vector<Watchpoint> watchpoints;
     std::vector<Catch> catches;
+    // Histories: on/off, totals ever recorded, and the newest entries
+    // (oldest first) with the disassembly of each instruction entry.
+    bool historyOn = false;
+    std::uint64_t historyRecorded = 0, trapsRecorded = 0;
+    std::vector<HistoryEntry> historyTail;
+    std::vector<std::string> historyText;    // parallel to historyTail
+    std::vector<TrapEntry> trapTail;
     // Engine the user asked for (0 = interpreter, 1 = accelerated) and the
     // one that actually executes: with a stop armed every instruction goes
     // through Moira's interpreter (JitEngine.cpp: !pomJitIdle()).
@@ -248,6 +283,19 @@ public:
     virtual void armStepOver() = 0;
     virtual void armStepOut() = 0;
     virtual void cancelRun() = 0;
+    // Called after every command batch and at every quantum boundary:
+    // re-assert whatever per-instruction soft stop a run or a history
+    // needs. A breakpoint list edit recomputes CHECK_BP from the list
+    // alone, and a reset clears it; either would silently stop them.
+    virtual void maintain() = 0;
+    // Histories. `tail` = 0 copies whole rings; oldest first.
+    virtual void setHistory(bool on) = 0;
+    virtual bool historyOn() const = 0;
+    virtual void clearHistory() = 0;
+    virtual std::uint64_t historyRecorded() const = 0;
+    virtual std::uint64_t trapsRecorded() const = 0;
+    virtual void history(std::vector<HistoryEntry>& out, std::size_t tail) const = 0;
+    virtual void traps(std::vector<TrapEntry>& out, std::size_t tail) const = 0;
     virtual bool stopsArmed() const = 0;
 };
 

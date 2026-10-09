@@ -5,6 +5,8 @@
 
 #include "DebugSession.h"
 
+#include "DebugHistory.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -128,6 +130,30 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
         case Command::Kind::ClearCatches:
             target.clearCatches();
             break;
+        case Command::Kind::SetHistory:
+            if (!blockingAvailable_ && c.value)
+                message_ = "Historique indisponible dans cette version";
+            else
+                target.setHistory(c.value != 0);
+            break;
+        case Command::Kind::ClearHistory:
+            target.clearHistory();
+            break;
+        case Command::Kind::ExportHistory: {
+            IdentityNotes notes;
+            {
+                std::lock_guard<std::mutex> l(mu_);
+                notes = identity_;
+            }
+            Snapshot regs;
+            target.capture(regs);
+            std::string why;
+            if (exportHistory(c.path, notes, regs.model, target, why))
+                message_ = "Historique exporté : " + c.path;
+            else
+                message_ = why;
+            break;
+        }
         case Command::Kind::SetRegister:
         case Command::Kind::WriteMemory:
             applyEdit(target, c);
@@ -136,6 +162,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
     }
     // Breakpoint edits recompute Moira's CHECK_BP from the list alone, which
     // would drop a soft stop armed before them: arm the step last.
+    target.maintain();
     if (a.step) target.armStep();
     else if (a.run == Command::Kind::StepOver) target.armStepOver();
     else if (a.run == Command::Kind::StepOut) target.armStepOut();
@@ -173,6 +200,8 @@ bool Session::atBoundary(Target& target) {
         batch.swap(queue_);
     }
     const Applied a = apply(target, batch, false);
+    // A reset applied since the last boundary cleared Moira's flags.
+    target.maintain();
     // A reset or a state load applied while stopped moves the CPU without a
     // command of ours: the snapshot must follow it.
     const bool moved = stopped_ &&
@@ -234,6 +263,13 @@ void Session::publish(Target& target) {
     std::sort(s.breakpoints.begin(), s.breakpoints.end());
     s.watchpoints = target.watchpoints();
     s.catches = target.catches();
+    s.historyOn = target.historyOn();
+    s.historyRecorded = target.historyRecorded();
+    s.trapsRecorded = target.trapsRecorded();
+    target.history(s.historyTail, kHistoryTail);
+    target.traps(s.trapTail, kHistoryTail);
+    for (const HistoryEntry& e : s.historyTail)
+        s.historyText.push_back(target.disassemble(e.pc).text);
 
     // Both windows are read at an instruction boundary on the machine
     // thread, running or not: between quanta nothing else is executing.

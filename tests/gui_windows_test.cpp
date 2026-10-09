@@ -34,6 +34,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <cstdlib>
 #include <fstream>
 #include <optional>
@@ -106,6 +107,29 @@ struct FakeDebugTarget final : pom68k::dbg::Target {
     void armStepOver() override { ++stepOvers; }
     void armStepOut() override { ++stepOuts; }
     void cancelRun() override {}
+    void maintain() override {}
+    bool hist = false;
+    void setHistory(bool on) override { hist = on; }
+    bool historyOn() const override { return hist; }
+    void clearHistory() override {}
+    std::uint64_t historyRecorded() const override { return hist ? 40000 : 0; }
+    std::uint64_t trapsRecorded() const override { return hist ? 3 : 0; }
+    void history(std::vector<pom68k::dbg::HistoryEntry>& out, std::size_t) const override {
+        out.clear();
+        if (!hist) return;
+        for (std::uint32_t i = 0; i < 3; ++i) {
+            pom68k::dbg::HistoryEntry e;
+            e.clock = 100 + i;
+            e.pc = 0x2000 + 2 * i;
+            e.opcode = 0x4E71;
+            e.d[0] = i;
+            out.push_back(e);
+        }
+    }
+    void traps(std::vector<pom68k::dbg::TrapEntry>& out, std::size_t) const override {
+        out.clear();
+        if (hist) out.push_back({200, 0x300A, 0xA31E, 10});
+    }
     int stepOvers = 0, stepOuts = 0;
     bool stopsArmed() const override { return !bps.empty(); }
     bool setRegister(pom68k::dbg::Reg r, std::uint32_t v, std::string&) override {
@@ -349,6 +373,27 @@ int main() {
         ui.frame(draw);
         check(ui.find("Retirer") != nullptr, "armed exception stops are listed");
         capture(ui, "debugger-stops");
+        // The history section: a checkbox, the counters, an export.
+        check(ui.click("Exceptions", draw) && ui.click("Historique", draw),
+              "fold exceptions, open the history section");
+        check(ui.click("Enregistrer", draw), "tick « Enregistrer »");
+        session.atBoundary(target);
+        ui.frame(draw);
+        check(target.hist && session.snapshot()->historyOn &&
+                  session.snapshot()->historyTail.size() == 3,
+              "the checkbox switches the history on and the tail is published");
+        const std::string histPath =
+            (std::filesystem::temp_directory_path() / "pom68k_gui_history.txt").string();
+        std::snprintf(state.historyPath.data(), state.historyPath.size(), "%s",
+                      histPath.c_str());
+        ui.frame(draw);
+        check(ui.click("Exporter", draw), "click « Exporter »");
+        session.atBoundary(target);
+        check(session.snapshot()->message.find("exporté") != std::string::npos &&
+                  std::filesystem::exists(histPath),
+              "« Exporter » writes the file on the machine thread");
+        std::filesystem::remove(histPath);
+        capture(ui, "debugger-history");
         capture(ui, "debugger-memory");
         // Close it like a user would, so no focus or input state leaks
         // into the next window's scenario.

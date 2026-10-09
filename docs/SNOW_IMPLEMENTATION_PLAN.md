@@ -157,7 +157,7 @@ Other items in this document are proposals, not adopted features.
 | 0 | ATA transfer and media restoration — implemented | Regressions pass | M | Exact continuation and rewind, including a fresh process |
 | 1 | SCSI and ATA backing-image policy — implemented | Content digest, since-open log, `.pomundo` reverse journal | Done | A state cannot silently combine old RAM with later disk data (`media_timeline_test`) |
 | 2 | Debugger service and basic views — implemented | `debug_session_test` on 000/020/030/040 rigs, `debug_inspection_test`, GUI window | Done | Pause, inspect, step and PC stop on representative CPU families |
-| 3 | Extended debugger and device inspection | Basic service, register/RAM editing, access/exception stops and step over/out landed; histories, symbols, device snapshots and MMU/cache register edits absent | L | Defined stop semantics, bounded history, no inspection side effects |
+| 3 | Extended debugger and device inspection | Basic service, register/RAM editing, access/exception stops, step over/out and histories landed; symbols, device snapshots and MMU/cache register edits absent | L | Defined stop semantics, bounded history, no inspection side effects |
 | 4 | Session files | Startup/relaunch data present, combined file absent | M | Reopen the same configured machine with validated paths |
 | 5 | CD track/source mapping | Single-source parser versus per-source Snow mapping | M | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
@@ -640,6 +640,16 @@ exception stops end a run; Pause cancels one. Ending a run consumes its
 re-armed soft stop, which otherwise survived dormant and surfaced later as
 an unrequested step — the gate's first draft missed that, because removing
 the last breakpoint had masked it.
+
+The twenty-first increment adds opt-in bounded histories: a 16 384-entry
+instruction ring (clock, PC, opcode, SR, D/A registers at each boundary)
+and a 1 024-entry exception ring (vector, stacked PC, A-line word), with
+totals that make every drop visible, and a documented text export
+(`src/DebugHistory.h`) headed by the session identity. Recording uses the
+per-instruction soft stop and catchpoint guards, so a disabled history
+adds nothing to the instruction loop. A new `maintain()` re-asserts that
+soft stop after each command batch and at each quantum boundary: removing
+the last breakpoint (or a reset) recomputed `CHECK_BP` without it.
 
 A follow-up correction keeps the IWM reader and writer on one head angle.
 The reader re-parks when the drive's revolution length changes (a zone seek or
