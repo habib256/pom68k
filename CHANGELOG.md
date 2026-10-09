@@ -260,6 +260,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **watchpoints and exception stops: where they stop, what they ignore (opcode fetches, PC-relative operands), and how an A-line trap is filtered** → [2026-10-09 (sixth) — Access and exception stops…](#2026-10-09-debugger-stops)
 - **step over/out: why not a temporary PC, which stack decides, and why ending a run must consume its soft stop** → [2026-10-09 (seventh) — Step over and step out…](#2026-10-09-debugger-step-over-out)
 - **debugger histories: what an entry is, why a disabled history costs nothing, and the export format** → [2026-10-09 (eighth) — Bounded instruction and exception histories…](#2026-10-09-debugger-histories)
+- **debugger symbols: where trap and low-memory names come from, and how a ROM symbol file is tied to its ROM** → [2026-10-09 (ninth) — Debugger symbols…](#2026-10-09-debugger-symbols)
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
@@ -486,6 +487,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (ninth)** — [Debugger symbols: OS names from cxmon for every ROM, ROM labels only for the ROM whose checksum they declare](#2026-10-09-debugger-symbols)
 - **2026-10-09 (eighth)** — [Bounded instruction and exception histories, exported with the session identity; and a step out could be stranded by removing a breakpoint](#2026-10-09-debugger-histories)
 - **2026-10-09 (seventh)** — [Step over and step out, judged on the stack they started on; and a cancelled run's soft stop could wait dormant for the next breakpoint](#2026-10-09-debugger-step-over-out)
 - **2026-10-09 (sixth)** — [Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints](#2026-10-09-debugger-stops)
@@ -1106,6 +1108,49 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-debugger-symbols"></a>
+## 2026-10-09 (ninth) — Debugger symbols: OS names from cxmon for every ROM, ROM labels only for the ROM whose checksum they declare
+
+Fifth piece of order 3 of `docs/SNOW_IMPLEMENTATION_PLAN.md`, whose rule was
+"symbols and low-memory labels must be tied to ROM identity and documented
+provenance". Two kinds of name, two answers.
+
+**The OS's names are not a ROM's.** A-line trap words and low-memory
+globals are the published interface of Mac OS, the same on every 68k ROM.
+Apple's own `Traps.a`/`SysEqu.a` are in the Universal Interfaces, which
+this tree does not carry; Apple's ROM source (`elliotnunn/mac-rom`, the
+first-ranked source) has the private equates only. The tables come from
+cxmon, the monitor shipped with Basilisk II (`cebix/macemu`, GPL v2 or
+later, compatible with this tree's GPLv3): `tools/gen_mac_symbols.py`
+generates `src/MacSymbolTables.inc` (1 177 traps, 551 globals) and writes
+the commit into its header. One trap word carries two names in cxmon
+(`$A746`); the first is kept and the header lists the other.
+
+**Two corrections while gating.** The first expectations had `$A31E` fall
+back to `NewPtr` by masking its flag bits; cxmon names the variant itself
+(`NewPtrClear`), and an exact match is the better answer, so the mask is
+only the fallback ($A602 → `Read`). And Moira prints an absolute short
+operand as `$16a.w`, not `($16a).w`; the annotator now reads that form,
+skipping `#$` immediates and treating a short address at or above `$8000`
+as the sign-extended top of memory. A global is taken to extend to the next
+one but never past 64 bytes: `$2100` lies 256 bytes into `VectorPtr`'s
+interval and is left unnamed.
+
+**ROM labels are tied to the ROM.** A symbol file (format v1,
+`src/DebugSymbols.h`) is accepted only if it declares the running ROM's
+checksum — the first longword, which every memory map already exposes as
+`romChecksum()` — and its source. Addresses are ROM offsets, mapped
+through the windows the file declares (a ROM executes from mirrors). No
+ROM symbols ship: this is the contract a user's or a tool's file must
+meet. The gate refuses a file for another checksum and one without
+provenance, accepts the right one, and finds "Prog2", "Prog2+$4" and
+"TrapSite" on the expected lines. Removing the checksum test, or the flag
+fallback, fails it.
+
+The disassembly and the history show `; _GetResource`-style comments, stop
+lines and exception entries name the trap, and the window gains
+« Symboles » (the running ROM's checksum, load and forget).
 
 <a id="2026-10-09-debugger-histories"></a>
 ## 2026-10-09 (eighth) — Bounded instruction and exception histories, exported with the session identity; and a step out could be stranded by removing a breakpoint

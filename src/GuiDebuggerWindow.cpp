@@ -6,6 +6,7 @@
 
 #include "GuiDebuggerWindow.h"
 
+#include "MacSymbols.h"
 #include "imgui.h"
 
 #include <cctype>
@@ -58,9 +59,11 @@ void drawStatus(const Snapshot& s) {
             ImGui::Text("%s de %u octet(s) en $%08X par l'instruction en $%08X",
                         d.accessWrite ? "Écriture" : "Lecture", d.accessSize,
                         d.accessAddr, d.instructionPc);
-        else if (s.reason == StopReason::Exception && d.vector == 10)
-            ImGui::Text("Vecteur 10 (A-line $%04X), PC empilé $%08X",
-                        d.trapWord, d.stackedPc);
+        else if (s.reason == StopReason::Exception && d.vector == 10) {
+            const char* n = pom68k::mac::trapName(d.trapWord);
+            ImGui::Text("Vecteur 10 (A-line $%04X%s%s), PC empilé $%08X",
+                        d.trapWord, n ? " _" : "", n ? n : "", d.stackedPc);
+        }
         else if (s.reason == StopReason::Exception)
             ImGui::Text("Vecteur %u, PC empilé $%08X", d.vector, d.stackedPc);
         if (s.inQuantum)
@@ -138,11 +141,15 @@ void drawRegisterEdit(GuiDebuggerState& state) {
 void drawDisassembly(GuiDebuggerState& state, const Snapshot& s) {
     ImGui::TextDisabled("Cliquer une ligne pose ou retire un point d'arrêt");
     for (const auto& line : s.disasm) {
-        char label[160];
-        std::snprintf(label, sizeof label, "%s%s %08X  %s",
+        if (!line.label.empty() && line.label.find('+') == std::string::npos)
+            ImGui::TextDisabled("%s:", line.label.c_str());
+        char label[256];
+        std::snprintf(label, sizeof label, "%s%s %08X  %s%s%s",
                       line.breakpoint ? "*" : " ",
                       line.addr == s.regs.pc ? ">" : " ",
-                      line.addr, line.text.c_str());
+                      line.addr, line.text.c_str(),
+                      line.comment.empty() ? "" : "  ; ",
+                      line.comment.c_str());
         ImGui::PushID(static_cast<int>(line.addr));
         if (ImGui::Selectable(label, line.addr == s.regs.pc && s.stopped))
             post(state, line.breakpoint ? Command::Kind::RemoveBreakpoint
@@ -348,12 +355,38 @@ void drawHistory(GuiDebuggerState& state, const Snapshot& s) {
         ImGui::TextUnformatted(line);
     }
     for (const auto& e : s.trapTail) {
-        if (e.vector == 10)
-            ImGui::Text("Vecteur 10 (A-line $%04X) depuis $%08X", e.trapWord,
-                        e.stackedPc);
+        if (e.vector == 10) {
+            const char* n = pom68k::mac::trapName(e.trapWord);
+            ImGui::Text("Vecteur 10 (A-line $%04X%s%s) depuis $%08X", e.trapWord,
+                        n ? " _" : "", n ? n : "", e.stackedPc);
+        }
         else
             ImGui::Text("Vecteur %u depuis $%08X", e.vector, e.stackedPc);
     }
+}
+
+void drawSymbols(GuiDebuggerState& state, const Snapshot& s) {
+    ImGui::Text("ROM en cours : checksum $%08X", s.romChecksum);
+    if (s.symbolCount)
+        ImGui::TextWrapped("%zu symboles ROM (source : %s)", s.symbolCount,
+                           s.symbolSource.c_str());
+    else
+        ImGui::TextDisabled("Aucun symbole ROM chargé");
+    ImGui::SetNextItemWidth(260);
+    ImGui::InputTextWithHint("##sympath", "fichier de symboles ROM",
+                             state.symbolPath.data(), state.symbolPath.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Charger")) {
+        Command c;
+        c.kind = Command::Kind::LoadSymbols;
+        c.path = state.symbolPath.data();
+        state.session->post(c);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Oublier")) post(state, Command::Kind::ClearSymbols);
+    ImGui::TextDisabled("Un fichier n'est accepté que pour la ROM dont il "
+                        "déclare le checksum");
+    ImGui::TextDisabled("Traps et globales : noms de cxmon (Basilisk II)");
 }
 
 void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
@@ -494,6 +527,7 @@ void drawDebuggerWindow(GuiDebuggerState& state) {
     if (ImGui::CollapsingHeader("Surveillances")) drawWatchpoints(state, s);
     if (ImGui::CollapsingHeader("Exceptions")) drawCatches(state, s);
     if (ImGui::CollapsingHeader("Historique")) drawHistory(state, s);
+    if (ImGui::CollapsingHeader("Symboles")) drawSymbols(state, s);
     if (ImGui::CollapsingHeader("Désassemblage", ImGuiTreeNodeFlags_DefaultOpen)) {
         // A bounded pane, so the memory section stays reachable.
         ImGui::BeginChild("##disasm",

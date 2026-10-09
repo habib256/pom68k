@@ -40,6 +40,7 @@
 // Gate: tests/debug_session_test.cpp.
 
 #pragma once
+#include "DebugSymbols.h"
 #include "DebugTypes.h"
 
 #include <atomic>
@@ -118,6 +119,7 @@ private:
     std::uint64_t acked_ = 0;
     std::uint64_t generation_ = 0;
     std::string message_;
+    RomSymbols symbols_;                     // accepted for the running ROM
     MemoryView view_;                        // what the GUI asked to watch
     std::uint32_t viewLength_ = 0;
     bool disasmFollowPc_ = true;

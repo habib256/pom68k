@@ -36,12 +36,16 @@
 // the last breakpoint and overflows its ring with the drop counted; the
 // export carries the identity and parses back; exception entries name
 // TRAP #0 and the A-line word; switched off, the user's engine returns.
+// Symbols: trap and low-memory names (with flag bits and offsets), the
+// published disassembly annotated with both, and ROM symbol files refused
+// for another ROM's checksum or without provenance, accepted otherwise.
 
 #include "Cpu020.h"
 #include "Cpu030.h"
 #include "Cpu040.h"
 #include "Cpu68k.h"
 #include "DemoRom.h"
+#include "MacSymbols.h"
 #include "MacIIMemory.h"
 #include "MacMemory.h"
 #include "MachineHost.h"
@@ -771,6 +775,82 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         check(runsFree(), fam, "and the machine runs free on the user's engine");
     }
 
+    // ── Symbols ────────────────────────────────────────────────────────
+    if (s && s->stopped) {
+        constexpr uint32_t kTicksRead = 0x3300;
+        id = poke(dbg, kTicksRead, {0x26, 0x38, 0x01, 0x6A});   // MOVE.L ($16A).W,D3
+        s = ackedBy(dbg, id);
+        auto disasmAt = [&](uint32_t at) {
+            Command v;
+            v.kind = Command::Kind::ViewDisasm;
+            v.addr = at;
+            v.followPc = false;
+            return ackedBy(dbg, dbg.post(v));
+        };
+        s = disasmAt(kTicksRead);
+        check(s && !s->disasm.empty() && s->disasm[0].comment == "Ticks", fam,
+              "an absolute low-memory operand is named (Ticks)");
+        s = disasmAt(kProg2);
+        const auto lineAt = [&](uint32_t at) -> const pom68k::dbg::DisasmLine* {
+            for (const auto& l : s->disasm) if (l.addr == at) return &l;
+            return nullptr;
+        };
+        const auto* aline = s ? lineAt(kALine) : nullptr;
+        const auto* store = s ? lineAt(kProg2) : nullptr;
+        check(aline && aline->comment == "_NewPtrClear", fam,
+              "an A-line word is named by its own variant ($A31E: _NewPtrClear)");
+        check(store && store->comment.empty(), fam,
+              "an address past a global's span is not given its name ($2100)");
+
+        // ROM symbols: identity first, provenance second.
+        const uint32_t sum = s ? s->romChecksum : 0;
+        const auto dir = std::filesystem::temp_directory_path();
+        auto writeSyms = [&](const char* name, uint32_t checksum, bool source) {
+            const std::string p = (dir / name).string();
+            std::ofstream f(p);
+            char hdr[64];
+            std::snprintf(hdr, sizeof hdr, "# rom-checksum %08X\n", checksum);
+            f << "# POM68K ROM symbols v1\n" << hdr;
+            if (source) f << "# source debug_session_test, synthetic\n";
+            f << "# size 1000\n# window 3000\n0 Prog2\n8 TrapSite\n";
+            return p;
+        };
+        auto load = [&](const std::string& p) {
+            Command c;
+            c.kind = Command::Kind::LoadSymbols;
+            c.path = p;
+            return ackedBy(dbg, dbg.post(c));
+        };
+        const std::string other = writeSyms("pom68k_syms_other.txt", sum ^ 1, true);
+        const std::string anon = writeSyms("pom68k_syms_anon.txt", sum, false);
+        const std::string good = writeSyms("pom68k_syms_good.txt", sum, true);
+        s = load(other);
+        check(s && s->symbolCount == 0 && s->message.find("autre ROM") != std::string::npos,
+              fam, "a symbol file for another ROM checksum is refused");
+        s = load(anon);
+        check(s && s->symbolCount == 0 && !s->message.empty(), fam,
+              "a symbol file without provenance is refused");
+        s = load(good);
+        check(s && s->symbolCount == 2 && !s->symbolSource.empty(), fam,
+              "a symbol file for this ROM, with its source, is accepted");
+        s = disasmAt(kProg2);
+        const auto* l0 = s ? lineAt(kProg2) : nullptr;
+        const auto* l1 = s ? lineAt(kRead) : nullptr;
+        const auto* l2 = s ? lineAt(kTrap) : nullptr;
+        check(l0 && l1 && l2 && l0->label == "Prog2" && l1->label == "Prog2+$4" &&
+                  l2->label == "TrapSite",
+              fam, "lines inside the declared window carry the nearest symbol");
+        id = post(dbg, Command::Kind::ClearSymbols);
+        s = disasmAt(kProg2);
+        check(s && s->symbolCount == 0 && s->disasm[0].label.empty(), fam,
+              "forgotten symbols label nothing");
+        for (const auto& p : {other, anon, good}) std::filesystem::remove(p);
+        Command follow;
+        follow.kind = Command::Kind::ViewDisasm;
+        follow.followPc = true;
+        s = ackedBy(dbg, dbg.post(follow));
+    }
+
     // ── Teardown releases a hold inside a quantum ──────────────────────
     post(dbg, Command::Kind::AddBreakpoint, kBp);
     id = post(dbg, Command::Kind::Continue);
@@ -887,6 +967,21 @@ void saveStateIsolation(Q605Memory& mem, Cpu040& cpu) {
 } // namespace
 
 int main() {
+    {
+        using pom68k::mac::lowMemLabel;
+        using pom68k::mac::trapName;
+        const char* fam = "symbols";
+        auto is = [](const char* a, const char* b) { return a && b && !std::strcmp(a, b); };
+        check(is(trapName(0xA9A0), "GetResource") && is(trapName(0xADA0), "GetResource"),
+              fam, "a Toolbox trap is named, auto-pop bit ignored");
+        check(is(trapName(0xA11E), "NewPtr") && is(trapName(0xA31E), "NewPtrClear") &&
+                  is(trapName(0xA602), "Read") && !trapName(0x4E75),
+              fam, "OS traps: a named variant wins, an unnamed one falls back; "
+                   "a non-A-line has no name");
+        check(lowMemLabel(0x16A) == "Ticks" && lowMemLabel(0x16B) == "Ticks+$1" &&
+                  lowMemLabel(0x50).empty() && lowMemLabel(0x2100).empty(),
+              fam, "low-memory labels: exact, offset, below the table, past a span");
+    }
     const auto& cfg = pom68k::defaultCoreConfig();
     {
         static MacMemory mem(cfg, MacMemory::Model::Plus);

@@ -189,8 +189,13 @@ public:
         } else {
             line.length = std::uint8_t(n);
             line.text = text;
+            opcodeAt(addr, line.opcode);
         }
         return line;
+    }
+    std::uint32_t romChecksum() const override {
+        if constexpr (requires { mem_.romChecksum(); }) return mem_.romChecksum();
+        return 0;
     }
 
     bool setRegister(Reg reg, std::uint32_t v, std::string& why) override {

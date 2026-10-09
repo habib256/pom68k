@@ -108,6 +108,7 @@ struct FakeDebugTarget final : pom68k::dbg::Target {
     void armStepOut() override { ++stepOuts; }
     void cancelRun() override {}
     void maintain() override {}
+    std::uint32_t romChecksum() const override { return 0x9779D2C4; }
     bool hist = false;
     void setHistory(bool on) override { hist = on; }
     bool historyOn() const override { return hist; }
@@ -394,6 +395,18 @@ int main() {
               "« Exporter » writes the file on the machine thread");
         std::filesystem::remove(histPath);
         capture(ui, "debugger-history");
+        check(ui.click("Historique", draw) && ui.click("Registres", draw) &&
+                  ui.click("Points d'arrêt", draw) && ui.click("Symboles", draw),
+              "fold history, registers and breakpoints, open the symbol section");
+        std::snprintf(state.symbolPath.data(), state.symbolPath.size(), "%s",
+                      "/nonexistent/pom68k.sym");
+        ui.frame(draw);
+        check(ui.click("Charger", draw), "click « Charger »");
+        session.atBoundary(target);
+        check(session.snapshot()->romChecksum == 0x9779D2C4 &&
+                  session.snapshot()->symbolCount == 0 &&
+                  session.snapshot()->message.find("illisible") != std::string::npos,
+              "« Charger » reports an unreadable file and loads nothing");
         capture(ui, "debugger-memory");
         // Close it like a user would, so no focus or input state leaks
         // into the next window's scenario.

@@ -2842,7 +2842,21 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   because a breakpoint-list edit or a reset recomputes `CHECK_BP` without
   it — which also used to strand a running step out.
 
-Known limits of this service: symbols, MMU/cache register edits and device
+- **Names come in two kinds, with two provenances.** Trap and low-memory
+  names are the OS's published interface, the same on every ROM:
+  `src/MacSymbols.*` looks them up in `src/MacSymbolTables.inc`, generated
+  by `tools/gen_mac_symbols.py` from cxmon (Basilisk II's monitor, GPL v2
+  or later; the header names the commit). An exact trap word wins (the
+  table names common flag variants), then the word with its flag bits
+  ignored; a low-memory global extends to the next one but never past
+  `kLowMemSpan` (64 bytes). ROM-internal labels are only true of one ROM:
+  `src/DebugSymbols.*` accepts a file (format v1) only if it declares the
+  running ROM's checksum — the first longword, `romChecksum()` on every
+  map — and its source; addresses are ROM offsets mapped through the
+  file's declared windows. No ROM symbols ship. The session annotates each
+  published disassembly and history line (`DisasmLine::label`, `comment`).
+
+Known limits of this service: MMU/cache register edits and device
 snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
 view shows RAM, not a newer dirty cache line; breakpoints belong to the
 CPU object, so a relaunch starts with none.
@@ -2854,7 +2868,8 @@ accelerated engine had already translated; write/read watchpoints, a
 watched opcode fetch that must not stop, TRAP and filtered A-line stops,
 a catchpoint surviving a reset; step over/out on a recursive routine,
 through TRAP and A-line handlers, interrupted by a breakpoint, cancelled
-by Pause; histories recorded, overflowed, exported and parsed back) and `debug_inspection_test` (030 and 040
+by Pause; histories recorded, overflowed, exported and parsed back;
+trap/low-memory names and ROM symbol files refused or accepted by identity) and `debug_inspection_test` (030 and 040
 table walks, untouched descriptors, I/O never read: whole-machine save
 bytes identical before and after inspection), plus the window in
 `gui_windows_test`.

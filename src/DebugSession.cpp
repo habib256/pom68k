@@ -6,8 +6,10 @@
 #include "DebugSession.h"
 
 #include "DebugHistory.h"
+#include "MacSymbols.h"
 
 #include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace pom68k::dbg {
@@ -18,6 +20,36 @@ constexpr int kDisasmLines = 24;
 // The GUI posts a handful of commands per click; anything beyond this is a
 // runaway caller, refused rather than queued without bound.
 constexpr std::size_t kMaxQueued = 1024;
+// What an instruction names: a Toolbox/OS trap, or a low-memory global it
+// addresses absolutely — "$16a.w" / "$16a.l" in Moira's syntax (an
+// immediate is "#$…" and a displacement carries no size suffix).
+// Absolute short addresses at or above $8000 sign-extend to the top of the
+// address space and are not low memory.
+std::string comment(const DisasmLine& l) {
+    if (!l.readable) return {};
+    if ((l.opcode & 0xF000) == 0xA000) {
+        const char* n = mac::trapName(l.opcode);
+        return n ? std::string("_") + n : std::string();
+    }
+    const std::string& t = l.text;
+    for (std::size_t i = t.find('$'); i != std::string::npos; i = t.find('$', i + 1)) {
+        if (i && t[i - 1] == '#') continue;
+        std::size_t j = i + 1;
+        std::uint32_t v = 0;
+        int digits = 0;
+        for (; j < t.size() && std::isxdigit(static_cast<unsigned char>(t[j])) && digits < 8;
+             ++j, ++digits)
+            v = v << 4 | std::uint32_t(std::isdigit(static_cast<unsigned char>(t[j]))
+                                           ? t[j] - '0'
+                                           : (t[j] | 0x20) - 'a' + 10);
+        const bool shortForm = t.compare(j, 2, ".w") == 0;
+        if (!digits || !(shortForm || t.compare(j, 2, ".l") == 0)) continue;
+        if (shortForm && v >= 0x8000) continue;
+        std::string label = mac::lowMemLabel(v);
+        if (!label.empty()) return label;
+    }
+    return {};
+}
 } // namespace
 
 std::uint64_t Session::post(Command c) {
@@ -129,6 +161,17 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             break;
         case Command::Kind::ClearCatches:
             target.clearCatches();
+            break;
+        case Command::Kind::LoadSymbols: {
+            std::string why;
+            if (symbols_.load(c.path, target.romChecksum(), why))
+                message_ = "Symboles chargés : " + std::to_string(symbols_.size());
+            else
+                message_ = why;
+            break;
+        }
+        case Command::Kind::ClearSymbols:
+            symbols_.clear();
             break;
         case Command::Kind::SetHistory:
             if (!blockingAvailable_ && c.value)
@@ -268,8 +311,14 @@ void Session::publish(Target& target) {
     s.trapsRecorded = target.trapsRecorded();
     target.history(s.historyTail, kHistoryTail);
     target.traps(s.trapTail, kHistoryTail);
-    for (const HistoryEntry& e : s.historyTail)
-        s.historyText.push_back(target.disassemble(e.pc).text);
+    for (const HistoryEntry& e : s.historyTail) {
+        const DisasmLine l = target.disassemble(e.pc);
+        const std::string c = comment(l);
+        s.historyText.push_back(c.empty() ? l.text : l.text + "  ; " + c);
+    }
+    s.romChecksum = target.romChecksum();
+    s.symbolCount = symbols_.size();
+    s.symbolSource = symbols_.source();
 
     // Both windows are read at an instruction boundary on the machine
     // thread, running or not: between quanta nothing else is executing.
@@ -278,6 +327,8 @@ void Session::publish(Target& target) {
         DisasmLine line = target.disassemble(at);
         line.breakpoint = std::binary_search(s.breakpoints.begin(),
                                              s.breakpoints.end(), at);
+        line.label = symbols_.label(at);
+        line.comment = comment(line);
         at += line.length;
         s.disasm.push_back(std::move(line));
     }

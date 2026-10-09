@@ -69,10 +69,10 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   pas, points d'arrêt sur PC, inspection sans lecture de périphérique,
   édition registres/RAM à l'arrêt, surveillances d'accès, arrêts sur
   exception (A-line filtrée, F-line, interruptions acceptées), step
-  over/out et historiques bornés exportables existent
+  over/out, historiques bornés exportables et symboles (traps,
+  low-memory, fichiers ROM liés au checksum) existent
   (`debug_session_test`, `debug_inspection_test`, `CHANGELOG` 2026-10-09
-  (fourth) à (eighth)). Restent, chacun avec sa sémantique et son gate :
-  symboles liés à l'identité ROM,
+  (fourth) à (ninth)). Restent, chacun avec sa sémantique et son gate :
   instantanés typés des périphériques, édition des registres MMU/cache
   (`docs/SNOW_IMPLEMENTATION_PLAN.md` ordre 3).
 ---

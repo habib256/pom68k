@@ -36,6 +36,7 @@ struct GuiDebuggerState {
     int catchPreset = 0;                     // index into the window's list
     std::array<char, 16> catchText{};        // vector, or the A-line word
     std::array<char, 256> historyPath{};     // export file; empty = default
+    std::array<char, 256> symbolPath{};      // a ROM symbol file
     std::string inputError;
 
     bool bound() const noexcept { return session != nullptr; }

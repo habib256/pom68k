@@ -142,7 +142,13 @@ struct DisasmLine {
     std::uint8_t length = 2;         // bytes; 2 when unreadable
     bool readable = false;
     bool breakpoint = false;
+    std::uint16_t opcode = 0;        // first word, when readable
     std::string text;
+    // Annotations (DebugSession): the ROM symbol at this address
+    // (DebugSymbols.h), and what the instruction names — a trap, or a
+    // low-memory global it addresses absolutely (MacSymbols.h).
+    std::string label;
+    std::string comment;
 };
 
 struct MemoryView {
@@ -169,6 +175,8 @@ struct Command {
         AddCatch,                    // catch
         RemoveCatch,                 // catch
         ClearCatches,
+        LoadSymbols,                 // path: a ROM symbol file (DebugSymbols.h)
+        ClearSymbols,
         SetHistory,                  // value: 0 off, 1 on
         ClearHistory,
         ExportHistory,               // path (written by the machine thread)
@@ -184,7 +192,7 @@ struct Command {
     std::vector<std::uint8_t> data;  // WriteMemory, at most kMaxEditBytes
     Watchpoint watch;
     Catch catchpoint;
-    std::string path;                // ExportHistory
+    std::string path;                // ExportHistory, LoadSymbols
 };
 
 struct Snapshot {
@@ -216,6 +224,10 @@ struct Snapshot {
     std::vector<HistoryEntry> historyTail;
     std::vector<std::string> historyText;    // parallel to historyTail
     std::vector<TrapEntry> trapTail;
+    // The running ROM's own checksum and the ROM symbols accepted for it.
+    std::uint32_t romChecksum = 0;
+    std::size_t symbolCount = 0;
+    std::string symbolSource;
     // Engine the user asked for (0 = interpreter, 1 = accelerated) and the
     // one that actually executes: with a stop armed every instruction goes
     // through Moira's interpreter (JitEngine.cpp: !pomJitIdle()).
@@ -238,6 +250,8 @@ public:
     virtual void readMemory(Space space, std::uint32_t addr, std::uint8_t* out,
                             ByteState* state, std::size_t n) = 0;
     virtual DisasmLine disassemble(std::uint32_t logicalAddr) = 0;
+    // The ROM's first longword (its checksum); 0 if the map has no ROM.
+    virtual std::uint32_t romChecksum() const = 0;
     virtual bool addBreakpoint(std::uint32_t pc) = 0;
     virtual void removeBreakpoint(std::uint32_t pc) = 0;
     virtual void clearBreakpoints() = 0;
