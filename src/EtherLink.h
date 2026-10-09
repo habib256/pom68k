@@ -4,8 +4,8 @@
 // ── EtherLink: the wire between a DaynaPort and the in-process NAT ──
 // `DaynaPort` moves Ethernet frames; `MacIpGateway` moves IP datagrams and
 // already owns the whole user-mode NAT (TCP endpoint, UDP flows, DNS, ICMP
-// echo). The three things that sit between them are the Ethernet header, ARP
-// and the two MAC addresses — which is all this class is.
+// echo). This class adds Ethernet headers, ARP and the RFC 950 address-mask
+// service and RFC 903 RARP on the local Ethernet segment.
 //
 //   guest → DaynaPort::sendFrame → EtherLink → MacIpGateway::ipFromEther
 //   host  → MacIpGateway ether sink → EtherLink → DaynaPort::receiveFrame
@@ -19,12 +19,11 @@
 // address and MacTCP refuses to come up) and the sender's own (a gratuitous
 // ARP / probe, same reason).
 //
-// The guest is configured by hand — an address in the gateway's subnet, the
-// gateway as router, and a DNS server. There is no BOOTP/RARP responder
-// here; MacIP's ATP address handout has no Ethernet equivalent, and adding a
-// second address-assignment protocol is a bigger decision than this seam.
+// MacTCP can obtain its address with RARP ("Server") or use a manual address.
+// Router and DNS settings are configured separately. RARP reserves addresses
+// in the gateway's shared MacIP/Ethernet pool; BOOTP is not implemented.
 //
-// Sources: RFC 826 (ARP), RFC 894 (IP over Ethernet). Gate:
+// Sources: RFC 826 (ARP), RFC 894 (IP), RFC 903 (RARP), RFC 950 (mask). Gate:
 // tests/daynaport_test.cpp.
 
 #pragma once
@@ -90,6 +89,7 @@ public:
     void ipToGuest(std::uint32_t dstIp, const std::vector<std::uint8_t>& pkt);
 
     long arpRequests = 0, arpReplies = 0, ipToGuestFrames = 0, ipFromGuestFrames = 0;
+    long rarpRequests = 0, rarpReplies = 0;
     long wireDrops = 0;                  // queued past kMaxInFlight
 
 private:
@@ -97,6 +97,8 @@ private:
     // stopped reading, and the Rx ring's own ceiling is the next stop.
     static constexpr std::size_t kMaxInFlight = 64;
 
+    void handleRarp(const std::uint8_t* frame, std::size_t n);
+    bool handleAddressMask(const std::uint8_t* frame, std::size_t n);
     void handleArp(const std::uint8_t* p, std::size_t n);
     void deliver(std::vector<std::uint8_t>&& f);
     void sendToGuest(const std::array<std::uint8_t, 6>& dst,

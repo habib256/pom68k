@@ -112,6 +112,7 @@ struct DiagnosticConfig {
 // One normalized selection per ROM-sharing machine family. Raw environment
 // spellings cease to exist after RuntimeConfig::parse returns.
 struct MachineSelectionConfig {
+    SnapMachine plusRom = SnapMachine::Plus;
     SnapMachine macIi = SnapMachine::IIx;
     SnapMachine sonora = SnapMachine::Lc3;
     SnapMachine aio = SnapMachine::Lc520;

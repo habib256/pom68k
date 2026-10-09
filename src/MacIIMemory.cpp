@@ -580,7 +580,9 @@ uint16_t MacIIMemory::read16(uint32_t addr) {
                 return viaAccess(via1_, ioOff & 0x1FFF, false, 0, true);
             if (ioOff < 0x4000)
                 return viaAccess(via2_, ioOff - 0x2000, false, 0, false);
-            if (ioOff < 0x6000) {
+            // MAME macii.cpp iwm_r: one device read reflected on both
+            // lanes. Two byte reads pop two ISM FIFO/parameter entries.
+            if (ioOff < 0x6000 || (ioOff >= 0x16000 && ioOff < 0x18000)) {
                 uint8_t d = read8Decoded(addr);
                 return uint16_t(d) | (uint16_t(d) << 8);
             }
@@ -680,6 +682,11 @@ void MacIIMemory::write16(uint32_t addr, uint16_t v) {
             }
             if (ioOff < 0x4000) {
                 viaAccess(via2_, ioOff - 0x2000, true, v, false);
+                return;
+            }
+            // iwm_w gives the low lane priority on a full word transfer.
+            if (ioOff >= 0x16000 && ioOff < 0x18000) {
+                write8Decoded(addr + 1, uint8_t(v));
                 return;
             }
         }

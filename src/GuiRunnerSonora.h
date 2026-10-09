@@ -34,7 +34,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
                  AudioHost& audioHost, const SonoraRunnerSpec& spec,
                  SeedRtc&& seedRtc, const std::string& romName,
                  const std::vector<std::string>& media, Services& services) {
-    services.wireNetwork(mem);
+    services.wireNetwork(mem, cpu);
     mem.setMonitorSense(services.config().devices().monitorWidth
         ? (*services.config().devices().monitorWidth < 640 ? 2 : 6)
         : spec.monitorSense);

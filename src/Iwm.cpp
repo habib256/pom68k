@@ -8,17 +8,21 @@
 #include "SonyDrive.h"
 
 void Iwm::reset() {
+    if (writing_) flushWriteFlux();
     for (bool& p : ph_) p = false;
-    enable_ = driveSel_ = q6_ = q7_ = sel_ = false;
+    enable_ = driveSel_ = q6_ = q7_ = sel_ = intSel_ = false;
     mode_ = 0;
     dataReg_ = 0;
     writing_ = wrPending_ = wrUnderrun_ = false;
-    wrPhase_ = 0;
+    wrPhase_ = wrElapsed_ = wrStart_ = 0;
+    wrData_ = wrShift_ = wrBits_ = wrState_ = 0;
+    wrEdges_.clear();
     selDelay_ = 0;
     fluxClock_ = nextStateChange_ = nextFluxChange_ = syncUpdate_ = 0;
     rwState_ = kIdle;
     rsh_ = 0;
     readArmed_ = false;
+    armedFluxRev_ = armedSpinRev_ = 0;
 }
 
 // ── The window tables are counted in the CHIP'S OWN clock ───────────────
@@ -94,8 +98,11 @@ uint8_t Iwm::access(int reg) {
             ph_[3] = set;
             // Commands only reach a SELECTED drive (MAME iwm.cpp:243-247:
             // devsel drops to "none" when the controller is idle).
-            if (rising && driveSelected() && selectedDrive())
+            if (rising && driveSelected() && selectedDrive()) {
+                if (writing_) flushWriteFlux();
                 selectedDrive()->command(senseAddr());
+                if (writing_) beginWriteFlux();
+            }
             break;
         }
         case 4: {                                 // drive ENABLE
@@ -109,7 +116,14 @@ uint8_t Iwm::access(int reg) {
             else if (was && !(mode_ & 0x04)) selDelay_ = 8388608LL * clockScale_;
             break;
         }
-        case 5: driveSel_ = set; break;           // 0 = internal, 1 = external
+        case 5:
+            if (driveSel_ != set) {
+                if (writing_) flushWriteFlux();
+                driveSel_ = set;
+                if (writing_) beginWriteFlux();
+                readArmed_ = false;
+            }
+            break;                               // 0 = internal, 1 = external
         case 6: q6_ = set; break;
         case 7: q7_ = set; break;
     }
@@ -131,13 +145,17 @@ void Iwm::updateRw() {
         writing_ = true;
         wrUnderrun_ = false;
         wrPending_ = false;
-        wrPhase_ = 7;                             // first load: S_IDLE + 7
+        wrShift_ = wrData_;
+        wrBits_ = 8;
+        wrState_ = isSync() ? 1 : 0;
+        wrPhase_ = isSync() ? halfWindowTicks() : 7 * clockTick();
+        beginWriteFlux();
         readArmed_ = false;                       // MAME m_rw_state = S_IDLE
     } else if (!wantWrite && writing_) {
+        flushWriteFlux();
         writing_ = false;
         wrPending_ = false;
         readArmed_ = false;                       // re-park on the spindle
-        if (selectedDrive()) selectedDrive()->flushWrite(sel_);
     }
     // Losing the drive loses the head position with it.
     if (!enable_) readArmed_ = false;
@@ -161,7 +179,8 @@ void Iwm::write(int reg, uint8_t v) {
         if (!enable_) mode_ = v & 0x1F;
         else if (writing_) {                      // write-data register
             wrData_ = v;
-            wrPending_ = true;                    // latched: handshake b7 low
+            if (isSync()) wrShift_ = v;
+            if (mode_ & 1) wrPending_ = true;       // latched: handshake b7 low
         }
     }
 }
@@ -218,8 +237,7 @@ uint8_t Iwm::readRegister() {
     return 0xFF;                                  // (Q6,Q7) = (1,1)
 }
 
-// Nibble pacing: mode $1F = 2 µs bit cells → one GCR byte every 16 µs
-// ≈ 128 C7M clocks — clockScale_ maps that onto the platform's tick unit.
+// Advance in machine tick units; the read/write engines use physical flux time.
 void Iwm::tick(int cpuCycles) {
     if (clearCountdown_ > 0) {
         clearCountdown_ -= cpuCycles;
@@ -229,34 +247,12 @@ void Iwm::tick(int cpuCycles) {
         selDelay_ -= cpuCycles;
         if (selDelay_ < 0) selDelay_ = 0;
     }
-    if (!enable_ || !selectedDrive() || !selectedDrive()->hasDisk()) return;
-    const int kCyclesPerNibble = 128 * clockScale_;
     if (writing_) {
-        // Write shifter (MAME MODE_WRITE): consume the pending byte every
-        // 8 bit windows; loading with nothing pending is an underrun that
-        // halts the engine (SW_UNDERRUN) and flushes what was written.
-        if (wrUnderrun_) return;
-        wrPhase_ -= cpuCycles;
-        while (wrPhase_ <= 0) {
-            if (!wrPending_) {
-                wrUnderrun_ = true;
-                selectedDrive()->flushWrite(sel_);
-                wrPhase_ = 0;
-                break;
-            }
-            selectedDrive()->writeNibble(wrData_);
-            written++;
-            wrPending_ = false;
-            wrPhase_ += kCyclesPerNibble;
-        }
+        tickWrite(int64_t(cpuCycles) * (kIwmTick / clockScale_));
         return;
     }
-    // MAME iwm.cpp:398-405: the read shifter advances on flux transitions,
-    // and floppy.cpp:1175-1178 get_next_transition() returns `never` while
-    // the spindle is stopped (m_mon) — Mac drives gate the motor by command,
-    // not by ENABLE (mon_w override, floppy.cpp:3417-3420). No spin, no
-    // nibbles. (The write engine above stays ungated: the Sony driver never
-    // writes motor-off, and iwm_write_test drives it without a motor.)
+    if (!enable_ || !selectedDrive() || !selectedDrive()->hasDisk()) return;
+    // The read amplifier sees no transitions while the spindle is stopped.
     if (!selectedDrive()->motorOn()) { readArmed_ = false; return; }
     // One tick() cycle in the drive's flux unit. Exact in integers: kIwmTick
     // is 2048 and clockScale_ is 1 or 2.
@@ -284,10 +280,19 @@ void Iwm::latchData(uint8_t v) {
 // could not express.
 void Iwm::tickRead(int64_t elapsedTicks) {
     SonyDrive* d = selectedDrive();
+    // The read frame advances in time from the angle it was parked at, which
+    // stays the head's angle only while both revolution lengths do. A zone
+    // seek or a PWM speed change alters them; the next write starts at the
+    // drive's real angle, so re-park the reader there too, as SEL does.
+    if (readArmed_ && (d->fluxRevTicks() != armedFluxRev_ ||
+                       d->spinRevCycles() != armedSpinRev_))
+        readArmed_ = false;
     if (!readArmed_) {
         // Park on the spindle: the head is wherever rotation left it, the
         // same rotational latency Swim2::armReadPll takes.
         fluxClock_ = d->fluxAngleTicks(sel_);
+        armedFluxRev_ = d->fluxRevTicks();
+        armedSpinRev_ = d->spinRevCycles();
         nextStateChange_ = fluxClock_;
         nextFluxChange_ = 0;
         syncUpdate_ = 0;

@@ -359,7 +359,7 @@ Both workarounds are retired (`RbvCpu` back to the shared default;
 `POM68K_Q605_CACHE_BOOST` re-measured green at 2/4/8 across the 040 family).
 The audit found one more boosted-clock reader: `AdbVia::syncTo` fed the
 PIC1654S co-step the raw core clock — every boosted call site now passes
-`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:172`
+`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:177`
 passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
 **Any new consumer of the CPU clock must ask which domain it is in.**
 
@@ -469,14 +469,18 @@ denibble rule, and still gated by `gcr_test`.
 
 *Accepted simplifications*:
 
-- **The store is the LIVE track, not the whole medium.** `flux_` holds one
-  (track, side); a seek re-lays the destination canonically from `image_`,
-  so flux the guest wrote at its own rate survives a commit, a read-back
-  and a snapshot — but not the head leaving the cylinder. A whole-image
-  flux store is what MAME has, and it costs what MAME pays: ~160 tracks of
-  transition times, tens of MB, in every save state. → **Reopen** for a
-  format that needs it (copy-protected media with per-track rates), which
-  is also the only thing that would make the difference observable.
+- **Whole-medium retention landed 2026-10-08.** `FloppyTrackMedium` keeps
+  native MOOF tracks and written sector-backed tracks across seeks, side/mode
+  changes and reset. Untouched sector tracks alone are re-derived. Snapshot
+  v26 carries every retained track and the original MOOF container. Native
+  writes/export preserve physical transitions and phase on the format's
+  125 ns grid; `moof_image_test` checks mixed bit/flux maps, fresh restoration,
+  a pending IWM write and atomic export/reimport. Full native states cost tens
+  of MB. Real-ROM Plus boots consume an existing MOOF in both drives; II FDHD
+  boots a temporary HD capture. The original mixed bit/flux Oids v1.4 capture
+  also has interpreter/JIT application gates: Finder launch, galaxy loading,
+  thrust against an equal-time neutral branch and exact fresh-machine replay.
+  These qualify specific fixtures, not exhaustive copy-protection compatibility.
 - ~~**`Swim1`'s ISM shifter is still the SWIM2 one**~~ — **CLOSED
   2026-08-14 (step 4b), hours after 4a made it portable.** The ISM read
   path is MAME's real engine now
@@ -504,8 +508,14 @@ denibble rule, and still gated by `gcr_test`.
   the new `iwm_read_test`. The caution was right and the fear was not —
   Apple's denibble loops are hand-timed against *silicon's* cadence, and
   what replaced the 128-cycle metronome is silicon's cadence.
-- **Committed tracks re-encode canonically** — no exotic-format preservation;
-  recovered tag bytes are dropped (flat images have no tag space).
+- **Sector-container byte writes remain decoded fields.** Direct host sector
+  writes regenerate the affected track. IWM writes serialize physical cells
+  on native and sector media; partial-byte exit and live write phase survive
+  v26 restoration. SWIM native writes retain even invalid fields. Native flux survives media
+  selection and snapshots. Read-amplifier weak-region noise is modeled with
+  MAME's approximate 16 us delay and 50%/4 us distribution; a measured Sony
+  response remains unqualified. DC42/DART persist tags; raw export persists
+  sector data only.
 - **Tach is a sampled bit, not a waveform.**
 - ~~**Drive Ready is `!motorOn`**~~ — **CLOSED 2026-08-14**, with the gate
   that was its reopening condition. `SonyDrive::driveReady()` counts index
@@ -530,13 +540,12 @@ channels (`macquadra700.cpp:879-880`), the Mac IIfx only channel A
 II leaves the callback unset and is unchanged. Verified by re-running every
 boot etalon that owns a `Swim1`.
 
-→ **The remainder is closed.** Steps 5 and 6 landed 2026-08-14, the same
-day as 4a/4b — the flux plan has no open step. What is left in this section
-is three accepted simplifications with named reopening conditions (a
-whole-image flux store, canonical re-encode of committed tracks, tach as a
-sampled bit), and none of them has a guest symptom attached. The honest
-summary: the floppy stack is flux end to end on every controller POM68K
-ships, and the parts that are not are the parts nothing can observe.
+The controller flux plan's steps 5/6 landed in 2026-08-14; whole-medium
+retention and MOOF import/export followed on 2026-10-08. Remaining limits
+include sampled tach and the approximate
+read-amplifier noise distribution. Original Oids v1.4 launch/flight/replay is
+qualified; a wider corpus with independently identified protection checks is
+still needed before claiming general copy-protection compatibility.
 
 *Plan history.* Steps 5 and 6, **2026-08-14** (the closures above). Step 1,
 **2026-08-02**: `src/FluxPll.h`, the integer port
@@ -555,7 +564,7 @@ TSS half-cycle times too (`flush_write`), the PLL write side belongs to
 the WD-style FDCs.
 
 *Not a gap (corrected 2026-07-31)*: **host-file persistence exists.**
-`SonyDrive::flushToFile` (`SonyDrive.cpp:1010`) writes committed sectors back on
+`SonyDrive::flushToFile` (`SonyDriveMedia.cpp:113`) writes committed sectors back on
 eject and at exit via temp+rename, regenerating the DiskCopy 4.2 header and
 data checksum. It is **on by default in every floppy-capable GUI path** —
 the runners call the shared

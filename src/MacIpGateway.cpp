@@ -167,20 +167,34 @@ MacIpGateway::Status MacIpGateway::status() const {
 
 uint32_t MacIpGateway::leaseFor(const AtalkStack::Addr& at) {
     for (auto& [ip, l] : leases_)
-        if (l.at.net == at.net && l.at.node == at.node) {
+        if (!l.ether && l.at.net == at.net && l.at.node == at.node) {
             l.at = at;                    // refresh return socket
             l.lastSeen = st_.now();
             return ip;
         }
-    uint32_t base = gw_ & mask_;
-    for (uint32_t h = 2; h < (~mask_ & 0xFF); h++) {
-        uint32_t ip = base | h;
-        if (ip == gw_ || leases_.count(ip)) continue;
-        leases_[ip] = { at, st_.now() };
-        stat_.lastLease = iptoa(ip);
-        return ip;
+    const uint32_t ip = freeLeaseIp();
+    if (ip) { leases_[ip] = {at, st_.now()}; stat_.lastLease = iptoa(ip); }
+    return ip;
+}
+
+// RARP shares MacIP's bounded address pool, not gateway+1 arithmetic.
+uint32_t MacIpGateway::freeLeaseIp() const {
+    const uint32_t base = gw_ & mask_;
+    for (uint32_t h = 2; h < (~mask_ & 0xff); ++h) {
+        const uint32_t ip = base | h;
+        if (ip != gw_ && ip != dns_ && !leases_.count(ip)) return ip;
     }
     return 0;
+}
+
+uint32_t MacIpGateway::leaseForEther(const std::array<uint8_t, 6>& mac) {
+    if (!etherSink_ || (mac[0] & 1) || mac == std::array<uint8_t, 6>{}) return 0;
+    for (auto& [ip, l] : leases_) {
+        if (l.ether && l.mac == mac) { l.lastSeen = st_.now(); return ip; }
+    }
+    const uint32_t ip = freeLeaseIp();
+    if (ip) { leases_[ip] = {{}, st_.now(), true, mac}; stat_.lastLease = iptoa(ip); }
+    return ip;
 }
 
 void MacIpGateway::atpHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
@@ -277,7 +291,11 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, bool ether,
 
     // Learn/refresh the mapping from traffic too (macipgw does the same).
     if ((sip & mask_) == (gw_ & mask_) && sip != gw_) {
-        leases_[sip] = { src, st_.now(), ether };
+        auto existing = leases_.find(sip);
+        if (existing != leases_.end() && existing->second.ether != ether) return;
+        auto& lease = leases_[sip];
+        lease.at = src; lease.lastSeen = st_.now(); lease.ether = ether;
+        // Preserve the RARP hardware binding when ordinary IP refreshes it.
     }
 
     if (dip == gw_) {
@@ -757,7 +775,10 @@ void MacIpGateway::tick(int64_t now) {
     // never configure again. lastSeen existed but was never read.
     // (macipgw does the same on ARPTIMEOUT, macip.c:604-624.)
     for (auto it2 = leases_.begin(); it2 != leases_.end();) {
-        if (now - it2->second.lastSeen > kLeaseLifetimeSec * st_.cpuHz())
+        // RARP has no lease-expiration/renewal exchange. An idle client still
+        // owns its assigned address until this link is detached/reconfigured.
+        const bool rarp = it2->second.ether && it2->second.mac != std::array<uint8_t, 6>{};
+        if (!rarp && now - it2->second.lastSeen > kLeaseLifetimeSec * st_.cpuHz())
             it2 = leases_.erase(it2);
         else
             ++it2;

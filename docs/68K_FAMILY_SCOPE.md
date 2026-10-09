@@ -7,8 +7,10 @@ and every line was re-derived from the code on **2026-09-09**.
 The target is **every 68k Macintosh**. Counts in this document describe the
 current implementation and must never be read as a ceiling on that target.
 
-**POM68K ships 37 machine profiles across 12 platform implementations. Every
-one boots to the Finder and every one has a boot etalon that proves it.**
+**POM68K ships 41 machine profiles across 12 platform implementations.**
+The 2026-10-08 increment adds the 512Ke and Macintosh II FDHD, with real-ROM
+Finder, input and save-state gates. The older survey below retains its
+per-machine limitations; admission does not imply a complete application corpus.
 Source of truth for that count: `kMachineProfiles` in
 `src/MachineCatalog.h`. Every row carries its stable `SnapMachine` id and is
 consumed by the **Machine** menu; compile-time checks keep ids unique and
@@ -16,11 +18,12 @@ dense. A platform = one `*Memory`/`*Cpu` pair in `src/` and one save/load
 overload in `src/SaveStateMachines.h`.
 
 Storage is also explicit in that catalogue through `storageCapabilities()`:
-the Duo 230 has no floppy; Plus, SE and the original Mac II are 800K-only;
-the other 33 profiles have a SuperDrive and accept both 800K GCR and 1.44 MB
-MFM. All 37 expose SCSI hard disks and SCSI CD-ROM targets (external where
-the chassis has no bay). The asset-free `storage_profile_test` accounts for
-all 37 rows and exercises the early IWM/SWIM split plus compact HDD/CD reads.
+the Duo 230 has no floppy; 128K/512K have 400K mechanisms;
+512Ke, Plus, SE and the original Mac II have 800K mechanisms;
+the other 34 profiles have a SuperDrive and accept both 800K GCR and 1.44 MB
+MFM. The 38 profiles above the early 128K/512K/512Ke expose SCSI hard disks
+and CD-ROM targets. The asset-free `storage_profile_test` accounts for all
+41 rows and exercises the IWM/SWIM split plus compact HDD/CD reads.
 
 There is no longer any platform in `src/` without a profile row: the last two
 paid the house rule (a catalogue row is earned by a Finder cell *plus* GUI
@@ -39,7 +42,7 @@ descriptions in `DEV.md` § 2; the LLE-vs-HLE deviation inventory in
 
 ---
 
-## 1. Done — the 39 profiles and the gate that proves each
+## 1. Implemented — the 41 profiles and their gates
 
 Every gate below is a Finder-signature boot etalon unless noted.
 
@@ -53,12 +56,13 @@ access, and **ADB on the same PIC1654S firmware LLE the Mac II uses**
 The two machines BELOW the Plus are the same enum going the other way: less
 ROM (64 KB), less RAM (128/512 KB, which moves the top-of-RAM framebuffer),
 the M0110 rather than ADB, a single-sided 400K mechanism — and no SCSI bus,
-making them the tree's only `scsi = false` profiles.
+making them, with the 512Ke, the tree's three `scsi = false` profiles.
 
 | Profile | ROM | Gate |
 |---|---|---|
-| Macintosh 128K | `28BA61CE` | **none yet** — POST stops at Sad Mac `$0F0004` |
-| Macintosh 512K | `28BA4E50` | **none yet** — same, identical failure |
+| Macintosh 128K | `28BA61CE` | `mac128k_boot_etalon` |
+| Macintosh 512K | `28BA4E50` | `mac512k_boot_etalon` |
+| Macintosh 512Ke | Plus 128 KB ROM, 512 KB RAM | `mac512ke_boot_etalon`, `mac512ke_external_boot_etalon`, `mac512ke_input_etalon` |
 | Macintosh Plus | `macplus.rom` | `system_boot_etalon`, `disk_boot_etalon`, `scsi_boot_etalon`, `rom_boot_etalon`, `input_etalon` |
 | Macintosh SE | `B2E362A8` | `se_boot_etalon`, `se_scsi_boot_etalon` |
 | Macintosh SE FDHD | `B306E171` | `sefdhd_boot_etalon`, `sefdhd_scsi_boot_etalon` |
@@ -68,12 +72,13 @@ making them the tree's only `scsi = false` profiles.
 
 `MacIIMemory::Model` + `Cpu020`'s `is030` flag. The IIx/IIcx wall was the 030
 PMMU double-translating against the GLUE 24-bit remap — skip `physAddr` when
-the PMMU is on (`MacIIMemory.h:79-84`). All four run at 15.6672 MHz:
+the PMMU is on (`MacIIMemory.h:79-84`). All five run at 15.6672 MHz:
 `kCpuHz` is fixed and the ctor takes no clock (`MacIIMemory.h:42,55`).
 
 | Profile | CPU | ROM | Gate |
 |---|---|---|---|
 | Macintosh II | 68020 | `9779D2C4` | `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_post_etalon`, `macii_mouse_etalon`, `jit_macii_boot_etalon` |
+| Macintosh II FDHD | 68020 + SWIM | `97221136` | `maciifdhd_boot_etalon`, `maciifdhd_floppy_boot_etalon` (both also verify ADB input) |
 | Macintosh IIx | 68030 + PMMU | `97221136` | `iix_boot_etalon` |
 | Macintosh IIcx | 68030 + PMMU | `97221136` | `iicx_boot_etalon` |
 | Macintosh SE/30 | 68030 + PMMU, compact 512×342 mono (`Se30Video.h`) | `97221136` + `se30vrom.uk6` | `se30_boot_etalon`, `jit_se30_boot_etalon` |
@@ -284,7 +289,6 @@ platforms.
 
 | Item | Why cheap | Note |
 |---|---|---|
-| **512Ke** | The 512K board that now exists, rebadged: the Plus's 128 KB ROM and an 800K mechanism. Catalogue row, not a brick | The 128K and 512K themselves landed 2026-09-13 (§ 1) |
 | **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + typed `SnapMachine` selection |
 | **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:63-69`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:88-123`) |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |

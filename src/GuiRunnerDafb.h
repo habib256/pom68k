@@ -48,7 +48,7 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         return 2;
     if (services.checkOnly()) return 0;
     cpu.hardReset();
-    services.wireNetwork(mem);
+    services.wireNetwork(mem, cpu);
 
     std::string hddPath = !media.empty()
         ? media.front() : services.locate("hdv/MacOS-8.1-boot.vhd");
@@ -73,7 +73,7 @@ int runDafbGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         const std::string& arg = media[i];
         auto ext = std::filesystem::path(arg).extension().string();
         for (char& ch : ext) ch = char(std::tolower(ch));
-        if (ext == ".dsk" || ext == ".image") {
+        if (ext == ".dsk" || ext == ".image" || ext == ".dart" || ext == ".moof") {
             if (mem.insertDisk(arg)) {
                 floppyPath = arg;
                 floppyOk = true;

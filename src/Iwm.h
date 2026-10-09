@@ -14,6 +14,8 @@
 #include "FluxPll.h"
 #include "SaveState.h"
 #include <cstdint>
+#include <algorithm>
+#include <vector>
 
 class SonyDrive;
 
@@ -23,13 +25,36 @@ public:
     void attachDrive(SonyDrive* internal, SonyDrive* external) {
         drive_[0] = internal; drive_[1] = external;
     }
+    // ── The PA4 internal-connector line (SE, SE FDHD, Classic) ─────────
+    // These boards put two internal connectors behind ENABLE1 and let
+    // VIA1 PA4 choose between them; ENABLE2 still reaches the external
+    // port. The SE, SE FDHD and Classic ROMs' DiskSelect (B2E362A8
+    // $35316, B306E171 $35562/$35CBE, A49F9914 $3F806) set PA4 for
+    // physical drive slot 1 and clear it for slot 2 before asserting
+    // ENABLE1 or the ISM drive-1 enable; slot 3 is ENABLE2. MAME
+    // mac128.cpp:879 names PA4 0 = upper, 1 = lower and leaves PA4 high
+    // unconnected; Snow's swim/mod.rs selects drive index 2 for PA4 high
+    // and fits that mechanism on the SE and SE FDHD only.
+    // `drive_[0]` answers PA4 low and `second` PA4 high — null is an empty
+    // connector, which selects no mechanism at all. Boards without the
+    // line keep ENABLE1 on `drive_[0]` whatever PA4 does.
+    // Wiring, re-attached at reset like drive_; the line level is state.
+    void wireInternalSelect(bool wired, SonyDrive* second) {
+        intSelWired_ = wired; drive_[2] = wired ? second : nullptr;
+    }
+    void setInternalSelect(bool high);
+    bool internalSelect() const { return intSel_; }
+    // The mechanism ENABLE1 (or the ISM drive-1 enable) reaches now.
+    SonyDrive* enable1Drive() const {
+        return (intSelWired_ && intSel_) ? drive_[2] : drive_[0];
+    }
 
     // Bus access: reg = addr bits A9-A12.
     uint8_t read(int reg);
     void write(int reg, uint8_t v);
 
     // VIA PA5 — SEL bit of the drive sense/command address + head select.
-    void setSel(bool sel) { sel_ = sel; }
+    void setSel(bool sel);
     bool sel() const { return sel_; }
 
     // ── TWO clocks, and on the Mac SE they are not the same one ─────────
@@ -78,7 +103,7 @@ public:
     long written = 0;                     // bytes shipped to the drive
 
     // ── Save states (SaveState.h) ───────────────────────────────────────
-    // Register/phase state plus the byte-granular write engine. `drive_[2]`
+    // Register/phase state plus the bit-level write engine. `drive_[3]`
     // are machine-owned pointers, re-attached on restore (see Ncr5380's
     // note on why pointers never travel).
     // The read engine's window state is live machine state since the cell
@@ -88,9 +113,16 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar(ph_, enable_, driveSel_, q6_, q7_, sel_, mode_, dataReg_,
            clearCountdown_, selDelay_,
-           writing_, wrPending_, wrUnderrun_, wrData_, wrPhase_);
+           writing_, wrPending_, wrUnderrun_, wrData_, wrPhase_, wrShift_, wrBits_, wrState_,
+           wrElapsed_, wrStart_, wrEdges_);
+        if constexpr (Ar::loading) {
+            if (wrPhase_ < 0 || wrPhase_ > 32 * kIwmTick || wrBits_ < 0 || wrBits_ > 8 ||
+                wrState_ < 0 || wrState_ > 2 || wrElapsed_ < 0 ||
+                !std::is_sorted(wrEdges_.begin(), wrEdges_.end()) ||
+                (!wrEdges_.empty() && (wrEdges_.front() < 0 || wrEdges_.back() > wrElapsed_))) ar.fail();
+        }
         ar(fluxClock_, nextStateChange_, nextFluxChange_, syncUpdate_,
-           rwState_, rsh_, readArmed_);
+           rwState_, rsh_, readArmed_, intSel_, armedFluxRev_, armedSpinRev_);
         ar(readCount, dataReads, dataHits, senseCount,
            consumed, consumedPos, overwritten, written, reReads);
     }
@@ -107,13 +139,16 @@ private:
     uint8_t readRegister();
     void updateRw();
     void tickRead(int64_t elapsedTicks);
+    void tickWrite(int64_t elapsedTicks);
+    void flushWriteFlux();
+    void beginWriteFlux();
     void latchData(uint8_t v);
     bool isSync() const { return !(mode_ & 0x02); }
     int64_t clockTick() const;                   // one clock of THIS chip
     int64_t halfWindowTicks() const;
     int64_t windowTicks() const;
     int64_t updateDelayTicks() const;
-    SonyDrive* selectedDrive() const { return drive_[driveSel_ ? 1 : 0]; }
+    SonyDrive* selectedDrive() const { return driveSel_ ? drive_[1] : enable1Drive(); }
     // MAME iwm.cpp:243-247 devsel: sense/commands reach a drive only while
     // one is selected — ENABLE set, or the ~1 s motor-off delay window when
     // mode bit 2 is clear (MODE_DELAY, iwm.cpp:236-239; the Mac's mode $1F
@@ -121,10 +156,12 @@ private:
     bool driveSelected() const { return enable_ || selDelay_ > 0; }
     int senseAddr() const;
 
-    SonyDrive* drive_[2] = { nullptr, nullptr };
+    SonyDrive* drive_[3] = { nullptr, nullptr, nullptr };
     bool ph_[4] = { false, false, false, false };
     bool enable_ = false, driveSel_ = false, q6_ = false, q7_ = false;
     bool sel_ = false;
+    bool intSel_ = false;                 // VIA1 PA4 on the SE board
+    bool intSelWired_ = false;            // board wiring, not serialized
     int clockScale_ = 1;                  // tick() cycles per C7M clock
     int chipScale_ = 1;                   // CHIP clocks per C7M clock
     uint8_t mode_ = 0, dataReg_ = 0;
@@ -143,15 +180,16 @@ private:
     int rwState_ = kIdle;
     uint8_t rsh_ = 0;                     // MAME m_rsh, the read shifter
     bool readArmed_ = false;              // parked at the drive's angle
+    int64_t armedFluxRev_ = 0;            // revolution lengths when parked
+    int64_t armedSpinRev_ = 0;
     int64_t selDelay_ = 0;                // devsel hold after ENABLE drops
                                           // (MODE_DELAY, mode bit 2 clear)
 
-    // Write engine (MAME iwm.cpp MODE_WRITE, byte-granular): q7 while
-    // enabled = write mode; the data register holds one pending byte the
-    // shifter consumes every 8 bit windows (128 cycles at mode $1F).
-    bool writing_ = false;
-    bool wrPending_ = false;              // handshake bit 7 low = byte pending
-    bool wrUnderrun_ = false;             // handshake bit 6 low once starved
-    uint8_t wrData_ = 0;
-    int wrPhase_ = 0;                     // cycles until the next shifter load
+    // MAME 0.285: LOAD (+7 chip clocks), MIDDLE (flux), END (shift).
+    bool writing_ = false, wrPending_ = false, wrUnderrun_ = false;
+    uint8_t wrData_ = 0, wrShift_ = 0;
+    int64_t wrPhase_ = 0;                 // flux ticks until next event
+    int wrBits_ = 0, wrState_ = 0;        // 0=load, 1=middle, 2=end
+    int64_t wrElapsed_ = 0, wrStart_ = 0;
+    std::vector<int64_t> wrEdges_;        // pending physical write arc
 };

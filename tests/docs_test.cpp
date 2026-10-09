@@ -1054,7 +1054,7 @@ int main() {
             {"POM68K_MACII_MODEL", "se30", 256u << 10, 0x97221136,
              pom68k::SnapMachine::SE30},
             {"POM68K_MACII_MODEL", "fdhd", 256u << 10, 0x97221136,
-             pom68k::SnapMachine::MacII},
+             pom68k::SnapMachine::MacIIFDHD},
             {"POM68K_LC3_PLUS", "1", 1u << 20, 0xECBBC41C,
              pom68k::SnapMachine::Lc3Plus},
             {"POM68K_AIO_ID", "A55A0101", 1u << 20, 0xEDE66CBD,
@@ -1095,6 +1095,18 @@ int main() {
             allRoutes = allRoutes && actual == route.expected;
             routedProfiles.insert(actual);
         }
+        char mac512keArg[] = "--machine-profile=mac512ke";
+        char* mac512keArgv[] = {a0, mac512keArg};
+        const auto mac512keConfig = pom68k::app::RuntimeConfig::parse(2, mac512keArgv, {});
+        const auto enhanced = pom68k::app::MachineFactory::selectProfile(
+            mac512keConfig, syntheticRom(128u << 10, 0x4D1F8172)).snapshot;
+        check(enhanced == pom68k::SnapMachine::Mac512Ke &&
+                  pom68k::app::MachineFactory::selectProfile(
+                      mac512keConfig, syntheticRom(64u << 10, 0x28BA4E50)).snapshot ==
+                      pom68k::SnapMachine::Mac512K &&
+                  pom68k::app::machineProfileArgument(enhanced) == mac512keArg,
+              "512Ke shared-Plus-ROM selector round-trips without overriding 64K ROMs");
+        routedProfiles.insert(enhanced);
         bool typedRelaunchRoutes = true;
         for (const ProfileRoute& route : profileRoutes) {
             std::string option = pom68k::app::machineProfileArgument(

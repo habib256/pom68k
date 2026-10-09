@@ -50,7 +50,7 @@ void attachDaynaPort(DaynaPort& card, Bus& scsi, const std::optional<int>& id) {
     card.attach();
     scsi.attach(&card, *id);
     std::fprintf(stderr, "DaynaPort SCSI/Link at SCSI ID %d (guest needs the "
-                 "SCSI/Link driver + a manual MacTCP address in the gateway's "
+                 "SCSI/Link driver + MacTCP Server or a manual address in the gateway's "
                  "subnet)\n", *id);
 }
 

@@ -28,17 +28,22 @@ static std::string find(const char* rel) {
     return testasset::find(rel);
 }
 
-int main() {
-    std::string rom = find("roms/macplus.rom"), dsk = find("disks35/Disk605.dsk");
+int main(int argc, char** argv) {
+    const bool enhanced = argc > 1 && std::string(argv[1]) == "--512ke";
+    const bool system33 = enhanced || (argc > 1 && std::string(argv[1]) == "--system33");
+    const int mouseScale = system33 ? 2 : 1; // System 3.3 driver gain; also proved on Plus.
+    std::string rom = find("roms/macplus.rom"),
+                dsk = find(system33 ? "disks35/System 3.3.dsk" : "disks35/Disk605.dsk");
     if (rom.empty() || dsk.empty()) {
-        std::printf("SKIP: needs roms/macplus.rom + disks35/Disk605.dsk\n");
+        std::printf("SKIP: needs roms/macplus.rom + %s\n",
+                    system33 ? "disks35/System 3.3.dsk" : "disks35/Disk605.dsk");
         return 0;
     }
     testasset::report({ rom, dsk });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    MacMemory mem(pom68k::defaultCoreConfig());
+    MacMemory mem(pom68k::defaultCoreConfig(), enhanced ? MacMemory::Model::Mac512e : MacMemory::Model::Plus);
     mem.loadRom(romData);
     Cpu68k cpu(mem, jit::defaultResolvedConfig());
     mem.setCpu(&cpu);
@@ -58,18 +63,18 @@ int main() {
     mem.mouse().move(60, 40);                    // right + down
     for (long f = 0; f < 120; f++) fc.runFrame(cpu, mem);
     int h1 = rawMouseH(), v1 = rawMouseV();
-    std::printf("mouse: (%d,%d) -> (%d,%d)  (want ~+60,+40)\n", h0, v0, h1, v1);
+    std::printf("mouse: (%d,%d) -> (%d,%d)  (want ~+%d,+%d)\n", h0, v0, h1, v1, 60 * mouseScale, 40 * mouseScale);
     // ±2: quadrature loses one count at direction changes (real mice too)
     auto near = [](int got, int want) { return got >= want - 2 && got <= want + 2; };
-    if (!near(h1 - h0, 60) || !near(v1 - v0, 40)) {
+    if (!near(h1 - h0, 60 * mouseScale) || !near(v1 - v0, 40 * mouseScale)) {
         std::fprintf(stderr, "FAIL: mouse deltas wrong (dh=%d dv=%d)\n", h1 - h0, v1 - v0);
         return 1;
     }
     mem.mouse().move(-30, -20);                  // left + up
     for (long f = 0; f < 120; f++) fc.runFrame(cpu, mem);
     int h2 = rawMouseH(), v2 = rawMouseV();
-    std::printf("mouse: -> (%d,%d)  (want ~-30,-20)\n", h2, v2);
-    if (!near(h2 - h1, -30) || !near(v2 - v1, -20)) {
+    std::printf("mouse: -> (%d,%d)  (want ~-%d,-%d)\n", h2, v2, 30 * mouseScale, 20 * mouseScale);
+    if (!near(h2 - h1, -30 * mouseScale) || !near(v2 - v1, -20 * mouseScale)) {
         std::fprintf(stderr, "FAIL: reverse deltas wrong (dh=%d dv=%d)\n", h2 - h1, v2 - v1);
         return 1;
     }
@@ -164,6 +169,7 @@ int main() {
         }
     }
 
-    std::printf("input_etalon: mouse + button + keyboard accepted by System 6\n");
+    std::printf("input_etalon: mouse + button + keyboard accepted by System %s\n",
+                system33 ? "3.3" : "6");
     return 0;
 }

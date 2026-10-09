@@ -25,6 +25,13 @@ void wr32(std::uint8_t* p, std::uint32_t v) {
     p[0] = std::uint8_t(v >> 24); p[1] = std::uint8_t(v >> 16);
     p[2] = std::uint8_t(v >> 8);  p[3] = std::uint8_t(v);
 }
+std::uint16_t checksum(const std::uint8_t* p, std::size_t n) {
+    std::uint32_t sum = 0;
+    while (n >= 2) { sum += be16(p); p += 2; n -= 2; }
+    if (n) sum += std::uint32_t(*p) << 8;
+    while (sum >> 16) sum = (sum & 0xffff) + (sum >> 16);
+    return std::uint16_t(~sum);
+}
 } // namespace
 
 void EtherLink::attach() {
@@ -84,6 +91,8 @@ void EtherLink::onGuestFrame(const std::uint8_t* d, std::size_t n) {
     if (!uplink()) return;                 // the card still accepted the
                                           // WRITE(6); the wire carries nothing
     if (!d || n < kEthHdr) return;
+    if (be16(d + 12) == 0x8035) { handleRarp(d, n); return; }
+    if (be16(d + 12) == kEtherTypeIp && handleAddressMask(d, n)) return;
     // Learn the guest's MAC from its source address, never from the
     // destination: a broadcast frame's destination is FF:FF:FF:FF:FF:FF and
     // replying there would work by accident until it stopped.
@@ -98,6 +107,68 @@ void EtherLink::onGuestFrame(const std::uint8_t* d, std::size_t n) {
     const std::size_t ipLen = n - kEthHdr;
     if (ipLen >= 20 && (ip[0] >> 4) == 4) guestIp_ = be32(ip + 12);
     gw_.ipFromEther(ip, ipLen);
+}
+
+// RFC 903: answer only the attached card asking for its own IPv4 address.
+// Undefined request protocol-address fields are deliberately ignored.
+void EtherLink::handleRarp(const std::uint8_t* frame, std::size_t n) {
+    if (n < kEthHdr + 28) return;
+    const auto* p = frame + kEthHdr;
+    static constexpr std::array<uint8_t, 6> broadcast{255,255,255,255,255,255};
+    const auto& mac = nic_.mac();
+    if (be16(p) != 1 || be16(p + 2) != kEtherTypeIp || p[4] != 6 || p[5] != 4 ||
+        be16(p + 6) != 3 || !std::equal(mac.begin(), mac.end(), frame + 6) ||
+        !std::equal(mac.begin(), mac.end(), p + 8) ||
+        !std::equal(mac.begin(), mac.end(), p + 18) ||
+        (!std::equal(gwMac_.begin(), gwMac_.end(), frame) &&
+         !std::equal(broadcast.begin(), broadcast.end(), frame))) return;
+    rarpRequests++;
+    const auto ip = gw_.leaseForEther(mac);
+    if (!ip) return;                              // RFC 903 has no error reply
+    uint8_t reply[28] = {};
+    wr16(reply, 1); wr16(reply + 2, kEtherTypeIp); reply[4] = 6; reply[5] = 4;
+    wr16(reply + 6, 4);
+    std::copy(gwMac_.begin(), gwMac_.end(), reply + 8); wr32(reply + 14, gw_.gwIp());
+    std::copy(mac.begin(), mac.end(), reply + 18); wr32(reply + 24, ip);
+    guestMac_ = mac; guestIp_ = ip;
+    sendToGuest(mac, 0x8035, reply, sizeof reply); rarpReplies++;
+}
+
+// RFC 950 Appendix I: zero-source discovery gets a broadcast reply; an
+// addressed host gets unicast. This is a local router service, not NAT traffic.
+// Return true for a mask request even when malformed, so it cannot teach the
+// NAT a bogus lease or replace the Ethernet return address.
+bool EtherLink::handleAddressMask(const std::uint8_t* frame, std::size_t n) {
+    const auto* ip = frame + kEthHdr;
+    n -= kEthHdr;
+    if (n < 20 || (ip[0] >> 4) != 4 || ip[9] != 1) return false;
+    const std::size_t ihl = (ip[0] & 15) * 4;
+    if (ihl < 20 || ihl >= n || ip[ihl] != 17) return false;
+    const std::size_t total = be16(ip + 2);
+    if (total != ihl + 12 || total > n || !ip[8] || (be16(ip + 6) & 0xbfff) ||
+        checksum(ip, ihl) || ip[ihl + 1] || checksum(ip + ihl, 12)) return true;
+    static constexpr std::array<std::uint8_t, 6> broadcast{255,255,255,255,255,255};
+    if (!std::equal(nic_.mac().begin(), nic_.mac().end(), frame + 6) ||
+        (!std::equal(gwMac_.begin(), gwMac_.end(), frame) &&
+         !std::equal(broadcast.begin(), broadcast.end(), frame))) return true;
+    const auto mask = gw_.netmask(), gateway = gw_.gwIp();
+    const auto subnet = gateway & mask, directedBroadcast = subnet | ~mask;
+    const auto src = be32(ip + 12), dst = be32(ip + 16);
+    if (dst != gateway && dst != directedBroadcast && dst != 0xffffffffu) return true;
+    if (src && ((src & mask) != subnet || src == gateway ||
+                src == subnet || src == directedBroadcast)) return true;
+    std::uint8_t reply[32] = {};
+    reply[0] = 0x45; wr16(reply + 2, sizeof reply); reply[8] = 64; reply[9] = 1;
+    wr32(reply + 12, gateway); wr32(reply + 16, src ? src : 0xffffffffu);
+    reply[20] = 18; std::copy(ip + ihl + 4, ip + ihl + 8, reply + 24);
+    wr32(reply + 28, mask);
+    wr16(reply + 22, checksum(reply + 20, 12));
+    wr16(reply + 10, checksum(reply, 20));
+    guestMac_ = nic_.mac();
+    if (src) guestIp_ = src;
+    ipFromGuestFrames++; ipToGuestFrames++;
+    sendToGuest(src ? guestMac_ : broadcast, kEtherTypeIp, reply, sizeof reply);
+    return true;
 }
 
 // RFC 826. Only Ethernet/IPv4 requests are answered; everything else falls

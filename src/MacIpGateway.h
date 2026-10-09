@@ -28,6 +28,7 @@
 #pragma once
 #include "AtalkStack.h"
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -57,10 +58,9 @@ public:
     // changes, so a lease records which link it was learned on and
     // sendIpToGuest routes accordingly.
     //
-    // There is no address handout on this path — MacIP's ATP assign has no
-    // Ethernet equivalent. The guest is configured by hand (an address in
-    // the gateway's subnet, the gateway as router) and the lease is learned
-    // from its first packet, which is what handleIp already does for DDP.
+    // EtherLink can reserve an address by MAC for RARP. Manual guest addresses
+    // are learned from IP traffic. Both links share one bounded pool so an
+    // Ethernet packet cannot overwrite a MacIP reservation, or vice versa.
     // Installing a sink enables this link independently of MacIP; removing
     // it retires its leases and sockets without disabling the DDP service.
     void setEtherSink(std::function<void(uint32_t dstIp,
@@ -71,6 +71,7 @@ public:
     void ipFromEther(const uint8_t* ip, size_t n) {
         handleIp(AtalkStack::Addr{}, true, ip, n);
     }
+    uint32_t leaseForEther(const std::array<uint8_t, 6>& mac);
     uint32_t gwIp() const { return gw_; }
     uint32_t netmask() const { return mask_; }
     uint32_t dnsIp() const { return dns_; }
@@ -103,6 +104,7 @@ public:
 
 private:
     void retireLink(bool ether);
+    uint32_t freeLeaseIp() const;
     // Idle leases are reclaimed in tick(); generous enough that a quiet but
     // live MacTCP node keeps its address (traffic refreshes lastSeen).
     static constexpr int64_t kLeaseLifetimeSec = 3600;
@@ -111,6 +113,7 @@ private:
         int64_t lastSeen = 0;
         bool ether = false;              // reached over a raw Ethernet link,
                                          // in which case `at` means nothing
+        std::array<uint8_t, 6> mac{};     // RARP binding; zero for learned IP
     };
     struct UdpFlow {
         int fd = -1;

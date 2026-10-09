@@ -23,6 +23,96 @@ static void check(bool ok, const char* what) {
     if (!ok) failures++;
 }
 
+static std::vector<uint8_t> snapshot(AtaDisk& disk) {
+    std::vector<uint8_t> bytes;
+    sav::Writer writer(bytes);
+    writer(disk);
+    return bytes;
+}
+
+static bool restore(AtaDisk& disk, const std::vector<uint8_t>& bytes) {
+    sav::Reader reader(bytes.data(), bytes.size());
+    reader(disk);
+    return reader.ok() && !reader.remaining();
+}
+
+static void transfer(AtaDisk& disk, uint8_t command, uint8_t lba, uint8_t count = 1) {
+    disk.writeRegister(AtaDisk::kDevice, 0x40);
+    disk.writeRegister(AtaDisk::kLbaLow, lba);
+    disk.writeRegister(AtaDisk::kLbaMid, 0);
+    disk.writeRegister(AtaDisk::kLbaHigh, 0);
+    disk.writeRegister(AtaDisk::kSectorCount, count);
+    disk.writeRegister(AtaDisk::kCommand, command);
+}
+
+static void snapshots() {
+    AtaDisk disk, fresh;
+    check(disk.open("ata_disk_test.img") && fresh.open("ata_disk_test.img"),
+          "snapshot tests open the same unmodified backing medium");
+    transfer(disk, 0x20, 3, 2);
+    disk.readData();
+    const auto reading = snapshot(disk);
+    check(restore(fresh, reading) && fresh.irq(),
+          "restoring into a fresh drive preserves the pending interrupt");
+    bool equal = true;
+    for (int i = 1; i < 512; ++i) equal &= disk.readData() == fresh.readData();
+    check(equal && !(fresh.readRegister(AtaDisk::kStatus) & AtaDisk::kDrq),
+          "a mid-read snapshot resumes both sectors at the saved word");
+
+    const auto beforeWriting = snapshot(disk);
+    transfer(disk, 0x30, 2, 2);
+    for (int i = 0; i < 19; ++i) disk.writeData(0x1234);
+    const auto writing = snapshot(disk);
+    for (int i = 19; i < 512; ++i) disk.writeData(0x5678);
+    check(restore(fresh, writing), "a partial two-sector write restores");
+    for (int i = 19; i < 512; ++i) fresh.writeData(0x5678);
+    transfer(disk, 0x20, 2, 2);
+    transfer(fresh, 0x20, 2, 2);
+    equal = true;
+    for (int i = 0; i < 512; ++i) equal &= disk.readData() == fresh.readData();
+    check(equal, "resumed PIO writes commit the saved prefix and both sectors");
+
+    const auto written = snapshot(disk);
+    check(restore(fresh, written) && snapshot(fresh) == written,
+          "dirty sectors replay into a freshly opened base with byte-identical state");
+    transfer(disk, 0x30, 2);
+    for (int i = 0; i < 256; ++i) disk.writeData(0xEEEE);
+    transfer(disk, 0x30, 5);
+    for (int i = 0; i < 256; ++i) disk.writeData(0xFFFF);
+    check(restore(disk, written), "restoring replays sectors present at snapshot time");
+    transfer(disk, 0x20, 2);
+    check(disk.readData() == 0x1234, "later overwrites of a saved sector are undone");
+    transfer(disk, 0x20, 5);
+    check(disk.readData() == 0x5A05, "writes to other sectors after the snapshot are undone");
+    check(restore(disk, beforeWriting), "an earlier snapshot can be restored repeatedly");
+    transfer(disk, 0x20, 2);
+    check(disk.readData() == 0x5A02, "restoring the clean snapshot returns the original medium");
+
+    disk.writeRegister(AtaDisk::kDevice, 3);
+    disk.writeRegister(AtaDisk::kSectorCount, 2);
+    disk.writeRegister(AtaDisk::kCommand, 0x91);
+    const auto geometry = snapshot(disk);
+    check(restore(fresh, geometry), "command $91 geometry restores into a fresh drive");
+    fresh.writeRegister(AtaDisk::kCommand, 0xEC);
+    std::vector<uint16_t> identify(256);
+    for (auto& word : identify) word = fresh.readData();
+    check(identify[54] == 1 && identify[55] == 4 && identify[56] == 2,
+          "IDENTIFY reports the saved current CHS geometry");
+
+    disk.writeRegister(AtaDisk::kCommand, 0xE8);
+    for (int i = 0; i < 256; ++i) disk.writeData(0xBEEF);
+    const auto buffer = snapshot(disk);
+    check(restore(fresh, buffer), "WRITE BUFFER contents survive a snapshot");
+    fresh.writeRegister(AtaDisk::kCommand, 0xE4);
+    check(fresh.readData() == 0xBEEF, "READ BUFFER returns the saved drive latch");
+    auto truncated = buffer;
+    truncated.pop_back();
+    check(!restore(fresh, truncated), "a truncated ATA snapshot is rejected");
+    disk.close();
+    check(disk.open("ata_disk_test.img") && restore(disk, beforeWriting),
+          "reopening a drive clears the previous medium's write log");
+}
+
 int main() {
     std::printf("ATA: the task file a Quadra 630's ROM driver speaks\n");
 
@@ -163,6 +253,7 @@ int main() {
     ata.readRegister(AtaDisk::kAltStatus);
     check(ata.irq(), "while Alternate Status leaves it asserted");
 
+    snapshots();
     std::remove("ata_disk_test.img");
     std::printf(failures ? "FAIL\n" : "PASS\n");
     return failures ? 1 : 0;

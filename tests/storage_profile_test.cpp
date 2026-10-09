@@ -287,7 +287,7 @@ void checkGlueModel(const pom68k::CoreConfig& core, MacIIMemory::Model model,
 } // namespace
 
 int main() {
-    std::printf("storage_profile_test — 39-profile floppy/SCSI/CD matrix\n");
+    std::printf("storage_profile_test — 41-profile floppy/SCSI/CD matrix\n");
 
     std::size_t none = 0, gcr400 = 0, gcr800 = 0, super = 0, external = 0;
     std::size_t scsi = 0, cdrom = 0;
@@ -307,12 +307,12 @@ int main() {
                     caps.externalFloppy ? "yes" : "no",
                     caps.scsi ? "yes" : "no", caps.cdrom ? "yes" : "no");
     }
-    check(pom68k::kMachineProfileCount == 39, "catalogue contains all 39 profiles");
-    check(none == 1 && gcr400 == 2 && gcr800 == 3 && super == 33,
-          "floppy matrix = 1 none + 2 400K + 3 800K-only + 33 SuperDrive");
-    check(external == 9,
-          "drive B on the 9 profiles MAME connects it on: the six compacts "
-          "(128K to Classic) and IIx, IIcx, SE/30");
+    check(pom68k::kMachineProfileCount == 41, "catalogue contains all 41 profiles");
+    check(none == 1 && gcr400 == 2 && gcr800 == 4 && super == 34,
+          "floppy matrix = 1 none + 2 400K + 4 800K-only + 34 SuperDrive");
+    check(external == 11,
+          "drive B on the 11 profiles MAME connects it on: the seven compacts "
+          "(128K to Classic) and II FDHD, IIx, IIcx, SE/30");
     // The board decides what the guest sees; the catalogue decides what the
     // GUI offers. One fact, so every profile is held to both.
     for (const auto& profile : pom68k::kMachineProfiles) {
@@ -321,11 +321,7 @@ int main() {
         switch (profile.platform) {
             case pom68k::PlatformKind::Compact: board = MacMemory::externalFloppyPort(); break;
             case pom68k::PlatformKind::Glue: {
-                const auto model =
-                    profile.snapshot == pom68k::SnapMachine::MacII ? MacIIMemory::Model::MacII :
-                    profile.snapshot == pom68k::SnapMachine::IIx   ? MacIIMemory::Model::IIx :
-                    profile.snapshot == pom68k::SnapMachine::IIcx  ? MacIIMemory::Model::IIcx :
-                                                                     MacIIMemory::Model::SE30;
+                const auto model = MacIIMemory::modelFor(profile.snapshot);
                 MacIIMemory mem(pom68k::defaultCoreConfig(), 0x100000, model);
                 board = mem.externalFloppyPort();
                 break;
@@ -347,12 +343,13 @@ int main() {
     // NOT "all profiles" any more: the SCSI bus arrived with the Plus, so the
     // Macintosh 128K and 512K are the two that answer no. This is the
     // assertion that would have caught a `scsi = true` copied onto them.
-    check(scsi == 37 && cdrom == 37,
-          "37 of 39 expose SCSI HDD + CD-ROM; the 128K/512K predate the bus");
+    check(scsi == 38 && cdrom == 38,
+          "38 of 41 expose SCSI HDD + CD-ROM; 128K/512K/512Ke have no bus");
 
     const auto& core = pom68k::defaultCoreConfig();
     checkCompactModel(core, MacMemory::Model::Mac128, "Mac 128K", false);
     checkCompactModel(core, MacMemory::Model::Mac512, "Mac 512K", false);
+    checkCompactModel(core, MacMemory::Model::Mac512e, "Mac 512Ke", false);
     checkCompactModel(core, MacMemory::Model::Plus, "Plus", false);
     checkCompactModel(core, MacMemory::Model::SE, "SE", false);
     checkCompactModel(core, MacMemory::Model::SEFDHD, "SE FDHD", true);
@@ -380,6 +377,7 @@ int main() {
     }
 
     checkGlueModel(core, MacIIMemory::Model::MacII, "Mac II", false);
+    checkGlueModel(core, MacIIMemory::Model::MacIIFDHD, "II FDHD", true);
     checkGlueModel(core, MacIIMemory::Model::IIx, "IIx", true);
     checkGlueModel(core, MacIIMemory::Model::IIcx, "IIcx", true);
     checkGlueModel(core, MacIIMemory::Model::SE30, "SE/30", true);

@@ -33,7 +33,7 @@ int runTobyGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
                const std::vector<std::string>& media, Services& services) {
     cpu.hardReset();
     seedRtc();
-    services.wireNetwork(mem);
+    services.wireNetwork(mem, cpu);
 
     std::string hddPath = !media.empty() ? media.front() : std::string();
     if (hddPath.empty()) {

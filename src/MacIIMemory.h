@@ -6,6 +6,7 @@
 
 #pragma once
 #include "CoreConfig.h"
+#include "MachineCatalog.h"
 #include "DaynaPortBus.h"
 #include "Via6522.h"
 #include "Rtc.h"
@@ -44,20 +45,29 @@ public:
     int64_t cpuHz() const { return kCpuHz; }         // LocalTalk pace / 60 Hz quantum
 
     // Same GLUE board, ROM-sharing models (MAME macii.cpp): the original
-    // **Mac II** (68020 + HMMU, 800K IWM), and the SWIM/SuperDrive 68030
+    // **Mac II** (68020 + HMMU, 800K IWM), **II FDHD** (68020 + SWIM), and the 68030
     // variants **IIx**,
     // **IIcx** and **SE/30** — distinguished only by the VIA1 PA / VIA2 PB
     // machine-ID pins (iix_via2_in_b $87; iicx_via_in_a $C1; the SE/30 shows
     // both). The 68030 trio boot the mac2fdhd ROM; the original Mac II keeps
     // its own ROM. The SE/30 is the compact IIx: no NuBus slots, internal
     // 512×342 video on pseudo-slot $E (Se30Video).
-    enum class Model { MacII, IIx, IIcx, SE30 };
+    enum class Model { MacII, IIx, IIcx, SE30, MacIIFDHD };
+    static constexpr Model modelFor(pom68k::SnapMachine profile) {
+        switch (profile) {
+            case pom68k::SnapMachine::IIx: return Model::IIx;
+            case pom68k::SnapMachine::IIcx: return Model::IIcx;
+            case pom68k::SnapMachine::SE30: return Model::SE30;
+            case pom68k::SnapMachine::MacIIFDHD: return Model::MacIIFDHD;
+            default: return Model::MacII;
+        }
+    }
 
     explicit MacIIMemory(
         const pom68k::CoreConfig& coreConfig, uint32_t ramSize = 0x800000,
         Model model = Model::MacII);
     Model model() const { return model_; }
-    bool is030() const { return model_ != Model::MacII; }
+    bool is030() const { return model_ == Model::IIx || model_ == Model::IIcx || model_ == Model::SE30; }
     bool hasSuperDrive() const { return model_ != Model::MacII; }
     ~MacIIMemory();
 
@@ -196,7 +206,7 @@ public:
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
     SonyDrive& externalDrive() { return externalDrive_; }
-    // The FDHD-ROM trio connects drive B by default in MAME (maciihd:
+    // The FDHD-ROM quartet connects drive B by default in MAME (maciihd:
     // add_35_hd twice); the original Mac II leaves it `add_35_nc`.
     bool externalFloppyPort() const { return model_ != Model::MacII; }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).

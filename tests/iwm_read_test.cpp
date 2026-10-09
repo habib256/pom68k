@@ -172,6 +172,52 @@ int main() {
         check(f0 != f1, "a mid-revolution read lands on a different sector");
     }
 
+    // ── A speed change re-parks the reader on the head's real angle ───
+    // The read frame advances in time from the angle it was parked at. On
+    // the PWM-driven 400K spindle (and on any zone seek) the revolution
+    // length changes under it; the next write starts at the drive's real
+    // angle, so a reader still on the old frame finds a sector header where
+    // the write will not land (mac128k_mfs_etalon wrote sector 6 into the
+    // slot of sector 1, 904 nibbles early). After the change, a controller
+    // that was reading all along must see exactly what a freshly parked one
+    // sees on an identical drive.
+    {
+        SonyDrive d1, d2;
+        d1.reset(); d2.reset();
+        d1.insertImage(pattern);
+        d2.insertImage(pattern);
+        Iwm a, b;
+        startRead(a, d1);
+        d2.setMotor(true);
+        std::vector<uint8_t> na, nb;
+        bool armA = true, armB = true;
+        auto poll = [](Iwm& iwm, std::vector<uint8_t>& out, bool& arm) {
+            const uint8_t v = iwm.read(kData);
+            if (!(v & 0x80)) { arm = true; return; }
+            if (arm) { out.push_back(v); arm = false; }
+        };
+        bool bLive = false;
+        auto run = [&](int cycles) {
+            for (int c = 0; c < cycles; c += 4) {
+                a.tick(4); d1.tick(4); poll(a, na, armA);
+                if (bLive) { b.tick(4); poll(b, nb, armB); }
+                d2.tick(4);
+            }
+        };
+        run(7833600 * 60 / 394 / 3);             // a third of a turn, reading
+        const int before = d1.rpmNow();
+        for (int i = 0; i < 200; i++) { d1.pwmPush(0x3F); d2.pwmPush(0x3F); }
+        check(d1.rpmNow() != before && d1.rpmNow() == d2.rpmNow(),
+              "re-park: both spindles adopt the commanded speed");
+        startRead(b, d2);
+        bLive = true;
+        na.clear();
+        armA = true;
+        run(2 * 1000 * 1000);
+        check(na.size() > 300 && na == nb,
+              "re-park: the reading controller matches a freshly parked one");
+    }
+
     // ── Sync groups take ten windows, data bytes take eight ───────────
     // The self-sync group is $FF plus two zero cells, and the shifter
     // frames it after eight — so it costs ten cell times where a data

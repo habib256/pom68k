@@ -782,9 +782,7 @@ add_executable(cd_audio_test tests/cd_audio_test.cpp)
 target_link_libraries(cd_audio_test PRIVATE pom68k_core)
 add_test(NAME cd_audio_test COMMAND cd_audio_test)
 
-add_executable(floppy_persist_test tests/floppy_persist_test.cpp)
-target_link_libraries(floppy_persist_test PRIVATE pom68k_core)
-add_test(NAME floppy_persist_test COMMAND floppy_persist_test)
+include(cmake/Pom68kFloppyGates.cmake)
 
 # Beyond-boot gates on the reference LC II: idle soak (Mac clock keeps
 # time, no hang), Finder file creation surviving a reboot, and an app
@@ -974,10 +972,7 @@ target_link_libraries(macii_post_etalon PRIVATE pom68k_core)
 add_test(NAME macii_post_etalon COMMAND macii_post_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(macii_boot_etalon tests/macii_boot_etalon.cpp)
-target_link_libraries(macii_boot_etalon PRIVATE pom68k_core)
-add_test(NAME macii_boot_etalon COMMAND macii_boot_etalon
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kProfileGates.cmake)
 
 # Mac II System 7 Finder (SPConfig + EvQ dismiss of EtherTalk alerts).
 add_executable(macii_sys7_boot_etalon tests/macii_sys7_boot_etalon.cpp)

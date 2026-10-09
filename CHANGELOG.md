@@ -288,6 +288,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Storage — SCSI, IWM/SWIM, media
 
+- **why a write stopped halfway through a byte must preserve partial magnetic cells** → [2026-10-08 (eleventh) — IWM bit writes](#2026-10-08-iwm-bit-write)
+
 - **what the SWIM1's ISM engine actually delivers on a 1.44 MB disk, which strobe each of two .Sony drivers uses to enter MFM, and why the strobe table was not swapped on that evidence** → [2026-09-07 (eighth) — The SWIM1 decodes 1.44 MB MFM correctly…](#2026-09-07-swim1-mfm-hunt)
 
 - **how does a dirty reference volume get its clean-unmount bit back honestly — and why can no host-side tool do it?** → [2026-09-01 (ninth) — The proof floor's two red fixtures close…](#2026-09-01-fixture-floor)
@@ -361,6 +363,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **mechanical floppy + hard-disk drive sounds** → [2026-07-23 — Mechanical drive sounds (floppy + SCSI hard disk)](#2026-07-23--mechanical-drive-sounds-floppy--scsi-hard-disk)
 
 ### Serial, LocalTalk and AppleTalk
+
+- **how Ethernet traffic can be captured without changing the guest transport** → [2026-10-08 (fifteenth) — Passive Dayna PCAP](#2026-10-08-ethernet-pcap)
+- **how real MacTCP resolves a name and completes TCP after RARP address setup** → [2026-10-08 (fourteenth) — Guest DNS and TCP](#2026-10-08-mactcp-dns-tcp)
+- **how MacTCP Server obtains an address on DaynaPort without colliding with MacIP** → [2026-10-08 (thirteenth) — Real RARP assignment](#2026-10-08-ethernet-rarp)
+- **what Ethernet ICMP mask discovery supplies, and why it does not assign an address** → [2026-10-08 (twelfth) — RFC 950 mask service](#2026-10-08-ethernet-address-mask)
 
 - **where is the end-to-end proof that a real guest mounts the in-process AppleShare server and changes the host share?** → [2026-09-09 (tenth) — The Chooser AppleShare goal was already real…](#2026-09-09-chooser-appleshare-proof)
 - **why can the in-process server no longer lose node 128 to a guest's lapENQ probe?** → [2026-09-09 (ninth) — The lapACK now wins its 200 µs LLAP race…](#2026-09-09-llap-address-defence)
@@ -474,6 +481,23 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (later)** — [The 128K wrote sector 6 into sector 1's slot: the IWM reader now re-parks when the revolution changes](#2026-10-09-iwm-repark)
+- **2026-10-09** — [The SE's VIA1 PA4 selects its internal floppy connector, and the boot floppy stops mounting twice](#2026-10-09-se-pa4-drives)
+- **2026-10-08 (fifteenth)** — [Passive Dayna PCAP records the real MacTCP conversation](#2026-10-08-ethernet-pcap)
+- **2026-10-08 (fourteenth)** — [Real MacTCP resolves a name and completes TCP after RARP](#2026-10-08-mactcp-dns-tcp)
+- **2026-10-08 (thirteenth)** — [MacTCP Server obtains its address through the real Dayna driver](#2026-10-08-ethernet-rarp)
+- **2026-10-08 (twelfth)** — [Ethernet mask discovery follows the real ICMP protocol](#2026-10-08-ethernet-address-mask)
+- **2026-10-08 (eleventh)** — [IWM writes preserve individual cells and partial-byte splices](#2026-10-08-iwm-bit-write)
+- **2026-10-08 (tenth)** — [Original Oids flux capture flies and replays in a fresh Macintosh](#2026-10-08-oids-native-application)
+- **2026-10-08 (ninth)** — [Weak floppy regions produce read-amplifier pulses without changing the medium](#2026-10-08-floppy-read-noise)
+- **2026-10-08 (eighth)** — [MOOF preserves native floppy tracks through seeks, writes, snapshots and export](#2026-10-08-native-moof)
+- **2026-10-08 (seventh)** — [512Ke and Macintosh II FDHD retain their real shared-ROM hardware](#2026-10-08-real-shared-rom-profiles)
+- **2026-10-08 (sixth)** — [Apple DART archives preserve real Macintosh sectors, tags and container provenance](#2026-10-08-dart-media)
+- **2026-10-08 (fifth)** — [Stored CD pregaps retain their INDEX 00 track and countdown](#2026-10-08-cd-index-zero)
+- **2026-10-08 (fourth)** — [CD capacity and playback positions use the physical disc address space](#2026-10-08-cd-address-space)
+- **2026-10-08 (third)** — [CD-DA transport runs at exactly 75 sectors per guest second](#2026-10-08-cdda-clock)
+- **2026-10-08 (later)** — [Sony GCR sectors keep their twelve physical tag bytes through reads, writes, snapshots and DC42 persistence](#2026-10-08-gcr-tags)
+- **2026-10-08** — [ATA snapshots resume the actual transfer and disk timeline; CUE files describe one disc across multiple sources](#2026-10-08-storage-state-cue)
 - **2026-10-04** — [The AFP trace is one trace: interpreter and native engine on both hosts agree at all 22 boundaries](#2026-10-04-afp-four-arms)
 - **2026-10-03** — [The Quadra 630's SCSI driver was not elsewhere: MAME's default 630 carries an imageless IDE disk](#2026-10-03-q630-ide)
 - **2026-10-02 (ninth)** — [Six machines under the guest oracle: the Quadra 800, Centris 650 and Quadra 700 agree with MAME; the Quadra 630 installs its SCSI driver elsewhere](#2026-10-02-oracle-six)
@@ -1071,6 +1095,785 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-iwm-repark"></a>
+## 2026-10-09 (later) — The 128K wrote sector 6 into sector 1's slot: the IWM reader now re-parks when the revolution changes
+
+`mac128k_mfs_etalon` and `mac512k_mfs_etalon` were red in the working tree
+before the PA4 change (a copy with it neutralized fails identically). The
+guest's Finder showed "Copy of Welcome!", yet the host image never held it.
+Instrumenting `SonyDrive::decodeGcrBytes` showed the first write to track 62
+decoding as **sector 6 at nibble 1445** — the physical slot of sector 1 in
+the 2:1 interleave — while the real sector 6 slot sits at nibble 2341. At
+`Iwm::beginWriteFlux` the reader's frame was **904.6 nibbles** ahead of the
+angle `SonyDrive::startWriteFlux` returned; every later write agreed to
+under one nibble.
+
+`Iwm::tickRead` parks its frame on `fluxAngleTicks()` and then advances it in
+time. That stays the head's angle only while `fluxRevTicks()` and the
+spindle's revolution in cycles both hold. The 128K/512K driver adopts a new
+PWM speed (394 → 525 rpm) and seeks across zones without toggling SEL, so the
+frame armed on the old revolution kept running: the driver matched the
+sector 6 header in a stale frame, and the write began at the real angle.
+The broken field then failed its checksum in the write-back decoder (nibble
+628 of sector 5's field), so the host image kept old data while the native
+track the guest reads back held the new field.
+
+The reader now records both revolution lengths when it parks and re-parks
+when either changes, as a SEL or ENABLE2 change already does. Physically the
+head angle is one quantity: the bytes a controller reads and the place it
+writes must share it. Snapshot v27 carries the two recorded lengths.
+`iwm_read_test` adds the differential check: after a PWM speed change, a
+controller that was reading all along delivers exactly the nibbles of a
+freshly parked controller on an identical drive.
+
+<a id="2026-10-09-se-pa4-drives"></a>
+## 2026-10-09 — The SE's VIA1 PA4 selects its internal floppy connector, and the boot floppy stops mounting twice
+
+Snow's `get_selected_drive_idx` (`core/src/mac/swim/mod.rs` at the pinned
+revision) gives the SE three mechanisms, the third behind ENABLE1 with VIA1
+PA4 high; MAME `mac128.cpp:879` calls PA4 "0 = upper, 1 = lower" but wires
+only PA4 low. Apple's ROMs settle it. The SE's DiskSelect (B2E362A8
+`$35316`) maps the untranslated drive-variable table at `$34F3C` — physical
+slot 1 → `$4A`, slot 2 → `$8C`, slot 3 → `$CE` — to `bset #4,vBufA` for
+`$4A`, `bclr #4,vBufA` for the other internal slot, then ENABLE1; slot 3
+takes ENABLE2. The SE FDHD repeats it in both personalities (B306E171
+`$35562` IWM, `$35CBE` ISM drive-1 enable) and the Classic too (A49F9914
+`$3F806`). A traced SE boot writes PA4 high ~130 times and low ~27 with
+DDRA = `$7F`: the line is an output, and the ROM probes both slots.
+
+POM68K ignored PA4 on the ADB compacts, so both internal slots reached one
+mechanism. **All three profiles' Finders mounted Disk605's "System Tools"
+twice** — the old `compact_boot_etalon` pins (`b8027f427d3e997e`) were taken
+on that desktop. With the line wired the Finder shows one volume, and the
+three pins move to `69cfb2d307c29044`.
+
+PA4 now reaches the controller (`Iwm::setInternalSelect`, shared with the
+SWIM1 ISM drive-1 enable) on the SE, SE FDHD and Classic. PA4 low answers
+the existing internal mechanism. PA4 high answers a second mechanism only
+when `CoreStorageConfig::secondInternalFloppy` fits one on the SE / SE FDHD
+(the dual-floppy SE); the default is the single-floppy SE, and the Classic
+has no second internal connector. An empty connector answers like no drive.
+With three distinct floppies fitted, the ROM numbers PA4 high drive 1 and
+tries it first: Rogue, which has no System, is **ejected at boot** and the
+machine starts from drive 2; reinserted, it mounts. The gates then find three
+`.Sony` drive-queue entries and three volumes on drives 1–3. Without the
+second mechanism, the ROM's translation makes the PA4-low mechanism drive 1.
+
+Gates: `se_drive_select_test` (asset-free: PA4 low/high under ENABLE1,
+ENABLE2 indifferent to PA4, empty connector, unwired board, snapshot into a
+freshly wired controller); `se_three_drive_etalon`,
+`sefdhd_three_drive_etalon`, `se_single_floppy_pa4_etalon` and
+`classic_pa4_drive_etalon` read the guest's drive and VCB queues. Snapshot
+format **v27** adds the line level and the mechanism to every compact chunk.
+The 27 compact/floppy component and machine gates rerun green, none
+soft-skipped. Startup option, Disques row and relaunch are open in `TODO.md`.
+
+In the same run `mac128k_mfs_etalon` and `mac512k_mfs_etalon` fail: the
+guest's "Copy of Welcome!" is on screen, but the host-side image does not
+contain it. A copy of the tree with the PA4 changes neutralized fails the
+same way; that defect predates this entry. Cause and fix:
+[2026-10-09 (later)](#2026-10-09-iwm-repark).
+
+<a id="2026-10-08-ethernet-pcap"></a>
+## 2026-10-08 (fifteenth) — Passive Dayna PCAP records the real MacTCP conversation
+
+Snow's `core/src/mac/scsi/ethernet.rs` supplies a useful diagnostic, not a new
+guest peripheral: its capture uses host SystemTime and an unbounded channel.
+POM68K's `EthernetCapture` instead observes the actual Dayna card boundary,
+after TX normalization and before incoming ring admission/IP–EtherTalk demux.
+It cannot replace the transport callback. Both directions contain normalized
+Ethernet bytes without FCS; incoming frames are observed even when the card's
+full ring subsequently drops them.
+
+The machine producer copies into a fixed 256-frame queue, allocates nothing,
+never waits for its mutex and performs no file I/O. Full/contended queues
+count lost observations independently of guest loss. A worker writes
+[libpcap's PCAP 2.4 format](https://github.com/the-tcpdump-group/libpcap/blob/master/pcap-savefile.manfile.in)
+and a `.tsv` companion with actual board clock Hz, each record's machine
+cycles/direction and final counts. Timestamps are machine cycles divided by
+that clock, anchored at Unix epoch zero. Stop drains asynchronously, including
+loss accounting already in flight. Existing files are refused; open/write/
+close errors and backwards time after reset/restore terminate capture visibly.
+The network window exposes the filename, start/stop, written/lost counts and
+errors. Capture queues, callbacks and files stay outside guest save states;
+format remains v26.
+
+`ethernet_capture_test` independently decodes exact frames and timestamps,
+checks both card directions without transport/READ duplication, applies
+bounded queue pressure, stops concurrently with the producer, refuses an
+existing file, recovers from I/O failure and rejects backwards time. The real
+MacTCP network gate now independently reads its own PCAP and finds RARP,
+the DNS question/answer and both exact TCP payloads. Its first execution passes
+in 295.85 seconds: **741 frames, zero lost observations, RARP 1/1, DNS 1/1,
+TCP payload 1/1**. `/usr/sbin/tcpdump -n -r` also reads the file as Ethernet
+and confirms BOOTP attempts followed by RARP, UDP lengths 29/45, TCP SYN/SYN-ACK
+and the 34-byte request. No BOOTP reply is added. The capture and sidecar are
+preserved at `/tmp/pom68k-pcap-guest-wire.pcap` and its `.tsv` companion;
+the CTest log is `/tmp/pom68k-pcap-guest-lasttest.log`.
+
+That same first CTest run fails its documentation and size companions:
+line citations drifted, and the concurrently present SE/Classic topology
+registrations exceeded the machine CMake file's ceiling. Citations are refreshed
+against their actual anchors; topology registrations move unchanged into
+`Pom68kThreeDriveGates.cmake`. Capture compilation/registration has its own
+`Pom68kCaptureGates.cmake`. No size ceiling is raised.
+
+<a id="2026-10-08-mactcp-dns-tcp"></a>
+## 2026-10-08 (fourteenth) — Real MacTCP resolves a name and completes TCP after RARP
+
+The remaining order-10 acceptance needed an application using the real
+MacTCP driver after Server address setup. `dev/netprobe` supplies that
+consumer: a Retro68 68k application calls `.IPP` through ordinary Device
+Manager parameter blocks. Its ABI subset follows
+[Apple Universal Interfaces MacTCP.h](https://github.com/elliotnunn/UniversalInterfaces/blob/master/3.4.1/Universal/Interfaces/CIncludes/MacTCP.h)
+and the [MacTCP Programmer's Guide](https://bitsavers.org/pdf/apple/mac/developer/Networking/MacTCP_Programmers_Guide_1989.pdf).
+Its own bounded RFC 1035 A/IN client checks the transaction, question,
+answer and source before using the returned address for TCPActiveOpen.
+No CPU/device workaround or second NAT engine is added.
+
+`q605_dayna_rarp_network_etalon` installs the original Dayna SCSI/Link driver,
+selects MacTCP Server, and leaves the guest address at zero until RARP assigns
+192.168.151.2. The Finder launches NetProbe from an ordinary prepared TOOLS
+volume; its API results return in an ordinary HFS file. Controlled nonblocking
+host sockets receive one DNS question for `pom68k.test`, a 34-byte TCP request,
+and send the exact 33-byte reply. The guest receives all bytes and successfully
+closes/releases the stream; the host independently observes EOF. The first
+complete run also retains the five gateway pings, incoming echo, cable recovery
+and 41,984-byte two-fork EtherTalk AFP transfer. Its raw evidence is preserved
+at `/tmp/pom68k-rarp-net-first-pass.log`.
+
+The first transport attempt reached UDPCreate but DNS send returned
+`ipRouteErr` (-23037): RARP supplies the address, not this guest's off-subnet
+route. The fixture now enters router 192.168.151.1 in the real panel before
+selecting Server. A frame capture shows that router retained while the guest
+address remains 0.0.0.0. No RIP service, forged routing table or automatic
+router claim is introduced. Two earlier navigation attempts failed before
+IP; their cause was not established. Direct app delivery into the original
+TOOLS volume also failed because its HFS catalogue had no free node. The
+fixture prepares a private 8 MiB HFS volume containing the original Ping's
+exact two forks, the built app and its endpoint configuration. Reference
+media and private binaries are not committed.
+
+The previous RARP-only registered gate still executes successfully in 245.21
+seconds; the manual-address regression also executes in 282.76 seconds.
+The final NetProbe repeat executes in 262.62 seconds with 573,856 KiB
+peak RSS, zero skips and exit 0 (`/tmp/pom68k-rarp-net-ram.tsv`); CTest now
+reserves three memory slots for the new gate.
+The final registered network/docs/size run executes all three gates with
+zero skips; the guest scenario passes in 259.23 seconds. Its complete log is
+`/tmp/pom68k-rarp-net-final-lasttest.log`. The 114 asset-free gates also execute
+successfully outside the host socket sandbox.
+NetProbe uses its own DNS client on an ephemeral controlled port;
+Apple DNR, control-panel DNS settings, automatic router discovery, BOOTP,
+public Internet applications and TLS remain separate consumers. Missing
+Retro68 output explicitly soft-skips the new gate. Save-state format stays v26.
+
+<a id="2026-10-08-ethernet-rarp"></a>
+## 2026-10-08 (thirteenth) — MacTCP Server obtains its address through the real Dayna driver
+
+Snow's `nat/src/mactcp_helpers.rs` highlighted the other missing classic
+MacTCP service. `EtherLink` now answers [RFC 903 RARP](https://www.rfc-editor.org/rfc/rfc903.html)
+on the existing DaynaPort segment. The attached card must request its own
+IPv4 address: Ethernet destination/source, hardware/protocol identifiers,
+address lengths, opcode and both request MACs are checked before allocation.
+Undefined request protocol-address fields are ignored as RFC 903 requires;
+malformed/truncated/unrelated frames do not replace the return MAC or allocate.
+Replies use the existing machine-time latency and unplug queue.
+
+Snow always assigns `gateway + 1`. POM68K shares the gateway's bounded pool
+with MacIP instead, skipping the gateway, configured DNS and occupied leases.
+MacIP occupying .2 makes RARP reserve .3; another MacIP client receives .4.
+The reservation retains its MAC through ordinary IPv4 traffic and rejects
+cross-link attempts to overwrite it. RARP has no lease renewal or expiration
+exchange: an idle MAC-bound reservation survives the learned-lease reclamation
+clock and is released on Ethernet detach or gateway reconfiguration. Protocol
+fixtures exercise broadcast/unicast, collision in both directions, exhaustion,
+DNS exclusion, malformed/truncated frames, latency/unplug, idle lifetime and a
+subsequent ordinary echo, all through the SCSI packet path where applicable.
+
+`q605_dayna_rarp_etalon` installs the original Dayna SCSI/Link 1.2.5 driver
+on System 7.5.5, selects MacTCP 2.0.6 Ethernet/Server without entering a guest
+address, closes the panel and reboots. The guest then emits one RARP request,
+uses 192.168.151.2, and MacTCP Ping displays five successes from five requests.
+An incoming echo gets a reply; unplugging yields eight outgoing requests and
+zero frames back, and replugging resumes delivery. The same scenario mounts
+AppleShare on EtherTalk and writes 41,984 two-fork bytes in 2.20 seconds of
+guest time. The first successful registered run executed in 241.58 seconds;
+its log is preserved at `/tmp/pom68k-rarp-guest-lasttest.log`.
+The final Server repeat passes in 245.31 seconds with 535,152 KiB peak RSS
+(`tools/measure_gate_ram.py`, zero skips), now recorded as three CTest memory
+slots. The unchanged manual-configuration leg executes successfully in
+280.43 seconds (`/tmp/pom68k-rarp-manual-lasttest.log`).
+
+Two earlier diagnostic runs failed before IP initialization: Server mode
+makes the router field inactive, so the harness's manual-router gesture typed
+192.168.151.1 into the DNS domain editor and left the More dialog invalid.
+The corrected scenario does not type in that disabled field and checks the
+MacTCP window title immediately after OK. A frame capture proves the guest
+address is still 0.0.0.0 before its first MacTCP use. Later acceptance also
+checks IPv4 sourced from the assigned address: RFC 903 permits caching the
+responder's MAC/IP pair, so a separate gateway ARP is not mandatory.
+
+The full build and 114 asset-free gates pass outside the socket sandbox,
+with no soft-skip. That broad pass exposed two omissions from earlier Snow
+increments: the shared-ROM 512Ke/II FDHD profiles were absent from
+`assets.lock`, and the Oids screenshot diagnostic was absent from the knob
+manifest/DEV section 5. Both metadata omissions are corrected; no private
+payload is added. DNS and local TCP after Server setup remain open, as does
+BOOTP. No hardware, CPU behavior or save-state layout changes; format stays v26.
+
+<a id="2026-10-08-ethernet-address-mask"></a>
+## 2026-10-08 (twelfth) — Ethernet mask discovery follows the real ICMP protocol
+
+Snow's MacTCP helpers highlighted an absent gateway service: ICMP address-mask
+requests. `EtherLink` now answers that protocol on the existing DaynaPort wire.
+RFC 950 Appendix I is the authority: a known source receives unicast, source
+zero receives IPv4 and Ethernet broadcast. Snow's unconditional IPv4 broadcast
+was not copied. The configured mask is returned without assigning an address,
+creating a NAT lease or introducing a new peripheral or NAT engine.
+
+The responder checks IPv4 bounds/IHL/total length, TTL, checksums, ICMP type and
+code, fragment/reserved flags, the card's own source MAC, router/broadcast
+destination and local source addressing. Rejected mask requests do not replace
+the return MAC or reach the NAT. Replies use the existing machine-time queue;
+unplugging drops pending replies. Protocol fixtures traverse SCSI WRITE/READ
+and independently verify both checksums, the preserved identifier/sequence,
+non-default mask, zero-source discovery, padding, IPv4 options, malformed and
+truncated frames, latency/unplug and a subsequent normal gateway echo.
+
+This closes the ICMP wire-service half of the Snow plan's order 10. RARP
+assignment and an actual guest using MacTCP server configuration remain open;
+a manual-configured Dayna driver regression does not prove automatic setup.
+No save-state layout changes; format stays v26.
+
+The first network run exposed independent verification problems: local TCP/UDP
+sockets were denied by the sandbox (`macip_gw_test` passes outside it), and the
+existing Dayna UI scenario missed the disk selection after restart, before the
+default-mode gateway was attached. The first hypothesis was y=57, just below
+the HD glyph; changing to its centre alone still missed on the first attempt.
+The capture also showed the cursor beyond the target: one-frame mouse steering
+could observe the target in `Mouse` while queued ADB deltas still carried the
+pointer past the narrow glyph during button-down. Volume navigation now lets
+each movement reach the guest before measuring again, and diagnostic mode dumps
+missed volume selections. These are test inputs, not guest-state or timing
+patches. Two diagnostic runs accidentally overlapped on the same work image;
+both were terminated, discarded as qualification evidence, and followed by a
+single fresh run. Original failed logs remain preserved; the reference disk
+is immutable and each valid scenario starts from its own writable clone.
+
+Final validation: nine selected gates pass with no soft-skip, including both
+NCR5380/53C96 Dayna bus paths and the actual Quadra 605 Dayna installer scenario
+(273.77 s). The guest transfers 41,984 AFP bytes over EtherTalk, emits five
+MacTCP Ping requests, answers an injected echo and resumes traffic after cable
+reconnection. This is a manual-configuration regression, not automatic address
+setup. Preserved evidence: `/tmp/pom68k-mask-final-nine-lasttest.log`. The
+application and touched targets build, documentation/file-size gates pass and
+`git diff --check` is clean.
+
+<a id="2026-10-08-iwm-bit-write"></a>
+## 2026-10-08 (eleventh) — IWM writes preserve individual cells and partial-byte splices
+
+The previous controller shipped a whole byte after a fixed 128 CPU-cycle delay.
+Native MOOF then expanded it into eight cells when writing stopped, so an exit
+halfway through a byte wrote bits that had never left the real shifter. The
+fixed cadence also ignored mode and the separate tick/chip clocks on the SE.
+
+`IwmWrite.cpp` now follows MAME 0.285's digital write states: asynchronous
+LOAD after seven chip clocks, MIDDLE transition, END after another half-window.
+Synchronous data writes replace the live shifter. Underrun closes the write arc
+at the load deadline independently of scheduler batch size. Drive/head changes,
+commands and reset close the previous arc. Motor-off transfers clock the chip
+without changing the medium. Both native and sector media use physical flux;
+only checksum-valid decoded sectors reach a sector-container payload.
+
+Snapshot v26 adds the live write shifter, bit count, remaining deadline and
+pending magnetic arc. Older snapshots are refused by the existing version
+contract. Independent exact-edge tests cover Plus/SE/II wiring, slow mode,
+partial-byte exit, synchronous replacement, starvation, motor-off and fresh
+mid-byte restoration; a separate native MOOF fixture requires invalid partial
+fields to persist without a fabricated sector. The legacy nibble helper stays
+for host/test callers, but no longer implements the guest IWM write engine.
+This qualifies the digital model, not measured Sony analog write electronics.
+
+Validation: 22 selected gates pass with no soft-skip, including the real Plus
+internal/external MOOF boots, II FDHD HD-MOOF boot, export boot, original Oids
+interpreter/threaded flight and fresh-machine replay, GCR/SWIM write-back and
+save-state regressions. Preserved run: `/tmp/pom68k-iwm-verified-lasttest.log`.
+Four final gates pass after adding head-switch/reset cases; the head-switch
+oracle uses the drive's actual rotation angle rather than assuming canonical
+track length maps exactly to CPU cycles. Preserved follow-up:
+`/tmp/pom68k-iwm-final-lasttest.log`. Production application and touched targets
+build; documentation and file-size budgets pass without raising a ceiling.
+
+
+<a id="2026-10-08-oids-native-application"></a>
+## 2026-10-08 (tenth) — Original Oids flux capture flies and replays in a fresh Macintosh
+
+The native-medium gates established track retention, MOOF round-trip and
+Finder boot, but no application consumed an original nonstandard capture.
+`plus_oids_moof_etalon.cpp` now boots a real Plus ROM with System 6.0.5 on an
+independent native floppy, mounts the original Oids v1.4 capture externally,
+launches it through Finder mouse/keyboard input, passes its title screen,
+loads Cosmoids and drives the ship with the game's Option thrust control.
+No guest RAM, ROM, application or disk protection is patched.
+
+The user-provided capture is pinned to SHA-256
+`63580ede7817cbf72bd8c053736707dcb8784f0eff2ac8de314606e173bb5a6f`,
+from [CiderPress's MOOF corpus](https://github.com/fadden/CiderPress2/tree/7a055a200e31f752f3a92bb9fe6ae6f67cd55534/TestData/moof)
+at `7a055a200e31f752f3a92bb9fe6ae6f67cd55534` (its README records the
+original Archive.org source). It has one FLUX-map override, cylinder 1/face 0,
+with no TMAP fallback. The image remains external, immutable and uncommitted.
+A substituted image is refused before boot.
+
+The application gate uses production guest cycles and the raster decoder.
+It accumulates visible pixels over a second, compares Option thrust with a
+neutral branch at the same elapsed time, and requires both the M0110-delivered
+Option KeyMap bit and visible flight. A fresh Macintosh must restore the
+entire v25 state byte-identically, then reproduce the controlled display and
+complete future state. The neutral comparison reports **13,353 changed and
+7,995 added displayed pixels** on both interpreter and JIT.
+
+Two false shortcuts were caught during gate construction: 1,200 frames after
+Play still showed the warp animation, and Up reached the keyboard driver but
+did not cause thrust. The assertions rejected both on both CPU engines; the
+scenario now waits through the warp and uses the actual Option control.
+Those failed discovery runs are preserved and recorded alongside the pass.
+The engine audit also corrected a test assumption: the default threaded JIT
+executes code windows, not compiled blocks. Its gate requires actual window
+instructions or block execution, rather than a backend label alone.
+
+`interp_plus_oids_moof_etalon` and `jit_plus_oids_moof_etalon` both executed
+and passed, zero skips; preserved run `/tmp/pom68k-oids-final-lasttest.log`.
+Full-medium state and source-file immutability are checked in the same run.
+The final six application/media/docs/budget gates all executed and passed,
+zero skips (`/tmp/pom68k-oids-checked-lasttest.log`).
+The JIT leg additionally requires actual fast-path execution: code-window
+instructions for the default threaded engine, or compiled blocks. Memory
+calibration (`/tmp/pom68k-oids-ram.tsv`) records 736,704 KiB interpreter and
+737,344 KiB JIT peaks on aarch64: both gates reserve three 256 MiB scheduler
+slots rather than oversubscribing native-medium snapshots as a one-slot test.
+
+**Scope:** this qualifies this exact original mixed bit/flux capture's
+launch, galaxy loading, flight input and replay. Removing its FLUX override
+from a private copy prevents Finder mounting it, demonstrating dependence on
+the native path, but that also removes ordinary filesystem data. It is not an
+isolated protection-check control. No claim about every Oids protection path,
+every captured revision, or general copy-protection compatibility follows.
+
+<a id="2026-10-08-floppy-read-noise"></a>
+## 2026-10-08 (ninth) — Weak floppy regions produce read-amplifier pulses without changing the medium
+
+Snow's IWM supplies random bits after repeated zeroes. The physical source is
+the drive's gain-controlled read amplifier, upstream of any controller:
+[MAME's hardware explanation](https://docs.mamedev.org/techspecs/floppy.html)
+describes noise detection after 16–20 us without magnetic transitions.
+`FloppyReadNoise.h` implements this at SonyDrive's shared flux-output boundary,
+so IWM, SWIM1 and SWIM2 all receive read-channel pulses. Normal recorded edges
+remain intact; a real edge resets the gain delay and a long gap can continue
+across the track index. No-media behavior remains silent.
+
+The delay and approximate 50% chance per 4 us slot follow
+[MAME 0.285's implementation](https://github.com/mamedev/mame/blob/mame0285/src/devices/imagedev/floppy.cpp).
+Current MAME uses another approximation; neither is a measured Sony amplifier
+response. POM68K hashes gap start, track, face and absolute slot instead of
+using host randomness. Polling subdivision cannot change the stream and later
+revolutions differ. No extra generator state or snapshot version is needed:
+the existing v25 drive/controller clocks resume the same pulses.
+
+Noise is output only: it never enters the magnetic track, dirty flag, offline
+sector decoder or MOOF export. `moof_image_test` exercises unrecorded tracks,
+long recorded gaps, index wrap, gain reset, unchanged canonical GCR spacing,
+export isolation and missing media. Its actual IWM engine frames varied bytes
+and a fresh drive/controller snapshot resumes byte-identically.
+
+Validation: 20 selected gates executed and passed, with zero skips: native
+Plus internal/external/export boots, II FDHD HD MFM boot, IWM read/write,
+SWIM1/SWIM2, GCR/persistence, five state families and docs/file budgets.
+Preserved run: `/tmp/pom68k-weak-lasttest.log`; STATUS records the execution.
+
+Protected-program interaction, a measured analog distribution and sub-byte
+IWM writes remain unqualified; importing a protected image does not establish
+that its application passes protection checks.
+
+<a id="2026-10-08-native-moof"></a>
+## 2026-10-08 (eighth) — MOOF preserves native floppy tracks through seeks, writes, snapshots and export
+
+Snow's MOOF loader identified a preservation gap: POM68K's live flux track
+survived a write/read-back but was rebuilt from sectors after the head moved.
+The implementation follows the independent
+[Applesauce MOOF reference](https://applesaucefdc.com/moof-reference/), rather
+than inheriting Snow's unchecked data ranges or its map-index off-by-one.
+`FloppyTrackMedium` owns every native track and every modified sector-backed
+track. Untouched sector tracks alone are synthesized lazily. Side/cylinder
+selection, encoding-mode changes and machine reset retain physical transitions.
+Direct host sector writes invalidate only the affected synthesized track.
+
+`MoofImage` imports exact-length MSB-first bitstreams and mixed FLUX maps for
+real Macintosh 400K/800K/1.44 MB geometries; Twiggy is refused. The parser checks
+chunk bounds/duplicates, absolute TRKS extents, mapped indexes, bit/byte counts
+and resource bounds. Nonzero CRC32 is verified; zero is valid as the format
+specifies. FLUX takes precedence over TMAP. Continuation bytes of 255 are
+accumulated without signed overflow. A rational conversion from 125 ns units
+to C15M/1024 ticks rounds absolute positions instead of accumulating rounded
+intervals. INFO's write protection reaches the physical sensor.
+
+Native writes retain transitions even when no sector field verifies. SWIM
+writes keep their serializer's times; native IWM writes retain the existing
+byte-granular serializer's cells and write origin. Multi-revolution writes now
+retain the final pass rather than the first. Atomic MOOF export represents
+physical transitions on the finest legal 125 ns bit grid, preserving index
+and cross-track phase, META and unknown chunks. This accommodates originally
+flux-only tracks without inventing an index transition. Original MOOF times
+are exact on that grid; guest writes round by at most 62.5 ns and nearby
+transitions can coalesce at the format's resolution. Representation choice
+and file size are not preserved: exports may grow substantially. The creator
+field names the actual POM68K writer; original META content is preserved. Sector
+headers, checksums and unusual gaps are never regenerated for native media.
+
+Snapshot v25 carries all retained tracks, original container metadata and
+pending IWM write origin; earlier states are refused. `moof_image_test` uses
+independently assembled chunk layouts, malformed inputs, shared source tracks,
+non-byte-aligned streams, protection, native IWM/SWIM writes, fresh restoration
+and export/reimport. `moof_media_state_etalon` additionally restores the full
+real MOOF, compares all 80 tracks on both faces, and refuses truncated state.
+The disk picker and DAFB startup path accept `.moof`. Insertion and atomic
+persistence move into `SonyDriveMedia.cpp`; SonyDrive's budget ratchets down
+to 1247 lines without growing the top-level CMake file.
+
+The unmodified Plus ROM boots the existing private Disk605 MOOF in either bay.
+An additional Plus gate boots a temporary re-export through the production
+writer. An independent capture writer turns the private HD startup fixture
+into a temporary MOOF; II FDHD boots it to the Finder and accepts ADB input.
+Reference media are never modified or checked in. A parser/export probe of
+[CiderPress2's public mixed bit/flux Oids fixture](https://github.com/fadden/CiderPress2/tree/main/TestData/moof)
+round-trips all 160 tracks and 6,937,254 transitions exactly under
+AddressSanitizer/UndefinedBehaviorSanitizer; 1,000 malformed/truncated mutations
+also run without sanitizer failures. This probe qualifies the codec, not
+execution of Oids or the entire drive under sanitizers.
+
+All 37 selected component/profile/repository regressions execute and pass,
+zero skipped, including all snapshot families, the existing Plus/DART paths
+and GLUE sibling boots. Their census is recorded in STATUS. Track durations
+are bounded generously to one second per turn before spindle arithmetic;
+malformed map/timing and truncated-state cases have explicit regressions.
+
+The product GUI saves a roughly 53 MiB native-medium state and closes cleanly.
+The smoke harness now allows a bounded longer wait after requesting a save:
+its previous 120-frame limit closed before the machine thread published the
+large state's completion. Engine/save/close assertions remain mandatory.
+Analog noise in weak/unformatted regions, sub-byte IWM write timing and a
+selected protected-program interaction corpus remain separate work. Finder
+and medium-lifecycle proofs are not blanket copy-protection compatibility.
+
+<a id="2026-10-08-real-shared-rom-profiles"></a>
+## 2026-10-08 (seventh) — 512Ke and Macintosh II FDHD retain their real shared-ROM hardware
+
+The next Snow comparison increment adds two real Macintosh variants, bringing
+`kMachineProfiles` to 41 rows. Hardware boundaries are checked against
+[Apple's 512Ke specifications](https://support.apple.com/en-us/112186) and
+MAME's [compact decoder](https://github.com/mamedev/mame/blob/master/src/mame/apple/mac128.cpp)
+and [GLUE board definitions](https://github.com/mamedev/mame/blob/master/src/mame/apple/macii.cpp).
+Sharing a ROM does not choose the CPU, RAM, SCSI bus or floppy mechanism.
+
+`--machine-profile=mac512ke` selects 512 KB RAM, the Plus's 128 KB ROM,
+M0110/M0110A input and self-regulating 800K mechanisms, with no SCSI or ADB.
+Its repeated ROM decode through $4FFFFF and always-decoded $600000 RAM alias
+let the unmodified ROM recognize the board. Interpreter and JIT memory spans
+agree and stop at mirror boundaries. Finder boots from both internal and
+external System 3.3 media; mouse motion, button, main keys and prefixed keypad
+keys reach the guest. A Plus control with the same guest confirms System
+3.3's mouse gain independently of the new RAM size.
+
+`--machine-profile=maciifdhd` selects the 68020 GLUE board with SWIM,
+SuperDrive mechanisms and the 97221136 ROM. IIx/IIcx/SE30 remain 68030 models;
+the legacy `POM68K_MACII_MODEL=fdhd` now selects the actual FDHD variant.
+The real ROM boots both SCSI and a 1.44 MB System 6.0.8 startup floppy to the
+Finder, and both boot gates check ADB mouse and key press/release.
+
+Two hardware defects surfaced during the HD boot. GLUE word reads must
+perform one SWIM access and reflect its result onto both byte lanes; word
+writes give the low lane priority. Previously parameter/FIFO entries were
+consumed or supplied twice. Separately, sector-image track padding contained
+a transition-free HD arc at index wrap. `FloppyTrackPadding` fills MFM gap4
+with encoded 4E bytes, following the physical convention documented by
+[MAME's track builder](https://github.com/mamedev/mame/blob/master/src/lib/formats/flopimg.cpp).
+GCR padding, track duration and guest clocks retain their previous behavior.
+The component gate reads more than a complete HD revolution using parameters
+observed from the unmodified .Sony ROM and writes a sector through word MMIO
+and the SWIM TSS, then checks physical sector read-back.
+
+All 26 selected regression gates execute and pass, zero skipped, including
+II/IIx/IIcx/SE30 sibling boots and the unchanged Plus boot/input controls.
+The four new profile/medium screen keys are pinned to observed settled output;
+the run census is recorded in STATUS. A separate threaded-JIT 512Ke boot
+reaches the same pinned Finder screen.
+
+Snapshot identities 40 and 41 are appended without renumbering older models;
+v24's layout is unchanged. Fresh-machine round trips preserve peripheral
+state and refuse shared-ROM sibling identities. Product GUI smoke runs for
+both profiles pass window opening, CPU-engine switching, saving and closing;
+their actual snapshot headers contain ids 40/41. Private ROMs and boot media
+remain outside version control. Broader guest application coverage remains
+separate from these Finder/input proofs.
+
+Compact and GLUE product runners now obtain names and file stems from the
+central catalogue. Machine-gate registration moves to a focused profile
+module. File-size budgets ratchet down for both runners, the selector,
+SonyDrive and the machine-gate module. The next medium-model project is
+native all-track storage and MOOF, rather than introducing synthetic hardware.
+
+<a id="2026-10-08-dart-media"></a>
+## 2026-10-08 (sixth) — Apple DART archives preserve real Macintosh sectors, tags and container provenance
+
+Snow's `floppy/src/loaders/dart.rs` exposed a missing historical Macintosh
+media format. DART stores forty 512-byte sectors and forty twelve-byte tags
+per independently compressed chunk. The local implementation is checked
+against [CiderPress2's format notes](https://ciderpress2.com/formatdoc/DART-notes.html)
+and source, rather than reproducing Snow's permissive chunk-table handling.
+Only real supported Macintosh geometries are admitted: 400K/800K GCR and
+1.44 MB MFM. Lisa, Apple II and DOS type identifiers are refused, even when
+sizes coincide. This is a container decoder, not a new drive or machine.
+
+`DartImage` imports stored chunks, word-oriented RLE and headerless LZH with
+a zero-filled dictionary. Required/unused table entries, exact output sizes,
+input bounds, RLE counts and trailing data are validated. A length of 20,960
+means stored bytes only in uncompressed mode; RLE lengths remain word counts
+and LZH lengths remain byte counts. `DartLzh` adapts
+CiderPress2's Apache-2.0 adaptive Huffman core; its license and provenance
+are retained under `extern/ciderpress2/`. At 20,960 output bytes per chunk,
+frequency reconstruction is unreachable. EOF never supplies invented bits.
+GCR tag bytes are retained independently and encoded by the existing Sony
+mechanism; MFM's unused tag padding must be zero. Content detection accepts
+legacy `.image` archives, while an explicit `.dart` suffix cannot fall back
+to raw sectors after a failed decode.
+
+`FloppyFileImage` owns raw/DC42/DART provenance and DC42 header metadata.
+`SonyDrive` continues to implement the physical mechanism and its unchanged
+write paths. DART writes remain valid fast-mode archives with stored chunks,
+retaining data and tags; the original compression ratio is not preserved.
+Resource-fork metadata and CKSM checksums are neither imported nor generated.
+Snapshot format v24 retains container provenance across fresh restoration,
+so subsequent writes cannot silently convert DART into raw media. Older
+states are deliberately refused. The disk picker and secondary DAFB startup
+floppy path recognize `.dart`; the picker admits even expanded RLE archives
+with a count word for every literal word.
+
+The new `dart_image_test` uses three synthetic blocks independently encoded
+by retrocompressor 1.0.1 (zero dictionary, patterned data/tags, pseudorandom
+literals). Tests cover all three geometries and compression modes, malformed
+chunks and run lengths, physical GCR equality with DC42, guest writes and
+fresh-state write-back. A separate sanitizer probe decoded the public
+CiderPress2 sample generated by Apple DART 1.5.3 in best mode to exactly its
+819,200-byte source, plus 19,200 tag bytes. No sample system software is
+copied into this repository; checked-in vectors contain only generated data.
+
+Two new required-asset Plus gates independently wrap the immutable System
+3.3 fixture in a temporary DART archive and boot the original ROM to the
+Finder: internal drive 4.98 s, external drive 4.40 s. All fifteen selected
+component/repository/profile gates executed and passed, zero skipped; their
+census is recorded in STATUS. The application builds, and the DART test plus
+real-archive probe pass AddressSanitizer/UndefinedBehaviorSanitizer.
+Floppy registration moves into a focused CMake module: the machine-gate
+file shrinks to 1029 lines and its budget ratchets down; SonyDrive stays at
+1346 lines. The next planned bounded hardware additions are 512Ke/II FDHD;
+native all-track storage and MOOF still require their own medium model.
+
+<a id="2026-10-08-cd-index-zero"></a>
+## 2026-10-08 (fifth) — Stored CD pregaps retain their INDEX 00 track and countdown
+
+Snow's `QSub::new_mode1` documents relative time decreasing toward track
+start during a pregap. Its CUE backend still marks correct INDEX 00 as a TODO;
+that code is a research lead, not a behavioral oracle. The physical rule is
+specified independently by [T10 97-104R0 §5.1, §5.5](https://www.t10.org/ftp/t10/document.97/97-104r0.pdf):
+a track's stored pause is INDEX 00, its first information sector is INDEX 01,
+and relative addresses count down in MSF or increase from negative LBA to zero.
+
+POM68K already kept those raw sectors when reading a CUE's INDEX 00, but its
+mounted track table retained only INDEX 01. A stored pause preceding an audio
+track was consequently classified as the preceding data track: PLAY was
+refused and READ SUB-CHANNEL reported the wrong track and relative position.
+`ScsiDisk::CdTrack` now retains the physical extent start alongside the TOC's
+INDEX 01 start. PLAY and Q position use the extent to select the owning track;
+READ SUB-CHANNEL reports INDEX 00 with positive MSF countdown or a two's-
+complement negative relative LBA. Absolute position is continuous, and INDEX
+01 begins at relative zero. The TOC continues to use INDEX 01.
+
+`cd_audio_test` adds boundary regressions for both a single BINARY source and
+multiple FILE sources. They failed before the fix, then passed: PLAY in the
+stored pause, first and final INDEX 00 positions, a fresh-device snapshot
+restore there, transition to INDEX 01, every unchanged zero byte in the pause
+and the first following nonzero audio sector. The Quadra 605 guest fixture
+adds 150 physically stored silent
+sectors before track 2 and checks that actual guest playback delivers them.
+The production application and affected CD targets build; four component/
+repository gates pass. Three required-asset Quadra 605 gates also executed
+without skipping and passed: CD-ROM (22.06 s), CD audio (55.37 s), and the
+no-disc silence control (55.60 s). The actual guest audio run delivered all
+150 stored pause sectors between the tone tracks. The archive stays v23:
+mounted track metadata is
+host-owned and reloaded from the same CUE, not serialized. Synthetic gaps and
+track-1 negative-LBA import remain separate work. `ScsiDisk.cpp` stays within
+its 1601-line budget.
+
+<a id="2026-10-08-cd-address-space"></a>
+## 2026-10-08 (fourth) — CD capacity and playback positions use the physical disc address space
+
+Snow's CD backend contract counts every sector up to lead-out for capacity,
+while restricting data reads to data tracks. Its READ SUB-CHANNEL separates
+absolute from track-relative position, and its PLAY AUDIO MSF checks the
+actual starting sector's audio flag. These correspond to physical CD drives,
+not emulator convenience features: the
+[Sony CDU-541 interface manual §5.2.17, §5.2.21](https://bitsavers.trailing-edge.com/pdf/sony/cdrom/CDU541-25_AppleCD_150/Sony_CDU-541_SCSI_Interface_Manual_Mar1990.pdf)
+(specifically READ CAPACITY, printed page 5-31) and the
+[T10 CD model §5.1, §5.5](https://www.t10.org/ftp/t10/document.97/97-104r0.pdf)
+define capacity as lead-out minus one, distinguish relative addresses and
+prohibit audio playback starting in a data track.
+
+Three corrections in `ScsiDisk`:
+
+- READ CAPACITY reports the final absolute disc LBA for all mixed-mode and
+  audio-only CUE media. Previously it returned the data extent's size minus
+  one on mixed discs, omitting preceding or following audio sectors. Flat
+  data images retain their existing capacity.
+- READ SUB-CHANNEL applies the 150-frame MSF offset only to absolute position.
+  Track-relative position now starts at 00:00:00 instead of 00:02:00; LBA
+  replies retain their existing values.
+- PLAY AUDIO identifies the last track beginning at or before its start
+  address, so a data track following audio is correctly refused with sense
+  key ILLEGAL REQUEST and ASC 64h (ILLEGAL MODE FOR THIS TRACK). Both the LBA
+  and MSF commands share this check. Rejected commands leave the running
+  audio transport untouched.
+
+The new assertions made both CD component gates fail before the production
+fix and pass afterwards. They check data-before-audio and audio-before-data
+capacity, absolute/relative MSF and LBA positions, the first and final sectors
+of a later data track, REQUEST SENSE, and continued playback after rejection.
+The audio-before-data fixture is explicitly a single-session mixed disc;
+it is not evidence for CD Extra multisession support. The application and
+CD test targets build; four component/repository gates pass. Three required-
+asset Quadra 605 gates executed without skipping and passed: CD-ROM (22.05 s),
+CD audio driven by AppleCD Audio Player (54.67 s), and the no-disc silence
+control (54.80 s). The archive remains v23 because no serialized field changes. `ScsiDisk.cpp` shrinks from
+1611 to 1601 lines and its source budget ratchets down.
+
+<a id="2026-10-08-cdda-clock"></a>
+## 2026-10-08 (third) — CD-DA transport runs at exactly 75 sectors per guest second
+
+Reviewing Snow's `core/src/mac/scsi/cdrom/mod.rs` highlighted the physical
+CD-DA rates: 44,100 stereo frames and 75 sectors per second. The primary
+[T10 CD model, 97-104R0 §5.1–5.2.1](https://www.t10.org/ftp/t10/document.97/97-104r0.pdf)
+independently specifies 1/75 second of audio per sector and 44.1 kHz samples.
+POM68K rounded every sector to 13,333 µs; sector 75 therefore sounded at
+999,975 µs instead of one second. This was a transport timing error, not a
+missing machine or a reason to change any Macintosh profile.
+
+`ScsiDisk::advanceAudio` now carries rational sector phase, accumulating
+75 units per guest microsecond against a million-unit sector. Elapsed time
+is split into whole seconds and a remainder before multiplication, so long
+intervals cannot overflow the accumulator. Pause retains the phase; fresh
+snapshot restoration emits the same next sector at the same deadline.
+Guest CPU cycles remain the clock source. Snow's host-audio pumping policy
+is not adopted. The snapshot phase changes units, so format v23 deliberately
+rejects earlier versions; loading also rejects an out-of-range phase.
+
+`cd_audio_test` now checks that the third sector waits for 40 ms, sector 75
+waits for one second, and sector 150 waits for two seconds. It covers a pause
+at 999,999 µs, restoration into a freshly mounted target, identical sector
+bytes on resume and irregular 37-µs ticks. `scsi_cdrom_test` uses the correct
+ceiling of the two-sector deadline. The production application and affected
+save-state/test targets build. Nine component/repository gates passed,
+including the five machine-family snapshot tests and the documentation and
+source-size contracts. Three required-asset Quadra 605 gates also executed
+and passed without skipping: CD-ROM (22.56 s), CD audio (56.01 s), and the
+no-disc silence control (55.30 s). The audio gate uses the split-BINARY disc
+from the preceding storage increment and is started by the actual AppleCD
+Audio Player. `ScsiDisk.cpp` shrinks by one line and its budget ratchets down
+accordingly.
+
+<a id="2026-10-08-gcr-tags"></a>
+## 2026-10-08 (later) — Sony GCR sectors keep their twelve physical tag bytes through reads, writes, snapshots and DC42 persistence
+
+Snow's `floppy/src/loaders/diskcopy42.rs` passes DC42 tags to its Macintosh
+GCR encoder. This corresponds to real hardware: Apple's
+[SWIM Chip User's Reference, revision 1.5, page 6](https://mirrors.apple2.org.za/www.bitsavers.org/pdf/apple/disk/sony/SWIM_Chip_Users_Ref_198801.pdf#page=6)
+defines each GCR sector as twelve tag bytes, 512 data bytes and a three-byte
+checksum. MFM sectors have no equivalent tags (page 8). The
+[MAME DC42 writer](https://github.com/mamedev/mame/blob/master/src/lib/formats/ap_dsk35.cpp)
+provides the container ordering and checksum compatibility reference.
+
+`SonyDrive` formerly encoded zero tags and discarded recovered tags on
+write. It now keeps the physical tags alongside every 400K/800K sector,
+feeds them through the existing GCR encoder, and commits them with the data
+only after a valid field checksum. Seek/reset reconstructs the selected
+track from both arrays. Write protection applies to both. **Format v22**
+carries the tags in snapshots and rejects older layouts.
+
+`Dc42Image.h` owns the DC42 container instead of growing the mechanism.
+Import rejects truncated or geometrically inconsistent tag lengths; export
+preserves the entire tag block and regenerates its checksum, excluding the
+first sector's twelve tags for Disk Copy compatibility. A formerly tagless
+DC42 can gain a tag block on a guest tag-only write. Raw media still starts
+with zero tags; nonzero guest-written tags are retained in memory, but raw
+file write-back retains its sector-data-only contract. Full tag persistence
+requires DC42. This is a host format limitation, not a change to the drive.
+
+`gcr_test` uses an independent decoder on raw and tagged 400K/800K images,
+all speed zones and both heads where present. `floppy_persist_test` checks
+data edits preserving every tag, tag-only GCR writes, snapshot/reopen,
+checksum compatibility, write protection, malformed tag lengths and the
+existing raw sector-data write-back contract. Existing IWM, SWIM and machine snapshot gates are retained.
+
+Validation: twelve component/repository checks and the Plus System 3.3
+internal/external-drive boot etalons passed, with no soft-skips. The production
+GUI built. `floppy_persist_test` also passed under AddressSanitizer and
+UndefinedBehaviorSanitizer. The documentation gate found one moved source
+citation; it was corrected and the gate passed.
+
+<a id="2026-10-08-storage-state-cue"></a>
+## 2026-10-08 — ATA snapshots resume the actual transfer and disk timeline; CUE files describe one disc across multiple sources
+
+The comparison with [Snow](docs/SNOW_COMPARISON.md), pinned to `23a41e7`,
+exposed two storage defects. The changes retain the existing Quadra 630 /
+LC 580 ATA device and AppleCD-style SCSI target, rather than introducing new
+hardware personalities.
+
+**ATA state was incomplete.** Saving after one PIO word and loading into a
+newly opened drive returned `$0000` instead of the next word. Restoring an
+older state after a sector write retained the later sector. `AtaDisk` now
+carries its transfer buffer, current geometry and modified sectors. A
+copy-on-first-write log reverts writes made after the snapshot, then replays
+saved sectors. Format **v21** rejects earlier layouts. The host file remains
+outside the state: this does not undo persistent write-back, and a newly opened
+drive needs the same unchanged disk base.
+
+**CUE positions were measured in the wrong coordinate system.** The parser
+kept the last FILE and treated every INDEX as a disc address. `CdCueSheet`
+now owns source extents and track positions. AUDIO and one MODE1 data track
+can span multiple BINARY files; READ TOC's lead-out includes all sources,
+READ(10) reads the data source, and playback changes files at the exact disc
+sector. MODE1/2048 versus MODE1/2352 is declared by the sheet, not guessed.
+Stored INDEX 00 gaps stop the preceding data extent. Unsupported layouts
+(encoded audio, synthetic gaps, track-1 pregaps, multiple data tracks,
+FLAGS, indexes above 01 or explicit later sessions) fail rather than creating
+a misleading disc.
+The format reference is [libodraw's CUE description](https://github.com/libyal/libodraw/blob/main/documentation/CUE%20sheet%20format.asciidoc).
+
+**Gates.** The existing `ata_disk_test` now checks fresh-drive mid-read and
+partial multi-sector write continuation, clean and dirty rewind, geometry,
+IRQ, READ/WRITE BUFFER and truncated states. `cd_audio_test` checks a
+three-FILE disc, a stored audio pregap, data reads, lead-out and every audio
+byte across a file boundary, plus malformed and unsupported sheets. The
+`q605_cdaudio_etalon` consumer now gives the real Apple extension the
+same two-track disc split across two files. Existing CD/SCSI and machine
+snapshot gates are retained. The broader backing-image
+policy and WAVE/synthetic-gap work remain in the
+[implementation plan](docs/SNOW_IMPLEMENTATION_PLAN.md).
+
+Validation: eight component/repository gates passed; both F108 IDE boot
+etalons and the Q605 CD mount/audio/empty-tray etalons executed successfully
+(five executed, zero soft-skipped). The production GUI built, and the ATA
+gate also passed with AddressSanitizer and UndefinedBehaviorSanitizer.
 
 <a id="2026-10-04-afp-four-arms"></a>
 ## 2026-10-04 — The AFP trace is one trace: interpreter and native engine on both hosts agree at all 22 boundaries

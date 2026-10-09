@@ -29,6 +29,7 @@
 //       tests/scsi_hfs_facade_test.cpp, tests/scsi_cdrom_test.cpp.
 
 #pragma once
+#include "CdCueSheet.h"
 #include "CoreConfig.h"
 #include "FloppySoundSink.h"
 #include "CdAudioSink.h"
@@ -242,6 +243,9 @@ public:
         // resume mid-play, at the same sector. The TRACK TABLE is not — it
         // came from the .cue the machine was set up with, like the path.
         ar(audio_, audioLba_, audioEnd_, audioFrac_, audioCycAcc_);
+        if constexpr (Ar::loading) {
+            if (audioFrac_ >= 1000000) { ar.fail(); return; }
+        }
         // Attachment properties (path, kind, write-back, the backing
         // stream) belong to the machine's setup, not to guest state, and
         // are deliberately NOT restored from a snapshot.
@@ -302,6 +306,7 @@ private:
         uint8_t number = 0;
         bool audio = false;
         uint32_t startLba = 0;       // absolute, from INDEX 01
+        uint32_t extentLba = 0;      // INDEX 00 when stored, otherwise INDEX 01
     };
     std::vector<CdTrack> tracks_;
     uint32_t discLba_ = 0;           // lead-out: sectors on the whole disc
@@ -314,16 +319,16 @@ private:
     enum class Audio : uint8_t { Stopped, Playing, Paused, Completed };
     Audio audio_ = Audio::Stopped;
     uint32_t audioLba_ = 0, audioEnd_ = 0;
-    uint64_t audioFrac_ = 0;         // sub-sector micros carried between ticks
+    uint64_t audioFrac_ = 0;         // sector phase / 1000000 (75 units per µs)
     int64_t  audioCycAcc_ = 0;       // cycle→micro remainder (advanceAudioCycles)
     CdAudioSink* cdAudio_ = nullptr;
 
     // The audio tracks are NOT in image_: open() cuts a mixed disc down to
     // the data track's extent, because de-framing audio sectors would turn
-    // music into "user data". Playing them means going back to the file,
-    // which is what these two are for — the path the .cue named and a
-    // stream held open while a disc is loaded.
-    std::string rawPath_;            // empty unless a 2352-framed .bin
+    // music into "user data". Playback maps disc LBAs back to the source
+    // files, caching one open stream as the head crosses FILE boundaries.
+    std::vector<CdCueSheet::Source> rawSources_;
+    std::string rawPath_;            // currently open audio source
     std::ifstream rawFile_;
     bool readRawSector(uint32_t lba, uint8_t* out2352);
 

@@ -68,7 +68,7 @@ bool isCd(const std::string& p) {
 bool isDiskImage(const std::string& p) {
     return endsWithNoCase(p, ".vhd") || endsWithNoCase(p, ".hda")
         || endsWithNoCase(p, ".img") || endsWithNoCase(p, ".dsk")
-        || endsWithNoCase(p, ".image")
+        || endsWithNoCase(p, ".image") || endsWithNoCase(p, ".dart") || endsWithNoCase(p, ".moof")
         || isCd(p);
 }
 
@@ -184,19 +184,19 @@ int firstEmptyDiskSlot(const DiskBaysHost& host) {
     return -1;
 }
 
-// A SuperDrive holds 400 K, 800 K or 1.44 MB. Anything larger in the list is
-// a hard-disk image and has no business being offered to the floppy bay.
-// Largest supported DC42: 84-byte header + 1.44 MiB data + 12 tag bytes for
-// each of 2880 sectors. Tagged DiskCopy images are larger than raw media.
-constexpr unsigned long long kMaxFloppyBytes = 84ull + 1474560ull + 2880ull * 12ull;
+// A SuperDrive holds 400 K, 800 K or 1.44 MB. Tagged containers add overhead.
+constexpr unsigned long long kMaxFloppyBytes = 148ull + 1474560ull + 2880ull * 12ull;
+// Legal RLE can use a count word for every literal word, doubling each chunk.
+constexpr unsigned long long kMaxDartBytes = 148ull + 72ull * 41920ull;
 
 bool looksLikeFloppy(const std::string& p) {
     if (isCd(p)) return false;
     if (!endsWithNoCase(p, ".dsk") && !endsWithNoCase(p, ".img")
-        && !endsWithNoCase(p, ".image")) return false;
+        && !endsWithNoCase(p, ".image") && !endsWithNoCase(p, ".dart") && !endsWithNoCase(p, ".moof")) return false;
     std::error_code ec;
     auto n = fs::file_size(p, ec);
-    return !ec && n > 0 && n <= kMaxFloppyBytes;
+    return !ec && n > 0 && n <= (endsWithNoCase(p, ".moof") ? 32ull << 20 :
+        endsWithNoCase(p, ".dart") ? kMaxDartBytes : kMaxFloppyBytes);
 }
 
 // ── Image picker ───────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@
 #include "PapServer.h"
 #include "EtherLink.h"
 #include "EtherTalkLink.h"
+#include "EthernetCapture.h"
 #include "MacIpGateway.h"
 #include "LtoUdp.h"
 #include "Scc8530.h"
@@ -86,7 +87,8 @@ public:
     // Wire onto a machine's SCC. cpuHz drives the stack's second-scale
     // timers. Safe once per machine at startup. Idempotent.
     template <class M>
-    void attach(M& mem, int64_t cpuHz, LtoUdp* cable) {
+    void attach(M& mem, int64_t cpuHz, LtoUdp* cable,
+                std::function<int64_t()> machineClock = {}) {
         std::lock_guard<std::mutex> l(mu_);
         cable_ = cable;
         (void)mem.scc(); // synchronize an event-driven device at attachment
@@ -137,6 +139,14 @@ public:
         // compiles exactly as before, and giving one the card is a member
         // plus an accessor — all twelve carry it since 2026-09-12.
         if constexpr (requires { mem.daynaPort(); }) {
+            capture_.stop();
+            captureClockReady_ = bool(machineClock);
+            captureHz_ = cpuHz;
+            if constexpr (requires { mem.cpuHz(); }) captureHz_ = mem.cpuHz();
+            mem.daynaPort().observeFrame =
+                [this, clock=std::move(machineClock)](bool tx,const uint8_t* d,size_t n) {
+                    if(clock) capture_.observe(clock(),tx,d,n);
+                };
             // Sampled on the machine thread, like the SCC's wire meters.
             // Set whether or not the card is on the bus, so "no card" is a
             // reported answer rather than an absent one.
@@ -261,6 +271,8 @@ public:
         Config cfg;
         bool cableUp = false;
         DaynaMeter ether;               // machine-thread sample, see tick()
+        pom68k::EthernetCapture::Status capture;
+        bool captureAvailable = false;
     };
     Snapshot snapshot() {
         std::lock_guard<std::mutex> l(mu_);
@@ -278,11 +290,19 @@ public:
         s.cableUp = cable_ && cable_->active();
         s.wire = wireMeter_;                 // machine-thread sample, see tick()
         s.ether = etherMeter_;               // idem, the DaynaPort's own line
+        s.capture = capture_.status();
+        s.captureAvailable = etherMeter_.present && captureClockReady_;
         if (cpuHz_) s.wireHoldMaxMs = long(s.wire.holdMax * 1000 / cpuHz_);
         return s;
     }
 
     Config config() { std::lock_guard<std::mutex> l(mu_); return cfg_; }
+    bool startEthernetCapture(std::string path) {
+        std::lock_guard<std::mutex> l(mu_);
+        return etherMeter_.present && captureClockReady_ &&
+               capture_.start(std::move(path),captureHz_);
+    }
+    void stopEthernetCapture() { capture_.stop(); }
     // The editable half of Config — names, folders, addresses — applied LIVE
     // from the GUI. Each service already restarts itself on configure()
     // (disable → set → enable): the AFP server drops its sessions and
@@ -433,6 +453,9 @@ private:
     // Non-null only on a machine whose DaynaPort was put on the bus.
     std::unique_ptr<EtherLink> ether_;
     std::unique_ptr<EtherTalkLink> etalk_;
+    pom68k::EthernetCapture capture_;
+    int64_t captureHz_ = 0;
+    bool captureClockReady_ = false;
     LtoUdp* cable_ = nullptr;
     std::function<void(const uint8_t*, size_t)> inject_;
     std::function<WireMeter()> wire_;

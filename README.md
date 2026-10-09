@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
-the 68040 Quadra 950. The project currently provides **39 machine profiles on
+the 68040 Quadra 950. The project currently provides **41 machine profiles on
 12 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
@@ -44,7 +44,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
   engine with portable threaded execution and native AArch64/x86-64 code
   generators where their measured policy allows them.
 - IWM, SWIM1 and SWIM2 floppy support; SCSI disks and CDs; writable DiskCopy
-  4.2 and raw floppy images; persistent PRAM and save states.
+  4.2, DART, MOOF and raw floppy images; persistent PRAM and save states.
 - Built-in AppleTalk services: AppleShare, LaserWriter spooling and MacIP
   user-mode networking, with no privileged host setup.
 - Firmware-level emulation for supported ADB, Egret and Cuda controllers when
@@ -80,8 +80,9 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
 - The bare Macintosh LC II — no FPU fitted — was investigated to a ruling:
   POM68K is faithful, and this ROM has no path that clears the FPU
   configuration bit. `CHANGELOG.md` carries the evidence.
-- Save states are format v18; the CD transport and the ATA task file travel
-  with them.
+- Save states are format v26; the CD transport and the ATA task file travel
+  with them, including the ATA PIO buffer, guest-written sectors, GCR tags
+  and every native or modified physical floppy track.
 
 POM68K uses the [Moira](https://github.com/dirkwhoffmann/Moira) CPU core,
 vendored through NeoST. The local fork and its provenance are documented in
@@ -155,11 +156,13 @@ Examples:
 ./build/POM68K roms/macplus.rom disks35/Disk605.dsk hdv/HD20SC.vhd
 ./build/POM68K roms/maclcii.rom hdv/boot.vhd hdv/data.vhd
 ./build/POM68K --machine-profile=q605 roms/quadra605.rom hdv/MacOS-8.1-boot.vhd
+./build/POM68K --machine-profile=mac512ke roms/macplus.rom "disks35/System 3.3.dsk"
+./build/POM68K --machine-profile=maciifdhd roms/mac2fdhd.rom hdv/HD20SC.vhd
 ./build/POM68K --version
 ```
 
 For Plus, SE, SE FDHD and Classic, the positional media layout is
-`[ROM] [floppy] [SCSI disk]`. The 128K and 512K take `[ROM] [floppy]` only:
+`[ROM] [floppy] [SCSI disk]`. The 128K, 512K and 512Ke take `[ROM] [floppy]` only:
 they have no SCSI bus, so a volume passed to them would be a disk the guest
 could never see. Other platforms use `[ROM] [boot volume]
 [additional media...]`; additional SCSI disks are attached at IDs 1 through 6.
@@ -175,6 +178,10 @@ ROM dispatch uses file size followed by the big-endian checksum stored in the
 first four bytes. A ROM shared by several models can be paired with a profile
 through the **Machine** menu or `--machine-profile=<slug>`.
 
+The 512Ke keeps 512 KB soldered RAM, M0110 input and an 800K drive, without
+SCSI. The II FDHD keeps the II's 68020 and adds SWIM/1.44 MB mechanisms; it
+does not select a 68030. Both have separate save-state identities.
+
 POM68K searches the working directory, the executable directory and its
 parent. Recursive signature discovery matches the hexadecimal CRC in the
 **filename**; it does not hash unnamed files. Use the canonical path below,
@@ -188,12 +195,12 @@ Bold text is the default profile for a shared ROM.
 |---|---|---|---|
 | 64 KB | `28BA61CE` | Macintosh 128K | — |
 | 64 KB | `28BA4E50` | Macintosh 512K | — |
-| 128 KB | any | Macintosh Plus | — |
+| 128 KB | any | **Macintosh Plus**, Macintosh 512Ke | `plus`, `mac512ke` |
 | 256 KB | `B2E362A8` | Macintosh SE | — |
 | 256 KB | `B306E171` | Macintosh SE FDHD | — |
 | 512 KB | `A49F9914` | Macintosh Classic | — |
 | 256 KB | `9779D2C4`, `97851DB6`, or another non-`97221136` dump | Macintosh II | — |
-| 256 KB | `97221136` | **Macintosh IIx**, IIcx, SE/30 | `iix`, `iicx`, `se30` |
+| 256 KB | `97221136` | **Macintosh IIx**, Macintosh II FDHD, IIcx, SE/30 | `iix`, `maciifdhd`, `iicx`, `se30` |
 | 512 KB | `4147DD77` | Macintosh IIfx | — |
 | 512 KB | `368CADFE` | Macintosh IIci | — |
 | 512 KB | `36B7FB6C` | Macintosh IIsi | — |
@@ -278,7 +285,10 @@ is available as `HD20SC.vhd`, `boot.vhd`, or through
 can make that wrapping permanent.
 
 Floppy changes are persisted on eject and exit using an atomic replacement;
-DiskCopy 4.2 checksums are regenerated. Use `POM68K_FLOPPY_RO=1` to prevent
+DiskCopy 4.2 checksums are regenerated. DART imports support Macintosh 400K,
+800K and 1.44 MB images with stored, RLE or LZH chunks. Writes retain DART
+using fast-mode stored chunks and preserve GCR tags. Resource-fork metadata
+and its checksums are not imported or regenerated. Use `POM68K_FLOPPY_RO=1` to prevent
 write-back. Every floppy-equipped desktop exposes separate internal and
 external rows in **Disques…**; each can be inserted or ejected live, and the
 external mechanism follows the profile's 800K/SuperDrive capability. The
@@ -287,6 +297,23 @@ writable. Repository fixtures under `hdv/ref/` remain immutable: the GUI
 creates its working copy under `hdv/work/`. Floppies under `disks35/ref/`
 follow the same rule with `disks35/work/` — the two 400 K System floppies
 the Macintosh 128K and 512K boot are pinned there by `assets.lock`.
+
+MOOF imports Macintosh 400K/800K/1.44 MB bitstreams and flux tracks directly,
+with their track timing, phase and write-protection flag. Tracks survive seeks,
+head changes, reset and save states. Native writes are persisted as MOOF on a
+125 ns bit grid, preserving metadata and avoiding sector reconstruction;
+exports can be substantially larger than the original capture. This format
+support does not qualify every copy-protected program. The read amplifier
+models weak/unformatted regions without changing the stored magnetic data;
+its noise distribution is approximate. On boards using a SCSI startup argument,
+`POM68K_FLOPPY=<image.moof>` selects the startup floppy; the disk picker also
+accepts `.moof` in either connected floppy bay.
+
+The original mixed bit/flux **Oids v1.4** capture has an application regression
+on the Plus: Finder launch, galaxy loading, thrust input and fresh-machine
+save-state replay. This qualifies that exact capture and scenario, not all
+copy-protection schemes. The game image remains user-provided and is never
+modified or included in the repository.
 
 PRAM is stored beside the boot volume as `<disk>.<profile>.pram`. Save states
 use `<disk>.<profile>.pomss`; incompatible profile, ROM or RAM configurations
@@ -321,6 +348,8 @@ large inputs are split at 1,900 MB by default. Run
   server and volume names, shared folder, printer name, spool folder, MacIP
   gateway and DNS, with a button that reveals each folder on the host), and
   chooses the DaynaPort card itself (none, or SCSI ID 2-6) for the next boot.
+  With a card attached, **Capture PCAP** records both Ethernet directions;
+  enter a new output filename in an existing folder, then start/stop capture.
   **Contrôleurs LLE / HLE** shows each controller's provenance and stages
   firmware or fallback policy.
 - **CPU:** measured speed relative to the emulated machine, interpreter or

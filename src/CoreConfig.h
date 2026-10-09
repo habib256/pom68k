@@ -71,6 +71,11 @@ struct CoreStorageConfig {
     // when the agent's MacBinary is found (GuiAgentAutostart.h).
     bool agentAutostart = true;
     int fluxJitterPercent = 0;
+    // The SE / SE FDHD dual-floppy configuration: a mechanism on the
+    // VIA1 PA4-high internal connector (Iwm.h), which the ROM numbers
+    // drive 1. Off is the single-floppy SE, whose PA4-high connector is
+    // empty. Ignored on every other board.
+    bool secondInternalFloppy = false;
     std::optional<std::string> ddmTemplate;
     bool scsiTrace = false;
     bool cdTrace = false;

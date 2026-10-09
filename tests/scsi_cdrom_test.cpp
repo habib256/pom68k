@@ -354,6 +354,11 @@ int main() {
             check(o[13] == 0x10 && o[14] == 2, "track 2 is flagged AUDIO (control $0)");
             check(o[22] == 0xAA, "the lead-out closes the TOC");
         }
+        const uint8_t capacity[10] = { 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        check(mixed.command(capacity, 10, o, i2) == 0 && o.size() == 8 &&
+              ((uint32_t(o[0]) << 24) | (uint32_t(o[1]) << 16) |
+               (uint32_t(o[2]) << 8) | o[3]) == audioStart + kAudio - 1,
+              "mixed-disc capacity includes the audio extent up to lead-out");
         const uint8_t rd10[10] = { 0x28, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
         check(mixed.command(rd10, 10, o, i2) == 0 && o.size() == 2048 && o[0] == 0xA0,
               "the data track still reads as 2048-byte user data");
@@ -378,9 +383,24 @@ int main() {
             check(mixed.command(stopped, 10, o, i2) == 0 && o[1] == 0x11,
                   "READ SUBCHANNEL reports $11 (playing)");
             if (o.size() >= 16) check(o[6] == 2, "and names track 2 under the head");
+            check(o.size() >= 16 && o[12] == 0 && o[13] == 0 && o[14] == 0 && o[15] == 0,
+                  "track-relative MSF starts at 00:00:00, without a two-second bias");
+            const uint32_t absoluteFrame = audioStart + 150;
+            check(o.size() >= 16 && o[8] == 0 && o[9] == absoluteFrame / (60 * 75) &&
+                  o[10] == (absoluteFrame / 75) % 60 && o[11] == absoluteFrame % 75,
+                  "absolute MSF retains the physical two-second offset");
 
-            mixed.advanceAudio(1000000ull / 75 * 2);       // two sectors
+            mixed.advanceAudio(26667);                     // two complete sectors
             check(mixed.audioLba() == audioStart + 2, "the position advances at 75 sectors/s");
+            mixed.command(stopped, 10, o, i2);
+            check(o.size() >= 16 && o[12] == 0 && o[13] == 0 && o[14] == 0 && o[15] == 2,
+                  "track-relative MSF advances by exactly two frames");
+            const uint8_t subLba[10] = { 0x42, 0, 0x40, 1, 0, 0, 0, 0, 16, 0 };
+            mixed.command(subLba, 10, o, i2);
+            check(o.size() >= 16 && o[12] == 0 && o[13] == 0 && o[14] == 0 && o[15] == 2 &&
+                  ((uint32_t(o[8]) << 24) | (uint32_t(o[9]) << 16) |
+                   (uint32_t(o[10]) << 8) | o[11]) == audioStart + 2,
+                  "absolute and relative LBA positions agree with the MSF reply");
 
             const uint8_t pause[10] = { 0x4B, 0, 0, 0, 0, 0, 0, 0, 0x00, 0 };
             check(mixed.command(pause, 10, o, i2) == 0 && mixed.audioState() == 2,

@@ -165,7 +165,7 @@ polarité enable — tout à parité. **Aucun bug-suspect.**
 - Pas d'onde carrée CKO : les machines pulsent CA2 à 1 Hz depuis `cpuHz` (nuance de phase demi-seconde perdue).
 - ~~**Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo)~~ — **FINDING FAUX,
   retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:186`,
-  `MacIIMemory.h:219`, `IIfxMemory.h:120`, `MscMemory.h:188`, et les huit autres) et **chacun des
+  `MacIIMemory.h:229`, `IIfxMemory.h:120`, `MscMemory.h:188`, et les huit autres) et **chacun des
   runners** câble la paire (`GuiRunnerToby.h:54` / `:210`, `GuiRunnerV8.h:92` / `:238`,
   `GuiRunnerSonora.h:90` / `:229`, `GuiRunnerDafb.h:122` / `:248`, `GuiRunnerDuo.h:75` / `:197`, et les
   compacts à `PlatformCompact.cpp:156` / `GuiRunnerCompact.h:133`). Le fichier est
@@ -197,7 +197,7 @@ gates car `insertImage()` re-dérive `mfmMode_` de la taille du média.
 - Chemin lecture byte-granulaire, cellules idéales, PLL non câblée — inventorié § 1.3 avec plan de réouverture.
 - Timer moteur MODE_DELAY (~1 s) et bits mode 5-7 non modélisés (le Mac programme `$1F`, MAME devient immédiat aussi).
 
-**Cosmétique** : géométrie de piste GCR (pregap/sync/gap4 légèrement différents, tags supprimés — § 1.3) ; mode 2M (MFM-sur-DD 600 RPM) inatteignable.
+**Cosmétique** : géométrie de piste GCR (pregap/sync/gap4 légèrement différents — § 1.3) ; mode 2M (MFM-sur-DD 600 RPM) inatteignable. La suppression des tags est **fermée le 2026-10-08** : les 12 octets physiques de chaque secteur GCR sont conservés en lecture, écriture, sauvegarde et export DC42.
 
 **POM68K plus riche** : write-back DC42 avec régénération de checksums (temp+rename), save-state mi-secteur bit-identique, PLL entière déterministe, compteurs diagnostiques (ceux du root-cause boost/denibble du 2026-08-05).
 

@@ -15,7 +15,9 @@
 #include "CdAudioPump.h"
 #include "CdAudioSource.h"
 #include "ScsiDisk.h"
+#include "SaveState.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -37,6 +39,61 @@ struct RecordingSink : CdAudioSink {
         sectors.emplace_back(raw, raw + 2352);
     }
 };
+
+// Read guest-visible Q position at the physical INDEX 00/01 boundary.
+static void checkPregap(const char* path, uint32_t gap, uint32_t start, uint8_t track) {
+    ScsiDisk disc;
+    check(disc.openCdrom(path), "mount the disc with its stored INDEX 00 sectors");
+    RecordingSink sink;
+    disc.setCdAudioSink(&sink);
+    std::vector<uint8_t> out, in;
+    const uint32_t length = start - gap + 1;
+    const uint8_t play[10] = { 0x45, 0, uint8_t(gap >> 24), uint8_t(gap >> 16),
+        uint8_t(gap >> 8), uint8_t(gap), 0, uint8_t(length >> 8), uint8_t(length), 0 };
+    check(disc.command(play, 10, out, in) == 0 && disc.audioLba() == gap,
+          "PLAY accepts the physical audio pregap belonging to the next track");
+    auto position = [&](ScsiDisk& target, uint32_t lba) {
+        const uint8_t index = lba < start ? 0 : 1;
+        const uint32_t distance = lba < start ? start - lba : lba - start;
+        const uint8_t subMsf[10] = { 0x42, 2, 0x40, 1, 0, 0, 0, 0, 16, 0 };
+        check(target.command(subMsf, 10, out, in) == 0 && out.size() == 16 &&
+              out[5] == 0x10 && out[6] == track && out[7] == index &&
+              out[12] == 0 && out[13] == distance / (60 * 75) &&
+              out[14] == (distance / 75) % 60 && out[15] == distance % 75,
+              "Q reports the audio track, INDEX 00 countdown or INDEX 01 time");
+        const uint8_t subLba[10] = { 0x42, 0, 0x40, 1, 0, 0, 0, 0, 16, 0 };
+        check(target.command(subLba, 10, out, in) == 0 && out.size() == 16 &&
+              ((uint32_t(out[12]) << 24) | (uint32_t(out[13]) << 16) |
+               (uint32_t(out[14]) << 8) | out[15]) == uint32_t(lba - start) &&
+              ((uint32_t(out[8]) << 24) | (uint32_t(out[9]) << 16) |
+               (uint32_t(out[10]) << 8) | out[11]) == lba,
+              "Q relative LBA is negative in INDEX 00; absolute LBA stays continuous");
+    };
+    position(disc, gap);
+    disc.advanceAudio((uint64_t(start - gap - 1) * 1000000 + 74) / 75);
+    position(disc, start - 1);
+    std::vector<uint8_t> state;
+    sav::Writer writer(state);
+    writer(disc);
+    ScsiDisk restored;
+    check(restored.openCdrom(path), "rebind the same CUE before restoring its pregap position");
+    sav::Reader reader(state.data(), state.size());
+    reader(restored);
+    check(reader.ok() && !reader.remaining(), "restore the play head inside INDEX 00");
+    position(restored, start - 1);
+    disc.advanceAudio(13334);
+    restored.advanceAudio(13334);
+    position(disc, start);
+    position(restored, start);
+    check(sink.sectors.size() == start - gap &&
+          std::all_of(sink.sectors.begin(), sink.sectors.end(), [](const auto& sector) {
+              return std::all_of(sector.begin(), sector.end(), [](auto byte) { return byte == 0; });
+          }), "all stored pregap sectors reach the audio lead unchanged");
+    disc.advanceAudio(13334);
+    check(sink.sectors.size() == length && std::any_of(sink.sectors.back().begin(),
+          sink.sectors.back().end(), [](auto byte) { return byte != 0; }),
+          "the first INDEX 01 sector follows the stored pause with no skipped sector");
+}
 
 int main() {
     std::printf("CD audio: the drive's own lead to the host mixer\n");
@@ -81,9 +138,10 @@ int main() {
     std::snprintf(cue, sizeof cue,
         "FILE \"cd_audio_test.bin\" BINARY\n"
         "  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n"
-        "  TRACK 02 AUDIO\n    INDEX 01 %02u:%02u:%02u\n",
+        "  TRACK 02 AUDIO\n    INDEX 00 00:00:08\n    INDEX 01 %02u:%02u:%02u\n",
         am / (60 * 75), (am / 75) % 60, am % 75);
     { std::ofstream f("cd_audio_test.cue"); f << cue; }
+    checkPregap("cd_audio_test.cue", kData, audioStart, 2);
 
     ScsiDisk disc;
     check(disc.openCdrom("cd_audio_test.cue"), "the synthesized mixed disc mounts");
@@ -100,7 +158,9 @@ int main() {
     check(disc.command(play, 10, out, in) == 0, "PLAY AUDIO starts the play");
 
     // ── The sectors the head passes are the sectors that sound ──────────
-    disc.advanceAudio(1000000ull / 75 * 3);
+    disc.advanceAudio(39999);
+    check(sink.sectors.size() == 2, "third sector is not emitted before 40 ms");
+    disc.advanceAudio(1);
     check(sink.sectors.size() == 3, "three sectors of machine time deliver three sectors");
     bool ordered = sink.sectors.size() == 3;
     for (size_t i = 0; ordered && i < sink.sectors.size(); i++) {
@@ -288,14 +348,74 @@ int main() {
         check(only.command(playFirst, 10, out, in) == 0 && only.audioState() == 1,
               "and the first track plays, which is the whole point of the disc");
 
+        // CD-DA is exactly 75 sectors / 44100 stereo frames per second.
+        // Rounding the sector period to 13333 µs emits sector 75 too early.
+        RecordingSink clockSink;
+        only.setCdAudioSink(&clockSink);
+        const uint8_t playTwoSeconds[10] = { 0x45, 0, 0, 0, 0, 0, 0, 0, 150, 0 };
+        check(only.command(playTwoSeconds, 10, out, in) == 0,
+              "start a two-second physical audio extent");
+        only.advanceAudio(999999);
+        check(clockSink.sectors.size() == 74 && only.audioLba() == 74,
+              "sector 75 waits for the complete first second");
+        only.command(pause, 10, out, in);
+        only.advanceAudio(1000000);
+        check(clockSink.sectors.size() == 74,
+              "pause preserves the pending sector's fractional deadline");
+
+        std::vector<uint8_t> state;
+        sav::Writer writer(state);
+        writer(only);
+        ScsiDisk restored;
+        check(restored.openCdrom("cd_audio_only.cue"),
+              "mount the same medium for a fresh transport restore");
+        sav::Reader reader(state.data(), state.size());
+        reader(restored);
+        check(reader.ok() && !reader.remaining() && restored.audioState() == 2,
+              "snapshot restores the paused transport and fractional phase");
+        RecordingSink restoredSink;
+        restored.setCdAudioSink(&restoredSink);
+        const uint8_t resume[10] = { 0x4B, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+        only.command(resume, 10, out, in);
+        restored.command(resume, 10, out, in);
+        only.advanceAudio(1);
+        restored.advanceAudio(1);
+        check(clockSink.sectors.size() == 75 && restoredSink.sectors.size() == 1 &&
+              only.audioLba() == 75 && restored.audioLba() == 75 &&
+              restoredSink.sectors[0] == clockSink.sectors.back(),
+              "resume and fresh restore emit sector 75 at exactly one second");
+        only.advanceAudio(999999);
+        restored.advanceAudio(999999);
+        check(clockSink.sectors.size() == 149 && restored.audioLba() == 149,
+              "the second full-second boundary also remains exact");
+        only.advanceAudio(1);
+        restored.advanceAudio(1);
+        check(clockSink.sectors.size() == 150 && restoredSink.sectors.size() == 76 &&
+              only.audioState() == 3 && restored.audioState() == 3,
+              "both transports complete exactly at two seconds");
+
+        ScsiDisk chunked;
+        check(chunked.openCdrom("cd_audio_only.cue"), "mount for irregular clock ticks");
+        chunked.command(playTwoSeconds, 10, out, in);
+        RecordingSink chunkedSink;
+        chunked.setCdAudioSink(&chunkedSink);
+        uint64_t elapsed = 0;
+        while (elapsed < 2000000) {
+            const uint64_t tick = std::min<uint64_t>(37, 2000000 - elapsed);
+            chunked.advanceAudio(tick);
+            elapsed += tick;
+        }
+        check(chunkedSink.sectors == clockSink.sectors && chunked.audioState() == 3,
+              "irregular ticks deliver the identical two seconds of audio");
+
         std::remove("cd_audio_only.bin");
         std::remove("cd_audio_only.cue");
     }
 
     // ── A disc whose DATA track is not the first ────────────────────────
-    // CD Extra puts the audio in session 1 and the data track thousands of
-    // sectors in; POM68K used to cut the data extent only when track 1 was
-    // the data one, so such a disc read as audio-only and mounted nothing.
+    // A mixed-mode disc can place audio before its data track. This fixture
+    // describes one session, not a CD Extra multisession layout. POM68K used
+    // to miss the data extent unless it was track 1, leaving nothing to mount.
     // READ(10) carries ABSOLUTE disc addresses, so the data track's start
     // has to come off before the image is indexed.
     {
@@ -329,6 +449,11 @@ int main() {
               "a disc whose data track comes second mounts");
         check(extra.blocks() == kDataSectors,
               "only the data track's sectors count as user data");
+        const uint8_t capacity[10] = { 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        check(extra.command(capacity, 10, out, in) == 0 && out.size() == 8 &&
+              ((uint32_t(out[0]) << 24) | (uint32_t(out[1]) << 16) |
+               (uint32_t(out[2]) << 8) | out[3]) == kAudioSectors + kDataSectors - 1,
+              "capacity reports the final absolute LBA, not the data extent's size");
         // The volume's first block is at the DATA TRACK's absolute address.
         const uint8_t rd[10] = { 0x28, 0,
             uint8_t(dataStart >> 24), uint8_t(dataStart >> 16),
@@ -339,6 +464,28 @@ int main() {
         const uint8_t rd0[10] = { 0x28, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
         check(extra.command(rd0, 10, out, in) == 2,
               "a READ inside the audio region is refused, not zero-filled");
+        const uint8_t playAudio[10] = { 0x45, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+        check(extra.command(playAudio, 10, out, in) == 0 && extra.audioState() == 1,
+              "PLAY accepts the preceding audio track");
+        const uint8_t sense[6] = { 0x03, 0, 0, 0, 18, 0 };
+        for (uint32_t position : { dataStart, dataStart + kDataSectors - 1 }) {
+            const uint8_t playData[10] = { 0x45, 0, 0, 0, 0, uint8_t(position),
+                                         0, 0, 1, 0 };
+            check(extra.command(playData, 10, out, in) == 2,
+                  "PLAY rejects a data sector even when an earlier track is audio");
+            check(extra.command(sense, 6, out, in) == 0 && out.size() >= 14 &&
+                  (out[2] & 15) == 5 && out[12] == 0x64,
+                  "rejected PLAY reports ILLEGAL REQUEST / ILLEGAL MODE FOR THIS TRACK");
+            check(extra.audioState() == 1 && extra.audioLba() == 0,
+                  "a rejected PLAY preserves the existing audio transport");
+        }
+        const uint32_t dataFrame = dataStart + 150;
+        const uint8_t playDataMsf[10] = { 0x47, 0, 0, uint8_t(dataFrame / (60 * 75)),
+            uint8_t((dataFrame / 75) % 60), uint8_t(dataFrame % 75),
+            uint8_t((dataFrame + 1) / (60 * 75)),
+            uint8_t(((dataFrame + 1) / 75) % 60), uint8_t((dataFrame + 1) % 75), 0 };
+        check(extra.command(playDataMsf, 10, out, in) == 2,
+              "PLAY AUDIO MSF also rejects the later data track");
 
         // And ejecting really empties the drive, audio tracks included.
         extra.eject();
@@ -348,6 +495,92 @@ int main() {
 
         std::remove("cd_audio_extra.bin");
         std::remove("cd_audio_extra.cue");
+    }
+
+    // A single physical disc represented by three files. FILE offsets
+    // restart at zero, while guest LBAs and the TOC remain continuous.
+    {
+        const char* paths[] = {"cd_multi_data.bin", "cd_multi_a.bin", "cd_multi_b.bin"};
+        { std::ofstream f(paths[0], std::ios::binary);
+          std::vector<uint8_t> data(2 * 2048, 0x71);
+          f.write(reinterpret_cast<const char*>(data.data()), data.size()); }
+        for (int file = 1; file < 3; ++file) {
+            std::ofstream f(paths[file], std::ios::binary);
+            for (int sector = 0; sector < (file == 1 ? 152 : 3); ++sector) {
+                const auto value = file == 1 ? (sector < 150 ? 0 : 17 + sector - 150) : 32 + sector;
+                std::vector<uint8_t> bytes(2352, uint8_t(value));
+                f.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+            }
+        }
+        { std::ofstream f("cd_multi.cue");
+          f << "FILE \"cd_multi_data.bin\" BINARY\n"
+               " TRACK 01 MODE1/2048\n INDEX 01 00:00:00\n"
+               "FILE \"cd_multi_a.bin\" BINARY\n"
+               " TRACK 02 AUDIO\n INDEX 00 00:00:00\n INDEX 01 00:02:00\n"
+               "FILE \"cd_multi_b.bin\" BINARY\n"
+               " TRACK 03 AUDIO\n INDEX 01 00:00:00\n"; }
+        checkPregap("cd_multi.cue", 2, 152, 2);
+        ScsiDisk multi;
+        RecordingSink recorded;
+        multi.setCdAudioSink(&recorded);
+        check(multi.openCdrom("cd_multi.cue") && multi.blocks() == 2,
+              "a multi-FILE disc keeps its MODE1/2048 data extent");
+        check(multi.trackCount() == 3 && multi.trackStartLba(1) == 152 &&
+              multi.trackStartLba(2) == 154,
+              "file-relative indices become absolute TOC positions");
+        const uint8_t read[10] = {0x28, 0, 0, 0, 0, 0, 0, 0, 1, 0};
+        check(multi.command(read, 10, out, in) == 0 && out.size() == 2048 && out[0] == 0x71,
+              "READ(10) reads the data FILE, not the last audio FILE");
+        const uint8_t toc[10] = {0x43, 0, 0, 0, 0, 0, 0, 0, 40, 0};
+        check(multi.command(toc, 10, out, in) == 0 && out.size() == 36 && out[35] == 157,
+              "READ TOC lead-out includes every source file");
+        const uint8_t playFiles[10] = {0x45, 0, 0, 0, 0, 152, 0, 0, 5, 0};
+        check(multi.command(playFiles, 10, out, in) == 0,
+              "PLAY AUDIO accepts a span crossing two FILE sources");
+        multi.advanceAudio(66667);
+        bool correct = recorded.sectors.size() == 5;
+        const uint8_t values[] = {17, 18, 32, 33, 34};
+        for (size_t i = 0; correct && i < 5; ++i)
+            for (auto byte : recorded.sectors[i]) correct &= byte == values[i];
+        check(correct, "audio crosses FILE boundaries with no skipped or repeated sector");
+        multi.eject();
+        check(!multi.openCdrom("cd_missing.cue"), "missing sheets do not retain the previous disc");
+
+        // The least common multiple of the two sector widths is ambiguous
+        // by length. A declared 2048-byte track must never be de-framed just
+        // because its user bytes happen to start like a raw sector.
+        { std::ofstream f(paths[0], std::ios::binary);
+          std::vector<uint8_t> data(147 * 2048, 0x71);
+          data[0] = 0; data[11] = 0;
+          for (int i = 1; i < 11; ++i) data[i] = 0xFF;
+          f.write(reinterpret_cast<const char*>(data.data()), data.size()); }
+        { std::ofstream f("cd_multi.cue");
+          f << "FILE \"cd_multi_data.bin\" BINARY\n"
+               " TRACK 01 MODE1/2048\n INDEX 01 00:00:00\n"; }
+        check(multi.openCdrom("cd_multi.cue") && multi.blocks() == 147,
+              "declared MODE1/2048 framing wins over an accidental raw sync pattern");
+
+        // Malformed and unsupported representations must not produce a
+        // plausible but wrong physical disc.
+        const char* bad[] = {
+            "FILE \"cd_multi_a.bin\" WAVE\n TRACK 01 AUDIO\n INDEX 01 00:00:00\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n INDEX 01 00:60:00\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n INDEX 01 00:00:03\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n PREGAP 00:02:00\n INDEX 01 00:00:00\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n FLAGS PRE\n INDEX 01 00:00:00\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n INDEX 01 00:00:00\n INDEX 02 00:00:01\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n",
+            "FILE \"cd_multi_data.bin\" BINARY\n TRACK 01 MODE1/2048\n INDEX 01 00:00:00\n TRACK 02 AUDIO\n INDEX 01 00:00:01\n"
+        };
+        bool rejected = true;
+        for (auto sheet : bad) {
+            { std::ofstream f("cd_multi_bad.cue"); f << sheet; }
+            rejected &= !multi.openCdrom("cd_multi_bad.cue");
+        }
+        check(rejected, "invalid indices, framing, missing indices and unsupported gaps are rejected");
+        for (auto path : paths) std::remove(path);
+        std::remove("cd_multi.cue");
+        std::remove("cd_multi_bad.cue");
     }
 
     std::remove("cd_audio_test.bin");

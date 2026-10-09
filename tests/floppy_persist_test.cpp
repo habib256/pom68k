@@ -33,6 +33,22 @@ static void writeAll(const std::string& p, const std::vector<uint8_t>& d) {
               std::streamsize(d.size()));
 }
 
+// Read a complete physical GCR field, then exercise the same decoder used
+// by IWM nibble writes and flux reconstruction. No tag access test hook.
+static std::vector<uint8_t> field(SonyDrive& drive, uint8_t sectorCode = 0x96) {
+    std::vector<uint8_t> bytes;
+    for (int i = 0; i < 24000; ++i) bytes.push_back(drive.nextNibble(false));
+    for (size_t i = 0; i + 709 <= bytes.size(); ++i)
+        if (bytes[i] == 0xD5 && bytes[i + 1] == 0xAA && bytes[i + 2] == 0xAD &&
+            bytes[i + 3] == sectorCode)
+            return {bytes.begin() + i, bytes.begin() + i + 709};
+    return {};
+}
+static void writeField(SonyDrive& drive, const std::vector<uint8_t>& bytes) {
+    for (auto byte : bytes) drive.writeNibble(byte);
+    drive.flushWrite(false);
+}
+
 int main() {
     const std::string raw = "floppy_persist_tmp.dsk";
     const std::string dc42 = "floppy_persist_tmp.image";
@@ -108,12 +124,8 @@ int main() {
         CHECK(!drv.dirty(), "clean after flush");
     }
 
-    {   // ── DC42 WITH a tag block: insert() strips the tags, so the written
-        //    back header must not keep claiming they are there. The old
-        //    fixture only ever built tagSize == 0, so a file declaring N tag
-        //    bytes that are not in it went unnoticed — Disk Copy / MAME /
-        //    Mini vMac then fail the tag checksum or read past EOF.
-        const uint32_t kTagSize = 800 * 12;            // 800 sectors x 12 B
+    {   // DC42 retains all twelve physical tag bytes per GCR sector.
+        const uint32_t kTagSize = 1600 * 12;           // 800K = 1600 sectors
         std::vector<uint8_t> img(0x54 + SonyDrive::kSize800K + kTagSize, 0);
         img[0x40] = uint8_t(SonyDrive::kSize800K >> 24);
         img[0x41] = uint8_t(SonyDrive::kSize800K >> 16);
@@ -126,6 +138,8 @@ int main() {
         img[0x4C] = 0xDE; img[0x4D] = 0xAD;            // tagChecksum
         img[0x4E] = 0xBE; img[0x4F] = 0xEF;
         img[0x52] = 0x01; img[0x53] = 0x00;            // magic
+        for (size_t i = 0; i < kTagSize; ++i)
+            img[0x54 + SonyDrive::kSize800K + i] = uint8_t(i * 7 + 1);
         writeAll(dc42, img);
         SonyDrive drv;
         drv.reset();
@@ -134,14 +148,95 @@ int main() {
         CHECK(drv.writeSector(0, 0, 1, sec), "writeSector into tagged DC42");
         CHECK(drv.flushToFile(), "explicit flush (tagged)");
         auto file = readAll(dc42);
-        CHECK(file.size() == 0x54 + SonyDrive::kSize800K,
-              "tagged DC42 written back without the tag block");
+        CHECK(file.size() == img.size(), "tagged DC42 keeps its complete tag block");
+        CHECK(std::memcmp(file.data() + 0x54 + SonyDrive::kSize800K,
+                          img.data() + 0x54 + SonyDrive::kSize800K, kTagSize) == 0,
+              "a data-sector edit preserves every original tag byte");
         const uint32_t tagSize = uint32_t(file[0x44]) << 24 | uint32_t(file[0x45]) << 16
                                | uint32_t(file[0x46]) << 8 | file[0x47];
-        CHECK(tagSize == 0, "tagSize zeroed to match the file we actually wrote");
+        CHECK(tagSize == kTagSize, "tagSize matches the preserved physical sector tags");
         const uint32_t tagCk = uint32_t(file[0x4C]) << 24 | uint32_t(file[0x4D]) << 16
                              | uint32_t(file[0x4E]) << 8 | file[0x4F];
-        CHECK(tagCk == 0, "tagChecksum zeroed alongside tagSize");
+        uint32_t sum = 0;
+        for (size_t i = 12; i < kTagSize; i += 2) {
+            const size_t at = 0x54 + SonyDrive::kSize800K + i;
+            sum += uint32_t(file[at]) * 256 + file[at + 1];
+            sum = (sum >> 1) | (sum << 31);
+        }
+        CHECK(tagCk == sum && sum != 0, "tag checksum regenerated, excluding the first twelve bytes");
+
+        const auto physical = field(drv);
+        CHECK(!physical.empty(), "nonzero tags are present in the physical read field");
+        auto blank = img;
+        blank.resize(0x54 + SonyDrive::kSize800K);
+        for (size_t i = 0x44; i < 0x48; ++i) blank[i] = 0;
+        for (size_t i = 0x4C; i < 0x50; ++i) blank[i] = 0;
+        const std::string targetPath = "floppy_tags_target.image";
+        writeAll(targetPath, blank);
+        SonyDrive target;
+        CHECK(target.insert(targetPath), "insert tagless DC42 destination");
+        target.setWriteBack(true);
+        writeField(target, physical);
+        CHECK(target.dirty(), "a tag-only GCR write marks the medium dirty");
+        CHECK(field(target) == physical, "GCR write decoder retains the complete physical field");
+
+        std::vector<uint8_t> state;
+        sav::Writer writer(state);
+        writer(target);
+        target.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+        sav::Reader reader(state.data(), state.size());
+        reader(target);
+        CHECK(reader.ok() && !reader.remaining(), "snapshot restores the tagged medium");
+        CHECK(field(target) == physical, "restored medium exposes the same tag bytes on the read path");
+        CHECK(target.flushToFile(), "tag-only write persists as a DC42 tag block");
+        auto updated = readAll(targetPath);
+        CHECK(updated.size() == img.size(), "formerly tagless DC42 gains a complete tag block");
+        CHECK(std::memcmp(updated.data() + 0x54 + SonyDrive::kSize800K,
+                          img.data() + 0x54 + SonyDrive::kSize800K, 12) == 0,
+              "guest-written first-sector tags reach the backing file");
+        bool otherTagsZero = true;
+        for (size_t i = 0x54 + SonyDrive::kSize800K + 12; i < updated.size(); ++i)
+            otherTagsZero &= updated[i] == 0;
+        CHECK(otherTagsZero && updated[0x4C] == 0 && updated[0x4D] == 0 &&
+              updated[0x4E] == 0 && updated[0x4F] == 0,
+              "first-sector tags are preserved but excluded from the DC42 checksum");
+        SonyDrive reopened;
+        CHECK(reopened.insert(targetPath) && field(reopened) == physical,
+              "nonzero physical tags survive file close and reopen");
+        auto damaged = physical;
+        if (damaged.size() > 5) damaged[5] = 0; // illegal GCR symbol
+        writeField(reopened, damaged);
+        CHECK(!reopened.dirty() && field(reopened) == physical,
+              "a bad-checksum field cannot modify tags independently of data");
+        const auto unchanged = field(reopened, 0x97);
+        reopened.setWriteProtected(true);
+        writeField(reopened, field(drv, 0x97));
+        CHECK(field(reopened, 0x97) == unchanged,
+              "write protection applies to the tag bytes too");
+        std::remove(targetPath.c_str());
+
+        const std::vector<uint8_t> rawBase(SonyDrive::kSize800K, 0);
+        writeAll(raw, rawBase);
+        SonyDrive rawTarget;
+        CHECK(rawTarget.insert(raw), "insert raw destination");
+        rawTarget.setWriteBack(true);
+        writeField(rawTarget, physical);
+        CHECK(rawTarget.writeSector(0, 0, 1, sec) && rawTarget.flushToFile(),
+              "raw media retains its sector-only write-back contract");
+        const auto rawWritten = readAll(raw);
+        CHECK(rawWritten.size() == rawBase.size() &&
+              std::memcmp(rawWritten.data() + 512, sec, 512) == 0 &&
+              field(rawTarget) == physical,
+              "raw export writes data without clearing the mounted medium's physical tags");
+
+        auto malformed = img;
+        malformed.pop_back();
+        writeAll(dc42, malformed);
+        CHECK(!drv.insert(dc42), "truncated tag payload rejected");
+        malformed = img;
+        malformed[0x47] ^= 1;
+        writeAll(dc42, malformed);
+        CHECK(!drv.insert(dc42), "tag count inconsistent with sector geometry rejected");
     }
 
     std::remove(raw.c_str());

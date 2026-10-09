@@ -45,6 +45,10 @@ public:
 
     void reset();
     void attachDrive(SonyDrive* internal, SonyDrive* external);
+    // The PA4 internal-connector line (Iwm.h). The ISM drive-1 enable
+    // reaches the PA4-selected connector through the same board line.
+    void wireInternalSelect(bool wired, SonyDrive* second);
+    void setInternalSelect(bool high) { iwm_.setInternalSelect(high); }
 
     // A SWIM1 is pin-compatible with the IWM it replaced.  The Plus, SE and
     // original Mac II therefore share this wrapper with their FDHD siblings,
@@ -178,6 +182,7 @@ private:
 
     Iwm iwm_;                                    // IWM personality
     SonyDrive* drive_[2] = { nullptr, nullptr };
+    SonyDrive* secondInternal_ = nullptr;  // wiring, like drive_
     bool superDriveConfigured_ = true;            // board wiring, not state
     bool ismMode_ = false;
     int iwmToIsm_ = 0;                           // magic-pattern counter

@@ -2,7 +2,7 @@
 # `daynaport_test` pins the card's command set and `q605_dayna_driver_etalon`
 # runs Dayna's own driver on the Quadra 605; these gates carry the card to the
 # other eleven memory maps (src/DaynaPortBus.h).
-
+include(cmake/Pom68kRarpGates.cmake)
 # The card through both real SCSI controllers, the way a guest drives it —
 # the NCR 5380 of eight platforms and the 53C96 of four. Asset-free.
 add_executable(daynaport_bus_test tests/daynaport_bus_test.cpp)
