@@ -24,6 +24,7 @@
 // it. Nor is the ATA Manager emulated: the ROM's own driver runs.
 
 #pragma once
+#include "DiskTimeline.h"
 #include "SaveState.h"
 
 #include <array>
@@ -75,11 +76,16 @@ public:
         heads_ = 16; sectorsPerTrack_ = 63;
         cylinders_ = sectors_ / (heads_ * sectorsPerTrack_);
         if (!cylinders_) { heads_ = 1; sectorsPerTrack_ = 1; cylinders_ = sectors_; }
+        // Save-state history relative to the image as just loaded; with
+        // write-back it journals beside the file (DiskTimeline.h).
+        timeline_.attach(image_.data(), image_.size(), 512,
+                         writeBack ? path + ".pomundo" : std::string(),
+                         "ATA " + path.substr(path.find_last_of("/\\") + 1));
         reset();
         return true;
     }
     void close() {
-        pristine_.clear();
+        timeline_.detach();
         image_.clear(); path_.clear(); sectors_ = 0; writeBack_ = false;
         reset();
     }
@@ -170,10 +176,10 @@ public:
     }
 
     // ── Save states ─────────────────────────────────────────────────────
-    // Preserve the PIO latch and the geometry selected by command $91.
-    // As on SCSI, retain original sectors on first write, undo subsequent
-    // writes on restore, then replay the snapshot's modified sectors.
-    // The backing file is setup: restoring does not undo host write-back.
+    // Preserve the PIO latch and the geometry selected by command $91. The
+    // medium's content is DiskTimeline's: the sectors written since open()
+    // plus the content digest a restore must reproduce, through the same
+    // write path as the guest so a write-back file follows the restore.
     template <class Ar> void visit(Ar& ar) {
         ar(status_, error_, features_, sectorCountReg_, lbaLow_, lbaMid_,
            lbaHigh_, device_, pending_, writing_, irq_, nIen_, srstHeld_,
@@ -188,35 +194,18 @@ public:
             }
             buffer_.resize(size);
             if (!buffer_.empty()) ar.bytes(buffer_.data(), buffer_.size());
-            const auto count = ar.varint();
-            if (!ar.ok() || count > sectors_) { ar.fail(); return; }
-            for (const auto& [lba, original] : pristine_)
-                std::memcpy(image_.data() + size_t(lba) * 512, original.data(), 512);
-            pristine_.clear();
-            uint32_t previous = 0;
-            for (uint64_t i = 0; i < count && ar.ok(); ++i) {
-                uint32_t lba = 0;
-                std::array<uint8_t, 512> sector{};
-                ar(lba);
-                ar.bytes(sector.data(), sector.size());
-                if (!ar.ok() || lba >= sectors_ || (i && lba <= previous)) {
-                    ar.fail(); return;
-                }
-                rememberSector(lba);
-                std::memcpy(image_.data() + size_t(lba) * 512, sector.data(), 512);
-                previous = lba;
-            }
+            std::vector<DiskTimeline::Block> plan;
+            timeline_.load(ar, image_.data(), plan);
+            for (const auto& b : plan) storeSector(b.lba, b.data.data());
+            if (ar.ok()) timeline_.commitLoad(image_.data());
         } else {
             ar.varint(buffer_.size());
             if (!buffer_.empty()) ar.bytes(buffer_.data(), buffer_.size());
-            ar.varint(pristine_.size());
-            for (const auto& [lba, original] : pristine_) {
-                auto block = lba;
-                ar(block);
-                ar.bytes(image_.data() + size_t(lba) * 512, 512);
-            }
+            timeline_.save(ar, image_.data());
         }
     }
+    std::size_t dirtySectors() const { return timeline_.dirtyBlocks(); }
+    DiskTimeline& timeline() { return timeline_; }
 
     // Diagnostics (gate: tests/ata_disk_test.cpp). `setTrace` prints every
     // command the guest issues, which is how the F108 port's protocol was
@@ -405,16 +394,7 @@ private:
             raiseIrq();
             return;
         }
-        rememberSector(currentLba_);
-        std::memcpy(image_.data() + size_t(currentLba_) * 512,
-                    buffer_.data(), 512);
-        if (writeBack_ && !path_.empty()) {
-            std::fstream f(path_, std::ios::binary | std::ios::in | std::ios::out);
-            if (f) {
-                f.seekp(std::streamoff(currentLba_) * 512);
-                f.write(reinterpret_cast<const char*>(buffer_.data()), 512);
-            }
-        }
+        storeSector(currentLba_, buffer_.data());
         sectorsWritten++;
         if (pending_) pending_--;
         if (!pending_) {
@@ -432,12 +412,21 @@ private:
         raiseIrq();
     }
 
-    void rememberSector(uint32_t lba) {
-        auto [it, inserted] = pristine_.try_emplace(lba);
-        if (inserted)
-            std::memcpy(it->second.data(), image_.data() + size_t(lba) * 512, 512);
+    // The one path onto the medium: history first, then memory, then the
+    // write-back file. A guest write and a restored sector both take it.
+    void storeSector(uint32_t lba, const uint8_t* data) {
+        uint8_t* at = image_.data() + size_t(lba) * 512;
+        timeline_.willWrite(lba, at, data);
+        std::memcpy(at, data, 512);
+        if (writeBack_ && !path_.empty()) {
+            std::fstream f(path_, std::ios::binary | std::ios::in | std::ios::out);
+            if (f) {
+                f.seekp(std::streamoff(lba) * 512);
+                f.write(reinterpret_cast<const char*>(data), 512);
+            }
+        }
     }
-    std::map<uint32_t, std::array<uint8_t, 512>> pristine_;
+    DiskTimeline timeline_;
     std::vector<uint8_t> image_;
     std::string path_;
     bool writeBack_ = false;

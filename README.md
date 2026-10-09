@@ -317,7 +317,13 @@ modified or included in the repository.
 
 PRAM is stored beside the boot volume as `<disk>.<profile>.pram`. Save states
 use `<disk>.<profile>.pomss`; incompatible profile, ROM or RAM configurations
-are refused without modifying the running machine.
+are refused without modifying the running machine. A state also records its
+hard disks' content: restoring it rewinds a writable SCSI or IDE image to that
+content, even after quitting, using the `<image>.pomundo` journal kept beside
+the image. If the image changed in a way the journal cannot undo (edited
+outside POM68K, journal deleted, or older than the journal's 256 MB history),
+the restore is refused and says which disk. Deleting a `.pomundo` is safe; it
+only makes states saved before that point unrestorable once the disk changes.
 
 To turn a host directory into one or more writable classic-HFS volumes:
 

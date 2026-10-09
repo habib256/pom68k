@@ -99,11 +99,11 @@ media from the immutable reference and boot the real Plus ROM to the Finder
 in either drive. Apple DART 1.5.3's own best-mode sample also decodes exactly
 to its source bytes. Native track preservation and MOOF remain separate work.
 
-The disk base remains host-owned. As with existing SCSI states, restoring ATA
-rewinds the in-memory medium but does not undo writes already committed to a
-host backing file. Fresh-device restoration requires the same unchanged base;
-an immutable-base/overlay policy and a full IDE application rewind scenario
-remain separate work. The first six increments introduced no new CPU, machine
+The disk base remains the user's working file. Since the media timeline
+increment (below), restoring a SCSI or ATA state rewinds both memory and a
+write-back file to the state's exact content, including in a later process,
+or refuses by name. A full IDE *application* rewind scenario on the Q630
+remains separate work. The first six increments introduced no new CPU, machine
 profile or fictional peripheral. Other items are proposals, not adopted features.
 
 
@@ -190,8 +190,8 @@ wider protection coverage still requires more independently identified cases.
 | Floppy writeback | MOOF export/writeback; imported flux protected from writes | Raw/DC42 atomic persistence; current-track flux in states | Add native track preservation, retain existing sector exports |
 | Compact sound | PCM conversion plus high-pass filtering | Line-latched PCM approximation | Snow is not a true PWM reference |
 | CD sources | Per-track/file mapping, binary/WAVE, gaps, physical Windows drive | ISO/raw and single-source CUE/BIN, CD-DA | Extend source mapping, not CD audio from scratch |
-| SCSI state portability | Embeds eligible disk/CD image payloads, restores temporary files | Modified SCSI blocks and original-block undo log; external backing files | Decide disk timeline policy before portable snapshots |
-| ATA snapshots | No corresponding ATA platform in inspected tree | Missing transfer buffer and disk rewind in visitor | Correct first; two reproduced failures |
+| SCSI state portability | Embeds eligible disk/CD image payloads, restores temporary files | Content digest plus `.pomundo` reverse journal: exact rewind of memory and write-back file across processes, or a named refusal | Portable bundles remain optional |
+| ATA snapshots | No corresponding ATA platform in inspected tree | PIO buffer restored (v21); same disk timeline as SCSI (v28) | Done |
 | Session files | Workspace paths, machine options, windows, serial links | Typed startup, relaunch state, ImGui layout; no combined workspace file | Add a versioned session file |
 | Ethernet NAT | smoltcp/socket implementation | Existing MacIP gateway reused behind EtherLink | Keep current gateway |
 | MacTCP automatic setup | RARP and ICMP address-mask helper | RFC 950 mask and RFC 903 RARP services implemented, shared address pool | Server address setup, local ICMP and controlled guest DNS/TCP qualified; router configured separately |
@@ -484,6 +484,12 @@ timeline contract: immutable base plus versioned overlay, or complete image
 snapshot/temporary clone. An image's size/path alone is insufficient to bind
 a state to its original contents. Thumbnails and quick slots come after the
 correctness contract, not before it.
+
+Both limitations are now resolved. The ATA transfer state has been restored
+since format v21. Since v28, `DiskTimeline` binds every SCSI/ATA state to its
+content digest and rewinds a write-back file through its `.pomundo` reverse
+journal, or refuses by name (`media_timeline_test`,
+[DEV.md § 1.4](../DEV.md)).
 
 ## Networking and serial interfaces
 

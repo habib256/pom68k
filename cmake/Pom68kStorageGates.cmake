@@ -24,3 +24,4 @@ endforeach()
 # every platform's bus.
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kDaynaGates.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kAgentGates.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kTimelineGates.cmake)

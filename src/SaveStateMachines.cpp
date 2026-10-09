@@ -239,7 +239,7 @@ bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
     // reach mutation. Invalid headers and truncated containers stay cheap.
     std::vector<std::uint8_t> rollback;
     if (transactional) saveT(mem, cpu, kind, rollback);
-    auto rejectApplied = [&](const char* why) {
+    auto rejectApplied = [&](std::string why) {
         if (transactional) {
             std::string rollbackErr;
             if (!loadT(mem, cpu, kind, rollback.data(), rollback.size(),
@@ -247,7 +247,7 @@ bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
                 std::fprintf(stderr, "FATAL: save-state rollback failed: %s\n",
                              rollbackErr.c_str());
         }
-        err = why;
+        err = std::move(why);
         return false;
     };
 
@@ -255,7 +255,9 @@ bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
     // (MoiraSnapshot, on load) happens against the restored RAM.
     { auto r = machChunk.reader();
       r(mem);
-      if (!r.ok()) return rejectApplied("machine chunk is corrupt"); }
+      if (!r.ok())
+          return rejectApplied(r.reason().empty() ? "machine chunk is corrupt"
+                                                  : r.reason()); }
     { auto r = cpuChunk.reader();
       r(cpu);
       if (!r.ok()) return rejectApplied("CPU chunk is corrupt"); }

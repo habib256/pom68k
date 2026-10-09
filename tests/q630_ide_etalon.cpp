@@ -144,5 +144,6 @@ int main() {
                              : "PASSED — Mac OS formatted and mounted an IDE disk\n");
     }
     std::remove(idePath.c_str());
+    std::remove((idePath + ".pomundo").c_str());   // DiskTimeline's write-back journal
     return failures ? 1 : 0;
 }
