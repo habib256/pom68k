@@ -11,6 +11,8 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <iterator>
+#include <utility>
 
 namespace pom68k::gui {
 
@@ -20,6 +22,7 @@ namespace {
 
 using pom68k::dbg::ByteState;
 using pom68k::dbg::Command;
+using pom68k::dbg::Reg;
 using pom68k::dbg::Snapshot;
 using pom68k::dbg::Space;
 using pom68k::dbg::StopReason;
@@ -89,6 +92,37 @@ void drawRegisters(const Snapshot& s) {
                     r.dtt1, s.mmuEnabled ? "MMU active" : "MMU inactive");
 }
 
+// Indexed by pom68k::dbg::Reg.
+constexpr const char* kRegisterNames[] = {
+    "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
+    "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7",
+    "PC", "SR", "USP", "ISP", "MSP", "VBR", "SFC", "DFC"};
+static_assert(std::size(kRegisterNames) == std::size_t(Reg::Count));
+
+void drawRegisterEdit(GuiDebuggerState& state) {
+    ImGui::SetNextItemWidth(70);
+    ImGui::Combo("##editreg", &state.editRegister, kRegisterNames,
+                 int(std::size(kRegisterNames)));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110);
+    const bool enter = ImGui::InputText("##editvalue", state.editValue.data(),
+                                        state.editValue.size(),
+                                        ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    if (ImGui::Button("Appliquer") || enter) {
+        if (auto v = parseGuestAddress(state.editValue.data())) {
+            Command c;
+            c.kind = Command::Kind::SetRegister;
+            c.reg = Reg(state.editRegister);
+            c.value = *v;
+            state.session->post(c);
+            state.inputError.clear();
+        } else {
+            state.inputError = "Valeur hexadécimale attendue";
+        }
+    }
+}
+
 void drawDisassembly(GuiDebuggerState& state, const Snapshot& s) {
     ImGui::TextDisabled("Cliquer une ligne pose ou retire un point d'arrêt");
     for (const auto& line : s.disasm) {
@@ -156,6 +190,33 @@ void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
             state.inputError = "Adresse hexadécimale attendue";
         }
     }
+    if (s.stopped) {
+        ImGui::SetNextItemWidth(110);
+        ImGui::InputText("##pokeaddr", state.pokeAddress.data(),
+                         state.pokeAddress.size());
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(180);
+        ImGui::InputText("##pokebytes", state.pokeBytes.data(),
+                         state.pokeBytes.size());
+        ImGui::SameLine();
+        if (ImGui::Button("Écrire")) {
+            const auto a = parseGuestAddress(state.pokeAddress.data());
+            auto bytes = parseHexBytes(state.pokeBytes.data());
+            if (a && bytes) {
+                Command c;
+                c.kind = Command::Kind::WriteMemory;
+                c.addr = *a;
+                c.space = state.memorySpace ? Space::Physical : Space::Logical;
+                c.data = std::move(*bytes);
+                state.session->post(c);
+                state.inputError.clear();
+            } else {
+                state.inputError = "Adresse et octets hexadécimaux attendus";
+            }
+        }
+        ImGui::TextDisabled("Écriture en RAM seulement ; le code traduit est "
+                            "abandonné");
+    }
     ImGui::TextDisabled("-- : registre ou zone non mémoire (jamais lu)");
     ImGui::TextDisabled(".. : adresse logique non traduite");
     const auto& m = s.memory;
@@ -188,6 +249,29 @@ std::optional<std::uint32_t> parseGuestAddress(const char* text) {
     return static_cast<std::uint32_t>(v);
 }
 
+std::optional<std::vector<std::uint8_t>> parseHexBytes(const char* text) {
+    if (!text) return std::nullopt;
+    std::vector<std::uint8_t> out;
+    int nibbles = 0, acc = 0;
+    for (const char* p = text;; ++p) {
+        const unsigned char ch = static_cast<unsigned char>(*p);
+        if (std::isxdigit(ch)) {
+            acc = acc << 4 | (std::isdigit(ch) ? ch - '0' : std::tolower(ch) - 'a' + 10);
+            if (++nibbles == 2) {
+                out.push_back(static_cast<std::uint8_t>(acc));
+                nibbles = acc = 0;
+            }
+            continue;
+        }
+        // A separator ends a byte; half a byte is malformed.
+        if (nibbles) return std::nullopt;
+        if (!ch) break;
+        if (!std::isspace(ch) && ch != '$' && ch != ',') return std::nullopt;
+    }
+    if (out.empty() || out.size() > pom68k::dbg::kMaxEditBytes) return std::nullopt;
+    return out;
+}
+
 void drawDebuggerWindow(GuiDebuggerState& state) {
     if (!state.bound() || !state.showWindow) return;
     ImGui::SetNextWindowSize(ImVec2(520, 640), ImGuiCond_FirstUseEver);
@@ -208,8 +292,10 @@ void drawDebuggerWindow(GuiDebuggerState& state) {
     if (!s.message.empty()) ImGui::TextWrapped("%s", s.message.c_str());
     if (!state.inputError.empty())
         ImGui::TextWrapped("%s", state.inputError.c_str());
-    if (ImGui::CollapsingHeader("Registres", ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::CollapsingHeader("Registres", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawRegisters(s);
+        if (s.stopped) drawRegisterEdit(state);
+    }
     if (ImGui::CollapsingHeader("Points d'arrêt", ImGuiTreeNodeFlags_DefaultOpen))
         drawBreakpoints(state, s);
     if (ImGui::CollapsingHeader("Désassemblage", ImGuiTreeNodeFlags_DefaultOpen)) {

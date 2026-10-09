@@ -67,10 +67,10 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   profil produit, lui, est corrigé (`CHANGELOG` 2026-10-02 (eighth)).
 - [ ] **Étendre le débogueur au-delà du service de base.** Pause, pas à
   pas, points d'arrêt sur PC et inspection sans lecture de périphérique
-  existent (`debug_session_test`, `debug_inspection_test`, `CHANGELOG`
-  2026-10-09 (fourth)). Restent, chacun avec sa sémantique d'arrêt et son
-  gate : édition registres/RAM à l'arrêt (invalidation JIT), arrêts sur
-  accès, A-line, F-line et exceptions, step over/out, historiques bornés,
+  existent, ainsi que l'édition registres/RAM à l'arrêt
+  (`debug_session_test`, `debug_inspection_test`, `CHANGELOG` 2026-10-09
+  (fourth) et (fifth)). Restent, chacun avec sa sémantique d'arrêt et son
+  gate : édition des registres MMU/cache, arrêts sur accès, A-line, F-line et exceptions, step over/out, historiques bornés,
   symboles liés à l'identité ROM, instantanés typés des périphériques
   (`docs/SNOW_IMPLEMENTATION_PLAN.md` ordre 3).
 ---

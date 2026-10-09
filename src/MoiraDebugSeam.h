@@ -60,6 +60,31 @@ public:
         return n;
     }
 
+    // ── Debugger edits, at an instruction boundary (DebugCpuTarget.h) ──
+    // A new PC with the two words a boundary holds in the prefetch queue:
+    // IRD = the opcode at `pc`, IRC = the word after it. The caller reads
+    // them side-effect-free; Debugger::jump() would refill through the
+    // live bus instead (timed, IPL-polling, device reads). The 68030's
+    // carried pipe belongs to the old instruction stream and is dropped,
+    // as a jump drops it; the fetch window is disarmed so the next fetch
+    // revalidates.
+    void debugSetPc(moira::u32 pc, moira::u16 ird, moira::u16 irc) {
+        reg.pc = reg.pc0 = pc;
+        queue.ird = ird;
+        queue.irc = irc;
+        mmuPipeCnt = 0;
+        pomJitDisarm();
+    }
+    // An SR edit is not an SR-writing instruction: keep the 68040 one-shot
+    // trace and the post-RTE IRQ delay that setSR() arms for those.
+    void debugSetSr(moira::u16 sr) {
+        const bool trace = trace040Pending;
+        const int delay = irqDelay;
+        setSR(sr);
+        trace040Pending = trace;
+        irqDelay = delay;
+    }
+
 protected:
     void didReachSoftstop(moira::u32 addr) override {
         if (debugHook_) debugHook_->cpuStopped(true, addr);

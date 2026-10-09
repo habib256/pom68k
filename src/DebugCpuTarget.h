@@ -17,8 +17,17 @@
 //   - 68040/LC040: DTT0/DTT1, then the tables (Mmu040Peek.h).
 // Descriptors themselves are fetched by the same span rule.
 //
+// Edits follow the same rule in the other direction: a byte is written only
+// through `dataSpan(phys, len, true)` — RAM or framebuffer — and only if
+// every byte of the edit qualifies. The written bytes are a physical poke
+// after a read translation: page write protection does not refuse them,
+// as it would not refuse a debugger's DMA. Any write drops every
+// translated block (JitEngine::flushAll); the i-cache timing overlay holds
+// tags only, so no stale instruction can survive it.
+//
 // Known limit: with the optional architectural 68040 data cache
-// (POM68K_040_DCACHE=1) a dirty line is newer than RAM; the view shows RAM.
+// (POM68K_040_DCACHE=1) a dirty line is newer than RAM; the view shows RAM,
+// and writes are refused because the line would later overwrite them.
 //
 // Gate: tests/debug_inspection_test.cpp.
 
@@ -29,6 +38,8 @@
 #include "MoiraDebugSeam.h"
 
 #include <cstdio>
+#include <string>
+#include <vector>
 
 namespace pom68k::dbg {
 
@@ -102,6 +113,69 @@ public:
             line.text = text;
         }
         return line;
+    }
+
+    bool setRegister(Reg reg, std::uint32_t v, std::string& why) override {
+        const bool has010 = model() != moira::Model::M68000;
+        const bool has020 = has010 && model() != moira::Model::M68010;
+        const int r = int(reg);
+        if (r < 8) { cpu_.setD(r, v); return true; }
+        if (r < 16) { cpu_.setA(r - 8, v); return true; }
+        switch (reg) {
+        case Reg::PC: {
+            if (v & 1) { why = "PC impair refusé"; return false; }
+            std::uint8_t b[4];
+            ByteState st[4];
+            readMemory(Space::Logical, v, b, st, 4);
+            for (ByteState x : st)
+                if (x != ByteState::Ok) {
+                    why = "PC refusé : aucune mémoire lisible à cette adresse";
+                    return false;
+                }
+            cpu_.debugSetPc(v, moira::u16(b[0] << 8 | b[1]),
+                            moira::u16(b[2] << 8 | b[3]));
+            return true;
+        }
+        case Reg::SR:  cpu_.debugSetSr(moira::u16(v)); return true;
+        case Reg::USP: cpu_.setUSP(v); return true;
+        case Reg::ISP: cpu_.setISP(v); return true;
+        case Reg::MSP: if (!has020) break; cpu_.setMSP(v); return true;
+        case Reg::VBR: if (!has010) break; cpu_.setVBR(v); return true;
+        case Reg::SFC: if (!has010) break; cpu_.setSFC(v); return true;
+        case Reg::DFC: if (!has010) break; cpu_.setDFC(v); return true;
+        default: break;
+        }
+        why = std::string("Registre absent du ") + modelName();
+        return false;
+    }
+
+    bool writeMemory(Space space, std::uint32_t addr, const std::uint8_t* data,
+                     std::size_t n, std::string& why) override {
+        if (cpu_.pomCache040Armed()) {
+            why = "Écriture refusée : cache de données 68040 actif";
+            return false;
+        }
+        std::vector<std::uint8_t*> dst(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            const std::uint32_t a = addr + std::uint32_t(i);
+            std::uint32_t phys = a;
+            char at[48];
+            if (space == Space::Logical && !translate(a, phys)) {
+                std::snprintf(at, sizeof at, "$%08X non traduite", a);
+                why = std::string("Écriture refusée : ") + at;
+                return false;
+            }
+            std::uint32_t len = 0;
+            dst[i] = mem_.dataSpan(physMask(phys), len, true);
+            if (!dst[i] || !len) {
+                std::snprintf(at, sizeof at, "$%08X n'est pas de la RAM", a);
+                why = std::string("Écriture refusée : ") + at;
+                return false;
+            }
+        }
+        for (std::size_t i = 0; i < n; ++i) *dst[i] = data[i];
+        if (n) cpu_.jit().flushAll();
+        return true;
     }
 
     bool addBreakpoint(std::uint32_t pc) override {

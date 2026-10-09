@@ -15,7 +15,12 @@
 // while paused; a reset while paused republishes; the effective engine is
 // the interpreter while stops are armed and the user's engine afterwards;
 // the debugger's request bits never enter a save state; teardown releases a
-// breakpoint's hold.
+// breakpoint's hold. Edits while paused: a register, a PC that reloads the
+// prefetch queue (the next step executes the NEW instruction), an SR that
+// swaps the active stack, registers the model lacks, odd/I-O PCs and
+// device writes refused, edits refused while running, and a code write
+// that the accelerated engine must not outlive (translated blocks are
+// dropped: the edited loop's invariant holds across JIT-run quanta).
 
 #include "Cpu020.h"
 #include "Cpu030.h"
@@ -48,6 +53,7 @@ namespace {
 
 using pom68k::dbg::ByteState;
 using pom68k::dbg::Command;
+using pom68k::dbg::Reg;
 using pom68k::dbg::Snapshot;
 using pom68k::dbg::Space;
 using pom68k::dbg::StopReason;
@@ -127,8 +133,35 @@ uint64_t post(pom68k::dbg::Session& s, Command::Kind k, uint32_t addr = 0) {
     return s.post(c);
 }
 
+uint64_t setReg(pom68k::dbg::Session& s, Reg r, uint32_t v) {
+    Command c;
+    c.kind = Command::Kind::SetRegister;
+    c.reg = r;
+    c.value = v;
+    return s.post(c);
+}
+
+uint64_t poke(pom68k::dbg::Session& s, uint32_t addr, std::vector<uint8_t> data) {
+    Command c;
+    c.kind = Command::Kind::WriteMemory;
+    c.addr = addr;
+    c.space = Space::Logical;
+    c.data = std::move(data);
+    return s.post(c);
+}
+
+SnapPtr ackedBy(pom68k::dbg::Session& s, uint64_t id) {
+    return waitFor(s, [&](const Snapshot& x) { return x.acked >= id; });
+}
+
+// With the loop's second ADDQ edited to #2, D1 - 2*D0 is the same at every
+// boundary of the loop except just before that ADDQ, where it is 2 lower.
+uint32_t loopInvariant(const Snapshot& x) {
+    return x.regs.d[1] - 2 * x.regs.d[0] + (x.regs.pc == kBp ? 2 : 0);
+}
+
 template <class Mem, class Cpu>
-void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine,
+void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
               const std::function<void()>& overlayOff) {
     overlayOff();
     check(!mem.overlay(), fam, "the boot overlay is down");
@@ -242,6 +275,104 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine,
         check(same, fam, "memory is inspectable while paused");
     }
 
+    // ── Edits while paused ─────────────────────────────────────────────
+    if (s && s->stopped) {
+        id = setReg(dbg, Reg::D0, 0x12345678);
+        s = ackedBy(dbg, id);
+        check(s && s->regs.d[0] == 0x12345678 && s->message.empty(), fam,
+              "a data register edit is published");
+        id = setReg(dbg, Reg::PC, kCode);
+        s = ackedBy(dbg, id);
+        check(s && s->regs.pc == kCode && !s->disasm.empty() &&
+                  s->disasm[0].text.find("moveq") != std::string::npos,
+              fam, "a PC edit moves the PC and the disassembly");
+        id = post(dbg, Command::Kind::Step);
+        s = waitFor(dbg, [&](const Snapshot& x) {
+            return x.acked >= id && x.stopped && x.reason == StopReason::Step;
+        });
+        check(s && s->regs.pc == kLoop && s->regs.d[0] == 0, fam,
+              "the step after a PC edit executes the new instruction (MOVEQ)");
+        const uint32_t pc = s ? s->regs.pc : 0;
+        for (uint32_t bad : {kCode + 1, ioAddr}) {
+            id = setReg(dbg, Reg::PC, bad);
+            s = ackedBy(dbg, id);
+            check(s && s->regs.pc == pc && !s->message.empty(), fam,
+                  bad & 1 ? "an odd PC is refused" : "a PC on a device register is refused");
+        }
+        const uint32_t isp = s ? s->regs.a[7] : 0;
+        setReg(dbg, Reg::USP, 0x3000);
+        id = setReg(dbg, Reg::SR, 0x0700);
+        s = ackedBy(dbg, id);
+        check(s && !s->supervisor && s->regs.a[7] == 0x3000 && s->regs.sr == 0x0700,
+              fam, "an SR edit to user mode makes USP the active A7");
+        id = setReg(dbg, Reg::SR, 0x2700);
+        s = ackedBy(dbg, id);
+        check(s && s->supervisor && s->regs.a[7] == isp && s->regs.usp == 0x3000,
+              fam, "and back to supervisor restores the interrupt stack");
+        const bool has020 = std::string(fam).rfind("68000", 0) != 0;
+        id = setReg(dbg, Reg::MSP, 0x4000);
+        s = ackedBy(dbg, id);
+        check(s && (has020 ? s->regs.msp == 0x4000 && s->message.empty()
+                           : !s->message.empty()),
+              fam, has020 ? "MSP is editable from the 68020"
+                          : "the 68000 refuses an MSP edit");
+        id = poke(dbg, ioAddr, {0x00});
+        s = ackedBy(dbg, id);
+        check(s && !s->message.empty(), fam, "a write to a device register is refused");
+
+        // A code edit the accelerated engine has already translated.
+        id = poke(dbg, kBp, {0x54, 0x81});            // ADDQ.L #2,D1
+        s = ackedBy(dbg, id);
+        check(s && s->message.empty() && s->disasm.size() > 1 &&
+                  s->disasm[1].text.find("#$2, D1") != std::string::npos,
+              fam, "a RAM write while paused is visible to the disassembly");
+        auto runThenPause = [&] {
+            uint64_t c = post(dbg, Command::Kind::Continue);
+            waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c && !x.stopped; });
+            const long q = host.quanta.load();
+            waitFor(dbg, [&](const Snapshot&) { return host.quanta.load() > q + 3; });
+            c = post(dbg, Command::Kind::Pause);
+            return waitFor(dbg, [&](const Snapshot& x) {
+                return x.acked >= c && x.stopped && x.reason == StopReason::Pause;
+            });
+        };
+        const uint64_t before = engineInstrs();
+        SnapPtr p1 = runThenPause();
+        SnapPtr p2 = runThenPause();
+        check(p1 && p2 && p2->regs.d[0] != p1->regs.d[0] &&
+                  loopInvariant(*p1) == loopInvariant(*p2),
+              fam, "the edited loop runs as edited (D1 grows twice as fast)");
+        check((engineInstrs() > before) == (engine == 1), fam,
+              engine ? "the accelerated engine ran the edited code"
+                     : "the interpreter ran the edited code");
+
+        // Refused while running; the paused view still shows the edit.
+        uint64_t c = post(dbg, Command::Kind::Continue);
+        waitFor(dbg, [&](const Snapshot& x) { return x.acked >= c && !x.stopped; });
+        id = poke(dbg, kBp, {0x52, 0x81});
+        s = ackedBy(dbg, id);
+        check(s && !s->stopped && !s->message.empty(), fam,
+              "an edit posted while running is refused");
+        id = setReg(dbg, Reg::D0, 0);
+        s = ackedBy(dbg, id);
+        check(s && !s->message.empty(), fam, "a register edit while running too");
+        c = post(dbg, Command::Kind::Pause);
+        s = waitFor(dbg, [&](const Snapshot& x) {
+            return x.acked >= c && x.stopped && x.reason == StopReason::Pause;
+        });
+        Command view;
+        view.kind = Command::Kind::ViewMemory;
+        view.addr = kBp;
+        view.length = 2;
+        id = dbg.post(view);
+        s = ackedBy(dbg, id);
+        check(s && s->memory.bytes.size() == 2 && s->memory.bytes[0] == 0x54, fam,
+              "the refused write changed nothing");
+        id = poke(dbg, kBp, {0x52, 0x81});            // restore the program
+        s = ackedBy(dbg, id);
+        check(s && s->message.empty(), fam, "the program is restored while paused");
+    }
+
     // ── Teardown releases a hold inside a quantum ──────────────────────
     post(dbg, Command::Kind::AddBreakpoint, kBp);
     id = post(dbg, Command::Kind::Continue);
@@ -326,7 +457,7 @@ int main() {
         static Cpu68k cpu(mem, jit::defaultResolvedConfig());
         mem.setCpu(&cpu);
         cpu.hardReset();
-        scenario("68000", mem, cpu, 0, [&] {
+        scenario("68000", mem, cpu, 0, 0xEFE1FE, [&] {
             mem.write8(0xEFE7FE, 0xFF);        // VIA DDRA: PA out
             mem.write8(0xEFE3FE, 0x00);        // VIA ORA: PA4 low, overlay off
         });
@@ -335,7 +466,7 @@ int main() {
         static MacIIMemory mem(cfg);
         static Cpu020 cpu(mem, jit::defaultResolvedConfig(), cfg.cpu);
         mem.setCpu(&cpu);
-        scenario("68020", mem, cpu, 0, [&] {
+        scenario("68020", mem, cpu, 0, 0x50000000, [&] {
             mem.write8(0x50000200, 0x00);      // VIA1 ORA: PA4 low, overlay off
         });
     }
@@ -347,7 +478,7 @@ int main() {
                                             cfg.cpu);
         mem->setCpu(cpu.get());
         V8Memory& m = *mem;
-        scenario(fam, m, *cpu, engine, [&] { (void)m.read8(0xA00000); });
+        scenario(fam, m, *cpu, engine, 0x50F00000, [&] { (void)m.read8(0xA00000); });
     };
     lcii("68030", 0);
     lcii("68030 accelerated", 1);
@@ -357,7 +488,8 @@ int main() {
                                             cfg.cpu, cfg.diagnostics);
         mem->setCpu(cpu.get());
         Q605Memory& m = *mem;
-        if (fam) scenario(fam, m, *cpu, engine, [&] { (void)m.read8(0x40000000); });
+        if (fam) scenario(fam, m, *cpu, engine, 0x50F00000,
+                          [&] { (void)m.read8(0x40000000); });
         else saveStateIsolation(m, *cpu);
     };
     q605("68040", 0);

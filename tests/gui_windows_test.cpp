@@ -104,6 +104,17 @@ struct FakeDebugTarget final : pom68k::dbg::Target {
     std::vector<std::uint32_t> breakpoints() const override { return bps; }
     void armStep() override { ++steps; }
     bool stopsArmed() const override { return !bps.empty(); }
+    bool setRegister(pom68k::dbg::Reg r, std::uint32_t v, std::string&) override {
+        edits.push_back({int(r), v});
+        return true;
+    }
+    bool writeMemory(pom68k::dbg::Space, std::uint32_t addr, const std::uint8_t* d,
+                     std::size_t n, std::string&) override {
+        pokes.push_back({addr, std::vector<std::uint8_t>(d, d + n)});
+        return true;
+    }
+    std::vector<std::pair<int, std::uint32_t>> edits;
+    std::vector<std::pair<std::uint32_t, std::vector<std::uint8_t>>> pokes;
 };
 
 void capture(headless::Context& ui, const char* name) {
@@ -208,6 +219,15 @@ int main() {
         ui.frame(draw);
         check(ui.find("Continuer") != nullptr && ui.find("Pas à pas") != nullptr,
               "a stopped machine offers Continuer and Pas à pas");
+        // A register edit: the window posts it, the machine thread applies it.
+        state.editRegister = int(pom68k::dbg::Reg::A0) + 3;
+        std::snprintf(state.editValue.data(), state.editValue.size(), "$CAFE");
+        check(ui.click("Appliquer", draw), "click « Appliquer »");
+        check(target.edits.empty(), "the click alone edits nothing");
+        session.atBoundary(target);
+        check(target.edits.size() == 1 && target.edits[0].first == 11 &&
+                  target.edits[0].second == 0xCAFE,
+              "« Appliquer » posts A3 = $CAFE to the machine thread");
         // Plain Text lines register no item; the sections and the
         // disassembly's selectable rows do.
         check(ui.find("Registres") != nullptr && ui.find("Points d'arrêt") != nullptr,
@@ -251,6 +271,20 @@ int main() {
               "an empty address is refused in the window");
         session.atBoundary(target);
         check(session.snapshot()->acked == acked, "and posts nothing");
+        check(ui.find("Écrire") == nullptr, "a running machine offers no memory write");
+        session.post([] { pom68k::dbg::Command c; c.kind = pom68k::dbg::Command::Kind::Pause; return c; }());
+        session.atBoundary(target);
+        ui.frame(draw);
+        std::snprintf(state.pokeAddress.data(), state.pokeAddress.size(), "$100");
+        std::snprintf(state.pokeBytes.data(), state.pokeBytes.size(), "54 81");
+        check(ui.click("Écrire", draw), "click « Écrire » on a stopped machine");
+        session.atBoundary(target);
+        check(target.pokes.size() == 1 && target.pokes[0].first == 0x100 &&
+                  target.pokes[0].second == std::vector<std::uint8_t>{0x54, 0x81},
+              "« Écrire » posts the parsed bytes at the parsed address");
+        std::snprintf(state.pokeBytes.data(), state.pokeBytes.size(), "548");
+        check(ui.click("Écrire", draw) && !state.inputError.empty(),
+              "half a byte is refused in the window");
         capture(ui, "debugger-memory");
         // Close it like a user would, so no focus or input state leaks
         // into the next window's scenario.
@@ -262,6 +296,12 @@ int main() {
               !pom68k::gui::parseGuestAddress("zz") &&
               !pom68k::gui::parseGuestAddress("1FFFFFFFF"),
               "addresses parse as 32-bit hexadecimal");
+        check(pom68k::gui::parseHexBytes("54 81") == std::vector<std::uint8_t>{0x54, 0x81} &&
+              pom68k::gui::parseHexBytes("$54,$81") == std::vector<std::uint8_t>{0x54, 0x81} &&
+              pom68k::gui::parseHexBytes("5481") == std::vector<std::uint8_t>{0x54, 0x81} &&
+              !pom68k::gui::parseHexBytes("") && !pom68k::gui::parseHexBytes("5 4") &&
+              !pom68k::gui::parseHexBytes("zz"),
+              "edit bytes parse as whole hexadecimal bytes");
     }
 
     // ── AppleTalk / Ethernet ─────────────────────────────────────────

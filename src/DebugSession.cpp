@@ -58,7 +58,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             }
             break;
         case Command::Kind::Continue:
-            if (stopped_) a.resume = true;
+            if (stopped_) a.resume = resumePending_ = true;
             break;
         case Command::Kind::Step:
             if (!blockingAvailable_)
@@ -66,7 +66,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             else if (!stopped_)
                 message_ = "Pas à pas : arrêter d'abord la machine";
             else
-                a.step = a.resume = true;
+                a.step = a.resume = resumePending_ = true;
             break;
         case Command::Kind::AddBreakpoint:
             if (!blockingAvailable_)
@@ -93,11 +93,16 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             disasmFollowPc_ = c.followPc;
             disasmAddr_ = c.addr;
             break;
+        case Command::Kind::SetRegister:
+        case Command::Kind::WriteMemory:
+            applyEdit(target, c);
+            break;
         }
     }
     // Breakpoint edits recompute Moira's CHECK_BP from the list alone, which
     // would drop a soft stop armed before them: arm the step last.
     if (a.step) target.armStep();
+    resumePending_ = false;
     if (a.resume) {
         stopped_ = false;
         inQuantum_ = false;
@@ -105,6 +110,23 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
         resumeRequest_.store(true, std::memory_order_release);
     }
     return a;
+}
+
+// Edits are defined only at a stop: a running machine has no instruction
+// boundary the GUI could have meant. A stop that a Continue in the same
+// batch released no longer counts (`resume` is applied after the loop, so
+// test the edit against the order the commands were posted in).
+void Session::applyEdit(Target& target, const Command& c) {
+    std::string why;
+    if (!stopped_ || resumePending_) {
+        message_ = "Modification refusée : arrêter d'abord la machine";
+        return;
+    }
+    const bool ok = c.kind == Command::Kind::SetRegister
+        ? (c.reg < Reg::Count && target.setRegister(c.reg, c.value, why))
+        : (c.data.size() <= kMaxEditBytes &&
+           target.writeMemory(c.space, c.addr, c.data.data(), c.data.size(), why));
+    if (!ok) message_ = why.empty() ? "Modification refusée" : why;
 }
 
 bool Session::atBoundary(Target& target) {

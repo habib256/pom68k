@@ -23,6 +23,11 @@
 // id. "Paused" means `stopped` in a snapshot whose `acked` covers the
 // Pause — the CPU is then at an instruction boundary, not merely flagged.
 //
+// Edits (SetRegister, WriteMemory) are applied only while stopped, at
+// either place, and refused with a message otherwise or when a Continue or
+// Step earlier in the same batch has already released the stop. Their
+// semantics belong to the Target (DebugTypes.h).
+//
 // What waits while a stop holds the machine inside a quantum: reset, state
 // save/load, engine swaps and input (MachineHost applies them between
 // quanta). The snapshot's `inQuantum` says so to the user.
@@ -69,6 +74,7 @@ public:
 private:
     struct Applied { bool changed = false, resume = false, step = false; };
     Applied apply(Target& target, std::deque<Command>& batch, bool inQuantum);
+    void applyEdit(Target& target, const Command& c);
     void publish(Target& target);
 
     mutable std::mutex mu_;
@@ -83,6 +89,7 @@ private:
 
     // Machine-thread state.
     bool stopped_ = false;
+    bool resumePending_ = false;             // a Continue/Step earlier in this batch
     bool inQuantum_ = false;
     StopReason reason_ = StopReason::None;
     std::uint64_t acked_ = 0;

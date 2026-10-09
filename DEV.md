@@ -2785,8 +2785,21 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
 - **Debugger state is not guest state.** `MoiraSnapshot` neither writes
   `CHECK_BP/WP/CP` and `LOGGING` into a save state nor overwrites the live
   ones on load. Breakpoints survive a reset (`Debugger::reset`) and a load.
+- **Edits only at a stop, never through the bus.** `SetRegister` and
+  `WriteMemory` are refused while running, and when a Continue/Step earlier
+  in the same batch has released the stop. A PC edit reloads IRD/IRC from
+  the side-effect-free logical read (odd or unreadable PCs are refused),
+  drops the 68030's carried pipe and disarms the fetch window
+  (`MoiraDebugSeam::debugSetPc`); `Debugger::jump` is not used because it
+  refills through the live, timed bus. An SR edit swaps the active stack
+  like the CPU does but arms neither the 68040 one-shot trace nor the
+  post-RTE IRQ delay (`debugSetSr`). Registers a model lacks are refused;
+  MMU and cache control registers are not editable. Memory edits are all
+  or nothing through `dataSpan(phys, len, true)` — RAM and framebuffer
+  only, ROM and devices refused — and drop every translated block
+  (`JitEngine::flushAll`). With `POM68K_040_DCACHE=1` writes are refused.
 
-Known limits of this first service: register/memory editing, access
+Known limits of this service: access
 watchpoints, exception/trap stops, step over/out, histories, symbols and
 device snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
 view shows RAM, not a newer dirty cache line; breakpoints belong to the
@@ -2794,7 +2807,8 @@ CPU object, so a relaunch starts with none.
 
 Gated by `debug_session_test` (asset-free; a real machine thread per
 family — 68000, 68020, 68030 and 68040 rigs, the 030/040 also with the
-accelerated engine requested) and `debug_inspection_test` (030 and 040
+accelerated engine requested; edits, including a code write the
+accelerated engine had already translated) and `debug_inspection_test` (030 and 040
 table walks, untouched descriptors, I/O never read: whole-machine save
 bytes identical before and after inspection), plus the window in
 `gui_windows_test`.

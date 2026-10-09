@@ -34,11 +34,22 @@ enum class ByteState : std::uint8_t {
 
 enum class StopReason : std::uint8_t { None, Pause, Step, Breakpoint };
 
+// The registers an edit can name. D0-D7/A0-A7 in order, so `Reg(D0 + n)`
+// works. A7 is the ACTIVE stack pointer, as the CPU sees it; USP/ISP/MSP
+// name a bank whichever one is active. ISP is the 68000's SSP. VBR, SFC
+// and DFC exist from the 68010, MSP from the 68020. The MMU and cache control
+// registers are deliberately absent: an edit there moves the address map
+// or the cache, which needs its own definition, not a register poke.
+enum class Reg : std::uint8_t {
+    D0 = 0, A0 = 8, PC = 16, SR, USP, ISP, MSP, VBR, SFC, DFC, Count
+};
+
 // Bounds on what one snapshot can carry. A request beyond them is clamped
 // and the snapshot says so.
 inline constexpr std::uint32_t kMaxMemoryBytes = 4096;
 inline constexpr int kMaxDisasmLines = 64;
 inline constexpr std::size_t kMaxBreakpoints = 256;
+inline constexpr std::size_t kMaxEditBytes = 256;
 
 struct Registers {
     std::array<std::uint32_t, 8> d{}, a{};
@@ -73,6 +84,9 @@ struct Command {
         AddBreakpoint, RemoveBreakpoint, ClearBreakpoints,
         ViewMemory,                  // addr, length, space
         ViewDisasm,                  // addr; followPc = true follows the PC
+        // Edits: only while stopped (refused otherwise, with a message).
+        SetRegister,                 // reg, value
+        WriteMemory,                 // addr, space, data — all bytes or none
     };
     Kind kind = Kind::Pause;
     std::uint64_t id = 0;            // assigned by Session::post
@@ -80,6 +94,9 @@ struct Command {
     std::uint32_t length = 0;
     Space space = Space::Logical;
     bool followPc = false;
+    Reg reg = Reg::D0;
+    std::uint32_t value = 0;
+    std::vector<std::uint8_t> data;  // WriteMemory, at most kMaxEditBytes
 };
 
 struct Snapshot {
@@ -127,6 +144,20 @@ public:
     virtual void removeBreakpoint(std::uint32_t pc) = 0;
     virtual void clearBreakpoints() = 0;
     virtual std::vector<std::uint32_t> breakpoints() const = 0;
+    // Edits, at an instruction boundary while stopped. False + `why` (in the
+    // GUI's language) refuses the whole edit and changes nothing.
+    //   setRegister: a PC edit reloads the prefetch queue from the new
+    //     address through the same side-effect-free logical read as the
+    //     memory view; an address that read refuses is refused. An SR edit
+    //     swaps the active stack like the CPU would, but is not an
+    //     instruction: it arms no trace and no IRQ-recognition delay.
+    //   writeMemory: every byte must be plain RAM or framebuffer (the
+    //     map's writable data span); ROM and device registers are refused,
+    //     never written through the bus. Translated code is invalidated.
+    virtual bool setRegister(Reg reg, std::uint32_t value, std::string& why) = 0;
+    virtual bool writeMemory(Space space, std::uint32_t addr,
+                             const std::uint8_t* data, std::size_t n,
+                             std::string& why) = 0;
     // Stop after the next instruction retires (Moira's soft stop).
     virtual void armStep() = 0;
     virtual bool stopsArmed() const = 0;

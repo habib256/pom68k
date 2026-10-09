@@ -157,7 +157,7 @@ Other items in this document are proposals, not adopted features.
 | 0 | ATA transfer and media restoration — implemented | Regressions pass | M | Exact continuation and rewind, including a fresh process |
 | 1 | SCSI and ATA backing-image policy — implemented | Content digest, since-open log, `.pomundo` reverse journal | Done | A state cannot silently combine old RAM with later disk data (`media_timeline_test`) |
 | 2 | Debugger service and basic views — implemented | `debug_session_test` on 000/020/030/040 rigs, `debug_inspection_test`, GUI window | Done | Pause, inspect, step and PC stop on representative CPU families |
-| 3 | Extended debugger and device inspection | Basic service landed; editing, access/exception stops, step over/out, histories, symbols and device snapshots absent | L | Defined stop semantics, bounded history, no inspection side effects |
+| 3 | Extended debugger and device inspection | Basic service and register/RAM editing landed; MMU/cache register edits, access/exception stops, step over/out, histories, symbols and device snapshots absent | L | Defined stop semantics, bounded history, no inspection side effects |
 | 4 | Session files | Startup/relaunch data present, combined file absent | M | Reopen the same configured machine with validated paths |
 | 5 | CD track/source mapping | Single-source parser versus per-source Snow mapping | M | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
@@ -605,6 +605,18 @@ the accelerated engine requested); `debug_inspection_test` proves the
 table walks, untouched descriptors and byte-identical machine state after
 inspecting I/O. Editing, access/exception stops, step over/out, histories,
 symbols and device snapshots are order 3. Emscripten refuses stops.
+
+The eighteenth increment opens order 3 with editing while stopped
+(`SetRegister`, `WriteMemory`). Edits are refused while running. A PC
+edit reloads the prefetch queue from the debugger's side-effect-free
+logical read rather than through `Debugger::jump`'s timed bus refill; an
+SR edit swaps stacks but is not an SR-writing instruction, so it arms no
+trace or IRQ delay; registers a model lacks, odd or unreadable PCs, ROM
+and device writes are refused. A memory edit writes all bytes through the
+writable data span or none, and drops every translated block. The gate
+edits a loop the accelerated 68030/68040 engines had already translated
+and checks its invariant across JIT-run quanta; without the flush both
+fail. MMU/cache register edits remain with the rest of order 3.
 
 A follow-up correction keeps the IWM reader and writer on one head angle.
 The reader re-parks when the drive's revolution length changes (a zone seek or

@@ -256,6 +256,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **bare no-FPU: _FP68K binds the integer PACK 4** → [2026-07-21 — Bare no-FPU solved: _FP68K binds the integer PACK 4 (Cuda XPRAM echo…](#2026-07-21--bare-no-fpu-solved-_fp68k-binds-the-integer-pack-4-cuda-xpram-echo-bug)
 - **…and the UniversalInfo FPU masking that was deleted to get there** → [2026-07-21 — LLE step 5: UniversalInfo FPU masking deleted…](#2026-07-21--lle-step-5-universalinfo-fpu-masking-deleted-bare-no-fpu-fully-mapped)
 - **an interactive debugger: where a stop may happen, why the JIT steps aside, and why inspection cannot touch a device** → [2026-10-09 (fourth) — A debugger at the machine boundary…](#2026-10-09-debugger-service)
+- **editing registers or memory from the debugger: why a PC edit does not use `Debugger::jump`, and what keeps the JIT from running the old code** → [2026-10-09 (fifth) — The debugger edits a stopped machine…](#2026-10-09-debugger-edits)
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
@@ -482,6 +483,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (fifth)** — [The debugger edits a stopped machine: the PC reloads its prefetch without a bus cycle, and a code write outlives no translated block](#2026-10-09-debugger-edits)
 - **2026-10-09 (fourth)** — [A debugger at the machine boundary: a breakpoint holds its quantum, Pause is a quantum boundary, inspection never reads a device](#2026-10-09-debugger-service)
 - **2026-10-09 (third)** — [A save state is RAM *and* disk content: SCSI/ATA restores rewind the write-back file or refuse by name](#2026-10-09-disk-timeline)
 - **2026-10-09 (later)** — [The 128K wrote sector 6 into sector 1's slot: the IWM reader now re-parks when the revolution changes](#2026-10-09-iwm-repark)
@@ -1098,6 +1100,51 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-debugger-edits"></a>
+## 2026-10-09 (fifth) — The debugger edits a stopped machine: the PC reloads its prefetch without a bus cycle, and a code write outlives no translated block
+
+First piece of order 3 of `docs/SNOW_IMPLEMENTATION_PLAN.md`. Two typed
+commands, `SetRegister` and `WriteMemory`, applied by the machine thread
+only while stopped (at a Pause boundary or a breakpoint held inside its
+quantum). Posted while running, or after a Continue/Step in the same batch
+has released the stop, they are refused with a message and change nothing.
+
+**A PC edit is not `Debugger::jump`.** Moira's own jump refills the
+prefetch queue through `fullPrefetch<C68000, POLL>` — real, timed bus reads
+that poll the IPL and can touch a device, under the 68000 core whatever
+the model. At an instruction boundary the queue holds IRD = the opcode at
+PC and IRC = the next word, so the adapter reads those two words through
+the same side-effect-free logical read as the memory view and installs
+them with the new PC (`MoiraDebugSeam::debugSetPc`), dropping the 68030's
+carried prefetch pipe and the fetch window. An odd PC, or one the view
+cannot read (a device register), is refused. The gate sets the PC back to
+the loop's `MOVEQ #0,D0` and steps once: D0 is 0, which a stale IRD
+(the `ADDQ` it was paused on) could not produce.
+
+**An SR edit is not an SR-writing instruction.** `setSR` swaps the active
+stack, which an edit must do, but also arms the 68040's one-shot trace
+(old Tx set) and the one-instruction IRQ-recognition delay of a
+mask-lowering RTE. `debugSetSr` keeps both as they were. Gated by
+entering user mode (A7 becomes the USP just written) and back (A7 is the
+interrupt stack again). Registers the model lacks are refused — the 68000
+has no MSP. MMU and cache control registers are not editable: an edit
+there moves the address map or the cache and needs its own definition.
+
+**A code write drops every translated block.** Memory edits go through the
+map's writable data span, all bytes or none: RAM and framebuffer, never ROM
+or a device register. Those writes bypass the `CodeGuard` the store paths
+feed, so the adapter calls `JitEngine::flushAll()`. The gate edits the
+loop's `ADDQ.L #1,D1` into `#2` after the accelerated 68030 and 68040
+engines have run it for several quanta, then checks that D1 − 2·D0
+(corrected before that instruction) holds across two more JIT-run
+stretches. With the flush removed, exactly those two cases fail; the
+interpreter rigs pass either way. With `POM68K_040_DCACHE=1` writes are
+refused, since a dirty line would later overwrite them.
+
+The window gains a register row (name, hexadecimal value, « Appliquer »)
+and, while stopped, a memory write (address, bytes, « Écrire ») in the
+current logical/physical space; `gui_windows_test` clicks both.
 
 <a id="2026-10-09-debugger-service"></a>
 ## 2026-10-09 (fourth) — A debugger at the machine boundary: a breakpoint holds its quantum, Pause is a quantum boundary, inspection never reads a device
