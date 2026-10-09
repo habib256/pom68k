@@ -10,7 +10,7 @@ CLAUDE.md                                231
 cmake/Pom68kAfpGates.cmake               27
 cmake/Pom68kAgentGates.cmake             74
 cmake/Pom68kAudioGates.cmake             12
-cmake/Pom68kComponentGates.cmake         603
+cmake/Pom68kComponentGates.cmake         617
 cmake/Pom68kDaynaGates.cmake             36
 cmake/Pom68kDevTools.cmake               161
 cmake/Pom68kFloppyGates.cmake            19
@@ -25,7 +25,7 @@ cmake/Pom68kProfileGates.cmake           31
 cmake/Pom68kProtectedFloppyGates.cmake     9
 cmake/Pom68kSerialGates.cmake            8
 cmake/Pom68kStorageGates.cmake           27
-CMakeLists.txt                           619
+CMakeLists.txt                           620
 src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  203
 src/GuiMachineRuntime.cpp                47

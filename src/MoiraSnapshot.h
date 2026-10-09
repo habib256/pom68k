@@ -27,10 +27,10 @@
 //     machine's construction owns those, not the guest.
 
 #pragma once
-#include "Moira.h"
+#include "MoiraDebugSeam.h"
 #include "SaveState.h"
 
-class MoiraSnapshot : public moira::Moira {
+class MoiraSnapshot : public MoiraDebugSeam {
 protected:
     // The architectural state, in a fixed order. Anything added to Moira's
     // protected section that survives an instruction boundary belongs here.
@@ -75,9 +75,20 @@ protected:
         // 0, restored 2. Exactly the readBuffer/writeBuffer case of
         // 2026-08-12, and settled the same way: the engines agree by the
         // snapshot not carrying what only one of them keeps.
+        // The debugger's request bits in `flags` are host state, not guest
+        // state (DebugSession.h): a snapshot neither records them nor
+        // overwrites the live session's — a breakpoint armed at save time
+        // must not arm a later machine, and one armed now survives a load.
+        constexpr int kDebugFlags = moira::State::CHECK_BP |
+            moira::State::CHECK_WP | moira::State::CHECK_CP |
+            moira::State::LOGGING;
+        const int liveDebug = flags & kDebugFlags;
+        int guestFlags = flags & ~kDebugFlags;
         ar(trace040Pending, tracePc040,
            fcl, fcSource, exception, loopModeDelay,
-           readBuffer, writeBuffer, flags);
+           readBuffer, writeBuffer, guestFlags);
+        if constexpr (Ar::loading)
+            flags = (guestFlags & ~kDebugFlags) | liveDebug;
 
         // 68881/68882 state. FpuExtended is a plain {high, low} pair with no
         // visit(), so its halves are listed explicitly.

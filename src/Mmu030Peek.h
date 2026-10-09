@@ -124,4 +124,20 @@ inline bool translate(uint32_t tc, uint64_t crp, uint64_t srp,
     return false;                                    // table deeper than 8
 }
 
+// Transparent translation (MC68030UM § 9.7.3) for a READ at `laddr` with
+// function code `fc`: TT0/TT1 base (31-24), mask (23-16), E (15), R/W (9),
+// RWM (8), FC base (6-4) and FC mask (2-0). A match means the address goes
+// out untranslated. `translate()` above does not look at TT registers; a
+// caller that needs the CPU's full read decision (the debugger's logical
+// memory view) checks this first.
+inline bool transparentRead(uint32_t tt, uint32_t laddr, int fc) {
+    if (!(tt & 0x8000)) return false;
+    const uint32_t base = tt & 0xFF000000u;
+    const uint32_t ignore = (tt << 8) & 0xFF000000u;
+    if (((laddr ^ base) & ~ignore) & 0xFF000000u) return false;
+    const uint32_t fcBase = (tt >> 4) & 7, fcMask = tt & 7;
+    if ((uint32_t(fc) ^ fcBase) & ~fcMask & 7) return false;
+    return (tt & 0x100) || (tt & 0x200);
+}
+
 } // namespace mmu030peek

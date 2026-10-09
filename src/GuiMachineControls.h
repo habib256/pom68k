@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include "GuiDebuggerWindow.h"
 #include "SaveStateSlot.h"
 
 #include <atomic>
@@ -41,6 +42,8 @@ struct GuiMachineControls {
     std::function<void()> drawStatus;
     // The "Tableau de bord" window, listed under Fenêtres.
     bool showWindow = true;
+    // The machine's debugger session and its window (GuiDebuggerWindow.h).
+    GuiDebuggerState debugger;
 
     bool bound() const noexcept { return bool(hardReset); }
 };
@@ -68,6 +71,8 @@ void bindMachineControls(GuiMachineControls& controls, MachineT& machine,
     controls.recordingStop = [&machine] { machine.requestRecordingStop(); };
     controls.recordingMessage = [&machine] { return machine.recordingMessage(); };
     controls.drawStatus = std::forward<DrawStatus>(drawStatus);
+    if constexpr (requires { machine.debug.snapshot(); })
+        controls.debugger.session = &machine.debug;
 }
 
 // The Machine menu's control block: reset, pause, fast-forward, save state

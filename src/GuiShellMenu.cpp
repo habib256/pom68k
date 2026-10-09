@@ -204,6 +204,9 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             peripheralMenuItem(kPeripheralWindowTitle);
             ImGui::MenuItem("Moteur accéléré", nullptr, &state_.cpu.showJit,
                             bool(state_.cpu.setCpuEngine));
+            ImGui::MenuItem(kDebuggerWindowTitle, nullptr,
+                            &state_.machine.debugger.showWindow,
+                            state_.machine.debugger.bound());
             ImGui::Separator();
             if (ImGui::MenuItem("Réinitialiser la disposition"))
                 dockLayoutReset();
@@ -216,6 +219,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
     dockLayoutFrame();
     drawCrtWindow(state_.display);
     drawMachineControlWindow(state_.machine);
+    drawDebuggerWindow(state_.machine.debugger);
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);
     peripheralWindow(state_.peripherals);

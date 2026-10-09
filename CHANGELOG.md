@@ -255,6 +255,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **RTE must honor a cleared SSW.DF (the vector-2 storm)** → [2026-07-15 — O6.9 resolved: GISTPERSO's vector-2 storm…](#2026-07-15--o69-resolved-gistpersos-vector-2-storm--rte-honors-a-cleared-sswdf)
 - **bare no-FPU: _FP68K binds the integer PACK 4** → [2026-07-21 — Bare no-FPU solved: _FP68K binds the integer PACK 4 (Cuda XPRAM echo…](#2026-07-21--bare-no-fpu-solved-_fp68k-binds-the-integer-pack-4-cuda-xpram-echo-bug)
 - **…and the UniversalInfo FPU masking that was deleted to get there** → [2026-07-21 — LLE step 5: UniversalInfo FPU masking deleted…](#2026-07-21--lle-step-5-universalinfo-fpu-masking-deleted-bare-no-fpu-fully-mapped)
+- **an interactive debugger: where a stop may happen, why the JIT steps aside, and why inspection cannot touch a device** → [2026-10-09 (fourth) — A debugger at the machine boundary…](#2026-10-09-debugger-service)
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
@@ -481,6 +482,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (fourth)** — [A debugger at the machine boundary: a breakpoint holds its quantum, Pause is a quantum boundary, inspection never reads a device](#2026-10-09-debugger-service)
 - **2026-10-09 (third)** — [A save state is RAM *and* disk content: SCSI/ATA restores rewind the write-back file or refuse by name](#2026-10-09-disk-timeline)
 - **2026-10-09 (later)** — [The 128K wrote sector 6 into sector 1's slot: the IWM reader now re-parks when the revolution changes](#2026-10-09-iwm-repark)
 - **2026-10-09** — [The SE's VIA1 PA4 selects its internal floppy connector, and the boot floppy stops mounting twice](#2026-10-09-se-pa4-drives)
@@ -1097,6 +1099,73 @@ Newest first.
 
 ---
 
+<a id="2026-10-09-debugger-service"></a>
+## 2026-10-09 (fourth) — A debugger at the machine boundary: a breakpoint holds its quantum, Pause is a quantum boundary, inspection never reads a device
+
+The Snow comparison's highest-value gap (`docs/SNOW_COMPARISON.md`
+§ Debugger and inspection, order 2 of `docs/SNOW_IMPLEMENTATION_PLAN.md`)
+was not primitives — Moira has a breakpoint list, a soft stop, guards and a
+side-effect-free disassembly read — but a product service connecting them
+to the GUI without handing the GUI a CPU pointer. This is that service.
+
+**Where a stop happens.** Two places, chosen so that no platform's frame
+loop had to change. A *Pause* is applied between two quanta
+(`MachineHost::stepTick` → `dbg::Session::atBoundary`): every quantum ends
+on an instruction boundary, so that is an architectural stop that needs no
+CPU support and also covers a CPU in `STOP`. A *breakpoint* or *step*
+fires from Moira's own end-of-instruction check (`didReachBreakpoint` /
+`didReachSoftstop`), and the hook blocks the machine thread right there,
+serving commands until Continue. The quantum is never unwound: aborting
+it would have let `MacFrameClock::runFrame` raise its vblank and advance
+`frameBase` with the CPU still short of the edge, a visible timing change
+caused by looking. The cost is stated in the window: reset, save states,
+engine swaps and input wait while a stop is held inside a quantum.
+
+**Exactness, as gated.** On synthetic 68000, 68020, 68030 and 68040 rigs
+running a real machine thread (`debug_session_test`): a breakpoint at
+`ADDQ.L #1,D1` stops with D0 = D1 + 1 — the previous instruction retired,
+this one not; Continue stops again with D0 advanced by exactly one; a step
+retires one instruction inside the same quantum; Pause is acknowledged
+with the clock held for 60 ms and no quantum run; a breakpoint added while
+running stops at its own address; a reset while paused republishes the
+registers; breakpoints survive a reset; `stop()` joins a thread held at a
+breakpoint.
+
+**The JIT was not asked; it was checked.** Any armed stop sets
+`State::CHECK_BP`, so `flags != 0` and `JitEngine::executeUntil` hands
+every instruction to the interpreter. On the 68030 and 68040 rigs with the
+accelerated engine requested, the engine's retired-instruction counter does
+not move between two breakpoint stops, and moves again once the last
+breakpoint is removed. The window shows both the requested and the
+effective engine; the setting is never changed behind the user.
+
+**Inspection never reads a device.** Memory is read only where the map
+hands out a host pointer — `dataSpan(phys, len, false)`, the JIT data-TLB
+contract that already refuses every window with a read side effect.
+Logical addresses go through two new side-effect-free walkers: TT0/TT1 plus
+the existing `Mmu030Peek.h`, and `Mmu040Peek.h` (DTT0/DTT1, then the
+mirror of `Moira::mmu040PeekWalk` with descriptors read through the same
+span rule). `debug_inspection_test` maps a page through real 030 and 040
+table trees, reads and disassembles it logically, finds the descriptors
+byte-identical afterwards (no U/M write-back), and inspects the compact
+Mac's VIA/SCC/IWM and the Quadra's TT-mapped I/O: refused, and the whole
+machine's save-state bytes identical before and after. One expectation was
+wrong at first: the V8 decodes 24 address lines, so physical `$10000000`
+*is* RAM there — the gate now names `$F00000` (VIA1) as its not-memory
+probe on that board.
+
+**Debugger state is not guest state.** `MoiraSnapshot` serialized
+`flags` whole, so a state saved with a breakpoint armed would have carried
+`CHECK_BP` into any later machine. The request bits (`CHECK_BP/WP/CP`,
+`LOGGING`) are now masked on save and preserved from the live CPU on load:
+a state saved armed is byte-identical to one saved unarmed, a live
+breakpoint survives a load, and an armed-at-save state arms nothing. The
+layout is unchanged; the format version is not bumped.
+
+What this increment does not do: register/memory editing, access
+watchpoints, exception/trap stops, step over/out, histories, symbols and
+typed device snapshots. Emscripten refuses breakpoints and steps (there is
+no second thread to hold). Details in `DEV.md` § 6 *The debugger*.
 <a id="2026-10-09-disk-timeline"></a>
 ## 2026-10-09 (third) — A save state is RAM *and* disk content: SCSI/ATA restores rewind the write-back file or refuse by name
 

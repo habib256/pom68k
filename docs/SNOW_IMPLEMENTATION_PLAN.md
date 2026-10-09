@@ -2,9 +2,11 @@
 
 ATA transfer restoration, GCR tags and DART sector import are now implemented.
 The 512Ke and II FDHD hardware profiles, native physical-track retention and
-MOOF bit/flux import/export are also implemented. A machine-thread
-debugger service remains useful for bring-up; session and network improvements
-can be selected independently.
+MOOF bit/flux import/export are also implemented, and so is the basic
+machine-thread debugger service (pause, step, PC breakpoints, registers,
+side-effect-free memory and disassembly). Its extended stops, editing and
+histories remain; session and network improvements can be selected
+independently.
 Keep new hardware projects conditional on a named consumer and reproducible
 evidence. This order improves correctness and makes subsequent bring-up easier
 without replacing POM68K's existing CPU, firmware or network architecture.
@@ -154,8 +156,8 @@ Other items in this document are proposals, not adopted features.
 |---|---|---|---|---|
 | 0 | ATA transfer and media restoration — implemented | Regressions pass | M | Exact continuation and rewind, including a fresh process |
 | 1 | SCSI and ATA backing-image policy — implemented | Content digest, since-open log, `.pomundo` reverse journal | Done | A state cannot silently combine old RAM with later disk data (`media_timeline_test`) |
-| 2 | Debugger service and basic views | Moira primitives present, GUI service absent | L | Pause, inspect, step and PC stop on representative CPU families |
-| 3 | Extended debugger and device inspection | Snow offers them; partial POM primitives | L | Defined stop semantics, bounded history, no inspection side effects |
+| 2 | Debugger service and basic views — implemented | `debug_session_test` on 000/020/030/040 rigs, `debug_inspection_test`, GUI window | Done | Pause, inspect, step and PC stop on representative CPU families |
+| 3 | Extended debugger and device inspection | Basic service landed; editing, access/exception stops, step over/out, histories, symbols and device snapshots absent | L | Defined stop semantics, bounded history, no inspection side effects |
 | 4 | Session files | Startup/relaunch data present, combined file absent | M | Reopen the same configured machine with validated paths |
 | 5 | CD track/source mapping | Single-source parser versus per-source Snow mapping | M | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
@@ -583,6 +585,26 @@ With it fitted, the ROM numbers PA4 high drive 1, tries it first and ejects a
 non-startup disk there; three distinct floppies then mount as drives 1–3.
 Snapshot v27 carries the line and mechanism. The startup option and disk
 window row are separate product work; no new controller behavior is invented.
+
+The seventeenth increment implements order 2, the basic debugger service
+(`DebugSession`, `DebugCpuTarget`, « Fenêtres → Débogueur »). The GUI posts
+typed commands with ids and reads immutable snapshots; the machine thread
+owns every mutation. Pause is applied between two quanta, an architectural
+boundary that needs no CPU support. A breakpoint or step stops from Moira's
+own end-of-instruction check and holds the machine thread inside its
+quantum without unwinding it, so the platform frame loops (vblank edges,
+beam slices) resume unchanged. Memory is read only through the JIT
+data-TLB `dataSpan` contract, so device registers are refused rather than
+read; logical addresses use TT registers and side-effect-free 030/040
+table walks. Any armed stop routes every instruction through the
+interpreter (`!pomJitIdle()`), verified by the engine's retired-instruction
+counter; the snapshot shows requested and effective engines. The debugger's
+request bits no longer enter save states. `debug_session_test` runs a real
+machine thread on 68000, 68020, 68030 and 68040 rigs (030/040 also with
+the accelerated engine requested); `debug_inspection_test` proves the
+table walks, untouched descriptors and byte-identical machine state after
+inspecting I/O. Editing, access/exception stops, step over/out, histories,
+symbols and device snapshots are order 3. Emscripten refuses stops.
 
 A follow-up correction keeps the IWM reader and writer on one head angle.
 The reader re-parks when the drive's revolution length changes (a zone seek or
