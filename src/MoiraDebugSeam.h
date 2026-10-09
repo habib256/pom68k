@@ -87,6 +87,15 @@ public:
         mmuPipeCnt = 0;
         pomJitDisarm();
     }
+    // The address map moved under the CPU (a debugger MMU edit): empty
+    // both ATCs, move the JIT's map generation (its DTLB with it), drop
+    // the 68030's pipe captured through the old map and the fetch window.
+    void debugMapChanged() {
+        mmuPipeCnt = 0;
+        pomFlushAtcs();
+        pomJitMapMoved();
+        pomJitDisarm();
+    }
     // An SR edit is not an SR-writing instruction: keep the 68040 one-shot
     // trace and the post-RTE IRQ delay that setSR() arms for those.
     void debugSetSr(moira::u16 sr) {

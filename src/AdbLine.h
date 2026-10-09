@@ -15,6 +15,7 @@
 // combined line = hostDrive AND deviceDrive (open collector).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include <cstdint>
 #include <deque>
@@ -71,6 +72,10 @@ public:
     // the wire, and the MCU on the other end will resume expecting exactly
     // the bit it was on. Device handlers and addresses travel because the
     // guest reassigns them (Listen r3) during ADB enumeration.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, hostDrive_, deviceDrive_, linestate_, command_, direction_, datasize_, srqFlag_, listenAddr_, listenReg_, kbdAddr_, mouseAddr_, kbdHandlerId_, mouseHandlerId_, modifiers_, mbtn_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(hostDrive_, deviceDrive_, linestate_, now_, lastEdge_, sendTimer_,
            command_, waitingCmd_, direction_, buffer_, datasize_, streamPtr_,

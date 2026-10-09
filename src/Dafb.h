@@ -29,6 +29,7 @@
 // Gate: tests/q605_dafb_test.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include <cstdint>
 #include <functional>
 
@@ -118,6 +119,10 @@ public:
     // geometry, RAMDAC/CLUT, the three clock generators' serial state and
     // the frame clock phase. cpuHz_/clockgen_/version_/ramdac_ are
     // construction; onIrq is re-bound by the machine.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, base_, stride_, config_, mode_, hres_, vres_, htotal_, vtotal_, pixelClock_, intStatus_, swatchIntEnable_, monitorId_, monitorConfig_, palAddress_, frameCount_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(regs_, intStatus_, swatchIntEnable_, cursorLine_,
            palAddress_, palIdx_, ac842Pbctrl_, pcbr1_,

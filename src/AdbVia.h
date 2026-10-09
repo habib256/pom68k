@@ -19,6 +19,7 @@
 //     drops fast ADBReInit traffic (mouse at phantom address, frozen).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "Via6522.h"
 #include "AdbBus.h"
@@ -76,6 +77,10 @@ public:
     // LLE transceiver (the PIC core mid-instruction + the bit-serial ADB
     // line + the clock accumulators that phase it against the CPU). The
     // via_/adb_ pointers and lle_/cpuHz_ are attach()-time wiring.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, state_, lastState_, cmd_, resp_, irqPending_, expectingListen_, timer_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(state_, lastState_, cmd_, resp_);
         std::uint64_t pos = respPos_;

@@ -109,6 +109,14 @@ struct FakeDebugTarget final : pom68k::dbg::Target {
     void cancelRun() override {}
     void maintain() override {}
     std::uint32_t romChecksum() const override { return 0x9779D2C4; }
+    void devices(std::vector<pom68k::dev::Snapshot>& out) const override {
+        out.clear();
+        pom68k::dev::Snapshot v;
+        v.kind = "VIA";
+        v.name = "VIA1";
+        v.fields.push_back({"ifr", 0x82, 8, {}});
+        out.push_back(v);
+    }
     bool hist = false;
     void setHistory(bool on) override { hist = on; }
     bool historyOn() const override { return hist; }
@@ -133,8 +141,8 @@ struct FakeDebugTarget final : pom68k::dbg::Target {
     }
     int stepOvers = 0, stepOuts = 0;
     bool stopsArmed() const override { return !bps.empty(); }
-    bool setRegister(pom68k::dbg::Reg r, std::uint32_t v, std::string&) override {
-        edits.push_back({int(r), v});
+    bool setRegister(pom68k::dbg::Reg r, std::uint64_t v, std::string&) override {
+        edits.push_back({int(r), std::uint32_t(v)});
         return true;
     }
     bool writeMemory(pom68k::dbg::Space, std::uint32_t addr, const std::uint8_t* d,
@@ -250,7 +258,12 @@ int main() {
         pom68k::gui::GuiDebuggerState state;
         state.session = &session;
         state.showWindow = true;
-        auto draw = [&] { pom68k::gui::drawDebuggerWindow(state); };
+        // The window has grown a section per debugger feature; pin its
+        // scroll to the top so a click finds what the folds leave visible.
+        auto draw = [&] {
+            ImGui::SetNextWindowScroll(ImVec2(0, 0));
+            pom68k::gui::drawDebuggerWindow(state);
+        };
         session.atBoundary(target);
         ui.frame(draw);
         ui.frame(draw);
@@ -320,8 +333,8 @@ int main() {
         session.post(view);
         session.atBoundary(target);
         check(ui.click("Registres", draw) && ui.click("Désassemblage", draw) &&
-              ui.click("Mémoire", draw),
-              "fold registers and disassembly, open the memory section");
+              ui.click("Points d'arrêt", draw) && ui.click("Mémoire", draw),
+              "fold registers, breakpoints and disassembly, open the memory section");
         const auto mem = session.snapshot();
         check(mem->memory.bytes.size() == 64 &&
               mem->memory.state[0x1F] == pom68k::dbg::ByteState::Ok &&
@@ -396,8 +409,8 @@ int main() {
         std::filesystem::remove(histPath);
         capture(ui, "debugger-history");
         check(ui.click("Historique", draw) && ui.click("Registres", draw) &&
-                  ui.click("Points d'arrêt", draw) && ui.click("Symboles", draw),
-              "fold history, registers and breakpoints, open the symbol section");
+                  ui.click("Symboles", draw),
+              "fold the history, open the symbol section");
         std::snprintf(state.symbolPath.data(), state.symbolPath.size(), "%s",
                       "/nonexistent/pom68k.sym");
         ui.frame(draw);
@@ -407,6 +420,15 @@ int main() {
                   session.snapshot()->symbolCount == 0 &&
                   session.snapshot()->message.find("illisible") != std::string::npos,
               "« Charger » reports an unreadable file and loads nothing");
+        check(ui.click("Exceptions", draw) && ui.click("Historique", draw) &&
+                  ui.click("Symboles", draw) && ui.click("Composants", draw),
+              "fold the open sections, open the component section");
+        check(ui.click("Relever les composants", draw), "tick « Relever les composants »");
+        session.atBoundary(target);
+        ui.frame(draw);
+        check(session.snapshot()->devicesOn && session.snapshot()->devices.size() == 1 &&
+                  ui.find("VIA - VIA1") != nullptr,
+              "the components are published and listed by kind and name");
         capture(ui, "debugger-memory");
         // Close it like a user would, so no focus or input state leaks
         // into the next window's scenario.

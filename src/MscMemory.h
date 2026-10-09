@@ -33,6 +33,7 @@
 // tests/msc_parity_test.cpp. Blueprint: docs/DUO_BRINGUP.md.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "DaynaPortBus.h"
 #include "jit/JitGuard.h"
@@ -248,6 +249,23 @@ public:
     bool consumeWakeReset() { bool w = wakeReset_; wakeReset_ = false; return w; }
 
     // ── Save states (V8Memory pattern) ─────────────────────────────────
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA1", via_);
+        add(out, "VIA", "VIA2 (MSC)", pvia_);
+        add(out, "SCC", "Z85C30", scc_);
+        add(out, "SCSI", "5380", scsi_);
+        add(out, "ADB", "PG&E (Power Manager)", pmu_);
+        {
+            pom68k::dev::Snapshot v;
+            v.kind = "Video";
+            v.name = "MSC";
+            POM_DEVICE_FIELDS(v.fields, mscConfig_, framePos_, vblState_);
+            out.push_back(std::move(v));
+        }
+    }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar.blob(vram_);

@@ -38,6 +38,7 @@
 // boot trace demands Cuda-specific commands.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "DaynaPortBus.h"
 #include "jit/JitGuard.h"
@@ -346,6 +347,26 @@ public:
     // Valkyrie replaces DAFB, the F108 ATA IRQ line and the ATA task file
     // travel too. Out:
     // rom_, machineId_/cudaLleOn_ (profile + MCU wiring), cpu_/jitGuard_.
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA1", via1_);
+        {
+            pom68k::dev::Snapshot v;
+            v.kind = "VIA";
+            v.name = "VIA2 (pseudo)";
+            POM_DEVICE_FIELDS(v.fields, pvIfr_, pvIer_, pvPortB_);
+            out.push_back(std::move(v));
+        }
+        add(out, "SCC", "Z85C30", scc_);
+        add(out, "Floppy", "SWIM2", swim_);
+        add(out, "SCSI", "53C96", scsi_);
+        if (cudaLleOn_) add(out, "ADB", "Cuda (firmware LLE)", cudaLle_);
+        else add(out, "ADB", "Cuda (HLE)", cuda_);
+        add(out, "ADB", "ADB bus", adb_);
+        add(out, "Video", "Valkyrie", video_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar.blob(vram_);

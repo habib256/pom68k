@@ -32,6 +32,7 @@
 // blueprint docs/DUO_BRINGUP.md.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "M68hc05Pge.h"
 #include "SaveState.h"
@@ -110,6 +111,10 @@ public:
     long pmuAckEdges = 0;                            // port H bit 6 changes
 
     // ── Save states ──
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, held_, porteBit2_, ackLevel_, reqLevel_, lastPortE_, lastPortF_, lastPortG_, lastPortC_, lastPortH_, modifiers_, powerKey_, clamshellOpen_);
+    }
     template <class Ar> void visit(Ar& ar) {
         if (mcu_) ar(*mcu_);
         ar(mcuAcc_, mcuDebt_, held_, porteBit2_, ackLevel_, reqLevel_,

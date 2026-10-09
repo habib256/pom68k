@@ -25,6 +25,7 @@
 // Gates: tests/valkyrie_i2c_test.cpp, tests/q630_boot_etalon.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include <cstdint>
 #include <functional>
 
@@ -92,6 +93,10 @@ public:
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // Registers, RAMDAC/CLUT and the frame clock phase. cpuHz_ is
     // construction; onIrq is re-bound by the machine.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, mode_, config_, intStatus_, monitorId_, monitorConfig_, hres_, vres_, htotal_, vtotal_, stride_, pixelClock_, enabled_, palAddress_, frameCount_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(videoTiming_, mode_, config_, intStatus_,
            monitorConfig_, monitorId_, palAddress_, palIdx_, clut_,

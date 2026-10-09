@@ -24,6 +24,7 @@
 // Gates: tests/input_etalon.cpp (Plus), tests/scc_ext_test.cpp (LAP arm).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include <cstdint>
 #include <deque>
@@ -188,6 +189,21 @@ public:
     // `peerHold_` are observed history, not configuration, and they decide
     // whether the guest sees a standing abort. Restoring them wrong would
     // change whether Open Transport's LLAP driver ever binds .MPP.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, ptr_, lineDriven_, ctsHigh_);
+        for (int c = 0; c < 2; ++c) {
+            const auto& k = ch_[c];
+            std::vector<pom68k::dev::Field> f;
+            POM_DEVICE_FIELDS(f, k.wr, k.dcd, k.rr0Latch, k.latched, k.txIp, k.rxIp,
+                              k.specialIp, k.txBufFull, k.hunt, k.rtsPin, k.dtrPin,
+                              k.fifo, k.rxQueue);
+            for (auto& x : f) {
+                x.name = std::string(c ? "B." : "A.") + x.name.substr(2);
+                out.push_back(std::move(x));
+            }
+        }
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(ch_, ptr_, lineDriven_, peerHold_, ctsHigh_, rxStanding_);
     }

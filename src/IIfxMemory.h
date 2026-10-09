@@ -37,6 +37,7 @@
 // carried — `pom68k-mcu-lle-clock-drift`).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "AdbLine.h"
 #include "ApplePic.h"
@@ -228,6 +229,17 @@ public:
         if (rom_.size() < 4) return 0;
         return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
              | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
+    }
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA1", via1_);
+        add(out, "SCC", "Z8530 (behind its IOP)", scc_);
+        add(out, "Floppy", "SWIM (behind its IOP)", swim_);
+        add(out, "SCSI", "5380", scsi_);
+        add(out, "ADB", "ADB line", adbLine_);
+        if (toby_) add(out, "Video", "Toby (NuBus)", *toby_);
     }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);

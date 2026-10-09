@@ -27,6 +27,7 @@
 // Gate: tests/ncr53c96_test.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "ScsiAgentMailbox.h"
 #include "ScsiTarget.h"
 #include <cstdint>
@@ -174,6 +175,10 @@ public:
     // `disk_` is a pointer into `targets_[]` (machine-owned, re-attached on
     // restore), so it is carried as an ID and re-resolved — the Ncr5380
     // rule. `latency_` is a behaviour knob owned by the environment.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, config1_, config2_, config3_, clockConv_, syncPeriod_, syncOffset_, busId_, selectTimeout_, seq_, status_, istatus_, scsiId_, irq_, drq_, tcount_, tcounter_, dmaCommand_, fifo_, fifoPos_, phase_, cmd_, dataInPos_, targetStatus_, reads, writes, selects, commands, dmaBytes, lastCmd);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(config1_, config2_, config3_, clockConv_, syncPeriod_,
            syncOffset_, busId_, selectTimeout_, seq_, status_, istatus_,

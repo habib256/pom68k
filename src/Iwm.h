@@ -11,6 +11,7 @@
 // Gate: tests/gcr_test.cpp, tests/disk_boot_etalon.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "FluxPll.h"
 #include "SaveState.h"
 #include <cstdint>
@@ -110,6 +111,10 @@ public:
     // engine landed (§ 1.3 flux plan step 6): a snapshot taken mid-nibble
     // must resume with the same window phase and the same partial shifter,
     // or the next byte off the disk differs from the un-snapshotted run.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, ph_, enable_, driveSel_, q6_, q7_, sel_, mode_, dataReg_, writing_, rwState_, rsh_, readCount, dataReads, written);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(ph_, enable_, driveSel_, q6_, q7_, sel_, mode_, dataReg_,
            clearCountdown_, selDelay_,

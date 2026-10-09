@@ -11,6 +11,7 @@
 // Gate: tests/cpu_smoke.cpp (overlay switch via ORA write).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include <algorithm>
 #include <cstdint>
@@ -153,6 +154,10 @@ public:
     // inA_/inB_ are inputs the machine refreshes before every read, but they
     // are latched here between refreshes, so they travel too: a VIA restored
     // with idle-high inputs would misread the RTC/ADB lines for one access.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, ora_, orb_, ddra_, ddrb_, inA_, inB_, acr_, pcr_, sr_, ifr_, ier_, t1_, t2_, t1latch_, t2ll_, t1armed_, t2armed_, shiftCount_, cb1_, cb2_, t1Pb7_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(ora_, orb_, ddra_, ddrb_, inA_, inB_,
            acr_, pcr_, sr_, ifr_, ier_,

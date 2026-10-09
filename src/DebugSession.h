@@ -120,6 +120,7 @@ private:
     std::uint64_t generation_ = 0;
     std::string message_;
     RomSymbols symbols_;                     // accepted for the running ROM
+    bool devicesOn_ = false;                 // publish device snapshots
     MemoryView view_;                        // what the GUI asked to watch
     std::uint32_t viewLength_ = 0;
     bool disasmFollowPc_ = true;

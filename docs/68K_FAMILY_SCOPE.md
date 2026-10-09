@@ -72,7 +72,7 @@ making them, with the 512Ke, the tree's three `scsi = false` profiles.
 
 `MacIIMemory::Model` + `Cpu020`'s `is030` flag. The IIx/IIcx wall was the 030
 PMMU double-translating against the GLUE 24-bit remap — skip `physAddr` when
-the PMMU is on (`MacIIMemory.h:79-84`). All five run at 15.6672 MHz:
+the PMMU is on (`MacIIMemory.h:80-85`). All five run at 15.6672 MHz:
 `kCpuHz` is fixed and the ctor takes no clock (`MacIIMemory.h:42,55`).
 
 | Profile | CPU | ROM | Gate |

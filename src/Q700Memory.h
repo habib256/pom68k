@@ -62,6 +62,7 @@
 // Gate: tests/q700_boot_etalon.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "DaynaPortBus.h"
 #include "jit/JitGuard.h"
@@ -346,6 +347,26 @@ public:
     // Two real VIAs (the discrete-040 front end) + RTC + PIC ADB + the
     // DAFB cell with its TurboSCSI control latch. Out: rom_, cpuHz_
     // (profile), cpu_/jitGuard_.
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA1", via1_);
+        add(out, "VIA", "VIA2", via2_);
+        add(out, "SCC", eclipse() ? "Z85C30 (behind its IOP)" : "Z85C30", scc_);
+        add(out, "Floppy", eclipse() ? "SWIM (behind its IOP)" : "SWIM", swim_);
+        add(out, "SCSI", "53C96", scsi_);
+        if (eclipse()) {
+            add(out, "SCSI", "53C96 (second bus)", scsi2_);
+            add(out, "ADB", "ADB line", adbLine_);
+            if (egretLleOn_) add(out, "ADB", "Egret (firmware LLE)", egretLle_);
+            else add(out, "ADB", "Egret (HLE)", egret_);
+        } else {
+            add(out, "ADB", "ADB transceiver (PIC)", adbVia_);
+            add(out, "ADB", "ADB bus", adb_);
+        }
+        add(out, "Video", "DAFB", dafbCell_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar.blob(vram_);

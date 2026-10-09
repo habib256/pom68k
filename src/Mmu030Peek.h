@@ -24,6 +24,13 @@
 // side-effect-free by contract. Table addresses held in descriptors ARE
 // physical, so `peek8` is exactly the right instrument for them.
 //
+// LIMITS ARE MAPPING, NOT PROTECTION: a long-format descriptor (the root
+// pointer, or an entry of an 8-byte table) bounds the index into the table
+// it points at — L/U = 1 lower bound, 0 upper bound (§ 9.5.1.5). An index
+// outside it is an invalid translation for the CPU, so it is one here too
+// (until 2026-10-09 this walk ignored it and answered where the CPU
+// faults; debug_inspection_test pins both sides).
+//
 // Deliberately NOT a full PMMU model: no protection checks (WP/S — a probe
 // wants the mapping, not an access verdict), no U/M updates (the point), no
 // transparent-translation windows (the Mac ROMs map I/O through the tables
@@ -67,6 +74,15 @@ inline bool translate(uint32_t tc, uint64_t crp, uint64_t srp,
 
     uint32_t addrIn = laddr << is;
     int level = 0;
+    // The descriptor being followed: long format (the root always is), and
+    // its upper longword, which carries L/U and LIMIT.
+    bool curLong = true;
+    uint32_t curUpper = uint32_t(rp >> 32);
+    auto withinLimit = [&](uint32_t index) {
+        if (!curLong) return true;
+        const uint32_t limit = (curUpper & 0x7FFF0000u) >> 16;
+        return (curUpper & 0x80000000u) ? index >= limit : index <= limit;
+    };
 
     while (level < 8) {
         const int indexbits = int(bits >> bitpos) & 0xf;
@@ -87,9 +103,11 @@ inline bool translate(uint32_t tc, uint64_t crp, uint64_t srp,
             return true;
         }
         case 2: {                                    // short descriptors
+            if (!withinLimit(tableIndex)) return false;
             level++;
             uint32_t at = table + (tableIndex << 2);
             uint32_t entry = peek32(at);
+            curLong = false;
             type = int(entry) & 3;
             if (indirect && (type == 2 || type == 3)) {
                 level++;
@@ -101,10 +119,13 @@ inline bool translate(uint32_t tc, uint64_t crp, uint64_t srp,
             break;
         }
         case 3: {                                    // long descriptors
+            if (!withinLimit(tableIndex)) return false;
             level++;
             uint32_t at = table + (tableIndex << 3);
             uint32_t entry = peek32(at);
             uint32_t entry2 = peek32(at + 4);
+            curLong = true;
+            curUpper = entry;
             type = int(entry) & 3;
             if (indirect && (type == 2 || type == 3)) {
                 level++;

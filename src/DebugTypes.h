@@ -9,6 +9,7 @@
 // (DebugCpuTarget.h).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -108,11 +109,15 @@ struct StopDetail {
 // The registers an edit can name. D0-D7/A0-A7 in order, so `Reg(D0 + n)`
 // works. A7 is the ACTIVE stack pointer, as the CPU sees it; USP/ISP/MSP
 // name a bank whichever one is active. ISP is the 68000's SSP. VBR, SFC
-// and DFC exist from the 68010, MSP from the 68020. The MMU and cache control
-// registers are deliberately absent: an edit there moves the address map
-// or the cache, which needs its own definition, not a register poke.
+// and DFC exist from the 68010, MSP and CACR from the 68020. The MMU
+// registers exist on the MMU-bearing model only: TC/CRP/SRP/TT0/TT1 on the
+// 68030 (CRP and SRP are 64-bit), TC040/URP040/SRP040/DTT/ITT on the
+// 68040 and 68LC040. Their edit semantics are in Target::setRegister.
 enum class Reg : std::uint8_t {
-    D0 = 0, A0 = 8, PC = 16, SR, USP, ISP, MSP, VBR, SFC, DFC, Count
+    D0 = 0, A0 = 8, PC = 16, SR, USP, ISP, MSP, VBR, SFC, DFC,
+    CACR, TC, CRP, SRP, TT0, TT1,
+    TC040, URP040, SRP040, DTT0, DTT1, ITT0, ITT1,
+    Count
 };
 
 // Bounds on what one snapshot can carry. A request beyond them is clamped
@@ -135,6 +140,7 @@ struct Registers {
     std::uint64_t crp = 0, srp = 0;
     // 68040 MMU
     std::uint32_t tc040 = 0, urp040 = 0, srp040 = 0, dtt0 = 0, dtt1 = 0;
+    std::uint32_t itt0 = 0, itt1 = 0;
 };
 
 struct DisasmLine {
@@ -177,6 +183,7 @@ struct Command {
         ClearCatches,
         LoadSymbols,                 // path: a ROM symbol file (DebugSymbols.h)
         ClearSymbols,
+        SetDeviceView,               // value: 0 off, 1 publish device snapshots
         SetHistory,                  // value: 0 off, 1 on
         ClearHistory,
         ExportHistory,               // path (written by the machine thread)
@@ -188,7 +195,7 @@ struct Command {
     Space space = Space::Logical;
     bool followPc = false;
     Reg reg = Reg::D0;
-    std::uint32_t value = 0;
+    std::uint64_t value = 0;         // 64 bits for the 68030's CRP/SRP
     std::vector<std::uint8_t> data;  // WriteMemory, at most kMaxEditBytes
     Watchpoint watch;
     Catch catchpoint;
@@ -224,6 +231,10 @@ struct Snapshot {
     std::vector<HistoryEntry> historyTail;
     std::vector<std::string> historyText;    // parallel to historyTail
     std::vector<TrapEntry> trapTail;
+    // Typed device snapshots (DeviceSnapshot.h), published only while the
+    // window asks for them: VIA, SCC, floppy, SCSI, ADB and video.
+    bool devicesOn = false;
+    std::vector<pom68k::dev::Snapshot> devices;
     // The running ROM's own checksum and the ROM symbols accepted for it.
     std::uint32_t romChecksum = 0;
     std::size_t symbolCount = 0;
@@ -252,6 +263,8 @@ public:
     virtual DisasmLine disassemble(std::uint32_t logicalAddr) = 0;
     // The ROM's first longword (its checksum); 0 if the map has no ROM.
     virtual std::uint32_t romChecksum() const = 0;
+    // The board's devices, read from their members (DeviceSnapshot.h).
+    virtual void devices(std::vector<pom68k::dev::Snapshot>& out) const = 0;
     virtual bool addBreakpoint(std::uint32_t pc) = 0;
     virtual void removeBreakpoint(std::uint32_t pc) = 0;
     virtual void clearBreakpoints() = 0;
@@ -266,7 +279,15 @@ public:
     //   writeMemory: every byte must be plain RAM or framebuffer (the
     //     map's writable data span); ROM and device registers are refused,
     //     never written through the bus. Translated code is invalidated.
-    virtual bool setRegister(Reg reg, std::uint32_t value, std::string& why) = 0;
+    //   MMU registers: the edit is a PMOVE/MOVEC with flush — both ATCs
+    //     are emptied, the JIT's map generation moves, the 68030's carried
+    //     prefetch pipe and every translated block are dropped — so the
+    //     next access translates through the new map.
+    //   CACR: a MOVEC to CACR, write-only strobes (clear/clear-entry)
+    //     included; translated code is dropped.
+    //   Both are refused while the architectural 68040 data cache is on,
+    //     whose dirty lines such an edit would orphan.
+    virtual bool setRegister(Reg reg, std::uint64_t value, std::string& why) = 0;
     virtual bool writeMemory(Space space, std::uint32_t addr,
                              const std::uint8_t* data, std::size_t n,
                              std::string& why) = 0;

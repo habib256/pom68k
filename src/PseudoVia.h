@@ -27,6 +27,7 @@
 // Gate: tests/pseudovia_test.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include <cstdint>
 #include <functional>
@@ -83,6 +84,10 @@ public:
     // detector. The six std::function hooks above are re-bound by the
     // machine on restore and must never be serialized; `flavour_` is set at
     // construction by the machine profile, so it is identity, not state.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, regs_, irq_, ascLine_);
+    }
     template <class Ar> void visit(Ar& ar) { ar(regs_, irq_, ascLine_); }
 
 private:

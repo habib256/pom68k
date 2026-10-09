@@ -184,7 +184,7 @@ wider protection coverage still requires more independently identified cases.
 | 68851 on Mac II | Explicit optional 020 plus PMMU configuration | 020 without external PMMU; 030/040 MMUs implemented | Separate compatibility project |
 | Hardware timing | Bus wait states and device ticking; several explicit approximations | Machine clocks, event/batch scheduling, timing gates; open calibration work | Compare observables, not architecture slogans |
 | Firmware controllers | Command/state models for ADB and Portable PMgr | Firmware paths for ADB, Egret/Cuda, IOPs and Duo PMU, with declared fallbacks | Preserve firmware qualification |
-| Interactive debugger | Registers, memory, disassembly, stepping, stops, histories, symbols | Machine-thread service: pause, step, PC breakpoints, registers, logical/physical memory and disassembly without device reads; no editing, access/exception stops, histories or symbols yet | Basic service implemented; extend by stop type |
+| Interactive debugger | Registers, memory, disassembly, stepping, stops, histories, symbols | Machine-thread service: pause, step, step over/out, PC/access/exception stops, register (incl. MMU/cache) and RAM editing, logical/physical memory and disassembly without device reads, bounded exportable histories, OS and ROM symbols, typed device snapshots on every board | Implemented (order 3 closed 2026-10-09) |
 | Peripheral inspection | Common nested register/state view | Product controls, provenance, network/JIT statistics, specialized diagnostics | Add inspection snapshots, retain existing controls |
 | Floppy preservation | DART, MOOF, A2R, PFI, PRI and optional Fluxfox formats | Raw/DC42 import; flux model behind IWM/SWIM | Confirmed format gap with a medium-model prerequisite |
 | Floppy writeback | MOOF export/writeback; imported flux protected from writes | Raw/DC42 atomic persistence; current-track flux in states | Add native track preservation, retain existing sector exports |
@@ -318,8 +318,11 @@ POM68K already has:
 `DebugCpuTarget.h`, `DEV.md` § 6 *The debugger*): pause at a quantum
 boundary, breakpoint and step stops held inside the quantum, registers,
 TT/table-translated memory and disassembly read only through `dataSpan`,
-and the effective engine. The paragraphs below describe the pinned
-baseline and the parts still open.
+and the effective engine. Order 3 of the implementation plan then added
+editing (registers, MMU/cache, RAM with JIT invalidation), access and
+exception stops, step over/out, bounded histories, OS/ROM symbols and typed
+device snapshots (`CHANGELOG` 2026-10-09 (fifth) to (eleventh)). The
+paragraphs below describe the pinned baseline.
 
 The gap is the product service that connects these pieces. Existing
 `peek8`/disassembly helpers still need an explicit logical-versus-physical

@@ -29,6 +29,7 @@
 // correction-factor P_MULT bite block).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include "Iwm.h"
 #include <cstdint>
@@ -119,6 +120,15 @@ public:
     // (CRC, shift register, TSS, half-cell position). The in-flight write
     // transition list travels too — a snapshot taken mid-sector must resume
     // writing the same cells or the medium ends up with a torn field.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, ismMode_, iwmToIsm_, driveSel_, lstrb_, mode_,
+                          setup_, phases_, params_, paramIdx_, fifo_, fifoPos_,
+                          error_, writeActive_);
+        std::vector<pom68k::dev::Field> iwm;
+        iwm_.debugFields(iwm);
+        for (auto& f : iwm) { f.name = "iwm." + f.name; out.push_back(std::move(f)); }
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(iwm_);
         ar(ismMode_, iwmToIsm_, driveSel_, lstrb_,

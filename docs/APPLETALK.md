@@ -118,7 +118,7 @@ window's counters into a diagnosis rather than a score:
 | retransmit lag ~1-2 s | the guest's own ATP timer fired — the reply played late |
 | retransmit lag tens of ms | the guest gave up early / the reply was mangled |
 | "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/NetworkWindow.cpp:196-199`) |
-| "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:388`; counter `rxOverflowDrops`, `Scc8530.h:162`) |
+| "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:404`; counter `rxOverflowDrops`, `Scc8530.h:162`) |
 
 **Two runs that disagree.** `q605_afp_live_etalon` prints one `trace:` line
 per phase boundary — machine clock, architectural fingerprint, cumulative
@@ -353,7 +353,7 @@ still lives by:**
   window. Only `AddressDefence` identifies a real peer. Prompt responses are
   placed ahead of ordinary queued frames so backlog cannot consume the IFG.
 - Every *other* injected frame defers a full **IDG** — `kIdgBytes = 12`
-  byte-times ≈ 417 µs (`src/Scc8530.h:304-307`) — and that idle is evaluated
+  byte-times ≈ 417 µs (`src/Scc8530.h:320-323`) — and that idle is evaluated
   **at dequeue** from the `rxIdle` counter (`src/Scc8530.cpp:995-1005`),
   never baked in at injection.
   When two frames are injected in one poll (the router's LkUp broadcast,
@@ -388,7 +388,7 @@ One line-state subtlety, because Open Transport depends on it: a
 **virgin line reads clean**. No FM0 edges → no recovered clock → no
 sampled 1s → no abort condition; the standing abort only begins once the
 line has carried a frame (`Scc8530::lineDriven_`, reasoning at
-`src/Scc8530.h:327-348`, `openLine()` at `:349`). System 7's LAP does not
+`src/Scc8530.h:343-364`, `openLine()` at `:365`). System 7's LAP does not
 care, but OT waits for the abort to *clear* before binding `.MPP` — gate
 `q605_ot_bind_etalon`, and the env hatch that used to paper over it
 (`POM68K_SCC_CLEANLINE`) is retired (`docs/LLE_VS_HLE.md` §4.1 item 10,

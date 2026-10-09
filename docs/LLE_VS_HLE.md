@@ -153,7 +153,7 @@ caught it.
   sub-480-line mode still fires once per frame. (The old `vtotal_ > 480`
   guard that pinned such modes to the legacy 60 Hz / 525-line shape is
   gone — `Dafb.cpp:403-408`.)
-- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:577`, `:552-558`:
+- **V8 frame geometry is pinned to the 12" modeline** (`V8Memory.h:599`, `:574-580`:
   `montype_` defaults to 2, 512×384, and the frame constants are computed
   from that dot clock) whatever the monitor sense says. MAME pins the 13"
   instead, and of the four gate arrays only **RBV** re-derives the frame
@@ -1105,7 +1105,7 @@ does (Caps `$39`, Control `$36`, Shift `$38`, Option `$3A`, Command `$37`) and
 reports them **active low** — 0 = held, which is what makes MAME's own `$FF`
 reset value mean "nothing held". MAME's press path *sets* rather than clears
 the bit; that internal inconsistency we did not copy.
-`AdbLine.cpp:36` (reset value), `AdbLine.h:138` (`modifiers_`); the field
+`AdbLine.cpp:36` (reset value), `AdbLine.h:143` (`modifiers_`); the field
 travels in the save-state `visit()` (`AdbLine.h:74-79`).
 
 **This is a conformance fix, NOT a fix for the symptom that exposed it** — see
@@ -1242,7 +1242,7 @@ peer; the moment a real peer transmits (`RxFrameKind::Peer` or the prompt
 becomes a live terminated network whose idle is clean flags, and the abort
 drops for a `kPeerHold` (~2 s) window refreshed per peer frame. A solo boot
 never refreshes it, so the no-peer LAP timeout that lets the boot etalons
-proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:349`) = `abortIdle_ &&
+proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:365`) = `abortIdle_ &&
 lineDriven_ && peerHold_ <= 0`. Gate `llap_loop_test`.
 
 ## 4.2 The 16-step migration plan is finished

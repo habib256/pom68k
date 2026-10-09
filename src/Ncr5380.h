@@ -20,6 +20,7 @@
 // idle/no-device, so the ROM falls through to the floppy — no regression.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include "ScsiAgentMailbox.h"
 #include "ScsiTarget.h"
@@ -159,6 +160,10 @@ public:
     // That is the general rule for this codebase: cross-device pointers
     // become indices, never raw addresses — a restored pointer would either
     // dangle or, worse, silently address the previous session's object.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, odr_, icr_, mode_, tcr_, selEnable_, phase_, req_, irq_, cmd_, dataPos_, status_, reads, writes, selects, commands, dmaBytes, lastCmd);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(odr_, icr_, mode_, tcr_, selEnable_,
            phase_, req_, reqGap_, irq_,

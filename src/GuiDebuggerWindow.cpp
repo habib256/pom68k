@@ -99,19 +99,45 @@ void drawRegisters(const Snapshot& s) {
     ImGui::EndTable();
     ImGui::Text("PC %08X  SR %04X  VBR %08X", r.pc, r.sr, r.vbr);
     ImGui::Text("USP %08X  ISP %08X  MSP %08X", r.usp, r.isp, r.msp);
-    if (s.model == "68030")
+    if (s.model != "68000" && s.model != "68010") ImGui::Text("CACR %08X", r.cacr);
+    if (s.model == "68030") {
         ImGui::Text("TC %08X  TT0 %08X  TT1 %08X  %s", r.tc, r.tt0, r.tt1,
                     s.mmuEnabled ? "MMU active" : "MMU inactive");
-    else if (s.model == "68040" || s.model == "68LC040")
-        ImGui::Text("TC %04X  DTT0 %08X  DTT1 %08X  %s", r.tc040, r.dtt0,
-                    r.dtt1, s.mmuEnabled ? "MMU active" : "MMU inactive");
+        ImGui::Text("CRP %016llX  SRP %016llX",
+                    static_cast<unsigned long long>(r.crp),
+                    static_cast<unsigned long long>(r.srp));
+    } else if (s.model == "68040" || s.model == "68LC040") {
+        ImGui::Text("TC %04X  URP %08X  SRP %08X  %s", r.tc040, r.urp040,
+                    r.srp040, s.mmuEnabled ? "MMU active" : "MMU inactive");
+        ImGui::Text("DTT0 %08X  DTT1 %08X  ITT0 %08X  ITT1 %08X", r.dtt0,
+                    r.dtt1, r.itt0, r.itt1);
+    }
+}
+
+// "$...", "0x..." or bare hexadecimal, at most `digits` digits.
+std::optional<std::uint64_t> parseHexValue(const char* text, int digits) {
+    if (!text) return std::nullopt;
+    while (std::isspace(static_cast<unsigned char>(*text))) ++text;
+    if (*text == '$') ++text;
+    else if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) text += 2;
+    std::uint64_t v = 0;
+    int n = 0;
+    for (; std::isxdigit(static_cast<unsigned char>(*text)); ++text, ++n) {
+        const unsigned char c = static_cast<unsigned char>(*text);
+        v = v << 4 | std::uint64_t(std::isdigit(c) ? c - '0' : std::tolower(c) - 'a' + 10);
+    }
+    while (std::isspace(static_cast<unsigned char>(*text))) ++text;
+    if (!n || n > digits || *text) return std::nullopt;
+    return v;
 }
 
 // Indexed by pom68k::dbg::Reg.
 constexpr const char* kRegisterNames[] = {
     "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7",
     "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7",
-    "PC", "SR", "USP", "ISP", "MSP", "VBR", "SFC", "DFC"};
+    "PC", "SR", "USP", "ISP", "MSP", "VBR", "SFC", "DFC",
+    "CACR", "TC", "CRP", "SRP", "TT0", "TT1",
+    "TC (040)", "URP", "SRP (040)", "DTT0", "DTT1", "ITT0", "ITT1"};
 static_assert(std::size(kRegisterNames) == std::size_t(Reg::Count));
 
 void drawRegisterEdit(GuiDebuggerState& state) {
@@ -125,10 +151,12 @@ void drawRegisterEdit(GuiDebuggerState& state) {
                                         ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
     if (ImGui::Button("Appliquer") || enter) {
-        if (auto v = parseGuestAddress(state.editValue.data())) {
+        const Reg reg = Reg(state.editRegister);
+        const bool wide = reg == Reg::CRP || reg == Reg::SRP;   // 68030: 64 bits
+        if (auto v = parseHexValue(state.editValue.data(), wide ? 16 : 8)) {
             Command c;
             c.kind = Command::Kind::SetRegister;
-            c.reg = Reg(state.editRegister);
+            c.reg = reg;
             c.value = *v;
             state.session->post(c);
             state.inputError.clear();
@@ -365,6 +393,35 @@ void drawHistory(GuiDebuggerState& state, const Snapshot& s) {
     }
 }
 
+void drawDevices(GuiDebuggerState& state, const Snapshot& s) {
+    bool on = s.devicesOn;
+    if (ImGui::Checkbox("Relever les composants", &on)) {
+        Command c;
+        c.kind = Command::Kind::SetDeviceView;
+        c.value = on ? 1 : 0;
+        state.session->post(c);
+    }
+    ImGui::TextDisabled("Lu dans l'état des composants, jamais par le bus ; "
+                        "relevé à chaque commande ou arrêt");
+    for (const auto& d : s.devices) {
+        char title[96];
+        std::snprintf(title, sizeof title, "%s - %s", d.kind.c_str(), d.name.c_str());
+        if (!ImGui::TreeNode(title)) continue;
+        for (const auto& f : d.fields) {
+            if (f.bits == 0)
+                ImGui::Text("%-16s %s", f.name.c_str(), f.text.c_str());
+            else if (f.bits == 1)
+                ImGui::Text("%-16s %d", f.name.c_str(), int(f.value));
+            else
+                ImGui::Text("%-16s $%0*llX", f.name.c_str(), int(f.bits / 4),
+                            static_cast<unsigned long long>(
+                                f.bits >= 64 ? f.value
+                                             : f.value & ((1ll << f.bits) - 1)));
+        }
+        ImGui::TreePop();
+    }
+}
+
 void drawSymbols(GuiDebuggerState& state, const Snapshot& s) {
     ImGui::Text("ROM en cours : checksum $%08X", s.romChecksum);
     if (s.symbolCount)
@@ -528,6 +585,7 @@ void drawDebuggerWindow(GuiDebuggerState& state) {
     if (ImGui::CollapsingHeader("Exceptions")) drawCatches(state, s);
     if (ImGui::CollapsingHeader("Historique")) drawHistory(state, s);
     if (ImGui::CollapsingHeader("Symboles")) drawSymbols(state, s);
+    if (ImGui::CollapsingHeader("Composants")) drawDevices(state, s);
     if (ImGui::CollapsingHeader("Désassemblage", ImGuiTreeNodeFlags_DefaultOpen)) {
         // A bounded pane, so the memory section stays reachable.
         ImGui::BeginChild("##disasm",

@@ -10,6 +10,7 @@
 // Gates: tests/cpu_smoke.cpp, tests/storage_profile_test.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "DaynaPortBus.h"
 #include "Via6522.h"
@@ -311,6 +312,28 @@ public:
     // The machine chunk: RAM + every device + the M0110 keyboard
     // transaction engine. Out: rom_/romSize_/model_ (profile identity),
     // cpu_ and jitGuard_ (pointers the machine owns).
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA", via_);
+        add(out, "SCC", "Z8530", scc_);
+        add(out, "Floppy", model_ == Model::SEFDHD || model_ == Model::Classic ? "SWIM" : "IWM", swim_);
+        add(out, "SCSI", "5380", scsi_);
+        if (isAdb()) {
+            add(out, "ADB", "ADB transceiver", adbVia_);
+            add(out, "ADB", "ADB bus", adb_);
+        }
+        {
+            pom68k::dev::Snapshot v;
+            v.kind = "Video";
+            v.name = "1 bpp 512x342";
+            const std::uint32_t base = screenBase();
+            const bool main = (via_.portA() & 0x40) != 0;
+            POM_DEVICE_FIELDS(v.fields, base, main);
+            out.push_back(std::move(v));
+        }
+    }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         // The second internal mechanism travels on every compact so the

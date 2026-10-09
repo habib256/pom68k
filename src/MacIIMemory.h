@@ -5,6 +5,7 @@
 // I/O @$50xxxxxx, NuBus. Source: MAME macii.cpp / m68kmmu.h (2026-07-20).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "MachineCatalog.h"
 #include "DaynaPortBus.h"
@@ -261,6 +262,19 @@ public:
     // so its presence is recorded and must match on restore — a snapshot
     // taken with a card cannot load into a machine without one. Out:
     // rom_/model_ (profile identity), cpu_ (pointer), the vbl debug longs.
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA1", via1_);
+        add(out, "VIA", "VIA2", via2_);
+        add(out, "SCC", "Z8530", scc_);
+        add(out, "Floppy", "SWIM", swim_);
+        add(out, "SCSI", "5380", scsi_);
+        add(out, "ADB", "ADB transceiver", adbVia_);
+        add(out, "ADB", "ADB bus", adb_);
+        if (toby_) add(out, "Video", "Toby (NuBus)", *toby_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via1_, via2_, rtc_, nubus_, adbVia_, adb_, asc_,

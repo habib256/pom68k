@@ -23,6 +23,7 @@
 // staged PRAM lands in MCU RAM).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "M68hc05.h"
 #include "AdbLine.h"
@@ -149,6 +150,10 @@ public:
     //
     // Out: `via_` (reference), `cpuHz_`/`flavor_`/`i2cDfac_`/`fwLoaded_`
     // (board identity, set at construction), callbacks (re-bound).
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, held_, treq_, byteack_, tip_, resetLine_, i2cActive_, pramInstalled_, stagedSeconds_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(mcu_, adb_);
         ar(mcuAcc_, mcuDebt_, adbAcc_,

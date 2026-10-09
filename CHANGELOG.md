@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the debugger's 68030 logical view (and `guestPeek8`) matches the CPU" — it ignored long-descriptor limits until the MMU-edit gate faulted where the view showed a page** → [2026-10-09 (tenth) — MMU and cache registers edited…](#2026-10-09-debugger-mmu-edits)
 - **"the Quadra 630 installs its SCSI disk's driver elsewhere" (2026-10-02 (ninth)) — MAME's default macqd630 has an imageless IDE disk on `ata:0`; without it MAME installs the driver at `-33` like POM68K** → [2026-10-03 — The Quadra 630's SCSI driver was not elsewhere…](#2026-10-03-q630-ide)
 - **"three model identities by --machine-profile" (Machine menu, `PlatformDafb.cpp` `runQuadra`) — the profile chose the FPU and the title but not the board ID, so a Quadra 605 or LC 575 chosen from the menu answered Gestalt as an LC 475 (and an LC 580 as a Quadra 630); every `q605_*` gate still boots that default** → [2026-10-02 (eighth) — The oracle's second machine finds the Quadra 605 calling itself an LC 475…](#2026-10-02-q605-oracle)
 - **"the AArch64 interpreter trace of 2026-10-02 is `q605_afp_live_etalon`'s oracle" (2026-10-02 (later)) — it was, until drive B was unwired the same night: the Q605 has no port, every boundary moved from boundary 0, and the x86-64 interpreter trace at `25fed3b` replaces it** → [2026-10-02 (sixth) — `Disk605.dsk` is `6ea0c1c7…`…](#2026-10-02-x86-disk605-afp)
@@ -261,6 +262,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **step over/out: why not a temporary PC, which stack decides, and why ending a run must consume its soft stop** → [2026-10-09 (seventh) — Step over and step out…](#2026-10-09-debugger-step-over-out)
 - **debugger histories: what an entry is, why a disabled history costs nothing, and the export format** → [2026-10-09 (eighth) — Bounded instruction and exception histories…](#2026-10-09-debugger-histories)
 - **debugger symbols: where trap and low-memory names come from, and how a ROM symbol file is tied to its ROM** → [2026-10-09 (ninth) — Debugger symbols…](#2026-10-09-debugger-symbols)
+- **debugger device snapshots: where the field names come from, why a snapshot cannot disturb a device, and which board lacks which kind** → [2026-10-09 (eleventh) — Typed device snapshots…](#2026-10-09-debugger-devices)
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
@@ -487,6 +489,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-09 (eleventh)** — [Typed device snapshots on every board close order 3: read from members, never through the bus](#2026-10-09-debugger-devices)
+- **2026-10-09 (tenth)** — [MMU and cache registers edited as their instructions would; and the debugger's 68030 walk had been ignoring descriptor limits](#2026-10-09-debugger-mmu-edits)
 - **2026-10-09 (ninth)** — [Debugger symbols: OS names from cxmon for every ROM, ROM labels only for the ROM whose checksum they declare](#2026-10-09-debugger-symbols)
 - **2026-10-09 (eighth)** — [Bounded instruction and exception histories, exported with the session identity; and a step out could be stranded by removing a breakpoint](#2026-10-09-debugger-histories)
 - **2026-10-09 (seventh)** — [Step over and step out, judged on the stack they started on; and a cancelled run's soft stop could wait dormant for the next breakpoint](#2026-10-09-debugger-step-over-out)
@@ -1108,6 +1112,91 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-09-debugger-devices"></a>
+## 2026-10-09 (eleventh) — Typed device snapshots on every board close order 3: read from members, never through the bus
+
+Last piece of order 3 of `docs/SNOW_IMPLEMENTATION_PLAN.md`: "publish
+typed device snapshots for VIA, SCC, IWM/SWIM, SCSI, ADB and the board's
+video device… the window reads snapshots, not live device pointers".
+
+**Where the names come from.** Every device already lists its state in
+its save-state `visit()`. Each device class now carries a const
+`debugFields()` that names the same members through `POM_DEVICE_FIELDS`
+(`src/DeviceSnapshot.h`), which pairs the stringized member list with the
+values: scalars become numbers with their width, small byte arrays hex
+text, containers their size, nested objects are left to their own
+snapshot (the SWIM's IWM personality appears as `iwm.*`, the SCC's two
+channels as `A.*`/`B.*`). Seventeen classes: VIA, the V8/RBV/Sonora/VASP/MSC
+pseudo-VIA, SCC, IWM, SWIM, SWIM2, 5380, 53C96, Egret, Cuda/Egret LLE,
+ADB transceiver, ADB line, ADB bus, PG&E, DAFB, Valkyrie and the Toby
+card. Each of the twelve maps assembles its board in `debugDevices()`
+under the kinds VIA, SCC, Floppy, SCSI, ADB and Video, and names the part
+on that board — "Egret (firmware LLE)" or "(HLE)", whichever is live,
+"SWIM2 (Spice)" on the Color Classic, "53C96 (second bus)" on the Quadra
+900. Boards whose video is part of the decoder (V8, RBV, Sonora, VASP,
+MSC, the compact Macs) report the decoder's video members.
+
+**No side effect, by type and by gate.** `debugFields` and `debugDevices`
+are const, so they cannot reach a register read that clears a VIA flag or
+latches an SCC status. `debug_inspection_test` checks it on sixteen board
+configurations: each board's whole serialized state (its `visit()` through
+a `sav::Writer`) is identical before and after two snapshots. A pending
+VIA SHIFT flag stays set and is reported, a DDRB written through the
+device is reported. Each board must publish the six kinds, except where
+the hardware lacks one: no ADB on the Plus, no internal floppy on the Duo,
+no video on a Mac II or IIfx without its NuBus card. Removing the VIA's
+IFR from its field list, or the Quadra 605's SCC from its board, fails
+the gate.
+
+**Cost.** None unless asked: the session publishes snapshots only while
+the window's « Composants » section has « Relever les composants » ticked
+(`SetDeviceView`), and then at each command or stop, like the rest of the
+snapshot.
+
+With this, order 3 — editing, access and exception stops, step over/out,
+histories, symbols and device snapshots — is closed, and the debugger task
+leaves `TODO.md`.
+
+<a id="2026-10-09-debugger-mmu-edits"></a>
+## 2026-10-09 (tenth) — MMU and cache registers edited as their instructions would; and the debugger's 68030 walk had been ignoring descriptor limits
+
+Sixth piece of order 3 of `docs/SNOW_IMPLEMENTATION_PLAN.md`: the
+register edits the first editing increment had deliberately left out
+because they move the address map or the cache.
+
+**The definition.** CACR (68020 and later) is edited as a MOVEC to CACR,
+write-only strobes included: writing `$09` on the 68030 leaves EI set and
+stores no CI bit. The 68030's TC, CRP, SRP, TT0 and TT1 and the 68040's
+TC, URP, SRP, DTT0/1 and ITT0/1 are edited as a PMOVE/MOVEC *with* flush.
+Moira's 68030 setters store the value and nothing else, while a PMOVE
+would capture the pipe and bump the JIT's map generation — so
+`MoiraDebugSeam::debugMapChanged` empties both ATCs, moves the generation,
+drops the carried pipe and disarms the fetch window, and the engine drops
+its blocks. A model without the register refuses it (TC on a 68040, CACR
+on a 68000), and so does an armed architectural 68040 data cache. CRP and
+SRP are 64-bit on the 68030; `Command::value` is now 64 bits.
+
+**The gate.** `debug_inspection_test` runs `MOVEQ` at a logical PC
+through one table tree, so the page sits in the ATC, then edits CRP (68030)
+or URP/SRP (68040) to a second tree, sets the PC again and executes: the
+second tree's `MOVEQ #7` must run. Without `debugMapChanged`, the 68030
+case runs the first tree's `MOVEQ #5` from the stale ATC. (The 68040
+setters already flush their ATCs, so that half guards a contract rather
+than a defect.)
+
+**What the gate found.** The first run bus-errored on the 68030 while the
+debugger's memory view showed the page mapped. The test's root pointer was
+`2ull << 32`: L/U = 0 makes LIMIT an *upper* bound, and a limit of 0 left
+only index 0 valid, so `$10000000` (index 1) faulted on the CPU, exactly as
+MC68030UM § 9.5.1.5 and Moira's walk say. `Mmu030Peek.h`, the
+side-effect-free walk behind the debugger's logical view and the
+beyond-boot etalons' `guestPeek8`, ignored descriptor limits and answered
+anyway. It now honours the limit of every long-format descriptor it
+follows (the root pointer and 8-byte table entries). The test uses a real
+limit (`$7FFF`) and checks that an index above a limit of 0 is
+Untranslated. Both mutations — the flush and the limit check removed —
+fail it.
 
 <a id="2026-10-09-debugger-symbols"></a>
 ## 2026-10-09 (ninth) — Debugger symbols: OS names from cxmon for every ROM, ROM labels only for the ROM whose checksum they declare

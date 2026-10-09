@@ -2856,8 +2856,31 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   file's declared windows. No ROM symbols ship. The session annotates each
   published disassembly and history line (`DisasmLine::label`, `comment`).
 
-Known limits of this service: MMU/cache register edits and device
-snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
+- **MMU and cache registers are edited like the instructions that write
+  them.** CACR (68020+) is a MOVEC, write-only strobes included. The
+  68030's TC/CRP/SRP/TT0/TT1 and the 68040's TC/URP/SRP/DTT/ITT are a
+  PMOVE/MOVEC with flush: `MoiraDebugSeam::debugMapChanged` empties both
+  ATCs, moves the JIT's map generation and drops the 68030's carried pipe,
+  and the engine drops its blocks. A model without the register refuses
+  it; so does an armed architectural 68040 data cache. The 68030's 64-bit
+  root pointers travel in `Command::value`.
+- **The 030 peek walk honours descriptor limits.** `Mmu030Peek.h` used to
+  ignore the L/U/LIMIT field of long descriptors (the root pointer, 8-byte
+  table entries) and so answered translations the CPU faults on;
+  `debug_inspection_test` pins the refusal.
+
+- **Devices are read from their members, by kind.** Every device class
+  lists the members its save-state `visit()` names in a const
+  `debugFields()` (`POM_DEVICE_FIELDS`, `src/DeviceSnapshot.h`); every map
+  assembles its board in `debugDevices()` under the kinds VIA, SCC,
+  Floppy, SCSI, ADB and Video, naming the part (and, for Egret/Cuda,
+  whether the firmware LLE or the HLE is the live one). Const all the way
+  down, so a snapshot cannot clear a flag; the session publishes them only
+  while the window asks (`SetDeviceView`). A board lacks a kind only where
+  the hardware does (no ADB on the 128K/512K/Plus, no internal floppy on
+  the Duo, video on the Mac II/IIfx only with a NuBus card).
+
+Known limits of this service: with `POM68K_040_DCACHE=1` the memory
 view shows RAM, not a newer dirty cache line; breakpoints belong to the
 CPU object, so a relaunch starts with none.
 
@@ -2869,9 +2892,12 @@ watched opcode fetch that must not stop, TRAP and filtered A-line stops,
 a catchpoint surviving a reset; step over/out on a recursive routine,
 through TRAP and A-line handlers, interrupted by a breakpoint, cancelled
 by Pause; histories recorded, overflowed, exported and parsed back;
-trap/low-memory names and ROM symbol files refused or accepted by identity) and `debug_inspection_test` (030 and 040
+trap/low-memory names and ROM symbol files refused or accepted by identity;
+the device view through the session) and `debug_inspection_test` (030 and 040
 table walks, untouched descriptors, I/O never read: whole-machine save
-bytes identical before and after inspection), plus the window in
+bytes identical before and after inspection; MMU edits retranslating;
+typed device snapshots on sixteen board configurations leaving each
+board's serialized state identical), plus the window in
 `gui_windows_test`.
 
 ### The "Périphériques (LLE / HLE)" window (`src/PeripheralWindow.*`)

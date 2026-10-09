@@ -34,6 +34,7 @@
 // fifoPush/fifoPop/fifoClear and the mode-register writes.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include "FluxPll.h"
 #include <cstdint>
@@ -63,6 +64,10 @@ public:
     // Same shape as Swim1's ISM half (registers, 4-byte parameter RAM,
     // 2-entry FIFO, serial CRC/TSS bit engine, in-flight write transitions);
     // `drive_[2]` are machine-owned pointers, re-attached on restore.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, driveSel_, lstrb_, mode_, setup_, phases_, params_, paramIdx_, fifo_, fifoPos_, error_, writeActive_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(driveSel_, lstrb_, mode_, setup_, phases_, params_, paramIdx_,
            fifo_, fifoPos_, error_);

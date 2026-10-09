@@ -16,6 +16,7 @@
 // Gate: tests/lc3_boot_etalon.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "DaynaPortBus.h"
 #include "jit/JitGuard.h"
@@ -334,6 +335,26 @@ public:
     // wiring the machine's construction owns), cpu_/jitGuard_ (pointers).
     // mode_ is DERIVED (modeline(vidMode_) is an invariant of vctrlWrite),
     // so it is re-resolved on load rather than serialized.
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA1", via_);
+        add(out, "VIA", "VIA2 (Sonora)", pvia_);
+        add(out, "SCC", "Z8530", scc_);
+        add(out, "Floppy", "SWIM2", swim_);
+        add(out, "SCSI", "5380", scsi_);
+        if (egretLleOn_) add(out, "ADB", "Egret (firmware LLE)", egretLle_);
+        else add(out, "ADB", "Egret (HLE)", egret_);
+        add(out, "ADB", "ADB bus", adb_);
+        {
+            pom68k::dev::Snapshot v;
+            v.kind = "Video";
+            v.name = "Sonora";
+            POM_DEVICE_FIELDS(v.fields, montype_, palAddr_, palIdx_, palControl_, framePos_, frameCount_, vblState_);
+            out.push_back(std::move(v));
+        }
+    }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar.blob(vram_);

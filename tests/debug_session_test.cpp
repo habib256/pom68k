@@ -775,6 +775,26 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         check(runsFree(), fam, "and the machine runs free on the user's engine");
     }
 
+    // ── Device snapshots through the session ───────────────────────────
+    if (s && s->stopped) {
+        Command dv;
+        dv.kind = Command::Kind::SetDeviceView;
+        dv.value = 1;
+        s = ackedBy(dbg, dbg.post(dv));
+        bool via = false, scsi = false;
+        if (s)
+            for (const auto& d : s->devices) {
+                via |= d.kind == "VIA";
+                scsi |= d.kind == "SCSI";
+            }
+        check(s && s->devicesOn && via && scsi, fam,
+              "SetDeviceView publishes the board's typed device snapshots");
+        dv.value = 0;
+        s = ackedBy(dbg, dbg.post(dv));
+        check(s && !s->devicesOn && s->devices.empty(), fam,
+              "and switched off, publishes none");
+    }
+
     // ── Symbols ────────────────────────────────────────────────────────
     if (s && s->stopped) {
         constexpr uint32_t kTicksRead = 0x3300;

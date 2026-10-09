@@ -173,6 +173,9 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
         case Command::Kind::ClearSymbols:
             symbols_.clear();
             break;
+        case Command::Kind::SetDeviceView:
+            devicesOn_ = c.value != 0;
+            break;
         case Command::Kind::SetHistory:
             if (!blockingAvailable_ && c.value)
                 message_ = "Historique indisponible dans cette version";
@@ -316,6 +319,8 @@ void Session::publish(Target& target) {
         const std::string c = comment(l);
         s.historyText.push_back(c.empty() ? l.text : l.text + "  ; " + c);
     }
+    s.devicesOn = devicesOn_;
+    if (devicesOn_) target.devices(s.devices);
     s.romChecksum = target.romChecksum();
     s.symbolCount = symbols_.size();
     s.symbolSource = symbols_.source();

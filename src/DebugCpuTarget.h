@@ -150,6 +150,7 @@ public:
         r.tc040 = cpu_.getTC040(); r.urp040 = cpu_.getURP040();
         r.srp040 = cpu_.getSRP040();
         r.dtt0 = cpu_.getDTT0(); r.dtt1 = cpu_.getDTT1();
+        r.itt0 = cpu_.getITT0(); r.itt1 = cpu_.getITT1();
         s.model = modelName();
         s.coreClock = cpu_.getClock();
         s.machineClock = cpu_.machineClock();
@@ -193,15 +194,21 @@ public:
         }
         return line;
     }
+    void devices(std::vector<pom68k::dev::Snapshot>& out) const override {
+        out.clear();
+        if constexpr (requires { mem_.debugDevices(out); }) mem_.debugDevices(out);
+    }
     std::uint32_t romChecksum() const override {
         if constexpr (requires { mem_.romChecksum(); }) return mem_.romChecksum();
         return 0;
     }
 
-    bool setRegister(Reg reg, std::uint32_t v, std::string& why) override {
+    bool setRegister(Reg reg, std::uint64_t v64, std::string& why) override {
         const bool has010 = model() != moira::Model::M68000;
         const bool has020 = has010 && model() != moira::Model::M68010;
+        const std::uint32_t v = std::uint32_t(v64);
         const int r = int(reg);
+        if (reg >= Reg::CACR && reg < Reg::Count) return setControl(reg, v64, why);
         if (r < 8) { cpu_.setD(r, v); return true; }
         if (r < 16) { cpu_.setA(r - 8, v); return true; }
         switch (reg) {
@@ -230,6 +237,42 @@ public:
         }
         why = std::string("Registre absent du ") + modelName();
         return false;
+    }
+
+    // CACR and the MMU registers (DebugTypes.h Target::setRegister).
+    bool setControl(Reg reg, std::uint64_t v64, std::string& why) {
+        const std::uint32_t v = std::uint32_t(v64);
+        const bool has020 = model() != moira::Model::M68000 &&
+                            model() != moira::Model::M68010;
+        const bool mmu = reg == Reg::CACR ? has020
+                       : reg <= Reg::TT1 ? isMmu030() : isMmu040();
+        if (!mmu) {
+            why = std::string("Registre absent du ") + modelName();
+            return false;
+        }
+        if (cpu_.pomCache040Armed()) {
+            why = "Refusé : cache de données 68040 actif";
+            return false;
+        }
+        switch (reg) {
+        case Reg::CACR:   cpu_.setCACR(v); break;
+        case Reg::TC:     cpu_.setTC(v); break;
+        case Reg::CRP:    cpu_.setCRP(v64); break;
+        case Reg::SRP:    cpu_.setSRP(v64); break;
+        case Reg::TT0:    cpu_.setTT0(v); break;
+        case Reg::TT1:    cpu_.setTT1(v); break;
+        case Reg::TC040:  cpu_.setTC040(v); break;
+        case Reg::URP040: cpu_.setURP040(v); break;
+        case Reg::SRP040: cpu_.setSRP040(v); break;
+        case Reg::DTT0:   cpu_.setDTT0(v); break;
+        case Reg::DTT1:   cpu_.setDTT1(v); break;
+        case Reg::ITT0:   cpu_.setITT0(v); break;
+        case Reg::ITT1:   cpu_.setITT1(v); break;
+        default:          return false;
+        }
+        if (reg != Reg::CACR) cpu_.debugMapChanged();
+        cpu_.jit().flushAll();
+        return true;
     }
 
     bool writeMemory(Space space, std::uint32_t addr, const std::uint8_t* data,

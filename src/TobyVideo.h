@@ -5,6 +5,7 @@
 // Register map from MAME nubus_m2video.cpp; decl ROM is external.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "NuBus.h"
 #include "VideoBeam.h"
 #include <array>
@@ -59,6 +60,11 @@ public:
     // The whole card travels — VRAM (u32 words, no zero-run codec; half a
     // megabyte, dwarfed by the machine RAM blob), TFB registers, Bt453
     // CLUT and the CRTC-derived frame clock. bus_/slot_/irqCb_ are wiring.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, regs_, mode_, vblDisable_, hres_, vres_, htotal_,
+                          vtotal_, dacAddr_, frameCount_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(vram_, regs_, pens_, dacAddr_, dacRgb_, dacComp_, mode_, vblDisable_,
            hres_, vres_, htotal_, vtotal_,

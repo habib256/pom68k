@@ -35,6 +35,7 @@
 // Gates: tests/iisi_boot_etalon.cpp, tests/iici_boot_etalon.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "CoreConfig.h"
 #include "DaynaPortBus.h"
 #include "jit/JitGuard.h"
@@ -325,6 +326,31 @@ public:
     // ends travel (Egret HLE+LLE and the IIci's AdbVia/PIC + discrete RTC)
     // — the unused set is idle and costs bytes, not correctness. Out:
     // rom_, cpuHz_/iici_/egretLleOn_ (construction), cpu_/jitGuard_.
+    // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
+    // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const {
+        using pom68k::dev::add;
+        add(out, "VIA", "VIA1", via_);
+        add(out, "VIA", "VIA2 (RBV)", pvia_);
+        add(out, "SCC", "Z8530", scc_);
+        add(out, "Floppy", "SWIM", swim_);
+        add(out, "SCSI", "5380", scsi_);
+        if (iici_) {
+            add(out, "ADB", "ADB transceiver (PIC)", adbVia_);
+            add(out, "ADB", "ADB bus", adb_);
+        } else {
+            if (egretLleOn_) add(out, "ADB", "Egret (firmware LLE)", egretLle_);
+            else add(out, "ADB", "Egret (HLE)", egret_);
+            add(out, "ADB", "ADB bus", adb_);
+        }
+        {
+            pom68k::dev::Snapshot v;
+            v.kind = "Video";
+            v.name = "RBV";
+            POM_DEVICE_FIELDS(v.fields, videoConfig_, montype_, framePos_, frameCount_, vblState_);
+            out.push_back(std::move(v));
+        }
+    }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via_, pvia_, egret_, egretLle_, adbVia_, rtc_, adb_, dac_,

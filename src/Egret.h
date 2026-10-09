@@ -41,6 +41,7 @@
 // the Cuda flavor. Gate: tests/egret_test.cpp.
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "Via6522.h"
 #include <cstdint>
 #include <functional>
@@ -110,6 +111,10 @@ public:
     //
     // Out: `via_` (reference), `adb_` (pointer, re-bound by the machine),
     // `cudaPolarity_`/`clockHz_` (board identity), the debug/device hooks.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, phase_, held_, xcvr_, lastPb_, cmd_, resp_, pending_, seconds_, autopoll_, pollRate_, deviceMap_, pram_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(phase_, held_, xcvr_, lastPb_, delay_, respIdx_,
            cmd_, resp_, pending_, streamSrc_, streamAddr_);

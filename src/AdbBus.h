@@ -15,6 +15,7 @@
 // Gate: tests/egret_test.cpp (talk reg 0 + SRQ under autopoll).
 
 #pragma once
+#include "DeviceSnapshot.h"
 #include "SaveState.h"
 #include <cstdint>
 #include <deque>
@@ -43,6 +44,10 @@ public:
     // are input the guest has not consumed yet, so dropping them would lose
     // a keystroke or a mouse move across a restore. The device addresses
     // travel too — the guest may have reassigned them at Listen r3 time.
+    // ── Debugger (DeviceSnapshot.h): members only, never a register read.
+    void debugFields(std::vector<pom68k::dev::Field>& out) const {
+        POM_DEVICE_FIELDS(out, keyQueue_, mdx_, mdy_, mbtn_, kbdAddr_, mouseAddr_);
+    }
     template <class Ar> void visit(Ar& ar) {
         ar(keyQueue_, mdx_, mdy_, mbtn_, mbtnSent_, kbdAddr_, mouseAddr_);
     }
