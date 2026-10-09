@@ -70,6 +70,9 @@ public:
     // guest's driver may have appended is stripped here, because what sits
     // on the other side of this callback is software, not a wire.
     std::function<void(const std::uint8_t*, std::size_t)> sendFrame;
+    // Passive host observation after normalization, before link demux/Rx
+    // ring admission. Not serialized; cannot replace the frame transport.
+    std::function<void(bool, const std::uint8_t*, std::size_t)> observeFrame;
     // A frame arriving for the guest (raw DIX, no FCS). Queued for the next
     // READ(6); dropped and counted if the ring is full.
     void receiveFrame(const std::uint8_t* d, std::size_t n);

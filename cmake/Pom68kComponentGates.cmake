@@ -275,7 +275,7 @@ add_test(NAME atalk_stack_test COMMAND atalk_stack_test)
 add_executable(atalk_hub_test tests/atalk_hub_test.cpp)
 target_link_libraries(atalk_hub_test PRIVATE pom68k_app pom68k_core)
 add_test(NAME atalk_hub_test COMMAND atalk_hub_test)
-
+include(cmake/Pom68kCaptureGates.cmake)
 # The three server-side network gates drive the host's POSIX socket API
 # directly (unistd.h, arpa/inet.h) and the first MSVC compile of the test
 # tree (release dispatch 34149915451, 2026-09-07) stopped on those includes.

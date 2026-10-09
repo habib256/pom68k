@@ -20,9 +20,9 @@ centris650_boot_etalon/q610@MacOS-8.1-boot.vhd	eefb49d126a73732
 centris650_boot_etalon/q650@MacOS-8.1-boot.vhd	eefb49d126a73732
 centris650_boot_etalon/q800@MacOS-8.1-boot.vhd	eefb49d126a73732
 classic2_boot_etalon@System_7.5_HD.dsk	1c28e681408df9d1
-compact_boot_etalon/Macintosh_Classic@Disk605.dsk	b8027f427d3e997e
-compact_boot_etalon/Macintosh_SE@Disk605.dsk	b8027f427d3e997e
-compact_boot_etalon/Macintosh_SE_FDHD@Disk605.dsk	b8027f427d3e997e
+compact_boot_etalon/Macintosh_Classic@Disk605.dsk	69cfb2d307c29044
+compact_boot_etalon/Macintosh_SE@Disk605.dsk	69cfb2d307c29044
+compact_boot_etalon/Macintosh_SE_FDHD@Disk605.dsk	69cfb2d307c29044
 duo230_boot_etalon@System_7.5.5_HD.dsk	92faf30f6e0f9293
 iici_boot_etalon@GISTPERSO-boot.vhd	39ee9527d2e7c244
 iifx_boot_etalon@GISTPERSO-boot.vhd	e0b819fc443c450d
@@ -55,3 +55,10 @@ se30_boot_etalon@HD20SC.vhd	b12a172677993feb
 system_boot_etalon/external@System_3.3.dsk	51022ba701d8caef
 system_boot_etalon@Disk605.dsk	69cfb2d307c29044
 system_boot_etalon@System_3.3.dsk	51022ba701d8caef
+maciifdhd_boot_etalon@System_6.0.8_-_System_Startup.img	950be2eead6f859a
+maciifdhd_boot_etalon@HD20SC.vhd	570d72109651bfeb
+mac512ke_boot_etalon@System_3.3.dsk	51022ba701d8caef
+mac512ke_boot_etalon/external@System_3.3.dsk	51022ba701d8caef
+system_boot_etalon@Disk605.moof	58646712934e24b2
+system_boot_etalon/external@Disk605.moof	58646712934e24b2
+maciifdhd_boot_etalon@System_6.0.8_-_System_Startup.moof	950be2eead6f859a

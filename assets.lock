@@ -11,12 +11,12 @@ firmware | PG&E boot | 512 | ab6348f7f71d97162d7e17813c46ff8e1d2213635099166809d
 
 machine-rom | Macintosh 128K 28BA61CE | 65536 | 13fe8312cf6167a2bb4351297b48cc1ee29c523b788e58270434742bfeda864c | roms/64KB ROMs/1984-01 - 28BA61CE - Macintosh 128.ROM | mac128k
 machine-rom | Macintosh 512K 28BA4E50 | 65536 | fe6a1ceff5b3eefe32f20efea967cdf8cd4cada291ede040600e7f6c9e2dfc0e | roms/64KB ROMs/1984-10 - 28BA4E50 - Macintosh 512K.ROM | mac512k
-machine-rom | Macintosh Plus v3 4D1F8172 | 131072 | dd908e2b65772a6b1f0c859c24e9a0d3dcde17b1c6a24f4abd8955846d7895e7 | roms/macplus.rom | plus
+machine-rom | Macintosh Plus v3 4D1F8172 | 131072 | dd908e2b65772a6b1f0c859c24e9a0d3dcde17b1c6a24f4abd8955846d7895e7 | roms/macplus.rom | plus,mac512ke
 machine-rom | Macintosh SE B2E362A8 | 262144 | 0dea05180e66fddb5f5577c89418de31b97e2d9dc6affe84871b031df8245487 | roms/256KB ROMs/1987-03 - B2E362A8 - Mac SE.ROM | se
 machine-rom | Macintosh SE FDHD B306E171 | 262144 | bb0cb4786e2e004b701dda9bec475598bc82a4f27eb7b11e6b78dfcee1434f71 | roms/256KB ROMs/1989-08 - B306E171 - Mac SE FDHD.ROM | sefdhd
 machine-rom | Macintosh Classic A49F9914 | 524288 | c1c47260bacac2473e21849925fbfdf48e5ab584aaef7c6d54569d0cb6b41cce | roms/512KB ROMs/1990-10 - A49F9914 - Mac Classic.rom | classic
 machine-rom | Macintosh II 9779D2C4 | 262144 | 97f2a22bdb8972bfcc1f16aff1ebbe157887c26787a1c81747a9842fa7b97a06 | roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM | macii
-machine-rom | Macintosh II FDHD 97221136 | 262144 | 79fae48e2d5cfde68520e46616503963f8c16430903f410514b62c1379af20cb | roms/256KB ROMs/1988-09 - 97221136 - Mac II FDHD & IIx & IIcx.ROM | iix,iicx,se30
+machine-rom | Macintosh II FDHD 97221136 | 262144 | 79fae48e2d5cfde68520e46616503963f8c16430903f410514b62c1379af20cb | roms/256KB ROMs/1988-09 - 97221136 - Mac II FDHD & IIx & IIcx.ROM | maciifdhd,iix,iicx,se30
 machine-rom | Macintosh IIfx 4147DD77 | 524288 | f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5 | roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM | iifx
 machine-rom | Macintosh IIci 368CADFE | 524288 | 0419966cfd7445680c0dd6ca78e8b1f4bc212e75caf56f4a5f523afa576ad3f2 | roms/512KB ROMs/1989-09 - 368CADFE - Mac IIci.ROM | iici
 machine-rom | Macintosh IIsi 36B7FB6C | 524288 | b8b04d1478a609de89dd62e51165cc7ca5757f6f881e9770621d09af82890feb | roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM | iisi

@@ -36,10 +36,11 @@ static std::string find(const char* rel) {
 }
 
 int main(int argc, char** argv) {
-    bool external = false;
+    bool external = false, enhanced = false;
     const char* image = "disks35/Disk605.dsk";
     for (int i = 1; i < argc; i++) {
         if (std::string(argv[i]) == "--external") external = true;
+        else if (std::string(argv[i]) == "--512ke") enhanced = true;
         else image = argv[i];
     }
     std::string rom = find("roms/macplus.rom"), dsk = find(image);
@@ -51,7 +52,7 @@ int main(int argc, char** argv) {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    MacMemory mem(pom68k::defaultCoreConfig());
+    MacMemory mem(pom68k::defaultCoreConfig(), enhanced ? MacMemory::Model::Mac512e : MacMemory::Model::Plus);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
     Cpu68k cpu(mem, jitConfig);
@@ -116,8 +117,8 @@ int main(int argc, char** argv) {
     // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
     // The floppy joins the key by itself; the drive does not, and a volume
     // in drive B may be drawn apart from the same one in drive A.
-    const std::string key = external ? "system_boot_etalon/external"
-                                     : "system_boot_etalon";
+    const std::string key = enhanced ? (external ? "mac512ke_boot_etalon/external" : "mac512ke_boot_etalon")
+                                    : (external ? "system_boot_etalon/external" : "system_boot_etalon");
     const pixelpin::Result pin = pixelpin::settleAndHash(
         [&](std::vector<uint32_t>& out) {
             const uint32_t* f = video.render(mem);

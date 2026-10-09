@@ -383,6 +383,7 @@ endif()
 message(STATUS "POM68K JIT: threaded backend + ${POM68K_JIT_HOST}")
 
 # ─── Core library (headless — shared by GUI, tests, future oracles) ──────
+include(cmake/Pom68kEthernetSources.cmake)
 add_library(pom68k_core STATIC
     ${POM68K_JIT_SOURCES}
     src/SaveState.cpp     # save states — archive core (visitor, chunks, RLE)
@@ -391,9 +392,9 @@ add_library(pom68k_core STATIC
     src/MacMemory.cpp     # M2 — Mac Plus memory map + overlay
     src/Via6522.cpp       # M2/M4 — VIA (ports, timers)
     src/Rtc.cpp           # M4 — clock/PRAM serial chip
-    src/Iwm.cpp           # M5 — floppy controller
-    src/SonyDrive.cpp     # M5 — 400/800K GCR + 1.44 MB MFM mechanism
-    src/SonyDriveFlux.cpp # M5 — flux-to-cell write-back reconstruction
+    src/Iwm.cpp src/IwmWrite.cpp # M5 — floppy controller
+    src/SonyDrive.cpp src/SonyDriveFlux.cpp # physical mechanism and separator
+    src/SonyDriveMedia.cpp # medium insertion and host persistence
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
     src/Scc8530Serial.cpp # SCC async byte-wire seam
     src/SerialHostTransport.cpp # SCC async — host PTY/TCP byte transport
@@ -411,9 +412,7 @@ add_library(pom68k_core STATIC
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
     src/HfsInject.cpp     # host-side file insertion into an HFS volume (Startup Items)
-    src/DaynaPort.cpp     # DaynaPort SCSI/Link — Ethernet as a SCSI target
-    src/EtherLink.cpp
-    src/EtherTalkLink.cpp     # Ethernet framing + ARP: DaynaPort ↔ MacIpGateway
+    ${POM68K_ETHERNET_SOURCES}
     src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
     src/Ncr53c96.cpp      # Q6 — NCR 53C96 SCSI controller (Quadra 605)
     src/PseudoVia.cpp     # O6 — LC II pseudo-VIA (V8 interrupt core)

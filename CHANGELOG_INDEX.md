@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 610 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 627 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,16 +11,16 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 90 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 58 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 34 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 98 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 104 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 27 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
-| [Save states](#save-states) | 8 |
+| [Save states](#save-states) | 9 |
 | [Machine bring-ups](#machine-bring-ups) | 73 |
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 117 |
+| [Cross-cutting](#cross-cutting) | 127 |
 
 ---
 
@@ -315,6 +315,12 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-26** — [Thirty-eight profiles pinned, and a pin names the volume too](CHANGELOG.md#2026-09-26-pins-by-volume)
 - **2026-10-02 (evening)** — [The pixel pins hold on AArch64, except the compacts' floppy — and this host's `Disk605.dsk` is no longer the one both hosts shared on 2026-09-09](CHANGELOG.md#2026-10-02-pins-aarch64)
 - **2026-10-03** — [The Quadra 630's SCSI driver was not elsewhere: MAME's default 630 carries an imageless IDE disk](CHANGELOG.md#2026-10-03-q630-ide)
+- **2026-10-08 (eighth)** — [MOOF preserves native floppy tracks through seeks, writes, snapshots and export](CHANGELOG.md#2026-10-08-native-moof)
+- **2026-10-08 (eleventh)** — [IWM writes preserve individual cells and partial-byte splices](CHANGELOG.md#2026-10-08-iwm-bit-write)
+- **2026-10-08 (later)** — [Sony GCR sectors keep their twelve physical tag bytes through reads, writes, snapshots and DC42 persistence](CHANGELOG.md#2026-10-08-gcr-tags)
+- **2026-10-08 (ninth)** — [Weak floppy regions produce read-amplifier pulses without changing the medium](CHANGELOG.md#2026-10-08-floppy-read-noise)
+- **2026-10-09** — [The SE's VIA1 PA4 selects its internal floppy connector, and the boot floppy stops mounting twice](CHANGELOG.md#2026-10-09-se-pa4-drives)
+- **2026-10-09 (later)** — [The 128K wrote sector 6 into sector 1's slot: the IWM reader now re-parks when the revolution changes](CHANGELOG.md#2026-10-09-iwm-repark)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -402,6 +408,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-12 (later)** — [The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer](CHANGELOG.md#2026-08-12-savestate-writebuffer)
 - **2026-08-29 (tenth)** — [Real sessions become replayable benchmarks: the input journal records every GUI input at its machine clock, and a recorded session replays bit-identically from its snapshot](CHANGELOG.md#2026-08-29-input-journal)
 - **2026-09-14 (eighth)** — [Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug](CHANGELOG.md#2026-09-14-three-small-debts)
+- **2026-10-08** — [ATA snapshots resume the actual transfer and disk timeline; CUE files describe one disc across multiple sources](CHANGELOG.md#2026-10-08-storage-state-cue)
 
 ## Machine bring-ups
 
@@ -672,4 +679,14 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-25** — [TODO.md reorganised by jalon: each exit criterion sits over its own remaining work, and waiting items leave the plan](CHANGELOG.md#2026-09-25-todo-by-jalon)
 - **2026-09-26 (late night)** — [The compacts calibrate themselves as MAME's do: the VIA T2 load latency and the /VPA E-clock cycle, found through the ROM's own TimeDBRA — and a restart race on seven platforms it exposed](CHANGELOG.md#2026-09-26-via-vpa-t2)
 - **2026-09-26 (night)** — [The LaserWriter speaks for its CUPS queue: a chosen destination, papd's live status, and a busy printer when the queue refuses jobs](CHANGELOG.md#2026-09-26-pap-queues)
+- **2026-10-08 (fifteenth)** — [Passive Dayna PCAP records the real MacTCP conversation](CHANGELOG.md#2026-10-08-ethernet-pcap)
+- **2026-10-08 (fifth)** — [Stored CD pregaps retain their INDEX 00 track and countdown](CHANGELOG.md#2026-10-08-cd-index-zero)
+- **2026-10-08 (fourteenth)** — [Real MacTCP resolves a name and completes TCP after RARP](CHANGELOG.md#2026-10-08-mactcp-dns-tcp)
+- **2026-10-08 (fourth)** — [CD capacity and playback positions use the physical disc address space](CHANGELOG.md#2026-10-08-cd-address-space)
+- **2026-10-08 (seventh)** — [512Ke and Macintosh II FDHD retain their real shared-ROM hardware](CHANGELOG.md#2026-10-08-real-shared-rom-profiles)
+- **2026-10-08 (sixth)** — [Apple DART archives preserve real Macintosh sectors, tags and container provenance](CHANGELOG.md#2026-10-08-dart-media)
+- **2026-10-08 (tenth)** — [Original Oids flux capture flies and replays in a fresh Macintosh](CHANGELOG.md#2026-10-08-oids-native-application)
+- **2026-10-08 (third)** — [CD-DA transport runs at exactly 75 sectors per guest second](CHANGELOG.md#2026-10-08-cdda-clock)
+- **2026-10-08 (thirteenth)** — [MacTCP Server obtains its address through the real Dayna driver](CHANGELOG.md#2026-10-08-ethernet-rarp)
+- **2026-10-08 (twelfth)** — [Ethernet mask discovery follows the real ICMP protocol](CHANGELOG.md#2026-10-08-ethernet-address-mask)
 

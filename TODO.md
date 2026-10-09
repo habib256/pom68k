@@ -125,6 +125,11 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   autovecteur calé sur l'horloge E (`vpa_sync` chez MAME). Chacune attend
   son observable invité, comme T2 et le cycle /VPA ont eu TimeDBRA/TimeSCCDB
   (`compact_timing_etalon`, `CHANGELOG` 2026-09-26).
+- [ ] **Exposer le second lecteur interne du SE dans le produit.** Le
+  câblage VIA1 PA4 et le mécanisme optionnel existent dans le cœur
+  (`CoreStorageConfig::secondInternalFloppy`, `CHANGELOG` 2026-10-09) ;
+  restent l'option de démarrage, la ligne de la fenêtre Disques, la
+  relance et la session, avec un gate GUI.
 - [ ] **Améliorer la précision sonore des compacts : la sortie PWM.** Le
   son prend l'octet comme PCM linéaire là où la carte le rend en PWM 1 bit
   dans un intégrateur. (Lecture par ligne faite le 2026-09-27, DAC hôte et

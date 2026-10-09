@@ -48,7 +48,7 @@ enum class PlatformKind : std::uint8_t {
 enum class MachineKind : std::uint8_t {
     Plus = 0, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII,
     ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630,
-    Quadra, Duo, Mac128, Mac512
+    Quadra, Duo, Mac128, Mac512, Mac512e
 };
 
 // Stored in snapshot headers: these numeric values are a file format. Append,
@@ -68,6 +68,7 @@ enum class SnapMachine : std::uint32_t {
     SE30 = 33, IIfx = 34, Quadra900 = 35, Quadra950 = 36,
     Duo230 = 37,
     Mac128K = 38, Mac512K = 39,
+    Mac512Ke = 40, MacIIFDHD = 41,
 };
 
 struct MachineProfile {
@@ -85,12 +86,14 @@ struct MachineProfile {
 inline constexpr MachineProfile kMachineProfiles[] = {
     {"68000", "Macintosh 128K", "mac128k", MachineKind::Mac128, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Mac128K, "roms/mac128k.rom", "28BA61CE"},
     {"68000", "Macintosh 512K", "mac512k", MachineKind::Mac512, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Mac512K, "roms/mac512k.rom", "28BA4E50"},
+    {"68000", "Macintosh 512Ke", "mac512ke", MachineKind::Mac512e, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Mac512Ke, "roms/macplus.rom", nullptr},
     {"68000", "Macintosh Plus", "plus", MachineKind::Plus, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Plus, "roms/macplus.rom", nullptr},
     {"68000", "Macintosh SE", "se", MachineKind::Se, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::SE, "roms/macse.rom", "B2E362A8"},
     {"68000", "Macintosh SE FDHD", "sefdhd", MachineKind::SeFdhd, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::SEFDHD, "roms/macsefd.rom", "B306E171"},
     {"68000", "Macintosh Classic", "classic", MachineKind::MacClassic, PlatformKind::Compact, CpuFamily::M68000, SnapMachine::Classic, "roms/macclassic.rom", "A49F9914"},
 
     {"GLUE + NuBus (Mac II)", "Macintosh II", "macii", MachineKind::MacII, PlatformKind::Glue, CpuFamily::M68020, SnapMachine::MacII, "roms/macii.rom", "9779D2C4"},
+    {"GLUE + NuBus (Mac II)", "Macintosh II FDHD", "maciifdhd", MachineKind::MacII, PlatformKind::Glue, CpuFamily::M68020, SnapMachine::MacIIFDHD, "roms/mac2fdhd.rom", "97221136"},
     {"GLUE + NuBus (Mac II)", "Macintosh IIx", "iix", MachineKind::MacII, PlatformKind::Glue, CpuFamily::M68030, SnapMachine::IIx, "roms/mac2fdhd.rom", "97221136"},
     {"GLUE + NuBus (Mac II)", "Macintosh IIcx", "iicx", MachineKind::MacII, PlatformKind::Glue, CpuFamily::M68030, SnapMachine::IIcx, "roms/mac2fdhd.rom", "97221136"},
     {"GLUE + NuBus (Mac II)", "Macintosh SE/30", "se30", MachineKind::MacII, PlatformKind::Glue, CpuFamily::M68030, SnapMachine::SE30, "roms/mac2fdhd.rom", "97221136"},
@@ -141,10 +144,12 @@ constexpr StorageCapabilities storageCapabilities(const MachineProfile& profile)
         case SnapMachine::Duo230:
             return {FloppyKind::None, false, true, true};
         // The only profiles without a SCSI bus: it arrived with the Plus.
-        // Both keep the external floppy port (DB-19) the 128K shipped with.
+        // The early compacts keep the external floppy port (DB-19) the 128K shipped with.
         case SnapMachine::Mac128K:
         case SnapMachine::Mac512K:
             return {FloppyKind::Gcr400K, true, false, false};
+        case SnapMachine::Mac512Ke:
+            return {FloppyKind::Gcr800K, true, false, false};
         case SnapMachine::Plus:
         case SnapMachine::SE:
             return {FloppyKind::Gcr800K, true, true, true};
@@ -152,12 +157,13 @@ constexpr StorageCapabilities storageCapabilities(const MachineProfile& profile)
         case SnapMachine::MacII:
             return {FloppyKind::Gcr800K, false, true, true};
         // Drive B is wired where MAME connects a second mechanism by default:
-        // the compacts (mac128.cpp) and the FDHD-ROM Glue trio (maciihd).
+        // the compacts (mac128.cpp) and the FDHD-ROM Glue quartet (maciihd).
         // Every later board leaves it `add_35_nc` — the LC family has no
         // external floppy port at all — and so does POM68K (CHANGELOG
         // 2026-10-02 (late night)); `storage_profile_test` holds each board.
         case SnapMachine::SEFDHD:
         case SnapMachine::Classic:
+        case SnapMachine::MacIIFDHD:
         case SnapMachine::IIx:
         case SnapMachine::IIcx:
         case SnapMachine::SE30:

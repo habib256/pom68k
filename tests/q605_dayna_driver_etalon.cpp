@@ -24,7 +24,7 @@
 //              Alternative" (the installed SCSI/Link ADEV). The driver
 //              opens the card (ENABLE) and puts real AARP probes and DDP
 //              on the wire, addressed to the AppleTalk multicast group.
-//   mactcp     MacTCP → the Ethernet link, manual 192.168.151.2 with the
+//   mactcp     MacTCP → Ethernet, manual or RARP Server 192.168.151.2 with the
 //              gateway at .1 (MacIpGateway's own subnet). MacTCP Ping
 //              ARPs for the gateway, EtherLink's proxy answers, and the
 //              echo requests leave as IPv4 frames.
@@ -59,6 +59,8 @@ namespace fs = std::filesystem;
 #include <vector>
 
 #include "afp_live_transfer.h"
+#include "DaynaNetProbe.h"
+#include "DaynaCaptureEvidence.h"
 
 using namespace q605app;
 
@@ -73,7 +75,8 @@ constexpr uint32_t kGatewayIp = 0xC0A89701;  // MacIpGateway's own address
 // What the guest's driver puts on the wire, classified as it arrives.
 struct Sniffer {
     long aarp = 0, ddp = 0, arp = 0, ip = 0, other = 0;
-    long arpForGateway = 0, icmpRequests = 0, icmpReplies = 0;
+    long arpForGateway = 0, icmpRequests = 0, icmpReplies = 0, rarp = 0;
+    long ipFromAssigned = 0;
     long ddpFromStartupRange = 0, ddpFromRouterNet = 0;
     std::string firstDescription;
 
@@ -103,6 +106,9 @@ struct Sniffer {
                 }
             }
             else { other++; what = "SNAP"; }
+        } else if (typeLen == 0x8035) {
+            if (n >= 42 && d[20] == 0 && d[21] == 3) rarp++;
+            what = "RARP";
         } else if (typeLen == 0x0806) {
             arp++;
             what = "ARP";
@@ -113,8 +119,9 @@ struct Sniffer {
         } else if (typeLen == 0x0800) {
             ip++;
             what = "IPv4";
-            const size_t ihl = size_t(d[14] & 0x0F) * 4;
-            if (n >= 14 + ihl + 8 && d[23] == 1) {  // ICMP
+            if (n >= 34 && be32(d + 26) == kGuestIp) ipFromAssigned++;
+            const size_t ihl = n >= 34 ? size_t(d[14] & 0x0F) * 4 : 0;
+            if (ihl >= 20 && n >= 14 + ihl + 8 && d[23] == 1) {  // ICMP
                 if (d[14 + ihl] == 8) icmpRequests++;
                 if (d[14 + ihl] == 0) icmpReplies++;
             }
@@ -170,6 +177,24 @@ bool titleIs(const std::string& title, const char* want) {
     return true;
 }
 
+void stableClick(int x, int y, long settle) {
+    // Let each movement reach the guest before measuring the next one.
+    // A one-frame feedback loop can reach Mouse while queued ADB deltas
+    // still carry the cursor past the narrow disk glyph during button-down.
+    for (int step = 0; step < 200; ++step) {
+        int px, py; pointer(px, py);
+        const int dx = x - px, dy = y - py;
+        if (std::abs(dx) <= 1 && std::abs(dy) <= 1) break;
+        auto delta = [](int d) {
+            if (!d) return 0;
+            return std::clamp(d / 2 ? d / 2 : (d > 0 ? 1 : -1), -8, 8);
+        };
+        gMem->mouseMove(delta(dx), delta(dy));
+        runFrames(6);
+    }
+    click(x, y, settle);
+}
+
 // A volume on the desktop is opened with the MOUSE: select the icon,
 // then Cmd-O. Type-select is not dependable there on this volume — the
 // Startup Items (Stickies among them) are still coming up when the
@@ -179,12 +204,13 @@ bool titleIs(const std::string& title, const char* want) {
 bool openVolume(int x, int y, const char* expectTitle, long settle,
                 int tries = 3) {
     for (int t = 0; t < tries; t++) {
-        click(x, y, 60);
+        stableClick(x, y, 60);
         command(0x1F, settle);                      // 'o' — Open
         if (titleIs(frontWindowTitle(), expectTitle)) return true;
         std::fprintf(stderr, "[nav] icon (%d,%d) -> front window is '%s', "
                      "wanted '%s' (try %d)\n", x, y,
                      frontWindowTitle().c_str(), expectTitle, t + 1);
+        dump("q605_dayna_nav_volume.ppm");
         runFrames(300);
     }
     return false;
@@ -350,7 +376,16 @@ long countLiteral(const std::string& path, const char* needle) {
 // MacTCP configuration. What the guest does with a router it hears from
 // power-on is the question behind « EtherTalk on by default ».
 int main(int argc, char** argv) {
-    const bool hubFirst = argc > 1 && std::string(argv[1]) == "hubfirst";
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+    const bool networkProbe = argc > 1 && std::string(argv[1]) == "rarp-net";
+    const bool automatic = networkProbe || (argc > 1 && std::string(argv[1]) == "rarp");
+#ifdef _WIN32
+    if (networkProbe) {
+        std::printf("SKIP: real host-socket DNS/TCP peers require the Unix NAT backend\n");
+        return 0;
+    }
+#endif
+    const bool hubFirst = automatic || (argc > 1 && std::string(argv[1]) == "hubfirst");
     const std::string romPath = testasset::findAny({
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",
         "roms/mame/macqd605/ff7439ee.bin",
@@ -366,6 +401,11 @@ int main(int argc, char** argv) {
         return 0;
     }
     testasset::report({ romPath, refDisk, drvPath, toolsPath });
+    if (networkProbe && !std::filesystem::exists("dev/netprobe/build/NetProbe.bin")) {
+        std::printf("SKIP: build dev/netprobe with the Retro68 toolchain\n");
+        return 0;
+    }
+    if (networkProbe) testasset::report({"dev/netprobe/build/NetProbe.bin"});
     std::fflush(stdout);
 
     // Fresh every run: what the guest writes here is this gate's artefact.
@@ -374,7 +414,8 @@ int main(int argc, char** argv) {
     // other's share folder and overwrote its disk mid-boot (the default
     // mode's AppleShare session failed only when hubfirst overlapped it,
     // 2026-09-27).
-    const std::string mode = hubFirst ? "-hubfirst" : "";
+    const std::string mode = networkProbe ? "-rarp-net" :
+        (automatic ? "-rarp" : (hubFirst ? "-hubfirst" : ""));
     const std::filesystem::path shareRoot =
         std::filesystem::path("run") / ("dayna-ethertalk" + mode);
     const std::filesystem::path shareDir = shareRoot / "Echange";
@@ -409,15 +450,22 @@ int main(int argc, char** argv) {
 
     auto cfg = pom68k::defaultCoreConfig();
     cfg.bus.daynaPortId = kDaynaId;
+    const std::string probeTools = "hdv/work/dayna-tools-rarp-net.vhd";
+    if (networkProbe && !cloneVolume(toolsPath, probeTools)) return 1;
     Q605Memory mem(cfg, 32u << 20);
     if (!mem.loadRom(rom) ||
         !mem.attachScsi(diskPath, true, 0) ||
         !mem.attachScsi(drvPath, false, kDriverVolumeId) ||
-        !mem.attachScsi(toolsPath, false, kToolsVolumeId)) {
+        !mem.attachScsi(networkProbe ? probeTools : toolsPath, networkProbe, kToolsVolumeId)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disks\n");
         return 1;
     }
     Cpu040 cpu(mem, testjit::resolveFromEnvironment(), cfg.cpu, cfg.diagnostics);
+    DaynaNetProbe netProbe;
+    if (networkProbe && !netProbe.prepare(mem.scsiDiskAt(kToolsVolumeId), probeTools)) {
+        std::fprintf(stderr, "FAIL: cannot prepare NetProbe and local DNS/TCP endpoints\n");
+        return 1;
+    }
     mem.setCpu(&cpu);
     cpu.hardReset();
     gMem = &mem;
@@ -465,8 +513,14 @@ int main(int argc, char** argv) {
         // folderName), so the guest mounts a volume called "Echange".
         hub.setDefaultShareDir(shareDir.string());
         const int byteCycles = int(mem.cpuHz() / 28800);
-        hub.attach(mem, int64_t(byteCycles) * 28800, nullptr);
-        gAfterFrame = [&] { hub.tick(cpu.machineClock()); };
+        hub.attach(mem, int64_t(byteCycles) * 28800, nullptr,
+                   [&] { return cpu.machineClock(); });
+        if (networkProbe && !hub.startEthernetCapture((shareRoot/"wire.pcap").string()))
+            std::fprintf(stderr,"FAIL: cannot start guest Ethernet capture\n");
+        gAfterFrame = [&] {
+            if (networkProbe) netProbe.poll();
+            hub.tick(cpu.machineClock());
+        };
         {   // Sniff in FRONT of the link EtherLink installed, never instead of it.
             auto uplink = mem.daynaPort().sendFrame;
             mem.daynaPort().sendFrame = [&sniffer, uplink](const uint8_t* d, size_t n) {
@@ -557,7 +611,9 @@ int main(int argc, char** argv) {
     keyHold(0x24, 6);
     runFrames(240);
     closeAllFinderWindows();
-    if (!openVolume(600, 57, "Macintosh HD", 900) ||
+    // The disk glyph spans y=46..56; y=57 lands below its hit region.
+    // Pin the centre seen in q605_dayna_nav_volume.ppm, not its lower edge.
+    if (!openVolume(600, 51, "Macintosh HD", 900) ||
         !openWindow("system f", "System Folder", 900) ||
         !openWindow("control p", "Control Panels", 900) ||
         !openWindow("network", "Network", 1800)) {
@@ -588,19 +644,36 @@ int main(int argc, char** argv) {
     // MacTCP lists the AppleTalk link ("EtherTalk (A)", which would carry
     // IP inside DDP — MacIP, and this card bridges IPv4 and ARP only) and
     // the Ethernet one. The Ethernet link is the card's own protocol.
-    click(263, 85, 60);
-    click(215, 293, 900);                    // More…
-    click(126, 127, 300);                    // Obtain Address: Manually
-    click(232, 309, 60);                     // gateway field, caret past the end
-    for (int i = 0; i < 16; i++) keyHold(0x33, 6);
-    typeSlow("192.168.151.1");
+    stableClick(263, 85, 60);
+    stableClick(215, 293, 900);              // More…
+    if (!titleIs(frontWindowTitle(), "More Dialog")) {
+        std::fprintf(stderr, "FAIL: MacTCP More did not open ('%s')\n", frontWindowTitle().c_str());
+        return 1;
+    }
+    stableClick(126, automatic && !networkProbe ? 150 : 127, 300);
+    // Server mode disables Routing Information. Set the router first for
+    // the off-subnet DNS/TCP case, then select Server; the guest address is
+    // still left at zero. The local-ICMP-only RARP leg needs no route.
+    if (!automatic || networkProbe) {
+        stableClick(232, 309, 60);                 // gateway field, caret past the end
+        for (int i = 0; i < 16; i++) keyHold(0x33, 6);
+        typeSlow("192.168.151.1");
+    }
+    if (networkProbe) stableClick(126,150,300); // Server; keep the configured router
     runFrames(120);
     dump("q605_dayna_10_gateway.ppm");
-    click(139, 381, 600);                    // OK
-    click(285, 222, 60);                     // the panel's own address field
-    for (int i = 0; i < 16; i++) keyHold(0x33, 6);
-    typeSlow("192.168.151.2");
-    runFrames(180);
+    stableClick(139, 381, 600);                    // OK
+    if (!titleIs(frontWindowTitle(), "MacTCP")) {
+        std::fprintf(stderr, "FAIL: MacTCP More dialog did not close ('%s')\n",
+                     frontWindowTitle().c_str());
+        return 1;
+    }
+    if (!automatic) {
+        stableClick(285, 222, 60);                 // manual address only in the old legs
+        for (int i = 0; i < 16; i++) keyHold(0x33, 6);
+        typeSlow("192.168.151.2");
+        runFrames(180);
+    }
     dump("q605_dayna_11_address.ppm");
     command(adbFor('w'), 600);               // close: MacTCP writes its config
 
@@ -769,7 +842,10 @@ int main(int argc, char** argv) {
     const long rxBefore = mem.daynaPort().framesToGuest;
     click(340, 309, 1800);                   // Start Ping
     dump("q605_dayna_12_ping.ppm");
-    r.mactcpBound = sniffer.arpForGateway > 0;
+    // RARP already advertises the responder's MAC/IP pair (RFC 903), so
+    // Server mode need not issue a separate ARP for the gateway.
+    r.mactcpBound = automatic ? sniffer.rarp > 0 && sniffer.ipFromAssigned > 0
+                             : sniffer.arpForGateway > 0;
     r.icmpOut = sniffer.icmpRequests > 0 &&
                 mem.daynaPort().framesToGuest > rxBefore;
     std::printf("mactcp: ARP for the gateway %ld, ICMP requests out %ld, "
@@ -859,6 +935,22 @@ int main(int argc, char** argv) {
         dump("q605_dayna_23_cable.ppm");
     }
 
+    bool networkOk = !networkProbe;
+    if (networkProbe) {
+        command(adbFor('q'), 600);          // leave MacTCP Ping for the Finder
+        closeAllFinderWindows();
+        if (!openVolume(600,160,"TOOLS",900) ||
+            !openApplication("netprobe", "NetProbe", 1800)) return 1;
+        std::string report;
+        for (int poll=0; poll<120 && report.empty(); ++poll) {
+            runFrames(30); report=netProbe.report(mem.scsiDiskAt(kToolsVolumeId));
+        }
+        netProbe.describe();
+        std::printf("netprobe guest report:\n%s\n", report.c_str());
+        networkOk = report.find("PASS: 1") != std::string::npos && netProbe.ok();
+        networkOk = daynaCaptureEvidence(hub,(shareRoot/"wire.pcap").string()) && networkOk;
+        dump("q605_dayna_netprobe.ppm");
+    }
     r.halted = cpu.isHalted();
     // The artefact: the driver Dayna's installer placed is IN the volume
     // the guest wrote (Easy Install merges the SCSI/Link 'adev' into the
@@ -872,7 +964,10 @@ int main(int argc, char** argv) {
                 sniffer.arp, sniffer.ip, sniffer.other,
                 mem.daynaPort().framesFromGuest, mem.daynaPort().framesToGuest,
                 mem.daynaPort().framesDropped);
+    const bool assigned = !automatic || sniffer.rarp > 0;
+    std::printf("RARP automatic mode=%d, requests=%ld, IPv4 frames from .2=%ld\n",
+                automatic, sniffer.rarp, sniffer.ipFromAssigned);
     std::printf("%s — Quadra 605 real DaynaPORT SCSI/Link driver etalon\n",
-                r.ok() ? "PASSED" : "FAILED");
-    return r.ok() ? 0 : 1;
+                r.ok() && assigned && networkOk ? "PASSED" : "FAILED");
+    return r.ok() && assigned && networkOk ? 0 : 1;
 }

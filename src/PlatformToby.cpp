@@ -177,17 +177,15 @@ private:
 static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                     const std::vector<std::string>& media,
                     GuiHostServices& services,
-                    MacIIMemory::Model model = MacIIMemory::Model::MacII) {
-    const bool is030 = model != MacIIMemory::Model::MacII;
+                    pom68k::SnapMachine selected) {
+    const auto& profile = *pom68k::machineProfile(selected);
+    const auto model = MacIIMemory::modelFor(selected);
+    const bool is030 = profile.cpu == pom68k::CpuFamily::M68030;
     const bool se30 = model == MacIIMemory::Model::SE30;
-    const char* name = model == MacIIMemory::Model::IIx  ? "IIx"
-                     : model == MacIIMemory::Model::IIcx ? "IIcx"
-                     : se30 ? "SE/30" : "II";
-    std::printf("Machine: Macintosh %s (%s @ 15.6672 MHz, %s%s)\n",
-                name, is030 ? "68030 + PMMU" : "68020",
+    std::printf("Machine: %s (%s @ 15.6672 MHz, %s%s)\n",
+                profile.label, is030 ? "68030 + PMMU" : "68020",
                 se30 ? "512×342 interne" : "Toby NuBus",
-                !services.config().cpu().fpu
-                    ? ""
+                !services.config().cpu().fpu ? ""
                     : (is030 ? ", soft 68882" : ", soft 68881"));
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
                 rom.size() / 1024);
@@ -212,24 +210,17 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     }
     mem.setCpu(&cpu);
 
-    const std::string pramTag = se30 ? "se30"
-        : model == MacIIMemory::Model::IIx  ? "iix"
-        : model == MacIIMemory::Model::IIcx ? "iicx" : "macii";
-    const pom68k::SnapMachine snap = model == MacIIMemory::Model::IIx
-        ? pom68k::SnapMachine::IIx
-        : model == MacIIMemory::Model::IIcx ? pom68k::SnapMachine::IIcx
-        : se30 ? pom68k::SnapMachine::SE30 : pom68k::SnapMachine::MacII;
     const TobyRunnerSpec spec{
-        std::string("Macintosh ") + name,
+        profile.label,
         "Macintosh II",
         is030 ? "68030 @ 15.6672 MHz (Moira)"
               : "68020 @ 15.6672 MHz (Moira)",
-        pramTag,
-        pramTag,
+        profile.slug,
+        profile.slug,
         {"hdv/System 6.0.8 HD.dsk", "hdv/HD20SC.vhd",
          "hdv/GISTPERSO-boot.vhd", "hdv/boot.vhd"},
         MachineKind::MacII,
-        snap,
+        profile.snapshot,
         true,
     };
     return runTobyGui<MacIiMachine>(
@@ -301,11 +292,6 @@ int pom68k::gui::composeToby(
     if (launch.platform == pom68k::PlatformKind::Oss)
         return runIIfx(std::move(launch.rom), launch.romName, launch.media,
                        services);
-    const MacIIMemory::Model model =
-        launch.selected == pom68k::SnapMachine::IIx ? MacIIMemory::Model::IIx :
-        launch.selected == pom68k::SnapMachine::IIcx ? MacIIMemory::Model::IIcx :
-        launch.selected == pom68k::SnapMachine::SE30 ? MacIIMemory::Model::SE30 :
-                                                       MacIIMemory::Model::MacII;
     return runMacII(std::move(launch.rom), launch.romName, launch.media,
-                    services, model);
+                    services, launch.selected);
 }

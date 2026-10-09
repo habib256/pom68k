@@ -63,6 +63,7 @@ void DaynaPort::setSense(std::uint8_t key, std::uint8_t asc) {
 
 void DaynaPort::receiveFrame(const std::uint8_t* d, std::size_t n) {
     if (!attached_ || !enabled_ || !d || n < 14 || n > kMaxFrame) return;
+    if (observeFrame) observeFrame(false,d,n);
     // Full ring: drop the ARRIVING frame, not the oldest. A guest that has
     // stopped polling is better served by the frames it already has (its TCP
     // will retransmit what it missed) than by a ring that keeps rewriting
@@ -208,6 +209,7 @@ std::uint8_t DaynaPort::command(const std::uint8_t* cdb, int cdbLen,
             if (len >= 14 && len <= kMaxFrame && enabled_) {
                 framesFromGuest++;
                 bytesFromGuest += long(len);
+                if (observeFrame) observeFrame(true,frame,len);
                 if (sendFrame) sendFrame(frame, len);
             }
             return kGood;

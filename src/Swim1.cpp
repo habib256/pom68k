@@ -73,20 +73,27 @@ void Swim1::attachDrive(SonyDrive* internal, SonyDrive* external) {
     if (drive_[1]) drive_[1]->setSuperDrive(superDriveConfigured_);
 }
 
+void Swim1::wireInternalSelect(bool wired, SonyDrive* second) {
+    secondInternal_ = wired ? second : nullptr;
+    iwm_.wireInternalSelect(wired, second);
+    if (second) second->setSuperDrive(superDriveConfigured_);
+}
+
 void Swim1::configureSuperDrive(bool enabled) {
     superDriveConfigured_ = enabled;
     iwmToIsm_ = 0;
     if (!enabled && ismMode_) leaveIsm();
     if (drive_[0]) drive_[0]->setSuperDrive(enabled);
     if (drive_[1]) drive_[1]->setSuperDrive(enabled);
+    if (secondInternal_) secondInternal_->setSuperDrive(enabled);
 }
 
 SonyDrive* Swim1::selectedDrive() const {
     if (!(mode_ & 0x80)) return nullptr;         // motor/soft-select gate
     const int sel = (mode_ >> 1) & 3;
-    if (sel == 1) return drive_[0];
+    if (sel == 1) return iwm_.enable1Drive();
     if (sel == 2) return drive_[1];
-    if (sel == 3) return drive_[driveSel_];
+    if (sel == 3) return driveSel_ ? drive_[1] : iwm_.enable1Drive();
     return nullptr;
 }
 

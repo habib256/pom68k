@@ -80,32 +80,19 @@ struct CompactMachine
         stFlags_.store(mem.overlay() ? 1 : 0, std::memory_order_relaxed);
     }
 };
-// One row per compact profile — four parallel ternary chains before this.
-struct CompactProfile {
-    pom68k::SnapMachine snapshot;
-    MacMemory::Model model;
-    MachineKind kind;
-    const char* name;
-    const char* tag;      // PRAM / save-state / input-journal file stem
-};
-static constexpr CompactProfile kCompactProfiles[] = {
-    {pom68k::SnapMachine::Plus, MacMemory::Model::Plus,
-     MachineKind::Plus, "Macintosh Plus", "plus"},
-    {pom68k::SnapMachine::Mac128K, MacMemory::Model::Mac128,
-     MachineKind::Mac128, "Macintosh 128K", "mac128k"},
-    {pom68k::SnapMachine::Mac512K, MacMemory::Model::Mac512,
-     MachineKind::Mac512, "Macintosh 512K", "mac512k"},
-    {pom68k::SnapMachine::SE, MacMemory::Model::SE,
-     MachineKind::Se, "Macintosh SE", "se"},
-    {pom68k::SnapMachine::SEFDHD, MacMemory::Model::SEFDHD,
-     MachineKind::SeFdhd, "Macintosh SE FDHD", "sefdhd"},
-    {pom68k::SnapMachine::Classic, MacMemory::Model::Classic,
-     MachineKind::MacClassic, "Macintosh Classic", "classic"},
-};
-static const CompactProfile& compactProfile(pom68k::SnapMachine selected) {
-    for (const CompactProfile& profile : kCompactProfiles)
-        if (profile.snapshot == selected) return profile;
-    return kCompactProfiles[0];              // the Plus: this map's default
+// Board variants only; names, runner and file stems belong to the catalogue.
+static MacMemory::Model compactModel(pom68k::SnapMachine selected) {
+    using S = pom68k::SnapMachine;
+    using M = MacMemory::Model;
+    switch (selected) {
+        case S::Mac128K: return M::Mac128;
+        case S::Mac512K: return M::Mac512;
+        case S::Mac512Ke: return M::Mac512e;
+        case S::SE: return M::SE;
+        case S::SEFDHD: return M::SEFDHD;
+        case S::Classic: return M::Classic;
+        default: return M::Plus;
+    }
 }
 
 // Compact composition. Native sessions use CompactMachine's worker thread;
@@ -120,8 +107,8 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     MacAudio& audio = services.own<MacAudio>();
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);
-    const CompactProfile& profile = compactProfile(selected);
-    mem.setModel(profile.model);
+    const auto& profile = *pom68k::machineProfile(selected);
+    mem.setModel(compactModel(selected));
 
     const bool demoMode = rom.empty() || !mem.loadRom(rom);
     if (demoMode) {
@@ -137,7 +124,7 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     cpu.hardReset();
     machine.afterHardReset();
     mem.rtc().setSeconds(services.hostMacSeconds());
-    services.wireNetwork(mem);
+    services.wireNetwork(mem, cpu);
 
     pom68k::gui::CompactMountedMedia mounted =
         pom68k::gui::mountCompactMedia(mem, media, services, demoMode);
@@ -151,20 +138,20 @@ static int runCompact(std::vector<uint8_t> rom, const std::string& matched,
     // every other profile, since the four boards share one boot volume.
     // The clock is not in the file; host wall time was seeded above.
     const std::string pramPath =
-        (hddPath.empty() ? std::string(profile.tag)
-                         : hddPath + "." + profile.tag) + ".pram";
+        (hddPath.empty() ? std::string(profile.slug)
+                         : hddPath + "." + profile.slug) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     machine.state.kind = profile.snapshot;
-    machine.state.setPath((hddPath.empty() ? std::string(profile.tag)
-                                           : hddPath + "." + profile.tag) +
+    machine.state.setPath((hddPath.empty() ? std::string(profile.slug)
+                                           : hddPath + "." + profile.slug) +
                           ".pomss");
-    services.armInputRecording(machine, profile.tag, matched, media);
+    services.armInputRecording(machine, profile.slug, matched, media);
     machine.setFloppyInserted(diskOk, diskOk ? diskPath : std::string());
     return pom68k::gui::runCompactGui(
         machine, mem, cpu, audioHost, services,
         {matched, hddPath, diskOk ? diskPath : std::string(),
          std::move(mounted.extraDisks), pramPath,
-         std::string("POM68K — ") + profile.name, profile.name, profile.kind,
+         std::string("POM68K — ") + profile.label, profile.label, profile.kind,
          demoMode, MacVideo::kWidth, MacVideo::kHeight});
 }
 

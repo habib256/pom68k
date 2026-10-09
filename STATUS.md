@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 363 gates
+## Union across hosts — 389 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 220 |
+| `etalon` | 241 |
 | `etalon-core` | 12 |
 | `gui` | 2 |
-| `jit` | 44 |
+| `jit` | 45 |
 | `jit-fast` | 8 |
 | `m030` | 87 |
-| `m040` | 89 |
+| `m040` | 91 |
 | `smoke` | 9 |
-| `unit` | 141 |
+| `unit` | 146 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -37,27 +37,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-358 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+384 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 111 |
+| assets | none | 116 |
 | assets | optional | 16 |
-| assets | required | 231 |
+| assets | required | 252 |
 | host | a64 | 4 |
-| host | any | 348 |
+| host | any | 374 |
 | host | native | 6 |
-| scope | component | 114 |
+| scope | component | 119 |
 | scope | engine | 21 |
-| scope | profile | 220 |
+| scope | profile | 241 |
 | scope | repository | 3 |
-| tier | daily | 111 |
-| tier | full | 235 |
+| tier | daily | 116 |
+| tier | full | 256 |
 | tier | platform | 12 |
-| slots_src | assumed | 242 |
-| slots_src | measured | 116 |
+| slots_src | assumed | 264 |
+| slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 585 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 619 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
@@ -181,3 +181,35 @@ overwrites it, including a one-gate `ctest -R`.
 | Sep 16 11:19 +04 | aarch64 | default | 332 | 329 | 3 | 0 | first ALL-GREEN full registry run on the AArch64 proof host (Apple M4): 332/332 in 3945.89 s wall, ctest -j6, at 41912d1, after assets.lock strict 44/44. Census CORRECTED the same day: sst68000/sst68030/sst68040 had no corpus here and printed "soft skip" without the literal SKIP, so the tool counted them executed — 329 executed / 3 soft-skipped / 0 failed (CHANGELOG 2026-09-16 (eighth)); the corpus was then fetched from the TEST drive and the three gates executed, see the next row |
 | Sep 16 14:50 +04 | aarch64 | default | 3 | 3 | 0 | 0 | the three SST corpus gates on the M4 after the corpus arrived from the TEST drive (pom68k-prive-20260906/depot-ignore/tests/data): sst68000 1 000 058/1 000 058 vectors across 124 files, sst68030 and sst68040 green; completes the 2026-09-16 11:19 run's census to every registered gate executed on AArch64 |
 | Sep 16 21:31 +04 | aarch64 | default | 14 | 14 | 0 | 0 | the day's attributions on the M4: finder_boot_matrix macii × 7.5.5 six runs PASS (real and synthetic Toby); q605_afp_live_etalon seven runs PASS under POM68K_AFP_DATE (pinned, moving ×3, host, host±3600); q605_dayna_driver_etalon red at 400 s under the -j8 network sweep (node joined EtherTalk, 0 AppleShare sessions), green alone in 234 s |
+| Oct 08 17:49 +04 | aarch64 | default | 15 | 15 | 0 | 0 | DART stored/RLE/LZH, physical tags, states and Plus System 3.3 internal/external DART boot |
+| Oct 08 17:52 +04 | aarch64 | default | 15 | 15 | 0 | 0 | Final DART validation: RLE length 20960 is words, all 15 checks executed, Plus internal/external Finder |
+| Oct 08 18:20 +04 | aarch64 | default | 26 | 26 | 0 | 0 | 512Ke/II FDHD hardware: 26 selected gates; original ROM/media Finder and input; GLUE sibling boots, physical MFM index and MMIO write, deterministic snapshots |
+| Oct 08 18:23 +04 | aarch64 | default | 5 | 5 | 0 | 0 | Pinned-screen verification after new 512Ke/II FDHD keys: three original-ROM boots plus documentation and file-size budgets; 5/5 executed |
+| Oct 08 18:52 +04 | aarch64 | default | 37 | 37 | 0 | 0 | Native MOOF: 37/37 gates executed; bit/flux codec, complete 160-track state, native export boot, Plus both bays, FDHD HD MOOF/ADB, existing floppy/profile and all snapshot families; zero soft skips |
+| Oct 08 19:00 +04 | aarch64 | default | 13 | 13 | 0 | 0 | 13/13 after malformed-turn/spindle arithmetic bounds: native codec/full-media state, all snapshot families, five actual MOOF consumers, docs and budgets; zero skips |
+| Oct 08 19:04 +04 | aarch64 | default | 4 | 4 | 0 | 0 | 4/4 final exporter provenance/META regression, production re-export real Plus boot, documentation and file-size budgets; zero skips |
+| Oct 08 19:14 +04 | aarch64 | default | 20 | 20 | 0 | 0 | Weak read-amplifier output: 20 executed gates, zero skips; native GCR/MFM boots, IWM/SWIM and five state families. |
+| Oct 08 19:16 +04 | aarch64 | default | 4 | 4 | 0 | 0 | Final weak-channel cases: stopped motor, exact GCR/HD MFM spacing, fresh IWM replay/export isolation; 4 executed, zero skips. |
+| Oct 08 19:42 +04 | aarch64 | default | 2 | 0 | 0 | 2 | Oids gate discovery: two engines reject the warp animation at the playable-scene assertion; frame budget corrected after screenshot review. |
+| Oct 08 19:49 +04 | aarch64 | default | 2 | 0 | 0 | 2 | Oids counterfactual discovery: both engines correctly reject Up as thrust; actual capture uses Option. Fresh state replay already exact. |
+| Oct 08 19:50 +04 | aarch64 | default | 2 | 2 | 0 | 0 | Original Oids bit/flux capture: interpreter and JIT execute Finder launch, galaxy loading, Option thrust versus equal-time neutral, and exact fresh-machine replay; zero skips. |
+| Oct 08 19:54 +04 | aarch64 | default | 6 | 5 | 0 | 1 | Engine audit: interpreter passed; threaded JIT leg rejected by an overly narrow compiled-block assertion. Its actual fast path is code-window execution; gate now checks that path too. |
+| Oct 08 19:56 +04 | aarch64 | default | 6 | 6 | 0 | 0 | Final Oids application/physical-media/docs/budget gates: 6 executed, zero skips; real interpreter/threaded-window execution, flight counterfactual, exact fresh-state replay. |
+| Oct 08 21:09 +04 | aarch64 | default | 22 | 22 | 0 | 0 | IWM cell serializer v26: 22 regression gates, actual Plus/II FDHD MOOF boot and original Oids interp/threaded flight+fresh restore; zero skips |
+| Oct 08 21:10 +04 | aarch64 | default | 4 | 4 | 0 | 0 | IWM v26 final head/unchanged-select/reset exact arcs; native partial-byte replay, docs and size budgets: 4 passed, zero skips |
+| Oct 08 21:15 +04 | aarch64 | default | 7 | 5 | 0 | 2 | Address-mask initial regression: protocol passes; MacIP socket sandbox failure and Dayna guest navigation failure before gateway attachment |
+| Oct 08 21:17 +04 | aarch64 | default | 1 | 0 | 0 | 1 | Dayna driver diagnostic repeat: fails opening Network after AppleTalk restart, before Ethernet gateway attachment |
+| Oct 08 21:17 +04 | aarch64 | default | 8 | 8 | 0 | 0 | RFC 950 Ethernet wire service: 8 unit/bus/network/docs/budget gates passed outside socket sandbox; zero skips |
+| Oct 08 21:20 +04 | aarch64 | default | 1 | 0 | 0 | 1 | Dayna navigation diagnostic: preserved failure before gateway attachment; screenshot identifies missed disk selection |
+| Oct 08 21:26 +04 | aarch64 | default | 9 | 9 | 0 | 0 | RFC 950 mask service final: 9 gates passed outside socket sandbox; actual Q605 Dayna install/EtherTalk/AFP/MacTCP regression after settled ADB volume gesture; zero skips |
+| Oct 08 21:33 +04 | aarch64 | default | 2 | 2 | 0 | 0 | Final changelog anchor/date-index correction: documentation and file-size budgets passed; no ceiling raised |
+| Oct 08 22:14 +04 | aarch64 | default | 114 | 114 | 0 | 0 | RARP wire service: full rebuild, 114 asset-none gates executed, zero skips; ROM profile manifest and Oids diagnostic declaration repaired. |
+| Oct 08 22:14 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Real Dayna installer/MacTCP Server without guest IP entry: RARP assignment, five successful pings, incoming echo, cable recovery and EtherTalk AFP; 1 executed, zero skips. |
+| Oct 08 22:19 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Final real Dayna manual-configuration regression: executed in 280.43 s, no skip; Server mode measured separately at 245.31 s and 535152 KiB peak RSS. |
+| Oct 08 22:28 +04 | aarch64 | default | 114 | 114 | 0 | 0 | Final RARP regression after persistent MAC reservations and measured gate budget: 114 executed, zero skips; full rebuild, docs and file-size budgets passed. |
+| Oct 08 22:59 +04 | aarch64 | default | 1 | 1 | 0 | 0 | RARP guest regression after NetProbe/control-panel navigation changes; executed, no skips |
+| Oct 08 22:54 +04 | aarch64 | default | 114 | 114 | 0 | 0 | Snow RARP/NetProbe increment: all 114 asset-none gates executed outside socket sandbox |
+| Oct 08 23:04 +04 | aarch64 | default | 1 | 1 | 0 | 0 | Real Dayna/MacTCP manual-address regression after NetProbe/control-panel navigation changes; executed, no skips |
+| Oct 08 23:09 +04 | aarch64 | default | 3 | 3 | 0 | 0 | Real MacTCP DNS-to-TCP after RARP: network gate plus docs/size; 3 executed, no skips |
+| Oct 08 23:25 +04 | aarch64 | default | 3 | 1 | 0 | 2 | PCAP real MacTCP guest passed: 741 frames, zero observation loss; docs citation drift and size checks failed in same run, corrections tracked separately |
+| Oct 08 23:32 +04 | aarch64 | default | 115 | 115 | 0 | 0 | PCAP increment: all asset-none gates execute outside socket sandbox after citation/size fixes; no skips |

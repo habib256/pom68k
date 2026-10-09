@@ -79,10 +79,13 @@ bool feedByte(Iwm& iwm, uint8_t v, int budgetCycles = 4096) {
     }
     return false;
 }
+#include "IwmBitWriteCases.h"
 } // namespace
 
 int main() {
     std::printf("iwm_write_test — IWM write engine + SonyDrive GCR write-back\n");
+
+    bitWriteCases();
 
     const std::vector<uint8_t> pattern = patternedImage();
     constexpr int kSector = 3;
@@ -103,6 +106,10 @@ int main() {
         Iwm iwm;
         iwm.reset();
         iwm.attachDrive(&dst, nullptr);
+        dst.setMotor(true);
+        iwm.read(kQ6On);
+        iwm.write(kQ7On, 0x1F);
+        iwm.read(kQ7Off);
         // Handshake before ENABLE (q7 set, not write mode): MAME whd 0xBF.
         iwm.read(kQ7On);
         check((iwm.read(kQ6Off) & 0xC0) == 0x80, "handshake idle: ready, b6 low");
@@ -145,6 +152,10 @@ int main() {
         Iwm iwm;
         iwm.reset();
         iwm.attachDrive(&dst, nullptr);
+        dst.setMotor(true);
+        iwm.read(kQ6On);
+        iwm.write(kQ7On, 0x1F);
+        iwm.read(kQ7Off);
         iwm.read(kEnableOn);
         iwm.write(kQ7On, 0xFF);                  // one byte, then silence
         iwm.tick(1024);
@@ -164,6 +175,10 @@ int main() {
         Iwm iwm;
         iwm.reset();
         iwm.attachDrive(&dst, nullptr);
+        dst.setMotor(true);
+        iwm.read(kQ6On);
+        iwm.write(kQ7On, 0x1F);
+        iwm.read(kQ7Off);
         iwm.read(kEnableOn);
         iwm.write(kQ7On, 0xFF);
         for (int i = 0; i < 5; i++) feedByte(iwm, 0xFF);

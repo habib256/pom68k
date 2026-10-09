@@ -25,7 +25,8 @@ static uint32_t romSizeFor(MacMemory::Model m) {
 static uint32_t ramSizeFor(MacMemory::Model m) {
     switch (m) {
         case MacMemory::Model::Mac128: return 0x20000;    // 128 KB
-        case MacMemory::Model::Mac512: return 0x80000;    // 512 KB
+        case MacMemory::Model::Mac512:
+        case MacMemory::Model::Mac512e: return 0x80000;    // 512 KB
         default: return MacMemory::kRamSize;              // 4 MB
     }
 }
@@ -35,12 +36,14 @@ MacMemory::MacMemory(const pom68k::CoreConfig& coreConfig, Model model)
       romSize_(romSizeFor(model)), ramSize_(ramSizeFor(model)) {
     lle_ = coreConfig.firmware.registry;
     seViaTrace_ = coreConfig.peripherals.seViaTrace;
+    secondInternalFitted_ = coreConfig.storage.secondInternalFloppy;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
     rtc_.configure(coreConfig.peripherals.appleTalkPram,
                    coreConfig.peripherals.rtcTrace);
     adbVia_.configure(coreConfig.firmware, coreConfig.peripherals);
     drive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     externalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
+    secondInternalDrive_.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
     scc_.configureTrace(coreConfig.peripherals.sccTrace);
     pom68k::configureScsiBus(scsi_, scsiDisks_, dayna_, coreConfig);
     swim_.configureSuperDrive(hasSuperDrive());
@@ -91,8 +94,11 @@ void MacMemory::reset() {
         swim_.iwm().setChipHz(isAdb() ? 15667200 : 7833600);
     }
     swim_.attachDrive(&drive_, &externalDrive_);
+    swim_.wireInternalSelect(hasInternalSelectLine(),
+                             hasSecondInternalDrive() ? &secondInternalDrive_ : nullptr);
     drive_.reset();
     externalDrive_.reset();
+    secondInternalDrive_.reset();
     scc_.reset();
     // SCC async-baud LLE: CPU C7M 7.8336 MHz, PCLK 3.9168 MHz (DEV.md:74,
     // MAME); RTxC 3.6864 MHz is chip-internal to the model.
@@ -138,6 +144,7 @@ void MacMemory::tick(int cpuCycles) {
     swim_.tick(hasSuperDrive() ? cpuCycles * 2 : cpuCycles);
     drive_.tick(cpuCycles);
     externalDrive_.tick(cpuCycles);
+    if (hasSecondInternalDrive()) secondInternalDrive_.tick(cpuCycles);
     // The video counter fetches one sound/PWM word per scan line — 370 a
     // frame, 352 cycles apart, which is exactly kCyclesPerFrame. The ODD
     // byte is the 400K spindle duty, and the boot depends on it (MAME
@@ -293,6 +300,8 @@ uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
             if (was != overlay_) jitMapChanged();
         }
         swim_.setSel((via_.portA() & 0x20) != 0); // PA5 = drive SEL line
+        if (hasInternalSelectLine())              // PA4 = internal connector
+            swim_.setInternalSelect((via_.portA() & 0x10) != 0);
     }
     if (!isAdb() && reg == Via6522::SR && ((via_.acr() >> 2) & 7) == 7) {
         // shift-out under external clock = keyboard command byte
@@ -341,8 +350,8 @@ const uint8_t* MacMemory::codeSpan(uint32_t phys, uint32_t& len) const {
         len = ramSize_ - o;
         return ram_.data() + o;
     }
-    if (phys >= 0x400000 && phys < 0x400000 + romSize_) {   // ROM window
-        const uint32_t o = phys - 0x400000;
+    if (phys >= 0x400000 && phys < romWindowEnd()) {   // ROM window
+        const uint32_t o = phys & (romSize_ - 1);
         len = romSize_ - o;
         return rom_.data() + o;
     }
@@ -364,8 +373,8 @@ uint8_t* MacMemory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
         len = ramSize_ - o;
         return ram_.data() + o;
     }
-    if (!write && phys >= 0x400000 && phys < 0x400000 + romSize_) {
-        const uint32_t o = phys - 0x400000;
+    if (!write && phys >= 0x400000 && phys < romWindowEnd()) {
+        const uint32_t o = phys & (romSize_ - 1);
         len = romSize_ - o;
         return rom_.data() + o;
     }
@@ -389,7 +398,7 @@ uint8_t MacMemory::peek8(uint32_t addr) const {
         return ram_[addr & (ramSize_ - 1)];
     case 0x4: case 0x5:
         // The ROM window only; $580000 is the 5380 and reading it latches.
-        if (addr < 0x400000 + romSize_) return rom_[addr & (romSize_ - 1)];
+        if (addr < romWindowEnd()) return rom_[addr & (romSize_ - 1)];
         return 0xFF;
     case 0x6: case 0x7:
         if (overlay_ || (!hasScsi() && addr < 0x700000))
@@ -415,7 +424,7 @@ uint8_t MacMemory::read8(uint32_t addr) {
                 if ((addr & 0x200) && scsi_.drqActive()) return scsi_.dmaRead();
                 return scsi_.read(reg);
             }
-            if (addr < 0x400000 + romSize_) {                // ROM window
+            if (addr < romWindowEnd()) {                // ROM window
                 // The overlay clear lives on the low-RAM WRITE path
                 // (mac128.cpp ram_w_se), not here: mac128.cpp's ram_r keeps
                 // returning ROM at low addresses until that first write.

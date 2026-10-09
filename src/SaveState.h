@@ -294,7 +294,13 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // (MacMemory pwmPhase_/pwmLine_). A restored machine restarted it at line
 // 0 wherever its clock stood, so the 400K spindle's duty and the speaker
 // read the wrong lines until the next power cycle.
-inline constexpr u32      kVersion   = 20;  // v20: the compacts' fetch line
+// v21 (2026-10-08): ATA PIO buffer, selected geometry and modified sectors.
+// v22 (2026-10-08): physical GCR sector tags on every SonyDrive.
+// v25: every Sony medium's physical tracks, native MOOF and IWM write origin.
+// v26: live IWM bit shifter, chip-clock deadlines and pending magnetic arc.
+// v27: the SE board's PA4 internal-connector line and its second internal
+// mechanism, serialized on every compact.
+inline constexpr u32      kVersion   = 27;
 
 struct Header {
     u32 version     = kVersion;

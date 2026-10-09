@@ -370,7 +370,7 @@ still lives by:**
 - Replies generated inside the guest's TX callback would hit a deaf
   receiver, so `AtalkHub::sendFrame` **queues** and flushes from `tick()`,
   after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:116-130`, flush at
-  `AtalkHub.h:165-169`). This is why finer quantum slicing matters:
+  `AtalkHub.h:180-184`). This is why finer quantum slicing matters:
   64 slices/frame ≈ 260 µs of latency per AFP round-trip
   (`slices`, `src/GuiHostServices.h:143-149`; 16 slices without the hub).
 
@@ -1008,14 +1008,42 @@ where the CD-ROM normally sits — otherwise (`decodeDaynaPortId`,
 `src/RuntimeConfigCore.cpp:172-176`, one reading for both routes).
 Guest
 side needs the
-DaynaPort SCSI/Link driver plus a **manual** MacTCP/TCP-IP configuration —
-an address in the gateway's subnet (192.168.151.x by default), the gateway
-as router, a DNS server. There is no address handout on this road: MacIP's
-ATP assign has no Ethernet equivalent and no BOOTP/RARP responder is
-modelled, so the lease is learned from the guest's first packet. ARP is
+DaynaPort SCSI/Link driver plus MacTCP/TCP-IP configuration. Manual mode
+uses an address in the gateway's subnet (192.168.151.x by default), the gateway
+as router and a DNS server. MacTCP "Server" can request its own address
+through RFC 903 RARP. `EtherLink` answers only for the attached card and
+reserves a MAC-bound address in the shared MacIP/Ethernet pool, excluding the
+gateway, DNS and existing leases. Undefined request IP fields are ignored.
+BOOTP is not implemented. Manual addresses are learned from IP traffic. ARP is
 answered as a proxy for the whole subnet, never for the guest's own
 address — a reply there reads as a duplicate address and MacTCP refuses to
-initialise.
+initialise. RFC 950 ICMP address-mask discovery is supported at the Ethernet
+link: the gateway advertises its configured mask, returns an addressed request
+by unicast, and broadcasts a zero-source reply. The card's own MAC and local
+subnet bound the service; invalid checksums, lengths and fragmented requests
+are ignored. Replies follow the existing machine-time latency/unplug behavior.
+The mask reply itself does not assign an address. `daynaport_test` exercises
+both discovery services through SCSI WRITE/READ, malformed packets, bounded
+allocation, link retirement and subsequent IP. `q605_dayna_rarp_etalon`
+selects MacTCP 2.0.6 "Server" without entering a guest IP; the real Dayna
+driver obtains .2 and completes local ICMP, incoming echo and cable recovery.
+`q605_dayna_rarp_network_etalon` separately configures the router before
+selecting Server, then launches the real NetProbe application. Its own UDP
+A-record DNS client selects the destination of an exact TCP exchange with
+controlled host socket peers. RARP supplies the guest address; Apple DNR,
+control-panel DNS settings and automatic router discovery are outside this gate.
+
+The same network window exposes **Capture PCAP** for the attached Dayna card.
+Enter a new filename in an existing folder and start capture; existing PCAP
+or companion files are refused. Stop drains the writer in the background.
+The PCAP contains both raw Ethernet directions without FCS, including arrivals
+the card later drops because its Rx ring is full. A fixed observation queue
+keeps file I/O off the machine thread; capture losses and errors are displayed
+separately from guest transport loss. `<path>.tsv` gives each record's machine
+cycles/direction, actual clock Hz and final counts. Timestamps are machine
+time anchored at epoch zero, so a viewer may display 1970 dates. Reset/restore
+moving that clock backwards ends capture with a visible error. Capture state
+is host-owned and is not restored from a guest snapshot.
 
 Both caveats this paragraph used to carry are gone (2026-09-10).
 **Dayna's own driver has been run against it**: its installer recognises

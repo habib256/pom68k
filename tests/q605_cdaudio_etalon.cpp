@@ -116,11 +116,13 @@ void dump(const char* name, const Screen& s) {
 // Counts what the lead carries, and keeps the first sector so the gate can
 // say the music is the disc's and not silence.
 struct CountingLead : CdAudioSink {
-    long sectors = 0, stops = 0;
+    long sectors = 0, stops = 0, silentSectors = 0;
     int volumeLeft = -1, volumeRight = -1;
     double peak = 0.0;
     void cdAudioSector(const uint8_t* raw) override {
         sectors++;
+        if (std::all_of(raw, raw + 2352, [](uint8_t byte) { return byte == 0; }))
+            ++silentSectors;
         for (int i = 0; i < 588; i++) {
             const auto l = int16_t(raw[i * 4] | (raw[i * 4 + 1] << 8));
             peak = std::max(peak, std::fabs(double(l)) / 32768.0);
@@ -135,22 +137,25 @@ struct CountingLead : CdAudioSink {
 // A pure audio CD: two tone tracks, nothing else on the disc.
 bool writeAudioDisc(const std::string& cue, const std::string& bin,
                     uint32_t secondsPerTrack) {
-    std::ofstream b(bin, std::ios::binary);
-    if (!b) return false;
     const uint32_t perTrack = 75 * secondsPerTrack;
     std::ofstream c(cue);
     if (!c) return false;
-    const std::string leaf = bin.substr(bin.find_last_of('/') + 1);
-    c << "FILE \"" << leaf << "\" BINARY\n";
-    uint32_t lba = 0;
+    // Two FILE sources, with a stored two-second INDEX 00 pause before track 2.
     for (int track = 0; track < 2; track++) {
+        const std::string source = track ? bin + ".track2" : bin;
+        std::ofstream b(source, std::ios::binary);
+        if (!b) return false;
+        const std::string leaf = source.substr(source.find_last_of('/') + 1);
+        c << "FILE \"" << leaf << "\" BINARY\n";
         const double hz = track == 0 ? 440.0 : 660.0;
-        c << "  TRACK 0" << (track + 1) << " AUDIO\n    INDEX 01 "
-          << std::string(lba / (60 * 75) < 10 ? "0" : "")
-          << lba / (60 * 75) << ":"
-          << std::string((lba / 75) % 60 < 10 ? "0" : "") << (lba / 75) % 60
-          << ":" << std::string(lba % 75 < 10 ? "0" : "") << lba % 75 << "\n";
-        for (uint32_t s = 0; s < perTrack; s++, lba++) {
+        c << "  TRACK 0" << (track + 1) << " AUDIO\n";
+        if (track) {
+            c << "    INDEX 00 00:00:00\n    INDEX 01 00:02:00\n";
+            const uint8_t pause[2352] = {};
+            for (int s = 0; s < 150; ++s)
+                b.write(reinterpret_cast<const char*>(pause), sizeof pause);
+        } else c << "    INDEX 01 00:00:00\n";
+        for (uint32_t s = 0; s < perTrack; s++) {
             uint8_t sector[2352];
             for (int f = 0; f < 588; f++) {
                 const double t = double((s * 588 + f)) / 44100.0;
@@ -165,8 +170,9 @@ bool writeAudioDisc(const std::string& cue, const std::string& bin,
             }
             b.write(reinterpret_cast<const char*>(sector), 2352);
         }
+        if (!b) return false;
     }
-    return bool(b) && bool(c);
+    return bool(c);
 }
 } // namespace
 
@@ -259,10 +265,13 @@ int main() {
         std::printf(failures ? "FAILED\n" : "PASSED — control arm silent\n");
         std::remove(cue.c_str());
         std::remove(bin.c_str());
+        std::remove((bin + ".track2").c_str());
         return failures ? 1 : 0;
     }
 
     check(drive.trackCount() == 2, "the drive holds the two-track audio disc");
+    check(drive.trackStartLba(0) == 0 && drive.trackStartLba(1) == 75 * 22,
+          "the guest sees track 2 after its stored INDEX 00 pause");
     // The load-bearing one: MAC OS started this play. POM68K sent no PLAY
     // AUDIO — every command the drive saw came from the guest's own Apple
     // CD-ROM extension, which mounted the disc as "Audio CD 1" and played it.
@@ -270,6 +279,8 @@ int main() {
           "the guest played the disc: seconds of audio crossed the lead");
     check(lead.peak > 0.10,
           "and it is the disc's music, not silence");
+    check(lead.silentSectors == 150,
+          "the guest played all 150 stored pause sectors between the tone tracks");
     check(drive.audioState() != 0, "the transport left its stopped state");
     check(lead.volumeLeft > 0 && lead.volumeRight > 0,
           "the guest set the drive's own level (MODE SELECT page $0E)");
@@ -282,6 +293,7 @@ int main() {
 
     std::remove(cue.c_str());
     std::remove(bin.c_str());
+    std::remove((bin + ".track2").c_str());
     std::printf(failures ? "FAILED\n"
                          : "PASSED — Mac OS mounted the audio CD and played it\n");
     return failures ? 1 : 0;

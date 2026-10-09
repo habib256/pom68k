@@ -218,6 +218,9 @@ centris_persist_etalon	aarch64	879056	measured
 q605_persist_etalon	aarch64	877024	measured
 q900_persist_etalon	aarch64	843296	measured
 q700_persist_etalon	aarch64	842240	measured
+# Original native Oids replay, measured 2026-10-08 with tools/measure_gate_ram.py.
+jit_plus_oids_moof_etalon	aarch64	737344	measured
+interp_plus_oids_moof_etalon	aarch64	736704	measured
 q605_savestate_etalon	aarch64	702272	measured
 q630_soak_etalon	aarch64	573744	measured
 q950_boot_etalon	aarch64	573616	measured
@@ -309,3 +312,5 @@ disk_boot_etalon	aarch64	19184	measured
 system_boot_etalon	aarch64	19168	measured
 input_etalon	aarch64	19168	measured
 rom_boot_etalon	aarch64	17456	measured
+q605_dayna_rarp_etalon	aarch64	535152	measured
+q605_dayna_rarp_network_etalon	aarch64	573856	measured

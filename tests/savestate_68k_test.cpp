@@ -98,11 +98,13 @@ Rom makeIIRom() {
 using Blob = std::vector<uint8_t>;
 
 // Heap-owned, never a local: see the GateCpu note in tests/jit_copyback_write_040_test.cpp.
-struct PlusRig {
-    MacMemory mem{pom68k::defaultCoreConfig(), MacMemory::Model::Plus};
+template<MacMemory::Model Model = MacMemory::Model::Plus,
+         pom68k::SnapMachine Kind = pom68k::SnapMachine::Plus>
+struct CompactRig {
+    MacMemory mem{pom68k::defaultCoreConfig(), Model};
     Cpu68k cpu{mem, jit::defaultResolvedConfig()};
-    static constexpr auto kKind = pom68k::SnapMachine::Plus;
-    explicit PlusRig(const Rom& rom) {
+    static constexpr auto kKind = Kind;
+    explicit CompactRig(const Rom& rom) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
     uint32_t counter() const {
@@ -120,13 +122,15 @@ struct SeRig {
         return uint32_t(mem.ram()[0x2000]) << 8 | mem.ram()[0x2001];
     }
 };
-struct MacIIRig {
+template<MacIIMemory::Model Model = MacIIMemory::Model::MacII,
+         pom68k::SnapMachine Kind = pom68k::SnapMachine::MacII>
+struct GlueRig {
     MacIIMemory mem{pom68k::defaultCoreConfig(), 0x800000,
-                    MacIIMemory::Model::MacII};
+                    Model};
     Cpu020 cpu{mem, jit::defaultResolvedConfig(),
                pom68k::defaultCoreConfig().cpu};
-    static constexpr auto kKind = pom68k::SnapMachine::MacII;
-    explicit MacIIRig(const Rom& rom) {
+    static constexpr auto kKind = Kind;
+    explicit GlueRig(const Rom& rom) {
         mem.loadRom(rom);
         // Exercise the TobyVideo + NuBus chunks when the card installs
         // (it soft-skips without its decl ROM; determinism holds either way
@@ -162,6 +166,15 @@ void testFamily(const char* family, const Rom& rom) {
 
     const Blob snapshot = saveOf(m);
     check(snapshot.size() > 64, family, "save: produced a container");
+    if constexpr (Rig::kKind == pom68k::SnapMachine::Mac512Ke ||
+                  Rig::kKind == pom68k::SnapMachine::MacIIFDHD) {
+        const auto sibling = Rig::kKind == pom68k::SnapMachine::Mac512Ke
+            ? pom68k::SnapMachine::Plus : pom68k::SnapMachine::MacII;
+        std::string wrongProfile;
+        check(!pom68k::load(m.mem, m.cpu, sibling, snapshot.data(), snapshot.size(), wrongProfile),
+              family, "snapshot cannot load under its shared-board sibling identity");
+    }
+
 
     m.cpu.runCycles(200000);
     m.mem.externalDrive().eject();
@@ -209,9 +222,11 @@ void testFamily(const char* family, const Rom& rom) {
 int main() {
     std::printf("savestate_68k_test — Mac II + compact 68000 fan-out\n");
 
-    testFamily<PlusRig>("plus", makePlusRom());
+    testFamily<CompactRig<>>("plus", makePlusRom());
+    testFamily<CompactRig<MacMemory::Model::Mac512e, pom68k::SnapMachine::Mac512Ke>>("512ke", makePlusRom());
+    testFamily<GlueRig<MacIIMemory::Model::MacIIFDHD, pom68k::SnapMachine::MacIIFDHD>>("iifdhd", makeIIRom());
     testFamily<SeRig>("se", makeSeRom());
-    testFamily<MacIIRig>("macii", makeIIRom());
+    testFamily<GlueRig<>>("macii", makeIIRom());
 
     if (gFails) {
         std::printf("savestate_68k_test: %d failure(s)\n", gFails);

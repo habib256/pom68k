@@ -65,7 +65,7 @@ public:
     // mouse the Plus uses, the single-sided 400K mechanism — and no SCSI at
     // all, which is why `hasScsi()` exists (mac128.cpp macplus_map adds the
     // 5380 that mac128_map does not have).
-    enum class Model { Plus, SE, SEFDHD, Classic, Mac128, Mac512 };
+    enum class Model { Plus, SE, SEFDHD, Classic, Mac128, Mac512, Mac512e };
 
     explicit MacMemory(
         const pom68k::CoreConfig& coreConfig, Model model = Model::Plus);
@@ -80,7 +80,7 @@ public:
     // The SCSI bus arrived with the Plus. On the 128K/512K nothing decodes
     // $580000-$5FFFFF and the quarter answers address-dependent open bus.
     bool hasScsi() const {
-        return model_ != Model::Mac128 && model_ != Model::Mac512;
+        return model_ != Model::Mac128 && model_ != Model::Mac512 && model_ != Model::Mac512e;
     }
     // The 400K mechanism whose spindle speed the board commands by PWM, and
     // which the 64K ROM calibrates against the tachometer. The Plus's 800K
@@ -192,6 +192,20 @@ public:
     }
     SonyDrive& internalDrive() { return drive_; }
     SonyDrive& externalDrive() { return externalDrive_; }
+    // The internal-connector line (Iwm.h): `drive_` answers VIA1 PA4 low.
+    // The dual-floppy SE and SE FDHD fit a second mechanism on PA4 high
+    // (CoreStorageConfig::secondInternalFloppy); the Classic's ROM drives
+    // the same line, but its board has no second internal connector.
+    bool hasInternalSelectLine() const { return isAdb(); }
+    bool hasSecondInternalDrive() const {
+        return secondInternalFitted_ &&
+               (model_ == Model::SE || model_ == Model::SEFDHD);
+    }
+    SonyDrive& secondInternalDrive() { return secondInternalDrive_; }
+    bool insertSecondInternalDisk(const std::string& path) {
+        return hasSecondInternalDrive() && secondInternalDrive_.insert(path);
+    }
+    void ejectSecondInternalDisk() { secondInternalDrive_.eject(); }
     // Every compact has the DB-19 external drive port (MAME mac128.cpp
     // connects both drives by default).
     static constexpr bool externalFloppyPort() { return true; }
@@ -257,6 +271,7 @@ public:
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
         externalDrive_.setSoundSink(floppy);
+        secondInternalDrive_.setSoundSink(floppy);
         for (ScsiDisk& disk : scsiDisks_) disk.setSoundSink(hdd);
     }
     // The CD-audio lead. A playing disc is decoded by the drive and
@@ -298,7 +313,10 @@ public:
     // cpu_ and jitGuard_ (pointers the machine owns).
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
-        ar(via_, adb_, adbVia_, rtc_, swim_, drive_, externalDrive_, scc_,
+        // The second internal mechanism travels on every compact so the
+        // layout does not depend on the profile (SaveState.h v27).
+        ar(via_, adb_, adbVia_, rtc_, swim_, drive_, externalDrive_,
+           secondInternalDrive_, scc_,
            scsi_, kbd_, mouse_, dayna_);
         for (ScsiDisk& disk : scsiDisks_) ar(disk);
         ar(kbdPhase_, kbdCmd_, kbdResp_, kbdTimer_, kbdInquiryHold_,
@@ -314,10 +332,14 @@ private:
     pom68k::lle::Registry* lle_ = &pom68k::lle::processRegistry();
 
     bool seViaTrace_ = false;
+    bool secondInternalFitted_ = false;      // board configuration
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);
     void refreshPortBInputs();
 
     std::vector<uint8_t> ram_, rom_;
+    // The 512Ke decodes repeated Plus ROMs through $4FFFFF. Its ROM uses
+    // that equality to detect the absent SCSI board (MAME mac512ke_map).
+    uint32_t romWindowEnd() const { return model_ == Model::Mac512e ? 0x500000 : 0x400000 + romSize_; }
     Model model_ = Model::Plus;
     uint32_t romSize_ = kRomSize;
     uint32_t ramSize_ = kRamSize;
@@ -333,6 +355,7 @@ private:
     Swim1 swim_;
     SonyDrive drive_;                // internal mechanism
     SonyDrive externalDrive_;        // second / external mechanism
+    SonyDrive secondInternalDrive_;  // SE PA4-high internal mechanism
     Scc8530 scc_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];

@@ -26,7 +26,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
               const std::vector<std::string>& media,
               Services& services) {
     cpu.hardReset();
-    services.wireNetwork(mem);
+    services.wireNetwork(mem, cpu);
 
     std::string hddPath = !media.empty() ? media.front()
         : services.locate(spec.defaultHdd);

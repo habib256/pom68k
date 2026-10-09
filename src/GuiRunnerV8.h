@@ -27,7 +27,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
              const V8RunnerSpec& spec, ConfigureCpu&& configureCpu,
              SeedRtc&& seedRtc, const std::string& romName,
              const std::vector<std::string>& media, Services& services) {
-    services.wireNetwork(mem);
+    services.wireNetwork(mem, cpu);
     if (spec.setInitialMonitor)
         mem.setMonitorSense(services.config().devices().monitorWidth &&
                                     *services.config().devices().monitorWidth < 640

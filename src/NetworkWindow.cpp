@@ -258,6 +258,24 @@ void drawEthernetSection(GuiNetworkState& state,
         ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.35f, 1),
                            "Trames perdues (anneau plein) : %ld",
                            card.framesDropped);
+    const auto& capture = snapshot.capture;
+    ImGui::SeparatorText("Capture PCAP");
+    ImGui::BeginDisabled(capture.busy || !snapshot.captureAvailable);
+    ImGui::InputText("Fichier PCAP", state.capturePath.data(),state.capturePath.size());
+    ImGui::BeginDisabled(!state.capturePath[0]);
+    if (ImGui::Button("Démarrer la capture") && state.capturePath[0])
+        state.atalk.startEthernetCapture(state.capturePath.data());
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    if (capture.accepting && ImGui::Button("Arrêter la capture"))
+        state.atalk.stopEthernetCapture();
+    if (capture.busy && !capture.accepting) ImGui::TextDisabled("Fin de l'écriture...");
+    ImGui::Text("Trames écrites : %llu · observations perdues : %llu",
+        (unsigned long long)capture.written,(unsigned long long)capture.dropped);
+    if (!capture.path.empty()) ImGui::TextWrapped("%s",capture.path.c_str());
+    if (!capture.error.empty())
+        ImGui::TextColored(ImVec4(0.95f,0.5f,0.35f,1),"%s",capture.error.c_str());
+    ImGui::TextDisabled("Temps de la machine ; métadonnées dans le fichier .pcap.tsv.");
     drawDaynaPortSelector(state);
 }
 

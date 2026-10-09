@@ -54,7 +54,10 @@ void GuiSmokeScenario::frame(GuiSessionState& session, GLFWwindow* window,
         glfwSetWindowShouldClose(window, GLFW_TRUE);
         return;
     }
-    if (frames_ >= 120) {
+    // Native media states can contain tens of MB. Keep the same assertions,
+    // but give a requested save a bounded extra window to finish publishing
+    // its result instead of closing while the machine thread is writing it.
+    if (frames_ >= (saveRequested_ ? 1200 : 120)) {
         closeRequested_ = true;
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }

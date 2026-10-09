@@ -26,6 +26,7 @@
 #include "RuntimeConfig.h"
 #include "atalk_test_util.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <string>
@@ -100,9 +101,13 @@ RxFrame readOne(DaynaPort& nic) {
     r.data.assign(out.begin() + 6, out.end());
     return r;
 }
+#include "AddressMaskCases.h"
+#include "RarpCases.h"
 } // namespace
 
 int main() {
+    addressMaskCases();
+    rarpCases();
     std::vector<uint8_t> out, none;
 
     // ══ Part 1: the SCSI surface ════════════════════════════════════════

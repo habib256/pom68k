@@ -5,7 +5,7 @@
 // Double-sided GCR: 80 tracks × 2 sides, 5 speed zones (12..8
 // sectors/track). SuperDrive HD: 80×2×18×512 @ 300 RPM (IBM System 34
 // MFM). Sense/command CA protocol addressed by CA2..CA0+SEL, stepped by
-// LSTRB. Images: raw .dsk (819200 / 409600 / 1474560) or DiskCopy 4.2.
+// LSTRB. Sector containers: raw/DC42/DART; native bit/flux tracks: MOOF.
 // The track is stored as FLUX — transition times, which is what the SWIM
 // read engines' FluxPll data separator consumes (§ 1.3 flux plan step 5);
 // the discrete cell ring the write-back decoders read is DERIVED from it
@@ -18,6 +18,8 @@
 
 #pragma once
 #include "SaveState.h"
+#include "FloppyFileImage.h"
+#include "FloppyTrackMedium.h"
 #include "FloppySoundSink.h"
 #include "FluxPll.h"
 #include <cstdint>
@@ -37,7 +39,8 @@ public:
     bool insert(const std::string& path);        // raw .dsk / DiskCopy 4.2
     bool insertImage(std::vector<uint8_t> data); // in-memory image
     void eject();                                // clear image (sense CSTIN)
-    bool hasDisk() const { return !image_.empty(); }
+    bool hasDisk() const { return medium_.native || !image_.empty(); }
+    bool hasNativeTracks() const { return medium_.native; }
     // The medium as the guest has left it (write-back is off in gates, so
     // this is where a host-side check of a guest write reads — MfsVolume.h).
     const std::vector<uint8_t>& image() const { return image_; }
@@ -91,10 +94,9 @@ public:
     uint16_t nextByte(bool side1);
     // Write path: feed SWIM2-serialized bytes (MARK bit optional)
     void writeByte(uint16_t value);
-    // IWM write path (Plus / LC II SWIM1, GCR): buffer written nibbles,
-    // then decode + commit checksum-valid data fields on flushWrite (the
-    // IWM leaving write mode). Side is sampled at flush time (VIA SEL).
-    void writeNibble(uint8_t nibble);
+    // IWM's byte-granular write path: native media retain serialized cells,
+    // sector containers commit checksum-valid fields. SEL selects the head.
+    void writeNibble(uint8_t nibble, bool side1 = false);
     void flushWrite(bool side1);
 
     // ── Write-back interface (§ 1.3 step 5: times, not cell indices) ──
@@ -135,6 +137,9 @@ public:
     int64_t fluxCellTicks() const;               // nominal cell, in ticks
     int64_t fluxRevTicks() const;                // one revolution, in ticks
     int64_t fluxAngleTicks(bool side1);          // head position at spin_
+    // One revolution in spin_ cycles: with fluxRevTicks(), the two lengths
+    // whose ratio maps elapsed time onto the track (fluxAngleTicks).
+    int64_t spinRevCycles() const { return spinCyclesPerRev(); }
     // First transition at or after `tick` — MAME
     // floppy_image_device::get_next_transition. `tick` is absolute (the
     // track repeats every fluxRevTicks()); FluxPll::kNever on a blank or
@@ -195,19 +200,26 @@ public:
     // snapshot that only recorded the path would restore a volume that
     // disagrees with the HFS structures cached in guest RAM.
     //
-    // Since § 1.3 step 5 the FLUX is what travels: it is the medium now, and
-    // a track the guest wrote off-rate is not re-derivable from `image_` —
-    // that is the whole point of the store. It costs more than the cell ring
-    // it replaces (~300 KB against ~75 KB on a GCR track, and the zero-run
-    // codec cannot compress transition times the way it compressed a mostly
-    // empty gap4) — noise beside the 800 KB image in the same snapshot.
+    // v25 carries all native tracks and modified sector-backed tracks.
+    // Only untouched sector tracks can be reconstructed from `image_`.
+    // Native transitions cost tens of MB; metadata/source bytes are retained
+    // separately so subsequent export preserves the host container's chunks.
     // `cells_` is NOT carried any more: it is the separator's reading of
     // `flux_`, so it rebuilds exactly. `stream_` still is — the legacy
     // nibble path indexes into it live, and rebuilding mid-sector would move
     // the head under the controller.
     template <class Ar> void visit(Ar& ar) {
+        if constexpr (!Ar::loading) retainActiveTrack();
         ar.blob(image_);
-        ar(path_, dc42Header_, writeBack_, dirty_);
+        ar.blob(tags_);
+        if constexpr (Ar::loading) {
+            const size_t expected = image_.size() == kSize400K || image_.size() == kSize800K
+                ? image_.size() / 512 * 12 : 0;
+            if (tags_.size() != expected) { ar.fail(); return; }
+        }
+        ar(path_, fileImage_, writeBack_, dirty_);
+        ar(medium_, activeTrack_, activeTrackWritten_, gcrWriteStart_);
+        ar.blob(nativeFile_);
         ar(stream_, streamPos_);
         ar(flux_, fluxRev_, decodeCellTicks_);
         ar(spinClockHz_, track_, side1_, doubleSided_,
@@ -218,10 +230,19 @@ public:
            wrTrack_, wrHead_, wrSector_, wrData_);
         ar.blob(gcrWrBuf_);
         ar(pwmSpindle_, pwmCount1_, pwmCountTotal_, pwmRpmSeen_, pwmRpmPrev_, pwmRpm_);
+        if constexpr (Ar::loading) {
+            if (activeTrack_ < -1 || activeTrack_ >= 160 || track_ < 0 || track_ > 79 ||
+                (medium_.native && (!image_.empty() || nativeFile_.empty())) ||
+                (!medium_.native && !nativeFile_.empty()) || fluxRev_ < 0 ||
+                fluxRev_ > floppy::kMaxRevolution || decodeCellTicks_ < 0 ||
+                decodeCellTicks_ > floppy::kMaxRevolution || !std::is_sorted(flux_.begin(), flux_.end()) ||
+                (!flux_.empty() && (flux_.front() < 0 || flux_.back() >= fluxRev_))) ar.fail();
+        }
         cellsDirty_ = true;                      // cells_ is derived from flux_
     }
 
 private:
+    void retainActiveTrack();
     void encodeTrack();
     void refreshStream();                        // stream_ only, flux_ intact
     void encodeTrackGcr();
@@ -246,8 +267,14 @@ private:
     uint64_t soundMicros() const;
 
     std::vector<uint8_t> image_;                 // raw sector data
+    std::vector<uint8_t> tags_;                  // physical GCR tags, 12 per sector
     std::string path_;                           // inserted file (persistence)
-    std::vector<uint8_t> dc42Header_;            // 0x54-byte DC42 prefix
+    FloppyFileImage fileImage_;                // raw/DC42/DART write-back provenance
+    floppy::TrackMedium medium_;
+    int activeTrack_ = -1;
+    bool activeTrackWritten_ = false;
+    int64_t gcrWriteStart_ = 0;
+    std::vector<uint8_t> nativeFile_; // original MOOF, including opaque metadata
     bool writeBack_ = false;
     bool dirty_ = false;
     std::vector<uint16_t> stream_;               // encoded current track/side

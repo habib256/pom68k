@@ -31,6 +31,7 @@
 #include <cstring>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,7 @@ public:
         return true;
     }
     void close() {
+        pristine_.clear();
         image_.clear(); path_.clear(); sectors_ = 0; writeBack_ = false;
         reset();
     }
@@ -168,12 +170,52 @@ public:
     }
 
     // ── Save states ─────────────────────────────────────────────────────
-    // The task file and the sector buffer are guest state; the image is
-    // host-owned, exactly as on the SCSI side.
+    // Preserve the PIO latch and the geometry selected by command $91.
+    // As on SCSI, retain original sectors on first write, undo subsequent
+    // writes on restore, then replay the snapshot's modified sectors.
+    // The backing file is setup: restoring does not undo host write-back.
     template <class Ar> void visit(Ar& ar) {
         ar(status_, error_, features_, sectorCountReg_, lbaLow_, lbaMid_,
            lbaHigh_, device_, pending_, writing_, irq_, nIen_, srstHeld_,
-           bufferAt_, currentLba_);
+           bufferAt_, currentLba_, heads_, sectorsPerTrack_, cylinders_);
+        if constexpr (Ar::loading) {
+            const auto size = ar.varint();
+            if (!ar.ok() || (size != 0 && size != 512) ||
+                bufferAt_ > size || (bufferAt_ & 1) || !heads_ ||
+                heads_ > 16 || !sectorsPerTrack_ || pending_ > 256 ||
+                (pending_ && uint64_t(currentLba_) + pending_ > sectors_)) {
+                ar.fail(); return;
+            }
+            buffer_.resize(size);
+            if (!buffer_.empty()) ar.bytes(buffer_.data(), buffer_.size());
+            const auto count = ar.varint();
+            if (!ar.ok() || count > sectors_) { ar.fail(); return; }
+            for (const auto& [lba, original] : pristine_)
+                std::memcpy(image_.data() + size_t(lba) * 512, original.data(), 512);
+            pristine_.clear();
+            uint32_t previous = 0;
+            for (uint64_t i = 0; i < count && ar.ok(); ++i) {
+                uint32_t lba = 0;
+                std::array<uint8_t, 512> sector{};
+                ar(lba);
+                ar.bytes(sector.data(), sector.size());
+                if (!ar.ok() || lba >= sectors_ || (i && lba <= previous)) {
+                    ar.fail(); return;
+                }
+                rememberSector(lba);
+                std::memcpy(image_.data() + size_t(lba) * 512, sector.data(), 512);
+                previous = lba;
+            }
+        } else {
+            ar.varint(buffer_.size());
+            if (!buffer_.empty()) ar.bytes(buffer_.data(), buffer_.size());
+            ar.varint(pristine_.size());
+            for (const auto& [lba, original] : pristine_) {
+                auto block = lba;
+                ar(block);
+                ar.bytes(image_.data() + size_t(lba) * 512, 512);
+            }
+        }
     }
 
     // Diagnostics (gate: tests/ata_disk_test.cpp). `setTrace` prints every
@@ -363,6 +405,7 @@ private:
             raiseIrq();
             return;
         }
+        rememberSector(currentLba_);
         std::memcpy(image_.data() + size_t(currentLba_) * 512,
                     buffer_.data(), 512);
         if (writeBack_ && !path_.empty()) {
@@ -389,6 +432,12 @@ private:
         raiseIrq();
     }
 
+    void rememberSector(uint32_t lba) {
+        auto [it, inserted] = pristine_.try_emplace(lba);
+        if (inserted)
+            std::memcpy(it->second.data(), image_.data() + size_t(lba) * 512, 512);
+    }
+    std::map<uint32_t, std::array<uint8_t, 512>> pristine_;
     std::vector<uint8_t> image_;
     std::string path_;
     bool writeBack_ = false;

@@ -92,8 +92,8 @@ ROM identity and stable save-state id live).
 
 | Platform | Reference machine | Variants in the same section | § |
 |---|---|---|---|
-| 68000 + PAL glue | **Mac Plus** | 128K, 512K, SE, SE FDHD, Classic (`MacMemory::Model`) | [2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic) |
-| GLUE + NuBus | **Mac II** | IIx, IIcx, SE/30 (68030 on the same board; the SE/30 is the compact IIx) | [2.2](#22-glue--nubus--mac-ii-iix-iicx-se30) |
+| 68000 + PAL glue | **Mac Plus** | 128K, 512K, 512Ke, SE, SE FDHD, Classic (`MacMemory::Model`) | [2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic) |
+| GLUE + NuBus | **Mac II** | II FDHD (68020 + SWIM), IIx, IIcx, SE/30 (68030 on the same board; the SE/30 is the compact IIx) | [2.2](#22-glue--nubus--mac-ii-iix-iicx-se30) |
 | V8 gate array | **Mac LC II** | LC, Classic II (Eagle), Color Classic (Spice), Mac TV (Tinker Bell) | [2.3](#23-v8-gate-array--mac-lc-ii-lc-classic-ii-color-classic-mac-tv) |
 | RBV (RAM-based video) | **Mac IIsi** | IIci (PIC ADB modem + discrete RTC) | [2.4](#24-rbv-ram-based-video--mac-iisi-iici) |
 | Sonora gate array | **Mac LC III** | LC III+, LC 520/550, Color Classic II; **VASP** = IIvx / IIvi | [2.5](#25-sonora-gate-array--lc-iii-lc-iii-aio-family--the-vasp-recombination) |
@@ -215,6 +215,41 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
+- **Format v27** adds the PA4 internal-connector line level and the second
+  internal Sony mechanism to every compact chunk (§ 3.1).
+- **Format v26** carries the `FloppyTrackMedium` owner: all native tracks,
+  modified sector-backed tracks, the original MOOF container and the IWM write
+  origin, plus the live IWM bit shifter, deadlines and pending magnetic arc. Native import accepts Macintosh 400K/800K/1.44 MB MOOF bitstreams
+  and flux maps, validates nonzero CRC32 and absolute track extents, and uses
+  rational conversion from 125 ns to C15M/1024 ticks. CRC zero is valid.
+  A generous one-second turn limit bounds spindle products for malformed
+  inputs; supported Sony mechanisms rotate much faster.
+  Native writes retain physical transitions even when no sector verifies.
+  Export uses MOOF's 125 ns bit grid, preserves phase and opaque chunks,
+  and rounds guest-written positions by at most 62.5 ns; source MOOF timings
+  are exact at that resolution. Full-media snapshots can be tens of MB.
+  Older versions are refused. Gates: `moof_image_test`, the two Plus MOOF
+  boot gates and `maciifdhd_moof_boot_etalon`.
+- **Format v24** retains the floppy container format (raw, DC42 or DART)
+  together with its write-back metadata. `dart_image_test` verifies fresh
+  snapshot restoration followed by DART persistence. DART import decodes
+  stored/RLE/LZH data forks for Mac 400K, 800K and 1.44 MB geometries; GCR
+  tags remain physical sector metadata. MFM tag padding must be zero, and
+  Lisa/Apple II/DOS types are refused. Resource-fork metadata/checksums are
+  outside this data-fork import/export contract. Earlier states are rejected.
+- **Format v23** stores CD-DA's fractional sector phase in millionths of a
+  sector, replacing rounded microsecond periods. Exactly 75 sectors consume
+  one second of guest time; pause and restore retain the pending deadline.
+  Earlier format versions are rejected. `cd_audio_test` checks both timing
+  boundaries, fresh-device restoration and irregular tick delivery.
+- **Format v22** retains every GCR sector's twelve physical tag bytes in
+  `SonyDrive`, including raw media in memory. DC42 import/export preserves
+  them; raw-file write-back persists data only (tags stay in memory/states).
+  `gcr_test` and `floppy_persist_test` check the physical fields and persistence.
+- **Format v21** restores ATA's PIO buffer, selected geometry and modified
+  sectors together. `ata_disk_test` checks continuation into a fresh drive
+  and repeated rewind. The disk base must be unchanged: as on SCSI, restore
+  does not undo writes already committed to the host file.
 - **Format v16** adds the 400K spindle PWM servo to every `SonyDrive`: six
   integers after the GCR write buffer — whether a duty was ever commanded,
   the running window's counts, the two speeds being debounced and the
@@ -253,7 +288,7 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 
 ### 2.1 68000 + PAL glue — Mac Plus (SE, SE FDHD, Classic)
 
-`MacMemory` (`Model {Plus, SE, SEFDHD, Classic, Mac128, Mac512}`) + `Cpu68k`.
+`MacMemory` (`Model {Plus, SE, SEFDHD, Classic, Mac128, Mac512, Mac512e}`) + `Cpu68k`.
 **Cycle-exact** (M0-M7). The SE family is the same map with a bigger ROM, the
 SE-style overlay clear ([§1.2](#12-family-wide-invariants)) and **ADB on the
 PIC1654S firmware LLE** (PB4/PB5 = ST) in place of the M0110 — see
@@ -285,7 +320,7 @@ it steps the drive. `tests/mac128k_boot_etalon.cpp` is built on demand
 |---|---|---|
 | `$000000-$3FFFFF` | RAM | mirrors modulo RAM size (MAME `offset & ram_mask`) |
 | `$400000-$4FFFFF` | ROM 128 KB (64 KB on the 128K/512K, 256/512 KB above) | mirrored only within `$400000+romSize` (A0 undecoded); above that = address-dependent open bus (`MacMemory.cpp`, § 3.3bis — the SCSI probe depends on it). pce mirrors to `$57FFFF`; this map deliberately does not |
-| `$580000-$5FFFFF` | SCSI NCR 5380 | reg = A4-A6 (×16); A0: 0=read 1=write; A9=DACK (pseudo-DMA `$580201`/`$580260`). **Absent on the 128K/512K** — `hasScsi()` leaves the quarter as open bus |
+| `$580000-$5FFFFF` | SCSI NCR 5380 | reg = A4-A6 (×16); A0: 0=read 1=write; A9=DACK (pseudo-DMA `$580201`/`$580260`). **Absent on the 128K/512K/512Ke** — `hasScsi()` leaves the quarter as open bus |
 | `$600000-$7FFFFF` | RAM overlay window | RAM lives here while overlay on |
 | `$800000-$9FFFFF` | SCC **read** (even, D8-D15) | `sccRBase=$9FFFF8`; A1=channel (0=B), A2=ctl/data; **odd read resets the SCC** (Mini vMac) |
 | `$A00000-$BFFFFF` | SCC **write** (odd, D0-D7) | `sccWBase=$BFFFF9` |
@@ -388,10 +423,18 @@ emulators just mirror via a mask and let the ROM discover it.
   XPRAM on every platform, and the compact ROMs only touch the low end.
   **PRAM persists on all twelve platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
-  family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:156` for
+  family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:143` for
   the compacts) (`MacMemory.h:186-187`).
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256`),
   unlike MAME's constant.
+
+The `Mac512e` profile has 512 KB RAM and the Plus's 128 KB ROM, with
+M0110/quadrature input, no SCSI and a self-regulating double-sided 800K
+mechanism. Unlike the Plus, its ROM repeats through `$4FFFFF`, and its
+`$600000-$6FFFFF` RAM alias remains decoded with the overlay down. The ROM
+uses repeated ROM contents to detect absent SCSI. `early_profile_test`
+checks the interpreter, inspection and JIT memory windows for these facts;
+`mac512ke_boot_etalon` and `mac512ke_external_boot_etalon` boot System 3.3.
 
 ### 2.2 GLUE + NuBus — Mac II (IIx, IIcx, SE/30)
 
@@ -423,6 +466,16 @@ Functional accuracy.
   CautionAlerts are dismissed by the *tests* pressing Return over real ADB
   (`keyEvent $24`); SPConfig `$22` (AppleTalk inactive) is only a
   reset-time factory seed.
+- **II FDHD** (`MacIIFDHD`): the II's 68020 and VIA ID pins, the shared
+  `97221136` ROM and SWIM/SuperDrive on both drive outputs, independently of
+  the 68030 selection. `--machine-profile=maciifdhd` selects it; the legacy
+  `POM68K_MACII_MODEL=fdhd` now selects the same identity. The default for
+  this shared ROM remains IIx. `maciifdhd_boot_etalon` boots a SCSI system
+  volume; `maciifdhd_floppy_boot_etalon` boots the 1.44 MB System 6.0.8
+  Startup image and checks ADB keyboard/mouse. `early_profile_test` verifies
+  single word accesses through the SWIM aperture, MFM writes and a full
+  clocked revolution, including gap4/index wrap. The physical track length
+  and guest-cycle spindle clock are unchanged.
 - **Variants IIx / IIcx**: 68030 + 68882 on the shared `mac2fdhd` ROM
   `$97221136`, same GLUE, same Toby NuBus. Identity is VIA machine-ID pins
   only (IIx VIA2 PB `$87`, IIcx VIA1 PA `$C1`). **The wall** was the PMMU
@@ -723,8 +776,8 @@ with the video cell swapped — the VASP recombination pattern again.
 PB4=BYTEACK, PB5=TIP, CB1/CB2 = clock/data). Machine ID at `$5FFFFFFC`:
 Quadra 630 `$A55A2252`, LC/Performa 580 `$A55A225A` (`POM68K_Q630_ID`).
 
-**The ATA port is mapped but empty** (`+$1A000` cs0/cs1, no drive
-modelled), so boot goes through SCSI. `+$1A100` is the PrimeTime II special
+**The ATA port serves `AtaDisk`** (`+$1A000` cs0/cs1); without an attached
+image it reports an empty bus. `+$1A100` is the PrimeTime II special
 interrupt status (VBL/ATA). Anything else in I/O space bus-errors — the
 ROM's address-map probe relies on it, the same discipline as the LC II V8.
 
@@ -947,6 +1000,19 @@ drive B reached on the nine, reaching nothing on the rest — and holds each
 board to the catalogue's `externalFloppy`. `external_floppy_boot_etalon`
 boots the Plus ROM with drive A empty and the synthetic 800K boot disk
 present only in drive B.
+The SE, SE FDHD and Classic boards also wire VIA1 PA4 as an
+internal-connector select behind ENABLE1 (and the ISM drive-1 enable): their
+ROMs' DiskSelect set PA4 for physical slot 1 and clear it for slot 2, slot 3
+being ENABLE2. `drive_` answers PA4 low. A mechanism on PA4 high exists only
+when `CoreStorageConfig::secondInternalFloppy` fits it (the dual-floppy SE /
+SE FDHD); otherwise, as on the single-floppy SE and the Classic, PA4 high
+selects nothing. The ROM numbers a fitted PA4-high mechanism drive 1 and
+tries it first at boot; alone, the PA4-low mechanism becomes drive 1.
+Before PA4 was wired both slots reached `drive_`, and the Finder mounted the
+boot floppy twice. `se_drive_select_test` covers the line, empty connector,
+unwired boards and snapshots (format v27); `se_three_drive_etalon`,
+`sefdhd_three_drive_etalon`, `se_single_floppy_pa4_etalon` and
+`classic_pa4_drive_etalon` check the guest's drive and volume queues.
 Full spec tables in the M5 research report (MAME `iwm.cpp` / `floppy.cpp` /
 `flopimg.cpp` / `ap_dsk35.cpp`, pce, Snow — cross-verified). What the
 implementation actually depends on, several found the hard way with
@@ -992,7 +1058,11 @@ implementation actually depends on, several found the hard way with
   Interleave is 2:1; MAME's `build_mac_track_gcr` rolling checksum is
   ported verbatim and cross-validated against pce's independent
   formulation (200 random sectors, identical output). Gate
-  `iwm_read_test`.
+  `iwm_read_test`. The read frame runs in time from the angle it was
+  parked at, so it re-parks whenever either revolution length changes
+  under it (a zone seek, a PWM speed adoption on the 400K spindle): writes
+  start at `fluxAngleTicks()`, and a reader left on the old frame finds a
+  header where the write does not land (`mac128k_mfs_etalon`, 2026-10-09).
 - **Boot blocks**: the ROM validates bbID 'LK' AND the bbVersion word at
   +6 (`$4418`), then jumps to bbEntry at +2 (a `BRA.W` in real blocks).
   Code placed directly at +2 is rejected by the version check → eject.
@@ -1008,7 +1078,7 @@ implementation actually depends on, several found the hard way with
 ### 3.2 Storage: SWIM1 and the SWIM2 cell engine
 
 - **`Swim1`** — IWM + ISM modes, 1.44 MB MFM. Used by the SE FDHD, Classic,
-  IIx, IIcx and SE/30, by V8, RBV, VASP, the IIfx (behind its SWIM IOP) and
+  II FDHD, IIx, IIcx and SE/30, by V8, RBV, VASP, the IIfx (behind its SWIM IOP) and
   the discrete-040 board (direct on the Quadra 700, behind the SWIM IOP on
   the Eclipse towers). The same wrapper is configured IWM-only on Plus, SE
   and Mac II so the 1-0-1-1 ISM switch and HD mechanism remain absent. Gates
@@ -1028,6 +1098,32 @@ implementation actually depends on, several found the hard way with
   rate onto the disk; the write-back decode is clocked by that same
   controller, and **only CRC-valid sectors commit**. A commit no longer
   re-lays the track canonically, and a failed one no longer heals itself.
+  `SonyDriveMedia.cpp` owns insertion/atomic persistence; untouched sector
+  tracks are synthesized lazily, while modified and native tracks survive
+  seeks, side/mode changes and reset. Native MOOF tracks have no sector shadow.
+  `IwmWrite.cpp` serializes individual cells on both sector and native media,
+  following MAME 0.285's LOAD/MIDDLE/END states: seven chip clocks to load,
+  a transition at each cell midpoint, and two half-windows per written bit.
+  Write exit retains partial bytes; async starvation stops at its load deadline.
+  Synchronous data writes replace the live shifter. Motor-off transfers do not
+  alter the medium. Chip and tick clocks remain separate for the Mac SE.
+  `iwm_write_test` and `moof_image_test` cover exact edges and mid-byte restore. `FloppyReadNoise.h` models
+  read-amplifier noise after 16 us without a physical transition, at the shared
+  SonyDrive read-channel boundary (IWM/SWIM1/SWIM2). A deterministic hash of
+  track, face, gap start and time slot supplies an approximate 50%/4 us pulse
+  distribution, following MAME 0.285 rather than a measured Sony response.
+  Noise never enters the medium, sector decoder or export. No mutable random
+  generator is introduced; the v26 drive/controller clocks resume
+  the same stream. `moof_image_test` checks real IWM framing and fresh restore.
+  `interp_plus_oids_moof_etalon` / `jit_plus_oids_moof_etalon` run the original
+  mixed bit/flux Oids v1.4 capture on a Plus booted from `Disk605.moof`.
+  They require the user-provided `disks35/ref/Oids v1.4.moof` (or its legacy
+  root twin), pin its SHA-256, launch through Finder input, load a galaxy and
+  compare thrust against an equal-time neutral branch. A fresh machine must
+  reproduce the controlled branch's displayed pixels and complete v26 state.
+  `POM68K_OIDS_DUMP=<prefix>` emits per-phase PGM screenshots; the frame clock
+  and raster decoder are the production ones. This is a capture-specific
+  application gate, not an independent proof of a particular protection check.
   Gates: `swim2_test`, `swim2_media_test`, `q605_floppy_boot_etalon`.
 
 ### 3.3 SCSI: NCR 5380
@@ -1093,6 +1189,13 @@ cable (*Macintosh Quadra 900 Developer Note*); the guest starts the play
 with a SCSI command and then hears music the CPU never reads. POM68K
 models the wiring:
 
+- `CdCueSheet` maps one-session BINARY CUE sources to absolute disc LBAs,
+  supporting AUDIO and one MODE1/2048 or MODE1/2352 data track across multiple
+  files. Stored INDEX 00 gaps bound the preceding data extent. Encoded audio,
+  synthetic gaps, stored track-1 pregaps, FLAGS, indexes above 01 and later
+  sessions are rejected.
+  Component gates check TOC, data framing and exact audio across source
+  boundaries; `q605_cdaudio_etalon` presents a two-file disc to Mac OS itself.
 - `PLAY AUDIO (10)` `$45`, `PLAY AUDIO MSF` `$47`, `PAUSE/RESUME` `$4B`
   and `READ SUB-CHANNEL` `$42`. A play aimed at a data track is refused
   (ILLEGAL REQUEST / `$64`), never faked.
@@ -1173,8 +1276,39 @@ NAT already inside `MacIpGateway`: Ethernet framing plus an ARP responder
 that **proxies for the whole subnet** (the gateway is the only thing on the
 segment) while never answering for the guest's own address — a reply there
 reads as a duplicate address and MacTCP refuses to initialise.
+The link also answers RFC 950 ICMP address-mask requests for the card's own
+MAC: unicast to an addressed client, IPv4/Ethernet broadcast for source zero.
+It uses the configured gateway mask, preserves identifier/sequence and checks
+IPv4/ICMP lengths, checksums and fragmentation before replying. Replies use the
+same machine-time wire queue as ordinary traffic. This discovers a mask, not
+an address. RFC 903 RARP separately reserves an address for the attached card
+in the shared MacIP/Ethernet pool, excluding gateway, DNS and occupied leases.
+MAC bindings survive IP refresh, and link detach/reconfiguration releases them.
+`daynaport_test` covers the SCSI WRITE/READ round trip, malformed requests,
+collisions, exhausted pools, wire latency/unplug and a subsequent echo. BOOTP
+is not implemented; router and DNS configuration remain separate.
+`q605_dayna_rarp_etalon` qualifies the real Dayna driver with MacTCP Server
+address acquisition and subsequent local ICMP, incoming echo and cable recovery.
+`q605_dayna_rarp_network_etalon` extends that proof with NetProbe's own bounded
+UDP A-record DNS client and a TCP exchange against controlled host sockets.
+It configures the router separately before selecting Server; RARP still
+supplies the guest address. Build `dev/netprobe` with Retro68 first. Apple DNR,
+control-panel DNS settings and automatic router discovery are separate work.
 `MacIpGateway` leases now record which link they were learned on, and
 `sendIpToGuest` routes DDP or Ethernet accordingly.
+
+The network window also controls `EthernetCapture`, a passive observer at
+the Dayna card boundary before IP/EtherTalk demultiplexing. Frames are raw
+Ethernet without FCS, including incoming frames later dropped by the Rx ring.
+The producer has a fixed 256-frame queue and never allocates, waits for its
+mutex or performs file I/O. Full/contended queues count lost observations;
+the guest transport and its counters remain independent. A worker writes
+PCAP 2.4 plus `<path>.tsv` with actual board clock Hz, per-record machine
+cycles/direction and final write/loss counts. Timestamps are cycles divided
+by the board clock, anchored at Unix epoch zero, not host wall time.
+Existing output files are refused. Stop drains asynchronously; I/O errors
+and a backwards machine clock (reset/restore) terminate capture visibly.
+Capture callbacks, files and queues remain outside guest save states.
 
 Wiring: `POM68K_DAYNAPORT=<id>` puts a card on **every** machine's SCSI bus
 (`=1` → the default ID 3, where MAME parks the CD-ROM), and so does the
@@ -2103,6 +2237,7 @@ Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
 gate against a volume its own list does not name — every "same machine,
 other System" control needs it), `POM68K_HALT`, `POM68K_DUMP`,
+`POM68K_OIDS_DUMP` (prefix for Oids native-media gate phase screenshots),
 `POM68K_DUMPASM` (`lcii_sony_trace`: disassemble `addr:count` live-RAM
 instructions after the run, for reverse-engineering the SuperDrive System
 patch that owns the 1.44 MB MFM read path),

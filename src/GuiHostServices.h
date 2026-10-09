@@ -87,8 +87,8 @@ public:
     }
     std::uint32_t hostMacSeconds() const;
 
-    template <class Mem>
-    void wireNetwork(Mem& mem) {
+    template <class Mem, class Cpu>
+    void wireNetwork(Mem& mem, Cpu& cpu) {
         const int byteCycles = int(mem.cpuHz() / 28800);
         mem.scc().setByteCycles(byteCycles);
         if (serialActive()) {
@@ -152,7 +152,8 @@ public:
             state_.network.atalk.setService(
                 "ethertalk", hub && state_.network.atalk.config().ethertalk);
             state_.network.atalk.attach(
-                mem, hubHz, cable ? &state_.network.ltoudp : nullptr);
+                mem, hubHz, cable ? &state_.network.ltoudp : nullptr,
+                [&cpu] { return cpu.machineClock(); });
         }
         if (!hub && !cable) return;
         mem.scc().onTxFrame =

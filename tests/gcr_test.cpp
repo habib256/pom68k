@@ -9,6 +9,7 @@
 
 #include "SonyDrive.h"
 #include <cstdio>
+#include <fstream>
 #include <vector>
 
 static const uint8_t kGcr6[0x40] = {
@@ -34,20 +35,34 @@ static uint8_t expectedByte(int track, int side, int sector, int i) {
 #define CHECK(cond, ...) do { if (!(cond)) { \
     std::fprintf(stderr, "FAIL: " __VA_ARGS__); std::fprintf(stderr, "\n"); return 1; } } while (0)
 
-int main() {
-    // Patterned 800K image
-    std::vector<uint8_t> img(819200);
+static int verify(int heads, bool tagged) {
+    // Patterned 400K/800K images, every zone and physical head.
+    std::vector<uint8_t> img(size_t(heads) * 409600);
     size_t off = 0;
     for (int t = 0; t < 80; t++)
-        for (int h = 0; h < 2; h++)
+        for (int h = 0; h < heads; h++)
             for (int s = 0; s < SonyDrive::sectorsInTrack(t); s++)
                 for (int i = 0; i < 512; i++)
                     img[off++] = expectedByte(t, h, s, i);
-    CHECK(off == 819200, "geometry: %zu", off);
+    CHECK(off == img.size(), "geometry: %zu", off);
 
     SonyDrive drive;
     drive.reset();
-    CHECK(drive.insertImage(img), "insertImage");
+    if (tagged) {
+        std::vector<uint8_t> dc(0x54, 0);
+        auto put32 = [&](size_t at, uint32_t value) {
+            for (int i = 0; i < 4; ++i) dc[at + i] = uint8_t(value >> (24 - i * 8));
+        };
+        put32(0x40, uint32_t(img.size()));
+        put32(0x44, uint32_t(img.size() / 512 * 12));
+        dc[0x50] = uint8_t(heads - 1); dc[0x51] = heads == 2 ? 0x22 : 0x02; dc[0x52] = 1;
+        dc.insert(dc.end(), img.begin(), img.end());
+        for (size_t sector = 0; sector < img.size() / 512; ++sector)
+            for (int i = 0; i < 12; ++i) dc.push_back(uint8_t(sector * 17 + i + 1));
+        { std::ofstream file("gcr_tags_test.image", std::ios::binary);
+          file.write(reinterpret_cast<const char*>(dc.data()), dc.size()); }
+        CHECK(drive.insert("gcr_tags_test.image"), "insert tagged DC42");
+    } else CHECK(drive.insertImage(img), "insertImage");
 
     for (int t : { 0, 15, 16, 40, 64, 79 }) {
         // seek: DIRTN then STEPs (commands: value CA2 in bit 3)
@@ -55,7 +70,7 @@ int main() {
         while (drive.currentTrack() > t) { drive.command(0b1000); drive.command(0b0010); }
         CHECK(drive.currentTrack() == t, "seek to %d", t);
 
-        for (int h = 0; h < 2; h++) {
+        for (int h = 0; h < heads; h++) {
             int ns = SonyDrive::sectorsInTrack(t);
             std::vector<bool> seen(size_t(ns), false);
             // pull two tracks' worth of nibbles and decode every sector
@@ -85,7 +100,7 @@ int main() {
                 int aside = gcrInv(nib[p+5]), afmt = gcrInv(nib[p+6]), asum = gcrInv(nib[p+7]);
                 CHECK(atrk == (t & 0x3F), "addr track %d vs %d", atrk, t);
                 CHECK(aside == ((h ? 0x20 : 0) | ((t & 0x40) ? 1 : 0)), "side byte");
-                CHECK(afmt == 0x22, "format byte");
+                CHECK(afmt == (heads == 2 ? 0x22 : 0x02), "format byte");
                 CHECK(asum == ((atrk ^ asec ^ aside ^ afmt) & 0x3F), "addr checksum");
                 CHECK(nib[p+8] == 0xDE && nib[p+9] == 0xAA, "addr epilogue");
 
@@ -131,12 +146,13 @@ int main() {
                       "data checksum t%d h%d s%d", t, h, asec);
                 CHECK(nib[r+4] == 0xDE && nib[r+5] == 0xAA, "data epilogue");
 
-                // Tag bytes are zero-filled on purpose: MAME's DC42 loader
-                // carries the real 12 per sector (ap_dsk35.cpp:225-227) but a
-                // flat image has nowhere to store one on write-back
-                // (parity audit § 2.3, LLE_VS_HLE § 1.3).
-                for (int i = 0; i < 12; i++)
-                    CHECK(sdata[i] == 0, "tag byte %d", i);
+                size_t logicalSector = size_t(h * SonyDrive::sectorsInTrack(t) + asec);
+                for (int previous = 0; previous < t; ++previous)
+                    logicalSector += size_t(heads * SonyDrive::sectorsInTrack(previous));
+                for (int i = 0; i < 12; i++) {
+                    const uint8_t expected = tagged ? uint8_t(logicalSector * 17 + i + 1) : 0;
+                    CHECK(sdata[i] == expected, "tag t%d h%d s%d byte%d", t, h, asec, i);
+                }
                 for (int i = 0; i < 512; i++)
                     CHECK(sdata[12+i] == expectedByte(t, h, asec, i),
                           "data t%d h%d s%d byte %d: got %02X want %02X",
@@ -148,6 +164,14 @@ int main() {
                 CHECK(seen[size_t(s)], "sector %d missing on t%d h%d", s, t, h);
         }
     }
-    std::printf("gcr_test: all tracks roundtrip OK\n");
+    return 0;
+}
+
+int main() {
+    for (int heads : {1, 2})
+        for (bool tagged : {false, true})
+            if (verify(heads, tagged)) return 1;
+    std::remove("gcr_tags_test.image");
+    std::printf("gcr_test: raw and tagged DC42 tracks roundtrip OK\n");
     return 0;
 }

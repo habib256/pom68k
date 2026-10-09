@@ -22,7 +22,6 @@
 #endif
 namespace pom68k::gui {
 namespace {
-
 #ifdef _WIN32
 std::time_t utcTime(std::tm* value) { return ::_mkgmtime(value); }
 #else
@@ -70,6 +69,7 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     };
 }
 GuiHostServices::~GuiHostServices() {
+    state_.network.atalk.stopEthernetCapture();
     state_.peripherals.relaunch = {};
     state_.network.relaunchWithDaynaPort = {};
     state_.cpu.setCpuEngine = {};

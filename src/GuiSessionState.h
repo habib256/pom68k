@@ -20,6 +20,7 @@
 #include "jit/JitStats.h"
 
 #include <chrono>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -42,6 +43,7 @@ struct GuiNetworkState {
     AtalkHub atalk;
     bool showWindow = false;
     bool configured = false;
+    std::array<char,512> capturePath{};
 };
 
 struct GuiAudioState {

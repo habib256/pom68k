@@ -173,7 +173,7 @@ const MachineProfile& MachineFactory::selectProfile(
         return bySnapshot(selected.macIi);
     }
 
-    return bySnapshot(SnapMachine::Plus);
+    return bySnapshot(rom.size() == (128u << 10) ? selected.plusRom : SnapMachine::Plus);
 }
 
 bool MachineFactory::qualifiesFullLleAarch64(
