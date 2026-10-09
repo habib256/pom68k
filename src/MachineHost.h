@@ -45,6 +45,7 @@
 
 #pragma once
 
+#include "DebugCpuTarget.h"
 #include "GuestScsiView.h"
 #include "InputJournal.h"
 #include "Mmu030Peek.h"
@@ -95,11 +96,17 @@ public:
         // POM68K_CPU_ENGINE may have started us on the JIT; mirror whatever
         // the CPU actually built itself with so the menu tick is honest.
         stEngine_.store(cpu.engine(), std::memory_order_relaxed);
+        // The debugger can only hold the CPU inside a quantum when the
+        // machine has its own thread to hold (DebugSession.h).
+#ifdef __EMSCRIPTEN__
+        debug.setBlockingAvailable(false);
+#endif
+        cpu.setDebugStopHook(&debugTarget_);
     }
     // Not copyable: it owns a thread and two mutexes.
     MachineHost(const MachineHost&) = delete;
     MachineHost& operator=(const MachineHost&) = delete;
-    ~MachineHost() { stop(); }
+    ~MachineHost() { stop(); cpu.setDebugStopHook(nullptr); }
 
     Mem& mem;
     Cpu& cpu;
@@ -127,6 +134,10 @@ public:
     // them between two quanta: a restore replaces the whole tree, so it must
     // land on an instruction boundary, never mid-quantum from the GUI thread.
     SaveStateSlot state;
+
+    // The debugger (DebugSession.h): commands from the GUI, applied by the
+    // machine thread between quanta or while a breakpoint holds it.
+    pom68k::dbg::Session debug;
 
     // ── Input recording (src/InputJournal.h) ──────────────────────────────
     // Same discipline as the save-state slot: the GUI queues a request, the
@@ -320,6 +331,7 @@ public:
     void stop() {
 #ifndef __EMSCRIPTEN__
         quit.store(true);
+        debug.shutdown();               // release a breakpoint's hold first
         if (th_.joinable()) th_.join();
 #endif
         // After the join the machine thread is gone, so reading the CPU's
@@ -333,7 +345,14 @@ public:
     // why the pacing lives here and not inside start()'s lambda.
     int stepTick() {
         applyCmds();
-        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
+        // A debugger stop at the boundary holds like the dashboard's pause;
+        // its Continue/Step also lifts that pause, or the step never runs.
+        const bool held = debug.atBoundary(debugTarget_);
+        if (debug.takeResumeRequest()) running.store(true);
+        if (held || !running.load(std::memory_order_relaxed)) {
+            publish();
+            return held ? 2000 : 5000;
+        }
         int sleepUs = 0;
         bool paceWallClock = false;
         if (activeHold_ > 0 && audioHost.started()) {
@@ -804,6 +823,7 @@ protected:
         }
     }
 
+    pom68k::dbg::CpuTarget<Cpu, Mem> debugTarget_{cpu, mem, debug};
     std::thread th_;
     std::mutex cmdMu_;
     std::vector<Cmd> cmds_, cmdsApply_;

@@ -193,6 +193,10 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   ORA=`$40` (overlay off + main screen buffer).
 - JIT seam inside the vendored core: `extern/moira/POM68K_VENDOR.md`
   § *JIT seam*.
+- Debugger seam: `MoiraDebugSeam.h`, the common base under `MoiraSnapshot`,
+  turns Moira's breakpoint/soft-stop delegates into a host hook and lets a
+  disassembly read through a caller's fetch. No vendored change; the
+  service built on it is [§6 The debugger](#the-debugger-srcdebugsession-srcdebugcputargeth-srcguidebuggerwindow).
 
 ### 1.4 Save states: the `visit()` contract
 
@@ -2720,6 +2724,61 @@ labelled, checkable menu item (`diskBaysMenuItem`, `peripheralMenuItem`),
 so Périphériques and Fenêtres toggle the same state under different labels.
 The « Tableau de bord » window (`drawMachineControlWindow`) replaces the
 six "CPU" windows: `drawStatus` first, then the control block as buttons.
+
+### The debugger (`src/DebugSession.*`, `src/DebugCpuTarget.h`, `src/GuiDebuggerWindow.*`)
+
+« Fenêtres → Débogueur » on every desktop runner. The GUI holds no CPU or
+memory pointer: it posts typed `dbg::Command`s (with ids) to the
+`MachineHost::debug` session and draws the latest immutable
+`dbg::Snapshot` — registers, clocks, stop reason, a disassembly window,
+the requested memory range, the breakpoint list, the requested and the
+effective engine. The machine thread owns every mutation, in two places:
+
+| Where | What happens there |
+|---|---|
+| `atBoundary()`, between two quanta (`stepTick`) | **Pause** stops here — every quantum ends on an instruction boundary, so a CPU in `STOP` or a held bus pauses too. Breakpoint edits posted while running land here, at most one quantum later. Reset, state load and engine swaps applied while paused republish the snapshot. |
+| `onCpuStop()`, inside a quantum | Moira evaluates its breakpoint list and soft stop after an instruction retires, before the next one starts; the hook **blocks the machine thread there** and serves commands until Continue/Step. The quantum is not unwound, so vblank edges and beam slices resume exactly where the CPU stopped. |
+
+Acknowledgement is `Snapshot::acked ≥ command id`; "paused" means a
+snapshot that is `stopped` *and* acknowledges the Pause. A stop held inside
+a quantum delays reset, save states, engine swaps and input until it
+resumes (`inQuantum` says so in the window). Continue/Step also lift the
+dashboard's pause, otherwise a step could never run. `stop()` releases a
+held stop before joining the thread. Emscripten has no second thread to
+hold, so breakpoints and steps are refused there.
+
+Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
+
+- **Memory is read only through `dataSpan(phys, len, false)`** — the JIT
+  data-TLB contract that already refuses every window with a read side
+  effect. VIA, SCC, IWM, SCSI and video-cell registers, a ROM window that
+  would drop the overlay, and unmapped space are `NotMemory`, never read.
+- **Logical vs physical is explicit.** Logical is translated without
+  touching MMU state: 24 address lines on 68000/EC020, identity on the
+  68020, TT0/TT1 then the tables on the 68030 (`Mmu030Peek.h`), DTT0/DTT1
+  then the tables on the 68040 (`Mmu040Peek.h`). An invalid descriptor is
+  `Untranslated`. The board's own remaps belong to physical.
+- **Breakpoints are logical PCs in Moira's own list.** With any stop armed
+  `flags != 0`, so `JitEngine` delegates every instruction to the
+  interpreter (`!pomJitIdle()`); the snapshot reports that effective engine
+  and the user's engine returns when the last stop is removed. The setting
+  itself never changes.
+- **Debugger state is not guest state.** `MoiraSnapshot` neither writes
+  `CHECK_BP/WP/CP` and `LOGGING` into a save state nor overwrites the live
+  ones on load. Breakpoints survive a reset (`Debugger::reset`) and a load.
+
+Known limits of this first service: register/memory editing, access
+watchpoints, exception/trap stops, step over/out, histories, symbols and
+device snapshots are not implemented; with `POM68K_040_DCACHE=1` the memory
+view shows RAM, not a newer dirty cache line; breakpoints belong to the
+CPU object, so a relaunch starts with none.
+
+Gated by `debug_session_test` (asset-free; a real machine thread per
+family — 68000, 68020, 68030 and 68040 rigs, the 030/040 also with the
+accelerated engine requested) and `debug_inspection_test` (030 and 040
+table walks, untouched descriptors, I/O never read: whole-machine save
+bytes identical before and after inspection), plus the window in
+`gui_windows_test`.
 
 ### The "Périphériques (LLE / HLE)" window (`src/PeripheralWindow.*`)
 

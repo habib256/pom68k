@@ -23,6 +23,7 @@
 #include "ImGuiHeadless.h"
 
 #include "DiskBays.h"
+#include "GuiDebuggerWindow.h"
 #include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiSessionState.h"
@@ -65,6 +66,45 @@ bool windowShown(const char* title, ImRect* rect = nullptr) {
     if (rect) *rect = w->Rect();
     return true;
 }
+
+// The machine thread's side of the debugger, without a machine: a CPU that
+// sits at $00002000 and records what the session asked of it.
+struct FakeDebugTarget final : pom68k::dbg::Target {
+    std::vector<std::uint32_t> bps;
+    int steps = 0;
+    void capture(pom68k::dbg::Snapshot& s) const override {
+        s.model = "68040";
+        s.regs.pc = 0x2000;
+        s.regs.sr = 0x2700;
+        s.regs.d[0] = 0x12345678;
+        s.supervisor = true;
+        s.requestedEngine = 1;
+        s.effectiveEngine = bps.empty() ? 1 : 0;
+    }
+    std::int64_t clock() const override { return 1000; }
+    std::uint32_t pc() const override { return 0x2000; }
+    void readMemory(pom68k::dbg::Space, std::uint32_t addr, std::uint8_t* out,
+                    pom68k::dbg::ByteState* st, std::size_t n) override {
+        for (std::size_t i = 0; i < n; ++i) {
+            out[i] = std::uint8_t(addr + i);
+            st[i] = (addr + i) & 0x80 ? pom68k::dbg::ByteState::NotMemory
+                                      : pom68k::dbg::ByteState::Ok;
+        }
+    }
+    pom68k::dbg::DisasmLine disassemble(std::uint32_t addr) override {
+        pom68k::dbg::DisasmLine l;
+        l.addr = addr;
+        l.readable = true;
+        l.text = "nop";
+        return l;
+    }
+    bool addBreakpoint(std::uint32_t a) override { bps.push_back(a); return true; }
+    void removeBreakpoint(std::uint32_t a) override { std::erase(bps, a); }
+    void clearBreakpoints() override { bps.clear(); }
+    std::vector<std::uint32_t> breakpoints() const override { return bps; }
+    void armStep() override { ++steps; }
+    bool stopsArmed() const override { return !bps.empty(); }
+};
 
 void capture(headless::Context& ui, const char* name) {
     const std::string path = std::string("gui_") + name + ".ppm";
@@ -141,6 +181,82 @@ int main() {
         // Annuler-less reopen: staging was dropped with the apply.
         ui.frame(draw);
         check(ui.find("Appliquer et redémarrer") == nullptr, "nothing pending after the apply");
+    }
+
+    // ── Débogueur ────────────────────────────────────────────────────
+    // Every button is a queued command; what is drawn is the snapshot the
+    // machine thread published (here: atBoundary() on this thread).
+    {
+        pom68k::dbg::Session session;
+        FakeDebugTarget target;
+        pom68k::gui::GuiDebuggerState state;
+        state.session = &session;
+        state.showWindow = true;
+        auto draw = [&] { pom68k::gui::drawDebuggerWindow(state); };
+        session.atBoundary(target);
+        ui.frame(draw);
+        ui.frame(draw);
+        ImRect r;
+        check(windowShown(pom68k::gui::kDebuggerWindowTitle, &r),
+              "Débogueur opens when asked");
+        check(ui.distinctColours(r) > 12, "the window is drawn, not blank");
+        check(ui.find("Pause") != nullptr && ui.find("Continuer") == nullptr,
+              "a running machine offers Pause only");
+        check(ui.click("Pause", draw), "click « Pause »");
+        check(!session.snapshot()->stopped, "the click alone stops nothing");
+        check(session.atBoundary(target), "the machine thread applies the Pause");
+        ui.frame(draw);
+        check(ui.find("Continuer") != nullptr && ui.find("Pas à pas") != nullptr,
+              "a stopped machine offers Continuer and Pas à pas");
+        // Plain Text lines register no item; the sections and the
+        // disassembly's selectable rows do.
+        check(ui.find("Registres") != nullptr && ui.find("Points d'arrêt") != nullptr,
+              "the register and breakpoint sections are drawn");
+        const auto* line = ui.findContaining("00002000  nop");
+        check(line != nullptr, "the disassembly lists the PC line");
+        if (line) {
+            check(ui.clickAt(line->bb.GetCenter(), draw), "click the PC line");
+            session.atBoundary(target);
+            ui.frame(draw);
+            check(target.bps.size() == 1 && target.bps[0] == 0x2000,
+                  "a line click posts a breakpoint at its address");
+            const auto snap = session.snapshot();
+            check(snap->requestedEngine == 1 && snap->effectiveEngine == 0,
+                  "an armed stop publishes the effective engine beside the request");
+        }
+        check(ui.click("Pas à pas", draw), "click « Pas à pas »");
+        session.atBoundary(target);
+        check(target.steps == 1 && !session.snapshot()->stopped,
+              "Pas à pas arms one step and resumes");
+        capture(ui, "debugger");
+        dumpLabels("debugger");
+        // The memory pane: a window the machine thread filled, then a
+        // malformed address refused at the GUI without a command.
+        pom68k::dbg::Command view;
+        view.kind = pom68k::dbg::Command::Kind::ViewMemory;
+        view.addr = 0x60;
+        view.length = 64;
+        session.post(view);
+        session.atBoundary(target);
+        check(ui.click("Registres", draw) && ui.click("Désassemblage", draw) &&
+              ui.click("Mémoire", draw),
+              "fold registers and disassembly, open the memory section");
+        const auto mem = session.snapshot();
+        check(mem->memory.bytes.size() == 64 &&
+              mem->memory.state[0x1F] == pom68k::dbg::ByteState::Ok &&
+              mem->memory.state[0x20] == pom68k::dbg::ByteState::NotMemory,
+              "the snapshot carries the requested window and its verdicts");
+        const auto acked = mem->acked;
+        check(ui.click("Afficher", draw) && !state.inputError.empty(),
+              "an empty address is refused in the window");
+        session.atBoundary(target);
+        check(session.snapshot()->acked == acked, "and posts nothing");
+        capture(ui, "debugger-memory");
+        check(pom68k::gui::parseGuestAddress("$40800000") == 0x40800000u &&
+              pom68k::gui::parseGuestAddress("0x2000") == 0x2000u &&
+              !pom68k::gui::parseGuestAddress("zz") &&
+              !pom68k::gui::parseGuestAddress("1FFFFFFFF"),
+              "addresses parse as 32-bit hexadecimal");
     }
 
     // ── AppleTalk / Ethernet ─────────────────────────────────────────
@@ -322,12 +438,14 @@ int main() {
         const char* sources[] = {"src/PeripheralWindow.cpp", "src/NetworkWindow.cpp",
                                  "src/DiskBays.cpp", "src/GuiEngineWindow.cpp",
                                  "src/GuiShell.cpp", "src/GuiMachineControls.cpp",
+                                 "src/GuiDebuggerWindow.cpp",
                                  "src/AdbVia.cpp", "src/V8Memory.cpp", "src/Q605Memory.cpp",
                                  "src/Q630Memory.cpp", "src/RbvMemory.cpp", "src/Q700Memory.cpp",
                                  "src/VaspMemory.cpp", "src/SonoraMemory.cpp", "src/TobyDeclChoice.h"};
         auto windowSource = [](const std::string& rel) {
             return rel.find("Window") != std::string::npos || rel.find("DiskBays") != std::string::npos ||
-                   rel.find("GuiShell") != std::string::npos || rel.find("GuiMachineControls") != std::string::npos;
+                   rel.find("GuiShell") != std::string::npos || rel.find("GuiMachineControls") != std::string::npos ||
+                   rel.find("GuiDebugger") != std::string::npos;
         };
         int missing = 0, scanned = 0;
         ui.frame([&] {

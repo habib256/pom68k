@@ -43,7 +43,7 @@ set_tests_properties(gui_relaunch_smoke_test PROPERTIES
 if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     add_executable(gui_windows_test tests/gui_windows_test.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
-        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
     target_include_directories(gui_windows_test PRIVATE ${IMGUI_DIR})
@@ -54,7 +54,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     # window with its mouse surface and keyboards (GuiScreen.h), the cabinet
     # mode and the CRT presets — driven headlessly on a fake machine.
     add_executable(gui_machine_window_test tests/gui_machine_window_test.cpp
-        src/GuiShellMenu.cpp src/GuiMachineControls.cpp src/GuiDisplayWindow.cpp
+        src/GuiShellMenu.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp src/GuiDisplayWindow.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
         src/GuiEngineWindow.cpp src/DockLayout.cpp
         src/FloppySound.cpp src/miniaudio_impl.cpp
@@ -350,6 +350,20 @@ add_test(NAME asset_lock_test
 add_executable(machinehost_test tests/machinehost_test.cpp)
 target_link_libraries(machinehost_test PRIVATE pom68k_core)
 add_test(NAME machinehost_test COMMAND machinehost_test)
+
+# The debugger service at that same boundary (src/DebugSession.h): a real
+# machine thread per CPU family (000/020/030/040 synthetic rigs), stops
+# before the instruction, one-instruction steps, Pause acknowledged at a
+# quantum boundary, live breakpoint edits, effective engine, teardown and
+# save-state isolation. Inspection side effects and MMU translation are
+# gated by debug_inspection_test. No ROM, no image.
+add_executable(debug_session_test tests/debug_session_test.cpp)
+target_link_libraries(debug_session_test PRIVATE pom68k_core)
+add_test(NAME debug_session_test COMMAND debug_session_test)
+set_tests_properties(debug_session_test PROPERTIES TIMEOUT 120)
+add_executable(debug_inspection_test tests/debug_inspection_test.cpp)
+target_link_libraries(debug_inspection_test PRIVATE pom68k_core)
+add_test(NAME debug_inspection_test COMMAND debug_inspection_test)
 
 # The guest's SCSI bus view (src/GuestScsiView.h): the drive-queue and VCB
 # walk on a synthetic low-memory image — refNum → SCSI ID, a mounted

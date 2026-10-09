@@ -95,6 +95,7 @@ protected:
     // unmapped I/O, a busError() that mutates An/MMU fault state and throws.
     // peek8() is the side-effect-free path the tracers already use.
     moira::u16 read16Dasm(moira::u32 addr) const override {
+        if (moira::u16 word = 0; dasmOverride(addr, word)) return word;
         return moira::u16(moira::u16(mem_.peek8(addr)) << 8
                           | mem_.peek8(addr + 1));
     }
