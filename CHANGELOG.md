@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (fourth)** — [Three pushes red on CI: a menu left open on a host without ROMs, a second host's registry, a switch under -Werror](#2026-10-10-ci-red)
 - **2026-10-10 (third)** — [Host text typed on machine time, the guest's scrap read back: the round trip is byte-identical on Mac OS 8.1](#2026-10-10-clipboard)
 - **2026-10-10 (second)** — [CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again](#2026-10-10-cd-image)
 - **2026-10-10** — [Session files: one configured machine on disk, through the inputs startup already reads](#2026-10-10-session-files)
@@ -1116,6 +1117,35 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-ci-red"></a>
+## 2026-10-10 (fourth) — Three pushes red on CI: a menu left open on a host without ROMs, a second host's registry, a switch under -Werror
+
+`ff3612c`, `5e28156` and `c6ffba6` were green on this host and red on both
+CI workflows. Three causes, each invisible from here:
+
+- **A test that depended on this host's ROMs.** On a runner with no ROM,
+  `gui_machine_window_test`'s catalogue section finds no other profile to
+  click and leaves the Machine menu open. The new Session and typing
+  sections then clicked « Machine » to open it, and the click closed it.
+  Here a ROM is found, the click closes the menu, and the sections passed.
+  `openMachineMenu` now opens it until the wanted item is on screen.
+  Reproduced and checked by running the binary copied into a ROM-less
+  directory, since a test run from `build/` also finds `../roms`.
+- **The other host's registry section.** `STATUS.md`'s `Registered on
+  aarch64` section is preserved by a regeneration on x86-64, and the macOS
+  job's `docs_test` holds it to its own roster: 387 written, 389 → 394
+  registered. It now carries the same deltas as the regenerated x86-64
+  section (+7 gates, all `host any`), the way `0248b55` did.
+- **A switch over the journal's event types.** `tests/InputReplay.h` did not
+  handle `TypeText`/`CancelTyping`. That is an error under CI's tree-wide
+  `-Werror`; the `-Werror` check here had built selected targets only. A
+  whole-tree `-Werror` build is now clean, and replay refuses those two
+  types like `StateRestore`: a recorded paste is its `key` events.
+
+Lesson recorded for the next push: `gh run list` after pushing, and a
+whole-tree `-Werror` build, not a target subset. Evidence: CI runs
+38024268887 (macOS), 38029696244 and 38034973761 (Linux).
 
 <a id="2026-10-10-clipboard"></a>
 ## 2026-10-10 (third) — Host text typed on machine time, the guest's scrap read back: the round trip is byte-identical on Mac OS 8.1

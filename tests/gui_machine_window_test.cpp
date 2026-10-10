@@ -440,6 +440,18 @@ int main() {
         ui.frame(draw);
     }
 
+    // The Machine menu may still be open from the catalogue section — on
+    // a host with no other ROM of the group nothing was clicked there (CI's
+    // runner has none) — and clicking its title then CLOSES it. Open it
+    // until one of its own items is on screen.
+    auto openMachineMenu = [&](const char* item) {
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            ui.click("Machine", draw);
+            if (ui.find(item)) return true;
+        }
+        return false;
+    };
+
     // ── Taper du texte: paste, choose the layout, type, cancel ───────
     // The window queues; MachineHost types (clipboard_typing_test). Here:
     // the menu opens it, « Coller » reads the host clipboard, the radio
@@ -447,8 +459,8 @@ int main() {
     // machine, « Annuler la saisie » reaches it while typing is under way.
     {
         state.machine.typing.hostClipboard = [] { return std::string("Bonjour é\n"); };
-        ui.click("Machine", draw);
-        check(clickMenuItem(ui, "Taper du texte...", draw) && state.machine.typing.showWindow,
+        check(openMachineMenu("Taper du texte...") &&
+                  clickMenuItem(ui, "Taper du texte...", draw) && state.machine.typing.showWindow,
               "« Taper du texte... » opens the typing window");
         ui.frame(draw);
         check(windowShown(kTypingWindowTitle), "the typing window is drawn");
@@ -494,8 +506,7 @@ int main() {
             return capture.entries();
         };
         auto hoverSession = [&] {
-            ui.click("Machine", draw);
-            const headless::Item* item = ui.find("Session");
+            const headless::Item* item = openMachineMenu("Session") ? ui.find("Session") : nullptr;
             if (!item) return false;
             const ImVec2 c = item->bb.GetCenter();
             ui.mouseTo(c.x, c.y);
