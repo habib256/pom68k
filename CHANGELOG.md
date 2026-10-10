@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (twelfth)** — [The Quadra 630 rewinds a Finder write on its IDE disk; the Snow plan's ordered work is done](#2026-10-10-q630-ide-rewind)
 - **2026-10-10 (eleventh)** — [Every oracle profile carries MAME's Apple CD-ROM, and the LC III's free space is judged](#2026-10-10-oracle-cdrom)
 - **2026-10-10 (tenth)** — [The LC III under the oracle on System 7.5.3; MAME's fixed CD-ROM writes into the Apple CD-ROM extension](#2026-10-10-lc3-oracle)
 - **2026-10-10 (ninth)** — [MAME's Quadra 900 and 950 boot from POM68K's PRAM, and their ten 24-bit probes agree](#2026-10-10-q900-oracle-pram)
@@ -1124,6 +1125,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-q630-ide-rewind"></a>
+## 2026-10-10 (twelfth) — The Quadra 630 rewinds a Finder write on its IDE disk; the Snow plan's ordered work is done
+
+The Snow plan's ATA continuation item 5, and its "Backing images and rewind"
+follow-up, asked for a Q630 IDE *application* save/load scenario, beyond
+`ata_disk_test` and `media_timeline_test`'s synthetic sectors.
+`q630_ide_boot_etalon` gets a third phase on the Quadra 630 it has just booted
+from its IDE disk alone:
+
+1. Cmd-N on the desktop and a click on empty desktop to end the name edit.
+   The Finder writes a folder (8 sectors), found host-side through the
+   catalog.
+2. The machine is saved (`SnapMachine::Q630`) and the file hashed.
+3. A second Cmd-N writes the second untitled folder (10 sectors). The file
+   and the RAM are hashed: this is the uninterrupted run.
+4. A new `Q630Memory`/`Q630Cpu` opens the same file, write-back, as a later
+   process would, and loads the state. `DiskTimeline` rewinds the file to the
+   saved bytes. The first folder is there and the second is not.
+5. The same Cmd-N writes the same 10 sectors. The file and the RAM hash
+   equal the uninterrupted run's.
+
+The first draft judged the second folder by the name "untitled folder 2"
+and found none, although 10 sectors had been written. The check now accepts
+the Finder's "untitled folder 1" or "2", and lists the catalog's
+"untitled folder…" names when it fails.
+
+**Gates.**
+- `q630_ide_boot_etalon` green in 407 s.
+- `lc580_ide_boot_etalon`, the same binary on the LC 580's ROM, green.
+
+**Snow plan.** `docs/SNOW_IMPLEMENTATION_PLAN.md` was behind the work:
+- the intro still listed the debugger's extended stops as remaining;
+- order 10 (RARP, the address mask, DNS/TCP) was not marked done;
+- the third SE drive still had its option and Disques row "remaining".
+
+Every ordered item is now marked implemented. What remains is the Windows
+execution of order 8 (TODO § Preuve) and the conditional projects, each
+waiting for its named consumer. Portable bundles, quick save slots and
+thumbnails stay listed as follow-ups.
 
 <a id="2026-10-10-oracle-cdrom"></a>
 ## 2026-10-10 (eleventh) — Every oracle profile carries MAME's Apple CD-ROM, and the LC III's free space is judged
