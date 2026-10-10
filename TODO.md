@@ -46,12 +46,18 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   exécutés/soft-skips. *Bloqué : infrastructure/hôte à provisionner.*
 - [ ] **Exécuter les locksteps sur un hôte Windows.** Préalable nommé de
   « `threaded` est le plancher Windows » : tant qu'aucun hôte Windows ne
-  les exécute, le choix reste une décision et non une mesure. Même hôte :
-  `scc_serial_host_test` et son backend Winsock, compilés pour Windows et
-  verts sous wine (`CHANGELOG` 2026-10-10 (fifth)), jamais exécutés sous
-  Windows ni compilés par MSVC — un passage « Run workflow » de
-  `release.yml` les exécuterait (`ctest -L asset-none` sur
-  `windows-latest`). *Bloqué : hôte Windows.*
+  les exécute, le choix reste une décision et non une mesure. *Bloqué :
+  hôte Windows.*
+- [ ] **Mettre au vert le tier `asset-none` sous MSVC.** Le « Run workflow »
+  de `release.yml` du 2026-10-10 (run 38073115337) l'a exécuté sur
+  `windows-latest` : 114/119, `scc_serial_host_test` vert (Winsock, MSVC).
+  Corrigés depuis, non revérifiés sous Windows : `session_config_test`
+  (chemin normalisé) et `ethernet_capture_test` (métadonnée en mode
+  texte). Restent `debug_session_test` (`0xC0000409` après « a history
+  records », probablement un accès hors bornes que le STL durci de MSVC
+  arrête), `gui_windows_test` (bouton « Charger » des symboles introuvable)
+  et `gui_session_smoke_test` (sortie 127 avant toute ligne). Relancer le
+  workflow après chaque correctif (`CHANGELOG` 2026-10-10 (thirteenth)).
 - [ ] **Dater une passe manuelle de « Révéler » (fenêtre DaynaPort).** Seul
   reste de la dette de preuve du contrôle DaynaPort au GUI : le bouton
   lance `open` / `xdg-open` / `explorer`, qu'aucun gate ne peut observer.
@@ -63,8 +69,9 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   II, LC III, LC 475/580, Quadra 605/610/650/630/700/800/900/950, Centris
   610/650 ; `CHANGELOG` 2026-10-10 (seventh), (eighth), (tenth)). Restent
   le LC 575 (le `maclc575` de MAME 0.287, « imperfect », s'arrête sur
-  « Starting Up »), le Mac II… : chacun = une branche de
-  `tests/prober_oracle.cpp` et son rapport MAME.
+  « Starting Up »), le Mac II (sa branche `macii` existe, Toby en slot 9 :
+  manque la ligne MAME `-nb9 m2video`, le rapport et le gate)… : chacun =
+  une branche de `tests/prober_oracle.cpp` et son rapport MAME.
 - [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
   la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU
   du 68040 : un hybride qu'aucun Mac n'a été. Passer à `$A55A2225` déplace
