@@ -58,18 +58,20 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   Le reste est couvert par `gui_windows_test`, `gui_relaunch_smoke_test`,
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
-- [ ] **Étendre l'oracle invité différentiel aux profils restants.** Douze
-  machines ont leur gate `<profil>_prober_oracle_etalon` (LC II, Quadra
-  605/610/650/630/700/800/900, Centris 610/650, LC 475/580 ; `CHANGELOG`
-  2026-10-10 (seventh)). Restent le LC 575 (le `maclc575` de MAME 0.287,
-  « imperfect », s'arrête sur « Starting Up »), le Quadra 950, le LC, le
-  LC III, le Mac II… : chacun = une branche de `tests/prober_oracle.cpp`
-  et son rapport MAME.
+- [ ] **Étendre l'oracle invité différentiel aux profils restants.**
+  Quatorze machines ont leur gate `<profil>_prober_oracle_etalon` (LC, LC
+  II, LC 475/580, Quadra 605/610/650/630/700/800/900/950, Centris
+  610/650 ; `CHANGELOG` 2026-10-10 (seventh), (eighth)). Restent le LC 575
+  (le `maclc575` de MAME 0.287, « imperfect », s'arrête sur « Starting
+  Up »), le LC III (sa branche existe, mais POM68K n'atteint pas le Prober
+  en 20 000 trames sur `System 7.1 HD.dsk`), le Mac II… : chacun = une
+  branche de `tests/prober_oracle.cpp` et son rapport MAME.
 - [ ] **Aligner la PRAM de l'oracle Quadra 900 sur celle de POM68K.** Sous
   MAME, l'Egret démarre d'une PRAM froide et System 7.1 monte en 24 bits
   (`MMU32Bit` `$00`) ; sous POM68K, la XPRAM semée le fait monter en 32
   bits (`$01`). Dix sondes au-dessous de 16 Mo restent donc non jugées
-  sur ce profil (`kQ900Unjudged`). Pré-semer la NVRAM de l'Egret de MAME
+  sur ce profil et sur le Quadra 950 (`kQ900Unjudged`). Pré-semer la
+  NVRAM de l'Egret de MAME
   avec la PRAM de POM68K les rendrait jugeables.
 - [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
   la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU

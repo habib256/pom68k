@@ -46,6 +46,8 @@
 #include "Q630Memory.h"
 #include "Q700Cpu.h"
 #include "Q700Memory.h"
+#include "SonoraCpu.h"
+#include "SonoraMemory.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 
@@ -242,6 +244,41 @@ std::string image(const char* locked) {
     return img.empty() ? testasset::find(locked) : img;
 }
 
+// The Macintosh LC: the V8 board in its 68020 contract (V8Memory::Model::Lc,
+// Cpu030 in LC mode), 10 MB, the FPU socket filled as for the LC II.
+int lc(const Options& o, const std::string& bin) {
+    const std::string rom = testasset::find("roms/512KB ROMs/1990-10 - 350EACF0 - Mac LC.ROM");
+    const std::string img = image("hdv/System 7.1 HD.dsk");
+    if (rom.empty() || img.empty()) {
+        std::printf("SKIP: needs the LC ROM and hdv/ref/System 7.1 HD.dsk\n");
+        return 0;
+    }
+    testasset::report({ rom, img });
+    const pom68k::CoreConfig config = oracleConfig();
+    V8Memory mem(config, 0xA00000, V8Memory::Model::Lc);
+    if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    Cpu030 cpu(mem, testjit::resolveFromEnvironment(), config.cpu, true, true);
+    return run(mem, cpu, o, img, bin, 640 * 407, kLciiUnjudged, [] {});
+}
+
+// The LC III: Sonora + Egret at 25 MHz (SonoraMemory::kIdLc3),
+// 8 MB, 68882, the factory XPRAM the product seeds (PlatformSonora.cpp).
+int lc3(const Options& o, const std::string& bin) {
+    const std::string rom = testasset::find("roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM");
+    const std::string img = image("hdv/System 7.1 HD.dsk");
+    if (rom.empty() || img.empty()) {
+        std::printf("SKIP: needs the LC III ROM and hdv/ref/System 7.1 HD.dsk\n");
+        return 0;
+    }
+    testasset::report({ rom, img });
+    const pom68k::CoreConfig config = oracleConfig();
+    SonoraMemory mem(config, 0x800000, SonoraMemory::kCpuHz, SonoraMemory::kIdLc3, false);
+    if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    mem.egret().factoryDefaults();
+    SonoraCpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu, true);
+    return run(mem, cpu, o, img, bin, SonoraMemory::kCpuHz / 60, kLciiUnjudged, [] {});
+}
+
 int lcii(const Options& o, const std::string& bin) {
     const std::string rom = testasset::find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     const std::string img = image("hdv/System 7.1 HD.dsk");
@@ -346,8 +383,10 @@ int q630(const Options& o, const std::string& bin, bool lc580 = false) {
 // on « not enough memory » in 8 (CHANGELOG 2026-10-02 (ninth)).
 // The Quadra 900 is the same discrete board with Apple PIC IOPs and Egret
 // (Q700Memory::Model::Q900, MAME macquadra700.cpp's macqd900).
-int q700(const Options& o, const std::string& bin, bool q900 = false) {
-    const std::string rom = testasset::find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
+int q700(const Options& o, const std::string& bin, bool q900 = false, bool q950 = false) {
+    const std::string rom = testasset::find(q950
+        ? "roms/1MB ROMs/1992-03 - 3DC27823 - Quadra 950.ROM"
+        : "roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
     const std::string img = image("hdv/System 7.1 HD.dsk");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 420DBFF3 ROM and hdv/ref/System 7.1 HD.dsk\n");
@@ -355,12 +394,14 @@ int q700(const Options& o, const std::string& bin, bool q900 = false) {
     }
     testasset::report({ rom, img });
     const pom68k::CoreConfig config = oracleConfig();
-    Q700Memory mem(config, 8u << 20, Q700Memory::kCpuHz,
-                   q900 ? Q700Memory::Model::Q900 : Q700Memory::Model::Spike);
+    const int64_t hz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
+    Q700Memory mem(config, 8u << 20, hz,
+                   q950 ? Q700Memory::Model::Q950
+                   : q900 ? Q700Memory::Model::Q900 : Q700Memory::Model::Spike);
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Q700Cpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
-    return run(mem, cpu, o, img, bin, Q700Memory::kCpuHz / 60,
-               q900 ? kQ900Unjudged : kQ700Unjudged, [] {});
+    return run(mem, cpu, o, img, bin, hz / 60,
+               q900 || q950 ? kQ900Unjudged : kQ700Unjudged, [] {});
 }
 
 int dispatch(const std::string& machine, const Options& o, const std::string& bin) {
@@ -376,11 +417,15 @@ int dispatch(const std::string& machine, const Options& o, const std::string& bi
     if (machine == "q630") return q630(o, bin);
     if (machine == "lc580") return q630(o, bin, true);
     if (machine == "q900") return q700(o, bin, true);
+    if (machine == "q950") return q700(o, bin, false, true);
+    if (machine == "lc") return lc(o, bin);
+    if (machine == "lc3") return lc3(o, bin);
     return q700(o, bin);
 }
 
 const char* const kMachines[] = { "lcii", "q605", "lc475", "lc575", "q800", "q650", "q610",
-                                  "c650", "c610", "q630", "lc580", "q700", "q900" };
+                                  "c650", "c610", "q630", "lc580", "q700", "q900",
+                                  "q950", "lc", "lc3" };
 
 } // namespace
 

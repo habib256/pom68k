@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (eighth)** — [The LC and the Quadra 950 under the oracle; the LC III branch does not reach the Prober yet](#2026-10-10-oracle-lc-q950)
 - **2026-10-10 (seventh)** — [Six more machines under MAME's guest oracle; the Quadra 650's mouse has no service routine, and MAME's Quadra 900 boots 24-bit](#2026-10-10-oracle-siblings)
 - **2026-10-10 (sixth)** — [The SE's second internal floppy reaches the product: option, Disques row, relaunch and session](#2026-10-10-se-second-floppy)
 - **2026-10-10 (fifth)** — [« Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1](#2026-10-10-serial-window)
@@ -1120,6 +1121,31 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-oracle-lc-q950"></a>
+## 2026-10-10 (eighth) — The LC and the Quadra 950 under the oracle; the LC III branch does not reach the Prober yet
+
+Three more branches in `tests/prober_oracle.cpp` and `tools/prober_oracle.sh`:
+- **LC.** `maclc`: V8 in its 68020 contract, 10 MB, the FPU switch on as
+  for the LC II.
+- **LC III.** `maclc3`: Sonora + Egret at 25 MHz, 8 MB, the factory XPRAM
+  the product seeds.
+- **Quadra 950.** `macqd950`: the Spike board's Q950 model at 33 MHz, its
+  own ROM, 8 MB, System 7.1.
+
+**LC — green.** It differs from MAME only on the two fields already unjudged
+for the LC II: `ident.fpu` (MAME's FSAVE frames say 68881, POM68K's socket
+holds a 68882) and `probe.VIA2@II` (MAME's V8 raises no bus error there).
+
+**Quadra 950 — green.** It shows the same ten sub-16 MB probes as the
+Quadra 900, unjudged with the same reason (`kQ900Unjudged`: MAME's cold
+Egret PRAM boots 24-bit). The PRAM alignment item now names both profiles.
+
+**LC III — no gate.** POM68K's branch writes no Prober report within 20 000
+frames on `System 7.1 HD.dsk`; MAME's half was not compared. The branch
+stays for exploration and the TODO item names it.
+
+Fourteen `<profil>_prober_oracle_etalon` in all, green.
 
 <a id="2026-10-10-oracle-siblings"></a>
 ## 2026-10-10 (seventh) — Six more machines under MAME's guest oracle; the Quadra 650's mouse has no service routine, and MAME's Quadra 900 boots 24-bit

@@ -20,6 +20,9 @@
 #   q650, q610, c610  MAME macqd650 / macqd610 / macct610, as q800
 #   lc580  MAME maclc580 (bios "older"), as q630, 68LC040
 #   q900  MAME macqd900, as q700, with the IOPs and the Egret
+#   q950  MAME macqd950, the same board at 33 MHz, its own ROM
+#   lc    MAME maclc, hdv/ref/System 7.1 HD.dsk, 10 MB, FPU socket filled
+#   lc3   MAME maclc3, the same volume, 8 MB, FPU socket filled
 #
 # <work-dir>/mame.tsv is what `<profile>_prober_oracle_etalon` compares
 # POM68K with: after a change to the Prober, the volume or the rig, copy it
@@ -36,7 +39,7 @@
 # which fields are not compared and why.
 set -euo pipefail
 
-usage="usage: tools/prober_oracle.sh <lcii|q605|lc475|lc575|q800|q650|q610|c650|c610|q630|lc580|q700|q900> <work-dir> [mame-seconds]"
+usage="usage: tools/prober_oracle.sh <lcii|lc|lc3|q605|lc475|lc575|q800|q650|q610|c650|c610|q630|lc580|q700|q900|q950> <work-dir> [mame-seconds]"
 machine=${1:?$usage}
 work=${2:?$usage}
 secs=${3:-90}
@@ -126,6 +129,37 @@ q700)
        "$work/roms/macqd700/420dbff3.rom"
     cp "$root/roms/adbmodem/342s0440-b.bin" "$work/roms/adbmodem/"
     ram=8M                    # MAME 0.287's macqd700 is black with 20 or 36
+    ;;
+lc|lc3)
+    # maclc (68020, V8) and maclc3 (Sonora): one ROM file each, the Egret,
+    # the FPU socket filled as on lcii.
+    if [ "$machine" = lc ]; then
+        system=maclc; ram=10M
+        rom="$root/roms/512KB ROMs/1990-10 - 350EACF0 - Mac LC.ROM"; romfile=350eacf0.rom
+    else
+        system=maclc3; ram=8M
+        rom="$root/roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM"; romfile=ecbbc41c.rom
+    fi
+    mkdir -p "$work/roms/$system"
+    cp "$rom" "$work/roms/$system/$romfile"
+    cp "$root"/roms/egret/*.bin "$work/roms/$system/"
+    cat > "$work/cfg/$system.cfg" <<CFG
+<?xml version="1.0"?>
+<mameconfig version="10">
+    <system name="$system">
+        <input>
+            <port tag=":config" type="CONFIG" mask="1" defvalue="0" value="1" />
+        </input>
+    </system>
+</mameconfig>
+CFG
+    ;;
+q950)
+    system=macqd950
+    mkdir -p "$work/roms/macqd950"
+    cp "$root/roms/1MB ROMs/1992-03 - 3DC27823 - Quadra 950.ROM" "$work/roms/macqd950/3dc27823.rom"
+    cp "$root"/roms/egret/344s0100.bin "$root"/roms/egret/341s085[01].bin "$work/roms/macqd950/"
+    ram=8M
     ;;
 q900)
     # Its own romset: the same ROM, the IOPs' 344S0100 and the Egret.
