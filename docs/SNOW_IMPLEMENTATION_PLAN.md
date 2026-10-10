@@ -1,12 +1,14 @@
 # POM68K implementation plan from the Snow comparison
 
-ATA transfer restoration, GCR tags and DART sector import are now implemented.
-The 512Ke and II FDHD hardware profiles, native physical-track retention and
-MOOF bit/flux import/export are also implemented, and so is the basic
-machine-thread debugger service (pause, step, PC breakpoints, registers,
-side-effect-free memory and disassembly). Its extended stops, editing and
-histories remain; session and network improvements can be selected
-independently.
+Every ordered item of the work selection below is implemented: ATA and SCSI
+media restoration with a reverse journal, the debugger (basic and extended),
+session files, CD sources, sector and native floppy media with MOOF, the
+serial window with Winsock TCP, clipboard typing, MacTCP automatic
+configuration (ICMP address mask, RARP, then DNS/TCP), Ethernet capture, and
+the 512Ke and II FDHD profiles. What remains is execution on a Windows host
+(order 8, TODO § Preuve) and the conditional projects, each waiting for its
+named consumer.
+
 Keep new hardware projects conditional on a named consumer and reproducible
 evidence. This order improves correctness and makes subsequent bring-up easier
 without replacing POM68K's existing CPU, firmware or network architecture.
@@ -154,7 +156,7 @@ Other items in this document are proposals, not adopted features.
 
 | Order | Work | Evidence | Scope | Completion condition |
 |---|---|---|---|---|
-| 0 | ATA transfer and media restoration — implemented | Regressions pass | M | Exact continuation and rewind, including a fresh process |
+| 0 | ATA transfer and media restoration — implemented | `ata_disk_test`, `media_timeline_test`, the Q630 IDE application rewind in `q630_ide_boot_etalon` | Done | Exact continuation and rewind, including a fresh process |
 | 1 | SCSI and ATA backing-image policy — implemented | Content digest, since-open log, `.pomundo` reverse journal | Done | A state cannot silently combine old RAM with later disk data (`media_timeline_test`) |
 | 2 | Debugger service and basic views — implemented | `debug_session_test` on 000/020/030/040 rigs, `debug_inspection_test`, GUI window | Done | Pause, inspect, step and PC stop on representative CPU families |
 | 3 | Extended debugger and device inspection — implemented | Editing (registers, MMU/cache, RAM), access/exception stops, step over/out, bounded histories, OS/ROM symbols, typed device snapshots on every board | Done | Defined stop semantics, bounded history, no inspection side effects |
@@ -164,7 +166,7 @@ Other items in this document are proposals, not adopted features.
 | 7 | Native floppy medium and MOOF — implemented | Track/face storage, bit/flux import, atomic 125 ns export and v26 states | Done | Native lifecycle, weak-read replay and original Oids launch/flight/replay gates |
 | 8 | Serial terminal and Windows TCP — implemented, Windows execution open | `scc_serial_host_test` (also as a Windows build under wine), `gui_windows_test`, `q605_serial_etalon` (Serial Driver client on Mac OS 8.1) | Done here; MSVC/Windows run pending (TODO § Preuve) | Guest communication through SCC, including backpressure |
 | 9 | Clipboard typing and scrap inspection — implemented | `clipboard_typing_test`, `guest_scrap_test`, `gui_machine_window_test`, `q605_clipboard_etalon` (Mac OS 8.1 round trip) | Done | Visible guest text, reproducible scheduling, bounded reads |
-| 10 | RARP and ICMP address-mask helper | RARP Server setup, ICMP and controlled guest DNS/TCP qualified | S to M | MacTCP automatic address setup followed by a guest network transaction |
+| 10 | RARP and ICMP address-mask helper — implemented | `daynaport_test`, `q605_dayna_rarp_etalon`, `q605_dayna_rarp_network_etalon` (NetProbe DNS then TCP) | Done | MacTCP automatic address setup followed by a guest network transaction |
 | 11 | Ethernet PCAP | Implemented: passive card observer, bounded background writer and live GUI controls | Done | Format/lifecycle gate and actual MacTCP RARP/DNS/TCP capture, independently decoded |
 | 12 | 512Ke and II FDHD profiles | Implemented: own catalogue/state identities, real memory/controller differences | Done | Finder, input, media and deterministic snapshot gates |
 | Conditional | TAP Ethernet, Portable/PB100, 68851, SCSI printer, Toolbox | Different capabilities or new hardware | M to XL | Named consumer plus the admission gates below |
@@ -234,8 +236,13 @@ fresh-process rewinds, alternating states, a same-size changed base, deleted,
 torn, compacted and uncreatable journals, topology refusals and ATA. Reference
 fixtures stay immutable because `routeWritableOpen` journals only beside the
 work clone. The journal is capped at 256 MB, cut at an epoch boundary.
-A Q630 IDE *application* rewind scenario, portable bundles, quick slots and
-thumbnails remain follow-ups.
+The Q630 IDE *application* rewind is the third phase of
+`q630_ide_boot_etalon`: on the Quadra 630 booted from its IDE disk alone, the
+Finder writes a folder, the machine is saved and writes a second one; a new
+machine on the same file loads the state, finds the file back at the saved
+bytes, and the same input then writes the same disk and RAM as the
+uninterrupted run. Portable bundles, quick slots and thumbnails remain
+follow-ups.
 
 ## Build a debugger at the machine ownership boundary
 
@@ -482,7 +489,7 @@ compatibility. Keep this work out of the CPU and AppleTalk protocol engines.
 |---|---|---|---|
 | 512Ke | Implemented compact profile: 512K RAM, repeated Plus ROM, no SCSI, 800K | Internal/external System 3.3 Finder, M0110/quadrature input, deterministic state | Implemented; broader application corpus remains separate |
 | Mac II FDHD | Implemented GLUE profile: 68020 independently of SWIM/SuperDrive | Finder, ADB input, MMIO MFM write/read-back, deterministic state | Implemented; broader application corpus remains separate |
-| Third SE drive | Implemented core: VIA1 PA4 internal-connector select, optional second SE / SE FDHD mechanism | Three distinct guest volumes; single-floppy SE and Classic keep PA4 high empty | Implemented in the core; startup option and disk-window row remain |
+| Third SE drive | Implemented core: VIA1 PA4 internal-connector select, optional second SE / SE FDHD mechanism | Three distinct guest volumes; single-floppy SE and Classic keep PA4 high empty | Implemented: core, `POM68K_SE_SECOND_FLOPPY` option, Disques row, relaunch and session |
 | Display Card 8-24 | New `NuBusDevice`, external declaration ROM, board card selection | Sense lines, CLUT/direct colour, modes/stride, slot IRQ, guest driver and state | Useful if NuBus video is the chosen goal |
 | 68851 | Explicit external-MMU configuration and Moira execution/translation seam | Table/ATC/fault vectors plus the selected guest consumer | Do after debugger and conformance probes |
 | Portable/PB100 | Normandy/LCD/VIA/PMgr platform family | ROM identity, Finder, input, power protocol, storage, snapshots; sleep separately | XL project, align with portable milestone |
