@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (third)** — [Host text typed on machine time, the guest's scrap read back: the round trip is byte-identical on Mac OS 8.1](#2026-10-10-clipboard)
 - **2026-10-10 (second)** — [CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again](#2026-10-10-cd-image)
 - **2026-10-10** — [Session files: one configured machine on disk, through the inputs startup already reads](#2026-10-10-session-files)
 - **2026-10-09 (eleventh)** — [Typed device snapshots on every board close order 3: read from members, never through the bus](#2026-10-09-debugger-devices)
@@ -1115,6 +1116,70 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-clipboard"></a>
+## 2026-10-10 (third) — Host text typed on machine time, the guest's scrap read back: the round trip is byte-identical on Mac OS 8.1
+
+Order 9 of `docs/SNOW_IMPLEMENTATION_PLAN.md`: "Clipboard typing should
+reuse queued key events with machine-time press/release spacing and a
+cancel… Guest-to-host TEXT scrap uses the debugger's safe logical memory
+service, bounded lengths and MacRoman conversion."
+
+**Typing.** `src/TextTyping.h`:
+- `planTyping` turns UTF-8 into physical key transitions. The layout is
+  explicit, US or Apple French AZERTY. The table that served the etalons
+  since 2026-09-16 moves from `tests/` to `src/GuestKeyboard.h`, and the
+  planner adds Return (LF, CR LF or CR), Tab and AZERTY's unshifted
+  é è ç à ù §.
+- A character without a key is skipped, counted and listed once, in order.
+  So is malformed UTF-8, as U+FFFD. Texts are bounded at 16 384 characters.
+- `TextTyper` emits at most one transition per poll, each a fixed delay
+  after the previous one *was emitted* (Shift lead 30 ms, hold 50 ms, gap
+  40 ms of guest time). Cancel releases what it holds; a restored state
+  clears it.
+
+`MachineHost` polls the typer before every quantum, not once per
+`stepTick`: a tick runs up to eight quanta in turbo or audio-clocked pacing.
+Each transition is journaled as an ordinary `key` event, and `TypeText` and
+`CancelTyping` themselves are not, so a recorded paste replays through any
+replay harness as keys.
+
+**The guest's scrap.** `src/GuestScrap.h` reads ScrapSize, ScrapHandle,
+ScrapCount and ScrapState (`$0960`-`$096A`), MMU32Bit and the TEXT entry.
+It uses `DebugCpuTarget::readMemory(Logical)`, on the machine thread
+between quanta. It follows the master pointer as it is now, masks it in
+24-bit mode, bounds every length against ScrapSize and fixed ceilings, and
+converts MacRoman to UTF-8 (`$DB` as ¤, the pre-8.5 mapping) with CR to LF.
+A scrap on disk, uninitialized, purged, unreadable through the MMU, without
+TEXT or malformed is refused by name.
+
+**The window.** « Machine → Taper du texte... » shows:
+- « Coller le presse-papiers » and the explicit layout radio;
+- the count of characters to type and those with no key;
+- « Taper », « Annuler la saisie » and the remaining count;
+- « Lire le presse-papiers de l'invité », its bounded preview and « Copier
+  vers l'hôte ».
+
+**Measured on the guest.** `q605_clipboard_etalon` boots the Mac OS 8.1
+volume (an AZERTY System) and launches SimpleText. It types `Clé 42 : ça
+marche!` / `àù § (ok).` — 30 characters, capitals, accents, shifted digits,
+moved punctuation and a Return — through `planTyping` + `TextTyper` polled
+per frame, in 194 frames (≈ 9 characters a second). Cmd-A, Cmd-C moves
+ScrapCount 9 → 25. The TEXT scrap read back through the debugger's logical
+read is the same UTF-8, byte for byte: 30 MacRoman bytes, 60 s of host
+time.
+
+**Gates.** New, asset-free:
+- `clipboard_typing_test`: planning for both layouts, refusals and the
+  bound; poll-rate independence and spacing; cancel; on a real
+  `MachineHost`, keys journaled at distinct clocks and the request not
+  journaled; the scrap read through the host.
+- `guest_scrap_test`: moved, purged and 24-bit handles, every refusal, the
+  bound, the full MacRoman table.
+
+Also `gui_machine_window_test` (the window), and `q605_clipboard_etalon`
+(new, assets). Not offered: Option-key and dead-key characters, styled
+text (`styl`), and a guest layout read from the guest itself.
 
 <a id="2026-10-10-cd-image"></a>
 ## 2026-10-10 (second) — CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again

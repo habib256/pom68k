@@ -840,6 +840,16 @@ set_tests_properties(lcii_simcity_etalon PROPERTIES TIMEOUT 2700)
 # (Q605ApplicationHarness.h), a document typed, saved and the application
 # quit — under the interpreter AND the default engine in one process, the
 # two legs' fingerprints compared.
+# The clipboard round trip on the real guest: host text planned for the
+# AZERTY System and typed by TextTyper on machine time into SimpleText,
+# Cmd-A Cmd-C, then the TEXT scrap read back through the debugger's logical
+# read must be the same UTF-8 (TextTyping.h, GuestScrap.h).
+add_executable(q605_clipboard_etalon tests/q605_clipboard_etalon.cpp)
+target_link_libraries(q605_clipboard_etalon PRIVATE pom68k_core)
+add_test(NAME q605_clipboard_etalon COMMAND q605_clipboard_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_clipboard_etalon PROPERTIES TIMEOUT 1800)
+
 add_executable(q605_simpletext_etalon tests/q605_simpletext_etalon.cpp)
 target_link_libraries(q605_simpletext_etalon PRIVATE pom68k_core)
 add_test(NAME q605_simpletext_etalon COMMAND q605_simpletext_etalon

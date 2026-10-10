@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 396 gates
+## Union across hosts — 399 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 242 |
+| `etalon` | 243 |
 | `etalon-core` | 12 |
 | `gui` | 3 |
 | `jit` | 45 |
 | `jit-fast` | 8 |
 | `m030` | 87 |
-| `m040` | 91 |
+| `m040` | 92 |
 | `smoke` | 9 |
-| `unit` | 151 |
+| `unit` | 153 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -61,27 +61,27 @@ Scheduling cost if every gate ran at once: 622 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-392 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+395 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 121 |
+| assets | none | 123 |
 | assets | optional | 16 |
-| assets | required | 255 |
-| host | any | 381 |
+| assets | required | 256 |
+| host | any | 384 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 125 |
+| scope | component | 127 |
 | scope | engine | 22 |
-| scope | profile | 242 |
+| scope | profile | 243 |
 | scope | repository | 3 |
-| tier | daily | 121 |
-| tier | full | 259 |
+| tier | daily | 123 |
+| tier | full | 260 |
 | tier | platform | 12 |
-| slots_src | assumed | 279 |
+| slots_src | assumed | 282 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 751 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 754 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 

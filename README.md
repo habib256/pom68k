@@ -161,6 +161,10 @@ Examples:
 ./build/POM68K --version
 ```
 
+**Machine → Taper du texte...** types text into the guest as key presses
+(paste the host clipboard, choose the guest's keyboard, US or French AZERTY)
+and reads the guest's own clipboard back for copying to the host.
+
 A configured machine can be saved as a session file (**Machine → Session →
 Enregistrer la session...**) and reopened from the same submenu or with
 `./build/POM68K --session=sessions/lcii.pomsession`. The file is plain

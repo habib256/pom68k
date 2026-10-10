@@ -1596,6 +1596,28 @@ System-verified). Plus-family only; everything later is ADB.
   byte, `(code << 1) | 1`. Gates `m0110_keypad_test` (bytes) and
   `input_etalon` (the bit System 6 lights).
 
+**Typing host text and reading the guest's scrap** (`src/TextTyping.h`,
+`src/GuestScrap.h`, « Machine → Taper du texte... », 2026-10-10). Text
+typed into the guest goes through the keyboard like a user's keys. It never
+writes into the guest's memory. `planTyping` turns UTF-8 into physical key
+transitions for a layout the user chooses explicitly, US or Apple French
+AZERTY (`src/GuestKeyboard.h`; the guest's KCHR cannot be located from low
+memory). Every character without a key is counted and listed, never guessed.
+`MachineHost` polls a `TextTyper` before every quantum. It emits at most one
+transition per quantum, each a fixed machine-time delay after the previous
+(about 9 characters a second), so typing does not depend on the GPU frame
+rate. Each emitted key is journaled as an ordinary `key` event; the
+`TypeText` request itself is not, so a recorded paste replays as typing.
+The way back: `readGuestScrapText` reads ScrapSize/ScrapHandle/ScrapCount/
+ScrapState (`$0960`-`$096A`) and the TEXT entry through the debugger's
+side-effect-free logical read, on the machine thread between quanta. It
+follows the master pointer as it is now and masks 24-bit flags, and it
+refuses by name a scrap on disk, uninitialized, purged, unreadable or
+malformed. The TEXT is bounded and converted from MacRoman to UTF-8.
+Gates: `clipboard_typing_test`, `guest_scrap_test`,
+`gui_machine_window_test`, and `q605_clipboard_etalon` (the round trip on
+Mac OS 8.1: typed into SimpleText, Cmd-A Cmd-C, read back identical).
+
 ### 3.6 Input: ADB — PIC1654S transceiver LLE
 
 Default on Mac II / IIx / IIcx, IIci, Centris/Quadra, Quadra 700 and the
@@ -2509,7 +2531,7 @@ same rule; change them together.
 character a position yields is the guest's KCHR's business, and the
 reference volumes run two layouts — the stock US one, and the French
 (AZERTY) one GIST PERSO and the Mac OS 8.1 reference select. The harnesses
-type through `tests/GuestKeyboard.h`: one table per layout giving, for every
+type through `src/GuestKeyboard.h`: one table per layout giving, for every
 printable ASCII character, the physical key and whether Shift is held
 (digits are shifted on AZERTY, `.` is Shift on the US `,` key, `-` sits on
 the US `=` key, A/Q and Z/W are swapped). It is a table of the Apple French

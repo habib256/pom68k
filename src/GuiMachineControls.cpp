@@ -47,6 +47,10 @@ void drawMachineControlItems(GuiMachineControls& controls) {
             controls.saveState->request(true);
         drawSaveStateMessage(controls);
     }
+    if (controls.typing.bound()) {
+        ImGui::Separator();
+        ImGui::MenuItem("Taper du texte...", nullptr, &controls.typing.showWindow);
+    }
     if (controls.recordingActive) {
         ImGui::Separator();
         if (!controls.recordingActive()) {

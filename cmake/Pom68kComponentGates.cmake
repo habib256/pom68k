@@ -59,7 +59,7 @@ set_tests_properties(gui_session_smoke_test PROPERTIES
 if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     add_executable(gui_windows_test tests/gui_windows_test.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
-        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiDebuggerWindow.cpp
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
     target_include_directories(gui_windows_test PRIVATE ${IMGUI_DIR})
@@ -70,7 +70,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     # window with its mouse surface and keyboards (GuiScreen.h), the cabinet
     # mode and the CRT presets — driven headlessly on a fake machine.
     add_executable(gui_machine_window_test tests/gui_machine_window_test.cpp
-        src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp src/GuiDisplayWindow.cpp
+        src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiDebuggerWindow.cpp src/GuiDisplayWindow.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
         src/GuiEngineWindow.cpp src/DockLayout.cpp
         src/FloppySound.cpp src/miniaudio_impl.cpp
@@ -372,6 +372,21 @@ add_test(NAME asset_lock_test
 # branches and the thread teardown. Before the GUI runtime split, this
 # contract had six copies in the platform composition unit; it was lifted
 # into a header on 2026-08-09. No ROM, no image.
+# Host text typed into the guest (src/TextTyping.h): US/AZERTY planning
+# and its refusals, machine-time scheduling independent of the poll rate,
+# cancel, and on a real MachineHost the keys journaled as `key` events
+# while the TypeText request is not. No ROM, no image.
+add_executable(clipboard_typing_test tests/clipboard_typing_test.cpp)
+target_link_libraries(clipboard_typing_test PRIVATE pom68k_core)
+add_test(NAME clipboard_typing_test COMMAND clipboard_typing_test)
+
+# The guest's TEXT scrap read from the host (src/GuestScrap.h): moved and
+# purged handles, 24-bit master pointers, every refusal by name, bounds and
+# the MacRoman table, on a flat image. No ROM, no image.
+add_executable(guest_scrap_test tests/guest_scrap_test.cpp)
+target_link_libraries(guest_scrap_test PRIVATE pom68k_core)
+add_test(NAME guest_scrap_test COMMAND guest_scrap_test)
+
 add_executable(machinehost_test tests/machinehost_test.cpp)
 target_link_libraries(machinehost_test PRIVATE pom68k_core)
 add_test(NAME machinehost_test COMMAND machinehost_test)

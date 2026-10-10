@@ -20,6 +20,7 @@
 #include "DockLayout.h"
 #include "GuiMachineControls.h"
 #include "GuiSessionMenu.h"
+#include "GuiTypingWindow.h"
 #include "GuiScreen.h"
 #include "GuiSessionState.h"
 #include "GuiShellMenu.h"
@@ -104,6 +105,14 @@ struct FakeMachine {
     void requestRecordingStart(std::string = {}) { recording = true; }
     void requestRecordingStop() { recording = false; }
     std::string recordingMessage() { return recording ? "enregistrement en cours" : ""; }
+    std::vector<std::pair<std::string, pom68k::GuestLayout>> typed;
+    int cancels = 0;
+    std::size_t left = 0;
+    void requestTyping(std::string text, pom68k::GuestLayout layout) {
+        typed.push_back({std::move(text), layout});
+    }
+    void requestCancelTyping() { ++cancels; left = 0; }
+    std::size_t typingLeft() const { return left; }
 };
 
 // The window's side of ScreenInput: what GlfwScreenHost reads from GLFW.
@@ -428,6 +437,36 @@ int main() {
                 }
             }
         }
+        ui.frame(draw);
+    }
+
+    // ── Taper du texte: paste, choose the layout, type, cancel ───────
+    // The window queues; MachineHost types (clipboard_typing_test). Here:
+    // the menu opens it, « Coller » reads the host clipboard, the radio
+    // picks the layout explicitly, « Taper » hands text and layout to the
+    // machine, « Annuler la saisie » reaches it while typing is under way.
+    {
+        state.machine.typing.hostClipboard = [] { return std::string("Bonjour é\n"); };
+        ui.click("Machine", draw);
+        check(clickMenuItem(ui, "Taper du texte...", draw) && state.machine.typing.showWindow,
+              "« Taper du texte... » opens the typing window");
+        ui.frame(draw);
+        check(windowShown(kTypingWindowTitle), "the typing window is drawn");
+        check(ui.click("Coller le presse-papiers", draw) &&
+                  std::string(state.machine.typing.text.data()) == "Bonjour é\n",
+              "« Coller le presse-papiers » takes the host clipboard's text");
+        check(ui.click("Français (AZERTY)", draw) &&
+                  state.machine.typing.layout == int(pom68k::GuestLayout::FrenchAzerty),
+              "the guest layout is chosen explicitly");
+        check(ui.click("Taper", draw) && machine.typed.size() == 1 &&
+                  machine.typed[0].first == "Bonjour é\n" &&
+                  machine.typed[0].second == pom68k::GuestLayout::FrenchAzerty,
+              "« Taper » hands the text and the layout to the machine");
+        machine.left = 4;
+        ui.frame(draw);
+        check(ui.click("Annuler la saisie", draw) && machine.cancels == 1,
+              "« Annuler la saisie » reaches the machine while typing is under way");
+        state.machine.typing.showWindow = false;
         ui.frame(draw);
     }
 

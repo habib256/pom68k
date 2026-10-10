@@ -19,6 +19,7 @@
 #pragma once
 
 #include "GuiDebuggerWindow.h"
+#include "GuiTypingWindow.h"
 #include "SaveStateSlot.h"
 
 #include <atomic>
@@ -44,6 +45,8 @@ struct GuiMachineControls {
     bool showWindow = true;
     // The machine's debugger session and its window (GuiDebuggerWindow.h).
     GuiDebuggerState debugger;
+    // « Taper du texte » (GuiTypingWindow.h).
+    GuiTypingState typing;
 
     bool bound() const noexcept { return bool(hardReset); }
 };
@@ -73,6 +76,7 @@ void bindMachineControls(GuiMachineControls& controls, MachineT& machine,
     controls.drawStatus = std::forward<DrawStatus>(drawStatus);
     if constexpr (requires { machine.debug.snapshot(); })
         controls.debugger.session = &machine.debug;
+    bindTyping(controls.typing, machine);
 }
 
 // The Machine menu's control block: reset, pause, fast-forward, save state

@@ -163,7 +163,7 @@ Other items in this document are proposals, not adopted features.
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
 | 7 | Native floppy medium and MOOF — implemented | Track/face storage, bit/flux import, atomic 125 ns export and v26 states | Done | Native lifecycle, weak-read replay and original Oids launch/flight/replay gates |
 | 8 | Serial terminal and Windows TCP | Unix transport exists; terminal/Windows missing | M | Guest communication through SCC, including backpressure |
-| 9 | Clipboard typing and scrap inspection | Input path exists, product bridge absent | M | Visible guest text, reproducible scheduling, bounded reads |
+| 9 | Clipboard typing and scrap inspection — implemented | `clipboard_typing_test`, `guest_scrap_test`, `gui_machine_window_test`, `q605_clipboard_etalon` (Mac OS 8.1 round trip) | Done | Visible guest text, reproducible scheduling, bounded reads |
 | 10 | RARP and ICMP address-mask helper | RARP Server setup, ICMP and controlled guest DNS/TCP qualified | S to M | MacTCP automatic address setup followed by a guest network transaction |
 | 11 | Ethernet PCAP | Implemented: passive card observer, bounded background writer and live GUI controls | Done | Format/lifecycle gate and actual MacTCP RARP/DNS/TCP capture, independently decoded |
 | 12 | 512Ke and II FDHD profiles | Implemented: own catalogue/state identities, real memory/controller differences | Done | Finder, input, media and deterministic snapshot gates |
@@ -737,3 +737,21 @@ BattleChess game and the 61-track AppleCD Explorer disc — no longer opened.
 They open again, with audio starts 150 sectors later than in September: the
 September reader dropped the PREGAP silence the sheets declare between the
 data track and track 2.
+
+The twenty-seventh increment implements order 9. `TextTyping.h` plans UTF-8
+under an explicit US or French AZERTY layout. Unrepresentable characters
+are counted and listed. Return, Tab and AZERTY's unshifted é è ç à ù § are
+typed. `MachineHost` polls a `TextTyper` before every quantum: one
+transition per quantum, each a fixed machine-time delay after the previous,
+so a press and its release never share an instant and nothing follows the
+GPU's frame rate. Each key is journaled as an ordinary `key` event, the
+request itself not. `GuestScrap.h` reads the TEXT scrap through the
+debugger's logical read on the machine thread. It follows the master
+pointer, masks 24-bit flags, bounds every length, refuses on-disk,
+uninitialized, purged, unreadable and malformed scraps by name, and
+converts MacRoman with $DB as ¤ (pre-8.5). « Taper du texte » pastes the
+host clipboard, previews, types, cancels, reads the guest's scrap and
+copies it to the host. `q605_clipboard_etalon` closes the loop on the
+guest: Mac OS 8.1, SimpleText, 30 characters typed through the production
+typer, Cmd-A Cmd-C, read back byte for byte. Option-key and dead-key
+characters and styled text (`styl`) are not offered.

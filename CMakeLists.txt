@@ -489,7 +489,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/GuiMachineRuntime.cpp
         src/GuiHostServices.cpp
         src/GuiHostSerial.cpp
-        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
+        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
         src/GuiSmokeScenario.cpp
         src/PlatformComposers.cpp
         src/PlatformCompact.cpp

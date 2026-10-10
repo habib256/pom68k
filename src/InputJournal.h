@@ -51,6 +51,7 @@ enum class InputEventType : int {
     MouseMove, MouseButton, Key, HardReset, CpuEngine,
     InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense,
     AttachDisk, AgentMount, AgentUnmount, DetachDisk,
+    TypeText, CancelTyping, // queued, never journaled: their keys are
     StateRestore,   // journal marker (GUI restored a state) — never queued
 };
 
@@ -58,6 +59,7 @@ inline constexpr const char* kInputEventNames[] = {
     "mousemove", "mousebutton", "key", "hardreset", "cpuengine",
     "insertfloppy", "ejectfloppy", "insertbay", "ejectbay", "sense",
     "attachdisk", "agentmount", "agentunmount", "detachdisk",
+    "typetext", "canceltyping",
     "staterestore",
 };
 inline constexpr int kInputEventTypeCount =

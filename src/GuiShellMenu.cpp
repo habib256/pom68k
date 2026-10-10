@@ -8,7 +8,7 @@
 // bindMachineControls) and draw nothing into the bar themselves; what a
 // user can reach is decided once, here:
 //
-//   Machine        run/pause/fast-forward, save state, recording,
+//   Machine        run/pause/fast-forward, save state, typing, recording,
 //                  « Changer de machine » (one submenu per board family),
 //                  « Session » (save / reopen a .pomsession),
 //                  drive sounds
@@ -207,6 +207,9 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             peripheralMenuItem(kPeripheralWindowTitle);
             ImGui::MenuItem("Moteur accéléré", nullptr, &state_.cpu.showJit,
                             bool(state_.cpu.setCpuEngine));
+            ImGui::MenuItem(kTypingWindowTitle, nullptr,
+                            &state_.machine.typing.showWindow,
+                            state_.machine.typing.bound());
             ImGui::MenuItem(kDebuggerWindowTitle, nullptr,
                             &state_.machine.debugger.showWindow,
                             state_.machine.debugger.bound());
@@ -224,6 +227,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
     drawMachineControlWindow(state_.machine);
     drawDebuggerWindow(state_.machine.debugger);
     drawSessionWindow(state_.sessionFile);
+    drawTypingWindow(state_.machine.typing);
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);
     peripheralWindow(state_.peripherals);

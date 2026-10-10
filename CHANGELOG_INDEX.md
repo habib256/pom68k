@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 638 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 639 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
-| [Machine bring-ups](#machine-bring-ups) | 76 |
+| [Machine bring-ups](#machine-bring-ups) | 77 |
 | [Build, packaging and release](#build-packaging-and-release) | 14 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -491,6 +491,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-09 (fifth)** — [The debugger edits a stopped machine: the PC reloads its prefetch without a bus cycle, and a code write outlives no translated block](CHANGELOG.md#2026-10-09-debugger-edits)
 - **2026-10-09 (fourth)** — [A debugger at the machine boundary: a breakpoint holds its quantum, Pause is a quantum boundary, inspection never reads a device](CHANGELOG.md#2026-10-09-debugger-service)
 - **2026-10-10** — [Session files: one configured machine on disk, through the inputs startup already reads](CHANGELOG.md#2026-10-10-session-files)
+- **2026-10-10 (third)** — [Host text typed on machine time, the guest's scrap read back: the round trip is byte-identical on Mac OS 8.1](CHANGELOG.md#2026-10-10-clipboard)
 
 ## Build, packaging and release
 

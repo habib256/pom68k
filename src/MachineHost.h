@@ -46,10 +46,12 @@
 #pragma once
 
 #include "DebugCpuTarget.h"
+#include "GuestScrap.h"
 #include "GuestScsiView.h"
 #include "InputJournal.h"
 #include "Mmu030Peek.h"
 #include "SaveStateSlot.h"
+#include "TextTyping.h"
 #include "ScsiAgentMailbox.h"
 #include "jit/JitStats.h"
 
@@ -120,7 +122,8 @@ public:
     struct Cmd {
         enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
                  InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense,
-                 AttachDisk, AgentMount, AgentUnmount, DetachDisk } t;
+                 AttachDisk, AgentMount, AgentUnmount, DetachDisk,
+                 TypeText, CancelTyping } t;
         int a = 0, b = 0;
         std::string path{};   // media commands only; {} keeps -Wextra quiet
     };
@@ -174,6 +177,29 @@ public:
     std::string recordingMessage() {
         std::lock_guard<std::mutex> l(recMu_);
         return recMessage_;
+    }
+
+    // ── Typing host text (TextTyping.h) ───────────────────────────────────
+    // The text travels with the command; the machine thread plans it and
+    // emits one key transition per quantum on machine-time deadlines. The
+    // keys, not this request, are what the input journal records.
+    void requestTyping(std::string utf8, pom68k::GuestLayout layout) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::TypeText, int(layout), 0, std::move(utf8)});
+    }
+    void requestCancelTyping() { push({Cmd::CancelTyping}); }
+    // Characters still to type (0: idle), for the GUI's progress line.
+    std::size_t typingLeft() const {
+        return stTypingLeft_.load(std::memory_order_relaxed);
+    }
+
+    // The guest's TEXT scrap (GuestScrap.h), read on the machine thread
+    // between two quanta through the debugger's side-effect-free logical
+    // read. `guestScrap()` answers the last read and its sequence number.
+    void requestScrapRead() { scrapRequested_.store(true); }
+    std::pair<pom68k::GuestScrapText, unsigned> guestScrap() const {
+        std::lock_guard<std::mutex> l(scrapMu_);
+        return {scrap_, scrapReads_};
     }
 
     // ── Floppy hot-swap (GUI → machine thread) ─────────────────────────────
@@ -360,7 +386,7 @@ public:
             // it is topped up rather than against the wall clock.
             int n = 0;
             while (audioHost.buffered() < audioHost.targetBuffered() && n < 8) {
-                self()->emulateQuantum();
+                quantum();
                 if (self()->drainAudio()) activeHold_ = 90; else activeHold_--;
                 pushAudioRaw();
                 n++;
@@ -370,7 +396,7 @@ public:
                 // without the hold expiring. Force a quantum occasionally so a
                 // silent-but-running machine still makes progress.
                 if (++starve_ > 80) {
-                    self()->emulateQuantum();
+                    quantum();
                     if (self()->drainAudio()) activeHold_ = 90; else activeHold_--;
                     starve_ = 0;
                 }
@@ -382,7 +408,7 @@ public:
             auto t0 = std::chrono::steady_clock::now();
             int n = 0;
             do {
-                self()->emulateQuantum();
+                quantum();
             } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
                      std::chrono::steady_clock::now() - t0 <
                          std::chrono::milliseconds(10));
@@ -497,6 +523,25 @@ protected:
         if constexpr (Derived::kStereo) audioHost.pushRawStereo(samp_, 0);
         else                            audioHost.pushRaw(samp_, 0);
     }
+    // One quantum, preceded by the key transition typing owes at this
+    // boundary, if any — journaled as the ordinary `key` event it is, at
+    // the clock a replay applies it again.
+    void quantum() {
+        if (typer_.active()) {
+            const long long now = cpu.machineClock();
+            if (const auto step = typer_.poll(now, (long long)mem.cpuHz())) {
+                if (journalOn_) {
+                    journalW_.event(now, int(Cmd::Key), step->code, step->down ? 1 : 0, {});
+                    ++recEvents_;
+                }
+                keyTrace(traceKeys_, "type", step->code, step->down);
+                mem.keyEvent(step->code, step->down);
+                stTypingLeft_.store(typer_.charactersLeft(), std::memory_order_relaxed);
+            }
+        }
+        self()->emulateQuantum();
+    }
+
     void pushAudioFrame() {
         if constexpr (Derived::kStereo) audioHost.pushFrameStereo(samp_, 0);
         else                            audioHost.pushFrame(samp_, 0);
@@ -516,10 +561,24 @@ protected:
             cmdsApply_.swap(cmds_);
         }
         processRecordingRequests();
+        if (scrapRequested_.exchange(false)) {
+            pom68k::GuestScrapText text = pom68k::readGuestScrapText(
+                [this](uint32_t addr, uint8_t* out, std::size_t n) {
+                    std::vector<pom68k::dbg::ByteState> st(n);
+                    debugTarget_.readMemory(pom68k::dbg::Space::Logical, addr, out,
+                                            st.data(), n);
+                    for (const auto b : st)
+                        if (b != pom68k::dbg::ByteState::Ok) return false;
+                    return true;
+                });
+            std::lock_guard<std::mutex> l(scrapMu_);
+            scrap_ = std::move(text);
+            ++scrapReads_;
+        }
         for (const Cmd& c : cmdsApply_) {
             // Stamp at APPLY, not at push: this clock is a quantum boundary,
             // the machine time replay can hit again exactly.
-            if (journalOn_) {
+            if (journalOn_ && c.t != Cmd::TypeText && c.t != Cmd::CancelTyping) {
                 journalW_.event(cpu.machineClock(), int(c.t), c.a, c.b,
                                 c.path);
                 ++recEvents_;
@@ -547,6 +606,14 @@ protected:
             case Cmd::Key:
                 keyTrace(traceKeys_, "apply", uint8_t(c.a), c.b != 0);
                 mem.keyEvent(uint8_t(c.a), c.b != 0);
+                break;
+            case Cmd::TypeText:
+                typer_.start(pom68k::planTyping(c.path, pom68k::GuestLayout(c.a)));
+                stTypingLeft_.store(typer_.charactersLeft(), std::memory_order_relaxed);
+                break;
+            case Cmd::CancelTyping:
+                typer_.cancel();
+                stTypingLeft_.store(0, std::memory_order_relaxed);
                 break;
             case Cmd::HardReset:
                 cpu.hardReset();
@@ -662,6 +729,8 @@ protected:
             ++recEvents_;
         }
         if ((stateDone & 2) != 0) {
+            typer_.clear();
+            stTypingLeft_.store(0, std::memory_order_relaxed);
             if constexpr (requires { self()->afterRestore(); })
                 self()->afterRestore();
             if constexpr (requires { mem.internalDrive().hasDisk();
@@ -869,6 +938,12 @@ protected:
     std::atomic<long long> stMachineClock_{0};
     std::atomic<uint8_t> stFlags_{0};
     std::atomic<int> stEngine_{0};                // 0 = interpreter, 1 = JIT
+    std::atomic<std::size_t> stTypingLeft_{0};   // TextTyping: characters to go
+    pom68k::TextTyper typer_;                     // machine thread only
+    std::atomic<bool> scrapRequested_{false};
+    mutable std::mutex scrapMu_;
+    pom68k::GuestScrapText scrap_;
+    unsigned scrapReads_ = 0;
 
     mutable std::mutex jitMu_;
     jit::Stats::Snapshot jitSnap_{};
