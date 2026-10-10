@@ -22,6 +22,12 @@ cmake .. -DCMAKE_TOOLCHAIN_FILE=../../Retro68-build/toolchain/m68k-apple-macos/c
 make            # → POM68KDisques.APPL / .bin / .dsk
 ```
 
+The toolchain file records the absolute path Retro68 was built at
+(`RETRO68_ROOT`, a cache variable). If the tree has moved since — this
+host's toolchain was built under `/home/gistarcade/src/POM68K` — configure
+with `-DRETRO68_ROOT=$PWD/../../Retro68-build/toolchain` as well, or CMake
+finds no compiler.
+
 `POM68KDisques.dsk` is an 800 K floppy image: insert it from the Disques
 window, open it and launch the application. `scsi_agent_etalon` does
 exactly that on the 8.1 volume and is the contract of this directory.
