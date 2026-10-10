@@ -458,6 +458,10 @@ add_library(pom68k_core STATIC
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
+if(WIN32)
+    # The serial TCP endpoint's Winsock 2 backend (SerialHostTransport.cpp).
+    target_link_libraries(pom68k_core PUBLIC ws2_32)
+endif()
 # Which JIT backends this build actually contains (the registry in
 # src/jit/JitBackend.cpp keys its candidate list off these).
 target_compile_definitions(pom68k_core PUBLIC ${POM68K_JIT_DEFS})
@@ -489,7 +493,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/GuiMachineRuntime.cpp
         src/GuiHostServices.cpp
         src/GuiHostSerial.cpp
-        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
+        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
         src/GuiSmokeScenario.cpp
         src/PlatformComposers.cpp
         src/PlatformCompact.cpp

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 640 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 641 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 15 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 132 |
+| [Cross-cutting](#cross-cutting) | 133 |
 
 ---
 
@@ -701,5 +701,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-09 (ninth)** — [Debugger symbols: OS names from cxmon for every ROM, ROM labels only for the ROM whose checksum they declare](CHANGELOG.md#2026-10-09-debugger-symbols)
 - **2026-10-09 (seventh)** — [Step over and step out, judged on the stack they started on; and a cancelled run's soft stop could wait dormant for the next breakpoint](CHANGELOG.md#2026-10-09-debugger-step-over-out)
 - **2026-10-09 (sixth)** — [Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints](CHANGELOG.md#2026-10-09-debugger-stops)
+- **2026-10-10 (fifth)** — [« Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1](CHANGELOG.md#2026-10-10-serial-window)
 - **2026-10-10 (second)** — [CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again](CHANGELOG.md#2026-10-10-cd-image)
 

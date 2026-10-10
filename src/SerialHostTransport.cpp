@@ -9,7 +9,16 @@
 #include <cstdlib>
 #include <cstring>
 
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#elif !defined(__EMSCRIPTEN__)
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -19,38 +28,83 @@
 #endif
 
 namespace {
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+
+// ── The socket layer: the only code that differs between BSD sockets and
+// Winsock. Handles travel as std::intptr_t, -1 meaning none.
+#if defined(_WIN32)
+#define POM68K_SERIAL_SOCKETS 1
+
+bool socketsReady() {
+    static const bool ready = [] {
+        WSADATA data;
+        return ::WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }();
+    return ready;
+}
+SOCKET sock(std::intptr_t h) { return SOCKET(h); }
+SOCKET native(std::intptr_t h) { return SOCKET(h); }
+bool wouldBlock() { return ::WSAGetLastError() == WSAEWOULDBLOCK; }
+bool makeNonBlocking(std::intptr_t h) {
+    u_long on = 1;
+    return ::ioctlsocket(sock(h), FIONBIO, &on) == 0;
+}
+bool makeCloseOnExec(std::intptr_t) { return true; }   // no fork/exec to leak into
+void closeSocket(std::intptr_t h) { ::closesocket(sock(h)); }
+long socketWrite(std::intptr_t h, const std::uint8_t* data, std::size_t size) {
+    return ::send(sock(h), reinterpret_cast<const char*>(data), int(size), 0);
+}
+long socketRead(std::intptr_t h, std::uint8_t* data, std::size_t size) {
+    return ::recv(sock(h), reinterpret_cast<char*>(data), int(size), 0);
+}
+std::intptr_t socketOpen() {
+    if (!socketsReady()) return -1;
+    const SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    return s == INVALID_SOCKET ? -1 : std::intptr_t(s);
+}
+std::intptr_t socketAccept(std::intptr_t listener) {
+    const SOCKET s = ::accept(sock(listener), nullptr, nullptr);
+    return s == INVALID_SOCKET ? -1 : std::intptr_t(s);
+}
+using AddressSize = int;
+#elif !defined(__EMSCRIPTEN__)
+#define POM68K_SERIAL_SOCKETS 1
+
+int native(std::intptr_t fd) { return int(fd); }
 bool wouldBlock() { return errno == EAGAIN || errno == EWOULDBLOCK; }
-
-bool makeNonBlocking(int fd) {
-    const int flags = ::fcntl(fd, F_GETFL, 0);
-    return flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+bool makeNonBlocking(std::intptr_t fd) {
+    const int flags = ::fcntl(int(fd), F_GETFL, 0);
+    return flags >= 0 && ::fcntl(int(fd), F_SETFL, flags | O_NONBLOCK) == 0;
 }
-
-bool makeCloseOnExec(int fd) {
-    const int flags = ::fcntl(fd, F_GETFD, 0);
-    return flags >= 0 && ::fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
+bool makeCloseOnExec(std::intptr_t fd) {
+    const int flags = ::fcntl(int(fd), F_GETFD, 0);
+    return flags >= 0 && ::fcntl(int(fd), F_SETFD, flags | FD_CLOEXEC) == 0;
 }
-
-ssize_t socketWrite(int fd, const void* data, std::size_t size) {
+void closeSocket(std::intptr_t fd) { ::close(int(fd)); }
+long socketWrite(std::intptr_t fd, const std::uint8_t* data, std::size_t size) {
 #if defined(__linux__)
-    return ::send(fd, data, size, MSG_NOSIGNAL);
+    return long(::send(int(fd), data, size, MSG_NOSIGNAL));
 #else
-    return ::send(fd, data, size, 0);
+    return long(::send(int(fd), data, size, 0));
 #endif
 }
+long socketRead(std::intptr_t fd, std::uint8_t* data, std::size_t size) {
+    return long(::recv(int(fd), data, size, 0));
+}
+std::intptr_t socketOpen() { return ::socket(AF_INET, SOCK_STREAM, 0); }
+std::intptr_t socketAccept(std::intptr_t listener) {
+    return ::accept(int(listener), nullptr, nullptr);
+}
+using AddressSize = socklen_t;
+#else
+#define POM68K_SERIAL_SOCKETS 0
 #endif
+
 } // namespace
 
 bool SerialHostTransport::start(Kind kind, std::uint16_t tcpPort) {
     stop();
     kind_ = kind;
-#if defined(_WIN32) || defined(__EMSCRIPTEN__)
-    (void)tcpPort;
-    return false;
-#else
     return kind == Kind::Pty ? startPty() : startTcp(tcpPort);
-#endif
 }
 
 bool SerialHostTransport::startPty() {
@@ -98,44 +152,56 @@ bool SerialHostTransport::startPty() {
 }
 
 bool SerialHostTransport::startTcp(std::uint16_t port) {
-#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+#if !POM68K_SERIAL_SOCKETS
     (void)port;
     return false;
 #else
-    const int listener = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0) return false;
-    int one = 1;
-    (void)::setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    address.sin_port = htons(port);
-    if (::bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof address) < 0 ||
-        ::listen(listener, 1) < 0 || !makeNonBlocking(listener) ||
-        !makeCloseOnExec(listener)) {
-        ::close(listener);
-        return false;
+    {
+        const std::intptr_t listener = socketOpen();
+        if (listener < 0) return false;
+#if !defined(_WIN32)
+        // Winsock's SO_REUSEADDR lets a second process steal a bound port;
+        // only the BSD meaning (rebind past TIME_WAIT) is wanted.
+        int one = 1;
+        (void)::setsockopt(native(listener), SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+#endif
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = htons(port);
+        AddressSize addressSize = sizeof address;
+        if (::bind(native(listener), reinterpret_cast<sockaddr*>(&address),
+                   sizeof address) != 0 ||
+            ::listen(native(listener), 1) != 0 || !makeNonBlocking(listener) ||
+            !makeCloseOnExec(listener) ||
+            ::getsockname(native(listener), reinterpret_cast<sockaddr*>(&address),
+                          &addressSize) != 0) {
+            closeSocket(listener);
+            return false;
+        }
+        listenerFd_ = listener;
+        tcpPort_ = ntohs(address.sin_port);
+        endpoint_ = "127.0.0.1:" + std::to_string(tcpPort_);
+        return true;
     }
-    socklen_t addressSize = sizeof address;
-    if (::getsockname(listener, reinterpret_cast<sockaddr*>(&address),
-                      &addressSize) < 0) {
-        ::close(listener);
-        return false;
-    }
-    listenerFd_ = listener;
-    tcpPort_ = ntohs(address.sin_port);
-    endpoint_ = "127.0.0.1:" + std::to_string(tcpPort_);
-    return true;
 #endif
 }
 
 void SerialHostTransport::stop() {
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    if (ioFd_ >= 0) ::close(ioFd_);
-    if (listenerFd_ >= 0) ::close(listenerFd_);
+#if POM68K_SERIAL_SOCKETS
+    if (ioFd_ >= 0) {
+        if (kind_ == Kind::Tcp) closeSocket(ioFd_);
+#if !defined(_WIN32)
+        else ::close(int(ioFd_));
+#endif
+    }
+    if (listenerFd_ >= 0) closeSocket(listenerFd_);
+#if !defined(_WIN32)
     if (ptyControlFd_ >= 0) ::close(ptyControlFd_);
 #endif
-    ioFd_ = listenerFd_ = ptyControlFd_ = -1;
+#endif
+    ioFd_ = listenerFd_ = -1;
+    ptyControlFd_ = -1;
     endpoint_.clear();
     tcpPort_ = 0;
     input_.clear();
@@ -147,8 +213,8 @@ bool SerialHostTransport::connected() const noexcept {
 }
 
 void SerialHostTransport::closeClient() {
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    if (ioFd_ >= 0) ::close(ioFd_);
+#if POM68K_SERIAL_SOCKETS
+    if (ioFd_ >= 0) closeSocket(ioFd_);
 #endif
     ioFd_ = -1;
     bytesDropped_ += output_.size();
@@ -156,21 +222,21 @@ void SerialHostTransport::closeClient() {
 }
 
 void SerialHostTransport::acceptTcp() {
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    if (kind_ != Kind::Tcp || listenerFd_ < 0 || ioFd_ >= 0) return;
-    sockaddr_in peer{};
-    socklen_t size = sizeof peer;
-    const int client = ::accept(listenerFd_, reinterpret_cast<sockaddr*>(&peer), &size);
-    if (client < 0) return;
-    if (!makeNonBlocking(client) || !makeCloseOnExec(client)) {
-        ::close(client);
-        return;
-    }
+#if POM68K_SERIAL_SOCKETS
+    {
+        if (kind_ != Kind::Tcp || listenerFd_ < 0 || ioFd_ >= 0) return;
+        const std::intptr_t client = socketAccept(listenerFd_);
+        if (client < 0) return;
+        if (!makeNonBlocking(client) || !makeCloseOnExec(client)) {
+            closeSocket(client);
+            return;
+        }
 #ifdef __APPLE__
-    int one = 1;
-    (void)::setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+        int one = 1;
+        (void)::setsockopt(native(client), SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
 #endif
-    ioFd_ = client;
+        ioFd_ = client;
+    }
 #endif
 }
 
@@ -188,57 +254,68 @@ void SerialHostTransport::sendByte(std::uint8_t value) {
 }
 
 void SerialHostTransport::flushOutput() {
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    while (ioFd_ >= 0 && !output_.empty()) {
-        std::uint8_t buffer[1024];
-        const std::size_t count = std::min(output_.size(), sizeof buffer);
-        for (std::size_t i = 0; i < count; ++i) buffer[i] = output_[i];
-        const ssize_t written = kind_ == Kind::Tcp
-            ? socketWrite(ioFd_, buffer, count)
-            : ::write(ioFd_, buffer, count);
-        if (written > 0) {
-            output_.erase(output_.begin(),
-                          output_.begin() + std::ptrdiff_t(written));
-            bytesTx_ += std::uint64_t(written);
-            continue;
+#if POM68K_SERIAL_SOCKETS
+    {
+        while (ioFd_ >= 0 && !output_.empty()) {
+            std::uint8_t buffer[1024];
+            const std::size_t count = std::min(output_.size(), sizeof buffer);
+            for (std::size_t i = 0; i < count; ++i) buffer[i] = output_[i];
+            long written = 0;
+            if (kind_ == Kind::Tcp) written = socketWrite(ioFd_, buffer, count);
+#if !defined(_WIN32)
+            else written = long(::write(int(ioFd_), buffer, count));
+#endif
+            if (written > 0) {
+                // A partial write keeps the rest queued, in order.
+                output_.erase(output_.begin(),
+                              output_.begin() + std::ptrdiff_t(written));
+                bytesTx_ += std::uint64_t(written);
+                continue;
+            }
+            if (written < 0 && wouldBlock()) return;
+            if (kind_ == Kind::Tcp) closeClient();
+            else {
+                // EIO means no process currently has the PTY slave open. Those
+                // bytes were sent into an unplugged cable and must not replay.
+                bytesDropped_ += output_.size();
+                output_.clear();
+            }
+            return;
         }
-        if (written < 0 && wouldBlock()) return;
-        if (kind_ == Kind::Tcp) closeClient();
-        else {
-            // EIO means no process currently has the PTY slave open. Those
-            // bytes were sent into an unplugged cable and must not replay.
-            bytesDropped_ += output_.size();
-            output_.clear();
-        }
-        return;
     }
 #endif
 }
 
 void SerialHostTransport::drainInput() {
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    if (ioFd_ < 0) return;
-    for (;;) {
-        std::uint8_t buffer[1024];
-        const ssize_t count = kind_ == Kind::Tcp
-            ? ::recv(ioFd_, buffer, sizeof buffer, 0)
-            : ::read(ioFd_, buffer, sizeof buffer);
-        if (count > 0) {
-            for (ssize_t i = 0; i < count; ++i) {
-                if (input_.size() < kQueueLimit) {
-                    input_.push_back(buffer[i]);
-                    ++bytesRx_;
-                } else {
-                    ++bytesDropped_;
+#if POM68K_SERIAL_SOCKETS
+    {
+        if (ioFd_ < 0) return;
+        for (;;) {
+            std::uint8_t buffer[1024];
+            long count = 0;
+            if (kind_ == Kind::Tcp) count = socketRead(ioFd_, buffer, sizeof buffer);
+#if !defined(_WIN32)
+            else count = long(::read(int(ioFd_), buffer, sizeof buffer));
+#endif
+            if (count > 0) {
+                for (long i = 0; i < count; ++i) {
+                    if (input_.size() < kQueueLimit) {
+                        input_.push_back(buffer[i]);
+                        ++bytesRx_;
+                    } else {
+                        ++bytesDropped_;
+                    }
                 }
+                continue;
             }
-            continue;
-        }
-        if (count < 0 && (wouldBlock() ||
-                          (kind_ == Kind::Pty && errno == EIO)))
+            if (count < 0 && wouldBlock()) return;
+#if !defined(_WIN32)
+            if (count < 0 && kind_ == Kind::Pty && errno == EIO) return;
+#endif
+            // 0: the client closed; any other error: it is gone.
+            if (kind_ == Kind::Tcp) closeClient();
             return;
-        if (kind_ == Kind::Tcp) closeClient();
-        return;
+        }
     }
 #endif
 }

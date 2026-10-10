@@ -17,6 +17,7 @@
 #include "LtoUdp.h"
 #include "MachineCatalog.h"
 #include "PeripheralWindow.h"
+#include "SerialTerminal.h"
 #include "SessionFile.h"
 #include "jit/JitStats.h"
 
@@ -24,6 +25,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -84,6 +86,25 @@ struct GuiRelaunchState {
     }
 };
 
+// « Périphériques → Ports série » (GuiSerialWindow.h): one entry per SCC
+// channel, printer (B) then modem (A). `terminal` is null when the port is
+// not configured or could not open; `message` says why.
+struct GuiSerialPortState {
+    const char* name = "";
+    std::string requested;   // as configured: pty, tcp:<port>, terminal, or empty
+    std::string endpoint;    // what a host client connects to
+    std::string message;     // conflict or failure, empty when fine
+    std::shared_ptr<SerialTerminal> terminal;
+    std::array<char, 256> line{};
+    bool appendCr = true;
+    std::string sendStatus;
+};
+
+struct GuiSerialState {
+    std::array<GuiSerialPortState, 2> ports{};
+    bool showWindow = false;
+};
+
 // « Machine → Session » (GuiSessionMenu.h): the session file this process
 // opened, where sessions are listed, and the save window's fields.
 struct GuiSessionFileState {
@@ -124,6 +145,7 @@ struct GuiSessionState {
     GuiAudioState audio;
     GuiRelaunchState relaunch;
     GuiSessionFileState sessionFile;
+    GuiSerialState serial;
     GuiCpuPanelState cpu;
     GuiDiagnosticState diagnostics;
     pom68k::PeripheralHost peripherals;

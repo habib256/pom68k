@@ -375,12 +375,13 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv "${pom68k_gate_list}")
 # Empty on the AArch64 dev host, two rows anywhere else — see the guard
 # above. docs_test adds these back before comparing with the docs.
 # Windows also lacks the three POSIX-socket service harnesses and the
-# PTY-backed SCC serial harness fenced in Pom68kComponentGates.cmake; they
-# stay part of the union (knob contracts cite them) and are recorded absent.
+# print-queue harness fenced in Pom68kComponentGates.cmake; they stay part
+# of the union (knob contracts cite them) and are recorded absent. The SCC
+# serial harness registers there since its Winsock half (2026-10-10).
 if(WIN32)
     string(APPEND pom68k_absent_gates
         "afp_server_test\tunit\npap_server_test\tunit\nmacip_gw_test\tunit\n"
-        "print_queues_test\tunit\nscc_serial_host_test\tunit\n")
+        "print_queues_test\tunit\n")
 elseif(EMSCRIPTEN)
     string(APPEND pom68k_absent_gates
         "print_queues_test\tunit\nscc_serial_host_test\tunit\n")

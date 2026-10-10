@@ -2,8 +2,10 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // Non-blocking host endpoint for one asynchronous SCC channel. TCP listens
-// only on loopback and keeps accepting after a client disconnects; PTY owns
-// one Unix98/BSD pseudo-terminal master and publishes its slave path.
+// only on loopback and keeps accepting after a client disconnects — BSD
+// sockets on Unix, Winsock 2 on Windows, behind one small socket layer in
+// the .cpp; PTY owns one Unix98/BSD pseudo-terminal master and publishes
+// its slave path (Unix only). Gate: scc_serial_host_test.
 
 #pragma once
 
@@ -49,8 +51,10 @@ private:
 
     static constexpr std::size_t kQueueLimit = 64 * 1024;
     Kind kind_ = Kind::Pty;
-    int listenerFd_ = -1;
-    int ioFd_ = -1;
+    // Socket handles are pointer-sized on Windows (SOCKET); -1 is "none"
+    // on both, INVALID_SOCKET included.
+    std::intptr_t listenerFd_ = -1;
+    std::intptr_t ioFd_ = -1;
     int ptyControlFd_ = -1; // keeps the raw slave termios alive
     std::string endpoint_;
     std::uint16_t tcpPort_ = 0;

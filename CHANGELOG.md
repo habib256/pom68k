@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (fifth)** — [« Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1](#2026-10-10-serial-window)
 - **2026-10-10 (fourth)** — [Three pushes red on CI: a menu left open on a host without ROMs, a second host's registry, a switch under -Werror](#2026-10-10-ci-red)
 - **2026-10-10 (third)** — [Host text typed on machine time, the guest's scrap read back: the round trip is byte-identical on Mac OS 8.1](#2026-10-10-clipboard)
 - **2026-10-10 (second)** — [CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again](#2026-10-10-cd-image)
@@ -1117,6 +1118,77 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-serial-window"></a>
+## 2026-10-10 (fifth) — « Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1
+
+Order 8 of `docs/SNOW_IMPLEMENTATION_PLAN.md`: "A serial window shows
+endpoint, link ownership, connection state, RX/TX counters and a bounded
+terminal… Opening a display must not consume bytes owed to an external
+bridge. Decide explicitly whether the terminal is an observer or the active
+endpoint… Add Winsock TCP… then execute on Windows rather than accepting only
+a successful Windows build."
+
+**Decided: both, never at once on one port.** `src/SerialTerminal.h`:
+- On a `pty` or `tcp:` port the terminal OBSERVES. It mirrors the bytes the
+  guest sent and the bytes the SCC actually took, after the fact. On the
+  gate a seven-byte host write shows three bytes in the log, the FIFO's
+  worth, while the transport keeps the other four for the guest. Its input
+  is off.
+- On the new `terminal` port (`POM68K_SERIAL_* = terminal`, or a session's
+  `serial-* = terminal`) it is the ENDPOINT. Input goes into a 4096-byte
+  queue that refuses what does not fit, and drains only into free slots of
+  the SCC's three-byte FIFO.
+
+Both directions go through one pump, `pumpSerialChannel` /
+`serialGuestByte`, used by `GuiHostServices` and by the gates alike. The
+log keeps the last 16 KiB and counts the rest.
+
+**The window.** « Périphériques → Ports série... » shows, per channel:
+- the configured endpoint and who owns the port;
+- the refusal when there is one (AppleTalk/LToUDP on channel B, a TCP port
+  in use);
+- the connection, the counters and host-side losses;
+- the terminal, with « Envoyer », a CR option and a "file pleine" refusal
+  that keeps the line in the field.
+
+Building it found that the product font has no `—`, `…` or `→`: the two
+windows added today, typing and serial, used them. They are ASCII now, and `gui_windows_test`'s glyph scan covers the
+new files.
+
+**Winsock.** `SerialHostTransport.cpp` now has one small socket layer, BSD
+or Winsock 2. Handles are `std::intptr_t`, and `ws2_32` is linked on
+Windows. The BSD meaning of `SO_REUSEADDR` is kept off Winsock, where it
+would let a second process steal the port. PTY stays Unix-only, and the
+Windows build checks that it is refused. No Windows compiler on this host;
+`uvx --from ziglang` provided one (`zig c++ -target x86_64-windows-gnu`, a
+compile check, nothing installed in the tree). The transport, the SCC and
+the extended gate built with `-Werror` and **ran under wine: 29/29**. Not
+done: running it on Windows itself and compiling with MSVC. A « Run
+workflow » of `release.yml` would do both (its Windows job runs `ctest -L
+asset-none`), and the TODO keeps it with the other Windows-host work.
+
+**Gates.** `scc_serial_host_test` is now portable (PTY half Unix-only) and
+adds four parts:
+- TCP disconnect, then reconnect: bytes sent with no client are counted
+  dropped, never replayed to the next client.
+- Partial writes, through a client whose 4 KiB receive window keeps the
+  kernel from absorbing a 4 MiB burst: 1 863 684 bytes sent and 2 330 620
+  counted dropped here (2 762 934 / 1 431 370 under wine), what arrives in
+  order.
+- A host flood bounded at the 64 KiB queue.
+- Both terminal roles.
+
+`gui_windows_test` drives the window. `q605_serial_etalon` (new) installs
+« POM68K Série » (`dev/serprobe`, a Retro68 Serial Driver client on the
+modem port) into Startup Items, boots Mac OS 8.1 and uses the endpoint
+terminal through the product pump, 64 slices a frame. The guest's hello
+arrives. 6000 bytes, more than the terminal's queue, so 1269 offers were
+partly refused and re-offered, reach the guest in 90 frames. It answers
+`RECU 6000 2290943988`, the order-sensitive sum the host computes; the same
+under the interpreter. A first draft of the gate never booted because it
+skipped the harness's Cuda reset-hold release; pumping from reset itself is
+harmless, as the product does.
 
 <a id="2026-10-10-ci-red"></a>
 ## 2026-10-10 (fourth) — Three pushes red on CI: a menu left open on a host without ROMs, a second host's registry, a switch under -Werror

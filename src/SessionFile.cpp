@@ -380,16 +380,16 @@ SessionParse parseSession(std::string_view text, const fs::path& source,
             }
             break;
         }
-        case Rule::Serial:
-            if (detail::parseSerialPort(value).kind !=
-                SerialTransportKind::Pty &&
-                detail::parseSerialPort(value).kind !=
-                SerialTransportKind::Tcp) {
-                fail(lineNumber, what + "expected pty or tcp:<port>, got `" +
+        case Rule::Serial: {
+            const auto kind = detail::parseSerialPort(value).kind;
+            if (kind != SerialTransportKind::Pty && kind != SerialTransportKind::Tcp &&
+                kind != SerialTransportKind::Terminal) {
+                fail(lineNumber, what + "expected pty, tcp:<port> or terminal, got `" +
                                  value + "`");
                 continue;
             }
             break;
+        }
         }
 
         if (spec->target == Target::Profile) {
@@ -528,7 +528,8 @@ std::vector<SessionEntry> SessionCapture::entries() const {
     }
     const auto serial = [&](std::string_view key, const SerialPortConfig& port) {
         if (port.kind == SerialTransportKind::Pty ||
-            port.kind == SerialTransportKind::Tcp)
+            port.kind == SerialTransportKind::Tcp ||
+            port.kind == SerialTransportKind::Terminal)
             add(key, port.requested);
     };
     serial("serial-printer", serialPrinter);

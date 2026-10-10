@@ -63,9 +63,10 @@ public:
         mem.scc().setByteCycles(byteCycles);
         if (serialActive()) {
             mem.scc().onTxByte = [this](int channel, std::uint8_t value) {
-                if (channel >= 0 && channel < int(serial_.size()) &&
-                    serial_[std::size_t(channel)])
-                    serial_[std::size_t(channel)]->sendByte(value);
+                if (channel < 0 || channel >= int(serial_.size())) return;
+                const auto port = std::size_t(channel);
+                serialGuestByte(value, serial_[port].get(),
+                                state_.serial.ports[port].terminal.get());
             };
         }
         const bool cable = state_.network.ltoUdpEnabled &&
@@ -157,15 +158,9 @@ public:
         }
         if (serialActive()) {
             auto& scc = mem.scc();
-            for (std::size_t channel = 0; channel < serial_.size(); ++channel) {
-                auto& transport = serial_[channel];
-                if (!transport) continue;
-                transport->poll();
-                std::uint8_t value = 0;
-                while (scc.canInjectRxByte(int(channel)) &&
-                       transport->readByte(value))
-                    scc.injectRxByte(int(channel), value);
-            }
+            for (std::size_t channel = 0; channel < serial_.size(); ++channel)
+                pumpSerialChannel(scc, int(channel), serial_[channel].get(),
+                                  state_.serial.ports[channel].terminal.get());
         }
     }
 
@@ -198,7 +193,8 @@ public:
     }
 
     bool serialActive() const noexcept {
-        return serial_[0] || serial_[1];
+        return serial_[0] || serial_[1] || state_.serial.ports[0].terminal ||
+               state_.serial.ports[1].terminal;
     }
 
     void tickNetwork(std::int64_t machineClock) {

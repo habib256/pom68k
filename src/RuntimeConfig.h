@@ -59,6 +59,7 @@ enum class SerialTransportKind {
     Disabled,
     Pty,
     Tcp,
+    Terminal,   // the « Ports série » window is the endpoint (SerialTerminal.h)
     Invalid,
 };
 

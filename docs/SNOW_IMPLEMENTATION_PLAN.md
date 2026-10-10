@@ -162,7 +162,7 @@ Other items in this document are proposals, not adopted features.
 | 5 | CD track/source mapping — implemented | `cd_image_test` (layout, exact PCM per encoding, refusals, drive TOC/play), `cd_audio_test`, `scsi_cdrom_test`, Q605 CD etalons | Done | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
 | 7 | Native floppy medium and MOOF — implemented | Track/face storage, bit/flux import, atomic 125 ns export and v26 states | Done | Native lifecycle, weak-read replay and original Oids launch/flight/replay gates |
-| 8 | Serial terminal and Windows TCP | Unix transport exists; terminal/Windows missing | M | Guest communication through SCC, including backpressure |
+| 8 | Serial terminal and Windows TCP — implemented, Windows execution open | `scc_serial_host_test` (also as a Windows build under wine), `gui_windows_test`, `q605_serial_etalon` (Serial Driver client on Mac OS 8.1) | Done here; MSVC/Windows run pending (TODO § Preuve) | Guest communication through SCC, including backpressure |
 | 9 | Clipboard typing and scrap inspection — implemented | `clipboard_typing_test`, `guest_scrap_test`, `gui_machine_window_test`, `q605_clipboard_etalon` (Mac OS 8.1 round trip) | Done | Visible guest text, reproducible scheduling, bounded reads |
 | 10 | RARP and ICMP address-mask helper | RARP Server setup, ICMP and controlled guest DNS/TCP qualified | S to M | MacTCP automatic address setup followed by a guest network transaction |
 | 11 | Ethernet PCAP | Implemented: passive card observer, bounded background writer and live GUI controls | Done | Format/lifecycle gate and actual MacTCP RARP/DNS/TCP capture, independently decoded |
@@ -755,3 +755,22 @@ copies it to the host. `q605_clipboard_etalon` closes the loop on the
 guest: Mac OS 8.1, SimpleText, 30 characters typed through the production
 typer, Cmd-A Cmd-C, read back byte for byte. Option-key and dead-key
 characters and styled text (`styl`) are not offered.
+
+The twenty-eighth increment implements order 8. The terminal is decided
+explicitly. It OBSERVES a pty/tcp port: `SerialTerminal` mirrors only bytes
+the SCC took or the guest sent, so opening the window draws nothing from a
+bridge. It is the ENDPOINT of a new `terminal` port: the user's input goes
+through a bounded queue that refuses when full and drains into free SCC
+FIFO slots only (`pumpSerialChannel`, the production pump, shared with the
+transports). « Ports série » shows endpoint, owner, connection, counters,
+refusals (AppleTalk/LToUDP on channel B, a port in use) and the terminal;
+sessions carry `serial-* = terminal`. `SerialHostTransport` gains a Winsock
+2 TCP backend behind one socket layer; PTY stays Unix-only and Windows
+refuses it explicitly. `scc_serial_host_test` adds disconnect/reconnect,
+partial writes through a narrow-window client (millions of bytes sent or
+counted dropped, order kept), host-side saturation and both terminal roles;
+its Windows build passes under wine, and running it on Windows itself is
+the one part left open. `q605_serial_etalon`: « POM68K Série »
+(`dev/serprobe`), launched from Startup Items, exchanges a hello, a
+6000-byte burst and an order-sensitive receipt with the terminal on Mac OS
+8.1, under the JIT and the interpreter alike.

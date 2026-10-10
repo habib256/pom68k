@@ -2142,12 +2142,24 @@ no knob — it is edited live in the AppleTalk window and travels on the
 relaunch line as `--atalk-<key>=`, `RuntimeConfigNetwork.cpp`, which also
 overrides this variable through `--atalk-share=`), `POM68K_ATALK_WIRE_BOOST`,
 `POM68K_LTOUDP`,
-`POM68K_SERIAL_MODEM` / `POM68K_SERIAL_PRINTER` (`pty` or `tcp:<port>` =
-connect the SCC A modem port / SCC B printer port to a non-blocking host
-endpoint on macOS and Linux; `tcp:0` selects a free loopback port and the
-actual endpoint is printed. Printer serial is refused while AppleTalk or
-LToUDP owns channel B. The host queue feeds only free slots in the SCC's
-three-byte FIFO; `scc_serial_host_test` gates PTY and TCP round-trips),
+`POM68K_SERIAL_MODEM` / `POM68K_SERIAL_PRINTER` (`pty`, `tcp:<port>` or
+`terminal` = connect the SCC A modem port / SCC B printer port to a
+non-blocking host endpoint — PTY on macOS and Linux, loopback TCP on every
+desktop host, BSD sockets or Winsock 2 behind one socket layer in
+`SerialHostTransport.cpp` — or to the « Ports série » window's own terminal
+(`SerialTerminal.h`); `tcp:0` selects a free loopback port and the actual
+endpoint is printed. Printer serial is refused while AppleTalk or LToUDP owns
+channel B, and the window says so, as it does for a port already in use. The
+window's terminal OBSERVES a pty/tcp port, mirroring only the bytes the SCC
+actually took, so it never draws from what the bridge is owed. It is the
+ENDPOINT of a `terminal` port, with a bounded input queue that refuses when
+full and drains only into free slots of the SCC's three-byte FIFO, like a
+transport's (`pumpSerialChannel`). `scc_serial_host_test` gates PTY and TCP
+round trips, disconnect/reconnect, partial writes, saturation and both
+terminal roles; it also runs as a Windows build under wine (2026-10-10, not
+yet on Windows itself). `q605_serial_etalon` has a real Serial Driver client
+(`dev/serprobe`) exchange a hello, a 6000-byte burst and an order-sensitive
+receipt with the terminal on Mac OS 8.1),
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_FLUX_JITTER`
 (`<pct>` = displace every flux edge the SWIM separators read by a
 deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in

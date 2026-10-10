@@ -26,6 +26,7 @@
 #include "GuiDebuggerWindow.h"
 #include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
+#include "GuiSerialWindow.h"
 #include "GuiSessionState.h"
 #include "NetworkWindow.h"
 #include "PeripheralWindow.h"
@@ -596,6 +597,46 @@ int main() {
         dumpLabels("engine");
     }
 
+    // ── Ports série: a refused port, an observed one, the endpoint ───
+    // The printer port is configured but refused (AppleTalk owns channel
+    // B): the window says why. The modem port is the window's own
+    // terminal: the guest's bytes are shown, « Envoyer » queues the line
+    // and its CR for the guest, and a full queue reports what it refused.
+    {
+        GuiSerialState st;
+        st.showWindow = true;
+        st.ports[0].name = "Imprimante (canal B)";
+        st.ports[0].requested = "pty";
+        st.ports[0].message = "unavailable while AppleTalk/LToUDP owns SCC channel B";
+        st.ports[1].name = "Modem (canal A)";
+        st.ports[1].requested = "terminal";
+        st.ports[1].endpoint = "terminal intégré";
+        st.ports[1].terminal = std::make_shared<SerialTerminal>(true);
+        for (char c : std::string("ATZ\rOK\r"))
+            st.ports[1].terminal->observe(SerialTerminal::Direction::FromGuest, std::uint8_t(c));
+        auto draw = [&] { pom68k::gui::drawSerialWindow(st); };
+        ui.frame(draw);
+        ui.frame(draw);
+        ImRect r;
+        check(windowShown(pom68k::gui::kSerialWindowTitle, &r) && ui.distinctColours(r) > 8,
+              "« Ports série » is drawn when asked");
+        check(st.ports[1].terminal->view().text == "ATZ\nOK\n",
+              "the endpoint port's log holds the guest's bytes");
+        std::snprintf(st.ports[1].line.data(), st.ports[1].line.size(), "AT&F");
+        check(ui.click("Envoyer", draw) && st.ports[1].terminal->view().pendingInput == 5 &&
+                  st.ports[1].line[0] == 0,
+              "« Envoyer » queues the line and its CR for the guest, and clears the field");
+        st.ports[1].terminal->send(std::string(SerialTerminal::kInputBytes, 'x'));
+        std::snprintf(st.ports[1].line.data(), st.ports[1].line.size(), "more");
+        ui.click("Envoyer", draw);
+        ui.frame(draw);
+        check(st.ports[1].sendStatus.find("refus") != std::string::npos &&
+                  std::string(st.ports[1].line.data()) == "more",
+              "a full queue refuses the line, says so, and keeps it in the field");
+        capture(ui, "serial");
+        dumpLabels("serial");
+    }
+
     // ── Display: the CRT presets and the kiosk letterbox (pure) ──────
     {
         pom68k::gui::CrtParams p;
@@ -627,14 +668,17 @@ int main() {
         const char* sources[] = {"src/PeripheralWindow.cpp", "src/NetworkWindow.cpp",
                                  "src/DiskBays.cpp", "src/GuiEngineWindow.cpp",
                                  "src/GuiShell.cpp", "src/GuiMachineControls.cpp",
-                                 "src/GuiDebuggerWindow.cpp",
+                                 "src/GuiDebuggerWindow.cpp", "src/GuiSessionMenu.cpp",
+                                 "src/GuiTypingWindow.cpp", "src/GuiSerialWindow.cpp",
+                                 "src/GuiShellMenu.cpp",
                                  "src/AdbVia.cpp", "src/V8Memory.cpp", "src/Q605Memory.cpp",
                                  "src/Q630Memory.cpp", "src/RbvMemory.cpp", "src/Q700Memory.cpp",
                                  "src/VaspMemory.cpp", "src/SonoraMemory.cpp", "src/TobyDeclChoice.h"};
         auto windowSource = [](const std::string& rel) {
             return rel.find("Window") != std::string::npos || rel.find("DiskBays") != std::string::npos ||
                    rel.find("GuiShell") != std::string::npos || rel.find("GuiMachineControls") != std::string::npos ||
-                   rel.find("GuiDebugger") != std::string::npos;
+                   rel.find("GuiDebugger") != std::string::npos ||
+                   rel.find("GuiSessionMenu") != std::string::npos;
         };
         int missing = 0, scanned = 0;
         ui.frame([&] {

@@ -844,6 +844,15 @@ set_tests_properties(lcii_simcity_etalon PROPERTIES TIMEOUT 2700)
 # AZERTY System and typed by TextTyper on machine time into SimpleText,
 # Cmd-A Cmd-C, then the TEXT scrap read back through the debugger's logical
 # read must be the same UTF-8 (TextTyping.h, GuestScrap.h).
+# Guest serial through the SCC: « POM68K Série » (dev/serprobe) from Startup
+# Items talks to the « Ports série » terminal over the modem port — hello,
+# a 6000-byte burst under backpressure, and an order-sensitive receipt.
+add_executable(q605_serial_etalon tests/q605_serial_etalon.cpp)
+target_link_libraries(q605_serial_etalon PRIVATE pom68k_core)
+add_test(NAME q605_serial_etalon COMMAND q605_serial_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(q605_serial_etalon PROPERTIES TIMEOUT 1800)
+
 add_executable(q605_clipboard_etalon tests/q605_clipboard_etalon.cpp)
 target_link_libraries(q605_clipboard_etalon PRIVATE pom68k_core)
 add_test(NAME q605_clipboard_etalon COMMAND q605_clipboard_etalon

@@ -12,7 +12,7 @@
 //                  « Changer de machine » (one submenu per board family),
 //                  « Session » (save / reopen a .pomsession),
 //                  drive sounds
-//   Périphériques  disks, network, controller provenance (LLE / HLE)
+//   Périphériques  disks, network, serial ports, controller provenance (LLE / HLE)
 //   CPU            measured speed, engine choice, engine statistics
 //   Fenêtres       every secondary window, and the layout reset
 //   (right edge)   LLE qualification, live speed, mouse-capture hint
@@ -28,6 +28,7 @@
 #include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiMachineControls.h"
+#include "GuiSerialWindow.h"
 #include "GuiSessionMenu.h"
 #include "LleSession.h"
 #include "MachineFactory.h"
@@ -193,6 +194,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             if (!state_.network.appleTalkEnabled &&
                 !state_.network.ethernetEnabled)
                 ImGui::TextDisabled("(POM68K_APPLETALK=0, aucune carte réseau)");
+            ImGui::MenuItem("Ports série...", nullptr, &state_.serial.showWindow);
             peripheralMenuItem("Contrôleurs LLE / HLE...");
             ImGui::EndMenu();
         }
@@ -207,6 +209,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             peripheralMenuItem(kPeripheralWindowTitle);
             ImGui::MenuItem("Moteur accéléré", nullptr, &state_.cpu.showJit,
                             bool(state_.cpu.setCpuEngine));
+            ImGui::MenuItem(kSerialWindowTitle, nullptr, &state_.serial.showWindow);
             ImGui::MenuItem(kTypingWindowTitle, nullptr,
                             &state_.machine.typing.showWindow,
                             state_.machine.typing.bound());
@@ -228,6 +231,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
     drawDebuggerWindow(state_.machine.debugger);
     drawSessionWindow(state_.sessionFile);
     drawTypingWindow(state_.machine.typing);
+    drawSerialWindow(state_.serial);
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);
     peripheralWindow(state_.peripherals);

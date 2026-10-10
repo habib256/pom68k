@@ -40,7 +40,7 @@ void drawTypingWindow(GuiTypingState& typing) {
     if (plan.skipped) {
         std::string shown;
         for (const std::string& c : plan.unrepresentable) {
-            if (shown.size() > 120) { shown += " …"; break; }
+            if (shown.size() > 120) { shown += " ..."; break; }
             shown += (shown.empty() ? "" : " ") + c;
         }
         ImGui::TextColored(ImVec4(0.95f, 0.6f, 0.3f, 1),
@@ -75,12 +75,12 @@ void drawTypingWindow(GuiTypingState& typing) {
         }
         const auto [scrap, reads] = typing.scrap();
         if (typing.scrapAsked && reads < typing.scrapAsked) {
-            ImGui::TextDisabled("lecture à la prochaine tranche machine…");
+            ImGui::TextDisabled("lecture à la prochaine tranche machine...");
         } else if (typing.scrapAsked && !scrap.ok()) {
             ImGui::TextColored(ImVec4(0.95f, 0.6f, 0.3f, 1), "%s", scrap.reason.c_str());
         } else if (typing.scrapAsked) {
             ImGui::Text("%u octet(s) MacRoman%s", scrap.macBytes,
-                        scrap.truncated ? " — tronqué" : "");
+                        scrap.truncated ? " - tronqué" : "");
             std::string shown = scrap.utf8.substr(0, 4096);
             ImGui::InputTextMultiline("##scrap", shown.data(), shown.size() + 1,
                                       ImVec2(-1, ImGui::GetTextLineHeight() * 6),

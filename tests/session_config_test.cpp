@@ -124,7 +124,7 @@ void schema(const fs::path& root) {
     check(hasError(bad, 4, "given twice"), "duplicate single key, line 4");
     check(hasError(bad, 5, "interp|jit"), "engine outside its choices, line 5");
     check(hasError(bad, 6, "2-6"), "DaynaPort outside 0/2-6, line 6");
-    check(hasError(bad, 7, "pty or tcp"), "serial endpoint, line 7");
+    check(hasError(bad, 7, "pty, tcp:<port> or terminal"), "serial endpoint, line 7");
     check(hasError(bad, 8, "0 or 1"), "boolean spelling, line 8");
     check(hasError(bad, 9, "decimal"), "integer, line 9");
     check(hasError(bad, 10, "<lle|hle>"), "firmware policy shape, line 10");

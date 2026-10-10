@@ -46,8 +46,12 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   exécutés/soft-skips. *Bloqué : infrastructure/hôte à provisionner.*
 - [ ] **Exécuter les locksteps sur un hôte Windows.** Préalable nommé de
   « `threaded` est le plancher Windows » : tant qu'aucun hôte Windows ne
-  les exécute, le choix reste une décision et non une mesure. *Bloqué :
-  hôte Windows.*
+  les exécute, le choix reste une décision et non une mesure. Même hôte :
+  `scc_serial_host_test` et son backend Winsock, compilés pour Windows et
+  verts sous wine (`CHANGELOG` 2026-10-10 (fifth)), jamais exécutés sous
+  Windows ni compilés par MSVC — un passage « Run workflow » de
+  `release.yml` les exécuterait (`ctest -L asset-none` sur
+  `windows-latest`). *Bloqué : hôte Windows.*
 - [ ] **Dater une passe manuelle de « Révéler » (fenêtre DaynaPort).** Seul
   reste de la dette de preuve du contrôle DaynaPort au GUI : le bouton
   lance `open` / `xdg-open` / `explorer`, qu'aucun gate ne peut observer.

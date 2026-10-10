@@ -12,6 +12,10 @@ SerialPortConfig parseSerialPort(const std::optional<std::string>& value) {
         config.kind = SerialTransportKind::Pty;
         return config;
     }
+    if (*value == "terminal") {
+        config.kind = SerialTransportKind::Terminal;
+        return config;
+    }
     constexpr std::string_view prefix = "tcp:";
     if (!std::string_view(*value).starts_with(prefix)) {
         config.kind = SerialTransportKind::Invalid;
