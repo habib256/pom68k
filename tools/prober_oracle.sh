@@ -16,6 +16,10 @@
 #   c650  MAME macct650, likewise
 #   q630  MAME macqd630, the same volume, 32 MB
 #   q700  MAME macqd700, hdv/ref/System 7.1 HD.dsk, 8 MB
+#   lc475, lc575  MAME maclc475 / maclc575, as q605 (their IDs, 68LC040)
+#   q650, q610, c610  MAME macqd650 / macqd610 / macct610, as q800
+#   lc580  MAME maclc580 (bios "older"), as q630, 68LC040
+#   q900  MAME macqd900, as q700, with the IOPs and the Egret
 #
 # <work-dir>/mame.tsv is what `<profile>_prober_oracle_etalon` compares
 # POM68K with: after a change to the Prober, the volume or the rig, copy it
@@ -32,7 +36,7 @@
 # which fields are not compared and why.
 set -euo pipefail
 
-usage="usage: tools/prober_oracle.sh <lcii|q605|q800|c650|q630|q700> <work-dir> [mame-seconds]"
+usage="usage: tools/prober_oracle.sh <lcii|q605|lc475|lc575|q800|q650|q610|c650|c610|q630|lc580|q700|q900> <work-dir> [mame-seconds]"
 machine=${1:?$usage}
 work=${2:?$usage}
 secs=${3:-90}
@@ -76,18 +80,23 @@ EOF
 CFG
     ram=10M
     ;;
-q605)
-    system=macqd605
+q605|lc475|lc575)
+    # maclc475 and maclc575 are clones of macqd605: one romset, one ROM.
+    case "$machine" in q605) system=macqd605 ;; lc475) system=maclc475 ;; *) system=maclc575 ;; esac
     mkdir -p "$work/roms/macqd605" "$work/roms/cuda"
     cp "$root/roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM" \
        "$work/roms/macqd605/ff7439ee.bin"
     cp "$root"/roms/cuda/*.bin "$work/roms/cuda/"
     ram=32M                                   # POM68K's Q605 gates run 32 MB
     ;;
-q800|c650)
-    # macct650 is a clone of macqd800: one romset, and the tree's F1A6F343
-    # is MAME's bios "original" (its default is the later F1ACAD13).
-    [ "$machine" = q800 ] && system=macqd800 || system=macct650
+q800|q650|q610|c650|c610)
+    # macqd650, macqd610, macct650 and macct610 are clones of macqd800: one
+    # romset, and the tree's F1A6F343 is MAME's bios "original" (its default
+    # is the later F1ACAD13).
+    case "$machine" in
+    q800) system=macqd800 ;; q650) system=macqd650 ;; q610) system=macqd610 ;;
+    c650) system=macct650 ;; *) system=macct610 ;;
+    esac
     mkdir -p "$work/roms/macqd800" "$work/roms/adbmodem"
     cp "$root/roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM" \
        "$work/roms/macqd800/f1a6f343.rom"
@@ -95,8 +104,9 @@ q800|c650)
     extra=(-bios original)
     ram=32M
     ;;
-q630)
-    system=macqd630
+q630|lc580)
+    # maclc580 is a clone of macqd630; its bios "older" is the 06684214 ROM.
+    if [ "$machine" = q630 ]; then system=macqd630; else system=maclc580; fi
     mkdir -p "$work/roms/macqd630" "$work/roms/cuda"
     cp "$root/roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM" \
        "$work/roms/macqd630/06684214.bin"
@@ -106,6 +116,7 @@ q630)
     # it the SCSI disk's driver lands at unit 53, without it at 32 + ID as
     # on POM68K's 630, which has no IDE device (CHANGELOG 2026-10-03).
     extra=(-f108:ata:0 "")
+    [ "$machine" = lc580 ] && extra+=(-bios older)
     ram=32M
     ;;
 q700)
@@ -115,6 +126,15 @@ q700)
        "$work/roms/macqd700/420dbff3.rom"
     cp "$root/roms/adbmodem/342s0440-b.bin" "$work/roms/adbmodem/"
     ram=8M                    # MAME 0.287's macqd700 is black with 20 or 36
+    ;;
+q900)
+    # Its own romset: the same ROM, the IOPs' 344S0100 and the Egret.
+    system=macqd900
+    mkdir -p "$work/roms/macqd900"
+    cp "$root/roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM" \
+       "$work/roms/macqd900/420dbff3.rom"
+    cp "$root"/roms/egret/344s0100.bin "$root"/roms/egret/341s085[01].bin "$work/roms/macqd900/"
+    ram=8M                    # like the Quadra 700: System 7.1 in 8 MB
     ;;
 *) echo "$usage" >&2; exit 2 ;;
 esac

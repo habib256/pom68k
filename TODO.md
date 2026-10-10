@@ -58,12 +58,19 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   Le reste est couvert par `gui_windows_test`, `gui_relaunch_smoke_test`,
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
-- [ ] **Étendre l'oracle invité différentiel aux profils frères.** Six
+- [ ] **Étendre l'oracle invité différentiel aux profils restants.** Douze
   machines ont leur gate `<profil>_prober_oracle_etalon` (LC II, Quadra
-  605/800/630/700, Centris 650 ; `CHANGELOG` 2026-10-02 (seventh) à
-  (ninth)). MAME porte aussi les Centris 610, Quadra 610/650/900/950, LC
-  475/575/580, LC, LC III, Mac II… : chacun = une branche de
-  `tests/prober_oracle.cpp` et son rapport MAME.
+  605/610/650/630/700/800/900, Centris 610/650, LC 475/580 ; `CHANGELOG`
+  2026-10-10 (seventh)). Restent le LC 575 (le `maclc575` de MAME 0.287,
+  « imperfect », s'arrête sur « Starting Up »), le Quadra 950, le LC, le
+  LC III, le Mac II… : chacun = une branche de `tests/prober_oracle.cpp`
+  et son rapport MAME.
+- [ ] **Aligner la PRAM de l'oracle Quadra 900 sur celle de POM68K.** Sous
+  MAME, l'Egret démarre d'une PRAM froide et System 7.1 monte en 24 bits
+  (`MMU32Bit` `$00`) ; sous POM68K, la XPRAM semée le fait monter en 32
+  bits (`$01`). Dix sondes au-dessous de 16 Mo restent donc non jugées
+  sur ce profil (`kQ900Unjudged`). Pré-semer la NVRAM de l'Egret de MAME
+  avec la PRAM de POM68K les rendrait jugeables.
 - [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
   la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU
   du 68040 : un hybride qu'aucun Mac n'a été. Passer à `$A55A2225` déplace
@@ -123,7 +130,11 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   chemin (`cacheBoost` 4 ; boost 2 passe la période PIC de justesse, boost
   3 non) — *Bloqué : un chiffre matériel (TimeDBRA d'un vrai Centris 650 ou
   Quadra 700, ou une mesure de la fenêtre ST).* Le Quadra 700 n'est pas
-  encore instrumenté.
+  encore instrumenté. Nouvel observable (2026-10-10) : la souris du Quadra
+  650 de POM68K n'a pas de routine de service ADB, de façon déterministe
+  sous les deux moteurs, là où le `macqd650` de MAME et le Quadra 800 de
+  POM68K (même carte, même horloge) en ont une — non jugé dans
+  `q650_prober_oracle_etalon` en attendant.
 - [ ] **Affiner les latences VIA sur les compacts : T1 et l'IACK.** Reste
   la latence écriture T1CH → IFR.T1 (N+1 ici, N+3 chez MAME) et l'IACK
   autovecteur calé sur l'horloge E (`vpa_sync` chez MAME). Chacune attend

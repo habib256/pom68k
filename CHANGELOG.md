@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (seventh)** — [Six more machines under MAME's guest oracle; the Quadra 650's mouse has no service routine, and MAME's Quadra 900 boots 24-bit](#2026-10-10-oracle-siblings)
 - **2026-10-10 (sixth)** — [The SE's second internal floppy reaches the product: option, Disques row, relaunch and session](#2026-10-10-se-second-floppy)
 - **2026-10-10 (fifth)** — [« Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1](#2026-10-10-serial-window)
 - **2026-10-10 (fourth)** — [Three pushes red on CI: a menu left open on a host without ROMs, a second host's registry, a switch under -Werror](#2026-10-10-ci-red)
@@ -1119,6 +1120,54 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-oracle-siblings"></a>
+## 2026-10-10 (seventh) — Six more machines under MAME's guest oracle; the Quadra 650's mouse has no service routine, and MAME's Quadra 900 boots 24-bit
+
+The TODO item "étendre l'oracle invité différentiel aux profils frères".
+`tests/prober_oracle.cpp`'s board functions now take the identity the
+product's own profiles set:
+- **MEMCjr:** ID and FPU mode, `RuntimeConfigMachine.cpp`.
+- **djMEMC:** clock, model pins and FPU, `PlatformDafb.cpp` `runCentris`.
+- **F108:** ID and 68LC040.
+- **Spike:** model.
+
+`tools/prober_oracle.sh` gets the matching MAME systems. Five are clones of
+an existing romset; the Quadra 900 has its own (420DBFF3 + the IOPs'
+344S0100 + Egret 341S0850/0851); the LC 580 needs `-bios older` for
+06684214. The existing six gates pass unchanged after the refactor.
+
+**Agree on every judged field:** LC 475 (`maclc475`), Quadra 610
+(`macqd610`), Centris 610 (`macct610`), LC 580 (`maclc580`). The clones
+needed 240 s of MAME time instead of 90: at 90 s MAME's LC 475 was still
+drawing the desktop (Lua snapshot).
+
+**Quadra 650 — a POM68K finding.** Its mouse (ADB address 3, handler 1)
+gets no service routine (`adb.dev2.service non`), deterministically and
+under both the JIT and the interpreter. MAME's `macqd650` installs one, and
+so does POM68K's own Quadra 800, the same board at the same 33 MHz with
+the same FPU. The two differ only in the model pins, `$52` against `$12`,
+which match MAME's source. That is consistent with the ROM's ADB race on
+this family that a too-fast 040 wins (TODO § Fidélité, the `cacheBoost`
+item, blocked on a hardware figure). The field is left unjudged on this
+profile with that reason (`kQ650Unjudged`), and the TODO item carries the
+observation.
+
+**Quadra 900 — a PRAM difference, not a bus one.** Ten probes below 16 MB
+(VIA1@Plus, SCC@V8…) read "present" under MAME and "absent" under POM68K,
+where MAME's own Quadra 700 says "absent". A Lua hook reading `MMU32Bit`
+at 85 s settled it: MAME's cold Egret PRAM boots System 7.1 in 24-bit mode
+(`$00`), POM68K's seeded XPRAM in 32-bit (`$01`). In 24-bit mode those
+addresses alias I/O and NuBus space. They are unjudged on this profile
+(`kQ900Unjudged`), and aligning the two PRAMs is a TODO item.
+
+**LC 575 — no gate.** MAME 0.287's `maclc575`, marked "imperfect", stalls on
+"Starting Up" with an extension crossed out after 240 s (Lua snapshot): no
+report to hold POM68K to.
+
+**Gates.** Six new `<profil>_prober_oracle_etalon` (lc475, q610, q650, c610,
+lc580, q900), twelve in all, green. A mutated golden (one judged field
+changed) fails each kind checked, LC 475 and Quadra 610.
 
 <a id="2026-10-10-se-second-floppy"></a>
 ## 2026-10-10 (sixth) — The SE's second internal floppy reaches the product: option, Disques row, relaunch and session

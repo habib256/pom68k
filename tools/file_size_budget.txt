@@ -19,7 +19,7 @@ cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
 cmake/Pom68kMachineGates.cmake           1062
 cmake/Pom68kMoofGates.cmake              33
-cmake/Pom68kOracleGates.cmake            22
+cmake/Pom68kOracleGates.cmake            26
 cmake/Pom68kProductRegistry.cmake        23
 cmake/Pom68kProfileGates.cmake           31
 cmake/Pom68kProtectedFloppyGates.cmake     9

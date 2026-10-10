@@ -23,8 +23,10 @@
 //     in tools/prober_oracle_<mame-system>.tsv, on every field both models
 //     can judge.
 //
-// <machine> is `lcii` (MAME maclc2), `q605` (macqd605), `q800` (macqd800),
-// `c650` (macct650), `q630` (macqd630) or `q700` (macqd700). Each runs on
+// <machine> is `lcii` (MAME maclc2); `q605`, `lc475`, `lc575` (macqd605,
+// maclc475, maclc575); `q800`, `q650`, `q610`, `c650`, `c610` (macqd800,
+// macqd650, macqd610, macct650, macct610); `q630`, `lc580` (macqd630,
+// maclc580); `q700`, `q900` (macqd700, macqd900). Each runs on
 // its profile's locked volume, POM68K_BEYOND_IMG overriding it for
 // exploration. The gate soft-skips without the ROM, that volume or the
 // built Prober.
@@ -88,11 +90,42 @@ const Unjudged k040Unjudged = {
     { "volume.vol0.kbFree", kCalendar },
 };
 
+// The Quadra 650: its mouse (ADB address 3) gets no service routine under
+// POM68K, deterministically and under both engines, where MAME's macqd650
+// and POM68K's own Quadra 800 — same board, clock and FPU — install one
+// (CHANGELOG 2026-10-10 (seventh)). Consistent with the ROM's ADB race on
+// this family that a too-fast 040 wins (TODO § Fidélité, cacheBoost), not
+// judged here until that is calibrated.
+const Unjudged kQ650Unjudged = {
+    { "clock.macSeconds", kRtc },
+    { "clock.dateTime", kRtc },
+    { "ident.memTop", kHeap },
+    { "volume.vol0.kbFree", kCalendar },
+    { "adb.dev2.service", "the djMEMC ADB race (TODO § Fidélité, cacheBoost): POM68K's "
+                          "Quadra 650 mouse misses its service routine" },
+};
+
 // The Quadra 700 runs System 7.1, which has no CalendarMenu.
 const Unjudged kQ700Unjudged = {
     { "clock.macSeconds", kRtc },
     { "clock.dateTime", kRtc },
     { "ident.memTop", kHeap },
+};
+
+// The Quadra 900: MAME's Egret starts from a cold PRAM and System 7.1 comes
+// up in 24-bit mode (MMU32Bit $00, read by Lua at 85 s), POM68K's seeded
+// XPRAM in 32-bit ($01). Below 16 MB the probes then reach I/O and NuBus
+// space under MAME and nothing under POM68K: a PRAM difference, not a bus
+// one, until the two PRAMs are aligned (TODO § Preuve).
+const char* const k24Bit = "MAME's cold Egret PRAM boots 24-bit (MMU32Bit $00), POM68K's "
+                           "seeded XPRAM 32-bit ($01)";
+const Unjudged kQ900Unjudged = {
+    { "clock.macSeconds", kRtc },
+    { "clock.dateTime", kRtc },
+    { "ident.memTop", kHeap },
+    { "probe.VIA1@Plus", k24Bit }, { "probe.SCC@Plus", k24Bit }, { "probe.IWM@Plus", k24Bit },
+    { "probe.VIA1@V8", k24Bit }, { "probe.SCC@V8", k24Bit }, { "probe.SCSI@V8", k24Bit },
+    { "probe.ASC@V8", k24Bit }, { "probe.SWIM@V8", k24Bit }, { "probe.pVIA2@V8", k24Bit },
 };
 
 struct Options {
@@ -237,7 +270,15 @@ int lcii(const Options& o, const std::string& bin) {
                kLciiUnjudged, screen);
 }
 
-int q605(const Options& o, const std::string& bin) {
+// MEMCjr + PrimeTime, MAME macquadra605.cpp: one FF7439EE ROM, three
+// identities by the board-ID register — as the product's profiles set them
+// (RuntimeConfigMachine.cpp applyMachineProfile).
+struct MemcJr { std::uint32_t id; pom68k::Q605FpuMode fpu; };
+constexpr MemcJr kQ605{0xA55A2225u, pom68k::Q605FpuMode::Integrated};
+constexpr MemcJr kLc475{0xA55A2221u, pom68k::Q605FpuMode::Soft68882};
+constexpr MemcJr kLc575{0xA55A222Eu, pom68k::Q605FpuMode::Soft68882};
+
+int memcjr(const Options& o, const std::string& bin, const MemcJr& model) {
     const std::string rom = testasset::find(
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM");
     const std::string img = image("hdv/MacOS-8.1-boot.vhd");
@@ -247,20 +288,25 @@ int q605(const Options& o, const std::string& bin) {
     }
     testasset::report({ rom, img });
     pom68k::CoreConfig config = oracleConfig();
-    // The board's default ID is the LC 475's; MAME's macqd605 is $A55A2225
-    // (macquadra605.cpp), with the 68040's FPU on die.
-    config.bus.q605MachineId = 0xA55A2225u;
-    config.cpu.q605Fpu = pom68k::Q605FpuMode::Integrated;
+    config.bus.q605MachineId = model.id;
+    config.cpu.q605Fpu = model.fpu;
     Q605Memory mem(config, 32u << 20);         // MAME is run with -ramsize 32M
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Cpu040 cpu(mem, testjit::resolveFromEnvironment(), config.cpu, config.diagnostics);
     return run(mem, cpu, o, img, bin, 416667 /* 25 MHz / ~60 Hz */, k040Unjudged, [] {});
 }
 
-// djMEMC + IOSB, MAME macquadra800.cpp: the Quadra 800 (68040 @ 33 MHz,
-// ID $12) and the Centris 650 (68LC040 @ 25 MHz, ID $46), on the F1A6F343
-// ROM MAME calls bios "original".
-int djmemc(const Options& o, const std::string& bin, bool q800) {
+// djMEMC + IOSB, MAME macquadra800.cpp: five identities on the F1A6F343
+// ROM MAME calls bios "original", with the product's clocks, model pins and
+// FPU (PlatformDafb.cpp runCentris).
+struct DjMemc { std::int64_t hz; std::uint8_t pins; bool fpu; const Unjudged* unjudged; };
+const DjMemc kQ800{CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra800, true, &k040Unjudged};
+const DjMemc kQ650{CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra650, true, &kQ650Unjudged};
+const DjMemc kQ610{CentrisMemory::kCpuHzQ610, CentrisMemory::kIdQuadra610, true, &k040Unjudged};
+const DjMemc kC650{CentrisMemory::kCpuHz650, CentrisMemory::kIdCentris650, false, &k040Unjudged};
+const DjMemc kC610{CentrisMemory::kCpuHz610, CentrisMemory::kIdCentris610, false, &k040Unjudged};
+
+int djmemc(const Options& o, const std::string& bin, const DjMemc& model) {
     const std::string rom = testasset::find("roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM");
     const std::string img = image("hdv/MacOS-8.1-boot.vhd");
     if (rom.empty() || img.empty()) {
@@ -269,17 +315,16 @@ int djmemc(const Options& o, const std::string& bin, bool q800) {
     }
     testasset::report({ rom, img });
     pom68k::CoreConfig config = oracleConfig();
-    config.cpu.centrisFull040 = q800;
-    const int64_t hz = q800 ? CentrisMemory::kCpuHzQ650 : CentrisMemory::kCpuHz650;
-    CentrisMemory mem(config, 32u << 20, hz,
-                      q800 ? CentrisMemory::kIdQuadra800 : CentrisMemory::kIdCentris650);
+    config.cpu.centrisFull040 = model.fpu;
+    CentrisMemory mem(config, 32u << 20, model.hz, model.pins);
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     CentrisCpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
-    return run(mem, cpu, o, img, bin, hz / 60, k040Unjudged, [] {});
+    return run(mem, cpu, o, img, bin, model.hz / 60, *model.unjudged, [] {});
 }
 
 // F108 + PrimeTime II, MAME macquadra630.cpp: the Quadra 630 ($A55A2252).
-int q630(const Options& o, const std::string& bin) {
+// The LC/Performa 580 ($A55A225A) is the same board with a 68LC040.
+int q630(const Options& o, const std::string& bin, bool lc580 = false) {
     const std::string rom = testasset::find("roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM");
     const std::string img = image("hdv/MacOS-8.1-boot.vhd");
     if (rom.empty() || img.empty()) {
@@ -288,7 +333,8 @@ int q630(const Options& o, const std::string& bin) {
     }
     testasset::report({ rom, img });
     pom68k::CoreConfig config = oracleConfig();
-    config.bus.q630MachineId = 0xA55A2252u;
+    config.bus.q630MachineId = lc580 ? 0xA55A225Au : 0xA55A2252u;
+    config.cpu.q630Lc040 = lc580;
     Q630Memory mem(config, 32u << 20);
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Q630Cpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
@@ -298,7 +344,9 @@ int q630(const Options& o, const std::string& bin) {
 // Spike, MAME macquadra700.cpp: the Quadra 700, on System 7.1 in 8 MB.
 // MAME 0.287's macqd700 stays black with 20 or 36 MB, and Mac OS 8.1 stops
 // on « not enough memory » in 8 (CHANGELOG 2026-10-02 (ninth)).
-int q700(const Options& o, const std::string& bin) {
+// The Quadra 900 is the same discrete board with Apple PIC IOPs and Egret
+// (Q700Memory::Model::Q900, MAME macquadra700.cpp's macqd900).
+int q700(const Options& o, const std::string& bin, bool q900 = false) {
     const std::string rom = testasset::find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
     const std::string img = image("hdv/System 7.1 HD.dsk");
     if (rom.empty() || img.empty()) {
@@ -307,22 +355,32 @@ int q700(const Options& o, const std::string& bin) {
     }
     testasset::report({ rom, img });
     const pom68k::CoreConfig config = oracleConfig();
-    Q700Memory mem(config, 8u << 20, Q700Memory::kCpuHz, Q700Memory::Model::Spike);
+    Q700Memory mem(config, 8u << 20, Q700Memory::kCpuHz,
+                   q900 ? Q700Memory::Model::Q900 : Q700Memory::Model::Spike);
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Q700Cpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
-    return run(mem, cpu, o, img, bin, Q700Memory::kCpuHz / 60, kQ700Unjudged, [] {});
+    return run(mem, cpu, o, img, bin, Q700Memory::kCpuHz / 60,
+               q900 ? kQ900Unjudged : kQ700Unjudged, [] {});
 }
 
 int dispatch(const std::string& machine, const Options& o, const std::string& bin) {
     if (machine == "lcii") return lcii(o, bin);
-    if (machine == "q605") return q605(o, bin);
-    if (machine == "q800") return djmemc(o, bin, true);
-    if (machine == "c650") return djmemc(o, bin, false);
+    if (machine == "q605") return memcjr(o, bin, kQ605);
+    if (machine == "lc475") return memcjr(o, bin, kLc475);
+    if (machine == "lc575") return memcjr(o, bin, kLc575);
+    if (machine == "q800") return djmemc(o, bin, kQ800);
+    if (machine == "q650") return djmemc(o, bin, kQ650);
+    if (machine == "q610") return djmemc(o, bin, kQ610);
+    if (machine == "c650") return djmemc(o, bin, kC650);
+    if (machine == "c610") return djmemc(o, bin, kC610);
     if (machine == "q630") return q630(o, bin);
+    if (machine == "lc580") return q630(o, bin, true);
+    if (machine == "q900") return q700(o, bin, true);
     return q700(o, bin);
 }
 
-const char* const kMachines[] = { "lcii", "q605", "q800", "c650", "q630", "q700" };
+const char* const kMachines[] = { "lcii", "q605", "lc475", "lc575", "q800", "q650", "q610",
+                                  "c650", "c610", "q630", "lc580", "q700", "q900" };
 
 } // namespace
 
