@@ -129,7 +129,7 @@ void schema(const fs::path& root) {
     check(hasError(bad, 9, "decimal"), "integer, line 9");
     check(hasError(bad, 10, "<lle|hle>"), "firmware policy shape, line 10");
     check(hasError(bad, 11, "missing file") &&
-              hasError(bad, 11, utf8FromPath(root / "roms/none.rom")),
+              hasError(bad, 11, utf8FromPath((root / "roms/none.rom").lexically_normal())),
           "a missing ROM is named by its resolved path, line 11");
     check(hasError(bad, 12, "malformed quoted"), "quoting, line 12");
     check(hasError(bad, 13, "key = value"), "a line without '=', line 13");

@@ -78,7 +78,9 @@ void EthernetCapture::write(std::string path,int64_t hz) {
         busy_=false; return;
     }
     const std::string metadata=path+".tsv";
-    FILE* meta=std::fopen(metadata.c_str(),"wx");
+    // Binary: the companion's lines end in LF on every host (Windows' text
+    // mode would write CRLF, and the gate's reader matches "\n").
+    FILE* meta=std::fopen(metadata.c_str(),"wbx");
     if(!meta) {
         fail("Metadata: "+std::string(std::strerror(errno)));
         finishObservations();
