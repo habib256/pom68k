@@ -61,6 +61,7 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
         std::fprintf(stderr, "POM68K_CRT=%s: unknown preset (off, light, arcade, phosphor)\n",
                      config_.devices().crtPreset.c_str());
     state_.relaunch.daynaPortId = config_.core().bus.daynaPortId;
+    if (config_.core().storage.secondInternalFloppy) state_.relaunch.seSecondFloppy = true;
     // « Machine → Session »: beside the AppleShare default when no
     // session is open (configureAppleTalk).
     const std::string executableDir = app::MachineFactory::executableDirectory();
@@ -177,14 +178,14 @@ int GuiHostServices::processRelaunch() const {
     }
     if (state_.relaunch.switchArguments.empty()) return 0;
     auto relaunchArguments = state_.relaunch.verbatim
-        ? state_.relaunch.switchArguments : app::atalkArguments(
+        ? state_.relaunch.switchArguments : app::seSecondFloppyArguments(app::atalkArguments(
         app::daynaPortArguments(
             app::firmwareOverrideArguments(
                 app::machineProfileArguments(state_.relaunch.switchArguments,
                                              state_.relaunch.targetProfile),
                 state_.relaunch.firmwareOverrides),
             state_.relaunch.daynaPortId),
-        networkConfigOf(state_.network.atalk.config()));
+        networkConfigOf(state_.network.atalk.config())), state_.relaunch.seSecondFloppy);
     const std::string& executable = config_.executable();
 #if defined(_WIN32)
     std::vector<const char*> arguments = {executable.c_str()};

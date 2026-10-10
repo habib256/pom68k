@@ -358,6 +358,30 @@ void diskBaysMenuItem(const char* label) {
 
 // ── The window ─────────────────────────────────────────────────────────────
 
+// One floppy drive's row: its disk and « Éjecter », or the picker. Every
+// floppy swaps live, so the three drives share the shape.
+static void floppyRow(const char* label, const char* id, const std::string& path,
+               const std::function<bool()>& inserted,
+               const std::function<void()>& eject,
+               const std::function<void(const std::string&)>& insert,
+               const std::string& nearPath) {
+    ImGui::TextDisabled("%s", label);
+    if (inserted && inserted()) {
+        ImGui::Text("%s", !path.empty() ? fileName(path).c_str() : "<insérée>");
+        ImGui::SameLine();
+        const std::string button = std::string("Éjecter##") + id;
+        if (ImGui::SmallButton(button.c_str()) && eject) eject();
+    } else {
+        ImGui::SetNextItemWidth(-1);
+        std::string picked;
+        const std::string combo = std::string("##") + id + "pick";
+        if (imageCombo(combo.c_str(), std::string(), nearPath, picked, Only::Floppy) &&
+            !picked.empty() && insert)
+            insert(picked);
+    }
+    ImGui::Separator();
+}
+
 void diskBaysWindow(DiskBaysHost& host) {
     if (!gOpen || pom68k::gui::kioskActive()) return;
 
@@ -370,47 +394,24 @@ void diskBaysWindow(DiskBaysHost& host) {
 
     // ── Floppy first: it is the one bay that always swaps live, so it sits
     //    above the cold (reboot-requiring) hard-disk choices.
-    if (host.hasFloppyDrive) {
-        ImGui::TextDisabled("Disquette interne (SWIM)");
-        bool in = host.floppyInserted && host.floppyInserted();
-        if (in) {
-            ImGui::Text("%s", !host.floppyPath.empty()
-                                  ? fileName(host.floppyPath).c_str()
-                                  : "<insérée>");
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Éjecter##fd") && host.ejectFloppy)
-                host.ejectFloppy();
-        } else {
-            ImGui::SetNextItemWidth(-1);
-            std::string fd;
-            if (imageCombo("##fdpick", std::string(), host.bootPath, fd,
-                           Only::Floppy)
-                && !fd.empty() && host.insertFloppy)
-                host.insertFloppy(fd);
-        }
-        ImGui::Separator();
-    }
-
-    if (host.hasExternalFloppyDrive) {
-        ImGui::TextDisabled("Disquette externe (SWIM)");
-        bool in = host.externalFloppyInserted &&
-                  host.externalFloppyInserted();
-        if (in) {
-            ImGui::Text("%s", !host.externalFloppyPath.empty()
-                                  ? fileName(host.externalFloppyPath).c_str()
-                                  : "<insérée>");
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Éjecter##fdext") &&
-                host.ejectExternalFloppy)
-                host.ejectExternalFloppy();
-        } else {
-            ImGui::SetNextItemWidth(-1);
-            std::string fd;
-            if (imageCombo("##fdextpick", std::string(), host.bootPath, fd,
-                           Only::Floppy) && !fd.empty() &&
-                host.insertExternalFloppy)
-                host.insertExternalFloppy(fd);
-        }
+    if (host.hasFloppyDrive)
+        floppyRow("Disquette interne (SWIM)", "fd", host.floppyPath,
+                  host.floppyInserted, host.ejectFloppy, host.insertFloppy,
+                  host.bootPath);
+    if (host.hasSecondFloppyDrive)
+        floppyRow("Disquette interne 2 (SWIM, second mécanisme)", "fd2",
+                  host.secondFloppyPath, host.secondFloppyInserted,
+                  host.ejectSecondFloppy, host.insertSecondFloppy, host.bootPath);
+    if (host.hasExternalFloppyDrive)
+        floppyRow("Disquette externe (SWIM)", "fdext", host.externalFloppyPath,
+                  host.externalFloppyInserted, host.ejectExternalFloppy,
+                  host.insertExternalFloppy, host.bootPath);
+    // The SE and SE FDHD take a second internal mechanism; the ROM probes
+    // it once, at boot, so fitting or removing it relaunches the machine.
+    if (host.secondFloppyFittable && host.stageSecondFloppy) {
+        bool fitted = host.hasSecondFloppyDrive;
+        if (ImGui::Checkbox("Second lecteur interne (redémarre la machine)", &fitted))
+            host.stageSecondFloppy(fitted);
         ImGui::Separator();
     }
 

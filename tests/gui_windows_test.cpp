@@ -577,6 +577,61 @@ int main() {
         std::remove(dropped.c_str());
     }
 
+    // ── Disques: the SE's second internal floppy ─────────────────────
+    // Fitted: its own row, live like the others (a pick reaches the drive-2
+    // hook). Fittable either way: the checkbox stages the board option for
+    // the next boot through the relaunch hook, in both directions; a board
+    // without the connector shows neither.
+    {
+        const std::string dropped = "gui_windows_test_second.dsk";
+        { std::ofstream f(dropped, std::ios::binary); f << std::string(819200, '\0'); }
+        pom68k::diskBaysOfferDroppedImage(dropped);
+        pom68k::DiskBaysHost host;
+        host.romName = "roms/macse.rom";
+        host.bootPath = "hdv/boot.vhd";
+        std::vector<std::string> extras;
+        host.extras = &extras;
+        host.hasFloppyDrive = true;
+        host.floppyInserted = [] { return false; };
+        host.secondFloppyFittable = true;
+        host.hasSecondFloppyDrive = true;
+        bool secondIn = false;
+        std::string secondPicked;
+        std::vector<bool> staged;
+        host.secondFloppyInserted = [&] { return secondIn; };
+        host.insertSecondFloppy = [&](const std::string& p) {
+            secondPicked = p; secondIn = true; host.secondFloppyPath = p;
+        };
+        host.ejectSecondFloppy = [&] { secondIn = false; };
+        host.stageSecondFloppy = [&](bool fitted) { staged.push_back(fitted); };
+        auto draw = [&] { pom68k::diskBaysWindow(host); };
+        ui.frame(draw);
+        ui.frame(draw);
+        const ImGuiID fd2 = ui.idIn(pom68k::kDiskWindowTitle, "##fd2pick");
+        check(ui.clickId(fd2, draw), "a fitted second internal drive has its own picker");
+        const headless::Item* row = ui.scrollTo("gui_windows_test_second", draw);
+        if (row) ui.clickAt(row->bb.GetCenter(), draw);
+        check(secondIn && secondPicked == dropped,
+              "choosing an image inserts it live into drive 2 through its hook");
+        check(ui.find("Éjecter##fd2") != nullptr && ui.click("Éjecter##fd2", draw) && !secondIn,
+              "drive 2's « Éjecter » reaches its own hook");
+        check(ui.click("Second lecteur interne (redémarre la machine)", draw) &&
+                  staged == std::vector<bool>{false},
+              "unticking the fitted drive stages its removal for the next boot");
+        host.hasSecondFloppyDrive = false;
+        ui.frame(draw);
+        check(ui.findId(ui.idIn(pom68k::kDiskWindowTitle, "##fd2pick")) == nullptr,
+              "without the mechanism the drive-2 row is gone");
+        check(ui.click("Second lecteur interne (redémarre la machine)", draw) &&
+                  staged == std::vector<bool>{false, true},
+              "ticking it stages the fitting");
+        host.secondFloppyFittable = false;
+        ui.frame(draw);
+        check(ui.find("Second lecteur interne (redémarre la machine)") == nullptr,
+              "a board without the connector offers no checkbox");
+        std::remove(dropped.c_str());
+    }
+
     // ── Moteur accéléré ──────────────────────────────────────────────
     {
         GuiCpuPanelState st;

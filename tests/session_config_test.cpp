@@ -344,6 +344,7 @@ void capture(const fs::path& root) {
         {"POM68K_AUDIO", "0"},
         {"POM68K_DRIVE_SFX", "0"},
         {"POM68K_SHARE_DIR", utf8FromPath(dir / "share")},
+        {"POM68K_SE_SECOND_FLOPPY", "1"},
     };
     Argv argv({"--machine-profile=lcii", "--daynaport=4",
                "--firmware-override=adb:hle:" + utf8FromPath(adb),
@@ -399,6 +400,22 @@ void capture(const fs::path& root) {
               d1.monitorWidth == 512 && d1.kiosk && d1.crtPreset == "phosphor" &&
               d1.turbo && !d1.audio && !d1.driveSounds,
           "reopened: media options, display and sound");
+    check(original.core().storage.secondInternalFloppy &&
+              again.core().storage.secondInternalFloppy,
+          "reopened: the SE's second internal floppy");
+    {
+        Argv off({"--se-second-floppy=0"});
+        Argv on({"--se-second-floppy=1"});
+        check(!RuntimeConfig::parse(off.argc(), off.argv(), environment).core()
+                   .storage.secondInternalFloppy &&
+                  RuntimeConfig::parse(on.argc(), on.argv(), StartupSnapshot{}).core()
+                      .storage.secondInternalFloppy &&
+                  seSecondFloppyArguments({"rom", "--se-second-floppy=1"}, false) ==
+                      std::vector<std::string>({"--se-second-floppy=0", "rom"}) &&
+                  seSecondFloppyArguments({"rom"}, std::nullopt) ==
+                      std::vector<std::string>({"rom"}),
+              "--se-second-floppy= overrides the environment and the relaunch writes it once");
+    }
 }
 
 } // namespace

@@ -20,6 +20,8 @@
 // visibility and teardown.
 
 #include "Cpu040.h"
+#include "Cpu68k.h"
+#include "MacMemory.h"
 #include "PortableEnv.h"
 #include "GuiSpeedGauge.h"
 #include "HfsBlankVolume.h"
@@ -92,6 +94,19 @@ struct TestMachine
     // to reach the audio-clocked branch without a real sound device.
     void forceAudioClocked() { this->activeHold_ = 90; }
     int engineAtomic() const { return this->cpuEngine(); }
+};
+
+// The compact board behind the same host: drive index 2 is the SE's
+// second internal mechanism (MacMemory::secondInternalDrive).
+struct CompactMachine : MachineHost<CompactMachine, MacMemory, Cpu68k, FakeAudio> {
+    using Base = MachineHost<CompactMachine, MacMemory, Cpu68k, FakeAudio>;
+    using Base::Base;
+    static constexpr bool kStereo = false;
+    int64_t frameCycles() const { return 1000; }
+    void emulateQuantum() { this->framesRun_++; }
+    bool drainAudio() { return false; }
+    void renderFrame(std::vector<uint32_t>& fb, int& w, int& h) { w = h = 1; fb.assign(1, 0); }
+    void publishStatus() {}
 };
 
 using MonoMachine = TestMachine<false>;
@@ -550,6 +565,45 @@ int main() {
         m.start();
     }
     check(true, "destruction WITHOUT an explicit stop() joins the thread");
+
+    // ── Drive 2: the SE's second internal floppy ──────────────────────────
+    // Queued like the other two, applied between quanta, reported back by
+    // the drive's own answer; an SE without the mechanism, or a Plus,
+    // takes nothing on index 2.
+    {
+        const std::string image = "machinehost_test_second.dsk";
+        { std::ofstream f(image, std::ios::binary); f << std::string(819200, '\0'); }
+        for (const bool fitted : {true, false}) {
+            pom68k::CoreConfig core = pom68k::defaultCoreConfig();
+            core.storage.secondInternalFloppy = fitted;
+            MacMemory se(core, MacMemory::Model::SE);
+            Cpu68k seCpu(se, jit::defaultResolvedConfig());
+            CompactMachine m(se, seCpu, audio);
+            m.running.store(false);                // commands only, no guest code
+            m.requestInsertFloppy(image, 2);
+            m.stepTick();
+            const bool in = m.floppyInserted(2) && se.secondInternalDrive().hasDisk();
+            if (fitted) {
+                check(m.secondInternalFloppy() && in && m.floppyPath(2) == image &&
+                          !se.internalDrive().hasDisk(),
+                      "drive 2 reaches the SE's second internal mechanism, and only it");
+                m.requestEjectFloppy(2);
+                m.stepTick();
+                check(!m.floppyInserted(2) && !se.secondInternalDrive().hasDisk(),
+                      "drive 2's eject empties that mechanism");
+            } else {
+                check(!m.secondInternalFloppy() && !in,
+                      "an SE without the second mechanism takes nothing on drive 2");
+            }
+            m.stop();
+        }
+        pom68k::CoreConfig core = pom68k::defaultCoreConfig();
+        core.storage.secondInternalFloppy = true;     // ignored off the SE family
+        MacMemory plus(core, MacMemory::Model::Plus);
+        check(!plus.hasSecondInternalDrive() && !plus.canFitSecondInternalDrive(),
+              "a Plus has no second internal connector, whatever the option says");
+        std::remove(image.c_str());
+    }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASS");
     return gFails ? 1 : 0;

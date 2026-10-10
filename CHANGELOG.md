@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (sixth)** — [The SE's second internal floppy reaches the product: option, Disques row, relaunch and session](#2026-10-10-se-second-floppy)
 - **2026-10-10 (fifth)** — [« Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1](#2026-10-10-serial-window)
 - **2026-10-10 (fourth)** — [Three pushes red on CI: a menu left open on a host without ROMs, a second host's registry, a switch under -Werror](#2026-10-10-ci-red)
 - **2026-10-10 (third)** — [Host text typed on machine time, the guest's scrap read back: the round trip is byte-identical on Mac OS 8.1](#2026-10-10-clipboard)
@@ -1118,6 +1119,42 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-se-second-floppy"></a>
+## 2026-10-10 (sixth) — The SE's second internal floppy reaches the product: option, Disques row, relaunch and session
+
+Closes the TODO item left by the sixteenth Snow increment (2026-10-09). The
+core already wired VIA1 PA4 and the optional mechanism behind
+`CoreStorageConfig::secondInternalFloppy`; nothing outside a gate could turn
+it on. Now:
+
+- **Option.** `POM68K_SE_SECOND_FLOPPY=1`, overridden by the relaunch
+  argument `--se-second-floppy=0|1`, carried by sessions as
+  `se-second-floppy`, and captured when one is saved. Every board but the SE
+  and SE FDHD ignores it: `MacMemory::canFitSecondInternalDrive`, so a Plus
+  stays single-drive whatever the option says.
+- **Live drive.** `MachineHost` has three floppy slots. Index 2 is the
+  second internal mechanism, inserted, ejected and reported by the drive's
+  own answer like the other two, and journaled and replayed as `insertfloppy
+  2` / `ejectfloppy 2`.
+- **Disques window.** The three floppy rows share one helper. A fitted
+  second drive gets « Disquette interne 2 (SWIM, second mécanisme) ». On a
+  board that can take one, the checkbox « Second lecteur interne (redémarre
+  la machine) » stages fitting or removal and relaunches on the session's
+  own line, as the DaynaPort card does, because the ROM's DiskSelect probes
+  PA4 once, at boot.
+
+**Gates.**
+- `machinehost_test` (new compact section): on a real `MacMemory` SE,
+  drive 2 reaches the second mechanism and only it, and its eject empties
+  it. An SE without the mechanism takes nothing on drive 2, and a Plus
+  refuses the option.
+- `gui_windows_test`: the row picks and ejects through drive 2's hooks, the
+  checkbox stages removal and fitting, and a board without the connector
+  shows neither.
+- `session_config_test`: environment → session → configuration round trip,
+  the argument overriding the environment, the relaunch writing it once.
+- `se_three_drive_etalon` still green.
 
 <a id="2026-10-10-serial-window"></a>
 ## 2026-10-10 (fifth) — « Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1

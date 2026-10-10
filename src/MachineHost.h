@@ -222,6 +222,14 @@ public:
         else
             return false;
     }
+    // Whether the board fitted a second internal mechanism (VIA1 PA4 high on
+    // the SE / SE FDHD) — immutable after construction, like the port.
+    bool secondInternalFloppy() const {
+        if constexpr (requires { mem.hasSecondInternalDrive(); })
+            return mem.hasSecondInternalDrive();
+        else
+            return false;
+    }
     bool floppyInserted(int drive = 0) const {
         return drive >= 0 && drive < int(floppyFlag_.size()) &&
                floppyFlag_[size_t(drive)].load(std::memory_order_acquire);
@@ -497,6 +505,10 @@ public:
                                  mem.externalDrive().backingPath(); }) {
             syncFloppy(1, mem.externalDrive());
         }
+        if constexpr (requires { mem.secondInternalDrive().hasDisk();
+                                 mem.secondInternalDrive().backingPath(); }) {
+            syncFloppy(2, mem.secondInternalDrive());
+        }
         {
             std::lock_guard<std::mutex> l(jitMu_);
             jitSnap_ = cpu.jit().stats().snapshot();
@@ -631,6 +643,10 @@ protected:
                     if constexpr (requires { mem.externalDrive().insert(c.path); })
                         if (mem.externalDrive().insert(c.path))
                             setFloppyInserted(true, c.path, 1);
+                } else if (!c.path.empty() && c.a == 2) {
+                    if constexpr (requires { mem.insertSecondInternalDisk(c.path); })
+                        if (mem.insertSecondInternalDisk(c.path))
+                            setFloppyInserted(true, c.path, 2);
                 }
                 break;
             case Cmd::EjectFloppy:
@@ -643,6 +659,11 @@ protected:
                     if constexpr (requires { mem.externalDrive().eject(); }) {
                         mem.externalDrive().eject();
                         setFloppyInserted(false, {}, 1);
+                    }
+                } else if (c.a == 2) {
+                    if constexpr (requires { mem.ejectSecondInternalDisk(); }) {
+                        mem.ejectSecondInternalDisk();
+                        setFloppyInserted(false, {}, 2);
                     }
                 }
                 break;
@@ -740,6 +761,10 @@ protected:
             if constexpr (requires { mem.externalDrive().hasDisk();
                                      mem.externalDrive().backingPath(); }) {
                 syncFloppy(1, mem.externalDrive());
+            }
+            if constexpr (requires { mem.secondInternalDrive().hasDisk();
+                                     mem.secondInternalDrive().backingPath(); }) {
+                syncFloppy(2, mem.secondInternalDrive());
             }
         }
     }
@@ -922,9 +947,11 @@ protected:
     // button on its own address and need no folding.
     bool hostBtn_[2] = { false, false };
     bool traceKeys_ = false;
-    std::array<std::atomic<bool>, 2> floppyFlag_{};
+    // Drive 0 internal, 1 external port, 2 the SE's second internal
+    // mechanism (MacMemory::secondInternalDrive) where the board fits one.
+    std::array<std::atomic<bool>, 3> floppyFlag_{};
     mutable std::mutex mediaMu_;
-    std::array<std::string, 2> floppyPath_{};
+    std::array<std::string, 3> floppyPath_{};
     std::array<std::atomic<bool>, 7> stBayCd_{};
 
     std::mutex fbMu_;

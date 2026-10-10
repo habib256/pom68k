@@ -53,6 +53,7 @@ void bindSessionFile(GuiSessionState& state, const app::RuntimeConfig& config,
             for (FirmwareOverride& policy : capture.firmware)
                 if (policy.target == staged.target) policy = staged;
         capture.daynaPortId = state.relaunch.daynaPortId;
+        if (state.relaunch.seSecondFloppy) capture.seSecondFloppy = *state.relaunch.seSecondFloppy;
         capture.appleTalk = state.network.appleTalkEnabled;
         capture.ltoUdp = state.network.ltoUdpEnabled;
         capture.network = networkConfigOf(state.network.atalk.config());

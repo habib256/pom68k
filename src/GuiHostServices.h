@@ -304,6 +304,12 @@ public:
 
     bool checkOnly() const noexcept { return config_.fullLleCheckOnly(); }
 
+    // Stage the SE's second internal floppy for the next boot and relaunch
+    // on this session's own line (the Disques window's checkbox).
+    void relaunchWithSecondFloppy(bool fitted) {
+        state_.relaunch.seSecondFloppy = fitted;
+        state_.relaunch.stageOwnCommandLine();
+    }
     void requestRelaunch(GLFWwindow* window, const std::string& romName,
                          const std::string& boot,
                          const std::vector<std::string>& extras);

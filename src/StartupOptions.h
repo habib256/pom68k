@@ -182,6 +182,8 @@ concept IntegerStartupOption =
       startup_policy::HexInteger)                                            \
     X(Q900IopTrace, "POM68K_Q900_IOP_TRACE", StartupDomain::Core,          \
       startup_policy::TraceLimit)                                            \
+    X(SeSecondFloppy, "POM68K_SE_SECOND_FLOPPY", StartupDomain::Core,      \
+      startup_policy::EnabledBoolean)                                        \
     X(NoCdBay, "POM68K_NO_CDBAY", StartupDomain::Core,                     \
       startup_policy::Presence)                                              \
     X(NoAgentAutostart, "POM68K_NO_AGENT_AUTOSTART", StartupDomain::Core,   \

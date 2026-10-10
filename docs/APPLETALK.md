@@ -45,7 +45,7 @@ change AppleTalk behaviour are repeated here.
 | `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — the boost block runs only with the hub up and **no** cable (`src/GuiHostServices.h:78`) |
 | `POM68K_ATALK_DEBUG=1` | off | DDP/NBP/ATP tracer + one line per client retransmit with its lag (`src/AtalkStack.cpp:126-129`, retransmit lag at `:462-467`) |
 | `POM68K_MACIP_DEBUG=1` | off | every IP datagram both ways, with TCP flags/seq/ack (`src/MacIpGateway.cpp:61-68`) |
-| `POM68K_DAYNAPORT=<id>` | off | put a DaynaPort SCSI/Link (Ethernet as a SCSI target) at that SCSI ID, on any machine. **`<id>` is taken literally only for 2-6; `=1` and anything out of range mean "the default", ID 3** — where the CD-ROM normally sits (`decodeDaynaPortId`, `src/RuntimeConfigCore.cpp:172-176`, comment in `src/DaynaPortBus.h:13-24`). `--daynaport=<id>` on the command line overrides it (`0` = no card) — that is how the window's staged selector reaches the next boot (`src/RuntimeConfig.h`, `src/RuntimeConfigRelaunch.cpp`). Its uplink is the same NAT the MacIP gateway uses — §6.4bis |
+| `POM68K_DAYNAPORT=<id>` | off | put a DaynaPort SCSI/Link (Ethernet as a SCSI target) at that SCSI ID, on any machine. **`<id>` is taken literally only for 2-6; `=1` and anything out of range mean "the default", ID 3** — where the CD-ROM normally sits (`decodeDaynaPortId`, `src/RuntimeConfigCore.cpp:180-184`, comment in `src/DaynaPortBus.h:13-24`). `--daynaport=<id>` on the command line overrides it (`0` = no card) — that is how the window's staged selector reaches the next boot (`src/RuntimeConfig.h`, `src/RuntimeConfigRelaunch.cpp`). Its uplink is the same NAT the MacIP gateway uses — §6.4bis |
 
 ### 0.2 Guest side
 
@@ -1005,7 +1005,7 @@ or the AppleTalk / Ethernet window's « Carte au prochain démarrage » selector
 staged and applied by a relaunch that carries `--daynaport=<id>` (§0.3).
 `<id>` is taken literally when it parses to 2-6 and falls back to **ID 3** —
 where the CD-ROM normally sits — otherwise (`decodeDaynaPortId`,
-`src/RuntimeConfigCore.cpp:172-176`, one reading for both routes).
+`src/RuntimeConfigCore.cpp:180-184`, one reading for both routes).
 Guest
 side needs the
 DaynaPort SCSI/Link driver plus MacTCP/TCP-IP configuration. Manual mode

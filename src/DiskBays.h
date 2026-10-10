@@ -103,6 +103,18 @@ struct DiskBaysHost {
     std::function<void(const std::string&)> insertExternalFloppy;
     std::function<void()>                   ejectExternalFloppy;
     std::function<bool()>                   externalFloppyInserted;
+    // The SE / SE FDHD's second internal mechanism (VIA1 PA4 high, drive
+    // index 2): live like the others when fitted. Fitting it is a board
+    // option the ROM probes at boot, so `stageSecondFloppy` stages the
+    // choice and relaunches; `secondFloppyFittable` says the board has the
+    // connector at all (never on the Classic or the 128K-Plus family).
+    std::string  secondFloppyPath;
+    bool         hasSecondFloppyDrive = false;
+    bool         secondFloppyFittable = false;
+    std::function<void(const std::string&)> insertSecondFloppy;
+    std::function<void()>                   ejectSecondFloppy;
+    std::function<bool()>                   secondFloppyInserted;
+    std::function<void(bool fitted)>        stageSecondFloppy;
 
     // --- Live attach and the guest's view (docs/SCSI_HOTPLUG.md § 3) ---
     // attachBay puts a fixed disk on the bus NOW (queued to the machine

@@ -156,6 +156,15 @@ std::string daynaPortArgument(std::optional<int> id);
 std::vector<std::string> daynaPortArguments(std::vector<std::string> arguments,
                                             std::optional<int> id);
 
+// The SE / SE FDHD's second internal floppy mechanism for the NEXT boot:
+// `--se-second-floppy=1` fits it, `=0` leaves the single drive, either
+// overriding POM68K_SE_SECOND_FLOPPY. A board option, probed by the ROM at
+// boot like the DaynaPort card, so the Disques window stages it and the
+// relaunch serializes it. Other boards ignore it.
+inline constexpr std::string_view kSeSecondFloppyOption = "--se-second-floppy=";
+std::vector<std::string> seSecondFloppyArguments(std::vector<std::string> arguments,
+                                                 std::optional<bool> fitted);
+
 // The in-process AppleTalk services' identity for the NEXT boot:
 // `--atalk-<key>=<value>` with key ∈ share, server, volume, printer, spool,
 // queue, print-options, gateway, dns, ethertalk. The window edits them live (AtalkHub::reconfigure) and the

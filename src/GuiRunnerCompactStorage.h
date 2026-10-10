@@ -23,6 +23,12 @@ pom68k::DiskBaysHost compactDiskBaysHost(Ctx& ctx) {
         ctx.services.requestRelaunch(
             ctx.window, ctx.spec.romName, ctx.spec.floppyPath, scsiMedia);
     };
+    // The second internal mechanism is fitted at boot (the ROM's
+    // DiskSelect probes PA4 once): staged, then the same relaunch line.
+    if (host.secondFloppyFittable)
+        host.stageSecondFloppy = [&ctx](bool fitted) {
+            ctx.services.relaunchWithSecondFloppy(fitted);
+        };
     return host;
 }
 

@@ -203,6 +203,11 @@ public:
                (model_ == Model::SE || model_ == Model::SEFDHD);
     }
     SonyDrive& secondInternalDrive() { return secondInternalDrive_; }
+    // The boards whose second internal connector exists (fitted or not):
+    // what the Disques window offers to fit at the next boot.
+    bool canFitSecondInternalDrive() const {
+        return model_ == Model::SE || model_ == Model::SEFDHD;
+    }
     bool insertSecondInternalDisk(const std::string& path) {
         return hasSecondInternalDrive() && secondInternalDrive_.insert(path);
     }

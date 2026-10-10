@@ -88,6 +88,7 @@ constexpr KeySpec kKeys[] = {
     {"floppy", Target::Startup, Rule::InputPath, option::Floppy.name},
     {"floppy-read-only", Target::Startup, Rule::Boolean,
      option::FloppyReadOnly.name},
+    {"se-second-floppy", Target::Argument, Rule::Boolean, kSeSecondFloppyOption},
     {"ide", Target::Startup, Rule::InputPath, option::IdeDisk.name},
     {"monitor", Target::Startup, Rule::Integer, option::Monitor.name},
     {"kiosk", Target::Startup, Rule::Boolean, option::Kiosk.name},
@@ -471,6 +472,7 @@ SessionCapture SessionCapture::from(const RuntimeConfig& config) {
     capture.serialModem = config.devices().serialModem;
     capture.floppy = config.devices().startupFloppy;
     capture.floppyReadOnly = !config.devices().floppyWriteBack;
+    capture.seSecondFloppy = config.core().storage.secondInternalFloppy;
     capture.ide = config.core().storage.ideDisk;
     capture.monitorWidth = config.devices().monitorWidth;
     capture.kiosk = config.devices().kiosk;
@@ -536,6 +538,7 @@ std::vector<SessionEntry> SessionCapture::entries() const {
     serial("serial-modem", serialModem);
     if (floppy && !floppy->empty()) add("floppy", absolute(*floppy));
     add("floppy-read-only", flag(floppyReadOnly));
+    add("se-second-floppy", flag(seSecondFloppy));
     if (ide && !ide->empty()) add("ide", absolute(*ide));
     if (monitorWidth) add("monitor", std::to_string(*monitorWidth));
     add("kiosk", flag(kiosk));

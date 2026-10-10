@@ -82,4 +82,15 @@ std::vector<std::string> daynaPortArguments(std::vector<std::string> arguments,
     return arguments;
 }
 
+std::vector<std::string> seSecondFloppyArguments(std::vector<std::string> arguments,
+                                                 std::optional<bool> fitted) {
+    std::erase_if(arguments, [](const std::string& argument) {
+        return argument.starts_with(kSeSecondFloppyOption);
+    });
+    if (fitted)
+        arguments.insert(arguments.begin(),
+                         std::string(kSeSecondFloppyOption) + (*fitted ? "1" : "0"));
+    return arguments;
+}
+
 } // namespace pom68k::app

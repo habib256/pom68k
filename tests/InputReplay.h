@@ -58,6 +58,9 @@ struct InputReplayer {
             } else if (e.a == 1) {
                 if constexpr (requires { mem.externalDrive().insert(e.path); })
                     if (!e.path.empty()) mem.externalDrive().insert(e.path);
+            } else if (e.a == 2) {
+                if constexpr (requires { mem.insertSecondInternalDisk(e.path); })
+                    if (!e.path.empty()) mem.insertSecondInternalDisk(e.path);
             }
             return true;
         case ET::EjectFloppy:
@@ -67,6 +70,9 @@ struct InputReplayer {
             } else if (e.a == 1) {
                 if constexpr (requires { mem.externalDrive().eject(); })
                     mem.externalDrive().eject();
+            } else if (e.a == 2) {
+                if constexpr (requires { mem.ejectSecondInternalDisk(); })
+                    mem.ejectSecondInternalDisk();
             }
             return true;
         case ET::InsertBay:

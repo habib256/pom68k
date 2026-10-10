@@ -126,6 +126,7 @@ struct SessionCapture {
     SerialPortConfig serialPrinter, serialModem;
     std::optional<std::string> floppy;
     bool floppyReadOnly = false;
+    bool seSecondFloppy = false;
     std::optional<std::string> ide;
     std::optional<int> monitorWidth;
     bool kiosk = false;

@@ -2160,7 +2160,14 @@ terminal roles; it also runs as a Windows build under wine (2026-10-10, not
 yet on Windows itself). `q605_serial_etalon` has a real Serial Driver client
 (`dev/serprobe`) exchange a hello, a 6000-byte burst and an order-sensitive
 receipt with the terminal on Mac OS 8.1),
-`POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_FLUX_JITTER`
+`POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`,
+`POM68K_SE_SECOND_FLOPPY` (`1` = fit the SE / SE FDHD's second internal
+mechanism on VIA1 PA4 high, `CoreStorageConfig::secondInternalFloppy`;
+ignored by every other board; the relaunch argument
+`--se-second-floppy=0|1` overrides it, and a session's `se-second-floppy`
+key carries it. The Disques window gives the fitted drive its own live row,
+drive index 2 of `MachineHost`, and stages fitting or removal with a
+relaunch, since the ROM probes the line once at boot), `POM68K_FLUX_JITTER`
 (`<pct>` = displace every flux edge the SWIM separators read by a
 deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in
 jitter model of the § 1.3 flux plan; 0/unset = ideal edges, the default,
@@ -2188,7 +2195,7 @@ instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort
 SCSI/Link at that SCSI ID on every machine's bus; a value outside 2-6 — or a
 non-numeric one — lands on the default ID 3 (ID 1 is refused too), `0` or
-unset = no card (`decodeDaynaPortId`, `RuntimeConfigCore.cpp:172-176`, attached
+unset = no card (`decodeDaynaPortId`, `RuntimeConfigCore.cpp:180-184`, attached
 through `configureScsiBus`; the relaunch argument `--daynaport=<id>` is read by
 the same decoder and overrides the variable — `RuntimeConfigRelaunch.cpp`) —
 [§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)),

@@ -68,6 +68,9 @@ struct GuiRelaunchState {
     // so a relaunch reads the same whether the card came from the
     // environment, the command line or the window.
     std::optional<int> daynaPortId;
+    // The SE's second internal floppy for the relaunched machine:
+    // `--se-second-floppy=` (RuntimeConfig.h). Unset leaves the line alone.
+    std::optional<bool> seSecondFloppy;
     bool showWindow = false;
     // Exec `switchArguments` as they are: opening a session file asks for
     // that session, not for it plus this machine's card, hub names and

@@ -133,6 +133,11 @@ RuntimeConfig RuntimeConfig::parse(
                 argument.substr(kDaynaPortOption.size()));
             return;
         }
+        if (argument.starts_with(kSeSecondFloppyOption)) {
+            config.core_.storage.secondInternalFloppy =
+                argument.substr(kSeSecondFloppyOption.size()) == "1";
+            return;
+        }
         if (applyAtalkArgument(config.network_, argument)) return;
         if (argument.starts_with(smokePrefix) || argument.starts_with(smokeRelaunchPrefix) ||
             argument.starts_with(smokeSessionPrefix)) {

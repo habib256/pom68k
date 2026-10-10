@@ -16,6 +16,18 @@ void bindFloppyBays(DiskBaysHost& host, Machine& machine) {
     };
     host.ejectFloppy = [&machine] { machine.requestEjectFloppy(0); };
 
+    if constexpr (requires { machine.mem.canFitSecondInternalDrive(); })
+        host.secondFloppyFittable = machine.mem.canFitSecondInternalDrive();
+    if constexpr (requires { machine.secondInternalFloppy(); })
+        host.hasSecondFloppyDrive = machine.secondInternalFloppy();
+    if (host.hasSecondFloppyDrive) {
+        host.secondFloppyInserted = [&machine] { return machine.floppyInserted(2); };
+        host.insertSecondFloppy = [&machine](const std::string& path) {
+            machine.requestInsertFloppy(path, 2);
+        };
+        host.ejectSecondFloppy = [&machine] { machine.requestEjectFloppy(2); };
+    }
+
     host.hasExternalFloppyDrive = machine.externalFloppyPort();
     if (!host.hasExternalFloppyDrive) return;
     host.externalFloppyInserted = [&machine] {
@@ -96,18 +108,23 @@ template <class Machine>
 void refreshFloppyBays(DiskBaysHost& host, const Machine& machine) {
     host.floppyPath = machine.floppyPath(0);
     host.externalFloppyPath = machine.floppyPath(1);
+    host.secondFloppyPath = machine.floppyPath(2);
 }
 
 template <class Mem>
 void configureFloppyWriteBack(Mem& mem, bool enabled) {
     mem.internalDrive().setWriteBack(enabled);
     mem.externalDrive().setWriteBack(enabled);
+    if constexpr (requires { mem.secondInternalDrive().setWriteBack(enabled); })
+        mem.secondInternalDrive().setWriteBack(enabled);
 }
 
 template <class Mem>
 void flushFloppyDrives(Mem& mem) {
     mem.internalDrive().flushToFile();
     mem.externalDrive().flushToFile();
+    if constexpr (requires { mem.secondInternalDrive().flushToFile(); })
+        mem.secondInternalDrive().flushToFile();
 }
 
 } // namespace pom68k::gui

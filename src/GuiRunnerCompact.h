@@ -92,6 +92,7 @@ int runCompactGui(MachineT& machine, Mem& mem, Cpu& cpu,
             else if (!liveFloppy.empty()) c.spec.floppyPath = liveFloppy;
             host.floppyPath = c.spec.floppyPath;
             host.externalFloppyPath = machine.floppyPath(1);
+            host.secondFloppyPath = machine.floppyPath(2);
             pom68k::diskBaysWindow(host);
         }
 
