@@ -66,13 +66,6 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   Up »), le LC III (sa branche existe, mais POM68K n'atteint pas le Prober
   en 20 000 trames sur `System 7.1 HD.dsk`), le Mac II… : chacun = une
   branche de `tests/prober_oracle.cpp` et son rapport MAME.
-- [ ] **Aligner la PRAM de l'oracle Quadra 900 sur celle de POM68K.** Sous
-  MAME, l'Egret démarre d'une PRAM froide et System 7.1 monte en 24 bits
-  (`MMU32Bit` `$00`) ; sous POM68K, la XPRAM semée le fait monter en 32
-  bits (`$01`). Dix sondes au-dessous de 16 Mo restent donc non jugées
-  sur ce profil et sur le Quadra 950 (`kQ900Unjudged`). Pré-semer la
-  NVRAM de l'Egret de MAME
-  avec la PRAM de POM68K les rendrait jugeables.
 - [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
   la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU
   du 68040 : un hybride qu'aucun Mac n'a été. Passer à `$A55A2225` déplace

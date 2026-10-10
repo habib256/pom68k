@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (ninth)** — [MAME's Quadra 900 and 950 boot from POM68K's PRAM, and their ten 24-bit probes agree](#2026-10-10-q900-oracle-pram)
 - **2026-10-10 (eighth)** — [The LC and the Quadra 950 under the oracle; the LC III branch does not reach the Prober yet](#2026-10-10-oracle-lc-q950)
 - **2026-10-10 (seventh)** — [Six more machines under MAME's guest oracle; the Quadra 650's mouse has no service routine, and MAME's Quadra 900 boots 24-bit](#2026-10-10-oracle-siblings)
 - **2026-10-10 (sixth)** — [The SE's second internal floppy reaches the product: option, Disques row, relaunch and session](#2026-10-10-se-second-floppy)
@@ -1121,6 +1122,31 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-q900-oracle-pram"></a>
+## 2026-10-10 (ninth) — MAME's Quadra 900 and 950 boot from POM68K's PRAM, and their ten 24-bit probes agree
+
+Closes the TODO item "aligner la PRAM de l'oracle Quadra 900". The seventh
+entry left ten probes below 16 MB unjudged on the Quadra 900 and 950
+(`kQ900Unjudged`): MAME's cold Egret brought System 7.1 up 24-bit, where
+those addresses alias I/O and NuBus space.
+
+MAME's Egret (`egret.cpp`, `device_nvram_interface`) keeps its PRAM as 256
+raw bytes, `nvram/<system>/egret`, copied into the MCU's RAM at the first
+host reset. The rig now saves the Eclipse's seeded battery store
+(`Q700Memory::savePram`, the HLE `Egret` file: 256 bytes then the seconds)
+as `pom68k.pram` before booting, and `tools/prober_oracle.sh` hands its
+first 256 bytes to MAME with `-nvram_directory` on `q900` and `q950`.
+
+Under MAME the ten probes now read "absent", as under POM68K and as on
+MAME's own Quadra 700. Both machines agree on 74 judged fields; only the
+RTC and `memTop`, unjudged everywhere, differ. `kQ900Unjudged` is gone: the
+two profiles use the Quadra 700's list. The goldens
+`tools/prober_oracle_macqd900.tsv` / `macqd950.tsv` are the new MAME runs
+(120 s).
+
+**Gates.** `q700`, `q900` and `q950_prober_oracle_etalon` green, and all
+fourteen `<profil>_prober_oracle_etalon`.
 
 <a id="2026-10-10-oracle-lc-q950"></a>
 ## 2026-10-10 (eighth) — The LC and the Quadra 950 under the oracle; the LC III branch does not reach the Prober yet

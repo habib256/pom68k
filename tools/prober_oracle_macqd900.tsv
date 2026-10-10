@@ -1,4 +1,4 @@
-POM68K-Prober v1	time=-420486954	findings=77
+POM68K-Prober v1	time=-420477608	findings=77
 # valeurs BRUTES telles que la machine les rend.
 # l'interpretation est a l'ecran, jamais ici.
 ident	machineType	0x00000014	INFO
@@ -16,19 +16,19 @@ ident	romChksum	0x420DBFF3	INFO
 ident	romIdWord	0x067C	INFO
 ident	rom85	0x3FFF	INFO
 ident	hwCfg	0xFC00	INFO
-ident	memTop	0x001E1104	INFO
-clock	macSeconds	-420486965	INFO
-clock	dateTime	2026-10-10 12:32:11	INFO
-probe	VIA1@Plus	present@0x00EFE1FE	INFO
-probe	SCC@Plus	present@0x009FFFF8	INFO
+ident	memTop	0x001E1360	INFO
+clock	macSeconds	-420477619	INFO
+clock	dateTime	2026-10-10 15:07:57	INFO
+probe	VIA1@Plus	absent@0x00EFE1FE	INFO
+probe	SCC@Plus	absent@0x009FFFF8	INFO
 probe	SCSI@Plus	present@0x00580000	INFO
-probe	IWM@Plus	present@0x00DFE1FF	INFO
-probe	VIA1@V8	present@0x00F00000	INFO
-probe	SCC@V8	present@0x00F04000	INFO
-probe	SCSI@V8	present@0x00F10000	INFO
-probe	ASC@V8	present@0x00F14000	INFO
-probe	SWIM@V8	present@0x00F16000	INFO
-probe	pVIA2@V8	present@0x00F26000	INFO
+probe	IWM@Plus	absent@0x00DFE1FF	INFO
+probe	VIA1@V8	absent@0x00F00000	INFO
+probe	SCC@V8	absent@0x00F04000	INFO
+probe	SCSI@V8	absent@0x00F10000	INFO
+probe	ASC@V8	absent@0x00F14000	INFO
+probe	SWIM@V8	absent@0x00F16000	INFO
+probe	pVIA2@V8	absent@0x00F26000	INFO
 probe	VIA1@II	present@0x50F00000	INFO
 probe	VIA2@II	present@0x50F02000	INFO
 probe	SCC@II	present@0x50F04000	INFO

@@ -107,27 +107,14 @@ const Unjudged kQ650Unjudged = {
                           "Quadra 650 mouse misses its service routine" },
 };
 
-// The Quadra 700 runs System 7.1, which has no CalendarMenu.
+// The Quadra 700 runs System 7.1, which has no CalendarMenu. So do the
+// Quadra 900 and 950 once MAME's Egret boots from POM68K's seeded PRAM: a
+// cold one brings System 7.1 up 24-bit, and ten probes below 16 MB then
+// reach I/O and NuBus space (CHANGELOG 2026-10-10 (seventh), (ninth)).
 const Unjudged kQ700Unjudged = {
     { "clock.macSeconds", kRtc },
     { "clock.dateTime", kRtc },
     { "ident.memTop", kHeap },
-};
-
-// The Quadra 900: MAME's Egret starts from a cold PRAM and System 7.1 comes
-// up in 24-bit mode (MMU32Bit $00, read by Lua at 85 s), POM68K's seeded
-// XPRAM in 32-bit ($01). Below 16 MB the probes then reach I/O and NuBus
-// space under MAME and nothing under POM68K: a PRAM difference, not a bus
-// one, until the two PRAMs are aligned (TODO § Preuve).
-const char* const k24Bit = "MAME's cold Egret PRAM boots 24-bit (MMU32Bit $00), POM68K's "
-                           "seeded XPRAM 32-bit ($01)";
-const Unjudged kQ900Unjudged = {
-    { "clock.macSeconds", kRtc },
-    { "clock.dateTime", kRtc },
-    { "ident.memTop", kHeap },
-    { "probe.VIA1@Plus", k24Bit }, { "probe.SCC@Plus", k24Bit }, { "probe.IWM@Plus", k24Bit },
-    { "probe.VIA1@V8", k24Bit }, { "probe.SCC@V8", k24Bit }, { "probe.SCSI@V8", k24Bit },
-    { "probe.ASC@V8", k24Bit }, { "probe.SWIM@V8", k24Bit }, { "probe.pVIA2@V8", k24Bit },
 };
 
 struct Options {
@@ -399,9 +386,12 @@ int q700(const Options& o, const std::string& bin, bool q900 = false, bool q950 
                    q950 ? Q700Memory::Model::Q950
                    : q900 ? Q700Memory::Model::Q900 : Q700Memory::Model::Spike);
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    // The Eclipse's battery store as POM68K seeds it, for the rig to hand
+    // MAME's Egret (its NVRAM is these 256 bytes): both then boot from the
+    // same PRAM (CHANGELOG 2026-10-10 (ninth)).
+    if (!o.check && (q900 || q950)) mem.savePram(o.outDir + "/pom68k.pram");
     Q700Cpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu);
-    return run(mem, cpu, o, img, bin, hz / 60,
-               q900 || q950 ? kQ900Unjudged : kQ700Unjudged, [] {});
+    return run(mem, cpu, o, img, bin, hz / 60, kQ700Unjudged, [] {});
 }
 
 int dispatch(const std::string& machine, const Options& o, const std::string& bin) {

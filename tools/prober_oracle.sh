@@ -19,8 +19,9 @@
 #   lc475, lc575  MAME maclc475 / maclc575, as q605 (their IDs, 68LC040)
 #   q650, q610, c610  MAME macqd650 / macqd610 / macct610, as q800
 #   lc580  MAME maclc580 (bios "older"), as q630, 68LC040
-#   q900  MAME macqd900, as q700, with the IOPs and the Egret
-#   q950  MAME macqd950, the same board at 33 MHz, its own ROM
+#   q900  MAME macqd900, as q700, with the IOPs and the Egret, its NVRAM
+#         seeded with POM68K's PRAM (pom68k.pram)
+#   q950  MAME macqd950, the same board at 33 MHz, its own ROM, likewise
 #   lc    MAME maclc, hdv/ref/System 7.1 HD.dsk, 10 MB, FPU socket filled
 #   lc3   MAME maclc3, the same volume, 8 MB, FPU socket filled
 #
@@ -181,10 +182,19 @@ esac
 # as on POM68K (MAME's default is ID 6); the blank "Infinite HD" companion,
 # when there is one, at ID 1 as on POM68K (InfiniteHdCompanion.h).
 cp "$work/prepared.hd" "$work/mame.hd"
+# The Eclipse's Egret holds the PRAM; MAME's starts it cold (24-bit System
+# 7.1) unless its NVRAM file exists, which is the 256 bytes POM68K seeds.
+nvram=()
+if [ "$machine" = q900 ] || [ "$machine" = q950 ]; then
+    rm -rf "$work/nvram"
+    mkdir -p "$work/nvram/$system"
+    head -c 256 "$work/pom68k.pram" > "$work/nvram/$system/egret"
+    nvram=(-nvram_directory nvram)
+fi
 disks=("-$bus:0" harddisk "-$bus:6" "" -hard1 mame.hd)
 [ -f "$work/companion.hd" ] && disks=("-$bus:0" harddisk "-$bus:1" harddisk "-$bus:6" ""
                                       -hard1 mame.hd -hard2 companion.hd)
-(cd "$work" && "${mame[@]}" -rompath roms -cfg_directory cfg "$system" -ramsize "$ram" "${extra[@]}" \
+(cd "$work" && "${mame[@]}" -rompath roms -cfg_directory cfg "$system" -ramsize "$ram" "${extra[@]}" "${nvram[@]}" \
      "${disks[@]}" -video none -sound none -nothrottle -seconds_to_run "$secs" >/dev/null)
 
 "$root/build/prober_oracle" --extract "$work/mame.hd" "$work/mame.tsv"
