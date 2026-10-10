@@ -101,11 +101,13 @@ inline guestkbd::Keystroke keystrokeFor(char32_t cp, GuestLayout layout) {
     if (cp >= 0x20 && cp < 0x7F)
         return guestkbd::keystrokeFor(char(cp), layout == GuestLayout::FrenchAzerty);
     if (layout == GuestLayout::FrenchAzerty) {
-        // The unshifted characters of the number row and the US ' key.
+        // The unshifted characters of the number row and the US ' key:
+        // é è ç à ù §, by code point — MSVC reads a source without /utf-8
+        // as its ANSI code page, where U'é' is a multi-character constant.
         switch (cp) {
-            case U'é': return {0x13}; case U'è': return {0x1A};
-            case U'ç': return {0x19}; case U'à': return {0x1D};
-            case U'ù': return {0x27}; case U'§': return {0x16};
+            case U'\u00E9': return {0x13}; case U'\u00E8': return {0x1A};
+            case U'\u00E7': return {0x19}; case U'\u00E0': return {0x1D};
+            case U'\u00F9': return {0x27}; case U'\u00A7': return {0x16};
             default: break;
         }
     }
