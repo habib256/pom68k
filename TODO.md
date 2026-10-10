@@ -59,13 +59,12 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
 - [ ] **Étendre l'oracle invité différentiel aux profils restants.**
-  Quatorze machines ont leur gate `<profil>_prober_oracle_etalon` (LC, LC
-  II, LC 475/580, Quadra 605/610/650/630/700/800/900/950, Centris
-  610/650 ; `CHANGELOG` 2026-10-10 (seventh), (eighth)). Restent le LC 575
-  (le `maclc575` de MAME 0.287, « imperfect », s'arrête sur « Starting
-  Up »), le LC III (sa branche existe, mais POM68K n'atteint pas le Prober
-  en 20 000 trames sur `System 7.1 HD.dsk`), le Mac II… : chacun = une
-  branche de `tests/prober_oracle.cpp` et son rapport MAME.
+  Quinze machines ont leur gate `<profil>_prober_oracle_etalon` (LC, LC
+  II, LC III, LC 475/580, Quadra 605/610/650/630/700/800/900/950, Centris
+  610/650 ; `CHANGELOG` 2026-10-10 (seventh), (eighth), (tenth)). Restent
+  le LC 575 (le `maclc575` de MAME 0.287, « imperfect », s'arrête sur
+  « Starting Up »), le Mac II… : chacun = une branche de
+  `tests/prober_oracle.cpp` et son rapport MAME.
 - [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
   la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU
   du 68040 : un hybride qu'aucun Mac n'a été. Passer à `$A55A2225` déplace

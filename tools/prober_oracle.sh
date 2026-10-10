@@ -23,7 +23,7 @@
 #         seeded with POM68K's PRAM (pom68k.pram)
 #   q950  MAME macqd950, the same board at 33 MHz, its own ROM, likewise
 #   lc    MAME maclc, hdv/ref/System 7.1 HD.dsk, 10 MB, FPU socket filled
-#   lc3   MAME maclc3, the same volume, 8 MB, FPU socket filled
+#   lc3   MAME maclc3, hdv/ref/System 7.5.3 HD.dsk, 8 MB, FPU socket filled
 #
 # <work-dir>/mame.tsv is what `<profile>_prober_oracle_etalon` compares
 # POM68K with: after a change to the Prober, the volume or the rig, copy it

@@ -77,6 +77,20 @@ const Unjudged kLciiUnjudged = {
     { "probe.VIA2@II", "unmapped on the LC II; maclc raises no bus error there" },
 };
 
+// The LC III on System 7.5.3: MAME's Macs all have an Apple CD-ROM at SCSI
+// ID 3 in a single-option (fixed) slot, and the Apple CD-ROM extension adds
+// 2424 bytes to its own resource fork when it finds a drive — one more
+// allocation block in use under MAME (CHANGELOG 2026-10-10 (tenth)).
+const Unjudged kLc3Unjudged = {
+    { "clock.macSeconds", kRtc },
+    { "clock.dateTime", kRtc },
+    { "ident.fpu", "MAME's 030 FPU produces 68881 FSAVE frames; the socket takes a 68882" },
+    { "ident.memTop", "follows the system-heap allocation order, a CPU-throughput symptom "
+                      "(TODO § Fidélité, cacheBoost)" },
+    { "volume.vol0.kbFree", "MAME's fixed CD-ROM at ID 3: the Apple CD-ROM extension "
+                            "writes into itself when it finds a drive" },
+};
+
 // The 040 boards on Mac OS 8.1 (CHANGELOG 2026-10-02 (eighth), (ninth)).
 // `memTop` moves with the system-heap allocation order on every board MAME
 // and POM68K both run, in either direction; it is a timing symptom, not an
@@ -250,11 +264,13 @@ int lc(const Options& o, const std::string& bin) {
 
 // The LC III: Sonora + Egret at 25 MHz (SonoraMemory::kIdLc3),
 // 8 MB, 68882, the factory XPRAM the product seeds (PlatformSonora.cpp).
+// On System 7.5.3, `lc3_boot_etalon`'s volume: System 7.1 has no enabler
+// for the LC III and never reaches the Prober (CHANGELOG 2026-10-10 (tenth)).
 int lc3(const Options& o, const std::string& bin) {
     const std::string rom = testasset::find("roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM");
-    const std::string img = image("hdv/System 7.1 HD.dsk");
+    const std::string img = image("hdv/System 7.5.3 HD.dsk");
     if (rom.empty() || img.empty()) {
-        std::printf("SKIP: needs the LC III ROM and hdv/ref/System 7.1 HD.dsk\n");
+        std::printf("SKIP: needs the LC III ROM and hdv/ref/System 7.5.3 HD.dsk\n");
         return 0;
     }
     testasset::report({ rom, img });
@@ -263,7 +279,7 @@ int lc3(const Options& o, const std::string& bin) {
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.egret().factoryDefaults();
     SonoraCpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu, true);
-    return run(mem, cpu, o, img, bin, SonoraMemory::kCpuHz / 60, kLciiUnjudged, [] {});
+    return run(mem, cpu, o, img, bin, SonoraMemory::kCpuHz / 60, kLc3Unjudged, [] {});
 }
 
 int lcii(const Options& o, const std::string& bin) {

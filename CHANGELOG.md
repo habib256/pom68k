@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (tenth)** — [The LC III under the oracle on System 7.5.3; MAME's fixed CD-ROM writes into the Apple CD-ROM extension](#2026-10-10-lc3-oracle)
 - **2026-10-10 (ninth)** — [MAME's Quadra 900 and 950 boot from POM68K's PRAM, and their ten 24-bit probes agree](#2026-10-10-q900-oracle-pram)
 - **2026-10-10 (eighth)** — [The LC and the Quadra 950 under the oracle; the LC III branch does not reach the Prober yet](#2026-10-10-oracle-lc-q950)
 - **2026-10-10 (seventh)** — [Six more machines under MAME's guest oracle; the Quadra 650's mouse has no service routine, and MAME's Quadra 900 boots 24-bit](#2026-10-10-oracle-siblings)
@@ -1122,6 +1123,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-lc3-oracle"></a>
+## 2026-10-10 (tenth) — The LC III under the oracle on System 7.5.3; MAME's fixed CD-ROM writes into the Apple CD-ROM extension
+
+The eighth entry left the LC III without a gate: POM68K never reached the
+Prober on `System 7.1 HD.dsk`. System 7.1 has no enabler for the LC III,
+which is why `lc3_boot_etalon` boots System 7.5.3. The oracle's LC III
+branch now runs that volume on both sides, and the Prober reports after
+1 800 frames.
+
+**Agreement.** 73 judged fields agree. The unjudged ones:
+- the RTC and `memTop`, as on every profile;
+- `ident.fpu`, MAME's 68881 FSAVE frames, as on the LC and LC II;
+- `volume.vol0.kbFree`, 71 810 KB under MAME against 71 812.
+
+**The 2 KB.** A catalog walk of both images after the run finds two files
+that differ. One is the report itself, two allocation blocks on both sides.
+The other is the Apple CD-ROM extension, whose resource fork grows from
+48 034 to 50 458 bytes under MAME and stays unchanged under POM68K. Every
+MAME Mac has an Apple CD-ROM at SCSI ID 3 (`maclc3.cpp`, `f108.cpp`,
+`macquadra*.cpp`), and the extension writes a resource into itself when it
+finds a drive. Removing the drive was tried: MAME 0.287 refuses
+`-scsi:3 ""` ("unknown option"), because a single-option connector is
+fixed. So the field stays unjudged on this profile with that reason
+(`kLc3Unjudged`). The System 7.1 profiles do not show it.
+
+**Gate.** `lc3_prober_oracle_etalon` is registered, with golden
+`tools/prober_oracle_maclc3.tsv` (MAME, 240 s). A golden with
+`machineType` mutated fails it. All fifteen `<profil>_prober_oracle_etalon`
+are green.
 
 <a id="2026-10-10-q900-oracle-pram"></a>
 ## 2026-10-10 (ninth) — MAME's Quadra 900 and 950 boot from POM68K's PRAM, and their ten 24-bit probes agree

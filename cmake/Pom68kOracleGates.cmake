@@ -12,9 +12,9 @@ add_executable(prober_oracle tests/prober_oracle.cpp)
 target_link_libraries(prober_oracle PRIVATE pom68k_core)
 # The siblings since 2026-10-10: same boards and ROMs, their own MAME
 # systems. No LC 575: MAME 0.287's maclc575 ("imperfect") stalls on Starting
-# Up, so it has no report to hold POM68K to. No LC III yet: POM68K's branch
-# does not reach the Prober within the frame budget (TODO § Preuve).
-foreach(pair lc:maclc lcii:maclc2 q605:macqd605 lc475:maclc475 q800:macqd800
+# Up, so it has no report to hold POM68K to. The LC III runs System 7.5.3,
+# which has its enabler (CHANGELOG 2026-10-10 (tenth)).
+foreach(pair lc:maclc lcii:maclc2 lc3:maclc3 q605:macqd605 lc475:maclc475 q800:macqd800
              q650:macqd650 q610:macqd610 c650:macct650 c610:macct610
              q630:macqd630 lc580:maclc580 q700:macqd700 q900:macqd900
              q950:macqd950)
