@@ -2005,6 +2005,35 @@ every `*_TRACE` — **activate on `=0` too**. Setting one to zero to turn it
 off is the trap; unset it instead. The knobs that do honour `=0` say so
 below.
 
+**Session files** (`--session=<file>` or a positional `<file>.pomsession`,
+[`SessionFile.h`](src/SessionFile.h), 2026-10-10). A session file holds one
+configured machine: profile, ROM and boot media, engine and backend, FPU,
+firmware provenance, the DaynaPort card, AppleTalk/LocalTalk and the hub's
+service names, serial endpoints, startup floppy, IDE disk, monitor, kiosk,
+CRT preset, turbo, audio and drive sounds. Guest execution state stays in
+`.pomss`. It is not a second configuration path: every key maps onto an input
+`RuntimeConfig::parse` already reads — a relaunch argument
+(`--machine-profile=`, `--daynaport=`, `--firmware-override=`, `--atalk-*=`),
+a `StartupOptions.h` value, or the positional ROM/media — through one table
+in `SessionFile.cpp`. `main` reads the file once, before any machine exists,
+and refuses it whole with every error listed by line (unknown or duplicate
+key, invalid value, missing or unsupported `pom68k-session <n>` line, missing
+input file). Precedence is **command line > session > environment >
+default**: session arguments are consumed before the command line's, session
+startup values replace the environment's (`0` *removes* a presence knob, the
+trap above), and positional ROM/media on the command line replace the
+session's whole set. Relative paths resolve against the file; the writer
+keeps paths below the file's directory relative, so a directory moved whole
+reopens. `MachineFactory` refuses a session whose ROM starts another profile
+than the one it names. The relaunch line carries `--session=<file>`, not its
+expansion, and a disk-swap relaunch keeps it. « Machine → Session » saves
+the running machine (`SessionCapture`: the startup configuration with the
+GUI's live engine, card, hub names, display and drive-sound choices written
+over it; media are those the machine booted with) and lists the directory's
+sessions; opening one is a *verbatim* `--session=` relaunch, so this
+machine's card and hub names are not appended to it. Gates:
+`session_config_test`, `gui_machine_window_test`, `gui_session_smoke_test`.
+
 **Machine selection** (README documents these in prose):
 `POM68K_MACII_MODEL`, `POM68K_LC3_PLUS`, `POM68K_AIO_ID`, `POM68K_IIVI`,
 `POM68K_Q605_ID`, `POM68K_CENTRIS_MODEL`, `POM68K_CENTRIS610` (legacy

@@ -158,7 +158,7 @@ Other items in this document are proposals, not adopted features.
 | 1 | SCSI and ATA backing-image policy — implemented | Content digest, since-open log, `.pomundo` reverse journal | Done | A state cannot silently combine old RAM with later disk data (`media_timeline_test`) |
 | 2 | Debugger service and basic views — implemented | `debug_session_test` on 000/020/030/040 rigs, `debug_inspection_test`, GUI window | Done | Pause, inspect, step and PC stop on representative CPU families |
 | 3 | Extended debugger and device inspection — implemented | Editing (registers, MMU/cache, RAM), access/exception stops, step over/out, bounded histories, OS/ROM symbols, typed device snapshots on every board | Done | Defined stop semantics, bounded history, no inspection side effects |
-| 4 | Session files | Startup/relaunch data present, combined file absent | M | Reopen the same configured machine with validated paths |
+| 4 | Session files — implemented | `session_config_test` (schema, paths, precedence, capture round trip), `gui_machine_window_test`, `gui_session_smoke_test` | Done | Reopen the same configured machine with validated paths |
 | 5 | CD track/source mapping | Single-source parser versus per-source Snow mapping | M | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
 | 7 | Native floppy medium and MOOF — implemented | Track/face storage, bit/flux import, atomic 125 ns export and v26 states | Done | Native lifecycle, weak-read replay and original Oids launch/flight/replay gates |
@@ -314,6 +314,14 @@ options, and report missing assets before relaunch. Proposed
 `session_config_test` covers round trips, moved directories, spaces/Unicode,
 missing ROM, unsupported version and overrides. A GUI smoke scenario opens
 two sessions with different media and confirms the resulting topology.
+
+**Implemented (format `pom68k-session 1`).** `src/SessionFile.h` owns the
+schema; `main` loads the file at the startup boundary and
+`RuntimeConfig::parse` consumes it with the stated precedence. Display
+preferences cover kiosk, CRT preset and monitor; the ImGui window layout
+stays in `imgui.ini`, per user, not per machine. A saved session's media are
+the ones the machine booted with: disks attached live since are not
+captured.
 
 ## Extend media handling through focused owners
 
@@ -684,3 +692,27 @@ a 400K PWM speed adoption); previously the 128K/512K could match a sector
 header in a stale frame and write that sector's data field into another
 slot. `iwm_read_test` compares a reader that spans the speed change with a
 freshly parked one; both MFS write gates pass again.
+
+The twenty-fifth increment implements order 4, session files. A
+`.pomsession` is versioned `key = value` text, and each key maps onto an
+input `RuntimeConfig::parse` already read: a relaunch argument, a
+`StartupOptions.h` value or the positional ROM/media. One table in
+`SessionFile.cpp` drives the parser, the environment overlay, the argument
+list and the writer. The file is read once, before any machine exists, and
+refused whole with every error listed by line. Precedence is command line >
+session > environment > default. A positional ROM or medium on the command
+line replaces the session's whole set. `0` removes a presence knob rather
+than setting it, since those knobs turn on at `=0`. Paths resolve against
+the file; the writer keeps those below its directory relative, so a moved
+directory reopens. `MachineFactory` refuses a ROM that starts another
+profile than the one the session names. « Machine → Session » saves
+through `SessionCapture` (the startup configuration with the GUI's live
+choices written over it), then reads the file back as a launch would. It
+lists the directory's sessions and opens one by a *verbatim*
+`--session=` relaunch: the general relaunch path appends this machine's
+card and hub names, which would win over the opened session's.
+`session_config_test` covers refusals, spaces and UTF-8, a moved directory,
+precedence and a capture → file → configuration round trip under an empty
+environment. `gui_session_smoke_test` opens two sessions with different
+media through two real processes. Unlike Snow's workspace, a session
+carries no window layout and no live-attached media.

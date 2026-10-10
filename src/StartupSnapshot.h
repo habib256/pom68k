@@ -36,6 +36,22 @@ public:
 
     std::size_t size() const noexcept { return values_.size(); }
 
+    // A copy with `erase` removed, then `set` in force — how a session file
+    // (SessionFile.h) takes precedence over the process environment.
+    StartupSnapshot overlaid(std::vector<Entry> set,
+                             const std::vector<std::string>& erase) const {
+        StartupSnapshot copy = *this;
+        for (const std::string& name : erase) copy.values_.erase(name);
+        for (Entry& entry : set) {
+            if (!known(entry.first))
+                throw std::invalid_argument(
+                    "unknown startup option: " + entry.first);
+            copy.values_.insert_or_assign(
+                std::move(entry.first), std::move(entry.second));
+        }
+        return copy;
+    }
+
     template <StartupOptionType Option>
     bool present(Option option) const {
         return values_.find(option.name) != values_.end();

@@ -489,6 +489,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10** — [Session files: one configured machine on disk, through the inputs startup already reads](#2026-10-10-session-files)
 - **2026-10-09 (eleventh)** — [Typed device snapshots on every board close order 3: read from members, never through the bus](#2026-10-09-debugger-devices)
 - **2026-10-09 (tenth)** — [MMU and cache registers edited as their instructions would; and the debugger's 68030 walk had been ignoring descriptor limits](#2026-10-09-debugger-mmu-edits)
 - **2026-10-09 (ninth)** — [Debugger symbols: OS names from cxmon for every ROM, ROM labels only for the ROM whose checksum they declare](#2026-10-09-debugger-symbols)
@@ -1112,6 +1113,71 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-session-files"></a>
+## 2026-10-10 — Session files: one configured machine on disk, through the inputs startup already reads
+
+Order 4 of `docs/SNOW_IMPLEMENTATION_PLAN.md`: "a versioned session file
+containing the product profile, asset paths, device topology, supported
+firmware choices, engine preference, network/serial setup and display/window
+preferences… The loader feeds RuntimeConfig and MachineFactory; it does not
+construct boards directly."
+
+**No second configuration path.** `src/SessionFile.h` defines
+`pom68k-session 1`, a `key = value` text file. Each of its 31 keys maps onto
+an input `RuntimeConfig::parse` already read: a relaunch argument
+(`--machine-profile=`, `--daynaport=`, `--firmware-override=`,
+`--atalk-*=`), a `StartupOptions.h` value, or the positional ROM/media. One
+table in `SessionFile.cpp` drives the parser, the overlay on the startup
+snapshot (`StartupSnapshot::overlaid`), the argument list and the writer.
+`main` reads the file once, as `--session=<file>` or a positional
+`<file>.pomsession`, and refuses it before any machine exists, with every
+error listed by line.
+
+**Precedence, decided once: command line > session > environment >
+default.** Session arguments are consumed before the command line's, so a
+later command-line value wins. A session startup value replaces the
+environment's. `0` *removes* a presence knob (`POM68K_LTOUDP`,
+`POM68K_NOFPU`, `POM68K_FLOPPY_RO`), because those knobs turn on at `=0`
+(DEV.md § 5). A positional ROM or medium on the command line replaces the
+session's ROM and media as one set. Relative paths resolve against the file,
+never the shell's directory. The writer keeps a path below the file's
+directory relative, so a directory moved whole reopens. `MachineFactory`
+refuses a session whose ROM starts another profile than the one it names;
+without that check, an LC session pointed at an LC II ROM booted an LC II
+under the session's name. The relaunch line carries `--session=<file>` and
+not its expansion, because the environment overlay would not survive
+`execv`. A disk-swap relaunch keeps the session.
+
+**Opening a session is a verbatim relaunch.** « Machine → Session » saves
+the running machine through `SessionCapture`: the startup configuration with
+the GUI's live choices written over it (engine switch, staged card and
+firmware, the hub's edited names, kiosk, CRT preset, drive sounds). The
+written file is read back as a launch would. The submenu also lists the
+directory's sessions. The general relaunch path appends this machine's
+`--daynaport=` and `--atalk-*=` options. Those come after
+`--session=`, so they would have won over the opened session's own values.
+Opening a session therefore execs only `--session=<file>`
+(`GuiRelaunchState::verbatim`).
+
+**Not captured.** The ImGui window layout stays in `imgui.ini`, which is
+per user, not per machine. A saved session's media are the ones the machine
+booted with: disks attached live since are not captured.
+
+**Gates.** `session_config_test` (new, asset-free, 51 checks) covers the
+refusals (header, version 2, unknown/duplicate keys, each value rule,
+missing files), round trips with spaces, outer blanks, quotes and UTF-8, a
+moved directory, precedence through `RuntimeConfig::parse` itself, the
+profile/ROM refusal through `MachineFactory::create`, and a capture → file
+→ configuration round trip under an *empty* environment.
+`gui_machine_window_test` drives the submenu and the save window headlessly.
+`gui_session_smoke_test` (new, `gui` label) runs two real processes:
+generation 1 opens `first.pomsession`, then picks the other listed session
+through the menu's own `openSession` and re-executes; generation 2 reports
+`second.pomsession` and inserts `second floppy.dsk`. All three GUI smokes
+fail on this host's own `DISPLAY=:1` with `GLX: Failed to create context:
+BadValue`, the existing two included; they pass under `xvfb-run` (unset
+`DISPLAY`).
 
 <a id="2026-10-09-debugger-devices"></a>
 ## 2026-10-09 (eleventh) — Typed device snapshots on every board close order 3: read from members, never through the bus

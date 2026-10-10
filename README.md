@@ -161,6 +161,14 @@ Examples:
 ./build/POM68K --version
 ```
 
+A configured machine can be saved as a session file (**Machine → Session →
+Enregistrer la session...**) and reopened from the same submenu or with
+`./build/POM68K --session=sessions/lcii.pomsession`. The file is plain
+`key = value` text listing the profile, ROM, media, engine, network, serial
+and display choices; paths are relative to the file. Options and media given
+on the command line override the session's. `src/SessionFile.h` lists the
+keys.
+
 For Plus, SE, SE FDHD and Classic, the positional media layout is
 `[ROM] [floppy] [SCSI disk]`. The 128K, 512K and 512Ke take `[ROM] [floppy]` only:
 they have no SCSI bus, so a volume passed to them would be a disk the guest

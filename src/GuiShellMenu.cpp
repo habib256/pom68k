@@ -10,6 +10,7 @@
 //
 //   Machine        run/pause/fast-forward, save state, recording,
 //                  « Changer de machine » (one submenu per board family),
+//                  « Session » (save / reopen a .pomsession),
 //                  drive sounds
 //   Périphériques  disks, network, controller provenance (LLE / HLE)
 //   CPU            measured speed, engine choice, engine statistics
@@ -27,6 +28,7 @@
 #include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiMachineControls.h"
+#include "GuiSessionMenu.h"
 #include "LleSession.h"
 #include "MachineFactory.h"
 #include "NetworkWindow.h"
@@ -172,6 +174,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             drawMachineControlItems(state_.machine);
             ImGui::Separator();
             drawMachineCatalogue(state_, current);
+            drawSessionMenu(state_);
             const bool sounds = !state_.audio.floppySfx.isMuted();
             if (ImGui::MenuItem("Sons des lecteurs", nullptr, sounds,
                                 state_.audio.floppySfx.isLoaded())) {
@@ -220,6 +223,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
     drawCrtWindow(state_.display);
     drawMachineControlWindow(state_.machine);
     drawDebuggerWindow(state_.machine.debugger);
+    drawSessionWindow(state_.sessionFile);
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);
     peripheralWindow(state_.peripherals);

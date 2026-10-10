@@ -36,6 +36,22 @@ set_tests_properties(gui_relaunch_smoke_test PROPERTIES
                      SKIP_RETURN_CODE 77 TIMEOUT 90 RUN_SERIAL TRUE
                      LABELS "gui")
 
+# Session files end to end: the wrapper writes two `.pomsession` files with
+# different media (paths with spaces and UTF-8, relative to the files); the
+# first generation opens the second through the Session menu's openSession
+# — a verbatim `--session=` relaunch — and really re-executes; each
+# generation reports the session and media it came up with. Same wrapper,
+# same SKIP rules (a GL surface).
+add_test(NAME gui_session_smoke_test
+         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_gui_smoke.sh"
+                 "${POM68K_GUI_SMOKE_EXE}"
+                 "${CMAKE_CURRENT_BINARY_DIR}/gui_session_smoke_report.txt"
+                 "${CMAKE_CURRENT_BINARY_DIR}/gui-smoke-missing.rom" session)
+set_tests_properties(gui_session_smoke_test PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                     SKIP_RETURN_CODE 77 TIMEOUT 90 RUN_SERIAL TRUE
+                     LABELS "gui")
+
 # The product windows without a window system: Dear ImGui's core compiled
 # with its test-engine hooks (item labels and rectangles), a CPU rasteriser
 # for the frames, the four window .cpp files by their real draw functions.
@@ -54,7 +70,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     # window with its mouse surface and keyboards (GuiScreen.h), the cabinet
     # mode and the CRT presets — driven headlessly on a fake machine.
     add_executable(gui_machine_window_test tests/gui_machine_window_test.cpp
-        src/GuiShellMenu.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp src/GuiDisplayWindow.cpp
+        src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp src/GuiDisplayWindow.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
         src/GuiEngineWindow.cpp src/DockLayout.cpp
         src/FloppySound.cpp src/miniaudio_impl.cpp
@@ -307,6 +323,15 @@ add_executable(ethertalk_test tests/ethertalk_test.cpp)
 target_include_directories(ethertalk_test PRIVATE tests)
 target_link_libraries(ethertalk_test PRIVATE pom68k_core)
 add_test(NAME ethertalk_test COMMAND ethertalk_test)
+
+# Session files (src/SessionFile.h): the version-1 schema and its refusals,
+# paths resolved against the file and kept relative below it (a moved
+# directory reopens; spaces and UTF-8 survive), the precedence command line >
+# session > environment through RuntimeConfig::parse, and MachineFactory's
+# refusal of a ROM that starts another profile. No ROM, no image.
+add_executable(session_config_test tests/session_config_test.cpp)
+target_link_libraries(session_config_test PRIVATE pom68k_app pom68k_core)
+add_test(NAME session_config_test COMMAND session_config_test)
 
 add_executable(daynaport_test tests/daynaport_test.cpp)
 target_include_directories(daynaport_test PRIVATE tests)

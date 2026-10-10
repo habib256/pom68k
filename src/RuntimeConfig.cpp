@@ -7,6 +7,7 @@
 
 #include "RuntimeConfig.h"
 #include "RuntimeConfigParsers.h"
+#include "SessionFile.h"
 
 #include <algorithm>
 #include <cstring>
@@ -68,8 +69,12 @@ void applyFirmwareOverride(pom68k::CoreFirmwareConfig& firmware,
 } // namespace
 
 RuntimeConfig RuntimeConfig::parse(
-    int argc, char* const argv[], const StartupSnapshot& startup) {
+    int argc, char* const argv[], const StartupSnapshot& environment,
+    const SessionFile* session) {
     RuntimeConfig config;
+    // A session's startup values replace the environment's (SessionFile.h).
+    const StartupSnapshot startup =
+        session ? session->overlay(environment) : environment;
     auto product = detail::parseProductStartup(startup);
     config.cpu_ = std::move(product.cpu);
     config.jit_ = std::move(product.jit);
@@ -92,52 +97,53 @@ RuntimeConfig RuntimeConfig::parse(
     std::vector<FirmwareOverride> firmwareOverrides;
     // Outer optional: was the option given at all. Inner: the card, or none.
     std::optional<std::optional<int>> commandLineDaynaPort;
-    for (int i = 1; i < argc; ++i) {
-        const char* arg = argv[i] ? argv[i] : "";
-        config.launchArguments_.emplace_back(arg);
-        if (std::strcmp(arg, "--version") == 0) {
+    auto consume = [&](std::string_view argument) {
+        if (argument == "--version") {
             config.showVersion_ = true;
-            continue;
+            return;
         }
-        if (std::strcmp(arg, "--lle-aarch64") == 0 ||
-            std::strcmp(arg, "--lle-aarch64-check") == 0) {
+        if (argument == "--lle-aarch64" || argument == "--lle-aarch64-check") {
             config.fullLleAarch64_ = true;
             config.fullLleCheckOnly_ =
-                config.fullLleCheckOnly_ ||
-                std::strcmp(arg, "--lle-aarch64-check") == 0;
+                config.fullLleCheckOnly_ || argument == "--lle-aarch64-check";
             config.jit_.resolved.engineExplicit = true;
             config.jit_.resolved.engine = jit::EngineKind::Jit;
             config.jit_.resolved.backend = "a64";
-            continue;
+            return;
         }
 
         constexpr std::string_view smokePrefix = "--gui-smoke=";
         constexpr std::string_view smokeRelaunchPrefix = "--gui-smoke-relaunch=";
-        const std::string_view argument(arg);
+        constexpr std::string_view smokeSessionPrefix = "--gui-smoke-session=";
+        if (isSessionArgument(argument)) return; // loaded at the boundary
         if (argument.starts_with(kMachineProfileOption)) {
             const std::string_view slug =
                 argument.substr(kMachineProfileOption.size());
             if (const MachineProfile* profile = machineProfile(slug))
                 commandLineProfile = profile->snapshot;
-            continue;
+            return;
         }
         if (argument.starts_with(kFirmwareOverrideOption)) {
             if (const auto policy = parseFirmwareOverride(argument))
                 firmwareOverrides.push_back(*policy);
-            continue;
+            return;
         }
         if (argument.starts_with(kDaynaPortOption)) {
             commandLineDaynaPort = detail::decodeDaynaPortId(
                 argument.substr(kDaynaPortOption.size()));
-            continue;
+            return;
         }
-        if (applyAtalkArgument(config.network_, argument)) continue;
-        if (argument.starts_with(smokePrefix) || argument.starts_with(smokeRelaunchPrefix)) {
+        if (applyAtalkArgument(config.network_, argument)) return;
+        if (argument.starts_with(smokePrefix) || argument.starts_with(smokeRelaunchPrefix) ||
+            argument.starts_with(smokeSessionPrefix)) {
             const bool relaunch = argument.starts_with(smokeRelaunchPrefix);
+            const bool sessions = argument.starts_with(smokeSessionPrefix);
             const std::string_view report = argument.substr(
-                relaunch ? smokeRelaunchPrefix.size() : smokePrefix.size());
+                relaunch ? smokeRelaunchPrefix.size()
+                : sessions ? smokeSessionPrefix.size() : smokePrefix.size());
             if (!report.empty()) {
                 config.diagnostics_.smokeRelaunch = relaunch;
+                config.diagnostics_.smokeSession = sessions;
                 config.diagnostics_.smokeReport = std::string(report);
                 // The gate exercises GUI lifecycle, not host devices.
                 config.network_.appleTalk = false;
@@ -146,14 +152,32 @@ RuntimeConfig RuntimeConfig::parse(
                 config.devices_.floppyWriteBack = false;
                 config.devices_.serialPrinter = config.devices_.serialModem = {};
             }
-            continue;
+            return;
         }
-        if (!config.romPath_) config.romPath_ = arg;
-        else config.mediaArguments_.emplace_back(arg);
+        if (!config.romPath_) config.romPath_ = std::string(argument);
+        else config.mediaArguments_.emplace_back(argument);
+    };
+    // Session arguments first, so the command line's later ones win.
+    if (session) {
+        config.sessionPath_ = session->source;
+        for (const std::string& argument : session->arguments())
+            consume(argument);
     }
-    if (commandLineProfile)
+    for (int i = 1; i < argc; ++i) {
+        const char* arg = argv[i] ? argv[i] : "";
+        config.launchArguments_.emplace_back(arg);
+        consume(arg);
+    }
+    // Positional ROM/media replace the session's as one set.
+    if (session && !config.romPath_ && config.mediaArguments_.empty()) {
+        config.romPath_ = session->rom;
+        config.mediaArguments_ = session->media;
+    }
+    if (commandLineProfile) {
         detail::applyMachineProfile(config.machineSelection_, config.cpu_,
                                     config.core_, *commandLineProfile);
+        if (session) config.sessionProfile_ = commandLineProfile;
+    }
     for (const FirmwareOverride& policy : firmwareOverrides)
         applyFirmwareOverride(config.core_.firmware, policy);
     if (commandLineDaynaPort)

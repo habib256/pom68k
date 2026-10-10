@@ -24,6 +24,8 @@ public:
     int run(app::MachineSession& session) override {
         shell_ = std::make_unique<GuiShell>(state_, objects_, session.config());
         state_.relaunch.targetProfile = session.profile().snapshot;
+        state_.sessionFile.profile = session.profile().snapshot;
+        state_.sessionFile.romName = session.romName();
         services_ = std::make_unique<GuiHostServices>(
             state_, objects_, *shell_, session.config());
         return PlatformComposers::run(session, *services_);

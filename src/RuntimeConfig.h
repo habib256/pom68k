@@ -13,12 +13,15 @@
 #include "jit/JitConfig.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace pom68k::app {
+
+struct SessionFile;
 
 // Startup policy is separated by responsibility. RuntimeConfig parses only
 // explicit inputs; consumers receive these immutable value objects by
@@ -107,6 +110,11 @@ struct DiagnosticConfig {
     // really re-executes; the second (told apart by the `--daynaport=` the
     // relaunch line carries) attests the card and closes. gui_relaunch_smoke_test.
     bool smokeRelaunch = false;
+    // `--gui-smoke-session=<report>`: generation 1 runs the session the
+    // command line opened, then opens the other `.pomsession` beside it
+    // through the menu's own path and re-executes; generation 2 attests
+    // the session, profile and media it came up with. gui_session_smoke_test.
+    bool smokeSession = false;
 };
 
 // One normalized selection per ROM-sharing machine family. Raw environment
@@ -160,8 +168,11 @@ std::vector<std::string> atalkArguments(std::vector<std::string> arguments,
 
 class RuntimeConfig {
 public:
+    // `session`, when the command line named one, was loaded at the
+    // startup boundary (SessionFile.h owns the precedence it gets here).
     static RuntimeConfig parse(int argc, char* const argv[],
-                               const StartupSnapshot& startup);
+                               const StartupSnapshot& startup,
+                               const SessionFile* session = nullptr);
 
     bool showVersion() const noexcept { return showVersion_; }
     bool fullLleAarch64() const noexcept { return fullLleAarch64_; }
@@ -194,11 +205,23 @@ public:
         return mediaArguments_;
     }
 
+    // The session file this process opened (empty: none), and the profile
+    // it — or a command-line override — asked for, which MachineFactory
+    // holds the ROM to.
+    const std::filesystem::path& sessionPath() const noexcept {
+        return sessionPath_;
+    }
+    std::optional<SnapMachine> sessionProfile() const noexcept {
+        return sessionProfile_;
+    }
+
 private:
     std::string executable_;
     std::optional<std::string> romPath_;
     std::vector<std::string> mediaArguments_;
     std::vector<std::string> launchArguments_;
+    std::filesystem::path sessionPath_;
+    std::optional<SnapMachine> sessionProfile_;
     CpuConfig cpu_;
     JitConfig jit_;
     NetworkConfig network_;

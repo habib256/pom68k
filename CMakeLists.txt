@@ -470,7 +470,7 @@ add_library(pom68k_app STATIC
     src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp src/RuntimeConfigSerial.cpp
     src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp
     src/RuntimeConfigRelaunch.cpp src/RuntimeConfigNetwork.cpp
-    src/MachineFactory.cpp src/MachineSession.cpp)
+    src/MachineFactory.cpp src/MachineSession.cpp src/SessionFile.cpp)
 target_include_directories(pom68k_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # ─── GUI executable (Dear ImGui, fetched by setup_imgui.sh) ──────────────
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
@@ -488,7 +488,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/GuiMachineRuntime.cpp
         src/GuiHostServices.cpp
         src/GuiHostSerial.cpp
-        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
+        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiMachineControls.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
         src/GuiSmokeScenario.cpp
         src/PlatformComposers.cpp
         src/PlatformCompact.cpp

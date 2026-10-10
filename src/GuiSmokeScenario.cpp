@@ -3,6 +3,7 @@
 
 #include "GuiSmokeScenario.h"
 
+#include "GuiSessionMenu.h"
 #include "GuiSessionState.h"
 #include "SaveStateSlot.h"
 
@@ -21,6 +22,10 @@ void GuiSmokeScenario::frame(GuiSessionState& session, GLFWwindow* window,
     std::fprintf(stderr, "gui-smoke: frame %d\n", frames_);
     if (relaunch_) {
         relaunchFrame(session, window);
+        return;
+    }
+    if (sessions_) {
+        sessionFrame(session, window);
         return;
     }
     // Once, and through the slot's own setter. Re-assigning a shared member
@@ -94,6 +99,53 @@ void GuiSmokeScenario::relaunchFrame(GuiSessionState& session, GLFWwindow* windo
     glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 
+// The session scenario. Generation 1, after three frames: the other
+// `.pomsession` the menu lists beside this one is opened exactly as
+// « Machine → Session » does (openSession: a verbatim `--session=`
+// relaunch), with this scenario's own option carried along, and the
+// process really re-executes. Generation 2: three frames, then close.
+// Each generation reports the session and media it was configured with;
+// the wrapper compares them with the files it wrote.
+void GuiSmokeScenario::sessionFrame(GuiSessionState& session, GLFWwindow* window) {
+    if (frames_ < 3 || closeRequested_) return;
+    if (generation_ == 1) {
+        for (const std::filesystem::path& file :
+             app::listSessions(app::pathFromUtf8(session.sessionFile.directory)))
+            if (app::utf8FromPath(file) != session.sessionFile.current)
+                opened_ = app::utf8FromPath(file);
+        if (!opened_.empty()) {
+            openSession(session.relaunch, opened_);
+            session.relaunch.switchArguments.push_back("--gui-smoke-session=" + *report_);
+        }
+        std::fprintf(stderr, "gui-smoke: generation 1 opens %s\n",
+                     opened_.empty() ? "(no other session)" : opened_.c_str());
+    }
+    closeRequested_ = true;
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
+}
+
+int GuiSmokeScenario::finishSessions(bool relaunchRequested) const {
+    const bool ok = windowOpened_ && frames_ >= 3 && closeRequested_ &&
+        windowClosed_ && !session_.empty() &&
+        (generation_ == 2 || (!opened_.empty() && relaunchRequested));
+    std::ofstream output(*report_, std::ios::trunc);
+    if (!output) return 1;
+    output << "generation=" << generation_ << '\n'
+           << "session=" << app::utf8FromPath(session_) << '\n';
+    for (const std::string& medium : media_) output << "media=" << medium << '\n';
+    output << "opened=" << opened_ << '\n'
+           << "relaunch_requested=" << relaunchRequested << '\n'
+           << "window_closed=" << windowClosed_ << '\n'
+           << "result=" << (ok ? "PASS" : "FAIL") << '\n';
+    if (generation_ == 1) {
+        std::fprintf(stderr, "gui-smoke: generation 1 session=%s media=%s\n",
+                     app::utf8FromPath(session_).c_str(),
+                     media_.empty() ? "" : media_.front().c_str());
+        std::fprintf(stderr, "gui-smoke: generation 1 %s, re-executing\n", ok ? "PASS" : "FAIL");
+    }
+    return ok ? 0 : 1;
+}
+
 int GuiSmokeScenario::finishRelaunch(bool relaunchRequested) const {
     const bool ok = generation_ == 1
         ? windowOpened_ && frames_ >= 3 && cardStaged_ && closeRequested_ && windowClosed_ && relaunchRequested
@@ -117,6 +169,7 @@ int GuiSmokeScenario::finishRelaunch(bool relaunchRequested) const {
 int GuiSmokeScenario::finish(bool relaunchRequested) const {
     if (!enabled()) return 0;
     if (relaunch_) return finishRelaunch(relaunchRequested);
+    if (sessions_) return finishSessions(relaunchRequested);
     const bool stateFile = std::filesystem::is_regular_file(*report_ + ".pomss");
     const bool ok = windowOpened_ && frames_ >= 3 && engineRequested_ &&
         engineSwitched_ && saveRequested_ && saveCompleted_ && stateFile &&

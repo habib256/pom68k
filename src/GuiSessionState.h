@@ -17,6 +17,7 @@
 #include "LtoUdp.h"
 #include "MachineCatalog.h"
 #include "PeripheralWindow.h"
+#include "SessionFile.h"
 #include "jit/JitStats.h"
 
 #include <chrono>
@@ -66,6 +67,10 @@ struct GuiRelaunchState {
     // environment, the command line or the window.
     std::optional<int> daynaPortId;
     bool showWindow = false;
+    // Exec `switchArguments` as they are: opening a session file asks for
+    // that session, not for it plus this machine's card, hub names and
+    // profile (processRelaunch otherwise appends them, and they would win).
+    bool verbatim = false;
     // The frame asked the window to close (a staged relaunch, a machine
     // switch, the speed measurement done, a kiosk quit chord); the shell
     // carries it to GLFW. GuiShellMenu.cpp sets it, GuiShell.cpp clears it.
@@ -77,6 +82,20 @@ struct GuiRelaunchState {
         if (switchArguments.empty()) switchArguments = {std::string()};
         showWindow = true;
     }
+};
+
+// « Machine → Session » (GuiSessionMenu.h): the session file this process
+// opened, where sessions are listed, and the save window's fields.
+struct GuiSessionFileState {
+    // The running session as a file's entries; bound by GuiHostServices.
+    std::function<std::vector<pom68k::app::SessionEntry>()> capture;
+    std::string current;   // the session this process opened, UTF-8; empty: none
+    std::string directory; // listed in the menu, the default save place
+    std::string romName;   // the ROM the machine actually loaded
+    std::optional<pom68k::SnapMachine> profile;
+    std::array<char, 1024> savePath{};
+    bool showSaveWindow = false;
+    std::string status;    // the last save's verdict, shown in the window
 };
 
 struct GuiCpuPanelState {
@@ -104,6 +123,7 @@ struct GuiSessionState {
     GuiNetworkState network;
     GuiAudioState audio;
     GuiRelaunchState relaunch;
+    GuiSessionFileState sessionFile;
     GuiCpuPanelState cpu;
     GuiDiagnosticState diagnostics;
     pom68k::PeripheralHost peripherals;

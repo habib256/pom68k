@@ -19,6 +19,7 @@
 #include "Cpu68k.h"
 #include "DockLayout.h"
 #include "GuiMachineControls.h"
+#include "GuiSessionMenu.h"
 #include "GuiScreen.h"
 #include "GuiSessionState.h"
 #include "GuiShellMenu.h"
@@ -33,6 +34,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -427,6 +429,77 @@ int main() {
             }
         }
         ui.frame(draw);
+    }
+
+    // ── Machine → Session: save the running machine, reopen a file ───
+    // The window writes what `capture` returns through writeSessionFile
+    // (which reads it back as a launch would); the menu lists the
+    // directory's `.pomsession` files and opening one stages a VERBATIM
+    // relaunch on `--session=<file>` (GuiSessionMenu.h).
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::absolute("gui_session_menu");
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        const fs::path rom = dir / "plus.rom";
+        const fs::path disk = dir / "boot disk.dsk";
+        std::ofstream(rom, std::ios::binary) << std::string(128u << 10, '\0');
+        std::ofstream(disk, std::ios::binary) << "disk";
+        state.sessionFile.directory = pom68k::app::utf8FromPath(dir);
+        state.sessionFile.profile = pom68k::SnapMachine::Plus;
+        state.sessionFile.capture = [&] {
+            pom68k::app::SessionCapture capture;
+            capture.profile = pom68k::SnapMachine::Plus;
+            capture.rom = pom68k::app::utf8FromPath(rom);
+            capture.media = {pom68k::app::utf8FromPath(disk)};
+            return capture.entries();
+        };
+        auto hoverSession = [&] {
+            ui.click("Machine", draw);
+            const headless::Item* item = ui.find("Session");
+            if (!item) return false;
+            const ImVec2 c = item->bb.GetCenter();
+            ui.mouseTo(c.x, c.y);
+            ui.frame(draw);
+            ui.frame(draw);
+            return true;
+        };
+        check(hoverSession() && ui.find("Enregistrer la session...") != nullptr &&
+                  ui.find("plus") == nullptr,
+              "« Session » offers the save and lists nothing in an empty directory");
+        check(clickMenuItem(ui, "Enregistrer la session...", draw) &&
+                  state.sessionFile.showSaveWindow,
+              "« Enregistrer la session... » opens the save window");
+        ui.frame(draw);
+        const fs::path saved = dir / "plus.pomsession";
+        check(windowShown(kSessionWindowTitle) &&
+                  std::string(state.sessionFile.savePath.data()) ==
+                      pom68k::app::utf8FromPath(saved),
+              "the window proposes <directory>/<profile>.pomsession");
+        check(ui.click("Enregistrer", draw) && fs::is_regular_file(saved) &&
+                  state.sessionFile.status.starts_with("Session enregistrée"),
+              "« Enregistrer » writes the file and says so");
+        const pom68k::app::SessionParse reread = pom68k::app::loadSession(saved);
+        check(reread.session && reread.session->rom == pom68k::app::utf8FromPath(rom) &&
+                  reread.session->media.size() == 1,
+              "the saved file reopens with its ROM and medium");
+        state.sessionFile.showSaveWindow = false;
+        ui.frame(draw);
+
+        check(hoverSession() && clickMenuItem(ui, "plus", draw) &&
+                  state.relaunch.verbatim && state.relaunch.closeWindow &&
+                  state.relaunch.switchArguments ==
+                      std::vector<std::string>{"--session=" +
+                                               pom68k::app::utf8FromPath(saved)},
+              "choosing a listed session stages a verbatim --session= relaunch");
+        state.relaunch = {};
+        state.sessionFile.current = pom68k::app::utf8FromPath(saved);
+        check(hoverSession() && clickMenuItem(ui, "plus", draw) &&
+                  state.relaunch.switchArguments.empty() && !state.relaunch.closeWindow,
+              "the session already open is marked, not reopened");
+        ui.frame(draw);
+        state.sessionFile.capture = {};
+        fs::remove_all(dir);
     }
 
     // ── CPU menu ─────────────────────────────────────────────────────

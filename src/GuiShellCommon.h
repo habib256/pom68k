@@ -50,7 +50,10 @@ public:
              const app::RuntimeConfig& config)
         : state_(state), objects_(objects),
           smoke_(config.diagnostics().smokeReport, config.diagnostics().smokeRelaunch,
-                 config.core().bus.daynaPortId) {}
+                 config.core().bus.daynaPortId) {
+        if (config.diagnostics().smokeSession)
+            smoke_.observeSessions(config.sessionPath(), config.mediaArguments());
+    }
 
     GuiWindowSession* openWindow(int width, int height,
                                  const std::string& title);

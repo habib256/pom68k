@@ -5,6 +5,7 @@
 
 #include "CrtEffectStack.h"
 #include "DiskBays.h"
+#include "GuiSessionMenu.h"
 #include "GuiShell.h"
 #include "MachineHost.h"
 
@@ -12,6 +13,7 @@
 
 #include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <system_error>
 
 #if defined(__linux__) || defined(__APPLE__)
@@ -59,6 +61,12 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
         std::fprintf(stderr, "POM68K_CRT=%s: unknown preset (off, light, arcade, phosphor)\n",
                      config_.devices().crtPreset.c_str());
     state_.relaunch.daynaPortId = config_.core().bus.daynaPortId;
+    // « Machine → Session »: beside the AppleShare default when no
+    // session is open (configureAppleTalk).
+    const std::string executableDir = app::MachineFactory::executableDirectory();
+    bindSessionFile(state_, config_, executableDir.empty()
+        ? std::filesystem::path("sessions")
+        : std::filesystem::path(executableDir) / ".." / "sessions");
     state_.peripherals.relaunch = [this](std::vector<FirmwareOverride> overrides) {
         state_.relaunch.firmwareOverrides = std::move(overrides);
         state_.relaunch.stageOwnCommandLine();
@@ -69,6 +77,7 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     };
 }
 GuiHostServices::~GuiHostServices() {
+    state_.sessionFile.capture = {};
     state_.network.atalk.stopEthernetCapture();
     state_.peripherals.relaunch = {};
     state_.network.relaunchWithDaynaPort = {};
@@ -147,6 +156,12 @@ void GuiHostServices::requestRelaunch(
     GLFWwindow* window, const std::string& romName, const std::string& boot,
     const std::vector<std::string>& extras) {
     state_.relaunch.switchArguments = {romName, boot};
+    // A disk swap stays in its session: the positional ROM and media
+    // replace the session's set, everything else it says still applies.
+    if (!config_.sessionPath().empty())
+        state_.relaunch.switchArguments.insert(
+            state_.relaunch.switchArguments.begin(),
+            std::string(app::kSessionOption) + app::utf8FromPath(config_.sessionPath()));
     for (const std::string& extra : relaunchExtras(extras))
         if (extra != boot) state_.relaunch.switchArguments.push_back(extra);
     glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -161,7 +176,8 @@ int GuiHostServices::processRelaunch() const {
         if (!shell_.smokeExecs() || verdict != 0) return verdict;
     }
     if (state_.relaunch.switchArguments.empty()) return 0;
-    auto relaunchArguments = app::atalkArguments(
+    auto relaunchArguments = state_.relaunch.verbatim
+        ? state_.relaunch.switchArguments : app::atalkArguments(
         app::daynaPortArguments(
             app::firmwareOverrideArguments(
                 app::machineProfileArguments(state_.relaunch.switchArguments,

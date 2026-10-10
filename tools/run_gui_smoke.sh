@@ -9,9 +9,12 @@ missing_rom=${3:-}
 # lifecycle (default): open/render/engine/save/close, relaunch intercepted.
 # relaunch: the first generation stages the DaynaPort card and really
 # re-executes; the second generation must attest the card and close.
+# session: two session files with different media; the first generation
+# opens the second through the Session menu's path and re-executes.
 mode=${4:-lifecycle}
 option="--gui-smoke=$report"
 if [ "$mode" = relaunch ]; then option="--gui-smoke-relaunch=$report"; fi
+if [ "$mode" = session ]; then option="--gui-smoke-session=$report"; fi
 
 if [ -z "$exe" ] || [ ! -x "$exe" ]; then
     echo "SKIP: POM68K GUI executable is not built"
@@ -39,12 +42,29 @@ case "$(uname -s)" in
         ;;
 esac
 
+inputs=("$missing_rom" "" "")
+if [ "$mode" = session ]; then
+    # A blank 128 KB ROM starts the Plus board (the missing-ROM machine of
+    # the other modes, with a file to name); each session has its own
+    # blank 800K floppy. Directory and names carry spaces and UTF-8.
+    sessions="$report.sessions/répertoire des sessions"
+    rm -rf "$report.sessions"
+    mkdir -p "$sessions/disques"
+    head -c 131072 /dev/zero > "$sessions/plus.rom"
+    for name in first second; do
+        head -c 819200 /dev/zero > "$sessions/disques/$name floppy.dsk"
+        printf 'pom68k-session 1\nprofile = plus\nrom = plus.rom\nmedia = disques/%s floppy.dsk\n' \
+            "$name" > "$sessions/$name.pomsession"
+    done
+    inputs=("--session=$sessions/first.pomsession")
+fi
+
 smoke_log="$report.log"
 if [ "${#runner[@]}" -gt 0 ]; then
-    "${runner[@]}" "$exe" "$option" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
+    "${runner[@]}" "$exe" "$option" "${inputs[@]}" 2>&1 | tee "$smoke_log"
     status=${PIPESTATUS[0]}
 else
-    "$exe" "$option" "$missing_rom" "" "" 2>&1 | tee "$smoke_log"
+    "$exe" "$option" "${inputs[@]}" 2>&1 | tee "$smoke_log"
     status=${PIPESTATUS[0]}
 fi
 if [ "$status" -ne 0 ]; then
@@ -67,7 +87,22 @@ fi
 
 if ! grep -qx 'result=PASS' "$report"; then
     echo "FAIL: GUI smoke report does not attest the complete lifecycle" >&2
-    sed -n '1,40p' "$report" >&2
+    if [ "$mode" = session ]; then
+    # Generation 2's report, generation 1 in the log: each came up with its
+    # own session's medium, resolved against the session's directory.
+    dir=$(cd "$sessions" && pwd)
+    if ! grep -qx 'generation=2' "$report" ||
+       ! grep -qxF "session=$dir/second.pomsession" "$report" ||
+       ! grep -qxF "media=$dir/disques/second floppy.dsk" "$report" ||
+       ! grep -qF "gui-smoke: generation 1 session=$dir/first.pomsession media=$dir/disques/first floppy.dsk" "$smoke_log" ||
+       ! grep -q 'gui-smoke: generation 1 PASS, re-executing' "$smoke_log"; then
+        echo "FAIL: the two sessions were not each opened with their own media" >&2
+        sed -n '1,40p' "$report" >&2
+        exit 1
+    fi
+fi
+
+sed -n '1,40p' "$report" >&2
     exit 1
 fi
 if [ "$mode" = relaunch ]; then

@@ -6,6 +6,7 @@
 #include "MachineFactory.h"
 #include "MachineSession.h"
 #include "ProcessEnvironment.h"
+#include "SessionFile.h"
 
 #include <cstdio>
 #include <utility>
@@ -15,8 +16,14 @@ int main(int argc, char** argv) {
 #define POM68K_VERSION_STRING "dev"
 #endif
     auto startup = pom68k::app::captureRuntimeEnvironment();
-    pom68k::app::RuntimeConfig config =
-        pom68k::app::RuntimeConfig::parse(argc, argv, startup);
+    // Read once and refused whole, before any machine exists (SessionFile.h).
+    const auto sessionFile = pom68k::app::loadSessionArgument(argc, argv);
+    if (!sessionFile.errors.empty()) {
+        std::fprintf(stderr, "%s", pom68k::app::describeSessionErrors(sessionFile).c_str());
+        return 2;
+    }
+    pom68k::app::RuntimeConfig config = pom68k::app::RuntimeConfig::parse(
+        argc, argv, startup, sessionFile.session ? &*sessionFile.session : nullptr);
     if (config.showVersion()) {
         // The count is the catalogue's own (kMachineProfiles): this line
         // said « 37 profiles, Mac Plus » through the arrival of the 128K/512K.

@@ -217,6 +217,17 @@ MachineSession MachineFactory::create(
     }
 
     const MachineProfile& profile = selectProfile(config, rom);
+    // A session reopens the machine it names or none: a ROM of another
+    // family would otherwise boot that family under the session's name.
+    if (const auto wanted = config.sessionProfile();
+        wanted && *wanted != profile.snapshot) {
+        const MachineProfile* named = machineProfile(*wanted);
+        return MachineSession::rejected(
+            std::move(config), std::move(runtime), 2,
+            std::string("Session: the profile asks for ") +
+                (named ? named->label : "?") + " but the ROM " + matched +
+                " starts a " + profile.label + ".");
+    }
     if (config.fullLleAarch64() &&
         (profile.cpu != CpuFamily::M68040 ||
          !qualifiesFullLleAarch64(rom))) {
