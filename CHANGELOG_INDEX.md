@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 646 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 647 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 90 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 62 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 63 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 34 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 27 |
@@ -179,6 +179,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-02 (seventh)** — [The guest oracle becomes a gate: 71 fields of the LC II judged against MAME's report, on the locked System 7.1 volume, with AppleTalk open on both sides](CHANGELOG.md#2026-10-02-prober-gate)
 - **2026-10-09 (tenth)** — [MMU and cache registers edited as their instructions would; and the debugger's 68030 walk had been ignoring descriptor limits](CHANGELOG.md#2026-10-09-debugger-mmu-edits)
 - **2026-10-10 (eighth)** — [The LC and the Quadra 950 under the oracle; the LC III branch does not reach the Prober yet](CHANGELOG.md#2026-10-10-oracle-lc-q950)
+- **2026-10-10 (eleventh)** — [Every oracle profile carries MAME's Apple CD-ROM, and the LC III's free space is judged](CHANGELOG.md#2026-10-10-oracle-cdrom)
 - **2026-10-10 (seventh)** — [Six more machines under MAME's guest oracle; the Quadra 650's mouse has no service routine, and MAME's Quadra 900 boots 24-bit](CHANGELOG.md#2026-10-10-oracle-siblings)
 - **2026-10-10 (tenth)** — [The LC III under the oracle on System 7.5.3; MAME's fixed CD-ROM writes into the Apple CD-ROM extension](CHANGELOG.md#2026-10-10-lc3-oracle)
 

@@ -77,18 +77,13 @@ const Unjudged kLciiUnjudged = {
     { "probe.VIA2@II", "unmapped on the LC II; maclc raises no bus error there" },
 };
 
-// The LC III on System 7.5.3: MAME's Macs all have an Apple CD-ROM at SCSI
-// ID 3 in a single-option (fixed) slot, and the Apple CD-ROM extension adds
-// 2424 bytes to its own resource fork when it finds a drive — one more
-// allocation block in use under MAME (CHANGELOG 2026-10-10 (tenth)).
+// The LC III on System 7.5.3, an Apple CD-ROM at ID 3 on both sides.
 const Unjudged kLc3Unjudged = {
     { "clock.macSeconds", kRtc },
     { "clock.dateTime", kRtc },
     { "ident.fpu", "MAME's 030 FPU produces 68881 FSAVE frames; the socket takes a 68882" },
     { "ident.memTop", "follows the system-heap allocation order, a CPU-throughput symptom "
                       "(TODO § Fidélité, cacheBoost)" },
-    { "volume.vol0.kbFree", "MAME's fixed CD-ROM at ID 3: the Apple CD-ROM extension "
-                            "writes into itself when it finds a drive" },
 };
 
 // The 040 boards on Mac OS 8.1 (CHANGELOG 2026-10-02 (eighth), (ninth)).
@@ -160,6 +155,11 @@ int run(Mem& mem, Cpu& cpu, const Options& o, const std::string& img,
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    // Every MAME Mac has an empty Apple CD-ROM at SCSI ID 3, in a slot
+    // `-scsi:3 ""` cannot empty; the Apple CD-ROM extension writes into
+    // itself when it finds a drive, so both sides carry one (CHANGELOG
+    // 2026-10-10 (eleventh)).
+    if (!mem.attachCdromEmpty(3)) { std::fprintf(stderr, "FAIL: no CD-ROM bay\n"); return 1; }
     // The Infinite Mac volumes' Startup Items alias stops the Finder on an
     // alert before it reaches the Prober; the blank companion resolves it.
     // The rig keeps a copy, inside its partition-map façade, for MAME.

@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (eleventh)** — [Every oracle profile carries MAME's Apple CD-ROM, and the LC III's free space is judged](#2026-10-10-oracle-cdrom)
 - **2026-10-10 (tenth)** — [The LC III under the oracle on System 7.5.3; MAME's fixed CD-ROM writes into the Apple CD-ROM extension](#2026-10-10-lc3-oracle)
 - **2026-10-10 (ninth)** — [MAME's Quadra 900 and 950 boot from POM68K's PRAM, and their ten 24-bit probes agree](#2026-10-10-q900-oracle-pram)
 - **2026-10-10 (eighth)** — [The LC and the Quadra 950 under the oracle; the LC III branch does not reach the Prober yet](#2026-10-10-oracle-lc-q950)
@@ -1123,6 +1124,24 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-oracle-cdrom"></a>
+## 2026-10-10 (eleventh) — Every oracle profile carries MAME's Apple CD-ROM, and the LC III's free space is judged
+
+The tenth entry left the LC III's `vol0.kbFree` unjudged: MAME's fixed
+Apple CD-ROM at SCSI ID 3 makes the Apple CD-ROM extension grow its own
+resource fork, and that drive cannot be removed. The other way round can be
+done. `tests/prober_oracle.cpp` now fits an empty Apple CD-ROM at ID 3
+(`attachCdromEmpty(3)`, which every board has) on every profile, before the
+boot, as MAME has one.
+
+**LC III.** 71 810 KB free on both sides. `kLc3Unjudged` drops the field:
+74 judged, 4 unjudged (RTC, `ident.fpu`, `memTop`), 0 differ.
+
+**Other profiles.** The fourteen other gates stay green against their
+unchanged goldens. The Mac OS 8.1 profiles still differ on `vol0.kbFree`,
+165 955 KB against 165 960, with the drive on both sides. So that 5 KB is
+not the CD-ROM, and it keeps its CalendarMenu reason.
 
 <a id="2026-10-10-lc3-oracle"></a>
 ## 2026-10-10 (tenth) — The LC III under the oracle on System 7.5.3; MAME's fixed CD-ROM writes into the Apple CD-ROM extension
