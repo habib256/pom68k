@@ -159,7 +159,7 @@ Other items in this document are proposals, not adopted features.
 | 2 | Debugger service and basic views — implemented | `debug_session_test` on 000/020/030/040 rigs, `debug_inspection_test`, GUI window | Done | Pause, inspect, step and PC stop on representative CPU families |
 | 3 | Extended debugger and device inspection — implemented | Editing (registers, MMU/cache, RAM), access/exception stops, step over/out, bounded histories, OS/ROM symbols, typed device snapshots on every board | Done | Defined stop semantics, bounded history, no inspection side effects |
 | 4 | Session files — implemented | `session_config_test` (schema, paths, precedence, capture round trip), `gui_machine_window_test`, `gui_session_smoke_test` | Done | Reopen the same configured machine with validated paths |
-| 5 | CD track/source mapping | Single-source parser versus per-source Snow mapping | M | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
+| 5 | CD track/source mapping — implemented | `cd_image_test` (layout, exact PCM per encoding, refusals, drive TOC/play), `cd_audio_test`, `scsi_cdrom_test`, Q605 CD etalons | Done | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
 | 7 | Native floppy medium and MOOF — implemented | Track/face storage, bit/flux import, atomic 125 ns export and v26 states | Done | Native lifecycle, weak-read replay and original Oids launch/flight/replay gates |
 | 8 | Serial terminal and Windows TCP | Unix transport exists; terminal/Windows missing | M | Guest communication through SCC, including backpressure |
@@ -338,6 +338,12 @@ explicitly. Proposed `cd_image_test` checks track boundaries, nonzero indexes,
 short backing files, TOC/lead-out and exact PCM. Re-run `scsi_cdrom_test`,
 `cd_audio_test` and the existing CD game/application etalon with its assets.
 MODE2 and physical CD passthrough remain consumer-driven extensions.
+
+**Implemented.** `src/CdImage.h` owns sources, tracks and spans;
+`ScsiDisk` asks it for the TOC, the data extent and raw sectors. Beyond the
+list above, MOTOROLA sources and FLAGS (DCP/PRE/4CH as Q control bits, PRE
+de-emphasized at playback) are read, because the two pressed discs on the
+development host carry PREGAP and FLAGS PRE.
 
 ### Sector formats and native tracks
 
@@ -716,3 +722,18 @@ precedence and a capture → file → configuration round trip under an empty
 environment. `gui_session_smoke_test` opens two sessions with different
 media through two real processes. Unlike Snow's workspace, a session
 carries no window layout and no live-attached media.
+
+The twenty-sixth increment implements order 5. `CdImage` replaces
+`CdCueSheet`: a sheet becomes tracks at absolute disc LBAs over spans, each
+a source region or synthesized silence. BINARY, MOTOROLA and WAVE (16-bit
+stereo 44.1 kHz PCM, partial last sector padded) are read. INDEX 00 and a
+first-in-file INDEX 01 past 0 are stored pregaps; PREGAP and POSTGAP are
+silence in no file; INDEX 02+ are accepted. FLAGS become Q control bits and
+PRE is de-emphasized on the way to the sink (`CdDeemphasis.h`). Everything
+else is refused with a reason. The increment also repairs a regression of
+the Snow-derived `CdCueSheet` (2026-10-09): it refused PREGAP and every
+FLAGS line, so both pressed discs that had mounted on 2026-09-19 — the
+BattleChess game and the 61-track AppleCD Explorer disc — no longer opened.
+They open again, with audio starts 150 sectors later than in September: the
+September reader dropped the PREGAP silence the sheets declare between the
+data track and track 2.

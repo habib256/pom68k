@@ -17,7 +17,7 @@ cmake/Pom68kFloppyGates.cmake            19
 cmake/Pom68kGatePolicy.cmake             401
 cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
-cmake/Pom68kMachineGates.cmake           1026
+cmake/Pom68kMachineGates.cmake           1043
 cmake/Pom68kMoofGates.cmake              33
 cmake/Pom68kOracleGates.cmake            22
 cmake/Pom68kProductRegistry.cmake        23
@@ -25,7 +25,7 @@ cmake/Pom68kProfileGates.cmake           31
 cmake/Pom68kProtectedFloppyGates.cmake     9
 cmake/Pom68kSerialGates.cmake            8
 cmake/Pom68kStorageGates.cmake           27
-CMakeLists.txt                           620
+CMakeLists.txt                           621
 src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  219
 src/GuiMachineRuntime.cpp                49
@@ -60,7 +60,7 @@ src/RuntimeConfigMachine.cpp             113
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071
-src/ScsiDisk.cpp                         1601
+src/ScsiDisk.cpp                         1553
 src/SonyDrive.cpp                        1247
 src/StartupDomainView.h                  73
 src/StartupOptions.h                     396

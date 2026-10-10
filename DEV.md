@@ -1212,13 +1212,22 @@ cable (*Macintosh Quadra 900 Developer Note*); the guest starts the play
 with a SCSI command and then hears music the CPU never reads. POM68K
 models the wiring:
 
-- `CdCueSheet` maps one-session BINARY CUE sources to absolute disc LBAs,
-  supporting AUDIO and one MODE1/2048 or MODE1/2352 data track across multiple
-  files. Stored INDEX 00 gaps bound the preceding data extent. Encoded audio,
-  synthetic gaps, stored track-1 pregaps, FLAGS, indexes above 01 and later
-  sessions are rejected.
-  Component gates check TOC, data framing and exact audio across source
-  boundaries; `q605_cdaudio_etalon` presents a two-file disc to Mac OS itself.
+- `CdImage` (`src/CdImage.h`) owns the disc: it parses the sheet and lays
+  tracks at absolute disc LBAs over spans, each either a source region or
+  synthesized silence. Sources are BINARY, MOTOROLA (CD-DA big-endian,
+  swapped on read) and WAVE (RIFF PCM, 16-bit stereo 44.1 kHz only; a
+  partial last sector is padded). INDEX 00 is a stored pregap, as are the
+  leading sectors of a file whose first INDEX 01 is past 0; PREGAP and
+  POSTGAP add silence that is in no file; INDEX 02+ are accepted. FLAGS
+  DCP/PRE/4CH become the track's Q control bits, which READ TOC and READ
+  SUB-CHANNEL report, and a PRE track is de-emphasized on its way to the
+  sink (`CdDeemphasis.h`, 50/15 µs). Refused, each with a reason: other WAVE
+  encodings and FILE types, MODE2, a stored track-1 pregap, a second data
+  track, later sessions, malformed timing, short or missing sources.
+  `ScsiDisk` keeps the commands and asks `CdImage` for the TOC, the data
+  extent and raw sectors. Gates: `cd_image_test`, `cd_audio_test`,
+  `scsi_cdrom_test`; `q605_cdaudio_etalon` presents a two-file disc to
+  Mac OS itself.
 - `PLAY AUDIO (10)` `$45`, `PLAY AUDIO MSF` `$47`, `PAUSE/RESUME` `$4B`
   and `READ SUB-CHANNEL` `$42`. A play aimed at a data track is refused
   (ILLEGAL REQUEST / `$64`), never faked.
@@ -1229,7 +1238,7 @@ models the wiring:
   state; the track table is not, being an attachment property.
 - The samples are not in `image_`: `open()` cuts a mixed disc down to the
   data track, since de-framing audio would turn music into user data, so a
-  play reads them back from the `.bin` the `.cue` named. The data track is
+  play reads them back through `CdImage` from the sources the `.cue` named. The data track is
   found, not assumed to be track 1 — CD Extra puts it in a second session —
   and `dataStartLba_` holds where it begins, because READ(10) carries
   absolute disc addresses while the image starts at the track.

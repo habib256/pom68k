@@ -29,7 +29,8 @@
 //       tests/scsi_hfs_facade_test.cpp, tests/scsi_cdrom_test.cpp.
 
 #pragma once
-#include "CdCueSheet.h"
+#include "CdDeemphasis.h"
+#include "CdImage.h"
 #include "CoreConfig.h"
 #include "FloppySoundSink.h"
 #include "CdAudioSink.h"
@@ -288,6 +289,9 @@ private:
         bool audio = false;
         uint32_t startLba = 0;       // absolute, from INDEX 01
         uint32_t extentLba = 0;      // INDEX 00 when stored, otherwise INDEX 01
+        uint8_t flags = 0;           // CdImage::kFlag*: PRE, DCP, 4CH
+        // ADR 1 and the Q control nibble, as READ TOC and SUB-CHANNEL say it.
+        uint8_t adrControl() const { return uint8_t(0x10 | flags | (audio ? 0 : 0x04)); }
     };
     std::vector<CdTrack> tracks_;
     uint32_t discLba_ = 0;           // lead-out: sectors on the whole disc
@@ -308,10 +312,9 @@ private:
     // the data track's extent, because de-framing audio sectors would turn
     // music into "user data". Playback maps disc LBAs back to the source
     // files, caching one open stream as the head crosses FILE boundaries.
-    std::vector<CdCueSheet::Source> rawSources_;
-    std::string rawPath_;            // currently open audio source
-    std::ifstream rawFile_;
-    bool readRawSector(uint32_t lba, uint8_t* out2352);
+    CdImage cd_;                     // the sheet's disc; empty for a flat image
+    CdDeemphasis deemphasis_;        // PRE tracks' playback filter (reset per play)
+    bool preEmphasized(uint32_t lba) const;
 
     std::vector<uint8_t> image_;     // raw sectors (possibly façade-prefixed)
     std::fstream file_;              // write-back stream (open iff writeBack_)

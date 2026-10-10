@@ -778,6 +778,23 @@ set_tests_properties(q605_cdaudio_silent_etalon PROPERTIES
 # The CD-audio lead: the drive hands the sectors it passes to the host
 # mixer (never through the ASC — see CdAudioSink.h). Synthesizes its own
 # mixed disc, so it is asset-free.
+# CD images as discs (src/CdImage.h): a BINARY + BINARY + WAVE + MOTOROLA
+# sheet with INDEX 00, PREGAP, POSTGAP and a sub-index laid out sector for
+# sector; exact PCM from each encoding and silence in the gaps; every
+# unsupported encoding and malformed sheet refused with its reason; the
+# drive's READ TOC and a PLAY AUDIO across the gaps. No ROM, no image.
+add_executable(cd_image_test tests/cd_image_test.cpp)
+target_link_libraries(cd_image_test PRIVATE pom68k_core)
+add_test(NAME cd_image_test COMMAND cd_image_test)
+
+# The two pressed discs POM68K has played (cd/, private): data blocks,
+# track count, starts, Q control and lead-out as READ TOC answers them.
+# Both silently stopped opening on 2026-10-09; a disc absent is skipped.
+add_executable(cd_pressed_toc_etalon tests/cd_pressed_toc_etalon.cpp)
+target_link_libraries(cd_pressed_toc_etalon PRIVATE pom68k_core)
+add_test(NAME cd_pressed_toc_etalon COMMAND cd_pressed_toc_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_executable(cd_audio_test tests/cd_audio_test.cpp)
 target_link_libraries(cd_audio_test PRIVATE pom68k_core)
 add_test(NAME cd_audio_test COMMAND cd_audio_test)

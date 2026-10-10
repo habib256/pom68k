@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"a pressed CD game, played" / "the AppleCD Explorer disc mounts" (2026-09-19) — both stopped opening on 2026-10-09, when the Snow-derived `CdCueSheet` refused PREGAP and FLAGS, and no gate held either disc; and the September TOC placed every audio track 150 sectors early, having dropped the PREGAP the sheets declare** → [2026-10-10 (second) — CdImage…](#2026-10-10-cd-image)
 - **"the debugger's 68030 logical view (and `guestPeek8`) matches the CPU" — it ignored long-descriptor limits until the MMU-edit gate faulted where the view showed a page** → [2026-10-09 (tenth) — MMU and cache registers edited…](#2026-10-09-debugger-mmu-edits)
 - **"the Quadra 630 installs its SCSI disk's driver elsewhere" (2026-10-02 (ninth)) — MAME's default macqd630 has an imageless IDE disk on `ata:0`; without it MAME installs the driver at `-33` like POM68K** → [2026-10-03 — The Quadra 630's SCSI driver was not elsewhere…](#2026-10-03-q630-ide)
 - **"three model identities by --machine-profile" (Machine menu, `PlatformDafb.cpp` `runQuadra`) — the profile chose the FPU and the title but not the board ID, so a Quadra 605 or LC 575 chosen from the menu answered Gestalt as an LC 475 (and an LC 580 as a Quadra 630); every `q605_*` gate still boots that default** → [2026-10-02 (eighth) — The oracle's second machine finds the Quadra 605 calling itself an LC 475…](#2026-10-02-q605-oracle)
@@ -489,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (second)** — [CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again](#2026-10-10-cd-image)
 - **2026-10-10** — [Session files: one configured machine on disk, through the inputs startup already reads](#2026-10-10-session-files)
 - **2026-10-09 (eleventh)** — [Typed device snapshots on every board close order 3: read from members, never through the bus](#2026-10-09-debugger-devices)
 - **2026-10-09 (tenth)** — [MMU and cache registers edited as their instructions would; and the debugger's 68030 walk had been ignoring descriptor limits](#2026-10-09-debugger-mmu-edits)
@@ -1113,6 +1115,70 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-cd-image"></a>
+## 2026-10-10 (second) — CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again
+
+Order 5 of `docs/SNOW_IMPLEMENTATION_PLAN.md`: "extract a `CdImage` owner
+with track type, backing source, source offset, absolute disc start,
+indexes/gaps and sector framing… synthetic two-file CUE/BIN, then
+uncompressed WAVE audio and INDEX 00/PREGAP/POSTGAP".
+
+**The owner.** `src/CdImage.h` replaces `CdCueSheet.h`. A sheet becomes
+tracks at absolute disc LBAs laid over spans, each either a region of a
+source or synthesized silence. Sources:
+- BINARY;
+- MOTOROLA (big-endian CD-DA, swapped on read);
+- WAVE: RIFF PCM, refused unless 16-bit stereo 44 100 Hz, with RIFF's pad
+  byte honoured and a partial last sector padded with silence.
+
+Gaps and indexes:
+- INDEX 00 is a stored pregap, and so are the leading sectors of a file
+  whose first track's INDEX 01 is past 0.
+- PREGAP and POSTGAP are silence in no file.
+- INDEX 02+ are accepted and move nothing.
+
+FLAGS DCP, PRE and 4CH become the track's Q control bits; READ TOC (formats
+0/1/2) and READ SUB-CHANNEL report them instead of a fixed `0x10`/`0x14`. A
+PRE track is de-emphasized on its way to the sink. `CdDeemphasis.h` is the
+50/15 µs curve of IEC 60908 through the bilinear transform: unity at DC and
+15/50 at Nyquist, both gated. `ScsiDisk` keeps the commands and asks
+`CdImage` for the TOC, the data extent and raw sectors; its own source
+streams are gone. Everything else is refused, each case with a reason:
+MODE2, other FILE types, a stored track-1 pregap, a second data track or
+session, malformed timing, short, truncated or missing sources.
+
+**A regression found on the way.** `CdCueSheet`, added with the Snow
+real-hardware increments on 2026-10-09 (`1f37700`), refused PREGAP and every
+FLAGS line. The two pressed discs on this host — the BattleChess game of
+[2026-09-19 (fourth)](#2026-09-19-cd-game) and the 61-track AppleCD Explorer
+disc of [2026-09-19 (third)](#2026-09-19-pressed-cd) — carry `PREGAP
+00:02:00` on track 2, and the Explorer also has `FLAGS PRE` on all 60 audio
+tracks. Neither had opened since that commit; no gate held either disc, so
+nothing went red. `cd_toc_probe` now opens both, with the data track
+unchanged (20634 blocks on BattleChess).
+
+**And the September TOC was 150 sectors early.** The reader of 2026-09-19
+ignored PREGAP, so it placed track 2 at the file offset, 04:35:09. The BIN
+goes from the last data block straight into track 2's audio, and the PREGAP
+line is the sheet saying the two-second data→audio gap was not ripped. On
+the disc, then, track 2 starts at 20634 + 150 = 04:37:09, and every later
+start and the lead-out move by the same 150. The guest plays by TOC, so the
+game's audio was unaffected; the addresses now match the disc's.
+
+**Gates.** `cd_image_test` (new, asset-free) lays out a four-encoding
+sheet with every gap form and checks each extent, start, stored end and
+the lead-out. It checks exact bytes from each encoding and silence in the
+gaps, the Q control bits, the de-emphasis curve, 20 refused sheets with their
+reasons, and the drive itself (READ TOC, then a PLAY AUDIO across
+POSTGAP → WAVE → PREGAP → PRE/MOTOROLA heard sector for sector).
+`cd_audio_test` keeps its rejections, with an unknown flag in place of PRE.
+`cd_pressed_toc_etalon` (new) holds both pressed discs. It pins data blocks,
+track count, three starts, track 2's ADR/CTRL (`0x10` BattleChess, `0x11`
+Explorer) and the lead-out (311542 and 226420, each the BIN's sector count
++ 150); a disc absent from a host is skipped. `scsi_cdrom_test` and all six
+Q605 CD etalons (`cdrom`, `cdboot`, `cdhot`, `cdaudio`, `cdaudio_silent`,
+`cdinstall`) pass, executed, not skipped.
 
 <a id="2026-10-10-session-files"></a>
 ## 2026-10-10 — Session files: one configured machine on disk, through the inputs startup already reads

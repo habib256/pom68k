@@ -566,9 +566,8 @@ int main() {
             "FILE \"cd_multi_a.bin\" WAVE\n TRACK 01 AUDIO\n INDEX 01 00:00:00\n",
             "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n INDEX 01 00:60:00\n",
             "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n INDEX 01 00:00:03\n",
-            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n PREGAP 00:02:00\n INDEX 01 00:00:00\n",
-            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n FLAGS PRE\n INDEX 01 00:00:00\n",
-            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n INDEX 01 00:00:00\n INDEX 02 00:00:01\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n FLAGS XYZ\n INDEX 01 00:00:00\n",
+            "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n INDEX 01 00:00:00\n INDEX 03 00:00:01\n",
             "FILE \"cd_multi_a.bin\" BINARY\n TRACK 01 AUDIO\n",
             "FILE \"cd_multi_data.bin\" BINARY\n TRACK 01 MODE1/2048\n INDEX 01 00:00:00\n TRACK 02 AUDIO\n INDEX 01 00:00:01\n"
         };
@@ -577,7 +576,7 @@ int main() {
             { std::ofstream f("cd_multi_bad.cue"); f << sheet; }
             rejected &= !multi.openCdrom("cd_multi_bad.cue");
         }
-        check(rejected, "invalid indices, framing, missing indices and unsupported gaps are rejected");
+        check(rejected, "invalid indices, framing, missing indices and unsupported flags are rejected");
         for (auto path : paths) std::remove(path);
         std::remove("cd_multi.cue");
         std::remove("cd_multi_bad.cue");

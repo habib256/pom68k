@@ -300,11 +300,9 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     blocks_ = 0;
     tracks_.clear();
     discLba_ = 0;
-    rawPath_.clear();
-    rawSources_.clear();
+    cd_.clear();
     audioOnly_ = false;
     dataStartLba_ = 0;
-    if (rawFile_.is_open()) rawFile_.close();
     if (cdAudio_ && audio_ != Audio::Stopped) cdAudio_->cdAudioStopped();
     audio_ = Audio::Stopped;
     audioLba_ = audioEnd_ = 0;
@@ -319,20 +317,16 @@ bool ScsiDisk::openCdrom(const std::string& path) {
         return true;
     };
     if (endsWith(path, ".cue")) {
-        CdCueSheet cue;
-        if (!cue.open(path) || !cue.readData(image_, dataStartLba_)) {
+        if (!cd_.open(path) || !cd_.readData(image_, dataStartLba_, cueSectorBytes)) {
+            std::fprintf(stderr, "CD-ROM: %s\n", cd_.error().empty()
+                ? ("cannot read the data track of " + path).c_str() : cd_.error().c_str());
             image_.clear();
-            std::fprintf(stderr, "CD-ROM: %s has an invalid or unsupported CUE layout\n", path.c_str());
+            cd_.clear();
             return false;
         }
-        for (const auto& t : cue.tracks) {
-            const auto& source = cue.sources[t.fileIndex];
-            tracks_.push_back({t.number, t.audio, t.startLba,
-                source.start + (t.hasGap ? t.gapOffset : t.offset)});
-            if (!t.audio) cueSectorBytes = cue.sources[t.fileIndex].sectorBytes;
-        }
-        discLba_ = cue.sectors;
-        rawSources_ = std::move(cue.sources);
+        for (const CdImage::Track& t : cd_.tracks())
+            tracks_.push_back({t.number, t.audio, t.startLba, t.extentLba, t.flags});
+        discLba_ = cd_.leadOut();
     } else {
         std::ifstream in(data, std::ios::binary);
         if (!in) return false;
@@ -367,7 +361,7 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     // exactly like a corrupt disc.
     if (cueSectorBytes == 2352) {
         if (!deframeMode1_2352(image_)) {
-            image_.clear(); tracks_.clear(); rawSources_.clear(); discLba_ = 0;
+            image_.clear(); tracks_.clear(); cd_.clear(); discLba_ = 0;
             return false;
         }
     } else if (!cueSectorBytes && image_.size() % 2048) {
@@ -433,29 +427,13 @@ void ScsiDisk::attachCdromEmpty() {
     setSense(kNotReady, 0x3A);                   // MEDIUM NOT PRESENT
 }
 
-// One raw sector straight from the medium. The audio tracks were cut out
-// of image_ at open() (de-framing them would turn music into user data),
-// so a play reads them back from the file the .cue named. 75 reads a
-// second of 2352 bytes each: the host page cache absorbs it.
-bool ScsiDisk::readRawSector(uint32_t lba, uint8_t* out) {
-    const CdCueSheet::Source* source = nullptr;
-    for (const auto& candidate : rawSources_)
-        if (lba >= candidate.start && lba - candidate.start < candidate.sectors) {
-            source = &candidate; break;
-        }
-    if (!source || source->sectorBytes != 2352) return false;
-    if (rawPath_ != source->path) {
-        if (rawFile_.is_open()) rawFile_.close();
-        rawFile_.clear();
-        rawPath_ = source->path;
-        rawFile_.open(rawPath_, std::ios::binary);
-    }
-    if (!rawFile_.is_open()) return false;
-    rawFile_.clear();
-    rawFile_.seekg(std::streamoff(lba - source->start) * 2352);
-    if (!rawFile_) return false;
-    rawFile_.read(reinterpret_cast<char*>(out), 2352);
-    return rawFile_.gcount() == 2352;
+// The track a disc LBA belongs to (its extent, INDEX 00 included) says
+// whether that sector was mastered with pre-emphasis.
+bool ScsiDisk::preEmphasized(uint32_t lba) const {
+    bool pre = false;
+    for (const CdTrack& t : tracks_)
+        if (lba >= t.extentLba) pre = (t.flags & CdImage::kFlagPre) != 0;
+    return pre;
 }
 
 // CD-DA: exactly 75 sectors/s (T10 97-104R0 §5.1), measured in guest time.
@@ -470,7 +448,10 @@ void ScsiDisk::advanceAudio(uint64_t micros) {
         // the transport with nothing listening.
         if (cdAudio_) {
             uint8_t raw[2352];
-            if (readRawSector(audioLba_, raw)) cdAudio_->cdAudioSector(raw);
+            if (cd_.readRawSector(audioLba_, raw)) {
+                if (preEmphasized(audioLba_)) deemphasis_.apply(raw);
+                cdAudio_->cdAudioSector(raw);
+            }
         }
         if (++audioLba_ >= audioEnd_) { audioLba_ = audioEnd_; audio_ = Audio::Completed; }
     }
@@ -486,11 +467,9 @@ void ScsiDisk::eject() {
     discLba_ = 0;
     // An audio disc has no data blocks, so without these an ejected one
     // would still answer "medium present" through discLoaded().
-    rawPath_.clear();
-    rawSources_.clear();
+    cd_.clear();
     audioOnly_ = false;
     dataStartLba_ = 0;
-    if (rawFile_.is_open()) rawFile_.close();
     if (cdAudio_ && audio_ != Audio::Stopped) cdAudio_->cdAudioStopped();
     audio_ = Audio::Stopped;
     audioLba_ = audioEnd_ = 0;
@@ -1076,6 +1055,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     if (start >= t.extentLba) onAudio = t.audio;
                 if (!onAudio) { setSense(kIllegalRequest, 0x64); return kCheck; }
                 audioLba_ = start;
+                deemphasis_.reset();
                 audioEnd_ = std::max(end, start);
                 audioFrac_ = 0;
                 audio_ = audioLba_ < audioEnd_ ? Audio::Playing : Audio::Completed;
@@ -1122,8 +1102,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     dataOut[2] = firstTrk; dataOut[3] = lastTrk;
                     size_t o = 4;
                     for (size_t i = 0; i < count; i++, o += 8) {
-                        const bool audio = sheet && tracks_[i].audio;
-                        dataOut[o + 1] = audio ? 0x10 : 0x14;
+                        dataOut[o + 1] = sheet ? tracks_[i].adrControl() : 0x14;
                         dataOut[o + 2] = sheet ? tracks_[i].number : 1;
                         addr(sheet ? tracks_[i].startLba : 0, &dataOut[o + 4]);
                     }
@@ -1133,7 +1112,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     // all-audio disc and hands it to the File Manager, which
                     // finds no volume and offers to initialize the CD
                     // (observed on Mac OS 8.1, 2026-09-17).
-                    dataOut[o + 1] = (sheet && tracks_.back().audio) ? 0x10 : 0x14;
+                    dataOut[o + 1] = sheet ? tracks_.back().adrControl() : 0x14;
                     dataOut[o + 2] = 0xAA;           // lead-out
                     addr(leadOut, &dataOut[o + 4]);
                 } else if (format == 1) {
@@ -1142,7 +1121,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     dataOut.assign(12, 0);
                     dataOut[0] = 0; dataOut[1] = 10; // length
                     dataOut[2] = 1; dataOut[3] = 1;  // first / last session
-                    dataOut[5] = sheet && tracks_.front().audio ? 0x10 : 0x14;
+                    dataOut[5] = sheet ? tracks_.front().adrControl() : 0x14;
                     dataOut[6] = firstTrk;           // first track of session
                     addr(sheet ? tracks_.front().startLba : 0, &dataOut[8]);
                 } else if (format == 2) {
@@ -1177,8 +1156,8 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                         dataOut[o + 10] = pfrm;
                         o += 11;
                     };
-                    const uint8_t firstCtrl = (sheet && tracks_.front().audio) ? 0x10 : 0x14;
-                    const uint8_t lastCtrl  = (sheet && tracks_.back().audio) ? 0x10 : 0x14;
+                    const uint8_t firstCtrl = sheet ? tracks_.front().adrControl() : 0x14;
+                    const uint8_t lastCtrl  = sheet ? tracks_.back().adrControl() : 0x14;
                     // $A0: PMIN = first track, PSEC = disc type (0 = CD-DA
                     // or CD-ROM, which is every disc POM68K can hold).
                     point(firstCtrl, 0xA0, firstTrk, 0x00, 0);
@@ -1189,10 +1168,9 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                               uint8_t((f / 75) % 60), uint8_t(f % 75));
                     }
                     for (size_t i = 0; i < count; i++) {
-                        const bool audio = sheet && tracks_[i].audio;
                         const uint32_t f =
                             (sheet ? tracks_[i].startLba : 0) + 150;
-                        point(audio ? 0x10 : 0x14,
+                        point(sheet ? tracks_[i].adrControl() : 0x14,
                               sheet ? tracks_[i].number : uint8_t(1),
                               uint8_t(f / (60 * 75)), uint8_t((f / 75) % 60),
                               uint8_t(f % 75));
@@ -1233,13 +1211,13 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     // T10 97-104R0 §5.1: INDEX 00 belongs to the upcoming track.
                     uint8_t trk = 1, index = 1;
                     uint32_t base = 0;
-                    bool onAudio = false;
+                    uint8_t control = 0x14;
                     for (const CdTrack& t : tracks_)
                         if (audioLba_ >= t.extentLba) {
-                            trk = t.number; base = t.startLba; onAudio = t.audio;
+                            trk = t.number; base = t.startLba; control = t.adrControl();
                             index = audioLba_ < base ? 0 : 1;
                         }
-                    dataOut[5] = onAudio ? 0x10 : 0x14;   // Q: audio / data
+                    dataOut[5] = control;                 // Q: ADR 1, CTRL
                     dataOut[6] = trk;
                     dataOut[7] = audio_ == Audio::Stopped ? 0 : index;
                     auto put = [&](uint32_t lba, uint8_t* p) {

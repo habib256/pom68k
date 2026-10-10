@@ -412,6 +412,7 @@ add_library(pom68k_core STATIC
     src/PapServer.cpp src/PrintQueues.cpp  # in-process LaserWriter (PAP → CUPS queue/file)
     src/MacIpGateway.cpp  # in-process MacIP gateway + user-mode NAT
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
+    src/CdImage.cpp
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
     src/HfsInject.cpp     # host-side file insertion into an HFS volume (Startup Items)
     ${POM68K_ETHERNET_SOURCES}
