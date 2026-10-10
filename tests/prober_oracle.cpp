@@ -36,10 +36,12 @@
 #include "Cpu030.h"
 #include "CentrisCpu.h"
 #include "CentrisMemory.h"
+#include "Cpu020.h"
 #include "Cpu040.h"
 #include "HfsInject.h"
 #include "InfiniteHdCompanion.h"
 #include "JitTestConfig.h"
+#include "MacIIMemory.h"
 #include "ProberOracle.h"
 #include "Q605Memory.h"
 #include "Q630Cpu.h"
@@ -48,6 +50,7 @@
 #include "Q700Memory.h"
 #include "SonoraCpu.h"
 #include "SonoraMemory.h"
+#include "TobyVideo.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 
@@ -114,6 +117,13 @@ const Unjudged kQ650Unjudged = {
     { "volume.vol0.kbFree", kCalendar },
     { "adb.dev2.service", "the djMEMC ADB race (TODO § Fidélité, cacheBoost): POM68K's "
                           "Quadra 650 mouse misses its service routine" },
+};
+
+// The Macintosh II on System 7.1.
+const Unjudged kMacIIUnjudged = {
+    { "clock.macSeconds", kRtc },
+    { "clock.dateTime", kRtc },
+    { "ident.memTop", kHeap },
 };
 
 // The Quadra 700 runs System 7.1, which has no CalendarMenu. So do the
@@ -187,7 +197,8 @@ int run(Mem& mem, Cpu& cpu, const Options& o, const std::string& img,
         }
     }
 
-    while (mem.cpuHeld()) mem.tick(1000);
+    if constexpr (requires { mem.cpuHeld(); })   // no MCU holds the Glue's CPU
+        while (mem.cpuHeld()) mem.tick(1000);
     // The gate stops as soon as the whole report is on disk (looked for
     // every 600 frames); the rig runs its full budget, so its low memory and
     // image compare with MAME's after the same span.
@@ -280,6 +291,33 @@ int lc3(const Options& o, const std::string& bin) {
     mem.egret().factoryDefaults();
     SonoraCpu cpu(mem, testjit::resolveFromEnvironment(), config.cpu, true);
     return run(mem, cpu, o, img, bin, SonoraMemory::kCpuHz / 60, kLc3Unjudged, [] {});
+}
+
+// Glue, MAME macii.cpp: the Macintosh II (68020 + 68881), 8 MB, the Toby
+// card in slot 9 — MAME's m2video, the same 342-0008-a declaration ROM.
+int macii(const Options& o, const std::string& bin) {
+    const std::string rom = testasset::find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
+    const std::string toby = testasset::find(
+        "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin");
+    const std::string img = image("hdv/System 7.1 HD.dsk");
+    if (rom.empty() || toby.empty() || img.empty()) {
+        std::printf("SKIP: needs the Mac II ROM, Toby 342-0008-a and hdv/ref/System 7.1 HD.dsk\n");
+        return 0;
+    }
+    testasset::report({ { "rom", rom }, { "declrom", toby }, { "disk", img } });
+    const pom68k::CoreConfig config = oracleConfig();
+    MacIIMemory mem(config);
+    if (!mem.loadRom(readAll(rom)) || !mem.installTobyVideo(toby)) {
+        std::fprintf(stderr, "FAIL: bad ROM\n");
+        return 1;
+    }
+    Cpu020 cpu(mem, testjit::resolveFromEnvironment(), config.cpu, true);
+    const auto screen = [&mem] {
+        std::vector<uint32_t> fb;
+        mem.toby()->decode(fb);
+        beyondboot::dumpPpm("prober_oracle.ppm", fb, mem.toby()->hres(), mem.toby()->vres());
+    };
+    return run(mem, cpu, o, img, bin, 800 * 525, kMacIIUnjudged, screen);
 }
 
 int lcii(const Options& o, const std::string& bin) {
@@ -411,6 +449,7 @@ int q700(const Options& o, const std::string& bin, bool q900 = false, bool q950 
 }
 
 int dispatch(const std::string& machine, const Options& o, const std::string& bin) {
+    if (machine == "macii") return macii(o, bin);
     if (machine == "lcii") return lcii(o, bin);
     if (machine == "q605") return memcjr(o, bin, kQ605);
     if (machine == "lc475") return memcjr(o, bin, kLc475);
@@ -431,7 +470,7 @@ int dispatch(const std::string& machine, const Options& o, const std::string& bi
 
 const char* const kMachines[] = { "lcii", "q605", "lc475", "lc575", "q800", "q650", "q610",
                                   "c650", "c610", "q630", "lc580", "q700", "q900",
-                                  "q950", "lc", "lc3" };
+                                  "q950", "lc", "lc3", "macii" };
 
 } // namespace
 

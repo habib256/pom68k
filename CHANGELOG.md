@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-10 (thirteenth)** — [The asset-free tier on a real Windows host: the serial gate passes under MSVC, five reds found](#2026-10-10-msvc-asset-none)
 - **2026-10-10 (twelfth)** — [The Quadra 630 rewinds a Finder write on its IDE disk; the Snow plan's ordered work is done](#2026-10-10-q630-ide-rewind)
 - **2026-10-10 (eleventh)** — [Every oracle profile carries MAME's Apple CD-ROM, and the LC III's free space is judged](#2026-10-10-oracle-cdrom)
 - **2026-10-10 (tenth)** — [The LC III under the oracle on System 7.5.3; MAME's fixed CD-ROM writes into the Apple CD-ROM extension](#2026-10-10-lc3-oracle)
@@ -1125,6 +1126,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-10-msvc-asset-none"></a>
+## 2026-10-10 (thirteenth) — The asset-free tier on a real Windows host: the serial gate passes under MSVC, five reds found
+
+The Snow plan's order 8 needed `scc_serial_host_test` run on Windows, not
+only built for it. A « Run workflow » of `release.yml` on main runs
+`windows-latest` with MSVC.
+
+**First run (38072600511).** The product itself did not compile:
+`TextTyping.h`'s AZERTY literals (`U'é'`…) are multi-character constants
+when MSVC reads a UTF-8 source as its ANSI code page (C2015, C2196). They
+are `\u` code points now (`8e994f3`).
+
+**Second run (38073115337).** Product and test tree compile; `ctest -L
+asset-none` gives 114/119. `scc_serial_host_test` **passed**, Winsock
+backend included: order 8's Windows execution is done. Five reds:
+- `session_config_test`: on Windows `lexically_normal()` turns `/` into
+  `\`; the product names `…\roms\none.rom`, the test expected the
+  unnormalized form. The test now normalizes too.
+- `ethernet_capture_test`: the `.tsv` companion was opened `"wx"`, text
+  mode, so Windows wrote CRLF and the footer check for `"\n"` failed. It is
+  `"wbx"` now: LF on every host.
+- `debug_session_test`: `0xC0000409` after « a history records »;
+  `stdout` is a pipe, so the real stop point may be later. The likely
+  reading is a fast-fail of MSVC's hardened STL on an out-of-bounds access;
+  not found yet.
+- `gui_windows_test`: the debugger's symbols « Charger » button is not a
+  visible item; every step before it passes. Not reproduced on Linux with a
+  temp path as long as the runner's.
+- `gui_session_smoke_test`: the GUI process exits 127 with no output
+  line, before GLFW (which would have made it a SKIP).
+
+The two fixes pass on Linux and are not yet re-run on Windows. The three
+open reds are a TODO item (§ Preuve).
+
+Also committed: the Prober oracle's `macii` branch (Glue, 8 MB, the Toby
+card whose 342-0008-a ROM is MAME's `m2video`). It compiles; MAME's half and
+the gate are not done.
 
 <a id="2026-10-10-q630-ide-rewind"></a>
 ## 2026-10-10 (twelfth) — The Quadra 630 rewinds a Finder write on its IDE disk; the Snow plan's ordered work is done

@@ -5,9 +5,9 @@ media restoration with a reverse journal, the debugger (basic and extended),
 session files, CD sources, sector and native floppy media with MOOF, the
 serial window with Winsock TCP, clipboard typing, MacTCP automatic
 configuration (ICMP address mask, RARP, then DNS/TCP), Ethernet capture, and
-the 512Ke and II FDHD profiles. What remains is execution on a Windows host
-(order 8, TODO § Preuve) and the conditional projects, each waiting for its
-named consumer.
+the 512Ke and II FDHD profiles. Order 8's serial gate passed on a Windows
+host under MSVC; the rest of that host's asset-free tier is a TODO item
+(§ Preuve). The conditional projects each wait for a named consumer.
 
 Keep new hardware projects conditional on a named consumer and reproducible
 evidence. This order improves correctness and makes subsequent bring-up easier
@@ -164,7 +164,7 @@ Other items in this document are proposals, not adopted features.
 | 5 | CD track/source mapping — implemented | `cd_image_test` (layout, exact PCM per encoding, refusals, drive TOC/play), `cd_audio_test`, `scsi_cdrom_test`, Q605 CD etalons | Done | Two-file CUE, WAVE and gaps produce correct TOC/data/audio |
 | 6 | Sector import preservation — implemented | DART stored/RLE/LZH and DC42 tags tested | M | Physical tags, persistence, states and real Plus boot validated |
 | 7 | Native floppy medium and MOOF — implemented | Track/face storage, bit/flux import, atomic 125 ns export and v26 states | Done | Native lifecycle, weak-read replay and original Oids launch/flight/replay gates |
-| 8 | Serial terminal and Windows TCP — implemented, Windows execution open | `scc_serial_host_test` (also as a Windows build under wine), `gui_windows_test`, `q605_serial_etalon` (Serial Driver client on Mac OS 8.1) | Done here; MSVC/Windows run pending (TODO § Preuve) | Guest communication through SCC, including backpressure |
+| 8 | Serial terminal and Windows TCP — implemented | `scc_serial_host_test` (passed under MSVC on `windows-latest`, 2026-10-10), `gui_windows_test`, `q605_serial_etalon` (Serial Driver client on Mac OS 8.1) | Done | Guest communication through SCC, including backpressure |
 | 9 | Clipboard typing and scrap inspection — implemented | `clipboard_typing_test`, `guest_scrap_test`, `gui_machine_window_test`, `q605_clipboard_etalon` (Mac OS 8.1 round trip) | Done | Visible guest text, reproducible scheduling, bounded reads |
 | 10 | RARP and ICMP address-mask helper — implemented | `daynaport_test`, `q605_dayna_rarp_etalon`, `q605_dayna_rarp_network_etalon` (NetProbe DNS then TCP) | Done | MacTCP automatic address setup followed by a guest network transaction |
 | 11 | Ethernet PCAP | Implemented: passive card observer, bounded background writer and live GUI controls | Done | Format/lifecycle gate and actual MacTCP RARP/DNS/TCP capture, independently decoded |
