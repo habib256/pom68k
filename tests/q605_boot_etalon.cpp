@@ -13,6 +13,7 @@
 #include "DaynaBootProbe.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 
 #include <cmath>
 #include <cstdint>
@@ -133,15 +134,16 @@ int main() {
         return 1;
     }
 
-    Q605Memory mem(daynaboot::config(), 32u << 20);
+    const pom68k::CoreConfig core =
+        pom68k::profileCoreConfig(pom68k::SnapMachine::Q605, daynaboot::config());
+    Q605Memory mem(core, 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
     if (!agentboot::install(mem)) return 1;
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpu(mem, jitConfig, core.cpu, core.diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
@@ -216,7 +218,15 @@ int main() {
         screen.width, screen.height, /*menuRows=*/20);
     const bool pinOk = pixelpin::check("q605_boot_etalon", pin);
 
-    bool ok = geometry && finder && mem.scsi().commands > 4000 && pinOk;
+    // The guest's own word for the machine (Q605Profile.h): BoxFlag ($0CB3)
+    // is Gestalt machineType - 6, 88 for the Quadra 605 (94). Before the rigs
+    // took the catalogue identity it read 83, the LC 475's 89.
+    const unsigned boxFlag = mem.peek8(0x0CB3);
+    std::printf("BoxFlag %u (Gestalt machineType %u, want 94)\n", boxFlag,
+                boxFlag + 6);
+    const bool identity = boxFlag == 88;
+    bool ok = geometry && finder && identity && mem.scsi().commands > 4000 &&
+              pinOk;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrameCycles, ok);
     std::printf("%s\n", ok ? "PASSED — Quadra 605 Finder in 256 colors" : "FAILED");

@@ -23,6 +23,7 @@
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "SaveState.h"
 #include "SaveStateMachines.h"
 #include "JitTestConfig.h"
@@ -145,17 +146,17 @@ int main() {
         return 1;
     }
     using Blob = std::vector<uint8_t>;
-    const auto kKind = pom68k::SnapMachine::Lc475;
+    const auto kKind = pom68k::SnapMachine::Q605;
     const long kScenarioFrames = 1200;
 
     // ── Machine A: boot to the Finder, snapshot to a FILE ────────────────
-    Q605Memory memA(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory memA(q605Core(), 32u << 20);
     if (!memA.loadRom(rom) || !memA.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: A could not load ROM/disk\n"); return 1;
     }
     const jit::ResolvedConfig jitCfg = testjit::resolveFromEnvironment();
-    Cpu040 cpuA(memA, jitCfg, pom68k::defaultCoreConfig().cpu,
-                pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpuA(memA, jitCfg, q605Core().cpu,
+                q605Core().diagnostics);
     memA.setCpu(&cpuA);
     cpuA.hardReset();
     while (memA.cpuHeld()) memA.tick(1000);
@@ -194,12 +195,12 @@ int main() {
     std::remove(snapPath.c_str());
     if (loaded != start) { std::fprintf(stderr, "FAIL: the file round-trip changed the snapshot\n"); return 1; }
 
-    Q605Memory memB(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory memB(q605Core(), 32u << 20);
     if (!memB.loadRom(rom) || !memB.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: B could not load ROM/disk\n"); return 1;
     }
-    Cpu040 cpuB(memB, jitCfg, pom68k::defaultCoreConfig().cpu,
-                pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpuB(memB, jitCfg, q605Core().cpu,
+                q605Core().diagnostics);
     memB.setCpu(&cpuB);
     // No hardReset/boot: the load restores the whole machine onto the fresh
     // object graph. A residue from a cold boot would only mask a missing
@@ -237,12 +238,12 @@ int main() {
     // are the same machine. This is the cross-instance determinism the gate
     // asserts — stronger than "B loaded and ran", and it does NOT depend on
     // the booted-object phase that the A-direct comparison would (see below).
-    Q605Memory memC(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory memC(q605Core(), 32u << 20);
     if (!memC.loadRom(rom) || !memC.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: C could not load ROM/disk\n"); return 1;
     }
-    Cpu040 cpuC(memC, jitCfg, pom68k::defaultCoreConfig().cpu,
-                pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpuC(memC, jitCfg, q605Core().cpu,
+                q605Core().diagnostics);
     memC.setCpu(&cpuC);
     std::string errC;
     if (!pom68k::load(memC, cpuC, kKind, loaded.data(), loaded.size(), errC) || !errC.empty()) {

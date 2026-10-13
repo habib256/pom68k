@@ -52,13 +52,13 @@ constexpr const char* kDocument = "pom proof of quadra";
 
 bool runLeg(const std::vector<uint8_t>& rom, const std::string& img,
             const jit::ResolvedConfig& jitConfig, const char* label, Leg& leg) {
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(img)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return false;
     }
-    Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpu(mem, jitConfig, q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     gMem = &mem;

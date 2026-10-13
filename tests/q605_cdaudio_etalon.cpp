@@ -20,6 +20,7 @@
 #include "CdAudioSink.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 
 #include <algorithm>
 #include <cmath>
@@ -205,7 +206,7 @@ int main() {
     // The CDB log is the measurement: what MAC OS asks the drive, opcode by
     // opcode. Injected rather than read from the environment — nothing below
     // the startup boundary may call getenv.
-    pom68k::CoreConfig core = pom68k::defaultCoreConfig();
+    pom68k::CoreConfig core = q605Core();
     core.storage.cdTrace = std::getenv("POM68K_CDAUDIO_CDB") != nullptr;
     Q605Memory mem(core, 32u << 20);
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }

@@ -105,7 +105,7 @@ int main() {
 
     // POM68K_CDINSTALL_TRACE=1 prints every SCSI CDB (ScsiDisk's own trace),
     // the way the Drive Setup stall of 2026-09-08 was read.
-    pom68k::CoreConfig core = pom68k::defaultCoreConfig();
+    pom68k::CoreConfig core = q605Core();
     if (std::getenv("POM68K_CDINSTALL_TRACE")) core.storage.scsiTrace = true;
     Q605Memory mem(core, 32u << 20);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
@@ -116,8 +116,8 @@ int main() {
     if (!mem.attachCdrom(cd, kCdId)) { std::fprintf(stderr, "FAIL: could not attach the CD\n"); return 1; }
     std::remove(targetPath.c_str());
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpu(mem, jitConfig, q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     gMem = &mem;

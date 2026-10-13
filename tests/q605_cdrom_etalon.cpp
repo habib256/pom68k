@@ -27,6 +27,7 @@
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 
 #include <cmath>
 #include <cstdint>
@@ -144,7 +145,7 @@ int main() {
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     // Boot volume at ID 6 so it wins the ROM's 6→0 scan against the CD.
     // With POM68K_CD_BOOT there is no hard disk, so the scan reaches the
@@ -163,8 +164,8 @@ int main() {
         return 1;
     }
     Cpu040 cpu(mem, jit::defaultResolvedConfig(),
-               pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+               q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

@@ -28,6 +28,7 @@
 #include "GuestKeyboard.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 
 #include <algorithm>
 #include <cmath>

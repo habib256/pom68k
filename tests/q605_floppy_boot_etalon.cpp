@@ -8,6 +8,7 @@
 
 #include "AssetFingerprint.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "Cpu040.h"
 #include "Swim2.h"
 #include "SonyDrive.h"
@@ -81,7 +82,7 @@ bool readSector0ViaSwim(Swim2& swim, SonyDrive& drive, uint8_t out[512]) {
 int main(int argc, char** argv) {
     std::printf("q605_floppy_boot_etalon — SWIM2 SuperDrive media gate\n");
 
-    Q605Memory mem(pom68k::defaultCoreConfig(), 1u << 20);
+    Q605Memory mem(q605Core(), 1u << 20);
     mem.reset();
     SonyDrive& drive = mem.internalDrive();
     check(drive.isSuperDrive(), "Q605 internal drive is SuperDrive");
@@ -132,15 +133,15 @@ int main(int argc, char** argv) {
         if (rom.size() == Q605Memory::kRomSize) {
             // Full ROM→floppy boot remains open (SCSI is the default Quadra
             // path). Soft-report only: never fail the gate on it.
-            Q605Memory bootMem(pom68k::defaultCoreConfig(), 32u << 20);
+            Q605Memory bootMem(q605Core(), 32u << 20);
             if (!bootMem.loadRom(rom)) {
                 std::printf("  (optional ROM path soft-skipped — loadRom failed)\n");
             } else if (!bootMem.internalDrive().insertImage(makeHdImage())) {
                 std::printf("  (optional ROM path soft-skipped — insert failed)\n");
             } else {
                 Cpu040 cpu(bootMem, jit::defaultResolvedConfig(),
-                           pom68k::defaultCoreConfig().cpu,
-                           pom68k::defaultCoreConfig().diagnostics);
+                           q605Core().cpu,
+                           q605Core().diagnostics);
                 bootMem.setCpu(&cpu);
                 cpu.hardReset();
                 while (bootMem.cpuHeld()) bootMem.tick(1000);

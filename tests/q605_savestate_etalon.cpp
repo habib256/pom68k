@@ -9,14 +9,15 @@
 // FIFOs, the Ncr53c96 session incl. its deferred-IRQ countdown, the Cuda
 // LLE MCU mid-transaction) from unit-ROM-verified to real-OS-verified.
 //
-// The machine runs the default identity (LC 475, $A55A2221 — the tag the
-// snapshot pins; the ROM and boot path are shared with the Quadra 605).
+// The machine runs the catalogue's Quadra 605 identity ($A55A2225, 68040
+// with FPU — Q605Profile.h), the tag the snapshot pins.
 // Soft-skips without the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd.
 // Exit 0 = pass / soft-skip, 1 = fail.
 
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "SaveState.h"
 #include "SaveStateMachines.h"
 
@@ -164,14 +165,14 @@ int main() {
         return 1;
     }
 
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
     Cpu040 cpu(mem, jit::defaultResolvedConfig(),
-               pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+               q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
@@ -194,7 +195,7 @@ int main() {
 
     // ── Snapshot the live Finder ────────────────────────────────────────
     using Blob = std::vector<uint8_t>;
-    const auto kKind = pom68k::SnapMachine::Lc475;   // default $A55A2221 identity
+    const auto kKind = pom68k::SnapMachine::Q605;    // q605Core()'s identity
     Blob start;
     pom68k::save(mem, cpu, kKind, start);
     std::printf("snapshot: %zu bytes, %zu dirty SCSI block(s)\n",

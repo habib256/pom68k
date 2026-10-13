@@ -77,7 +77,7 @@ int main() {
         std::fprintf(stderr, "FAIL: bad ROM or probe (%s)\n", err.c_str());
         return 1;
     }
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(romData) || !mem.attachScsi(img, false, 0)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
@@ -87,8 +87,8 @@ int main() {
     std::printf("install: %s\n", o.message.c_str());
     if (o.kind != hfsinject::Outcome::Installed) return 1;
 
-    Cpu040 cpu(mem, testjit::resolveFromEnvironment(), pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpu(mem, testjit::resolveFromEnvironment(), q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     gMem = &mem;

@@ -32,6 +32,7 @@
 #include "Cpu040.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 
 #include <cmath>
 #include <cstdint>
@@ -219,7 +220,7 @@ int main() {
         std::fclose(f);
     }
 
-    Q605Memory mem(pom68k::defaultCoreConfig());
+    Q605Memory mem(q605Core());
     // ROM **and disk** before the CPU exists, exactly like q605_beyond_etalon:
     // attaching the volume after hardReset() leaves the machine running with
     // no boot device — 0 SCSI commands and a 0x0 screen, which is what this
@@ -229,8 +230,8 @@ int main() {
         return 1;
     }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpu(mem, jitConfig, q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     gMem = &mem; gCpu = &cpu;

@@ -652,7 +652,9 @@ Gates: `lc3_`, `lc3plus_`, `lc520_`, `lc550_`, `cclassic2_`, `iivx_`,
 
 `Q605Memory` + `Cpu040`. Functional accuracy (Q1-Q8). Machine ID at
 `$5FFFFFFC`: LC 475 `$A55A2221`, Quadra 605 `$A55A2225`, LC 575
-`$A55A222E` (`POM68K_Q605_ID` overrides).
+`$A55A222E` (`POM68K_Q605_ID` overrides). The profile → board ID/FPU
+mapping lives once in `BoardIdentity.h`: the product's profile application
+and the `q605_*` rigs (`tests/Q605Profile.h`, the Quadra 605) both read it.
 
 - **Core:** the Q1-Q4 Moira 040 at 25 MHz — MOVE16, 040 control registers,
   040 exception frames, TTRs, three-level URP/SRP translation, MMUSR/PTEST

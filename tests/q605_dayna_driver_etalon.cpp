@@ -448,7 +448,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    auto cfg = pom68k::defaultCoreConfig();
+    auto cfg = q605Core();
     cfg.bus.daynaPortId = kDaynaId;
     const std::string probeTools = "hdv/work/dayna-tools-rarp-net.vhd";
     if (networkProbe && !cloneVolume(toolsPath, probeTools)) return 1;

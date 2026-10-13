@@ -10,6 +10,7 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
+#include "BoardIdentity.h"
 #include "Q605Memory.h"
 
 #include <cmath>
@@ -109,7 +110,9 @@ Stats luminanceStats(const Screen& s, int x0, int x1, int y0, int y1) {
 } // namespace
 
 int main() {
-    pom68k::CoreConfig core;
+    // The catalogue's LC 475 ($A55A2221), with even the soft 68882 removed.
+    pom68k::CoreConfig core =
+        pom68k::profileCoreConfig(pom68k::SnapMachine::Lc475);
     core.cpu.q605Fpu = pom68k::Q605FpuMode::None;
 
     std::string romPath = findAsset({

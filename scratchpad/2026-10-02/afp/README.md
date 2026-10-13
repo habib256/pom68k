@@ -31,3 +31,6 @@ profiles, the Q605 among them), which moves every boundary from 0; the
 x86-64 pair is the reference at HEAD (CHANGELOG 2026-10-02 (sixth)).
 Replayed 2026-10-04 at `3c4b674`: the AArch64 interpreter and `a64` equal the
 x86-64 pair at all 22 boundaries — four arms, two hosts, one trace.
+
+Superseded on 2026-10-13 by `scratchpad/2026-10-13/afp/`: the rig now boots
+the Quadra 605 identity (`$A55A2225`), which moves every boundary from 0.
