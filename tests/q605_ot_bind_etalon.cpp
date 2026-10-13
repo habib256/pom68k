@@ -25,6 +25,7 @@
 #include "AtalkHub.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -62,14 +63,14 @@ int main() {
         return 1;
     }
 
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
     Cpu040 cpu(mem, jit::defaultResolvedConfig(),
-               pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+               q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
 
     // ── main.cpp wireLocalTalk, hub-without-cable flavor ──

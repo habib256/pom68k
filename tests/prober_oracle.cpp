@@ -34,6 +34,7 @@
 
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
+#include "BoardIdentity.h"
 #include "Cpu030.h"
 #include "CentrisCpu.h"
 #include "CentrisMemory.h"
@@ -361,14 +362,9 @@ int lcii(const Options& o, const std::string& bin) {
 }
 
 // MEMCjr + PrimeTime, MAME macquadra605.cpp: one FF7439EE ROM, three
-// identities by the board-ID register — as the product's profiles set them
-// (RuntimeConfigMachine.cpp applyMachineProfile).
-struct MemcJr { std::uint32_t id; pom68k::Q605FpuMode fpu; };
-constexpr MemcJr kQ605{0xA55A2225u, pom68k::Q605FpuMode::Integrated};
-constexpr MemcJr kLc475{0xA55A2221u, pom68k::Q605FpuMode::Soft68882};
-constexpr MemcJr kLc575{0xA55A222Eu, pom68k::Q605FpuMode::Soft68882};
-
-int memcjr(const Options& o, const std::string& bin, const MemcJr& model) {
+// identities by the board-ID register and the FPU — the catalogue profile's,
+// through the mapping the product applies (BoardIdentity.h).
+int memcjr(const Options& o, const std::string& bin, pom68k::SnapMachine model) {
     const std::string rom = testasset::find(
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM");
     const std::string img = image("hdv/MacOS-8.1-boot.vhd");
@@ -377,9 +373,8 @@ int memcjr(const Options& o, const std::string& bin, const MemcJr& model) {
         return 0;
     }
     testasset::report({ rom, img });
-    pom68k::CoreConfig config = oracleConfig();
-    config.bus.q605MachineId = model.id;
-    config.cpu.q605Fpu = model.fpu;
+    const pom68k::CoreConfig config =
+        pom68k::profileCoreConfig(model, oracleConfig());
     Q605Memory mem(config, 32u << 20);         // MAME is run with -ramsize 32M
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Cpu040 cpu(mem, testjit::resolveFromEnvironment(), config.cpu, config.diagnostics);
@@ -422,8 +417,9 @@ int q630(const Options& o, const std::string& bin, bool lc580 = false) {
         return 0;
     }
     testasset::report({ rom, img });
-    pom68k::CoreConfig config = oracleConfig();
-    config.bus.q630MachineId = lc580 ? 0xA55A225Au : 0xA55A2252u;
+    pom68k::CoreConfig config = pom68k::profileCoreConfig(
+        lc580 ? pom68k::SnapMachine::Lc580 : pom68k::SnapMachine::Q630,
+        oracleConfig());
     config.cpu.q630Lc040 = lc580;
     Q630Memory mem(config, 32u << 20);
     if (!mem.loadRom(readAll(rom))) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
@@ -463,9 +459,9 @@ int q700(const Options& o, const std::string& bin, bool q900 = false, bool q950 
 int dispatch(const std::string& machine, const Options& o, const std::string& bin) {
     if (machine == "macii") return macii(o, bin);
     if (machine == "lcii") return lcii(o, bin);
-    if (machine == "q605") return memcjr(o, bin, kQ605);
-    if (machine == "lc475") return memcjr(o, bin, kLc475);
-    if (machine == "lc575") return memcjr(o, bin, kLc575);
+    if (machine == "q605") return memcjr(o, bin, pom68k::SnapMachine::Q605);
+    if (machine == "lc475") return memcjr(o, bin, pom68k::SnapMachine::Lc475);
+    if (machine == "lc575") return memcjr(o, bin, pom68k::SnapMachine::Lc575);
     if (machine == "q800") return djmemc(o, bin, kQ800);
     if (machine == "q650") return djmemc(o, bin, kQ650);
     if (machine == "q610") return djmemc(o, bin, kQ610);

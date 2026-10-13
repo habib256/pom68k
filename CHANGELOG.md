@@ -43,8 +43,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"a pressed CD game, played" / "the AppleCD Explorer disc mounts" (2026-09-19) — both stopped opening on 2026-10-09, when the Snow-derived `CdCueSheet` refused PREGAP and FLAGS, and no gate held either disc; and the September TOC placed every audio track 150 sectors early, having dropped the PREGAP the sheets declare** → [2026-10-10 (second) — CdImage…](#2026-10-10-cd-image)
 - **"the debugger's 68030 logical view (and `guestPeek8`) matches the CPU" — it ignored long-descriptor limits until the MMU-edit gate faulted where the view showed a page** → [2026-10-09 (tenth) — MMU and cache registers edited…](#2026-10-09-debugger-mmu-edits)
 - **"the Quadra 630 installs its SCSI disk's driver elsewhere" (2026-10-02 (ninth)) — MAME's default macqd630 has an imageless IDE disk on `ata:0`; without it MAME installs the driver at `-33` like POM68K** → [2026-10-03 — The Quadra 630's SCSI driver was not elsewhere…](#2026-10-03-q630-ide)
-- **"three model identities by --machine-profile" (Machine menu, `PlatformDafb.cpp` `runQuadra`) — the profile chose the FPU and the title but not the board ID, so a Quadra 605 or LC 575 chosen from the menu answered Gestalt as an LC 475 (and an LC 580 as a Quadra 630); every `q605_*` gate still boots that default** → [2026-10-02 (eighth) — The oracle's second machine finds the Quadra 605 calling itself an LC 475…](#2026-10-02-q605-oracle)
-- **"the AArch64 interpreter trace of 2026-10-02 is `q605_afp_live_etalon`'s oracle" (2026-10-02 (later)) — it was, until drive B was unwired the same night: the Q605 has no port, every boundary moved from boundary 0, and the x86-64 interpreter trace at `25fed3b` replaces it** → [2026-10-02 (sixth) — `Disk605.dsk` is `6ea0c1c7…`…](#2026-10-02-x86-disk605-afp)
+- **"three model identities by --machine-profile" (Machine menu, `PlatformDafb.cpp` `runQuadra`) — the profile chose the FPU and the title but not the board ID, so a Quadra 605 or LC 575 chosen from the menu answered Gestalt as an LC 475 (and an LC 580 as a Quadra 630); every `q605_*` gate still boots that default** → [2026-10-02 (eighth) — The oracle's second machine finds the Quadra 605 calling itself an LC 475…](#2026-10-02-q605-oracle); the gates took the Quadra 605's ID in [2026-10-13 (seventh)](#2026-10-13-q605-gate-identity)
+- **"the AArch64 interpreter trace of 2026-10-02 is `q605_afp_live_etalon`'s oracle" (2026-10-02 (later)) — it was, until drive B was unwired the same night: the Q605 has no port, every boundary moved from boundary 0, and the x86-64 interpreter trace at `25fed3b` replaces it** → [2026-10-02 (sixth) — `Disk605.dsk` is `6ea0c1c7…`…](#2026-10-02-x86-disk605-afp); that one gave way in turn when the rig took the Quadra 605's board ID → [2026-10-13 (seventh)](#2026-10-13-q605-gate-identity)
 - **"All 36 desktops get their external Sony drive" (2026-09-09 (sixth)) — the LC family has no external floppy port and MAME wires drive B on nine profiles only; drive B is now unwired on the other 29** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
 - **"The bare LC II is closed: POM68K is faithful" (2026-09-17 (eleventh)) — the LC II shipped without an FPU and ran System 7, and MAME elects the FPU-less `$CC00` record from the same ROM; reopened** → [2026-10-02 (late night) — Drive B only where there is a port…](#2026-10-02-drive-b-port)
 - **"cacheless forms and single-poll memory instructions are unchanged" (`POM68K_JIT.md`, positioned polls, 2026-09-03) — a cacheless exact MMIO thunk advances device time between the two IPL samples too; a64 took the VIA2 interrupt one instruction late and left `q605_afp_live_etalon`'s oracle at boundary 5** → [2026-10-02 (later) — The a64 arm of the AFP trace was one instruction late…](#2026-10-02-a64-late-ipl)
@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-13 (seventh)** — [The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs](#2026-10-13-q605-gate-identity)
 - **2026-10-13 (sixth)** — [The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM](#2026-10-13-macii-oracle)
 - **2026-10-13 (release)** — [0.3.5](#2026-10-13-release-035)
 - **2026-10-13 (fifth)** — [A non-ASCII path in argv ended POM68K.exe before main; the asset-free tier is green under MSVC](#2026-10-13-msvc-utf8-argv)
@@ -1143,6 +1144,65 @@ Newest first.
 
 ---
 
+<a id="2026-10-13-q605-gate-identity"></a>
+## 2026-10-13 (seventh) — The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs
+
+[2026-10-02 (eighth)](#2026-10-02-q605-oracle) fixed the product's profiles
+and left the gates: every `q605_*` rig built `Q605Memory` from
+`defaultCoreConfig()`, whose unset `q605MachineId` leaves the board at the
+LC 475's `$A55A2221` while `Q605FpuMode::Integrated` keeps the 68040 FPU —
+a machine Apple never built. The guest said so: BoxFlag (`$0CB3`) read 83,
+Gestalt machineType 89, on `0ae5eae` rebuilt from a `git archive` of HEAD.
+
+**One mapping.** `src/BoardIdentity.h` (`applyBoardIdentity`,
+`profileCoreConfig`) now holds the profile → board ID (MEMCjr `$2221` /
+`$2225` / `$222E`, F108 `$2252` / `$225A`) and MEMCjr FPU table that
+`applyMachineProfile` had inline; the product calls it, and so do the rigs.
+`tests/Q605Profile.h` gives the `q605_*` family `q605Core()`, the
+catalogue's Quadra 605; `prober_oracle`'s MEMCjr and F108 branches and
+`lc475_` / `lc575_boot_etalon` take their identity from the same function
+instead of their own hex constants. `q605_nofpu_` / `q605_barefpu_boot_etalon`
+were never hybrids — a soft or no FPU beside `$2221` is an LC 475 — and now
+say so through the `Lc475` profile. The four ROM-less device tests
+(`q605_asc_`, `q605_dafb_`, `q605_turboscsi_`, `q605_event_scheduler_test`)
+keep `defaultCoreConfig()`: no ROM reads the register there.
+`q605_boot_etalon` gains the guest-side check the hybrid lacked: BoxFlag
+must read 88 (machineType 94). It does under `x64`, `threaded`, the
+interpreter, and in the Dayna and agent variants.
+
+**What moved, and why.** Same host, same day, one input changed:
+
+- `q605_afp_live_etalon`'s reference trace. `0ae5eae` still reproduces
+  `scratchpad/2026-10-02/afp/afp_live_trace_x86_64_x64.txt` at all 22
+  boundaries; with `$A55A2225` every boundary moves from 0. The Finder is
+  reached 1 135 cycles later (1 725 554 955), the Apple menu 3.75 M cycles
+  later, the Chooser 11.2 M earlier, and the second copy ends 85 M cycles
+  (3.4 s) earlier with 209 AFP commands instead of 211 (frames 676/505
+  instead of 680/508). The rig's only change is the config, so the ID is
+  the cause by construction. To see it at the guest's level, both runs were
+  repeated with a throwaway probe printing every AFP command as the server
+  counted it (the traces were unchanged by it): the two sequences are the
+  SAME commands in the same order except `FPGetVolParms`, the Finder's
+  periodic poll of a mounted server volume — 13 under the LC 475 identity,
+  11 under the Quadra 605, falling where each timeline's clock puts them.
+  One of the old run's polls landed inside the first copy, which is why
+  that copy took 4.65 s of guest time and now takes 4.15 s like the second;
+  the copy's trailing `FPGetFileDirParms` / `FPSetFileDirParms` / `FPFlush`
+  now complete just after the `copied` snapshot rather than before it.
+  Both copies move 41 108 bytes with no retransmission. The interpreter and
+  `x64` agree at all 22 boundaries: `scratchpad/2026-10-13/afp/` is the new
+  reference.
+- Nothing else. The `q605_boot_etalon` pixel pin `eefb49d126a73732` holds
+  (the LC 475, LC 575 and Quadra 605 desktops are the same pixels), and the
+  `q605_`, `lc475_`, `q630_` and `lc580_prober_oracle_etalon` reports
+  already ran with the product's IDs and pass unchanged.
+
+Executed: the 48 gates matching
+`^(q605_|jit_q605_|interp_q605_|lc475_|lc575_|q630_prober|lc580_prober)`
+plus `docs_test`, `config_test` and `file_size_budget_test`, all green; 47
+executed and `q605_dayna_rarp_network_etalon` soft-skipped for want of
+`dev/netprobe/build` (this host's Retro68 `ld` no longer finds
+`libboost_filesystem.so.1.83.0`). TODO § Jalon 2's item is closed.
 <a id="2026-10-13-macii-oracle"></a>
 ## 2026-10-13 (sixth) — The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM
 

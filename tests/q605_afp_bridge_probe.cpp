@@ -228,7 +228,7 @@ int main() {
         return 1;
     }
 
-    auto cfg = pom68k::defaultCoreConfig();
+    auto cfg = q605Core();
     Q605Memory mem(cfg, 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");

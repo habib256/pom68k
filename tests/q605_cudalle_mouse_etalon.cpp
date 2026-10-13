@@ -11,6 +11,7 @@
 #include "PortableEnv.h"
 #include "AssetFingerprint.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "Cpu040.h"
 #include <cstdio>
 #include <cstdlib>
@@ -31,12 +32,12 @@ int main() {
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(romData) || !mem.attachScsi(img)) return 1;
     if (!mem.cudaLleActive()) { std::printf("SKIP: needs roms/cuda/341s0788.bin\n"); return 0; }
     Cpu040 cpu(mem, jit::defaultResolvedConfig(),
-               pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+               q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

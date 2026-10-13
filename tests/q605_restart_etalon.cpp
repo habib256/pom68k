@@ -48,7 +48,7 @@ int main() {
         std::fprintf(stderr, "FAIL: ROM is %zu bytes, want 1 MB\n", romData.size());
         return 1;
     }
-    pom68k::CoreConfig core = pom68k::defaultCoreConfig();
+    pom68k::CoreConfig core = q605Core();
     Q605Memory mem(core, 32u << 20);
     if (!mem.loadRom(romData) || !mem.attachScsi(img)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");

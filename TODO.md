@@ -61,11 +61,6 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   2026-10-13 (sixth)). Restent le LC 575 (le `maclc575` de MAME 0.287,
   « imperfect », s'arrête sur « Starting Up »)… : chacun = une branche de
   `tests/prober_oracle.cpp` et son rapport MAME.
-- [ ] **Donner aux gates `q605_*` l'identité du Quadra 605.** Ils bootent
-  la carte à son ID par défaut, celui du LC 475 (`$A55A2221`), avec le FPU
-  du 68040 : un hybride qu'aucun Mac n'a été. Passer à `$A55A2225` déplace
-  les traces et épingles qui en dépendent (`q605_afp_live_etalon`) ; le
-  profil produit, lui, est corrigé (`CHANGELOG` 2026-10-02 (eighth)).
 ---
 
 ## Jalon 3 — Services réseau

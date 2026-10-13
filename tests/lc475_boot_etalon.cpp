@@ -11,6 +11,7 @@
 #include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
+#include "BoardIdentity.h"
 #include "Q605Memory.h"
 #include "PixelPin.h"
 
@@ -112,9 +113,8 @@ Stats luminanceStats(const Screen& s, int x0, int x1, int y0, int y1) {
 
 int main() {
     // Select the LC 475 identity before the machine/CPU are built.
-    pom68k::CoreConfig core;
-    core.bus.q605MachineId = 0xA55A2221u;
-    core.cpu.q605Fpu = pom68k::Q605FpuMode::Soft68882;
+    const pom68k::CoreConfig core =
+        pom68k::profileCoreConfig(pom68k::SnapMachine::Lc475);
 
     std::string romPath = findAsset({
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",

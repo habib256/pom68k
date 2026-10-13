@@ -48,14 +48,14 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     const std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                        std::istreambuf_iterator<char>());
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (romData.size() != Q605Memory::kRomSize || !mem.loadRom(romData) ||
         !mem.attachScsi(img)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
-    Cpu040 cpu(mem, testjit::resolveFromEnvironment(), pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpu(mem, testjit::resolveFromEnvironment(), q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     gMem = &mem;

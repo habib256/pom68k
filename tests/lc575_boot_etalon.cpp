@@ -24,6 +24,7 @@
 #include "AgentBootProbe.h"
 #include "AssetFingerprint.h"
 #include "Cpu040.h"
+#include "BoardIdentity.h"
 #include "Q605Memory.h"
 #include "PixelPin.h"
 
@@ -136,9 +137,8 @@ bool isFinder(const Screen& s) {
 
 int main() {
     // Select the LC 575 identity before the machine/CPU are built.
-    pom68k::CoreConfig core;
-    core.bus.q605MachineId = 0xA55A222Eu;
-    core.cpu.q605Fpu = pom68k::Q605FpuMode::Soft68882;
+    const pom68k::CoreConfig core =
+        pom68k::profileCoreConfig(pom68k::SnapMachine::Lc575);
 
     std::string romPath = findAsset({
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",
