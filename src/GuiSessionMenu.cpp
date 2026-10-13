@@ -77,7 +77,7 @@ void openSession(GuiRelaunchState& relaunch, const std::string& file) {
 void drawSessionMenu(GuiSessionState& state) {
     if (!ImGui::BeginMenu("Session")) return;
     GuiSessionFileState& session = state.sessionFile;
-    if (ImGui::MenuItem("Enregistrer la session...", nullptr, false,
+    if (ImGui::MenuItem("Save session...", nullptr, false,
                         bool(session.capture))) {
         prepareSavePath(session);
         session.showSaveWindow = true;
@@ -87,7 +87,7 @@ void drawSessionMenu(GuiSessionState& state) {
     // in from elsewhere, appears without a restart.
     const auto files = app::listSessions(app::pathFromUtf8(session.directory));
     if (files.empty())
-        ImGui::TextDisabled("(aucune session dans %s)", session.directory.c_str());
+        ImGui::TextDisabled("(no sessions in %s)", session.directory.c_str());
     for (const std::filesystem::path& file : files) {
         const std::string path = app::utf8FromPath(file);
         const std::string name = app::utf8FromPath(file.stem());
@@ -105,16 +105,16 @@ void drawSessionWindow(GuiSessionFileState& session) {
         ImGui::End();
         return;
     }
-    ImGui::TextWrapped("Le profil, la ROM et les médias de démarrage, le moteur, "
-                       "le réseau, les ports série et l'affichage. L'état "
-                       "d'exécution reste dans l'état sauvé (.pomss).");
-    ImGui::InputText("Fichier", session.savePath.data(), session.savePath.size());
-    if (ImGui::Button("Enregistrer") && session.capture) {
+    ImGui::TextWrapped("The profile, ROM, startup media, engine, "
+                       "network, serial ports, and display. Execution "
+                       "state belongs in a saved state (.pomss).");
+    ImGui::InputText("File", session.savePath.data(), session.savePath.size());
+    if (ImGui::Button("Save") && session.capture) {
         const std::string path(session.savePath.data());
         const std::string error = app::writeSessionFile(
             app::pathFromUtf8(path), session.capture());
-        session.status = error.empty() ? "Session enregistrée : " + path
-                                       : "Échec : " + error;
+        session.status = error.empty() ? "Session saved: " + path
+                                       : "Failed: " + error;
     }
     if (!session.status.empty()) ImGui::TextWrapped("%s", session.status.c_str());
     ImGui::End();

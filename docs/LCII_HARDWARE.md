@@ -533,7 +533,7 @@ V8-specific slice.
 | **SCSI DRQ timeout is not timed** — no DRQ raises `/BERR` immediately instead of after ~16 µs | `V8Memory::scsiDma_` | Functionally what the blind-transfer loops need; `LLE_VS_HLE` § 1.5 |
 | **ASC drain is a fixed 22 257 Hz**, not derived from the programmed rate | `Asc.*` | `LLE_VS_HLE` § 1.7 |
 | **DFAC analog filters are not synthesized; DFAC2 payload remains ACK-only** | `Dfac`, `CudaLle::setI2cDfac` | Original DFAC gain/input gate is live; DFAC2 follows upstream's still-incomplete register model |
-| **68882 populated by default** although the stock LC II has none | `PlatformV8.cpp` (startup default in `RuntimeConfigProduct.cpp`), LC II gates pass `withFpu = true` | Era software F-line-faults otherwise; `POM68K_NOFPU` = bare machine |
+| **68882 populated by default** although the stock LC II has none | `PlatformV8.cpp` (startup default in `RuntimeConfigProduct.cpp`), LC II gates pass `withFpu = true` | The bare-machine cold-start divergence remains open: MAME selects the FPU-less `$CC00` record from the same ROM. The September fidelity ruling was reopened on 2026-10-02; see `TODO.md` § Fidélité. `POM68K_NOFPU` is a boot-gate investigation knob, not a product option. |
 | **No CPU/bus contention model** beyond VIA E-clock sync + SWIM wait states; an i-cache *throughput* overlay, not a cache model | `Cpu030.h` | Functional accuracy by design; `LLE_VS_HLE` § 1.2 |
 | **LC PDS slot: no card, BERR** | `V8Memory::read8` | Nothing to emulate yet |
 

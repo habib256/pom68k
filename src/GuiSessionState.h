@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "GuiStartupWindow.h"
+
 #include "AtalkHub.h"
 #include "CdAudioSource.h"
 #include "FloppySound.h"
@@ -89,7 +91,7 @@ struct GuiRelaunchState {
     }
 };
 
-// « Périphériques → Ports série » (GuiSerialWindow.h): one entry per SCC
+// « Peripherals → Serial ports » (GuiSerialWindow.h): one entry per SCC
 // channel, printer (B) then modem (A). `terminal` is null when the port is
 // not configured or could not open; `message` says why.
 struct GuiSerialPortState {
@@ -143,6 +145,7 @@ struct GuiDiagnosticState {
 };
 
 struct GuiSessionState {
+    pom68k::gui::GuiStartupState startup;
     pom68k::gui::GuiDisplayState display;
     GuiNetworkState network;
     GuiAudioState audio;

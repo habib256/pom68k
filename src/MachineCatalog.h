@@ -99,8 +99,8 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"GLUE + NuBus (Mac II)", "Macintosh SE/30", "se30", MachineKind::MacII, PlatformKind::Glue, CpuFamily::M68030, SnapMachine::SE30, "roms/mac2fdhd.rom", "97221136"},
     {"OSS + IOP (IIfx)", "Macintosh IIfx (40 MHz)", "iifx", MachineKind::IIfx, PlatformKind::Oss, CpuFamily::M68030, SnapMachine::IIfx, "roms/maciifx.rom", "4147DD77"},
 
-    {"RBV (video en RAM)", "Macintosh IIci", "iici", MachineKind::IIci, PlatformKind::Rbv, CpuFamily::M68030, SnapMachine::IIci, "roms/maciici.rom", "368CADFE"},
-    {"RBV (video en RAM)", "Macintosh IIsi", "iisi", MachineKind::IIsi, PlatformKind::Rbv, CpuFamily::M68030, SnapMachine::IIsi, "roms/maciisi.rom", "36B7FB6C"},
+    {"RBV (video in RAM)", "Macintosh IIci", "iici", MachineKind::IIci, PlatformKind::Rbv, CpuFamily::M68030, SnapMachine::IIci, "roms/maciici.rom", "368CADFE"},
+    {"RBV (video in RAM)", "Macintosh IIsi", "iisi", MachineKind::IIsi, PlatformKind::Rbv, CpuFamily::M68030, SnapMachine::IIsi, "roms/maciisi.rom", "36B7FB6C"},
 
     {"V8 / Eagle / Spice / Tinker Bell", "Macintosh LC", "lc", MachineKind::Lc, PlatformKind::V8, CpuFamily::M68020, SnapMachine::Lc, "roms/maclc.rom", "350EACF0"},
     {"V8 / Eagle / Spice / Tinker Bell", "Macintosh LC II", "lcii", MachineKind::LcII, PlatformKind::V8, CpuFamily::M68030, SnapMachine::LcII, "roms/maclcii.rom", "35C28F5F"},
@@ -114,8 +114,8 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"Sonora", "Macintosh LC 550 (33 MHz)", "lc550", MachineKind::Aio, PlatformKind::Sonora, CpuFamily::M68030, SnapMachine::Lc550, "roms/maclc520.rom", "EDE66CBD"},
     {"Sonora", "Macintosh Color Classic II", "cclassic2", MachineKind::Aio, PlatformKind::Sonora, CpuFamily::M68030, SnapMachine::CClassic2, "roms/maclc520.rom", "EDE66CBD"},
 
-    {"VASP (Sonora + peripheriques V8)", "Macintosh IIvx", "iivx", MachineKind::Vasp, PlatformKind::Vasp, CpuFamily::M68030, SnapMachine::IIvx, "roms/maciivx.rom", "4957EB49"},
-    {"VASP (Sonora + peripheriques V8)", "Macintosh IIvi (16 MHz)", "iivi", MachineKind::Vasp, PlatformKind::Vasp, CpuFamily::M68030, SnapMachine::IIvi, "roms/maciivx.rom", "4957EB49"},
+    {"VASP (Sonora + V8 peripherals)", "Macintosh IIvx", "iivx", MachineKind::Vasp, PlatformKind::Vasp, CpuFamily::M68030, SnapMachine::IIvx, "roms/maciivx.rom", "4957EB49"},
+    {"VASP (Sonora + V8 peripherals)", "Macintosh IIvi (16 MHz)", "iivi", MachineKind::Vasp, PlatformKind::Vasp, CpuFamily::M68030, SnapMachine::IIvi, "roms/maciivx.rom", "4957EB49"},
 
     {"MEMCjr + PrimeTime", "Macintosh LC 475", "lc475", MachineKind::Quadra, PlatformKind::MemcJr, CpuFamily::M68040, SnapMachine::Lc475, "roms/quadra605.rom", "FF7439EE"},
     {"MEMCjr + PrimeTime", "Macintosh LC 575 (33 MHz)", "lc575", MachineKind::Quadra, PlatformKind::MemcJr, CpuFamily::M68040, SnapMachine::Lc575, "roms/quadra605.rom", "FF7439EE"},
@@ -127,9 +127,9 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"djMEMC + IOSB", "Macintosh Quadra 650 (33 MHz)", "q650", MachineKind::Centris, PlatformKind::DjMemc, CpuFamily::M68040, SnapMachine::Quadra650, "roms/centris650.rom", "F1A6F343"},
     {"djMEMC + IOSB", "Macintosh Quadra 800 (33 MHz)", "q800", MachineKind::Centris, PlatformKind::DjMemc, CpuFamily::M68040, SnapMachine::Quadra800, "roms/centris650.rom", "F1A6F343"},
 
-    {"Discret 040 (Quadra 700/900/950)", "Macintosh Quadra 700", "q700", MachineKind::Q700, PlatformKind::Spike, CpuFamily::M68040, SnapMachine::Q700, "roms/quadra700.rom", "420DBFF3"},
-    {"Discret 040 (Quadra 700/900/950)", "Macintosh Quadra 900 (IOP)", "q900", MachineKind::Q700, PlatformKind::Spike, CpuFamily::M68040, SnapMachine::Quadra900, "roms/quadra700.rom", "420DBFF3"},
-    {"Discret 040 (Quadra 700/900/950)", "Macintosh Quadra 950 (33 MHz, IOP)", "q950", MachineKind::Q700, PlatformKind::Spike, CpuFamily::M68040, SnapMachine::Quadra950, "roms/quadra950.rom", "3DC27823"},
+    {"Discrete 040 (Quadra 700/900/950)", "Macintosh Quadra 700", "q700", MachineKind::Q700, PlatformKind::Spike, CpuFamily::M68040, SnapMachine::Q700, "roms/quadra700.rom", "420DBFF3"},
+    {"Discrete 040 (Quadra 700/900/950)", "Macintosh Quadra 900 (IOP)", "q900", MachineKind::Q700, PlatformKind::Spike, CpuFamily::M68040, SnapMachine::Quadra900, "roms/quadra700.rom", "420DBFF3"},
+    {"Discrete 040 (Quadra 700/900/950)", "Macintosh Quadra 950 (33 MHz, IOP)", "q950", MachineKind::Q700, PlatformKind::Spike, CpuFamily::M68040, SnapMachine::Quadra950, "roms/quadra950.rom", "3DC27823"},
 
     {"F108 + PrimeTime II + Valkyrie", "Macintosh Quadra 630 (33 MHz)", "q630", MachineKind::Q630, PlatformKind::F108, CpuFamily::M68040, SnapMachine::Q630, "roms/quadra630.rom", "06684214"},
     {"F108 + PrimeTime II + Valkyrie", "Macintosh LC / Performa 580", "lc580", MachineKind::Q630, PlatformKind::F108, CpuFamily::M68040, SnapMachine::Lc580, "roms/quadra630.rom", "06684214"},

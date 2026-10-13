@@ -85,7 +85,7 @@ static bool findDdmTemplate(const std::string& imagePath,
 
     for (const auto& p : cands) {
         if (loadTemplateHead(p, head)) {
-            std::fprintf(stderr, "SCSI: flat HFS façade — DDM template from %s\n",
+            std::fprintf(stderr, "SCSI: flat HFS facade — DDM template from %s\n",
                          p.c_str());
             return true;
         }
@@ -147,7 +147,7 @@ bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
     if (!looksBareHfs(image_)) return false;
     if (image_.size() % kBlockSize) {
         std::fprintf(stderr, "SCSI: %s: bare HFS not a multiple of 512 — "
-                     "no façade\n", imagePath.c_str());
+                     "no facade\n", imagePath.c_str());
         return false;
     }
 
@@ -202,7 +202,7 @@ bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
     image_.swap(wrapped);
     blocks_ = total;
     hfsPrefixBlocks_ = kFacadePrefixBlocks;
-    std::fprintf(stderr, "SCSI: flat HFS → façade (%u + %u = %u blocks)\n",
+    std::fprintf(stderr, "SCSI: flat HFS → facade (%u + %u = %u blocks)\n",
                  kFacadePrefixBlocks, hfsBlocks, total);
     return true;
 }

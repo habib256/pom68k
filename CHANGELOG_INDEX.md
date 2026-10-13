@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 649 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 658 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -12,15 +12,15 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 63 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 34 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 27 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 28 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
 | [Machine bring-ups](#machine-bring-ups) | 79 |
-| [Build, packaging and release](#build-packaging-and-release) | 16 |
+| [Build, packaging and release](#build-packaging-and-release) | 17 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 133 |
+| [Cross-cutting](#cross-cutting) | 140 |
 
 ---
 
@@ -358,6 +358,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-25 (later)** — [Every platform pinned by its pixels: 22 profiles, one value per System and screen, and the agent variants red since the first pins](CHANGELOG.md#2026-09-25-pins-every-platform)
 - **2026-09-26 (later)** — [A still screen is not a finished boot: the LC 575 pinned a half-drawn desktop, and a settle now waits for a quiet disk](CHANGELOG.md#2026-09-26-settle-quiet-disk)
 - **2026-09-27** — [The compacts' speaker hears the buffer the beam reads: 13 % of the boot chime was being read at the wrong moment](CHANGELOG.md#2026-09-27-sound-per-line)
+- **2026-10-12 (fifth)** — [The Mac screen centers and mouse capture explains how to exit](CHANGELOG.md#2026-10-12-workspace-and-capture)
 
 ## Sound
 
@@ -518,6 +519,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-16 (twenty-fourth)** — [The nightly LTO build carries `-Werror` and is green on both architectures: the `-Wstringop-overflow` on `EtherLink::sendToGuest` is closed by shape, not by pragma](CHANGELOG.md#2026-09-16-lto-werror-green)
 - **2026-10-10 (fourth)** — [Three pushes red on CI: a menu left open on a host without ROMs, a second host's registry, a switch under -Werror](CHANGELOG.md#2026-10-10-ci-red)
 - **2026-10-10 (thirteenth)** — [The asset-free tier on a real Windows host: the serial gate passes under MSVC, five reds found](CHANGELOG.md#2026-10-10-msvc-asset-none)
+- **2026-10-12 (eighth)** — [Host menus release held Mac keys and own keyboard input](CHANGELOG.md#2026-10-12-keyboard-focus)
 
 ## Tests, gates and measurement
 
@@ -711,4 +713,11 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-09 (sixth)** — [Access and exception stops: decided inside the instruction, delivered after it; and a reset had been silently unarming catchpoints](CHANGELOG.md#2026-10-09-debugger-stops)
 - **2026-10-10 (fifth)** — [« Ports série »: the terminal observes a bridge and is the endpoint of its own port; Winsock TCP runs under wine; a Serial Driver client talks to it on Mac OS 8.1](CHANGELOG.md#2026-10-10-serial-window)
 - **2026-10-10 (second)** — [CdImage: a sheet becomes a disc of spans, and the two pressed CDs open again](CHANGELOG.md#2026-10-10-cd-image)
+- **2026-10-12** — [Current documentation follows the implemented contracts and reopened findings](CHANGELOG.md#2026-10-12-documentation-drift)
+- **2026-10-12 (fourth)** — [The product UI speaks English throughout the setup and control paths](CHANGELOG.md#2026-10-12-english-ui)
+- **2026-10-12 (later)** — [Common controls precede protocol diagnostics and staged changes name their effect](CHANGELOG.md#2026-10-12-product-ergonomics)
+- **2026-10-12 (ninth)** — [Start Macintosh validates and launches in one action](CHANGELOG.md#2026-10-12-direct-start)
+- **2026-10-12 (seventh)** — [The setup guide can search the Macintosh catalogue](CHANGELOG.md#2026-10-12-searchable-models)
+- **2026-10-12 (sixth)** — [Disk images can be added from a visible file browser](CHANGELOG.md#2026-10-12-disk-image-browser)
+- **2026-10-12 (third)** — [A missing ROM opens a guide that prepares a Macintosh before relaunch](CHANGELOG.md#2026-10-12-startup-guide)
 

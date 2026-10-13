@@ -61,7 +61,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
         if (argument == "cdbay") {
             if (mem.attachCdromEmpty(id)) {
                 extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
+                std::printf("SCSI CD %d: <empty>\n", id);
             }
             continue;
         }
@@ -162,7 +162,7 @@ int runV8Gui(Mem& mem, Cpu& cpu, Video& video, AudioHost& audioHost,
         };
         monitorButton("512x384", 2);
         monitorButton("640x480", 6);
-        ImGui::TextDisabled("(redémarre le Mac)");
+        ImGui::TextDisabled("(restarts the Mac)");
     });
 
     if (const auto& floppy = services.config().devices().startupFloppy) {

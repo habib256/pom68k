@@ -46,8 +46,8 @@ inline std::vector<std::string> declRomCandidates() {
 }
 
 inline const char* kSubstituteConsequence =
-    "Sans le dump 342-0008-a : System 6 et 7.0 démarrent, System 7.5.5 reste "
-    "sur « Welcome to Macintosh ».";
+    "Without the 342-0008-a dump: System 6 and 7.0 boot, while System 7.5.5 "
+    "stays at 'Welcome to Macintosh'.";
 
 // The guest-ordered image to install on the NuBus: the real card ROM when
 // one loads, the synthetic fallback otherwise. `injectedPath` is an
@@ -59,7 +59,7 @@ inline std::vector<std::uint8_t> selectDeclRom(const CoreFirmwareConfig& firmwar
                                                const char* logTag) {
     std::vector<std::uint8_t> image;
     fw::Request req{lle::HleTobyDeclRom, FirmwareTarget::TobyDecl};
-    req.name = "Toby - ROM de déclaration de la carte vidéo Macintosh II "
+    req.name = "Toby - Macintosh II video card declaration ROM "
                "(342-0008-a)";
     req.enableKnob = "POM68K_TOBY_DECL_LLE";
     req.pathKnob = "POM68K_TOBY_DECL";

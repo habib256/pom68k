@@ -54,7 +54,7 @@ bool exportHistory(const std::string& path, const IdentityNotes& identity,
         std::fprintf(out, "E %" PRId64 " %02X %08X %04X\n", t.clock, t.vector,
                      t.stackedPc, t.trapWord);
     if (std::ferror(out) || std::fflush(out) != 0) {
-        why = "Export : écriture incomplète de " + path;
+        why = "Export: incomplete write to " + path;
         return false;
     }
     return true;

@@ -331,11 +331,13 @@ Gates: `rom_boot_etalon`, `disk_boot_etalon`, `system_boot_etalon`,
 `classic_boot_etalon`, and the three explicit
 `{se,sefdhd,classic}_scsi_boot_etalon` cells.
 
-**The 128K and 512K have no boot gate yet.** Their board is wired and their
-asset-free facts are held by `storage_profile_test`, but the 64 KB ROM stops
-in its power-on self test — Sad Mac `$0F0004`, the mod3 RAM sub-test — before
-it steps the drive. `tests/mac128k_boot_etalon.cpp` is built on demand
-(`EXCLUDE_FROM_ALL`) and carries the reproducer and its probes.
+The 128K and 512K have registered boot gates, `mac128k_boot_etalon` and
+`mac512k_boot_etalon`, plus `mac128k_mfs_etalon` and `mac512k_mfs_etalon`
+for Finder file duplication on their 400K MFS floppy. Their asset-free
+storage facts are held by `storage_profile_test`. The earlier Sad Mac
+`$0F0004` was traced to vector 5, a zero divide during spindle calibration,
+not a failed RAM sub-test (CHANGELOG 2026-09-13 (later)); the diagnostic
+probes remain in `tests/mac128k_boot_etalon.cpp`.
 
 #### Address map (24-bit)
 
@@ -1476,7 +1478,7 @@ IOSB's ([§2.8](#28-discrete-040--dafb--quadra-700--900--950)). Gates:
 ### 3.4bis The bus as the guest sees it, and a disk that joins it live
 
 Classic Mac OS enumerates the SCSI bus once, at boot. Two mechanisms
-since 2026-09-13 let the Disques window state what the System actually
+since 2026-09-13 let the Disks window state what the System actually
 knows instead of guessing (`docs/SCSI_HOTPLUG.md`):
 
 - **`src/GuestScsiView.h`** walks the guest's own drive queue (`DrvQHdr`
@@ -2119,7 +2121,7 @@ defaulted policy parameter. Only the Q605 pair was documented before 2026-07-31:
 `POM68K_CUDA_FW` (`<path>` = load THIS dump for the Egret/Cuda MCU, ahead of
 the board's own candidate list — since 2026-08-14 honoured on **all seven**
 Egret/Cuda platforms rather than only the V8, and surfaced as the
-Périphériques window's per-device picker. The name covers both MCU flavours;
+Peripherals window's per-device picker. The name covers both MCU flavours;
 it predates the generalisation and is kept rather than renamed under a
 documented script. An unusable path warns and falls through to the factory
 list — a diagnostic left in the environment must not stop a machine
@@ -2129,7 +2131,7 @@ video card's declaration ROM on the Mac II, IIx, IIcx and IIfx: `<path>` =
 load THIS 342-0008-a dump ahead of `roms/342-0008-a.bin` and the archive
 layout; `0` = run the synthetic fallback even when a dump is present. Chosen
 and reported through `fw::select` like the MCU dumps — `TobyDeclChoice.h` —
-so the Périphériques window shows which one the card carries, states what
+so the Peripherals window shows which one the card carries, states what
 the substitute cannot do (System 7.5.5 never leaves « Welcome to
 Macintosh »), and applies a change by relaunch as `--firmware-override=toby:`),
 `POM68K_ADB_KBD_ID` (`AdbLine`'s
@@ -2165,7 +2167,7 @@ receipt with the terminal on Mac OS 8.1),
 mechanism on VIA1 PA4 high, `CoreStorageConfig::secondInternalFloppy`;
 ignored by every other board; the relaunch argument
 `--se-second-floppy=0|1` overrides it, and a session's `se-second-floppy`
-key carries it. The Disques window gives the fitted drive its own live row,
+key carries it. The Disks window gives the fitted drive its own live row,
 drive index 2 of `MachineHost`, and stages fitting or removal with a
 relaunch, since the ROM probes the line once at boot), `POM68K_FLUX_JITTER`
 (`<pct>` = displace every flux edge the SWIM separators read by a
@@ -2173,7 +2175,7 @@ deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in
 jitter model of the § 1.3 flux plan; 0/unset = ideal edges, the default,
 injected into each `SonyDrive`), `POM68K_DRIVE_SFX`
 (`0` = silence the drive FX), `POM68K_NO_CDBAY` (`=1` = do **not** give the
-machine the default empty CD drive the Disques window's CD row needs; every
+machine the default empty CD drive the Disks window's CD row needs; every
 platform with an `attachCdromEmpty` boots with one since 2026-08-15, which is
 what makes a disc insertable live instead of staged + rebooted — set this to
 compare a bus against a pre-2026-08-15 capture, `DiskBays.h ensureCdDrive`),
@@ -2272,7 +2274,7 @@ with its machine clock, so the session replays bit-deterministically from
 the snapshot (`tests/InputReplay.h`; format + determinism gated by
 `input_journal_test`, the applyCmds tap and the start/stop slot by
 `machinehost_test`). The same recorder is on the **Machine menu** —
-« Démarrer / Arrêter l'enregistrement » (`recordingMenuItems` in
+Start / Stop recording (`recordingMenuItems` in
 `GuiShellCommon.h`, all twelve families): start/stop are queued like a
 save-state request and performed by the machine thread between two quanta,
 and the menu form derives `<state base>-YYYYMMDD-HHMMSS.journal` beside the
@@ -2324,7 +2326,11 @@ frame its pin hashed with `POM68K_PIN_PPM` (`<path>` of a PPM,
 bare 68030 without the 68882, and `POM68K_LCII_CLRFPU` holds HwCfgFlags bit
 12 (`hwCbFPU`) clear once the ROM has stored it — a guest-memory poke, not
 modelled hardware, which proves that bit is the only thing stopping a bare
-LC II from reaching the Finder (CHANGELOG 2026-09-17 (tenth)). The GUI's display knobs,
+LC II from reaching the Finder in that experiment (CHANGELOG 2026-09-17
+(tenth)). It does not establish hardware fidelity: the cold-start divergence
+from MAME's FPU-less configuration was reopened on 2026-10-02 and remains
+in `TODO.md` § Fidélité. The product still defaults to a populated 68882;
+these two knobs belong to the boot-gate investigation. The GUI's display knobs,
 ported from NeoST on 2026-09-16 (`GuiDisplay.h`): `POM68K_KIOSK` (`1` =
 start in cabinet mode — exclusive full screen on the primary monitor, no
 menu bar, no window, mouse captured; Ctrl+Alt+F toggles at any time, Alt+F4 or
@@ -2654,7 +2660,7 @@ Per-platform variations that are not worth a hook go to
 **The command queue is one direction only, and media is the place that bites.**
 `Cmd::InsertFloppy`/`EjectFloppy` carry the GUI's intent down; nothing carried
 the DRIVE's state back, so a guest-side eject — a Finder « Ranger », a Cmd-E,
-any `.Sony` eject reaching `SonyDrive::eject()` — left the Disques window
+any `.Sony` eject reaching `SonyDrive::eject()` — left the Disks window
 naming a disk that was no longer there, with an « Éjecter » button for it.
 `publish()` now mirrors `internalDrive()` (flag + backing path) every time it
 runs, next to the CD-bay flags, which is the same rule those already followed:
@@ -2808,24 +2814,54 @@ follows the machine's own state, not the click. The bar is then:
 
 | Menu | Contents |
 |---|---|
-| Machine | control block · **Changer de machine** (one submenu per catalogue group) · drive sounds |
-| Périphériques | Disques… · Réseau : AppleTalk / Ethernet… · Contrôleurs LLE / HLE… |
+| Machine | control block · **Set Up a Macintosh…** · **Change machine** (one submenu per catalogue group) · Session · drive sounds |
+| Peripherals | Disks… · Network: AppleTalk / Ethernet… · Serial ports… · LLE / HLE controllers… |
 | CPU | speed · interpreter / accelerated engine · statistics window |
-| Fenêtres | a checkable entry per secondary window · Réinitialiser la disposition |
+| Display | Kiosk mode · CRT effects · CRT settings |
+| Windows | a checkable entry per secondary window · Reset layout |
 | right edge | LLE badge (strict sessions) · speed ratio · mouse-capture hint |
 
-The catalogue is a submenu because 39 profiles plus their separators are
-taller than a 900 px screen: an entry appended after them landed under the
-scroll (measured under Xvfb, which is why the Périphériques window used to
+The catalogue is a submenu because listing every profile with its separators
+was taller than a 900 px screen: an entry appended after them landed under the
+scroll (measured under Xvfb, which is why the Peripherals window used to
 sit at bar level). Each window owns its own open flag and exposes a
 labelled, checkable menu item (`diskBaysMenuItem`, `peripheralMenuItem`),
-so Périphériques and Fenêtres toggle the same state under different labels.
-The « Tableau de bord » window (`drawMachineControlWindow`) replaces the
+so Peripherals and Windows toggle the same state under different labels.
+The Dashboard window (`drawMachineControlWindow`) replaces the
 six "CPU" windows: `drawStatus` first, then the control block as buttons.
+The default dock gives the Dashboard about 180 px, bounded by the viewport
+height, so the Disk Library has room for its media list. `ScreenInput` uses
+the same centered, aspect-preserving letterbox in desktop and kiosk modes.
+Its capture state feeds the menu bar's release hint on the following frame;
+the hint shortens and then yields speed and LLE badges when the menu bar has
+little room.
+
+`AdbKeyboard` and `CompactKeyboard` release any guest keys still held when
+a menu or text field takes keyboard focus. They pause forwarding until that
+UI closes, so menu navigation does not also type into the Mac and a key
+released in a host field cannot remain stuck in the guest.
+
+`GuiStartupWindow.*` owns the preparation guide, its filesystem browser and
+preflight state. The shell draws it as a modal and opens it once when the
+loaded-ROM path is missing or has an unsupported size; dismissing it keeps
+the demo usable. It is also reachable from Machine. The model picker searches
+labels, slugs and catalogue families without changing the underlying profile
+selection; its bounded list keeps the rest of the guide visible. Model choices
+come from `MachineCatalog.h`, ROM/profile decoding from
+`MachineFactory::selectProfile` with typed configuration, and media filters
+from `DiskBays`. The guide checks
+files and selection, not whether the media can actually boot Mac OS. A launch
+validates the files even without a prior Check setup, then uses absolute
+positional paths with an explicit profile; a compact hard-disk launch reserves
+the floppy slot. Relaunch is
+verbatim so the previous session's arguments cannot override the new choices.
+The ROM-search button refreshes signature discovery after files are added.
+`gui_machine_window_test` covers the modal, browser, cancellation, validation
+and launch arguments using synthetic files without booting them.
 
 ### The debugger (`src/DebugSession.*`, `src/DebugCpuTarget.h`, `src/GuiDebuggerWindow.*`)
 
-« Fenêtres → Débogueur » on every desktop runner. The GUI holds no CPU or
+Windows → Debugger on every desktop runner. The GUI holds no CPU or
 memory pointer: it posts typed `dbg::Command`s (with ids) to the
 `MachineHost::debug` session and draws the latest immutable
 `dbg::Snapshot` — registers, clocks, stop reason, a disassembly window,
@@ -2979,7 +3015,7 @@ typed device snapshots on sixteen board configurations leaving each
 board's serialized state identical), plus the window in
 `gui_windows_test`.
 
-### The "Périphériques (LLE / HLE)" window (`src/PeripheralWindow.*`)
+### The "Peripherals (LLE / HLE)" window (`src/PeripheralWindow.*`)
 
 The visible half of the § 2 fallback policy of `docs/LLE_VS_HLE.md`. That
 policy is *"kept, but never silent"* — every HLE entry prints a
@@ -3021,8 +3057,8 @@ Three design points, each of which is a rule rather than a preference:
   now keep distinct injected paths, while `POM68K_CUDA_FW` seeds both only at
   the compatibility boundary.
 
-It is reached from **Périphériques → Contrôleurs LLE / HLE…** and listed
-under Fenêtres (until 2026-09-13 it sat at bar level, because the Machine
+It is reached from **Peripherals → LLE / HLE controllers…** and listed
+under Windows (until 2026-09-13 it sat at bar level, because the Machine
 menu then carried the whole catalogue inline — see the menu-bar section
 above). The window also **opens itself once** on the first frame a machine
 reports a substitute, which is what makes the stderr policy hold for a
@@ -3046,7 +3082,7 @@ under the hub's lock, never a device — and keeps two kinds of control apart:
   (`networkConfigOf`), so what the window applied is what the next process
   reads. « Révéler » hands a folder to `open` / `xdg-open` / `explorer`.
 - **Staged + relaunch**: the card's presence and SCSI ID. Same contract as
-  Disques and Périphériques — a Mac probes its SCSI bus once, at boot — and
+  Disks and Peripherals — a Mac probes its SCSI bus once, at boot — and
   the same mechanism: `GuiRelaunchState::stageOwnCommandLine()` re-execs the
   session's own arguments, with the choice serialized as `--daynaport=<id>`
   by `RuntimeConfigRelaunch.cpp`. The relaunch line always carries the
@@ -3060,11 +3096,29 @@ The window is reachable with `POM68K_APPLETALK=0` and no card: that is where a
 card gets staged on a machine that has none. `docs/APPLETALK.md` §0.3 lists
 the blocks.
 
-Gate: `peripheral_lle_test` (`unit`, 38 checks) covers the model —
+`peripheral_lle_test` covers the controller model —
 registration, the product-mode contract, the reason on all three paths,
 `dumpAvailable` against a real file, and the typed mapping including distinct
-Egret/Cuda identities and explicit automatic-path restoration. The **window itself is compile-verified
-only**, like every other GUI surface in this tree.
+Egret/Cuda identities and explicit automatic-path restoration.
+`gui_windows_test` renders the real controller and AppleTalk/Ethernet windows
+headlessly and drives their controls, including staged firmware choices
+and network service configuration. `gui_machine_window_test` covers the
+machine frame and menus; `gui_relaunch_smoke_test` exercises relaunch in a
+real process. Recorded executions belong in `STATUS.md`; remaining Windows
+failures and the manual host-folder reveal check belong in `TODO.md`.
+
+The network window shows file sharing and its editable folder first.
+Printing, MacIP, protocol counters and capture controls are folded by
+default; an active capture or capture error keeps its controls visible.
+Window heights are constrained to the viewport so expanded sections scroll
+instead of putting actions below the screen. The disk window places boot
+selection and staged-change actions above the media list. Controller choices
+use product labels (original firmware / software substitute), show a missing
+firmware's expected path and describe restart effects without startup knobs.
+The Disk Library's Add image action opens a folder browser at the top of the
+window. It filters files to supported disk image extensions and also accepts
+a typed path. Imported or dropped images join the existing drive pickers;
+the UI confirms that step before the user selects a bay.
 
 ### What a gate prints about its own assets
 
@@ -3086,10 +3140,10 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-`assets.lock` (repo root, 42 rows) pins the qualified reference set: the 26
-machine ROMs, 2 declaration ROMs, PG&E firmware and 9 boot volumes explicitly
-named by green-gate `ASSET` preambles, plus the 4 firmwares accepted by strict
-product mode. Each row records role, label, size, SHA-256, path and qualified
+`assets.lock` (repo root) pins the qualified reference set: machine ROMs,
+declaration ROMs, controller firmware, reference disks and reference floppies.
+The manifest itself is the source of truth for the current inventory.
+Each row records role, label, size, SHA-256, path and qualified
 `MachineCatalog` profile slugs. The tracked manifest contains only identities,
 never copyrighted bytes.
 
@@ -3104,13 +3158,13 @@ below `disks35/ref/`. A fixture placed there is immutable by construction:
 `routeWritableOpen`, and a floppy whose write-back is switched on after the
 insert (the DAFB runner's order) is routed at flush time instead —
 `floppy_persist_test` proves both orders leave the reference bytes intact. The verifier also cross-checks profile slugs
-against `MachineCatalog.h` and requires its 39 profiles to be covered exactly
+against `MachineCatalog.h` and requires every catalogue profile to be covered exactly
 once by `machine-rom` rows. Every normal
 `hdv/<name>` lookup now prefers that twin (`FixtureStore.h:23-39`) in both the
 GUI (`GuiHostServices.h:48-51`) and gate search (`AssetFingerprint.h:129-138`). A
 writable GUI open maps it to `hdv/work/<name>`, creates the directory and
 clones once; later sessions reopen the persistent work copy. An explicit path
-outside `ref/` keeps the historical direct-write behaviour. The Disques
+outside `ref/` keeps the historical direct-write behaviour. The Disks
 picker lists reference media explicitly (`DiskBays.cpp:207-235`), and
 `fixture_store_test` proves preference, fallback and clone isolation without
 an Apple asset.

@@ -1,4 +1,4 @@
-// POM68K — the « Débogueur » window
+// POM68K — the « Debugger » window
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // Renders a DebugSession's latest snapshot and posts commands to it. The

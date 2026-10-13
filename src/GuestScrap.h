@@ -117,28 +117,28 @@ GuestScrapText readGuestScrapText(Read&& read, std::size_t maxText = kMaxGuestSc
     const std::uint32_t handle = be32(globals + 4);
     result.count = std::uint16_t(globals[8] << 8 | globals[9]);
     const auto state = std::int16_t(std::uint16_t(globals[10] << 8 | globals[11]));
-    if (state < 0) return refuse(Status::Uninitialized, "presse-papiers jamais initialisé");
+    if (state < 0) return refuse(Status::Uninitialized, "clipboard never initialized");
     if (state == 0)
         return refuse(Status::OnDisk, "presse-papiers sur disque (fichier Presse-papiers), "
-                                      "pas en mémoire");
-    if (!handle) return refuse(Status::NoScrap, "aucun presse-papiers en mémoire");
+                                      "not in memory");
+    if (!handle) return refuse(Status::NoScrap, "no clipboard in memory");
     if (handle & 1) return refuse(Status::Malformed, "handle impair");
     std::uint8_t mp[4];
     if (!read(handle, mp, 4)) return refuse(Status::Unreadable, "handle illisible");
     std::uint32_t block = be32(mp);
     if (!mmu32) block &= 0x00FFFFFFu;            // 24-bit: flags in the high byte
-    if (!block) return refuse(Status::Purged, "bloc du presse-papiers purgé");
+    if (!block) return refuse(Status::Purged, "clipboard block purged");
     if ((block & 1) || size > kMaxGuestScrapBytes || block + size < block)
-        return refuse(Status::Malformed, "taille ou adresse du presse-papiers incohérente");
+        return refuse(Status::Malformed, "invalid clipboard size or address");
 
     std::uint32_t offset = 0;
     while (offset + 8 <= size) {
         std::uint8_t head[8];
         if (!read(block + offset, head, 8))
-            return refuse(Status::Unreadable, "entrée du presse-papiers illisible");
+            return refuse(Status::Unreadable, "unreadable clipboard entry");
         const std::uint32_t length = be32(head + 4);
         if (length > size - offset - 8)
-            return refuse(Status::Malformed, "entrée plus longue que le presse-papiers");
+            return refuse(Status::Malformed, "entry longer than clipboard");
         if (be32(head) == 0x54455854u) {            // 'TEXT'
             const std::size_t take = length > maxText ? maxText : length;
             std::string raw(take, '\0');

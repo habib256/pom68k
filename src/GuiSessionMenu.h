@@ -16,7 +16,7 @@
 
 namespace pom68k::gui {
 
-inline constexpr const char* kSessionWindowTitle = "Enregistrer la session";
+inline constexpr const char* kSessionWindowTitle = "Save session";
 
 // Binds `state.sessionFile` to the process: the session it opened, the
 // directory listed (that session's, else `fallbackDirectory`), and the
@@ -26,7 +26,7 @@ void bindSessionFile(GuiSessionState& state, const app::RuntimeConfig& config,
                      const std::filesystem::path& fallbackDirectory);
 // The submenu, drawn inside an open « Machine » menu.
 void drawSessionMenu(GuiSessionState& state);
-// The save window, when « Enregistrer la session... » opened it.
+// The save window, when « Save session... » opened it.
 void drawSessionWindow(GuiSessionFileState& session);
 // What opening `file` stages: a verbatim relaunch on `--session=<file>`.
 void openSession(GuiRelaunchState& relaunch, const std::string& file);

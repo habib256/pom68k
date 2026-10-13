@@ -108,15 +108,12 @@ struct ScreenInput {
         const ImVec2 native(size.x * 0.5f, size.y * 0.5f);
         const ImVec2 avail = ImGui::GetContentRegionAvail();
         ImVec2 offset(0, 0);
-        if (display.kiosk) {
-            // The whole surface, the image centred with its pixel ratio.
+        if (display.kiosk ||
+            (size.x > 0 && size.y > 0 && avail.x > 32 && avail.y > 32)) {
+            // Keep the Mac screen centred in both the dock and kiosk.
             const Letterbox box = letterbox(avail.x, avail.y, size.x, size.y);
             size = ImVec2(box.w, box.h);
             offset = ImVec2(box.x, box.y);
-        } else if (size.x > 0 && size.y > 0 && avail.x > 32 && avail.y > 32) {
-            float scale = avail.x / size.x;
-            if (avail.y / size.y < scale) scale = avail.y / size.y;
-            size = ImVec2(size.x * scale, size.y * scale);
         }
         zoom = native.x > 0 ? size.x / native.x : 2.0f;
         if (zoom < 0.05f) zoom = 0.05f;
@@ -148,6 +145,7 @@ struct ScreenInput {
         else if (!io.WantTextInput &&
                  ImGui::IsKeyPressed(ImGuiKey_Delete, false))
             setCaptured(host, !captured);
+        display.mouseCaptured = captured;
 
         if (captured) {
             double x = 0;
@@ -192,11 +190,16 @@ private:
 
 // Two host keys may share one Mac transition code.  Reference counts keep a
 // modifier down until its last physical host key is released.
+inline bool keyboardOwnedByGui() {
+    return ImGui::GetIO().WantTextInput ||
+           ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+}
+
 class AdbKeyboard {
 public:
     template <class MachineT, class TraceFn>
     void frame(MachineT& machine, TraceFn&& trace) {
-        if (ImGui::GetIO().WantTextInput) return;
+        if (keyboardOwnedByGui()) { releaseAll(machine, trace); return; }
         dispatch(machine, trace, kKeys);
         dispatch(machine, trace, kKeypad);
     }
@@ -206,7 +209,7 @@ public:
     // the transition/refcount implementation with the later runners.
     template <class MachineT, class TraceFn>
     void frameLegacy(MachineT& machine, TraceFn&& trace) {
-        if (ImGui::GetIO().WantTextInput) return;
+        if (keyboardOwnedByGui()) { releaseAll(machine, trace); return; }
         dispatch(machine, trace, kKeys);
         static constexpr Key escape[] = {{ImGuiKey_Escape, 0x6B}};
         dispatch(machine, trace, escape);
@@ -217,6 +220,16 @@ private:
         ImGuiKey key;
         uint8_t m0110;
     };
+
+    template <class MachineT, class TraceFn>
+    void releaseAll(MachineT& machine, TraceFn&& trace) {
+        for (size_t code = 0; code < 128; ++code) {
+            if (!held_[code]) continue;
+            held_[code] = 0;
+            trace(uint8_t(code), false);
+            machine.push({MachineT::Cmd::Key, int(code), 0});
+        }
+    }
 
     template <class MachineT, class TraceFn, size_t N>
     void dispatch(MachineT& machine, TraceFn&& trace,
@@ -292,7 +305,7 @@ class CompactKeyboard {
 public:
     template <class MachineT, class TraceFn>
     void frame(MachineT& machine, TraceFn&& trace) {
-        if (ImGui::GetIO().WantTextInput) return;
+        if (keyboardOwnedByGui()) { releaseAll(machine, trace); return; }
         for (const Key& entry : kKeys) {
             const uint8_t code = uint8_t(entry.m0110 >> 1);
             if (keyDown(entry)) {
@@ -307,6 +320,16 @@ public:
     }
 
 private:
+    template <class MachineT, class TraceFn>
+    void releaseAll(MachineT& machine, TraceFn&& trace) {
+        for (size_t code = 0; code < 128; ++code) {
+            if (!held_[code]) continue;
+            held_[code] = 0;
+            trace(uint8_t(code), false);
+            machine.push({MachineT::Cmd::Key, int(code), 0});
+        }
+    }
+
     // See AdbKeyboard::keyDown: refcount per virtual key code.
     bool keyDown(const Key& entry) {
         if (!ImGui::IsKeyPressed(entry.key, false)) return false;

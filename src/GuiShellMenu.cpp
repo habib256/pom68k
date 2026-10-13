@@ -9,12 +9,12 @@
 // user can reach is decided once, here:
 //
 //   Machine        run/pause/fast-forward, save state, typing, recording,
-//                  « Changer de machine » (one submenu per board family),
+//                  « Change machine » (one submenu per board family),
 //                  « Session » (save / reopen a .pomsession),
 //                  drive sounds
-//   Périphériques  disks, network, serial ports, controller provenance (LLE / HLE)
+//   Peripherals  disks, network, serial ports, controller provenance (LLE / HLE)
 //   CPU            measured speed, engine choice, engine statistics
-//   Fenêtres       every secondary window, and the layout reset
+//   Windows       every secondary window, and the layout reset
 //   (right edge)   LLE qualification, live speed, mouse-capture hint
 //
 // The catalogue lives in a submenu on purpose: 39 profiles plus their
@@ -55,11 +55,11 @@ ImVec4 speedColour(double speed) {
                         : ImVec4(0.95f, 0.75f, 0.3f, 1);
 }
 
-// « Changer de machine »: one submenu per catalogue group, in catalogue
+// « Change machine »: one submenu per catalogue group, in catalogue
 // order. A profile whose ROM is absent stays visible but disabled, so the
 // roster reads the same on every host.
 void drawMachineCatalogue(GuiSessionState& state, SnapMachine current) {
-    if (!ImGui::BeginMenu("Changer de machine")) return;
+    if (!ImGui::BeginMenu("Change machine")) return;
     const char* openGroup = nullptr;
     bool groupOpen = false;
     for (const MachineProfile& profile : kMachineProfiles) {
@@ -91,13 +91,13 @@ void drawCpuMenu(GuiSessionState& state, double speed, bool engineLocked) {
     const bool hasAcceleratedEngine = bool(cpu.setCpuEngine);
     const int engine = hasAcceleratedEngine ? cpu.getCpuEngine() : 0;
     if (cpu.speedSample) {
-        ImGui::TextColored(speedColour(speed), "Vitesse : ×%.2f temps réel",
+        ImGui::TextColored(speedColour(speed), "Speed: ×%.2f real time",
                            speed);
         ImGui::TextDisabled(
-            "mesurée sur l'horloge machine, sans modifier son rythme");
+            "measured from the machine clock without changing its pace");
         ImGui::Separator();
     }
-    if (ImGui::MenuItem("Interpréteur (Moira)", nullptr, engine == 0,
+    if (ImGui::MenuItem("Interpreter (Moira)", nullptr, engine == 0,
                         hasAcceleratedEngine && !engineLocked) &&
         engine != 0)
         cpu.setCpuEngine(0);
@@ -105,18 +105,18 @@ void drawCpuMenu(GuiSessionState& state, double speed, bool engineLocked) {
     const bool codeGenerator =
         cpu.jitBackend && std::strcmp(cpu.jitBackend, "threaded");
     std::snprintf(label, sizeof label,
-                  codeGenerator ? "Moteur accéléré - JIT %s"
-                                : "Moteur accéléré - fenêtres (%s)",
+                  codeGenerator ? "Accelerated engine - JIT %s"
+                                : "Accelerated engine - windows (%s)",
                   cpu.jitBackend ? cpu.jitBackend : "?");
     if (ImGui::MenuItem(label, nullptr, engine == 1, hasAcceleratedEngine) &&
         engine != 1)
         cpu.setCpuEngine(1);
     ImGui::Separator();
-    ImGui::MenuItem("Statistiques du moteur...", nullptr, &cpu.showJit,
+    ImGui::MenuItem("Engine statistics...", nullptr, &cpu.showJit,
                     hasAcceleratedEngine);
     if (!hasAcceleratedEngine)
-        ImGui::TextDisabled("(interrupteur : machines 68030/68040 -\n"
-                            "Mac II / compacts : interpréteur seul)");
+        ImGui::TextDisabled("(engine switch: 68030/68040 machines -\n"
+                            "Mac II / compact Macs: interpreter only)");
     ImGui::EndMenu();
 }
 
@@ -127,20 +127,41 @@ void drawMenuBarStatus(const GuiSessionState& state, double speed,
     if (state.cpu.speedSample)
         std::snprintf(speedText, sizeof speedText, "×%.2f", speed);
     const char* lleText = !registry.requested() ? ""
-        : registry.qualified() ? "LLE : qualifié" : "LLE : NON QUALIFIÉ";
-    const char* hint = "Clic molette / Ctrl+Alt+G / Suppr : capture souris";
+        : registry.qualified() ? "LLE: qualified" : "LLE: NOT QUALIFIED";
+    const char* hint = state.display.mouseCaptured
+        ? "Mouse captured - Delete to release"
+        : "Mouse: middle click / Ctrl+Alt+G / Delete";
     const float gap = ImGui::GetStyle().ItemSpacing.x * 2;
+    bool showSpeed = *speedText;
+    bool showLle = *lleText;
     float width = ImGui::CalcTextSize(hint).x;
-    if (*speedText) width += ImGui::CalcTextSize(speedText).x + gap;
-    if (*lleText) width += ImGui::CalcTextSize(lleText).x + gap;
-    ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - width);
-    if (*lleText) {
+    if (showSpeed) width += ImGui::CalcTextSize(speedText).x + gap;
+    if (showLle) width += ImGui::CalcTextSize(lleText).x + gap;
+    const float right = ImGui::GetWindowContentRegionMax().x;
+    const float minimum = ImGui::GetCursorPosX() + gap;
+    if (right - width < minimum) {
+        const char* shorter = state.display.mouseCaptured
+            ? "Delete: release mouse" : "Middle click: capture mouse";
+        width += ImGui::CalcTextSize(shorter).x - ImGui::CalcTextSize(hint).x;
+        hint = shorter;
+    }
+    if (right - width < minimum && showSpeed) {
+        width -= ImGui::CalcTextSize(speedText).x + gap;
+        showSpeed = false;
+    }
+    if (right - width < minimum && showLle) {
+        width -= ImGui::CalcTextSize(lleText).x + gap;
+        showLle = false;
+    }
+    if (right - width < minimum) return;
+    ImGui::SetCursorPosX(right - width);
+    if (showLle) {
         ImGui::TextColored(registry.qualified() ? ImVec4(0.3f, 0.85f, 0.35f, 1)
                                                 : ImVec4(0.95f, 0.35f, 0.3f, 1),
                            "%s", lleText);
         ImGui::SameLine(0, gap);
     }
-    if (*speedText) {
+    if (showSpeed) {
         ImGui::TextColored(speedColour(speed), "%s", speedText);
         ImGui::SameLine(0, gap);
     }
@@ -166,7 +187,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
         }
         return;
     }
-    // The session's registry, carried by the same struct the Périphériques
+    // The session's registry, carried by the same struct the Peripherals
     // window renders — one binding, not two.
     lle::Registry& registry = state_.peripherals.registry
         ? *state_.peripherals.registry : lle::processRegistry();
@@ -174,40 +195,42 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
         if (ImGui::BeginMenu("Machine")) {
             drawMachineControlItems(state_.machine);
             ImGui::Separator();
+            if (ImGui::MenuItem("Set Up a Macintosh..."))
+                openStartupWindow(state_, current);
             drawMachineCatalogue(state_, current);
             drawSessionMenu(state_);
             const bool sounds = !state_.audio.floppySfx.isMuted();
-            if (ImGui::MenuItem("Sons des lecteurs", nullptr, sounds,
+            if (ImGui::MenuItem("Drive sounds", nullptr, sounds,
                                 state_.audio.floppySfx.isLoaded())) {
                 state_.audio.floppySfx.setMuted(sounds);
                 state_.audio.hddSfx.setMuted(sounds);
             }
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Périphériques")) {
-            diskBaysMenuItem("Disques...");
+        if (ImGui::BeginMenu("Peripherals")) {
+            diskBaysMenuItem("Disks...");
             // Always reachable: with POM68K_APPLETALK=0 and no card the
             // window says so, and is where a card gets staged for the next
             // boot.
-            ImGui::MenuItem("Réseau : AppleTalk / Ethernet...", nullptr,
+            ImGui::MenuItem("Network: AppleTalk / Ethernet...", nullptr,
                             &state_.network.showWindow);
             if (!state_.network.appleTalkEnabled &&
                 !state_.network.ethernetEnabled)
-                ImGui::TextDisabled("(POM68K_APPLETALK=0, aucune carte réseau)");
-            ImGui::MenuItem("Ports série...", nullptr, &state_.serial.showWindow);
-            peripheralMenuItem("Contrôleurs LLE / HLE...");
+                ImGui::TextDisabled("(POM68K_APPLETALK=0, no network card)");
+            ImGui::MenuItem("Serial ports...", nullptr, &state_.serial.showWindow);
+            peripheralMenuItem("LLE / HLE controllers...");
             ImGui::EndMenu();
         }
         drawCpuMenu(state_, speed, registry.requested() && registry.qualified());
         drawDisplayMenu(state_.display);
-        if (ImGui::BeginMenu("Fenêtres")) {
+        if (ImGui::BeginMenu("Windows")) {
             ImGui::MenuItem(kMachineControlWindowTitle, nullptr,
                             &state_.machine.showWindow, state_.machine.bound());
             diskBaysMenuItem(kDiskWindowTitle);
             ImGui::MenuItem(kNetworkWindowTitle, nullptr,
                             &state_.network.showWindow);
             peripheralMenuItem(kPeripheralWindowTitle);
-            ImGui::MenuItem("Moteur accéléré", nullptr, &state_.cpu.showJit,
+            ImGui::MenuItem("Accelerated engine", nullptr, &state_.cpu.showJit,
                             bool(state_.cpu.setCpuEngine));
             ImGui::MenuItem(kSerialWindowTitle, nullptr, &state_.serial.showWindow);
             ImGui::MenuItem(kTypingWindowTitle, nullptr,
@@ -217,7 +240,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
                             &state_.machine.debugger.showWindow,
                             state_.machine.debugger.bound());
             ImGui::Separator();
-            if (ImGui::MenuItem("Réinitialiser la disposition"))
+            if (ImGui::MenuItem("Reset layout"))
                 dockLayoutReset();
             ImGui::EndMenu();
         }
@@ -235,6 +258,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);
     peripheralWindow(state_.peripherals);
+    drawStartupWindow(state_, current);
     if (state_.relaunch.showWindow) {
         state_.relaunch.showWindow = false;
         state_.relaunch.closeWindow = true;

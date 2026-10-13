@@ -1,4 +1,4 @@
-// POM68K — the « Débogueur » window
+// POM68K — the « Debugger » window
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // See GuiDebuggerWindow.h. Same rendering rule as the dashboard: what is
@@ -17,7 +17,7 @@
 
 namespace pom68k::gui {
 
-const char* kDebuggerWindowTitle = "Débogueur";
+const char* kDebuggerWindowTitle = "Debugger";
 
 namespace {
 
@@ -40,9 +40,9 @@ void post(GuiDebuggerState& state, Command::Kind kind, std::uint32_t addr = 0) {
 const char* reasonText(StopReason r) {
     switch (r) {
     case StopReason::Pause:      return "pause";
-    case StopReason::Step:       return "pas à pas";
-    case StopReason::Breakpoint: return "point d'arrêt";
-    case StopReason::Watchpoint: return "surveillance";
+    case StopReason::Step:       return "step";
+    case StopReason::Breakpoint: return "breakpoint";
+    case StopReason::Watchpoint: return "watchpoint";
     case StopReason::Exception:  return "exception";
     case StopReason::None:       break;
     }
@@ -51,36 +51,36 @@ const char* reasonText(StopReason r) {
 
 void drawStatus(const Snapshot& s) {
     if (!s.available)
-        ImGui::TextDisabled("Arrêts indisponibles dans cette version");
+        ImGui::TextDisabled("Stopping is unavailable in this build");
     if (s.stopped) {
-        ImGui::Text("Arrêté (%s) à $%08X", reasonText(s.reason), s.regs.pc);
+        ImGui::Text("Stopped (%s) at $%08X", reasonText(s.reason), s.regs.pc);
         const auto& d = s.detail;
         if (s.reason == StopReason::Watchpoint)
-            ImGui::Text("%s de %u octet(s) en $%08X par l'instruction en $%08X",
-                        d.accessWrite ? "Écriture" : "Lecture", d.accessSize,
+            ImGui::Text("%s of %u bytes at $%08X by instruction at $%08X",
+                        d.accessWrite ? "Write" : "Read", d.accessSize,
                         d.accessAddr, d.instructionPc);
         else if (s.reason == StopReason::Exception && d.vector == 10) {
             const char* n = pom68k::mac::trapName(d.trapWord);
-            ImGui::Text("Vecteur 10 (A-line $%04X%s%s), PC empilé $%08X",
+            ImGui::Text("Vector 10 (A-line $%04X%s%s), stacked PC $%08X",
                         d.trapWord, n ? " _" : "", n ? n : "", d.stackedPc);
         }
         else if (s.reason == StopReason::Exception)
-            ImGui::Text("Vecteur %u, PC empilé $%08X", d.vector, d.stackedPc);
+            ImGui::Text("Vector %u, stacked PC $%08X", d.vector, d.stackedPc);
         if (s.inQuantum)
-            ImGui::TextDisabled("Dans une tranche : redémarrage, états et "
-                                "moteur attendent la reprise");
+            ImGui::TextDisabled("During a slice: restart, states, and "
+                                "engine wait for resume");
     } else {
-        ImGui::TextUnformatted("En cours");
-        ImGui::TextDisabled("Registres et mémoire : relevés à la dernière commande");
+        ImGui::TextUnformatted("Running");
+        ImGui::TextDisabled("Registers and memory: sampled at the last command");
     }
-    ImGui::Text("CPU %s  horloge %lld  %s", s.model.c_str(),
+    ImGui::Text("CPU %s  clock %lld  %s", s.model.c_str(),
                 static_cast<long long>(s.machineClock),
-                s.supervisor ? "superviseur" : "utilisateur");
-    const char* engines[] = {"interpréteur", "accéléré"};
+                s.supervisor ? "supervisor" : "user");
+    const char* engines[] = {"interpreter", "accelerated"};
     if (s.effectiveEngine == s.requestedEngine)
-        ImGui::Text("Moteur : %s", engines[s.effectiveEngine & 1]);
+        ImGui::Text("Engine: %s", engines[s.effectiveEngine & 1]);
     else
-        ImGui::Text("Moteur : %s (demandé : %s, arrêts armés)",
+        ImGui::Text("Engine: %s (requested: %s, stops armed)",
                     engines[s.effectiveEngine & 1],
                     engines[s.requestedEngine & 1]);
 }
@@ -150,7 +150,7 @@ void drawRegisterEdit(GuiDebuggerState& state) {
                                         state.editValue.size(),
                                         ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    if (ImGui::Button("Appliquer") || enter) {
+    if (ImGui::Button("Apply") || enter) {
         const Reg reg = Reg(state.editRegister);
         const bool wide = reg == Reg::CRP || reg == Reg::SRP;   // 68030: 64 bits
         if (auto v = parseHexValue(state.editValue.data(), wide ? 16 : 8)) {
@@ -161,13 +161,13 @@ void drawRegisterEdit(GuiDebuggerState& state) {
             state.session->post(c);
             state.inputError.clear();
         } else {
-            state.inputError = "Valeur hexadécimale attendue";
+            state.inputError = "Expected hexadecimal value";
         }
     }
 }
 
 void drawDisassembly(GuiDebuggerState& state, const Snapshot& s) {
-    ImGui::TextDisabled("Cliquer une ligne pose ou retire un point d'arrêt");
+    ImGui::TextDisabled("Click a line to toggle a breakpoint");
     for (const auto& line : s.disasm) {
         if (!line.label.empty() && line.label.find('+') == std::string::npos)
             ImGui::TextDisabled("%s:", line.label.c_str());
@@ -193,22 +193,22 @@ void drawBreakpoints(GuiDebuggerState& state, const Snapshot& s) {
                                         state.breakpointText.size(),
                                         ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    if (ImGui::Button("Ajouter") || enter) {
+    if (ImGui::Button("Add") || enter) {
         if (auto a = parseGuestAddress(state.breakpointText.data())) {
             post(state, Command::Kind::AddBreakpoint, *a);
             state.inputError.clear();
         } else {
-            state.inputError = "Adresse hexadécimale attendue";
+            state.inputError = "Expected hexadecimal address";
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Tout retirer"))
+    if (ImGui::Button("Remove all"))
         post(state, Command::Kind::ClearBreakpoints);
     for (std::uint32_t a : s.breakpoints) {
         ImGui::PushID(static_cast<int>(a));
         ImGui::Text("$%08X", a);
         ImGui::SameLine();
-        if (ImGui::SmallButton("Retirer"))
+        if (ImGui::SmallButton("Remove"))
             post(state, Command::Kind::RemoveBreakpoint, a);
         ImGui::PopID();
     }
@@ -216,9 +216,9 @@ void drawBreakpoints(GuiDebuggerState& state, const Snapshot& s) {
 
 const char* accessText(pom68k::dbg::Access a) {
     switch (a) {
-    case pom68k::dbg::Access::Read:      return "lecture";
-    case pom68k::dbg::Access::Write:     return "écriture";
-    case pom68k::dbg::Access::ReadWrite: return "lecture/écriture";
+    case pom68k::dbg::Access::Read:      return "read";
+    case pom68k::dbg::Access::Write:     return "write";
+    case pom68k::dbg::Access::ReadWrite: return "read/write";
     }
     return "";
 }
@@ -228,13 +228,13 @@ void drawWatchpoints(GuiDebuggerState& state, const Snapshot& s) {
     ImGui::InputText("##watch", state.watchText.data(), state.watchText.size());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(80);
-    ImGui::InputInt("octets", &state.watchLength);
-    const char* kinds[] = {"lecture", "écriture", "les deux"};
+    ImGui::InputInt("bytes", &state.watchLength);
+    const char* kinds[] = {"read", "write", "both"};
     int kind = state.watchAccess - 1;
     ImGui::SetNextItemWidth(110);
     if (ImGui::Combo("##watchkind", &kind, kinds, 3)) state.watchAccess = kind + 1;
     ImGui::SameLine();
-    if (ImGui::Button("Surveiller")) {
+    if (ImGui::Button("Watch")) {
         if (auto a = parseGuestAddress(state.watchText.data())) {
             Command c;
             c.kind = Command::Kind::AddWatchpoint;
@@ -246,16 +246,16 @@ void drawWatchpoints(GuiDebuggerState& state, const Snapshot& s) {
             state.session->post(c);
             state.inputError.clear();
         } else {
-            state.inputError = "Adresse hexadécimale attendue";
+            state.inputError = "Expected hexadecimal address";
         }
     }
-    ImGui::TextDisabled("Adresses logiques ; accès aux données seulement "
-                        "(un fetch d'instruction ne s'arrête pas)");
+    ImGui::TextDisabled("Logical addresses; data accesses only "
+                        "(instruction fetches do not stop)");
     for (const auto& w : s.watchpoints) {
         ImGui::PushID(static_cast<int>(w.addr));
-        ImGui::Text("$%08X  %u octet(s)  %s", w.addr, w.length, accessText(w.access));
+        ImGui::Text("$%08X  %u bytes  %s", w.addr, w.length, accessText(w.access));
         ImGui::SameLine();
-        if (ImGui::SmallButton("Retirer"))
+        if (ImGui::SmallButton("Remove"))
             post(state, Command::Kind::RemoveWatchpoint, w.addr);
         ImGui::PopID();
     }
@@ -265,15 +265,15 @@ void drawWatchpoints(GuiDebuggerState& state, const Snapshot& s) {
 // word) is typed in the field instead.
 struct CatchPreset { const char* label; std::uint8_t first, last; };
 constexpr CatchPreset kCatchPresets[] = {
-    {"Erreurs bus/adresse (2-3)", 2, 3},
-    {"Instruction illégale (4)", 4, 4},
-    {"Division par zéro, CHK, TRAPV (5-7)", 5, 7},
-    {"Privilège (8)", 8, 8},
+    {"Bus/address errors (2-3)", 2, 3},
+    {"Illegal instruction (4)", 4, 4},
+    {"Divide by zero, CHK, TRAPV (5-7)", 5, 7},
+    {"Privilege (8)", 8, 8},
     {"A-line (10) : trap Toolbox/OS", 10, 10},
     {"F-line (11)", 11, 11},
-    {"Interruptions (24-31)", 24, 31},
+    {"Interrupts (24-31)", 24, 31},
     {"TRAP #0-15 (32-47)", 32, 47},
-    {"Vecteur libre", 0, 0},
+    {"Custom vector", 0, 0},
 };
 
 void drawCatches(GuiDebuggerState& state, const Snapshot& s) {
@@ -293,13 +293,13 @@ void drawCatches(GuiDebuggerState& state, const Snapshot& s) {
         ImGui::InputText("##catchtext", state.catchText.data(), state.catchText.size());
     }
     ImGui::SameLine();
-    if (ImGui::Button("Arrêter sur")) {
+    if (ImGui::Button("Stop on")) {
         std::optional<std::uint32_t> v;
         if (state.catchText[0]) v = parseGuestAddress(state.catchText.data());
         if (free && (!v || *v > 255)) {
-            state.inputError = "Vecteur hexadécimal attendu (2 à FF)";
+            state.inputError = "Expected hexadecimal vector (2 to FF)";
         } else if (aline && state.catchText[0] && (!v || (*v & 0xF000) != 0xA000 || *v > 0xFFFF)) {
-            state.inputError = "Mot de trap $Axxx attendu (vide : toutes)";
+            state.inputError = "Expected $Axxx trap word (empty: all)";
         } else {
             for (int vec = free ? int(*v) : p.first;
                  vec <= (free ? int(*v) : p.last); ++vec) {
@@ -313,15 +313,15 @@ void drawCatches(GuiDebuggerState& state, const Snapshot& s) {
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Aucune")) post(state, Command::Kind::ClearCatches);
-    ImGui::TextDisabled("Arrêt à la première instruction du gestionnaire, "
-                        "cadre empilé");
+    if (ImGui::Button("Clear all")) post(state, Command::Kind::ClearCatches);
+    ImGui::TextDisabled("Stops at the first handler instruction, "
+                        "stacked frame");
     for (const auto& c : s.catches) {
         ImGui::PushID(c.vector << 16 | c.trap);
-        if (c.trap) ImGui::Text("Vecteur %u, trap $%04X", c.vector, c.trap);
-        else ImGui::Text("Vecteur %u", c.vector);
+        if (c.trap) ImGui::Text("Vector %u, trap $%04X", c.vector, c.trap);
+        else ImGui::Text("Vector %u", c.vector);
         ImGui::SameLine();
-        if (ImGui::SmallButton("Retirer")) {
+        if (ImGui::SmallButton("Remove")) {
             Command r;
             r.kind = Command::Kind::RemoveCatch;
             r.catchpoint = c;
@@ -333,18 +333,18 @@ void drawCatches(GuiDebuggerState& state, const Snapshot& s) {
 
 void drawHistory(GuiDebuggerState& state, const Snapshot& s) {
     bool on = s.historyOn;
-    if (ImGui::Checkbox("Enregistrer", &on)) {
+    if (ImGui::Checkbox("Record", &on)) {
         Command c;
         c.kind = Command::Kind::SetHistory;
         c.value = on ? 1 : 0;
         state.session->post(c);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Vider")) post(state, Command::Kind::ClearHistory);
+    if (ImGui::Button("Clear")) post(state, Command::Kind::ClearHistory);
     const auto dropped = [](std::uint64_t n, std::size_t cap) {
         return n > cap ? n - cap : 0;
     };
-    ImGui::Text("%llu instructions (%llu perdues), %llu exceptions (%llu perdues)",
+    ImGui::Text("%llu instructions (%llu lost), %llu exceptions (%llu lost)",
                 static_cast<unsigned long long>(s.historyRecorded),
                 static_cast<unsigned long long>(
                     dropped(s.historyRecorded, pom68k::dbg::kHistoryCapacity)),
@@ -352,18 +352,18 @@ void drawHistory(GuiDebuggerState& state, const Snapshot& s) {
                 static_cast<unsigned long long>(
                     dropped(s.trapsRecorded, pom68k::dbg::kTrapHistoryCapacity)));
     ImGui::SetNextItemWidth(260);
-    ImGui::InputTextWithHint("##histpath", "pom68k-historique.txt",
+    ImGui::InputTextWithHint("##histpath", "pom68k-history.txt",
                              state.historyPath.data(), state.historyPath.size());
     ImGui::SameLine();
-    if (ImGui::Button("Exporter")) {
+    if (ImGui::Button("Export")) {
         Command c;
         c.kind = Command::Kind::ExportHistory;
         c.path = state.historyPath[0] ? state.historyPath.data()
-                                      : "pom68k-historique.txt";
+                                      : "pom68k-history.txt";
         state.session->post(c);
     }
-    ImGui::TextDisabled("Ligne : instruction à exécuter ; registres changés "
-                        "par la précédente");
+    ImGui::TextDisabled("Line: instruction to execute; registers changed "
+                        "by the previous instruction");
     const auto& t = s.historyTail;
     for (std::size_t i = 0; i < t.size(); ++i) {
         char line[256];
@@ -385,24 +385,24 @@ void drawHistory(GuiDebuggerState& state, const Snapshot& s) {
     for (const auto& e : s.trapTail) {
         if (e.vector == 10) {
             const char* n = pom68k::mac::trapName(e.trapWord);
-            ImGui::Text("Vecteur 10 (A-line $%04X%s%s) depuis $%08X", e.trapWord,
+            ImGui::Text("Vector 10 (A-line $%04X%s%s) from $%08X", e.trapWord,
                         n ? " _" : "", n ? n : "", e.stackedPc);
         }
         else
-            ImGui::Text("Vecteur %u depuis $%08X", e.vector, e.stackedPc);
+            ImGui::Text("Vector %u from $%08X", e.vector, e.stackedPc);
     }
 }
 
 void drawDevices(GuiDebuggerState& state, const Snapshot& s) {
     bool on = s.devicesOn;
-    if (ImGui::Checkbox("Relever les composants", &on)) {
+    if (ImGui::Checkbox("Sample devices", &on)) {
         Command c;
         c.kind = Command::Kind::SetDeviceView;
         c.value = on ? 1 : 0;
         state.session->post(c);
     }
-    ImGui::TextDisabled("Lu dans l'état des composants, jamais par le bus ; "
-                        "relevé à chaque commande ou arrêt");
+    ImGui::TextDisabled("Read from component state, never through the bus; "
+                        "sampled at every command or stop");
     for (const auto& d : s.devices) {
         char title[96];
         std::snprintf(title, sizeof title, "%s - %s", d.kind.c_str(), d.name.c_str());
@@ -423,27 +423,27 @@ void drawDevices(GuiDebuggerState& state, const Snapshot& s) {
 }
 
 void drawSymbols(GuiDebuggerState& state, const Snapshot& s) {
-    ImGui::Text("ROM en cours : checksum $%08X", s.romChecksum);
+    ImGui::Text("Current ROM: checksum $%08X", s.romChecksum);
     if (s.symbolCount)
-        ImGui::TextWrapped("%zu symboles ROM (source : %s)", s.symbolCount,
+        ImGui::TextWrapped("%zu ROM symbols (source: %s)", s.symbolCount,
                            s.symbolSource.c_str());
     else
-        ImGui::TextDisabled("Aucun symbole ROM chargé");
+        ImGui::TextDisabled("No ROM symbols loaded");
     ImGui::SetNextItemWidth(260);
-    ImGui::InputTextWithHint("##sympath", "fichier de symboles ROM",
+    ImGui::InputTextWithHint("##sympath", "ROM symbols file",
                              state.symbolPath.data(), state.symbolPath.size());
     ImGui::SameLine();
-    if (ImGui::Button("Charger")) {
+    if (ImGui::Button("Load")) {
         Command c;
         c.kind = Command::Kind::LoadSymbols;
         c.path = state.symbolPath.data();
         state.session->post(c);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Oublier")) post(state, Command::Kind::ClearSymbols);
-    ImGui::TextDisabled("Un fichier n'est accepté que pour la ROM dont il "
-                        "déclare le checksum");
-    ImGui::TextDisabled("Traps et globales : noms de cxmon (Basilisk II)");
+    if (ImGui::Button("Forget")) post(state, Command::Kind::ClearSymbols);
+    ImGui::TextDisabled("A file is accepted only for the ROM whose "
+                        "checksum it declares");
+    ImGui::TextDisabled("Traps and globals: cxmon names (Basilisk II)");
 }
 
 void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
@@ -452,11 +452,11 @@ void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
                                         state.memoryText.size(),
                                         ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    ImGui::RadioButton("Logique", &state.memorySpace, 0);
+    ImGui::RadioButton("Logical", &state.memorySpace, 0);
     ImGui::SameLine();
-    ImGui::RadioButton("Physique", &state.memorySpace, 1);
+    ImGui::RadioButton("Physical", &state.memorySpace, 1);
     ImGui::SameLine();
-    if (ImGui::Button("Afficher") || enter) {
+    if (ImGui::Button("Show") || enter) {
         if (auto a = parseGuestAddress(state.memoryText.data())) {
             Command c;
             c.kind = Command::Kind::ViewMemory;
@@ -466,7 +466,7 @@ void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
             state.session->post(c);
             state.inputError.clear();
         } else {
-            state.inputError = "Adresse hexadécimale attendue";
+            state.inputError = "Expected hexadecimal address";
         }
     }
     if (s.stopped) {
@@ -478,7 +478,7 @@ void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
         ImGui::InputText("##pokebytes", state.pokeBytes.data(),
                          state.pokeBytes.size());
         ImGui::SameLine();
-        if (ImGui::Button("Écrire")) {
+        if (ImGui::Button("Write")) {
             const auto a = parseGuestAddress(state.pokeAddress.data());
             auto bytes = parseHexBytes(state.pokeBytes.data());
             if (a && bytes) {
@@ -490,14 +490,14 @@ void drawMemory(GuiDebuggerState& state, const Snapshot& s) {
                 state.session->post(c);
                 state.inputError.clear();
             } else {
-                state.inputError = "Adresse et octets hexadécimaux attendus";
+                state.inputError = "Expected hexadecimal address and bytes";
             }
         }
-        ImGui::TextDisabled("Écriture en RAM seulement ; le code traduit est "
-                            "abandonné");
+        ImGui::TextDisabled("Write to RAM only; translated code is "
+                            "discarded");
     }
-    ImGui::TextDisabled("-- : registre ou zone non mémoire (jamais lu)");
-    ImGui::TextDisabled(".. : adresse logique non traduite");
+    ImGui::TextDisabled("--: register or non-memory area (never read)");
+    ImGui::TextDisabled("..: untranslated logical address");
     const auto& m = s.memory;
     for (std::size_t row = 0; row < m.bytes.size(); row += 16) {
         char line[128];
@@ -562,38 +562,38 @@ void drawDebuggerWindow(GuiDebuggerState& state) {
     const Snapshot& s = *snap;
     drawStatus(s);
     if (s.stopped) {
-        if (ImGui::Button("Continuer")) post(state, Command::Kind::Continue);
+        if (ImGui::Button("Continue")) post(state, Command::Kind::Continue);
         ImGui::SameLine();
-        if (ImGui::Button("Pas à pas")) post(state, Command::Kind::Step);
+        if (ImGui::Button("Step")) post(state, Command::Kind::Step);
         ImGui::SameLine();
-        if (ImGui::Button("Par-dessus l'appel")) post(state, Command::Kind::StepOver);
+        if (ImGui::Button("Step over call")) post(state, Command::Kind::StepOver);
         ImGui::SameLine();
-        if (ImGui::Button("Jusqu'au retour")) post(state, Command::Kind::StepOut);
+        if (ImGui::Button("Step out")) post(state, Command::Kind::StepOut);
     } else if (ImGui::Button("Pause")) {
         post(state, Command::Kind::Pause);
     }
     if (!s.message.empty()) ImGui::TextWrapped("%s", s.message.c_str());
     if (!state.inputError.empty())
         ImGui::TextWrapped("%s", state.inputError.c_str());
-    if (ImGui::CollapsingHeader("Registres", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Registers", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawRegisters(s);
         if (s.stopped) drawRegisterEdit(state);
     }
-    if (ImGui::CollapsingHeader("Points d'arrêt", ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::CollapsingHeader("Breakpoints", ImGuiTreeNodeFlags_DefaultOpen))
         drawBreakpoints(state, s);
-    if (ImGui::CollapsingHeader("Surveillances")) drawWatchpoints(state, s);
+    if (ImGui::CollapsingHeader("Watchpoints")) drawWatchpoints(state, s);
     if (ImGui::CollapsingHeader("Exceptions")) drawCatches(state, s);
-    if (ImGui::CollapsingHeader("Historique")) drawHistory(state, s);
-    if (ImGui::CollapsingHeader("Symboles")) drawSymbols(state, s);
-    if (ImGui::CollapsingHeader("Composants")) drawDevices(state, s);
-    if (ImGui::CollapsingHeader("Désassemblage", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("History")) drawHistory(state, s);
+    if (ImGui::CollapsingHeader("Symbols")) drawSymbols(state, s);
+    if (ImGui::CollapsingHeader("Components")) drawDevices(state, s);
+    if (ImGui::CollapsingHeader("Disassembly", ImGuiTreeNodeFlags_DefaultOpen)) {
         // A bounded pane, so the memory section stays reachable.
         ImGui::BeginChild("##disasm",
                           ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 13));
         drawDisassembly(state, s);
         ImGui::EndChild();
     }
-    if (ImGui::CollapsingHeader("Mémoire")) drawMemory(state, s);
+    if (ImGui::CollapsingHeader("Memory")) drawMemory(state, s);
     ImGui::End();
 }
 

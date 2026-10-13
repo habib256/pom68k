@@ -2,9 +2,9 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // Before 2026-09-13 each of the six GUI runners emitted its own copy of the
-// same twelve menu lines (Redémarrer, Sauver/Restaurer l'état, the
+// same twelve menu lines (Restart, Sauver/Restore state, the
 // recording pair) straight into the main menu bar, and its own copy of a
-// "CPU" window with Pause / Reset / Avance rapide. Six copies drifted (Toby
+// "CPU" window with Pause / Reset / Fast forward. Six copies drifted (Toby
 // had no save-state menu, the compact runner said "x8", the VASP/RBV boards
 // hid the panel entirely) and the bar itself read as a flat list of eleven
 // items, five of which acted the instant they were clicked.
@@ -41,11 +41,11 @@ struct GuiMachineControls {
     std::function<std::string()> recordingMessage;
     // Family-specific lines drawn at the top of the control window.
     std::function<void()> drawStatus;
-    // The "Tableau de bord" window, listed under Fenêtres.
+    // The "Dashboard" window, listed under Windows.
     bool showWindow = true;
     // The machine's debugger session and its window (GuiDebuggerWindow.h).
     GuiDebuggerState debugger;
-    // « Taper du texte » (GuiTypingWindow.h).
+    // « Type du texte » (GuiTypingWindow.h).
     GuiTypingState typing;
 
     bool bound() const noexcept { return bool(hardReset); }
@@ -83,11 +83,11 @@ void bindMachineControls(GuiMachineControls& controls, MachineT& machine,
 // and the input-journal recording. Call inside an open menu.
 void drawMachineControlItems(GuiMachineControls& controls);
 
-// The "Tableau de bord" window: status lines from the runner, then the
+// The "Dashboard" window: status lines from the runner, then the
 // same controls as buttons. No-op while hidden or unbound.
 void drawMachineControlWindow(GuiMachineControls& controls);
 
-// The window's title, for the Fenêtres menu.
+// The window's title, for the Windows menu.
 extern const char* kMachineControlWindowTitle;
 
 } // namespace pom68k::gui

@@ -16,7 +16,7 @@
 
 namespace pom68k {
 
-const char* kPeripheralWindowTitle = "Périphériques (LLE / HLE)";
+const char* kPeripheralWindowTitle = "Peripherals (LLE / HLE)";
 
 namespace {
 
@@ -43,7 +43,7 @@ void openIfFallback(const std::vector<lle::Device>& devs) {
 std::vector<lle::Choice> gStaged;
 
 // Untouched rows track what is live, so opening the window stages nothing
-// and "Appliquer" stays disabled until the user actually chooses.
+// and "Apply" stays disabled until the user actually chooses.
 lle::Choice stagedOf(const lle::Device& d) {
     for (const lle::Choice& c : gStaged)
         if (c.module == d.module) return c;
@@ -100,12 +100,12 @@ std::string reasonText(const lle::Device& d) {
     switch (d.why) {
     case lle::Why::LleFirmware:
         return d.firmware.empty()
-                   ? std::string("firmware d'origine en cours d'exécution")
-                   : "firmware d'origine : " + d.firmware;
+                   ? std::string("original firmware running")
+                   : "original firmware: " + d.firmware;
     case lle::Why::HleNoDump:
-        return "aucun dump trouvé - substitut HLE non conformant";
+        return "no firmware dump found - nonconforming HLE substitute";
     case lle::Why::HleForced:
-        return d.knob + "=0 - substitut HLE non conformant forcé";
+        return d.knob + "=0 - nonconforming HLE substitute forced";
     }
     return {};
 }
@@ -124,11 +124,13 @@ void peripheralWindow(const PeripheralHost& host) {
     openIfFallback(devs);
     if (!gOpen) return;
 
-    // Auto-height: the footer (« Appliquer et redémarrer ») appears only
+    // Auto-height: the footer (« Apply and restart ») appears only
     // once something is staged, and a height fixed on the first frame hid
     // it behind a scrollbar (found by gui_windows_test, 2026-09-16). The
     // width is pinned so the rows keep their layout; long lines wrap to it.
-    ImGui::SetNextWindowSizeConstraints(ImVec2(560, 0), ImVec2(560, FLT_MAX));
+    // The viewport bounds the height; longer device lists remain scrollable.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(560, 0),
+        ImVec2(560, ImGui::GetMainViewport()->WorkSize.y - 40));
     if (!ImGui::Begin(kPeripheralWindowTitle, &gOpen,
                       ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
@@ -140,28 +142,53 @@ void peripheralWindow(const PeripheralHost& host) {
     for (const lle::Device& d : devs)
         if (d.mode == lle::Mode::Hle) hle++;
     if (devs.empty()) {
-        ImGui::TextUnformatted("Cette machine n'a aucun périphérique à "
-                               "substitut HLE.");
-        ImGui::TextDisabled("Tout ce qu'elle contient est déjà modélisé au "
-                            "niveau du signal (LLE).");
+        ImGui::TextUnformatted("This machine has no devices using an "
+                               "HLE substitute.");
+        ImGui::TextDisabled("All its devices are already modeled at "
+                            "signal level (LLE).");
     } else if (hle == 0) {
-        ImGui::TextColored(kGreen, "Session conforme : %d périphérique(s), "
-                                   "tous en LLE.", int(devs.size()));
+        ImGui::TextColored(kGreen, "Qualified session: %d devices, "
+                                   "all using LLE.", int(devs.size()));
     } else {
         ImGui::TextColored(kOrange,
-                           "%d périphérique(s) sur %d en substitut HLE "
-                           "NON CONFORMANT.", hle, int(devs.size()));
+                           "%d of %d devices use a "
+                           "NONCONFORMING HLE substitute.", hle, int(devs.size()));
     }
+
+    if (hle > 0)
+        ImGui::TextWrapped("A software substitute replaces firmware that is missing "
+                           "or disabled. Known limitations appear "
+                           "below each controller. To use the "
+                           "original firmware, provide its ROM file.");
 
     // Product mode's own verdict, when it is the promise being made.
     if (registry.requested()) {
         ImGui::SameLine();
         const bool ok = registry.qualified();
         ImGui::TextColored(ok ? kGreen : kRed, ok ? "  [--lle-aarch64 : OK]"
-                                                  : "  [--lle-aarch64 : REFUSÉ]");
+                                                  : "  [--lle-aarch64: REJECTED]");
     }
 
     ImGui::Separator();
+
+    // Keep the staged action visible even when the controller list scrolls.
+    const int pending = lle::pendingCount(devs, gStaged);
+    if (pending > 0) {
+        ImGui::TextColored(kOrange, "Pending restart: %d changes", pending);
+        ImGui::TextDisabled("Applying restarts this Mac. Save your work first.");
+        ImGui::BeginDisabled(!host.relaunch);
+        if (ImGui::Button("Apply and restart")) {
+            auto overrides = lle::firmwareOverridesForSelection(devs, gStaged);
+            gStaged.clear();
+            host.relaunch(std::move(overrides));
+        }
+        ImGui::EndDisabled();
+        if (!host.relaunch && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Relaunch is unavailable on this platform.");
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) gStaged.clear();
+        ImGui::Separator();
+    }
 
     // ── One row per LLE-capable device this machine built ────────────────
     for (const lle::Device& d : devs) {
@@ -182,6 +209,10 @@ void peripheralWindow(const PeripheralHost& host) {
             ImGui::TextColored(kOrange, "%s", d.consequence.c_str());
         ImGui::PopTextWrapPos();
 
+        if (d.mode == lle::Mode::Hle && !lle::dumpAvailable(d) &&
+            !d.candidates.empty())
+            ImGui::TextWrapped("Expected file: %s", d.candidates.front().c_str());
+
         // The selector. LLE is offered only when a dump exists — a radio the
         // user can click into a state the relaunch would silently undo is
         // worse than a disabled one, so the paths searched are shown instead.
@@ -189,21 +220,21 @@ void peripheralWindow(const PeripheralHost& host) {
         lle::Choice want = stagedOf(d);
 
         ImGui::BeginDisabled(!canLle);
-        if (ImGui::RadioButton("LLE (composant d'origine)",
+        if (ImGui::RadioButton("Original firmware (LLE)",
                                want.mode == lle::Mode::Lle)) {
             want.mode = lle::Mode::Lle;
             stage(want);
         }
         ImGui::EndDisabled();
-        if (!canLle && ImGui::IsItemHovered()) {
-            std::string tip = "Aucun dump trouvé. Chemins cherchés :";
+        if (!canLle && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            std::string tip = "No firmware dump found. Searched paths:";
             for (const std::string& p : d.candidates) tip += "\n  " + p;
-            tip += "\n\nLes dumps de MCU ne sont pas distribuables : "
-                   "\ndéposez le fichier puis rouvrez cette fenêtre.";
+            tip += "\n\nMCU dumps cannot be distributed:"
+                   "\nplace the file and reopen this window.";
             ImGui::SetTooltip("%s", tip.c_str());
         }
         ImGui::SameLine();
-        if (ImGui::RadioButton("HLE (substitut, non conformant)",
+        if (ImGui::RadioButton("Software substitute (HLE)",
                                want.mode == lle::Mode::Hle)) {
             want.mode = lle::Mode::Hle;
             stage(want);
@@ -219,11 +250,11 @@ void peripheralWindow(const PeripheralHost& host) {
             ImGui::SetNextItemWidth(330);
             const std::string label =
                 want.firmware.empty()
-                    ? std::string("Automatique (premier de la liste d'origine)")
+                    ? std::string("Automatic (first original candidate)")
                     : shortName(want.firmware);
             if (ImGui::BeginCombo("Dump", label.c_str())) {
-                if (ImGui::Selectable("Automatique (premier de la liste "
-                                      "d'origine)", want.firmware.empty())) {
+                if (ImGui::Selectable("Automatic (first original "
+                                      "candidate)", want.firmware.empty())) {
                     want.firmware.clear();
                     stage(want);
                 }
@@ -232,8 +263,8 @@ void peripheralWindow(const PeripheralHost& host) {
                     // "which one is the right one" does not need the manual.
                     char row[320];
                     std::snprintf(row, sizeof row, "%s%s%s", shortName(p).c_str(),
-                                  isCandidate(d, p) ? "   (d'origine)" : "",
-                                  p == d.firmware ? "   <- chargé" : "");
+                                  isCandidate(d, p) ? "   (original)" : "",
+                                  p == d.firmware ? "   <- loaded" : "");
                     if (ImGui::Selectable(row, want.firmware == p)) {
                         want.firmware = p;
                         stage(want);
@@ -247,25 +278,22 @@ void peripheralWindow(const PeripheralHost& host) {
             char custom[512];
             std::snprintf(custom, sizeof custom, "%s", want.firmware.c_str());
             ImGui::SetNextItemWidth(330);
-            if (ImGui::InputText("Chemin", custom, sizeof custom,
+            if (ImGui::InputText("Path", custom, sizeof custom,
                                  ImGuiInputTextFlags_EnterReturnsTrue)) {
                 want.firmware = custom;
                 stage(want);
             }
-            ImGui::SameLine();
-            ImGui::TextDisabled("(%s)", d.pathKnob.c_str());
             ImGui::EndDisabled();
         }
 
         if (want.mode != d.mode)
-            ImGui::TextColored(kOrange, "-> %s au prochain démarrage (%s=%s)",
-                               want.mode == lle::Mode::Lle ? "LLE" : "HLE",
-                               d.knob.c_str(),
-                               want.mode == lle::Mode::Lle ? "1" : "0");
+            ImGui::TextColored(kOrange, "Pending restart: %s",
+                               want.mode == lle::Mode::Lle
+                                   ? "original firmware" : "software substitute");
         if (want.firmware != d.firmwareForced)
-            ImGui::TextColored(kOrange, "-> dump : %s",
+            ImGui::TextColored(kOrange, "-> dump: %s",
                                want.firmware.empty()
-                                   ? "automatique (choix imposé retiré)"
+                                   ? "automatic (forced choice removed)"
                                    : want.firmware.c_str());
 
         ImGui::Unindent();
@@ -273,29 +301,8 @@ void peripheralWindow(const PeripheralHost& host) {
         ImGui::Separator();
     }
 
-    // ── Footer: nothing changes without an explicit relaunch ─────────────
-    const int pending = lle::pendingCount(devs, gStaged);
-    if (pending > 0) {
-        ImGui::TextColored(kOrange, "%d modification(s) en attente", pending);
-        ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 540);
-        ImGui::TextDisabled("Les périphériques sont construits une seule fois, "
-                            "avant la première instruction : appliquer "
-                            "redémarre l'émulateur sur la même machine.");
-        ImGui::PopTextWrapPos();
-        ImGui::BeginDisabled(!host.relaunch);
-        if (ImGui::Button("Appliquer et redémarrer")) {
-            auto overrides =
-                lle::firmwareOverridesForSelection(devs, gStaged);
-            gStaged.clear();
-            host.relaunch(std::move(overrides));
-        }
-        ImGui::EndDisabled();
-        if (!host.relaunch && ImGui::IsItemHovered())
-            ImGui::SetTooltip("Relance indisponible sur cette plateforme.");
-        ImGui::SameLine();
-        if (ImGui::Button("Annuler")) gStaged.clear();
-    } else if (!devs.empty()) {
-        ImGui::TextDisabled("Sélection identique à la session en cours.");
+    if (pending == 0 && !devs.empty()) {
+        ImGui::TextDisabled("Selection matches the current session.");
     }
 
     ImGui::End();

@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // The shell's frame without a window system: the menu bar (Machine,
-// Périphériques, CPU, Affichage, Fenêtres, the status edge), the dock
+// Peripherals, CPU, Display, Windows, the status edge), the dock
 // space and every shell-owned window. Anything that needs the real window
 // is left as a request in the session state — `relaunch.closeWindow` — for
 // GuiShell::drawMachineMenu (GuiShell.cpp) to carry out. Gated headlessly

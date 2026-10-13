@@ -4,8 +4,8 @@
 // gui_machine_window_test -- the machine window, headless.
 //
 // What every runner puts on screen and what gui_windows_test leaves out:
-// the menu bar (drawShellFrame — Machine, Périphériques, CPU, Affichage,
-// Fenêtres), the « Tableau de bord » window, the screen window with its
+// the menu bar (drawShellFrame — Machine, Peripherals, CPU, Display,
+// Windows), the « Dashboard » window, the screen window with its
 // mouse surface (ScreenInput) and the compact keyboard, the cabinet mode
 // and the CRT presets. The machine is a fake that records what the GUI
 // pushes; the screen is a texture the harness draws for the runner's GL
@@ -208,6 +208,7 @@ int main() {
     }
 
     GuiSessionState state;
+    state.startup.considered = true; // This fake machine has no session ROM.
     FakeMachine machine;
     int statusDraws = 0;
     bindMachineControls(state.machine, machine, [&] {
@@ -242,15 +243,15 @@ int main() {
     // ── The bar, the dashboard and the screen ────────────────────────
     ImRect screenRect;
     {
-        check(ui.find("Machine") && ui.find("Périphériques") && ui.find("CPU") &&
-              ui.find("Affichage") && ui.find("Fenêtres"),
-              "the menu bar shows Machine, Périphériques, CPU, Affichage, Fenêtres");
+        check(ui.find("Machine") && ui.find("Peripherals") && ui.find("CPU") &&
+              ui.find("Display") && ui.find("Windows"),
+              "the menu bar shows Machine, Peripherals, CPU, Display, Windows");
         ImRect r;
         check(windowShown(kMachineControlWindowTitle, &r) && statusDraws > 0,
-              "« Tableau de bord » is shown with the runner's status lines");
+              "« Dashboard » is shown with the runner's status lines");
         check(r.Min.x > 600 && r.Max.y <= float(ui.height()), "the dashboard is docked in the right column, wholly on screen");
-        check(ui.find("Redémarrer") && ui.find("Pause") && ui.find("Sauver l'état"),
-              "the dashboard offers Redémarrer, Pause, Sauver l'état");
+        check(ui.find("Restart") && ui.find("Pause") && ui.find("Save state"),
+              "the dashboard offers Restart, Pause, Save state");
         check(windowShown(screenTitle, &r), "the screen window is shown");
         const headless::Item* screen = ui.find("screen");
         check(screen != nullptr, "the screen surface is drawn");
@@ -331,17 +332,17 @@ int main() {
     {
         machine.cmds.clear();
         check(ui.click("Machine", draw), "open the Machine menu");
-        check(ui.find("Changer de machine") != nullptr, "the menu lists « Changer de machine »");
-        check(clickMenuItem(ui, "Redémarrer", draw), "click Redémarrer");
-        check(machine.count(FakeMachine::Cmd::HardReset) == 1, "Redémarrer pushes HardReset");
+        check(ui.find("Change machine") != nullptr, "the menu lists « Change machine »");
+        check(clickMenuItem(ui, "Restart", draw), "click Restart");
+        check(machine.count(FakeMachine::Cmd::HardReset) == 1, "Restart pushes HardReset");
         ui.click("Machine", draw);
         check(clickMenuItem(ui, "Pause", draw) && !machine.running.load(), "Pause stops the machine");
         ui.frame(draw);
-        check(ui.find("Reprendre") != nullptr, "the dashboard now offers Reprendre");
-        check(ui.click("Reprendre", draw) && machine.running.load(), "Reprendre (dashboard button) runs it again");
+        check(ui.find("Resume") != nullptr, "the dashboard now offers Resume");
+        check(ui.click("Resume", draw) && machine.running.load(), "Resume (dashboard button) runs it again");
         ui.click("Machine", draw);
-        check(clickMenuItem(ui, "Sauver l'état", draw) && (machine.state.pending() & 1),
-              "Sauver l'état queues a save for the machine thread");
+        check(clickMenuItem(ui, "Save state", draw) && (machine.state.pending() & 1),
+              "Save state queues a save for the machine thread");
 
         // ── And the other half of the pass: the FILE ────────────────────
         // The click above only proves the request reached the slot. What
@@ -391,18 +392,18 @@ int main() {
             std::remove(path.c_str());
         }
         ui.click("Machine", draw);
-        check(ui.click("Démarrer l'enregistrement", draw) && machine.recording,
-              "Démarrer l'enregistrement asks the machine to record");
+        check(ui.click("Start recording", draw) && machine.recording,
+              "Start recording asks the machine to record");
         ui.click("Machine", draw);
-        check(ui.click("Arrêter l'enregistrement", draw) && !machine.recording, "and Arrêter stops it");
+        check(ui.click("Stop recording", draw) && !machine.recording, "and Stop recording stops it");
         capture(ui, "machine-menu");
     }
 
-    // ── Changer de machine: the catalogue, one submenu per group ─────
+    // ── Change machine: the catalogue, one submenu per group ─────
     {
         ui.click("Machine", draw);
-        const headless::Item* sw = ui.find("Changer de machine");
-        check(sw != nullptr, "« Changer de machine » is offered");
+        const headless::Item* sw = ui.find("Change machine");
+        check(sw != nullptr, "« Change machine » is offered");
         if (sw) {
             const ImVec2 c = sw->bb.GetCenter();
             ui.mouseTo(c.x, c.y);
@@ -452,32 +453,32 @@ int main() {
         return false;
     };
 
-    // ── Taper du texte: paste, choose the layout, type, cancel ───────
+    // ── Type du texte: paste, choose the layout, type, cancel ───────
     // The window queues; MachineHost types (clipboard_typing_test). Here:
     // the menu opens it, « Coller » reads the host clipboard, the radio
-    // picks the layout explicitly, « Taper » hands text and layout to the
-    // machine, « Annuler la saisie » reaches it while typing is under way.
+    // picks the layout explicitly, « Type » hands text and layout to the
+    // machine, « Cancel typing » reaches it while typing is under way.
     {
         state.machine.typing.hostClipboard = [] { return std::string("Bonjour é\n"); };
-        check(openMachineMenu("Taper du texte...") &&
-                  clickMenuItem(ui, "Taper du texte...", draw) && state.machine.typing.showWindow,
-              "« Taper du texte... » opens the typing window");
+        check(openMachineMenu("Type text...") &&
+                  clickMenuItem(ui, "Type text...", draw) && state.machine.typing.showWindow,
+              "« Type text... » opens the typing window");
         ui.frame(draw);
         check(windowShown(kTypingWindowTitle), "the typing window is drawn");
-        check(ui.click("Coller le presse-papiers", draw) &&
+        check(ui.click("Paste clipboard", draw) &&
                   std::string(state.machine.typing.text.data()) == "Bonjour é\n",
-              "« Coller le presse-papiers » takes the host clipboard's text");
-        check(ui.click("Français (AZERTY)", draw) &&
+              "« Paste clipboard » takes the host clipboard's text");
+        check(ui.click("French (AZERTY)", draw) &&
                   state.machine.typing.layout == int(pom68k::GuestLayout::FrenchAzerty),
               "the guest layout is chosen explicitly");
-        check(ui.click("Taper", draw) && machine.typed.size() == 1 &&
+        check(ui.click("Type", draw) && machine.typed.size() == 1 &&
                   machine.typed[0].first == "Bonjour é\n" &&
                   machine.typed[0].second == pom68k::GuestLayout::FrenchAzerty,
-              "« Taper » hands the text and the layout to the machine");
+              "« Type » hands the text and the layout to the machine");
         machine.left = 4;
         ui.frame(draw);
-        check(ui.click("Annuler la saisie", draw) && machine.cancels == 1,
-              "« Annuler la saisie » reaches the machine while typing is under way");
+        check(ui.click("Cancel typing", draw) && machine.cancels == 1,
+              "« Cancel typing » reaches the machine while typing is under way");
         state.machine.typing.showWindow = false;
         ui.frame(draw);
     }
@@ -514,21 +515,21 @@ int main() {
             ui.frame(draw);
             return true;
         };
-        check(hoverSession() && ui.find("Enregistrer la session...") != nullptr &&
+        check(hoverSession() && ui.find("Save session...") != nullptr &&
                   ui.find("plus") == nullptr,
               "« Session » offers the save and lists nothing in an empty directory");
-        check(clickMenuItem(ui, "Enregistrer la session...", draw) &&
+        check(clickMenuItem(ui, "Save session...", draw) &&
                   state.sessionFile.showSaveWindow,
-              "« Enregistrer la session... » opens the save window");
+              "« Save session... » opens the save window");
         ui.frame(draw);
         const fs::path saved = dir / "plus.pomsession";
         check(windowShown(kSessionWindowTitle) &&
                   std::string(state.sessionFile.savePath.data()) ==
                       pom68k::app::utf8FromPath(saved),
               "the window proposes <directory>/<profile>.pomsession");
-        check(ui.click("Enregistrer", draw) && fs::is_regular_file(saved) &&
-                  state.sessionFile.status.starts_with("Session enregistrée"),
-              "« Enregistrer » writes the file and says so");
+        check(ui.click("Save", draw) && fs::is_regular_file(saved) &&
+                  state.sessionFile.status.starts_with("Session saved"),
+              "« Save » writes the file and says so");
         const pom68k::app::SessionParse reread = pom68k::app::loadSession(saved);
         check(reread.session && reread.session->rom == pom68k::app::utf8FromPath(rom) &&
                   reread.session->media.size() == 1,
@@ -555,29 +556,29 @@ int main() {
     // ── CPU menu ─────────────────────────────────────────────────────
     {
         check(ui.click("CPU", draw), "open the CPU menu");
-        check(ui.find("Interpréteur (Moira)") != nullptr, "the interpreter is listed");
-        check(ui.click("Moteur accéléré - JIT a64", draw) && engine == 1, "choosing the accelerated engine reaches the callback");
+        check(ui.find("Interpreter (Moira)") != nullptr, "the interpreter is listed");
+        check(ui.click("Accelerated engine - JIT a64", draw) && engine == 1, "choosing the accelerated engine reaches the callback");
     }
 
-    // ── Affichage: presets, the CRT window, the cabinet mode ─────────
+    // ── Display: presets, the CRT window, the cabinet mode ─────────
     {
-        check(ui.click("Affichage", draw), "open the Affichage menu");
+        check(ui.click("Display", draw), "open the Display menu");
         check(ui.click("Arcade", draw) && state.display.crtOn && state.display.crtPreset == "arcade",
               "the Arcade preset turns the CRT pass on");
         const headless::Item* screen = ui.find("screen");
         check(screen && ui.pixel(int(screen->bb.Min.x + screen->bb.GetWidth() * 0.25f),
                                  int(screen->bb.GetCenter().y)) == kWhite,
               "without a GL stack the raw screen is still shown");
-        ui.click("Affichage", draw);
-        check(ui.click("Réglages CRT...", draw), "open « Réglages CRT »");
+        ui.click("Display", draw);
+        check(ui.click("CRT settings...", draw), "open « CRT settings »");
         ui.frame(draw);
         ImRect r;
-        check(windowShown("Réglages CRT", &r) && ui.distinctColours(r) > 12, "the CRT window is drawn");
+        check(windowShown("CRT settings", &r) && ui.distinctColours(r) > 12, "the CRT window is drawn");
         capture(ui, "machine-crt");
         state.display.showCrtWindow = false;
 
-        ui.click("Affichage", draw);
-        check(ui.click("Mode borne (plein écran)", draw) && state.display.kiosk, "« Mode borne » switches the cabinet mode on");
+        ui.click("Display", draw);
+        check(ui.click("Kiosk mode (full screen)", draw) && state.display.kiosk, "Kiosk mode switches the cabinet mode on");
         ui.frame(draw);
         check(ui.find("Machine") == nullptr && !windowShown(kMachineControlWindowTitle), "kiosk: no menu bar, no dashboard");
         check(kioskActive(), "kiosk: the process-wide flag is set for the runner's windows");
@@ -622,12 +623,120 @@ int main() {
         ui.frame(draw);
     }
 
-    // ── Fenêtres ─────────────────────────────────────────────────────
+    // ── Windows ─────────────────────────────────────────────────────
     {
-        check(ui.click("Fenêtres", draw), "open the Fenêtres menu");
-        check(clickMenuItem(ui, kMachineControlWindowTitle, draw) && !state.machine.showWindow, "« Tableau de bord » toggles the dashboard off");
+        check(ui.click("Windows", draw), "open the Windows menu");
+        check(clickMenuItem(ui, kMachineControlWindowTitle, draw) && !state.machine.showWindow, "« Dashboard » toggles the dashboard off");
         ui.frame(draw);
         check(!windowShown(kMachineControlWindowTitle), "the dashboard is gone");
+    }
+
+    check(ui.click("Machine", draw) &&
+              clickMenuItem(ui, "Set Up a Macintosh...", draw),
+          "the Machine menu opens the preparation guide");
+    check(windowShown(kStartupWindowTitle) && ui.click("Cancel", draw),
+          "preparing another Macintosh can be cancelled without a relaunch");
+
+    // The first-run guide uses synthetic files: dispatch and preparation,
+    // never a claim that a zero-filled ROM or volume can boot Mac OS.
+    {
+        namespace fs = std::filesystem;
+        const fs::path directory = fs::temp_directory_path() /
+            ("pom68k-startup-" + std::to_string(
+                std::chrono::steady_clock::now().time_since_epoch().count()));
+        fs::create_directories(directory);
+        struct Cleanup {
+            fs::path path;
+            ~Cleanup() { std::error_code error; fs::remove_all(path, error); }
+        } cleanup{directory};
+        const auto rom = directory / "Chosen ROM.rom";
+        const auto disk = directory / "System disk.vhd";
+        const auto floppy = directory / "System 400K.dsk";
+        auto write = [](const fs::path& path, std::size_t size, std::uint32_t id = 0) {
+            std::vector<char> bytes(size, 0);
+            for (int i = 0; i < 4; ++i) bytes[std::size_t(i)] = char(id >> (24 - i * 8));
+            std::ofstream file(path, std::ios::binary);
+            file.write(bytes.data(), std::streamsize(bytes.size()));
+        };
+        write(rom, 128u << 10, 0x4D1F8172);
+        write(disk, 4096);
+        write(floppy, 409600);
+        GuiSessionState guide;
+        auto drawGuide = [&] { drawStartupWindow(guide, pom68k::SnapMachine::Plus); };
+        ui.frame(drawGuide); ui.frame(drawGuide);
+        check(guide.startup.open && guide.startup.missingRom &&
+                  windowShown(kStartupWindowTitle),
+              "no ROM path opens the first-run guide above the demo");
+        check(ui.click("Continue demo", drawGuide), "the guide lets the user continue the demo");
+        ui.frame(drawGuide);
+        check(!guide.startup.open && !windowShown(kStartupWindowTitle),
+              "the guide does not reopen after being dismissed");
+        guide.startup.considered = false;
+        guide.sessionFile.romName = (directory / "missing.rom").string();
+        ui.frame(drawGuide); ui.frame(drawGuide);
+        check(guide.startup.open && guide.startup.missingRom &&
+                  windowShown(kStartupWindowTitle),
+              "an unavailable ROM path also opens the guide");
+        ui.click("Continue demo", drawGuide);
+
+        guide.startup.missingRom = false;
+        guide.sessionFile.romName = rom.string();
+        openStartupWindow(guide, pom68k::SnapMachine::Plus);
+        ui.frame(drawGuide); ui.frame(drawGuide);
+        check(ui.click("Browse ROM...", drawGuide) && ui.find("Chosen ROM.rom"),
+              "the file browser lists a ROM in the current folder");
+        check(ui.click("Chosen ROM.rom", drawGuide) && guide.startup.browsing == 0,
+              "choosing a ROM closes the browser and fills its path");
+        check(ui.click("Check setup", drawGuide) && !guide.startup.ready &&
+                  guide.startup.message.find("Startup disk") != std::string::npos,
+              "verification explains a missing system disk without preparing a launch");
+        check(ui.click("Browse disk...", drawGuide), "open the system-disk browser");
+        std::snprintf(guide.startup.folder.data(), guide.startup.folder.size(), "%s", directory.string().c_str());
+        ui.frame(drawGuide);
+        check(ui.click("System disk.vhd", drawGuide), "select the system-disk file");
+        check(ui.click("Check setup", drawGuide) && guide.startup.ready,
+              "verification accepts a profile-matching ROM and a disk file");
+        check(guide.startup.arguments == std::vector<std::string>{
+                  "--machine-profile=plus", rom.string(), "", disk.string()},
+              "the compact disk launch reserves the floppy position explicitly");
+        capture(ui, "startup-ready");
+        guide.relaunch.switchArguments = {"--session=old.pomsession"};
+        guide.relaunch.daynaPortId = 3;
+        check(ui.click("Start Macintosh", drawGuide) &&
+                  guide.relaunch.closeWindow && guide.relaunch.verbatim &&
+                  guide.relaunch.switchArguments == guide.startup.arguments,
+              "launch uses only the prepared profile, ROM and media, without the old session");
+        ui.frame(drawGuide);
+
+        GuiStartupState invalid;
+        invalid.profile = pom68k::SnapMachine::LcII;
+        std::snprintf(invalid.rom.data(), invalid.rom.size(), "%s", rom.string().c_str());
+        std::snprintf(invalid.media.data(), invalid.media.size(), "%s", disk.string().c_str());
+        check(!validateStartup(invalid) && invalid.message.find("Macintosh Plus") != std::string::npos,
+              "a ROM from another family names the actual model instead of launching");
+        invalid.profile = pom68k::SnapMachine::Mac512Ke;
+        std::snprintf(invalid.media.data(), invalid.media.size(), "%s", floppy.string().c_str());
+        check(validateStartup(invalid) && invalid.arguments == std::vector<std::string>{
+                  "--machine-profile=mac512ke", rom.string(), floppy.string()},
+              "the shared Plus ROM can prepare a floppy-only 512Ke with no SCSI argument");
+        std::snprintf(invalid.media.data(), invalid.media.size(), "%s", disk.string().c_str());
+        check(!validateStartup(invalid), "the floppy-only model refuses a hard disk");
+        invalid.profile = pom68k::SnapMachine::Plus;
+        invalid.floppy = false;
+        const auto sharedRom = directory / "Shared 040.rom";
+        write(sharedRom, 1u << 20, 0xFF7439EE);
+        invalid.profile = pom68k::SnapMachine::Q605;
+        std::snprintf(invalid.rom.data(), invalid.rom.size(), "%s", sharedRom.string().c_str());
+        check(validateStartup(invalid) && invalid.arguments.front() == "--machine-profile=q605",
+              "a shared 040 ROM preserves the explicitly selected Quadra 605 identity");
+        invalid.profile = pom68k::SnapMachine::Plus;
+        std::snprintf(invalid.rom.data(), invalid.rom.size(), "%s", rom.string().c_str());
+        fs::remove(disk);
+        check(!validateStartup(invalid) && invalid.arguments.empty(),
+              "a disappeared disk invalidates readiness and clears the launch arguments");
+        write(rom, 4096);
+        check(!validateStartup(invalid) && invalid.message.find("Unsupported ROM size") != std::string::npos,
+              "a truncated ROM is refused before profile decoding");
     }
 
     std::printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures, failures == 1 ? "" : "s");

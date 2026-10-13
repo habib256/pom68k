@@ -186,7 +186,7 @@ V8Memory::V8Memory(const pom68k::CoreConfig& coreConfig, uint32_t totalRam,
             pom68k::lle::HleEgretCuda,
             cudaMcu ? pom68k::FirmwareTarget::Cuda
                     : pom68k::FirmwareTarget::Egret};
-        req.name = cudaMcu ? "Cuda - MCU ADB / PRAM / horloge"
+        req.name = cudaMcu ? "Cuda - ADB / PRAM / clock MCU"
                            : "Egret - MCU ADB / PRAM / horloge";
         req.enableKnob = cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE";
         req.pathKnob = "POM68K_CUDA_FW";

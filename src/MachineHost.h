@@ -692,9 +692,9 @@ protected:
                     ok = !c.path.empty() && mem.attachScsi(c.path, true, c.a);
                 std::lock_guard<std::mutex> l(mediaMu_);
                 bayMessage_ = "SCSI " + std::to_string(c.a) +
-                    (ok ? " : cible sur le bus — l'invité ne l'a pas encore "
-                          "sondée (redémarrage, ou montage depuis l'invité)"
-                        : " : image refusée");
+                    (ok ? " : target on the bus — the guest has not yet "
+                          "probed it (restart or mount from the guest)"
+                        : " : image rejected");
                 break;
             }
             case Cmd::DetachDisk: {
@@ -714,9 +714,9 @@ protected:
                 }
                 std::lock_guard<std::mutex> l(mediaMu_);
                 bayMessage_ = "SCSI " + std::to_string(c.a) +
-                    (ok   ? " : cible retirée du bus"
-                     : busy ? " : cible occupée — retrait abandonné"
-                            : " : rien à retirer");
+                    (ok   ? " : target removed from bus"
+                     : busy ? " : target busy — removal cancelled"
+                            : " : nothing to remove");
                 break;
             }
             // Monitor sense (V8/Sonora/VASP/RBV): a multi-field update inside
@@ -791,11 +791,11 @@ protected:
     // reason — a broken recorder must never take the session down.
     void startRecording(std::string path) {
         if (journalOn_) {
-            postRecording("Enregistrement déjà en cours: " + journalW_.path());
+            postRecording("Recording already in progress: " + journalW_.path());
             return;
         }
         if (state.kind == pom68k::SnapMachine{}) {
-            postRecording("Enregistrement refusé: profil non câblé");
+            postRecording("Recording rejected: unsupported profile");
             return;
         }
         if (path.empty()) {
@@ -814,7 +814,7 @@ protected:
             path = base + stamp + ".journal";
         }
         if (!journalW_.open(path)) {
-            postRecording("Enregistrement refusé: ouverture impossible (" +
+            postRecording("Recording rejected: could not open (" +
                           path + ")");
             return;
         }
@@ -830,7 +830,7 @@ protected:
         if (!wrote || !atomicReplaceFile(tmp, statePath)) {
             std::remove(tmp.c_str());
             journalW_.abort();
-            postRecording("Enregistrement refusé: snapshot impossible (" +
+            postRecording("Recording rejected: could not save snapshot (" +
                           statePath + ")");
             return;
         }
@@ -843,15 +843,15 @@ protected:
         journalOn_ = true;
         recEvents_ = 0;
         stRecording_.store(true, std::memory_order_relaxed);
-        postRecording("Enregistrement → " + path);
+        postRecording("Recording → " + path);
     }
 
     void finishRecording() {
         journalW_.finish(cpu.machineClock());
         journalOn_ = false;
         stRecording_.store(false, std::memory_order_relaxed);
-        postRecording("Enregistré: " + journalW_.path() + " (" +
-                      std::to_string(recEvents_) + " évènements)");
+        postRecording("Recorded: " + journalW_.path() + " (" +
+                      std::to_string(recEvents_) + " events)");
     }
 
     void postRecording(std::string m) {

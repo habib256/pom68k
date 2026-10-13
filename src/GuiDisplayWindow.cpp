@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // The cabinet mode's chords (Ctrl+Alt+F, the quit chords), the
-// « Affichage » menu and the « Réglages CRT » window — see GuiDisplay.h.
+// « Display » menu and the « CRT settings » window — see GuiDisplay.h.
 // Out of GuiShell.cpp so the shell stays the menu bar's owner and nothing
 // more; ported from NeoST's kiosk and CRT controls on 2026-09-16.
 
@@ -38,37 +38,37 @@ bool kioskChords(GuiDisplayState& d) {
     return quit;
 }
 
-// « Affichage »: the cabinet mode and the CRT glass, presets and the
+// « Display »: the cabinet mode and the CRT glass, presets and the
 // settings window.
 void drawDisplayMenu(GuiDisplayState& d) {
-    if (!ImGui::BeginMenu("Affichage")) return;
-    if (ImGui::MenuItem("Mode borne (plein écran)", "Ctrl+Alt+F", d.kiosk)) d.kiosk = !d.kiosk;
-    ImGui::TextDisabled("Sortie : Ctrl+Alt+F, Alt+F4 ou Ctrl+Maj+Q maintenu");
+    if (!ImGui::BeginMenu("Display")) return;
+    if (ImGui::MenuItem("Kiosk mode (full screen)", "Ctrl+Alt+F", d.kiosk)) d.kiosk = !d.kiosk;
+    ImGui::TextDisabled("Exit: Ctrl+Alt+F, Alt+F4, or hold Ctrl+Shift+Q");
     ImGui::Separator();
-    ImGui::TextDisabled("Effets CRT");
-    const char* labels[] = {"Aucun", "Léger", "Arcade", "Phosphore"};
+    ImGui::TextDisabled("CRT effects");
+    const char* labels[] = {"None", "Light", "Arcade", "Phosphor"};
     for (int i = 0; i < 4; i++) {
         const bool current = (i == 0) ? !d.crtOn : (d.crtOn && d.crtPreset == kCrtPresetNames[i]);
         if (ImGui::MenuItem(labels[i], nullptr, current)) d.selectPreset(kCrtPresetNames[i]);
     }
-    ImGui::MenuItem("Réglages CRT...", nullptr, &d.showCrtWindow);
+    ImGui::MenuItem("CRT settings...", nullptr, &d.showCrtWindow);
     if (const std::string err = d.crtOn && d.passError ? d.passError() : std::string(); !err.empty())
-        ImGui::TextDisabled("(shader indisponible : écran brut — %s)", err.c_str());
+        ImGui::TextDisabled("(shader unavailable: raw display — %s)", err.c_str());
     ImGui::EndMenu();
 }
 
 void drawCrtWindow(GuiDisplayState& d) {
     if (!d.showCrtWindow) return;
     ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Réglages CRT", &d.showCrtWindow, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin("CRT settings", &d.showCrtWindow, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
-    if (ImGui::Checkbox("Effets CRT actifs", &d.crtOn) && d.crtOn && d.crtPreset == "off")
+    if (ImGui::Checkbox("Enable CRT effects", &d.crtOn) && d.crtOn && d.crtPreset == "off")
         d.crtPreset = "custom";
     ImGui::SameLine();
     ImGui::TextDisabled("(%s)", d.crtPreset.c_str());
-    const char* labels[] = {"Aucun", "Léger", "Arcade", "Phosphore"};
+    const char* labels[] = {"None", "Light", "Arcade", "Phosphor"};
     for (int i = 0; i < 4; i++) {
         if (i) ImGui::SameLine();
         if (ImGui::SmallButton(labels[i])) d.selectPreset(kCrtPresetNames[i]);
@@ -77,24 +77,24 @@ void drawCrtWindow(GuiDisplayState& d) {
     bool touched = false;
     ImGui::PushItemWidth(220);
     touched |= ImGui::SliderFloat("Scanlines", &p.scanlines, 0.0f, 1.0f);
-    touched |= ImGui::SliderFloat("Baril", &p.barrel, 0.0f, 0.25f);
-    touched |= ImGui::SliderFloat("Rémanence", &p.persistence, 0.0f, 0.98f);
+    touched |= ImGui::SliderFloat("Barrel distortion", &p.barrel, 0.0f, 0.25f);
+    touched |= ImGui::SliderFloat("Persistence", &p.persistence, 0.0f, 0.98f);
     int mask = int(p.shadowMask);
-    const char* masks[] = {"Aucun", "Triade", "Grille", "Points"};
-    if (ImGui::Combo("Masque", &mask, masks, 4)) { p.shadowMask = CrtParams::ShadowMask(mask); touched = true; }
-    touched |= ImGui::SliderFloat("Force du masque", &p.shadowMaskStrength, 0.0f, 1.0f);
-    touched |= ImGui::SliderFloat("Gain de luminance", &p.luminanceGain, 1.0f, 2.0f);
+    const char* masks[] = {"None", "Triad", "Grille", "Dots"};
+    if (ImGui::Combo("Mask", &mask, masks, 4)) { p.shadowMask = CrtParams::ShadowMask(mask); touched = true; }
+    touched |= ImGui::SliderFloat("Mask strength", &p.shadowMaskStrength, 0.0f, 1.0f);
+    touched |= ImGui::SliderFloat("Luminance gain", &p.luminanceGain, 1.0f, 2.0f);
     touched |= ImGui::SliderFloat("Vignette", &p.centerLighting, 0.5f, 1.0f);
-    touched |= ImGui::SliderFloat("Gamma phosphore", &p.phosphorGamma, 0.6f, 2.6f);
-    touched |= ImGui::SliderFloat("Luminosité", &p.brightness, -0.5f, 0.5f);
-    touched |= ImGui::SliderFloat("Contraste", &p.contrast, 0.5f, 1.5f);
+    touched |= ImGui::SliderFloat("Phosphor gamma", &p.phosphorGamma, 0.6f, 2.6f);
+    touched |= ImGui::SliderFloat("Brightness", &p.brightness, -0.5f, 0.5f);
+    touched |= ImGui::SliderFloat("Contrast", &p.contrast, 0.5f, 1.5f);
     touched |= ImGui::SliderFloat("Saturation", &p.saturation, 0.0f, 2.0f);
-    touched |= ImGui::SliderFloat("Teinte", &p.hue, -0.5f, 0.5f);
-    touched |= ImGui::SliderFloat("Netteté", &p.sharpness, 0.0f, 1.0f);
+    touched |= ImGui::SliderFloat("Hue", &p.hue, -0.5f, 0.5f);
+    touched |= ImGui::SliderFloat("Sharpness", &p.sharpness, 0.0f, 1.0f);
     ImGui::PopItemWidth();
     if (touched) { d.crtPreset = "custom"; d.crtOn = true; }
     if (const std::string err = d.crtOn && d.passError ? d.passError() : std::string(); !err.empty())
-        ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.35f, 1), "Shader indisponible : %s",
+        ImGui::TextColored(ImVec4(0.95f, 0.5f, 0.35f, 1), "Shader unavailable: %s",
                            err.c_str());
     ImGui::End();
 }

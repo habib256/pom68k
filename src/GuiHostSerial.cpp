@@ -32,9 +32,9 @@ void GuiHostServices::configureSerial() {
             return refuse("unavailable while AppleTalk/LToUDP owns SCC channel B; "
                           "set POM68K_APPLETALK=0 and leave POM68K_LTOUDP unset");
         if (config.kind == ConfigKind::Terminal) {
-            port.endpoint = "terminal intégré";
+            port.endpoint = "built-in terminal";
             port.terminal = std::make_shared<SerialTerminal>(true);
-            std::fprintf(stderr, "serial %s: the Ports série window is the endpoint\n", name);
+            std::fprintf(stderr, "serial %s: the Serial ports window is the endpoint\n", name);
             return;
         }
         auto transport = std::make_unique<SerialHostTransport>();

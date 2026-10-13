@@ -83,7 +83,7 @@ inline bool verify(const char* label, const std::string& firmwareRoot,
     const Entry* wanted = nullptr;
     for (const Entry& e : kManifest)
         if (std::strcmp(e.label, label) == 0) { wanted = &e; break; }
-    if (!wanted) { error = std::string("firmware non manifesté: ") + label; return false; }
+    if (!wanted) { error = std::string("firmware not in manifest: ") + label; return false; }
 
     std::string found;
     std::vector<std::string> bases;

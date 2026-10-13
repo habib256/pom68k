@@ -10,7 +10,7 @@
 
 namespace pom68k::gui {
 
-// The window's title, shared with the Fenêtres menu.
+// The window's title, shared with the Windows menu.
 extern const char* kNetworkWindowTitle;
 
 // Draws the window when `state.showWindow`. Safe to call every frame.

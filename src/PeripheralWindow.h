@@ -1,6 +1,6 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-// PeripheralWindow -- the one "Périphériques (LLE / HLE)" window, on every
+// PeripheralWindow -- the one "Peripherals (LLE / HLE)" window, on every
 // machine.
 //
 // What it answers, and nothing else answered before it: *which side is each
@@ -53,7 +53,7 @@ struct PeripheralHost {
     lle::Registry* registry = &lle::processRegistry();
 };
 
-// The window's title, shared with the Fenêtres menu.
+// The window's title, shared with the Windows menu.
 extern const char* kPeripheralWindowTitle;
 
 // A checkable entry that toggles the window, inside an already-open menu.

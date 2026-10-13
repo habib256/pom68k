@@ -77,7 +77,7 @@ inline void add(std::vector<Field>& out, std::string_view name, const auto& v) {
             for (std::size_t i = 0; i < n; ++i)
                 f.text += (i ? " " : "") + std::to_string(static_cast<long long>(v[i]));
         } else {
-            f.text = std::to_string(n) + " éléments";
+            f.text = std::to_string(n) + " items";
         }
     } else if constexpr (requires { v.size(); v.data(); }) {
         if constexpr (std::is_same_v<std::remove_cvref_t<decltype(*v.data())>,
@@ -85,9 +85,9 @@ inline void add(std::vector<Field>& out, std::string_view name, const auto& v) {
             f.text = v.size() <= 32 ? hexBytes(v.data(), v.size())
                                     : std::to_string(v.size()) + " octets";
         else
-            f.text = std::to_string(v.size()) + " éléments";
+            f.text = std::to_string(v.size()) + " items";
     } else if constexpr (requires { v.size(); }) {
-        f.text = std::to_string(v.size()) + " éléments";
+        f.text = std::to_string(v.size()) + " items";
     } else {
         return;                 // a nested object: its own snapshot, if any
     }

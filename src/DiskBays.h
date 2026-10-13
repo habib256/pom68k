@@ -1,6 +1,6 @@
 #pragma once
 // ─────────────────────────────────────────────────────────────────────────────
-// DiskBays -- the one "Disques" window, shared by every platform runner.
+// DiskBays -- the one "Disk Library" window, shared by every platform runner.
 //
 // It replaces ten copy-pasted ImGui menus in main.cpp, and it fixes the two
 // things that made the old menu hostile:
@@ -144,9 +144,9 @@ struct DiskBaysHost {
 };
 
 // A checkable entry that toggles the window, inside an already-open menu.
-// The label is the caller's: "Disques..." under Périphériques, the window
-// title under Fenêtres.
-// The window title, shared with the Fenêtres menu and the headless gate.
+// The label is the caller's: "Disks..." under Peripherals, the window
+// title under Windows.
+// The window title, shared with the Windows menu and the headless gate.
 extern const char* kDiskWindowTitle;
 
 void diskBaysMenuItem(const char* label);
@@ -173,6 +173,8 @@ std::vector<std::string> diskBaysKnownImages(const std::string& nearPath);
 // disk; then the Apple prefix so a 512-byte Toast/DDM dump is not sent to
 // the CD bay, where the guest never mounts it.
 bool diskBaysPathIsCd(const std::string& path);
+bool diskBaysPathIsImage(const std::string& path);
+bool diskBaysPathIsFloppy(const std::string& path);
 
 // The reserved-bay placeholder: an extras entry equal to this names an empty
 // CD drive that must exist on the bus at boot (runners attachCdromEmpty it).
@@ -228,7 +230,7 @@ inline void ensureCdDrive(Mem& mem, std::vector<std::string>& extras,
     if constexpr (requires { mem.attachCdromEmpty(id); }) {
         if (mem.attachCdromEmpty(id)) {
             extras.push_back(kCdBayToken);
-            std::printf("SCSI CD %d: <vide> (lecteur par défaut)\n", id);
+            std::printf("SCSI CD %d: <empty> (default drive)\n", id);
         }
     }
 }

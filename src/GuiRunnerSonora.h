@@ -17,7 +17,7 @@ struct SonoraRunnerSpec {
     std::string pramTag;
     /// First boot-volume candidate before the common fallbacks.
     std::string defaultHdd;
-    /// First line of the « Tableau de bord » window.
+    /// First line of the « Dashboard » window.
     std::string cpuLine;
     MachineKind kind;
     SnapMachine snap;
@@ -64,7 +64,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
         if (argument == "cdbay") {
             if (mem.attachCdromEmpty(id)) {
                 extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
+                std::printf("SCSI CD %d: <empty>\n", id);
             }
             continue;
         }
@@ -155,7 +155,7 @@ int runSonoraGui(Mem& mem, Cpu& cpu, Video& video,
         };
         monitorButton("512x384", 2);
         monitorButton("640x480", 6);
-        ImGui::TextDisabled("(redémarre le Mac)");
+        ImGui::TextDisabled("(restarts the Mac)");
     });
 
     // Optional startup floppy; the Disques window can hot-swap it later.

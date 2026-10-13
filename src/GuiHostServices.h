@@ -106,7 +106,7 @@ public:
             // faster than any wire could — so its reply lands in the deaf
             // window essentially every time: measured 2026-09-18 on the
             // netatalk bridge, 128 BrRq sent, 60 LkUp-Replies back on the cable
-            // with correct DDP checksums, and an empty « Select a file server »
+            // with correct DDP checksums, and an empty "Select a file server »
             // list. The arrival instant is a property of the HOST SOCKET, not
             // of the wire, so dropping on it models nothing; queueing does,
             // and playback still defers to LLAP's 400 us inter-dialog gap
@@ -289,15 +289,15 @@ public:
                        std::to_string(hle);
             }
             std::fprintf(stderr,
-                "Mode LLE AArch64 complet: REFUSÉ pour %s — %s. "
-                "La session n'est pas qualifiée LLE et ne sera pas démarrée.\n",
+                "Full AArch64 LLE mode: REJECTED for %s — %s. "
+                "The session does not qualify for LLE and will not start.\n",
                 machine, why.c_str());
             registry.setQualified(false);
             return false;
         }
         registry.setQualified(true);
         std::printf(
-            "Mode LLE AArch64 complet: QUALIFIÉ — %s, %s, backend aarch64\n",
+            "Full AArch64 LLE mode: QUALIFIED — %s, %s, aarch64 backend\n",
             machine, firmware);
         return true;
     }

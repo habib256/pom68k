@@ -15,59 +15,59 @@ void drawPort(GuiSerialPortState& port, int index) {
     ImGui::PushID(index);
     ImGui::SeparatorText(port.name);
     if (port.requested.empty()) {
-        ImGui::TextDisabled("non configuré - POM68K_SERIAL_%s=pty | tcp:<port> | terminal,",
+        ImGui::TextDisabled("not configured - POM68K_SERIAL_%s=pty | tcp:<port> | terminal,",
                             index == 0 ? "PRINTER" : "MODEM");
-        ImGui::TextDisabled("ou la clé serial-%s d'une session", index == 0 ? "printer" : "modem");
+        ImGui::TextDisabled("or the serial-%s setting in a session", index == 0 ? "printer" : "modem");
         ImGui::PopID();
         return;
     }
     if (!port.message.empty() || !port.terminal) {
         ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.3f, 1), "%s : %s", port.requested.c_str(),
-                           port.message.empty() ? "non ouvert" : port.message.c_str());
+                           port.message.empty() ? "not open" : port.message.c_str());
         ImGui::PopID();
         return;
     }
     SerialTerminal& terminal = *port.terminal;
     const SerialTerminal::View view = terminal.view();
     if (terminal.endpoint()) {
-        ImGui::TextUnformatted("Point de terminaison : ce terminal (aucun pont hôte)");
+        ImGui::TextUnformatted("Endpoint: this terminal (no host bridge)");
     } else {
-        ImGui::Text("Point de terminaison : %s - %s", port.endpoint.c_str(),
-                    view.connected ? "client connecté" : "en attente d'un client");
-        ImGui::TextDisabled("Ce terminal observe seulement : il ne prend aucun octet au pont.");
+        ImGui::Text("Endpoint: %s - %s", port.endpoint.c_str(),
+                    view.connected ? "client connected" : "waiting for a client");
+        ImGui::TextDisabled("This terminal only observes; it does not consume bridge data.");
     }
-    ImGui::Text("invité -> hôte %llu octet(s), hôte -> invité %llu octet(s)",
+    ImGui::Text("guest -> host %llu bytes, host -> guest %llu bytes",
                 (unsigned long long)view.fromGuest, (unsigned long long)view.toGuest);
     if (view.transportDropped)
         ImGui::TextColored(ImVec4(0.95f, 0.6f, 0.3f, 1),
-                           "%llu octet(s) perdus côté hôte (aucun client, ou file pleine)",
+                           "%llu bytes lost on host (no client or full queue)",
                            (unsigned long long)view.transportDropped);
     if (view.logDropped)
-        ImGui::TextDisabled("(%llu octet(s) plus anciens hors de l'historique)",
+        ImGui::TextDisabled("(%llu older bytes outside history)",
                             (unsigned long long)view.logDropped);
     std::string shown = view.text;
     ImGui::InputTextMultiline("##log", shown.data(), shown.size() + 1,
                               ImVec2(-1, ImGui::GetTextLineHeight() * 10),
                               ImGuiInputTextFlags_ReadOnly);
-    if (ImGui::Button("Effacer l'historique")) terminal.clearLog();
+    if (ImGui::Button("Clear history")) terminal.clearLog();
     if (terminal.endpoint()) {
         ImGui::SetNextItemWidth(-160);
         const bool enter = ImGui::InputText("##line", port.line.data(), port.line.size(),
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::SameLine();
-        if (ImGui::Button("Envoyer") || enter) {
+        if (ImGui::Button("Send") || enter) {
             std::string bytes(port.line.data());
             if (port.appendCr) bytes += '\r';
             const std::size_t taken = terminal.send(bytes);
             port.sendStatus = taken == bytes.size() ? std::string()
-                : "file pleine : " + std::to_string(bytes.size() - taken) +
-                      " octet(s) refusé(s)";
+                : "queue full: " + std::to_string(bytes.size() - taken) +
+                      " bytes rejected";
             if (taken == bytes.size()) port.line[0] = 0;
         }
         ImGui::SameLine();
         ImGui::Checkbox("CR", &port.appendCr);
         if (view.pendingInput)
-            ImGui::TextDisabled("%zu octet(s) en attente que l'invité les lise",
+            ImGui::TextDisabled("%zu bytes waiting for guest to read",
                                 view.pendingInput);
         if (!port.sendStatus.empty())
             ImGui::TextColored(ImVec4(0.95f, 0.6f, 0.3f, 1), "%s", port.sendStatus.c_str());

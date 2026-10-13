@@ -195,7 +195,7 @@ Before considering a change complete:
 
 ## Conventions
 
-- Documentation is written in English; conversation with the user may be in
+- Documentation and product UI are written in English; conversation may be in
   French.
 - The whole tree is C++20.
 - POM68K is GPLv3. Moira and Dear ImGui retain their own licenses.

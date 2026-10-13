@@ -98,15 +98,15 @@ int compareNames(const uint8_t* a, size_t alen, const uint8_t* b, size_t blen) {
 }
 
 // The US name and the French one. The French name was first guessed as
-// « Éléments de démarrage » (2026-09-14) and corrected the same day from
-// a real System 7.5.5 volume (GISTPERSO), whose blessed « Dossier
-// Système » holds « Ouverture au démarrage » — CNID 4769 there, next to
-// « Ouverture à l'extinction » for Shutdown Items. A folder name is a
+// "Éléments de démarrage » (2026-09-14) and corrected the same day from
+// a real System 7.5.5 volume (GISTPERSO), whose blessed "Dossier
+// Système » holds "Ouverture au démarrage » — CNID 4769 there, next to
+// "Ouverture à l'extinction » for Shutdown Items. A folder name is a
 // fact about a shipped System, not a translation exercise.
 const std::vector<std::string>& startupItemsNames() {
     static const std::vector<std::string> names = {
         "Startup Items",
-        "Ouverture au d\x8Emarrage",                 // « Ouverture au démarrage »
+        "Ouverture au d\x8Emarrage",                 // "Ouverture au démarrage »
     };
     return names;
 }
@@ -747,30 +747,30 @@ Outcome installStartupItem(BlockIo& io, const MacBinary& app, uint32_t macNow) {
         return o;
     }
     Volume v(io, start, length);
-    if (!v.open(err)) { o.kind = Outcome::NoVolume; o.message = "volume illisible : " + err; return o; }
+    if (!v.open(err)) { o.kind = Outcome::NoVolume; o.message = "unreadable volume: " + err; return o; }
     const uint32_t system = v.blessedFolder();
-    if (!system) { o.kind = Outcome::NoFolder; o.message = "« " + v.name() + " » : aucun Dossier Système béni"; return o; }
+    if (!system) { o.kind = Outcome::NoFolder; o.message = v.name() + ": no blessed System Folder"; return o; }
     uint32_t items = 0;
     for (const std::string& n : startupItemsNames())
         if ((items = v.findFolder(system, n)) != 0) break;
     if (!items) {
         o.kind = Outcome::NoFolder;
-        o.message = "« " + v.name() + " » : pas de dossier Startup Items dans le Dossier Système";
+        o.message = v.name() + ": no Startup Items folder in the System Folder";
         return o;
     }
     if (v.fileExists(items, app.name)) {
         o.kind = Outcome::AlreadyPresent;
-        o.message = "« " + v.name() + " » : " + app.name + " est déjà dans Startup Items";
+        o.message = v.name() + ": " + app.name + " is already in Startup Items";
         return o;
     }
     uint32_t cnid;
     if (!v.addFile(items, app, macNow, cnid, err) || !v.commit(err)) {
         o.kind = Outcome::Refused;
-        o.message = "« " + v.name() + " » : " + app.name + " non installé — " + err;
+        o.message = v.name() + ": " + app.name + " not installed — " + err;
         return o;
     }
     o.kind = Outcome::Installed;
-    o.message = "« " + v.name() + " » : " + app.name + " installé dans Startup Items (CNID " +
+    o.message = v.name() + ": " + app.name + " installed in Startup Items (CNID " +
                 std::to_string(cnid) + ")";
     return o;
 }

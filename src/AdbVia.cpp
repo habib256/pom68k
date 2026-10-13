@@ -42,7 +42,7 @@ void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
     // re-arm lives only on this path.
     pom68k::fw::Request req{pom68k::lle::HleAdbModem,
                             pom68k::FirmwareTarget::Adb};
-    req.name = "Transcepteur ADB PIC1654S (342S0440-B)";
+    req.name = "ADB transceiver PIC1654S (342S0440-B)";
     req.enableKnob = "POM68K_ADB_LLE";
     req.pathKnob = "POM68K_ADB_FW";
     req.logTag = "AdbVia";

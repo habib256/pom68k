@@ -12,11 +12,12 @@ Macintosh**. The compiled source of truth for present coverage is
 > **ROMs and system disks are copyrighted and are never distributed with
 > POM68K.** You must provide your own dumps and disk images.
 
-![A Macintosh LC II running System 7.5.5 in POM68K, with the Disques window docked beside it](docs/images/lcii-gistperso-disques.png)
+![A Macintosh LC II running System 7.5.5 in POM68K, with the disk library docked beside it](docs/images/lcii-gistperso-disques.png)
 
 *Macintosh LC II, System 7.5.5: the Finder on its own volume, and POM68K's
-« Bibliothèque de disques » docked beside it — floppy drives, the CD bay and
-the six SCSI bays, hot-swappable where the hardware allows.*
+Disk Library docked beside it — floppy drives, the CD bay and the six SCSI
+bays, hot-swappable where the hardware allows. The capture predates the
+English UI labels.*
 
 ![A Quadra 950 running DOOM II at 640×480 in 8-bit color in POM68K](docs/images/quadra950-doom2.png)
 
@@ -66,7 +67,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
 - **Cabinet mode and the CRT glass**, ported from NeoST: Ctrl+Alt+F throws
   the machine onto the whole monitor, with light, arcade and phosphor
   presets and every slider live. Ctrl+Alt+G grabs the mouse.
-- **The interface is under test.** The four windows, the machine window with
+- **The interface is under test.** The peripheral and diagnostic windows, the machine window with
   its menu bar, dashboard, screen surface and keyboard, the disk-bay
   bindings the six runners used to copy by hand, and the save-state pass all
   the way to the file written and read back.
@@ -77,10 +78,14 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
   chip, with its DFAC2 answering as the hardware does.
 - **The Macintosh 128K and 512K launch an application**, and the Plus boots
   System 3.3 from an 800 K floppy in either drive.
-- The bare Macintosh LC II — no FPU fitted — was investigated to a ruling:
-  POM68K is faithful, and this ROM has no path that clears the FPU
-  configuration bit. `CHANGELOG.md` carries the evidence.
-- Save states are format v26; the CD transport and the ATA task file travel
+- The bare Macintosh LC II — no FPU fitted — remains under investigation.
+  The September fidelity ruling was reopened on 2026-10-02: MAME selects
+  the FPU-less configuration from the same ROM, while POM68K does not.
+  The default LC II configuration includes a 68882; see `TODO.md` under
+  **Fidélité matérielle et LLE** for the unresolved cold-start divergence.
+- Save states are format v28; restoring a state rewinds writable SCSI and
+  IDE disk content through `DiskTimeline`. Older formats are refused.
+  The CD transport and the ATA task file travel
   with them, including the ATA PIO buffer, guest-written sectors, GCR tags
   and every native or modified physical floppy track.
 
@@ -109,7 +114,16 @@ Tagged releases build those four packages. The **Raspberry Pi package
 is normally preferable on Pi 4/400; see
 [`docs/RASPBERRY_PI.md`](docs/RASPBERRY_PI.md) for the measured comparison.
 
-No package contains a ROM. Data placement depends on the package:
+No package contains a ROM. If no usable ROM is loaded, **Set Up a
+Macintosh** opens above the built-in 68000 demo. Choose a model, browse to
+your ROM and system-disk image, then click **Start Macintosh**. It validates
+the setup and explains any problem; **Check setup** is optional. The guide
+checks ROM size and profile selection, media presence and floppy/hard-disk
+choice; it cannot prove that the image
+contains a bootable, compatible Mac OS. **Continue demo** dismisses it.
+Reopen it from **Machine → Set Up a Macintosh…** to prepare another machine.
+
+Data placement depends on the package:
 
 | Host/package | Data directory |
 |---|---|
@@ -182,7 +196,7 @@ could never see. Other platforms use `[ROM] [boot volume]
 Without an explicit ROM, POM68K looks for `roms/maclcii.rom`, an LC II CRC in
 the `roms/` tree, `roms/macplus.rom`, `roms/macii.rom`,
 `roms/quadra605.rom`, then Mac II and Quadra 605 CRCs. If no ROM is found, it
-runs a built-in 68000 framebuffer demo instead of a Macintosh ROM.
+runs a built-in 68000 framebuffer demo and opens the preparation guide.
 
 ## ROMs and machine profiles
 
@@ -260,7 +274,7 @@ machine cannot complete its boot.
 Without the Toby dump the Mac II, IIx, IIcx and IIfx run a synthetic
 declaration ROM that describes the emulated card and nothing more: System 6
 and System 7.0 boot on it, **System 7.5.5 stays on « Welcome to Macintosh »**.
-The Périphériques window opens by itself in that case and says so; drop the
+The Peripherals window opens by itself in that case and says so; drop the
 4 KB MAME dump at the path above (or point `POM68K_TOBY_DECL` at it) and
 restart. POM68K emulates machines that existed, so the substitute is never
 completed into firmware Apple did not ship. `assets.lock` records the hashes required by
@@ -273,12 +287,12 @@ classes.
 POM68K accepts SCSI hard disks, writable HFS volumes, floppy images and SCSI
 CD images. Common CD extensions are `.iso`, `.cdr`, `.cue` and `.bin`. A
 `.toast` that declares 512-byte Apple blocks is a disk dump, not a CD — the
-Disques window attaches it as a hard disk. Passing the literal `cdbay` as
+Disks window attaches it as a hard disk. Passing the literal `cdbay` as
 additional media creates an empty, hot-swappable CD drive; the literal
 `emptybay` leaves that SCSI id empty so the ids after it keep their place
-(the Disques window writes it into the relaunch line for a bay emptied live).
+(the Disks window writes it into the relaunch line for a bay emptied live).
 
-**Disques…** creates a blank HFS volume in `hdv/work/` (name and size, then
+**Disks…** creates a blank HFS volume in `hdv/work/` (name and size, then
 **Créer**). A fixed disk chosen there joins the bus at once; Classic Mac OS
 only probes the bus at boot, so it appears on the desktop after
 **Redémarrer**, or through **Monter** when the guest agent runs. **Retirer**
@@ -301,9 +315,11 @@ DiskCopy 4.2 checksums are regenerated. DART imports support Macintosh 400K,
 800K and 1.44 MB images with stored, RLE or LZH chunks. Writes retain DART
 using fast-mode stored chunks and preserve GCR tags. Resource-fork metadata
 and its checksums are not imported or regenerated. Use `POM68K_FLOPPY_RO=1` to prevent
-write-back. Every floppy-equipped desktop exposes separate internal and
-external rows in **Disques…**; each can be inserted or ejected live, and the
-external mechanism follows the profile's 800K/SuperDrive capability. The
+write-back. **Disks…** exposes the floppy mechanisms connected by the
+selected profile; each can be inserted or ejected live. A second row is
+available only where the profile connects drive B; the LC family has no
+external floppy port. `storageCapabilities()` in `src/MachineCatalog.h`
+defines those connections and the 400K/800K/SuperDrive capability. The
 PowerBook Duo 230 has no floppy mechanism. SCSI images passed explicitly are
 writable. Repository fixtures under `hdv/ref/` remain immutable: the GUI
 creates its working copy under `hdv/work/`. Floppies under `disks35/ref/`
@@ -354,35 +370,51 @@ large inputs are split at 1,900 MB by default. Run
 
 - **Mouse:** hover the Macintosh screen to control it. Middle click,
   `Ctrl+Alt+G`, or `Delete` toggles full mouse capture; releasing capture does
-  not require the pointer to remain over the screen.
-- **Machine:** restart, pause, fast-forward, save or restore state, start or
-  stop an input recording; **Changer de machine** lists every profile by
-  board family (a profile whose ROM is absent stays greyed) and relaunches the
-  emulator; drive sounds.
-- **Périphériques:** the three hardware windows. **Disques** chooses the boot
+  not require the pointer to remain over the screen. The menu bar shows when
+  the mouse is captured and reminds you that `Delete` releases it.
+- **Keyboard:** host menus and text fields take keyboard focus while open.
+  The Mac receives keys again after you close them or leave the field.
+- **Machine:** **Set Up a Macintosh…** guides model, ROM and system-media
+  selection. Search the grouped model list by name or family, then choose
+  your ROM and startup disk. The menu also offers restart, pause, fast-forward,
+  save or restore state, input recording and drive sounds. **Change machine**
+  lists every profile by board family (a profile whose ROM is absent stays
+  greyed) and relaunches the emulator.
+- **Peripherals:** disks, networking, host serial ports and controller
+  firmware. **Disks** chooses the boot
   volume, secondary SCSI disks, floppies and CDs (changes to the boot bus
-  relaunch the machine). **Réseau** toggles the built-in AppleTalk services
+  relaunch the machine). **Network** toggles the built-in AppleTalk services
   and the Ethernet card's cable live, edits the services' identity live (AFP
   server and volume names, shared folder, printer name, spool folder, MacIP
   gateway and DNS, with a button that reveals each folder on the host), and
   chooses the DaynaPort card itself (none, or SCSI ID 2-6) for the next boot.
   With a card attached, **Capture PCAP** records both Ethernet directions;
   enter a new output filename in an existing folder, then start/stop capture.
-  **Contrôleurs LLE / HLE** shows each controller's provenance and stages
+  **LLE / HLE controllers** shows each controller's provenance and stages
   firmware or fallback policy.
+  The network window puts file sharing and its folder first; printing,
+  MacIP, activity counters and protocol diagnostics expand on demand.
+  The disk window keeps the boot disk and restart controls above the media
+  list. **Pending restart** identifies staged changes; **Cancel**
+  discards them. **Add image...** opens a folder browser for images outside
+  the scanned folders; a path can also be entered there, or an image can be
+  dropped onto the Disk Library. The added image then appears in drive pickers.
+  Network service settings apply immediately through
+  **Apply**, with the interrupted connections explained beside the button.
 - **CPU:** measured speed relative to the emulated machine, interpreter or
   accelerated engine, and the engine statistics window.
-- **Fenêtres:** show or hide every secondary window — the **Tableau de bord**
+- **Windows:** show or hide every secondary window — the **Dashboard**
   (CPU status lines plus the same run controls as buttons), the disk library,
   the network and controller windows, the engine statistics — and reset the
-  docked layout.
+  docked layout. The Macintosh screen is centered in its pane; the Disk
+  Library gets the space left above a compact Dashboard by default.
 
-- **Affichage:** **Mode borne** (`Ctrl+Alt+F`, the twin of `Ctrl+Alt+G`) — exclusive full screen on the
+- **Display:** **Kiosk mode** (`Ctrl+Alt+F`, the twin of `Ctrl+Alt+G`) — exclusive full screen on the
   primary monitor, no menu bar, no window, the mouse captured; `Ctrl+Alt+F` again,
-  `Alt+F4` or `Ctrl+Shift+Q` held for a moment leaves. **Effets CRT** —
+  `Alt+F4` or `Ctrl+Shift+Q` held for a moment leaves. **CRT effects** —
   the glass of an old monitor in front of the pixels: barrel geometry,
-  scanlines, shadow mask, phosphor persistence, with the presets *Léger*,
-  *Arcade* and *Phosphore* and every slider live in **Réglages CRT**. Both
+  scanlines, shadow mask, phosphor persistence, with the presets *Light*,
+  *Arcade* and *Phosphor* and every slider live in **CRT settings**. Both
   start from the command line too: `POM68K_KIOSK=1` and
   `POM68K_CRT=light|arcade|phosphor`. If the shader cannot compile you
   simply get the raw screen.
@@ -433,7 +465,7 @@ and backend without changing emulated timing.
 ## AppleTalk and host file exchange
 
 The in-process AppleTalk stack is enabled by default and requires neither root
-nor an external router. Open **Périphériques → Réseau** to inspect the node,
+nor an external router. Open **Peripherals → Network** to inspect the node,
 queues and services.
 
 - **AppleShare:** exports `AppleShare/` as an AFP volume. In the guest, use
@@ -445,7 +477,7 @@ queues and services.
   that refuses jobs reads as a busy printer.
 
 Server name, volume name, shared folder, printer name, spool folder, MacIP
-gateway and DNS are edited live in **Périphériques → Réseau : AppleTalk / Ethernet**; applying
+gateway and DNS are edited live in **Peripherals → Network: AppleTalk / Ethernet**; applying
 restarts the service concerned, which drops its current sessions. The same
 values are accepted on the command line as `--atalk-<key>=<value>` (`share`,
 `server`, `volume`, `printer`, `spool`, `queue`, `print-options`, `gateway`,
@@ -468,7 +500,7 @@ Protocol, tracing and external netatalk/TashRouter setup are documented in
 
 Either asynchronous SCC port can be exposed as a raw PTY (macOS and Linux),
 as a TCP server bound to loopback (every desktop host, Windows included), or
-as the built-in terminal of **Périphériques → Ports série...**:
+as the built-in terminal of **Peripherals → Serial ports...**:
 
 ```sh
 POM68K_SERIAL_MODEM=pty ./build/POM68K

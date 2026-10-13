@@ -97,18 +97,18 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             break;
         case Command::Kind::Step:
             if (!blockingAvailable_)
-                message_ = "Pas à pas indisponible dans cette version";
+                message_ = "Stepping is unavailable in this build";
             else if (!stopped_)
-                message_ = "Pas à pas : arrêter d'abord la machine";
+                message_ = "Step: stop the machine first";
             else
                 a.step = a.resume = resumePending_ = true;
             break;
         case Command::Kind::StepOver:
         case Command::Kind::StepOut:
             if (!blockingAvailable_)
-                message_ = "Pas à pas indisponible dans cette version";
+                message_ = "Stepping is unavailable in this build";
             else if (!stopped_)
-                message_ = "Pas à pas : arrêter d'abord la machine";
+                message_ = "Step: stop the machine first";
             else {
                 a.resume = resumePending_ = true;
                 a.run = c.kind;
@@ -116,9 +116,9 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             break;
         case Command::Kind::AddBreakpoint:
             if (!blockingAvailable_)
-                message_ = "Points d'arrêt indisponibles dans cette version";
+                message_ = "Breakpoints are unavailable in this build";
             else if (target.breakpoints().size() >= kMaxBreakpoints)
-                message_ = "Trop de points d'arrêt";
+                message_ = "Too many breakpoints";
             else
                 target.addBreakpoint(c.addr);
             break;
@@ -133,7 +133,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             view_.addr = c.addr;
             viewLength_ = std::min(c.length, kMaxMemoryBytes);
             if (c.length > kMaxMemoryBytes)
-                message_ = "Fenêtre mémoire limitée à 4096 octets";
+                message_ = "Memory window is limited to 4096 bytes";
             break;
         case Command::Kind::ViewDisasm:
             disasmFollowPc_ = c.followPc;
@@ -143,7 +143,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
         case Command::Kind::AddCatch: {
             std::string why;
             if (!blockingAvailable_)
-                message_ = "Arrêts indisponibles dans cette version";
+                message_ = "Stopping is unavailable in this build";
             else if (!(c.kind == Command::Kind::AddWatchpoint
                            ? target.addWatchpoint(c.watch, why)
                            : target.addCatch(c.catchpoint, why)))
@@ -165,7 +165,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
         case Command::Kind::LoadSymbols: {
             std::string why;
             if (symbols_.load(c.path, target.romChecksum(), why))
-                message_ = "Symboles chargés : " + std::to_string(symbols_.size());
+                message_ = "Symbols loaded: " + std::to_string(symbols_.size());
             else
                 message_ = why;
             break;
@@ -195,7 +195,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             target.capture(regs);
             std::string why;
             if (exportHistory(c.path, notes, regs.model, target, why))
-                message_ = "Historique exporté : " + c.path;
+                message_ = "History exported: " + c.path;
             else
                 message_ = why;
             break;
@@ -229,14 +229,14 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
 void Session::applyEdit(Target& target, const Command& c) {
     std::string why;
     if (!stopped_ || resumePending_) {
-        message_ = "Modification refusée : arrêter d'abord la machine";
+        message_ = "Change rejected: stop the machine first";
         return;
     }
     const bool ok = c.kind == Command::Kind::SetRegister
         ? (c.reg < Reg::Count && target.setRegister(c.reg, c.value, why))
         : (c.data.size() <= kMaxEditBytes &&
            target.writeMemory(c.space, c.addr, c.data.data(), c.data.size(), why));
-    if (!ok) message_ = why.empty() ? "Modification refusée" : why;
+    if (!ok) message_ = why.empty() ? "Change rejected" : why;
 }
 
 bool Session::atBoundary(Target& target) {

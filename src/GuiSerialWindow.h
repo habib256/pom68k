@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// « Ports série » — the two SCC channels as the host sees them: the
+// « Serial ports » — the two SCC channels as the host sees them: the
 // configured endpoint and its owner, the connection, the counters, and a
 // bounded terminal (SerialTerminal.h). The terminal observes a pty/tcp
 // port and is the endpoint of a `terminal` one; only then is its input
@@ -15,7 +15,7 @@
 
 namespace pom68k::gui {
 
-inline constexpr const char* kSerialWindowTitle = "Ports série";
+inline constexpr const char* kSerialWindowTitle = "Serial ports";
 
 void drawSerialWindow(GuiSerialState& serial);
 

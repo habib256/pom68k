@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// « Taper du texte » — host text typed into the guest as key presses
+// « Type du texte » — host text typed into the guest as key presses
 // (TextTyping.h). The window holds the text (pasted from the host
 // clipboard or edited), the guest layout chosen EXPLICITLY, a preview of
 // what will be typed and of what cannot be, and the machine's progress
@@ -22,7 +22,7 @@
 
 namespace pom68k::gui {
 
-inline constexpr const char* kTypingWindowTitle = "Taper du texte";
+inline constexpr const char* kTypingWindowTitle = "Type text";
 
 struct GuiTypingState {
     std::function<void(std::string, GuestLayout)> type;

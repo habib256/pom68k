@@ -11,7 +11,7 @@
 
 namespace pom68k {
 
-const char* kDiskWindowTitle = "Bibliothèque de disques";
+const char* kDiskWindowTitle = "Disk Library";
 
 namespace {
 
@@ -114,12 +114,15 @@ void dockLayoutFrame()
     ImGuiID left  = ImGui::DockBuilderSplitNode(root, ImGuiDir_Left, ratio,
                                                 nullptr, &right);
 
-    // The dashboard (« Tableau de bord ») takes the bottom of the right
-    // column: floating at its first-use position it was a title-bar sliver
-    // clamped to the bottom edge of a fresh 1100x800 window, which the
-    // headless machine-window gate saw on 2026-09-16.
+    // Reserve room for the dashboard's status lines and controls without
+    // giving it a third of the workspace on a typical desktop.
     ImGuiID bottom = 0;
-    ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.34f, &bottom, &right);
+    const float height = ImGui::GetMainViewport()->WorkSize.y;
+    float dashboardRatio = height > 0 ? 180.0f / height : 0.25f;
+    if (dashboardRatio < 0.22f) dashboardRatio = 0.22f;
+    if (dashboardRatio > 0.38f) dashboardRatio = 0.38f;
+    ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, dashboardRatio,
+                               &bottom, &right);
     ImGui::DockBuilderDockWindow(screenWindow, left);
     ImGui::DockBuilderDockWindow(kDiskWindowTitle, right);
     ImGui::DockBuilderDockWindow(gui::kMachineControlWindowTitle, bottom);

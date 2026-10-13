@@ -17,26 +17,26 @@ void drawTypingWindow(GuiTypingState& typing) {
         ImGui::End();
         return;
     }
-    if (ImGui::Button("Coller le presse-papiers")) {
+    if (ImGui::Button("Paste clipboard")) {
         const std::string pasted = typing.hostClipboard
             ? typing.hostClipboard()
             : std::string(ImGui::GetClipboardText() ? ImGui::GetClipboardText() : "");
         std::snprintf(typing.text.data(), typing.text.size(), "%s", pasted.c_str());
     }
     ImGui::SameLine();
-    if (ImGui::Button("Effacer")) typing.text[0] = 0;
+    if (ImGui::Button("Clear")) typing.text[0] = 0;
     ImGui::InputTextMultiline("##texte", typing.text.data(), typing.text.size(),
                               ImVec2(-1, ImGui::GetTextLineHeight() * 8));
     // The guest's KCHR cannot be read from low memory: the user says which
     // keyboard the guest System expects.
-    ImGui::TextUnformatted("Clavier de l'invité :");
+    ImGui::TextUnformatted("Guest keyboard:");
     ImGui::SameLine();
     ImGui::RadioButton("US", &typing.layout, int(GuestLayout::Us));
     ImGui::SameLine();
-    ImGui::RadioButton("Français (AZERTY)", &typing.layout, int(GuestLayout::FrenchAzerty));
+    ImGui::RadioButton("French (AZERTY)", &typing.layout, int(GuestLayout::FrenchAzerty));
 
     const TypingPlan plan = planTyping(typing.text.data(), GuestLayout(typing.layout));
-    ImGui::Text("%zu caractère(s) à taper", plan.characters);
+    ImGui::Text("%zu characters to type", plan.characters);
     if (plan.skipped) {
         std::string shown;
         for (const std::string& c : plan.unrepresentable) {
@@ -44,48 +44,48 @@ void drawTypingWindow(GuiTypingState& typing) {
             shown += (shown.empty() ? "" : " ") + c;
         }
         ImGui::TextColored(ImVec4(0.95f, 0.6f, 0.3f, 1),
-                           "%zu sans touche sur ce clavier, ignoré(s) : %s",
+                           "%zu characters unavailable on this keyboard, skipped: %s",
                            plan.skipped, shown.c_str());
     }
     if (plan.truncated)
         ImGui::TextColored(ImVec4(0.95f, 0.6f, 0.3f, 1),
-                           "texte tronqué à %zu caractères", kMaxTypedCharacters);
+                           "text truncated to %zu characters", kMaxTypedCharacters);
 
     const std::size_t left = typing.charactersLeft ? typing.charactersLeft() : 0;
     ImGui::BeginDisabled(plan.characters == 0);
-    if (ImGui::Button("Taper"))
+    if (ImGui::Button("Type"))
         typing.type(std::string(typing.text.data()), GuestLayout(typing.layout));
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(left == 0);
-    if (ImGui::Button("Annuler la saisie")) typing.cancel();
+    if (ImGui::Button("Cancel typing")) typing.cancel();
     ImGui::EndDisabled();
     if (left) {
         ImGui::SameLine();
-        ImGui::Text("encore %zu caractère(s)", left);
+        ImGui::Text("%zu characters remaining", left);
     }
-    ImGui::TextDisabled("Frappe au rythme de la machine (~9 caractères/s).");
+    ImGui::TextDisabled("Types at machine speed (~9 characters/s).");
 
     if (typing.readScrap && typing.scrap) {
         ImGui::Separator();
-        ImGui::TextUnformatted("Presse-papiers de l'invité (TEXT)");
-        if (ImGui::Button("Lire le presse-papiers de l'invité")) {
+        ImGui::TextUnformatted("Guest clipboard (TEXT)");
+        if (ImGui::Button("Read guest clipboard")) {
             typing.scrapAsked = typing.scrap().second + 1;
             typing.readScrap();
         }
         const auto [scrap, reads] = typing.scrap();
         if (typing.scrapAsked && reads < typing.scrapAsked) {
-            ImGui::TextDisabled("lecture à la prochaine tranche machine...");
+            ImGui::TextDisabled("reading on the next machine timeslice...");
         } else if (typing.scrapAsked && !scrap.ok()) {
             ImGui::TextColored(ImVec4(0.95f, 0.6f, 0.3f, 1), "%s", scrap.reason.c_str());
         } else if (typing.scrapAsked) {
-            ImGui::Text("%u octet(s) MacRoman%s", scrap.macBytes,
-                        scrap.truncated ? " - tronqué" : "");
+            ImGui::Text("%u MacRoman bytes%s", scrap.macBytes,
+                        scrap.truncated ? " - truncated" : "");
             std::string shown = scrap.utf8.substr(0, 4096);
             ImGui::InputTextMultiline("##scrap", shown.data(), shown.size() + 1,
                                       ImVec2(-1, ImGui::GetTextLineHeight() * 6),
                                       ImGuiInputTextFlags_ReadOnly);
-            if (ImGui::Button("Copier vers l'hôte")) {
+            if (ImGui::Button("Copy to host")) {
                 if (typing.setHostClipboard) typing.setHostClipboard(scrap.utf8);
                 else ImGui::SetClipboardText(scrap.utf8.c_str());
             }

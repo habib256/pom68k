@@ -15,7 +15,7 @@
 // What is asserted is behaviour above the pure functions the component
 // tests already cover: a window opens when its contract says so, has a
 // size, is not blank; a click on a radio stages a change, a click on
-// « Appliquer » hands the typed override to the host callback. What is
+// « Apply » hands the typed override to the host callback. What is
 // captured — gui_<window>.ppm beside the binary — is the layout, for the
 // dated manual pass DEV.md § 6 still owes.
 
@@ -183,14 +183,14 @@ int main() {
     std::printf("gui_windows_test — the product windows, headless\n");
     headless::Context ui(1024, 768);
 
-    // ── Périphériques (LLE / HLE) ────────────────────────────────────
+    // ── Peripherals (LLE / HLE) ────────────────────────────────────
     {
         pom68k::lle::Registry reg;
         reg.beginSession();
         pom68k::lle::Device cuda;
         cuda.module = pom68k::lle::HleEgretCuda;
         cuda.target = pom68k::FirmwareTarget::Cuda;
-        cuda.name = "Cuda - MCU ADB / PRAM / horloge";
+        cuda.name = "Cuda - ADB / PRAM / clock MCU";
         cuda.knob = "POM68K_CUDA_LLE";
         cuda.mode = pom68k::lle::Mode::Lle;
         cuda.why = pom68k::lle::Why::LleFirmware;
@@ -201,14 +201,14 @@ int main() {
         pom68k::lle::Device toby;
         toby.module = pom68k::lle::HleTobyDeclRom;
         toby.target = pom68k::FirmwareTarget::TobyDecl;
-        toby.name = "Toby - ROM de déclaration de la carte vidéo Macintosh II (342-0008-a)";
+        toby.name = "Toby - Macintosh II video card declaration ROM (342-0008-a)";
         toby.knob = "POM68K_TOBY_DECL_LLE";
         toby.mode = pom68k::lle::Mode::Hle;
         toby.why = pom68k::lle::Why::HleNoDump;
         toby.candidates = {"gui_windows_test.nodump/342-0008-a.bin"};
         toby.pathKnob = "POM68K_TOBY_DECL";
-        toby.consequence = "Sans le dump 342-0008-a : System 6 et 7.0 démarrent, "
-                           "System 7.5.5 reste sur « Welcome to Macintosh ».";
+        toby.consequence = "Without the 342-0008-a dump, System 6 and 7.0 boot; "
+                           "System 7.5.5 remains at Welcome to Macintosh.";
         reg.report(toby);
 
         std::vector<pom68k::FirmwareOverride> applied;
@@ -224,20 +224,32 @@ int main() {
         ui.frame(draw);
         ImRect r;
         check(windowShown(pom68k::kPeripheralWindowTitle, &r),
-              "Périphériques opens by itself on a machine with an HLE substitute");
+              "Peripherals opens by itself on a machine with an HLE substitute");
         check(ui.distinctColours(r) > 12, "the window is drawn, not blank");
-        check(ui.find("LLE (composant d'origine)", 0) && ui.find("HLE (substitut, non conformant)", 1),
+        check(ui.find("Original firmware (LLE)", 0) && ui.find("Software substitute (HLE)", 1),
               "both rows show their LLE / HLE radios");
-        check(ui.find("Chemin", 0) != nullptr, "the Cuda row offers its dump path field");
+        check(ui.find("Path", 0) != nullptr, "the Cuda row offers its dump path field");
         capture(ui, "peripherals");
         dumpLabels("peripherals");
 
+        const auto clickCudaHle = [&] {
+            const auto* first = ui.find("Software substitute (HLE)", 0);
+            const auto* second = ui.find("Software substitute (HLE)", 1);
+            if (!first || !second) return false;
+            const auto* top = first->bb.Min.y < second->bb.Min.y ? first : second;
+            return ui.clickAt(top->bb.GetCenter(), draw);
+        };
+        check(clickCudaHle(), "stage a controller change");
+        check(ui.click("Cancel", draw) && relaunches == 0 &&
+                  !ui.find("Apply and restart"),
+              "cancel drops the staged controller choice without relaunching");
+
         // Stage HLE on the Cuda row (first HLE radio), then apply.
-        check(ui.click("HLE (substitut, non conformant)", draw, 0), "click the Cuda row's HLE radio");
-        check(ui.find("Appliquer et redémarrer") != nullptr,
-              "a staged change shows « Appliquer et redémarrer »");
+        check(clickCudaHle(), "click the Cuda row's HLE radio");
+        check(ui.find("Apply and restart") != nullptr,
+              "a staged change shows « Apply and restart »");
         capture(ui, "peripherals-staged");
-        check(ui.click("Appliquer et redémarrer", draw), "click « Appliquer et redémarrer »");
+        check(ui.click("Apply and restart", draw), "click « Apply and restart »");
         bool cudaHle = false, tobyKept = false;
         for (const pom68k::FirmwareOverride& o : applied) {
             if (o.target == pom68k::FirmwareTarget::Cuda && !o.lle) cudaHle = true;
@@ -245,12 +257,12 @@ int main() {
         }
         check(relaunches == 1 && applied.size() == 2 && cudaHle && tobyKept,
               "the host receives the complete typed set: Cuda HLE, Toby unchanged");
-        // Annuler-less reopen: staging was dropped with the apply.
+        // Cancel-less reopen: staging was dropped with the apply.
         ui.frame(draw);
-        check(ui.find("Appliquer et redémarrer") == nullptr, "nothing pending after the apply");
+        check(ui.find("Apply and restart") == nullptr, "nothing pending after the apply");
     }
 
-    // ── Débogueur ────────────────────────────────────────────────────
+    // ── Debugger ────────────────────────────────────────────────────
     // Every button is a queued command; what is drawn is the snapshot the
     // machine thread published (here: atBoundary() on this thread).
     {
@@ -270,28 +282,28 @@ int main() {
         ui.frame(draw);
         ImRect r;
         check(windowShown(pom68k::gui::kDebuggerWindowTitle, &r),
-              "Débogueur opens when asked");
+              "Debugger opens when asked");
         check(ui.distinctColours(r) > 12, "the window is drawn, not blank");
-        check(ui.find("Pause") != nullptr && ui.find("Continuer") == nullptr,
+        check(ui.find("Pause") != nullptr && ui.find("Continue") == nullptr,
               "a running machine offers Pause only");
         check(ui.click("Pause", draw), "click « Pause »");
         check(!session.snapshot()->stopped, "the click alone stops nothing");
         check(session.atBoundary(target), "the machine thread applies the Pause");
         ui.frame(draw);
-        check(ui.find("Continuer") != nullptr && ui.find("Pas à pas") != nullptr,
-              "a stopped machine offers Continuer and Pas à pas");
+        check(ui.find("Continue") != nullptr && ui.find("Step") != nullptr,
+              "a stopped machine offers Continue and Step");
         // A register edit: the window posts it, the machine thread applies it.
         state.editRegister = int(pom68k::dbg::Reg::A0) + 3;
         std::snprintf(state.editValue.data(), state.editValue.size(), "$CAFE");
-        check(ui.click("Appliquer", draw), "click « Appliquer »");
+        check(ui.click("Apply", draw), "click « Apply »");
         check(target.edits.empty(), "the click alone edits nothing");
         session.atBoundary(target);
         check(target.edits.size() == 1 && target.edits[0].first == 11 &&
                   target.edits[0].second == 0xCAFE,
-              "« Appliquer » posts A3 = $CAFE to the machine thread");
+              "« Apply » posts A3 = $CAFE to the machine thread");
         // Plain Text lines register no item; the sections and the
         // disassembly's selectable rows do.
-        check(ui.find("Registres") != nullptr && ui.find("Points d'arrêt") != nullptr,
+        check(ui.find("Registers") != nullptr && ui.find("Breakpoints") != nullptr,
               "the register and breakpoint sections are drawn");
         const auto* line = ui.findContaining("00002000  nop");
         check(line != nullptr, "the disassembly lists the PC line");
@@ -305,24 +317,24 @@ int main() {
             check(snap->requestedEngine == 1 && snap->effectiveEngine == 0,
                   "an armed stop publishes the effective engine beside the request");
         }
-        check(ui.click("Par-dessus l'appel", draw), "click « Par-dessus l'appel »");
+        check(ui.click("Step over call", draw), "click « Step over call »");
         session.atBoundary(target);
         check(target.stepOvers == 1 && !session.snapshot()->stopped,
-              "« Par-dessus l'appel » arms a step over and resumes");
+              "« Step over call » arms a step over and resumes");
         session.post([] { pom68k::dbg::Command c; c.kind = pom68k::dbg::Command::Kind::Pause; return c; }());
         session.atBoundary(target);
         ui.frame(draw);
-        check(ui.click("Jusqu'au retour", draw), "click « Jusqu'au retour »");
+        check(ui.click("Step out", draw), "click « Step out »");
         session.atBoundary(target);
         check(target.stepOuts == 1 && !session.snapshot()->stopped,
-              "« Jusqu'au retour » arms a step out and resumes");
+              "« Step out » arms a step out and resumes");
         session.post([] { pom68k::dbg::Command c; c.kind = pom68k::dbg::Command::Kind::Pause; return c; }());
         session.atBoundary(target);
         ui.frame(draw);
-        check(ui.click("Pas à pas", draw), "click « Pas à pas »");
+        check(ui.click("Step", draw), "click « Step »");
         session.atBoundary(target);
         check(target.steps == 1 && !session.snapshot()->stopped,
-              "Pas à pas arms one step and resumes");
+              "Step arms one step and resumes");
         capture(ui, "debugger");
         dumpLabels("debugger");
         // The memory pane: a window the machine thread filled, then a
@@ -333,8 +345,8 @@ int main() {
         view.length = 64;
         session.post(view);
         session.atBoundary(target);
-        check(ui.click("Registres", draw) && ui.click("Désassemblage", draw) &&
-              ui.click("Points d'arrêt", draw) && ui.click("Mémoire", draw),
+        check(ui.click("Registers", draw) && ui.click("Disassembly", draw) &&
+              ui.click("Breakpoints", draw) && ui.click("Memory", draw),
               "fold registers, breakpoints and disassembly, open the memory section");
         const auto mem = session.snapshot();
         check(mem->memory.bytes.size() == 64 &&
@@ -342,56 +354,56 @@ int main() {
               mem->memory.state[0x20] == pom68k::dbg::ByteState::NotMemory,
               "the snapshot carries the requested window and its verdicts");
         const auto acked = mem->acked;
-        check(ui.click("Afficher", draw) && !state.inputError.empty(),
+        check(ui.click("Show", draw) && !state.inputError.empty(),
               "an empty address is refused in the window");
         session.atBoundary(target);
         check(session.snapshot()->acked == acked, "and posts nothing");
-        check(ui.find("Écrire") == nullptr, "a running machine offers no memory write");
+        check(ui.find("Write") == nullptr, "a running machine offers no memory write");
         session.post([] { pom68k::dbg::Command c; c.kind = pom68k::dbg::Command::Kind::Pause; return c; }());
         session.atBoundary(target);
         ui.frame(draw);
         std::snprintf(state.pokeAddress.data(), state.pokeAddress.size(), "$100");
         std::snprintf(state.pokeBytes.data(), state.pokeBytes.size(), "54 81");
-        check(ui.click("Écrire", draw), "click « Écrire » on a stopped machine");
+        check(ui.click("Write", draw), "click « Write » on a stopped machine");
         session.atBoundary(target);
         check(target.pokes.size() == 1 && target.pokes[0].first == 0x100 &&
                   target.pokes[0].second == std::vector<std::uint8_t>{0x54, 0x81},
-              "« Écrire » posts the parsed bytes at the parsed address");
+              "« Write » posts the parsed bytes at the parsed address");
         std::snprintf(state.pokeBytes.data(), state.pokeBytes.size(), "548");
-        check(ui.click("Écrire", draw) && !state.inputError.empty(),
+        check(ui.click("Write", draw) && !state.inputError.empty(),
               "half a byte is refused in the window");
         // Access and exception stops: each button posts typed entries.
-        check(ui.click("Mémoire", draw) && ui.click("Surveillances", draw),
+        check(ui.click("Memory", draw) && ui.click("Watchpoints", draw),
               "fold memory, open the watchpoint section");
         std::snprintf(state.watchText.data(), state.watchText.size(), "$2100");
-        check(ui.click("Surveiller", draw), "click « Surveiller »");
+        check(ui.click("Watch", draw), "click « Watch »");
         session.atBoundary(target);
         check(target.watches.size() == 1 && target.watches[0].addr == 0x2100 &&
                   target.watches[0].length == 4 &&
                   target.watches[0].access == pom68k::dbg::Access::Write,
-              "« Surveiller » posts a 4-byte write watchpoint");
-        check(ui.click("Surveillances", draw) && ui.click("Exceptions", draw),
+              "« Watch » posts a 4-byte write watchpoint");
+        check(ui.click("Watchpoints", draw) && ui.click("Exceptions", draw),
               "fold watchpoints, open the exception section");
         state.catchPreset = 4;                 // A-line
         std::snprintf(state.catchText.data(), state.catchText.size(), "$A11E");
         ui.frame(draw);                        // the preset moves the button
-        check(ui.click("Arrêter sur", draw), "click « Arrêter sur » with an A-line filter");
+        check(ui.click("Stop on", draw), "click « Stop on » with an A-line filter");
         state.catchPreset = 6;                 // interrupts 24-31
         state.catchText[0] = 0;
         ui.frame(draw);
-        check(ui.click("Arrêter sur", draw), "click « Arrêter sur » for interrupts");
+        check(ui.click("Stop on", draw), "click « Stop on » for interrupts");
         session.atBoundary(target);
         check(target.catchList.size() == 9 &&
                   target.catchList[0] == pom68k::dbg::Catch{10, 0xA11E} &&
                   target.catchList[1].vector == 24 && target.catchList[8].vector == 31,
               "the presets post vector 10 with its trap, then vectors 24-31");
         ui.frame(draw);
-        check(ui.find("Retirer") != nullptr, "armed exception stops are listed");
+        check(ui.find("Remove") != nullptr, "armed exception stops are listed");
         capture(ui, "debugger-stops");
         // The history section: a checkbox, the counters, an export.
-        check(ui.click("Exceptions", draw) && ui.click("Historique", draw),
+        check(ui.click("Exceptions", draw) && ui.click("History", draw),
               "fold exceptions, open the history section");
-        check(ui.click("Enregistrer", draw), "tick « Enregistrer »");
+        check(ui.click("Record", draw), "tick Record");
         session.atBoundary(target);
         ui.frame(draw);
         check(target.hist && session.snapshot()->historyOn &&
@@ -402,29 +414,29 @@ int main() {
         std::snprintf(state.historyPath.data(), state.historyPath.size(), "%s",
                       histPath.c_str());
         ui.frame(draw);
-        check(ui.click("Exporter", draw), "click « Exporter »");
+        check(ui.click("Export", draw), "click « Export »");
         session.atBoundary(target);
-        check(session.snapshot()->message.find("exporté") != std::string::npos &&
+        check(session.snapshot()->message.find("exported") != std::string::npos &&
                   std::filesystem::exists(histPath),
-              "« Exporter » writes the file on the machine thread");
+              "« Export » writes the file on the machine thread");
         std::filesystem::remove(histPath);
         capture(ui, "debugger-history");
-        check(ui.click("Historique", draw) && ui.click("Registres", draw) &&
-                  ui.click("Symboles", draw),
+        check(ui.click("History", draw) && ui.click("Registers", draw) &&
+                  ui.click("Symbols", draw),
               "fold the history, open the symbol section");
         std::snprintf(state.symbolPath.data(), state.symbolPath.size(), "%s",
                       "/nonexistent/pom68k.sym");
         ui.frame(draw);
-        check(ui.click("Charger", draw), "click « Charger »");
+        check(ui.click("Load", draw), "click « Load »");
         session.atBoundary(target);
         check(session.snapshot()->romChecksum == 0x9779D2C4 &&
                   session.snapshot()->symbolCount == 0 &&
-                  session.snapshot()->message.find("illisible") != std::string::npos,
-              "« Charger » reports an unreadable file and loads nothing");
-        check(ui.click("Exceptions", draw) && ui.click("Historique", draw) &&
-                  ui.click("Symboles", draw) && ui.click("Composants", draw),
+                  session.snapshot()->message.find("unreadable") != std::string::npos,
+              "« Load » reports an unreadable file and loads nothing");
+        check(ui.click("Exceptions", draw) && ui.click("History", draw) &&
+                  ui.click("Symbols", draw) && ui.click("Components", draw),
               "fold the open sections, open the component section");
-        check(ui.click("Relever les composants", draw), "tick « Relever les composants »");
+        check(ui.click("Sample devices", draw), "tick « Sample devices »");
         session.atBoundary(target);
         ui.frame(draw);
         check(session.snapshot()->devicesOn && session.snapshot()->devices.size() == 1 &&
@@ -468,13 +480,13 @@ int main() {
         dumpLabels("network");
         // The selector: open the combo (no label of its own), pick ID 3,
         // apply — the host receives the typed choice.
-        const ImGuiID combo = ui.idIn(pom68k::gui::kNetworkWindowTitle, "Carte au prochain démarrage");
+        const ImGuiID combo = ui.idIn(pom68k::gui::kNetworkWindowTitle, "Card at next startup");
         check(ui.clickId(combo, draw), "open the DaynaPort selector");
         dumpLabels("network-combo");
         check(ui.find("ID SCSI 2") && ui.find("ID SCSI 6"), "the selector lists SCSI 2..6");
         check(ui.click("ID SCSI 3", draw), "choose ID SCSI 3");
         capture(ui, "network-staged");
-        check(ui.click("Appliquer et redémarrer", draw), "click « Appliquer et redémarrer »");
+        check(ui.click("Apply and restart", draw), "click « Apply and restart »");
         check(staged && *staged && **staged == 3, "the host is asked to relaunch with the card at SCSI 3");
     }
 
@@ -484,7 +496,7 @@ int main() {
     // the window, which only ever reads the hub's snapshot. Never rendered
     // before today (TODO § Services réseau, 2026-09-13).
     {
-        ui.resize(1024, 1000);            // the full window runs past 768 px
+        ui.resize(1024, 768);             // the common controls must fit here
         GuiNetworkState state;
         state.showWindow = true;
         state.ethernetScsiId = -1;
@@ -496,36 +508,50 @@ int main() {
         ImRect r;
         check(windowShown(pom68k::gui::kNetworkWindowTitle, &r) && state.atalk.snapshot().attached,
               "the full AppleTalk window renders on an attached hub");
-        check(ui.find("Réseau AppleTalk actif") && ui.find("Activer AppleShare") &&
-                  ui.find("Serveur AFP (nom NBP)") && ui.find("Dossier partagé"),
+        check(ui.find("AppleTalk network active") && ui.find("Enable AppleShare") &&
+                  ui.find("Server name") && ui.find("Shared folder"),
               "the services form is on screen");
+        check(r.Max.y <= 768, "the common network controls fit a 768 px display");
+        check(!ui.find("DNS") && !ui.find("Enable printer"),
+              "advanced settings and printing start folded");
+        check(ui.click("Printing", draw) && ui.find("Enable printer"),
+              "unfold printing to reach its service toggle");
+        const bool papBefore = state.atalk.snapshot().cfg.pap;
+        check(ui.click("Enable printer", draw) &&
+                  state.atalk.snapshot().cfg.pap != papBefore,
+              "the folded printing section retains the live toggle");
+        ui.click("Enable printer", draw);
+        ui.click("Printing", draw);
+        check(ui.click("Printer and MacIP settings", draw) && ui.find("DNS"),
+              "advanced settings remain available on demand");
+        ui.click("Printer and MacIP settings", draw);
         capture(ui, "network-services");
         dumpLabels("network-services");
         // A live service toggle goes straight to the hub.
         check(state.atalk.snapshot().cfg.afp, "AppleShare starts enabled");
-        check(ui.click("Activer AppleShare", draw), "click « Activer AppleShare »");
+        check(ui.click("Enable AppleShare", draw), "click « Enable AppleShare »");
         check(!state.atalk.snapshot().cfg.afp, "the checkbox turned AppleShare off in the hub");
-        check(ui.click("Activer AppleShare", draw) && state.atalk.snapshot().cfg.afp,
+        check(ui.click("Enable AppleShare", draw) && state.atalk.snapshot().cfg.afp,
               "and back on");
         // The form: rename the server, apply — reconfigure() reaches the hub.
-        check(ui.click("Serveur AFP (nom NBP)", draw), "focus the AFP server name field");
+        check(ui.click("Server name", draw), "focus the AFP server name field");
         ui.key(ImGuiKey_End, true); ui.frame(draw); ui.key(ImGuiKey_End, false); ui.frame(draw);
         for (int i = 0; i < 16; i++) { ui.key(ImGuiKey_Backspace, true); ui.frame(draw); ui.key(ImGuiKey_Backspace, false); ui.frame(draw); }
         ui.type("POMTEST");
         ui.frame(draw);
         ui.frame(draw);
         check(ui.inputText(ui.activeId()) == "POMTEST", "the field's edit state holds the typed name");
-        check(ui.find("Appliquer") != nullptr, "an edited field shows « Appliquer »");
-        // The form refuses an empty shared folder (« Dossier partagé :
+        check(ui.find("Apply") != nullptr, "an edited field shows « Apply »");
+        // The form refuses an empty shared folder (« Shared folder :
         // vide ») — a hub attached without a default share has none — so
         // the folder is typed too, the way a user would.
-        check(ui.click("Dossier partagé", draw), "focus the shared-folder field");
+        check(ui.click("Shared folder", draw), "focus the shared-folder field");
         ui.type("AppleShare");
         ui.frame(draw);
         ui.frame(draw);
         capture(ui, "network-services-edited");
         dumpLabels("network-services-edited");
-        check(ui.click("Appliquer", draw), "click « Appliquer »");
+        check(ui.click("Apply", draw), "click « Apply »");
         const std::string server = state.atalk.snapshot().cfg.serverName;
         const std::string share = state.atalk.snapshot().cfg.shareDir;
         std::printf("  after apply: server '%s', shared folder '%s'\n", server.c_str(), share.c_str());
@@ -572,7 +598,7 @@ int main() {
         check(row != nullptr, "the dropped floppy is offered by the picker");
         if (row) ui.clickAt(row->bb.GetCenter(), draw);
         check(floppyIn && inserted == dropped, "choosing it inserts it live through the host hook");
-        check(ui.find("Éjecter##fd") != nullptr, "the row now offers « Éjecter »");
+        check(ui.find("Eject##fd") != nullptr, "the row now offers « Eject »");
         capture(ui, "disks-inserted");
         std::remove(dropped.c_str());
     }
@@ -613,26 +639,26 @@ int main() {
         if (row) ui.clickAt(row->bb.GetCenter(), draw);
         check(secondIn && secondPicked == dropped,
               "choosing an image inserts it live into drive 2 through its hook");
-        check(ui.find("Éjecter##fd2") != nullptr && ui.click("Éjecter##fd2", draw) && !secondIn,
-              "drive 2's « Éjecter » reaches its own hook");
-        check(ui.click("Second lecteur interne (redémarre la machine)", draw) &&
+        check(ui.find("Eject##fd2") != nullptr && ui.click("Eject##fd2", draw) && !secondIn,
+              "drive 2's « Eject » reaches its own hook");
+        check(ui.click("Second internal drive (restarts machine)", draw) &&
                   staged == std::vector<bool>{false},
               "unticking the fitted drive stages its removal for the next boot");
         host.hasSecondFloppyDrive = false;
         ui.frame(draw);
         check(ui.findId(ui.idIn(pom68k::kDiskWindowTitle, "##fd2pick")) == nullptr,
               "without the mechanism the drive-2 row is gone");
-        check(ui.click("Second lecteur interne (redémarre la machine)", draw) &&
+        check(ui.click("Second internal drive (restarts machine)", draw) &&
                   staged == std::vector<bool>{false, true},
               "ticking it stages the fitting");
         host.secondFloppyFittable = false;
         ui.frame(draw);
-        check(ui.find("Second lecteur interne (redémarre la machine)") == nullptr,
+        check(ui.find("Second internal drive (restarts machine)") == nullptr,
               "a board without the connector offers no checkbox");
         std::remove(dropped.c_str());
     }
 
-    // ── Moteur accéléré ──────────────────────────────────────────────
+    // ── Accelerated engine ──────────────────────────────────────────────
     {
         GuiCpuPanelState st;
         st.showJit = true;
@@ -646,16 +672,16 @@ int main() {
         ui.frame(draw);
         ui.frame(draw);
         ImRect r;
-        check(windowShown("Moteur accéléré", &r), "Moteur accéléré is shown when the state says so");
+        check(windowShown("Accelerated engine", &r), "Accelerated engine is shown when the state says so");
         check(ui.distinctColours(r) > 12, "the window is drawn, not blank");
         capture(ui, "engine");
         dumpLabels("engine");
     }
 
-    // ── Ports série: a refused port, an observed one, the endpoint ───
+    // ── Serial ports: a refused port, an observed one, the endpoint ───
     // The printer port is configured but refused (AppleTalk owns channel
     // B): the window says why. The modem port is the window's own
-    // terminal: the guest's bytes are shown, « Envoyer » queues the line
+    // terminal: the guest's bytes are shown, « Send » queues the line
     // and its CR for the guest, and a full queue reports what it refused.
     {
         GuiSerialState st;
@@ -665,7 +691,7 @@ int main() {
         st.ports[0].message = "unavailable while AppleTalk/LToUDP owns SCC channel B";
         st.ports[1].name = "Modem (canal A)";
         st.ports[1].requested = "terminal";
-        st.ports[1].endpoint = "terminal intégré";
+        st.ports[1].endpoint = "built-in terminal";
         st.ports[1].terminal = std::make_shared<SerialTerminal>(true);
         for (char c : std::string("ATZ\rOK\r"))
             st.ports[1].terminal->observe(SerialTerminal::Direction::FromGuest, std::uint8_t(c));
@@ -674,18 +700,18 @@ int main() {
         ui.frame(draw);
         ImRect r;
         check(windowShown(pom68k::gui::kSerialWindowTitle, &r) && ui.distinctColours(r) > 8,
-              "« Ports série » is drawn when asked");
+              "« Serial ports » is drawn when asked");
         check(st.ports[1].terminal->view().text == "ATZ\nOK\n",
               "the endpoint port's log holds the guest's bytes");
         std::snprintf(st.ports[1].line.data(), st.ports[1].line.size(), "AT&F");
-        check(ui.click("Envoyer", draw) && st.ports[1].terminal->view().pendingInput == 5 &&
+        check(ui.click("Send", draw) && st.ports[1].terminal->view().pendingInput == 5 &&
                   st.ports[1].line[0] == 0,
-              "« Envoyer » queues the line and its CR for the guest, and clears the field");
+              "« Send » queues the line and its CR for the guest, and clears the field");
         st.ports[1].terminal->send(std::string(SerialTerminal::kInputBytes, 'x'));
         std::snprintf(st.ports[1].line.data(), st.ports[1].line.size(), "more");
-        ui.click("Envoyer", draw);
+        ui.click("Send", draw);
         ui.frame(draw);
-        check(st.ports[1].sendStatus.find("refus") != std::string::npos &&
+        check(st.ports[1].sendStatus.find("rejected") != std::string::npos &&
                   std::string(st.ports[1].line.data()) == "more",
               "a full queue refuses the line, says so, and keeps it in the field");
         capture(ui, "serial");
@@ -719,7 +745,7 @@ int main() {
     //    the next one out.
     {
         // The windows, plus the device names the boards report to the
-        // Périphériques window (fw::Request::name) — those are drawn too.
+        // Peripherals window (fw::Request::name) — those are drawn too.
         const char* sources[] = {"src/PeripheralWindow.cpp", "src/NetworkWindow.cpp",
                                  "src/DiskBays.cpp", "src/GuiEngineWindow.cpp",
                                  "src/GuiShell.cpp", "src/GuiMachineControls.cpp",

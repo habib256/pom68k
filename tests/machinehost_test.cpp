@@ -350,7 +350,7 @@ int main() {
         MonoMachine m(mem, cpu, audio);
         m.state.request(false);                    // save, profile not wired
         m.stepTick();
-        check(m.state.message().find("non câblé") != std::string::npos,
+        check(m.state.message().find("unsupported profile") != std::string::npos,
               "an unwired save-state profile is refused, not crashed into");
     }
 
@@ -453,7 +453,7 @@ int main() {
         using Cmd = MonoMachine::Cmd;
         m.push({Cmd::DetachDisk, 2});
         m.stepTick();
-        check(m.bayMessage().find("rien à retirer") != std::string::npos,
+        check(m.bayMessage().find("nothing to remove") != std::string::npos,
               "detach: an empty bay says so");
         m.push({Cmd::AttachDisk, 2, 0, img});
         m.stepTick();
@@ -475,7 +475,7 @@ int main() {
         check(mem.scsi().sessionOn(2), "detach: a session is open on the target");
         m.push({Cmd::DetachDisk, 2});
         m.stepTick();
-        check(mem.scsi().target(2) != nullptr && m.bayMessage().find("retirée") == std::string::npos,
+        check(mem.scsi().target(2) != nullptr && m.bayMessage().find("removed") == std::string::npos,
               "detach: refused inside the session, and re-queued rather than reported");
         m.stepTick();
         check(mem.scsi().target(2) != nullptr, "detach: still waiting while the session lasts");
@@ -493,7 +493,7 @@ int main() {
         m.stepTick();
         check(mem.scsi().target(2) == nullptr && !mem.scsiDiskAt(2).present(),
               "detach: the re-queued detach lands at the next quantum");
-        check(m.bayMessage().find("retirée du bus") != std::string::npos,
+        check(m.bayMessage().find("removed from bus") != std::string::npos,
               "detach: the outcome is reported once it happened");
         m.stop();
         std::remove(img.c_str());
@@ -507,7 +507,7 @@ int main() {
         m.stepTick();                              // kind unset: refused
         m.stop();
         check(!m.recordingActive() &&
-                  m.recordingMessage().find("non câblé") != std::string::npos,
+                  m.recordingMessage().find("unsupported profile") != std::string::npos,
               "recording: an unwired profile is refused with its reason");
         pom68k::InputJournal j;
         std::string err;
@@ -530,7 +530,7 @@ int main() {
               "recording: the derived path is stamped beside the state file");
         m.stop();                                  // teardown finishes it
         check(!m.recordingActive() &&
-                  m.recordingMessage().find("Enregistré") == 0,
+                  m.recordingMessage().find("Recorded") == 0,
               "recording: session teardown closes an open recording");
         if (at != std::string::npos && ext != std::string::npos && ext > at) {
             const std::string path = msg.substr(at, ext + 8 - at);

@@ -96,8 +96,8 @@ inline bool select(const Request& req, const Loader& load) {
                 loaded = forcedPath;
             else
                 std::fprintf(stderr,
-                             "%s: %s=%s inutilisable — retour à la liste "
-                             "d'origine\n", req.logTag.c_str(),
+                             "%s: %s=%s unusable — falling back to the "
+                             "original candidate list\n", req.logTag.c_str(),
                              req.pathKnob.c_str(), forcedPath.c_str());
         }
         for (const std::string& p : req.candidates) {

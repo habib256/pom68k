@@ -31,7 +31,7 @@ public:
     static std::vector<std::uint8_t> findResource(
         const std::string& relative, std::string& matched);
     static std::string findPath(const std::string& relative);
-    static std::string findRomBySignature(const std::string& signature);
+    static std::string findRomBySignature(const std::string& signature, bool refresh = false);
     static std::string executableDirectory();
 };
 

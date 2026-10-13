@@ -11,9 +11,9 @@
 //     the cursor hidden. Ctrl+Alt+F again, Alt+F4 or Ctrl+Shift+Q (held ~0.7 s)
 //     leave. The switch is a GLFW monitor change between two frames; the
 //     machine runs on, the docked layout is kept alive for the return.
-//   • --crt=<preset> / POM68K_CRT, or the Affichage menu: the CrtEffectStack
+//   • --crt=<preset> / POM68K_CRT, or the Display menu: the CrtEffectStack
 //     pass — presets light / arcade / phosphor, every slider live in
-//     « Réglages CRT ». Opt-in; when the shader cannot compile the raw
+//     « CRT settings ». Opt-in; when the shader cannot compile the raw
 //     screen is shown and the menu says so.
 //
 // The kiosk flag is process-wide on purpose: the windows a runner draws
@@ -42,6 +42,7 @@ inline bool kioskActive() { return kioskFlag().load(std::memory_order_relaxed); 
 struct GuiDisplayState {
     bool kiosk = false;              // requested state (Ctrl+Alt+F, menu, startup)
     bool kioskApplied = false;       // the window is on its monitor
+    bool mouseCaptured = false;      // host cursor is held by the Mac screen
     int windowedX = 100, windowedY = 100, windowedW = 1280, windowedH = 800;
     int quitHold = 0;                // Ctrl+Shift+Q frames held
 
@@ -94,7 +95,7 @@ inline Letterbox letterbox(float availW, float availH, float srcW, float srcH) {
 // Ctrl+Alt+F toggle and the quit chords. Returns true when a quit chord
 // fired; the monitor switch itself is GuiShell.cpp's (it needs the window).
 bool kioskChords(GuiDisplayState& d);
-// The « Affichage » menu (inside an open menu bar) and the settings window.
+// The « Display » menu (inside an open menu bar) and the settings window.
 void drawDisplayMenu(GuiDisplayState& d);
 void drawCrtWindow(GuiDisplayState& d);
 

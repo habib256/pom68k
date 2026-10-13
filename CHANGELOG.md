@@ -490,6 +490,15 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-12 (ninth)** — [Start Macintosh validates and launches in one action](#2026-10-12-direct-start)
+- **2026-10-12 (eighth)** — [Host menus release held Mac keys and own keyboard input](#2026-10-12-keyboard-focus)
+- **2026-10-12 (seventh)** — [The setup guide can search the Macintosh catalogue](#2026-10-12-searchable-models)
+- **2026-10-12 (sixth)** — [Disk images can be added from a visible file browser](#2026-10-12-disk-image-browser)
+- **2026-10-12 (fifth)** — [The Mac screen centers and mouse capture explains how to exit](#2026-10-12-workspace-and-capture)
+- **2026-10-12 (fourth)** — [The product UI speaks English throughout the setup and control paths](#2026-10-12-english-ui)
+- **2026-10-12 (third)** — [A missing ROM opens a guide that prepares a Macintosh before relaunch](#2026-10-12-startup-guide)
+- **2026-10-12 (later)** — [Common controls precede protocol diagnostics and staged changes name their effect](#2026-10-12-product-ergonomics)
+- **2026-10-12** — [Current documentation follows the implemented contracts and reopened findings](#2026-10-12-documentation-drift)
 - **2026-10-10 (thirteenth)** — [The asset-free tier on a real Windows host: the serial gate passes under MSVC, five reds found](#2026-10-10-msvc-asset-none)
 - **2026-10-10 (twelfth)** — [The Quadra 630 rewinds a Finder write on its IDE disk; the Snow plan's ordered work is done](#2026-10-10-q630-ide-rewind)
 - **2026-10-10 (eleventh)** — [Every oracle profile carries MAME's Apple CD-ROM, and the LC III's free space is judged](#2026-10-10-oracle-cdrom)
@@ -1126,6 +1135,157 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-12-direct-start"></a>
+## 2026-10-12 (ninth) — Start Macintosh validates and launches in one action
+
+The setup guide previously disabled Start Macintosh until the user clicked
+Check setup. Start is now the primary action and runs the same validation on
+click. If a ROM or disk is missing or incompatible, the guide stays open and
+shows the specific error. Check setup remains available as an optional
+preflight. Successful starts still revalidate files and relaunch with only
+the prepared model, ROM and media arguments.
+
+<a id="2026-10-12-keyboard-focus"></a>
+## 2026-10-12 (eighth) — Host menus release held Mac keys and own keyboard input
+
+The keyboard translators previously stopped forwarding while a text field
+wanted input, but did not release keys already held by the guest. A release
+inside that field could leave a Mac key down. Menus also let navigation keys
+through to the guest. Both ADB and compact translators now release their
+held guest keys when a menu or text field takes focus, and resume forwarding
+afterward. Delete remains a host capture shortcut; it was already absent
+from the guest key tables.
+
+<a id="2026-10-12-searchable-models"></a>
+## 2026-10-12 (seventh) — The setup guide can search the Macintosh catalogue
+
+The setup model selector was a flat list of 41 Macs, with no way to narrow it
+before choosing a ROM. It now has a focused search field, a bounded result
+list grouped by catalogue family, and a clear empty state. Search accepts
+model names, slugs and family names without changing ROM discovery or setup
+validation. Three catalogue headings that still contained French are now
+English in both setup and the Machine menu.
+
+<a id="2026-10-12-disk-image-browser"></a>
+## 2026-10-12 (sixth) — Disk images can be added from a visible file browser
+
+Adding a disk image outside the scanned folders previously required scrolling
+to a path field at the bottom of the Disk Library or dragging a file from the
+host. Add image is now at the top. Its browser navigates folders, lists
+supported images, and retains a path field as a fallback. Adding or dropping
+an image confirms that it is available in the drive pickers; the user still
+chooses which drive should receive it. The old bottom path field is removed.
+
+<a id="2026-10-12-workspace-and-capture"></a>
+## 2026-10-12 (fifth) — The Mac screen centers and mouse capture explains how to exit
+
+The desktop screen now uses the same centered, aspect-preserving placement as
+kiosk mode. The default Dashboard dock targets 180 px instead of reserving a
+third of the right column, leaving more room for the Disk Library. The menu
+bar changes its mouse hint when capture begins and gives the release key; it
+uses shorter wording and drops the optional badges when width is tight. Saved custom dock
+layouts still take precedence over the new default.
+
+<a id="2026-10-12-english-ui"></a>
+## 2026-10-12 (fourth) — The product UI speaks English throughout the setup and control paths
+
+The setup guide, menus, disk library, networking, peripheral controls,
+debugger, serial and typing windows now use English labels and help text.
+Messages produced by save states, recording, media operations, and debugger
+commands were translated at their sources so they appear in English when
+surfaced by the GUI. The headless GUI gates use the new labels, and the
+current README and DEV menu descriptions follow them. `CLAUDE.md` now states
+English as the product UI language alongside the existing documentation rule.
+The final targeted run passed 10/10 gates, including both headless GUI windows,
+MachineHost messages, documentation and file-size budgets. The startup guide
+also handles an absent ROM path, not only a path to a missing file.
+
+<a id="2026-10-12-startup-guide"></a>
+## 2026-10-12 (third) — A missing ROM opens a guide that prepares a Macintosh before relaunch
+
+A launch with no usable ROM previously left the user in a 68000 demo with
+the explanation only on the console. `GuiStartupWindow` now opens a modal
+once above that demo, and Machine offers the same guide for preparing another
+Mac. It takes the model from the catalogue, provides a filesystem browser for
+ROM and system media, and enables launch only after a successful preflight.
+Dismissal leaves the demo available and does not reopen the guide each frame.
+
+Preflight rejects missing or unsupported-size ROMs, a ROM dispatching to
+another model, absent/empty media and a mismatch between floppy and hard-disk
+choice. Shared-ROM selection goes through `MachineFactory::selectProfile`
+and the existing typed profile decoder; media filters are shared with
+Disques. A launch revalidates the files, uses absolute paths, reserves the
+compact's floppy argument for a hard-disk boot and requests a verbatim
+relaunch so the old session's options do not override the preparation.
+These checks do not qualify the ROM's contents or prove that the chosen
+system image is bootable. The Duo firmware requirement remains visible.
+
+Signature discovery can explicitly refresh its cache for the guide's search
+button without rescanning unavailable ROMs on every catalogue-menu frame.
+The existing machine-window gate adds synthetic-file scenarios for automatic
+opening, dismissal, menu access, browsing, missing media, another ROM family,
+shared-ROM identity, a floppy-only 512Ke, compact hard-disk argument ordering,
+launch isolation and files disappearing before launch. No new gate is added.
+
+<a id="2026-10-12-product-ergonomics"></a>
+## 2026-10-12 (later) — Common controls precede protocol diagnostics and staged changes name their effect
+
+The network window made users pass router counters before reaching their
+shared folder, and its full form ran past a 768-pixel display. File sharing
+and its folder now come first; printing, MacIP, service details and protocol
+diagnostics expand on demand. Active captures and capture errors keep their
+controls visible. The sharing section explains where to connect in the Mac
+and how to repair an inaccessible folder. Applying the form still sends the
+complete service configuration, including values in folded fields.
+
+Disques now puts the boot disk and explicit apply/cancel controls above the
+media list, names additional disks without requiring users to start from SCSI
+IDs, and folds its longer mounting/format explanation. A regular reset is
+disabled while staged changes need an explicit apply. Window heights are
+bounded by the viewport. Existing media widget identities and host callbacks
+are retained.
+
+Controllers retain their explicit non-conformant HLE notice, supplemented by
+an explanation of software substitution and the expected missing file. The
+radio labels name original firmware and software substitutes; disabled
+firmware controls have a working tooltip. Restart explanations describe the
+effect on the Mac rather than device construction or environment knobs.
+
+`gui_windows_test` checks the common network controls at 1024×768, printing
+toggle access after unfolding, advanced-field access and controller
+cancellation before the existing typed-apply scenario.
+
+Validation: POM68K and the touched GUI targets built; the eight targeted
+GUI, relaunch/session, disk-binding, controller, documentation and size-budget
+gates passed. The new headless captures were inspected. The build still
+emits GCC LTO string-overread warnings in the untouched PlatformSonora.cpp
+status labels; this change does not establish a fresh Windows qualification.
+
+<a id="2026-10-12-documentation-drift"></a>
+## 2026-10-12 — Current documentation follows the implemented contracts and reopened findings
+
+The README still called the bare LC II faithful after the 2026-10-02
+reopening, advertised a second floppy row on every desktop after drive B
+became profile-dependent, and named save-state v26 although `SaveState.h`
+now requires v28. It now states the unresolved cold-start divergence, points
+to `storageCapabilities()` for connected mechanisms and explains the v28
+disk-content rewind and refusal of older formats.
+
+DEV's compact section still said the 128K/512K had no boot gate and mistook
+Sad Mac `$0F0004` for a RAM failure. It now names their registered boot and
+MFS duplication gates and the spindle-calibration divide exception. The
+menu inventory includes sessions, serial ports and display controls.
+
+DEV and `docs/LLE_VS_HLE.md` no longer describe the GUI as compile-only:
+they name the rendering/control and relaunch gates without claiming a fresh
+execution or closing the Windows and manual-host-action proof gaps.
+`docs/SCSI_HOTPLUG.md` labels its initial GUI gaps as bring-up history and
+names the later disk-window/binding coverage without extending it to every
+agent-autostart path. `docs/LCII_HARDWARE.md` records the reopened finding
+and distinguishes the boot-gate investigation knobs from product options.
+Perishable asset and profile counts in DEV are replaced with references
+to `assets.lock` and `MachineCatalog.h`; the dated historical record remains.
 
 <a id="2026-10-10-msvc-asset-none"></a>
 ## 2026-10-10 (thirteenth) — The asset-free tier on a real Windows host: the serial gate passes under MSVC, five reds found

@@ -1,4 +1,4 @@
-// POM68K — the "Moteur accéléré" statistics window
+// POM68K — the "Accelerated engine" statistics window
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "GuiEngineWindow.h"
@@ -32,59 +32,59 @@ void drawEngineWindow(GuiCpuPanelState& state) {
     }
 
     ImGui::SetNextWindowSize(ImVec2(420, 0), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Moteur accéléré", &state.showJit,
+    if (!ImGui::Begin("Accelerated engine", &state.showJit,
                       ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
     ImGui::SeparatorText("Moteur");
-    statusDot(engine == 1, engine == 1 ? "Moteur accéléré actif"
-                                      : "Interpréteur Moira (référence)");
+    statusDot(engine == 1, engine == 1 ? "Accelerated engine actif"
+                                      : "Moira interpreter (reference)");
     ImGui::Text("Backend : %s", state.jitBackend ? state.jitBackend : "-");
     if (engine == 1)
         ImGui::Text("Instructions/s : %.2f M", state.jitRate / 1e6);
     else
         ImGui::TextDisabled(
-            "Instructions/s : - (compteurs du moteur accéléré, à l'arrêt)");
+            "Instructions/s: - (accelerated engine counters, stopped)");
 
-    ImGui::SeparatorText("Répartition");
+    ImGui::SeparatorText("Distribution");
     const double all = double(total ? total : 1);
-    ImGui::Text("Par le moteur       : %llu  (%.1f %%)",
+    ImGui::Text("By engine: %llu  (%.1f %%)",
                 static_cast<unsigned long long>(snapshot.instrs),
                 100.0 * double(snapshot.instrs) / all);
-    ImGui::Text("Par l'interpréteur  : %llu  (%.1f %%)",
+    ImGui::Text("By interpreter: %llu  (%.1f %%)",
                 static_cast<unsigned long long>(snapshot.interpInstrs),
                 100.0 * double(snapshot.interpInstrs) / all);
     ImGui::SeparatorText("Blocs");
-    ImGui::Text("Compilés %llu   ·   vivants %llu   ·   rejoués %llu",
+    ImGui::Text("Compiled %llu   ·   live %llu   ·   replayed %llu",
                 static_cast<unsigned long long>(snapshot.blocksCompiled),
                 static_cast<unsigned long long>(snapshot.blocksLive),
                 static_cast<unsigned long long>(snapshot.blocksRun));
     const double reuse = snapshot.blocksCompiled
         ? double(snapshot.blocksRun) / double(snapshot.blocksCompiled)
         : 0.0;
-    ImGui::Text("Réutilisation : %.1f rejeux par bloc compilé", reuse);
-    ImGui::Text("Purges %llu   ·   invalidations %llu",
+    ImGui::Text("Reuse: %.1f replays per compiled block", reuse);
+    ImGui::Text("Flushes %llu   ·   invalidations %llu",
                 static_cast<unsigned long long>(snapshot.flushes),
                 static_cast<unsigned long long>(snapshot.invalidations));
-    ImGui::SeparatorText("Fenêtre de code");
-    ImGui::Text("Validations %llu   ·   refusées %llu  (%.1f %%)",
+    ImGui::SeparatorText("Code window");
+    ImGui::Text("Validations %llu   ·   rejected %llu  (%.1f %%)",
                 static_cast<unsigned long long>(snapshot.windowArmed),
                 static_cast<unsigned long long>(snapshot.windowFailed),
                 snapshot.windowArmed
                     ? 100.0 * double(snapshot.windowFailed) /
                           double(snapshot.windowArmed)
                     : 0.0);
-    ImGui::TextDisabled("Refus = I/O, VRAM, overlay encore actif, ou page pas "
-                        "encore dans l'ATC.");
-    ImGui::SeparatorText("Sorties de bloc (par cause)");
+    ImGui::TextDisabled("Rejected = I/O, VRAM, active overlay, or page not "
+                        "yet in the ATC.");
+    ImGui::SeparatorText("Block exits (by cause)");
     for (int i = 0; i < int(jit::Exit::Count); ++i) {
         if (!snapshot.exits[i]) continue;
         ImGui::Text("%-16s %llu", jit::exitName(jit::Exit(i)),
                     static_cast<unsigned long long>(snapshot.exits[i]));
     }
-    ImGui::TextDisabled("Toute sortie se fait à une frontière d'instruction, "
-                        "état invité exact.");
+    ImGui::TextDisabled("Every exit occurs at an instruction boundary, "
+                        "with exact guest state.");
     ImGui::End();
 }
 

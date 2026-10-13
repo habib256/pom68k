@@ -80,7 +80,7 @@ struct SaveStateSlot {
         if (!p) return 0;
         int done = 0;
         if (kind == pom68k::SnapMachine{} || path.empty()) {
-            post("Save states: profil non câblé");
+            post("Save states: unsupported profile");
             return 0;
         }
         if (p & 1) {
@@ -104,18 +104,18 @@ struct SaveStateSlot {
                 const std::string reason = why();
                 if (f) std::fclose(f);
                 std::remove(tmp.c_str());
-                post("État NON sauvé: écriture impossible (" + tmp + ") — " + reason);
+                post("State NOT saved: write failed (" + tmp + ") — " + reason);
             } else {
                 errno = 0;
                 std::fclose(f);
                 if (!atomicReplaceFile(tmp, path)) {
                     const std::string reason = why();
                     std::remove(tmp.c_str());
-                    post("État NON sauvé: rename impossible (" + path + ") — "
+                    post("State NOT saved: rename failed (" + path + ") — "
                          + reason);
                 } else {
-                    post("État sauvé → " + path + " ("
-                         + std::to_string((blob.size() + 512) / 1024) + " Ko)");
+                    post("State saved → " + path + " ("
+                         + std::to_string((blob.size() + 512) / 1024) + " KB)");
                     done |= 1;
                 }
             }
@@ -124,7 +124,7 @@ struct SaveStateSlot {
             std::vector<uint8_t> blob;
             std::FILE* f = std::fopen(path.c_str(), "rb");
             if (!f) {
-                post("Aucun état à restaurer (" + path + ")");
+                post("No state to restore (" + path + ")");
             } else {
                 std::fseek(f, 0, SEEK_END);
                 long n = std::ftell(f);
@@ -135,16 +135,16 @@ struct SaveStateSlot {
                 std::fclose(f);
                 std::string err;
                 if (got != blob.size()) {
-                    post("État NON restauré: lecture tronquée (" + path + ")");
+                    post("State NOT restored: truncated read (" + path + ")");
                 } else if (!pom68k::load(mem, cpu, kind,
                                          blob.data(), blob.size(), err)) {
                     // A refused snapshot leaves the machine untouched — the
                     // reason (profile/ROM/RAM mismatch, corruption) is
                     // load()'s own explanation.
-                    post("État NON restauré: " + err);
+                    post("State NOT restored: " + err);
                 } else {
-                    post(err.empty() ? "État restauré ← " + path
-                                     : "État restauré (" + err + ")");
+                    post(err.empty() ? "State restored ← " + path
+                                     : "State restored (" + err + ")");
                     done |= 2;
                 }
             }

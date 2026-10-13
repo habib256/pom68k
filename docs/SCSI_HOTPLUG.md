@@ -2,7 +2,14 @@
 
 *Research note, opened 2026-09-13, closed 2026-09-14: the three steps, the host-side detach, the agent's automatic launch and its shipping in every package are built and gated (§ 5 – § 8).*
 
-## 1. The problem the Disques window cannot solve alone
+**Current validation:** the initial problem in § 1 and the GUI proof gaps
+in the implementation tables describe the September bring-up state.
+`gui_windows_test` now renders and drives the disk window, and
+`gui_disk_bindings_test` covers its shared machine bindings. These do not
+prove every host action or guest-agent autostart path. See `DEV.md` § 6,
+`STATUS.md` for recorded executions and `TODO.md` for remaining proof work.
+
+## 1. The problem the Disks window cannot solve alone
 
 The window (`src/DiskBays.*`) stages every change to a bay that was empty
 at boot and applies it with a relaunch, because Classic Mac OS enumerates
@@ -15,7 +22,7 @@ and the CD driver polls (`DiskBays.h`, hot-swap contract).
 
 Two consequences the user sees:
 
-- adding a hard disk means « Appliquer et redémarrer », even on a machine
+- adding a hard disk means Apply and restart, even on a machine
   whose session was worth keeping;
 - the window shows what the **host** attached, not what the **guest**
   mounted. « Le Finder ne le voit qu'après … » is a guess printed as text.

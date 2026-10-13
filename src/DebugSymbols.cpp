@@ -32,7 +32,7 @@ bool RomSymbols::load(const std::string& path, std::uint32_t romChecksum,
                       std::string& why) {
     std::ifstream in(path);
     if (!in) {
-        why = "Symboles : fichier illisible " + path;
+        why = "Symbols: unreadable file " + path;
         return false;
     }
     RomSymbols t;
@@ -61,7 +61,7 @@ bool RomSymbols::load(const std::string& path, std::uint32_t romChecksum,
         std::string off, name;
         std::uint32_t o = 0;
         if (!(ls >> off >> name) || !parseHex(off, o)) {
-            why = "Symboles : ligne " + std::to_string(n) + " illisible";
+            why = "Symbols: unreadable line " + std::to_string(n);
             return false;
         }
         t.symbols_.emplace_back(o, name);
@@ -69,7 +69,7 @@ bool RomSymbols::load(const std::string& path, std::uint32_t romChecksum,
     char sum[16];
     std::snprintf(sum, sizeof sum, "%08X", romChecksum);
     std::string err;
-    if (!magic) err = "Symboles : en-tête « # POM68K ROM symbols v1 » absent";
+    if (!magic) err = "Symbols: missing # POM68K ROM symbols v1 header";
     else if (!haveSum) err = "Symboles : # rom-checksum absent";
     else if (t.checksum_ != romChecksum)
         err = std::string("Symboles d'une autre ROM (la ROM en cours est ") + sum + ")";

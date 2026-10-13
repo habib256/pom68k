@@ -1050,7 +1050,7 @@ reads — for them the fallback WAS silent, and "am I conformant?" had no
 answer short of a terminal. Every device now `report()`s its whole outcome
 to the registry in `src/LleSession.h` (mode, reason, the dump actually
 loaded, the paths searched; reporting HLE is still the `activateHle()` call
-it replaced), and the **"Périphériques (LLE / HLE)" window**
+it replaced), and the **"Peripherals (LLE / HLE)" window**
 (`src/PeripheralWindow.*`, `DEV.md` § 6) renders it — opening itself the
 first frame a machine reports a substitute. The same window is the manual
 per-device override this file's knobs used to be the only way to reach:
@@ -1071,10 +1071,13 @@ the DFAC2 ACK, the AIO ROM livelocks on 2.37's pseudo-command `$0E`). The
 window lists every dump found beside the candidates, marks the factory parts
 and the loaded one, and accepts an arbitrary path.
 
-Gate: `peripheral_lle_test` (the model — 38 checks, including that a dump
+Gates: `peripheral_lle_test` (the model, including that a dump
 pick is a pending change on its own, that returning to automatic is explicit,
-and that Egret/Cuda remain distinct typed targets; the window itself is
-compile-verified only, like every GUI surface here).
+and that Egret/Cuda remain distinct typed targets) and `gui_windows_test`
+(the real window rendered headlessly, firmware selection and the typed
+apply callback). `gui_relaunch_smoke_test` exercises the relaunch in a
+real process. See `STATUS.md` for recorded runs and `TODO.md` for the
+remaining host-specific validation work.
 
 **One HLE-only hack survives inside the byte-model fallback.**
 `MacIIMemory.cpp:345-351`: on VIA1 ORB writes, if ACR shift-in is armed and
@@ -1206,7 +1209,7 @@ Centris, Q700), or the PG&E's own internal RAM + 32 KB SRAM on the Duo
   buffer as it is (origin `$20`, 128 bytes per row, `MinorBaseOS` 0,
   Control/Status unsupported) is installed so Slot Manager still enumerates
   video. Missing-asset fallback, reported to the LLE registry as the
-  `HleTobyDeclRom` substitute since 2026-09-16 — so the Périphériques window
+  `HleTobyDeclRom` substitute since 2026-09-16 — so the Peripherals window
   opens on it, product mode refuses it, and its consequence is stated in the
   row: System 6 and 7.0 boot, System 7.5.5 parks a slot VBL task the fallback
   never releases (CHANGELOG 2026-09-15). It is never completed into firmware

@@ -7,11 +7,11 @@
 // user can reach is decided once, here:
 //
 //   Machine        run/pause/fast-forward, save state, recording,
-//                  « Changer de machine » (one submenu per board family),
+//                  « Change machine » (one submenu per board family),
 //                  drive sounds
-//   Périphériques  disks, network, controller provenance (LLE / HLE)
+//   Peripherals  disks, network, controller provenance (LLE / HLE)
 //   CPU            measured speed, engine choice, engine statistics
-//   Fenêtres       every secondary window, and the layout reset
+//   Windows       every secondary window, and the layout reset
 //   (right edge)   LLE qualification, live speed, mouse-capture hint
 //
 // The catalogue lives in a submenu on purpose: 39 profiles plus their

@@ -1,4 +1,4 @@
-// POM68K — machine control menu block and "Tableau de bord" window
+// POM68K — machine control menu block and "Dashboard" window
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // See GuiMachineControls.h. Two rendering rules, both inherited from the
@@ -13,7 +13,7 @@
 
 namespace pom68k::gui {
 
-const char* kMachineControlWindowTitle = "Tableau de bord";
+const char* kMachineControlWindowTitle = "Dashboard";
 
 namespace {
 
@@ -33,30 +33,30 @@ void drawRecordingMessage(const GuiMachineControls& controls) {
 
 void drawMachineControlItems(GuiMachineControls& controls) {
     if (!controls.bound()) return;
-    if (ImGui::MenuItem("Redémarrer")) controls.hardReset();
+    if (ImGui::MenuItem("Restart")) controls.hardReset();
     const bool running = controls.isRunning();
-    if (ImGui::MenuItem(running ? "Pause" : "Reprendre"))
+    if (ImGui::MenuItem(running ? "Pause" : "Resume"))
         controls.setRunning(!running);
     bool fast = controls.isFastForward();
-    if (ImGui::MenuItem("Avance rapide", nullptr, &fast))
+    if (ImGui::MenuItem("Fast forward", nullptr, &fast))
         controls.setFastForward(fast);
     if (controls.saveState) {
         ImGui::Separator();
-        if (ImGui::MenuItem("Sauver l'état")) controls.saveState->request(false);
-        if (ImGui::MenuItem("Restaurer l'état"))
+        if (ImGui::MenuItem("Save state")) controls.saveState->request(false);
+        if (ImGui::MenuItem("Restore state"))
             controls.saveState->request(true);
         drawSaveStateMessage(controls);
     }
     if (controls.typing.bound()) {
         ImGui::Separator();
-        ImGui::MenuItem("Taper du texte...", nullptr, &controls.typing.showWindow);
+        ImGui::MenuItem("Type text...", nullptr, &controls.typing.showWindow);
     }
     if (controls.recordingActive) {
         ImGui::Separator();
         if (!controls.recordingActive()) {
-            if (ImGui::MenuItem("Démarrer l'enregistrement"))
+            if (ImGui::MenuItem("Start recording"))
                 controls.recordingStart();
-        } else if (ImGui::MenuItem("Arrêter l'enregistrement")) {
+        } else if (ImGui::MenuItem("Stop recording")) {
             controls.recordingStop();
         }
         drawRecordingMessage(controls);
@@ -74,17 +74,17 @@ void drawMachineControlWindow(GuiMachineControls& controls) {
     if (controls.drawStatus) controls.drawStatus();
     ImGui::Separator();
     const bool running = controls.isRunning();
-    if (ImGui::Button(running ? "Pause" : "Reprendre"))
+    if (ImGui::Button(running ? "Pause" : "Resume"))
         controls.setRunning(!running);
     ImGui::SameLine();
-    if (ImGui::Button("Redémarrer")) controls.hardReset();
+    if (ImGui::Button("Restart")) controls.hardReset();
     ImGui::SameLine();
     bool fast = controls.isFastForward();
-    if (ImGui::Checkbox("Avance rapide", &fast)) controls.setFastForward(fast);
+    if (ImGui::Checkbox("Fast forward", &fast)) controls.setFastForward(fast);
     if (controls.saveState) {
-        if (ImGui::Button("Sauver l'état")) controls.saveState->request(false);
+        if (ImGui::Button("Save state")) controls.saveState->request(false);
         ImGui::SameLine();
-        if (ImGui::Button("Restaurer l'état"))
+        if (ImGui::Button("Restore state"))
             controls.saveState->request(true);
         drawSaveStateMessage(controls);
     }

@@ -89,10 +89,10 @@ std::string MachineFactory::findPath(const std::string& relative) {
 }
 
 std::string
-MachineFactory::findRomBySignature(const std::string& signature) {
+MachineFactory::findRomBySignature(const std::string& signature, bool refresh) {
     namespace fs = std::filesystem;
     static std::map<std::string, std::string> cache;
-    if (const auto found = cache.find(signature); found != cache.end())
+    if (const auto found = cache.find(signature); !refresh && found != cache.end())
         return found->second;
 
     std::string wanted = signature;
@@ -233,8 +233,8 @@ MachineSession MachineFactory::create(
          !qualifiesFullLleAarch64(rom))) {
         return MachineSession::rejected(
             std::move(config), std::move(runtime), 2,
-            "Mode LLE AArch64 complet: REFUSÉ — ROM absente ou profil "
-            "non-68040 qualifié.");
+            "Full AArch64 LLE mode: REJECTED — missing ROM or "
+            "unqualified non-68040 profile.");
     }
     return MachineSession(std::move(config), profile, std::move(rom),
                           std::move(matched), std::move(runtime));

@@ -213,13 +213,13 @@ public:
         if (r < 16) { cpu_.setA(r - 8, v); return true; }
         switch (reg) {
         case Reg::PC: {
-            if (v & 1) { why = "PC impair refusé"; return false; }
+            if (v & 1) { why = "Odd PC rejected"; return false; }
             std::uint8_t b[4];
             ByteState st[4];
             readMemory(Space::Logical, v, b, st, 4);
             for (ByteState x : st)
                 if (x != ByteState::Ok) {
-                    why = "PC refusé : aucune mémoire lisible à cette adresse";
+                    why = "PC rejected: no readable memory at this address";
                     return false;
                 }
             cpu_.debugSetPc(v, moira::u16(b[0] << 8 | b[1]),
@@ -251,7 +251,7 @@ public:
             return false;
         }
         if (cpu_.pomCache040Armed()) {
-            why = "Refusé : cache de données 68040 actif";
+            why = "Rejected: 68040 data cache is active";
             return false;
         }
         switch (reg) {
@@ -278,7 +278,7 @@ public:
     bool writeMemory(Space space, std::uint32_t addr, const std::uint8_t* data,
                      std::size_t n, std::string& why) override {
         if (cpu_.pomCache040Armed()) {
-            why = "Écriture refusée : cache de données 68040 actif";
+            why = "Write rejected: 68040 data cache is active";
             return false;
         }
         std::vector<std::uint8_t*> dst(n);
@@ -288,14 +288,14 @@ public:
             char at[48];
             if (space == Space::Logical && !translate(a, phys)) {
                 std::snprintf(at, sizeof at, "$%08X non traduite", a);
-                why = std::string("Écriture refusée : ") + at;
+                why = std::string("Write rejected: ") + at;
                 return false;
             }
             std::uint32_t len = 0;
             dst[i] = mem_.dataSpan(physMask(phys), len, true);
             if (!dst[i] || !len) {
                 std::snprintf(at, sizeof at, "$%08X n'est pas de la RAM", a);
-                why = std::string("Écriture refusée : ") + at;
+                why = std::string("Write rejected: ") + at;
                 return false;
             }
         }
@@ -324,11 +324,11 @@ public:
         m.addr = physMask(w.addr);
         if (!m.length || m.length > kMaxWatchLength ||
             std::uint64_t(m.addr) + m.length > 0x100000000ull) {
-            why = "Surveillance : 1 à 16 octets";
+            why = "Watchpoint: 1 to 16 bytes";
             return false;
         }
         if (!(std::uint8_t(m.access) & 3) || std::uint8_t(m.access) > 3) {
-            why = "Surveillance : lecture, écriture ou les deux";
+            why = "Watchpoint: read, write, or both";
             return false;
         }
         for (const Watchpoint& x : watches_) if (x == m) return true;
@@ -354,7 +354,7 @@ public:
 
     bool addCatch(const Catch& c, std::string& why) override {
         if (c.vector < 2) {
-            why = "Exception : vecteur 2 à 255";
+            why = "Exception: vector 2 to 255";
             return false;
         }
         if (c.trap && (c.vector != 10 || (c.trap & 0xF000) != 0xA000)) {
@@ -363,7 +363,7 @@ public:
         }
         for (const Catch& x : catches_) if (x == c) return true;
         if (catches_.size() >= kMaxCatches) {
-            why = "Trop d'arrêts sur exception";
+            why = "Too many exception stops";
             return false;
         }
         catches_.push_back(c);

@@ -50,7 +50,7 @@ void GuiSmokeScenario::frame(GuiSessionState& session, GLFWwindow* window,
         return;
     }
     if (saveRequested_ && !saveCompleted_ &&
-        saveState.message().starts_with("État sauvé")) {
+        saveState.message().starts_with("State saved")) {
         saveCompleted_ = true;
         session.relaunch.switchArguments = session.relaunch.launchArguments;
         if (session.relaunch.switchArguments.empty())
@@ -69,7 +69,7 @@ void GuiSmokeScenario::frame(GuiSessionState& session, GLFWwindow* window,
 }
 
 // The relaunch scenario. Generation 1: after three rendered frames, stage
-// the card exactly as « Appliquer » in the AppleTalk window does
+// the card exactly as « Apply » in the AppleTalk window does
 // (relaunchWithDaynaPort, SCSI 3) — the shell closes the window, and
 // processRelaunch() re-executes the process for real with the relaunch
 // line (`--daynaport=3` in front of the same arguments). Generation 2:
