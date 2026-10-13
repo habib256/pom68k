@@ -24,6 +24,9 @@
 #   q950  MAME macqd950, the same board at 33 MHz, its own ROM, likewise
 #   lc    MAME maclc, hdv/ref/System 7.1 HD.dsk, 10 MB, FPU socket filled
 #   lc3   MAME maclc3, hdv/ref/System 7.5.3 HD.dsk, 8 MB, FPU socket filled
+#   macii MAME maciihmu (the stock Mac II, no 68851), hdv/ref/System 7.1
+#         HD.dsk, 8 MB, the Toby card (m2video) in slot 9 as on POM68K (MAME's
+#         default there is an mdc824), its RTC seeded with POM68K's PRAM
 #
 # <work-dir>/mame.tsv is what `<profile>_prober_oracle_etalon` compares
 # POM68K with: after a change to the Prober, the volume or the rig, copy it
@@ -40,7 +43,7 @@
 # which fields are not compared and why.
 set -euo pipefail
 
-usage="usage: tools/prober_oracle.sh <lcii|lc|lc3|q605|lc475|lc575|q800|q650|q610|c650|c610|q630|lc580|q700|q900|q950> <work-dir> [mame-seconds]"
+usage="usage: tools/prober_oracle.sh <lcii|lc|lc3|q605|lc475|lc575|q800|q650|q610|c650|c610|q630|lc580|q700|q900|q950|macii> <work-dir> [mame-seconds]"
 machine=${1:?$usage}
 work=${2:?$usage}
 secs=${3:-90}
@@ -171,6 +174,22 @@ q900)
     cp "$root"/roms/egret/344s0100.bin "$root"/roms/egret/341s085[01].bin "$work/roms/macqd900/"
     ram=8M                    # like the Quadra 700: System 7.1 in 8 MB
     ;;
+macii)
+    # maciihmu, not macii: MAME's macii fits the optional 68851 PMMU
+    # (gestaltMMUType 2), POM68K's Mac II is the stock board with the HMMU
+    # (1), as is maciihmu (macii.cpp, "w/o 68851 MMU"). Its parent's bios
+    # "default" (rev. B) is the tree's 9779D2C4; the Toby's 342-0008-a is
+    # m2video's declaration ROM (romset nb_m2vc); the ADB modem as on the
+    # Quadras.
+    system=maciihmu
+    mkdir -p "$work/roms/macii" "$work/roms/nb_m2vc" "$work/roms/adbmodem"
+    cp "$root/roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM" "$work/roms/macii/9779d2c4.rom"
+    cp "$root/roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin" \
+       "$work/roms/nb_m2vc/"
+    cp "$root/roms/adbmodem/342s0440-b.bin" "$work/roms/adbmodem/"
+    extra=(-nb9 m2video)
+    ram=8M                    # the rev. B ROM's ceiling (macii.cpp)
+    ;;
 *) echo "$usage" >&2; exit 2 ;;
 esac
 
@@ -184,11 +203,16 @@ esac
 cp "$work/prepared.hd" "$work/mame.hd"
 # The Eclipse's Egret holds the PRAM; MAME's starts it cold (24-bit System
 # 7.1) unless its NVRAM file exists, which is the 256 bytes POM68K seeds.
+# The Mac II's RTC likewise (macrtc.cpp: its NVRAM is the 256 PRAM bytes):
+# cold, the ROM resets PRAM and leaves HWCfgFlags bit 13 ("extra PRAM
+# valid", HardwarePrivateEqu.a) clear, and without its own directory MAME
+# reuses whatever the previous run left in ~/.mame/nvram.
 nvram=()
-if [ "$machine" = q900 ] || [ "$machine" = q950 ]; then
+case "$machine" in q900|q950) pramfile=egret ;; macii) pramfile=rtc ;; *) pramfile= ;; esac
+if [ -n "$pramfile" ]; then
     rm -rf "$work/nvram"
     mkdir -p "$work/nvram/$system"
-    head -c 256 "$work/pom68k.pram" > "$work/nvram/$system/egret"
+    head -c 256 "$work/pom68k.pram" > "$work/nvram/$system/$pramfile"
     nvram=(-nvram_directory nvram)
 fi
 disks=("-$bus:0" harddisk "-$bus:6" "" -hard1 mame.hd)

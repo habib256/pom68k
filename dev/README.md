@@ -70,8 +70,8 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
 
 **As a differential oracle.** `tools/prober_oracle.sh <machine> <work-dir>`
 puts the Prober in Startup Items of the profile's locked volume, boots the
-same image under POM68K (`build/prober_oracle`) and under MAME (fifteen
-systems from `maclc` to `macqd950`, listed at the head of the script and in
+same image under POM68K (`build/prober_oracle`) and under MAME (sixteen
+systems from `maciihmu` to `macqd950`, listed at the head of the script and in
 `cmake/Pom68kOracleGates.cmake`; romsets built from the tree's ROMs), and
 diffs the two TSVs. MAME is `$MAME`, else `mame`
 on PATH, else the flatpak. The gates `<profile>_prober_oracle_etalon` run

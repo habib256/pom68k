@@ -12,12 +12,12 @@ add_executable(prober_oracle tests/prober_oracle.cpp)
 target_link_libraries(prober_oracle PRIVATE pom68k_core)
 # The siblings since 2026-10-10: same boards and ROMs, their own MAME
 # systems. No LC 575: MAME 0.287's maclc575 ("imperfect") stalls on Starting
-# Up, so it has no report to hold POM68K to. The LC III runs System 7.5.3,
-# which has its enabler (CHANGELOG 2026-10-10 (tenth)).
+# Up. The LC III runs System 7.5.3, which has its enabler (CHANGELOG
+# 2026-10-10 (tenth)); the Mac II is maciihmu, no 68851 (2026-10-13 (sixth)).
 foreach(pair lc:maclc lcii:maclc2 lc3:maclc3 q605:macqd605 lc475:maclc475 q800:macqd800
              q650:macqd650 q610:macqd610 c650:macct650 c610:macct610
              q630:macqd630 lc580:maclc580 q700:macqd700 q900:macqd900
-             q950:macqd950)
+             q950:macqd950 macii:maciihmu)
     string(REPLACE ":" ";" pair "${pair}")
     list(GET pair 0 profile)
     list(GET pair 1 mame)
