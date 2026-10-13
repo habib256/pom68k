@@ -33,6 +33,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
 - [Controls and menus](#controls-and-menus)
 - [CPU engines and JIT policy](#cpu-engines-and-jit-policy)
 - [AppleTalk and host file exchange](#appletalk-and-host-file-exchange)
+- [Host serial ports](#host-serial-ports)
 - [Build and test](#build-and-test)
 - [Strict AArch64 LLE mode](#strict-aarch64-lle-mode)
 - [Project documentation](#project-documentation)
@@ -83,11 +84,33 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
   the FPU-less configuration from the same ROM, while POM68K does not.
   The default LC II configuration includes a 68882; see `TODO.md` under
   **Fidélité matérielle et LLE** for the unresolved cold-start divergence.
-- Save states are format v28; restoring a state rewinds writable SCSI and
-  IDE disk content through `DiskTimeline`. Older formats are refused.
-  The CD transport and the ATA task file travel
-  with them, including the ATA PIO buffer, guest-written sectors, GCR tags
-  and every native or modified physical floppy track.
+- Save states are format v18; the CD transport and the ATA task file travel
+  with them.
+
+### New in 0.3.5
+
+- **Set Up a Macintosh…** guides a first launch: model, ROM and startup
+  disk, validated before the machine starts. The product UI is in English.
+- **Save states include disk content**: format v28 records each writable
+  SCSI and IDE disk's content through `DiskTimeline`, and restoring a state
+  rewinds the disk to it. Older formats are refused.
+- **Two more profiles**: the Macintosh 512Ke and the Macintosh II FDHD,
+  each with its own save-state identity.
+- **Floppy media**: MOOF bitstream and flux images, DART import and
+  write-back, and GCR sector tags kept through DiskCopy 4.2 images and
+  save states.
+- **Session files** reopen a configured machine (`--session=<file>`).
+- **Type text** types host text into the guest on machine time and reads the
+  guest's clipboard back.
+- **Serial ports** window: per-port endpoints, a built-in terminal, and
+  loopback TCP on every desktop host, Windows included.
+- **Debugger** window: registers, memory and disassembly, breakpoints,
+  watchpoints, exception stops, step over/out and histories.
+- The SE and SE FDHD can be fitted with their optional second internal
+  floppy drive; drive B now exists only on the profiles whose hardware has
+  a port for it.
+- A pressed CD with a cue sheet mounts with its audio tracks; the
+  LaserWriter prints to a chosen CUPS queue and reports its live status.
 
 POM68K uses the [Moira](https://github.com/dirkwhoffmann/Moira) CPU core,
 vendored through NeoST. The local fork and its provenance are documented in
@@ -175,12 +198,12 @@ Examples:
 ./build/POM68K --version
 ```
 
-**Machine → Taper du texte...** types text into the guest as key presses
+**Machine → Type text...** types text into the guest as key presses
 (paste the host clipboard, choose the guest's keyboard, US or French AZERTY)
 and reads the guest's own clipboard back for copying to the host.
 
 A configured machine can be saved as a session file (**Machine → Session →
-Enregistrer la session...**) and reopened from the same submenu or with
+Save session...**) and reopened from the same submenu or with
 `./build/POM68K --session=sessions/lcii.pomsession`. The file is plain
 `key = value` text listing the profile, ROM, media, engine, network, serial
 and display choices; paths are relative to the file. Options and media given
@@ -293,9 +316,9 @@ additional media creates an empty, hot-swappable CD drive; the literal
 (the Disks window writes it into the relaunch line for a bay emptied live).
 
 **Disks…** creates a blank HFS volume in `hdv/work/` (name and size, then
-**Créer**). A fixed disk chosen there joins the bus at once; Classic Mac OS
+**Create**). A fixed disk chosen there joins the bus at once; Classic Mac OS
 only probes the bus at boot, so it appears on the desktop after
-**Redémarrer**, or through **Monter** when the guest agent runs. **Retirer**
+**Restart machine**, or through **Mount** when the guest agent runs. **Remove**
 takes it off the bus at once when no volume is mounted on it.
 
 **POM68K Disques**, the guest agent (`dev/scsiagent`, built with Retro68 and
@@ -318,7 +341,10 @@ and its checksums are not imported or regenerated. Use `POM68K_FLOPPY_RO=1` to p
 write-back. **Disks…** exposes the floppy mechanisms connected by the
 selected profile; each can be inserted or ejected live. A second row is
 available only where the profile connects drive B; the LC family has no
-external floppy port. `storageCapabilities()` in `src/MachineCatalog.h`
+external floppy port. The SE and SE FDHD can also be fitted with their
+optional second internal drive: the Disks window stages it for the next boot,
+as do `--se-second-floppy=1` and `POM68K_SE_SECOND_FLOPPY=1`.
+`storageCapabilities()` in `src/MachineCatalog.h`
 defines those connections and the 400K/800K/SuperDrive capability. The
 PowerBook Duo 230 has no floppy mechanism. SCSI images passed explicitly are
 writable. Repository fixtures under `hdv/ref/` remain immutable: the GUI
@@ -377,7 +403,8 @@ large inputs are split at 1,900 MB by default. Run
 - **Machine:** **Set Up a Macintosh…** guides model, ROM and system-media
   selection. Search the grouped model list by name or family, then choose
   your ROM and startup disk. The menu also offers restart, pause, fast-forward,
-  save or restore state, input recording and drive sounds. **Change machine**
+  save or restore state, **Type text...**, input recording, the **Session**
+  submenu and drive sounds. **Change machine**
   lists every profile by board family (a profile whose ROM is absent stays
   greyed) and relaunches the emulator.
 - **Peripherals:** disks, networking, host serial ports and controller
@@ -405,7 +432,8 @@ large inputs are split at 1,900 MB by default. Run
   accelerated engine, and the engine statistics window.
 - **Windows:** show or hide every secondary window — the **Dashboard**
   (CPU status lines plus the same run controls as buttons), the disk library,
-  the network and controller windows, the engine statistics — and reset the
+  the network and controller windows, the engine statistics, the serial
+  ports, text typing and the **Debugger** — and reset the
   docked layout. The Macintosh screen is centered in its pane; the Disk
   Library gets the space left above a compact Dashboard by default.
 
@@ -481,7 +509,7 @@ gateway and DNS are edited live in **Peripherals → Network: AppleTalk / Ethern
 restarts the service concerned, which drops its current sessions. The same
 values are accepted on the command line as `--atalk-<key>=<value>` (`share`,
 `server`, `volume`, `printer`, `spool`, `queue`, `print-options`, `gateway`,
-`dns`). The printer's destination (`queue`: empty for the CUPS default,
+`dns`, `ethertalk`). The printer's destination (`queue`: empty for the CUPS default,
 `#file` for the spool folder only, or a queue name) and its `lp -o` options
 change live without restarting the printer.
 - **MacIP:** proxies guest TCP/IP through a user-mode NAT. Classic Mac systems
@@ -509,7 +537,7 @@ POM68K_SERIAL_MODEM=terminal ./build/POM68K
 POM68K_APPLETALK=0 POM68K_SERIAL_PRINTER=pty ./build/POM68K
 ```
 
-The **Ports série** window shows each port's endpoint, its connection, the
+The **Serial ports** window shows each port's endpoint, its connection, the
 byte counters and a terminal. On a `pty`/`tcp` port the terminal only
 watches the traffic; on a `terminal` port it is the far end of the line and
 what you type is sent to the guest. A session file carries the choice
@@ -592,7 +620,7 @@ an HLE fallback activates. Save states record that provenance.
 
 `--lle-aarch64-check` performs only the preflight. A missing backend, firmware
 dump, qualified 68040 profile, or a forced HLE fallback exits with status 2
-and a `REFUSÉ` diagnostic. See
+and a `REJECTED` diagnostic. See
 [`docs/LLE_VS_HLE.md`](docs/LLE_VS_HLE.md) for the qualification contract and
 supported platform/firmware combinations.
 

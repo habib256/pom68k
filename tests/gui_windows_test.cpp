@@ -420,22 +420,27 @@ int main() {
                   std::filesystem::exists(histPath),
               "« Export » writes the file on the machine thread");
         std::filesystem::remove(histPath);
+        // The message line the export added moves every section below it:
+        // a frame first, or the clicks aim at last frame's rectangles and
+        // land one header up (on Windows' longer temp path, which wraps,
+        // two — and « Load » ended below the window's edge).
+        ui.frame(draw);
         capture(ui, "debugger-history");
-        check(ui.click("History", draw) && ui.click("Registers", draw) &&
-                  ui.click("Symbols", draw),
+        check(ui.click("History", draw) && ui.click("Symbols", draw),
               "fold the history, open the symbol section");
         std::snprintf(state.symbolPath.data(), state.symbolPath.size(), "%s",
                       "/nonexistent/pom68k.sym");
         ui.frame(draw);
+        dumpLabels("debugger-symbols");
         check(ui.click("Load", draw), "click « Load »");
         session.atBoundary(target);
         check(session.snapshot()->romChecksum == 0x9779D2C4 &&
                   session.snapshot()->symbolCount == 0 &&
                   session.snapshot()->message.find("unreadable") != std::string::npos,
               "« Load » reports an unreadable file and loads nothing");
-        check(ui.click("Exceptions", draw) && ui.click("History", draw) &&
-                  ui.click("Symbols", draw) && ui.click("Components", draw),
-              "fold the open sections, open the component section");
+        ui.frame(draw);
+        check(ui.click("Symbols", draw) && ui.click("Components", draw),
+              "fold the symbol section, open the component section");
         check(ui.click("Sample devices", draw), "tick « Sample devices »");
         session.atBoundary(target);
         ui.frame(draw);

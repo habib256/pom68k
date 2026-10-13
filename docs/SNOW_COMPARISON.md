@@ -26,7 +26,8 @@ Macintosh profiles:
   restore together. `ata_disk_test` covers fresh-device continuation, partial
   multi-sector writes, repeated rewind, IRQ, READ/WRITE BUFFER and rejection of
   truncated payloads. Format v21 deliberately rejects older snapshots.
-- `CdCueSheet` maps file-relative positions to disc LBAs. One-session BINARY
+- `CdCueSheet` (since replaced by `CdImage`, order 5) maps file-relative
+  positions to disc LBAs. One-session BINARY
   CUE discs with AUDIO and one MODE1/2048 or MODE1/2352 data track can use
   multiple files. Stored INDEX 00 gaps are retained; the data extent stops at
   the next track's INDEX 00. READ TOC, READ(10) and audio use that same layout.
@@ -102,8 +103,8 @@ to its source bytes. Native track preservation and MOOF remain separate work.
 The disk base remains the user's working file. Since the media timeline
 increment (below), restoring a SCSI or ATA state rewinds both memory and a
 write-back file to the state's exact content, including in a later process,
-or refuses by name. A full IDE *application* rewind scenario on the Q630
-remains separate work. The first six increments introduced no new CPU, machine
+or refuses by name; the Q630 IDE *application* rewind is the third phase of
+`q630_ide_boot_etalon`. The first six increments introduced no new CPU, machine
 profile or fictional peripheral. Other items are proposals, not adopted features.
 
 
@@ -186,22 +187,22 @@ wider protection coverage still requires more independently identified cases.
 | Firmware controllers | Command/state models for ADB and Portable PMgr | Firmware paths for ADB, Egret/Cuda, IOPs and Duo PMU, with declared fallbacks | Preserve firmware qualification |
 | Interactive debugger | Registers, memory, disassembly, stepping, stops, histories, symbols | Machine-thread service: pause, step, step over/out, PC/access/exception stops, register (incl. MMU/cache) and RAM editing, logical/physical memory and disassembly without device reads, bounded exportable histories, OS and ROM symbols, typed device snapshots on every board | Implemented (order 3 closed 2026-10-09) |
 | Peripheral inspection | Common nested register/state view | Product controls, provenance, network/JIT statistics, specialized diagnostics | Add inspection snapshots, retain existing controls |
-| Floppy preservation | DART, MOOF, A2R, PFI, PRI and optional Fluxfox formats | Raw/DC42 import; flux model behind IWM/SWIM | Confirmed format gap with a medium-model prerequisite |
-| Floppy writeback | MOOF export/writeback; imported flux protected from writes | Raw/DC42 atomic persistence; current-track flux in states | Add native track preservation, retain existing sector exports |
+| Floppy preservation | DART, MOOF, A2R, PFI, PRI and optional Fluxfox formats | Raw, DC42 (with tags), DART and MOOF bit/flux import; flux model behind IWM/SWIM | DART and MOOF implemented; A2R/PFI/PRI only for a selected corpus |
+| Floppy writeback | MOOF export/writeback; imported flux protected from writes | Raw/DC42/DART atomic persistence; `FloppyTrackMedium` retains every native and modified track in states; atomic MOOF export | Implemented |
 | Compact sound | PCM conversion plus high-pass filtering | Line-latched PCM approximation | Snow is not a true PWM reference |
-| CD sources | Per-track/file mapping, binary/WAVE, gaps, physical Windows drive | ISO/raw and single-source CUE/BIN, CD-DA | Extend source mapping, not CD audio from scratch |
+| CD sources | Per-track/file mapping, binary/WAVE, gaps, physical Windows drive | ISO/raw and `CdImage` multi-file CUE: BINARY/MOTOROLA/WAVE, INDEX 00, PREGAP/POSTGAP, FLAGS; CD-DA | Implemented; no physical drive passthrough |
 | SCSI state portability | Embeds eligible disk/CD image payloads, restores temporary files | Content digest plus `.pomundo` reverse journal: exact rewind of memory and write-back file across processes, or a named refusal | Portable bundles remain optional |
 | ATA snapshots | No corresponding ATA platform in inspected tree | PIO buffer restored (v21); same disk timeline as SCSI (v28) | Done |
-| Session files | Workspace paths, machine options, windows, serial links | Typed startup, relaunch state, ImGui layout; no combined workspace file | Add a versioned session file |
+| Session files | Workspace paths, machine options, windows, serial links | Versioned `.pomsession` (`SessionFile`) over the typed startup inputs; window layout stays in `imgui.ini` | Implemented |
 | Ethernet NAT | smoltcp/socket implementation | Existing MacIP gateway reused behind EtherLink | Keep current gateway |
 | MacTCP automatic setup | RARP and ICMP address-mask helper | RFC 950 mask and RFC 903 RARP services implemented, shared address pool | Server address setup, local ICMP and controlled guest DNS/TCP qualified; router configured separately |
 | External Ethernet | Linux TAP; raw bridge marked broken | Internal EtherTalk and LToUDP external path, no direct DaynaPort TAP backend | Optional backend on a concrete topology |
 | Network capture | PCAP capture on Ethernet device | Passive Dayna PCAP in both directions, bounded worker queue, machine-clock metadata and GUI start/stop | Guest-state-independent observation; losses/errors visible |
-| Serial | Terminal and TCP on supported hosts, Unix PTY, GUI control | TCP/PTY on Unix, startup configuration, Windows transport stubs | Terminal plus Windows TCP are distinct tasks |
+| Serial | Terminal and TCP on supported hosts, Unix PTY, GUI control | TCP on every host (Winsock on Windows), PTY on Unix, terminal endpoint/observer, « Serial ports » window | Implemented |
 | Host file transfer | BlueSCSI Toolbox; temporary ISO from host files | AFP, HFS tools, guest disk agent | Already useful; Toolbox is optional interoperability |
 | Printing | SCSI LaserWriter IISC raster output | AppleTalk LaserWriter PostScript/CUPS | Different printer classes, not a missing print function |
-| Clipboard | Host text as keystrokes; guest TEXT scrap extraction | Input delivery and test typing helpers, no equivalent product bridge found | Useful after debugger inspection and input scheduling |
-| Machine coverage | Includes 512Ke, II FDHD and Portable/PB100 paths | Broader desktop/040 catalogue and Duo 230; those profiles absent | Small profiles first, portable family separately |
+| Clipboard | Host text as keystrokes; guest TEXT scrap extraction | Machine-time text typing (`TextTyping.h`) and bounded TEXT scrap reads (`GuestScrap.h`), « Type text » window | Implemented |
+| Machine coverage | Includes 512Ke, II FDHD and Portable/PB100 paths | Broader desktop/040 catalogue and Duo 230; 512Ke and II FDHD added, Portable/PB100 absent | Portable family separately |
 | Host coverage | Includes Windows ARM64 build job | Windows x64, Linux, macOS Universal and WASM path | ARM64 Windows only if a target user needs it |
 | Evidence | CPU tests, device tests, coverage, image/control-frame runner | Asset census, profile gates, pixel pins, guest oracles, JIT locksteps, sanitizers | Use both; a feature count is not a fidelity score |
 
@@ -293,6 +294,11 @@ The secondary-drive topology also deserves a targeted review. Snow's
 an external drive on the SE, whereas POM68K's product storage capabilities
 and GUI expose internal/external rows. Confirm the actual board wiring and
 drive select behavior before generalizing a third drive to every profile.
+
+Since the comparison, the 512Ke and II FDHD are catalogue profiles, and the
+SE/SE FDHD second internal mechanism is wired through VIA1 PA4 behind
+`POM68K_SE_SECOND_FLOPPY` (implementation plan, sixteenth increment); the
+Classic's PA4-high connector stays empty. Portable/PB100 remain absent.
 
 ## Debugger and inspection
 
@@ -386,6 +392,11 @@ be retained. Weak regions and multiple revolutions need explicit semantics
 and a persisted seed; importing a file extension alone proves neither.
 Sources: [Snow IWM][snow-iwm] and [Snow ISM][snow-ism].
 
+Since the comparison, DC42 tags are preserved, DART is imported and written
+back, `FloppyTrackMedium` retains every native and modified track, and
+`MoofImage` imports and atomically exports MOOF (implementation plan,
+second, sixth and eighth increments). A2R/PFI/PRI are not implemented.
+
 ## Video and audio
 
 Snow implements Toby, SE/30 internal video and a [Display Card 8-24
@@ -440,6 +451,10 @@ Extract a `CdImage`/track-source owner before extending the SCSI commands.
 Generate tiny two-file CUE and BINARY/WAVE fixtures; assert absolute LBA,
 TOC, index-zero/gap behavior and actual PCM. Keep CD transport on machine
 time. Existing mono-source discs and the CD game gate must remain unchanged.
+
+Since the comparison, `CdImage` (`src/CdImage.h`) replaces the single-source
+model: multi-file BINARY/MOTOROLA/WAVE sheets, stored and synthesized gaps,
+and FLAGS (`cd_image_test`; implementation plan, order 5).
 
 Snow also has a physical-CD backend on Windows and can generate a temporary
 ISO from host files. Those are convenience options. POM68K already offers
@@ -533,6 +548,11 @@ and endpoint control around the existing transport; port TCP to Winsock as
 a separate platform task. Do not bypass the SCC receive FIFO or let a
 terminal and LocalTalk independently drive printer-port state.
 
+Since the comparison, `SerialHostTransport` has a Winsock TCP backend (PTY
+stays Unix-only), and the « Serial ports » window adds a terminal observer
+and endpoint (`scc_serial_host_test`, `q605_serial_etalon`; implementation
+plan, order 8).
+
 ## Usability and host integration
 
 Snow's [workspace][snow-workspace] stores machine/assets, display settings,
@@ -551,6 +571,10 @@ MacRoman/newline, cancellation and guest-clock pacing rules. Guest-to-host
 copy requires bounded handle/pointer inspection, including MMU translation,
 and should report unsupported/nonresident scrap instead of manipulating
 Mac OS memory silently.
+
+Since the comparison, both exist: versioned `.pomsession` files
+(`src/SessionFile.h`, order 4) and machine-time clipboard typing plus
+bounded TEXT scrap reads (`src/TextTyping.h`, `src/GuestScrap.h`, order 9).
 
 Snow's [BlueSCSI protocol][snow-toolbox] is an interoperability option for
 guest tools; POM68K's AFP is already the normal shared-folder workflow.

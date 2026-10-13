@@ -99,19 +99,19 @@ inline bool verify(const char* label, const std::string& firmwareRoot,
     std::ifstream in(found, std::ios::binary | std::ios::ate);
     const auto n = std::uint64_t(in.tellg());
     if (n != wanted->size) {
-        error = found + ": taille " + std::to_string(n) + ", attendue " +
+        error = found + ": size " + std::to_string(n) + ", expected " +
                 std::to_string(wanted->size);
         return false;
     }
     in.seekg(0);
     std::vector<std::uint8_t> data(static_cast<std::size_t>(n));
     if (!in.read(reinterpret_cast<char*>(data.data()), std::streamsize(data.size()))) {
-        error = found + ": lecture impossible"; return false;
+        error = found + ": unreadable"; return false;
     }
     detail::Sha256 sha; sha.add(data.data(), data.size());
     const std::string got = sha.finish();
     if (got != wanted->sha256) {
-        error = found + ": SHA-256 " + got + ", attendu " + wanted->sha256;
+        error = found + ": SHA-256 " + got + ", expected " + wanted->sha256;
         return false;
     }
     return true;

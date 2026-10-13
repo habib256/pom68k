@@ -89,12 +89,14 @@ knobs were independent, but `POM68K_LTO`'s *default* was still
 `NATIVE=OFF` — still got no LTO unless it named it a second time, and every
 packaging script here carries that second mention for precisely this reason.
 `POM68K_LTO` defaults **ON** now; a build that does not want it says so and
-says why (the CI `linux` job, for link time; both macOS packaging paths,
-because the universal-2 `lipo` path is still unexercised).
+says why (the CI `linux` job and the release workflow's gate trees, for
+link time).
 
-> Not yet applied to the macOS `.dmg` or the Windows `.zip`. The same argument
-> holds for both; the reason to stop at Linux is that neither was exercised
-> here, and MSVC needs `/GL` + `/LTCG`, which the CMake block skips today.
+> The macOS `.dmg` and the Windows `.zip` carry LTO too:
+> `package_macos_release.sh` states `-DPOM68K_LTO=ON` for the universal-2
+> build, and under MSVC `CMakeLists.txt` maps `POM68K_LTO` onto CMake's IPO
+> property (`/GL` + `/LTCG`, probed with `check_ipo_supported`), which the
+> `release.yml` Windows job requests.
 
 ---
 
@@ -266,7 +268,7 @@ Even the broad set below leaves most machine and device translation units
 cold, and GCC optimizes cold functions **for size**. Untrained profiles would
 come out of a PGO build *slower* than out of a plain `-O3` one.
 `-fprofile-partial-training` (GCC ≥ 10, probed —
-`CMakeLists.txt:255-257`) is what stops that, and the training set is
+`CMakeLists.txt:260-262`) is what stops that, and the training set is
 deliberately broad for the same reason — one machine per CPU family, plus the
 floppy path no hard-disk boot ever reaches. The list lives in **one** place,
 `tools/pgo_train_run.sh`'s `kGates`, shared by both recipes:

@@ -15,13 +15,13 @@ bool exportHistory(const std::string& path, const IdentityNotes& identity,
                    const std::string& model, const Target& target,
                    std::string& why) {
     if (path.empty()) {
-        why = "Export : chemin de fichier attendu";
+        why = "Export: file path expected";
         return false;
     }
     std::unique_ptr<std::FILE, int (*)(std::FILE*)> f(
         std::fopen(path.c_str(), "w"), &std::fclose);
     if (!f) {
-        why = "Export impossible : " + path;
+        why = "Export failed: " + path;
         return false;
     }
     std::FILE* out = f.get();

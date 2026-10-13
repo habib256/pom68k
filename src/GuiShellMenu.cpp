@@ -115,8 +115,8 @@ void drawCpuMenu(GuiSessionState& state, double speed, bool engineLocked) {
     ImGui::MenuItem("Engine statistics...", nullptr, &cpu.showJit,
                     hasAcceleratedEngine);
     if (!hasAcceleratedEngine)
-        ImGui::TextDisabled("(engine switch: 68030/68040 machines -\n"
-                            "Mac II / compact Macs: interpreter only)");
+        ImGui::TextDisabled("(no engine switch in this session:\n"
+                            "no machine is bound to the menu)");
     ImGui::EndMenu();
 }
 

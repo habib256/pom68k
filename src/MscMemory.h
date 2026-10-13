@@ -184,7 +184,7 @@ public:
     // Battery persistence. The Duo is the one platform whose PRAM lives in
     // neither a discrete Rtc nor an Egret/Cuda — it is the PG&E's own
     // internal RAM + SRAM, persisted byte for byte in MAME's layout.
-    // Wired by `runDuo` (main.cpp) since the Duo became the 37th profile:
+    // Wired by `runDuoGui` (GuiRunnerDuo.h) since the Duo became the 37th profile:
     // load after the boot image is resolved, save after the machine thread
     // joins. Details, incl. the $91 power-flag scrub, in MscMemory.cpp.
     bool loadPram(const std::string& path);

@@ -42,7 +42,7 @@ void drawEngineWindow(GuiCpuPanelState& state) {
                                       : "Moira interpreter (reference)");
     ImGui::Text("Backend : %s", state.jitBackend ? state.jitBackend : "-");
     if (engine == 1)
-        ImGui::Text("Instructions/s : %.2f M", state.jitRate / 1e6);
+        ImGui::Text("Instructions/s: %.2f M", state.jitRate / 1e6);
     else
         ImGui::TextDisabled(
             "Instructions/s: - (accelerated engine counters, stopped)");

@@ -70,13 +70,13 @@ bool RomSymbols::load(const std::string& path, std::uint32_t romChecksum,
     std::snprintf(sum, sizeof sum, "%08X", romChecksum);
     std::string err;
     if (!magic) err = "Symbols: missing # POM68K ROM symbols v1 header";
-    else if (!haveSum) err = "Symboles : # rom-checksum absent";
+    else if (!haveSum) err = "Symbols: missing # rom-checksum";
     else if (t.checksum_ != romChecksum)
-        err = std::string("Symboles d'une autre ROM (la ROM en cours est ") + sum + ")";
-    else if (t.source_.empty()) err = "Symboles : # source (provenance) absente";
+        err = std::string("Symbols for another ROM (the current ROM is ") + sum + ")";
+    else if (t.source_.empty()) err = "Symbols: missing # source (provenance)";
     else if (!t.romSize_ || t.windows_.empty())
-        err = "Symboles : # size et au moins un # window requis";
-    else if (t.symbols_.empty()) err = "Symboles : aucun symbole";
+        err = "Symbols: # size and at least one # window required";
+    else if (t.symbols_.empty()) err = "Symbols: no symbols";
     if (!err.empty()) {
         why = err;
         return false;

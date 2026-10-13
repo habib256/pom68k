@@ -113,6 +113,9 @@ int main(int argc, char** argv) {
     check(moof::unpack(fixture(true), img) && img.medium.tracks[0].edges ==
           std::vector<int64_t>{0, moof::ticks(16), moof::ticks(48)} &&
           img.medium.tracks[0].revolution == moof::ticks(313), "FLUX overrides TMAP and 255 continues an interval");
+    // The size guard tells GCC 15 at -O3 what the fixture guarantees; without
+    // it -Wstringop-overflow reads the copy below as possibly empty.
+    if (bits.size() < 2048) return 1;
     auto bad = bits; moof::put32(bad, 8, 1);
     check(!moof::unpack(bad, img), "nonzero CRC mismatch refused");
     moof::put32(bad, 8, moof::crc(std::span<const uint8_t>(bad).subspan(12)));

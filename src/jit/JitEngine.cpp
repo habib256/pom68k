@@ -195,11 +195,11 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
     // **68030 joined on 2026-08-18.** BackendCaps keeps correctness scope
     // (`guestFamilies`) separate from automatic speed policy
     // (`autoFamilies`). AArch64 has earned generated 030 code through the
-    // long lockstep, platform gates and fixed-budget measurement; x86-64
-    // still resolves an 030 to `threaded` because its IIsi native gate is
-    // red. This per-(family, backend) admission is the property that stops
-    // unfinished native work reaching a shipping default. On the portable
-    // path, `threaded` changes the FETCH path, where the 68030's time is:
+    // long lockstep, platform gates and fixed-budget measurement; x86-64's
+    // `x64` re-earned it on 2026-09-06 (each backend's caps() declares its
+    // autoFamilies). This per-(family, backend) admission is the property
+    // that stops unfinished native work reaching a shipping default. On the
+    // portable path, `threaded` changes the FETCH path, where the 68030's time is:
     // callgrind on the shipping LC II interpreter puts
     // `mmuFetchWord` + `Cpu030::read16` at 44.4 % of all instructions, and
     // the code window replaces exactly that with a host pointer. Measured

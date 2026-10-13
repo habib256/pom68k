@@ -220,7 +220,7 @@ void drawDaynaPortSelector(GuiNetworkState& state) {
 void drawEthernetSection(GuiNetworkState& state,
                          const AtalkHub::Snapshot& snapshot) {
     const AtalkHub::DaynaMeter& card = snapshot.ether;
-    ImGui::SeparatorText("Ethernet (carte DaynaPort SCSI/Link)");
+    ImGui::SeparatorText("Ethernet (DaynaPort SCSI/Link card)");
     if (!card.present) {
         ImGui::TextDisabled("No card on the SCSI bus.");
         drawDaynaPortSelector(state);

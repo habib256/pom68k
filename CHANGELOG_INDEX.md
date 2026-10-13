@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 659 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 663 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 17 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 140 |
+| [Cross-cutting](#cross-cutting) | 144 |
 
 ---
 
@@ -721,4 +721,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-12 (seventh)** — [The setup guide can search the Macintosh catalogue](CHANGELOG.md#2026-10-12-searchable-models)
 - **2026-10-12 (sixth)** — [Disk images can be added from a visible file browser](CHANGELOG.md#2026-10-12-disk-image-browser)
 - **2026-10-12 (third)** — [A missing ROM opens a guide that prepares a Macintosh before relaunch](CHANGELOG.md#2026-10-12-startup-guide)
+- **2026-10-13 (fourth)** — [The debugger, clipboard and firmware messages were still French](CHANGELOG.md#2026-10-13-english-messages)
+- **2026-10-13 (release)** — [0.3.5](CHANGELOG.md#2026-10-13-release-035)
+- **2026-10-13 (second)** — [The -Werror tree is green again under GCC 15 at -O3](CHANGELOG.md#2026-10-13-gcc15-werror)
+- **2026-10-13 (third)** — [Two of the three MSVC asset-free reds, read on Linux](CHANGELOG.md#2026-10-13-msvc-gui-reds)
 

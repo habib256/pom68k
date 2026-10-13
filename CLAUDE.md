@@ -5,12 +5,11 @@ belongs, which invariants must survive a change, and how to verify the result.
 It deliberately does not carry dated investigations, generated counts or
 subsystem tutorials.
 
-POM68K aims to support every 68k Macintosh. Current coverage is **41 machine profiles**
-across 12 board implementations, from the Macintosh 128K to the
-Quadra 950, with every catalogue entry booting to the Finder when its
-user-provided ROM and system media are available. The compiled catalogue is
-`kMachineProfiles` in `src/MachineCatalog.h`; it is the authority, not this
-summary.
+POM68K aims to support every 68k Macintosh. Current coverage is
+**41 machine profiles** across 12 board implementations, from the 128K to the
+Quadra 950, each booting to the Finder given its user-provided ROM and system
+media. The compiled catalogue, `kMachineProfiles` in `src/MachineCatalog.h`,
+is the authority, not this summary.
 
 ## Read first
 
@@ -98,6 +97,7 @@ must not grow a second ROM/profile registry.
 | SCC, LocalTalk and AppleTalk | `DEV.md` §3.8, `docs/APPLETALK.md` |
 | Video beam and DAFB | `DEV.md` §3.8bis–3.9 |
 | GUI/thread ownership and relaunch | `DEV.md` §6, `MachineHost.h`, `GuiShell*` |
+| Debugger; session files | `DEV.md` §5–6, `DebugSession.*`, `GuiDebuggerWindow.*`, `SessionFile.h` |
 | Startup and diagnostic knobs | `DEV.md` §5, `config_knobs.tsv` |
 | JIT | `src/jit/POM68K_JIT.md` |
 
@@ -121,6 +121,8 @@ Focused research notes under `docs/`:
 | `RASPBERRY_PI.md` | Pi tuning, packaging and PGO |
 | `SCSI_HOTPLUG.md` | live SCSI attach, guest-side mount/unmount and the bus view the GUI needs |
 | `SIMPLIFICATIONS_REVIEW.md` | reviewed implementation simplifications |
+| `SNOW_COMPARISON.md` | feature comparison with the Snow emulator, pinned to both revisions |
+| `SNOW_IMPLEMENTATION_PLAN.md` | the work selected from that comparison and its admission rules |
 
 ## Product and architecture invariants
 
@@ -149,9 +151,7 @@ The engine and backend are separate decisions:
 - 68030 and 68040 guests default to the accelerated engine.
 - `threaded` is always compiled and is valid for every guest family.
 - AArch64 `auto` selects native `a64` for 68030 and 68040.
-- Non-Windows x86-64 `auto` selects native `x64` for 68040 and, since
-  2026-09-06, for 68030 again — the promotion withdrawn on 2026-08-29 was
-  re-earned on the terms that entry set.
+- Non-Windows x86-64 `auto` selects native `x64` for 68030 and 68040.
 - Windows x64 automatic builds omit the System V emitter and use `threaded`.
 - Explicit `POM68K_CPU_ENGINE=interp|jit` and
   `POM68K_JIT_BACKEND=auto|threaded|x64|a64` remain diagnostic/user overrides.

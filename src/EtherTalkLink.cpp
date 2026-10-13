@@ -248,17 +248,21 @@ void EtherTalkLink::onStackFrame(const std::uint8_t* d, std::size_t n) {
         // No short header exists on EtherTalk: widen it, filling in the
         // net numbers the LLAP form left implicit.
         if (ddpLen < kShortDdpHdr) return;
-        const std::size_t dataLen = ddpLen - kShortDdpHdr;
-        out.reserve(kLongDdpHdr + dataLen);
-        out.push_back(0); out.push_back(0);
-        wr16(out, 0);                              // no DDP checksum
-        wr16(out, stack_.net());                   // dest net
-        wr16(out, stack_.net());                   // source net
-        out.push_back(dstNode);
-        out.push_back(d[1]);
-        out.push_back(ddp[2]);                     // dest socket
-        out.push_back(ddp[3]);                     // source socket
-        out.push_back(ddp[4]);                     // DDP type
+        // The header is built in an array and appended as a range: pushing
+        // it byte by byte into the reserved vector made GCC 15 at -O3 report
+        // -Wfree-nonheap-object on the growth path (CHANGELOG 2026-10-13).
+        const std::uint16_t net = stack_.net();
+        const std::uint8_t hdr[kLongDdpHdr] = {
+            0, 0,                                  // length, patched below
+            0, 0,                                  // no DDP checksum
+            std::uint8_t(net >> 8), std::uint8_t(net),   // dest net
+            std::uint8_t(net >> 8), std::uint8_t(net),   // source net
+            dstNode, d[1],
+            ddp[2],                                // dest socket
+            ddp[3],                                // source socket
+            ddp[4]};                               // DDP type
+        out.reserve(ddpLen - kShortDdpHdr + kLongDdpHdr);
+        out.insert(out.end(), hdr, hdr + kLongDdpHdr);
         out.insert(out.end(), ddp + kShortDdpHdr, ddp + ddpLen);
         if (out[12] == kDdpRtmpData) return;
     } else {

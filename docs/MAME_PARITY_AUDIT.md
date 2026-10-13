@@ -237,6 +237,8 @@ laquelle les gates ne les voient pas.
 
 **Cosmétique** : quel octet survit à l'overrun Rx ; reset matériel WR9 `$C0` applique les valeurs channel-reset (WR11/WR14, rr1Rd résiduel).
 
+**Aligné le 2026-09-27** (observable invité) : sur le Quadra 605 et le Quadra 630, un accès SCC est synchronisé sur l'horloge VIA comme chez MAME (`via_sync`, `macquadra605.cpp:90-97`, `f108.cpp:196-207`) — TimeSCCDB `$030F` contre `$030E` chez MAME, gate `calibration_040_etalon`. Retenu sur Centris et Quadra 700 (souris ADB perdue avec la synchro, `TODO.md`).
+
 **POM68K plus riche** : moteur SDLC complet (Send Abort, underrun/EOM, FCS gen/verif, hunt, résidus, ligne), MIE en gate de niveau (plus proche du silicium que le drop MAME) — inventorié § 1.4.
 
 ### 2.6 NCR 5380 + ScsiDisk
@@ -274,7 +276,7 @@ inventoriées. Les gaps réels sont tous dans des chemins froid/erreur jamais ex
 `!(HALF_B)` de MAME) est délibérée, justifiée par les dumps ASCTester que MAME embarque lui-même, et inventoriée.
 Sur plusieurs points POM68K colle mieux au vrai matériel que le câblage MAME. Manques réels au moment de
 l'audit : **pas de modèle EASC du tout** (Quadra 700/900/950 servis par le Sonora `$BC`) — **corrigé depuis**
-(action 8 du § 3 : classe `AscEasc`, version `$B0`, câblée dans `Q700Memory.h:390` (accesseur `:158`), gate `asc_easc_test`) ;
+(action 8 du § 3 : classe `AscEasc`, version `$B0`, câblée dans `Q700Memory.h:441` (accesseur `:160`), gate `asc_easc_test`) ;
 stub wavetable ; et quelques bords classiques.
 Le master fetché diffère du master 2026-07-15 cité dans les commentaires (F09/F29 lit désormais 0 ; l'EASC
 complet a atterri) — reflété dans les findings.
@@ -386,26 +388,26 @@ partagé avec l'agent VIA) et le `ram_size` Tinker Bell (table #2).
 
 ---
 
-## 3. Actions recommandées — **12,5 / 13 FAITES** (état 2026-08-12)
+## 3. Actions recommandées — **13 / 13 FAITES** (la dernière le 2026-08-13)
 
 Classées à l'origine par rapport risque/effort. Rappel maison : jamais de ctest complet en itération — viser
 la gate la plus étroite. Le statut vérifié de chaque action est en tête de ligne ; la preuve est le code cité.
 
 | # | État | Preuve dans le code |
 |---|---|---|
-| 1 | ✅ | `MscMemory.cpp:61-67,391-392` — `SOUND_BUSY` est bien le bit `0x40` |
+| 1 | ✅ | `MscMemory.cpp:66-72,400` — `SOUND_BUSY` est bien le bit `0x40` |
 | 2 | ✅ | `PseudoVia.cpp:100-108` — cas `v == 0xFF && Flavour::Base` ⇒ `$1F`, commentaire refait |
 | 3 | ✅ | `SonyDrive.cpp:1036-1052` — cas `0b011` ajouté, MFM-on découplé de DskchgClear ; sense `f..c` à `:907-913` |
 | 4 | ✅ | `Scc8530.cpp:515` (TxIP sur écriture data), `:615-623` (re-présentation Ext/Status), `:635-652` (IUS : plus aucun IP jeté) ; **plus** #33 à `:658-661` |
-| 5 | ✅ | `V8Memory.cpp:332-349` — override Tinker Bell dans `applyRamConfig`, pas d'alias `$800000` |
+| 5 | ✅ | `V8Memory.cpp:330-349` — override Tinker Bell dans `applyRamConfig`, pas d'alias `$800000` |
 | 6 | ✅ | `Ncr5380.cpp:355-364,391-395` — `drqActive()` directionnel, l'octet de statut n'est plus consommé |
 | 7 | ✅ | `Q700Memory.cpp:553-586` — hold-off /DTACK gaté sur `scsiCtrl` bits 7/8, cap ~20 ms puis /BERR ; `$28` bus 2 à `:432-435` |
-| 8 | ✅ | `Asc.h:243` — flavour `AscEasc`, gate `asc_easc_test` |
-| 9 | ⚠️ **moitié** | Duo fait (`PgePmu.h:71`, `PgePmu.cpp:338`, `MscMemory.cpp:88`) ; **Egret/Cuda PC3 toujours ouvert** (`CudaLle.cpp:273-297`) — seul reliquat de tout l'audit |
-| 10 | ✅ | `Ncr53c96.cpp:377-400` — file 2 niveaux, `S_GROSS_ERROR`, pop-and-chain ; gate `ncr53c96_queue_test` |
+| 8 | ✅ | `Asc.h:285` — flavour `AscEasc`, gate `asc_easc_test` |
+| 9 | ✅ | Duo (`PgePmu.h:71`, `PgePmu.cpp:338`, `MscMemory.cpp:88`) ; Egret/Cuda PC3 fermé le 2026-08-13 (`CudaLle::hostReset`, `CudaLle.cpp:225-303`), gate `cuda_restart_test` — voir § 0 |
+| 10 | ✅ | `Ncr53c96.cpp:398-405` — file 2 niveaux, `S_GROSS_ERROR`, pop-and-chain ; gate `ncr53c96_queue_test` |
 | 11 | ✅ | `Valkyrie.cpp:124-132` — `vblArmed_ = true` sur l'écriture `$10` ; `$14` lit la ligne vivante (`:85-92`) |
 | 12 | ✅ | `ApplePic.cpp:205-211`, `SonoraMemory.cpp:365-372`, `VaspMemory.cpp:219-222` — tous à 0, règle maison unmapped=0 |
-| 13 | ✅ | `Asc.cpp:71-80` (« Do not "fix" toward MAME »), `ApplePic.cpp:115-125` (DMA DENxONx), `Ariel.h:15-21` (key-color) |
+| 13 | ✅ | `Asc.cpp:98-104` (« Do not "fix" toward MAME »), `ApplePic.cpp:115-125` (DMA DENxONx), `Ariel.h:15-21` (key-color) |
 
 Le texte d'origine de chaque action, avec son raisonnement :
 

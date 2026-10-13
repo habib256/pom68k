@@ -743,7 +743,7 @@ Outcome installStartupItem(BlockIo& io, const MacBinary& app, uint32_t macNow) {
     uint32_t start, length;
     if (!findHfsVolume(io, start, length, err)) {
         o.kind = Outcome::NoVolume;
-        o.message = "pas de volume HFS : " + err;
+        o.message = "no HFS volume: " + err;
         return o;
     }
     Volume v(io, start, length);

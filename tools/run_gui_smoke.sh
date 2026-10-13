@@ -87,7 +87,10 @@ fi
 
 if ! grep -qx 'result=PASS' "$report"; then
     echo "FAIL: GUI smoke report does not attest the complete lifecycle" >&2
-    if [ "$mode" = session ]; then
+    sed -n '1,40p' "$report" >&2
+    exit 1
+fi
+if [ "$mode" = session ]; then
     # Generation 2's report, generation 1 in the log: each came up with its
     # own session's medium, resolved against the session's directory.
     dir=$(cd "$sessions" && pwd)
@@ -100,10 +103,6 @@ if ! grep -qx 'result=PASS' "$report"; then
         sed -n '1,40p' "$report" >&2
         exit 1
     fi
-fi
-
-sed -n '1,40p' "$report" >&2
-    exit 1
 fi
 if [ "$mode" = relaunch ]; then
     # The report is the second generation's; the first is in the log. A

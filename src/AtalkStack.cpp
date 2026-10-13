@@ -589,7 +589,13 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
 void AtalkStack::atpRequest(const Addr& dst, uint8_t srcSock,
                             std::vector<uint8_t> req, int maxResp, bool xo,
                             std::function<void(bool, std::vector<std::vector<uint8_t>>&)> done) {
-    if (req.size() < 4) req.resize(4, 0);
+    if (req.size() < 4) {
+        // Padded by copy, not resize: GCC 15 at -O3 misreads the growth
+        // path as -Wstringop-overflow (CHANGELOG 2026-10-13).
+        std::vector<uint8_t> padded(4, 0);
+        std::copy(req.begin(), req.end(), padded.begin());
+        req = std::move(padded);
+    }
     uint16_t tid = nextTid_++;
     if (!nextTid_) nextTid_ = 1;
     uint8_t bitmap = maxResp > 0 ? uint8_t((1u << std::min(maxResp, 8)) - 1) : 0;

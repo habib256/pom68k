@@ -43,7 +43,7 @@ design below survives; its motivating arithmetic does not. What changed:
 Two secondary premises also moved, in the overlay's favour:
 
 - **Save states shipped** 2026-07-30 (`src/SaveState.h/.cpp`,
-  `SaveStateMachines.h/.cpp`, **12** machine families / **37** profiles).
+  `SaveStateMachines.h/.cpp`, **12** machine families / **41** profiles).
   § 3's "stamp the active module set" guardrail is no longer hypothetical —
   and since 2026-08-12 it is no longer even a design: `SaveStateMachines.cpp:165`
   writes `lle::snapshotFlags()` into the header and `:209-213` refuses an
@@ -51,8 +51,8 @@ Two secondary premises also moved, in the overlay's favour:
 - **The "loud non-conformant mode" precedent exists.** Every HLE ADB *fallback*
   prints a `NON-CONFORMANT` notice to stderr on entry **and** registers the
   module in `pom68k::lle` — eight sites, all through the one shared
-  `pom68k::fw::select` that prints it (`FirmwareChoice.h:106-110`):
-  `AdbVia.cpp:51-61`, `V8Memory.cpp:201`, `SonoraMemory.cpp:84`,
+  `pom68k::fw::select` that prints it (`FirmwareChoice.h:108-115`):
+  `AdbVia.cpp:54`, `V8Memory.cpp:201`, `SonoraMemory.cpp:84`,
   `VaspMemory.cpp:48`, `RbvMemory.cpp:61`, `Q605Memory.cpp:88`,
   `Q630Memory.cpp:96`, `Q700Memory.cpp:78` — per `LLE_VS_HLE.md` § 2's
   policy settled 2026-07-29. The last of those was the last exception: until
@@ -86,7 +86,7 @@ The JIT was built under the same rule and is the working proof it holds: the
 proved conformant engine is now the 68040 default, while the interpreter stays
 the declared and explicitly tested reference (`POM68K_JIT.md` § 2,
 invariants 1 and 3). The 68030 families joined that default on 2026-08-18
-(`JitEngine.cpp:212-213`); the 68000 and 68020 families remain on the
+(`JitEngine.cpp:214-215`); the 68000 and 68020 families remain on the
 interpreter.
 
 ---
@@ -118,7 +118,7 @@ Three observations that must steer prioritisation:
    floor at the idle Finder is derived-state churn forced by ATC exactness
    (§ 0), and it refuses by charter the five relaxations a classic 68k JIT
    makes: coarse time, coarse interrupts, a soft TLB instead of exact ATC
-   semantics, lazy flags, long traces (`POM68K_JIT.md:22-25`). A
+   semantics, lazy flags, long traces (`POM68K_JIT.md`, opening section). A
    **non-conformant mode is where those relaxations are legal.** Whether that
    belongs in *this* overlay (guest-level, patch a Toolbox routine) or as a
    relaxed JIT profile (host-level, keep the ATC-derived state across evictions)
@@ -190,13 +190,13 @@ Checked against the vendored core on 2026-07-31. The study's original claim
 
 | Hook | Where | Reality |
 |---|---|---|
-| `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:1143` (virtual) / `:1332`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == Instr::STOP \|\| I == Instr::TAS \|\| I == Instr::BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
-| `didReachSoftwareTrap(addr)` | `Moira.h:1291` (virtual) / `:1383`, fired from `execLineA` (`MoiraExec_cpp.h:32`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
+| `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:1143` (virtual) / `:1342`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == Instr::STOP \|\| I == Instr::TAS \|\| I == Instr::BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
+| `didReachSoftwareTrap(addr)` | `Moira.h:1301` (virtual) / `:1394`, fired from `execLineA` (`MoiraExec_cpp.h:32-47`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
 | `MoiraDebugger` breakpoints / softstops | `MoiraDebugger.*`, checked at `Moira.cpp:667` | **The zero-cost-when-unused route**: `State::CHECK_BP` is set only while a breakpoint exists (`MoiraDebugger.cpp:190-192`), so an unarmed build pays one already-hot flag test. **Caveat:** the check sits at the `done:` label — *after* the instruction retires, reporting `reg.pc0`. An entry-address hook therefore fires with the routine's first instruction **already executed**; the handler must either account for that or hook the instruction before the entry |
 
-Also corrected: `Cpu68k` derives from `MoiraSnapshot` (`src/MoiraSnapshot.h:32`),
+Also corrected: `Cpu68k` derives from `MoiraSnapshot` (`src/MoiraSnapshot.h:33`),
 not from `moira::Moira` directly; `MacMemory::loadRom` is at
-`src/MacMemory.cpp:65`.
+`src/MacMemory.cpp:68`.
 
 ### 5.2 Two attach strategies — support both
 
@@ -209,7 +209,7 @@ Recommendation: **address hook for v1** (no checksum handling, instant toggle).
 Move a module to byte-patch only with *patch-before-compile* + *region
 invalidation* guaranteed.
 
-A byte-patch pass would run inside `MacMemory::loadRom` (`src/MacMemory.cpp:65`)
+A byte-patch pass would run inside `MacMemory::loadRom` (`src/MacMemory.cpp:68`)
 and its per-machine equivalents, **after** the signature scan and **before** the
 first fetch or JIT compile sees the page.
 
@@ -240,13 +240,13 @@ never a hardcoded address** (the Basilisk lesson that survives ROM revisions,
 
 ### 5.4 Per-machine applicability
 
-The 37 shipping profiles span 12 platform implementations with different ROMs
+The 41 shipping profiles span 12 platform implementations with different ROMs
 and different drivers (IWM vs SWIM1 vs SWIM2, NCR 5380 vs 53C96, M0110 vs
 PIC1654S vs Egret vs Cuda vs PG&E — roster in `CLAUDE.md`, reachability in
 `docs/68K_FAMILY_SCOPE.md`). `machines` gates a module to the families it
 understands; `RomMatch` further gates it to the specific ROM the scan
-recognises. `SnapMachine` (`src/MachineCatalog.h:50-64`) already enumerates
-the 37 profiles and is the natural basis for `MachineMask`.
+recognises. `SnapMachine` (`src/MachineCatalog.h:56-73`) already enumerates
+the 41 profiles and is the natural basis for `MachineMask`.
 A module with no signature hit on the loaded ROM is inert and greyed, not a
 hazard.
 
@@ -357,7 +357,8 @@ clears everything — and is the **first-launch default**. The status indicator 
 § 7 mirrors the active state at all times.
 
 Precedent to follow, not re-invent: the **CPU** menu already switches execution
-engines live and names the active backend in the GUI (`main.cpp`, per
+engines live and names the active backend in the GUI (`drawCpuMenu()` in
+`GuiShellMenu.cpp`, per
 `POM68K_JIT.md`). The difference is that switching engines is conformance-neutral
 and switching on an HLE module is not — which is exactly what the extra banner,
 the greying and the permanent indicator are for.

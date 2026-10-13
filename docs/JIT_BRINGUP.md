@@ -27,14 +27,14 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask, and the two **agree again since 2026-09-06**: a64 carries 68040+68030 since its independent 2026-08-20 promotion, and x64 carries both again — its 030 promotion was **withdrawn on 2026-08-29** and **restored on 2026-09-06** on the tier evidence that entry demanded (§ C.5 box); `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
 | `threaded` declares `kGuestAny`; `auto` uses it for 000/020, while an 030 reaches the native generator on both ISAs | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
-| `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:2074-2113` |
-| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2224-2274` |
-| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2444` and `:2469` |
+| `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:2079-2165` |
+| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2229-2279` |
+| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2449` and `:2474` |
 | The 030 i-cache overlay is charged **inside `mmuFetchWord`, before the JIT window hook** — so the fetch window and the `threaded` backend are conformant on it by construction | `MoiraExecMMU_cpp.h:408-461` |
 | `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1196-1211`, rationale in `Cpu030.h:164-189` |
 | The cold fallback stub re-enters Moira through `pomJitExecOne()`, whose **030 branch runs `mmuExecuteStart<C68020>()`** — i.e. it fetches through `mmuFetchWord` and charges the i-cache itself | `Moira.cpp:318-348` |
 | Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitCost.h:88-139`, `Cpu030.h:164-189` |
-| `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` asserted before the split is exposed | `JitIr.h:1290-1298`, `JitEngine.cpp:206-210` |
+| `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` checked (`timingExact`) before the split is exposed | `JitIr.h:1290-1298`, `JitEngine.cpp:933-937` |
 | `jit_lockstep_030_test` exists: two LC IIs, register + clock + low-RAM + **three i-cache counters** per checkpoint | `tests/jit_lockstep_030_test.cpp` |
 | The 030 emitters are reachable by explicit `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override). `auto` reaches a64 on an AArch64 030 since 2026-08-20; it reached x64 on an x86-64 one from 2026-08-21 until the withdrawal of 2026-08-29, and reaches it again since the 2026-09-06 restoration (§ C.5 box). A shipping default reaches only a generator that earned the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
 
@@ -247,8 +247,8 @@ declaration. This is not scaffolding for the rest of the phase — it *is*
 the phase's value. An 030 code generator without differential coverage is
 exactly the 2026-07-30 one-hour timeout again.
 
-**C.2 / C.3 — the 030 probe and thunks — DONE**, `MoiraExecMMU_cpp.h:2088`
-and `:2287`. Three things about them that cost a round to learn:
+**C.2 / C.3 — the 030 probe and thunks — DONE**, `MoiraExecMMU_cpp.h:2126`
+and `:2449`. Three things about them that cost a round to learn:
 
 * The probe uses **data** space (`fc = super ? 5 : 1`), not the program
   space the code probe uses. The 68030 ATC tags every entry with its `fc`
@@ -359,7 +359,7 @@ reset block.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at
-   `JitBackendA64.cpp:2180`; x64 member `JitBackendX64.cpp:320`):
+   `JitBackendA64.cpp:2180`; x64 member `JitBackendX64.cpp:347`):
    register/immediate-source
    `MOVE` to `(An)`, `(An)+`, `-(An)`, `d16(An)`, brief-indexed or absolute.
    Predecrement is performed before the access and reversed before replay;
@@ -393,7 +393,7 @@ reset block.
    x64. The long x64 LC II tier remains a true-x86-64 release-host gate.
 5. **`mmuExecuteStart` resets a block of MMU bookkeeping on EVERY 68030
    instruction** that has no 68040 counterpart in that form
-   (`MoiraExecMMU_cpp.h:499-506`):
+   (`MoiraExecMMU_cpp.h:502-518`):
 
    ```
    mmuState[0..2] = 0;   mmuIdx = mmuIdxDone = 0;   mmuAd[] = 0;
@@ -1160,9 +1160,9 @@ the class closed.
 > default. If the JIT wins on a family and is proved bit-identical on that
 > family, the JIT is what a user gets without setting anything.
 
-`defaultEngine(bool jitByDefault)` (`JitConfig.h:309`) is no longer a
+`defaultEngine(bool jitByDefault)` (`JitConfig.h:312`) is no longer a
 constant; `Engine::Engine` passes
-`(guestFamily & (kGuest68040 | kGuest68030)) != 0` (`JitEngine.cpp:212-214`).
+`(guestFamily & (kGuest68040 | kGuest68030)) != 0` (`JitEngine.cpp:214-216`).
 So `jit/auto` is the shipped default on the 68040 machines **and the
 68030 ones** — where `auto` reaches the native generator on both native
 ISAs (a64 since 2026-08-20, x64 since 2026-08-21, restored 2026-09-06) —
@@ -1213,8 +1213,8 @@ folded into an emitter change.
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
 | C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, charge-on-success and native MOVEM on both backends are done; the peripheral-phase class that parked the restartable-write base admission and BSR.W is **closed on both native backends** (§ C.4nonies, `jit_lockstep_030_x64_alignment_test` + `jit_lockstep_030_a64_alignment_test`), the admissions ON by default per-backend since 2026-08-22 on measured x64 evidence, and consulted by both emitters since the a64 wiring of the same evening (CHANGELOG (sixth)); native 030 JSR reads its target's first word at run time on a64 since 2026-08-23 and x64 since 2026-08-25, with an auto-modifying asset-free oracle on both |
-| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; AArch64 default landed 2026-08-20; x64 default landed 2026-08-21** — the IIsi segfault did not survive the hardening window (§ C.4septies CLOSED), and the original Linux-native host now passes the hardened native gates. Native builds pin both the ENGINE and compiled backend in the 030 boot gates |
-| D — default engine | **68040 landed; 68030 landed on BOTH native ISAs** (a64 2026-08-20, x64 2026-08-21), with explicit interpreter oracles per platform |
+| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; AArch64 default landed 2026-08-20; x64 default landed 2026-08-21, withdrawn 2026-08-29, restored 2026-09-06** — the IIsi segfault did not survive the hardening window (§ C.4septies CLOSED), and the original Linux-native host now passes the hardened native gates. Native builds pin both the ENGINE and compiled backend in the 030 boot gates |
+| D — default engine | **68040 landed; 68030 landed on BOTH native ISAs** (a64 2026-08-20, x64 2026-08-21, withdrawn 2026-08-29 and restored 2026-09-06), with explicit interpreter oracles per platform |
 
 ## Gates this plan still adds
 

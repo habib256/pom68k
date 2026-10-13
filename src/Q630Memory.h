@@ -24,7 +24,7 @@
 //               +$10100 TurboSCSI DMA port — Q6
 //               +$14000 ASC (EASC-like)
 //               +$18000 IOSB regs (u16 every $100)
-//               +$1A000 F108 ATA/IDE port (cs0/cs1; no drive modelled)
+//               +$1A000 F108 ATA/IDE port (cs0/cs1; AtaDisk, q630_ide_boot_etalon)
 //               +$1A100 PrimeTime II special int status (VBL/ATA)
 //               +$1E000 SWIM2 (register/FIFO + SuperDrive media)
 //               +$24000 Valkyrie RAMDAC   +$2A000 Valkyrie registers

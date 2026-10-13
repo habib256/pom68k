@@ -264,8 +264,7 @@ AfpServer::Status AfpServer::status() const {
 
 void AfpServer::buildStatusBlock() {
     std::vector<uint8_t>& b = statusBlock_;
-    b.clear();
-    b.resize(10, 0);                       // 4 offsets + flags, patched below
+    b.assign(10, 0);                       // 4 offsets + flags, patched below
     pstr(b, serverName_);
     if (b.size() & 1) b.push_back(0);
     uint16_t machOff = uint16_t(b.size());

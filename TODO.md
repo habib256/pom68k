@@ -52,12 +52,13 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   de `release.yml` du 2026-10-10 (run 38073115337) l'a exécuté sur
   `windows-latest` : 114/119, `scc_serial_host_test` vert (Winsock, MSVC).
   Corrigés depuis, non revérifiés sous Windows : `session_config_test`
-  (chemin normalisé) et `ethernet_capture_test` (métadonnée en mode
-  texte). Restent `debug_session_test` (`0xC0000409` après « a history
-  records », probablement un accès hors bornes que le STL durci de MSVC
-  arrête), `gui_windows_test` (bouton « Charger » des symboles introuvable)
-  et `gui_session_smoke_test` (sortie 127 avant toute ligne). Relancer le
-  workflow après chaque correctif (`CHANGELOG` 2026-10-10 (thirteenth)).
+  (chemin normalisé), `ethernet_capture_test` (métadonnée en mode texte),
+  `gui_windows_test` (clics sur une mise en page périmée, « Load » rogné)
+  et `debug_session_test` (fichier exporté supprimé encore ouvert : sans
+  défaut sous `_GLIBCXX_ASSERTIONS` + ASan sur Linux). Reste
+  `gui_session_smoke_test` (sortie 127 avant toute ligne, non expliquée).
+  Relancer le workflow (`CHANGELOG` 2026-10-10 (thirteenth), 2026-10-13
+  (third)).
 - [ ] **Dater une passe manuelle de « Révéler » (fenêtre DaynaPort).** Seul
   reste de la dette de preuve du contrôle DaynaPort au GUI : le bouton
   lance `open` / `xdg-open` / `explorer`, qu'aucun gate ne peut observer.

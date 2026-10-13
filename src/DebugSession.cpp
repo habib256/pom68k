@@ -178,7 +178,7 @@ Session::Applied Session::apply(Target& target, std::deque<Command>& batch,
             break;
         case Command::Kind::SetHistory:
             if (!blockingAvailable_ && c.value)
-                message_ = "Historique indisponible dans cette version";
+                message_ = "History is unavailable in this build";
             else
                 target.setHistory(c.value != 0);
             break;

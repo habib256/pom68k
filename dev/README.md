@@ -10,7 +10,7 @@ the inside.
 |---|---|
 | `netprobe/` | **NetProbe** — a real MacTCP UDP A-record DNS client followed by a TCP exchange. Ordinary Device Manager calls and a local HFS report qualify the Dayna/RARP path against controlled host services; see `netprobe/README.md` for the build and exact scope. |
 | `prober/` | **POM68K Prober** — tests POM68K *from the inside*: machine/ROM/chip identity (Gestalt + low-mem + a bus-error topology sweep), AppleTalk state (NBP), CPU/FPU/QuickDraw benchmarks, video inventory, Power Manager, ADB/drives/volumes/slots/sound. Writes its raw findings as a TSV file **next to the application** (primary output, needs no network) and as JSON Lines on the mounted AFP volume (secondary, for the host-side loop). Spec: `prober/SPEC.md`. `compat/` carries the `Lists.h`/AppleTalk/Power-Manager glue absent from Retro68's multiversal interfaces. |
-| `scsiagent/` | **POM68K Disques** — the guest half of `docs/SCSI_HOTPLUG.md` § 3: polls the emulator through two vendor SCSI commands ($C0 / $C1, `src/ScsiAgentMailbox.h`) and mounts or unmounts a bay's volume on request. A disk the ROM never saw gets a drive-queue entry served by the agent's own in-memory driver, installed at the target's SCSI unit (`drv.c`, SCSI Manager reads/writes); a known drive is simply `PBMountVol`'d; unmount closes the desktop database first (`PBDTCloseDown`, Drive Setup's sequence). The emulator's Disques window shows « Monter / Démonter » while the agent polls, and installs the `.bin` into the boot volume's Startup Items at launch (`src/GuiAgentAutostart.h`) so the Finder starts it without a gesture. Gates: `scsi_agent_etalon`, `scsi_agent_autostart_etalon`. `scsiagent/README.md` has the build and the lessons. |
+| `scsiagent/` | **POM68K Disques** — the guest half of `docs/SCSI_HOTPLUG.md` § 3: polls the emulator through two vendor SCSI commands ($C0 / $C1, `src/ScsiAgentMailbox.h`) and mounts or unmounts a bay's volume on request. A disk the ROM never saw gets a drive-queue entry served by the agent's own in-memory driver, installed at the target's SCSI unit (`drv.c`, SCSI Manager reads/writes); a known drive is simply `PBMountVol`'d; unmount closes the desktop database first (`PBDTCloseDown`, Drive Setup's sequence). The emulator's Disk Library window shows « Mount / Unmount » while the agent polls, and installs the `.bin` into the boot volume's Startup Items at launch (`src/GuiAgentAutostart.h`) so the Finder starts it without a gesture. Gates: `scsi_agent_etalon`, `scsi_agent_autostart_etalon`. `scsiagent/README.md` has the build and the lessons. |
 | `serprobe/` | **POM68K Série** — the guest half of `q605_serial_etalon`: a Serial Driver client on the modem port (`.AIn`/`.AOut`) started from Startup Items. It announces itself, receives a 6000-byte burst into an 8 KB driver buffer, and answers with an order-sensitive receipt. Build like the others; the gate reads `serprobe/build/POM68KSerie.bin` and skips without it. |
 | `mac-rogue/` | **TMS_Rogue port** — the Berlin-Interpretation roguelike from POM1's Apple-1 + TMS9918 build (`POM1 sketchs/tms9918/game_rogue`), as a real Mac app: 256×192 TMS frame in a window, colour where colour exists, B&W where it does not — one binary from the Mac Plus to the Quadra 950. `mac-rogue/README.md` has the status and asset pipeline (`dev/mac-rogue/tools/extract_rogue_assets.py`). |
 | `Retro68/`, `Retro68-build/` | The toolchain — **not committed** (user-built, ~11 GB, gitignored). Bootstrap below. |
@@ -44,7 +44,7 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
 
 ## Getting the app into POM68K
 
-- **Floppy**: the `.dsk` mounts directly — GUI *Disques* menu, CLI
+- **Floppy**: the `.dsk` mounts directly — GUI *Disk Library* window, CLI
   argument, or `POM68K_FLOPPY=<path>`.
 - **SCSI volume**: bake the MacBinary into a data-only HFS volume and
   attach it as a secondary disk. `dir2hfs.py` decodes `.bin` to native
@@ -70,9 +70,10 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
 
 **As a differential oracle.** `tools/prober_oracle.sh <machine> <work-dir>`
 puts the Prober in Startup Items of the profile's locked volume, boots the
-same image under POM68K (`build/prober_oracle`) and under MAME (`maclc2`,
-`macqd605`, `macqd800`, `macct650`, `macqd630`, `macqd700`; romsets built
-from the tree's ROMs), and diffs the two TSVs. MAME is `$MAME`, else `mame`
+same image under POM68K (`build/prober_oracle`) and under MAME (fifteen
+systems from `maclc` to `macqd950`, listed at the head of the script and in
+`cmake/Pom68kOracleGates.cmake`; romsets built from the tree's ROMs), and
+diffs the two TSVs. MAME is `$MAME`, else `mame`
 on PATH, else the flatpak. The gates `<profile>_prober_oracle_etalon` run
 only the POM68K half and compare it with MAME's recorded report,
 `tools/prober_oracle_<mame-system>.tsv`; they need

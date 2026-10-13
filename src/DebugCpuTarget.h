@@ -235,7 +235,7 @@ public:
         case Reg::DFC: if (!has010) break; cpu_.setDFC(v); return true;
         default: break;
         }
-        why = std::string("Registre absent du ") + modelName();
+        why = std::string("Register not present on the ") + modelName();
         return false;
     }
 
@@ -247,7 +247,7 @@ public:
         const bool mmu = reg == Reg::CACR ? has020
                        : reg <= Reg::TT1 ? isMmu030() : isMmu040();
         if (!mmu) {
-            why = std::string("Registre absent du ") + modelName();
+            why = std::string("Register not present on the ") + modelName();
             return false;
         }
         if (cpu_.pomCache040Armed()) {
@@ -287,14 +287,14 @@ public:
             std::uint32_t phys = a;
             char at[48];
             if (space == Space::Logical && !translate(a, phys)) {
-                std::snprintf(at, sizeof at, "$%08X non traduite", a);
+                std::snprintf(at, sizeof at, "$%08X not translated", a);
                 why = std::string("Write rejected: ") + at;
                 return false;
             }
             std::uint32_t len = 0;
             dst[i] = mem_.dataSpan(physMask(phys), len, true);
             if (!dst[i] || !len) {
-                std::snprintf(at, sizeof at, "$%08X n'est pas de la RAM", a);
+                std::snprintf(at, sizeof at, "$%08X is not RAM", a);
                 why = std::string("Write rejected: ") + at;
                 return false;
             }
@@ -358,7 +358,7 @@ public:
             return false;
         }
         if (c.trap && (c.vector != 10 || (c.trap & 0xF000) != 0xA000)) {
-            why = "Filtre de trap : un mot $Axxx sur le vecteur 10";
+            why = "Trap filter: an $Axxx word on vector 10";
             return false;
         }
         for (const Catch& x : catches_) if (x == c) return true;

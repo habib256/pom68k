@@ -122,7 +122,7 @@ Firsthand consequences:
 - **`AddrMapFlags $773F` is not universal.** The IIci/IIsi/LC records carry it
   (it is why the LC/LC II ROM probes the I/O map expecting a bus error, which
   is what `V8Memory` raises in its unmapped I/O holes —
-  `src/V8Memory.cpp:555-580`), the
+  `src/V8Memory.cpp:538-563`), the
   **IIfx record carries `$00000000`**, Gestalt 12 carries `$00039807`, and every
   `$FD` record carries `$00000000`. Do not quote "$773F" as an invariant.
 - The FPU bit is **hwCfgWord bit 12** = bit 28 of the long at +$10 (§2.2). The
@@ -141,7 +141,7 @@ Every populated entry matches `V8Memory`:
 | 5 | `$50F16000` | `$1E0` SWIM | `Swim1` |
 | 8 / 9 / 10 | `$50F10000` / `$50F12000` / `$50F06000` | `$C00` / `$C04` / `$C08` | SCSI triplet over `Ncr5380` |
 | 12 | `$50F14000` | `$CC0` ASCBase | `AscV8` |
-| **13** | **`$50F26000`** | `$CEC` VIA2/RBV | `PseudoVia` (`src/V8Memory.cpp:549-553` read / `:795-799` write) |
+| **13** | **`$50F26000`** | `$CEC` VIA2/RBV | `PseudoVia` (`src/V8Memory.cpp:530-534` read / `:777-781` write) |
 | 11 (real VIA2) | **`$00000000`** | `$CEC` | *unpopulated on V8 — the pseudo-VIA is decoder[13], not [11]* |
 | 6, 7, 15, 16, 17, 18 | `$00000000` | `$B0A`/`$312`/`$266`, `$C00-$C08`, `$1D8`/`$1DC`, `$1E0`, `$CEC` | unused on this board |
 
@@ -224,8 +224,8 @@ implements the same trailer and the §9.1 CRC (`src/DeclRom.h`,
 
 ### 8.8 What this put into the POM68K code — and the one Basilisk default rejected
 
-`Egret::factoryDefaults()` (`src/Egret.cpp:47-100` — block comment at 47, body
-at 56) seeds Basilisk's known-good XPRAM block when no battery file carries
+`Egret::factoryDefaults()` (`src/Egret.cpp:46-98` — block comment at 46, body
+at 55) seeds Basilisk's known-good XPRAM block when no battery file carries
 the system's `'NuMc'` validity signature at `$0C-$0F`: `'NuMc'`, `$01` = DynWait, the standard classic-PRAM
 block at `$08-$1F`, OSDefault = MacOS at `$76-$77`, plus a POM68K-only built-in
 video sPRAM seed at `$58` (`$83` = 8 bpp). A valid signature also spares the
@@ -253,8 +253,8 @@ them**:
    `Egret::factoryDefaults` reseeds `$13` even when `'NuMc'` is already there.
 
 `lcii_trace` logs the WarmStart `'WLSC'` milestone at `$CFC` (§4.3) — the ROM's
-own "low memory is valid" marker (`tests/lcii_trace.cpp:138-146`) — and applies
-the same factory defaults as the GUI (`tests/lcii_trace.cpp:138`).
+own "low memory is valid" marker, polled from the trace loop — and applies
+the same factory defaults as the GUI (`tests/lcii_trace.cpp:144`).
 
 ### 8.9 The primary source: Apple's own ROM tables (2026-09-17)
 
@@ -764,7 +764,7 @@ shift-register/handshake transport that InitADB exercises.
 
 ## § 7. CLOSED — the LC II "vector 10 = `$00000000`" hunt (2026-07-15)
 
-*Cited as **§7.5** by `src/Egret.cpp:50` and `docs/LCII_HARDWARE.md`; there is
+*Cited as **§7.5** by `src/Egret.cpp:49` and `docs/LCII_HARDWARE.md`; there is
 no subsection — the whole of §7 is meant.*
 
 > **Resolved. All three hypotheses below were wrong.** Kept because the ROM

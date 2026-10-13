@@ -18,8 +18,8 @@ fast, and flags where POM68K deliberately differs.
 > do (`V8Memory.h:14`, `V8Video.h:11`, `PseudoVia.h:26`, `Ariel.h:10`,
 > `Asc.h:14`, `Egret.h:38`). Two cites are still by line and are wrong after
 > any edit here — resolve them by section, not by counting:
-> `V8Memory.cpp:268` says "LCII_HARDWARE.md:44" (the C7M/VIA clock — **§
-> Clocking**) and `V8Memory.cpp:556` says "LCII_HARDWARE.md:78" (the
+> `V8Memory.cpp:266` says "LCII_HARDWARE.md:44" (the C7M/VIA clock — **§
+> Clocking**) and `V8Memory.cpp:537` says "LCII_HARDWARE.md:78" (the
 > `AddrMapFlags $773F` BERR note — **§ Address map**).
 
 Mined 2026-07-15 in source-of-truth rank order:
@@ -81,7 +81,7 @@ reference profile documented here**; the per-variant deltas are in
 
 Constants as built: `V8Memory::kRomSize` `$80000`, `kVramSize` `$80000`,
 `kMbRamSize` `$400000`, `kCpuHz` 15 667 200, `kViaHz` 783 360
-(`V8Memory.h:52-57`).
+(`V8Memory.h:54-59`).
 
 ## Clocking
 
@@ -141,7 +141,7 @@ BERR there lands on a zero vector → DS 1. The `$FF` is a **knob, not a fact**:
 MAME answers 0 there but that is its `address_space` default, not a modelled
 decision, so `POM68K_V8_HOLEVAL=<hex>` picks the byte until an observable
 separates them, and `POM68K_V8_IOHOLE=<n>` logs the accesses with their PC
-(`V8Memory.cpp:557-575` read, `:801-807` write).
+(`V8Memory.cpp:542-563` read, `:783-789` write).
 
 ### 24/32-bit story
 
@@ -309,7 +309,7 @@ The 60.15 Hz "VBL" heartbeat and the one-second interrupt both live on VIA1
   12" RGB, 6 = 640×480 13" RGB (v8.cpp:61-66,495-515). `V8Memory`'s own
   default is sense **2** (what the tests get); the GUI path forces sense **6**
   unless `POM68K_MONITOR=512`, and offers only those two
-  (`GuiRunnerV8.h:30-34` — 640×870 needs a wider framebuffer than the V8
+  (`GuiRunnerV8.h:31-35` — 640×870 needs a wider framebuffer than the V8
   provides).
 - Real-machine mode limits (EveryMac; GttMFH LC ch.): 256 KB VRAM →
   512×384@8bpp or 640×480@4bpp; 512 KB → 512×384@16bpp or 640×480@8bpp;

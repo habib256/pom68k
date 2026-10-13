@@ -13,7 +13,7 @@
 //
 // Items are found by LABEL through ImGui's own test-engine hooks
 // (IMGUI_ENABLE_TEST_ENGINE; imgui_internal.h:4295): every frame records
-// id → bounding box and id → label, so `click("Appliquer et redémarrer")`
+// id → bounding box and id → label, so `click("Apply and restart")`
 // puts the mouse where that button was drawn last frame and presses it.
 // ImGui acts on a click at RELEASE on the frame after hover was established,
 // hence the four frames per click.

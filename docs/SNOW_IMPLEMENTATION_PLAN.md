@@ -32,7 +32,8 @@ hardware profiles:
   restore together. `ata_disk_test` covers fresh-device continuation, partial
   multi-sector writes, repeated rewind, IRQ, READ/WRITE BUFFER and rejection of
   truncated payloads. Format v21 deliberately rejects older snapshots.
-- `CdCueSheet` maps file-relative positions to disc LBAs. One-session BINARY
+- `CdCueSheet` (since replaced by `CdImage`, order 5) maps file-relative
+  positions to disc LBAs. One-session BINARY
   CUE discs with AUDIO and one MODE1/2048 or MODE1/2352 data track can use
   multiple files. Stored INDEX 00 gaps are retained; the data extent stops at
   the next track's INDEX 00. READ TOC, READ(10) and audio use that same layout.
@@ -148,8 +149,8 @@ broader copy-protection claims still require independently identified cases.
 The disk base remains the user's working file. Since the media timeline
 increment (below), restoring a SCSI or ATA state rewinds both memory and a
 write-back file to the state's exact content, including in a later process,
-or refuses by name. A full IDE *application* rewind scenario on the Q630
-remains separate work. No new CPU or fictional peripheral was introduced.
+or refuses by name; the Q630 IDE *application* rewind is the third phase of
+`q630_ide_boot_etalon`. No new CPU or fictional peripheral was introduced.
 Other items in this document are proposals, not adopted features.
 
 ## Work selection
@@ -183,7 +184,8 @@ the debugger and comparative probes ahead of convenience features.
 **Owners:** [AtaDisk.h](../src/AtaDisk.h), [Q630Memory.h](../src/Q630Memory.h),
 the existing archive format and ATA component gates.
 
-1. Add the two reproduced cases to an asset-free `ata_savestate_test`. Extend
+1. Add the two reproduced cases to an asset-free `ata_savestate_test`
+   (landed in `ata_disk_test` and `media_timeline_test`). Extend
    them to IDENTIFY, partial WRITE, multi-sector READ/WRITE, IRQ and SRST.
 2. Serialize the sector/IDENTIFY buffer alongside its offset. Validate buffer
    lengths, offsets and flags on load; a malformed state must fail cleanly.
@@ -287,7 +289,8 @@ catching accepted interrupt-vector delivery. Test both if both are exposed.
 Step over/out must handle BSR/JSR, nested calls, A-line traps, RTE, faults and
 STOP; allow cancellation. A temporary PC alone can stop in an unrelated
 recursive invocation, and a raw stack-pointer heuristic does not define all
-exception-return behavior. Proposed `debug_step_test` exercises those cases.
+exception-return behavior. Proposed `debug_step_test` exercises those cases (landed in
+`debug_session_test`).
 
 ### Histories and peripherals
 
@@ -489,7 +492,7 @@ compatibility. Keep this work out of the CPU and AppleTalk protocol engines.
 |---|---|---|---|
 | 512Ke | Implemented compact profile: 512K RAM, repeated Plus ROM, no SCSI, 800K | Internal/external System 3.3 Finder, M0110/quadrature input, deterministic state | Implemented; broader application corpus remains separate |
 | Mac II FDHD | Implemented GLUE profile: 68020 independently of SWIM/SuperDrive | Finder, ADB input, MMIO MFM write/read-back, deterministic state | Implemented; broader application corpus remains separate |
-| Third SE drive | Implemented core: VIA1 PA4 internal-connector select, optional second SE / SE FDHD mechanism | Three distinct guest volumes; single-floppy SE and Classic keep PA4 high empty | Implemented: core, `POM68K_SE_SECOND_FLOPPY` option, Disques row, relaunch and session |
+| Third SE drive | Implemented core: VIA1 PA4 internal-connector select, optional second SE / SE FDHD mechanism | Three distinct guest volumes; single-floppy SE and Classic keep PA4 high empty | Implemented: core, `POM68K_SE_SECOND_FLOPPY` option, Disk Library row, relaunch and session |
 | Display Card 8-24 | New `NuBusDevice`, external declaration ROM, board card selection | Sense lines, CLUT/direct colour, modes/stride, slot IRQ, guest driver and state | Useful if NuBus video is the chosen goal |
 | 68851 | Explicit external-MMU configuration and Moira execution/translation seam | Table/ATC/fault vectors plus the selected guest consumer | Do after debugger and conformance probes |
 | Portable/PB100 | Normandy/LCD/VIA/PMgr platform family | ROM identity, Finder, input, power protocol, storage, snapshots; sleep separately | XL project, align with portable milestone |
@@ -604,11 +607,12 @@ second SE / SE FDHD mechanism on PA4 high is a board option, off by default
 like the single-floppy SE; the Classic's PA4-high connector is always empty.
 With it fitted, the ROM numbers PA4 high drive 1, tries it first and ejects a
 non-startup disk there; three distinct floppies then mount as drives 1–3.
-Snapshot v27 carries the line and mechanism. The startup option and disk
-window row are separate product work; no new controller behavior is invented.
+Snapshot v27 carries the line and mechanism. The startup option
+(`POM68K_SE_SECOND_FLOPPY`), the disk window row, relaunch and session
+followed; no new controller behavior is invented.
 
 The seventeenth increment implements order 2, the basic debugger service
-(`DebugSession`, `DebugCpuTarget`, « Fenêtres → Débogueur »). The GUI posts
+(`DebugSession`, `DebugCpuTarget`, « Windows → Debugger »). The GUI posts
 typed commands with ids and reads immutable snapshots; the machine thread
 owns every mutation. Pause is applied between two quanta, an architectural
 boundary that needs no CPU support. A breakpoint or step stops from Moira's
@@ -756,7 +760,7 @@ request itself not. `GuestScrap.h` reads the TEXT scrap through the
 debugger's logical read on the machine thread. It follows the master
 pointer, masks 24-bit flags, bounds every length, refuses on-disk,
 uninitialized, purged, unreadable and malformed scraps by name, and
-converts MacRoman with $DB as ¤ (pre-8.5). « Taper du texte » pastes the
+converts MacRoman with $DB as ¤ (pre-8.5). « Type text » pastes the
 host clipboard, previews, types, cancels, reads the guest's scrap and
 copies it to the host. `q605_clipboard_etalon` closes the loop on the
 guest: Mac OS 8.1, SimpleText, 30 characters typed through the production
@@ -769,15 +773,15 @@ the SCC took or the guest sent, so opening the window draws nothing from a
 bridge. It is the ENDPOINT of a new `terminal` port: the user's input goes
 through a bounded queue that refuses when full and drains into free SCC
 FIFO slots only (`pumpSerialChannel`, the production pump, shared with the
-transports). « Ports série » shows endpoint, owner, connection, counters,
+transports). « Serial ports » shows endpoint, owner, connection, counters,
 refusals (AppleTalk/LToUDP on channel B, a port in use) and the terminal;
 sessions carry `serial-* = terminal`. `SerialHostTransport` gains a Winsock
 2 TCP backend behind one socket layer; PTY stays Unix-only and Windows
 refuses it explicitly. `scc_serial_host_test` adds disconnect/reconnect,
 partial writes through a narrow-window client (millions of bytes sent or
 counted dropped, order kept), host-side saturation and both terminal roles;
-its Windows build passes under wine, and running it on Windows itself is
-the one part left open. `q605_serial_etalon`: « POM68K Série »
+its Windows build passes under wine, and it also passes on a Windows host
+under MSVC. `q605_serial_etalon`: « POM68K Série »
 (`dev/serprobe`), launched from Startup Items, exchanges a hello, a
 6000-byte burst and an order-sensitive receipt with the terminal on Mac OS
 8.1, under the JIT and the interpreter alike.

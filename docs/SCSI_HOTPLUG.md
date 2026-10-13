@@ -9,7 +9,7 @@ in the implementation tables describe the September bring-up state.
 prove every host action or guest-agent autostart path. See `DEV.md` § 6,
 `STATUS.md` for recorded executions and `TODO.md` for remaining proof work.
 
-## 1. The problem the Disks window cannot solve alone
+## 1. The problem the Disk Library window cannot solve alone
 
 The window (`src/DiskBays.*`) stages every change to a bay that was empty
 at boot and applies it with a relaunch, because Classic Mac OS enumerates
@@ -109,7 +109,7 @@ with a truthful bus view.
 | Queue walk: DrvQHdr → refNum −(33+ID) → bay; VCBQHdr → mounted name | `src/GuestScsiView.h` | `guest_scsi_view_test` (synthetic image, asset-none) |
 | Sampling on the machine thread, ~4 Hz, logical addresses through `Mmu030Peek.h` on the 030 boards | `MachineHost::sampleGuestScsiView` | — |
 | `Cmd::AttachDisk` — a fixed disk joins the bus between two quanta; outcome as text | `MachineHost::requestAttachDisk`, `bayMessage` | `scsi_hotplug_etalon` |
-| Window: « invité : monté « X » / lecteur installé / aucun lecteur / inconnu » under SCSI 0 and every fixed bay; an empty bay's pick and « Créer » attach live | `src/DiskBays.cpp`, `bindScsiBays` (`GuiFloppyBays.h`) | — (the GUI has no gate) |
+| Window: « guest: mounted 'X' / drive installed, no volume mounted / no drive / unknown » under SCSI 0 and every fixed bay; an empty bay's pick and « Create » attach live | `src/DiskBays.cpp`, `bindScsiBays` (`GuiFloppyBays.h`) | — (the GUI has no gate) |
 
 `scsi_hotplug_etalon` is the contract in one run on the Quadra 605: the
 guest names its boot volume on SCSI 0; a blank HFS disk attached live on
@@ -129,7 +129,7 @@ The design of § 3 held, with four corrections the guest taught:
 |---|---|---|
 | Mailbox: `$C0` POLL / `$C1` REPORT, answered by the controller for any selected POM68K target; one pending request, a sequence number, a heartbeat | `src/ScsiAgentMailbox.h`, `Ncr5380`/`Ncr53c96` `dispatch()` | `scsi_agent_mailbox_test` |
 | `Cmd::AgentMount` / `Cmd::AgentUnmount`, presence = a poll within ~2 s, the report's drive number fed to the bus view | `MachineHost` | — |
-| Window: « Monter / Démonter » under a fixed bay while the agent polls; « Agent invité : présent / absent » and its last words | `src/DiskBays.cpp` | — |
+| Window: « Mount / Unmount » under a fixed bay while the agent polls; « Guest agent: present / absent » and its last words | `src/DiskBays.cpp` | — |
 | The agent: polls twice a second, mounts through its own block driver installed at the target's SCSI unit, unmounts through `PBDTCloseDown` + `UnmountVol` | `dev/scsiagent/` (Retro68) | `scsi_agent_etalon` |
 
 - **The old SCSI Manager API needs a DRQ interrupt.** Mac OS 8.1's SCSI
@@ -162,7 +162,7 @@ then detach safely*. The pieces, bottom up:
 | `detach(id)` / `sessionOn(id)` on both controllers — refused inside a session on that target, an empty slot afterwards | `Ncr5380.h`, `Ncr53c96.h` | `scsi_detach_test` |
 | `detachScsi(id)` on the twelve memory maps — fixed disks on ID 1–6 only; the boot ID and the CD bays refuse | `*Memory.h` | `scsi_detach_test` (a 5380 board and a 53C96 board) |
 | `Cmd::DetachDisk` — between two quanta; a detach that would land inside an open session is re-queued and lands at the next quantum (600 at most); outcome in `bayMessage` | `MachineHost.h` | `machinehost_test` |
-| « Retirer » on a fixed bay: live when the guest's VCB queue shows no volume on it, staged (a relaunch, as before) when a volume is mounted or the queues are not readable | `src/DiskBays.cpp`, `canDetachNow` | — (the GUI has no gate) |
+| « Remove » on a fixed bay: live when the guest's VCB queue shows no volume on it, staged (a relaunch, as before) when a volume is mounted or the queues are not readable | `src/DiskBays.cpp`, `canDetachNow` | — (the GUI has no gate) |
 | The full cycle on the Quadra 605: agent unmount → detach → the guest's queues unchanged, the agent still polling → the same image re-attached → agent mount | — | `scsi_agent_etalon` step 2b |
 
 Three rules the pieces obey:
@@ -189,7 +189,7 @@ Three rules the pieces obey:
   next id », and drops the gaps at the end. Gate: `relaunch_extras_test`.
 
 The Finder's own Put Away leaves the ROM's driver in the drive queue
-(`driver` true, `mounted` false): « Retirer » is offered on that state
+(`driver` true, `mounted` false): « Remove » is offered on that state
 too, and the driver's next probe of the vanished target gets a selection
 timeout, which the SCSI Manager reports as an error rather than hanging.
 
@@ -204,11 +204,11 @@ fixture. The pieces:
 
 | Piece | Where | Gate |
 |---|---|---|
-| Catalog B*-tree search and insertion on a live volume: leaf split, index split, root split, node allocation from the map, first-fit allocation blocks, MDB counts, folder valence and dates; MacBinary decoding; the walk from the blessed folder to « Startup Items » (or « Éléments de démarrage ») | `src/HfsInject.h/.cpp` | `hfs_inject_test` (blank volume, sixty files, everything read back; `machfs` re-reads the result) |
+| Catalog B*-tree search and insertion on a live volume: leaf split, index split, root split, node allocation from the map, first-fit allocation blocks, MDB counts, folder valence and dates; MacBinary decoding; the walk from the blessed folder to « Startup Items » (or « Ouverture au démarrage ») | `src/HfsInject.h/.cpp` | `hfs_inject_test` (blank volume, sixty files, everything read back; `machfs` re-reads the result) |
 | `ScsiDisk::hostWrite` — the guest WRITE path without its counters: write log and write-back apply | `src/ScsiDisk.cpp` | — |
 | The runner hook after the boot attach, on the twelve platforms; `POM68K_NO_AGENT_AUTOSTART=1` opts out; every outcome printed | `src/GuiAgentAutostart.h` | — (the GUI has no gate) |
-| Cold launch → Finder → the agent polls with no input → « Monter » works | — | `scsi_agent_autostart_etalon` (Quadra 605, Mac OS 8.1 US, 53C96) and `lc520_agent_autostart_etalon` (LC 520, System 7.5.5 French, NCR 5380, Cuda) — first poll one frame after the Finder on both |
-| The same as a beyond-boot proof on every boot etalon: `POM68K_TEST_AGENT=1` installs, then requires the first poll and a live-attached blank mounted by name | `tests/AgentBootProbe.h` | `<profile>_agent_boot_etalon`, 38 profiles (`cmake/Pom68kAgentGates.cmake`; `docs/68K_FAMILY_SCOPE.md` § 5) |
+| Cold launch → Finder → the agent polls with no input → « Mount » works | — | `scsi_agent_autostart_etalon` (Quadra 605, Mac OS 8.1 US, 53C96) and `lc520_agent_autostart_etalon` (LC 520, System 7.5.5 French, NCR 5380, Cuda) — first poll one frame after the Finder on both |
+| The same as a beyond-boot proof on every boot etalon: `POM68K_TEST_AGENT=1` installs, then requires the first poll and a live-attached blank mounted by name | `tests/AgentBootProbe.h` | `<profile>_agent_boot_etalon`, 38 gates (`cmake/Pom68kAgentGates.cmake`; `docs/68K_FAMILY_SCOPE.md` § 5) |
 
 Rules and limits:
 

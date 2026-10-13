@@ -22,7 +22,10 @@ the Duo 230 has no floppy; 128K/512K have 400K mechanisms;
 512Ke, Plus, SE and the original Mac II have 800K mechanisms;
 the other 34 profiles have a SuperDrive and accept both 800K GCR and 1.44 MB
 MFM. The 38 profiles above the early 128K/512K/512Ke expose SCSI hard disks
-and CD-ROM targets. The asset-free `storage_profile_test` accounts for all
+and CD-ROM targets. A second floppy mechanism (`externalFloppy`) exists only where
+MAME connects one by default: the 128K, 512K, 512Ke, Plus, SE, SE FDHD,
+Classic, Mac II FDHD, IIx, IIcx and SE/30 — eleven profiles; every later
+board, and the original Mac II, leaves it unconnected. The asset-free `storage_profile_test` accounts for all
 41 rows and exercises the IWM/SWIM split plus compact HDD/CD reads.
 
 There is no longer any platform in `src/` without a profile row: the last two
@@ -51,7 +54,7 @@ Every gate below is a Finder-signature boot etalon unless noted.
 The compacts turned out to be a `MacMemory::Model` enum, not a machine: the SE
 map is the Plus map with a bigger ROM, the overlay clearing on the first ROM
 access, and **ADB on the same PIC1654S firmware LLE the Mac II uses**
-(VIA PB5/PB4 = ST, PB3 = /ADB IRQ — `MacMemory.h:51-54`) in place of the M0110.
+(VIA PB5/PB4 = ST, PB3 = /ADB IRQ — `MacMemory.h:56-59`) in place of the M0110.
 
 The two machines BELOW the Plus are the same enum going the other way: less
 ROM (64 KB), less RAM (128/512 KB, which moves the top-of-RAM framebuffer),
@@ -72,8 +75,8 @@ making them, with the 512Ke, the tree's three `scsi = false` profiles.
 
 `MacIIMemory::Model` + `Cpu020`'s `is030` flag. The IIx/IIcx wall was the 030
 PMMU double-translating against the GLUE 24-bit remap — skip `physAddr` when
-the PMMU is on (`MacIIMemory.h:80-85`). All five run at 15.6672 MHz:
-`kCpuHz` is fixed and the ctor takes no clock (`MacIIMemory.h:42,55`).
+the PMMU is on (`MacIIMemory.h:91-96`). All five run at 15.6672 MHz:
+`kCpuHz` is fixed and the ctor takes no clock (`MacIIMemory.h:45,67`).
 
 | Profile | CPU | ROM | Gate |
 |---|---|---|---|
@@ -149,9 +152,9 @@ Ariel, 2048-byte pitch), Egret 341S0851. Empty NuBus reads MAME-unmapped 0.
 
 68040 / 68LC040 + 040 MMU, Cuda firmware LLE, NCR 53C96, SWIM2. **All three
 profiles run at 25 MHz**: `Q605Memory::kCpuHz` is fixed and the ctor takes no
-clock parameter (`Q605Memory.h:80,83`), so the LC 575's "33 MHz" is a menu
+clock parameter (`Q605Memory.h:82,85`), so the LC 575's "33 MHz" is a menu
 label, not the emulated clock. The identity is the `POM68K_Q605_ID` longword
-only.
+only, which each profile sets (`applyMachineProfile`).
 
 | Profile | CPU | ROM | Gate |
 |---|---|---|---|
@@ -165,7 +168,7 @@ Q605 devices (DAFB, 53C96, SWIM2, AscIosb, PseudoVia) + discrete `Rtc` +
 PIC1654S ADB LLE. The one wall was djMEMC's 2 MB VRAM window vs MEMCjr's 1 MB.
 The Quadra 800 needed only its ID pins (`$12`) and the Ethernet address ROM at
 `$50008000`; SONIC and its NuBus slots stay unmapped-0 and the boot path never
-binds them. Clocks and ID pins are per profile (`CentrisMemory.h:64-75`).
+binds them. Clocks and ID pins are per profile (`CentrisMemory.h:67-78`).
 
 | Profile | Clock / ID pins | Gate |
 |---|---|---|
@@ -196,13 +199,14 @@ CB1/CB2 instead of the discrete RTC, and a second 53C96 bus
 ### F108 + PrimeTime II + Valkyrie — `Q630Memory` / `Q630Cpu` / `Valkyrie`
 
 The last 68k desktop board. Fixed-mode Valkyrie framebuffer, Cuda 341S0060,
-68040 @ 33 MHz (both profiles — `Q630Memory.h:74`). The ATA/IDE port is mapped
-but has no drive, so boot goes over SCSI (§ 4).
+68040 @ 33 MHz (both profiles — `Q630Memory.h:77`). The F108 ATA/IDE port
+carries a modelled `AtaDisk` (`Q630Memory.h:144-153`) that the ROM's
+own ATA driver boots from; the reference gates boot over SCSI.
 
 | Profile | ROM | Gate |
 |---|---|---|
-| Macintosh Quadra 630 | `06684214` | `q630_boot_etalon`, `jit_q630_boot_etalon`, `interp_q630_boot_etalon` |
-| Macintosh LC / Performa 580 | `06684214` | `lc580_boot_etalon` |
+| Macintosh Quadra 630 | `06684214` | `q630_boot_etalon`, `q630_ide_boot_etalon`, `jit_q630_boot_etalon`, `interp_q630_boot_etalon` |
+| Macintosh LC / Performa 580 | `06684214` | `lc580_boot_etalon`, `lc580_ide_boot_etalon` |
 
 ### MSC + PG&E — `MscMemory` / `MscCpu` (the only laptop)
 
@@ -290,9 +294,8 @@ platforms.
 | Item | Why cheap | Note |
 |---|---|---|
 | **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + typed `SnapMachine` selection |
-| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:63-69`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:88-123`) |
+| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:65-71`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:99-110`) |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |
-| **ATA/IDE target on the Quadra 630 / LC 580** | The port is mapped (`Q630Memory.h:27`), it just has no drive | The remaining gap on that board; boot currently goes over SCSI |
 
 **Orthogonal, blocks no boot: pin-level 68040 timing** — the integrated FPU
 implements the hardware subset and delegates unsupported operations
@@ -312,26 +315,25 @@ the memory callbacks. See `docs/CACHE_040.md`.
 ## 5. The caveat on "done" — depth, not breadth
 
 Booting to the Finder is the *entry* criterion, not the finish line.
-Re-derived from the CMake gate modules on 2026-08-12:
+Re-derived from the generated gate roster (`pom68k_gates.tsv`):
 
-- **37 of 39** profiles have a Finder boot gate. The 128K and 512K arrived
-  2026-09-13 with their board wired and their asset-free facts gated, but
-  their 64 KB ROM stops in its power-on self test (Sad Mac `$0F0004`, the
-  mod3 RAM sub-test) before it reaches the disk — § 1.
-- **9 of 39** have any gate *past* the boot signature: Plus (`input_etalon`),
-  Mac II (`macii_mouse_etalon`), LC II (soak / persist / launch / floppy /
-  savestate), LC III, LC 520, IIsi (`*_input_etalon`), IIvx (input + soak +
-  persist), Quadra 605 (OT bind, CD-ROM ×3, floppy, mouse, key, soak, persist,
-  savestate), IIfx (`iifx_input_etalon`). **30 profiles are proven only to the
-  point where the Finder appears** — including every 2026-08 arrival.
-- **15 of 39** are additionally gated on the **second execution engine**
+- **41 of 41** profiles have a Finder boot gate (§ 1). The 128K and 512K
+  were the last two to reach the Finder off their 400K System floppy.
+- Beyond the boot signature, the agent and MFS gates below reach every
+  profile but the 512Ke and the Mac II FDHD, which carry their own
+  (`mac512ke_input_etalon`; the II FDHD boot gates also verify ADB input).
+  Deeper application coverage remains thin: the Plus, Mac II, LC II, LC III,
+  LC 520, IIsi, IIvx, Quadra 605, Quadra 630 and IIfx are the profiles with
+  input, soak, persist, CD-ROM or save-state gates of their own.
+- **15 of 41** are additionally gated on the **second execution engine**
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
-  iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` in
-  `cmake/Pom68kJitGates.cmake:656-660`, plus `jit_classic_boot_etalon`
+  iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` over
+  `lcii_boot_etalon` and its peers in `cmake/Pom68kJitGates.cmake:483-529`, plus `jit_classic_boot_etalon`
   registered on its own at `cmake/Pom68kJitGates.cmake:656-660` because it
-  shares the compact binary); four of those also
-  carry an explicit `interp_*_boot_etalon` interpreter reference (q605,
-  centris650, q630, q700).
+  shares the compact binary); ten profiles also carry an explicit
+  `interp_*_boot_etalon` interpreter reference (q605, centris650, q630,
+  q700, lcii, lc3, iivx, iisi, iifx, duo230 —
+  `cmake/Pom68kJitGates.cmake:553-562`).
 
 **2026-09-14 — the agent as a beyond-boot proof, on the whole roster.**
 The guest agent « POM68K Disques » is written into the boot volume's
@@ -341,7 +343,8 @@ Finder signature, that the Finder launched it (its first mailbox poll) and
 that it mounts a blank disk attached live, by name — the Process Manager,
 the SCSI Manager and the File Manager past the signature, with one header
 and no per-machine code. `cmake/Pom68kAgentGates.cmake` registers
-`<profile>_agent_boot_etalon` on **38 profiles**: every 68030 and 68040
+`<profile>_agent_boot_etalon` as **38 gates on 37 profiles** (the LC II
+twice, on its own `hdv/boot.vhd` reference and through `lcii_sys7`): every 68030 and 68040
 board's own image, the Mac II on its System 7.0 volume (`macii_sys7`),
 the SE/30, the IIx/IIcx and the four compacts — Plus, SE, SE FDHD,
 Classic — on the same (2026-09-15: the 68000 runs the agent too), the
@@ -365,7 +368,7 @@ document (CurApName « TeachText », the window's white body on screen after
 one-application-at-a-time System 1.1 launching and quitting a program. No
 profile is boot-only any more, and none is File-Manager-only either.
 
-Adding a 40th machine is cheaper than hardening the 39 that exist. Read the
+Adding a 42nd machine is cheaper than hardening the 41 that exist. Read the
 roadmap below against that trade — and against
 `TODO.md` § Preuve, outillage et dettes de mesure, whose first item is that
 depth.
@@ -379,8 +382,7 @@ and so are the two platforms this section used to call unfinished (§ 1). What
 is left, in return-on-effort order:
 
 1. **Depth over breadth** — beyond-boot gates on the profiles that have
-   none (§ 5 records the 2026-08-12 state; `STATUS.md` owns the current
-   one). Not a new machine, and the highest-value item on this page.
+   too few (§ 5; `STATUS.md` owns the current registry). Not a new machine, and the highest-value item on this page.
 2. **Finish the Duo platform**: the **sleep/wake gate no other machine in the
    tree can run** (`docs/DUO_BRINGUP.md` milestone 6) — input through the
    PMU's matrix keyboard and trackball counters is done and gated
@@ -397,7 +399,7 @@ is left, in return-on-effort order:
    reusable core; MAME itself doesn't run it), and full 68040 cache/FPSP
    accuracy.
 
-Free (ROM already on hand): the **128K/512K** configs, the Duo 210/250 clock
+Free (ROM already on hand): the Duo 210/250 clock
 variants and any Performa rebadge (§ 4). The **SE/30** cashed this tier in on
 2026-07-31 — wiring only, Finder on the first run.
 

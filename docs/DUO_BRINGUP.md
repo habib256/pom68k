@@ -189,9 +189,9 @@ defaults: `DEV.md` § 5.
 | **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520 method (ROM as the only oracle) |
 
 `MscMemory` already carries `kCpuHz210` and all three Duo 2x0 box IDs
-(`MscMemory.h:63-69`); the 210/250 share the `ECFA989B` ROM, so they need an
+(`MscMemory.h:63-71`); the 210/250 share the `ECFA989B` ROM, so they need an
 env selector: today the clock and the box ID are written straight into
-`runDuo`'s memory construction (`PlatformDuo.cpp:88-123`).
+`runDuo`'s memory construction (`PlatformDuo.cpp:99-131`).
 
 ROMs in `roms/1MB ROMs/` (user-provided, gitignored): Duo 210/230/250
 `ECFA989B`, Duo 270c `0024D346`, Duo 280/280c `015621D7`, PB150 `FDA22562`.
@@ -301,7 +301,7 @@ different address width, stack window, vectors, map and peripherals) plus
    **Still absent, machine-side API gaps rather than shell gaps:** no floppy
    (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds, no
    live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)` takes
-   no index so button 1 is dropped (`MscMemory.h:175`).
+   no index so button 1 is dropped (`MscMemory.h:198`).
 4. ✅ **Input through the PMU**, both halves. The **keyboard matrix**
    (2026-08-13, `PgePmu`): rows selected on port C, columns on port A (X0-X7)
    and port B bits 0-2 (X8-X10), modifiers on port B bits 3-7, all active low,

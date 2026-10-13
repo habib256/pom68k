@@ -490,6 +490,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-13 (release)** — [0.3.5](#2026-10-13-release-035)
+- **2026-10-13 (fourth)** — [The debugger, clipboard and firmware messages were still French](#2026-10-13-english-messages)
+- **2026-10-13 (third)** — [Two of the three MSVC asset-free reds, read on Linux](#2026-10-13-msvc-gui-reds)
+- **2026-10-13 (second)** — [The -Werror tree is green again under GCC 15 at -O3](#2026-10-13-gcc15-werror)
 - **2026-10-13** — [The nightly UBSan leg was red for four nights on one shift in the 68030 walk](#2026-10-13-walk-shift-ub)
 - **2026-10-12 (ninth)** — [Start Macintosh validates and launches in one action](#2026-10-12-direct-start)
 - **2026-10-12 (eighth)** — [Host menus release held Mac keys and own keyboard input](#2026-10-12-keyboard-focus)
@@ -1136,6 +1140,108 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-13-release-035"></a>
+## 2026-10-13 (release) — 0.3.5
+
+`VERSION` 0.3.5, and the README's "New in 0.3.5" lists what the version
+brings over 0.3.0.
+
+**The headline is the product around the machine.** *Set Up a Macintosh…*
+prepares a first launch — model, ROM, startup disk — and validates it before
+the machine starts; the product UI is in English throughout. A debugger
+service sits at the machine ownership boundary, with its window: registers,
+memory and disassembly edits while stopped, access and exception stops, step
+over/out, bounded histories and trap/low-memory/ROM symbols. Session files
+reopen a configured machine; *Type text* types host text on machine time and
+reads the guest's scrap back; the *Serial ports* window gives each SCC port an
+endpoint, a built-in terminal and Winsock TCP on Windows.
+
+**The second is that a save state is RAM and disk content.** Format **v28**
+records every writable SCSI and IDE disk through `DiskTimeline`; restoring a
+state rewinds the disk, and the Quadra 630 rewinds a Finder write on its IDE
+disk. Older formats are refused.
+
+Also in this cycle: the Macintosh 512Ke and II FDHD profiles (41 in all);
+MOOF, DART and GCR sector tags; the SE's optional second internal drive, and
+drive B only where the board has a port; CdImage for cue sheets and pressed
+CDs; the LaserWriter speaking for a chosen CUPS queue; every profile pinned
+by its pixels; MAME's guest Prober oracle extended from the LC II to fifteen
+systems; compact VIA, sound and SCC timing brought to MAME's calibration; and
+the 68030 table walk's last-level test past TID defined.
+
+The cut itself was a cleanup pass: the documentation audited against the
+code (README, DEV.md, CLAUDE.md, the `docs/` notes, `POM68K_JIT.md`,
+`POM68K_VENDOR.md`, about a hundred drifted citations re-pointed and the
+remaining French UI labels replaced by the real English ones), the
+`-Werror` tree green under GCC 15, and two of the three MSVC asset-free reds
+fixed (entries below, same day).
+
+Since 0.3.0 (2026-09-18): 89 commits before this cut.
+
+---
+
+<a id="2026-10-13-english-messages"></a>
+## 2026-10-13 (fourth) — The debugger, clipboard and firmware messages were still French
+
+The 2026-10-12 English pass covered the windows' own labels, not the
+messages their sources hand them. Still French were the debugger's refusals
+(`DebugCpuTarget.h` register and write refusals, the trap filter,
+`DebugSymbols.cpp`'s five symbol-file refusals, `DebugHistory.cpp`'s export
+errors, `DebugSession.cpp`'s unavailable history), `GuestScrap.h`'s
+clipboard reasons, `FirmwareManifest.h`'s size/read/hash errors,
+`HfsInject.cpp`'s missing-volume outcome, the SE/30 missing-video-ROM line,
+the network window's DaynaPort heading and two French-spaced colons. The
+CPU menu's no-switch hint claimed compact Macs and the Mac II run the
+interpreter only, but every runner binds the engine switch; it now says the
+session has no machine bound to the menu. `debug_session_test` matches the
+English symbol refusal.
+
+<a id="2026-10-13-msvc-gui-reds"></a>
+## 2026-10-13 (third) — Two of the three MSVC asset-free reds, read on Linux
+
+`gui_windows_test` lost « Load » because its clicks used stale layout. The
+export added a message line at the top of the debugger. The test clicked
+History, Registers and Symbols with no frame between, so it aimed at the
+previous frame's rectangles. On Linux, `POM68K_GUI_TRACE` shows the History
+click landing on Exceptions, one header up, and opening it. Registers
+reopened too, and « Load » sat at y=691 in a window that ends at 700. Only 8
+of its 19 pixels were visible. On Windows the longer temp path wraps the
+message and leaves the button wholly clipped. The test now renders a frame
+after the export and after the load, folds only what it opened, and finds
+« Load » at y=598 (637 with a 40-character temp directory).
+`POM68K_GUI_LABELS=1` dumps that layout.
+
+`debug_session_test` stopped with `0xC0000409` near the export. A
+`_GLIBCXX_ASSERTIONS` + ASan + UBSan build runs all 538 checks cleanly, so
+the Linux build has no out-of-bounds access. The likely Windows cause is
+that the test deleted the exported file while its `std::ifstream` was
+still open. Windows refuses that, the throwing `std::filesystem::remove`
+overload throws, and the uncaught exception aborts with MSVC's fast-fail
+code. The stream is now closed first, and the removal uses the
+`error_code` overload and is checked. Neither fix has been re-run under
+Windows yet.
+
+`tools/run_gui_smoke.sh` checked a session run's two media only inside the
+`result=PASS`-missing branch, which already fails. A passing session run
+never had its media checked. The check now runs after a PASS.
+`gui_session_smoke_test`'s Windows exit 127 is not explained.
+
+<a id="2026-10-13-gcc15-werror"></a>
+## 2026-10-13 (second) — The -Werror tree is green again under GCC 15 at -O3
+
+A whole-tree `POM68K_WERROR=ON` Release build with this host's GCC 15.2
+(CI uses GCC 13) failed in four places. All four were the
+`-Wstringop-overflow` / `-Wfree-nonheap-object` false-positive class
+already recorded for `SaveState.h` and `EtherLink.cpp`: a `std::vector`
+growth path that the optimiser reads as writing into an empty allocation.
+`AtalkStack::atpRequest` pads a short request by copying it into a
+four-byte vector instead of `resize`. `AfpServer::buildStatusBlock`
+`assign`s its ten header bytes. `EtherTalkLink::onStackFrame` builds the
+widened long-DDP header in an array and appends it as a range, the
+`EtherLink::sendToGuest` shape. `moof_image_test` states the fixture's size
+before copying it. The bytes produced are unchanged. The whole tree then
+builds with `-Werror`, and the asset-free tier is the check.
 
 <a id="2026-10-13-walk-shift-ub"></a>
 ## 2026-10-13 — The nightly UBSan leg was red for four nights on one shift in the 68030 walk

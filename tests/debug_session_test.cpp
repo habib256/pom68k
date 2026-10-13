@@ -743,7 +743,13 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         check(counts && iLines == pom68k::dbg::kHistoryCapacity && s &&
                   lastPc == s->regs.pc,
               fam, "the export keeps the full ring, states the drop, ends at the PC");
-        std::filesystem::remove(path);
+        // Closed before the delete: Windows refuses to remove an open file,
+        // and the throwing overload then ended the process (0xC0000409,
+        // std::terminate) on the MSVC run of 2026-10-10.
+        in.close();
+        std::error_code removeError;
+        std::filesystem::remove(path, removeError);
+        check(!removeError, fam, "the exported history file is removed");
 
         // Exception entries: TRAP #0 and the filtered-flag A-line.
         id = setReg(dbg, Reg::PC, kProg2);
@@ -845,7 +851,7 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         const std::string anon = writeSyms("pom68k_syms_anon.txt", sum, false);
         const std::string good = writeSyms("pom68k_syms_good.txt", sum, true);
         s = load(other);
-        check(s && s->symbolCount == 0 && s->message.find("autre ROM") != std::string::npos,
+        check(s && s->symbolCount == 0 && s->message.find("another ROM") != std::string::npos,
               fam, "a symbol file for another ROM checksum is refused");
         s = load(anon);
         check(s && s->symbolCount == 0 && !s->message.empty(), fam,
@@ -864,7 +870,10 @@ void scenario(const char* fam, Mem& mem, Cpu& cpu, int engine, uint32_t ioAddr,
         s = disasmAt(kProg2);
         check(s && s->symbolCount == 0 && s->disasm[0].label.empty(), fam,
               "forgotten symbols label nothing");
-        for (const auto& p : {other, anon, good}) std::filesystem::remove(p);
+        for (const auto& p : {other, anon, good}) {
+            std::error_code ignored;
+            std::filesystem::remove(p, ignored);
+        }
         Command follow;
         follow.kind = Command::Kind::ViewDisasm;
         follow.followPc = true;

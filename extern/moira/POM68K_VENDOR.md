@@ -61,7 +61,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 34 groups onto it. Not by the
+against a *measured* estimate of porting the 36 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -81,9 +81,10 @@ find.
   lost here cannot be recovered from the code.
 - Every local change is marked `POM68K` (often `POM68K <slice>:`) in the source,
   so `grep -rn POM68K extern/moira/Moira/` is the machine-checkable inventory —
-  391 marked lines across 13 of the 25 source files, as of 2026-08-19 (was 361
-  across 13 of 25 on 2026-08-12 and 336 across 12 of 24 on 2026-07-31; the
-  25th file is `MoiraCache040.h`, added).
+  the current marked-line and marked-file counts are the ones in the table
+  under § Status, which `docs_test` recomputes (391 across 13 of 25 on
+  2026-08-19, 361 across 13 of 25 on 2026-08-12 and 336 across 12 of 24 on
+  2026-07-31; the 25th file is `MoiraCache040.h`, added).
   The NeoST patches carry `NEOST` markers instead, not `POM68K` ones — the two
   greps are disjoint.
 - Sections are never rewritten when superseded, only annotated. § *Model support
@@ -1575,12 +1576,15 @@ accounting at all.
     It cannot go stale: `jit::Engine::markPages()` flushes both tables when a
     slice gains its first block, and the 1 → 0 direction only ever leaves the
     mask *conservative*. The interpreter's own level-0 page
-    (`pomJitDataPage`) carries a tag and a host and nothing else, so
+    (`pomJitDataR1`/`pomJitDataW1`, one `PomJitDataPage` each) carries a
+    tag and a host and nothing else, so
     `pomJitDataSlow` deliberately keeps the OLD coarse rule (`if (w &&
     e.codeMask) return nullptr;`): the mask exists for **generated** code,
-    and the interpreter's use of these tables is opt-in
-    (`POM68K_DATA_WINDOW`) and measured a net loss, so widening level 0 would
-    be paying for a path nobody runs.
+    and the interpreter's use of these tables is opt-in on the 68040
+    (`POM68K_DATA_WINDOW`) and measured a net loss there, so widening level 0
+    would be paying for a path nobody runs. (The 68030 interpreter has used
+    the window by default since row 34; its level 0 keeps the same coarse
+    rule.)
 
 14. **`Moira.h` — `PomJitTiming` + `pomJitBeginTiming/EndTiming` +
     `pomJitTimingProbe`.** Per-instruction cycle attribution for the JIT
@@ -1588,13 +1592,18 @@ accounting at all.
     `icacheCycles` (the `PomIcache` overlay's contribution, excluded from
     the base) and `postExceptionCycles` (exception/trace work after the
     handler stopped). Read by `JitEngine.cpp:918-941` when it decides what a
-    compiled block owes `pomJitSync`.
+    compiled block owes `pomJitSync`. The struct has since grown the traced
+    instruction's `fetchWords` (the `PomIcache` fetch delta) and, for the
+    68040, where its IPL polls sat relative to its data accesses
+    (`iplPolls`, `dataAccesses`, `iplPollPositions`, filled by `pollIpl` and
+    `mmu040Read`/`mmu040Write`).
 
-    Opt-in on purpose, and only on the **68030** branch of `pomJitExecOne`
-    (`Moira.cpp:319`): ordinary interpretation pays one predictable
-    `[[unlikely]]` false branch and nothing else. The 030 is the family
-    where the i-cache overlay makes "how many cycles did that instruction
-    cost" a question the clock delta alone cannot answer.
+    Opt-in on purpose: the three-way cycle split is taken only on the
+    **68030** branch of `pomJitExecOne`, and every
+    other probe site is one predictable `[[unlikely]]` false branch when no
+    trace is armed. The 030 is the family where the i-cache overlay makes
+    "how many cycles did that instruction cost" a question the clock delta
+    alone cannot answer.
 
 **Gate for the whole seam:** `jit_lockstep_test` runs two machines from one
 ROM, one interpreted and one JIT-driven, and compares D0-D7/A0-A7/PC/SR/USP/
@@ -1806,8 +1815,8 @@ writeBuffer" instead of "byte 312".
   frames and optional CPU-space access-control transactions.
 - 68030 — functional execution of the **MMU instruction set** ✓ (O4
   slice 1) and of **bus-level address translation + ATC + bus-fault
-  frames** ✓ (O4 slice 3, see above), plus 6888x format-$2
-  post-instruction exception frames.
+  frames** ✓ (O4 slice 3, see above), plus 6888x format-$3
+  post-instruction exception frames (row 26, ruling D23).
 - 68881/68882 — **execution ✓** when attached via `setFPUModel()` (O5
   slice 2, see above; softfloat-backed, 68882 = LC II PDS FPU).
 - 68LC040 / 68EC040 / 68040 — **integer execution ✓** (Q2: MOVE16,

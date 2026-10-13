@@ -203,8 +203,8 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     if (se30) {
         if (!mem.installSe30Video())
             std::fprintf(stderr,
-                         "SE/30: se30vrom.uk6 manquante (roms/se30/) — "
-                         "pas de video\n");
+                         "SE/30: se30vrom.uk6 missing (roms/se30/) — "
+                         "no video\n");
     } else {
         mem.installTobyVideo();
     }

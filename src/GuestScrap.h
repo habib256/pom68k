@@ -108,7 +108,7 @@ GuestScrapText readGuestScrapText(Read&& read, std::size_t maxText = kMaxGuestSc
     };
     std::uint8_t globals[12] = {}, mmu32 = 1;
     if (!read(0x0960u, globals, sizeof globals) || !read(0x0CB2u, &mmu32, 1))
-        return refuse(Status::Unreadable, "les variables du Scrap Manager sont illisibles");
+        return refuse(Status::Unreadable, "unreadable Scrap Manager globals");
     auto be32 = [](const std::uint8_t* p) {
         return std::uint32_t(p[0]) << 24 | std::uint32_t(p[1]) << 16 |
                std::uint32_t(p[2]) << 8 | p[3];
@@ -119,12 +119,11 @@ GuestScrapText readGuestScrapText(Read&& read, std::size_t maxText = kMaxGuestSc
     const auto state = std::int16_t(std::uint16_t(globals[10] << 8 | globals[11]));
     if (state < 0) return refuse(Status::Uninitialized, "clipboard never initialized");
     if (state == 0)
-        return refuse(Status::OnDisk, "presse-papiers sur disque (fichier Presse-papiers), "
-                                      "not in memory");
+        return refuse(Status::OnDisk, "clipboard on disk (Clipboard file), not in memory");
     if (!handle) return refuse(Status::NoScrap, "no clipboard in memory");
-    if (handle & 1) return refuse(Status::Malformed, "handle impair");
+    if (handle & 1) return refuse(Status::Malformed, "odd handle");
     std::uint8_t mp[4];
-    if (!read(handle, mp, 4)) return refuse(Status::Unreadable, "handle illisible");
+    if (!read(handle, mp, 4)) return refuse(Status::Unreadable, "unreadable handle");
     std::uint32_t block = be32(mp);
     if (!mmu32) block &= 0x00FFFFFFu;            // 24-bit: flags in the high byte
     if (!block) return refuse(Status::Purged, "clipboard block purged");
@@ -144,7 +143,7 @@ GuestScrapText readGuestScrapText(Read&& read, std::size_t maxText = kMaxGuestSc
             std::string raw(take, '\0');
             if (take && !read(block + offset + 8,
                               reinterpret_cast<std::uint8_t*>(raw.data()), take))
-                return refuse(Status::Unreadable, "texte du presse-papiers illisible");
+                return refuse(Status::Unreadable, "unreadable clipboard text");
             result.utf8 = macRomanToUtf8(
                 reinterpret_cast<const std::uint8_t*>(raw.data()), take);
             result.macBytes = length;
@@ -154,7 +153,7 @@ GuestScrapText readGuestScrapText(Read&& read, std::size_t maxText = kMaxGuestSc
         }
         offset += 8 + length + (length & 1);
     }
-    return refuse(Status::NoText, "pas de texte (TEXT) dans le presse-papiers");
+    return refuse(Status::NoText, "no text (TEXT) on the clipboard");
 }
 
 } // namespace pom68k

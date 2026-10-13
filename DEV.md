@@ -58,7 +58,7 @@ census. Section 6 below explains the labels and asset contracts.
 | What is the published gate state? | generated `STATUS.md` |
 | What work remains? | `TODO.md`, which contains unchecked open work only |
 | Why was a decision made? | newest applicable entry in `CHANGELOG.md` |
-| Which environment options exist? | `src/StartupOptions.h` and generated `config_knobs.tsv`; §5 explains them |
+| Which environment options exist? | `src/StartupOptions.h` and the `config_knobs.tsv` registry, held exact by `config_test`; §5 explains them |
 
 When prose and code differ, correct the prose and add or strengthen the gate
 that would have caught the drift. Do not copy generated gate counts into a
@@ -86,7 +86,8 @@ hand-maintained backlog or overview.
 
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
-inside that section. Twelve platforms, twelve sections, 37 GUI profiles
+inside that section. Twelve platforms in eleven sections (VASP shares
+Sonora's), 41 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -112,6 +113,9 @@ ROM identity and stable save-state id live).
 
 Every subsystem port must cite one of these **plus a gate test**:
 
+0. **Apple's own ROM source** (`elliotnunn/mac-rom`) where it covers the
+   question; it outranks everything below (`docs/BASILISK_ROM_NOTES.md`
+   § 8.9).
 1. **MAME** `src/mame/apple/*` + the `m68000` family — primary hardware
    reference.
 2. **Guide to the Macintosh Family Hardware** 2e (GttMFH) + *Inside
@@ -295,13 +299,15 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **37** profiles are enumerated
-  (`MachineCatalog.h:50-64`, tags 1-37 contiguous) and each of the **12**
+  append, never renumber. All **41** profiles are enumerated
+  (`MachineCatalog.h:56-72`, tags 1-41 contiguous) and each of the **12**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
-  whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`.
+  whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`, and
+  the `*_savestate_relaunch_etalon` trio (LC II, Quadra 605, compact),
+  which load the saved file into a freshly built machine.
   The GUI hook shipped 2026-07-30; the remaining item (a hands-on GUI
   pass) is in `TODO.md` § Preuve, outillage et dettes de mesure.
 
@@ -915,7 +921,7 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   sample and a live drain turns that into a race — measured, two directions
   out of four silently stopped working. The sleep/wake gate no other machine
   can test is the one open milestone
-  (`TODO.md` § Bloqué sur références externes ou matériel).
+  (the planned Duo sleep gate, `TODO.md` § Nouvelles machines).
 - **A machine reset must scrub the PG&E's `$91` power flag** (`PgePmu::reset`).
   The MCU restarts from its mask ROM with its RAM intact, and `$91` is what
   the ROM branches on at `$FE28`: left at the last session's `$62` it takes
@@ -1015,13 +1021,14 @@ The Plus, original SE and original Mac II are the three shipped 800K-only
 profiles. All other floppy-equipped profiles retain this personality for
 400/800K GCR media inside a SWIM; the Duo 230 has no floppy mechanism.
 Drive B (external) is wired where MAME connects a second mechanism by
-default — the six compacts and the IIx, IIcx and SE/30 — and left unwired
+default — the seven compacts and the II FDHD, IIx, IIcx and SE/30 — and left
+unwired
 (`nullptr` at the controller, `externalFloppyPort()` false, no GUI row)
 everywhere else, MAME's `add_35_nc`: the LC family has no external floppy
 port at all (CHANGELOG 2026-10-02 (late night)). IWM line SELECT and SWIM
 soft-select choose between the two mechanisms where both exist;
 `storage_profile_test` strobes STEP through every board implementation —
-drive B reached on the nine, reaching nothing on the rest — and holds each
+drive B reached on those eleven profiles, reaching nothing on the rest — and holds each
 board to the catalogue's `externalFloppy`. `external_floppy_boot_etalon`
 boots the Plus ROM with drive A empty and the synthetic 800K boot disk
 present only in drive B.
@@ -1407,7 +1414,7 @@ AppleTalk SNAP header here, DIX IPv4/ARP to `EtherLink`) and the
 `ethertalk` service switches it; it is ON by default since 2026-09-14 — a
 machine without a card builds no link, and every LocalTalk gate runs on a
 card-less machine — and off with AppleTalk itself (`POM68K_APPLETALK=0`),
-through the window's « AppleTalk sur la carte » box, or through the
+through the window's « AppleTalk on card (EtherTalk) » box, or through the
 relaunch key `--atalk-ethertalk=0`.
 
 Measured against Dayna's own driver (`q605_dayna_driver_etalon`): a
@@ -1488,7 +1495,7 @@ knows instead of guessing (`docs/SCSI_HOTPLUG.md`):
   on that drive number names the mounted volume (Inside Macintosh: Files,
   offsets in the header). Both walks are bounded (64 elements, aligned
   non-null links, HFS/MFS signature) and a queue that fails them yields
-  `valid = false` — shown as « inconnu », never as « absent ».
+  `valid = false` — shown as « guest: unknown », never as « no drive ».
   `MachineHost::sampleGuestScsiView` runs it on the machine thread every
   15th publish; addresses are logical, walked through `Mmu030Peek.h`
   (moved from `tests/`) when a 68030's TC.E is set, physical otherwise —
@@ -1503,8 +1510,8 @@ knows instead of guessing (`docs/SCSI_HOTPLUG.md`):
   invisible for 15 s of guest time, mounted by name after the reset.
 
 The window binds both through `bindScsiBays` (`GuiFloppyBays.h`) and
-prints an « invité : … » line under SCSI 0 and every fixed bay; an empty
-bay's pick and « Créer » attach live rather than staging. The relaunch
+prints a « guest: … » line under SCSI 0 and every fixed bay; an empty
+bay's pick and « Create » attach live rather than staging. The relaunch
 line still carries the extras list, so a live attach survives a machine
 switch.
 
@@ -1513,8 +1520,8 @@ switch.
   controllers answer for any selected POM68K target (`ScsiAgentMailbox.h`,
   `$C0` POLL / `$C1` REPORT) and mounts or unmounts on request with its own
   block driver, installed at the target's SCSI unit. `Cmd::AgentMount` /
-  `AgentUnmount` post the request; a poll within ~2 s is « agent présent »;
-  the window offers « Monter / Démonter » on fixed bays while it is. Gates:
+  `AgentUnmount` post the request; a poll within ~2 s shows « Guest agent: present »;
+  the window offers « Mount / Unmount » on fixed bays while it is. Gates:
   `scsi_agent_mailbox_test` (protocol) and `scsi_agent_etalon` (the 8.1
   Finder launching the agent from its floppy, a live-attached blank disk
   mounted, unmounted and remounted by name, the boot volume refused).
@@ -1526,8 +1533,8 @@ switch.
   `ScsiDisk::close()` drops the image, between two quanta. Both
   controllers refuse a detach inside a session on that target
   (`sessionOn`), and the host re-queues it for the next quantum rather
-  than report a failure. The window offers it as « Retirer » only while
-  the guest's VCB queue shows no volume on the bay; otherwise « Retirer »
+  than report a failure. The window offers it as « Remove » only while
+  the guest's VCB queue shows no volume on the bay; otherwise « Remove »
   stages a relaunch as before. Gates: `scsi_detach_test` (both
   controllers, the target, a 5380 and a 53C96 board; synthetic image),
   `machinehost_test` (the re-queue) and `scsi_agent_etalon` step 2b (the
@@ -1599,7 +1606,7 @@ System-verified). Plus-family only; everything later is ADB.
   `input_etalon` (the bit System 6 lights).
 
 **Typing host text and reading the guest's scrap** (`src/TextTyping.h`,
-`src/GuestScrap.h`, « Machine → Taper du texte... », 2026-10-10). Text
+`src/GuestScrap.h`, « Machine → Type text... », 2026-10-10). Text
 typed into the guest goes through the keyboard like a user's keys. It never
 writes into the guest's memory. `planTyping` turns UTF-8 into physical key
 transitions for a layout the user chooses explicitly, US or Apple French
@@ -1794,6 +1801,12 @@ Only the SCC-side facts live here.
   Patches note #1032330). `.MPP` then never opens LocalTalk. XPRAM
   `$E0-$E3` is only the LAP connection selector ('atlk' id, 0 = built-in)
   and **cannot** disable AppleTalk (a bad id falls back to built-in).
+- **An 040 board's SCC access waits for the VIA clock** on the Quadra 605
+  and 630 (`viaSync()` before the access, MAME's `via_sync` in
+  `f108.cpp`/PrimeTime): without it an SCC read cost nothing and the ROM's
+  TimeSCCDB calibration came out nine times MAME's. It is withheld on the
+  djMEMC and Quadra 700 boards, where the same sync loses the ADB mouse
+  (`TODO.md`). Gate: `calibration_040_etalon`.
 - Gates: `scc_ext_test`, `scc_baud_test`, `scc_engine_test`,
   `llap_loop_test`, `llap_address_defense_test`, `ltoudp_test`,
   `llap_two_system_etalon`, `atalk_stack_test`, `afp_server_test`,
@@ -2016,7 +2029,7 @@ grep -rhoP '"\KPOM68K_[A-Z0-9_]+(?=")' \
      src/ tests/ extern/moira/Moira --include=*.h --include=*.cpp | sort -u
 ```
 
-185 distinct names as of 2026-08-25. Match on the literal, not on `getenv`:
+`config_test` prints the current count. Match on the literal, not on `getenv`:
 the complete startup surface is declared by `StartupOptions.h` and resolved
 into typed immutable snapshots, including `JitConfig`; a `getenv`-anchored
 pattern misses most of it. **Re-derive rather
@@ -2024,9 +2037,9 @@ than extend by hand** — the two cross-checks that built this list found 22
 and then 12 knobs the code read that no document mentioned.
 
 The prose below explains behaviour; [`config_knobs.tsv`](config_knobs.tsv) is
-the exact lifecycle registry. Its 232 rows contain no wildcard and classify
-each literal as `product` (70), `diagnostic` (52), `test` (95), or `chantier`
-(15). A product row cites at least one configured regression gate; a permanent
+the exact lifecycle registry. Its rows contain no wildcard and classify each
+literal as `product`, `diagnostic`, `test` or `chantier` (`config_test`
+prints the split). A product row cites at least one configured regression gate; a permanent
 diagnostic or test row names the source file that owns it; a chantier row names
 the document and closeout topic that decides its removal or graduation.
 
@@ -2034,6 +2047,7 @@ Knobs that test only for *presence* — `POM68K_NOFPU`, `POM68K_FLOPPY_RO`,
 `POM68K_MMU040_WALK`, `POM68K_Q605_NOFPU`, `POM68K_CENTRIS_FPU` /
 `_BAREFPU`, `POM68K_Q630_LC040` / `_BAREFPU`, `POM68K_Q700_LC040` /
 `_BAREFPU`, `POM68K_LTOUDP`, `POM68K_CENTRIS610`, `POM68K_PERIPH_STATS`,
+`POM68K_NO_CDBAY`, `POM68K_NO_AGENT_AUTOSTART`, `POM68K_JIT_REQUIRE_NATIVE`,
 every `*_TRACE` — **activate on `=0` too**. Setting one to zero to turn it
 off is the trap; unset it instead. The knobs that do honour `=0` say so
 below.
@@ -2148,7 +2162,7 @@ overrides this variable through `--atalk-share=`), `POM68K_ATALK_WIRE_BOOST`,
 `terminal` = connect the SCC A modem port / SCC B printer port to a
 non-blocking host endpoint — PTY on macOS and Linux, loopback TCP on every
 desktop host, BSD sockets or Winsock 2 behind one socket layer in
-`SerialHostTransport.cpp` — or to the « Ports série » window's own terminal
+`SerialHostTransport.cpp` — or to the « Serial ports » window's own terminal
 (`SerialTerminal.h`); `tcp:0` selects a free loopback port and the actual
 endpoint is printed. Printer serial is refused while AppleTalk or LToUDP owns
 channel B, and the window says so, as it does for a port already in use. The
@@ -2158,8 +2172,8 @@ ENDPOINT of a `terminal` port, with a bounded input queue that refuses when
 full and drains only into free slots of the SCC's three-byte FIFO, like a
 transport's (`pumpSerialChannel`). `scc_serial_host_test` gates PTY and TCP
 round trips, disconnect/reconnect, partial writes, saturation and both
-terminal roles; it also runs as a Windows build under wine (2026-10-10, not
-yet on Windows itself). `q605_serial_etalon` has a real Serial Driver client
+terminal roles; it also passes as a Windows build, under wine and on a
+Windows host under MSVC. `q605_serial_etalon` has a real Serial Driver client
 (`dev/serprobe`) exchange a hello, a 6000-byte burst and an order-sensitive
 receipt with the terminal on Mac OS 8.1),
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`,
@@ -2336,7 +2350,7 @@ start in cabinet mode — exclusive full screen on the primary monitor, no
 menu bar, no window, mouse captured; Ctrl+Alt+F toggles at any time, Alt+F4 or
 Ctrl+Shift+Q held ~0.7 s leaves) and `POM68K_CRT` (`off` | `light` |
 `arcade` | `phosphor` — the CRT glass pass of `CrtEffectStack`, also the
-« Affichage » menu and its « Réglages CRT » window; an uncompilable shader
+« Display » menu and its « CRT settings » window; an uncompilable shader
 leaves the raw screen and the menu says so).
 `POM68K_MAC128K_EXC` exits 0 whether or not an
 exception fires: it reports, it never judges, so it must not be registered
@@ -2443,7 +2457,7 @@ are documented with the rest of the Q900 group above.)
 
 | knob | chantier | what it does |
 |---|---|---|
-| `POM68K_V8_IOHOLE` | V8 map holes (`TODO` § 4) | `=<n>` logs the first n reads in an unmapped V8 I/O hole with the PC. The Classic II ROM dereferences `$50F18038` and the block behind it has never been identified; the access pattern is the only way to name it |
+| `POM68K_V8_IOHOLE` | V8 map holes | `=<n>` logs the first n reads in an unmapped V8 I/O hole with the PC. It is how the Classic II ROM's `$50F18038` dereference was traced; that block has since been ruled open bus (`TODO.md` § Fidélité) |
 | `POM68K_V8_HOLEVAL` | same | `=<hex>` what a hole reads back on the Eagle's forgiving bus. MAME answers 0, but that is its `address_space` default and not a modelled decision — so this stays a knob, not a fact, until an observable separates them |
 | `POM68K_PGE_TRAP` | Duo PMU (`docs/DUO_BRINGUP.md`) | `=<hexbyte>` break when the PG&E RECEIVES that byte over SPI |
 | `POM68K_PGE_PCCOUNT` | same | `="hex,hex,…"` execution counts + first hits for named PMU firmware addresses |
@@ -2527,12 +2541,13 @@ cycles, wall time, block/native/fallback counters and native share).
 **Pixel pins.** A boot etalon judges its screen by luminance ratios — a
 menu bar mostly white, a desktop in a dithered band — and that answer
 survives a wrong font, a shifted icon or a scrambled CLUT, because none of
-those move an average. Since 2026-09-19 six profiles also pin the exact
-pixels: `tests/PixelPin.h` hashes the SETTLED screen (two captures a settle
+those move an average. Every catalogue profile's boot etalon also pins the
+exact pixels: `tests/PixelPin.h` hashes the SETTLED screen (two captures a settle
 apart must be identical, so the value does not depend on which frame an
 engine landed on — measured identical under `interp` and the x64 JIT on the
 LC II) with the menu-bar rows MASKED, because Mac OS draws a clock there.
-The expected values live in `tools/pixel_pins.tsv`, one row per gate, and a
+The expected values live in `tools/pixel_pins.tsv`, one row per gate, model
+and booted volume, and a
 gate with no row prints its measured value and passes: that printed line is
 what gets pasted in. Changing a value is deliberate — the diff names the
 profile whose screen moved. `pixel_pin_test` gates the mechanism itself
@@ -2592,7 +2607,7 @@ Labels are **derived from the test name** in one final policy module
 (`cmake/Pom68kGatePolicy.cmake:58-110`): name ends in `etalon` → `etalon` (+
 `etalon-core` if it is in the twelve-name `POM68K_ETALON_CORE` list, whose
 membership is a configure-time `FATAL_ERROR` if a name stops resolving);
-`gui_smoke_test` → `gui`; anything else → `unit`; `^jit_` → `jit`; a
+the three `gui_*smoke_test` gates → `gui`; anything else → `unit`; `^jit_` → `jit`; a
 substring match on the 68040 machine names → `m040`, and on the 68030
 ones → `m030` (`:74-87`,
 since 2026-08-18). A gate added tomorrow is classified the moment it
@@ -2603,8 +2618,8 @@ which is how `quadra_event_scheduler_test` lost `m040` for two weeks.
 
 Asset-dependent gates soft-skip when the user-provided ROM/disk images are
 absent. The whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,
-`q605_trace`, `duo_trace`, `iifx_trace`, …) are among the 25
-`EXCLUDE_FROM_ALL` dev tools, not gates — and the gate is the `add_test`
+`q605_trace`, `duo_trace`, `iifx_trace`, …) are
+`EXCLUDE_FROM_ALL` dev tools (`cmake/Pom68kDevTools.cmake`), not gates — and the gate is the `add_test`
 NAME, which is not always the binary name (`macii_mouse_trace` registers as
 `macii_mouse_etalon`; `compact_boot_etalon` backs four gates under four other
 names). `src/jit/POM68K_JIT.md` § 5 carries the same tiers with the
@@ -2639,7 +2654,7 @@ separate `out` and publication is a swap; the host never takes `fb_`.
 And **`cpuEngine()` follows the machine, not the click**: the menu tick reports
 the engine actually running, and a swap lands one queue round-trip later.
 
-The GUI scheduler's **Avance rapide starts off** on the CRTP host and compact
+The GUI scheduler's **Fast forward starts off** on the CRTP host and compact
 inline runner. At ×8, two physical host clicks can be separated by too many
 guest VBLs for the Mac's double-click threshold; turbo therefore remains a
 manual CPU-window action. Normal mode targets the profile's nominal machine
@@ -2661,7 +2676,7 @@ Per-platform variations that are not worth a hook go to
 `Cmd::InsertFloppy`/`EjectFloppy` carry the GUI's intent down; nothing carried
 the DRIVE's state back, so a guest-side eject — a Finder « Ranger », a Cmd-E,
 any `.Sony` eject reaching `SonyDrive::eject()` — left the Disks window
-naming a disk that was no longer there, with an « Éjecter » button for it.
+naming a disk that was no longer there, with an « Eject » button for it.
 `publish()` now mirrors `internalDrive()` (flag + backing path) every time it
 runs, next to the CD-bay flags, which is the same rule those already followed:
 **for media, the device is the authority and the queue is only a request.**
@@ -2676,131 +2691,122 @@ Gated by `machinehost_test` (`unit`, asset-free) — queue ordering, the double
 buffer, both pacing branches, the thread teardown. Startup configuration and
 ROM/profile routing now live in the headless `pom68k_app` layer
 (`ProcessEnvironment` → `RuntimeConfig` → `MachineFactory` →
-`MachineSession`) and are exercised by `docs_test`. `RuntimeConfig` sépare ROM
-et médias au lieu de propager
-`argc`/`argv`; `MachineSession` possède le runtime concret, et
-`GuiMachineRuntime` possède à son tour `GuiSessionState` et les objets core,
-hôte et UI dans leur ordre de dépendance. Les runners ne conservent donc plus
-de machines ou de contextes statiques, et l'arène garantit des adresses
-stables aux callbacks
-natifs comme Emscripten. `gui_smoke_test` couvre maintenant le cycle GUI
-commun avec une vraie fenêtre cachée : rendu, changement de moteur, sauvegarde,
-fermeture RAII et relance interceptée — mais il se saute sur tout runner sans
-surface GL et ne regarde aucune fenêtre. `gui_relaunch_smoke_test`
-(`--gui-smoke-relaunch=<rapport>`, 2026-09-16) ne l'intercepte pas : la
-première génération met la carte DaynaPort en attente comme « Appliquer »
-de la fenêtre AppleTalk (`relaunchWithDaynaPort(3)`) et `processRelaunch()`
-ré-exécute vraiment le processus avec la ligne de relance ; la seconde
-génération, reconnue au `--daynaport=3` que la ligne porte, atteste la carte
-que la session voit (`ethernetScsiId`) puis ferme. Le wrapper lit le dernier
-rapport (génération 2) et le journal pour la première. Depuis le 2026-09-16,
-`gui_windows_test` (`tests/ImGuiHeadless.h`) dessine les fenêtres
-Périphériques, AppleTalk / Ethernet, Disques et Moteur par leurs vraies
-fonctions **sans système de fenêtres** : ImGui compilé avec ses hooks de
-test-engine (libellé et rectangle de chaque item), un rastériseur CPU pour
-l'image (captures `gui_<fenêtre>.ppm` dans le dossier de build, pour l'œil),
-des clics injectés (radio LLE/HLE puis « Appliquer » jusqu'au callback de
-relance typé ; sélecteur DaynaPort jusqu'à `relaunchWithDaynaPort(3)` ;
-disquette déposée puis choisie dans le sélecteur SWIM jusqu'à `insertFloppy` ;
-la fenêtre AppleTalk complète sur un hub attaché à une carte Plus sans ROM,
-case « Activer AppleShare » jusqu'au hub, nom de serveur et dossier partagé
-tapés puis « Appliquer » jusqu'à `reconfigure()` — l'affichage se redimensionne
-à 1024×1000 pour elle).
-`gui_machine_window_test` (même harnais, 2026-09-16) fait de même pour la
-fenêtre machine sur une machine factice qui enregistre ce que le GUI lui
-pousse : la barre de menus par `drawShellFrame` (`GuiShellMenu.cpp`, sans
-GLFW — Redémarrer, Pause, Sauver l'état, l'enregistrement, « Changer de
-machine » jusqu'au profil relancé et à la demande de fermeture,
-l'interrupteur de moteur, les presets CRT, « Réglages CRT », le mode borne
-et sa sortie par Ctrl+Alt+F ou Alt+F4), le tableau de bord ancré, et la
-surface écran de `GuiScreen.h` : une texture fournie au rastériseur sous le
-nom GL du runner, dont les pixels sont relus là où la fenêtre les met
-(ratio conservé, letterbox en borne), le survol et le clic traduits en
-`MouseMove`/`MouseButton` au zoom près, la capture par clic molette avec
-le curseur hôte factice et sa libération par Suppr, le clavier compact
-jusqu'au code Mac. Le côté fenêtre (`GlfwScreenHost`, le changement de
-moniteur, `relaunch.closeWindow`) reste dans `GuiShell.cpp`. Le gate a
-trouvé deux défauts le jour de sa naissance : le tableau de bord posé à
-y = 830 dans une fenêtre de 800 px (un liseré de barre de titre — il
-s'ancre désormais sous la bibliothèque de disques) et le Ctrl du chord
-borne lu comme Cmd sur macOS (ImGui permute Ctrl et Cmd à `AddKeyEvent` ;
-le chord accepte les deux).
-Il vérifie aussi que chaque caractère non ASCII des chaînes affichées a un
-glyphe dans la police en usage : la police par défaut d'ImGui n'a ni tiret
-cadratin ni flèche, qui s'affichaient en « ? » — les chaînes d'interface les
-écrivent en ASCII (`-`, `->`). `POM68K_GUI_LABELS=1` liste les items d'une
-frame, `POM68K_GUI_TRACE=1` suit chaque clic. Les panneaux machine (menus,
-framebuffer) restent hors de ce gate.
+`MachineSession`) and are exercised by `docs_test`. `RuntimeConfig` separates
+the ROM from the media instead of passing `argc`/`argv` along;
+`MachineSession` owns the concrete runtime, and `GuiMachineRuntime` in turn
+owns `GuiSessionState` and the core, host and UI objects in their dependency
+order. The runners therefore keep no static machines or contexts, and the
+arena guarantees stable addresses to native callbacks such as Emscripten's.
+`gui_smoke_test` covers the common GUI cycle with a real hidden window:
+rendering, engine switch, save, RAII close and an intercepted relaunch — but
+it skips on any runner without a GL surface and looks at no window.
+`gui_relaunch_smoke_test` (`--gui-smoke-relaunch=<report>`) does not
+intercept it: the first generation stages the DaynaPort card the way the
+AppleTalk window's « Apply and restart » does (`relaunchWithDaynaPort(3)`)
+and `processRelaunch()` really re-executes the process with the relaunch
+line; the second generation, recognised by the `--daynaport=3` its line
+carries, attests the card the session sees (`ethernetScsiId`) and closes.
+The wrapper reads the last report (generation 2) and the log for the first.
+`gui_windows_test` (`tests/ImGuiHeadless.h`) draws the Peripherals,
+AppleTalk / Ethernet, Disk Library, Accelerated engine, Serial ports and
+Debugger windows through their real functions **without a window system**:
+ImGui compiled with its test-engine hooks (each item's label and
+rectangle), a CPU rasterizer for the image (`gui_<window>.ppm` captures in
+the build directory, for the eye), and injected clicks (LLE/HLE radio then
+« Apply and restart » down to the typed relaunch callback; the DaynaPort
+selector down to `relaunchWithDaynaPort(3)`; a floppy dropped then chosen in
+the SWIM picker down to `insertFloppy`; the complete AppleTalk window on a
+hub attached to a ROM-less Plus board, the « Enable AppleShare » box down to
+the hub, server name and shared folder typed then « Apply » down to
+`reconfigure()` — the common controls must fit a 1024×768 surface).
+`gui_machine_window_test` (same harness) does the same for the machine
+window on a fake machine that records what the GUI pushes to it: the menu
+bar through `drawShellFrame` (`GuiShellMenu.cpp`, without GLFW — Restart,
+Pause, Save state, the recording pair, « Change machine » down to the
+relaunched profile and the close request, the engine switch, the CRT
+presets, « CRT settings », kiosk mode and its exit through Ctrl+Alt+F or
+Alt+F4), the docked Dashboard, and the screen surface of `GuiScreen.h`: a
+texture handed to the rasterizer under the runner's GL name, whose pixels
+are read back where the window puts them (aspect kept, letterboxed in
+kiosk mode), hover and click translated into `MouseMove`/`MouseButton` at
+the zoom factor, capture by middle click with the fake host cursor and its
+release by Delete, the compact keyboard down to the Mac key code. The window
+side (`GlfwScreenHost`, the monitor switch, `relaunch.closeWindow`) stays in
+`GuiShell.cpp`. The gate found two defects the day it was written: the
+Dashboard placed at y = 830 in an 800 px window (a sliver of title bar — it
+now docks below the Disk Library) and the kiosk chord's Ctrl read as Cmd on
+macOS (ImGui swaps Ctrl and Cmd at `AddKeyEvent`; the chord accepts both).
+It also checks that every non-ASCII character of the displayed strings has a
+glyph in the font in use: ImGui's default font has neither an em dash nor an
+arrow, which showed as « ? » — the interface strings write them in ASCII
+(`-`, `->`). `POM68K_GUI_LABELS=1` lists one frame's items,
+`POM68K_GUI_TRACE=1` follows each click. The machine panels (menus,
+framebuffer) stay outside this gate.
 
-**Mode borne et effets CRT** (`GuiDisplay.h`, `GuiDisplayWindow.cpp`,
-`CrtEffectStack.*`, `OpenGLShader.*`, `GlEntryPoints.h` — portés de NeoST le
-2026-09-16). Le runner dessine l'écran par `screenWindowBegin` : la fenêtre
-ancrée sur le bureau, une fenêtre sans chrome couvrant tout le viewport en
-borne (`ScreenInput::frame` y centre l'image à ratio conservé, capture la
-souris et cache le curseur). Le shell gère Ctrl+Alt+F, les chords de sortie et le
-changement de moniteur GLFW entre deux trames, sur une fenêtre visible
-seulement (le smoke garde sa fenêtre cachée). La passe CRT — shader de NeoST
-inchangé, contexte OpenGL 3 core de POM68K, un VAO obligatoire, chaque état
-GL touché restauré pour le backend ImGui — rend dans un FBO à la taille
-affichée (scanlines et masque anti-aliasés analytiquement) et
-`GuiDisplayState::shown()` renvoie sa sortie ou la texture brute ; les points
-d'entrée GL 2/3 viennent de `GlEntryPoints.h` (gl3.h sur macOS,
-`glfwGetProcAddress` ailleurs, sans glext.h). `gui_windows_test` gate les
-presets et le letterbox ; le shader lui-même ne se prouve que sur une
-surface GL (`gui_smoke_test` avec `POM68K_CRT=arcade` : « [CRT] CRT effect
+**Kiosk mode and CRT effects** (`GuiDisplay.h`, `GuiDisplayWindow.cpp`,
+`CrtEffectStack.*`, `OpenGLShader.*`, `GlEntryPoints.h` — ported from
+NeoST). The runner draws the screen through `screenWindowBegin`: the docked
+window on the desktop, a chromeless window covering the whole viewport in
+kiosk mode (`ScreenInput::frame` centres the image there at its aspect
+ratio, captures the mouse and hides the cursor). The shell handles
+Ctrl+Alt+F, the exit chords and the GLFW monitor switch between two frames,
+on a visible window only (the smoke test keeps its window hidden). The CRT
+pass — NeoST's shader unchanged, POM68K's OpenGL 3 core context, a mandatory
+VAO, every GL state it touches restored for the ImGui backend — renders into
+an FBO at the displayed size (scanlines and mask analytically anti-aliased)
+and `GuiDisplayState::shown()` returns its output or the raw texture; the
+GL 2/3 entry points come from `GlEntryPoints.h` (gl3.h on macOS,
+`glfwGetProcAddress` elsewhere, without glext.h). `gui_windows_test` gates
+the presets and the letterbox; the shader itself is proved only on a GL
+surface (`gui_smoke_test` with `POM68K_CRT=arcade`: « [CRT] CRT effect
 stack ready »).
-Le parsing derrière cette façade est lui-même séparé :
-`StartupSnapshot` possède et valide les valeurs capturées, tandis que
-`StartupDomainView` n'en fournit que les lectures typées autorisées,
-`StartupValueDecoding` conserve les sémantiques historiques des valeurs, les
-unités `Product`, `Core` et `Machine` décodent leurs agrégats, et
-`RuntimeConfig.cpp` ne connaît plus aucun nom `POM68K_*`. L'unique lecture
-`getenv()` reste dans `ProcessEnvironment.cpp`; tous les décodeurs reçoivent
-le même `const StartupSnapshot&`, jamais une map publique. Les 136 clés, dont
-les 40 du JIT, sont déclarées une seule
-fois dans le catalogue neutre `StartupOptions.h`, avec leur domaine typé. La
-capture itère cette collection unique ; les décodeurs et `JitConfig` manipulent
-des `StartupOption`, jamais une chaîne de clé libre. Le tableau
-`jit::kConfigurationKeys` n'existe plus. Le paramètre `Domains` du type est vérifié par
-les vues `ProductStartupView`, `CoreStartupView` et
-`MachineStartupView`; employer une option hors domaine est une erreur de
-compilation, tandis qu'une option partagée porte explicitement les deux
-capacités.
-La représentation chaîne-vers-chaîne est privée dans `StartupSnapshot`; son
-constructeur rejette une clé inconnue et constitue l'unique frontière brute
-utilisée par la capture de processus et les fixtures. L'ancien
-`EnvironmentLookup` et le point d'entrée JIT générique `resolveConfigFrom`
-n'existent plus.
-Chaque ligne porte aussi un `StartupValuePolicy`. Les compatibilités de zéro,
-de chaîne vide et de premier caractère restent volontairement séparées ; les
-politiques numériques fixent leur base et, lorsqu'elles sont bornées, leur
-intervalle. `StartupValueDecoding.h` est le seul moteur de ces conversions et
-les vues de domaine n'exposent `boolean`, `integer`, `text` ou `hexadecimal`
-qu'à une option du bon type. Cinq syntaxes composées seulement utilisent
-l'échappatoire `Custom`.
-Chaque machine reçoit maintenant `GuiHostServices&` explicitement pour ses
-quanta réseau; `GuiSessionState` est scindé en sous-états réseau, audio,
-relance, panneau CPU, diagnostics et périphériques. Il n'existe donc ni
-pointeur global vers la session active, ni pointeur inverse de l'état vers les
-services. `GuiWindowSession` ferme sous RAII la fenêtre GLFW, le contexte
-ImGui, ses backends et la texture OpenGL; les runners ne dupliquent plus ce
-protocole de destruction.
+The parsing behind this facade is itself split: `StartupSnapshot` owns and
+validates the captured values, while `StartupDomainView` only provides the
+typed reads it allows, `StartupValueDecoding` keeps the values' historical
+semantics, the `Product`, `Core` and `Machine` units decode their
+aggregates, and `RuntimeConfig.cpp` knows no `POM68K_*` name at all. The
+single `getenv()` read stays in `ProcessEnvironment.cpp`; every decoder
+receives the same `const StartupSnapshot&`, never a public map. The 143
+keys, 41 of them in the JIT domain, are declared once in the neutral
+catalogue `StartupOptions.h`, each with its typed domain. The capture
+iterates that single collection; the decoders and `JitConfig` handle
+`StartupOption`s, never a free key string. The `Domains` parameter of the
+type is checked by the `ProductStartupView`, `CoreStartupView` and
+`MachineStartupView` views; using an option outside its domain is a
+compile error, while a shared option carries both capabilities explicitly.
+The string-to-string representation is private to `StartupSnapshot`; its
+constructor rejects an unknown key and is the only raw boundary used by the
+process capture and the fixtures.
+Each row also carries a `StartupValuePolicy`. The zero, empty-string and
+first-character compatibilities stay deliberately separate; the numeric
+policies fix their base and, when bounded, their range.
+`StartupValueDecoding.h` is the only engine for these conversions and the
+domain views expose `boolean`, `integer`, `text` or `hexadecimal` only to
+an option of the right kind. Only five compound syntaxes use the `Custom`
+escape hatch.
+Each machine now receives `GuiHostServices&` explicitly for its network
+quanta; `GuiSessionState` is split into network, audio, relaunch, CPU
+panel, diagnostics and peripherals sub-states. There is therefore no global
+pointer to the active session, and no back pointer from the state to the
+services. `GuiWindowSession` closes the GLFW window, the ImGui context, its
+backends and the OpenGL texture under RAII; the runners no longer duplicate
+that teardown protocol.
 
-Le `CMakeLists.txt` racine applique désormais la même séparation : il inclut,
-dans un ordre vérifié, les gates de composants, les gates machine, les gates
-JIT, les outils `EXCLUDE_FROM_ALL`, puis la politique de labels et de
-manifestes depuis cinq fichiers `cmake/Pom68k*.cmake`. Le registre reste
-produit dans le scope du répertoire racine, sans déclaration de test dans la
-racine elle-même.
+The root `CMakeLists.txt` applies the same separation: it includes, in a
+checked order, the component gates, the machine gates, the oracle gates, the
+JIT gates, the `EXCLUDE_FROM_ALL` tools, then the label and manifest policy,
+from six `cmake/Pom68k*.cmake` files (which pull in the narrower gate
+modules beside them). The registry is still produced in the root
+directory's scope, with no test declaration in the root itself.
 
-### The menu bar (`src/GuiShell.cpp`, `src/GuiMachineControls.*`)
+### The menu bar (`src/GuiShellMenu.cpp`, `src/GuiMachineControls.*`)
 
 The shell owns the bar; a runner contributes nothing to it. Until
 2026-09-13 every runner emitted its own copy of the same twelve lines
-(Redémarrer, Sauver/Restaurer l'état, the recording pair) *directly into
+(Restart, Save/Restore state, the recording pair) *directly into
 the bar* — so the bar was a flat row of eleven items, five of which acted
 the instant they were clicked — and its own copy of a "CPU" window with
-Pause / Reset / Avance rapide. The six copies had drifted: Toby had no
+Pause / Reset / Fast forward. The six copies had drifted: Toby had no
 save-state menu, the compact runner said « x8 », VASP and RBV hid the panel.
 
 A runner now binds two things once at setup, both on `GuiSessionState`:
@@ -3080,7 +3086,7 @@ under the hub's lock, never a device — and keeps two kinds of control apart:
   `--atalk-<key>=` values to the hub at startup (`applyNetworkConfig`) and
   serializes the hub's current configuration back at relaunch
   (`networkConfigOf`), so what the window applied is what the next process
-  reads. « Révéler » hands a folder to `open` / `xdg-open` / `explorer`.
+  reads. « Show folder » hands a folder to `open` / `xdg-open` / `explorer`.
 - **Staged + relaunch**: the card's presence and SCSI ID. Same contract as
   Disks and Peripherals — a Mac probes its SCSI bus once, at boot — and
   the same mechanism: `GuiRelaunchState::stageOwnCommandLine()` re-execs the

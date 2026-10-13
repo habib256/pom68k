@@ -19,9 +19,9 @@ replayer on top. The x86-64 and AArch64 backends emit machine code and are
 JITs in the strict sense; `auto` selects one of them for the default 68040
 path when the host supports it. Their exactness is why the wins are bounded
 (§ 7). The GUI
-says "Moteur accéléré", distinguishes "JIT `<backend>`" from
-"fenêtres (threaded)" and names the backend (`drawCpuMenu()`,
-`GuiShellMenu.cpp:85-118`). The gauge window is `drawEngineWindow()`,
+says "Accelerated engine", distinguishes "JIT `<backend>`" from
+"windows (threaded)" and names the backend (`drawCpuMenu()`,
+`GuiShellMenu.cpp:88-121`). The gauge window is `drawEngineWindow()`,
 `GuiEngineWindow.cpp:15-89`;
 the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode
@@ -88,7 +88,7 @@ engine being worth switching on. Ranked by measured gain (§ 3.4):
 | 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | **×5.0** on a fixed budget (x64, § 3.4); ×2.68 end to end on `q605_boot_etalon` (2026-07-31, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
 | 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** portable baseline (LC II, fixed budget, threaded); `auto` now uses the separately gated native generator on both ISAs (a64 −5.3 %, x64 −12.6 % over `threaded` at the default budget) | same fetch win, plus native replay |
 | 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
-| 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
+| 68000 | **128K, 512K, 512Ke, Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
 
 The last two rows are the honest reason the 020/000 seams took until
 2026-08-06 to exist: they were never going to pay much, and saying so is
@@ -411,7 +411,8 @@ across linked blocks and applied the measured cold-code score of 64; the
 6,000-frame fixed-budget comparison, long lockstep and native LLE platform
 gates then cleared the independent AArch64 admission. Its `autoFamilies`
 therefore carries 040+030, and the x64 mask joined it on 2026-08-21 on the
-numbers above. Re-measured after
+numbers above (withdrawn 2026-08-29, restored 2026-09-06 — § Where the
+engine is wired). Re-measured after
 the current generated-loop compaction: three same-process ABBA repetitions
 give `threaded` **19.93 s** median (19.85–19.94) and a64 **18.88 s**
 (18.82–18.89), **−5.3 %** with 0.4/0.3 % arm spreads and fingerprint
@@ -1342,18 +1343,18 @@ do not affect an injected session.
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
 | `POM68K_JIT_ICACHE_EMIT` | `1` | ATTRIBUTION knob for the emitted 68030 i-cache charge (`docs/JIT_BRINGUP.md` § B). Off, an 030 block charges the instruction cost alone, so a residual divergence provably belongs to something else. Only a bring-up measurement should turn it off |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
-| `POM68K_DATA_WINDOW` | 68030 `1`, others `0` | the INTERPRETER's data window (§ 8) — opt-in on the 68040 since the ATC-exactness capping made it a net loss there, and the 68030 default since 2026-09-05 on that family's own measurement (`JitConfig.h:105`, the per-family default at `JitEngine.cpp:117-118`, the door at `JitEngine.cpp:144`) |
+| `POM68K_DATA_WINDOW` | 68030 `1`, others `0` | the INTERPRETER's data window (§ 8) — opt-in on the 68040 since the ATC-exactness capping made it a net loss there, and the 68030 default since 2026-09-05 on that family's own measurement (`JitConfig.h:108`, the per-family default at `JitEngine.cpp:119-120`, the door at `JitEngine.cpp:146`) |
 | `POM68K_JIT_PARANOID` | profile | re-validate the translation at every arm; off in `production`, on in `conservative`/`instrumented` |
 | `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line and a dtlb-refusals-by-reason line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
 | `POM68K_JIT_VERBOSE_BLOCKS` | `40` | how many compiled blocks the dump prints under `POM68K_JIT_VERBOSE`. The dump is the only place a block's MEASURED per-instruction cycles are visible, and 40 only ever reaches ROM reset code — raise it to diagnose a refusal deep in a boot |
-| `POM68K_JIT_ACCESS_THUNK` | profile | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores; `production`/`instrumented` use 2, `conservative` uses 0 |
+| `POM68K_JIT_ACCESS_THUNK` | profile | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores; `production`/`instrumented` use 2, `conservative` uses 0. Unset on a 68030, the value is capped by the backend's `caps().maxAccessThunk030` (1 on x64: exact writes are withdrawn as an 030 default there) |
 | `POM68K_JIT_040_LINE_READ` / `_WRITE` / `_PAIR` | profile | native 040 D-cache line proofs; on in `production`/`instrumented`, off in `conservative`. `_PAIR` admits only the two IR contracts with a dedicated atomic-pair gate |
 | `POM68K_JIT_040_LINE_STATS` | profile | native read/write proof counters; on in `instrumented`, off otherwise |
 | `POM68K_JIT_HISTO` | profile | dynamic opcode/fallback census; on in `instrumented`, off otherwise (`JitEngine.cpp dumpHisto()`) |
 | `POM68K_JIT_REQUIRE_NATIVE` | unset | gate-only: abort Engine construction if explicit selection/W^X resolves to `threaded`. Native builds set it on every `jit_*` 68030 boot gate, so an engine-only green run cannot masquerade as code-generator coverage; CI also uses it for the asset-free protocol tier |
 | `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.6). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
 | `POM68K_JIT_MIN_NATIVE` | `50` | percent of a block's instructions a generator must emit natively before the block is kept; below it the block is refused and the fetch window runs instead. **Sweeping it is a measurement, and the measurement says leave it alone**: 0 % more than doubles native residency and costs **37 %** of wall clock on the 68030, everything from 50 up is one flat plateau (`docs/JIT_BRINGUP.md` § C.4ter). A fallback inside a block pays a call, a frame and a boundary commit; on the window it pays a dispatch |
-| `POM68K_JIT_PROFIT_SCORE` | `0` | experimental native compile gate; 0 preserves the current policy. Otherwise a recorded block must satisfy `visits × potentially native instructions >= score` in addition to `POM68K_JIT_HOT`. This lets long/native loops compile before short single-pass blocks; it is a measurement knob until repeated 1 000/3 000/6 000-frame ABBA evidence earns a default |
+| `POM68K_JIT_PROFIT_SCORE` | `0`; 68030 per-backend | native compile gate; 0 disables it. Unset on a 68030, the native backend's `caps().profitScore68030` applies instead (64 on a64, 0 on x64 — `JitEngine.cpp` constructor), and an explicit value overrides that. Otherwise a recorded block must satisfy `visits × potentially native instructions >= score` in addition to `POM68K_JIT_HOT`. This lets long/native loops compile before short single-pass blocks; it is a measurement knob until repeated 1 000/3 000/6 000-frame ABBA evidence earns a default |
 | `POM68K_JIT_RESTART_BASE` | per-backend | admission (030): the restartable-write family on the split BASE cost instead of the traced total. Its historical coarse-budget divergence was the peripheral-phase class, CLOSED 2026-08-21 by the access-thunk clock bias (JIT_BRINGUP § C.4nonies). **Default follows the backend's `caps().accessClockBias` declaration — ON under x64 since 2026-08-22 (−4.3 % alone, −8.0 % with BSR.W at 6000 frames, fp identical) and under a64 since the same afternoon (its thunks carry the bias, replacing the `guardIcacheHits` replay); `threaded` declares none and needs none**; an explicit 0/1 wins either way. Both emitters consult it since the evening of 2026-08-22 (a64 had the total-cost rule hard-wired, refusing every push traced on an i-cache miss — native share 49 → 71 % at 30 000 frames once wired). `jit_lockstep_030_x64_alignment_test` / `jit_lockstep_030_a64_alignment_test` pin both admissions at 120k; `jit_backend_test` pins the declaration coupling |
 | `POM68K_JIT_BSRW` | per-backend | admission for BSR.W (`$6100`) into the armed-charge exemption. Charge proved correct (`fetchWords=2`); its step-16 097 divergence was the same peripheral-phase class, closed by the same fix. Same per-backend default and same gates as `POM68K_JIT_RESTART_BASE` (−2.3 % alone at 6000 frames) |
 | `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. Mutating forms consume read4/write4 when tailless or the shared read4/write4/read1/write1 maximum-path contract when crossing; both writable mappings are proved before access zero. MMIO/fault tails replay in Moira, preserving the partial longword and format-$B frame. A mispriced form refuses. Promoted for reads on 2026-08-31 and for crossing writes on 2026-09-01 after native A64+x64 tail/no-tail, MMIO and fault oracles; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
@@ -1362,6 +1363,7 @@ do not affect an injected session.
 | `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
 | `POM68K_JIT_WATCH_OPCODE` | unset | diagnosis (a64): `<hex>[,<hex>…]`, up to four opcodes — when the compile loop hands one to the fallback stub, print its admission inputs (trace/base/i-cache cycles, fetch count, terminal queue, semantics, memory proof plan) once per pc, tagged with the stage or the emitter check that refused it (`jsr:queue`, `movem:cost`, …). Turns a fallback-census row into WHICH check, without guessing from the source (2026-08-23) |
 | `POM68K_JIT_DENY_FROM` / `_TO` | unset | bisection instrument (hex pc range): refuse to COMPILE any block whose entry pc falls in [from, to). Halving the pc space is how a divergence that heals under every pacing perturbation gets pinned to one block |
+| `POM68K_JIT_TRACE_BLOCK` | unset | diagnostic (hex pc): print a block's recorded IR the moment it is traced. The instrument that showed a counter divergence blamed on an emitter was a traced field (`JitEngine.cpp`, `JitConfig.h`) |
 | `POM68K_BENCH_ARMS` | unset | `jit_bench_lcii`: `<a>,<b>` runs TWO ENGINE arms head-to-head in the same ABBA process (each side `interp` or a backend key, applied via `POM68K_JIT_BACKEND` before that arm's machine is built). Modifiers bind Engine-resolved knobs per arm: `@score=N` (profitability, e.g. `a64@score=0,a64@score=64`), `@restart=0\|1` and `@bsrw=0\|1` (the § C.4nonies admissions, e.g. `x64,x64@restart=1@bsrw=1`). Unset = the historical interp-vs-jit comparison. Exists because separate processes reintroduce the variance `bench::compare` removes |
 | `POM68K_BENCH_FRAMES` | q605 `3000`; others `6000` | the four `jit_bench*` harnesses — fixed **machine-cycle** frames: 130 240 (Plus), 261 120 (Mac II), 260 480 (LC II), 416 667 (Q605) |
 | `POM68K_BENCH_SLICES` | `0` = CPU alone | `jit_bench_lcii` only: N ≥ 1 runs the GUI's own quantum, N slices per frame with a raster catch-up at each boundary (§ 3.6) |
@@ -1519,14 +1521,15 @@ plans and every other full-format instruction replay untouched.
 > EARNED that family. The `caps().autoFamilies` speed declaration carries
 > 68040+68030 on both native ISAs (AArch64 promoted 2026-08-20, x86-64
 > 2026-08-21 once the IIsi segfault of JIT_BRINGUP § C.4septies proved
-> gone); other JIT families reach `threaded`.
+> gone, withdrawn 2026-08-29 and restored 2026-09-06); other JIT families
+> reach `threaded`.
 >
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
-> `MoiraExecMMU_cpp.h:2215-2274`) and `pomJitReadData`/`pomJitWriteData`
+> `MoiraExecMMU_cpp.h:2204-2279`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
-> (`:2447-2454`, `:2472-2479`). `jit_lockstep_030_test` gives the family the
+> (`:2452-2459`, `:2477-2484`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
 > is lockstep-proved since 2026-08-18 — generated 030 code is reachable by
 > an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — and since
@@ -1739,7 +1742,7 @@ instruction is compiled at all.
 
 The x86-64 emitter speaks the System V ABI, and `X64Backend::usable()`
 answers false on a Windows build, so an automatic Windows build resolves
-every family to `threaded`. TODO § C.4 asked for a decision rather than a standing question,
+every family to `threaded`. The TODO of the time asked for a decision rather than a standing question,
 and the decision is: **`threaded` stays the Windows engine until a Win64 port
 is measured on a Windows host**, for three reasons that are about evidence,
 not effort.
@@ -1813,7 +1816,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2199-2258`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2204-2279`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;
@@ -2197,7 +2200,7 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
   coverage.
 * **2026-08-09/10 — the default flipped on the 68040.** `defaultEngine()`
   stopped being a constant and became a per-family answer
-  (`JitConfig.h:309`, `JitEngine.cpp:191`): `jit/auto` on 68040, interpreter
+  (`JitConfig.h:312`, `JitEngine.cpp:191`): `jit/auto` on 68040, interpreter
   everywhere else, `POM68K_CPU_ENGINE` overriding either way. The plain
   `q605/centris650/q630/q700_boot_etalon` gates therefore now run the
   engine, and four `interp_*` registrations preserve one explicit

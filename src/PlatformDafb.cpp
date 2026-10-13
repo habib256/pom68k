@@ -494,9 +494,9 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     // The same board carries the "Eclipse"/"Zydeco" towers (Quadra 900/950,
     // docs/IOP_BRINGUP.md § M7): the Mac IIfx front end grafted on — two
     // Apple PIC IOPs, the Egret instead of the discrete RTC, a second 53C96
-    // bus. POM68K_Q700_MODEL picks the variant (the GUI menu sets it before
-    // relaunch); the Q950 ROM forces its own model, because a $3DC27823 dump
-    // IS a Quadra 950 whatever the environment inherited from the last run.
+    // bus. The catalogue profile picks the variant; POM68K_Q700_MODEL=q900
+    // only tells a Quadra 900 from a Quadra 700 on their shared ROM
+    // (RuntimeConfigMachine.cpp). The Quadra 950 has its own profile and ROM.
     const bool q900 = selected == pom68k::SnapMachine::Quadra900;
     const bool q950 = selected == pom68k::SnapMachine::Quadra950;
     const auto qkind = q950 ? Q700Memory::Model::Q950

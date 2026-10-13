@@ -22,7 +22,7 @@ void drawPort(GuiSerialPortState& port, int index) {
         return;
     }
     if (!port.message.empty() || !port.terminal) {
-        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.3f, 1), "%s : %s", port.requested.c_str(),
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.3f, 1), "%s: %s", port.requested.c_str(),
                            port.message.empty() ? "not open" : port.message.c_str());
         ImGui::PopID();
         return;
