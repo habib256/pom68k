@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-13** — [The nightly UBSan leg was red for four nights on one shift in the 68030 walk](#2026-10-13-walk-shift-ub)
 - **2026-10-12 (ninth)** — [Start Macintosh validates and launches in one action](#2026-10-12-direct-start)
 - **2026-10-12 (eighth)** — [Host menus release held Mac keys and own keyboard input](#2026-10-12-keyboard-focus)
 - **2026-10-12 (seventh)** — [The setup guide can search the Macintosh catalogue](#2026-10-12-searchable-models)
@@ -1135,6 +1136,27 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-13-walk-shift-ub"></a>
+## 2026-10-13 — The nightly UBSan leg was red for four nights on one shift in the 68030 walk
+
+The Nightly `asan-ubsan` job failed on 2026-10-09, 10, 11 and 12 with the
+same single report: `src/Mmu030Peek.h` "shift exponent -4 is negative",
+raised by `debug_inspection_test` and failing that gate. The other 122
+asset-free gates passed. The walk computes `indirect` after decrementing
+`bitpos`. On the level that consumes TID, `bitpos` is −4, and `!bitpos` did
+not short-circuit the `bits >> bitpos` that follows. The new test from
+2026-10-09 is the first asset-free caller to reach a page descriptor at the
+TID level with a zero TID.
+
+`bitpos <= 0` now treats every level with no next field as the last. The
+answer is unchanged: x86-64 and AArch64 mask a 32-bit shift count to 28,
+`bits` holds 16 bits, so the old expression read 0 and also answered "last
+level". `Moira::mmuWalkTables` has the same expression, which the test-side
+walk mirrors. It receives the same fix as vendor row 36. A local
+`POM68K_SANITIZE=address,undefined` build of `debug_inspection_test`
+reproduces the nightly line (`Mmu030Peek.h:95:34`, shift exponent −4) on the
+old header and passes on the new one.
 
 <a id="2026-10-12-direct-start"></a>
 ## 2026-10-12 (ninth) — Start Macintosh validates and launches in one action

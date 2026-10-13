@@ -278,7 +278,10 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
         // one when the NEXT index field is zero (WinUAE last_table);
         // Musashi's unmasked (bits >> bitpos) still saw the consumed
         // upper fields, so indirection only ever fired at TID.
-        const bool indirect = ((!bitpos || !((bits >> bitpos) & 0xf)) && indexbits);
+        // POM68K: past TID (bitpos < 0) there is no next field; the former
+        // `!bitpos` test let `bits >> -4` through, which is UB (the hosts
+        // masked it to 28 and read 0 — same answer). Vendor row 36.
+        const bool indirect = ((bitpos <= 0 || !((bits >> bitpos) & 0xf)) && indexbits);
 
         switch (type) {
 

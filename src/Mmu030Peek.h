@@ -91,8 +91,11 @@ inline bool translate(uint32_t tc, uint64_t crp, uint64_t srp,
         const uint32_t tableIndex = (bitpos == 16)
             ? uint32_t(fc) : addrIn >> ((32 - indexbits) & 31);
         bitpos -= 4;
+        // Past TID (bitpos < 0) there is no next field, so the level is the
+        // last one; `bits >> -4` was UB there (x86 and AArch64 mask the count
+        // to 28, which read 0 and gave the same answer). UBSan nightly.
         const bool indirect =
-            ((!bitpos || !((bits >> bitpos) & 0xf)) && indexbits);
+            ((bitpos <= 0 || !((bits >> bitpos) & 0xf)) && indexbits);
 
         switch (type) {
         case 0:                                      // invalid descriptor
