@@ -491,6 +491,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 Newest first.
 
 - **2026-10-13 (release)** — [0.3.5](#2026-10-13-release-035)
+- **2026-10-13 (fifth)** — [A non-ASCII path in argv ended POM68K.exe before main; the asset-free tier is green under MSVC](#2026-10-13-msvc-utf8-argv)
 - **2026-10-13 (fourth)** — [The debugger, clipboard and firmware messages were still French](#2026-10-13-english-messages)
 - **2026-10-13 (third)** — [Two of the three MSVC asset-free reds, read on Linux](#2026-10-13-msvc-gui-reds)
 - **2026-10-13 (second)** — [The -Werror tree is green again under GCC 15 at -O3](#2026-10-13-gcc15-werror)
@@ -1141,6 +1142,33 @@ Newest first.
 
 ---
 
+<a id="2026-10-13-msvc-utf8-argv"></a>
+## 2026-10-13 (fifth) — A non-ASCII path in argv ended POM68K.exe before main; the asset-free tier is green under MSVC
+
+The last MSVC red, `gui_session_smoke_test`, exited 127 with no output at
+all. A diagnostic dispatch of `release.yml` (run 38407693341, branch
+`diag/win-session-smoke`) separated it in four launches of the same binary:
+`--version` alone → 0; `--version --session=<…/répertoire des sessions/…>`
+→ 127; the same session copied to an ASCII directory → 0, and the smoke
+scenario from there reached the runner's expected GLFW 65542 (no GL
+surface). The process never printed its first line: without a manifest the
+MSVC CRT hands `main` an ANSI-code-page `argv`, and `SessionFile`'s
+`pathFromUtf8` decodes it as UTF-8. Every non-ASCII ROM, media or session
+path on the command line had the same exposure.
+
+Fix: `packaging/windows/POM68K.manifest` declares `activeCodePage` UTF-8
+(Windows 10 1903+), linked into the GUI executable under MSVC, so `argv` and
+the narrow file APIs carry UTF-8 like every other host. On the dispatch of
+the fix (run 38415656723) the session smoke SKIPs on the GL check like its
+two siblings, `gui_windows_test` and `debug_session_test` pass (the fixes of
+the (third) entry, now verified on Windows), and the tier stands at 119/119
+with the three GUI smokes skipped — the four packages built green. The
+Windows job needed one rerun: `vcpkg z-applocal` on `config_test.exe` exited
+32 (sharing violation) in the parallel MSBuild, unrelated to the change.
+TODO's MSVC item is closed.
+
+---
+
 <a id="2026-10-13-release-035"></a>
 ## 2026-10-13 (release) — 0.3.5
 
@@ -1174,8 +1202,9 @@ The cut itself was a cleanup pass: the documentation audited against the
 code (README, DEV.md, CLAUDE.md, the `docs/` notes, `POM68K_JIT.md`,
 `POM68K_VENDOR.md`, about a hundred drifted citations re-pointed and the
 remaining French UI labels replaced by the real English ones), the
-`-Werror` tree green under GCC 15, and two of the three MSVC asset-free reds
-fixed (entries below, same day).
+`-Werror` tree green under GCC 15, and the asset-free tier green under MSVC
+for the first time — the last red was a UTF-8 path in `argv` (entries
+(second)–(fifth), same day).
 
 Since 0.3.0 (2026-09-18): 89 commits before this cut.
 

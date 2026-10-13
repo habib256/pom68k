@@ -495,8 +495,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/GuiHostSerial.cpp
         src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiStartupWindow.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
         src/GuiSmokeScenario.cpp
-        src/PlatformComposers.cpp
-        src/PlatformCompact.cpp
+        src/PlatformComposers.cpp src/PlatformCompact.cpp
         src/PlatformToby.cpp
         src/PlatformV8.cpp
         src/PlatformSonora.cpp
@@ -506,7 +505,8 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/FloppySound.cpp src/DiskBays.cpp src/DiskBaysDrop.cpp
         src/CrtEffectStack.cpp src/OpenGLShader.cpp src/GuiDisplayWindow.cpp
         src/PeripheralWindow.cpp
-        src/NetworkWindow.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
+        src/NetworkWindow.cpp src/DockLayout.cpp ${IMGUI_SOURCES}
+        $<$<CXX_COMPILER_ID:MSVC>:${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/POM68K.manifest>)
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core pom68k_app)
     # Version stamp for `POM68K --version` (release smoke gates). Single
