@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-13 (sixth)** — [The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM](#2026-10-13-macii-oracle)
 - **2026-10-13 (release)** — [0.3.5](#2026-10-13-release-035)
 - **2026-10-13 (fifth)** — [A non-ASCII path in argv ended POM68K.exe before main; the asset-free tier is green under MSVC](#2026-10-13-msvc-utf8-argv)
 - **2026-10-13 (fourth)** — [The debugger, clipboard and firmware messages were still French](#2026-10-13-english-messages)
@@ -1139,6 +1140,49 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-13-macii-oracle"></a>
+## 2026-10-13 (sixth) — The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM
+
+The TODO item "étendre l'oracle invité différentiel aux profils restants",
+for the Mac II. Its branch of `tests/prober_oracle.cpp` (`macii`: Glue,
+68020 + 68881, 8 MB, the Toby card's 342-0008-a in slot 9) now runs one
+frame per 1/60 s of CPU time (`MacIIMemory::kCpuHz / 60`, not the 800 × 525
+quantum, 1.61 × a frame, of the boot etalon). `tools/prober_oracle.sh macii`
+gets the MAME half: the tree's 9779D2C4 as bios "default", the Toby ROM as
+romset `nb_m2vc`, `-nb9 m2video` in place of MAME's default `mdc824`, the
+ADB modem's 342S0440-B, 8 MB (the rev. B ROM's ceiling, `macii.cpp`).
+
+A first run against `macii` differed on two judged fields besides the RTC
+and `memTop`; neither is a POM68K defect, and both were fixed in the rig:
+- **`ident.mmu` 2 against 1.** MAME's `macii` fits the optional 68851 PMMU
+  (`M68020PMMU`); POM68K's Mac II is the stock board with the HMMU, so
+  Gestalt says AMU. MAME's `maciihmu` ("Macintosh II (w/o 68851 MMU)",
+  `M68020HMMU`) is that board, and the golden is its report.
+- **`ident.hwCfg` $DC00 against $FC00.** Bit 13 is `hwCbExPRAM`, "extra
+  parameter RAM valid" (`HardwarePrivateEqu.a`), which InitUtil sets only
+  when it did not have to reset clock and PRAM (`SysUtil.a`, `ClkXit`).
+  MAME's `rtc3430042` starts cold (`macrtc.cpp`, `nvram_default`), and
+  that first run found no `~/.mame/nvram/macii/rtc`; it left one, so with
+  no directory of its own a second run would have booted warm: the field
+  was not even reproducible on the MAME side. The rig now saves POM68K's seeded PRAM after reset
+  (`pom68k.pram`) and hands its 256 bytes to MAME as
+  `nvram/maciihmu/rtc` under `-nvram_directory`, as for the Quadra 900's
+  Egret (2026-10-10 (ninth)).
+
+Then the two models agree on every field but the RTC and `memTop`,
+unjudged everywhere with the reasons already given (`kMacIIUnjudged`).
+Nothing else needed a ruling: the 24-bit system makes every low-address
+probe "present" on both sides, and both report no slot sResource.
+
+**Gate.** `macii_prober_oracle_etalon`, golden
+`tools/prober_oracle_maciihmu.tsv` (MAME 0.287 flatpak, 240 s). A golden
+with `machineType` mutated fails it (74 fields judged, 3 unjudged, 1
+differs). The gate executes — the report is whole after 2 400 frames, 5 s
+of host time — and passes; all sixteen `<profil>_prober_oracle_etalon`
+are green, with `docs_test`, `file_size_budget_test` and `config_test`.
 
 ---
 

@@ -26,7 +26,8 @@
 // <machine> is `lcii` (MAME maclc2); `q605`, `lc475`, `lc575` (macqd605,
 // maclc475, maclc575); `q800`, `q650`, `q610`, `c650`, `c610` (macqd800,
 // macqd650, macqd610, macct650, macct610); `q630`, `lc580` (macqd630,
-// maclc580); `q700`, `q900` (macqd700, macqd900). Each runs on
+// maclc580); `q700`, `q900` (macqd700, macqd900); `macii` (maciihmu, the
+// Toby card in slot 9). Each runs on
 // its profile's locked volume, POM68K_BEYOND_IMG overriding it for
 // exploration. The gate soft-skips without the ROM, that volume or the
 // built Prober.
@@ -119,7 +120,9 @@ const Unjudged kQ650Unjudged = {
                           "Quadra 650 mouse misses its service routine" },
 };
 
-// The Macintosh II on System 7.1.
+// The Macintosh II on System 7.1, against MAME's maciihmu (no 68851, as
+// POM68K's board) with its RTC seeded from POM68K's PRAM: only the RTC and
+// the heap differ (CHANGELOG 2026-10-13 (sixth)).
 const Unjudged kMacIIUnjudged = {
     { "clock.macSeconds", kRtc },
     { "clock.dateTime", kRtc },
@@ -293,8 +296,9 @@ int lc3(const Options& o, const std::string& bin) {
     return run(mem, cpu, o, img, bin, SonoraMemory::kCpuHz / 60, kLc3Unjudged, [] {});
 }
 
-// Glue, MAME macii.cpp: the Macintosh II (68020 + 68881), 8 MB, the Toby
-// card in slot 9 — MAME's m2video, the same 342-0008-a declaration ROM.
+// Glue, MAME macii.cpp's maciihmu: the stock Macintosh II (68020 + 68881,
+// the HMMU, no 68851), 8 MB, the Toby card in slot 9 — MAME's m2video, the
+// same 342-0008-a declaration ROM.
 int macii(const Options& o, const std::string& bin) {
     const std::string rom = testasset::find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
     const std::string toby = testasset::find(
@@ -312,12 +316,20 @@ int macii(const Options& o, const std::string& bin) {
         return 1;
     }
     Cpu020 cpu(mem, testjit::resolveFromEnvironment(), config.cpu, true);
+    // The RTC's PRAM as POM68K seeds it at reset, for the rig to hand MAME's
+    // rtc3430042 (its NVRAM is these 256 bytes), as on the Quadra 900. run()
+    // resets again; the factory image is the same bytes.
+    if (!o.check) {
+        mem.setCpu(&cpu);
+        cpu.hardReset();
+        mem.savePram(o.outDir + "/pom68k.pram");
+    }
     const auto screen = [&mem] {
         std::vector<uint32_t> fb;
         mem.toby()->decode(fb);
         beyondboot::dumpPpm("prober_oracle.ppm", fb, mem.toby()->hres(), mem.toby()->vres());
     };
-    return run(mem, cpu, o, img, bin, 800 * 525, kMacIIUnjudged, screen);
+    return run(mem, cpu, o, img, bin, MacIIMemory::kCpuHz / 60, kMacIIUnjudged, screen);
 }
 
 int lcii(const Options& o, const std::string& bin) {
