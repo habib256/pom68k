@@ -492,6 +492,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-14 (fourth)** — [The pixel pins replay under WebAssembly: 43 profiles, every value equal to the native pin](#2026-10-14-wasm-pins)
 - **2026-10-14 (third)** — [The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it](#2026-10-14-duo-sleep)
 - **2026-10-14 (second)** — [The LTO build is quiet again under GCC 15: ten `lto1` string-op warnings, all false positives, closed by shape](#2026-10-14-gcc15-lto)
 - **2026-10-14** — [The rest of the Quadra 605 rigs leave the LC 475 hybrid](#2026-10-14-q605-core-everywhere)
@@ -1148,6 +1149,81 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-14-wasm-pins"></a>
+## 2026-10-14 (fourth) — The pixel pins replay under WebAssembly: 43 profiles, every value equal to the native pin
+
+TODO § Jalon 4 carried « Rejouer les épingles dans le build WASM. Il n'a que
+des stubs inactifs. » The Emscripten build compiled the GUI and nothing
+else: `CMakeLists.txt` fenced every test behind `NOT EMSCRIPTEN`, so the pin
+claim of `tests/PixelPin.h` — a settled screen does not depend on the engine
+that drew it — had never been put to a host whose only engines are the
+interpreter and the `threaded` JIT floor.
+
+**Mechanism.** `cmake/Pom68kWasmPins.cmake` holds one table of the 44 pinned
+boot gates (gate, binary, argv, environment, copied from the native
+registrations) and two halves. Under Emscripten it compiles the 27
+pin-bearing etalon binaries to node programs (`make wasmpins`) linked
+`-sNODERAWFS=1`: node reads `roms/`, `hdv/` and `disks35/` from the host,
+relative to the source tree as the native gates do — no ROM or volume is
+embedded, preloaded or packaged. In the native tree it registers one
+`wasm_<gate>` per row, which `tools/wasm_pin_gate.sh` runs under node against
+the same `tools/pixel_pins.tsv`; no node or no program is `SKIP:` + exit 0,
+a missing asset is the etalon's own `SKIP`. The label is `wasm` alone
+(`Pom68kGatePolicy.cmake`): the replays are a second host for the boot gates,
+not new members of `etalon`, `m030` or `m040`, whose counts are unchanged.
+The manifest classes them `asset-required`, `scope-profile`, `tier-full`.
+
+Three things a native gate gets for free had to be supplied:
+
+- **Exceptions.** Moira raises bus errors and MMU faults as C++ exceptions,
+  and Emscripten's default compiles every `catch` away — the first guest bus
+  error would have aborted the module. `moira` now carries
+  `-fwasm-exceptions` as a PUBLIC option under Emscripten, so the core, the
+  programs and the GUI agree on the ABI. (The GUI WASM build had the same
+  latent abort; it was not rebuilt here.)
+- **The environment.** An Emscripten `getenv()` reads the module's `ENV`,
+  not node's `process.env`; `tools/wasm_pin_env.js` (`--pre-js`) copies it
+  before `main`. Without it `sefdhd_`, `classic_`, `iicx_`, `iivi_`, the
+  Centris/Quadra and LC 580 replays would all have booted the binary's
+  default model — the distinct `compact_boot_etalon/Macintosh_SE_FDHD` and
+  `centris650_boot_etalon/q610` keys in the results show they did not.
+- **The stack.** The machines are built on the stack; the programs get the
+  POSIX 16 MB instead of Emscripten's 64 KB.
+
+**Result** (x86-64 host, Emscripten 5.0.4, node 22.23, one `ctest -R` per
+gate under the shared host lock, census of the concatenated log): **43
+executed, 1 soft-skipped, 0 failed**, and every one of the 43 printed the
+value already in `tools/pixel_pins.tsv` for its key — no pin moved, nothing
+re-pinned. All twelve platforms are covered: 68000 (Plus on Disk605 and
+System 3.3 in both drives, 512Ke, SE, SE FDHD, Classic, 128K, 512K), GLUE
+(Mac II, II FDHD on HD20SC, IIx, IIcx, SE/30), OSS (IIfx), RBV (IIsi, IIci),
+V8 (LC II, LC, Classic II, Color Classic, Mac TV), Sonora (LC III, LC III+,
+LC 520, LC 550, Color Classic II), VASP (IIvx, IIvi), MSC (Duo 230), MEMCjr
+(Q605, LC 475, LC 575), djMEMC (C610/C650, Q610/Q650/Q800), Spike/Eclipse
+(Q700/Q900/Q950) and F108 (Q630, LC 580). The 68030 and 68040 replays ran on
+the WASM default — the accelerated engine on its only backend, `threaded` —
+where the native pins were taken on x64; the LC II and the Quadra 605 then
+ran again under `POM68K_CPU_ENGINE=interp` and printed the same two values
+(`674c4049ab7980f7`, `eefb49d126a73732`; 214 s and 160 s against 180 s and
+98 s on `threaded`). The 44 replays were built with the exception flag
+tree-wide; the three of the first proof (Plus, LC II, Q605) were rebuilt
+and re-run with it as committed — on `moira`, the C `softfloat68k` no longer
+carrying it — and pinned identically. The skip is
+`wasm_maciifdhd_floppy_boot_etalon`: `disks35/System 6.0.8 - System
+Startup.img` is absent on this host, and the native gate skips identically.
+
+**Cost.** 9062 s of summed test time (2 h 31): 12–21 s for the 68000
+compacts, ~95–110 s for the GLUE machines and the MEMCjr/F108 040s, 10 s for
+the IIfx, 130–450 s for the other 030s and 300–613 s for the djMEMC and
+Spike/Eclipse 040s (the Q950 longest); wall time
+was longer because each gate waited its turn on the host lock behind a
+parallel full LTO build. Linking is the WASM build's own cost: `wasm-opt`
+takes ~2–3 min per program, ~1 h for the 27 at `-j4`.
+
+Left open (TODO): the replay on the AArch64 host, and the FDHD floppy row
+once its image is present. STATUS.md: union 411 → 455, both host sections
++44, `wasm` = 44.
 
 <a id="2026-10-14-duo-sleep"></a>
 ## 2026-10-14 (third) — The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it

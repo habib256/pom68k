@@ -14,7 +14,7 @@ cmake/Pom68kComponentGates.cmake         657
 cmake/Pom68kDaynaGates.cmake             36
 cmake/Pom68kDevTools.cmake               161
 cmake/Pom68kFloppyGates.cmake            19
-cmake/Pom68kGatePolicy.cmake             402
+cmake/Pom68kGatePolicy.cmake             406
 cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
 cmake/Pom68kMachineGates.cmake           1070
@@ -25,7 +25,7 @@ cmake/Pom68kProfileGates.cmake           31
 cmake/Pom68kProtectedFloppyGates.cmake     9
 cmake/Pom68kSerialGates.cmake            9
 cmake/Pom68kStorageGates.cmake           27
-CMakeLists.txt                           625
+CMakeLists.txt                           632
 src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  220
 src/GuiMachineRuntime.cpp                49

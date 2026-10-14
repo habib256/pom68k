@@ -58,6 +58,10 @@ set_tests_properties(file_size_budget_test PROPERTIES TIMEOUT 45)
 get_property(pom68k_tests DIRECTORY PROPERTY TESTS)
 foreach(t IN LISTS pom68k_tests)
     set(lbl "")
+    if(t MATCHES "^wasm_")   # a second HOST for boot gates (Pom68kWasmPins)
+        set_tests_properties(${t} PROPERTIES LABELS wasm)
+        continue()
+    endif()
     if(t STREQUAL "gui_smoke_test" OR t STREQUAL "gui_relaunch_smoke_test" OR
        t STREQUAL "gui_session_smoke_test")
         list(APPEND lbl gui)
@@ -304,7 +308,7 @@ foreach(t IN LISTS pom68k_tests)
     endif()
 
     get_test_property(${t} LABELS gate_contract_labels)
-    if(t MATCHES "etalon$")
+    if(t MATCHES "etalon$")   # wasm_<boot gate> included: a profile replay
         set(gate_scope profile)
     elseif(t STREQUAL "docs_test" OR t STREQUAL "config_test" OR
            t STREQUAL "store_inventory_test")
