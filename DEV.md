@@ -2556,6 +2556,36 @@ what gets pasted in. Changing a value is deliberate — the diff names the
 profile whose screen moved. `pixel_pin_test` gates the mechanism itself
 (same ratio, different pin; the mask; a moving screen refusing the pin).
 
+**WebAssembly pin replay.** The same boot etalons, compiled by Emscripten
+and run under node, check their screens against the same
+`tools/pixel_pins.tsv` — the pins claim to be engine-independent, and the
+WASM build has only the `threaded` JIT floor and the interpreter.
+`cmake/Pom68kWasmPins.cmake` holds one table (gate, binary, argv,
+environment, copied from the native registrations) and two halves:
+
+```bash
+emcmake cmake -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release
+make -C build/wasm -j4 wasmpins     # the pinned etalons as node programs
+ctest --test-dir build -L wasm      # one wasm_<gate> per pinned boot gate
+```
+
+The programs link `-sNODERAWFS=1`, so `roms/`, `hdv/` and `disks35/` are
+read from the host through node, relative to the source tree exactly as the
+native gates read them: nothing private is embedded, preloaded or packaged.
+They get the POSIX 16 MB stack (machines are built on it), and a `--pre-js`
+(`tools/wasm_pin_env.js`) copies node's environment into the module's, which
+`getenv()` otherwise does not see — the model selectors of shared binaries
+travel that way. Under Emscripten `moira` carries `-fwasm-exceptions` as a
+PUBLIC option, so the core and every program that links it agree: Moira
+raises bus errors and MMU faults as C++ exceptions, and Emscripten's default
+compiles every `catch` away (the GUI build included). `tools/wasm_pin_gate.sh` prints `SKIP:`
+and exits 0 when node (`POM68K_NODE`) or the program
+(`POM68K_WASM_BUILD_DIR`, default `build/wasm`) is missing; a missing ROM or
+volume is the etalon's own `SKIP`. Label `wasm` only — the replays are a
+second host for the boot gates, not more `etalon`/`m030`/`m040` members. A
+WASM value that differs from the native pin is a finding about an engine or
+a host, never a re-pin.
+
 `docs_test` § 10 judges every in-tree `file:line` citation the documents
 make, and since 2026-09-16 not only that the range exists: the sentence
 around a citation names identifiers in backticks, and one of them must occur
@@ -2598,6 +2628,7 @@ registrations re-run those binaries under several environments.
 | `ctest -L m040` | machines selected by this family label and their interpreter references |
 | `ctest -L m030` | machines selected by this family label and their interpreter references |
 | `ctest -L etalon` | every registered machine/system etalon for this host |
+| `ctest -L wasm` | the pixel pins replayed by the Emscripten build under node (needs `build/wasm`) |
 | `ctest -N` | configured roster on the current host; compare with `STATUS.md` |
 
 Native-backend locksteps appear only on a host that can build and execute the
@@ -2607,15 +2638,16 @@ assets instead of skipping. The generated manifest and `STATUS.md` are the
 only maintained rosters.
 
 Labels are **derived from the test name** in one final policy module
-(`cmake/Pom68kGatePolicy.cmake:58-110`): name ends in `etalon` → `etalon` (+
+(`cmake/Pom68kGatePolicy.cmake:59-115`): `^wasm_` → `wasm` and nothing
+else (the WebAssembly pin replays); name ends in `etalon` → `etalon` (+
 `etalon-core` if it is in the twelve-name `POM68K_ETALON_CORE` list, whose
 membership is a configure-time `FATAL_ERROR` if a name stops resolving);
 the three `gui_*smoke_test` gates → `gui`; anything else → `unit`; `^jit_` → `jit`; a
 substring match on the 68040 machine names → `m040`, and on the 68030
-ones → `m030` (`:74-87`,
+ones → `m030` (`:79-93`,
 since 2026-08-18). A gate added tomorrow is classified the moment it
 exists. **The loop MERGES with explicit labels since 2026-08-12**
-(`:96-109` — `get_test_property` + append + de-dup): an inline
+(`:101-114` — `get_test_property` + append + de-dup): an inline
 `LABELS` at `add_test` time survives; it used to be silently overwritten,
 which is how `quadra_event_scheduler_test` lost `m040` for two weeks.
 

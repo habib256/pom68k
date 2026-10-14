@@ -316,6 +316,10 @@ add_library(moira STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
 # rewriting upstream's unused-parameter style is not one of those edits.
 target_include_directories(moira SYSTEM PUBLIC ${MOIRA_DIR})
 target_link_libraries(moira PUBLIC softfloat68k)
+if(EMSCRIPTEN)   # bus/MMU faults are C++ exceptions; default wasm drops `catch`
+    target_compile_options(moira PUBLIC -fwasm-exceptions)
+    target_link_options(moira PUBLIC -fwasm-exceptions)
+endif()
 if(NOT MSVC)
     target_compile_options(moira PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 endif()
@@ -567,7 +571,9 @@ option(POM68K_TESTS "Build the test targets" ON)
 option(POM68K_PRODUCT_LLE_GATES
        "Enable no-skip AArch64 LLE product gates (requires private ROM/firmware assets)"
        OFF)
-if(POM68K_TESTS AND NOT EMSCRIPTEN)
+if(POM68K_TESTS AND EMSCRIPTEN)   # pinned etalons only, run by native `wasm_*`
+    include(cmake/Pom68kWasmPins.cmake)
+elseif(POM68K_TESTS)
     enable_testing()
 
     # Test-module order is contractual: machine targets precede JIT variants;
@@ -579,6 +585,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     include(cmake/Pom68kOracleGates.cmake)
     include(cmake/Pom68kJitGates.cmake)
     include(cmake/Pom68kDevTools.cmake)
+    include(cmake/Pom68kWasmPins.cmake)
     include(cmake/Pom68kGatePolicy.cmake)
 endif()
 

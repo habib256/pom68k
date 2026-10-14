@@ -86,8 +86,11 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   épinglé dans `assets.lock`, vert sur x86-64 ; la copie du M4
   (`533a3e30…`) a dérivé. Source : `TEST/pom68K/disks35/ref/`. *Bloqué :
   hôte AArch64.*
-- [ ] **Rejouer les épingles dans le build WASM.** Il n'a que des stubs
-  inactifs.
+- [ ] **Rejouer les épingles WASM sur l'hôte AArch64 et avec la disquette
+  System 6.0.8 du Mac II FDHD.** `ctest -L wasm` (2026-10-14 (fourth)) :
+  43 des 44 rejeux exécutés sur x86-64, tous égaux aux épingles natives ;
+  `wasm_maciifdhd_floppy_boot_etalon` s'abstient faute de l'image ici
+  (le gate natif aussi). *Bloqué : hôte AArch64.*
 - [ ] **Comparer le bus et les timings V8 à du matériel réel.** IRQ, VBL,
   VIA et mémoire, puis diagnostiquer l'assombrissement après très longue
   exécution. (Le bloc `$50F18038` du Classic II est du bus ouvert, tranché

@@ -17,7 +17,7 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 411 gates
+## Union across hosts — 455 gates
 
 | `ctest -L` | selects |
 |---|---|
@@ -30,6 +30,7 @@ nothing about the behaviour it names.
 | `m040` | 97 |
 | `smoke` | 9 |
 | `unit` | 153 |
+| `wasm` | 44 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
 also selects `etalon-core`. The asset/host/scope/tier dimensions and the
@@ -37,51 +38,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-406 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+450 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 124 |
 | assets | optional | 16 |
-| assets | required | 266 |
+| assets | required | 310 |
 | host | a64 | 4 |
-| host | any | 396 |
+| host | any | 440 |
 | host | native | 6 |
 | scope | component | 127 |
 | scope | engine | 21 |
-| scope | profile | 255 |
+| scope | profile | 299 |
 | scope | repository | 3 |
 | tier | daily | 124 |
-| tier | full | 270 |
+| tier | full | 314 |
 | tier | platform | 12 |
-| slots_src | assumed | 286 |
+| slots_src | assumed | 330 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 641 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 685 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-407 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+451 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 123 |
 | assets | optional | 16 |
-| assets | required | 268 |
-| host | any | 396 |
+| assets | required | 312 |
+| host | any | 440 |
 | host | native | 6 |
 | host | x64 | 5 |
 | scope | component | 127 |
 | scope | engine | 22 |
-| scope | profile | 255 |
+| scope | profile | 299 |
 | scope | repository | 3 |
 | tier | daily | 123 |
-| tier | full | 272 |
+| tier | full | 316 |
 | tier | platform | 12 |
-| slots_src | assumed | 294 |
+| slots_src | assumed | 338 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 766 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 810 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -213,3 +214,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Oct 08 23:09 +04 | aarch64 | default | 3 | 3 | 0 | 0 | Real MacTCP DNS-to-TCP after RARP: network gate plus docs/size; 3 executed, no skips |
 | Oct 08 23:25 +04 | aarch64 | default | 3 | 1 | 0 | 2 | PCAP real MacTCP guest passed: 741 frames, zero observation loss; docs citation drift and size checks failed in same run, corrections tracked separately |
 | Oct 08 23:32 +04 | aarch64 | default | 115 | 115 | 0 | 0 | PCAP increment: all asset-none gates execute outside socket sandbox after citation/size fixes; no skips |
+| Oct 14 11:37 +04 | x86_64 | default | 44 | 43 | 1 | 0 | ctest -L wasm, first WebAssembly pin replay (Emscripten 5.0.4, node 22.23, threaded/interp floor), one ctest -R per gate under the shared host lock: 43 executed, every pin equal to the native row; 1 asset skip (System 6.0.8 floppy absent here, natively too); 9062 s summed test time |
