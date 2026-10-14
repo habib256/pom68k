@@ -12,8 +12,8 @@
 // It steers it once more BEFORE that, at the desktop, because the Finder
 // being up is not the same thing as the Finder being in front on a volume
 // whose Startup Items launch Stickies (the note above `h.focusFinder`).
-// POM68K_BEYOND=soak|persist. Soft-skips without the Duo ROM +
-// pge_boot.bin + a bootable image.
+// POM68K_BEYOND=soak|persist|input|sleep (sleepLeg below). Soft-skips
+// without the Duo ROM + pge_boot.bin + a bootable image.
 
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
@@ -28,10 +28,190 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
+
+// ── sleep: lid close → the System's own sleep → key → the ROM's wake ────
+// (docs/DUO_BRINGUP.md milestone 6). The path, from Apple's source
+// (elliotnunn/mac-rom): IdleMind's CheckClamshell reads readExtSwitches
+// ($DC) and calls _Sleep(SleepNow) (OS/IoPrimitives/PowerMgrPrimitives.a:
+// 1269-1306); TakeASnooze walks the sleep queue, then the MSC sleep table
+// (:763-776) — SleepHD, the register saves, SendSleepLP ($7F 'MATT',
+// :3533-3548), SaveSlp030, SaveSleepInfo (SleepSaveFlag, :3524-3527) and
+// MSCKillPower (-1 to $50FA0000, :1365-1370). On the PG&E's wake the CPU
+// restarts from the ROM, PortableCheck finds SleepSaveFlag and jumps to
+// WakeVector (OS/PowerMgr/PowerMgr.a:4667-4682), and WakeUp (:3711) runs the
+// wake table back into the interrupted Finder.
+// Everything asserted is either the GUEST's bookkeeping, read through the
+// PMMU walk, or a wire the board owns. Kept out of main() so the rig is
+// spelt once.
+struct SleepRig {
+    MscMemory& mem;
+    MscCpu& cpu;
+    int64_t frame;
+    std::function<bool(uint32_t, int, uint32_t*)> peek;
+    std::function<bool()> finderUp;
+    std::function<std::string()> front;
+    std::function<bool(int, int, int)> steer;
+    std::function<void(const char*)> dump;
+};
+
+static int sleepLeg(const SleepRig& r) {
+    MscMemory& mem = r.mem;
+    MscCpu& cpu = r.cpu;
+    // The GUI loop's rule (PlatformDuo.cpp emulateQuantum): while the board
+    // holds the 68030 only the peripherals — the PG&E above all — run.
+    auto quantum = [&] {
+        if (mem.cpuHeld()) mem.tick(int(r.frame));
+        else cpu.runCycles(r.frame);
+    };
+    auto run = [&](int n) { for (int i = 0; i < n; i++) quantum(); };
+    auto peek32 = [&](uint32_t a) {
+        uint32_t v = 0;
+        return r.peek(a, 4, &v) ? v : 0xFFFFFFFFu;
+    };
+    auto peek16 = [&](uint32_t a) {
+        uint32_t v = 0;
+        return r.peek(a, 2, &v) ? v : 0xFFFFu;
+    };
+    auto keyMap = [&](uint8_t* out) {
+        for (int i = 0; i < 8; i++) {
+            uint32_t v = 0;
+            if (!r.peek(0x174 + uint32_t(i), 1, &v)) return false;
+            out[i] = uint8_t(v);
+        }
+        return true;
+    };
+    // The boot volume's VCB, first in VCBQHdr ($356, qHead at $358):
+    // vcbFlags +$06 (bit 15 = the File Manager's dirty bit), vcbDirCnt
+    // +$76 (Inside Macintosh IV, the HFS VCB layout).
+    auto dirCount = [&] { return peek32(peek32(0x358) + 0x76); };
+    auto vcbFlags = [&] { return peek16(peek32(0x358) + 0x06); };
+    // PMgrBase ($D18) → the Power Manager's globals (Internal/Asm/
+    // PowerPrivEqu.a PmgrRec): WakeVector +$12, SleepSaveFlag +$112.
+    const uint32_t pmgr = peek32(0xD18);
+    const uint32_t ticks0 = peek32(0x16A);
+    std::printf("sleep: PMgrBase $%08X WakeVector $%08X Ticks %u, front \"%s\"\n",
+                pmgr, peek32(pmgr + 0x12), ticks0, r.front().c_str());
+
+    // ── Something for the sleep to keep: a new folder, Cmd-N ───────────
+    // The Finder makes it in memory and leaves the catalog dirty (the
+    // long note above `h.stir` in main), which is exactly the state a
+    // sleep must carry across — the RAM is the only place it exists.
+    const uint32_t dirs0 = dirCount();
+    auto key = [&](uint8_t c, bool d, int n) { mem.keyEvent(c, d); run(n); };
+    key(0x37, true, 30); key(0x2D, true, 30); key(0x2D, false, 30);
+    key(0x37, false, 300);
+    const uint32_t dirs1 = dirCount();
+    std::printf("sleep: Cmd-N: vcbDirCnt %u -> %u, vcbFlags $%04X\n",
+                dirs0, dirs1, vcbFlags());
+    if (r.dump) r.dump("dirty");
+
+    // ── Close the lid ───────────────────────────────────────────────────
+    const long w0 = mem.scsiDisk().writeCommands;
+    mem.setClamshell(false);
+    int f = 0;
+    for (; f < 1800 && !mem.cpuHeld(); f++) quantum();
+    const bool held = mem.cpuHeld();
+    const uint32_t saveFlag = peek32(pmgr + 0x112);
+    // The power goes with nothing half-done on the disk's bus. That is
+    // what "flushed" can mean here: the ROM's sleep path has no FlushVol
+    // anywhere in it (TakeASnooze, PowerMgr.a:3624-3697; MSCSleepTable),
+    // and the guest issues no write on the way down — reported, not
+    // asserted either way.
+    const bool busIdle = !mem.scsi().sessionOn(0);
+    std::printf("sleep: lid closed, CPU %s after %d frames; SleepSaveFlag $%08X;"
+                " PMU sleep commands %ld, MSC kill-power writes %ld; %ld write"
+                " command(s) on the way down, SCSI bus %s\n",
+                held ? "HELD" : "still running", f, saveFlag,
+                mem.pmu().sleepCommands, mem.fullSleeps,
+                mem.scsiDisk().writeCommands - w0, busIdle ? "free" : "BUSY");
+    // Asleep for ten seconds: the 68030 must not execute one cycle, and
+    // the PG&E must have stopped the master clock (port G bit 5).
+    const auto clk0 = cpu.getClock();
+    run(600);
+    const bool frozen = mem.cpuHeld() && cpu.getClock() == clk0;
+    const bool clockOff = (mem.pmu().portGLatch() & 0x20) != 0;
+    std::printf("sleep: 600 frames asleep, CPU clock %s, PG&E port G $%02X\n",
+                frozen ? "frozen" : "MOVED", mem.pmu().portGLatch());
+    if (r.dump) r.dump("asleep");
+
+    // ── Open the lid, then press a key ──────────────────────────────────
+    // The lid alone does not wake this firmware (2 s here, 30 s measured);
+    // a key does — "press any key" is how a PowerBook leaves sleep. Space:
+    // harmless to a Finder that gets it as a type-select.
+    mem.setClamshell(true);
+    run(120);
+    const bool lidAloneWoke = !mem.cpuHeld();
+    mem.keyEvent(0x31, true);
+    run(30);
+    mem.keyEvent(0x31, false);
+    for (f = 0; f < 1800 && mem.cpuHeld(); f++) quantum();
+    const bool woke = !mem.cpuHeld();
+    std::printf("sleep: lid open (alone %s), key: CPU %s after %d frames\n",
+                lidAloneWoke ? "woke it" : "did not wake it",
+                woke ? "released" : "STILL HELD", f);
+    bool back = false;
+    uint32_t ticks1 = 0;
+    for (f = 0; woke && f < 3600; f++) {
+        quantum();
+        if ((f % 60) == 59) {
+            ticks1 = peek32(0x16A);
+            if (r.finderUp() && ticks1 > ticks0) { back = true; break; }
+        }
+    }
+    // WakeUp's own tail (ADBReInit, the wake queue, RestoreScreen) is
+    // still running when the desktop first repaints: measured, a key held
+    // in the first second after the repaint never reached KeyMap. Give it
+    // five seconds before asking the keyboard anything.
+    run(300);
+    const uint32_t saveFlagAfter = peek32(pmgr + 0x112);
+    const uint32_t dirs2 = dirCount();
+    std::printf("sleep: after wake Ticks %u (was %u), SleepSaveFlag $%08X, "
+                "vcbDirCnt %u, Finder %s, front \"%s\"\n", ticks1, ticks0,
+                saveFlagAfter, dirs2, back ? "up" : "NOT up",
+                r.front().c_str());
+    if (r.dump) r.dump("woke");
+
+    // ── The same System still answers input ─────────────────────────────
+    uint8_t idle[8] = {}, down[8] = {}, up[8] = {};
+    bool sawDown = false, cleared = false, steered = false;
+    if (back) {
+        keyMap(idle);
+        mem.keyEvent(0x05, true);
+        for (int i = 0; i < 90 && !sawDown; i++) {
+            quantum();
+            if (keyMap(down))
+                for (int k = 0; k < 8; k++) if (down[k] != idle[k]) sawDown = true;
+        }
+        mem.keyEvent(0x05, false);
+        run(60);
+        cleared = keyMap(up);
+        for (int k = 0; k < 8 && cleared; k++) if (up[k] != idle[k]) cleared = false;
+        steered = r.steer(120, 200, 30) && r.steer(450, 300, 30);
+    }
+    std::printf("sleep: after wake KeyMap %s/%s, trackball %s\n",
+                sawDown ? "down" : "NO down", cleared ? "cleared" : "NOT cleared",
+                steered ? "steered" : "NOT steered");
+
+    const bool ran = held && saveFlag != 0 && saveFlag != 0xFFFFFFFFu &&
+                     mem.pmu().sleepCommands == 1 && mem.fullSleeps == 1;
+    const bool kept = dirs1 == dirs0 + 1 && dirs2 == dirs1 &&
+                      saveFlagAfter == 0 && ticks1 > ticks0;
+    const bool ok = ran && busIdle && frozen && clockOff && woke && back &&
+                    kept && sawDown && cleared && steered;
+    std::printf("sleep procedure %s, CPU %s, disk bus %s, wake %s, state %s, "
+                "input %s\n", ran ? "ran" : "MISSING",
+                frozen && clockOff ? "halted" : "NOT halted",
+                busIdle ? "idle" : "BUSY", woke && back ? "complete" : "FAILED",
+                kept ? "intact" : "LOST",
+                sawDown && cleared && steered ? "alive" : "DEAD");
+    std::printf("%s — PowerBook Duo 230 sleep etalon\n", ok ? "PASSED" : "FAILED");
+    return ok ? 0 : 1;
+}
 
 int main() {
     std::string rom = testasset::find("roms/duo230.rom");
@@ -433,6 +613,11 @@ int main() {
                         sawDown && cleared;
         std::printf("%s — PowerBook Duo 230 input etalon\n", ok ? "PASSED" : "FAILED");
         return ok ? 0 : 1;
+    }
+    if (const char* m = getenv("POM68K_BEYOND"); m && !std::strcmp(m, "sleep")) {
+        h.focusFinder();
+        return sleepLeg(SleepRig{ mem, cpu, kFrame, peekLog, finderUp, curApp,
+                                  steer, h.dump });
     }
     return beyondboot::run(h);
 }

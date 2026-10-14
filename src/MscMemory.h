@@ -247,6 +247,10 @@ public:
     // a run boundary — a Moira reset from inside a memory callback would
     // re-enter the core mid-instruction.
     bool consumeWakeReset() { bool w = wakeReset_; wakeReset_ = false; return w; }
+    // power_cycle_w writes that asked for a full system sleep (any value
+    // but 0 / $5A000000 — MSCKillPower writes -1, PowerMgrPrimitives.a:
+    // 1365-1370). An observable for the sleep gate, not state.
+    long fullSleeps = 0;
 
     // ── Save states (V8Memory pattern) ─────────────────────────────────
     // ── Debugger (DeviceSnapshot.h): this board's devices, read from their

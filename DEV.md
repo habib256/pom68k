@@ -921,9 +921,10 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   at 60 Hz (`PgePmu::tbLatch`, MAME's `vbl_w` cadence) and holds there for
   the whole frame, because the firmware reads a register more than once per
   sample and a live drain turns that into a race — measured, two directions
-  out of four silently stopped working. The sleep/wake gate no other machine
-  can test is the one open milestone
-  (the planned Duo sleep gate, `TODO.md` § Nouvelles machines).
+  out of four silently stopped working. Sleep/wake — the path no other
+  machine can test — is gated by `duo230_sleep_etalon`: the lid (port F
+  bit 3) runs the System's own sleep, a key wakes it through the ROM's
+  `WakeVector` (`docs/DUO_BRINGUP.md` milestone 6).
 - **A machine reset must scrub the PG&E's `$91` power flag** (`PgePmu::reset`).
   The MCU restarts from its mask ROM with its RAM intact, and `$91` is what
   the ROM branches on at `$FE28`: left at the last session's `$62` it takes

@@ -107,8 +107,16 @@ public:
     // The lid. Port F bit 3, read by the PMU firmware: 1 = open.
     void setClamshell(bool open) { clamshellOpen_ = open; }
     bool clamshellOpen() const { return clamshellOpen_; }
+    // Output latches as last written by the firmware (diagnostics/gates).
+    uint8_t portELatch() const { return lastPortE_; }
+    uint8_t portGLatch() const { return lastPortG_; }
     long pmuIntEdges = 0;                            // port F bit 2 falls
     long pmuAckEdges = 0;                            // port H bit 6 changes
+    // Sleep observable (docs/DUO_BRINGUP.md milestone 6), never an input:
+    // the host's PMgrOp sleepReq ($7F + 'MATT'/'BORG', PowerPrivEqu.a:858-
+    // 859, sent by SendSleepLP, PowerMgrPrimitives.a:3533-3548) as received
+    // over SPI. Not serialized — a counter, not machine state.
+    long sleepCommands = 0;
 
     // ── Save states ──
     // ── Debugger (DeviceSnapshot.h): members only, never a register read.
@@ -163,6 +171,8 @@ private:
     // it starts low (MAME macpwrbkmsc.cpp:129 m_last_porth, :543-546).
     uint8_t lastPortH_ = 0x00;
     bool lastMosi_ = false;
+    uint8_t rxTail_[6] = {};                         // last SPI bytes received
+    void sniffSleep(uint8_t b);
     int hostSpin_ = 0;                               // machine cycles owed
     // Built-in keyboard: one bit per key, 1 = HELD. Stored positively and
     // inverted at the port, which is the only place the active-low wire

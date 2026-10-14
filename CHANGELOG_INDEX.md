@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 668 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 669 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
-| [Machine bring-ups](#machine-bring-ups) | 81 |
+| [Machine bring-ups](#machine-bring-ups) | 82 |
 | [Build, packaging and release](#build-packaging-and-release) | 18 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -504,6 +504,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-10 (twelfth)** — [The Quadra 630 rewinds a Finder write on its IDE disk; the Snow plan's ordered work is done](CHANGELOG.md#2026-10-10-q630-ide-rewind)
 - **2026-10-13 (seventh)** — [The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs](CHANGELOG.md#2026-10-13-q605-gate-identity)
 - **2026-10-14** — [The rest of the Quadra 605 rigs leave the LC 475 hybrid](CHANGELOG.md#2026-10-14-q605-core-everywhere)
+- **2026-10-14 (third)** — [The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it](CHANGELOG.md#2026-10-14-duo-sleep)
 
 ## Build, packaging and release
 

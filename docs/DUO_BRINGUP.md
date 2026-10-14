@@ -18,11 +18,11 @@ established** — the MAME cites to port from (`macpwrbkmsc.cpp` / `msc.cpp` /
 the findings that are not derivable from the code, and the things that were
 *disproved* and must not be re-tried.
 
-Still open: **sleep/wake**, the one path no other machine in the tree
-can exercise — of which the CPU-power-down half is now done, see milestone 6
-(the KEYBOARD matrix landed 2026-08-13 and the trackball quadrature counters
-2026-08-14, both gated by `duo230_input_etalon`).
-Then the PB150, whose ROM is the only oracle.
+**Sleep/wake works and is gated** (2026-10-14, `duo230_sleep_etalon`,
+milestone 6): closing the lid runs the System's own sleep path and a key
+brings the same Finder back. Input: the KEYBOARD matrix (2026-08-13) and the
+trackball quadrature counters (2026-08-14), gated by `duo230_input_etalon`.
+Next: the Duo 210/250 variants, then the PB150, whose ROM is the only oracle.
 
 ---
 
@@ -322,23 +322,58 @@ different address width, stack window, vectors, map and peripherals) plus
 5. ⬜ Variants: Duo 210/250 (trivial, § *Why this order*), 270c (CSC), 280
    (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
    oracle).
-6. 🟨 **The actual point — power management observable.** The **CPU
-   power-down half is done** (2026-08-13): `power_cycle_w` was a milestone-1
+6. ✅ **The actual point — power management observable.** The **CPU
+   power-down half** landed 2026-08-13: `power_cycle_w` was a milestone-1
    `fprintf`, so when the idle System asked to be cycled — 58 s into an idle
    Finder — the ROM's `bra.b *` at `$x88B14` never ended and the machine
    froze with the interrupt mask at 7. MAME `msc.cpp:191-206`: 0 and
    `$5A000000` pulse the CPU's reset line (the overlay is NOT re-armed —
    the vectors come from the RAM at `$0`), anything else halts for a full
    system sleep. `duo_soak_etalon` covers it: 180 s of Mac clock across many
-   power-down cycles. Still open: the FULL sleep (port G bit 5) and the wake
-   event, i.e. `duo230_sleep_etalon` proper. No other machine can test it.
-   **First measurement, 2026-08-14** — `PgePmu::setClamshell(false)` drives
-   port F bit 3 (the lid; MAME hard-wires it open). Closing it **holds the
-   68030 within 5 s**, so the firmware plainly acts on the switch — but the
-   System runs no sleep procs on the way: not one write command reaches the
-   disk and the mounted volume's `vcbFlags` dirty bit is untouched, where a
-   real PowerBook flushes everything before the power goes. Re-opening the lid
-   does not wake the machine either. Those two are the milestone.
+   power-down cycles.
+   **The full sleep and the wake, 2026-10-14 — no emulator change was
+   needed; the 2026-08-14 reading was wrong twice.** That first measurement
+   (`PgePmu::setClamshell(false)` drives port F bit 3, which MAME hard-wires
+   open) saw the 68030 held within seconds and concluded "the System runs no
+   sleep procs" because no write reached the disk, and "re-opening does not
+   wake" because the lid was the only thing it tried. Apple's own source
+   (`elliotnunn/mac-rom`, which outranks MAME) settles both:
+   - **The path.** `ClamshellVBL` and IdleMind's `CheckClamshell` read
+     `readExtSwitches` (`$DC`, bit 0 = closed — `Internal/Asm/
+     PowerPrivEqu.a:883,954`) and call `_Sleep(SleepNow)`
+     (`OS/IoPrimitives/PowerMgrPrimitives.a:1226-1306`). `TakeASnooze`
+     walks the sleep queue, closes AppleTalk, then the MSC sleep table
+     (`:763-776`): `SleepHD`, the VIA/ASC/FPU/GSC/MSC saves, `SendSleepLP`
+     (PMgrOp `$7F` with `'MATT'`, `:3533-3548`), `SaveSlp030`,
+     `SaveSleepInfo` (`SleepSaveFlag` = SleepConst, `:3524-3527`) and
+     `MSCKillPower` (−1 to `$50FA0000`, `:1365-1370`), then `BRA.S *`
+     (`OS/PowerMgr/PowerMgr.a:3624-3697`). The gate sees each observable
+     step: `SleepSaveFlag` = `$53415241` at PMgrBase+`$112`, exactly one
+     `$7F 'MATT'` on the PG&E's SPI (`PgePmu::sleepCommands`), exactly one
+     kill-power write (`MscMemory::fullSleeps`), the PG&E's port G bit 5
+     (master clock off) set, and the 68030's clock still for 600 frames.
+   - **"Flushed".** There is no `FlushVol` anywhere in that path, and the
+     System issues **no** write on the way down even with a just-created
+     folder dirty in the catalog — the System's behaviour, not a gap. The
+     gate asserts what the source does promise: the SCSI bus is free when
+     the power goes, and the dirty state survives in RAM — the boot VCB's
+     `vcbDirCnt` (+1 after Cmd-N) is unchanged after the wake.
+   - **The wake.** The lid alone does not wake this firmware (30 s
+     measured); **a key does** (space and the power key both measured): the
+     PG&E drops port G bit 5, `onWake` resets the 68030 with the overlay
+     re-armed (MAME `pmu_portg_w` + `msc.cpp pmu_reset_w`), the ROM's
+     `PortableCheck` finds `SleepSaveFlag`, clears it and jumps to
+     `WakeVector` (`PowerMgr.a:4667-4682`), and `WakeUp` (`:3711`) runs the
+     wake table back into the interrupted Finder — Ticks resume where they
+     stopped (no cold boot), the KeyMap and the trackball answer. Whether
+     the real board also routes the lid switch to the PG&E's /IRQ pin is not
+     known from any source in hand (MAME leaves the pin unwired).
+   Two rig rules the gate pays for: tick only the peripherals while
+   `cpuHeld()` (the GUI loop's rule — otherwise the 68030 keeps executing
+   the `BRA.S *`), and give `WakeUp`'s tail (ADBReInit, the wake queue) five
+   seconds after the desktop repaints before judging the keyboard — a key
+   held in the first second never reached the KeyMap. Not done: the GUI has
+   no lid control yet (`MscMemory::setClamshell` has no shell caller).
    *Separately, and NOT part of sleep:* a machine reset must scrub the PG&E's
    `$91` power flag or the mask ROM takes its RESUME path and STOPs at `$FE0D`
    for ever (`PgePmu::reset`, 2026-08-14). Six-second reproduction: run the
@@ -346,9 +381,12 @@ different address width, stack window, vectors, map and peripherals) plus
 
 ## Open questions (answer from ROM traces, not guesses)
 
-- The **Power Manager protocol document** is missing. Without it, what a
-  selector's payload is supposed to contain is guesswork and the PG&E
-  disassembly is the only oracle. This is the ceiling on milestones 4 and 6.
+- The **Power Manager protocol document** is missing, but its host half is
+  not: Apple's ROM source (`OS/PowerMgr/PowerMgr.a`,
+  `OS/IoPrimitives/PowerMgrPrimitives.a`, `Internal/Asm/PowerPrivEqu.a`)
+  carries every command number, the count tables and the MSC exception
+  table. What the PG&E firmware does with a command still has only its
+  disassembly as an oracle.
 - PB150: exact GSC flavour, IDE decode window, box ID, and whether its PMU
   wants a different firmware image from the Duo one (`FDA22562` will say).
 - MSC II vs MSC differences for the 040 Duos (280/280c).
