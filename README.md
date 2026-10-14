@@ -404,7 +404,11 @@ large inputs are split at 1,900 MB by default. Run
   selection. Search the grouped model list by name or family, then choose
   your ROM and startup disk. The menu also offers restart, pause, fast-forward,
   save or restore state, **Type text...**, input recording, the **Session**
-  submenu and drive sounds. **Change machine**
+  submenu and drive sounds. On a PowerBook Duo it also offers **Close lid** /
+  **Open lid**: closing the lid lets Mac OS put the Duo to sleep, and, as on
+  the real machine, a key (not opening the lid) wakes it — the Dashboard
+  shows *Asleep - press a key to wake* meanwhile. The lid position is part
+  of a saved state. **Change machine**
   lists every profile by board family (a profile whose ROM is absent stays
   greyed) and relaunches the emulator.
 - **Peripherals:** disks, networking, host serial ports and controller

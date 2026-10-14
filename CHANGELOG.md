@@ -99,6 +99,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"the Eclipse's ADB is the Egret's" — a comment that said "measured, not assumed" and never was; it is the SWIM IOP's wire, and both towers had no working input at all between 2026-08-02 and 2026-08-14** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **"the Duo holds its writes behind the hard-disk spin-down" — the Finder reads the catalog off the disk to create the folder, so the drive is awake; the volume is simply never flushed** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **what does a Duo do when its lid closes, what wakes it, and is anything flushed on the way down?** → [2026-10-14 (third) — The Duo sleeps and wakes on its own code…](#2026-10-14-duo-sleep)
+- **how does the GUI know a machine has a lid, and why does « Open lid » not wake a sleeping Duo?** → [2026-10-14 (sixth) — The Duo gets its lid in the GUI…](#2026-10-14-duo-lid-gui)
 - **how does the one ECFA989B ROM know whether it is in a Duo 210, 230 or 250, and does the 250 have an FPU?** → [2026-10-14 (fifth) — The Duo 210 and Duo 250 are profiles…](#2026-10-14-duo-210-250)
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
@@ -493,6 +494,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-14 (sixth)** — [The Duo gets its lid in the GUI: a capability the host reports, an input the machine thread applies, and no faked wake](#2026-10-14-duo-lid-gui)
 - **2026-10-14 (fifth)** — [The Duo 210 and Duo 250 are profiles: one ROM, three CPU IDs, and the ROM names each one itself](#2026-10-14-duo-210-250)
 - **2026-10-14 (fourth)** — [The pixel pins replay under WebAssembly: 43 profiles, every value equal to the native pin](#2026-10-14-wasm-pins)
 - **2026-10-14 (third)** — [The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it](#2026-10-14-duo-sleep)
@@ -1152,6 +1154,53 @@ Newest first.
 
 ---
 
+<a id="2026-10-14-duo-lid-gui"></a>
+## 2026-10-14 (sixth) — The Duo gets its lid in the GUI: a capability the host reports, an input the machine thread applies, and no faked wake
+
+TODO § PowerBook carried « Donner un clapet au Duo dans la GUI » —
+[the (third) entry](#2026-10-14-duo-sleep) proved the System sleeps on a
+closed lid and wakes on a key, but `MscMemory::setClamshell` had no caller
+outside the rigs.
+
+**Where the capability lives.** The shell does not ask which profile is
+bound. `MachineHost::kHasClamshell` is true when the board's `*Memory`
+exposes `setClamshell`/`clamshellOpen` — today `MscMemory` alone — and
+`bindMachineControls` binds `GuiMachineControls::lidOpen/setLidOpen/asleep`
+only when `hasClamshell()` says so; the Machine menu then shows **Close
+lid** / **Open lid** after Fast forward. The 210/250 profiles being added
+in parallel run the same board and inherit the item with no GUI edit.
+
+**The path.** The click queues `Cmd::Clamshell` like a key; the machine
+thread applies it between two quanta, and the item follows the published
+`clamshellOpen()` rather than the click (the engine-swap rule). The command
+is journaled: `InputEventType::Clamshell` (name `clamshell`) sits before
+`TypeText`, so the never-journaled typing pair moves and `staterestore`
+renumbers — journals carry names, not numbers, and `machinehost_test` still
+pins the pairing in enum order; `tests/InputReplay.h` replays it.
+
+**No faked wake.** Opening the lid only flips PG&E port F bit 3, as on the
+hardware model the (third) entry measured. To keep that discoverable the
+Dashboard (and the menu, under the item) reads *Asleep - press a key to
+wake* while the new `MscMemory::asleep()` — the MSC's full-sleep halt that
+`power_cycle_w` sets and only the PG&E's wake clears — holds, and *Lid
+closed* otherwise. ASCII hyphen on purpose: ImGui's default font has no
+U+2014.
+
+**Save states.** Nothing to bump: `PgePmu::visit` already carries
+`clamshellOpen_`; the gate now proves a restored state brings the closed
+lid back and the published state follows it.
+
+**Gates (ROM-free, so they run where CI has no `roms/`).**
+`gui_machine_window_test` binds a real `MachineHost` over a ROM-less
+`MscMemory`: no lid item for the lidless fake, « Close lid » for the Duo,
+the click held until a machine step, the PG&E switch closed after it, « Open
+lid » back, and the sleep hint once `MSCKillPower`'s −1 is written to
+`$50FA0000`. `machinehost_test` adds the capability per board, the queue,
+the save/restore round trip and a lidless board ignoring the command.
+Both also pass from a directory with no `roms/` beside them. With the
+assets present, `duo230_boot_etalon` (40 s), `interp_duo230_boot_etalon`
+and `duo230_sleep_etalon` (54 s) executed and stayed green — no emulation
+path changed; the asset-none tier is 123/123 on x86-64 (LTO off).
 <a id="2026-10-14-duo-210-250"></a>
 ## 2026-10-14 (fifth) — The Duo 210 and Duo 250 are profiles: one ROM, three CPU IDs, and the ROM names each one itself
 

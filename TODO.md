@@ -143,10 +143,6 @@ sur le premier profil consommateur avant d'être généralisés ; une ligne
 catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
-- [ ] **Donner un clapet au Duo dans la GUI.** Le sommeil marche et est
-  gaté (`duo230_sleep_etalon`), mais `MscMemory::setClamshell` n'a aucun
-  appelant côté shell : il faut une commande Fermer/Ouvrir le clapet (le
-  réveil se fait ensuite par une touche, comme sur la machine).
 - [ ] **Ajouter Duo 270c puis Duo 280.** CSC couleur puis le chemin 68040 ;
   les variantes proches 210/250 sont livrées (2026-10-14,
   `duo210_boot_etalon`, `duo250_boot_etalon`).

@@ -400,8 +400,11 @@ different address width, stack window, vectors, map and peripherals) plus
    `cpuHeld()` (the GUI loop's rule — otherwise the 68030 keeps executing
    the `BRA.S *`), and give `WakeUp`'s tail (ADBReInit, the wake queue) five
    seconds after the desktop repaints before judging the keyboard — a key
-   held in the first second never reached the KeyMap. Not done: the GUI has
-   no lid control yet (`MscMemory::setClamshell` has no shell caller).
+   held in the first second never reached the KeyMap. The GUI's lid
+   (2026-10-14): **Machine → Close lid / Open lid**, bound through
+   `MachineHost::hasClamshell()` and queued as `Cmd::Clamshell`; opening
+   it does not fake a wake — the Dashboard says *Asleep - press a key to
+   wake* while `MscMemory::asleep()` holds (`gui_machine_window_test`).
    *Separately, and NOT part of sleep:* a machine reset must scrub the PG&E's
    `$91` power flag or the mask ROM takes its RESUME path and STOPs at `$FE0D`
    for ever (`PgePmu::reset`, 2026-08-14). Six-second reproduction: run the

@@ -27,6 +27,9 @@
 #include "MachineCatalog.h"
 #include "MacMemory.h"
 #include "MachineFactory.h"
+#include "MachineHost.h"
+#include "MscCpu.h"
+#include "MscMemory.h"
 #include "SaveStateMachines.h"
 
 #include <atomic>
@@ -113,6 +116,28 @@ struct FakeMachine {
     }
     void requestCancelTyping() { ++cancels; left = 0; }
     std::size_t typingLeft() const { return left; }
+};
+
+// A real MachineHost over a ROM-less Duo board, so the lid travels the
+// product's whole path: menu → GuiMachineControls → the host's queue →
+// MscMemory/PgePmu between two quanta → the published state the menu reads
+// back. The quantum emulates nothing; no ROM, no firmware.
+struct NoAudio {
+    bool started() const { return false; }
+    size_t buffered() const { return 0; }
+    size_t targetBuffered() const { return 0; }
+    void pushRaw(std::vector<float>&, int) {}
+    void pushFrame(std::vector<float>&, int) {}
+};
+struct LidMachine : MachineHost<LidMachine, MscMemory, MscCpu, NoAudio> {
+    using Base = MachineHost<LidMachine, MscMemory, MscCpu, NoAudio>;
+    using Base::Base;
+    static constexpr bool kStereo = false;
+    int64_t frameCycles() const { return 1000; }
+    void emulateQuantum() { this->framesRun_++; }
+    bool drainAudio() { return false; }
+    void renderFrame(std::vector<uint32_t>& fb, int& w, int& h) { w = h = 1; fb.assign(1, 0); }
+    void publishStatus() {}
 };
 
 // The window's side of ScreenInput: what GlfwScreenHost reads from GLFW.
@@ -333,6 +358,8 @@ int main() {
         machine.cmds.clear();
         check(ui.click("Machine", draw), "open the Machine menu");
         check(ui.find("Change machine") != nullptr, "the menu lists « Change machine »");
+        check(!ui.find("Close lid") && !ui.find("Open lid") && !state.machine.lidOpen,
+              "a machine without a clamshell offers no lid item");
         check(clickMenuItem(ui, "Restart", draw), "click Restart");
         check(machine.count(FakeMachine::Cmd::HardReset) == 1, "Restart pushes HardReset");
         ui.click("Machine", draw);
@@ -636,6 +663,68 @@ int main() {
           "the Machine menu opens the preparation guide");
     check(windowShown(kStartupWindowTitle) && ui.click("Cancel", draw),
           "preparing another Macintosh can be cancelled without a relaunch");
+
+    // ── The lid: only for a machine whose host reports a clamshell ─────
+    // The capability comes from the host (MachineHost::hasClamshell), not
+    // from a profile check here; the click crosses the host's queue and the
+    // item then follows the machine. Waking is a key, not the lid
+    // (docs/DUO_BRINGUP.md milestone 6), so the dashboard says so while
+    // the board sleeps.
+    {
+        static MscMemory duoMem(pom68k::defaultCoreConfig(), 8u << 20);
+        static MscCpu duoCpu(duoMem, jit::defaultResolvedConfig(),
+                             pom68k::defaultCoreConfig().cpu, false);
+        duoMem.setCpu(&duoCpu);
+        NoAudio silence;
+        LidMachine duo(duoMem, duoCpu, silence);
+        duo.publish(true);
+        bindMachineControls(state.machine, duo, [] { ImGui::Text("Duo (fake)"); });
+        state.machine.showWindow = true;
+        check(state.machine.lidOpen && state.machine.lidOpen(),
+              "a clamshell machine binds the lid, open at power-on");
+        ui.click("Machine", draw);
+        check(ui.find("Close lid") && !ui.find("Open lid"),
+              "the Machine menu offers « Close lid »");
+        capture(ui, "machine-menu-lid");
+        check(clickMenuItem(ui, "Close lid", draw), "click Close lid");
+        check(duoMem.clamshellOpen() && state.machine.lidOpen(),
+              "the click is queued: the switch waits for the machine thread");
+        duo.stepTick();
+        check(!duoMem.clamshellOpen() && !state.machine.lidOpen(),
+              "between two quanta the PG&E's switch reads closed, and the "
+              "published state follows");
+        ui.frame(draw);
+        {
+            // Plain text registers no test-engine item, so the line the
+            // dashboard draws is read from the function that draws it.
+            const char* line = lidStatusText(state.machine);
+            check(line && std::string(line) == "Lid closed",
+                  "the dashboard's lid line says the lid is closed");
+        }
+        ui.click("Machine", draw);
+        check(ui.find("Open lid") && !ui.find("Close lid"),
+              "the item now offers « Open lid »");
+        check(clickMenuItem(ui, "Open lid", draw), "click Open lid");
+        duo.stepTick();
+        check(duoMem.clamshellOpen() && state.machine.lidOpen(),
+              "Open lid reaches the switch the same way");
+
+        // The System's MSCKillPower: -1 to power_cycle_w ($50FA0000,
+        // PowerMgrPrimitives.a:1365-1370) halts the 68030 for a full sleep.
+        for (uint32_t a = 0x50FA0000; a < 0x50FA0004; ++a) duoMem.write8(a, 0xFF);
+        duo.stepTick();
+        ui.frame(draw);
+        const char* hint = lidStatusText(state.machine);
+        check(duoMem.asleep() && state.machine.asleep() && hint &&
+              std::string(hint) == "Asleep - press a key to wake",
+              "a sleeping Duo tells the user a key wakes it");
+        capture(ui, "dashboard-asleep");
+        duo.stop();
+        bindMachineControls(state.machine, machine, [] {});
+        ui.frame(draw);
+        check(!state.machine.lidOpen && !lidStatusText(state.machine),
+              "rebinding a lidless machine drops the lid controls");
+    }
 
     // The first-run guide uses synthetic files: dispatch and preparation,
     // never a claim that a zero-filled ROM or volume can boot Mac OS.
