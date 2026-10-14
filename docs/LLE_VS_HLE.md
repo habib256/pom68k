@@ -999,7 +999,7 @@ Neither is a hardware deviation, but both make choices a reader should know.
   Snapshots are same-version artifacts (header pins format version + machine
   profile; mismatch is refused). Coverage is the whole tree: `save`/`load`
   overloads for **all twelve** machine families (`SaveStateMachines.h:53-110`,
-  the **41** `SnapMachine` tags in `MachineCatalog.h:56-73` — one per PROFILE,
+  the **43** `SnapMachine` tags in `MachineCatalog.h:56-73` — one per PROFILE,
   not per class, because identity twins share a ROM and the header checksum
   cannot tell them apart), gated by `savestate_test`, `savestate_v8_test`,
   `savestate_030/040/68k_test`, `lcii_savestate_etalon`,

@@ -140,7 +140,7 @@ const MachineProfile& MachineFactory::selectProfile(
         if (id == 0x3DC27823) return bySnapshot(SnapMachine::Quadra950);
         if (id == 0x06684214 || id == 0x064DC91D)
             return bySnapshot(selected.f108);
-        if (id == 0xECFA989B) return bySnapshot(SnapMachine::Duo230);
+        if (id == 0xECFA989B) return bySnapshot(selected.msc);
         return bySnapshot(selected.memcJr);
     }
 

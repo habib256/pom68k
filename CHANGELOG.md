@@ -99,6 +99,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"the Eclipse's ADB is the Egret's" — a comment that said "measured, not assumed" and never was; it is the SWIM IOP's wire, and both towers had no working input at all between 2026-08-02 and 2026-08-14** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **"the Duo holds its writes behind the hard-disk spin-down" — the Finder reads the catalog off the disk to create the folder, so the drive is awake; the volume is simply never flushed** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **what does a Duo do when its lid closes, what wakes it, and is anything flushed on the way down?** → [2026-10-14 (third) — The Duo sleeps and wakes on its own code…](#2026-10-14-duo-sleep)
+- **how does the one ECFA989B ROM know whether it is in a Duo 210, 230 or 250, and does the 250 have an FPU?** → [2026-10-14 (fifth) — The Duo 210 and Duo 250 are profiles…](#2026-10-14-duo-210-250)
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
 - **why did a 1.44 MB LC II disk yield a valid MDB and then fail the same mount — and why was SWIM mode bit 5 the wrong head-select source?** → [2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium…](#2026-09-09-lcii-floppy144-mount)
@@ -492,6 +493,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-14 (fifth)** — [The Duo 210 and Duo 250 are profiles: one ROM, three CPU IDs, and the ROM names each one itself](#2026-10-14-duo-210-250)
 - **2026-10-14 (fourth)** — [The pixel pins replay under WebAssembly: 43 profiles, every value equal to the native pin](#2026-10-14-wasm-pins)
 - **2026-10-14 (third)** — [The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it](#2026-10-14-duo-sleep)
 - **2026-10-14 (second)** — [The LTO build is quiet again under GCC 15: ten `lto1` string-op warnings, all false positives, closed by shape](#2026-10-14-gcc15-lto)
@@ -1149,6 +1151,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-14-duo-210-250"></a>
+## 2026-10-14 (fifth) — The Duo 210 and Duo 250 are profiles: one ROM, three CPU IDs, and the ROM names each one itself
+
+TODO § Jalon 5 carried « Ajouter les variantes Duo 210 et 250. Exploiter les
+IDs déjà présents, introduire la sélection de profil et ajouter les lignes
+catalogue/gates. » The IDs were `MscMemory::kIdDuo210/230/250` and
+`kCpuHz210`, declared since the bring-up and never consumed: `runDuo`
+built every Duo as a 230.
+
+**How the ROM tells them apart.** Only the CPU ID longword at `$5FFFFFFC`
+(MAME `macpwrbkmsc.cpp:598-619`): `$A55A1004` Duo 210, `$A55A1005` Duo 230,
+`$A55A1006` Duo 250. Apple's table (`elliotnunn/mac-rom`,
+`OS/UniversalTables.a:459-461`) still calls ID 6 "DBLite (16MHz)"; the
+11/8/93 note at `:26` renames `boxDBLite16` to `boxPowerBookDuo250`, and
+`Internal/Asm/InternalOnlyEqu.a:1043-1052` gives the BoxFlags 23 / 26 / 32
+(Gestalt machineType 29 / 32 / 38). The clock is the other difference —
+25 MHz on the 210 (`macpwrbkmsc.cpp:767`), 33 MHz on the 230/250. The 250's
+active-matrix panel is invisible to the ROM (MAME: GSC panel id 6 on all
+three, `:816`). MAME's `macpd250` also enables an FPU; POM68K does not:
+Apple's ROM lists all three among the optional-FPU machines
+(`OS/StartMgr/USTNonCritTsts.a:3681-3683`, the 68882 is in the Duo Dock),
+and `MscCpu.h` already said "no FPU on any of the three".
+
+**What changed.**
+- `MachineCatalog.h`: rows `duo210` / `duo250` beside `duo230`, appended
+  ids `SnapMachine::Duo210 = 42`, `Duo250 = 43`; both floppy-less like the
+  230. The catalogue is now **43 profiles**.
+- `BoardIdentity.h`: `mscBoardIdentity(profile)` → `{cpuHz, boxId}`, the
+  one mapping the composer, the gate and `savestate_030_test` construct
+  `MscMemory` from (`docs_test` pins its values; `assets.lock` names the
+  two new slugs on the ROM, PG&E and 7.5.5 rows).
+- Selection: `MachineSelectionConfig::msc`, set by `applyMachineProfile`
+  from the typed `--machine-profile=duo210|duo250`; `MachineFactory` routes
+  `ECFA989B` through it. No environment spelling, like the 512Ke. The
+  « Change machine » menu and the startup window list the rows from the
+  catalogue; each profile keeps its own battery file
+  (`<image>.<slug>.pram`).
+
+**Gates.** `duo210_boot_etalon` and `duo250_boot_etalon` are
+`duo230_boot_etalon` under `POM68K_DUO_MODEL` (a test knob): Finder
+signature, pixel pin, and the guest's BoxFlag. x86-64, threaded/x64
+default, 7.5.5 volume: Duo 210 menu 0.04 / desktop 0.43 / 3391 SCSI
+commands / BoxFlag 23, 34.2 s; Duo 250 0.04 / 0.43 / 3393 / BoxFlag 32,
+42.1 s; Duo 230 unchanged (BoxFlag 26, now asserted too), 42.5 s. All
+three settle on the same screen, `92faf30f6e0f9293` — the Finder draws
+nothing model-specific — and the two new keys carry that value.
+`duo210_` / `duo250_agent_boot_etalon` and two `wasm_` replay rows follow
+the roster rules. `savestate_030_test` adds a third section: each Duo
+state round-trips under its own id and is refused under another one.
+`docs_test` routes both profiles through the typed option;
+`storage_profile_test` counts 43 rows, 3 floppy-less, 40 with SCSI.
+STATUS.md: +6 gates (2 boot, 2 agent, 2 wasm) on each host section.
 
 <a id="2026-10-14-wasm-pins"></a>
 ## 2026-10-14 (fourth) — The pixel pins replay under WebAssembly: 43 profiles, every value equal to the native pin

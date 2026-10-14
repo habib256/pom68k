@@ -5,8 +5,16 @@
 // and releases the 68030; three ADBReInits must complete over the VIA1
 // shifter / /PMU_INT level path (CHANGELOG 2026-07-31 night). Soft-skips
 // without the ROM, the PG&E dump or the 7.5.5 image.
+//
+// POM68K_DUO_MODEL=duo210|duo250 boots the other two profiles of the same
+// board and ROM (duo210_boot_etalon, duo250_boot_etalon): the clock and the
+// $5FFFFFFC CPU ID come from the catalogue's BoardIdentity.h, and every
+// model must name itself in BoxFlag — the ROM's own decode of that ID
+// (mac-rom Internal/Asm/InternalOnlyEqu.a:1043-1052: boxPowerBookDuo210 =
+// 23, 230 = 26, 250 = 32; Gestalt machineType = BoxFlag + 6).
 
 #include "AssetFingerprint.h"
+#include "BoardIdentity.h"
 #include "AgentBootProbe.h"
 #include "DaynaBootProbe.h"
 #include "MscCpu.h"
@@ -15,6 +23,7 @@
 #include "MscMemory.h"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -24,6 +33,32 @@ static std::string find(const char* rel) {
 }
 
 int main() {
+    struct Model {
+        const char* slug;
+        pom68k::SnapMachine profile;
+        unsigned boxFlag;
+        const char* name;
+    };
+    static const Model kModels[] = {
+        {"duo210", pom68k::SnapMachine::Duo210, 23, "Duo 210"},
+        {"duo230", pom68k::SnapMachine::Duo230, 26, "Duo 230"},
+        {"duo250", pom68k::SnapMachine::Duo250, 32, "Duo 250"},
+    };
+    const char* wanted = getenv("POM68K_DUO_MODEL");
+    const Model* model = &kModels[1];
+    if (wanted) {
+        model = nullptr;
+        for (const Model& m : kModels)
+            if (!std::strcmp(m.slug, wanted)) model = &m;
+        if (!model) {
+            std::fprintf(stderr, "FAIL: POM68K_DUO_MODEL=%s is not a Duo "
+                         "profile (duo210, duo230, duo250)\n", wanted);
+            return 1;
+        }
+    }
+    const pom68k::MscBoardIdentity identity =
+        pom68k::mscBoardIdentity(model->profile);
+
     std::string rom =
         find("roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM");
     std::string pge = find("roms/pge/pge_boot.bin");
@@ -43,7 +78,7 @@ int main() {
     }
 
     MscMemory mem(daynaboot::config(), 8u << 20,
-                  MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+                  identity.cpuHz, identity.boxId);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.pgeActive()) { std::fprintf(stderr, "FAIL: PG&E inactive\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
@@ -62,9 +97,11 @@ int main() {
         return 1;
     }
 
-    // ~200 machine-seconds at 33 MHz: the Finder was measured up well
-    // before 6.0 G cycles (CHANGELOG 2026-07-31 night, SCSI 3448 cmds).
-    const int64_t kFrame = 33000000 / 60;
+    // ~200 machine-seconds: the Duo 230 had the Finder up well before
+    // 6.0 G cycles (CHANGELOG 2026-07-31 night, SCSI 3448 cmds). Frames
+    // are a sixtieth of the model's own clock, so the 210 gets the same
+    // guest time at 25 MHz.
+    const int64_t kFrame = identity.cpuHz / 60;
     const long kFrames = getenv("POM68K_FRAMES") ? atol(getenv("POM68K_FRAMES"))
                                                  : 12000;
     bool diag = getenv("POM68K_DIAG");
@@ -94,8 +131,8 @@ int main() {
     double menuBar = darkRatio(0, W, 2, 18);
     double desktop = darkRatio(W / 2, W, 40, H - 40);
 
-    std::printf("Duo 230: menu bar dark %.2f, desktop %.2f, SCSI commands %ld, "
-                "GSC mode %d\n",
+    std::printf("%s: menu bar dark %.2f, desktop %.2f, SCSI commands %ld, "
+                "GSC mode %d\n", model->name,
                 menuBar, desktop, mem.scsi().commands, mem.gscReg(4) & 3);
 
     // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
@@ -107,10 +144,22 @@ int main() {
         },
         [&] { return mem.scsi().commands; },
         W, H, /*menuRows=*/20);
-    const bool pinOk = pixelpin::check("duo230_boot_etalon", pin);
+    // The Duo 230 keeps its historical key; the variants add their slug.
+    const std::string pinKey =
+        model->profile == pom68k::SnapMachine::Duo230
+            ? std::string("duo230_boot_etalon")
+            : std::string("duo230_boot_etalon/") + model->slug;
+    const bool pinOk = pixelpin::check(pinKey, pin);
+
+    // The guest's own word for the machine: BoxFlag ($0CB3), decoded by the
+    // ROM from the CPU ID register.
+    const unsigned boxFlag = mem.peek8(0x0CB3);
+    std::printf("BoxFlag %u (Gestalt machineType %u, want %u)\n", boxFlag,
+                boxFlag + 6, model->boxFlag + 6);
+    const bool identityOk = boxFlag == model->boxFlag;
 
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.80
-           && mem.scsi().commands > 500 && pinOk;
+           && mem.scsi().commands > 500 && pinOk && identityOk;
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");

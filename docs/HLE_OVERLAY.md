@@ -246,7 +246,7 @@ PIC1654S vs Egret vs Cuda vs PG&E — roster in `CLAUDE.md`, reachability in
 `docs/68K_FAMILY_SCOPE.md`). `machines` gates a module to the families it
 understands; `RomMatch` further gates it to the specific ROM the scan
 recognises. `SnapMachine` (`src/MachineCatalog.h:56-73`) already enumerates
-the 41 profiles and is the natural basis for `MachineMask`.
+the 43 profiles and is the natural basis for `MachineMask`.
 A module with no signature hit on the loaded ROM is inert and greyed, not a
 hazard.
 

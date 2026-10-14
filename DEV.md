@@ -87,7 +87,7 @@ hand-maintained backlog or overview.
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
 inside that section. Twelve platforms in eleven sections (VASP shares
-Sonora's), 41 profiles
+Sonora's), 43 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -103,7 +103,7 @@ ROM identity and stable save-state id live).
 | Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700--900--950) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
-| MSC + PG&E Power Manager | **PowerBook Duo 230** | (210/250/270c/280, then PB150 — none wired) | [2.11](#211-msc--pge-power-manager--powerbook-duo-230) |
+| MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), Duo 250 (CPU ID only); 270c/280 and PB150 not wired | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
 
 ---
 
@@ -299,8 +299,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **41** profiles are enumerated
-  (`MachineCatalog.h:56-72`, tags 1-41 contiguous) and each of the **12**
+  append, never renumber. All **43** profiles are enumerated
+  (`MachineCatalog.h:56-73`, tags 1-43 contiguous) and each of the **12**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
@@ -877,17 +877,28 @@ Gates: `r65c02_test`, `applepic_test`, `iifx_post_etalon`,
 `iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse repaint +
 KeyMap through the IOP firmware), save states in `savestate_030_test`.
 
-### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230
+### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230, 210, 250
 
-`MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptop, the 37th
-profile (`MachineCatalog.h:125`, `runDuo` at `PlatformDuo.cpp:99`, `SnapMachine::Duo230`), a
-68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
+`MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptops: the Duo
+230 (the 37th profile, `SnapMachine::Duo230`), a 68030 @ **33 MHz**
+(`kCpuHz230`), and since 2026-10-14 the Duo 210 (25 MHz, `kCpuHz210`,
+`SnapMachine::Duo210`) and Duo 250 (33 MHz, `SnapMachine::Duo250`). The three
+share the board and the `ECFA989B` ROM; `mscBoardIdentity()` in
+`BoardIdentity.h` maps the catalogue profile to the clock and CPU ID that
+`runDuo` (`PlatformDuo.cpp`) and the gates construct `MscMemory` with, and
+the typed `--machine-profile=duo210|duo250` is the selector (no environment
+spelling). The 250's active-matrix panel is invisible to the ROM (MAME gives
+every GSC Duo panel id 6). MAME enables an FPU on its 250; POM68K does not —
+Apple's ROM lists all three among the optional-FPU machines (the FPU lives
+in the Duo Dock, `USTNonCritTsts.a:3681-3683`), and `MscCpu.h` keeps none.
+Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 `MscMemory.h:179-209` — the LC-family `$50Fxxxxx` shape with three deltas: a
 **GSC** LCD controller (regs `$50F20000`, 128 KB VRAM at `$60000000`),
 `$50FA0000` power_cycle_w, and no floppy at all (the Duo Dock carries it).
 Box IDs at `$5FFFFFFC`: Duo 210 `$A55A1004`, **230 `$A55A1005`**, 250
-`$A55A1006`.
+`$A55A1006` — decoded by the ROM into BoxFlag 23 / 26 / 32
+(`boxPowerBookDuo210/230/250`, mac-rom `InternalOnlyEqu.a:1043-1052`).
 
 What makes it a platform rather than a variant: **there is no Egret or
 Cuda**. Power, clock, PRAM, the matrix keyboard, the trackball and the
@@ -938,11 +949,13 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   Cuda/Egret transport is phase-fragile enough that unifying them needs both
   sides green first (`M68hc05Pge.h:18-24`).
 - Gates: `duo230_boot_etalon` (Finder on System 7.5.5, and the
-  `etalon-core` representative for this platform), `msc_parity_test`
+  `etalon-core` representative for this platform), `duo210_boot_etalon` and
+  `duo250_boot_etalon` (the same binary under `POM68K_DUO_MODEL`: Finder plus
+  the model's own BoxFlag), `msc_parity_test`
   (MAME-parity unit gate, asset-free — SOUND_BUSY bit, the port E reset
   edge, port H's `$00` latch, the RTC seed, PRAM round trip, and two
   deliberate parity deltas pinned so a diff cannot flip them), save states
-  in `savestate_030_test`. `duo_trace` is the diagnostic runner
+  in `savestate_030_test` (with the three profile ids kept apart). `duo_trace` is the diagnostic runner
   (`EXCLUDE_FROM_ALL`, its own `DUO_*` knobs — [§5](#5-environment-knobs--the-complete-list)).
 
 ---
@@ -2234,7 +2247,7 @@ window). Both honour `=0`. The gates that exercise them (`lle_a64_…`) are
 behind the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES —
 [§6](#6-test-tiers-and-gates).
 
-**Duo / PG&E** — behavioural ([§2.11](#211-msc--pge-power-manager--powerbook-duo-230)):
+**Duo / PG&E** — behavioural ([§2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250)):
 `POM68K_PGE_SPINUS` (host stall per /PMU_REQ edge, µs, default 80, `0` =
 off). The per-edge and per-byte interrupt routes, unconditional RDRF,
 charger-off and ADB-mouse routes are retired below after measured failures.
@@ -2311,7 +2324,8 @@ in `StartupOptions.h:220-222`, and `NEOST_EXC_DIAG` (Moira exception diag,
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
 next person greps once instead of twice: `POM68K_AIO_EGRET`,
 `POM68K_IICX`, `POM68K_MACII_020`, `POM68K_COMPACT_MODEL`,
-`POM68K_Q630_ROM`, `POM68K_BOXID`, `POM68K_SENSE`, `POM68K_DIAG`.
+`POM68K_Q630_ROM`, `POM68K_DUO_MODEL` (`duo210` / `duo250` on
+`duo230_boot_etalon`), `POM68K_BOXID`, `POM68K_SENSE`, `POM68K_DIAG`.
 The 128K/512K reproducer (`tests/mac128k_boot_etalon.cpp`, built on demand,
 [§2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic)) adds
 `POM68K_MAC128K_MODEL` (pick `mac128k` / `mac512k`),

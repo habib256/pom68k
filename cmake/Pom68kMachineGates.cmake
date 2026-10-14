@@ -1068,3 +1068,15 @@ add_executable(duo230_boot_etalon tests/duo230_boot_etalon.cpp)
 target_link_libraries(duo230_boot_etalon PRIVATE pom68k_core)
 add_test(NAME duo230_boot_etalon COMMAND duo230_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# The Duo 210 (25 MHz, CPU ID $A55A1004) and Duo 250 (33 MHz, $A55A1006):
+# the same board and ECFA989B ROM under the catalogue's other two MSC
+# identities (src/BoardIdentity.h); each must reach the Finder AND name
+# itself in BoxFlag (23 / 32), the ROM's own decode of the ID register.
+add_test(NAME duo210_boot_etalon COMMAND duo230_boot_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(duo210_boot_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_DUO_MODEL=duo210" TIMEOUT 1800)
+add_test(NAME duo250_boot_etalon COMMAND duo230_boot_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(duo250_boot_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_DUO_MODEL=duo250" TIMEOUT 1800)

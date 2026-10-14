@@ -8,7 +8,7 @@
 
 CLAUDE.md                                231
 cmake/Pom68kAfpGates.cmake               27
-cmake/Pom68kAgentGates.cmake             74
+cmake/Pom68kAgentGates.cmake             76
 cmake/Pom68kAudioGates.cmake             12
 cmake/Pom68kComponentGates.cmake         657
 cmake/Pom68kDaynaGates.cmake             36
@@ -17,7 +17,7 @@ cmake/Pom68kFloppyGates.cmake            19
 cmake/Pom68kGatePolicy.cmake             406
 cmake/Pom68kJitGates.cmake               660
 cmake/Pom68kLlapGates.cmake              13
-cmake/Pom68kMachineGates.cmake           1070
+cmake/Pom68kMachineGates.cmake           1082
 cmake/Pom68kMoofGates.cmake              33
 cmake/Pom68kOracleGates.cmake            28
 cmake/Pom68kProductRegistry.cmake        23
@@ -48,7 +48,7 @@ src/main.cpp                             41
 src/PlatformCompact.cpp                  162
 src/PlatformComposers.cpp                46
 src/PlatformDafb.cpp                     599
-src/PlatformDuo.cpp                      142
+src/PlatformDuo.cpp                      156
 src/PlatformSonora.cpp                   289
 src/PlatformToby.cpp                     297
 src/PlatformV8.cpp                       206
@@ -56,7 +56,7 @@ src/Q700Memory.cpp                       1098
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    198
 src/RuntimeConfigCore.cpp                186
-src/RuntimeConfigMachine.cpp             113
+src/RuntimeConfigMachine.cpp             117
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071
