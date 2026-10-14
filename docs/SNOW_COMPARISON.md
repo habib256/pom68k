@@ -284,8 +284,9 @@ revision. This supports two different projects:
 
 Snow's PMgr interprets commands and owns handshake/battery/ADB state.
 `sleep_request` recognizes the `MATT` signature but leaves entering sleep as
-a TODO. Consequently, it does not provide a ready-made implementation for
-POM68K's open Duo sleep/wake issue, and it does not demonstrate M50753
+a TODO. Consequently, it offered no implementation for POM68K's Duo
+sleep/wake (since closed on the PG&E LLE, `duo230_sleep_etalon`, 2026-10-14),
+and it does not demonstrate M50753
 firmware execution. An optional command-level model in POM68K must be named
 and reported as such; firmware qualification stays a separate goal.
 

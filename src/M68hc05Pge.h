@@ -77,6 +77,9 @@ public:
     // trackball use their dedicated matrix/counter hardware in PgePmu.
     // Same instruction-slaved hook as M68hc05::onCycles.
     std::function<void(int)> onCycles;
+    // Every byte the PMU RECEIVES over SPI, at completion (the host's
+    // half of an exchange). PgePmu reads the sleep command off it.
+    std::function<void(uint8_t)> onSpiByte;
 
     void setPullups(int port, uint8_t mask) { pullups_[port] = mask; }
 

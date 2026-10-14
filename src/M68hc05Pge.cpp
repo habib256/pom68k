@@ -78,6 +78,9 @@ void M68hc05Pge::reset() {
 // per docs/DUO_BRINGUP.md) owns deciding whether the shipped firmware
 // needs a level-sensitive release; the answer is not MAME's, since MAME
 // leaves the pin unwired too (macpwrbkmsc.cpp binds no IRQ source).
+// Sleep/wake (milestone 6, 2026-10-14) wakes on a key with the pin unwired;
+// whether the real board routes the lid switch to it — the lid alone does
+// not wake this model — is not known from any source in hand.
 void M68hc05Pge::setIrqLine(bool asserted) {
     if (asserted && !irqLine_) pending_ |= INT_IRQ;
     irqLine_ = asserted;
@@ -158,6 +161,7 @@ void M68hc05Pge::spiEdge() {
                 std::fprintf(stderr, "spi: out=$%02X in=$%02X cyc=%lld\n",
                              spiOutLatch_, spiIn_, (long long)cycles_);
         }
+        if (onSpiByte) onSpiByte(spiIn_);
         spsr_ |= 0x80;                               // SPSR_IRQ_FLAG
         if (spcr_ & 0x80) { pending_ |= INT_SPI; waiting_ = false; }
     }
@@ -703,9 +707,13 @@ int M68hc05Pge::execOne() {
                 // (6805ops.hxx:527-539), so any Duo firmware reaching $8E
                 // kills MAME outright. WAIT is the conservative
                 // approximation — a STOPped PMU still wakes on its own
-                // timer instead of hanging the machine. Reopen with the
-                // sleep/wake milestone (docs/DUO_BRINGUP.md), where "the
-                // timers must stop" becomes an actual requirement.
+                // timer instead of hanging the machine. The sleep/wake
+                // milestone did not need more (docs/DUO_BRINGUP.md
+                // milestone 6, 2026-10-14): through a full lid-closed sleep
+                // the v2 firmware, sampled once a second, was always
+                // executing its own loop at $9xxx-$Dxxx, never stopped, and
+                // it woke on a key — duo230_sleep_etalon. Reopen if a
+                // firmware path is ever seen to depend on frozen timers.
                 case 0x8E:                           // STOP
                 case 0x8F:                           // WAIT
                     cc_ &= uint8_t(~CC_I);

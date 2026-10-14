@@ -268,6 +268,23 @@ void PgePmu::setPmuReq(bool level) {
     reqLevel_ = level;
 }
 
+// The host's sleep command, read off the wire: SendSleepLP pushes the
+// signature, then PMgrOp sleepReq = $7F with pmLength 4
+// (PowerMgrPrimitives.a:3533-3548; PowerPrivEqu.a:858-859 sleepReq $7F,
+// sleepSig 'MATT'; 'BORG' when the sleep is a low-power one). Whether the
+// serial protocol puts a length byte between the command and its data is
+// the count table's business (PowerMgr.a:2957), so both framings match.
+void PgePmu::sniffSleep(uint8_t b) {
+    for (int i = 0; i < 5; i++) rxTail_[i] = rxTail_[i + 1];
+    rxTail_[5] = b;
+    const uint8_t* t = rxTail_ + 2;
+    const bool matt = t[0] == 'M' && t[1] == 'A' && t[2] == 'T' && t[3] == 'T';
+    const bool borg = t[0] == 'B' && t[1] == 'O' && t[2] == 'R' && t[3] == 'G';
+    if (!matt && !borg) return;
+    if (rxTail_[1] == 0x7F || (rxTail_[0] == 0x7F && rxTail_[1] == 0x04))
+        sleepCommands++;
+}
+
 void PgePmu::wirePorts() {
     M68hc05Pge& m = *mcu_;
     m.setPullups(M68hc05Pge::C, 0xFF);               // driver :788
@@ -276,6 +293,7 @@ void PgePmu::wirePorts() {
     // The DS2400 timers run on the MCU's own instruction clock — the
     // event-driven-wire pattern (M68hc05::onCycles) the Egret ADB uses.
     m.onCycles = [this](int) { ds2400_.tick(mcu_->cycleCount()); };
+    m.onSpiByte = [this](uint8_t b) { sniffSleep(b); };
 
     // SPI master → the MSC VIA1 shifter (SCK on CB1, MOSI on CB2, MISO
     // from the SR MSB). Clock edges must NOT raise IFR.CB1 — that is the
@@ -370,15 +388,14 @@ void PgePmu::wirePorts() {
             // +5V present (bit 2), PFW ok (bit 1), clamshell open
             // (bit 3), /PMU_REQ mirrored on bit 6 (pmu_portf_r). MAME
             // hard-wires the lid open; here it is a line the host can
-            // drive, and driving it is the sleep milestone's first
-            // instrument. What it does TODAY, measured 2026-08-14:
-            // closing it holds the 68030 within 5 s — so the firmware
-            // does act on the switch — but the System never runs its
-            // sleep procs first (the volume's dirty bit is untouched and
-            // not one write reaches the disk), and re-opening does not
-            // bring the machine back. Both halves belong to
-            // docs/DUO_BRINGUP.md's sleep/wake milestone; the default is
-            // open, so nothing reaches this path unless a caller asks.
+            // drive. Closed, the firmware reports it to the System's
+            // readExtSwitches ($DC, bit 0 = closed — PowerPrivEqu.a:883,
+            // :954), whose IdleMind CheckClamshell
+            // (PowerMgrPrimitives.a:1269-1306) runs _Sleep(SleepNow): the
+            // whole ROM sleep table, the $7F 'MATT' command, MSCKillPower.
+            // Re-opening alone does NOT wake: the firmware wakes on a key
+            // or the power key (it drops port G bit 5 then). Gate:
+            // duo230_sleep_etalon; docs/DUO_BRINGUP.md milestone 6.
             return uint8_t(0x06 | (clamshellOpen_ ? 0x08 : 0x00) |
                            (reqLevel_ ? 0x40 : 0x00));
         case M68hc05Pge::G:
@@ -493,7 +510,10 @@ void PgePmu::wirePorts() {
         case M68hc05Pge::G:
             // bit 5: 1 = master clock off (sleep); 1→0 = wake — the
             // machine clears HALT, pulses the CPU reset and re-arms the
-            // ROM overlay (pmu_portg_w + msc pmu_reset_w).
+            // ROM overlay (pmu_portg_w + msc pmu_reset_w). The ROM's reset
+            // path then finds SleepSaveFlag set and jumps to the Power
+            // Manager's WakeVector (PowerMgr.a:4667-4682 PortableCheck →
+            // WakeUp :3711).
             if ((lastPortG_ & 0x20) && !(v & 0x20) && onWake) onWake();
             lastPortG_ = v;
             break;

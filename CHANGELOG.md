@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"closing the lid holds the 68030 but the System runs no sleep procs, and re-opening does not wake it" (2026-08-14, `docs/DUO_BRINGUP.md` milestone 6, the TODO's *Bloqué* note) — the whole ROM sleep table ran (`SleepSaveFlag`, `$7F 'MATT'`, MSC kill-power); "no write reached the disk" is the System's path, which has no `FlushVol`, and the PG&E wakes on a key, not on the lid** → [2026-10-14 (third) — The Duo sleeps and wakes on its own code…](#2026-10-14-duo-sleep)
 - **"a pressed CD game, played" / "the AppleCD Explorer disc mounts" (2026-09-19) — both stopped opening on 2026-10-09, when the Snow-derived `CdCueSheet` refused PREGAP and FLAGS, and no gate held either disc; and the September TOC placed every audio track 150 sectors early, having dropped the PREGAP the sheets declare** → [2026-10-10 (second) — CdImage…](#2026-10-10-cd-image)
 - **"the debugger's 68030 logical view (and `guestPeek8`) matches the CPU" — it ignored long-descriptor limits until the MMU-edit gate faulted where the view showed a page** → [2026-10-09 (tenth) — MMU and cache registers edited…](#2026-10-09-debugger-mmu-edits)
 - **"the Quadra 630 installs its SCSI disk's driver elsewhere" (2026-10-02 (ninth)) — MAME's default macqd630 has an imageless IDE disk on `ata:0`; without it MAME installs the driver at `-33` like POM68K** → [2026-10-03 — The Quadra 630's SCSI driver was not elsewhere…](#2026-10-03-q630-ide)
@@ -97,6 +98,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **"this disk is unreadable" on every non-compact machine: what unit MAME's IWM window tables are counted in, and why `$17` is the Mac's mode and not `$1F`** → [2026-08-15 (third) — The IWM's cell window was counted in the wrong clock…](#2026-08-15-iwm-window-clock)
 - **"the Eclipse's ADB is the Egret's" — a comment that said "measured, not assumed" and never was; it is the SWIM IOP's wire, and both towers had no working input at all between 2026-08-02 and 2026-08-14** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **"the Duo holds its writes behind the hard-disk spin-down" — the Finder reads the catalog off the disk to create the folder, so the drive is awake; the volume is simply never flushed** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
+- **what does a Duo do when its lid closes, what wakes it, and is anything flushed on the way down?** → [2026-10-14 (third) — The Duo sleeps and wakes on its own code…](#2026-10-14-duo-sleep)
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
 - **why did a 1.44 MB LC II disk yield a valid MDB and then fail the same mount — and why was SWIM mode bit 5 the wrong head-select source?** → [2026-09-09 (third) — The LC II mounts a 1.44 MB SuperDrive medium…](#2026-09-09-lcii-floppy144-mount)
@@ -490,6 +492,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-14 (third)** — [The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it](#2026-10-14-duo-sleep)
 - **2026-10-13 (seventh)** — [The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs](#2026-10-13-q605-gate-identity)
 - **2026-10-13 (sixth)** — [The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM](#2026-10-13-macii-oracle)
 - **2026-10-13 (release)** — [0.3.5](#2026-10-13-release-035)
@@ -1143,6 +1146,69 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-14-duo-sleep"></a>
+## 2026-10-14 (third) — The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it
+
+The TODO had `duo230_sleep_etalon` *blocked on "System power-management code
+or PMU spec"*. Apple's own ROM source (`elliotnunn/mac-rom`, the top of
+CLAUDE.md's source ranking) is that code for the host half, and reading it
+against the running machine showed the block was a misreading of the
+[2026-08-14](#2026-08-14-duo-beyond-boot) measurement, not a missing model.
+**No emulation behaviour changed.**
+
+**What the source says the System does on a lid close.** `ClamshellVBL`
+and IdleMind's `CheckClamshell` send `readExtSwitches` (`$DC`, bit 0 =
+closed — `Internal/Asm/PowerPrivEqu.a:883,954`) and call `_Sleep(SleepNow)`
+(`OS/IoPrimitives/PowerMgrPrimitives.a:1226-1306`). `TakeASnooze`
+(`OS/PowerMgr/PowerMgr.a:3624-3697`) walks the sleep queue, then the MSC
+sleep table (`PowerMgrPrimitives.a:763-776`): `SleepHD`, register saves,
+`SendSleepLP` (`$7F` + `'MATT'`, `:3533-3548`), `SaveSlp030`,
+`SaveSleepInfo` (`SleepSaveFlag`, `:3524-3527`), `MSCKillPower` (−1 to
+`$50FA0000`, `:1365-1370`), then `BRA.S *`. On the way back the reset path's
+`PortableCheck` finds `SleepSaveFlag`, clears it and jumps to `WakeVector`
+(`PowerMgr.a:4667-4682`); `WakeUp` (`:3711`) runs the wake table.
+
+**What POM68K was already doing, measured.** Lid closed (port F bit 3,
+`PgePmu::setClamshell`): within 8-99 frames `SleepSaveFlag` =
+`$53415241`, exactly one `$7F 'MATT'` reaches the PG&E over SPI, exactly one
+kill-power write lands, the PG&E sets port G bit 5 (master clock off) and the
+68030's clock does not move for 600 frames. So the "no sleep procs" of
+2026-08-14 was wrong: its evidence was that no write reached the disk, and
+**the sleep path has no `FlushVol` in it** — even with a folder just created
+by Cmd-N (VCB `vcbDirCnt` 35 → 36, `vcbFlags` `$FF00`, dirty), zero writes go
+out on the way down. The second half was wrong too: the lid alone did not
+wake the machine in 30 s, but **a key does** — space and the power key both
+measured, ~10 frames after the press. The PG&E drops port G bit 5, `onWake`
+resets the 68030 with the overlay re-armed, the ROM takes `WakeVector`, and
+the same Finder returns: Ticks resume from where they stopped (8471 → 9014,
+no cold boot), `SleepSaveFlag` is clear, `vcbDirCnt` is still 36.
+
+**What was added.** `duo230_sleep_etalon` (`POM68K_BEYOND=sleep` on
+`duo_beyond_etalon`): boot, focus the Finder, Cmd-N, close the lid, assert the
+sleep procedure ran (the three observables above), the SCSI bus free at
+power-off, the CPU frozen with the PG&E's clock off, then lid open + space,
+assert the wake completed into the same state and that KeyMap and the
+trackball answer. Two observables, not state: `PgePmu::sleepCommands` (a
+sniffer on the PG&E's received SPI bytes through a new
+`M68hc05Pge::onSpiByte`) and `MscMemory::fullSleeps`. Rig rules it paid
+for: tick only the peripherals while `cpuHeld()` (as the GUI loop does —
+otherwise the 68030 keeps running the `BRA.S *`), and give `WakeUp`'s tail
+five seconds after the repaint, because a key held in the first second never
+reached the KeyMap.
+
+**Results** (x86-64, RelWithDebInfo, LTO off): `duo230_sleep_etalon` passed
+in 67 s and executed (no SKIP); `duo230_boot_etalon`, `duo230_input_etalon`,
+`duo_soak_etalon`, `duo_persist_etalon`, `duo230_dayna_boot_etalon`,
+`duo230_agent_boot_etalon`, `interp_duo230_boot_etalon`, `msc_parity_test`,
+`savestate_030_test`, `docs_test`, `config_test` and `file_size_budget_test`
+green.
+
+**Still open.** The GUI has no lid control (`MscMemory::setClamshell` has
+no shell caller) — a TODO line. Whether the real board also routes the lid
+to the PG&E's unwired /IRQ pin, so that opening alone would wake it, is in
+no source at hand; the gate presses a key, which wakes the machine on every
+account.
 
 <a id="2026-10-13-q605-gate-identity"></a>
 ## 2026-10-13 (seventh) — The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs

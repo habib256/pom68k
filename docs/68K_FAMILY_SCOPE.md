@@ -259,7 +259,7 @@ new bus. Backlog entries: `TODO.md` § Nouvelles machines.
 | Brick | Unlocks | ROM on hand | Status |
 |---|---|---|---|
 | **Apple PIC IOP** (343S1021: R65C02 + 32 KB shared RAM + 2 DMA channels + host/peripheral mailboxes + timer) **+ the OSS** interrupt controller | Mac IIfx (2026-08-01), Quadra 900 / 950 (2026-08-02). `R65c02.*` + `ApplePic.*` serve the IIfx front end and both Eclipse IOPs; all three Finder gates pass | IIfx `4147DD77`; Q900 shares `420DBFF3` with the Q700; Q950 `3DC27823` | ✅ **landed** |
-| **Power Manager + LCD framebuffer** — 68HC05 flavour (PB 150 / 190 / Duo / 500) or **M50753** (Mitsubishi 740 = 6502 superset; Portable, PB 100 / 140-180) | the whole portable line. **68HC05 side landed**: `M68hc05Pge.*` + `PgePmu.*` + `MscMemory.*` boot the Duo 230 to the Finder and it is the 37th profile (2026-08-06). Still open on that platform: sleep/wake (input through the PMU's matrix keyboard and trackball counters landed 2026-08-13/14, gated by `duo230_input_etalon`). **M50753 side untouched** | PB150 `FDA22562`; PB160-180 `E33B2724`; Duos `ECFA989B` / `0024D346` / `015621D7`; PB520/540 `B6909089`; PB190 `4D27039C`; Portable `96CA3846`; PB100 `96645F9C` | 🟢 (68HC05) / 🟡 (M50753) |
+| **Power Manager + LCD framebuffer** — 68HC05 flavour (PB 150 / 190 / Duo / 500) or **M50753** (Mitsubishi 740 = 6502 superset; Portable, PB 100 / 140-180) | the whole portable line. **68HC05 side landed**: `M68hc05Pge.*` + `PgePmu.*` + `MscMemory.*` boot the Duo 230 to the Finder and it is the 37th profile (2026-08-06). Input through the PMU's matrix keyboard and trackball counters landed 2026-08-13/14 (`duo230_input_etalon`) and sleep/wake 2026-10-14 (`duo230_sleep_etalon`); still open there: the 210/250 variants and a GUI lid control. **M50753 side untouched** | PB150 `FDA22562`; PB160-180 `E33B2724`; Duos `ECFA989B` / `0024D346` / `015621D7`; PB520/540 `B6909089`; PB190 `4D27039C`; Portable `96CA3846`; PB100 `96645F9C` | 🟢 (68HC05) / 🟡 (M50753) |
 | **AV I/O complex** — advanced video + S-Video digitizer, **Curio** combo SCC/SCSI/Ethernet, **MACE**, sound codec, AV memory/DMA controller | Quadra/Centris **660AV**, **840AV** — boot **without** the DSP | `5BF10FD1` | 🟠 |
 | **AT&T DSP3210 core + VCOS/ARTA** | full 660AV / 840AV DSP fidelity | — | 🔴 |
 
@@ -383,10 +383,11 @@ is left, in return-on-effort order:
 
 1. **Depth over breadth** — beyond-boot gates on the profiles that have
    too few (§ 5; `STATUS.md` owns the current registry). Not a new machine, and the highest-value item on this page.
-2. **Finish the Duo platform**: the **sleep/wake gate no other machine in the
-   tree can run** (`docs/DUO_BRINGUP.md` milestone 6) — input through the
-   PMU's matrix keyboard and trackball counters is done and gated
-   (`duo230_input_etalon`). The brick is paid for; this is the product work.
+2. **Finish the Duo platform**: sleep/wake, the path no other machine in
+   the tree can run, is done and gated (`duo230_sleep_etalon`,
+   `docs/DUO_BRINGUP.md` milestone 6), as is input through the PMU
+   (`duo230_input_etalon`). What remains is product work: the 210/250
+   variants and a GUI lid control.
 3. **Generalize NuBus** → real slot cards on IIx/IIcx/IIci/IIsi/VASP and the
    NuBus Quadras. (No longer a prerequisite for the IIfx: it ships on
    `TobyVideo` in slot 9.)

@@ -411,6 +411,14 @@ add_test(NAME duo230_input_etalon COMMAND duo_beyond_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(duo230_input_etalon PROPERTIES
                      ENVIRONMENT "POM68K_BEYOND=input" TIMEOUT 1800)
+# The Duo's sleep etalon (docs/DUO_BRINGUP.md milestone 6, 2026-10-14):
+# lid closed → the System's own sleep path (SleepSaveFlag, PMU $7F 'MATT',
+# MSC kill-power) → CPU frozen → lid open + a key → the ROM's wake path
+# back to the same Finder, input alive.
+add_test(NAME duo230_sleep_etalon COMMAND duo_beyond_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(duo230_sleep_etalon PROPERTIES
+                     ENVIRONMENT "POM68K_BEYOND=sleep" TIMEOUT 1800)
 
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kAfpGates.cmake)
 

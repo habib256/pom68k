@@ -437,7 +437,7 @@ void MscMemory::write8(uint32_t addr, uint8_t v) {
         const uint32_t word = powerCycle_;
         powerCycle_ = 0;
         if (word == 0 || word == 0x5A000000) wakeReset_ = true;
-        else sleeping_ = true;                   // until the PMU wakes us
+        else { sleeping_ = true; fullSleeps++; } // until the PMU wakes us
         return;
     }
 }
