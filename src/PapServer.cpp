@@ -270,7 +270,7 @@ void PapServer::flushClientRead() {
     while (!answers_.empty() && pkts.size() < 8) {
         size_t chunk = std::min(answers_.size(), kMaxData);
         // Sized once, then filled, not inserted: GCC 15 under LTO misreads
-        // the growth path as -Wstringop-overflow (CHANGELOG 2026-10-14).
+        // the growth path as -Wstringop-overflow (CHANGELOG 2026-10-14 (second)).
         std::vector<uint8_t> p(4 + chunk, 0);
         p[0] = connId_;
         p[1] = kData;

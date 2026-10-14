@@ -89,7 +89,7 @@ std::vector<std::string> seSecondFloppyArguments(std::vector<std::string> argume
     });
     if (fitted) {
         // Appended in place, not `string + char*`: GCC 15 under LTO misreads
-        // the moved temporary as -Wstringop-overflow (CHANGELOG 2026-10-14).
+        // the moved temporary as -Wstringop-overflow (CHANGELOG 2026-10-14 (second)).
         std::string argument(kSeSecondFloppyOption);
         argument += *fitted ? '1' : '0';
         arguments.insert(arguments.begin(), std::move(argument));
