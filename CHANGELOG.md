@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-14** — [The LTO build is quiet again under GCC 15: ten `lto1` string-op warnings, all false positives, closed by shape](#2026-10-14-gcc15-lto)
 - **2026-10-13 (seventh)** — [The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs](#2026-10-13-q605-gate-identity)
 - **2026-10-13 (sixth)** — [The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM](#2026-10-13-macii-oracle)
 - **2026-10-13 (release)** — [0.3.5](#2026-10-13-release-035)
@@ -1143,6 +1144,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-14-gcc15-lto"></a>
+## 2026-10-14 — The LTO build is quiet again under GCC 15: ten `lto1` string-op warnings, all false positives, closed by shape
+
+The release-shape build (`RelWithDebInfo`, `POM68K_NATIVE=ON`,
+`POM68K_LTO=ON`) with this host's GCC 15.2 printed `-Wstringop-overflow` /
+`-Wstringop-overread` at link time from three shapes; the nightly's LTO
+`-Werror` leg runs GCC 13 and does not see them. Each was read against its
+code first; none is an actual overflow or overread.
+
+- `PapServer::flushClientRead` (`PapServer.cpp:271-272`). Seven warnings
+  came from the four hub binaries rebuilt here (`atalk_hub_test`,
+  `gui_windows_test`, `q605_ot_bind_etalon`, `q605_afp_live_etalon`), one
+  or two each. Any other binary that links the hub can repeat them. A
+  four-byte PAP header vector received `chunk` bytes from the answers deque
+  by `insert`. `chunk` is at least 1 (the loop runs only while the deque is
+  non-empty), so the insert always reallocates. GCC flagged the in-place
+  branch of `_M_range_insert` that writes past the four bytes, and that branch
+  cannot run here. The packet is now sized once (`4 + chunk`), its two header
+  bytes are set, and the payload is `copy_n`'d after them.
+- `runVasp` / `runIIsi` (`PlatformSonora.cpp:200/243`, one each in
+  `POM68K`). `std::string("68030 @ ") + (x ? "16" : "32") + " MHz …"`
+  is 29 characters. GCC flagged the short-string branch of the rvalue
+  `operator+`'s move, which copies from the 16-byte local buffer and is dead
+  at that length. The spec field now takes one of two whole literals.
+- `seSecondFloppyArguments` (`RuntimeConfigRelaunch.cpp:92`, inlined into
+  `GuiHostServices::processRelaunch` at line 188, one in `POM68K`). This is
+  the same `string + const char*` move shape, with a 20-character result
+  flagged as a 21-byte write into the 16-byte buffer. The argument is now
+  built in a named string, `+=` the digit, and moved into the vector.
+
+The bytes and strings produced are unchanged. No pragma was needed. After the
+change `POM68K` and the four hub binaries relink with no warning.
+`pap_server_test`, `session_config_test`, `daynaport_test`, the AppleTalk
+unit gates, `docs_test`, `file_size_budget_test` and `config_test` pass.
 
 <a id="2026-10-13-q605-gate-identity"></a>
 ## 2026-10-13 (seventh) — The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs

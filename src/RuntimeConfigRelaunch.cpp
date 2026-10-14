@@ -87,9 +87,13 @@ std::vector<std::string> seSecondFloppyArguments(std::vector<std::string> argume
     std::erase_if(arguments, [](const std::string& argument) {
         return argument.starts_with(kSeSecondFloppyOption);
     });
-    if (fitted)
-        arguments.insert(arguments.begin(),
-                         std::string(kSeSecondFloppyOption) + (*fitted ? "1" : "0"));
+    if (fitted) {
+        // Appended in place, not `string + char*`: GCC 15 under LTO misreads
+        // the moved temporary as -Wstringop-overflow (CHANGELOG 2026-10-14).
+        std::string argument(kSeSecondFloppyOption);
+        argument += *fitted ? '1' : '0';
+        arguments.insert(arguments.begin(), std::move(argument));
+    }
     return arguments;
 }
 
