@@ -490,6 +490,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-14** — [The rest of the Quadra 605 rigs leave the LC 475 hybrid](#2026-10-14-q605-core-everywhere)
 - **2026-10-13 (seventh)** — [The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs](#2026-10-13-q605-gate-identity)
 - **2026-10-13 (sixth)** — [The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM](#2026-10-13-macii-oracle)
 - **2026-10-13 (release)** — [0.3.5](#2026-10-13-release-035)
@@ -1143,6 +1144,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-14-q605-core-everywhere"></a>
+## 2026-10-14 — The rest of the Quadra 605 rigs leave the LC 475 hybrid
+
+[2026-10-13 (seventh)](#2026-10-13-q605-gate-identity) moved the `q605_*`
+family to `q605Core()`; the other rigs that load the FF7439EE ROM into
+`Q605Memory` and call the result a Quadra 605 still built it from
+`defaultCoreConfig()` — the LC 475's `$A55A2221` board ID beside the 68040
+FPU. They now take `q605Core()` too (`tests/Q605Profile.h`):
+
+- gates: `jit_lockstep_test` (and its `_blocks_`, `_x64_`, `_x64_fine_` and
+  `_noaccess_` registrations), `scsi_agent_etalon`,
+  `scsi_agent_autostart_etalon`, `scsi_hotplug_etalon`, and the Quadra 605
+  leg of `calibration_040_etalon` (its Quadra 630 leg keeps the default,
+  whose unset ID is already the Quadra 630's);
+- developer tools: `finder_boot_matrix q605`, `jit_bench`, and
+  `adb_key_probe`'s Quadra 605 path.
+
+Left alone, because no ROM boots there and nothing reads `$5FFFFFFC`:
+`machinehost_test`, `savestate_040_test` and `cuda_restart_test` (synthetic
+ROMs), `clipboard_typing_test`, `debug_session_test`,
+`debug_inspection_test`, `jit_backend_test`, `swim2_test`, `cuda_lle_test`,
+`scsi_detach_test`, `storage_profile_test` and the four device tests the
+previous entry named. `dasm` only disassembles the ROM image.
+
+**Nothing moved.** None of these gates pins a trace, hash or pixel: the
+lockstep compares two machines built from the same config, the agent and
+hot-plug gates check guest-side outcomes, and the calibration compares
+`TimeSCCDB`/`TimeVIADB` with MAME's `macqd605`, which was already a
+Quadra 605 — that leg now measures the machine it is compared with, and
+stays within one tick. All twelve gates (with `docs_test`, `config_test`
+and `file_size_budget_test`) executed with the ROM,
+`hdv/ref/MacOS-8.1-boot.vhd` and the agent's build present, and passed on
+x86-64; `finder_boot_matrix q605` reaches the 8-bit Finder (4 551 SCSI
+commands) on a scratch copy of the reference volume.
 
 <a id="2026-10-13-q605-gate-identity"></a>
 ## 2026-10-13 (seventh) — The `q605_*` gates boot a Quadra 605: one board-identity mapping for the product and the rigs

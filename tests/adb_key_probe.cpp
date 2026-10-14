@@ -48,6 +48,7 @@
 #include "Cpu030.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "V8Memory.h"
 
 #include <cstdint>
@@ -274,14 +275,14 @@ int runQ605(const std::string& img, long bootFrames) {
     if (rom.empty() || img.empty()) { std::printf("SKIP: no ROM/image\n"); return 0; }
     std::printf("machine=Quadra605 rom=%s img=%s\n", rom.c_str(), img.c_str());
 
-    static Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    static Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(readAll(rom)) || !mem.attachScsi(img)) {
         std::fprintf(stderr, "FAIL: bad ROM/image\n");
         return 2;
     }
     static Cpu040 cpu(mem, jit::defaultResolvedConfig(),
-                      pom68k::defaultCoreConfig().cpu,
-                      pom68k::defaultCoreConfig().diagnostics);
+                      q605Core().cpu,
+                      q605Core().diagnostics);
     mem.setCpu(&cpu);
 
     // POM68K_PROBE_WWATCH=<hex>: catch every guest write covering that RAM
