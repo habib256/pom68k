@@ -39,6 +39,13 @@ struct GuiMachineControls {
     std::function<void()> recordingStart;
     std::function<void()> recordingStop;
     std::function<std::string()> recordingMessage;
+    // The lid, bound only when the machine host reports a clamshell
+    // (MachineHost::hasClamshell — the Duo's PG&E switch). Unbound, the
+    // Machine menu offers no lid item. `asleep` is the machine's own
+    // full-sleep state, for the dashboard's wake hint.
+    std::function<bool()> lidOpen;
+    std::function<void(bool)> setLidOpen;
+    std::function<bool()> asleep;
     // Family-specific lines drawn at the top of the control window.
     std::function<void()> drawStatus;
     // The "Dashboard" window, listed under Windows.
@@ -74,14 +81,32 @@ void bindMachineControls(GuiMachineControls& controls, MachineT& machine,
     controls.recordingStop = [&machine] { machine.requestRecordingStop(); };
     controls.recordingMessage = [&machine] { return machine.recordingMessage(); };
     controls.drawStatus = std::forward<DrawStatus>(drawStatus);
+    controls.lidOpen = {};
+    controls.setLidOpen = {};
+    controls.asleep = {};
+    if constexpr (requires { machine.hasClamshell(); }) {
+        if (machine.hasClamshell()) {
+            controls.lidOpen = [&machine] { return machine.clamshellOpen(); };
+            controls.setLidOpen = [&machine](bool open) {
+                machine.requestClamshell(open);
+            };
+            controls.asleep = [&machine] { return machine.asleep(); };
+        }
+    }
     if constexpr (requires { machine.debug.snapshot(); })
         controls.debugger.session = &machine.debug;
     bindTyping(controls.typing, machine);
 }
 
-// The Machine menu's control block: reset, pause, fast-forward, save state
-// and the input-journal recording. Call inside an open menu.
+// The Machine menu's control block: reset, pause, fast-forward, the lid
+// (clamshell machines only), save state and the input-journal recording.
+// Call inside an open menu.
 void drawMachineControlItems(GuiMachineControls& controls);
+
+// The lid line under the item and in the Dashboard: "Lid closed", or the
+// wake hint while the machine sleeps; null when there is nothing to say
+// (lid open and awake, or no clamshell).
+const char* lidStatusText(const GuiMachineControls& controls);
 
 // The "Dashboard" window: status lines from the runner, then the
 // same controls as buttons. No-op while hidden or unbound.

@@ -2851,7 +2851,17 @@ the `SaveStateSlot`, the recorder, plus a `drawStatus` lambda for the
 family's own status lines — Toby's IOP cycle counters, the LC/Sonora monitor
 sense buttons, the Duo's PG&E hold flag). Every callback crosses to the
 machine thread through the host's queue or atomics, and every item shown
-follows the machine's own state, not the click. The bar is then:
+follows the machine's own state, not the click. A capability the shell may
+show for some boards only is asked of the host, never of the profile: the
+lid (**Close lid** / **Open lid**) is bound only when
+`MachineHost::hasClamshell()` — true when the `*Memory` exposes
+`setClamshell`/`clamshellOpen`, today `MscMemory` — and travels as
+`Cmd::Clamshell` (journaled like a key; `InputEventType::Clamshell`), with
+`clamshellOpen()` and `asleep()` republished at the frame cadence for the
+item and the Dashboard's *Asleep - press a key to wake* hint. The switch
+itself is in `PgePmu`'s save-state visitor; the guest's answer to it is
+`duo230_sleep_etalon`'s, the GUI path `gui_machine_window_test`'s. The bar
+is then:
 
 | Menu | Contents |
 |---|---|

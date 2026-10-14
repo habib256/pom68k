@@ -29,7 +29,26 @@ void drawRecordingMessage(const GuiMachineControls& controls) {
     if (!message.empty()) ImGui::TextDisabled("%s", message.c_str());
 }
 
+void drawLidStatus(const GuiMachineControls& controls) {
+    if (const char* text = lidStatusText(controls))
+        ImGui::TextDisabled("%s", text);
+}
+
 } // namespace
+
+// The lid's state and, while the machine sleeps, how to wake it: a key,
+// not the lid (docs/DUO_BRINGUP.md milestone 6) — so the hint says so
+// rather than leaving « Open lid » to look broken. ASCII only: the
+// default ImGui font has no em dash.
+const char* lidStatusText(const GuiMachineControls& controls) {
+    if (!controls.lidOpen) return nullptr;
+    const bool open = controls.lidOpen();
+    if (controls.asleep && controls.asleep())
+        return open ? "Asleep - press a key to wake"
+                    : "Lid closed, asleep - open the lid and press a key "
+                      "to wake";
+    return open ? nullptr : "Lid closed";
+}
 
 void drawMachineControlItems(GuiMachineControls& controls) {
     if (!controls.bound()) return;
@@ -40,6 +59,13 @@ void drawMachineControlItems(GuiMachineControls& controls) {
     bool fast = controls.isFastForward();
     if (ImGui::MenuItem("Fast forward", nullptr, &fast))
         controls.setFastForward(fast);
+    if (controls.lidOpen) {
+        ImGui::Separator();
+        const bool open = controls.lidOpen();
+        if (ImGui::MenuItem(open ? "Close lid" : "Open lid"))
+            controls.setLidOpen(!open);
+        drawLidStatus(controls);
+    }
     if (controls.saveState) {
         ImGui::Separator();
         if (ImGui::MenuItem("Save state")) controls.saveState->request(false);
@@ -72,6 +98,7 @@ void drawMachineControlWindow(GuiMachineControls& controls) {
         return;
     }
     if (controls.drawStatus) controls.drawStatus();
+    drawLidStatus(controls);
     ImGui::Separator();
     const bool running = controls.isRunning();
     if (ImGui::Button(running ? "Pause" : "Resume"))

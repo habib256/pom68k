@@ -197,6 +197,11 @@ public:
     void mouseMove(int dx, int dy) { pmu_.mouseMove(dx, dy); }
     void mouseButton(bool down) { pmu_.mouseButton(down); }
     void setClamshell(bool open) { pmu_.setClamshell(open); }
+    bool clamshellOpen() const { return pmu_.clamshellOpen(); }
+    // In the full system sleep power_cycle_w asked for: the 68030 halted
+    // until the PG&E wakes it (a key — docs/DUO_BRINGUP.md milestone 6).
+    // What the GUI shows as « Asleep »; never an input.
+    bool asleep() const { return sleeping_; }
     bool overlay() const { return overlay_; }
     Scc8530& scc() { return scc_; }
     void sccIrqLine(bool s) { sccIrq_ = s; updateIrq(); }

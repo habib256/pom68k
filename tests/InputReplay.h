@@ -111,6 +111,10 @@ struct InputReplayer {
             if constexpr (requires { mem.detachScsi(e.a); })
                 mem.detachScsi(e.a);
             return true;
+        case ET::Clamshell:
+            if constexpr (requires { mem.setClamshell(true); })
+                mem.setClamshell(e.a != 0);
+            return true;
         // Never in a journal: a recorded paste is its `key` events
         // (TextTyping.h). One here is a journal this build did not write.
         case ET::TypeText:

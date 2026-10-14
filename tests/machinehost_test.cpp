@@ -26,6 +26,8 @@
 #include "GuiSpeedGauge.h"
 #include "HfsBlankVolume.h"
 #include "MachineHost.h"
+#include "MscCpu.h"
+#include "MscMemory.h"
 #include "Ncr53c96.h"
 #include "Q605Memory.h"
 
@@ -100,6 +102,18 @@ struct TestMachine
 // second internal mechanism (MacMemory::secondInternalDrive).
 struct CompactMachine : MachineHost<CompactMachine, MacMemory, Cpu68k, FakeAudio> {
     using Base = MachineHost<CompactMachine, MacMemory, Cpu68k, FakeAudio>;
+    using Base::Base;
+    static constexpr bool kStereo = false;
+    int64_t frameCycles() const { return 1000; }
+    void emulateQuantum() { this->framesRun_++; }
+    bool drainAudio() { return false; }
+    void renderFrame(std::vector<uint32_t>& fb, int& w, int& h) { w = h = 1; fb.assign(1, 0); }
+    void publishStatus() {}
+};
+
+// The Duo behind the same host: the one board with a lid switch.
+struct DuoMachine : MachineHost<DuoMachine, MscMemory, MscCpu, FakeAudio> {
+    using Base = MachineHost<DuoMachine, MscMemory, MscCpu, FakeAudio>;
     using Base::Base;
     static constexpr bool kStereo = false;
     int64_t frameCycles() const { return 1000; }
@@ -383,6 +397,7 @@ int main() {
         m.push({Cmd::AgentMount, 2});
         m.push({Cmd::AgentUnmount, 2});
         m.push({Cmd::DetachDisk, 2});
+        m.push({Cmd::Clamshell, 0});   // no lid on a Q605: journaled, inert
         m.stepTick();
         check(m.recordingActive(),
               "recording: the start lands between two quanta");
@@ -390,7 +405,7 @@ int main() {
         m.stepTick();
         check(!m.recordingActive(),
               "recording: the stop lands between two quanta");
-        check(m.recordingMessage().find("14") != std::string::npos,
+        check(m.recordingMessage().find("15") != std::string::npos,
               "recording: the outcome names its event count");
         m.stop();
 
@@ -401,12 +416,12 @@ int main() {
         check(j.complete, "recording: the stop wrote the end record");
         check(j.note("profile") == "q605",
               "recording: the identity notes ride in the header");
-        check(j.events.size() == 14, "recording: all fourteen commands recorded");
-        bool namesMatch = j.events.size() == 14;
+        check(j.events.size() == 15, "recording: all fifteen commands recorded");
+        bool namesMatch = j.events.size() == 15;
         for (size_t i = 0; namesMatch && i < j.events.size(); i++)
             namesMatch = j.events[i].type == int(i);
         check(namesMatch,
-              "recording: journal names mirror Cmd::T in enum order, SCSI commands included");
+              "recording: journal names mirror Cmd::T in enum order, SCSI and lid commands included");
         check(j.events.size() > 13 && j.events[10].path == "hdv/pas-la.vhd" &&
               j.events[13].type == int(pom68k::InputEventType::DetachDisk) &&
               j.events[13].type != int(pom68k::InputEventType::StateRestore),
@@ -497,6 +512,58 @@ int main() {
               "detach: the outcome is reported once it happened");
         m.stop();
         std::remove(img.c_str());
+    }
+
+    // ── The lid (MachineHost::hasClamshell): a capability of the board,
+    //    queued like a key, applied between two quanta, followed by the
+    //    published state rather than the click, and carried by a save
+    //    state. No ROM: nothing here sleeps; the guest's answer to the lid
+    //    is duo230_sleep_etalon's.
+    {
+        check(!MonoMachine::kHasClamshell && !CompactMachine::kHasClamshell &&
+              DuoMachine::kHasClamshell,
+              "lid: only the board with a clamshell switch reports one");
+        static MscMemory duoMem(pom68k::defaultCoreConfig(), 8u << 20);
+        static MscCpu duoCpu(duoMem, jit::defaultResolvedConfig(),
+                             pom68k::defaultCoreConfig().cpu, false);
+        duoMem.setCpu(&duoCpu);
+        DuoMachine d(duoMem, duoCpu, audio);
+        d.publish(true);
+        check(d.hasClamshell() && d.clamshellOpen() && duoMem.clamshellOpen() &&
+              !d.asleep(), "lid: a Duo starts with its lid open and awake");
+        d.requestClamshell(false);
+        check(d.clamshellOpen() && duoMem.clamshellOpen(),
+              "lid: the request waits for the machine thread");
+        d.stepTick();
+        check(!duoMem.clamshellOpen() && !duoMem.pmu().clamshellOpen(),
+              "lid: Close reaches the PG&E's switch between two quanta");
+        check(!d.clamshellOpen(), "lid: the published state follows the machine");
+
+        const std::string path = pom68kTempPath("machinehost_lid.pomss");
+        std::remove(path.c_str());
+        d.state.kind = pom68k::SnapMachine::Duo230;
+        d.state.setPath(path);
+        d.state.request(false);
+        d.stepTick();
+        d.requestClamshell(true);
+        d.stepTick();
+        check(duoMem.clamshellOpen() && d.clamshellOpen(),
+              "lid: Open reaches the switch too");
+        d.state.request(true);
+        d.stepTick();
+        check(!duoMem.clamshellOpen() && !d.clamshellOpen(),
+              "lid: a restored state brings back the closed lid, and the "
+              "published state follows it");
+        std::printf("     (slot: %s)\n", d.state.message().c_str());
+        d.stop();
+        std::remove(path.c_str());
+
+        MonoMachine m(mem, cpu, audio);
+        m.push({MonoMachine::Cmd::Clamshell, 0});
+        m.stepTick();
+        check(!m.hasClamshell() && m.clamshellOpen() && !m.asleep(),
+              "lid: a board without one ignores the command");
+        m.stop();
     }
 
     // ── Recording without a wired profile refuses, loudly, and survives ──

@@ -123,7 +123,7 @@ public:
         enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
                  InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense,
                  AttachDisk, AgentMount, AgentUnmount, DetachDisk,
-                 TypeText, CancelTyping } t;
+                 Clamshell, TypeText, CancelTyping } t;
         int a = 0, b = 0;
         std::string path{};   // media commands only; {} keeps -Wextra quiet
     };
@@ -201,6 +201,28 @@ public:
         std::lock_guard<std::mutex> l(scrapMu_);
         return {scrap_, scrapReads_};
     }
+
+    // ── The lid (GUI → machine thread) ─────────────────────────────────────
+    // A board with a clamshell switch (the Duo's PG&E port F bit 3) exposes
+    // `setClamshell` / `clamshellOpen`; every other board compiles the same
+    // calls away, and `hasClamshell()` is the capability the GUI asks
+    // instead of a profile check. Closing the lid is an input like a key —
+    // queued, applied between two quanta, journaled. What the guest does
+    // with it is its own code: the System sleeps, and on this firmware a
+    // key, not the lid, wakes it (docs/DUO_BRINGUP.md milestone 6). The
+    // switch position itself travels in the save state (PgePmu::visit).
+    static constexpr bool kHasClamshell =
+        requires(Mem& m) { m.setClamshell(true); m.clamshellOpen(); };
+    bool hasClamshell() const { return kHasClamshell; }
+    void requestClamshell(bool open) { push({Cmd::Clamshell, open ? 1 : 0}); }
+    // Both follow the MACHINE (published at the frame cadence), not the
+    // click — the engine-swap rule. `asleep()` is the board's own full-sleep
+    // state (the CPU halted until the power manager wakes it), false on a
+    // board that has none.
+    bool clamshellOpen() const {
+        return stLidOpen_.load(std::memory_order_relaxed);
+    }
+    bool asleep() const { return stAsleep_.load(std::memory_order_relaxed); }
 
     // ── Floppy hot-swap (GUI → machine thread) ─────────────────────────────
     // The path travels under cmdMu_ with the command, so the machine thread
@@ -479,6 +501,11 @@ public:
         stClock_.store(cpu.getClock(), std::memory_order_relaxed);
         stMachineClock_.store(cpu.machineClock(), std::memory_order_relaxed);
         self()->publishStatus();
+        if constexpr (kHasClamshell) {
+            stLidOpen_.store(mem.clamshellOpen(), std::memory_order_relaxed);
+            if constexpr (requires { mem.asleep(); })
+                stAsleep_.store(mem.asleep(), std::memory_order_relaxed);
+        }
         if constexpr (requires { mem.bayIsCdrom(1); }) {
             for (int id = 1; id <= 6; ++id)
                 stBayCd_[size_t(id)].store(mem.bayIsCdrom(id),
@@ -618,6 +645,9 @@ protected:
             case Cmd::Key:
                 keyTrace(traceKeys_, "apply", uint8_t(c.a), c.b != 0);
                 mem.keyEvent(uint8_t(c.a), c.b != 0);
+                break;
+            case Cmd::Clamshell:
+                if constexpr (kHasClamshell) mem.setClamshell(c.a != 0);
                 break;
             case Cmd::TypeText:
                 typer_.start(pom68k::planTyping(c.path, pom68k::GuestLayout(c.a)));
@@ -966,6 +996,7 @@ protected:
     std::atomic<uint8_t> stFlags_{0};
     std::atomic<int> stEngine_{0};                // 0 = interpreter, 1 = JIT
     std::atomic<std::size_t> stTypingLeft_{0};   // TextTyping: characters to go
+    std::atomic<bool> stLidOpen_{true}, stAsleep_{false};
     pom68k::TextTyper typer_;                     // machine thread only
     std::atomic<bool> scrapRequested_{false};
     mutable std::mutex scrapMu_;
