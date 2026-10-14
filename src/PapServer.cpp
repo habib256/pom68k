@@ -9,6 +9,7 @@
 
 #include "PapServer.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace {
@@ -268,8 +269,12 @@ void PapServer::flushClientRead() {
     std::vector<std::vector<uint8_t>> pkts;
     while (!answers_.empty() && pkts.size() < 8) {
         size_t chunk = std::min(answers_.size(), kMaxData);
-        std::vector<uint8_t> p = { connId_, kData, 0, 0 };
-        p.insert(p.end(), answers_.begin(), answers_.begin() + long(chunk));
+        // Sized once, then filled, not inserted: GCC 15 under LTO misreads
+        // the growth path as -Wstringop-overflow (CHANGELOG 2026-10-14).
+        std::vector<uint8_t> p(4 + chunk, 0);
+        p[0] = connId_;
+        p[1] = kData;
+        std::copy_n(answers_.begin(), chunk, p.begin() + 4);
         answers_.erase(answers_.begin(), answers_.begin() + long(chunk));
         pkts.push_back(std::move(p));
     }
