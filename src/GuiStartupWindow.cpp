@@ -265,8 +265,8 @@ void drawStartupWindow(GuiSessionState& state, SnapMachine current) {
     if (ImGui::Button("Browse disk...")) startBrowsing(form, 2);
     drawFileBrowser(form);
     if (changed) { form.ready = false; form.message.clear(); }
-    if (form.profile == SnapMachine::Duo230)
-        ImGui::TextWrapped("The Duo 230 also needs power manager firmware at roms/pge/pge_boot.bin.");
+    if (selected && selected->platform == PlatformKind::Msc)
+        ImGui::TextWrapped("PowerBook Duos also need power manager firmware at roms/pge/pge_boot.bin.");
     ImGui::Separator();
     if (ImGui::Button("Start Macintosh") && validateStartup(form)) {
         state.relaunch.switchArguments = form.arguments;

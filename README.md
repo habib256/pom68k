@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
-the 68040 Quadra 950. The project currently provides **41 machine profiles on
+the 68040 Quadra 950. The project currently provides **43 machine profiles on
 12 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
@@ -41,7 +41,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
 ## Highlights
 
 - Macintosh 68000, 68020, 68030 and 68040 families, including compact Macs,
-  desktop systems, towers, all-in-ones and the PowerBook Duo 230.
+  desktop systems, towers, all-in-ones and the PowerBook Duo 210, 230 and 250.
 - Moira interpreter as the accuracy oracle, plus a conformant accelerated
   engine with portable threaded execution and native AArch64/x86-64 code
   generators where their measured policy allows them.
@@ -266,7 +266,7 @@ Bold text is the default profile for a shared ROM.
 | 1 MB | `420DBFF3` | **Macintosh Quadra 700**, Quadra 900 | `q700`, `q900` |
 | 1 MB | `3DC27823` | Macintosh Quadra 950 | — |
 | 1 MB | `06684214`, `064DC91D` | **Macintosh Quadra 630**, LC/Performa 580 | `q630`, `lc580` |
-| 1 MB | `ECFA989B` | PowerBook Duo 230 | — |
+| 1 MB | `ECFA989B` | **PowerBook Duo 230**, Duo 210, Duo 250 | `duo230`, `duo210`, `duo250` |
 
 The LC 475, LC 575 and Quadra 605 profiles currently share the same emulated
 25 MHz clock even though the LC 575 label identifies the real 33 MHz model.
@@ -287,7 +287,7 @@ LLE requires user-provided dumps in these locations:
 | Cuda 341S0789 | Macintosh TV | `roms/cuda/341s0789.bin` |
 | Cuda 341S0060 | LC 520 family, Quadra 630/LC 580 | `roms/cuda/341s0060.bin` |
 | Cuda 341S0788 | LC 475/575 and Quadra 605 | `roms/cuda/341s0788.bin` |
-| PG&E power manager | PowerBook Duo 230 | `roms/pge/pge_boot.bin` |
+| PG&E power manager | PowerBook Duo 210, 230, 250 | `roms/pge/pge_boot.bin` |
 | Toby video card declaration ROM 342-0008-a | Macintosh II, IIx, IIcx, IIfx | `roms/342-0008-a.bin` |
 
 The SE/30 additionally uses `roms/se30/se30vrom.uk6` for its video declaration
@@ -346,7 +346,7 @@ optional second internal drive: the Disks window stages it for the next boot,
 as do `--se-second-floppy=1` and `POM68K_SE_SECOND_FLOPPY=1`.
 `storageCapabilities()` in `src/MachineCatalog.h`
 defines those connections and the 400K/800K/SuperDrive capability. The
-PowerBook Duo 230 has no floppy mechanism. SCSI images passed explicitly are
+PowerBook Duos have no floppy mechanism. SCSI images passed explicitly are
 writable. Repository fixtures under `hdv/ref/` remain immutable: the GUI
 creates its working copy under `hdv/work/`. Floppies under `disks35/ref/`
 follow the same rule with `disks35/work/` — the two 400 K System floppies

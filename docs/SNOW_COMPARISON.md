@@ -124,7 +124,7 @@ old zero-cell padding raised a false long-gap error once per revolution.
 The new gate checks cyclic flux spacing and reads past a whole revolution
 using the ROM's own parameter table. The II FDHD now boots the immutable
 1.44 MB System 6.0.8 Startup image to Finder and accepts ADB input.
-`storage_profile_test` covers all 41 catalogue rows; `savestate_68k_test`
+`storage_profile_test` covers all 43 catalogue rows; `savestate_68k_test`
 adds fresh-device deterministic continuation and sibling-identity rejection.
 The new 512Ke gates boot System 3.3 in either drive and exercise M0110 input;
 a Plus control run distinguishes the older system's mouse gain from a board
@@ -202,7 +202,7 @@ wider protection coverage still requires more independently identified cases.
 | Host file transfer | BlueSCSI Toolbox; temporary ISO from host files | AFP, HFS tools, guest disk agent | Already useful; Toolbox is optional interoperability |
 | Printing | SCSI LaserWriter IISC raster output | AppleTalk LaserWriter PostScript/CUPS | Different printer classes, not a missing print function |
 | Clipboard | Host text as keystrokes; guest TEXT scrap extraction | Machine-time text typing (`TextTyping.h`) and bounded TEXT scrap reads (`GuestScrap.h`), « Type text » window | Implemented |
-| Machine coverage | Includes 512Ke, II FDHD and Portable/PB100 paths | Broader desktop/040 catalogue and Duo 230; 512Ke and II FDHD added, Portable/PB100 absent | Portable family separately |
+| Machine coverage | Includes 512Ke, II FDHD and Portable/PB100 paths | Broader desktop/040 catalogue and Duo 210/230/250; 512Ke and II FDHD added, Portable/PB100 absent | Portable family separately |
 | Host coverage | Includes Windows ARM64 build job | Windows x64, Linux, macOS Universal and WASM path | ARM64 Windows only if a target user needs it |
 | Evidence | CPU tests, device tests, coverage, image/control-frame runner | Asset census, profile gates, pixel pins, guest oracles, JIT locksteps, sanitizers | Use both; a feature count is not a fidelity score |
 
@@ -273,7 +273,7 @@ maps into the Portable path rather than a separate `MacModel` enum member.
 Sources: [model definitions][snow-models] and [Portable PMgr][snow-pmgr].
 
 POM68K's [MachineCatalog.h](../src/MachineCatalog.h) covers many more board
-families, including 040 desktops, and the Duo 230. The catalogue is the
+families, including 040 desktops, and the Duo 210/230/250. The catalogue is the
 authority for both profile identity and storage capabilities. The 512Ke,
 Mac II FDHD, Macintosh Portable and PB100 identities are absent at the pinned
 revision. This supports two different projects:

@@ -6,6 +6,7 @@
 // This composer's own family — see the header's note on the fan-in.
 #include "MscCpu.h"
 #include "MscMemory.h"
+#include "BoardIdentity.h"
 
 #include "GuiRunnerDuo.h"
 
@@ -84,29 +85,38 @@ struct MscMachine
     }
 
 private:
-    const int64_t kFrame = mem.cpuHz() / 60;   // 33 MHz on the Duo 230
+    const int64_t kFrame = mem.cpuHz() / 60;   // 25 or 33 MHz (BoardIdentity.h)
 
     std::atomic<uint8_t> stGsc_{0};            // GSC reg 4 = panel depth mode
 };
 
-// ── PowerBook Duo 230: MSC + PG&E, 68030 @ 33 MHz ───────────────────────
-// The 37th profile and platform #12's first GUI citizen (2026-08-06;
-// docs/DUO_BRINGUP.md, gate tests/duo230_boot_etalon.cpp). Selected by the
-// 1 MB ROM whose header checksum is $ECFA989B — the dump shared by the
-// Duo 210 / 230 / 250; only the 230 is wired (kCpuHz230 / kIdDuo230).
+// ── PowerBook Duo 210 / 230 / 250: MSC + PG&E, 68030 ────────────────────
+// Platform #12's GUI citizens (the 230 since 2026-08-06, the 210 and 250
+// since 2026-10-14; docs/DUO_BRINGUP.md, gate tests/duo230_boot_etalon.cpp
+// with POM68K_DUO_MODEL). Selected by the 1 MB ROM whose header checksum is
+// $ECFA989B — the dump the three share — and the catalogue profile, whose
+// clock and $5FFFFFFC CPU ID come from BoardIdentity.h.
 // No floppy drive, no NuBus, no discrete RTC: the PG&E power manager runs
 // its own 68HC05 and owns the clock, the PRAM and the whole input path.
 static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
                   const std::vector<std::string>& media,
-                  GuiHostServices& services) {
-    std::printf("Machine: PowerBook Duo 230 (68030 @ 33 MHz, MSC + PG&E, "
-                "GSC 640x400)\n");
+                  GuiHostServices& services, pom68k::SnapMachine selected) {
+    const pom68k::MachineProfile* profile = pom68k::machineProfile(selected);
+    if (!profile || profile->platform != pom68k::PlatformKind::Msc) {
+        selected = pom68k::SnapMachine::Duo230;
+        profile = pom68k::machineProfile(selected);
+    }
+    const pom68k::MscBoardIdentity identity =
+        pom68k::mscBoardIdentity(selected);
+    const bool duo210 = selected == pom68k::SnapMachine::Duo210;
+    const char* name = profile->label;
+    std::printf("Machine: %s (68030, MSC + PG&E, GSC 640x400)\n", name);
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
                 rom.size() / 1024);
 
-    // Built exactly as the gate builds it (duo230_boot_etalon.cpp:43-56).
+    // Built exactly as the gate builds it (duo230_boot_etalon.cpp).
     MscMemory& mem = services.own<MscMemory>(services.config().core(), 8u << 20,
-        MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+        identity.cpuHz, identity.boxId);
     MscCpu& cpu = services.own<MscCpu>(mem, services.config().jit().resolved,
         services.config().core().cpu, false);
     MacAudioHost& audioHost = services.own<MacAudioHost>(
@@ -121,13 +131,16 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
                      "the ROM will stall at the PMU handshake.\n");
     mem.setCpu(&cpu);
 
+    // The battery file keeps the profile's slug, so each Duo keeps its own
+    // PRAM beside a shared volume (`<image>.duo210.pram`, ...).
     const DuoRunnerSpec spec{
-        "PowerBook Duo 230",
-        "duo230",
+        name,
+        profile->slug,
         "hdv/System 7.5.5 HD.dsk",
-        "68030 @ 33 MHz (Moira + PMMU)",
+        duo210 ? "68030 @ 25 MHz (Moira + PMMU)"
+               : "68030 @ 33 MHz (Moira + PMMU)",
         MachineKind::Duo,
-        pom68k::SnapMachine::Duo230,
+        selected,
     };
     return runDuoGui<MscMachine>(
         mem, cpu, audioHost, spec,
@@ -138,5 +151,6 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
 
 int pom68k::gui::composeDuo(
     pom68k::gui::PlatformLaunch launch, GuiHostServices& services) {
-    return runDuo(std::move(launch.rom), launch.romName, launch.media, services);
+    return runDuo(std::move(launch.rom), launch.romName, launch.media, services,
+                  launch.selected);
 }

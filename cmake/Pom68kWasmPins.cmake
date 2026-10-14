@@ -60,6 +60,8 @@ set(POM68K_WASM_PIN_GATES
     "iivx_boot_etalon|iivx_boot_etalon||"
     "iivi_boot_etalon|iivx_boot_etalon||POM68K_IIVI=1"
     "duo230_boot_etalon|duo230_boot_etalon||"
+    "duo210_boot_etalon|duo230_boot_etalon||POM68K_DUO_MODEL=duo210"
+    "duo250_boot_etalon|duo230_boot_etalon||POM68K_DUO_MODEL=duo250"
     # 68040 — MEMCjr, djMEMC, Spike/Eclipse, F108
     "q605_boot_etalon|q605_boot_etalon||"
     "lc475_boot_etalon|lc475_boot_etalon||"

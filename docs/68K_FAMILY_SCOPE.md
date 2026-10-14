@@ -7,9 +7,10 @@ and every line was re-derived from the code on **2026-09-09**.
 The target is **every 68k Macintosh**. Counts in this document describe the
 current implementation and must never be read as a ceiling on that target.
 
-**POM68K ships 41 machine profiles across 12 platform implementations.**
-The 2026-10-08 increment adds the 512Ke and Macintosh II FDHD, with real-ROM
-Finder, input and save-state gates. The older survey below retains its
+**POM68K ships 43 machine profiles across 12 platform implementations.**
+The 2026-10-08 increment added the 512Ke and Macintosh II FDHD, with real-ROM
+Finder, input and save-state gates; the 2026-10-14 increment adds the
+PowerBook Duo 210 and Duo 250 on the Duo 230's board and ROM. The older survey below retains its
 per-machine limitations; admission does not imply a complete application corpus.
 Source of truth for that count: `kMachineProfiles` in
 `src/MachineCatalog.h`. Every row carries its stable `SnapMachine` id and is
@@ -18,15 +19,15 @@ dense. A platform = one `*Memory`/`*Cpu` pair in `src/` and one save/load
 overload in `src/SaveStateMachines.h`.
 
 Storage is also explicit in that catalogue through `storageCapabilities()`:
-the Duo 230 has no floppy; 128K/512K have 400K mechanisms;
+the three Duos have no floppy; 128K/512K have 400K mechanisms;
 512Ke, Plus, SE and the original Mac II have 800K mechanisms;
 the other 34 profiles have a SuperDrive and accept both 800K GCR and 1.44 MB
-MFM. The 38 profiles above the early 128K/512K/512Ke expose SCSI hard disks
+MFM. The 40 profiles above the early 128K/512K/512Ke expose SCSI hard disks
 and CD-ROM targets. A second floppy mechanism (`externalFloppy`) exists only where
 MAME connects one by default: the 128K, 512K, 512Ke, Plus, SE, SE FDHD,
 Classic, Mac II FDHD, IIx, IIcx and SE/30 — eleven profiles; every later
 board, and the original Mac II, leaves it unconnected. The asset-free `storage_profile_test` accounts for all
-41 rows and exercises the IWM/SWIM split plus compact HDD/CD reads.
+43 rows and exercises the IWM/SWIM split plus compact HDD/CD reads.
 
 There is no longer any platform in `src/` without a profile row: the last two
 paid the house rule (a catalogue row is earned by a Finder cell *plus* GUI
@@ -45,7 +46,7 @@ descriptions in `DEV.md` § 2; the LLE-vs-HLE deviation inventory in
 
 ---
 
-## 1. Implemented — the 41 profiles and their gates
+## 1. Implemented — the 43 profiles and their gates
 
 Every gate below is a Finder-signature boot etalon unless noted.
 
@@ -219,6 +220,8 @@ open milestones: `docs/DUO_BRINGUP.md`.
 | Profile | ROM | Gate |
 |---|---|---|
 | PowerBook Duo 230 (68030 @ 33 MHz) | `ECFA989B` | `duo230_boot_etalon` (System 7.5.5), `msc_parity_test` |
+| PowerBook Duo 210 (68030 @ 25 MHz, CPU ID `$A55A1004`) | `ECFA989B` | `duo210_boot_etalon` (System 7.5.5, BoxFlag 23) |
+| PowerBook Duo 250 (68030 @ 33 MHz, CPU ID `$A55A1006`) | `ECFA989B` | `duo250_boot_etalon` (System 7.5.5, BoxFlag 32) |
 
 ---
 
@@ -294,7 +297,6 @@ platforms.
 | Item | Why cheap | Note |
 |---|---|---|
 | **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + typed `SnapMachine` selection |
-| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:65-71`; `runDuo` hard-codes the 230's pair today (`PlatformDuo.cpp:99-110`) |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |
 
 **Orthogonal, blocks no boot: pin-level 68040 timing** — the integrated FPU
@@ -386,8 +388,8 @@ is left, in return-on-effort order:
 2. **Finish the Duo platform**: sleep/wake, the path no other machine in
    the tree can run, is done and gated (`duo230_sleep_etalon`,
    `docs/DUO_BRINGUP.md` milestone 6), as is input through the PMU
-   (`duo230_input_etalon`). What remains is product work: the 210/250
-   variants and a GUI lid control.
+   (`duo230_input_etalon`). What remains is product work: a GUI lid
+   control (the 210/250 variants shipped 2026-10-14).
 3. **Generalize NuBus** → real slot cards on IIx/IIcx/IIci/IIsi/VASP and the
    NuBus Quadras. (No longer a prerequisite for the IIfx: it ships on
    `TobyVideo` in slot 9.)
@@ -400,8 +402,8 @@ is left, in return-on-effort order:
    reusable core; MAME itself doesn't run it), and full 68040 cache/FPSP
    accuracy.
 
-Free (ROM already on hand): the Duo 210/250 clock
-variants and any Performa rebadge (§ 4). The **SE/30** cashed this tier in on
+Free (ROM already on hand): any Performa rebadge (§ 4); the Duo 210/250
+clock variants were cashed in on 2026-10-14. The **SE/30** cashed this tier in on
 2026-07-31 — wiring only, Finder on the first run.
 
 ---

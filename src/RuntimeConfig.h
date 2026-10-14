@@ -130,6 +130,7 @@ struct MachineSelectionConfig {
     SnapMachine djMemc = SnapMachine::Centris650;
     SnapMachine spike = SnapMachine::Q700;
     SnapMachine f108 = SnapMachine::Q630;
+    SnapMachine msc = SnapMachine::Duo230;
 };
 
 inline constexpr std::string_view kMachineProfileOption =

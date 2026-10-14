@@ -43,6 +43,7 @@
 // docs against themselves.
 
 #include "AssetFingerprint.h"          // testasset::find — shared asset search
+#include "BoardIdentity.h"
 #include "MachineFactory.h"
 #include "MachineCatalog.h"
 #include "MachineSession.h"
@@ -1107,6 +1108,30 @@ int main() {
                   pom68k::app::machineProfileArgument(enhanced) == mac512keArg,
               "512Ke shared-Plus-ROM selector round-trips without overriding 64K ROMs");
         routedProfiles.insert(enhanced);
+        // The Duo 210/250 share the 230's ECFA989B ROM and have no
+        // environment spelling: the typed profile option is their only
+        // selector, and it carries the board identity the composer builds.
+        bool duoRoutes = true;
+        for (const pom68k::SnapMachine duo : {pom68k::SnapMachine::Duo210,
+                                              pom68k::SnapMachine::Duo250}) {
+            std::string option = pom68k::app::machineProfileArgument(duo);
+            char* duoArgv[] = {a0, option.data()};
+            const auto duoConfig =
+                pom68k::app::RuntimeConfig::parse(2, duoArgv, {});
+            const auto actual = pom68k::app::MachineFactory::selectProfile(
+                duoConfig, syntheticRom(1u << 20, 0xECFA989B)).snapshot;
+            duoRoutes = duoRoutes && actual == duo &&
+                duoConfig.machineSelection().msc == duo;
+            routedProfiles.insert(actual);
+        }
+        check(duoRoutes &&
+                  pom68k::mscBoardIdentity(pom68k::SnapMachine::Duo210).cpuHz ==
+                      25000000 &&
+                  pom68k::mscBoardIdentity(pom68k::SnapMachine::Duo210).boxId ==
+                      0xA55A1004u &&
+                  pom68k::mscBoardIdentity(pom68k::SnapMachine::Duo250).boxId ==
+                      0xA55A1006u,
+              "Duo 210/250 profiles select the MSC board identity of their model");
         bool typedRelaunchRoutes = true;
         for (const ProfileRoute& route : profileRoutes) {
             std::string option = pom68k::app::machineProfileArgument(

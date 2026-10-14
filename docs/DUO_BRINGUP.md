@@ -22,7 +22,10 @@ the findings that are not derivable from the code, and the things that were
 milestone 6): closing the lid runs the System's own sleep path and a key
 brings the same Finder back. Input: the KEYBOARD matrix (2026-08-13) and the
 trackball quadrature counters (2026-08-14), gated by `duo230_input_etalon`.
-Next: the Duo 210/250 variants, then the PB150, whose ROM is the only oracle.
+**The Duo 210 and Duo 250 joined as the 42nd and 43rd profiles** (2026-10-14,
+`duo210_boot_etalon` / `duo250_boot_etalon`, § *The 210/250 variants*). Next:
+the GUI lid control, the 270c (CSC), then the PB150, whose ROM is the only
+oracle.
 
 ---
 
@@ -182,16 +185,41 @@ defaults: `DEV.md` § 5.
 | Profile | CPU | Screen | MAME support | POM68K order |
 |---|---|---|---|---|
 | **Duo 230** | 030 @ 33 MHz | GSC 640×400×4bpp gray | **full** (`macpd230`) | **shipped — oracle-backed** |
-| Duo 210 | 030 @ 25 MHz (`kCpuHz210`) | same | full | next (clock + box-ID variant) |
-| Duo 250 | 030 @ 33 | same, active matrix | full | cheap variant |
+| Duo 210 | 030 @ 25 MHz (`kCpuHz210`) | same | full | **shipped 2026-10-14** (clock + CPU ID) |
+| Duo 250 | 030 @ 33 | same, active matrix | full | **shipped 2026-10-14** (CPU ID) |
 | Duo 270c | 030+FPU | CSC 640×480×16bpp color | full | after a CSC port |
 | Duo 280/280c | **040** @ 33 | CSC | full | 040 seam reuse |
 | **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520 method (ROM as the only oracle) |
 
-`MscMemory` already carries `kCpuHz210` and all three Duo 2x0 box IDs
-(`MscMemory.h:63-71`); the 210/250 share the `ECFA989B` ROM, so they need an
-env selector: today the clock and the box ID are written straight into
-`runDuo`'s memory construction (`PlatformDuo.cpp:99-131`).
+### The 210/250 variants (2026-10-14)
+
+The three share the board and the `ECFA989B` ROM; what the ROM sees is the
+CPU ID longword at `$5FFFFFFC` (MAME `macpwrbkmsc.cpp:598-619`), which
+Apple's own table names: `$A55A1004` Duo 210 (25 MHz), `$A55A1005` Duo 230
+(33 MHz), `$A55A1006` "DBLite (16MHz)" — renamed `boxPowerBookDuo250` on
+11/8/93 (mac-rom `OS/UniversalTables.a:26,459-461`). The ROM decodes them
+into BoxFlag 23 / 26 / 32 (`Internal/Asm/InternalOnlyEqu.a:1043-1052`),
+Gestalt machineType 29 / 32 / 38, and that byte is what the gates judge.
+The ROM source's `GetCPUSpeed` table still says 16 MHz for ID 6
+(`OS/IoPrimitives/PowerMgrPrimitives.a:1173`, written before the 250
+shipped); the crystal is MAME's 33 MHz and the shipped ROM boots on it.
+
+- **Selection.** `mscBoardIdentity()` (`src/BoardIdentity.h`) maps the
+  catalogue profile to `{cpuHz, boxId}`; `runDuo` builds `MscMemory` from it,
+  and so do the gate and `savestate_030_test`. The product selector is the
+  typed `--machine-profile=duo210|duo250` (`MachineSelectionConfig::msc`) —
+  there is no environment spelling, the same as the 512Ke. Each profile
+  keeps its own battery file (`<image>.<slug>.pram`).
+- **The panel.** The 250's active-matrix LCD is invisible to the ROM: MAME
+  gives every GSC Duo panel id 6 (`macpwrbkmsc.cpp:816`).
+- **The FPU.** MAME's `macpd250` sets `set_fpu_enable(true)`; POM68K keeps
+  the 250 FPU-less like the 210/230. Apple's ROM lists all three among the
+  optional-FPU machines (`OS/StartMgr/USTNonCritTsts.a:3681-3683` — the
+  68882 lives in the Duo Dock), and no gate observes the difference.
+- **Gates.** `duo210_boot_etalon` / `duo250_boot_etalon` are
+  `duo230_boot_etalon` under `POM68K_DUO_MODEL`: Finder, BoxFlag, pixel pin,
+  plus the agent variants; `savestate_030_test` checks that the three
+  profile ids round-trip and refuse each other.
 
 ROMs in `roms/1MB ROMs/` (user-provided, gitignored): Duo 210/230/250
 `ECFA989B`, Duo 270c `0024D346`, Duo 280/280c `015621D7`, PB150 `FDA22562`.
@@ -319,8 +347,8 @@ different address width, stack window, vectors, map and peripherals) plus
    `duo230_input_etalon` (2026-09-07) now judges both halves at guest level —
    the KeyMap and the guest's own Mouse global — independently of the persist
    leg.
-5. ⬜ Variants: Duo 210/250 (trivial, § *Why this order*), 270c (CSC), 280
-   (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
+5. ◐ Variants: **Duo 210/250 ✅ 2026-10-14** (§ *The 210/250 variants*),
+   270c (CSC), 280 (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
    oracle).
 6. ✅ **The actual point — power management observable.** The **CPU
    power-down half** landed 2026-08-13: `power_cycle_w` was a milestone-1

@@ -9,11 +9,24 @@
 // application and the machine gates share this one mapping, so a gate cannot
 // boot an identity the catalogue does not declare (CHANGELOG 2026-10-02
 // (eighth), 2026-10-13).
+//
+// The MSC Duos (MAME macpwrbkmsc.cpp:598-619) share the ECFA989B ROM and
+// differ by the CPU ID longword at $5FFFFFFC and by their crystal: the ROM
+// decodes $A55A1004/5/6 as boxPowerBookDuo210/230/250 (Apple's own table,
+// mac-rom OS/UniversalTables.a:459-461 — ID 6 "DBLite", renamed the Duo 250
+// at :26 — and Internal/Asm/InternalOnlyEqu.a:1043-1052) and the 210 runs at 25 MHz where the 230/250 run at 33 MHz
+// (macpwrbkmsc.cpp:767,870). The 250's active-matrix panel is invisible to
+// the ROM (MAME gives every GSC Duo panel id 6). These go to the MscMemory
+// constructor rather than CoreConfig because they are construction
+// arguments of the board, not startup options (CHANGELOG 2026-10-14
+// (fifth)).
 
 #pragma once
 
 #include "CoreConfig.h"
 #include "MachineCatalog.h"
+
+#include <cstdint>
 
 namespace pom68k {
 
@@ -41,6 +54,19 @@ inline void applyBoardIdentity(CoreConfig& core, SnapMachine profile) {
         break;
     default:
         break;
+    }
+}
+
+struct MscBoardIdentity {
+    std::int64_t cpuHz;
+    std::uint32_t boxId;
+};
+
+constexpr MscBoardIdentity mscBoardIdentity(SnapMachine profile) {
+    switch (profile) {
+    case SnapMachine::Duo210: return {25000000, 0xA55A1004u};
+    case SnapMachine::Duo250: return {33000000, 0xA55A1006u};
+    default:                  return {33000000, 0xA55A1005u};   // Duo 230
     }
 }
 

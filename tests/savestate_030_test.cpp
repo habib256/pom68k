@@ -22,6 +22,7 @@
 // etalon is the template).
 
 #include "AssetFingerprint.h"
+#include "BoardIdentity.h"
 #include "IIfxCpu.h"
 #include "IIfxMemory.h"
 #include "M68hc05Pge.h"
@@ -248,9 +249,13 @@ struct DuoRig {
     MscMemory mem{pom68k::defaultCoreConfig()};
     MscCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::Duo230;
-    explicit DuoRig(const std::vector<uint8_t>& rom)
+    // The catalogue identity (clock + CPU ID) of any of the three MSC
+    // profiles; the Duo 230 unless a variant is asked for.
+    explicit DuoRig(const std::vector<uint8_t>& rom,
+                    pom68k::SnapMachine profile = kKind)
         : mem(pom68k::defaultCoreConfig(), 8u << 20,
-              MscMemory::kCpuHz230, MscMemory::kIdDuo230),
+              pom68k::mscBoardIdentity(profile).cpuHz,
+              pom68k::mscBoardIdentity(profile).boxId),
           cpu(mem, jit::defaultResolvedConfig(),
               pom68k::defaultCoreConfig().cpu) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
@@ -369,12 +374,51 @@ void testDuo() {
         while (i < n && restored[i] == direct[i]) i++;
         std::printf("    first divergence at byte %zu of %zu\n", i, n);
     }
+
+    // ── 3. Profile identity across the three Duos ───────────────────────
+    // The 210 and 250 are the same board and ROM as the 230, so the
+    // snapshot header's profile id is the only thing that tells their
+    // states apart: each must round-trip under its own id, and none may
+    // load as another (SaveStateMachines.cpp loadT, "another machine
+    // profile") — a Duo 210 state restored into a 33 MHz machine would
+    // resume every timer at the wrong rate.
+    std::string cross;
+    check(!pom68k::load(m.mem, m.cpu, pom68k::SnapMachine::Duo210,
+                        snapshot.data(), snapshot.size(), cross) &&
+              cross == "save state is for another machine profile",
+          "duo230", "identity: a 230 state refuses to load as a 210");
+    struct Variant { pom68k::SnapMachine profile; const char* tag; };
+    for (const Variant variant : {Variant{pom68k::SnapMachine::Duo210, "duo210"},
+                                  Variant{pom68k::SnapMachine::Duo250, "duo250"}}) {
+        const auto vOwner = std::make_unique<DuoRig>(rom, variant.profile);
+        DuoRig& v = *vOwner;
+        check(v.mem.cpuHz() == pom68k::mscBoardIdentity(variant.profile).cpuHz,
+              variant.tag, "identity: the board runs the profile's clock");
+        if (!v.release()) {
+            check(false, variant.tag, "identity: the PG&E released the 68030");
+            continue;
+        }
+        v.cpu.runCycles(8000000);
+        Blob own;
+        pom68k::save(v.mem, v.cpu, variant.profile, own);
+        std::string e3, e4;
+        check(!pom68k::load(v.mem, v.cpu, DuoRig::kKind,
+                            own.data(), own.size(), e3) &&
+                  e3 == "save state is for another machine profile",
+              variant.tag, "identity: refuses to load as a Duo 230");
+        check(pom68k::load(v.mem, v.cpu, variant.profile,
+                           own.data(), own.size(), e4) && e4.empty(),
+              variant.tag, "identity: accepted under its own profile id");
+        Blob again;
+        pom68k::save(v.mem, v.cpu, variant.profile, again);
+        check(again == own, variant.tag, "identity: load→save is byte-identical");
+    }
 }
 }  // namespace
 
 int main() {
-    std::printf("savestate_030_test — Sonora / VASP / RBV / IIfx / Duo 230 "
-                "save-state fan-out\n");
+    std::printf("savestate_030_test — Sonora / VASP / RBV / IIfx / Duo "
+                "210/230/250 save-state fan-out\n");
     const auto rom1M   = makeRom(0x100000);   // Sonora + VASP
     const auto rom512K = makeRom(0x80000);    // RBV
 
