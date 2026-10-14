@@ -14,6 +14,7 @@
 #include "V8Video.h"
 #include "Cpu030.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "Cpu040.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
@@ -389,11 +390,11 @@ static int bootSonora(const char* machine, const std::vector<uint8_t>& rom,
 }
 
 static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(disk)) return 1;
     Cpu040 cpu(mem, jit::defaultResolvedConfig(),
-               pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+               q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);

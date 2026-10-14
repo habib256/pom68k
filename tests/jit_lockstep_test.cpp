@@ -23,6 +23,7 @@
 #include "Cpu040.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "jit/JitConfig.h"
 
 #include <cstdint>
@@ -176,12 +177,12 @@ int main(int argc, char** argv) {
     // process. Neither reads POM68K_CPU_ENGINE afterwards.
     static const jit::ResolvedConfig jitConfig =
         testjit::resolveFromEnvironment();
-    static Q605Memory memRef(pom68k::defaultCoreConfig());
-    static Q605Memory memJit(pom68k::defaultCoreConfig());
-    static Cpu040 cpuRef(memRef, jitConfig, pom68k::defaultCoreConfig().cpu,
-                         pom68k::defaultCoreConfig().diagnostics);
-    static Cpu040 cpuJit(memJit, jitConfig, pom68k::defaultCoreConfig().cpu,
-                         pom68k::defaultCoreConfig().diagnostics);
+    static Q605Memory memRef(q605Core());
+    static Q605Memory memJit(q605Core());
+    static Cpu040 cpuRef(memRef, jitConfig, q605Core().cpu,
+                         q605Core().diagnostics);
+    static Cpu040 cpuJit(memJit, jitConfig, q605Core().cpu,
+                         q605Core().diagnostics);
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {

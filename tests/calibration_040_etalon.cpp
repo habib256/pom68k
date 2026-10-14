@@ -23,6 +23,7 @@
 #include "Cpu040.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 #include "Q630Cpu.h"
 
 #include <cstdio>
@@ -69,9 +70,10 @@ int main() {
 
     if (auto rom = loadRom("roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM", path); !rom.empty()) {
         testasset::report({ path });
-        Q605Memory mem(core, 32u << 20);
+        const pom68k::CoreConfig& q605 = q605Core();
+        Q605Memory mem(q605, 32u << 20);
         if (!mem.loadRom(rom)) return 1;
-        Cpu040 cpu(mem, jit, core.cpu, core.diagnostics);
+        Cpu040 cpu(mem, jit, q605.cpu, q605.diagnostics);
         measure("Quadra 605", mem, cpu, Q605Memory::kCpuHz);
     } else std::printf("SKIP Quadra 605: ROM absent\n");
 

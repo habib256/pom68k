@@ -25,6 +25,7 @@
 #include "Cpu040.h"
 #include "JitTestConfig.h"
 #include "Q605Memory.h"
+#include "Q605Profile.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -128,13 +129,13 @@ int main() {
                     bench::compareRepeats(), cmpFrames, bench::buildStamp());
         return bench::compare("q605", slotsB > 0 ? "default" : "interp",
                               armBName, [&](int arm) {
-            Q605Memory m(pom68k::defaultCoreConfig(), 32u << 20);
+            Q605Memory m(q605Core(), 32u << 20);
             m.loadRom(rom);
             m.attachScsi(diskPath);
             jit::ResolvedConfig armConfig = jitConfig;
             if (slotsB > 0 && arm == 1) armConfig.dispatchCacheSlots = slotsB;
-            Cpu040 c(m, armConfig, pom68k::defaultCoreConfig().cpu,
-                     pom68k::defaultCoreConfig().diagnostics);
+            Cpu040 c(m, armConfig, q605Core().cpu,
+                     q605Core().diagnostics);
             m.setCpu(&c);
             c.setEngine(slotsB > 0 ? 1 : arm);         // size arms: both jit
             c.hardReset();
@@ -144,14 +145,14 @@ int main() {
         });
     }
 
-    Q605Memory mem(pom68k::defaultCoreConfig(), 32u << 20);
+    Q605Memory mem(q605Core(), 32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
         return 1;
     }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    Cpu040 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
-               pom68k::defaultCoreConfig().diagnostics);
+    Cpu040 cpu(mem, jitConfig, q605Core().cpu,
+               q605Core().diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
