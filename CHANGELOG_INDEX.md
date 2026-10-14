@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 672 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 673 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
 | [Machine bring-ups](#machine-bring-ups) | 85 |
-| [Build, packaging and release](#build-packaging-and-release) | 18 |
+| [Build, packaging and release](#build-packaging-and-release) | 19 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 145 |
@@ -529,6 +529,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-10 (thirteenth)** — [The asset-free tier on a real Windows host: the serial gate passes under MSVC, five reds found](CHANGELOG.md#2026-10-10-msvc-asset-none)
 - **2026-10-12 (eighth)** — [Host menus release held Mac keys and own keyboard input](CHANGELOG.md#2026-10-12-keyboard-focus)
 - **2026-10-14 (second)** — [The LTO build is quiet again under GCC 15: ten `lto1` string-op warnings, all false positives, closed by shape](CHANGELOG.md#2026-10-14-gcc15-lto)
+- **2026-10-14 (seventh)** — [The Retro68 host tools rebuilt against boost 1.90: NetProbe's gate runs again, and the agent build is not the shipped one](CHANGELOG.md#2026-10-14-retro68-boost)
 
 ## Tests, gates and measurement
 

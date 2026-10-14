@@ -494,6 +494,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-10-14 (seventh)** — [The Retro68 host tools rebuilt against boost 1.90: NetProbe's gate runs again, and the agent build is not the shipped one](#2026-10-14-retro68-boost)
 - **2026-10-14 (sixth)** — [The Duo gets its lid in the GUI: a capability the host reports, an input the machine thread applies, and no faked wake](#2026-10-14-duo-lid-gui)
 - **2026-10-14 (fifth)** — [The Duo 210 and Duo 250 are profiles: one ROM, three CPU IDs, and the ROM names each one itself](#2026-10-14-duo-210-250)
 - **2026-10-14 (fourth)** — [The pixel pins replay under WebAssembly: 43 profiles, every value equal to the native pin](#2026-10-14-wasm-pins)
@@ -1151,6 +1152,32 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-14-retro68-boost"></a>
+## 2026-10-14 (seventh) — The Retro68 host tools rebuilt against boost 1.90: NetProbe's gate runs again, and the agent build is not the shipped one
+
+An OS upgrade on the x86-64 host replaced boost 1.83 by 1.90 and removed
+its development headers: every Retro68 host tool (`Rez`, `Elf2Mac` behind
+`m68k-apple-macos-ld`, `LaunchAPPL`, `ResInfo`, `MakeImport`,
+`ConvertDiskImage`) failed to load `libboost_filesystem.so.1.83.0`, so no
+guest tool could be built and `q605_dayna_rarp_network_etalon` soft-skipped
+for want of `dev/netprobe/build`. With `libboost-all-dev` installed,
+`dev/Retro68-build/build-host` was reconfigured from scratch (its cache
+still named the tree's old `src/POM68K` path) and reinstalled into the
+toolchain; NetProbe and the Disques agent build again, and
+`q605_dayna_rarp_network_etalon` executes and passes (547 s: MacTCP RARP,
+then NetProbe's DNS and TCP on Mac OS 8.1).
+
+`agent_binary_test` stays red on this host, as it was before the upgrade:
+with sources unchanged since 2026-09-14, this toolchain (Retro68 `f99ecb5`,
+GCC 16.1.0) emits a `POM68KDisques.bin` whose code differs from the copy
+shipped in `share/` — not only the MacBinary dates at bytes 91–98, but
+about 23 000 bytes of the resource fork. The shipped copy is kept: it is
+the one every package carries and the agent gates prove, and CI, which has
+no Retro68 build, compares nothing. Which toolchain is the reference is an
+open question for the M4 (TODO § Preuve).
 
 ---
 

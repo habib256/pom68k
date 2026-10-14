@@ -48,6 +48,14 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   « `threaded` est le plancher Windows » : tant qu'aucun hôte Windows ne
   les exécute, le choix reste une décision et non une mesure. *Bloqué :
   hôte Windows.*
+- [ ] **Trancher la reproductibilité de l'agent Disques entre chaînes
+  Retro68.** Sources inchangées depuis le 2026-09-14, mais la chaîne de
+  l'hôte x86-64 (Retro68 `f99ecb5`, GCC 16.1.0) produit un
+  `POM68KDisques.bin` dont le code diffère de la copie livrée dans
+  `share/` : `agent_binary_test` est rouge ici seulement (vert en CI, qui
+  n'a pas de build Retro68). Copie livrée gardée le 2026-10-14 ; vérifier
+  depuis le M4 si sa chaîne la reproduit, puis décider quelle chaîne fait
+  référence (`CHANGELOG` 2026-10-14 (seventh)).
 - [ ] **Dater une passe manuelle de « Révéler » (fenêtre DaynaPort).** Seul
   reste de la dette de preuve du contrôle DaynaPort au GUI : le bouton
   lance `open` / `xdg-open` / `explorer`, qu'aucun gate ne peut observer.
