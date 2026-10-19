@@ -77,7 +77,7 @@ foreach(t IN LISTS pom68k_tests)
         list(APPEND lbl jit)
     endif()
     # The 68040 family — the JIT's entire blast radius today.
-    if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|q900|q950|turboscsi|swim2")
+    if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|q900|q950|turboscsi|swim2|duo280|msc_parity")
         list(APPEND lbl m040)
     endif()
     # The 68030 family — the six platforms behind `Cpu030`, `SonoraCpu`,
@@ -88,7 +88,7 @@ foreach(t IN LISTS pom68k_tests)
     # why a 68030 default measured on 2026-08-10 was still unflipped a
     # week later — the doubt was cheap, the proof was not.
     # `lc` alone would catch lc475/lc575/lc580, which are 68040 boards.
-    if(t MATCHES "lcii|lc_boot|lc3|lc520|lc550|classic2|cclassic|mactv|iivx|iivi|iisi|iici|iifx|duo|rbv|sonora|vasp|msc_")
+    if(t MATCHES "lcii|lc_boot|lc3|lc520|lc550|classic2|cclassic|mactv|iivx|iivi|iisi|iici|iifx|duo(210|230|250|270|_)|rbv|sonora|vasp|msc_")
         list(APPEND lbl m030)
     endif()
     if(POM68K_PRODUCT_LLE_GATES AND

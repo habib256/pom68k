@@ -1064,18 +1064,12 @@ add_executable(duo230_boot_etalon tests/duo230_boot_etalon.cpp)
 target_link_libraries(duo230_boot_etalon PRIVATE pom68k_core)
 add_test(NAME duo230_boot_etalon COMMAND duo230_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-add_test(NAME duo210_boot_etalon COMMAND duo230_boot_etalon
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(duo210_boot_etalon PROPERTIES
-                     ENVIRONMENT "POM68K_DUO_MODEL=duo210" TIMEOUT 1800)
-add_test(NAME duo250_boot_etalon COMMAND duo230_boot_etalon
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(duo250_boot_etalon PROPERTIES
-                     ENVIRONMENT "POM68K_DUO_MODEL=duo250" TIMEOUT 1800)
-add_test(NAME duo270c_boot_etalon COMMAND duo230_boot_etalon
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(duo270c_boot_etalon PROPERTIES
-                     ENVIRONMENT "POM68K_DUO_MODEL=duo270c" TIMEOUT 1800)
+foreach(model duo210 duo250 duo270c duo280 duo280c)
+    add_test(NAME ${model}_boot_etalon COMMAND duo230_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(${model}_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_DUO_MODEL=${model}" TIMEOUT 1800)
+endforeach()
 add_test(NAME lcii_nofpu_boot_etalon COMMAND lcii_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(lcii_nofpu_boot_etalon PROPERTIES

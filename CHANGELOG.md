@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **Why could the 280 Finder look ready while its guest clock was frozen?** → [Duo 280/280c and the byte-wide MSC power cycle](#2026-10-19-duo280-msc-byte-cycle)
+
 - **Why did the bare LC II claim an FPU, and why must PA0 stay high?** → [2026-10-19 — CPU-space CIR probe, MOVES fault cleanup and separate MAME configuration ports](#2026-10-19-duo270c-lcii-cir)
 
 - **"closing the lid holds the 68030 but the System runs no sleep procs, and re-opening does not wake it" (2026-08-14, `docs/DUO_BRINGUP.md` milestone 6, the TODO's *Bloqué* note) — the whole ROM sleep table ran (`SleepSaveFlag`, `$7F 'MATT'`, MSC kill-power); "no write reached the disk" is the System's path, which has no `FlushVol`, and the PG&E wakes on a key, not on the lid** → [2026-10-14 (third) — The Duo sleeps and wakes on its own code…](#2026-10-14-duo-sleep)
@@ -493,6 +495,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ---
 
 ## Index by date
+
+- **2026-10-19 (second)** — [Duo 280/280c and the byte-wide MSC power cycle](#2026-10-19-duo280-msc-byte-cycle)
 
 - **2026-10-19** — [Duo 270c color Finder and the LC II CPU-space FPU probe](#2026-10-19-duo270c-lcii-cir)
 
@@ -1158,6 +1162,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-duo280-msc-byte-cycle"></a>
+## 2026-10-19 (second) — Duo 280/280c expose the byte-wide MSC power-cycle command
+
+**Profiles 45 and 46.** Duo 280 and 280c share ROM `015621D7`, board ID
+`$A55A1000` and a 33 MHz **68LC040 without FPU**. The MSC wrapper now selects
+the 040 CPU/MMU/JIT family and format-7 external bus faults. CSC panel strap
+4 selects the 280's 640×400 grayscale panel, strap 0 the 280c's 640×480
+color panel. Typed relaunch, ROM routing, GUI dimensions/status, storage
+capabilities and distinct snapshot identities follow the catalogue.
+
+**A Finder image was insufficient proof.** The ROM's idle path saves its
+resume vectors in RAM, writes `MOVE.B #$5A,(A0)` at `$4088A74E`, then spins
+at `$4088A752` awaiting CPU reset. MSC had waited for four byte writes to
+assemble a long command: the desktop remained convincing but guest Ticks
+and input stopped. Byte commands now execute immediately; split-word long
+commands retain one assembled command and do not re-arm the ROM overlay.
+The existing 030 sleep path retains its command staging and state layout.
+
+**Checks.** Both new boot gates require the guest's KeyMap and Mouse to
+respond, an exact CPU/guest-clock/pixel snapshot restoration, refusal of the
+other panel's snapshot profile and a clock that continues after restore.
+The pointer probe steers toward the centre and presents repeated bounded
+deltas across PMU sampling intervals; one frame of motion can be missed
+while the processor cycles. A stationary guest still fails the probe. Gray Finder darkness uses the same threshold as other gray
+panels; the actual 640×400 desktop was inspected before pinning it.
+Pixel pins: 280 `b3ff3ec5fa047eb3`, 280c `4f6e73fa9066738a` on System 7.5.5.
+Unit checks cover panel bounds, bare LC040, real SCSI DMA /BERR frames and
+byte/long power cycles. The new agent gates exercise Disques and a
+hot-attached SCSI volume. The registry has 468 union / 464 native x86-64
+gates. Twelve selected gates pass, including both new agent variants and
+the Duo 230 sleep/wake regression. The previous push's CI failures also
+identified two omissions: Duo 270c was missing from `assets.lock`, and the
+AArch64 STATUS registry still predated three profiles. ROM/firmware/disk
+qualification now includes all six Duos; both host registry sections are
+regenerated from CMake (AArch64 configuration only here, not an ARM test
+run). `asset_lock_test` and `docs_test` pass after these corrections.
+PB150 remains the next portable.
 
 <a id="2026-10-19-duo270c-lcii-cir"></a>
 ## 2026-10-19 — The Duo 270c reaches a color Finder, and the bare LC II stops detecting RAM as its FPU

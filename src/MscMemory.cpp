@@ -27,9 +27,9 @@ static uint32_t hostMacSecondsMsc() {
 }
 
 MscMemory::MscMemory(const pom68k::CoreConfig& coreConfig,
-                     uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
+                     uint32_t totalRam, int64_t cpuHz, uint32_t machineId, int cscPanel)
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF), vram_(kVramSize, 0),
-      pmu_(via_, cpuHz, coreConfig.peripherals),
+      csc_(uint8_t(cscPanel)), pmu_(via_, cpuHz, coreConfig.peripherals),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
     lle_ = coreConfig.firmware.registry;
     via_.configureTrace(coreConfig.peripherals.adbLleTrace);
@@ -215,7 +215,10 @@ void MscMemory::reset() {
 }
 
 void MscMemory::busError() const {
-    if (cpu_) cpu_->extBusError();
+    if (cpu_) {
+        if (is040()) cpu_->extBusError040();
+        else cpu_->extBusError();
+    }
     throw moira::MmuBusError{};
 }
 
@@ -424,34 +427,19 @@ void MscMemory::write8(uint32_t addr, uint8_t v) {
         return;
     }
     if (low >= 0xA0000 && low < 0xA0004) {
-        // ── power_cycle_w (msc.cpp:191-206) ────────────────────────────
-        // The 68030 asking to be powered down. MAME: 0 and $5A000000 mean
-        // "reset me and resume" — PowerBook processor cycling, the idle
-        // path — and any other value is a full system sleep that halts the
-        // CPU until the PMU wakes it. The guest writes this and then spins
-        // in `bra.b *` at $x88B14 with the interrupt mask at 7: the reset
-        // IS the return path, there is no other way out.
-        //
-        // Until 2026-08-13 this was a milestone-1 fprintf, so that spin
-        // never ended. The Duo froze 58 s into an idle Finder — reported
-        // by duo_soak_etalon as a Mac clock stuck at 0 s over 180 s, and
-        // first mis-read as "no one-second source is wired from the PG&E".
-        // The one-second source was fine: nothing was running to receive
-        // it. The screen keeps showing the desktop the machine painted
-        // before it died, which is why the boot gate never noticed.
-        //
-        // The reset does NOT re-arm the ROM overlay — unlike the PMU's own
-        // reset (pmu_reset_w), which does. MAME pulses the CPU's reset
-        // line alone, so the vectors come from RAM at $0, where the System
-        // parked its resume path.
-        powerCycle_ = (powerCycle_ << 8) | v;
-        if ((addr & 3) != 3) return;             // wait for the full long
-        const uint32_t word = powerCycle_;
-        powerCycle_ = 0;
-        if (word == 0 || word == 0x5A000000) wakeReset_ = true;
-        else { sleeping_ = true; fullSleeps++; } // until the PMU wakes us
+        // The 280's ROM writes a BYTE $5A to the high lane here.
+        // Each byte access is a real transaction, not a quarter of a long.
+        powerCycleWrite(uint32_t(v) << ((3 - (addr & 3)) * 8));
         return;
     }
+}
+
+// MAME msc.cpp power_cycle_w: 0/$5A000000 resume via CPU reset;
+// every other command sleeps until the PMU wakes us. Preserve RAM vectors
+// (no ROM overlay): the guest parked its processor-resume path at $0/$4.
+void MscMemory::powerCycleWrite(uint32_t command) {
+    if (command == 0 || command == 0x5A000000) wakeReset_ = true;
+    else { sleeping_ = true; fullSleeps++; }
 }
 
 uint16_t MscMemory::read16(uint32_t addr) {
@@ -498,6 +486,19 @@ uint16_t MscMemory::read16(uint32_t addr) {
 }
 
 void MscMemory::write16(uint32_t addr, uint16_t v) {
+    if ((addr & ~3u) == 0x50FA0000u && !(addr & 1)) {
+        if (cpu_) cpu_->flushTicks();
+        if (onIoAccess) onIoAccess(addr, true, v);
+        // Moira splits a long store into two words. Keep the original
+        // staging/payload for the 030 ROM's long commands, applying once.
+        if (!(addr & 2)) powerCycle_ = v;
+        else {
+            const uint32_t command = (powerCycle_ << 16) | v;
+            powerCycle_ = 0;
+            powerCycleWrite(command);
+        }
+        return;
+    }
     if (addr < 0x40000000) [[likely]] {
         if (overlay_) return;
         if (jitGuard_) jitGuard_->note(addr, 2);
@@ -580,7 +581,7 @@ int MscMemory::cyclesToNextEvent() const {
     // The board's two frame timers: 60.15 Hz into CA1, and the LCD VBL edge.
     tighten((cpuHz_ * 20 - tickAcc_ + 1202) / 1203);
     const int64_t frame = cpuHz_ / 60;
-    const int64_t vblAt = hasCsc() ? frame * 480 / 525 : frame * 400 / 445;
+    const int64_t vblAt = hasCsc() && screenHeight() == 480 ? frame * 480 / 525 : frame * 400 / 445;
     tighten(framePos_ < vblAt ? vblAt - framePos_ : frame - framePos_);
 
     // NOT bounded: the SCSI controller and the drives — pure state between
@@ -612,7 +613,7 @@ void MscMemory::tick(int cpuCycles) {
     framePos_ += cpuCycles;
     const int64_t frame = cpuHz_ / 60;
     framePos_ %= frame;
-    bool vbl = framePos_ >= (hasCsc() ? frame * 480 / 525 : frame * 400 / 445);
+    bool vbl = framePos_ >= (hasCsc() && screenHeight() == 480 ? frame * 480 / 525 : frame * 400 / 445);
     if (vbl != vblState_) {
         vblState_ = vbl;
         if (hasCsc()) {

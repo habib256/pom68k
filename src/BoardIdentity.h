@@ -60,6 +60,7 @@ inline void applyBoardIdentity(CoreConfig& core, SnapMachine profile) {
 struct MscBoardIdentity {
     std::int64_t cpuHz;
     std::uint32_t boxId;
+    int cscPanel = 0;
 };
 
 constexpr MscBoardIdentity mscBoardIdentity(SnapMachine profile) {
@@ -67,6 +68,8 @@ constexpr MscBoardIdentity mscBoardIdentity(SnapMachine profile) {
     case SnapMachine::Duo210: return {25000000, 0xA55A1004u};
     case SnapMachine::Duo250: return {33000000, 0xA55A1006u};
     case SnapMachine::Duo270c: return {33000000, 0xA55A1002u};
+    case SnapMachine::Duo280: return {33000000, 0xA55A1000u, 4};
+    case SnapMachine::Duo280c: return {33000000, 0xA55A1000u, 0};
     default:                  return {33000000, 0xA55A1005u};   // Duo 230
     }
 }

@@ -146,9 +146,6 @@ sur le premier profil consommateur avant d'être généralisés ; une ligne
 catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
-- [ ] **Ajouter Duo 280/280c.** Réutiliser le CSC livré avec le Duo 270c
-  et porter le chemin MSC sur le 68LC040 ; Finder, entrée, disque et
-  sauvegarde doivent être prouvés sur chaque profil.
 - [ ] **Ajouter PowerBook 150.** Framebuffer LCD/GSC, IDE (le target ATA
   existe et amorce déjà un Q630 : `AtaDisk`, `q630_ide_boot_etalon`), box ID
   et PMU 68HC05 à partir de sa ROM.

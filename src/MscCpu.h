@@ -1,12 +1,12 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// ── 68030 CPU (Moira wrapper, PowerBook Duo 210/230/250/270c) ──
+// ── MSC CPU (Moira wrapper, Duo 210/230/250/270c/280/280c) ──
 // The VaspCpu pattern on the MSC bus: functional accuracy, PMMU,
 // external /BERR through Moira::extBusError (the SCSI pseudo-DMA
 // timeout, macpwrbkmsc.cpp scsi_berr_w), the Cpu030 i-cache throughput
 // overlay. Duo 210 @ 25.175 MHz, Duo 230/250 @ 33.33 MHz — no FPU on
-// any of the three (the 270c is the first Duo with one).
+// any of the three; the 270c has a 68882, the 280/280c a bare 68LC040.
 // Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
 // Blueprint: docs/DUO_BRINGUP.md. Gate (milestone 3+):
 // tests/duo230_boot_etalon.cpp.
