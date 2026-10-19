@@ -4,8 +4,8 @@
 //
 // ── R65C02 CPU core (Apple PIC IOP brick, docs/IOP_BRINGUP.md M1) ────────
 // The 65C02 inside the Apple 343S1021 PIC (Mac IIfx / Quadra 900-950 I/O
-// processors — MAME `machine/applepic.h:9` instantiates R65C02). Also the
-// core family of the M50753-adjacent portables, should that day come.
+// processors — MAME `machine/applepic.h:9` instantiates R65C02). The
+// portable M50753 uses the distinct Mitsubishi interpreter in M740.h.
 //
 // Vendored from the sibling POM2's `M6502` (src/M6502.cpp, GPL, same
 // author) with two deliberate reductions — diff against POM2 to pull

@@ -204,7 +204,7 @@ add_executable(r65c02_test tests/r65c02_test.cpp)
 target_link_libraries(r65c02_test PRIVATE pom68k_core)
 add_test(NAME r65c02_test COMMAND r65c02_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kPmuGates.cmake)
 # Apple PIC IOP gate (docs/IOP_BRINGUP.md M2): a 65C02 program uploaded
 # through the host window proves reset-release, both mailbox interrupt
 # directions, timer one-shot + continuous cadence, 2-channel DMA and

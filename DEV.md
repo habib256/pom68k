@@ -998,6 +998,13 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
 
 ---
 
+The next portable controller is standalone: `M740` + `M50753` execute the
+PowerBook 140–180 Power Manager firmware, release the host reset and answer
+the parallel version command. CPU/peripheral unit gates and
+`m50753_firmware_etalon` cover this boundary; there is no PowerBook 140–180
+platform or catalogue admission yet. Map, provenance, observed firmware
+versions and remaining limits: [PB030_BRINGUP.md](docs/PB030_BRINGUP.md).
+
 ### 2.12 Adding a platform — the check-list, derived rather than remembered
 
 Written 2026-08-27 for the sixth item of the 2026-08-26 review, which measured
