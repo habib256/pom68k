@@ -1,8 +1,8 @@
 // POM68K — PowerBook Jaws/M50753 product composition (GPLv3).
 #include "PlatformCompositionSupport.h"
 #include "Pb030Cpu.h"
+#include "Pb030Profile.h"
 #include "GuiRunnerPb030.h"
-
 namespace {
 struct Pb030Machine:MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost> {
     using Base=MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost>;
@@ -39,16 +39,16 @@ struct Pb030Machine:MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost> 
 int pom68k::gui::composePb030(PlatformLaunch launch,GuiHostServices& services) {
     const auto* profile=pom68k::machineProfile(launch.selected);
     if(!profile || profile->platform!=PlatformKind::Jaws) return 1;
-    const bool pb170=profile->snapshot==SnapMachine::Pb170;
+    const auto board=pb030Profile(profile->snapshot);
     const auto& config=services.config();
-    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,pb170?25000000:Pb030Memory::kCpuHz);
+    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,board.cpuHz);
     if(!mem.loadRom(launch.rom) || !mem.selectPmuFirmware(config.core().firmware)) return 1;
-    auto& cpu=services.own<Pb030Cpu>(mem,config.jit().resolved,config.core().cpu,pb170);
+    auto& cpu=services.own<Pb030Cpu>(mem,config.jit().resolved,config.core().cpu,board.fpu);
     mem.setCpu(&cpu);
     auto& audio=services.own<MacAudioHost>(config.devices().audio);
-    std::printf("Machine: %s (%s, Jaws + M50753)\n",profile->label,pb170?"68030 + 68882":"68030");
+    std::printf("Machine: %s (%s, Jaws + M50753)\n",profile->label,board.fpu?"68030 + 68882":"68030");
     const Pb030RunnerSpec spec{profile->label,profile->slug,"hdv/System 7.5.5 HD.dsk",
-        pb170?"68030 + 68882 @ 25 MHz":"68030 @ 15.6672 MHz",MachineKind::PowerBook,profile->snapshot};
+        board.cpuLine,MachineKind::PowerBook,profile->snapshot};
     return runPb030Gui<Pb030Machine>(mem,cpu,audio,spec,
         [&](){mem.rtc().setSeconds(services.hostMacSeconds());},launch.romName,launch.media,services);
 }

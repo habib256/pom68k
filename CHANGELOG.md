@@ -498,6 +498,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (eighth)** — [PowerBook 145 and 145B share Jaws hardware and keep distinct sessions](#2026-10-19-pb145-family)
 - **2026-10-19 (seventh)** — [PowerBook 140 and 170 become selectable machines with firmware-bound sessions](#2026-10-19-jaws-product)
 - **2026-10-19 (sixth)** — [The Jaws PowerBook 140 reaches Finder with PMU input and raw state replay](#2026-10-19-pb140-jaws)
 
@@ -1173,6 +1174,33 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-pb145-family"></a>
+## 2026-10-19 (eighth) — PowerBook 145 and 145B share Jaws hardware and keep distinct sessions
+
+Jaws gains the PowerBook 145 and 145B as profiles 50/51, bringing the
+catalogue to 51 profiles on the existing 13 boards. MAME's `macpb145` and
+`macpb145b` reuse the 140's 420DBFF3 ROM, M50753 firmware and monochrome
+640×400 panel, with a 25 MHz 68030 and no FPU. Apple's
+`InternalOnlyEqu.a` assigns BoxFlag 48 to the 145. The real System selects
+that value itself, without a guest identity or ROM patch.
+
+A small `Pb030Profile` view supplies the shared composer and boot gate with
+clock/FPU differences and original base RAM: 2 MB for the 145, 4 MB for
+the 145B. Product sessions and System 7.5.5 gates use the supported 8 MB
+expansion on both, as on the 140/170. Synthetic tests check each base RAM
+boundary and both directions of public session refusal: identical ROM,
+clock, FPU and expanded RAM must still not admit the other model's file.
+Typed selection keeps automatic 420DBFF3 detection on Quadra 700; battery
+and session paths keep each new profile's slug.
+
+Qualification repeats Finder, PMU keyboard down/up, trackball movement and
+exact public CPU/device state replay on both engines, plus the Disques
+agent's Startup Items launch and live disk mount. GUI smoke checks window,
+engine switch, completed save, close and relaunch on writable clones.
+This closes the Jaws 140/145/145B/170 roster. Niagra's grayscale/color
+160–180 family and Portable/PB100 remain separate board work; no AArch64
+execution or physical power-management qualification is inferred.
 
 <a id="2026-10-19-jaws-product"></a>
 ## 2026-10-19 (seventh) — PowerBook 140 and 170 become selectable machines with firmware-bound sessions

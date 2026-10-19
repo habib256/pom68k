@@ -89,7 +89,7 @@ foreach(t IN LISTS pom68k_tests)
     # why a 68030 default measured on 2026-08-10 was still unflipped a
     # week later — the doubt was cheap, the proof was not.
     # `lc` alone would catch lc475/lc575/lc580, which are 68040 boards.
-    if(t MATCHES "lcii|lc_boot|lc3|lc520|lc550|classic2|cclassic|mactv|iivx|iivi|iisi|iici|iifx|duo(210|230|250|270|_)|pb140|pb170|pb150|pb030|rbv|sonora|vasp|msc_")
+    if(t MATCHES "lcii|lc_boot|lc3|lc520|lc550|classic2|cclassic|mactv|iivx|iivi|iisi|iici|iifx|duo(210|230|250|270|_)|pb140|pb145|pb170|pb150|pb030|rbv|sonora|vasp|msc_")
         list(APPEND lbl m030)
     endif()
     if(POM68K_PRODUCT_LLE_GATES AND

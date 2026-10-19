@@ -2,13 +2,23 @@
 
 ## Boundary of the first milestone
 
-`M740` and `M50753` feed the PowerBook 140/170 Jaws board through
-`Pb030Pmu`, `Pb030Memory` and `Pb030Cpu`. The application exposes both
+`M740` and `M50753` feed the PowerBook 140/145/145B/170 Jaws board through
+`Pb030Pmu`, `Pb030Memory` and `Pb030Cpu`. The application exposes four
 profiles with the fixed 640×400 display, required firmware selection,
-battery persistence and public session files (stable ids 48 and 49).
+battery persistence and public session files (stable ids 48–51).
 PB140 runs at 15.6672 MHz without an FPU; PB170 runs at 25 MHz with a 68882.
-The ROM remains shared with Quadra 700/900: choose `--machine-profile=pb140`
-or `--machine-profile=pb170` explicitly. The default ROM detection stays Q700.
+PB145/145B use 25 MHz without an FPU; the System selects BoxFlag 48.
+They share the same ROM and PMU. Both are configured with 8 MB expanded RAM;
+the original base RAM was 2 MB (145) or 4 MB (145B). Their separate profile
+tags reject cross-model session files even with identical expanded hardware.
+The ROM remains shared with Quadra 700/900: choose `--machine-profile=pb140`,
+`--machine-profile=pb145`, `--machine-profile=pb145b` or
+`--machine-profile=pb170` explicitly. The default ROM detection stays Q700.
+
+`Pb030Profile.h` supplies clocks, FPU presence and original RAM capacity to
+the composer and gates. The asset-free product gate checks the 2 MB/4 MB
+RAM decoding boundaries and cross-model session refusal. No ROM or guest
+BoxFlag is patched to select a model.
 
 The M50753 firmware is required, with no HLE substitute. Place it at
 `roms/pmu/pb140.bin` or use `--firmware-override=pmu:lle:<path>`. An explicit missing
@@ -180,7 +190,7 @@ checks engine switching, completed save, close and relaunch. The
 the Startup Items agent to poll its mailbox and mount a disk attached live.
 
 The Jaws wrapper conservatively flushes JIT blocks on CACR invalidation;
-there is no store-inventory admission yet. PB145/145B, Niagra video and the
+there is no store-inventory admission yet. Niagra video and the
 Portable/PB100 board remain separate work. These checks do not qualify
 sleep/power consumption, modem hardware or an AArch64 execution host.
 
