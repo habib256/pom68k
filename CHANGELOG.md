@@ -498,6 +498,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (sixth)** — [The Jaws PowerBook 140 reaches Finder with PMU input and raw state replay](#2026-10-19-pb140-jaws)
+
 - **2026-10-19 (fifth)** — [The M50753 executes PowerBook firmware and answers the parallel version command](#2026-10-19-m50753-pmu)
 
 - **2026-10-19 (fourth)** — [Register the PowerBook 150 test selectors](#2026-10-19-pb150-config-registry)
@@ -1170,6 +1172,49 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-pb140-jaws"></a>
+## 2026-10-19 (sixth) — The Jaws PowerBook 140 reaches Finder with PMU input and raw state replay
+
+**A board now consumes the M50753.** `Pb030Pmu` connects the real firmware
+to the parallel Misc GLU ports and bit-serial ADB, carrying MCU instruction
+debt and separate host/MCU/wire clock phases. `Pb030Memory` owns the Jaws
+mirrors, ROM overlay, VIA1, Misc GLU, RTC, EASC, 5380, SWIM/Sony and SCC;
+`Pb030Cpu` carries the 68030 machine-time bridge and deferred PMU host reset.
+The PMU can run while holding the CPU and is not reset by its own host reset
+output. `docs/PB030_BRINGUP.md` records the map and limits.
+
+**The first boot exposed the empty FPU socket.** The bare 68030 reached a
+System error-type-10 dialog after 101 SCSI commands, with BoxFlag 15. Like
+the LC II, this ROM probes the response CIR at `$22000` using FC 7; exposing
+RAM there falsely populates the FPU. A real bus fault in that CPU-space
+window lets the ROM/System clear the flag and select BoxFlag 19 themselves.
+The same unmodified `420DBFF3` ROM then reaches the PowerBook 140 Finder.
+
+**The pixels and the running guest agree.** The System 7.5.5 reference disk
+reaches Finder with 3,543 SCSI commands and settled pin
+`e1f182417db75b70`. `pb140_boot_etalon` and its interpreter variant require
+BoxFlag 19, desktop structure, the pin, guest `CurApName = Finder`, a real
+PMU key press/release in KeyMap and trackball movement in the guest pointer.
+An in-process raw save/restore must recover CPU/machine clocks, Ticks and
+desktop pixels, and Ticks must advance again afterwards. Both engines pass
+on x86-64 with the private ROM, PMU firmware and immutable reference media
+actually present; the existing temporary Infinite HD companion resolves the
+reference system's startup alias.
+
+**The shared pseudo-VIA gets an explicit PB030 flavor.** VIA-style register
+spacing, live parallel data/handshake inputs, plain IER semantics and
+edge-latched EASC acknowledgement belong to that flavor. Existing base,
+V8, Sonora and MSC semantics retain their gates. `pb030_board_test` adds an
+asset-free proof of the map, GPIO, DDC pixels, clock partition invariance,
+CPU hold, head select and deferred reset. Registry metadata was regenerated
+for both hosts without claiming ARM execution of the new board. The preceding
+M50753 controller merge completed green in Linux and Apple Silicon CI.
+
+This is a headless board milestone: the catalogue remains at 47 profiles.
+GUI composition, firmware selection/provenance, battery persistence, public
+session identity, disk-agent integration and PowerBook 170 qualification
+remain before a product profile is admitted.
 
 <a id="2026-10-19-m50753-pmu"></a>
 ## 2026-10-19 (fifth) — The M50753 executes PowerBook firmware and answers the parallel version command

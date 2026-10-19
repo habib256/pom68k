@@ -13,6 +13,16 @@ void PseudoVia::reset() {
 
 // pseudovia.cpp:220-248 (base read — the V8 flavour only overrides write)
 uint8_t PseudoVia::read(uint32_t offset) {
+    // PB030 Misc GLU: VIA-spaced ports and only IFR/IER, no video block.
+    if(flavour_==Flavour::Pb030) {
+        switch((offset>>9)&15) {
+        case 0:return onPortBRead ? onPortBRead():0;
+        case 1:return onConfigRead ? onConfigRead():0;
+        case 13:return regs_[3];
+        case 14:return regs_[0x13];
+        default:return 0;
+        }
+    }
     if (flavour_ == Flavour::Msc) {          // msc_pseudovia_device::read
         offset &= 0xFF;                      // full decode, 256-byte mirror
         if (offset >= 0x20 && offset <= 0x2F)
@@ -52,6 +62,15 @@ uint8_t PseudoVia::read(uint32_t offset) {
 // (:376-386), Sonora (:488-498) and Msc (:600-610) keep the plain bit-7
 // selector.
 void PseudoVia::write(uint32_t offset, uint8_t v) {
+    if(flavour_==Flavour::Pb030) {
+        switch((offset>>9)&15) {
+        case 0:if(onPortB) onPortB(v);return;
+        case 1:if(onPortA) onPortA(v);return;
+        case 13:offset=3;break;
+        case 14:offset=0x13;break;
+        default:return;
+        }
+    }
     if (flavour_ == Flavour::Msc) {
         // msc_pseudovia_device::write — no port-A window, full decode,
         // MSC block at $20-$2F; ASC ack is a NOP (level-triggered) like
@@ -88,7 +107,7 @@ void PseudoVia::write(uint32_t offset, uint8_t v) {
         // …except ASC on the Level and Msc flavours, where the ack is a
         // NOP (pseudovia.cpp:341/:576). The base device has no such mask
         // (:268-271): there the edge-latched bit 4 clears normally.
-        if (flavour_ != Flavour::Base) v &= uint8_t(~0x10);
+        if (!edgeAsc()) v &= uint8_t(~0x10);
         regs_[3] &= uint8_t(~(v & 0x7F));
         recalcIrqs();
         break;
@@ -132,7 +151,7 @@ void PseudoVia::slotIrq(uint8_t mask, bool state) {
 // bit 4, ascLine_ is purely the edge detector (m_live_main_ints bit 4), and
 // nothing re-applies the level afterwards — so the guest's W1C ack sticks.
 void PseudoVia::ascIrq(bool state) {
-    if (flavour_ == Flavour::Base) {
+    if (edgeAsc()) {
         if (state && !ascLine_) {
             regs_[3] |= uint8_t(ASC);
             recalcIrqs();
@@ -170,7 +189,7 @@ void PseudoVia::recalcIrqs() {
     // lines above) so it can't be lost across an enable/disable of IER
     // bit 4. On the base device bit 4 is a latch owned by ascIrq() and the
     // guest's ack — touching it here would make that ack unclearable.
-    if (flavour_ != Flavour::Base) {
+    if (!edgeAsc()) {
         if (ascLine_) regs_[3] |= uint8_t(ASC);
         else          regs_[3] &= uint8_t(~ASC);
     }

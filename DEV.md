@@ -998,12 +998,12 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
 
 ---
 
-The next portable controller is standalone: `M740` + `M50753` execute the
-PowerBook 140–180 Power Manager firmware, release the host reset and answer
-the parallel version command. CPU/peripheral unit gates and
-`m50753_firmware_etalon` cover this boundary; there is no PowerBook 140–180
-platform or catalogue admission yet. Map, provenance, observed firmware
-versions and remaining limits: [PB030_BRINGUP.md](docs/PB030_BRINGUP.md).
+The next portable board is headless: `Pb030Memory`/`Pb030Cpu` wire Jaws,
+Misc GLU, DDC and `Pb030Pmu` (`M740` + `M50753`). The real PowerBook 140 ROM
+boots System 7.5.5 to Finder with PMU keyboard/trackball input and raw state
+replay under both engines. There is no GUI composer or public session-file
+identity yet, so it is not a catalogue profile. Map, provenance, tests and
+remaining limits: [PB030_BRINGUP.md](docs/PB030_BRINGUP.md).
 
 ### 2.12 Adding a platform — the check-list, derived rather than remembered
 
