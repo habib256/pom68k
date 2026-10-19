@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// ── 68030 CPU (Moira wrapper, PowerBook Duo 210/230/250) ──
+// ── 68030 CPU (Moira wrapper, PowerBook Duo 210/230/250/270c) ──
 // The VaspCpu pattern on the MSC bus: functional accuracy, PMMU,
 // external /BERR through Moira::extBusError (the SCSI pseudo-DMA
 // timeout, macpwrbkmsc.cpp scsi_berr_w), the Cpu030 i-cache throughput

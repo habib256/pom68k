@@ -730,7 +730,9 @@ Moira::processException(const std::exception &exc)
         // double fault → HALT (WinUAE Exception_mmu030 / cpu_halt)
         if constexpr (C == Core::C68020) {
             if (dynamic_cast<const MmuBusError *>(&exc)) {
-
+                // POM68K: a faulting MOVES must release SFC/DFC before
+                // stacking and running its handler (the saved access keeps FC).
+                fcSource = 0;
                 try {
                     // POM68K Q3: the 68040 stacks a format $7 frame with
                     // the restart model; the 030 keeps its $A/$B frames

@@ -45,6 +45,7 @@
 #include "CdAudioPump.h"
 #include "ScsiDisk.h"
 #include "Scc8530.h"
+#include "CscVideo.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -69,6 +70,7 @@ public:
     static constexpr uint32_t kIdDuo210 = 0xA55A1004;
     static constexpr uint32_t kIdDuo230 = 0xA55A1005;
     static constexpr uint32_t kIdDuo250 = 0xA55A1006;
+    static constexpr uint32_t kIdDuo270c = 0xA55A1002;
 
     explicit MscMemory(const pom68k::CoreConfig& coreConfig,
                        uint32_t totalRam = 0x800000,
@@ -212,12 +214,16 @@ public:
     // ── GSC video state (fixed-mode 640×400 DBLite panel on the Duo 2x0) ──
     const uint8_t* vram() const { return vram_.data(); }
     uint8_t gscReg(int i) const { return gscRegs_[i & 0x1F]; }
+    bool hasCsc() const { return machineId_ == kIdDuo270c; }
+    int screenHeight() const { return hasCsc() ? CscVideo::kHeight : kScreenH; }
+    uint8_t videoMode() const { return hasCsc() ? csc_.peek(0x12) : gscReg(4); }
     static constexpr int kScreenW = 640;
     static constexpr int kScreenH = 400;
     // Host decode (milestone 3): 00RRGGBB gray, W×H. Mode = GSC reg 4 bits
     // 0-1 (MAME gsc.cpp screen_update_gsc): 0 → 1 bpp, 1 → 2 bpp, 2 → 4 bpp;
     // pen p of 16 renders as the P2/P5 gray ((15-p)<<4 | $F).
     void decodeScreen(std::vector<uint32_t>& out) const {
+        if (hasCsc()) { csc_.decode(out); return; }
         out.resize(size_t(kScreenW) * size_t(kScreenH));
         const int mode = gscRegs_[4] & 3;
         for (int y = 0; y < kScreenH; y++)
@@ -292,6 +298,8 @@ public:
         ar(viaAcc_, tickAcc_, c15Acc_, framePos_, vblState_, wakeReset_);
         ar(powerCycle_, sleeping_);
         ar.bytes(gscRegs_, sizeof gscRegs_);
+        // New profile only: preserve the byte layout of existing GSC states.
+        if (hasCsc()) ar(csc_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -307,6 +315,7 @@ private:
     [[noreturn]] void busError() const;
 
     std::vector<uint8_t> ram_, rom_, vram_;
+    CscVideo csc_;
     Via6522 via_;
     // APPLE_MSC_PSEUDOVIA: full 256-byte decode, port-B input = the PMU
     // handshake lines, MSC block at $20-$2F (clock-ctrl 1, sound-ctrl 2

@@ -287,7 +287,7 @@ void checkGlueModel(const pom68k::CoreConfig& core, MacIIMemory::Model model,
 } // namespace
 
 int main() {
-    std::printf("storage_profile_test — 43-profile floppy/SCSI/CD matrix\n");
+    std::printf("storage_profile_test — 44-profile floppy/SCSI/CD matrix\n");
 
     std::size_t none = 0, gcr400 = 0, gcr800 = 0, super = 0, external = 0;
     std::size_t scsi = 0, cdrom = 0;
@@ -307,9 +307,9 @@ int main() {
                     caps.externalFloppy ? "yes" : "no",
                     caps.scsi ? "yes" : "no", caps.cdrom ? "yes" : "no");
     }
-    check(pom68k::kMachineProfileCount == 43, "catalogue contains all 43 profiles");
-    check(none == 3 && gcr400 == 2 && gcr800 == 4 && super == 34,
-          "floppy matrix = 3 none (the Duos) + 2 400K + 4 800K-only + 34 SuperDrive");
+    check(pom68k::kMachineProfileCount == 44, "catalogue contains all 44 profiles");
+    check(none == 4 && gcr400 == 2 && gcr800 == 4 && super == 34,
+          "floppy matrix = 4 none (the Duos) + 2 400K + 4 800K-only + 34 SuperDrive");
     check(external == 11,
           "drive B on the 11 profiles MAME connects it on: the seven compacts "
           "(128K to Classic) and II FDHD, IIx, IIcx, SE/30");
@@ -343,8 +343,8 @@ int main() {
     // NOT "all profiles" any more: the SCSI bus arrived with the Plus, so the
     // Macintosh 128K and 512K are the two that answer no. This is the
     // assertion that would have caught a `scsi = true` copied onto them.
-    check(scsi == 40 && cdrom == 40,
-          "40 of 43 expose SCSI HDD + CD-ROM; 128K/512K/512Ke have no bus");
+    check(scsi == 41 && cdrom == 41,
+          "41 of 44 expose SCSI HDD + CD-ROM; 128K/512K/512Ke have no bus");
 
     const auto& core = pom68k::defaultCoreConfig();
     checkCompactModel(core, MacMemory::Model::Mac128, "Mac 128K", false);

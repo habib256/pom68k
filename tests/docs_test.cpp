@@ -1029,6 +1029,7 @@ int main() {
             {1u << 20,   0x3DC27823, pom68k::SnapMachine::Quadra950},
             {1u << 20,   0x06684214, pom68k::SnapMachine::Q630},
             {1u << 20,   0xECFA989B, pom68k::SnapMachine::Duo230},
+            {1u << 20,   0x0024D346, pom68k::SnapMachine::Duo270c},
         };
         bool allRoutes = true;
         std::set<pom68k::SnapMachine> routedProfiles;

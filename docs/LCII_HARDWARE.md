@@ -232,7 +232,7 @@ the boot beep, and BERR generation for unmapped space and the SCSI DRQ window.
 
 | Port bit | Dir | Function | Source |
 |---|---|---|---|
-| PA (in) | — | machine ID: V8 `$D5` (LC/LC II), Eagle `$93`. MAME ORs its FPU config port into **PA0** (`0xd4 \| config`, v8.cpp:251), but that model is never exercised: the only ROM code reading PA0 is `$A46440`-`$A4644C`, reached when `D2.b` is 5 or 7, and it REQUIRES PA0 high — low means the factory serial test monitor at `$A46462`. A real LC II with an empty socket booted, so PA0 is not the FPU bit here. POM68K drove it from the socket for one day (2026-09-16) and reverted 2026-09-17; FPU presence reaches the ROM through the UniversalInfo record (§ 8.5) | v8.cpp:249-252 |
+| PA (in) | — | machine ID: V8 `$D5` (LC/LC II), Eagle `$93`. PA0 is the **diagnostic-mode** input, not the FPU socket: MAME's V8-local `:v8:config` and the machine's FPU `:config` are separate ports. Keep PA0 high in normal operation. The ROM probes the FPU with FC=7 MOVES at CPU-space `$22000`; an empty socket bus-errors there and the ROM clears HwCfgFlags bit 12. | v8.cpp:60-64,249-252; maclc.cpp:168-173; `Cpu030::checkCoprocessorBus` |
 | PA5 (out) | O | floppy **HDSEL** (head select) | v8.cpp:264-267 |
 | PB3 (in) | I | Egret **XCVR_SESSION** (active low) | v8.cpp:254-257; via-cuda.c:57-72 |
 | PB4 (out) | O | Egret **VIA_FULL** (byte ack, active high) | v8.cpp:269-273 |
@@ -395,15 +395,14 @@ code):
   `tools/wrap_hfs.py` builds a bootable image: Apple DDM + partition map
   + `Apple_Driver43` partition (template from an existing disk) + a
   driver entry with `ddType = $6A`, then the HFS volume.
-- The stock LC II has no FPU, but much LC II-era software (and the test
-  disk) issues 68882 instructions; without an FPU they F-line-fault to
-  **system error 10**. `Cpu030`'s socket is **empty by default**
-  (`withFpu = false`, matching maclc.cpp:325-330); `PlatformV8.cpp:168-170`
-  (from the startup default, `RuntimeConfigProduct.cpp:12`) and every LC II
-  gate pass `withFpu = true`, and `POM68K_NOFPU` models the bare machine.
-  Whether the 030 path still needs the UniversalInfo/`defaultRSRCs` selection
-  that fixed the 040 side is **untested** —
-  `TODO.md` § Fidélité matérielle et LLE.
+- The stock LC II has an empty 68882 socket. `Cpu030` defaults to that
+  configuration; the product and standard boot gate still fit the optional
+  68882. `POM68K_NOFPU=1` selects the bare machine. Since 2026-10-19,
+  `lcii_nofpu_boot_etalon` reaches the same pinned Finder with no guest
+  patches: the ROM's FC=7 MOVES probe at `$22000` bus-errors when the
+  coprocessor is absent, so its hardware flags correctly select no FPU.
+  The former system-error-10 diagnosis came from acknowledging that probe
+  against ordinary RAM and incorrectly electing `$DC00`.
 
 ## Floppy (SWIM1 + SuperDrive)
 
@@ -533,7 +532,7 @@ V8-specific slice.
 | **SCSI DRQ timeout is not timed** — no DRQ raises `/BERR` immediately instead of after ~16 µs | `V8Memory::scsiDma_` | Functionally what the blind-transfer loops need; `LLE_VS_HLE` § 1.5 |
 | **ASC drain is a fixed 22 257 Hz**, not derived from the programmed rate | `Asc.*` | `LLE_VS_HLE` § 1.7 |
 | **DFAC analog filters are not synthesized; DFAC2 payload remains ACK-only** | `Dfac`, `CudaLle::setI2cDfac` | Original DFAC gain/input gate is live; DFAC2 follows upstream's still-incomplete register model |
-| **68882 populated by default** although the stock LC II has none | `PlatformV8.cpp` (startup default in `RuntimeConfigProduct.cpp`), LC II gates pass `withFpu = true` | The bare-machine cold-start divergence remains open: MAME selects the FPU-less `$CC00` record from the same ROM. The September fidelity ruling was reopened on 2026-10-02; see `TODO.md` § Fidélité. `POM68K_NOFPU` is a boot-gate investigation knob, not a product option. |
+| **68882 populated by default** although the stock LC II has none | `PlatformV8.cpp` (startup default in `RuntimeConfigProduct.cpp`), LC II gates pass `withFpu = true` | `POM68K_NOFPU=1` now boots the stock empty socket: CPU-space CIR reads bus-error, the ROM elects `$CC00`, and `lcii_nofpu_boot_etalon` reaches the same pinned Finder pixels. The default still models the optional 68882. |
 | **No CPU/bus contention model** beyond VIA E-clock sync + SWIM wait states; an i-cache *throughput* overlay, not a cache model | `Cpu030.h` | Functional accuracy by design; `LLE_VS_HLE` § 1.2 |
 | **LC PDS slot: no card, BERR** | `V8Memory::read8` | Nothing to emulate yet |
 
@@ -546,17 +545,14 @@ firmware runs for real, so its HLE quirks only matter on the fallback path.
 
 Still open — these need hardware traces or a guest that exercises them:
 
-1. Exact early-boot probe order and which V8 registers gate the diagnostic
-   path (VIA1 PA `$D4` + diag bit, v8.cpp:249-252). Empirically the diag bit
-   must read **1** (diagnostics off) — the same lesson the IIci re-taught.
-2. Real BERR timeout constant for the SCSI DRQ window on LC II (MAME uses
+1. Real BERR timeout constant for the SCSI DRQ window on LC II (MAME uses
    16 µs, "system-dependent" per macscsi.cpp:19-23).
-3. 512×384 dot-clock/porch numbers for V8 proper (pinned from Spice,
+2. 512×384 dot-clock/porch numbers for V8 proper (pinned from Spice,
    v8.cpp:717 — verify against GttMFH's video chapter or hardware).
-4. Whether any LC II software depends on pseudo-VIA slot bit $10 (slot $C)
+3. Whether any LC II software depends on pseudo-VIA slot bit $10 (slot $C)
    or the 16 bpp mode with only 512 KB VRAM (likely no — 512×384@16 needs
    384 KB, fits; monitor sense interaction unclear).
-5. Egret firmware ADB timing vs System 7.1's ADB manager (MAME note: real
+4. Egret firmware ADB timing vs System 7.1's ADB manager (MAME note: real
    Egret runs ADB at 2× spec timings, egret.cpp:83).
 6. Interrupt/VBL/VIA/memory timing vs real hardware, and the idle screen dim
    seen after very long runs (`TODO.md` § Fidélité matérielle et LLE).

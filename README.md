@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
-the 68040 Quadra 950. The project currently provides **43 machine profiles on
+the 68040 Quadra 950. The project currently provides **44 machine profiles on
 12 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
@@ -41,7 +41,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
 ## Highlights
 
 - Macintosh 68000, 68020, 68030 and 68040 families, including compact Macs,
-  desktop systems, towers, all-in-ones and the PowerBook Duo 210, 230 and 250.
+  desktop systems, towers, all-in-ones and the PowerBook Duo 210, 230, 250 and 270c.
 - Moira interpreter as the accuracy oracle, plus a conformant accelerated
   engine with portable threaded execution and native AArch64/x86-64 code
   generators where their measured policy allows them.
@@ -79,11 +79,9 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
   chip, with its DFAC2 answering as the hardware does.
 - **The Macintosh 128K and 512K launch an application**, and the Plus boots
   System 3.3 from an 800 K floppy in either drive.
-- The bare Macintosh LC II — no FPU fitted — remains under investigation.
-  The September fidelity ruling was reopened on 2026-10-02: MAME selects
-  the FPU-less configuration from the same ROM, while POM68K does not.
-  The default LC II configuration includes a 68882; see `TODO.md` under
-  **Fidélité matérielle et LLE** for the unresolved cold-start divergence.
+- The bare Macintosh LC II boots without a 68882: its ROM detects the
+  empty coprocessor socket through CPU space. `POM68K_NOFPU=1` selects it;
+  the regular configuration still fits the optional 68882.
 - Save states are format v18; the CD transport and the ATA task file travel
   with them.
 
@@ -94,8 +92,9 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
 - **Save states include disk content**: format v28 records each writable
   SCSI and IDE disk's content through `DiskTimeline`, and restoring a state
   rewinds the disk to it. Older formats are refused.
-- **Two more profiles**: the Macintosh 512Ke and the Macintosh II FDHD,
-  each with its own save-state identity.
+- **Additional profiles**: the Macintosh 512Ke, Macintosh II FDHD and
+  PowerBook Duo 270c, each with its own save-state identity. The 270c
+  boots System 7.5.5 on its 640×480 color CSC panel with a 68882.
 - **Floppy media**: MOOF bitstream and flux images, DART import and
   write-back, and GCR sector tags kept through DiskCopy 4.2 images and
   save states.
@@ -267,6 +266,7 @@ Bold text is the default profile for a shared ROM.
 | 1 MB | `3DC27823` | Macintosh Quadra 950 | — |
 | 1 MB | `06684214`, `064DC91D` | **Macintosh Quadra 630**, LC/Performa 580 | `q630`, `lc580` |
 | 1 MB | `ECFA989B` | **PowerBook Duo 230**, Duo 210, Duo 250 | `duo230`, `duo210`, `duo250` |
+| 1 MB | `0024D346` | PowerBook Duo 270c (640×480 color, 68882) | `duo270c` |
 
 The LC 475, LC 575 and Quadra 605 profiles currently share the same emulated
 25 MHz clock even though the LC 575 label identifies the real 33 MHz model.

@@ -6,8 +6,8 @@
 // (24-bit map through Apple's MMU tables), Egret HLE (reset release,
 // RTC/PRAM, ReadXPram), V8 RAM controller + overlay, pseudo-VIA IRQs,
 // ASC boot beep, SCSI pseudo-DMA with the IRQ-latch end-of-transfer,
-// SWIM probe, Ariel video. The 68882 is attached (the target volume
-// issues FPU ops; a bare LC II faults with system-error 10).
+// SWIM probe, Ariel video. The standard gate fits a 68882; its nofpu
+// variant proves that the ROM detects an empty socket and uses SANE.
 //
 // Soft-skips unless both the LC II ROM (docs/512KB ROMs/...) and a
 // bootable System image (hdv/boot.vhd) are present. The ROM's boot scan
@@ -90,11 +90,7 @@ int main() {
     V8Memory mem(daynaboot::config());
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    // POM68K_NOFPU=1 boots the bare LC II the way the product knob would
-    // (RuntimeConfigProduct: cpu.fpu = !present(NoFpu)). TODO § C.3 asked
-    // for this path to be walked before UniversalInfo/defaultRSRCs change:
-    // the 68882 is what the target volumes expect, and the gate's own header
-    // records the system-error-10 the bare machine takes on them.
+    // The same socket choice as the product: no guest RAM/ROM edits.
     const bool withFpu = std::getenv("POM68K_NOFPU") == nullptr;
     Cpu030 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu,
                withFpu, false);
@@ -174,10 +170,15 @@ int main() {
         },
         [&] { return mem.scsi().commands; },
         W, 384, /*menuRows=*/20);
-    const bool pinOk = pixelpin::check("lcii_boot_etalon", pin);
+    const bool pinOk = pixelpin::check(withFpu ? "lcii_boot_etalon"
+                                              : "lcii_boot_etalon/nofpu", pin);
+    const unsigned hwCfg = unsigned(mem.peek8(0xB22)) << 8 | mem.peek8(0xB23);
+    const bool socketOk = ((hwCfg & 0x1000) != 0) == withFpu;
+    std::printf("FPU socket: %s, ROM HWCfgFlags=$%04X (%s)\n",
+                withFpu ? "68882" : "empty", hwCfg, socketOk ? "matches" : "WRONG");
 
     bool ok = menuBar < 0.30 && desktop > 0.35 && desktop < 0.65
-           && mem.scsi().commands > 50 && pinOk;
+           && mem.scsi().commands > 50 && pinOk && socketOk && !cpu.isHalted();
     if (!ok) {
         // The UniversalInfo hwCfgWord copies the ROM left in RAM: $CC00
         // (bit 12 clear, no FPU) or $DC00 (FPU fitted), both followed by

@@ -34,6 +34,7 @@
 #include "MscMemory.h"
 #include "PgePmu.h"
 #include "Via6522.h"
+#include "SaveStateMachines.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -381,7 +382,66 @@ static void testPramRoundTrip() {
     std::filesystem::remove(shortPath);
 }
 
+// CSC coverage through the actual MSC bus, including 16-bit accesses,
+// palette auto-increment, latched VBL, direct color and save/restore.
+static void testCsc() {
+    MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                  MscMemory::kCpuHz230, MscMemory::kIdDuo270c);
+    MscCpu cpu(mem, jit::defaultResolvedConfig(),
+               pom68k::defaultCoreConfig().cpu, true);
+    mem.setCpu(&cpu);
+    constexpr uint32_t reg = 0x50F20000, vram = 0x60000000;
+    check(mem.read8(reg + 2) == 0 && mem.screenHeight() == 480,
+          "CSC identifies the 640x480 color panel");
+    mem.write8(reg + 8, 14); // enable, color, 480 lines
+    mem.write8(reg + 0x12, 3);
+    mem.write8(reg + 0x40, 255);
+    for (uint8_t v : {0x12, 0x34, 0x56, 0xAB, 0xCD, 0xEF})
+        mem.write8(reg + 0x42, v);
+    mem.write8(reg + 0x46, 255);
+    check(mem.peek8(reg + 0x42) == 0x12 && mem.peek8(reg + 0x42) == 0x12,
+          "CSC debugger peek does not advance the palette");
+    check(mem.read8(reg + 0x42) == 0x12 && mem.read8(reg + 0x42) == 0x34 &&
+          mem.read8(reg + 0x42) == 0x56 && mem.read8(reg + 0x42) == 0xAB,
+          "CSC RGB reads auto-increment and wrap at palette 255");
+    mem.write16(vram, 0xFF00);
+    check(mem.read16(vram) == 0xFF00 && mem.peek8(vram) == 255,
+          "CSC VRAM byte, word and debugger views agree");
+    mem.write8(vram + 0x200000, 255);
+    check(mem.read8(vram) == 255 && mem.read8(vram + 0x1000000) == 0,
+          "CSC VRAM mirrors within its 16MB window only");
+    std::vector<uint32_t> pixels;
+    mem.decodeScreen(pixels);
+    check(pixels.size() == 640 * 480 && pixels[0] == 0x123456 && pixels[1] == 0xABCDEF,
+          "CSC 8bpp pixels use the programmed RGB palette");
+    mem.write8(reg + 0x12, 4);
+    mem.write16(vram, 0x7C1F);
+    mem.decodeScreen(pixels);
+    check(pixels[0] == 0xF800F8, "CSC direct color decodes RGB555 in guest byte order");
+    mem.write8(reg + 0x14, 1);
+    mem.tick(int(mem.cpuHz() / 60 * 480 / 525 + 1));
+    check((mem.read8(reg + 0x14) & 3) == 3,
+          "CSC VBL latches while enabled");
+    mem.write8(reg + 0x14, 2);
+    check(mem.read8(reg + 0x14) == 1, "CSC VBL acknowledge preserves enable");
+    std::vector<uint8_t> state;
+    pom68k::save(mem, cpu, pom68k::SnapMachine::Duo270c, state);
+    mem.write16(vram, 0);
+    mem.write8(reg + 8, 0);
+    std::string error;
+    check(pom68k::load(mem, cpu, pom68k::SnapMachine::Duo270c,
+                       state.data(), state.size(), error),
+          "Duo 270c machine state restores");
+    mem.decodeScreen(pixels);
+    check(pixels[0] == 0xF800F8 && mem.videoMode() == 4,
+          "Duo 270c state restores VRAM, palette and CSC registers");
+    check(!pom68k::load(mem, cpu, pom68k::SnapMachine::Duo230,
+                        state.data(), state.size(), error),
+          "Duo 270c state refuses another profile");
+}
+
 int main() {
+    testCsc();
     testSoundBusy();
     testPorteReset();
     testMachineWiring();

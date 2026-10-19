@@ -315,6 +315,7 @@ uint8_t MscMemory::read8(uint32_t addr) {
         return rom_[addr & (kRomSize - 1)];
     }
     if (addr >= 0x60000000) {
+        if (hasCsc()) return addr < 0x61000000 ? csc_.vramRead(addr) : 0;
         // GSC VRAM, 128 KB mirrored across the $6xxxxxxx select
         // (gsc.cpp map: mirror $0FFE0000).
         if (addr < 0x70000000) return vram_[addr & (kVramSize - 1)];
@@ -347,6 +348,7 @@ uint8_t MscMemory::read8(uint32_t addr) {
     }
     if (low >= 0x14000 && low < 0x16000) return asc_.read(low - 0x14000);
     if (low >= 0x20000 && low < 0x22000) {   // GSC regs (gsc.cpp gsc_r)
+        if (hasCsc()) return low < 0x20080 ? csc_.read(low - 0x20000) : 0;
         const uint32_t off = (low - 0x20000) & 0x1F;
         if (off == 1) return 6;              // panel ID 6 = DBLite 640×400
         return gscRegs_[off];
@@ -370,6 +372,10 @@ void MscMemory::write8(uint32_t addr, uint8_t v) {
     }
     if (addr < 0x50000000) return;           // ROM
     if (addr >= 0x60000000) {
+        if (hasCsc()) {
+            if (addr < 0x61000000) csc_.vramWrite(addr, v);
+            return;
+        }
         if (addr < 0x70000000) vram_[addr & (kVramSize - 1)] = v;
         return;
     }
@@ -402,6 +408,12 @@ void MscMemory::write8(uint32_t addr, uint8_t v) {
         return;
     }
     if (low >= 0x20000 && low < 0x22000) {   // GSC regs (gsc.cpp gsc_w)
+        if (hasCsc()) {
+            if (low < 0x20080) csc_.write(low - 0x20000, v);
+            pvia_.slotIrq(PseudoVia::VBL, csc_.irq());
+            updateIrq();
+            return;
+        }
         gscRegs_[(low - 0x20000) & 0x1F] = v;
         return;
     }
@@ -458,7 +470,7 @@ uint16_t MscMemory::read16(uint32_t addr) {
         uint32_t o = addr & (kRomSize - 1);
         return uint16_t(rom_[o] << 8 | rom_[(o + 1) & (kRomSize - 1)]);
     }
-    if (addr >= 0x60000000 && addr < 0x70000000 - 1) {
+    if (!hasCsc() && addr >= 0x60000000 && addr < 0x70000000 - 1) {
         uint32_t o = addr & (kVramSize - 1);
         return uint16_t(vram_[o] << 8 | vram_[(o + 1) & (kVramSize - 1)]);
     }
@@ -495,7 +507,7 @@ void MscMemory::write16(uint32_t addr, uint16_t v) {
         }
         return;
     }
-    if (addr >= 0x60000000 && addr < 0x70000000 - 1) {
+    if (!hasCsc() && addr >= 0x60000000 && addr < 0x70000000 - 1) {
         uint32_t o = addr & (kVramSize - 1);
         vram_[o] = uint8_t(v >> 8);
         vram_[(o + 1) & (kVramSize - 1)] = uint8_t(v);
@@ -532,6 +544,10 @@ uint8_t MscMemory::peek8(uint32_t addr) const {
         return addr < totalRam_ ? ram_[addr] : 0xFF;
     }
     if (addr < 0x50000000) return rom_[addr & (kRomSize - 1)];
+    if (hasCsc() && addr >= 0x60000000)
+        return addr < 0x61000000 ? csc_.vramRead(addr) : 0;
+    if (hasCsc() && addr >= 0x50F20000 && addr < 0x50F20080)
+        return csc_.peek(addr - 0x50F20000);
     if (addr >= 0x60000000 && addr < 0x70000000)
         return vram_[addr & (kVramSize - 1)];
     if (addr >= 0x5FFFFFFC && addr < 0x60000000)
@@ -564,7 +580,7 @@ int MscMemory::cyclesToNextEvent() const {
     // The board's two frame timers: 60.15 Hz into CA1, and the LCD VBL edge.
     tighten((cpuHz_ * 20 - tickAcc_ + 1202) / 1203);
     const int64_t frame = cpuHz_ / 60;
-    const int64_t vblAt = frame * 400 / 445;
+    const int64_t vblAt = hasCsc() ? frame * 480 / 525 : frame * 400 / 445;
     tighten(framePos_ < vblAt ? vblAt - framePos_ : frame - framePos_);
 
     // NOT bounded: the SCSI controller and the drives — pure state between
@@ -596,10 +612,13 @@ void MscMemory::tick(int cpuCycles) {
     framePos_ += cpuCycles;
     const int64_t frame = cpuHz_ / 60;
     framePos_ %= frame;
-    bool vbl = framePos_ >= frame * 400 / 445;
+    bool vbl = framePos_ >= (hasCsc() ? frame * 480 / 525 : frame * 400 / 445);
     if (vbl != vblState_) {
         vblState_ = vbl;
-        pvia_.slotIrq(PseudoVia::VBL, vbl);
+        if (hasCsc()) {
+            if (vbl) csc_.vblank();
+            pvia_.slotIrq(PseudoVia::VBL, csc_.irq());
+        } else pvia_.slotIrq(PseudoVia::VBL, vbl);
     }
 
     // ASC + SCC run in the C15M domain.

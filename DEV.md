@@ -87,7 +87,7 @@ hand-maintained backlog or overview.
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
 inside that section. Twelve platforms in eleven sections (VASP shares
-Sonora's), 43 profiles
+Sonora's), 44 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -299,8 +299,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **43** profiles are enumerated
-  (`MachineCatalog.h:56-73`, tags 1-43 contiguous) and each of the **12**
+  append, never renumber. All **44** profiles are enumerated
+  (`MachineCatalog.h:56-73`, tags 1-44 contiguous) and each of the **12**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
@@ -890,7 +890,7 @@ the typed `--machine-profile=duo210|duo250` is the selector (no environment
 spelling). The 250's active-matrix panel is invisible to the ROM (MAME gives
 every GSC Duo panel id 6). MAME enables an FPU on its 250; POM68K does not —
 Apple's ROM lists all three among the optional-FPU machines (the FPU lives
-in the Duo Dock, `USTNonCritTsts.a:3681-3683`), and `MscCpu.h` keeps none.
+in the Duo Dock, `USTNonCritTsts.a:3681-3683`), and those three profiles keep none.
 Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 `MscMemory.h:179-209` — the LC-family `$50Fxxxxx` shape with three deltas: a
@@ -899,6 +899,18 @@ and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 Box IDs at `$5FFFFFFC`: Duo 210 `$A55A1004`, **230 `$A55A1005`**, 250
 `$A55A1006` — decoded by the ROM into BoxFlag 23 / 26 / 32
 (`boxPowerBookDuo210/230/250`, mac-rom `InternalOnlyEqu.a:1043-1052`).
+
+The Duo 270c (`Duo270c`, id 44) uses its own `0024D346` ROM, a
+68882 and CPU ID `$A55A1002` (BoxFlag 71, Gestalt 77). `CscVideo.h`
+implements its CSC registers at `$50F20000-$50F2007F`, palette RGB
+ports, 1/2/4/8bpp and RGB555, a 640×480 panel (400-line modes centered),
+and 2 MB mirrored VRAM within `$60000000-$60FFFFFF`, following MAME's
+`csc.cpp`. VBL is latched/acknowledged through CSC status `$14` before
+reaching the MSC pseudo-VIA. The GUI publishes the panel's actual height.
+Only this new profile appends CSC to its save-state payload; the GSC
+profiles retain their byte layout. `msc_parity_test` covers the bus,
+pixels, VBL and machine-state round trip; `duo270c_boot_etalon` and its
+agent variant exercise the real ROM and System 7.5.5.
 
 What makes it a platform rather than a variant: **there is no Egret or
 Cuda**. Power, clock, PRAM, the matrix keyboard, the trackball and the
@@ -918,7 +930,7 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   persisted byte for byte in MAME's layout, including the `$91` power-flag
   scrub on load (`MscMemory.cpp`). It is the one platform where the battery
   file is not a `Rtc`/MCU XPRAM dump.
-- **Screen is fixed 640×400 grayscale** (`MscMemory::decodeScreen`), depth
+- **Screen is fixed 640×400 grayscale** (`MscMemory::decodeScreen`) on the GSC models, depth
   from GSC register 4 bits 0-1: 0 → 1 bpp, 1 → 2 bpp, 2 → 4 bpp; pen *p* of
   16 renders as the P2/P5 gray `((15-p)<<4) | $F`.
 - **Input is the PMU's own hardware**, not its ADB modem cell: the matrix
@@ -2133,7 +2145,7 @@ defaulted policy parameter. Only the Q605 pair was documented before 2026-07-31:
 | `POM68K_CENTRIS_FPU` / `_BAREFPU` / `_CACHE_BOOST` | the same three for `CentrisCpu` |
 | `POM68K_Q700_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q700Cpu` |
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
-| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:188-189` and siblings) |
+| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:194-195` and siblings) |
 | `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu` — **not** `SonoraCpu` or `MscCpu`, which never read it) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
 | `POM68K_040_DCACHE` | `1` enables the architectural 040 I/D-cache model; line data, WT/CB/NC, copyback, CPUSH/CINV, snooping and timing are complete, but the product default stays cacheless until the cache-aware JIT recovers the real-ROM speed budget (`docs/CACHE_040.md`) |

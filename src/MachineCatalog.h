@@ -70,6 +70,7 @@ enum class SnapMachine : std::uint32_t {
     Mac128K = 38, Mac512K = 39,
     Mac512Ke = 40, MacIIFDHD = 41,
     Duo210 = 42, Duo250 = 43,
+    Duo270c = 44,
 };
 
 struct MachineProfile {
@@ -138,6 +139,7 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 210 (25 MHz)", "duo210", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo210, "roms/macduo230.rom", "ECFA989B"},
     {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 230 (33 MHz)", "duo230", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo230, "roms/macduo230.rom", "ECFA989B"},
     {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 250 (active matrix)", "duo250", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo250, "roms/macduo230.rom", "ECFA989B"},
+    {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 270c (color)", "duo270c", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo270c, "roms/macduo270c.rom", "0024D346"},
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);
@@ -147,6 +149,7 @@ constexpr StorageCapabilities storageCapabilities(const MachineProfile& profile)
         case SnapMachine::Duo210:
         case SnapMachine::Duo230:
         case SnapMachine::Duo250:
+        case SnapMachine::Duo270c:
             return {FloppyKind::None, false, true, true};
         // The only profiles without a SCSI bus: it arrived with the Plus.
         // The early compacts keep the external floppy port (DB-19) the 128K shipped with.

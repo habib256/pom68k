@@ -24,8 +24,12 @@ brings the same Finder back. Input: the KEYBOARD matrix (2026-08-13) and the
 trackball quadrature counters (2026-08-14), gated by `duo230_input_etalon`.
 **The Duo 210 and Duo 250 joined as the 42nd and 43rd profiles** (2026-10-14,
 `duo210_boot_etalon` / `duo250_boot_etalon`, § *The 210/250 variants*). Next:
-the GUI lid control, the 270c (CSC), then the PB150, whose ROM is the only
-oracle.
+the 280/280c (68LC040), then the PB150, whose ROM is the only oracle.
+The Duo 270c joined as profile 44 on 2026-10-19: its own `0024D346` ROM,
+68882 and CSC 640×480 color display reach the pinned System 7.5.5 Finder;
+the agent gate launches Disques and mounts a hot-attached SCSI volume.
+`CscVideo.h` owns palette, pixels and latched VBL; `msc_parity_test` also
+round-trips the new machine's video state and rejects a GSC profile id.
 
 ---
 
@@ -187,7 +191,7 @@ defaults: `DEV.md` § 5.
 | **Duo 230** | 030 @ 33 MHz | GSC 640×400×4bpp gray | **full** (`macpd230`) | **shipped — oracle-backed** |
 | Duo 210 | 030 @ 25 MHz (`kCpuHz210`) | same | full | **shipped 2026-10-14** (clock + CPU ID) |
 | Duo 250 | 030 @ 33 | same, active matrix | full | **shipped 2026-10-14** (CPU ID) |
-| Duo 270c | 030+FPU | CSC 640×480×16bpp color | full | after a CSC port |
+| Duo 270c | 030+FPU | CSC 640×480×16bpp color | full | **shipped 2026-10-19** |
 | Duo 280/280c | **040** @ 33 | CSC | full | 040 seam reuse |
 | **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520 method (ROM as the only oracle) |
 
@@ -348,7 +352,7 @@ different address width, stack window, vectors, map and peripherals) plus
    the KeyMap and the guest's own Mouse global — independently of the persist
    leg.
 5. ◐ Variants: **Duo 210/250 ✅ 2026-10-14** (§ *The 210/250 variants*),
-   270c (CSC), 280 (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
+   **270c delivered** (CSC), 280 (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
    oracle).
 6. ✅ **The actual point — power management observable.** The **CPU
    power-down half** landed 2026-08-13: `power_cycle_w` was a milestone-1

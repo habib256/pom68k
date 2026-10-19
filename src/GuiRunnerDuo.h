@@ -126,7 +126,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         const auto status = ctx.machine.status();
         ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine,
                     status.pc, status.clock);
-        ImGui::Text("overlay=%d  MMU=%s  PG&E hold=%d  GSC mode=$%02X",
+        ImGui::Text("overlay=%d  MMU=%s  PG&E hold=%d  LCD mode=$%02X",
                     status.overlay ? 1 : 0,
                     status.mmu ? "on" : "off",
                     status.held ? 1 : 0, status.gscMode);

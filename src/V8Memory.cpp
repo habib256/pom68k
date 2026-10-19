@@ -1001,9 +1001,9 @@ void V8Memory::applyMachineId() {
     // wedge the transport (validated: pull-ups on PB4/PB5 black-screen
     // the boot etalon).
     // Tinker Bell reads a plain $84 (v8.cpp:946-949, no diag bit OR).
-    // PA0 reads HIGH, never from the FPU socket: the ROM requires it high at
-    // $A4644C (low = factory test monitor), so MAME's `0xd4 | config` is code
-    // it never reaches. CHANGELOG 2026-09-17 (fourth).
+    // PA0 is the diagnostic-mode input, high for normal operation.
+    // MAME's V8-local :v8:config is distinct from the machine FPU :config.
+    // The socket is probed in CPU space instead (Cpu030, $22000, FC=7).
     via_.setInA(model_ == Model::ClassicII     ? uint8_t(0x93)
                 : model_ == Model::ColorClassic ? uint8_t(0x82)
                 : model_ == Model::MacTv        ? uint8_t(0x84)
