@@ -1,3 +1,4 @@
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kPbColorGates.cmake)
 # Jaws and Niagra profiles share the bounded CPU/PMU bridge.
 foreach(model pb145 pb145b pb170 pb160 pb165 pb180)
     add_test(NAME ${model}_boot_etalon COMMAND pb140_boot_etalon --${model})

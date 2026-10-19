@@ -321,11 +321,13 @@ void capture(const fs::path& root) {
     const fs::path floppy = dir / "boot.dsk";
     const fs::path ide = dir / "ide.hda";
     const fs::path adb = dir / "fw" / "adb.bin";
+    const fs::path pmu = dir / "fw" / "pmu.bin";
+    const fs::path video = dir / "fw" / "pbvideo.bin";
     writeFile(rom, rom512(0x35C28F5F));
     writeFile(disk, "disk");
     writeFile(floppy, "floppy");
     writeFile(ide, "ide");
-    writeFile(adb, "adb");
+    writeFile(adb, "adb");writeFile(pmu,"pmu");writeFile(video,"video");
     const StartupSnapshot environment{
         {"POM68K_CPU_ENGINE", "interp"},
         {"POM68K_JIT_BACKEND", "threaded"},
@@ -348,6 +350,8 @@ void capture(const fs::path& root) {
     };
     Argv argv({"--machine-profile=lcii", "--daynaport=4",
                "--firmware-override=adb:hle:" + utf8FromPath(adb),
+               "--firmware-override=pmu:lle:" + utf8FromPath(pmu),
+               "--firmware-override=pbvideo:lle:" + utf8FromPath(video),
                "--atalk-server=Mon serveur", "--atalk-volume=",
                "--atalk-gateway=10.0.0.1/24", utf8FromPath(rom),
                utf8FromPath(disk)});
@@ -379,7 +383,9 @@ void capture(const fs::path& root) {
     const auto& f1 = again.core().firmware;
     check(f1.adbLle == f0.adbLle && f1.adbPath == f0.adbPath &&
               f1.egretLle == f0.egretLle && f1.cudaLle == f0.cudaLle &&
-              f1.tobyDeclLle == f0.tobyDeclLle && !f0.adbLle,
+              f1.tobyDeclLle == f0.tobyDeclLle && !f0.adbLle &&
+              f1.pmuLle && f1.pmuPath==utf8FromPath(pmu) &&
+              f1.colorVideoLle && f1.colorVideoPath==utf8FromPath(video),
           "reopened: firmware provenance");
     const NetworkConfig& n0 = original.network();
     const NetworkConfig& n1 = again.network();

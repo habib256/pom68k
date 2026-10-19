@@ -361,10 +361,10 @@ SessionParse parseSession(std::string_view text, const fs::path& source,
             const std::string_view head = std::string_view(value).substr(
                 0, mode == std::string::npos ? value.size() : mode);
             const bool known = mode != std::string::npos &&
-                choiceAllowed("adb|egret|cuda|toby", head.substr(0, target)) &&
+                choiceAllowed("adb|egret|cuda|toby|pmu|pbvideo", head.substr(0, target)) &&
                 choiceAllowed("lle|hle", head.substr(target + 1));
             if (!known) {
-                fail(lineNumber, what + "expected <adb|egret|cuda|toby>:"
+                fail(lineNumber, what + "expected <adb|egret|cuda|toby|pmu|pbvideo>:"
                                  "<lle|hle>:<path>, got `" + value + "`");
                 continue;
             }
@@ -463,6 +463,8 @@ SessionCapture SessionCapture::from(const RuntimeConfig& config) {
         {FirmwareTarget::Egret, firmware.egretLle, firmware.egretPath},
         {FirmwareTarget::Cuda, firmware.cudaLle, firmware.cudaPath},
         {FirmwareTarget::TobyDecl, firmware.tobyDeclLle, firmware.tobyDeclPath},
+        {FirmwareTarget::Pmu, firmware.pmuLle, firmware.pmuPath},
+        {FirmwareTarget::ColorVideo, firmware.colorVideoLle, firmware.colorVideoPath},
     };
     capture.daynaPortId = config.core().bus.daynaPortId;
     capture.appleTalk = config.network().appleTalk;

@@ -46,7 +46,7 @@ void applyMachineProfile(MachineSelectionConfig& selection, CpuConfig& cpu,
     case SnapMachine::Quadra800:
         selection.djMemc = profile;
         break;
-    case SnapMachine::Pb160: case SnapMachine::Pb165: case SnapMachine::Pb180:
+    case SnapMachine::Pb160: case SnapMachine::Pb165: case SnapMachine::Pb180: case SnapMachine::Pb180c:
         selection.niagra = profile; break;
     case SnapMachine::Q700:
     case SnapMachine::Quadra900: case SnapMachine::Pb140: case SnapMachine::Pb170: case SnapMachine::Pb145: case SnapMachine::Pb145B:

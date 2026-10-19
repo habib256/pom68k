@@ -18,7 +18,7 @@ int PlatformComposers::run(app::MachineSession& session,
         session.takeRom(), session.romName(),
         session.config().mediaArguments(), profile.platform, profile.snapshot};
     switch (profile.platform) {
-    case PlatformKind::Niagra: case PlatformKind::Jaws:
+    case PlatformKind::Pangola: case PlatformKind::Niagra: case PlatformKind::Jaws:
         return composePb030(std::move(launch), services);
     case PlatformKind::Compact:
         return composeCompact(std::move(launch), services);

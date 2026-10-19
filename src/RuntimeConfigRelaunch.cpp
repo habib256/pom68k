@@ -21,6 +21,7 @@ std::string_view firmwareTargetSlug(FirmwareTarget target) {
     case FirmwareTarget::Egret: return "egret";
     case FirmwareTarget::Cuda: return "cuda";
     case FirmwareTarget::TobyDecl: return "toby";
+    case FirmwareTarget::ColorVideo: return "pbvideo";
     case FirmwareTarget::Pmu: return "pmu";
     }
     return {};

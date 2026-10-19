@@ -20,17 +20,22 @@ int main(int argc,char** argv) {
     const std::string_view slug=argument.starts_with("--")?argument.substr(2):argument;
     const pom68k::MachineProfile* profile=nullptr;
     for(const auto& candidate:pom68k::kMachineProfiles)
-        if(candidate.slug==slug && (candidate.platform==pom68k::PlatformKind::Jaws || candidate.platform==pom68k::PlatformKind::Niagra)) profile=&candidate;
+        if(candidate.slug==slug && (candidate.platform==pom68k::PlatformKind::Pangola || candidate.platform==pom68k::PlatformKind::Jaws || candidate.platform==pom68k::PlatformKind::Niagra)) profile=&candidate;
     if(!profile) {std::fprintf(stderr,"Unknown Jaws profile\n");return 1;}
     const auto board=pom68k::pb030Profile(profile->snapshot);
-    const bool niagra=profile->platform==pom68k::PlatformKind::Niagra;
+    const bool niagra=profile->platform!=pom68k::PlatformKind::Jaws;
+    const bool color=profile->platform==pom68k::PlatformKind::Pangola;
+    const auto video=color?testasset::find("roms/archive/macroms/68k/1M/Powerbook 180c video card.bin"):std::string();
+    if(color && video.empty()) {std::puts("SKIP: PowerBook color video ROM required");return 0;}
+    if(color) testasset::report({video});
     const auto rom=testasset::find(niagra?"roms/1MB ROMs/1992-10 - E33B2724 - Powerbook 160 & 165 & 165c & 180 & 180c.ROM":"roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
     const auto fw=testasset::find(niagra?"roms/archive/macroms/pmu/Powerbook-160-165-180__Powerbook 160 PMU.bin":"roms/archive/macroms/pmu/Powerbook-140-145-170__PMU.bin");
     const auto disk=testasset::find("hdv/System 7.5.5 HD.dsk");
     if(rom.empty() || fw.empty() || disk.empty()) {std::puts("SKIP: PowerBook ROM/PMU/System 7.5.5 required");return 0;}
     testasset::report({rom,fw,disk});
     auto config=pom68k::defaultCoreConfig();
-    Pb030Memory mem(config,8u<<20,board.cpuHz,niagra);
+    Pb030Memory mem(config,8u<<20,board.cpuHz,niagra,color?480:0);
+    if(color && !mem.colorVideo().loadRom(bytes(video))) return 1;
     if(!mem.loadRom(bytes(rom)) || !mem.pmu().loadFirmware(bytes(fw)) || !mem.attachScsi(disk)) return 1;
     if(!infinitehd::attach(mem,disk)) return 1;
     if(!agentboot::install(mem)) return 1;
@@ -47,7 +52,7 @@ int main(int argc,char** argv) {
     std::vector<uint32_t> fb;mem.decode(fb);
     if(std::getenv("POM68K_DUMP")) {
         FILE* f=std::fopen("pb140_screen.ppm","wb");
-        if(f) {std::fprintf(f,"P6\n640 400\n255\n");for(auto p:fb){uint8_t c[]={uint8_t(p>>16),uint8_t(p>>8),uint8_t(p)};std::fwrite(c,1,3,f);}std::fclose(f);}
+        if(f) {std::fprintf(f,"P6\n640 %d\n255\n",mem.screenHeight());for(auto p:fb){uint8_t c[]={uint8_t(p>>16),uint8_t(p>>8),uint8_t(p)};std::fwrite(c,1,3,f);}std::fclose(f);}
     }
     int menu=0,desk=0;
     for(int y=2;y<18;++y) for(int x=0;x<640;++x) menu+=(fb[y*640+x]&255)<128;
@@ -56,10 +61,12 @@ int main(int argc,char** argv) {
     std::printf("%s pc=%08x halted=%d box=%u menu=%.3f desktop=%.3f SCSI=%ld\n",
         profile->slug,cpu.getPC0(),cpu.isHalted(),mem.peek8(0xcb3),menuRatio,deskRatio,mem.scsi().commands);
     bool ok=!cpu.isHalted() && mem.peek8(0xcb3)==board.boxFlag && mem.scsi().commands>500 &&
-        menuRatio<0.35 && deskRatio>0.15 && deskRatio<0.90;
+        // Grayscale desktop dithering is not a color LCD criterion; the latter
+        // is qualified by its full-height pixel pin and guest Finder/input probe.
+        menuRatio<0.35 && (color?fb.size()==640u*480:(deskRatio>0.15 && deskRatio<0.90));
     const auto pin=pixelpin::settleAndHash([&](std::vector<uint32_t>& out){mem.decode(out);},
         [&](long n){for(long i=0;i<n;++i) cpu.runCycles(mem.cpuHz()/60);},
-        [&](){return mem.scsi().commands;},640,400,20);
+        [&](){return mem.scsi().commands;},640,mem.screenHeight(),20);
     ok=pixelpin::check((std::string(profile->slug)+"_boot_etalon").c_str(),pin) && ok;
     if(ok) ok=pb030probe::check(mem,cpu,profile->snapshot);
     ok=agentboot::check(mem,cpu,mem.cpuHz()/60,ok);

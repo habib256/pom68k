@@ -234,7 +234,7 @@ void peripheralWindow(const PeripheralHost& host) {
             ImGui::SetTooltip("%s", tip.c_str());
         }
         ImGui::SameLine();
-        ImGui::BeginDisabled(d.target == FirmwareTarget::Pmu);
+        ImGui::BeginDisabled(d.target == FirmwareTarget::Pmu || d.target == FirmwareTarget::ColorVideo);
         if (ImGui::RadioButton("Software substitute (HLE)",
                                want.mode == lle::Mode::Hle)) {
             want.mode = lle::Mode::Hle;

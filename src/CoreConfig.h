@@ -100,6 +100,8 @@ struct CoreFirmwareConfig {
     std::optional<std::string> egretPath;
     std::optional<std::string> cudaPath;
     std::optional<std::string> tobyDeclPath;
+    bool colorVideoLle = true;
+    std::optional<std::string> colorVideoPath;
     bool pmuLle = true;
     std::optional<std::string> pmuPath;
     std::optional<std::string> root;

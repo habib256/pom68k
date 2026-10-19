@@ -406,7 +406,7 @@ add_library(pom68k_core STATIC
     src/SerialHostTransport.cpp # SCC async — host PTY/TCP byte transport
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
     src/R65c02.cpp src/M740.cpp src/M50753.cpp # Apple PIC and Power Manager MCUs
-    src/Pb030Pmu.cpp src/Pb030Memory.cpp src/Pb030Cpu.cpp src/Pb030Persistence.cpp # Jaws PowerBook board
+    src/PangolaVideo.cpp src/Pb030ColorFirmware.cpp src/Pb030Pmu.cpp src/Pb030Memory.cpp src/Pb030Cpu.cpp src/Pb030Persistence.cpp # PowerBook boards and color LCD
     src/ApplePic.cpp      # IOP M2 — Apple 343S1021 PIC (host window/DMA/timer)
     src/IIfxMemory.cpp    # IOP M3 — Mac IIfx map (OSS + 2 IOPs + SCSIDMA)
     src/IIfxCpu.cpp       # IOP M3 — Moira 68030 wrapper (IIfx, 40 MHz)
@@ -478,7 +478,7 @@ target_compile_definitions(pom68k_core PUBLIC ${POM68K_JIT_DEFS})
 add_library(pom68k_app STATIC
     src/ProcessEnvironment.cpp
     src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp src/RuntimeConfigSerial.cpp
-    src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp src/RuntimeConfigProfile.cpp
+    src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp src/RuntimeConfigProfile.cpp src/RuntimeConfigFirmware.cpp
     src/RuntimeConfigRelaunch.cpp src/RuntimeConfigNetwork.cpp
     src/MachineFactory.cpp src/MachineSession.cpp src/SessionFile.cpp)
 target_include_directories(pom68k_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

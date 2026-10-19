@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 499 gates
+## Union across hosts — 503 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 292 |
-| `etalon-core` | 14 |
+| `etalon` | 295 |
+| `etalon-core` | 15 |
 | `gui` | 3 |
 | `jit` | 45 |
 | `jit-fast` | 8 |
-| `m030` | 124 |
+| `m030` | 127 |
 | `m040` | 102 |
 | `smoke` | 9 |
-| `unit` | 158 |
+| `unit` | 159 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -38,51 +38,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-494 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+498 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+
+| dimension | value | gates |
+|---|---|---|
+| assets | none | 130 |
+| assets | optional | 16 |
+| assets | required | 352 |
+| host | a64 | 4 |
+| host | any | 488 |
+| host | native | 6 |
+| scope | component | 133 |
+| scope | engine | 21 |
+| scope | profile | 341 |
+| scope | repository | 3 |
+| tier | daily | 130 |
+| tier | full | 353 |
+| tier | platform | 15 |
+| slots_src | assumed | 378 |
+| slots_src | measured | 120 |
+
+Scheduling cost if every gate ran at once: 733 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+
+## Registered on x86_64
+
+499 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 129 |
 | assets | optional | 16 |
-| assets | required | 349 |
-| host | a64 | 4 |
-| host | any | 484 |
-| host | native | 6 |
-| scope | component | 132 |
-| scope | engine | 21 |
-| scope | profile | 338 |
-| scope | repository | 3 |
-| tier | daily | 129 |
-| tier | full | 351 |
-| tier | platform | 14 |
-| slots_src | assumed | 374 |
-| slots_src | measured | 120 |
-
-Scheduling cost if every gate ran at once: 729 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
-
-## Registered on x86_64
-
-495 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
-
-| dimension | value | gates |
-|---|---|---|
-| assets | none | 128 |
-| assets | optional | 16 |
-| assets | required | 351 |
-| host | any | 484 |
+| assets | required | 354 |
+| host | any | 488 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 132 |
+| scope | component | 133 |
 | scope | engine | 22 |
-| scope | profile | 338 |
+| scope | profile | 341 |
 | scope | repository | 3 |
-| tier | daily | 128 |
-| tier | full | 353 |
-| tier | platform | 14 |
-| slots_src | assumed | 382 |
+| tier | daily | 129 |
+| tier | full | 355 |
+| tier | platform | 15 |
+| slots_src | assumed | 386 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 854 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 858 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -216,3 +216,6 @@ overwrites it, including a one-gate `ctest -R`.
 | Oct 08 23:32 +04 | aarch64 | default | 115 | 115 | 0 | 0 | PCAP increment: all asset-none gates execute outside socket sandbox after citation/size fixes; no skips |
 | Oct 14 11:37 +04 | x86_64 | default | 44 | 43 | 1 | 0 | ctest -L wasm, first WebAssembly pin replay (Emscripten 5.0.4, node 22.23, threaded/interp floor), one ctest -R per gate under the shared host lock: 43 executed, every pin equal to the native row; 1 asset skip (System 6.0.8 floppy absent here, natively too); 9062 s summed test time |
 | Oct 14 18:14 +04 | x86_64 | default | 31 | 28 | 3 | 0 | Duo 210/250 profiles: duo210/duo250 boot (BoxFlag 23/32, Finder, pin 92faf30f6e0f9293) and agent variants, every duo230 gate, savestate/catalogue/config/docs/file-size; the 3 wasm_duo* rows soft-skip without the Emscripten tree |
+| Oct 19 21:23 +04 | x86_64 | default | 9 | 9 | 0 | 0 | PB180c native/interpreter/agent and PB160 native/interpreter; synthetic Pangola and shared PowerBook contracts; private assets present |
+| Oct 19 21:29 +04 | x86_64 | default | 8 | 8 | 0 | 0 | Native-required jit-fast after Pangola product integration; all 8 executed |
+| Oct 19 21:30 +04 | x86_64 | default | 3 | 3 | 0 | 0 | Text sessions preserve required PMU/video firmware; 55-profile storage matrix and file-size contracts; all 3 executed |

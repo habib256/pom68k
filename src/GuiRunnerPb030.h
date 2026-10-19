@@ -123,10 +123,10 @@ int runPb030Gui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         const auto status = ctx.machine.status();
         ImGui::Text("%s  PC=%08X  clock=%lld", ctx.spec.cpuLine,
                     status.pc, status.clock);
-        ImGui::Text("overlay=%d  MMU=%s  PMU hold=%d  LCD 640x400",
+        ImGui::Text("overlay=%d  MMU=%s  PMU hold=%d  LCD 640x%d",
                     status.overlay ? 1 : 0,
                     status.mmu ? "on" : "off",
-                    status.held ? 1 : 0);
+                    status.held ? 1 : 0, ctx.machine.mem.screenHeight());
     });
 
     auto frame = [](void* opaque) {

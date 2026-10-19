@@ -43,7 +43,7 @@ inline bool check(Pb030Memory& mem,Pb030Cpu& cpu,pom68k::SnapMachine profile) {
     uint32_t tick=0;const bool readable=logical(0x16a,4,tick);
     const auto clock=cpu.getClock(),machineClock=cpu.machineClock();
     std::vector<uint32_t> pixels;mem.decode(pixels);
-    const auto pixelHash=pixelpin::hashRegion(pixels,640,400,20);
+    const auto pixelHash=pixelpin::hashRegion(pixels,640,mem.screenHeight(),20);
     std::vector<uint8_t> bytes;
     pom68k::save(mem,cpu,profile,bytes);
     std::string error;
@@ -59,7 +59,7 @@ inline bool check(Pb030Memory& mem,Pb030Cpu& cpu,pom68k::SnapMachine profile) {
     mem.decode(pixels);uint32_t restoredTick=0;
     const bool restored=loaded && cpu.getClock()==clock &&
         cpu.machineClock()==machineClock && logical(0x16a,4,restoredTick) && restoredTick==tick &&
-        pixelpin::hashRegion(pixels,640,400,20)==pixelHash;
+        pixelpin::hashRegion(pixels,640,mem.screenHeight(),20)==pixelHash;
     for(int f=0;f<60;++f) frame();
     uint32_t laterTick=0;const bool running=logical(0x16a,4,laterTick) && laterTick>tick;
     std::printf("Jaws app=%s keyboard=%s/%s pointer=%08x->%08x restore=%s ticks=%u->%u TC=%08x\n",
