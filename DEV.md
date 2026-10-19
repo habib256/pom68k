@@ -86,8 +86,8 @@ hand-maintained backlog or overview.
 
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
-inside that section. Thirteen platforms in twelve sections and the Jaws board note (VASP shares
-Sonora's), 51 profiles
+inside that section. Fourteen platforms in twelve sections and the Jaws/Niagra board note (VASP shares
+Sonora's), 52 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -103,6 +103,7 @@ ROM identity and stable save-state id live).
 | Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700--900--950) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
+| Niagra + Misc GLU | **PowerBook 160** | — | [board note](docs/PB030_BRINGUP.md) |
 | Jaws + Misc GLU | **PowerBook 140** | PowerBook 145/145B, 170 | [board note](docs/PB030_BRINGUP.md) |
 | MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), 250; 270c (68882/CSC), 280/280c (68LC040/CSC); PB150 (GSC/IDE/SWIM) | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
 
@@ -300,8 +301,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **51** profiles are enumerated
-  (`MachineCatalog.h:56-73`, tags 1-51 contiguous) and each of the **13**
+  append, never renumber. All **52** profiles are enumerated
+  (`MachineCatalog.h:56-73`, tags 1-52 contiguous) and each of the **13**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
@@ -453,7 +454,7 @@ emulators just mirror via a mask and let the ROM discover it.
   (deterministic tests). The silicon part here is the 343-0040 with 20
   bytes of NVRAM, but `Rtc` runs the -0042 superset — one flat 256-byte
   XPRAM on every platform, and the compact ROMs only touch the low end.
-  **PRAM persists on all thirteen platforms**, `loadPram`/`savePram` on the
+  **PRAM persists on all fourteen platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
   family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:143` for
   the compacts) (`MacMemory.h:186-187`).
@@ -2704,7 +2705,7 @@ only maintained rosters.
 Labels are **derived from the test name** in one final policy module
 (`cmake/Pom68kGatePolicy.cmake:59-115`): `^wasm_` → `wasm` and nothing
 else (the WebAssembly pin replays); name ends in `etalon` → `etalon` (+
-`etalon-core` if it is in the thirteen-name `POM68K_ETALON_CORE` list, whose
+`etalon-core` if it is in the fourteen-name `POM68K_ETALON_CORE` list, whose
 membership is a configure-time `FATAL_ERROR` if a name stops resolving);
 the three `gui_*smoke_test` gates → `gui`; anything else → `unit`; `^jit_` → `jit`; a
 substring match on the 68040 machine names → `m040`, and on the 68030
@@ -2727,7 +2728,7 @@ side of this loop.
 
 ### The GUI ↔ machine-thread contract (`src/MachineHost.h`)
 
-All thirteen platform families run on one CRTP host:
+All fourteen platform kinds run on one CRTP host:
 `MachineHost<Derived, Mem, Cpu, Audio>`. It owns the thread, the command
 queue, the framebuffer double buffer, the status atomics, the `SaveStateSlot`
 and the JIT gauge snapshot. Eight host types instantiate it: `CompactMachine`,

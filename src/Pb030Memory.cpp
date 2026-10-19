@@ -3,8 +3,9 @@
 #include "Pb030Cpu.h"
 #include <algorithm>
 
-Pb030Memory::Pb030Memory(const pom68k::CoreConfig& config,uint32_t ram,int64_t hz)
-    :ram_(ram,0),rom_(kRomSize,0xff),vram_(kVramSize,0),cpuHz_(hz),pmu_(hz),asc_(hz) {
+Pb030Memory::Pb030Memory(const pom68k::CoreConfig& config,uint32_t ram,int64_t hz,bool niagra)
+    :ram_(ram,0),rom_(kRomSize,0xff),vram_(niagra?0x20000:kVramSize,0),
+     extVram_(niagra?0x80000:0,0),niagra_(niagra),cpuHz_(hz),pmu_(hz),asc_(hz) {
     via_.configureTrace(config.peripherals.adbLleTrace);
     rtc_.configure(config.peripherals.appleTalkPram,config.peripherals.rtcTrace);
     rtc_.factoryDefaults();
@@ -32,7 +33,7 @@ bool Pb030Memory::attachScsi(const std::string& path,bool writeBack,int id) {
 }
 void Pb030Memory::reset() {
     overlay_=true;resetPending_=resetOverlayPending_=false;
-    viaAcc_=tickAcc_=c15Acc_=secAcc_=0;
+    viaAcc_=tickAcc_=c15Acc_=secAcc_=0;niagraVideo_.reset();
     via_.reset();via_.setInA(0x93);via_.setInB(8|rtc_.dataBit());
     pvia_.reset();rtc_.reset();asc_.reset();scsi_.reset();scc_.reset();
     scc_.setClocks(cpuHz_,7833600);scc_.setAbortIdle(true);
@@ -102,7 +103,11 @@ uint8_t Pb030Memory::peek8(uint32_t a) const {
         return a<ram_.size()?ram_[a]:0xff;
     }
     if(a<0x50000000) return rom_[a&(kRomSize-1)];
-    if(a>=0xfee00000 && a<0xfee10000) return vram_[a&(kVramSize-1)];
+    if(niagra_) {
+        if(a>=0x60000000 && a<0x70000000) return vram_[a&0x1ffff];
+        if(a>=0xfe100000 && a<0xfe180000) return extVram_[a&0x7ffff];
+        if(a>=0xfe0fe000 && a<0xfe0fe100) return (a&255)==4?0x70:0;
+    } else if(a>=0xfee00000 && a<0xfee10000) return vram_[a&(kVramSize-1)];
     return 0;
 }
 uint8_t Pb030Memory::read8(uint32_t a) {
@@ -111,8 +116,12 @@ uint8_t Pb030Memory::read8(uint32_t a) {
         if(overlay_) { overlay_=false;mapChanged(); }
         return rom_[a&(kRomSize-1)];
     }
-    if(a>=0xfee00000 && a<0xfee10000) return vram_[a&(kVramSize-1)];
-    if(a<0x52000000) return ioRead(a&0xfffff);
+    if(niagra_) {
+        if(a>=0x60000000 && a<0x70000000) return vram_[a&0x1ffff];
+        if(a>=0xfe100000 && a<0xfe180000) return extVram_[a&0x7ffff];
+        if(a>=0xfe0fe000 && a<0xfe0fe100) return (a&255)==4?0x70:0;
+    } else if(a>=0xfee00000 && a<0xfee10000) return vram_[a&(kVramSize-1)];
+    if(a<0x52000000 && (!niagra_ || (a&0xfff00000)==0x50f00000)) return ioRead(a&0xfffff);
     return 0;
 }
 void Pb030Memory::write8(uint32_t a,uint8_t v) {
@@ -124,11 +133,14 @@ void Pb030Memory::write8(uint32_t a,uint8_t v) {
         return;
     }
     if(a<0x50000000) return;
-    if(a>=0xfee00000 && a<0xfee10000) {vram_[a&(kVramSize-1)]=v;return;}
-    if(a<0x52000000) ioWrite(a&0xfffff,v);
+    if(niagra_) {
+        if(a>=0x60000000 && a<0x70000000) {vram_[a&0x1ffff]=v;return;}
+        if(a>=0xfe100000 && a<0xfe180000) {extVram_[a&0x7ffff]=v;return;}
+    } else if(a>=0xfee00000 && a<0xfee10000) {vram_[a&(kVramSize-1)]=v;return;}
+    if(a<0x52000000 && (!niagra_ || (a&0xfff00000)==0x50f00000)) ioWrite(a&0xfffff,v);
 }
 uint16_t Pb030Memory::read16(uint32_t a) {
-    if(a>=0x50000000 && a<0x52000000) {
+    if(a>=0x50000000 && a<0x52000000 && (!niagra_ || (a&0xfff00000)==0x50f00000)) {
         const auto low=a&0xfffff;
         if(low<0x2000) {const uint16_t v=viaAccess(low,false);return uint16_t(v*0x101);}
         if(low>=0x4000 && low<0x6000) {const uint16_t v=ioRead(low);return uint16_t(v*0x101);}
@@ -138,7 +150,7 @@ uint16_t Pb030Memory::read16(uint32_t a) {
     const uint16_t hi=read8(a);return uint16_t((hi<<8)|read8(a+1));
 }
 void Pb030Memory::write16(uint32_t a,uint16_t v) {
-    if(a>=0x50000000 && a<0x52000000) {
+    if(a>=0x50000000 && a<0x52000000 && (!niagra_ || (a&0xfff00000)==0x50f00000)) {
         const auto low=a&0xfffff;
         if(low<0x2000) {viaAccess(low,true,uint8_t(v));viaAccess(low,true,uint8_t(v>>8));return;}
         if((low>=0x4000 && low<0x6000) || (low>=0x10000 && low<0x12000) ||
@@ -167,8 +179,10 @@ uint8_t Pb030Memory::ioRead(uint32_t a) {
         if(cpu_) cpu_->stall(5);
         return swim_.read((a>>9)&15);
     }
+    if(niagra_ && a>=0x20000 && a<0x22000) return niagraVideo_.gscRead(a-0x20000);
     if(a>=0x24000 && a<0x28000) busError();
     if(a>=0x80000 && a<0xc0000) {
+        if(niagra_) return niagraVideo_.controlRead(a,cpuHz_);
         if(((a-0x80000)>>12)==0x34 && !(a&3)) return cpuHz_==25000000?1:0;
     }
     return 0;
@@ -188,12 +202,14 @@ void Pb030Memory::ioWrite(uint32_t a,uint8_t v) {
         if(reg==0 && (a&0xfff)>=0x200) {dmaWrite(v);return;}
         scsi_.write(reg,v);scsiLines();return;
     }
-    if(a>=0x14000 && a<0x16000) {asc_.write(a-0x14000,v);return;}
+    if(a>=0x14000 && a<0x16000) {asc_.write(a-0x14000,v);if(niagra_) niagraVideo_.soundWritten();return;}
     if(a>=0x16000 && a<0x18000) {
         if(a&1) return;
         if(cpu_) cpu_->stall(5);
         swim_.write((a>>9)&15,v);return;
     }
+    if(niagra_ && a>=0x20000 && a<0x22000) {niagraVideo_.gscWrite(a-0x20000,v);return;}
+    if(niagra_ && a>=0x80000 && a<0xc0000) niagraVideo_.controlWrite(a,v);
     if(a>=0x80000 && a<0xc0000 && ((a-0x80000)>>12)==0x20) {
         // CPU-only wake reset preserves the RAM reset vectors (MAME jaws_w).
         resetPending_=true;
@@ -214,6 +230,7 @@ void Pb030Memory::tick(int cycles) {
     asc_.tick(cycles);scc_.tick(cycles);pmu_.tick(cycles);updateIrq();
 }
 void Pb030Memory::decode(std::vector<uint32_t>& frame) const {
+    if(niagra_) {niagraVideo_.decode(vram_,pmu_.displayBlank(),frame);return;}
     frame.resize(640*400);
     if(pmu_.displayBlank()) {std::fill(frame.begin(),frame.end(),0);return;}
     for(unsigned p=0;p<640*400;++p)

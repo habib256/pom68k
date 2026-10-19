@@ -38,15 +38,15 @@ struct Pb030Machine:MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost> 
 
 int pom68k::gui::composePb030(PlatformLaunch launch,GuiHostServices& services) {
     const auto* profile=pom68k::machineProfile(launch.selected);
-    if(!profile || profile->platform!=PlatformKind::Jaws) return 1;
+    if(!profile || (profile->platform!=PlatformKind::Jaws && profile->platform!=PlatformKind::Niagra)) return 1;
     const auto board=pb030Profile(profile->snapshot);
     const auto& config=services.config();
-    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,board.cpuHz);
+    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,board.cpuHz,profile->platform==PlatformKind::Niagra);
     if(!mem.loadRom(launch.rom) || !mem.selectPmuFirmware(config.core().firmware)) return 1;
     auto& cpu=services.own<Pb030Cpu>(mem,config.jit().resolved,config.core().cpu,board.fpu);
     mem.setCpu(&cpu);
     auto& audio=services.own<MacAudioHost>(config.devices().audio);
-    std::printf("Machine: %s (%s, Jaws + M50753)\n",profile->label,board.fpu?"68030 + 68882":"68030");
+    std::printf("Machine: %s (%s, %s + M50753)\n",profile->label,board.fpu?"68030 + 68882":"68030",mem.isNiagra()?"Niagra":"Jaws");
     const Pb030RunnerSpec spec{profile->label,profile->slug,"hdv/System 7.5.5 HD.dsk",
         board.cpuLine,MachineKind::PowerBook,profile->snapshot};
     return runPb030Gui<Pb030Machine>(mem,cpu,audio,spec,

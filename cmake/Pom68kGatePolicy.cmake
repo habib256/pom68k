@@ -12,13 +12,13 @@ include(${CMAKE_CURRENT_LIST_DIR}/Pom68kProductRegistry.cmake)
 #   ctest -L unit         ~1 min  everything needing no ROM or disk image
 #   ctest -L jit          ~8 min  every JIT gate, all four 68040 machines
 #   ctest -L m040         ~25 min the 68040 family on both engines
-#   ctest -L etalon-core          ONE profile per platform — 13 representatives
+#   ctest -L etalon-core          ONE profile per platform — 14 representatives
 #   ctest                         everything (the release gate)
 #
 # `etalon` on its own is 119 gates / ~3 h 45, which is a release gate and
 # not a pre-commit check — so the temptation to skip it grows with every
 # machine added. `etalon-core` is the answer to "does a change break a
-# PLATFORM": one representative profile from each of the 13 memory-map
+# PLATFORM": one representative profile from each of the 14 memory-map
 # implementations, chosen as the profile that platform was brought up on.
 # A change that survives it can still break a sibling PROFILE (a clock, a
 # model ID, an MCU), which is what the full label is for.
@@ -37,7 +37,7 @@ set(POM68K_ETALON_CORE
     q700_boot_etalon          # discrete 040     — Q700Memory
     q630_boot_etalon          # F108 + Valkyrie  — Q630Memory
     duo230_boot_etalon        # MSC + PG&E       — MscMemory
-    pb140_boot_etalon)        # Jaws + M50753     — Pb030Memory
+    pb140_boot_etalon pb160_boot_etalon) # Jaws / Niagra — Pb030Memory
 #
 # Labels are DERIVED from test names rather than declared per gate, so a
 # gate registered tomorrow is classified the moment it is added.
@@ -89,7 +89,7 @@ foreach(t IN LISTS pom68k_tests)
     # why a 68030 default measured on 2026-08-10 was still unflipped a
     # week later — the doubt was cheap, the proof was not.
     # `lc` alone would catch lc475/lc575/lc580, which are 68040 boards.
-    if(t MATCHES "lcii|lc_boot|lc3|lc520|lc550|classic2|cclassic|mactv|iivx|iivi|iisi|iici|iifx|duo(210|230|250|270|_)|pb140|pb145|pb170|pb150|pb030|rbv|sonora|vasp|msc_")
+    if(t MATCHES "lcii|lc_boot|lc3|lc520|lc550|classic2|cclassic|mactv|iivx|iivi|iisi|iici|iifx|duo(210|230|250|270|_)|pb140|pb145|pb160|pb170|pb150|pb030|rbv|sonora|vasp|msc_")
         list(APPEND lbl m030)
     endif()
     if(POM68K_PRODUCT_LLE_GATES AND
