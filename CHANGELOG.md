@@ -498,6 +498,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (fifth)** — [The M50753 executes PowerBook firmware and answers the parallel version command](#2026-10-19-m50753-pmu)
+
 - **2026-10-19 (fourth)** — [Register the PowerBook 150 test selectors](#2026-10-19-pb150-config-registry)
 
 - **2026-10-19 (third)** — [PowerBook 150: IDE boot, PG&E ADB ordering and SWIM head selection](#2026-10-19-pb150-jedi-adb)
@@ -1168,6 +1170,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-m50753-pmu"></a>
+## 2026-10-19 (fifth) — The M50753 executes PowerBook firmware and answers the parallel version command
+
+**The next portable controller is a different CPU.** `M740` models the
+Mitsubishi instruction set, page-zero stack, `$FFFE` reset vector,
+prioritized interrupt vectors, transfer flag, bit branches, indirect and
+special-page calls. `M50753` supplies the ROM/RAM map, GPIO directions,
+timers, interrupt controls and ADC. The existing R65C02 and PG&E execution
+paths are unchanged. Sources, attribution and limits live in
+`docs/PB030_BRINGUP.md`.
+
+**A real consumer precedes the platform.** The three private archive inputs
+for PowerBook 140/145/170, 160/165/180 and 165c/180c cold-start without a
+RAM seed or firmware patch. Each releases HALT/RESET through port 3 and
+answers Apple's `$EA` version command: `02B3`, `03A2`, `03A2`. The last two
+archive inputs are byte-identical, not separate firmware evidence. The
+old parallel protocol sends a zero payload count and receives the echo,
+reply count and two version bytes. Receive must wait for ACK low before
+asserting REQ; using the transmit ordering starts another incoming-byte
+handshake instead.
+
+**Three gates delimit the claim.** `m740_test` checks common binary
+ALU/data semantics against the Klaus-qualified R65C02 plus dedicated
+Mitsubishi addressing, stack, vector, transfer, bit, decimal and timing
+cases. `m50753_test` runs synthetic firmware and checks ports, interrupt
+acknowledgement, timer phase, ADC and state replay. Both are asset-free.
+`m50753_firmware_etalon` executes the actual dumps, pins their SHA-256,
+and proves byte-identical continuation after restoring an offered reply
+with ACK low. All three executed successfully on x86-64. AArch64 registry
+metadata was regenerated from CMake configuration, without an ARM execution
+claim. The preceding PowerBook 150 merge also finished green in Linux and
+Apple Silicon CI.
+
+This is a controller milestone. The catalogue stays at 47 profiles;
+PowerBook 140–180 still need a board/clock bridge, VIA and ADB wiring,
+RTC, LCD, storage, Finder and GUI/session integration. Timer X counter
+modes, serial I/O and PWM waveforms remain outside this implementation.
 
 <a id="2026-10-19-pb150-config-registry"></a>
 ## 2026-10-19 (fourth) — Register the PowerBook 150 test selectors

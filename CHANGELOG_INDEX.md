@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 677 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 678 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
-| [Machine bring-ups](#machine-bring-ups) | 87 |
+| [Machine bring-ups](#machine-bring-ups) | 88 |
 | [Build, packaging and release](#build-packaging-and-release) | 19 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -510,6 +510,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-14 (fourth)** — [The pixel pins replay under WebAssembly: 43 profiles, every value equal to the native pin](CHANGELOG.md#2026-10-14-wasm-pins)
 - **2026-10-14 (sixth)** — [The Duo gets its lid in the GUI: a capability the host reports, an input the machine thread applies, and no faked wake](CHANGELOG.md#2026-10-14-duo-lid-gui)
 - **2026-10-14 (third)** — [The Duo sleeps and wakes on its own code: the lid always ran the System's sleep, and a key, not the lid, wakes it](CHANGELOG.md#2026-10-14-duo-sleep)
+- **2026-10-19 (fifth)** — [The M50753 executes PowerBook firmware and answers the parallel version command](CHANGELOG.md#2026-10-19-m50753-pmu)
 - **2026-10-19 (fourth)** — [Register the PowerBook 150 test selectors](CHANGELOG.md#2026-10-19-pb150-config-registry)
 - **2026-10-19 (second)** — [Duo 280/280c expose the byte-wide MSC power-cycle command](CHANGELOG.md#2026-10-19-duo280-msc-byte-cycle)
 

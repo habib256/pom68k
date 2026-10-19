@@ -405,7 +405,7 @@ add_library(pom68k_core STATIC
     src/Scc8530Serial.cpp # SCC async byte-wire seam
     src/SerialHostTransport.cpp # SCC async — host PTY/TCP byte transport
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
-    src/R65c02.cpp        # IOP M1 — R65C02 core (Apple PIC, docs/IOP_BRINGUP.md)
+    src/R65c02.cpp src/M740.cpp src/M50753.cpp # Apple PIC and Power Manager MCUs
     src/ApplePic.cpp      # IOP M2 — Apple 343S1021 PIC (host window/DMA/timer)
     src/IIfxMemory.cpp    # IOP M3 — Mac IIfx map (OSS + 2 IOPs + SCSIDMA)
     src/IIfxCpu.cpp       # IOP M3 — Moira 68030 wrapper (IIfx, 40 MHz)
