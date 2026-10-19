@@ -71,7 +71,7 @@ enum class SnapMachine : std::uint32_t {
     Mac512Ke = 40, MacIIFDHD = 41,
     Duo210 = 42, Duo250 = 43,
     Duo270c = 44, Duo280 = 45, Duo280c = 46, Pb150 = 47,
-    Pb140 = 48, Pb170 = 49, Pb145 = 50, Pb145B = 51, Pb160 = 52, Pb165 = 53, Pb180 = 54, Pb180c = 55,
+    Pb140 = 48, Pb170 = 49, Pb145 = 50, Pb145B = 51, Pb160 = 52, Pb165 = 53, Pb180 = 54, Pb180c = 55, Pb165c = 56,
 };
 
 struct MachineProfile {
@@ -152,6 +152,7 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"Niagra + Misc GLU (PowerBook)", "PowerBook 165 (33 MHz, grayscale)", "pb165", MachineKind::PowerBook, PlatformKind::Niagra, CpuFamily::M68030, SnapMachine::Pb165, "roms/macpb160.rom", "E33B2724"},
     {"Niagra + Misc GLU (PowerBook)", "PowerBook 180 (33 MHz, 68882)", "pb180", MachineKind::PowerBook, PlatformKind::Niagra, CpuFamily::M68030, SnapMachine::Pb180, "roms/macpb160.rom", "E33B2724"},
     {"Pangola + WD90C26 (PowerBook)", "PowerBook 180c (color, 68882)", "pb180c", MachineKind::PowerBook, PlatformKind::Pangola, CpuFamily::M68030, SnapMachine::Pb180c, "roms/macpb160.rom", "E33B2724"},
+    {"Pangola + WD90C26 (PowerBook)", "PowerBook 165c (color, 68882)", "pb165c", MachineKind::PowerBook, PlatformKind::Pangola, CpuFamily::M68030, SnapMachine::Pb165c, "roms/macpb160.rom", "E33B2724"},
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);

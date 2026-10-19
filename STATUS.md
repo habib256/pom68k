@@ -17,16 +17,16 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 503 gates
+## Union across hosts — 506 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 295 |
+| `etalon` | 298 |
 | `etalon-core` | 15 |
 | `gui` | 3 |
 | `jit` | 45 |
 | `jit-fast` | 8 |
-| `m030` | 127 |
+| `m030` | 130 |
 | `m040` | 102 |
 | `smoke` | 9 |
 | `unit` | 159 |
@@ -38,51 +38,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-498 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+501 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 130 |
 | assets | optional | 16 |
-| assets | required | 352 |
+| assets | required | 355 |
 | host | a64 | 4 |
-| host | any | 488 |
+| host | any | 491 |
 | host | native | 6 |
 | scope | component | 133 |
 | scope | engine | 21 |
-| scope | profile | 341 |
+| scope | profile | 344 |
 | scope | repository | 3 |
 | tier | daily | 130 |
-| tier | full | 353 |
+| tier | full | 356 |
 | tier | platform | 15 |
-| slots_src | assumed | 378 |
+| slots_src | assumed | 381 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 733 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 736 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-499 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+502 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 129 |
 | assets | optional | 16 |
-| assets | required | 354 |
-| host | any | 488 |
+| assets | required | 357 |
+| host | any | 491 |
 | host | native | 6 |
 | host | x64 | 5 |
 | scope | component | 133 |
 | scope | engine | 22 |
-| scope | profile | 341 |
+| scope | profile | 344 |
 | scope | repository | 3 |
 | tier | daily | 129 |
-| tier | full | 355 |
+| tier | full | 358 |
 | tier | platform | 15 |
-| slots_src | assumed | 386 |
+| slots_src | assumed | 389 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 858 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 861 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -219,3 +219,6 @@ overwrites it, including a one-gate `ctest -R`.
 | Oct 19 21:23 +04 | x86_64 | default | 9 | 9 | 0 | 0 | PB180c native/interpreter/agent and PB160 native/interpreter; synthetic Pangola and shared PowerBook contracts; private assets present |
 | Oct 19 21:29 +04 | x86_64 | default | 8 | 8 | 0 | 0 | Native-required jit-fast after Pangola product integration; all 8 executed |
 | Oct 19 21:30 +04 | x86_64 | default | 3 | 3 | 0 | 0 | Text sessions preserve required PMU/video firmware; 55-profile storage matrix and file-size contracts; all 3 executed |
+| Oct 19 22:04 +04 | x86_64 | default | 5 | 5 | 0 | 0 | PB165c native/interpreter pinned Finder, PMU input and state replay; Startup Items agent and live mount; PB180c regression and synthetic color profiles; all 5 executed |
+| Oct 19 22:10 +04 | x86_64 | default | 8 | 8 | 0 | 0 | Native-required jit-fast after PB165c integration; all 8 executed |
+| Oct 19 22:10 +04 | x86_64 | default | 3 | 3 | 0 | 0 | PB165c session configuration, 56-profile storage matrix and file-size contracts; all 3 executed |

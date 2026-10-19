@@ -34,7 +34,7 @@ int main(int argc,char** argv) {
     if(rom.empty() || fw.empty() || disk.empty()) {std::puts("SKIP: PowerBook ROM/PMU/System 7.5.5 required");return 0;}
     testasset::report({rom,fw,disk});
     auto config=pom68k::defaultCoreConfig();
-    Pb030Memory mem(config,8u<<20,board.cpuHz,niagra,color?480:0);
+    Pb030Memory mem(config,8u<<20,board.cpuHz,niagra,board.colorHeight);
     if(color && !mem.colorVideo().loadRom(bytes(video))) return 1;
     if(!mem.loadRom(bytes(rom)) || !mem.pmu().loadFirmware(bytes(fw)) || !mem.attachScsi(disk)) return 1;
     if(!infinitehd::attach(mem,disk)) return 1;
@@ -63,7 +63,7 @@ int main(int argc,char** argv) {
     bool ok=!cpu.isHalted() && mem.peek8(0xcb3)==board.boxFlag && mem.scsi().commands>500 &&
         // Grayscale desktop dithering is not a color LCD criterion; the latter
         // is qualified by its full-height pixel pin and guest Finder/input probe.
-        menuRatio<0.35 && (color?fb.size()==640u*480:(deskRatio>0.15 && deskRatio<0.90));
+        menuRatio<0.35 && (color?fb.size()==640u*unsigned(board.colorHeight):(deskRatio>0.15 && deskRatio<0.90));
     const auto pin=pixelpin::settleAndHash([&](std::vector<uint32_t>& out){mem.decode(out);},
         [&](long n){for(long i=0;i<n;++i) cpu.runCycles(mem.cpuHz()/60);},
         [&](){return mem.scsi().commands;},640,mem.screenHeight(),20);

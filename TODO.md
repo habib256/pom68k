@@ -146,11 +146,11 @@ sur le premier profil consommateur avant d'être généralisés ; une ligne
 catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
-- [ ] **Ajouter le PowerBook 165c couleur, puis Portable/PB100.**
+- [ ] **Ajouter les Macintosh Portable et PowerBook 100.**
   PB140/145/145B/160/165/170/180 disposent de la composition GUI, du firmware PMU obligatoire,
   de la persistance batterie et des fichiers de session distincts.
-  Le PB180c dispose du LCD couleur Pangola/WD90C26 640×480,
-  avec ROM vidéo requise et sessions publiques. Restent le panneau 165c, la vidéo externe et
+  Les PB165c/180c disposent des LCD couleur Pangola/WD90C26 640×400/480,
+  avec ROM vidéo requise et sessions publiques. Restent la vidéo externe et
   les contrôleurs des Portable/PB100 (`docs/PB030_BRINGUP.md`).
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.

@@ -1,6 +1,7 @@
 // WD90C26/Pangola register and packed pixel contracts without private assets.
 #include "PangolaVideo.h"
 #include "Pb030Cpu.h"
+#include "Pb030Profile.h"
 #include <cstdio>
 #include "SaveStateMachines.h"
 #include <filesystem>
@@ -70,6 +71,24 @@ int main() {
     rom[0]^=1;mem.colorVideo().loadRom(rom);
     check(pom68k::load(mem,cpu,pom68k::SnapMachine::Pb180c,session.data(),session.size(),error) &&
           mem.peek8(0x1234)==0x56 && mem.read8(0xfc000000)==0x31,"matching video firmware restores the public session");
+    const auto panel=pom68k::pb030Profile(pom68k::SnapMachine::Pb165c);
+    Pb030Memory sibling(core,8u<<20,panel.cpuHz,true,panel.colorHeight);
+    Pb030Cpu siblingCpu(sibling,jit::defaultResolvedConfig(),core.cpu,panel.fpu);sibling.setCpu(&siblingCpu);
+    sibling.loadRom(std::vector<uint8_t>(Pb030Memory::kRomSize,0));sibling.colorVideo().loadRom(rom);siblingCpu.hardReset();
+    sibling.read8(0x40000000);sibling.write8(0x1234,0xa5);sibling.write8(0xfc000000,0x42);
+    sibling.decode(out);
+    check(panel.cpuHz==33000000 && panel.boxFlag==44 && siblingCpu.getFPUModel()==moira::FPUModel::M68882 &&
+          sibling.screenHeight()==400 && out.size()==640*400,"165c profile composes a 33 MHz 030/68882 with a 640x400 panel");
+    check(!pom68k::load(sibling,siblingCpu,pom68k::SnapMachine::Pb165c,session.data(),session.size(),error) &&
+          error=="save state is for another machine profile" && sibling.peek8(0x1234)==0xa5 && sibling.read8(0xfc000000)==0x42,
+          "180c session refuses on 165c before changing RAM or VRAM");
+    std::vector<uint8_t> small;pom68k::save(sibling,siblingCpu,pom68k::SnapMachine::Pb165c,small);
+    check(!pom68k::load(mem,cpu,pom68k::SnapMachine::Pb180c,small.data(),small.size(),error) &&
+          error=="save state is for another machine profile" && mem.peek8(0x1234)==0x56,
+          "165c session refuses on 180c with the same main and video ROMs");
+    sibling.write8(0x1234,0);sibling.write8(0xfc000000,0);
+    check(pom68k::load(sibling,siblingCpu,pom68k::SnapMachine::Pb165c,small.data(),small.size(),error) &&
+          sibling.peek8(0x1234)==0xa5 && sibling.read8(0xfc000000)==0x42,"165c accepts its own public session");
     auto config=core.firmware;config.colorVideoLle=false;
     check(!mem.selectColorFirmware(config),"required video firmware cannot select HLE");
     const auto dir=std::filesystem::temp_directory_path()/"pom68k-pangola-video-test";
