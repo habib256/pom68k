@@ -16,6 +16,7 @@
 #include "DaynaPortBus.h"
 #include "CdAudioPump.h"
 #include "Pb030Niagra.h"
+#include "PangolaVideo.h"
 
 class Pb030Cpu;
 class Pb030Memory {
@@ -23,9 +24,12 @@ public:
     static constexpr uint32_t kRomSize=0x100000,kVramSize=0x8000;
     static constexpr int64_t kCpuHz=15667200,kViaHz=1566720;
     explicit Pb030Memory(const pom68k::CoreConfig& coreConfig,uint32_t ram=0x800000,
-                         int64_t cpuHz=kCpuHz,bool niagra=false);
+                         int64_t cpuHz=kCpuHz,bool niagra=false,int colorHeight=0);
+    int screenHeight() const {return colorHeight_?colorHeight_:400;}
+    PangolaVideo& colorVideo() {return color_;}
     bool isNiagra() const { return niagra_; }
     bool loadRom(const std::vector<uint8_t>& rom);
+    bool selectColorFirmware(const pom68k::CoreFirmwareConfig& config);
     bool selectPmuFirmware(const pom68k::CoreFirmwareConfig& config);
     bool loadPram(const std::string& path);
     void savePram(const std::string& path);
@@ -103,12 +107,15 @@ public:
         ar(overlay_,resetPending_,resetOverlayPending_,viaAcc_,tickAcc_,c15Acc_,secAcc_,
            via_,pvia_,rtc_,asc_,scsi_,swim_,drive_,scc_,pmu_,dayna_);
         if(niagra_) {ar(niagraVideo_);ar.blob(extVram_);}
+        if(colorHeight_) ar(color_);
         for(auto& d:disks_) ar(d);
         if constexpr(Ar::loading) { mapChanged();updateIrq(); }
     }
 private:
     std::vector<uint8_t> ram_,rom_,vram_,extVram_;
     bool niagra_;
+    int colorHeight_;
+    PangolaVideo color_;
     Pb030Niagra niagraVideo_;
     int64_t cpuHz_;
     Pb030Pmu pmu_;

@@ -27,7 +27,7 @@ struct Pb030Machine:MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost> 
         return audible;
     }
     void renderFrame(std::vector<uint32_t>& out,int& w,int& h) {
-        mem.decode(out);for(auto& p:out) p|=0xff000000;w=640;h=400;
+        mem.decode(out);for(auto& p:out) p|=0xff000000;w=640;h=mem.screenHeight();
     }
     void publishStatus() {
         stFlags_.store(uint8_t((mem.overlay()?1:0)|((cpu.getTC()&0x80000000)?2:0)|
@@ -38,15 +38,15 @@ struct Pb030Machine:MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost> 
 
 int pom68k::gui::composePb030(PlatformLaunch launch,GuiHostServices& services) {
     const auto* profile=pom68k::machineProfile(launch.selected);
-    if(!profile || (profile->platform!=PlatformKind::Jaws && profile->platform!=PlatformKind::Niagra)) return 1;
+    if(!profile || (profile->platform!=PlatformKind::Jaws && profile->platform!=PlatformKind::Niagra && profile->platform!=PlatformKind::Pangola)) return 1;
     const auto board=pb030Profile(profile->snapshot);
     const auto& config=services.config();
-    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,board.cpuHz,profile->platform==PlatformKind::Niagra);
-    if(!mem.loadRom(launch.rom) || !mem.selectPmuFirmware(config.core().firmware)) return 1;
+    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,board.cpuHz,profile->platform!=PlatformKind::Jaws,profile->platform==PlatformKind::Pangola?480:0);
+    if(!mem.loadRom(launch.rom) || !mem.selectPmuFirmware(config.core().firmware) || !mem.selectColorFirmware(config.core().firmware)) return 1;
     auto& cpu=services.own<Pb030Cpu>(mem,config.jit().resolved,config.core().cpu,board.fpu);
     mem.setCpu(&cpu);
     auto& audio=services.own<MacAudioHost>(config.devices().audio);
-    std::printf("Machine: %s (%s, %s + M50753)\n",profile->label,board.fpu?"68030 + 68882":"68030",mem.isNiagra()?"Niagra":"Jaws");
+    std::printf("Machine: %s (%s, %s + M50753)\n",profile->label,board.fpu?"68030 + 68882":"68030",profile->platform==PlatformKind::Pangola?"Pangola":mem.isNiagra()?"Niagra":"Jaws");
     const Pb030RunnerSpec spec{profile->label,profile->slug,"hdv/System 7.5.5 HD.dsk",
         board.cpuLine,MachineKind::PowerBook,profile->snapshot};
     return runPb030Gui<Pb030Machine>(mem,cpu,audio,spec,

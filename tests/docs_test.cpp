@@ -981,6 +981,14 @@ int main() {
         check(pmuPolicy.core().firmware.pmuLle && pmuPolicy.core().firmware.pmuPath=="C:\\pmu.bin" &&
               pmuRelaunch.size()==1 && pmuRelaunch[0]==pmuPolicyArg,
               "required PMU firmware path survives typed parsing and relaunch");
+        char videoPolicyArg[]="--firmware-override=pbvideo:lle:C:\\video.bin";
+        char* videoArgv[]={a0,videoPolicyArg};
+        const auto videoPolicy=pom68k::app::RuntimeConfig::parse(2,videoArgv,{});
+        const auto videoRelaunch=pom68k::app::firmwareOverrideArguments({},
+            {{pom68k::FirmwareTarget::ColorVideo,true,std::string("C:\\video.bin")}});
+        check(videoPolicy.core().firmware.colorVideoLle && videoPolicy.core().firmware.colorVideoPath=="C:\\video.bin" &&
+              videoRelaunch.size()==1 && videoRelaunch[0]==videoPolicyArg,
+              "required color video ROM path survives typed parsing and relaunch");
         auto normalizedFirmware = pom68k::app::firmwareOverrideArguments(
             {"--firmware-override=adb:hle:old.bin",
              "--machine-profile=lc3plus",
@@ -1179,7 +1187,7 @@ int main() {
             check(actual==pb,"typed Jaws selection routes the shared Quadra ROM");
             routedProfiles.insert(actual);
         }
-        for(auto pb:{pom68k::SnapMachine::Pb160,pom68k::SnapMachine::Pb165,pom68k::SnapMachine::Pb180}) {
+        for(auto pb:{pom68k::SnapMachine::Pb160,pom68k::SnapMachine::Pb165,pom68k::SnapMachine::Pb180,pom68k::SnapMachine::Pb180c}) {
             std::string arg=pom68k::app::machineProfileArgument(pb);
             char* av[]={a0,arg.data()};
             const auto cfg=pom68k::app::RuntimeConfig::parse(2,av,{});

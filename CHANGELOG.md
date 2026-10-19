@@ -498,6 +498,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (eleventh)** — [PowerBook 180c runs its color LCD through Pangola and the real video ROM](#2026-10-19-pb180c-pangola)
 - **2026-10-19 (tenth)** — [Niagra gains PowerBook 165 and 180 with separate 33 MHz session identities](#2026-10-19-pb165-pb180)
 - **2026-10-19 (ninth)** — [PowerBook 160 brings Niagra and the GSC grayscale panel to the product](#2026-10-19-pb160-niagra)
 - **2026-10-19 (eighth)** — [PowerBook 145 and 145B share Jaws hardware and keep distinct sessions](#2026-10-19-pb145-family)
@@ -1174,6 +1175,54 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-19-pb180c-pangola"></a>
+## 2026-10-19 (eleventh) — PowerBook 180c runs its color LCD through Pangola and the real video ROM
+
+PB180c adds profile/session id 55 and the Pangola platform kind: a 33 MHz
+68030 with 68882, the shared E33B2724 main ROM, M50753 PMU v3, and a
+required 32 KB video declaration ROM. The catalogue now has 55 profiles
+across 15 board implementations, still using the 13 CPU/session adapters.
+Automatic detection of the shared main ROM remains PB160; select
+`--machine-profile=pb180c` explicitly.
+
+`PangolaVideo` implements the indexed LCD graphics path: the 512 KB linear
+VRAM, 8/4/2/1 bpp packing bridge, WD90C26 graphics register locks and setup
+straps, RGB DAC, CRTC pitch/start and machine-cycle beam. CNF15 selects the
+180c and System 7.5.5 sets BoxFlag 65 itself. The first probe stayed in the
+grayscale path because the video-ROM map extended above its actual end,
+masking external-monitor sense at `$FE0FE004`. Bounding the declaration ROM
+to `$FCFF8000–FCFFFFFF` lets the real driver reach the 640×480 color Finder.
+The settled desktop pin is `6d7a190822fb3dc2`.
+
+Required firmware uses `roms/pbvideo/pb180c.bin` or the typed override
+`--firmware-override=pbvideo:lle:<path>`. Explicit invalid selections and
+HLE refuse launch. The peripheral registry reports the actual loaded path;
+startup firmware parsing has its own bounded responsibility module.
+Text session capture and validation now include both required PowerBook
+firmwares; the older PMU selection had been omitted from that schema.
+The public visitor preserves VRAM, palette, indexed latches and beam phase,
+checks video-ROM identity and uses the common transactional rollback path.
+Existing Jaws/Niagra payloads retain their layout.
+
+The new synthetic component gate checks packing boundaries, locked setup
+straps, DAC phases, scanout address, beam timing, board-map isolation,
+firmware selection and public-container rejection/rollback. Real-ROM native,
+interpreter and agent gates reuse the existing PowerBook Finder, PMU input
+and session-replay harness. Pangola joins `etalon-core`; the asset registry
+contains identities only. External displays, PC VGA text/planar modes,
+PB165c admission and AArch64 execution remain separate work.
+
+Verification on x86-64: the nine focused PowerBook gates executed with no
+skips (including PB180c native/interpreter/agent and PB160 in both engines),
+as did all eight `jit-fast` gates with native required. Text-session,
+storage and file-size gates pass. Xvfb GUI checks cover engine switching,
+completed save and an actual second-process relaunch retaining PB180c.
+Touched production/test translation units pass `-Werror`; all 54 declared
+private asset identities match. The AArch64 registry was regenerated from
+configuration metadata only, without claiming execution on that host.
 
 ---
 

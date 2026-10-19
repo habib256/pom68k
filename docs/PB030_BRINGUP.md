@@ -71,8 +71,42 @@ PMU timing partition invariance at 33 MHz.
 blanking, Ponti edge semantics and public state restoration without assets.
 The real boot and interpreter gates exercise the ROM and PMU v3 on System
 7.5.5; the agent variant requires Startup Items launch and live disk mount.
-Pangola/WD90C26 color video and external monitor support remain
+The Pangola color extension is described below; external monitor support remains
 separate work. There is no AArch64 execution or power-consumption claim.
+
+## Pangola: PowerBook 180c
+
+PB180c appends profile/session id 55 and the Pangola platform kind. It uses
+33 MHz, a 68882, the shared E33B2724 main ROM and PMU v3, and a separate
+32,768-byte video declaration ROM. Select `--machine-profile=pb180c`;
+automatic main-ROM detection remains PB160. System 7.5.5 selects BoxFlag 65
+through the real video driver and CNF15 strap, without guest identity patches.
+
+`PangolaVideo` owns 512 KB indexed VRAM, the Pangola 8/4/2/1 bpp packing
+bridge, WD90C26 indexed graphics registers, RGB DAC, CRTC pitch/start address
+and a beam advanced by guest CPU cycles. The LCD is 640×480. The grayscale
+GSC probe faults on this board. VRAM occupies `$FC000000–FC3FFFFF`, VGA
+ports `$FC4003B0–FC4003DF`, setup `$FC4046E8` with its hardware mirrors,
+Pangola16 `$FC800000–FC800003`, and video ROM `$FCFF8000–FCFFFFFF`.
+The ROM range must end before `$FD000000`; an unbounded mapping masks the
+external-monitor sense register and wrongly selects the grayscale path.
+
+The required dump loads from `roms/pbvideo/pb180c.bin`, the corresponding
+firmware-root path or the archive candidate. `--firmware-override=pbvideo:lle:<path>`
+is authoritative: missing/truncated explicit choices and HLE refuse launch.
+The peripheral window reports the actual loaded path. Text session files retain
+both required firmware selections when saved and reopened. The public visitor
+checks video-ROM identity and restores palette, VRAM, indexed latches and
+beam phase; the existing transactional loader rolls back a rejected load.
+The extra payload is conditional, preserving Jaws/Niagra session layouts.
+
+`pangola_video_test` exercises these contracts with synthetic inputs. The
+real PB180c boot gates share the existing Finder/input/public-state harness;
+the agent variant also checks Startup Items launch and live disk mounting.
+The settled System 7.5.5 desktop pin is `6d7a190822fb3dc2`.
+This qualifies the indexed LCD graphics path. PC VGA text/planar modes,
+external displays, PB165c product admission, sleep/power consumption and
+execution on AArch64 remain outside this milestone.
 
 ## Sources and ownership
 
@@ -81,6 +115,10 @@ separate work. There is no AArch64 execution or power-consumption claim.
   `readPmgrVers = $EA`. These define the host transport and command.
 - MAME [macpwrbk030.cpp](https://github.com/mamedev/mame/blob/master/src/mame/apple/macpwrbk030.cpp):
   board pins, 3.932160 MHz PMU oscillator, charger/input/analog values.
+- MAME [wd90c26.cpp](https://github.com/mamedev/mame/blob/master/src/devices/video/wd90c26.cpp),
+  [pc_vga_paradise.cpp](https://github.com/mamedev/mame/blob/master/src/devices/video/pc_vga_paradise.cpp)
+  and [pc_vga.cpp](https://github.com/mamedev/mame/blob/master/src/devices/video/pc_vga.cpp):
+  graphics register locks, setup straps, DAC and scanout address semantics.
 - MAME [m740.cpp](https://github.com/mamedev/mame/blob/master/src/devices/cpu/m6502/m740.cpp),
   [dm740.lst](https://github.com/mamedev/mame/blob/master/src/devices/cpu/m6502/dm740.lst)
   and [om740.lst](https://github.com/mamedev/mame/blob/master/src/devices/cpu/m6502/om740.lst):
@@ -232,16 +270,17 @@ checks engine switching, completed save, close and relaunch. The
 the Startup Items agent to poll its mailbox and mount a disk attached live.
 
 The Jaws wrapper conservatively flushes JIT blocks on CACR invalidation;
-there is no store-inventory admission yet. Niagra video and the
+there is no store-inventory admission yet. The
 Portable/PB100 board remain separate work. These checks do not qualify
 sleep/power consumption, modem hardware or an AArch64 execution host.
 
 ## MAME-derived source notice
 
 The opcode layout and peripheral reference adaptation retain the following
-BSD-3-Clause notice (MAME contributors Olivier Galibert and R. Belmont):
+BSD-3-Clause notice (MAME CPU, peripheral and VGA contributors):
 
-Copyright (c) Olivier Galibert, R. Belmont. All rights reserved.
+Copyright (c) Olivier Galibert, R. Belmont, Angelo Salese,
+Nathan Woods, Peter Trauner. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
