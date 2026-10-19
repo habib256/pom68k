@@ -16,11 +16,11 @@ bool Pb030Memory::selectPmuFirmware(const pom68k::CoreFirmwareConfig& config) {
     d.mode=pom68k::lle::Mode::Lle;d.why=pom68k::lle::Why::LleFirmware;
     d.pathKnob="--firmware-override=pmu:lle:<path>";
     d.firmwareForced=config.pmuPath.value_or("");
-    const std::string relative="roms/pmu/pb140.bin";
-    if(config.root) d.candidates.push_back((std::filesystem::path(*config.root)/"pmu/pb140.bin").string());
+    const std::string relative=niagra_?"roms/pmu/pb160.bin":"roms/pmu/pb140.bin";
+    if(config.root) d.candidates.push_back((std::filesystem::path(*config.root)/(niagra_?"pmu/pb160.bin":"pmu/pb140.bin")).string());
     for(const char* base:{"","../"}) {
         d.candidates.push_back(std::string(base)+relative);
-        d.candidates.push_back(std::string(base)+"roms/archive/macroms/pmu/Powerbook-140-145-170__PMU.bin");
+        d.candidates.push_back(std::string(base)+(niagra_?"roms/archive/macroms/pmu/Powerbook-160-165-180__Powerbook 160 PMU.bin":"roms/archive/macroms/pmu/Powerbook-140-145-170__PMU.bin"));
     }
     auto tryPath=[&](const std::string& path){
         std::ifstream f(path,std::ios::binary);

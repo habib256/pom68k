@@ -40,7 +40,7 @@ struct StorageCapabilities {
 // graph), not one marketing name. This is the bounded reuse unit through which
 // the catalogue grows towards every 68k Macintosh.
 enum class PlatformKind : std::uint8_t {
-    Compact, Glue, Oss, V8, Rbv, Sonora, Vasp, MemcJr, DjMemc, Spike, F108, Msc, Jaws
+    Compact, Glue, Oss, V8, Rbv, Sonora, Vasp, MemcJr, DjMemc, Spike, F108, Msc, Jaws, Niagra
 };
 
 // GUI/process runner. Several marketing profiles deliberately share one kind.
@@ -71,7 +71,7 @@ enum class SnapMachine : std::uint32_t {
     Mac512Ke = 40, MacIIFDHD = 41,
     Duo210 = 42, Duo250 = 43,
     Duo270c = 44, Duo280 = 45, Duo280c = 46, Pb150 = 47,
-    Pb140 = 48, Pb170 = 49, Pb145 = 50, Pb145B = 51,
+    Pb140 = 48, Pb170 = 49, Pb145 = 50, Pb145B = 51, Pb160 = 52,
 };
 
 struct MachineProfile {
@@ -148,6 +148,7 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"Jaws + Misc GLU (PowerBook)", "PowerBook 170 (25 MHz, 68882)", "pb170", MachineKind::PowerBook, PlatformKind::Jaws, CpuFamily::M68030, SnapMachine::Pb170, "roms/macpb140.rom", "420DBFF3"},
     {"Jaws + Misc GLU (PowerBook)", "PowerBook 145 (25 MHz)", "pb145", MachineKind::PowerBook, PlatformKind::Jaws, CpuFamily::M68030, SnapMachine::Pb145, "roms/macpb140.rom", "420DBFF3"},
     {"Jaws + Misc GLU (PowerBook)", "PowerBook 145B (25 MHz)", "pb145b", MachineKind::PowerBook, PlatformKind::Jaws, CpuFamily::M68030, SnapMachine::Pb145B, "roms/macpb140.rom", "420DBFF3"},
+    {"Niagra + Misc GLU (PowerBook)", "PowerBook 160 (grayscale)", "pb160", MachineKind::PowerBook, PlatformKind::Niagra, CpuFamily::M68030, SnapMachine::Pb160, "roms/macpb160.rom", "E33B2724"},
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);

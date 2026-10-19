@@ -146,10 +146,10 @@ sur le premier profil consommateur avant d'être généralisés ; une ligne
 catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
-- [ ] **Ajouter les PowerBook 160–180 (Niagra), puis Portable/PB100.**
-  PB140/145/145B/170 disposent de la composition GUI, du firmware PMU obligatoire,
+- [ ] **Étendre Niagra aux PowerBook 165/180 et 165c/180c, puis Portable/PB100.**
+  PB140/145/145B/160/170 disposent de la composition GUI, du firmware PMU obligatoire,
   de la persistance batterie et des fichiers de session distincts.
-  Restent la carte Niagra, sa vidéo grise/couleur et
+  Restent les variantes 33 MHz/FPU, Pangola/WD90C26 couleur, la vidéo externe et
   les contrôleurs des Portable/PB100 (`docs/PB030_BRINGUP.md`).
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.

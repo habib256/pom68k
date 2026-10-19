@@ -498,6 +498,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (ninth)** — [PowerBook 160 brings Niagra and the GSC grayscale panel to the product](#2026-10-19-pb160-niagra)
 - **2026-10-19 (eighth)** — [PowerBook 145 and 145B share Jaws hardware and keep distinct sessions](#2026-10-19-pb145-family)
 - **2026-10-19 (seventh)** — [PowerBook 140 and 170 become selectable machines with firmware-bound sessions](#2026-10-19-jaws-product)
 - **2026-10-19 (sixth)** — [The Jaws PowerBook 140 reaches Finder with PMU input and raw state replay](#2026-10-19-pb140-jaws)
@@ -1174,6 +1175,39 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-pb160-niagra"></a>
+## 2026-10-19 (ninth) — PowerBook 160 brings Niagra and the GSC grayscale panel to the product
+
+PowerBook 160 is profile 52 and the fourteenth platform kind. Niagra reuses
+the bounded `Pb030Cpu`/M50753 bridge and discrete peripherals from Jaws,
+with its own exact 50F I/O selects, GSC display map and PMU v3 firmware.
+The E33B2724 ROM selects a bare 25 MHz 68030 and BoxFlag 28 itself; no guest
+flags or ROM patches are used. Product sessions use 8 MB expanded RAM.
+
+`Pb030Niagra` owns panel-5 GSC registers, 1/2/4 bpp gray conversion and
+Ponti modem/SPI/backlight/sound latches. The 128 KB internal VRAM mirrors
+across the 60000000 select. Ponti sound activity clears on the rising edge
+of the clear bit, preserving its output latch during other writes. External
+video reports no monitor while retaining its independent 512 KB RAM.
+Public states serialize those additions only for Niagra, preserving Jaws'
+existing visitor layout; profile/ROM/RAM and PMU fingerprint checks remain
+in the shared transactional load path.
+
+Required firmware discovery uses `roms/pmu/pb160.bin` (or the typed PMU
+path override) without falling back to the older Jaws firmware. The GUI
+uses the existing PowerBook host, battery store and session lifecycle.
+A synthetic board gate covers map isolation, byte lanes, both VRAM banks,
+GSC gray conversion/blanking, Ponti edges and public session restoration.
+
+Evidence: the real E33B2724 ROM and 03A2 PMU boot System 7.5.5 Finder under
+both engines, settled pin `72742c3473f134b3`. Keyboard down/up, trackball,
+exact session restoration and resumed Ticks pass. GUI smoke on a writable
+clone passes engine switch, completed save, close and relaunch. The agent
+variant requires Startup Items launch and live disk mount. Jaws' boot and
+interpreter gates guard the shared graph. PB165/180, Pangola/WD90C26 color
+video, external monitor rendering and Portable/PB100 remain open; these
+checks do not claim AArch64 execution or complete power management.
 
 <a id="2026-10-19-pb145-family"></a>
 ## 2026-10-19 (eighth) — PowerBook 145 and 145B share Jaws hardware and keep distinct sessions

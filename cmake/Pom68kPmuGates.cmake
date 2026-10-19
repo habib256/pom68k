@@ -1,5 +1,5 @@
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kPb030Gates.cmake)
-foreach(gate m740_test m50753_test m50753_firmware_etalon pb030_product_test pb030_board_test pb140_boot_etalon)
+foreach(gate m740_test m50753_test m50753_firmware_etalon pb030_product_test pb030_board_test pb160_board_test pb140_boot_etalon)
     add_executable(${gate} tests/${gate}.cpp)
     target_link_libraries(${gate} PRIVATE pom68k_core)
     add_test(NAME ${gate} COMMAND ${gate}

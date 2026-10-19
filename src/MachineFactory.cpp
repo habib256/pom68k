@@ -136,6 +136,7 @@ const MachineProfile& MachineFactory::selectProfile(
         if (id == 0xEDE66CBD) return bySnapshot(selected.aio);
         if (id == 0xF1A6F343 || id == 0xF1ACAD13)
             return bySnapshot(selected.djMemc);
+        if (id == 0xE33B2724) return bySnapshot(SnapMachine::Pb160);
         if (id == 0x420DBFF3) return bySnapshot(selected.spike);
         if (id == 0x3DC27823) return bySnapshot(SnapMachine::Quadra950);
         if (id == 0x06684214 || id == 0x064DC91D)

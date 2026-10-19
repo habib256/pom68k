@@ -1,6 +1,6 @@
 # PowerBook 140–180 — M50753 Power Manager bring-up
 
-## Boundary of the first milestone
+## Supported boards
 
 `M740` and `M50753` feed the PowerBook 140/145/145B/170 Jaws board through
 `Pb030Pmu`, `Pb030Memory` and `Pb030Cpu`. The application exposes four
@@ -31,6 +31,35 @@ the PowerBook 140/145/170 and 160/165/180 families. It cold-starts from
 `$FFFE`, releases the host through port 3, and answers an actual parallel
 `readPmgrVers` transaction. The harness drives pins; it does not implement
 PMgr commands or patch firmware/RAM.
+
+## Niagra: PowerBook 160
+
+PowerBook 160 (session id 52) adds the Niagra map as a distinct platform kind, reusing the
+bounded CPU/PMU bridge and common peripheral graph. The application uses a
+25 MHz bare 68030, 8 MB expanded RAM and the E33B2724 ROM. The 6,144-byte
+PMU v3 image is selected independently from Jaws: `roms/pmu/pb160.bin`,
+with the existing typed PMU path override available. The System selects
+BoxFlag 28 without ROM or guest identity patches.
+
+- Peripheral I/O uses the exact `$50F00000` select, without Jaws mirrors.
+- GSC panel 5 exposes registers at `$50F20000`, with 128 KB VRAM mirrored
+  throughout `$60000000–$6FFFFFFF`. The 640×400 renderer supports 1/2/4 bpp,
+  the inverted gray palette and PMU display blanking.
+- Niagra speed and FPU-access registers occupy the upper byte lane.
+  Ponti modem, SPI, backlight and sound control read back their latches;
+  sound activity clears only on the clear bit's rising edge.
+- External video reports no monitor (`$FE0FE004 = $70`); its independent
+  512 KB RAM is retained. No external display is exposed.
+- The public session visitor includes GSC/Ponti and both VRAM banks only
+  for Niagra, preserving the existing Jaws payload layout. Battery files
+  retain the loaded PMU firmware fingerprint.
+
+`pb160_board_test` checks byte lanes, map isolation, gray conversion,
+blanking, Ponti edge semantics and public state restoration without assets.
+The real boot and interpreter gates exercise the ROM and PMU v3 on System
+7.5.5; the agent variant requires Startup Items launch and live disk mount.
+PB165/180, Pangola/WD90C26 color video and external monitor support remain
+separate work. There is no AArch64 execution or power-consumption claim.
 
 ## Sources and ownership
 
