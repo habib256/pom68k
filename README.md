@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
-the 68040 Quadra 950. The project currently provides **49 machine profiles on
+the 68040 Quadra 950. The project currently provides **51 machine profiles on
 13 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
@@ -96,7 +96,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
   PowerBook Duo 270c, 280 and 280c, each with its own save-state identity. The 270c
   boots System 7.5.5 on its 640×480 color CSC panel with a 68882.
   The 280/280c use a 68LC040 with 640×400 grayscale / 640×480 color panels.
-  PowerBook 140/170 add a 640×400 monochrome panel and the M50753 Power Manager.
+  PowerBook 140/145/145B/170 add a 640×400 monochrome panel and the M50753 Power Manager.
   PowerBook 150 adds a 640×480 four-gray LCD, internal IDE and SuperDrive.
 - **Floppy media**: MOOF bitstream and flux images, DART import and
   write-back, and GCR sector tags kept through DiskCopy 4.2 images and
@@ -269,7 +269,7 @@ Bold text is the default profile for a shared ROM.
 | 1 MB | `3DC27823` | Macintosh Quadra 950 | — |
 | 1 MB | `06684214`, `064DC91D` | **Macintosh Quadra 630**, LC/Performa 580 | `q630`, `lc580` |
 | 1 MB | `ECFA989B` | **PowerBook Duo 230**, Duo 210, Duo 250 | `duo230`, `duo210`, `duo250` |
-| 1 MB | `420DBFF3` | PowerBook 140 / 170 (Jaws, monochrome; explicit selection) | `pb140`, `pb170` |
+| 1 MB | `420DBFF3` | PowerBook 140 / 145 / 145B / 170 (Jaws, monochrome; explicit selection) | `pb140`, `pb145`, `pb145b`, `pb170` |
 | 1 MB | `FDA22562` | PowerBook 150 (640×480 four-gray GSC, 68030) | `pb150` |
 | 1 MB | `015621D7` | PowerBook Duo **280** / 280c (68LC040, grayscale / color) | `duo280`, `duo280c` |
 | 1 MB | `0024D346` | PowerBook Duo 270c (640×480 color, 68882) | `duo270c` |
@@ -293,11 +293,11 @@ LLE requires user-provided dumps in these locations:
 | Cuda 341S0789 | Macintosh TV | `roms/cuda/341s0789.bin` |
 | Cuda 341S0060 | LC 520 family, Quadra 630/LC 580 | `roms/cuda/341s0060.bin` |
 | Cuda 341S0788 | LC 475/575 and Quadra 605 | `roms/cuda/341s0788.bin` |
-| M50753 (required for PowerBook 140/170) | PowerBook 140/170 | `roms/pmu/pb140.bin` |
+| M50753 (required for PowerBook 140/145/145B/170) | PowerBook 140/145/145B/170 | `roms/pmu/pb140.bin` |
 | PG&E power manager | PowerBook Duo 210, 230, 250 | `roms/pge/pge_boot.bin` |
 | Toby video card declaration ROM 342-0008-a | Macintosh II, IIx, IIcx, IIfx | `roms/342-0008-a.bin` |
 
-PowerBook 140/170 require the 6,144-byte M50753 firmware; use the path above
+PowerBook 140/145/145B/170 require the 6,144-byte M50753 firmware; use the path above
 or `--firmware-override=pmu:lle:<path>`. These machines refuse to start without it.
 
 The SE/30 additionally uses `roms/se30/se30vrom.uk6` for its video declaration

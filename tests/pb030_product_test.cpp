@@ -1,5 +1,6 @@
 // Public Jaws persistence contracts, using synthetic ROMs only.
 #include "Pb030Cpu.h"
+#include "Pb030Profile.h"
 #include "SaveStateMachines.h"
 #include <filesystem>
 #include <fstream>
@@ -29,6 +30,25 @@ int main() {
     firmware[12]^=1;mem.pmu().loadFirmware(firmware);
     check(pom68k::load(mem,cpu,pom68k::SnapMachine::Pb140,state.data(),state.size(),error) && mem.peek8(0x1234)==0x56,
           "matching public container restores RAM");
+    // Same clock, FPU, ROM and expanded RAM: only the public profile tag
+    // separates these two machines, so exercise refusal in both directions.
+    for(auto profile:{pom68k::SnapMachine::Pb145,pom68k::SnapMachine::Pb145B}) {
+        const auto board=pom68k::pb030Profile(profile);
+        check(board.cpuHz==25000000 && !board.fpu && board.boxFlag==48 &&
+              board.baseRamBytes==(profile==pom68k::SnapMachine::Pb145?2u<<20:4u<<20),
+              "145/145B share CPU/PMU wiring and retain their original base RAM capacities");
+        Pb030Memory base(core,board.baseRamBytes,board.cpuHz);
+        base.read8(0x40000000);base.write8(board.baseRamBytes-1,0x5a);
+        base.write8(board.baseRamBytes,0xa5);
+        check(base.read8(board.baseRamBytes-1)==0x5a && base.read8(board.baseRamBytes)==0xff,
+              "Jaws decodes the model's unexpanded RAM boundary without aliasing");
+        std::vector<uint8_t> saved;pom68k::save(mem,cpu,profile,saved);
+        const auto other=profile==pom68k::SnapMachine::Pb145?pom68k::SnapMachine::Pb145B:pom68k::SnapMachine::Pb145;
+        mem.write8(0x1234,0xa5);
+        check(!pom68k::load(mem,cpu,other,saved.data(),saved.size(),error) && mem.peek8(0x1234)==0xa5 &&
+              error=="save state is for another machine profile","145/145B refuse each other's session without mutation");
+        check(pom68k::load(mem,cpu,profile,saved.data(),saved.size(),error),"each Jaws sibling accepts its own public session");
+    }
     const auto dir=std::filesystem::temp_directory_path()/"pom68k-pb030-product-test";
     std::filesystem::create_directories(dir);const auto battery=(dir/"battery.pram").string();
     mem.savePram(battery);mem.rtc().setXpram(0x42,0);mem.pmu().mcu().write(0x25,0);

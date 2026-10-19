@@ -1168,7 +1168,8 @@ int main() {
                       syntheticRom(1u << 20, 0xFDA22562)).snapshot == pom68k::SnapMachine::Pb150,
                   "JeDI typed relaunch selects the PowerBook 150 ROM and profile");
         }
-        for(auto pb : {pom68k::SnapMachine::Pb140,pom68k::SnapMachine::Pb170}) {
+        for(auto pb : {pom68k::SnapMachine::Pb140,pom68k::SnapMachine::Pb170,
+                       pom68k::SnapMachine::Pb145,pom68k::SnapMachine::Pb145B}) {
             std::string arg=pom68k::app::machineProfileArgument(pb);
             char* av[]={a0,arg.data()};
             auto cfg=pom68k::app::RuntimeConfig::parse(2,av,{});
