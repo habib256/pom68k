@@ -498,6 +498,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (seventh)** — [PowerBook 140 and 170 become selectable machines with firmware-bound sessions](#2026-10-19-jaws-product)
 - **2026-10-19 (sixth)** — [The Jaws PowerBook 140 reaches Finder with PMU input and raw state replay](#2026-10-19-pb140-jaws)
 
 - **2026-10-19 (fifth)** — [The M50753 executes PowerBook firmware and answers the parallel version command](#2026-10-19-m50753-pmu)
@@ -1172,6 +1173,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-jaws-product"></a>
+## 2026-10-19 (seventh) — PowerBook 140 and 170 become selectable machines with firmware-bound sessions
+
+The headless Jaws board is now composed into the application. The catalogue
+has 49 profiles on 13 board implementations: PB140 (15.6672 MHz, no FPU,
+BoxFlag 19) and PB170 (25 MHz, 68882, BoxFlag 15) append stable session ids
+48/49. Both retain their own identity despite sharing ROM 420DBFF3 with
+the Quadra 700/900; typed profile selection leaves automatic detection Q700.
+
+The M50753 dump is required. Typed `--firmware-override=pmu:lle:<path>`,
+registry provenance and the Peripheral window expose its loaded path;
+missing, malformed or explicitly disabled firmware refuses startup. Battery
+files contain RTC XPRAM plus MCU RAM with a firmware fingerprint. Public
+session containers validate profile, ROM and RAM and transactionally reject
+a different MCU image. A synthetic product gate exercises those refusals,
+RAM rollback and atomic battery-file validation.
+
+PB170 exposed an idle wake bug in the first board integration: treating a
+Jaws CPU power-down reset as a cold reset rearmed ROM overlay and rebooted
+System 7.5.5 every ~30 seconds. MAME's `jaws_w` pulses CPU reset while RAM
+vectors remain visible. The wrapper now preserves those vectors for wake;
+only PMU reset release rearms ROM, deferred to a CPU execution boundary.
+The independently powered MCU continues throughout. Hard reset also rebases
+CPU throughput accounting when leaving a floppy streaming interval.
+
+Evidence: PB140/PB170 Finder, keyboard down/up, trackball movement and exact
+public state replay pass on both engines with the real ROM/PMU/System 7.5.5.
+GUI smoke passes on both writable disk clones: window, engine switch,
+completed save, close and relaunch. Both Disques-agent variants launch from
+Startup Items and mount a blank disk attached live on SCSI 2.
+Asset-free persistence, configuration,
+storage matrix and GUI regressions pass. The board keeps conservative CACR
+flushes; this adds no store-inventory, power-consumption or AArch64 execution
+qualification. PB145/145B, Niagra and Portable/PB100 remain open work.
 
 <a id="2026-10-19-pb140-jaws"></a>
 ## 2026-10-19 (sixth) — The Jaws PowerBook 140 reaches Finder with PMU input and raw state replay

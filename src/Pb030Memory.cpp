@@ -10,8 +10,9 @@ Pb030Memory::Pb030Memory(const pom68k::CoreConfig& config,uint32_t ram,int64_t h
     rtc_.factoryDefaults();
     scc_.configureTrace(config.peripherals.sccTrace);
     drive_.configureFluxJitter(config.storage.fluxJitterPercent);
-    for(auto& d:disks_) d.configure(config.storage);
-    pmu_.onResetRelease=[this](){overlay_=true;mapChanged();resetPending_=true;};
+    lle_=config.firmware.registry;
+    pom68k::configureScsiBus(scsi_,disks_,dayna_,config);
+    pmu_.onResetRelease=[this](){resetPending_=resetOverlayPending_=true;};
     pmu_.onInterruptPin=[this](bool high){via_.extCb1Int(high);};
     pmu_.adbLine().configure(config.peripherals.adbKeyboardHandlerId,config.peripherals.adbLleTrace);
     pvia_.onPortBRead=[this](){return uint8_t((pmu_.ack()?2:0)|(pmu_.request()?4:0));};
@@ -30,7 +31,7 @@ bool Pb030Memory::attachScsi(const std::string& path,bool writeBack,int id) {
     scsi_.attach(&disks_[id],id);return true;
 }
 void Pb030Memory::reset() {
-    overlay_=true;resetPending_=false;
+    overlay_=true;resetPending_=resetOverlayPending_=false;
     viaAcc_=tickAcc_=c15Acc_=secAcc_=0;
     via_.reset();via_.setInA(0x93);via_.setInB(8|rtc_.dataBit());
     pvia_.reset();rtc_.reset();asc_.reset();scsi_.reset();scc_.reset();
@@ -194,10 +195,12 @@ void Pb030Memory::ioWrite(uint32_t a,uint8_t v) {
         swim_.write((a>>9)&15,v);return;
     }
     if(a>=0x80000 && a<0xc0000 && ((a-0x80000)>>12)==0x20) {
-        overlay_=true;mapChanged();resetPending_=true;
+        // CPU-only wake reset preserves the RAM reset vectors (MAME jaws_w).
+        resetPending_=true;
     }
 }
 void Pb030Memory::tick(int cycles) {
+    cdPump_.advance(disks_,cycles,cpuHz_);
     viaAcc_+=int64_t(cycles)*kViaHz;
     const int via=int(viaAcc_/cpuHz_);viaAcc_-=int64_t(via)*cpuHz_;
     if(via) via_.tick(via);

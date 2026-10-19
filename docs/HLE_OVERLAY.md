@@ -45,7 +45,7 @@ Two secondary premises also moved, in the overlay's favour:
 - **Save states shipped** 2026-07-30 (`src/SaveState.h/.cpp`,
   `SaveStateMachines.h/.cpp`, **12** machine families / **41** profiles).
   § 3's "stamp the active module set" guardrail is no longer hypothetical —
-  and since 2026-08-12 it is no longer even a design: `SaveStateMachines.cpp:165`
+  and since 2026-08-12 it is no longer even a design: `SaveStateMachines.cpp:169`
   writes `lle::snapshotFlags()` into the header and `:209-213` refuses an
   HLE-tainted restore in strict mode.
 - **The "loud non-conformant mode" precedent exists.** Every HLE ADB *fallback*

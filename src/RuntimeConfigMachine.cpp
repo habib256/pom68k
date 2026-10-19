@@ -94,7 +94,7 @@ void applyMachineProfile(MachineSelectionConfig& selection, CpuConfig& cpu,
         selection.djMemc = profile;
         break;
     case SnapMachine::Q700:
-    case SnapMachine::Quadra900:
+    case SnapMachine::Quadra900: case SnapMachine::Pb140: case SnapMachine::Pb170:
         selection.spike = profile;
         break;
     case SnapMachine::Q630:

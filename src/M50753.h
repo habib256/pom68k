@@ -14,6 +14,7 @@ public:
     M50753& operator=(const M50753&)=delete;
     // ROM is private, immutable input and is not part of a snapshot.
     bool loadRom(const std::vector<uint8_t>& rom);
+    uint64_t romIdentity() const { return romIdentity_; }
     void reset(); // RAM survives reset, as on the continuously powered PMU
     int step();
     int run(int cycles);
@@ -38,6 +39,7 @@ public:
 private:
     M740 cpu_;
     uint32_t oscillatorHz_;
+    uint64_t romIdentity_=0;
     std::array<uint8_t,kRomSize> rom_{};
     std::array<uint8_t,0xc0> ram_{};
     std::array<uint8_t,5> ports_{},ddr_{},pullups_{};

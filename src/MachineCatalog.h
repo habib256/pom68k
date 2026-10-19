@@ -40,7 +40,7 @@ struct StorageCapabilities {
 // graph), not one marketing name. This is the bounded reuse unit through which
 // the catalogue grows towards every 68k Macintosh.
 enum class PlatformKind : std::uint8_t {
-    Compact, Glue, Oss, V8, Rbv, Sonora, Vasp, MemcJr, DjMemc, Spike, F108, Msc
+    Compact, Glue, Oss, V8, Rbv, Sonora, Vasp, MemcJr, DjMemc, Spike, F108, Msc, Jaws
 };
 
 // GUI/process runner. Several marketing profiles deliberately share one kind.
@@ -48,7 +48,7 @@ enum class PlatformKind : std::uint8_t {
 enum class MachineKind : std::uint8_t {
     Plus = 0, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII,
     ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630,
-    Quadra, Duo, Mac128, Mac512, Mac512e
+    Quadra, Duo, Mac128, Mac512, Mac512e, PowerBook
 };
 
 // Stored in snapshot headers: these numeric values are a file format. Append,
@@ -71,6 +71,7 @@ enum class SnapMachine : std::uint32_t {
     Mac512Ke = 40, MacIIFDHD = 41,
     Duo210 = 42, Duo250 = 43,
     Duo270c = 44, Duo280 = 45, Duo280c = 46, Pb150 = 47,
+    Pb140 = 48, Pb170 = 49,
 };
 
 struct MachineProfile {
@@ -143,6 +144,8 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"MSC + PG&E (PowerBook)", "PowerBook Duo 280 (grayscale)", "duo280", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68040, SnapMachine::Duo280, "roms/macduo280.rom", "015621D7"},
     {"MSC + PG&E (PowerBook)", "PowerBook Duo 280c (color)", "duo280c", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68040, SnapMachine::Duo280c, "roms/macduo280.rom", "015621D7"},
     {"MSC + PG&E (PowerBook)", "PowerBook 150 (grayscale, IDE)", "pb150", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Pb150, "roms/macpb150.rom", "FDA22562"},
+    {"Jaws + Misc GLU (PowerBook)", "PowerBook 140 (monochrome)", "pb140", MachineKind::PowerBook, PlatformKind::Jaws, CpuFamily::M68030, SnapMachine::Pb140, "roms/macpb140.rom", "420DBFF3"},
+    {"Jaws + Misc GLU (PowerBook)", "PowerBook 170 (25 MHz, 68882)", "pb170", MachineKind::PowerBook, PlatformKind::Jaws, CpuFamily::M68030, SnapMachine::Pb170, "roms/macpb140.rom", "420DBFF3"},
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);

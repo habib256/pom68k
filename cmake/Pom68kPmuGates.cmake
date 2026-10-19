@@ -1,4 +1,4 @@
-# First consumer of the Mitsubishi core: PowerBook 140–180 M50753 PMU.
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kPb030Gates.cmake)
 foreach(gate m740_test m50753_test m50753_firmware_etalon pb030_board_test pb140_boot_etalon)
     add_executable(${gate} tests/${gate}.cpp)
     target_link_libraries(${gate} PRIVATE pom68k_core)

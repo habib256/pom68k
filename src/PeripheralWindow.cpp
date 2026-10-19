@@ -234,11 +234,13 @@ void peripheralWindow(const PeripheralHost& host) {
             ImGui::SetTooltip("%s", tip.c_str());
         }
         ImGui::SameLine();
+        ImGui::BeginDisabled(d.target == FirmwareTarget::Pmu);
         if (ImGui::RadioButton("Software substitute (HLE)",
                                want.mode == lle::Mode::Hle)) {
             want.mode = lle::Mode::Hle;
             stage(want);
         }
+        ImGui::EndDisabled();
 
         // ── Which dump. Only meaningful on the LLE side, and only when the
         // device HAS a path knob — so the control is disabled rather than
