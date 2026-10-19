@@ -20,6 +20,7 @@
 #include "MscCpu.h"
 #include "JitTestConfig.h"
 #include "PixelPin.h"
+#include "InfiniteHdCompanion.h"
 #include "MscMemory.h"
 #include <cstdio>
 #include <cstdlib>
@@ -43,6 +44,7 @@ int main() {
         {"duo210", pom68k::SnapMachine::Duo210, 23, "Duo 210"},
         {"duo230", pom68k::SnapMachine::Duo230, 26, "Duo 230"},
         {"duo250", pom68k::SnapMachine::Duo250, 32, "Duo 250"},
+        {"duo270c", pom68k::SnapMachine::Duo270c, 71, "Duo 270c"},
     };
     const char* wanted = getenv("POM68K_DUO_MODEL");
     const Model* model = &kModels[1];
@@ -52,7 +54,7 @@ int main() {
             if (!std::strcmp(m.slug, wanted)) model = &m;
         if (!model) {
             std::fprintf(stderr, "FAIL: POM68K_DUO_MODEL=%s is not a Duo "
-                         "profile (duo210, duo230, duo250)\n", wanted);
+                         "profile (duo210, duo230, duo250, duo270c)\n", wanted);
             return 1;
         }
     }
@@ -60,11 +62,13 @@ int main() {
         pom68k::mscBoardIdentity(model->profile);
 
     std::string rom =
-        find("roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM");
+        find(model->profile == pom68k::SnapMachine::Duo270c
+            ? "roms/1MB ROMs/1993-10 - 0024D346 - Powerbook Duo 270C.ROM"
+            : "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM");
     std::string pge = find("roms/pge/pge_boot.bin");
     std::string img = find("hdv/System 7.5.5 HD.dsk");
     if (rom.empty() || pge.empty() || img.empty()) {
-        std::printf("SKIP: needs the ECFA989B ROM, roms/pge/pge_boot.bin "
+        std::printf("SKIP: needs the selected Duo ROM, roms/pge/pge_boot.bin "
                     "and hdv/System 7.5.5 HD.dsk\n");
         return 0;
     }
@@ -82,9 +86,10 @@ int main() {
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.pgeActive()) { std::fprintf(stderr, "FAIL: PG&E inactive\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    MscCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, false);
+    MscCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, mem.hasCsc());
     mem.setCpu(&cpu);
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+    if (mem.hasCsc() && !infinitehd::attach(mem, img)) return 1;
     if (!agentboot::install(mem)) return 1;
     cpu.hardReset();
 
@@ -108,8 +113,8 @@ int main() {
     for (long f = 0; f < kFrames && !cpu.isHalted(); f++) {
         cpu.runCycles(kFrame);
         if (diag && !(f % 600))
-            std::fprintf(stderr, "[diag] f=%ld pc=$%08X SCSI=%ld gsc=$%02X\n",
-                         f, cpu.getPC0(), mem.scsi().commands, mem.gscReg(4));
+            std::fprintf(stderr, "[diag] f=%ld pc=$%08X SCSI=%ld lcd=$%02X\n",
+                         f, cpu.getPC0(), mem.scsi().commands, mem.videoMode());
     }
 
     if (cpu.isHalted()) {
@@ -120,20 +125,20 @@ int main() {
     std::vector<uint32_t> fb;
     mem.decodeScreen(fb);
     const int W = MscMemory::kScreenW;
-    const int H = MscMemory::kScreenH;
+    const int H = mem.screenHeight();
     auto darkRatio = [&](int x0, int x1, int y0, int y1) {
         long dark = 0;
         for (int y = y0; y < y1; y++)
             for (int x = x0; x < x1; x++)
-                if ((fb[size_t(y) * W + x] & 0xFF) < 0x80) dark++;
+                if ((fb[size_t(y) * W + x] & 0xFF) < (mem.hasCsc() ? 0xC0u : 0x80u)) dark++;
         return double(dark) / double(x1 - x0) / double(y1 - y0);
     };
     double menuBar = darkRatio(0, W, 2, 18);
     double desktop = darkRatio(W / 2, W, 40, H - 40);
 
     std::printf("%s: menu bar dark %.2f, desktop %.2f, SCSI commands %ld, "
-                "GSC mode %d\n", model->name,
-                menuBar, desktop, mem.scsi().commands, mem.gscReg(4) & 3);
+                "LCD mode %d\n", model->name,
+                menuBar, desktop, mem.scsi().commands, mem.videoMode() & 3);
 
     // …and the same screen pinned by its PIXELS (tests/PixelPin.h).
     const pixelpin::Result pin = pixelpin::settleAndHash(

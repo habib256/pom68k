@@ -103,10 +103,10 @@ void applyMachineProfile(MachineSelectionConfig& selection, CpuConfig& cpu,
         pom68k::applyBoardIdentity(core, profile);
         break;
     // The MSC identity (clock + $5FFFFFFC CPU ID) is a construction
-    // argument of MscMemory, read from BoardIdentity.h by the composer.
     case SnapMachine::Duo210:
     case SnapMachine::Duo230:
     case SnapMachine::Duo250:
+    case SnapMachine::Duo270c:
         selection.msc = profile;
         break;
     default:

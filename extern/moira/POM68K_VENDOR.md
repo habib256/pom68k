@@ -17,7 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-10-09 with row 35, the debugger's access-stop delegate; before that
+2026-10-19 with row 37, the MOVES fault cleanup; before that
+2026-10-09 with row 35, the debugger's access-stop delegate; earlier
 2026-09-05 with rows 33 and 34, the fused 68030 `ird`/`irc` fetch and the
 68030 interpreter data window; earlier counts predated the 040 FPU/cache
 completion, the JIT memory-contract work and the peripheral-phase alignment
@@ -26,12 +27,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **94** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **413** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **414** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **36** | this file |
+| patch groups in the inventory below | **37** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Thirty-six patch groups, two of which (the JIT seam, row 22, and the ATC
+Thirty-seven patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -61,7 +62,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 36 groups onto it. Not by the
+against a *measured* estimate of porting the 37 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -144,6 +145,7 @@ gate in the last column of each row.
 | 34 | **68030 interpreter data window** — `mmuRead`/`mmuWrite` consult `pomJitData` for naturally aligned Byte/Word/Long, behind `POM68K_DATA_WINDOW`; `pomJitData030Ok()` owns the refusals and `pomJitData030Hits`/`pomJitData030Refusals` the instrument | `Moira.h`, `MoiraExecMMU_cpp.h` | J3 (point 11) wired the window from `mmu040Read`/`mmu040Write` only, so the knob was a **dead path** on the 68030 — knob on and knob off produced identical fingerprints and identical *zero* fills (`docs/JIT_BRINGUP.md` § C.2), which also left the C.2/C.3 030 probe and thunks without a direct interpreter-side exercise. The 030 owes a **wider** refusal set than the 040: `mmuRead` serves program space as well (`read<C, AddrSpace::PROG, …>` — prefetch, JSR/JMP targets) where `mmu040Read` takes `data` as an argument, and the DTLB is filled from a DATA-space probe whose `fc` the 030 ATC matches exactly, so `fcl != FC::USER_DATA` is refused alongside `fcSource != 0` and `mmuRmw`. `POLL_IPL` is reproduced at each size's own position — before a byte, after a word, **between** the halves of an aligned long — or interrupt recognition moves; unaligned and straddling forms keep the long path because they are the only ones that touch `mmuState[1]`/`mmuDataBuffer`. No in-flight stamp on a hit, same argument as `mmu040Read`, exactness inherited from J3b. **Default ON for this family since 2026-09-05** — the opposite of the 68040, on three independent admissions: bit-identical fingerprints knob on and off across three engines at two budgets, `-L m030` green 56/56 with the window on, and −5.5 % on `threaded` / −5.7 % on the interpreter arm. `POM68K_DATA_WINDOW=0` still refuses it, and `jit_lockstep_030_no_data_window_test` is the gate that keeps that path exercised now that it is no longer the default | `jit_lockstep_030_test`, `jit_lockstep_030_no_data_window_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_alignment_test` |
 | 35 | **Debugger access-stop delegate** `pomDidReachWatchpoint(addr, S, write, program)` at all six watchpoint sites (default forwards to `didReachWatchpoint`), and `Debugger::reset` re-arming `CHECK_CP` | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraDebugger.cpp` | the bare address could not say read from write nor data from program space, so no consumer could keep a write watchpoint from stopping on reads or on an opcode fetch; and a reset left catchpoints listed with `CHECK_CP` clear, so the accelerated engine no longer stepped aside for them | `debug_session_test` |
 | 36 | **Defined last-level test in the 68030 table walk** — `bitpos <= 0` replaces `!bitpos` in the `indirect` predicate of `mmuWalkTables` | `MoiraExecMMU_cpp.h` | once TID has been consumed `bitpos` is −4, and `!bitpos` let `bits >> -4` evaluate: undefined behaviour, flagged by the nightly UBSan job in the test-side mirror `src/Mmu030Peek.h` (red from 2026-10-09). x86-64 and AArch64 mask a 32-bit shift count to 28, `bits` holds 16 bits, so the old expression read 0 and answered "last level" — exactly what the new one answers. No behaviour change | `sst68030`, `debug_inspection_test` |
+| 37 | **MOVES releases alternate FC on a bus fault** — clear `fcSource` before exception stacking | `Moira.cpp` | A faulting MOVES left SFC/DFC selected for handler fetches and data accesses. The LC II optional-FPU probe exposes this with SFC=7 and an empty 68882 socket; the fault's FC remains in the recorded access/SSW | `v8_ramsize`, `lcii_nofpu_boot_etalon` |
 
 Rows 2-21, 25-34 and 36 are the accuracy work; rows 22-24 and 35 are seams (inert
 when nothing arms them). The eleven files carrying no `POM68K` marker at all —
@@ -1847,3 +1849,19 @@ writeBuffer" instead of "byte 312".
   branch handle it, and the ATC follows suit; no corpus generates
   TC.P = 1 because Mac OS uses 4K throughout. A coverage gap, not a
   missing cell — extending the generator is the work, not writing code.
+
+## 2026-10-18 — MOVES bus faults release SFC/DFC
+
+`processException` clears `fcSource` before entering a 020/030/040 bus-error
+handler. The in-flight access already records the fault's FC, so its SSW
+still reports that FC; stacking and handler execution use normal spaces.
+The V8 wrapper now faults FC=7 coprocessor-1 accesses when the 68882 socket
+is empty. Previously its MOVES probe read RAM at `$22000`, which hid this
+exception-path bug and made the LC II ROM claim an FPU was fitted.
+`v8_ramsize` executes the probe under 020 and 030, with/without FPU and
+SFC=5/7, checking both the stacked FC and the handler's released FC.
+
+The CIR-select reference is MAME 0.287's
+[`m68ki_read_16_fc`](https://github.com/mamedev/mame/blob/mame0287/src/devices/cpu/m68000/m68kcpu.h):
+FC=7 plus coprocessor-1 addresses selects the 6888x interface separately
+from program/data RAM.

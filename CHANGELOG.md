@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **Why did the bare LC II claim an FPU, and why must PA0 stay high?** → [2026-10-19 — CPU-space CIR probe, MOVES fault cleanup and separate MAME configuration ports](#2026-10-19-duo270c-lcii-cir)
+
 - **"closing the lid holds the 68030 but the System runs no sleep procs, and re-opening does not wake it" (2026-08-14, `docs/DUO_BRINGUP.md` milestone 6, the TODO's *Bloqué* note) — the whole ROM sleep table ran (`SleepSaveFlag`, `$7F 'MATT'`, MSC kill-power); "no write reached the disk" is the System's path, which has no `FlushVol`, and the PG&E wakes on a key, not on the lid** → [2026-10-14 (third) — The Duo sleeps and wakes on its own code…](#2026-10-14-duo-sleep)
 - **"a pressed CD game, played" / "the AppleCD Explorer disc mounts" (2026-09-19) — both stopped opening on 2026-10-09, when the Snow-derived `CdCueSheet` refused PREGAP and FLAGS, and no gate held either disc; and the September TOC placed every audio track 150 sectors early, having dropped the PREGAP the sheets declare** → [2026-10-10 (second) — CdImage…](#2026-10-10-cd-image)
 - **"the debugger's 68030 logical view (and `guestPeek8`) matches the CPU" — it ignored long-descriptor limits until the MMU-edit gate faulted where the view showed a page** → [2026-10-09 (tenth) — MMU and cache registers edited…](#2026-10-09-debugger-mmu-edits)
@@ -491,6 +493,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ---
 
 ## Index by date
+
+- **2026-10-19** — [Duo 270c color Finder and the LC II CPU-space FPU probe](#2026-10-19-duo270c-lcii-cir)
 
 Newest first.
 
@@ -1154,6 +1158,60 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-duo270c-lcii-cir"></a>
+## 2026-10-19 — The Duo 270c reaches a color Finder, and the bare LC II stops detecting RAM as its FPU
+
+**Duo 270c.** Profile 44 has its own `0024D346` ROM, 33 MHz 68030,
+68882 and `$A55A1002` CPU ID. The ROM names it BoxFlag 71 (Gestalt 77).
+`CscVideo.h`, following MAME's `csc.cpp`, implements the CSC register
+window, RGB palette ports, indexed 1/2/4/8bpp, RGB555, the 640x480 panel
+and the centered 400-line color mode. VBL is latched until acknowledged;
+MSC routes that line through its pseudo-VIA. Byte, word and debugger
+accesses agree, including the VRAM window's mirrors.
+
+The catalogue, ROM selector, typed relaunch, GUI dimensions, battery-file
+identity and save-state profile are wired. CSC data is appended only to
+this new profile, preserving existing GSC payloads. `msc_parity_test`
+checks palette reads/writes, guest pixel byte order, VBL acknowledgment
+and machine-state restoration/refusal under another profile.
+`duo270c_boot_etalon` reaches System 7.5.5's Finder with pixel pin
+`4f6e73fa9066738a`; its agent variant launches Disques and mounts the
+hot-attached volume on SCSI ID 2. The reference volume's Startup Items
+alias needs the existing blank Infinite HD companion; without it the
+screen was a Finder hidden behind an alias alert. No reference disk was
+modified. The 280/280c CPU port and PB150 remain open work.
+
+**LC II without a 68882.** The missing hardware was the CPU-space CIR
+select. ROM `$40A03A82` sets SFC=7 and reads `$22000` with MOVES.W.
+The V8 wrapper used to acknowledge it from RAM, so the ROM retained FPU
+bit 12 and elected `$DC00` even with an empty socket. An absent
+coprocessor now bus-errors on its CPU-space accesses; ordinary data RAM
+at the same numeric address remains readable. The ROM elects `$CC00`
+itself. No ROM patch or forced low-memory flag is involved.
+
+This also exposed a core exception bug: a faulting MOVES retained
+`fcSource`, so SFC/DFC leaked into exception stacking and handler reads.
+`Moira::processException` releases that selector before stacking; the
+recorded fault/SSW still carries FC=7. `v8_ramsize` executes the synthetic
+probe on 020 and 030, with/without FPU and SFC=5/7, and checks the saved
+FC and the handler's normal space. The real bare LC II boots MacPack to
+the Finder with the *same* `674c4049ab7980f7` pixel pin as the fitted
+machine. `lcii_nofpu_boot_etalon` now asserts both that pin and the ROM's
+socket flag.
+
+**Validation.** The GUI and affected test targets build. Thirteen selected
+gates pass: CSC, V8/CIR, bus-error frames, 030 lockstep, 030 save states,
+profile storage, documentation/file budgets, the Duo 230 baseline, both
+270c gates, and LC II boots with/without FPU. All five boot gates execute
+on the supplied assets. Prior CI, macOS and Nightly runs on main are green.
+
+**Correction to earlier research.** MAME's `:config` selects the FPU;
+V8's device-local `:v8:config` selects diagnostic mode. They were
+conflated in the September/October LC II notes. PA0 remains high in
+normal operation; lowering it correctly enters the factory monitor.
+The Duo 250's FPU discrepancy was also checked: its deliberate empty
+socket follows Apple's optional Dock configuration and is preserved.
 
 <a id="2026-10-14-retro68-boost"></a>
 ## 2026-10-14 (seventh) — The Retro68 host tools rebuilt against boost 1.90: NetProbe's gate runs again, and the agent build is not the shipped one

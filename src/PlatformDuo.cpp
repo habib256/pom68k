@@ -68,12 +68,10 @@ struct MscMachine
     }
 
     void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        // Fixed-mode LCD: 640x400, one GSC layout per frame, no beam and no
-        // mode change — decodeScreen() reads VRAM whole (MscMemory.h:152), so
-        // it can write the published buffer directly.
+        // Decode the GSC or CSC panel into the published buffer.
         mem.decodeScreen(out);
         for (uint32_t& px : out) px |= 0xFF000000u;
-        w = MscMemory::kScreenW; h = MscMemory::kScreenH;
+        w = MscMemory::kScreenW; h = mem.screenHeight();
     }
 
     void publishStatus() {
@@ -81,21 +79,19 @@ struct MscMachine
                                ((cpu.getTC() & 0x80000000) ? 2 : 0) |
                                (mem.cpuHeld() ? 4 : 0)),
                        std::memory_order_relaxed);
-        stGsc_.store(mem.gscReg(4), std::memory_order_relaxed);
+        stGsc_.store(mem.videoMode(), std::memory_order_relaxed);
     }
 
 private:
     const int64_t kFrame = mem.cpuHz() / 60;   // 25 or 33 MHz (BoardIdentity.h)
 
-    std::atomic<uint8_t> stGsc_{0};            // GSC reg 4 = panel depth mode
+    std::atomic<uint8_t> stGsc_{0};            // current GSC/CSC depth mode
 };
 
-// ── PowerBook Duo 210 / 230 / 250: MSC + PG&E, 68030 ────────────────────
-// Platform #12's GUI citizens (the 230 since 2026-08-06, the 210 and 250
-// since 2026-10-14; docs/DUO_BRINGUP.md, gate tests/duo230_boot_etalon.cpp
-// with POM68K_DUO_MODEL). Selected by the 1 MB ROM whose header checksum is
-// $ECFA989B — the dump the three share — and the catalogue profile, whose
-// clock and $5FFFFFFC CPU ID come from BoardIdentity.h.
+// ── PowerBook Duo: MSC + PG&E, 68030, GSC or CSC LCD ───────────────────
+// The catalogue selects clock/CPU ID (BoardIdentity.h), FPU and panel.
+// GSC Duos share ECFA989B; the color 270c has its own 0024D346 ROM.
+// The boot gate uses the same construction (POM68K_DUO_MODEL).
 // No floppy drive, no NuBus, no discrete RTC: the PG&E power manager runs
 // its own 68HC05 and owns the clock, the PRAM and the whole input path.
 static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
@@ -109,8 +105,10 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
     const pom68k::MscBoardIdentity identity =
         pom68k::mscBoardIdentity(selected);
     const bool duo210 = selected == pom68k::SnapMachine::Duo210;
+    const bool color = selected == pom68k::SnapMachine::Duo270c;
     const char* name = profile->label;
-    std::printf("Machine: %s (68030, MSC + PG&E, GSC 640x400)\n", name);
+    std::printf("Machine: %s (68030, MSC + PG&E, %s)\n", name,
+                color ? "CSC 640x480" : "GSC 640x400");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
                 rom.size() / 1024);
 
@@ -118,7 +116,7 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
     MscMemory& mem = services.own<MscMemory>(services.config().core(), 8u << 20,
         identity.cpuHz, identity.boxId);
     MscCpu& cpu = services.own<MscCpu>(mem, services.config().jit().resolved,
-        services.config().core().cpu, false);
+        services.config().core().cpu, color);
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);
     if (!mem.loadRom(rom)) {
@@ -138,7 +136,8 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
         profile->slug,
         "hdv/System 7.5.5 HD.dsk",
         duo210 ? "68030 @ 25 MHz (Moira + PMMU)"
-               : "68030 @ 33 MHz (Moira + PMMU)",
+               : color ? "68030 + 68882 @ 33 MHz (Moira + PMMU)"
+                       : "68030 @ 33 MHz (Moira + PMMU)",
         MachineKind::Duo,
         selected,
     };
@@ -147,7 +146,6 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
         [&] { mem.setRtcSeconds(services.hostMacSeconds()); },
         romName, media, services);
 }
-
 
 int pom68k::gui::composeDuo(
     pom68k::gui::PlatformLaunch launch, GuiHostServices& services) {

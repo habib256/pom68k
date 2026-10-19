@@ -50,8 +50,51 @@ std::vector<uint8_t> makeRom() {
 }
 } // namespace
 
+// The ROM's optional-FPU probe is MOVES.W in CPU space (SFC=7).
+// It must fault with an empty socket while ordinary data RAM stays readable.
+static void testCoprocessorProbe() {
+    for (bool as020 : {false, true}) for (bool fpu : {false, true})
+        for (unsigned fc : {5u, 7u}) {
+            std::vector<uint8_t> rom(V8Memory::kRomSize, 0);
+            auto w16 = [&](unsigned a, uint16_t v) {
+                rom[a] = uint8_t(v >> 8); rom[a + 1] = uint8_t(v);
+            };
+            auto w32 = [&](unsigned a, uint32_t v) {
+                w16(a, uint16_t(v >> 16)); w16(a + 2, uint16_t(v));
+            };
+            w32(0, 0x10000); w32(4, 0xA00020);
+            w16(0x20, 0x23FC); w32(0x22, 0xA00080); w32(0x26, 8);
+            w16(0x2A, 0x0E79); w16(0x2C, 0x1000); w32(0x2E, 0x22000);
+            w16(0x32, 0x4E72); w16(0x34, 0x2700);
+            w16(0x80, 0x74FF); // exception handler: MOVEQ #-1,D2; STOP
+            w16(0x82, 0x4E72); w16(0x84, 0x2700);
+            V8Memory mem(pom68k::defaultCoreConfig(), 0xA00000);
+            mem.loadRom(rom);
+            Cpu030 cpu(mem, jit::defaultResolvedConfig(),
+                       pom68k::defaultCoreConfig().cpu, fpu, as020);
+            mem.setCpu(&cpu);
+            cpu.hardReset(); cpu.setEngine(0); cpu.setSFC(fc);
+            mem.read8(0xA00000);
+            mem.write16(0x22000, 0x3456);
+            cpu.runCycles(2000);
+            const bool fault = !fpu && fc == 7;
+            check(!cpu.isHalted() && (cpu.getD(2) == 0xFFFFFFFFu) == fault,
+                  "020/030: only an absent CPU-space FPU faults");
+            check(mem.read16(0x22000) == 0x3456,
+                  "CPU-space probe leaves ordinary RAM intact");
+            if (fault) {
+                check((mem.read16(cpu.getSP() + 10) & 7) == 7,
+                      "CIR bus-error frame retains the fault's FC=7");
+                check(cpu.readFC() != 7,
+                      "faulting MOVES releases SFC before its handler fetch");
+            } else check((cpu.getD(1) & 0xFFFF) == 0x3456,
+                         "non-faulting probe returns the bus value");
+        }
+}
+
 int main() {
     std::printf("v8_ramsize — V8 memory controller + overlay (O6.2)\n");
+    testCoprocessorProbe();
     const auto rom = makeRom();
 
     // ── Overlay + boot through the real CPU reset path ──────────────────

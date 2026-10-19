@@ -152,6 +152,13 @@ public:
     }
 
 private:
+    // FC=7 selects the coprocessor interface, independently of the RAM map.
+    // An empty 68882 socket must not acknowledge its CIR accesses.
+    void checkCoprocessorBus(moira::u32 addr) const;
+    moira::u8 read8(moira::u32 addr) const override;
+    moira::u16 read16(moira::u32 addr) const override;
+    void write8(moira::u32 addr, moira::u8 value) const override;
+    void write16(moira::u32 addr, moira::u16 value) const override;
     friend pom68k::MoiraCpu<Cpu030, V8Memory>;
     int cacrFlushPolicy_ = -1;
     void willExecute(moira::M68kException exc, moira::u16 vector) override;

@@ -326,3 +326,29 @@ void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
     p.icMisses = pomIcache.misses;
     periphTraceFn_(periphTraceOpaque_, p);
 }
+
+// The LC II ROM's CheckForFPU ($40A03A82) uses MOVES with SFC=7 to
+// read the 6888x response CIR at $22000. This is CPU space, not RAM.
+// Returning guest RAM there silently populated the empty socket in
+// HwCfgFlags. A bus fault lets the ROM clear the flag itself.
+void Cpu030::checkCoprocessorBus(moira::u32 addr) const {
+    if ((addr & 0xFFFFE000u) == 0x00022000u &&
+        getFPUModel() == moira::FPUModel::NONE && readFC() == 7)
+        const_cast<Cpu030*>(this)->extBusError();
+}
+moira::u8 Cpu030::read8(moira::u32 addr) const {
+    checkCoprocessorBus(addr);
+    return mem_.read8(addr);
+}
+moira::u16 Cpu030::read16(moira::u32 addr) const {
+    checkCoprocessorBus(addr);
+    return mem_.read16(addr);
+}
+void Cpu030::write8(moira::u32 addr, moira::u8 value) const {
+    checkCoprocessorBus(addr);
+    mem_.write8(addr, value);
+}
+void Cpu030::write16(moira::u32 addr, moira::u16 value) const {
+    checkCoprocessorBus(addr);
+    mem_.write16(addr, value);
+}

@@ -1,7 +1,6 @@
 # « POM68K Disques » as a beyond-boot proof on every platform that boots a
 # System with Startup Items (docs/SCSI_HOTPLUG.md § 8, tests/AgentBootProbe.h).
-# Each platform's representative boot again, with the agent installed into
-# the boot volume's Startup Items in memory before the boot: the same Finder
+# The agent is installed into Startup Items before boot: the same Finder
 # verdict as without it, then the Finder must have launched the agent (its
 # first mailbox poll) and the agent must mount a blank disk attached live,
 # by name — the Process Manager, the SCSI Manager and the File Manager past
@@ -61,6 +60,7 @@ pom68k_agent_boot(quadra800  centris650_boot_etalon 1800 POM68K_CENTRIS_MODEL=q8
 pom68k_agent_boot(lc580      q630_boot_etalon       3600 POM68K_Q630_ID=A55A225A POM68K_Q630_ROM=lc580)
 pom68k_agent_boot(duo210     duo230_boot_etalon     1800 POM68K_DUO_MODEL=duo210)
 pom68k_agent_boot(duo250     duo230_boot_etalon     1800 POM68K_DUO_MODEL=duo250)
+pom68k_agent_boot(duo270c    duo230_boot_etalon     1800 POM68K_DUO_MODEL=duo270c)
 # The compacts boot System 6 from HD20SC; System 7.0 — the Mac II's volume —
 # runs on a Plus with 4 MB and gives them Startup Items. Longer boot.
 pom68k_agent_boot(plus       scsi_boot_etalon       2400 POM68K_BEYOND_IMG=hdv/System\ 7.0\ HD.dsk POM68K_FRAMES=9000)

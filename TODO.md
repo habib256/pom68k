@@ -110,11 +110,6 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   course ADB du Centris ci-dessous et que l'ordre d'allocation du tas
   système. Réglage global (épingles, perfs, JIT) : *Bloqué : un chiffre
   matériel (TimeDBRA/TimeVIADB d'un vrai LC II, Centris ou Quadra).*
-- [ ] **Rouvrir le LC II sans FPU.** Clos « fidèle » le 2026-09-17, contredit
-  le 2026-10-02 : le LC II était livré sans FPU, et MAME élit `$CC00`
-  depuis la même ROM. Trouver où les chemins d'init à froid se séparent
-  avant `$A463EA` (POM68K passe par le test PA0 en `$A4644C`, MAME
-  jamais) ; une expérience PA0 + fenêtre `$FC0000` muette n'a pas suffi.
 - [ ] **Synchroniser le SCC sur l'horloge VIA au Centris et au Quadra 700.**
   Fait sur Q605/Q630 (`calibration_040_etalon`), retenu ici. La souris
   morte n'est pas un défaut du PIC : c'est une course de la ROM (`@sendCmd`
@@ -151,9 +146,9 @@ sur le premier profil consommateur avant d'être généralisés ; une ligne
 catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
-- [ ] **Ajouter Duo 270c puis Duo 280.** CSC couleur puis le chemin 68040 ;
-  les variantes proches 210/250 sont livrées (2026-10-14,
-  `duo210_boot_etalon`, `duo250_boot_etalon`).
+- [ ] **Ajouter Duo 280/280c.** Réutiliser le CSC livré avec le Duo 270c
+  et porter le chemin MSC sur le 68LC040 ; Finder, entrée, disque et
+  sauvegarde doivent être prouvés sur chaque profil.
 - [ ] **Ajouter PowerBook 150.** Framebuffer LCD/GSC, IDE (le target ATA
   existe et amorce déjà un Q630 : `AtaDisk`, `q630_ide_boot_etalon`), box ID
   et PMU 68HC05 à partir de sa ROM.
