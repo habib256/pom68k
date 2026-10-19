@@ -498,6 +498,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (twelfth)** — [PowerBook 165c gains its 400-line color panel and separate session identity](#2026-10-19-pb165c-pangola)
 - **2026-10-19 (eleventh)** — [PowerBook 180c runs its color LCD through Pangola and the real video ROM](#2026-10-19-pb180c-pangola)
 - **2026-10-19 (tenth)** — [Niagra gains PowerBook 165 and 180 with separate 33 MHz session identities](#2026-10-19-pb165-pb180)
 - **2026-10-19 (ninth)** — [PowerBook 160 brings Niagra and the GSC grayscale panel to the product](#2026-10-19-pb160-niagra)
@@ -1175,6 +1176,48 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-10-19-pb165c-pangola"></a>
+## 2026-10-19 (twelfth) — PowerBook 165c gains its 400-line color panel and separate session identity
+
+PB165c appends profile/session id 56 on the existing Pangola platform:
+33 MHz 68030, 68882, 640×400 color LCD, shared E33B2724 main ROM,
+M50753 PMU v3 and the same required 32 KB video declaration ROM as PB180c.
+Apple's `InternalOnlyEqu.a` identifies Monet as BoxFlag 44 and explicitly
+lists its FPU; MAME's `macpwrbk030.cpp` supplies the CNF15 high setup strap.
+The real ROM/System 7.5.5 selects BoxFlag 44, without guest identity patches.
+
+`Pb030Profile::colorHeight` supplies the physical panel to production and
+the real-ROM harness. The 165c gets 400 lines and 180c keeps 480; grayscale
+profiles keep their existing path. Both color profiles use the same typed
+video firmware policy and canonical `roms/pbvideo/pb180c.bin` path. Select
+`--machine-profile=pb165c`; automatic E33B2724 detection remains PB160.
+There are now 56 profiles on 15 platforms and the same 13 CPU/session
+adapters. No device map or save-state payload layout has changed.
+
+The native first boot reaches Finder, keyboard press/release and trackball
+input, exact public-session restoration and resumed Ticks. The 640×400
+image was inspected; its settled System 7.5.5 pin is `a94e32a1a7c5b25d`.
+The component gate checks the 165c's physical panel and actual CPU FPU,
+its own session roundtrip and refusal between 165c/180c in both directions,
+with identical main/video ROMs. The real-ROM replay probe now rejects the
+other color sibling explicitly. The profile has native/interpreter and
+agent boot registrations, using the existing shared harness.
+
+Verification on x86-64: all five focused Pangola gates executed without
+skips (165c native/interpreter/agent, 180c native regression and component
+contracts), followed by all eight native-required `jit-fast` gates and the
+three session/storage/file-size gates. Xvfb GUI checks cover engine switching,
+completed save and a real second-process relaunch retaining the profile.
+Touched production/test translation units pass `-Werror`; all 54 declared
+asset identities match the private inputs.
+
+The asset registry records the shared inputs for 165c without adding ROM
+payloads. Portable/PB100, external video, PC VGA text/planar modes and
+sleep/power qualification remain open. AArch64 registration metadata was
+regenerated without claiming execution on that host.
 
 ---
 

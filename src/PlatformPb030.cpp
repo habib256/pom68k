@@ -41,7 +41,7 @@ int pom68k::gui::composePb030(PlatformLaunch launch,GuiHostServices& services) {
     if(!profile || (profile->platform!=PlatformKind::Jaws && profile->platform!=PlatformKind::Niagra && profile->platform!=PlatformKind::Pangola)) return 1;
     const auto board=pb030Profile(profile->snapshot);
     const auto& config=services.config();
-    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,board.cpuHz,profile->platform!=PlatformKind::Jaws,profile->platform==PlatformKind::Pangola?480:0);
+    auto& mem=services.own<Pb030Memory>(config.core(),8u<<20,board.cpuHz,profile->platform!=PlatformKind::Jaws,board.colorHeight);
     if(!mem.loadRom(launch.rom) || !mem.selectPmuFirmware(config.core().firmware) || !mem.selectColorFirmware(config.core().firmware)) return 1;
     auto& cpu=services.own<Pb030Cpu>(mem,config.jit().resolved,config.core().cpu,board.fpu);
     mem.setCpu(&cpu);

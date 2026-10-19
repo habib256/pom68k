@@ -1187,7 +1187,7 @@ int main() {
             check(actual==pb,"typed Jaws selection routes the shared Quadra ROM");
             routedProfiles.insert(actual);
         }
-        for(auto pb:{pom68k::SnapMachine::Pb160,pom68k::SnapMachine::Pb165,pom68k::SnapMachine::Pb180,pom68k::SnapMachine::Pb180c}) {
+        for(auto pb:{pom68k::SnapMachine::Pb160,pom68k::SnapMachine::Pb165,pom68k::SnapMachine::Pb180,pom68k::SnapMachine::Pb180c,pom68k::SnapMachine::Pb165c}) {
             std::string arg=pom68k::app::machineProfileArgument(pb);
             char* av[]={a0,arg.data()};
             const auto cfg=pom68k::app::RuntimeConfig::parse(2,av,{});

@@ -1,12 +1,12 @@
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kPbColorGates.cmake)
-# Jaws and Niagra profiles share the bounded CPU/PMU bridge.
-foreach(model pb145 pb145b pb170 pb160 pb165 pb180)
+# Jaws, Niagra and Pangola profiles share the bounded CPU/PMU bridge.
+foreach(model pb145 pb145b pb170 pb160 pb165 pb180 pb165c)
     add_test(NAME ${model}_boot_etalon COMMAND pb140_boot_etalon --${model})
     add_test(NAME interp_${model}_boot_etalon COMMAND pb140_boot_etalon --${model})
     set_tests_properties(${model}_boot_etalon interp_${model}_boot_etalon PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(interp_${model}_boot_etalon PROPERTIES ENVIRONMENT "POM68K_CPU_ENGINE=interp")
 endforeach()
-foreach(model pb140 pb145 pb145b pb170 pb160 pb165 pb180)
+foreach(model pb140 pb145 pb145b pb170 pb160 pb165 pb180 pb165c)
     add_test(NAME ${model}_agent_boot_etalon COMMAND pb140_boot_etalon --${model})
     set_tests_properties(${model}_agent_boot_etalon PROPERTIES ENVIRONMENT "POM68K_TEST_AGENT=1" TIMEOUT 1800 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endforeach()

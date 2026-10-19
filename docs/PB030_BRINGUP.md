@@ -74,7 +74,7 @@ The real boot and interpreter gates exercise the ROM and PMU v3 on System
 The Pangola color extension is described below; external monitor support remains
 separate work. There is no AArch64 execution or power-consumption claim.
 
-## Pangola: PowerBook 180c
+## Pangola: PowerBook 165c/180c
 
 PB180c appends profile/session id 55 and the Pangola platform kind. It uses
 33 MHz, a 68882, the shared E33B2724 main ROM and PMU v3, and a separate
@@ -105,11 +105,32 @@ real PB180c boot gates share the existing Finder/input/public-state harness;
 the agent variant also checks Startup Items launch and live disk mounting.
 The settled System 7.5.5 desktop pin is `6d7a190822fb3dc2`.
 This qualifies the indexed LCD graphics path. PC VGA text/planar modes,
-external displays, PB165c product admission, sleep/power consumption and
+external displays, sleep/power consumption and
 execution on AArch64 remain outside this milestone.
+
+### PowerBook 165c panel and identity
+
+PB165c appends profile/session id 56 on the same Pangola board. It shares the
+33 MHz 68030/68882, E33B2724 ROM, PMU v3 and 32 KB video declaration ROM
+with PB180c. Its 640×400 panel selects CNF15 high during VGA setup; the real
+ROM/System driver determines BoxFlag 44 (Apple's `boxMonet`). There is no
+guest identity patch. `Pb030Profile::colorHeight` supplies the physical panel
+to both production composition and the shared real-ROM harness; PB180c
+retains 480 lines. Select `--machine-profile=pb165c`; automatic ROM detection
+still selects PB160. The preferred shared video-firmware path stays
+`roms/pbvideo/pb180c.bin`, with the same typed override and refusal rules.
+
+The Pangola component gate checks the 165c's 68882, panel size and both
+directions of public-session refusal between 165c and 180c, despite their
+identical firmware. Native/interpreter boot and agent variants use the
+common Finder, keyboard/trackball and exact session-replay probes. The settled
+System 7.5.5 desktop pin is `a94e32a1a7c5b25d`. External
+video, PC VGA text/planar modes and sleep/power qualification remain open.
 
 ## Sources and ownership
 
+- Apple ROM source: [InternalOnlyEqu.a](https://github.com/elliotnunn/mac-rom/blob/master/Internal/Asm/InternalOnlyEqu.a),
+  `boxMonet = 44` and `boxHokusai = 65`, describing the 165c/180c CPU/FPU and panels.
 - Apple ROM source: [PowerMgr.a](https://github.com/elliotnunn/mac-rom/blob/master/OS/PowerMgr/PowerMgr.a),
   `SendByte` and `ReceiveByte`; [PowerPrivEqu.a](https://github.com/elliotnunn/mac-rom/blob/master/Internal/Asm/PowerPrivEqu.a),
   `readPmgrVers = $EA`. These define the host transport and command.

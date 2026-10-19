@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
-the 68040 Quadra 950. The project currently provides **55 machine profiles on
+the 68040 Quadra 950. The project currently provides **56 machine profiles on
 15 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
@@ -270,7 +270,7 @@ Bold text is the default profile for a shared ROM.
 | 1 MB | `06684214`, `064DC91D` | **Macintosh Quadra 630**, LC/Performa 580 | `q630`, `lc580` |
 | 1 MB | `ECFA989B` | **PowerBook Duo 230**, Duo 210, Duo 250 | `duo230`, `duo210`, `duo250` |
 | 1 MB | `420DBFF3` | PowerBook 140 / 145 / 145B / 170 (Jaws, monochrome; explicit selection) | `pb140`, `pb145`, `pb145b`, `pb170` |
-| 1 MB | `E33B2724` | **PowerBook 160** / 165 / 180 / 180c (25/33 MHz; 180c color LCD) | `pb160`, `pb165`, `pb180`, `pb180c` |
+| 1 MB | `E33B2724` | **PowerBook 160** / 165 / 165c / 180 / 180c (25/33 MHz; 165c/180c color LCD) | `pb160`, `pb165`, `pb165c`, `pb180`, `pb180c` |
 | 1 MB | `FDA22562` | PowerBook 150 (640×480 four-gray GSC, 68030) | `pb150` |
 | 1 MB | `015621D7` | PowerBook Duo **280** / 280c (68LC040, grayscale / color) | `duo280`, `duo280c` |
 | 1 MB | `0024D346` | PowerBook Duo 270c (640×480 color, 68882) | `duo270c` |
@@ -294,18 +294,19 @@ LLE requires user-provided dumps in these locations:
 | Cuda 341S0789 | Macintosh TV | `roms/cuda/341s0789.bin` |
 | Cuda 341S0060 | LC 520 family, Quadra 630/LC 580 | `roms/cuda/341s0060.bin` |
 | Cuda 341S0788 | LC 475/575 and Quadra 605 | `roms/cuda/341s0788.bin` |
-| M50753 (required for PowerBook 160/165/180/180c) | PowerBook 160, 165, 180, 180c | `roms/pmu/pb160.bin` |
+| M50753 (required for PowerBook 160/165/165c/180/180c) | PowerBook 160, 165, 165c, 180, 180c | `roms/pmu/pb160.bin` |
 | M50753 (required for PowerBook 140/145/145B/170) | PowerBook 140/145/145B/170 | `roms/pmu/pb140.bin` |
 | PG&E power manager | PowerBook Duo 210, 230, 250 | `roms/pge/pge_boot.bin` |
 | Toby video card declaration ROM 342-0008-a | Macintosh II, IIx, IIcx, IIfx | `roms/342-0008-a.bin` |
 
-PowerBook 140/145/145B/160/165/170/180/180c require the 6,144-byte M50753 firmware; use the path above
+PowerBook 140/145/145B/160/165/165c/170/180/180c require the 6,144-byte M50753 firmware; use the path above
 or `--firmware-override=pmu:lle:<path>`. These machines refuse to start without it.
 
-PowerBook 180c additionally requires its 32,768-byte video declaration ROM at
+PowerBook 165c/180c additionally require the shared 32,768-byte video declaration ROM at
 `roms/pbvideo/pb180c.bin` or `--firmware-override=pbvideo:lle:<path>`. Select
-`--machine-profile=pb180c` with the shared E33B2724 ROM; automatic detection
-selects PB160. The color LCD is 640×480; an external display is not supported.
+`--machine-profile=pb165c` or `--machine-profile=pb180c` with the shared
+E33B2724 ROM; automatic detection selects PB160. The color LCD is 640×400 on 165c and 640×480 on 180c; an external
+display is not supported.
 
 The SE/30 additionally uses `roms/se30/se30vrom.uk6` for its video declaration
 ROM. The Duo firmware is required for the PMU handshake; without it, that

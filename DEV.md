@@ -87,7 +87,7 @@ hand-maintained backlog or overview.
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
 inside that section. Fifteen platforms in twelve sections and the Jaws/Niagra/Pangola board note (VASP shares
-Sonora's), 55 profiles
+Sonora's), 56 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -103,7 +103,7 @@ ROM identity and stable save-state id live).
 | Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700--900--950) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
-| Niagra / Pangola + Misc GLU | **PowerBook 160** / **180c** | PowerBook 165/180 (33 MHz; 68882 on 180/180c, WD90C26 color on 180c) | [board note](docs/PB030_BRINGUP.md) |
+| Niagra / Pangola + Misc GLU | **PowerBook 160** / **180c** | PowerBook 165/165c/180 (33 MHz; 68882 on 165c/180/180c, WD90C26 color on 165c/180c) | [board note](docs/PB030_BRINGUP.md) |
 | Jaws + Misc GLU | **PowerBook 140** | PowerBook 145/145B, 170 | [board note](docs/PB030_BRINGUP.md) |
 | MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), 250; 270c (68882/CSC), 280/280c (68LC040/CSC); PB150 (GSC/IDE/SWIM) | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
 
@@ -301,8 +301,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **55** profiles are enumerated
-  (`MachineCatalog.h:56-73`, tags 1-55 contiguous) and each of the **13**
+  append, never renumber. All **56** profiles are enumerated
+  (`MachineCatalog.h:56-73`, tags 1-56 contiguous) and each of the **13**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
