@@ -40,6 +40,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **How do Portable and PB100 become separate GUI sessions despite sharing a PMU dump?** → [Portable/PB100 product composition, battery integrity and session identities](#2026-10-19-portable-product)
+
+- **Why did the Portable draw a boot floppy but never select its SCSI disk?** → [Portable/PB100 68000 board, byte lanes and real Finder replay](#2026-10-19-portable-board)
+
+- **Does the Portable PMU release reset without its board clock?** → [Portable/PB100 Power Manager calibration and firmware replay](#2026-10-19-portable-pmu)
+
 - **Does the PowerBook 150 use the Duo quadrature trackball and VIA head-select wiring?** → [PowerBook 150: IDE boot, PG&E ADB ordering and SWIM head selection](#2026-10-19-pb150-jedi-adb)
 
 - **Why could the 280 Finder look ready while its guest clock was frozen?** → [Duo 280/280c and the byte-wide MSC power cycle](#2026-10-19-duo280-msc-byte-cycle)
@@ -498,6 +504,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (fifteenth)** — [Portable and PowerBook 100 become selectable machines with required firmware and separate sessions](#2026-10-19-portable-product)
+- **2026-10-19 (fourteenth)** — [Portable and PowerBook 100 reach Finder through their 68000 board and real PMU](#2026-10-19-portable-board)
+- **2026-10-19 (thirteenth)** — [Portable/PB100 Power Manager calibrates against the board clock and replays its real firmware](#2026-10-19-portable-pmu)
 - **2026-10-19 (twelfth)** — [PowerBook 165c gains its 400-line color panel and separate session identity](#2026-10-19-pb165c-pangola)
 - **2026-10-19 (eleventh)** — [PowerBook 180c runs its color LCD through Pangola and the real video ROM](#2026-10-19-pb180c-pangola)
 - **2026-10-19 (tenth)** — [Niagra gains PowerBook 165 and 180 with separate 33 MHz session identities](#2026-10-19-pb165-pb180)
@@ -1178,6 +1187,105 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-portable-product"></a>
+## 2026-10-19 (fifteenth) — Portable and PowerBook 100 become selectable machines with required firmware and separate sessions
+
+The catalogue appends **Portable 57** and **PB100 58** on the sixteenth
+platform. Their distinct 256 KB ROMs route directly through `MachineFactory`;
+`PlatformPortable.cpp` composes the 68000/PMU board, mono ASC host and the
+existing parallel-PMU GUI lifecycle. Display/input, floppy/SCSI/CD bays,
+network wiring, debugger devices, engine menu and save slot use the shared
+services. System 7.1 is the default qualified volume.
+
+Required firmware selection accepts `roms/pmu/portable.bin`, the configured
+firmware root or the two archive aliases. An explicit missing/malformed
+`--firmware-override=pmu:lle:<path>` refuses instead of falling back, and
+HLE refuses. The session's registry reports the selected path. Battery
+files carry all 192 bytes of PMU RAM, main-ROM checksum, firmware identity
+and an integrity checksum; validation precedes mutation and saves replace
+atomically. Profile suffixes keep the files apart, and the embedded main-ROM
+identity also refuses a renamed Portable file on PB100. The GUI injects
+host Mac seconds once at the initial PMU reset release; the pending seed
+travels in snapshots and restoration never consults host time.
+
+Public `.pomss` containers now carry distinct profile tags and enforce
+ROM/RAM/firmware compatibility with transactional rollback. The real Finder
+gates restore these containers under interpreter and threaded engines.
+`portable_product_test` checks required firmware/provenance, battery
+roundtrip/corruption/truncation/mismatch, clock seeding and atomic container
+refusal without assets. `session_config_test` writes/reopens both
+`.pomsession` configurations and refuses the other model's ROM. The two
+startup-agent variants exercise polling and live disk mounting.
+
+Both GUI smoke runs executed under Xvfb on x86-64: open/render, observed
+engine switch, completed state save, close and relaunch request. They used
+temporary copies of System 7.1; reference media were not modified. The
+initial sandbox attempt could not connect GLFW to a display; execution
+outside that sandbox completed the same scenarios. Catalogue/docs/storage
+contracts now cover 58 profiles; the Portable boot is the sixteenth
+`etalon-core` representative. Firmware/ROM/reference identities are in
+`assets.lock`; product wiring and limits are in `docs/PORTABLE_BRINGUP.md`.
+Sleep/wake and external video remain separate open work.
+
+<a id="2026-10-19-portable-board"></a>
+## 2026-10-19 (fourteenth) — Portable and PowerBook 100 reach Finder through their 68000 board and real PMU
+
+`PortableMemory`/`PortableCpu` add the distinct 24-bit 15.6672 MHz 68000
+board: ROM at `$900000` with a read-cleared low overlay, 8 MB gate RAM,
+dedicated 640×400 monochrome VRAM at `$FA8000`, one VIA at CPU/20,
+SWIM1, discrete ASC, SCC and NCR 5380. The real M50753 firmware connects
+directly to VIA PA/PB and CA2/CB1; the 60.15 Hz board clock supplies INT1
+and CA1. SCC/ASC share IPL2; VIA drives IPL1.
+
+Two mistakes had observable consequences. Treating SCSI like Jaws dropped
+the ROM's odd-byte writes: it drew the boot-floppy icon forever, with zero
+commands. The Portable's SCSI latch reads on the upper lane and writes on
+the lower one. A synthetic CPU/reset test also caught a premature vector
+fetch while the PMU still held RESET: the high-ROM prefetch removed the
+overlay, so the eventual release fetched RAM vectors. The CPU now waits
+for the PMU release before its first reset sequence; assertion rearms ROM
+and release is consumed once at an instruction boundary.
+
+Both ROMs boot the immutable System 7.1 reference volume to Finder, selecting
+BoxFlag 4 (Portable) and 18 (PB100) themselves. The blank Infinite HD
+companion resolves the stock Startup Items alias. The System 7.5.5 image
+instead stopped on an Apple Photo Access installation alert before Finder;
+the gate chooses the System 7.1 fixture without modifying either volume.
+Keyboard down/up reaches KeyMap, mouse movement reaches the guest pointer,
+Ticks advances after boot, and restoring raw CPU/RAM/devices reproduces the
+whole serialized state after another twenty frames.
+
+`portable_board_test` is asset-free; the two boot gates and their explicit
+threaded-engine variants use private ROM/PMU/media. The settled desktop pins
+are `cc4a869f52d960ad` (Portable) and `f3c9095a373a7f28` (PB100) on System 7.1.
+This is a headless milestone: catalogue/GUI composition, battery persistence,
+public session files and sleep/wake remain open. Map, fixture identities,
+sources, provenance notice and limits: `docs/PORTABLE_BRINGUP.md`.
+
+<a id="2026-10-19-portable-pmu"></a>
+## 2026-10-19 (thirteenth) — Portable/PB100 Power Manager calibrates against the board clock and replays its real firmware
+
+`PortablePmu` reuses the qualified M740/M50753 core with the distinct
+`macprtb.cpp` board wiring: normal-boot input `$20`, charger `$08`, all
+analog channels `$FF`, port-2/4 pullups, SYS_RST bit 1 alone driving CPU
+reset, and physical CA2/CB1 levels rather than Jaws interrupt polarity.
+Clock conversion carries instruction debt; ADB retains its C15M domain.
+
+Both private Portable/PB100 archive names contain the same 6,144-byte dump
+(`0f9911ab…`). Advancing only the MCU left it at `$E8FB`, polling INT1
+for cold-start calibration. Supplying the board's 60.15 Hz events releases
+reset with zero RAM and no key event or firmware patch. Despite MAME's
+`pmuv1.bin` filename, command `$EA` returns version **02B5**. The production
+controller finishes an ACK-low reply after restoration into a fresh instance
+with identical serialized state, then writes/reads the RTC through `$30`/`$38`.
+
+`portable_pmu_test` proves pins, clock partition invariance, reset-retained
+RAM, fresh-instance continuation and firmware/clock mismatch refusal without
+assets. `portable_pmu_firmware_etalon` executed both archive inputs on x86-64.
+No new catalogue profile is claimed: 68000 memory/device composition,
+framebuffer, Finder, GUI and public sessions remain in TODO. Sources,
+digest, MAME notice and limits: `docs/PORTABLE_BRINGUP.md`.
 
 <a id="2026-10-19-pb165c-pangola"></a>
 ## 2026-10-19 (twelfth) — PowerBook 165c gains its 400-line color panel and separate session identity

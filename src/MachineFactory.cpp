@@ -178,6 +178,8 @@ const MachineProfile& MachineFactory::selectProfile(
     }
 
     if (rom.size() == kRom256K) {
+        if (id == 0x96CA3846) return bySnapshot(SnapMachine::Portable);
+        if (id == 0x96645F9C) return bySnapshot(SnapMachine::Pb100);
         if (id != 0x97221136) return bySnapshot(SnapMachine::MacII);
         return bySnapshot(selected.macIi);
     }

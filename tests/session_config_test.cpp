@@ -424,6 +424,38 @@ void capture(const fs::path& root) {
     }
 }
 
+void portableProfiles(const fs::path& root) {
+    const auto dir=root/"Portable sessions";
+    const auto pmu=dir/"pmu.bin";writeFile(pmu,std::string(6144,'\0'));
+    for(auto profile:{SnapMachine::Portable,SnapMachine::Pb100}) {
+        const auto* row=machineProfile(profile);
+        auto bytes=rom512(profile==SnapMachine::Portable?0x96ca3846:0x96645f9c);bytes.resize(256u<<10);
+        const auto rom=dir/(std::string(row->slug)+".rom");writeFile(rom,bytes);
+        Argv launch({"--machine-profile="+std::string(row->slug),
+                     "--firmware-override=pmu:lle:"+utf8FromPath(pmu),utf8FromPath(rom)});
+        const auto original=RuntimeConfig::parse(launch.argc(),launch.argv(),StartupSnapshot{});
+        auto captured=SessionCapture::from(original);captured.profile=profile;
+        const auto file=dir/(std::string(row->slug)+".pomsession");
+        writeFile(file,serializeSession(captured.entries(),file));
+        const auto loaded=loadSession(file);
+        check(loaded.session.has_value(),"Portable/PB100 session configuration is serializable");
+        if(!loaded.session) continue;
+        Argv reopen({"--session="+utf8FromPath(file)});
+        auto config=RuntimeConfig::parse(reopen.argc(),reopen.argv(),StartupSnapshot{},&*loaded.session);
+        check(config.sessionProfile()==profile && config.core().firmware.pmuLle &&
+              config.core().firmware.pmuPath==utf8FromPath(pmu),"Portable session retains its profile and firmware override");
+        SnapMachine ran=SnapMachine::Plus;
+        auto session=MachineFactory::create(std::move(config),std::make_unique<RecordingRuntime>(&ran));
+        check(session.run()==0 && ran==profile,"reopened Portable/PB100 session routes its distinct ROM");
+        captured.profile=profile==SnapMachine::Portable?SnapMachine::Pb100:SnapMachine::Portable;
+        writeFile(file,serializeSession(captured.entries(),file));const auto wrong=loadSession(file);
+        ran=SnapMachine::Plus;
+        auto refused=MachineFactory::create(RuntimeConfig::parse(reopen.argc(),reopen.argv(),StartupSnapshot{},&*wrong.session),
+            std::make_unique<RecordingRuntime>(&ran));
+        check(refused.run()==2 && ran==SnapMachine::Plus,"Portable/PB100 session with the other ROM identity refuses before startup");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -435,6 +467,7 @@ int main() {
     paths(root);
     precedence(root);
     capture(root);
+    portableProfiles(root);
     std::error_code ignored;
     fs::remove_all(root, ignored);
     std::printf("%s (%d failure%s)\n", failures ? "FAIL" : "PASS", failures,

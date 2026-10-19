@@ -39,6 +39,7 @@
 #include "MscMemory.h"
 #include "Pb030Cpu.h"
 #include "Pb030Memory.h"
+#include "PortableCpu.h"
 #include "Ncr5380.h"
 #include "Ncr53c96.h"
 #include "PgePmu.h"
@@ -138,6 +139,8 @@ POM68K_SAV_CHECK(MscCpu);
 POM68K_SAV_CHECK(MscMemory);      // PowerBook Duo 230 (nests the PG&E)
 POM68K_SAV_CHECK(Pb030Cpu);
 POM68K_SAV_CHECK(Pb030Memory);
+POM68K_SAV_CHECK(PortableCpu);
+POM68K_SAV_CHECK(PortableMemory);
 
 // ── Container assembly ──────────────────────────────────────────────────
 namespace pom68k {
@@ -298,5 +301,6 @@ POM68K_SAV_MACHINE(MacMemory, Cpu68k)
 POM68K_SAV_MACHINE(IIfxMemory, IIfxCpu)
 POM68K_SAV_MACHINE(MscMemory, MscCpu)
 POM68K_SAV_MACHINE(Pb030Memory, Pb030Cpu)
+POM68K_SAV_MACHINE(PortableMemory, PortableCpu)
 
 }  // namespace pom68k

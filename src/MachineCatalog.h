@@ -40,7 +40,7 @@ struct StorageCapabilities {
 // graph), not one marketing name. This is the bounded reuse unit through which
 // the catalogue grows towards every 68k Macintosh.
 enum class PlatformKind : std::uint8_t {
-    Compact, Glue, Oss, V8, Rbv, Sonora, Vasp, MemcJr, DjMemc, Spike, F108, Msc, Jaws, Niagra, Pangola
+    Compact, Glue, Oss, V8, Rbv, Sonora, Vasp, MemcJr, DjMemc, Spike, F108, Msc, Jaws, Niagra, Pangola, Portable
 };
 
 // GUI/process runner. Several marketing profiles deliberately share one kind.
@@ -48,7 +48,7 @@ enum class PlatformKind : std::uint8_t {
 enum class MachineKind : std::uint8_t {
     Plus = 0, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII,
     ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630,
-    Quadra, Duo, Mac128, Mac512, Mac512e, PowerBook
+    Quadra, Duo, Mac128, Mac512, Mac512e, PowerBook, Portable
 };
 
 // Stored in snapshot headers: these numeric values are a file format. Append,
@@ -72,6 +72,7 @@ enum class SnapMachine : std::uint32_t {
     Duo210 = 42, Duo250 = 43,
     Duo270c = 44, Duo280 = 45, Duo280c = 46, Pb150 = 47,
     Pb140 = 48, Pb170 = 49, Pb145 = 50, Pb145B = 51, Pb160 = 52, Pb165 = 53, Pb180 = 54, Pb180c = 55, Pb165c = 56,
+    Portable = 57, Pb100 = 58,
 };
 
 struct MachineProfile {
@@ -153,6 +154,8 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"Niagra + Misc GLU (PowerBook)", "PowerBook 180 (33 MHz, 68882)", "pb180", MachineKind::PowerBook, PlatformKind::Niagra, CpuFamily::M68030, SnapMachine::Pb180, "roms/macpb160.rom", "E33B2724"},
     {"Pangola + WD90C26 (PowerBook)", "PowerBook 180c (color, 68882)", "pb180c", MachineKind::PowerBook, PlatformKind::Pangola, CpuFamily::M68030, SnapMachine::Pb180c, "roms/macpb160.rom", "E33B2724"},
     {"Pangola + WD90C26 (PowerBook)", "PowerBook 165c (color, 68882)", "pb165c", MachineKind::PowerBook, PlatformKind::Pangola, CpuFamily::M68030, SnapMachine::Pb165c, "roms/macpb160.rom", "E33B2724"},
+    {"68000 + M50753 (Portable)", "Macintosh Portable", "portable", MachineKind::Portable, PlatformKind::Portable, CpuFamily::M68000, SnapMachine::Portable, "roms/macportable.rom", "96CA3846"},
+    {"68000 + M50753 (Portable)", "PowerBook 100", "pb100", MachineKind::Portable, PlatformKind::Portable, CpuFamily::M68000, SnapMachine::Pb100, "roms/macpb100.rom", "96645F9C"},
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);

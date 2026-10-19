@@ -86,8 +86,8 @@ hand-maintained backlog or overview.
 
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
-inside that section. Fifteen platforms in twelve sections and the Jaws/Niagra/Pangola board note (VASP shares
-Sonora's), 56 profiles
+inside that section. Sixteen platforms in twelve sections and the Jaws/Niagra/Pangola and Portable board notes (VASP shares
+Sonora's), 58 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -105,6 +105,7 @@ ROM identity and stable save-state id live).
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
 | Niagra / Pangola + Misc GLU | **PowerBook 160** / **180c** | PowerBook 165/165c/180 (33 MHz; 68882 on 165c/180/180c, WD90C26 color on 165c/180c) | [board note](docs/PB030_BRINGUP.md) |
 | Jaws + Misc GLU | **PowerBook 140** | PowerBook 145/145B, 170 | [board note](docs/PB030_BRINGUP.md) |
+| 68000 + M50753 + LCD VRAM | **Macintosh Portable** | PowerBook 100 | [board note](docs/PORTABLE_BRINGUP.md) |
 | MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), 250; 270c (68882/CSC), 280/280c (68LC040/CSC); PB150 (GSC/IDE/SWIM) | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
 
 ---
@@ -301,10 +302,10 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **56** profiles are enumerated
-  (`MachineCatalog.h:56-73`, tags 1-56 contiguous) and each of the **13**
+  append, never renumber. All **58** profiles are enumerated
+  (`MachineCatalog.h`, tags 1-58 contiguous) and each of the **14**
   machine families has a `save`/`load` overload pair
-  (`SaveStateMachines.h:53-110`).
+  (`SaveStateMachines.h`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
   whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`, and
@@ -453,8 +454,8 @@ emulators just mirror via a mask and let the ROM discover it.
 - RTC: full command/read/write serial protocol; seconds start at 0
   (deterministic tests). The silicon part here is the 343-0040 with 20
   bytes of NVRAM, but `Rtc` runs the -0042 superset — one flat 256-byte
-  XPRAM on every platform, and the compact ROMs only touch the low end.
-  **PRAM persists on all fifteen platforms**, `loadPram`/`savePram` on the
+  XPRAM on boards with this discrete RTC; PMU boards persist their own RAM.
+  **PRAM persists on all sixteen platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
   family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:143` for
   the compacts) (`MacMemory.h:186-187`).
@@ -1000,12 +1001,15 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
 
 ---
 
-The next portable board is headless: `Pb030Memory`/`Pb030Cpu` wire Jaws,
-Misc GLU, DDC and `Pb030Pmu` (`M740` + `M50753`). The real PowerBook 140 ROM
-boots System 7.5.5 to Finder with PMU keyboard/trackball input and raw state
-replay under both engines. There is no GUI composer or public session-file
-identity yet, so it is not a catalogue profile. Map, provenance, tests and
-remaining limits: [PB030_BRINGUP.md](docs/PB030_BRINGUP.md).
+`Pb030Memory`/`Pb030Cpu` compose the Jaws, Niagra and Pangola PowerBooks
+with `Pb030Pmu` (`M740` + `M50753`), GUI and public session identities.
+Map, provenance, tests and remaining limits:
+[PB030_BRINGUP.md](docs/PB030_BRINGUP.md).
+
+`PortableMemory`/`PortableCpu` compose the Macintosh Portable/PB100 68000
+board with `PortablePmu`: real-ROM System 7.1 Finder, PMU input, dedicated
+LCD VRAM, GUI, battery files and public sessions (ids 57/58):
+[PORTABLE_BRINGUP.md](docs/PORTABLE_BRINGUP.md).
 
 ### 2.12 Adding a platform — the check-list, derived rather than remembered
 

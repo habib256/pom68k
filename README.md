@@ -1,8 +1,8 @@
 # POM68K — Macintosh 68k emulator
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
-the 68040 Quadra 950. The project currently provides **56 machine profiles on
-15 hardware platforms**, and every listed profile boots to the Finder with the
+the 68040 Quadra 950. The project currently provides **58 machine profiles on
+16 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
 The goal is broader than the current catalogue: **support every 68k
@@ -250,8 +250,10 @@ Bold text is the default profile for a shared ROM.
 | 256 KB | `B2E362A8` | Macintosh SE | — |
 | 256 KB | `B306E171` | Macintosh SE FDHD | — |
 | 512 KB | `A49F9914` | Macintosh Classic | — |
-| 256 KB | `9779D2C4`, `97851DB6`, or another non-`97221136` dump | Macintosh II | — |
+| 256 KB | `9779D2C4`, `97851DB6`, or another Macintosh II dump | Macintosh II | — |
 | 256 KB | `97221136` | **Macintosh IIx**, Macintosh II FDHD, IIcx, SE/30 | `iix`, `maciifdhd`, `iicx`, `se30` |
+| 256 KB | `96CA3846` | Macintosh Portable | `portable` |
+| 256 KB | `96645F9C` | PowerBook 100 | `pb100` |
 | 512 KB | `4147DD77` | Macintosh IIfx | — |
 | 512 KB | `368CADFE` | Macintosh IIci | — |
 | 512 KB | `36B7FB6C` | Macintosh IIsi | — |
@@ -295,12 +297,19 @@ LLE requires user-provided dumps in these locations:
 | Cuda 341S0060 | LC 520 family, Quadra 630/LC 580 | `roms/cuda/341s0060.bin` |
 | Cuda 341S0788 | LC 475/575 and Quadra 605 | `roms/cuda/341s0788.bin` |
 | M50753 (required for PowerBook 160/165/165c/180/180c) | PowerBook 160, 165, 165c, 180, 180c | `roms/pmu/pb160.bin` |
+| M50753 (required for Portable/PB100) | Macintosh Portable, PowerBook 100 | `roms/pmu/portable.bin` |
 | M50753 (required for PowerBook 140/145/145B/170) | PowerBook 140/145/145B/170 | `roms/pmu/pb140.bin` |
 | PG&E power manager | PowerBook Duo 210, 230, 250 | `roms/pge/pge_boot.bin` |
 | Toby video card declaration ROM 342-0008-a | Macintosh II, IIx, IIcx, IIfx | `roms/342-0008-a.bin` |
 
 PowerBook 140/145/145B/160/165/165c/170/180/180c require the 6,144-byte M50753 firmware; use the path above
 or `--firmware-override=pmu:lle:<path>`. These machines refuse to start without it.
+
+Macintosh Portable and PowerBook 100 use the same 6,144-byte PMU firmware at
+`roms/pmu/portable.bin` (or the same typed override). Their distinct 256 KB
+ROMs select the profile automatically; the Machine menu also offers
+`portable` and `pb100`. System 7.1 is the qualified startup volume. Battery
+RAM and saved states have separate `.portable` / `.pb100` suffixes.
 
 PowerBook 165c/180c additionally require the shared 32,768-byte video declaration ROM at
 `roms/pbvideo/pb180c.bin` or `--firmware-override=pbvideo:lle:<path>`. Select
