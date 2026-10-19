@@ -140,10 +140,14 @@ const MachineProfile& MachineFactory::selectProfile(
         if (id == 0x3DC27823) return bySnapshot(SnapMachine::Quadra950);
         if (id == 0x06684214 || id == 0x064DC91D)
             return bySnapshot(selected.f108);
+        if (id == 0x015621D7)
+            return bySnapshot(selected.msc == SnapMachine::Duo280c
+                ? SnapMachine::Duo280c : SnapMachine::Duo280);
         if (id == 0x0024D346) return bySnapshot(SnapMachine::Duo270c);
         if (id == 0xECFA989B)
-            return bySnapshot(selected.msc == SnapMachine::Duo270c
-                ? SnapMachine::Duo230 : selected.msc);
+            return bySnapshot(selected.msc == SnapMachine::Duo210 ||
+                              selected.msc == SnapMachine::Duo250
+                ? selected.msc : SnapMachine::Duo230);
         return bySnapshot(selected.memcJr);
     }
 

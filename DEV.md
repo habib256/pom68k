@@ -87,7 +87,7 @@ hand-maintained backlog or overview.
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
 inside that section. Twelve platforms in eleven sections (VASP shares
-Sonora's), 44 profiles
+Sonora's), 46 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -103,7 +103,7 @@ ROM identity and stable save-state id live).
 | Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700--900--950) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
-| MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), Duo 250 (CPU ID only); 270c/280 and PB150 not wired | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
+| MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), 250; 270c (68882/CSC), 280/280c (68LC040/CSC); PB150 open | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
 
 ---
 
@@ -299,8 +299,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **44** profiles are enumerated
-  (`MachineCatalog.h:56-73`, tags 1-44 contiguous) and each of the **12**
+  append, never renumber. All **46** profiles are enumerated
+  (`MachineCatalog.h:56-73`, tags 1-46 contiguous) and each of the **12**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
@@ -907,10 +907,21 @@ ports, 1/2/4/8bpp and RGB555, a 640×480 panel (400-line modes centered),
 and 2 MB mirrored VRAM within `$60000000-$60FFFFFF`, following MAME's
 `csc.cpp`. VBL is latched/acknowledged through CSC status `$14` before
 reaching the MSC pseudo-VIA. The GUI publishes the panel's actual height.
-Only this new profile appends CSC to its save-state payload; the GSC
+The 270c and 280/280c append CSC to their save-state payload; the GSC
 profiles retain their byte layout. `msc_parity_test` covers the bus,
 pixels, VBL and machine-state round trip; `duo270c_boot_etalon` and its
 agent variant exercise the real ROM and System 7.5.5.
+
+The Duo 280/280c (`Duo280` / `Duo280c`, ids 45/46) share ROM
+`015621D7` and board ID `$A55A1000`, with a 33 MHz **68LC040 and no FPU**.
+CSC panel ID 4 selects 640×400 grayscale (280); ID 0 selects 640×480
+color (280c). Their BoxFlags are 96/97 (Gestalt 102/103). MSC routes
+SCSI /BERR into the 040 format-7 frame and the wrapper selects the 040
+MMU/JIT family. The ROM writes the power-cycle command `$5A` as a BYTE
+at `$50FA0000`; it must immediately request a wake reset, otherwise the
+Finder remains drawn while guest time and input stop. The boot gates also
+check guest KeyMap/Mouse, clock progress and an exact save-state restore;
+agent gates exercise Disques and hot-attached storage on both panels.
 
 What makes it a platform rather than a variant: **there is no Egret or
 Cuda**. Power, clock, PRAM, the matrix keyboard, the trackball and the

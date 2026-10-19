@@ -58,9 +58,9 @@ pom68k_agent_boot(quadra650  centris650_boot_etalon 1800 POM68K_CENTRIS_MODEL=q6
 pom68k_agent_boot(quadra610  centris650_boot_etalon 1800 POM68K_CENTRIS_MODEL=q610)
 pom68k_agent_boot(quadra800  centris650_boot_etalon 1800 POM68K_CENTRIS_MODEL=q800)
 pom68k_agent_boot(lc580      q630_boot_etalon       3600 POM68K_Q630_ID=A55A225A POM68K_Q630_ROM=lc580)
-pom68k_agent_boot(duo210     duo230_boot_etalon     1800 POM68K_DUO_MODEL=duo210)
-pom68k_agent_boot(duo250     duo230_boot_etalon     1800 POM68K_DUO_MODEL=duo250)
-pom68k_agent_boot(duo270c    duo230_boot_etalon     1800 POM68K_DUO_MODEL=duo270c)
+foreach(model duo210 duo250 duo270c duo280 duo280c)
+    pom68k_agent_boot(${model} duo230_boot_etalon 1800 POM68K_DUO_MODEL=${model})
+endforeach()
 # The compacts boot System 6 from HD20SC; System 7.0 — the Mac II's volume —
 # runs on a Plus with 4 MB and gives them Startup Items. Longer boot.
 pom68k_agent_boot(plus       scsi_boot_etalon       2400 POM68K_BEYOND_IMG=hdv/System\ 7.0\ HD.dsk POM68K_FRAMES=9000)

@@ -440,7 +440,94 @@ static void testCsc() {
           "Duo 270c state refuses another profile");
 }
 
+// MSC II keeps the MSC bus but uses 040 faults and two CSC panel straps.
+static void testMscII() {
+    {
+        MscMemory mem(pom68k::defaultCoreConfig());
+        mem.read8(0x40000000); // normal RAM vectors, overlay down
+        mem.consumeWakeReset();
+        mem.write8(0x50FA0000, 0x5A);
+        check(mem.consumeWakeReset() && !mem.asleep() && !mem.overlay(),
+              "MSC byte power-cycle resumes without rearming the ROM overlay");
+        mem.write16(0x50FA0000, 0x5A00);
+        mem.write16(0x50FA0002, 0);
+        check(mem.consumeWakeReset() && !mem.asleep(),
+              "MSC split-long power-cycle still resumes");
+        mem.write16(0x50FA0000, 0xFFFF);
+        mem.write16(0x50FA0002, 0xFFFF);
+        check(mem.asleep() && mem.fullSleeps == 1 && !mem.consumeWakeReset(),
+              "MSC split-long sleep issues one command, not four byte commands");
+        mem.reset();
+        mem.consumeWakeReset();
+        mem.write8(0x50FA0000, 0xFF);
+        check(mem.asleep() && mem.fullSleeps == 2,
+              "MSC byte sleep $FF follows the later Duo ROM's command");
+    }
+    for (int panel : {0, 4}) {
+        MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                      MscMemory::kCpuHz230, MscMemory::kIdDuo280, panel);
+        MscCpu cpu(mem, jit::defaultResolvedConfig(),
+                   pom68k::defaultCoreConfig().cpu, true);
+        mem.setCpu(&cpu);
+        check(cpu.getModel() == moira::Model::M68LC040 &&
+              cpu.getFPUModel() == moira::FPUModel::NONE,
+              "MSC II uses a bare 68LC040, even if a 030 FPU was requested");
+        check(mem.read8(0x50F20002) == panel &&
+              mem.screenHeight() == (panel == 4 ? 400 : 480),
+              "CSC panel strap distinguishes gray Duo 280 from color 280c");
+        mem.write8(0x50F20008, panel == 4 ? 8 : 14);
+        mem.write8(0x50F20012, 2);
+        mem.write8(0x60000000, 0xF0);
+        std::vector<uint32_t> pixels;
+        mem.decodeScreen(pixels);
+        check(pixels.size() == size_t(640 * mem.screenHeight()),
+              "CSC framebuffer size follows the physical panel");
+        if (panel == 4) {
+            check(pixels[0] == 0 && pixels[1] == 0xF0F0F0,
+                  "gray CSC 4bpp uses its spaced inverted-gray palette");
+            mem.write8(0x50F20008, 14); // even an invalid mode must stay bounded
+            mem.decodeScreen(pixels);
+            check(pixels.size() == 640 * 400,
+                  "480-line mode cannot overrun a 400-line gray panel");
+        }
+    }
+
+    // Real CPU access to an idle 5380 DMA port: both processors take /BERR,
+    // but the 030 stacks format B and the 040 stacks its own format 7.
+    for (bool cpu040 : {false, true}) {
+        std::vector<uint8_t> rom(MscMemory::kRomSize, 0);
+        auto w16 = [&](unsigned a, uint16_t v) {
+            rom[a] = uint8_t(v >> 8); rom[a + 1] = uint8_t(v);
+        };
+        auto w32 = [&](unsigned a, uint32_t v) {
+            w16(a, uint16_t(v >> 16)); w16(a + 2, uint16_t(v));
+        };
+        w32(0, 0x10000); w32(4, 0x40000040);
+        w16(0x40, 0x23FC); w32(0x42, 0x40000080); w32(0x46, 8);
+        w16(0x4A, 0x1039); w32(0x4C, 0x50F06000);
+        w16(0x50, 0x4E72); w16(0x52, 0x2700);
+        w16(0x80, 0x74FF); w16(0x82, 0x4E72); w16(0x84, 0x2700);
+        MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
+                      MscMemory::kCpuHz230,
+                      cpu040 ? MscMemory::kIdDuo280 : MscMemory::kIdDuo230);
+        mem.loadRom(rom);
+        MscCpu cpu(mem, jit::defaultResolvedConfig(), pom68k::defaultCoreConfig().cpu);
+        mem.setCpu(&cpu);
+        cpu.hardReset(); cpu.setEngine(0);
+        for (int n = 0; n < 400000 && mem.cpuHeld(); n++) mem.tick(1000);
+        cpu.runCycles(2000);
+        check(!cpu.isHalted() && cpu.getD(2) == 0xFFFFFFFFu,
+              "MSC SCSI DMA timeout reaches the processor's bus-error handler");
+        const uint16_t format = mem.read16(cpu.getSP() + 6);
+        std::printf("MSC /BERR: %s SP=$%08X format=$%04X overlay=%d\n",
+                    cpu040 ? "040" : "030", cpu.getSP(), format, mem.overlay());
+        check((format & 0xF000) == (cpu040 ? 0x7000 : 0xB000),
+              "MSC routes /BERR to the 030 format B or 040 format 7 frame");
+    }
+}
+
 int main() {
+    testMscII();
     testCsc();
     testSoundBusy();
     testPorteReset();

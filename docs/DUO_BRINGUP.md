@@ -24,12 +24,20 @@ brings the same Finder back. Input: the KEYBOARD matrix (2026-08-13) and the
 trackball quadrature counters (2026-08-14), gated by `duo230_input_etalon`.
 **The Duo 210 and Duo 250 joined as the 42nd and 43rd profiles** (2026-10-14,
 `duo210_boot_etalon` / `duo250_boot_etalon`, § *The 210/250 variants*). Next:
-the 280/280c (68LC040), then the PB150, whose ROM is the only oracle.
+the PB150, whose ROM is the only oracle.
 The Duo 270c joined as profile 44 on 2026-10-19: its own `0024D346` ROM,
 68882 and CSC 640×480 color display reach the pinned System 7.5.5 Finder;
 the agent gate launches Disques and mounts a hot-attached SCSI volume.
 `CscVideo.h` owns palette, pixels and latched VBL; `msc_parity_test` also
 round-trips the new machine's video state and rejects a GSC profile id.
+
+The Duo 280/280c joined as profiles 45/46 on 2026-10-19, sharing ROM
+`015621D7`, a bare 68LC040 and CSC (panel 4: 640×400 gray; panel 0:
+640×480 color). The running-session gates check keyboard, pointer, guest
+clock and snapshot restoration, beyond the Finder pixel pin. Their idle
+ROM writes BYTE `$5A` to `$50FA0000` before waiting at `$4088A752`:
+waiting for four byte writes left a convincing but frozen Finder. Byte
+commands now act immediately; split long writes retain one command.
 
 ---
 
@@ -192,7 +200,7 @@ defaults: `DEV.md` § 5.
 | Duo 210 | 030 @ 25 MHz (`kCpuHz210`) | same | full | **shipped 2026-10-14** (clock + CPU ID) |
 | Duo 250 | 030 @ 33 | same, active matrix | full | **shipped 2026-10-14** (CPU ID) |
 | Duo 270c | 030+FPU | CSC 640×480×16bpp color | full | **shipped 2026-10-19** |
-| Duo 280/280c | **040** @ 33 | CSC | full | 040 seam reuse |
+| Duo 280/280c | **LC040** @ 33 | CSC 640×400 gray / 640×480 color | full | **shipped 2026-10-19** |
 | **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520 method (ROM as the only oracle) |
 
 ### The 210/250 variants (2026-10-14)
@@ -352,7 +360,7 @@ different address width, stack window, vectors, map and peripherals) plus
    the KeyMap and the guest's own Mouse global — independently of the persist
    leg.
 5. ◐ Variants: **Duo 210/250 ✅ 2026-10-14** (§ *The 210/250 variants*),
-   **270c delivered** (CSC), 280 (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
+   **270c delivered** (CSC), **280/280c delivered** (68LC040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
    oracle).
 6. ✅ **The actual point — power management observable.** The **CPU
    power-down half** landed 2026-08-13: `power_cycle_w` was a milestone-1

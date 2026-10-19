@@ -1030,6 +1030,7 @@ int main() {
             {1u << 20,   0x06684214, pom68k::SnapMachine::Q630},
             {1u << 20,   0xECFA989B, pom68k::SnapMachine::Duo230},
             {1u << 20,   0x0024D346, pom68k::SnapMachine::Duo270c},
+            {1u << 20,   0x015621D7, pom68k::SnapMachine::Duo280},
         };
         bool allRoutes = true;
         std::set<pom68k::SnapMachine> routedProfiles;
@@ -1133,6 +1134,17 @@ int main() {
                   pom68k::mscBoardIdentity(pom68k::SnapMachine::Duo250).boxId ==
                       0xA55A1006u,
               "Duo 210/250 profiles select the MSC board identity of their model");
+        for (auto duo : {pom68k::SnapMachine::Duo280, pom68k::SnapMachine::Duo280c}) {
+            std::string arg = pom68k::app::machineProfileArgument(duo);
+            char* av[] = {a0, arg.data()};
+            auto cfg = pom68k::app::RuntimeConfig::parse(2, av, {});
+            check(pom68k::app::MachineFactory::selectProfile(cfg,
+                      syntheticRom(1u << 20, 0x015621D7)).snapshot == duo &&
+                  pom68k::app::MachineFactory::selectProfile(cfg,
+                      syntheticRom(1u << 20, 0xECFA989B)).snapshot == pom68k::SnapMachine::Duo230,
+                  "040 Duo relaunch selects the shared ROM's panel without changing GSC ROM identity");
+            routedProfiles.insert(duo);
+        }
         bool typedRelaunchRoutes = true;
         for (const ProfileRoute& route : profileRoutes) {
             std::string option = pom68k::app::machineProfileArgument(

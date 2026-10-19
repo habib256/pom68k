@@ -3,6 +3,7 @@
 // BSD-3-Clause. The Duo 270c uses panel ID 0 (640x480 color).
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -12,11 +13,12 @@ public:
     static constexpr uint32_t kVramSize = 0x200000;
     static constexpr int kWidth = 640, kHeight = 480;
 
-    CscVideo() : vram_(kVramSize, 0) {}
+    explicit CscVideo(uint8_t panel = 0) : vram_(kVramSize, 0), panel_(panel) {}
+    int screenHeight() const { return panel_ >= 4 ? 400 : 480; }
     bool irq() const { return (regs_[0x14] & 3) == 3; }
     void vblank() { regs_[0x14] |= 2; }
     uint8_t peek(uint32_t offset) const {
-        if (offset == 2) return 0; // fixed color TFT panel
+        if (offset == 2) return panel_;
         if (offset == 0x42)
             return uint8_t(palette_[regs_[0x46]] >> (16 - component_ * 8));
         return offset < sizeof regs_ ? regs_[offset] : 0;
@@ -58,11 +60,11 @@ public:
     void vramWrite(uint32_t addr, uint8_t value) { vram_[addr & (kVramSize - 1)] = value; }
 
     void decode(std::vector<uint32_t>& out) const {
-        out.assign(kWidth * kHeight, 0x00000Fu);
+        out.assign(kWidth * screenHeight(), 0x00000Fu);
         const unsigned mode = regs_[0x12];
         if (!(regs_[8] & 8) || mode > 4) return;
-        const int height = (regs_[8] & 2) ? 480 : 400;
-        const int top = (regs_[8] & 6) == 4 ? 40 : 0;
+        const int top = screenHeight() == 480 && (regs_[8] & 6) == 4 ? 40 : 0;
+        const int height = std::min((regs_[8] & 2) ? 480 : 400, screenHeight() - top);
         const unsigned bits = 1u << mode;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < kWidth; x++) {
@@ -97,4 +99,5 @@ private:
     uint8_t regs_[0x80] = {};
     std::array<uint32_t, 256> palette_{};
     uint8_t component_ = 0;
+    const uint8_t panel_; // board strap; profile identity owns it, not the state
 };

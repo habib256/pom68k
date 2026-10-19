@@ -7,9 +7,13 @@
 MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
                const pom68k::CoreCpuConfig& cpuConfig,
                bool withFpu)
-    : MoiraCpu(mem, jit::kGuest68030, jitConfig) {
-    setModel(moira::Model::M68030);
-    setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
+    : MoiraCpu(mem, mem.is040() ? jit::kGuest68040 : jit::kGuest68030, jitConfig) {
+    setModel(mem.is040() ? moira::Model::M68LC040 : moira::Model::M68030);
+    setFPUModel(withFpu && !mem.is040() ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
+    if (mem.is040()) {
+        icacheMiss_ = 0;
+        if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
+    }
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
     if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     eventDriven_ = cpuConfig.duoEventDriven;
@@ -27,6 +31,11 @@ void MscCpu::hardReset() {
 }
 
 void MscCpu::didChangeCACR(moira::u32 value) {
+    if (mem_.is040()) {
+        if (value & 0x0800) pomIcache.reset();
+        jit_.flushAll();
+        return;
+    }
     pomInvalidateIcache030(value);
     // The CACR SMC hint, retired behind this board's own audited store
     // inventory (MscMemory::kJitStoreInventoryComplete, pinned by

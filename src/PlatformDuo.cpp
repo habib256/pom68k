@@ -76,7 +76,7 @@ struct MscMachine
 
     void publishStatus() {
         stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
-                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
+                               ((mem.is040() ? cpu.getTC040() & 0x8000 : cpu.getTC() & 0x80000000) ? 2 : 0) |
                                (mem.cpuHeld() ? 4 : 0)),
                        std::memory_order_relaxed);
         stGsc_.store(mem.videoMode(), std::memory_order_relaxed);
@@ -105,18 +105,18 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
     const pom68k::MscBoardIdentity identity =
         pom68k::mscBoardIdentity(selected);
     const bool duo210 = selected == pom68k::SnapMachine::Duo210;
-    const bool color = selected == pom68k::SnapMachine::Duo270c;
+    const bool withFpu = selected == pom68k::SnapMachine::Duo270c;
+    const bool cpu040 = profile->cpu == pom68k::CpuFamily::M68040;
     const char* name = profile->label;
-    std::printf("Machine: %s (68030, MSC + PG&E, %s)\n", name,
-                color ? "CSC 640x480" : "GSC 640x400");
+    std::printf("Machine: %s (%s, MSC + PG&E)\n", name, cpu040 ? "68LC040" : "68030");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
                 rom.size() / 1024);
 
     // Built exactly as the gate builds it (duo230_boot_etalon.cpp).
     MscMemory& mem = services.own<MscMemory>(services.config().core(), 8u << 20,
-        identity.cpuHz, identity.boxId);
+        identity.cpuHz, identity.boxId, identity.cscPanel);
     MscCpu& cpu = services.own<MscCpu>(mem, services.config().jit().resolved,
-        services.config().core().cpu, color);
+        services.config().core().cpu, withFpu);
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);
     if (!mem.loadRom(rom)) {
@@ -135,8 +135,9 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
         name,
         profile->slug,
         "hdv/System 7.5.5 HD.dsk",
-        duo210 ? "68030 @ 25 MHz (Moira + PMMU)"
-               : color ? "68030 + 68882 @ 33 MHz (Moira + PMMU)"
+        cpu040 ? "68LC040 @ 33 MHz (Moira + MMU, no FPU)"
+               : duo210 ? "68030 @ 25 MHz (Moira + PMMU)"
+               : withFpu ? "68030 + 68882 @ 33 MHz (Moira + PMMU)"
                        : "68030 @ 33 MHz (Moira + PMMU)",
         MachineKind::Duo,
         selected,

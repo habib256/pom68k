@@ -71,11 +71,12 @@ public:
     static constexpr uint32_t kIdDuo230 = 0xA55A1005;
     static constexpr uint32_t kIdDuo250 = 0xA55A1006;
     static constexpr uint32_t kIdDuo270c = 0xA55A1002;
+    static constexpr uint32_t kIdDuo280 = 0xA55A1000;
 
     explicit MscMemory(const pom68k::CoreConfig& coreConfig,
                        uint32_t totalRam = 0x800000,
                        int64_t cpuHz = kCpuHz230,
-                       uint32_t machineId = kIdDuo230);
+                       uint32_t machineId = kIdDuo230, int cscPanel = 0);
     int64_t cpuHz() const { return cpuHz_; }
 
     bool loadRom(const std::vector<uint8_t>& data);  // 1 MB flat image
@@ -214,8 +215,9 @@ public:
     // ── GSC video state (fixed-mode 640×400 DBLite panel on the Duo 2x0) ──
     const uint8_t* vram() const { return vram_.data(); }
     uint8_t gscReg(int i) const { return gscRegs_[i & 0x1F]; }
-    bool hasCsc() const { return machineId_ == kIdDuo270c; }
-    int screenHeight() const { return hasCsc() ? CscVideo::kHeight : kScreenH; }
+    bool is040() const { return machineId_ == kIdDuo280; }
+    bool hasCsc() const { return machineId_ == kIdDuo270c || is040(); }
+    int screenHeight() const { return hasCsc() ? csc_.screenHeight() : kScreenH; }
     uint8_t videoMode() const { return hasCsc() ? csc_.peek(0x12) : gscReg(4); }
     static constexpr int kScreenW = 640;
     static constexpr int kScreenH = 400;
@@ -313,6 +315,7 @@ private:
     uint8_t scsiDma_();
     void scsiDmaW_(uint8_t v);
     [[noreturn]] void busError() const;
+    void powerCycleWrite(uint32_t command);
 
     std::vector<uint8_t> ram_, rom_, vram_;
     CscVideo csc_;

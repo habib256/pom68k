@@ -22,6 +22,7 @@
 #include "PixelPin.h"
 #include "InfiniteHdCompanion.h"
 #include "MscMemory.h"
+#include "DuoSessionProbe.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -45,6 +46,8 @@ int main() {
         {"duo230", pom68k::SnapMachine::Duo230, 26, "Duo 230"},
         {"duo250", pom68k::SnapMachine::Duo250, 32, "Duo 250"},
         {"duo270c", pom68k::SnapMachine::Duo270c, 71, "Duo 270c"},
+        {"duo280", pom68k::SnapMachine::Duo280, 96, "Duo 280"},
+        {"duo280c", pom68k::SnapMachine::Duo280c, 97, "Duo 280c"},
     };
     const char* wanted = getenv("POM68K_DUO_MODEL");
     const Model* model = &kModels[1];
@@ -54,7 +57,7 @@ int main() {
             if (!std::strcmp(m.slug, wanted)) model = &m;
         if (!model) {
             std::fprintf(stderr, "FAIL: POM68K_DUO_MODEL=%s is not a Duo "
-                         "profile (duo210, duo230, duo250, duo270c)\n", wanted);
+                         "profile (duo210, duo230, duo250, duo270c, duo280, duo280c)\n", wanted);
             return 1;
         }
     }
@@ -62,7 +65,10 @@ int main() {
         pom68k::mscBoardIdentity(model->profile);
 
     std::string rom =
-        find(model->profile == pom68k::SnapMachine::Duo270c
+        find(model->profile == pom68k::SnapMachine::Duo280 ||
+             model->profile == pom68k::SnapMachine::Duo280c
+            ? "roms/1MB ROMs/1994-04 - 015621D7 - Powerbook Duo 280 & 280c.ROM"
+            : model->profile == pom68k::SnapMachine::Duo270c
             ? "roms/1MB ROMs/1993-10 - 0024D346 - Powerbook Duo 270C.ROM"
             : "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM");
     std::string pge = find("roms/pge/pge_boot.bin");
@@ -82,7 +88,7 @@ int main() {
     }
 
     MscMemory mem(daynaboot::config(), 8u << 20,
-                  identity.cpuHz, identity.boxId);
+                  identity.cpuHz, identity.boxId, identity.cscPanel);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.pgeActive()) { std::fprintf(stderr, "FAIL: PG&E inactive\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
@@ -130,7 +136,7 @@ int main() {
         long dark = 0;
         for (int y = y0; y < y1; y++)
             for (int x = x0; x < x1; x++)
-                if ((fb[size_t(y) * W + x] & 0xFF) < (mem.hasCsc() ? 0xC0u : 0x80u)) dark++;
+                if ((fb[size_t(y) * W + x] & 0xFF) < (mem.hasCsc() && mem.screenHeight() == 480 ? 0xC0u : 0x80u)) dark++;
         return double(dark) / double(x1 - x0) / double(y1 - y0);
     };
     double menuBar = darkRatio(0, W, 2, 18);
@@ -165,6 +171,7 @@ int main() {
 
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.80
            && mem.scsi().commands > 500 && pinOk && identityOk;
+    if (ok) ok = duosession::check(mem, cpu, model->profile, kFrame);
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
