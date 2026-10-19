@@ -53,6 +53,7 @@ void M68hc05Pge::reset() {
     spcr_ = spsr_ = 0; spiIn_ = spiOut_ = 0; spiBit_ = 0;
     spiClk_ = spiMiso_ = false; spiEdgeAcc_ = 0;
     adbcr_ = 0; adbsr_ = 0x80; adbdr_ = 0;           // transmitter empty
+    adbRx_.clear(); adbData_.clear(); adbRxPos_ = 0; adbListen_ = -1;
     adbTimerAcc_ = 0; adbTimerMode_ = -1;
     pwmacr_ = pwma0_ = pwma1_ = pwmbcr_ = pwmb0_ = pwmb1_ = 0;
     plmcr_ = plmt1_ = plmt2_ = 0;
@@ -235,6 +236,7 @@ uint8_t M68hc05Pge::read8(uint16_t addr) {
         // Reading the data register consumes a received byte: RDRF clears
         // (and with it the ADB interrupt it was raising).
         if (adbsr_ & 0x08) {
+            if (adbTrace_) std::fprintf(stderr, "adbcell: READ $%02X pc=$%04X\n", adbdr_, pc_);
             adbsr_ &= uint8_t(~0x08);
             updateAdbIrq();
         }
@@ -346,8 +348,11 @@ void M68hc05Pge::write8(uint16_t addr, uint8_t v) {
         // Clearing TC sets TDRE; clearing TDRE arms the TC timer (50 µs).
         if ((adbcr_ & 0x40) && !(v & 0x40)) adbsr_ |= 0x80;
         if ((adbcr_ & 0x80) && !(v & 0x80)) {
-            adbTimerMode_ = 1;
-            adbTimerAcc_ = 50 * kHz / 1000000;
+            // On JeDI TC finishes the TRANSACTION: the firmware's TC ISR
+            // disables reception. Deliver a device's bytes before it.
+            const bool receiving = adbCommand && adbRxPos_ < adbRx_.size();
+            adbTimerMode_ = receiving ? 2 : 1;
+            adbTimerAcc_ = (receiving ? 250 : 50) * kHz / 1000000;
         }
         adbcr_ = v;
         updateAdbIrq();
@@ -365,6 +370,18 @@ void M68hc05Pge::write8(uint16_t addr, uint8_t v) {
         adbsr_ &= uint8_t(~0xC0);                    // clear TDRE+TC
         adbTimerMode_ = 0;
         adbTimerAcc_ = 1200 * kHz / 1000000;         // byte time 1.2 ms
+        if (adbCommand) {
+            adbRx_.clear(); adbRxPos_ = 0;
+            if (adbListen_ >= 0) {
+                adbData_.push_back(v);
+                if (adbData_.size() == 2) {
+                    adbRx_ = adbCommand(uint8_t(adbListen_), adbData_);
+                    adbData_.clear(); adbListen_ = -1;
+                }
+            } else if (((v >> 2) & 3) == 2) {
+                adbListen_ = v; adbData_.clear();
+            } else adbRx_ = adbCommand(v, {});
+        }
         return;
     }
     case 0x1C: {                                     // OPTION (banks boot ROM)
@@ -783,15 +800,28 @@ int M68hc05Pge::run(int budget) {
             }
         }
 
-        // ADB cell timer (TDRE after a byte, TC after clearing TDRE).
-        // No external devices are attached, matching MAME's cell: it never
-        // raises RDRF. The Duo's built-in keyboard/trackball are separate.
+        // ADB cell: TDRE after transmit, optional device replies, then TC.
+        // Unconnected Duos still never receive a byte; JeDI's firmware
+        // consumes replies and SRQ through the actual cell registers.
         if (adbTimerMode_ >= 0) {
             adbTimerAcc_ -= cyc;
             if (adbTimerAcc_ <= 0) {
                 const int mode = adbTimerMode_;
                 adbTimerMode_ = -1;
-                adbsr_ |= mode == 0 ? 0x80 : 0x40;   // TDRE / TC
+                if (mode == 2) {
+                    adbdr_ = adbRx_[adbRxPos_++];
+                    adbsr_ |= 0x08; // an actual received device byte
+                    if (adbTrace_) std::fprintf(stderr, "adbcell: RX $%02X cr=$%02X pc=$%04X\n", adbdr_, adbcr_, pc_);
+                } else adbsr_ |= mode == 0 ? 0x80 : 0x40; // TDRE / TC
+                if (mode == 0 && adbServiceRequest && adbServiceRequest(adbdr_))
+                    adbsr_ |= 0x30; // SRQ event + latched condition (JeDI ISR $8AC6/$8AD2)
+                if (adbCommand && adbRxPos_ < adbRx_.size()) {
+                    adbTimerMode_ = 2;
+                    adbTimerAcc_ = (mode == 2 ? 800 : 250) * kHz / 1000000;
+                } else if (adbCommand && mode == 2) {
+                    adbTimerMode_ = 1;
+                    adbTimerAcc_ = 100 * kHz / 1000000; // final stop, then TC
+                }
                 updateAdbIrq();
             }
         }

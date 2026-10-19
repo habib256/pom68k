@@ -21,6 +21,7 @@
 #include "FinderSignature.h"
 #include "HfsBlankVolume.h"
 #include "HfsInject.h"
+#include "AtaDiskIo.h"
 #include "Mmu030Peek.h"
 #include "PortableEnv.h"
 #include "ScsiAgentMailbox.h"
@@ -72,8 +73,19 @@ bool install(M& mem) {
         std::fprintf(stderr, "FAIL: agent probe: %s: %s\n", bin.c_str(), err.c_str());
         return false;
     }
-    hfsinject::ScsiDiskIo io(mem.scsiDisk());
-    const hfsinject::Outcome o = hfsinject::installStartupItem(io, app, 3870700000u);
+    auto installScsi = [&] {
+        hfsinject::ScsiDiskIo io(mem.scsiDisk());
+        return hfsinject::installStartupItem(io, app, 3870700000u);
+    };
+    const hfsinject::Outcome o = [&] {
+        if constexpr (requires { mem.isPb150(); mem.ide(); }) {
+            if (mem.isPb150() && mem.ide().present()) {
+                hfsinject::AtaDiskIo io(mem.ide());
+                return hfsinject::installStartupItem(io, app, 3870700000u);
+            }
+        }
+        return installScsi();
+    }();
     std::printf("agent probe: %s\n", o.message.c_str());
     return o.kind == hfsinject::Outcome::Installed || o.kind == hfsinject::Outcome::AlreadyPresent;
 }

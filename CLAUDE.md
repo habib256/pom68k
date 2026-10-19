@@ -6,7 +6,7 @@ It deliberately does not carry dated investigations, generated counts or
 subsystem tutorials.
 
 POM68K aims to support every 68k Macintosh. Current coverage is
-**46 machine profiles** across 12 board implementations, from the 128K to the
+**47 machine profiles** across 12 board implementations, from the 128K to the
 Quadra 950, each booting to the Finder given its user-provided ROM and system
 media. The compiled catalogue, `kMachineProfiles` in `src/MachineCatalog.h`,
 is the authority, not this summary.
@@ -79,7 +79,7 @@ sharing that hardware remain separate catalogue/save-state identities.
 | `DjMemc` | Centris 610/650, Quadra 610/650/800 | `CentrisMemory.*`, `CentrisCpu.*`, `PlatformDafb.cpp` |
 | `Spike` | Quadra 700/900/950 | `Q700Memory.*`, `Q700Cpu.*`, `PlatformDafb.cpp` |
 | `F108` | Quadra 630, LC/Performa 580 | `Q630Memory.*`, `Q630Cpu.*`, `PlatformDafb.cpp` |
-| `Msc` | PowerBook Duo 210, 230, 250, 270c, 280, 280c | `MscMemory.*`, `MscCpu.*`, `PgePmu.*`, `PlatformDuo.cpp` |
+| `Msc` | PowerBook Duo 210, 230, 250, 270c, 280, 280c; PowerBook 150 | `MscMemory.*`, `MscCpu.*`, `PgePmu.*`, `PlatformDuo.cpp` |
 
 Detailed address maps, clocks, device graphs and bring-up constraints belong
 in `DEV.md` §2. The catalogue decides identity; the platform implementations

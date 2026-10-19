@@ -15,6 +15,8 @@ MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
         if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
     }
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
+    boost_ = cacheBoost_;
+    floppyGate_ = cpuConfig.floppyBoostGate.value_or(true);
     if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     eventDriven_ = cpuConfig.duoEventDriven;
     if (cpuConfig.cacr030Flush)
@@ -24,6 +26,7 @@ MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
 
 void MscCpu::hardReset() {
     mem_.reset();
+    pollFloppyGate();
     lastPeriphClock_ = getClock();
     pomIcache.reset();
     jit_.flushAll();
@@ -51,14 +54,26 @@ void MscCpu::runCycles(moira::i64 n) {
     // PMU wake (port G bit 5 falling) requested a CPU reset — apply it at
     // this safe boundary, never from inside a memory callback.
     if (mem_.consumeWakeReset()) reset();
-    const moira::i64 target = getClock() + n * cacheBoost_;
-    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
+    if (mem_.isPb150()) {
+        // Like Cpu030: deliver machine time across a floppy gate transition,
+        // rather than applying one old throughput ratio to the whole frame.
+        const moira::i64 end = machineClock() + n;
+        while (machineClock() < end && !isHalted()) {
+            const moira::i64 chunk = std::min<moira::i64>(end - machineClock(), 4096);
+            const moira::i64 target = getClock() + chunk * boost_;
+            if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
+            flushTicks();
+        }
+    } else {
+        const moira::i64 target = getClock() + n * boost_;
+        if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
+    }
     flushTicks();
 }
 
 void MscCpu::stall(int cycles) {
     if (cycles <= 0) return;
-    clock += moira::i64(cycles) * cacheBoost_;
+    clock += moira::i64(cycles) * boost_;
     catchUp();
 }
 
@@ -85,7 +100,7 @@ void MscCpu::schedulePeriphDeadline() {
 
     moira::i64 machine = mem_.cyclesToNextEvent();
     if (machine < 1) machine = 1;
-    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    moira::i64 d = machine * boost_ - periphAccum_;
     if (d < 1) d = 1;
     if (d > kPeriphBatch) d = kPeriphBatch;
     periphDeadline_ = clock + d;
@@ -96,8 +111,19 @@ void MscCpu::flushTicks() {
     if (d <= 0) return;
     lastPeriphClock_ = clock;
     periphAccum_ += d;
-    int m = int(periphAccum_ / cacheBoost_);
-    periphAccum_ -= moira::i64(m) * cacheBoost_;
+    int m = int(periphAccum_ / boost_);
+    periphAccum_ -= moira::i64(m) * boost_;
     if (m) mem_.tick(m);
+    pollFloppyGate();
     schedulePeriphDeadline();
+}
+
+void MscCpu::pollFloppyGate() {
+    if (!mem_.isPb150()) return;
+    const int want = floppyGate_ && mem_.internalDrive().motorOn() ? 1 : cacheBoost_;
+    if (want == boost_) return;
+    machineBase_ += (clock - clockBase_) / boost_;
+    clockBase_ = clock;
+    periphAccum_ = periphAccum_ * want / boost_;
+    boost_ = want;
 }

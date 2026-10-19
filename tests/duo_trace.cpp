@@ -58,6 +58,8 @@ int main(int argc, char** argv) {
     uint32_t stopAt = 0;
     long stopSkip = 0;
     bool duo210 = false;
+    bool pb150 = false;
+    bool fast = false;
     std::string diskPath;
     for (int i = 2; i < argc; i++) {
         std::string a = argv[i];
@@ -68,6 +70,8 @@ int main(int argc, char** argv) {
         else if (a == "--stop-skip" && i + 1 < argc) stopSkip = atol(argv[++i]);
         else if (a == "--disk" && i + 1 < argc) diskPath = argv[++i];
         else if (a == "--duo210") duo210 = true;
+        else if (a == "--pb150") pb150 = true;
+        else if (a == "--fast") fast = true;
     }
 
     std::ifstream in(argv[1], std::ios::binary);
@@ -77,13 +81,19 @@ int main(int argc, char** argv) {
 
     MscMemory mem(pom68k::defaultCoreConfig(), 8u << 20,
                   duo210 ? MscMemory::kCpuHz210 : MscMemory::kCpuHz230,
-                  duo210 ? MscMemory::kIdDuo210 : MscMemory::kIdDuo230);
+                  pb150 ? MscMemory::kIdPb150 : duo210 ? MscMemory::kIdDuo210 : MscMemory::kIdDuo230);
     if (!mem.loadRom(rom)) {
         std::fprintf(stderr, "ROM must be 1 MB (got %zu)\n", rom.size());
         return 1;
     }
     TraceCpu cpu(mem, jit::defaultResolvedConfig(),
                  pom68k::defaultCoreConfig().cpu);
+    if (std::getenv("DUO_ASC_TAP")) {
+        mem.asc().onWrite = [&](uint32_t offset, uint8_t v) {
+            if (offset >= 0x800)
+                std::printf("  ASC W $%03X=$%02X pc=$%08X\n", offset, v, cpu.getPC0());
+        };
+    }
     mem.setCpu(&cpu);
     if (!diskPath.empty())
         std::printf("SCSI disk: %s %s\n", diskPath.c_str(),
@@ -137,7 +147,7 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> ring(pcRing, 0);
     size_t rp = 0;
     std::map<uint32_t, long> pcCov;              // 64 KB granularity
-    long long slice = 5000, done = 0;
+    long long slice = fast ? mem.cpuHz() / 60 : 5000, done = 0;
     bool stop = false;
     // DUO_CKPT=<cycles>: progress line — PC, SCSI activity, PMU traffic and
     // the low-memory Ticks, so a boot that is advancing is distinguishable
@@ -231,6 +241,12 @@ int main(int argc, char** argv) {
                             p.ramByte(0x1C7 - 0x40));
                 std::fflush(stdout);
             }
+        if (fast) {
+            if (mem.cpuHeld()) mem.tick(int(slice)); else cpu.runCycles(slice);
+            done += slice;
+            if (cpu.isHalted()) break;
+            continue;
+        }
         moira::i64 t = cpu.getClock() + slice;
         while (cpu.getClock() < t && !cpu.isHalted()) {
             uint32_t pc = cpu.getPC0();

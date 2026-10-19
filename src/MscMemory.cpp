@@ -92,6 +92,15 @@ MscMemory::MscMemory(const pom68k::CoreConfig& coreConfig,
     // (At the power-on release the CPU has not run yet: the extra reset()
     // re-fetches the same vectors, a no-op.)
     pmu_.onCpuReset = pmu_.onWake;
+    if (isPb150()) pmu_.mcu().adbCommand = [this](uint8_t cmd, const std::vector<uint8_t>& data) {
+        return pb150_.adbCommand(cmd, data);
+    };
+    if (isPb150()) pmu_.mcu().adbServiceRequest = [this](uint8_t cmd) {
+        return (cmd & 12) == 12 && (cmd >> 4) != pb150_.mouse.mouseAddr()
+            && pb150_.mouse.mousePending();
+    };
+    // JeDI's ROM drives HDSEL through SWIM mode bit 5, not MSC VIA1 PA5.
+    if (isPb150()) pb150_.swim.onHdsel = [this](bool high) { pb150_.swim.setSel(high); };
     // PG&E boot mask ROM — user-provided, never committed (roms/README).
     for (const char* p : { "roms/pge/pge_boot.bin", "../roms/pge/pge_boot.bin" })
         if (pmu_.loadBootRom(p)) break;
@@ -109,6 +118,7 @@ MscMemory::MscMemory(const pom68k::CoreConfig& coreConfig,
     // MAME's device_reset keeps m_rtc.
     pmu_.setSeconds(hostMacSecondsMsc());
     reset();
+    if (isPb150()) pb150_.drive.configureFluxJitter(coreConfig.storage.fluxJitterPercent);
 }
 
 // ── PRAM / NVRAM persistence ───────────────────────────────────────────
@@ -204,6 +214,7 @@ void MscMemory::reset() {
     pmuReq_ = true;
     asc_.reset();
     scsi_.reset();
+    if (isPb150()) pb150_.reset();
     mscConfig_ = mscClockCtrl_ = mscSoundCtrl_ = 0;
     for (auto& r : gscRegs_) r = 0;
     viaAcc_ = tickAcc_ = c15Acc_ = 0;
@@ -350,10 +361,16 @@ uint8_t MscMemory::read8(uint32_t addr) {
         return d;
     }
     if (low >= 0x14000 && low < 0x16000) return asc_.read(low - 0x14000);
+    if (isPb150() && low >= 0x16000 && low < 0x18000) {
+        if (cpu_) cpu_->stall(5);
+        return pb150_.swim.read((low >> 9) & 15);
+    }
+    if (isPb150() && low >= 0x1A000 && low < 0x1A100)
+        return pb150_.ataRead(low - 0x1A000);
     if (low >= 0x20000 && low < 0x22000) {   // GSC regs (gsc.cpp gsc_r)
         if (hasCsc()) return low < 0x20080 ? csc_.read(low - 0x20000) : 0;
         const uint32_t off = (low - 0x20000) & 0x1F;
-        if (off == 1) return 6;              // panel ID 6 = DBLite 640×400
+        if (off == 1) return isPb150() ? 4 : 6; // JeDI 480 / DBLite 400 lines
         return gscRegs_[off];
     }
     if (low >= 0x26000 && low < 0x28000) {
@@ -408,6 +425,15 @@ void MscMemory::write8(uint32_t addr, uint8_t v) {
         // (msc.cpp:130-134 install_write_tap sets bit 6, SOUND_BUSY=6).
         mscSoundCtrl_ |= 0x40;
         asc_.write(low - 0x14000, v);
+        return;
+    }
+    if (isPb150() && low >= 0x16000 && low < 0x18000) {
+        if (cpu_) cpu_->stall(5);
+        pb150_.swim.write((low >> 9) & 15, v);
+        return;
+    }
+    if (isPb150() && low >= 0x1A000 && low < 0x1A100) {
+        pb150_.ataWrite(low - 0x1A000, v);
         return;
     }
     if (low >= 0x20000 && low < 0x22000) {   // GSC regs (gsc.cpp gsc_w)
@@ -577,11 +603,12 @@ int MscMemory::cyclesToNextEvent() const {
     // Sound drain and the SCC's live countdowns, both C15M-paced for the
     // ASC and machine-paced for the SCC (see tick()).
     bridge(asc_.cyclesToNextEvent(), c15Acc_, kC15M);
+    if (isPb150()) bridge(pb150_.swim.cyclesToNextEvent(), c15Acc_, kC15M);
     tighten(scc_.cyclesToNextEvent());
     // The board's two frame timers: 60.15 Hz into CA1, and the LCD VBL edge.
     tighten((cpuHz_ * 20 - tickAcc_ + 1202) / 1203);
     const int64_t frame = cpuHz_ / 60;
-    const int64_t vblAt = hasCsc() && screenHeight() == 480 ? frame * 480 / 525 : frame * 400 / 445;
+    const int64_t vblAt = screenHeight() == 480 ? frame * 480 / 525 : frame * 400 / 445;
     tighten(framePos_ < vblAt ? vblAt - framePos_ : frame - framePos_);
 
     // NOT bounded: the SCSI controller and the drives — pure state between
@@ -613,7 +640,7 @@ void MscMemory::tick(int cpuCycles) {
     framePos_ += cpuCycles;
     const int64_t frame = cpuHz_ / 60;
     framePos_ %= frame;
-    bool vbl = framePos_ >= (hasCsc() && screenHeight() == 480 ? frame * 480 / 525 : frame * 400 / 445);
+    bool vbl = framePos_ >= (screenHeight() == 480 ? frame * 480 / 525 : frame * 400 / 445);
     if (vbl != vblState_) {
         vblState_ = vbl;
         if (hasCsc()) {
@@ -627,6 +654,7 @@ void MscMemory::tick(int cpuCycles) {
     int c15 = int(c15Acc_ / cpuHz_);
     c15Acc_ -= int64_t(c15) * cpuHz_;
     if (c15) asc_.tick(c15);
+    if (isPb150() && c15) { pb150_.swim.tick(c15); pb150_.drive.tick(c15); }
     scc_.tick(cpuCycles);
     sccIrq_ = scc_.irqAsserted();
 

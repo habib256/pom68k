@@ -70,6 +70,7 @@ constexpr MscBoardIdentity mscBoardIdentity(SnapMachine profile) {
     case SnapMachine::Duo270c: return {33000000, 0xA55A1002u};
     case SnapMachine::Duo280: return {33000000, 0xA55A1000u, 4};
     case SnapMachine::Duo280c: return {33000000, 0xA55A1000u, 0};
+    case SnapMachine::Pb150:   return {33000000, 0xA55A1001u};
     default:                  return {33000000, 0xA55A1005u};   // Duo 230
     }
 }

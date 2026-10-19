@@ -43,9 +43,9 @@ inline std::string locateAgentBinary(const GuiHostServices& services) {
 
 // `disk` is the machine's boot target after attachScsi. Returns true when
 // the agent is in Startup Items at the end (installed now, or already).
-inline bool installAgentStartupItem(ScsiDisk& disk, const GuiHostServices& services) {
+inline bool installAgentStartupItem(hfsinject::BlockIo& io, const GuiHostServices& services) {
     if (!services.config().core().storage.agentAutostart) return false;
-    if (!disk.present() || disk.cdrom()) return false;
+    if (!io.blocks()) return false;
     const std::string bin = locateAgentBinary(services);
     if (bin.empty()) return false;
     std::ifstream in(bin, std::ios::binary);
@@ -57,12 +57,17 @@ inline bool installAgentStartupItem(ScsiDisk& disk, const GuiHostServices& servi
         std::fprintf(stderr, "Startup Items: %s: %s\n", bin.c_str(), err.c_str());
         return false;
     }
-    hfsinject::ScsiDiskIo io(disk);
     const hfsinject::Outcome o =
         hfsinject::installStartupItem(io, app, services.hostMacSeconds());
     std::printf("Startup Items: %s\n", o.message.c_str());
     return o.kind == hfsinject::Outcome::Installed ||
            o.kind == hfsinject::Outcome::AlreadyPresent;
+}
+
+inline bool installAgentStartupItem(ScsiDisk& disk, const GuiHostServices& services) {
+    if (!disk.present() || disk.cdrom()) return false;
+    hfsinject::ScsiDiskIo io(disk);
+    return installAgentStartupItem(io, services);
 }
 
 } // namespace pom68k::gui

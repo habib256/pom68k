@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **Does the PowerBook 150 use the Duo quadrature trackball and VIA head-select wiring?** → [PowerBook 150: IDE boot, PG&E ADB ordering and SWIM head selection](#2026-10-19-pb150-jedi-adb)
+
 - **Why could the 280 Finder look ready while its guest clock was frozen?** → [Duo 280/280c and the byte-wide MSC power cycle](#2026-10-19-duo280-msc-byte-cycle)
 
 - **Why did the bare LC II claim an FPU, and why must PA0 stay high?** → [2026-10-19 — CPU-space CIR probe, MOVES fault cleanup and separate MAME configuration ports](#2026-10-19-duo270c-lcii-cir)
@@ -495,6 +497,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ---
 
 ## Index by date
+
+- **2026-10-19 (third)** — [PowerBook 150: IDE boot, PG&E ADB ordering and SWIM head selection](#2026-10-19-pb150-jedi-adb)
 
 - **2026-10-19 (second)** — [Duo 280/280c and the byte-wide MSC power cycle](#2026-10-19-duo280-msc-byte-cycle)
 
@@ -1162,6 +1166,74 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-pb150-jedi-adb"></a>
+## 2026-10-19 (third) — PowerBook 150 boots its ROM-resident IDE driver; PG&E replies must precede completion
+
+**JeDI is profile 47, on the existing MSC platform.** ROM `FDA22562`
+contains ProductInfo at `$A8478`, with BoxFlag 109 and board ID `$1001`
+at +$44: `$A55A1001` selects this 33 MHz 68030 without an FPU. GSC panel
+4 supplies 640×480 at 1/2 bpp. Apple's PowerBook 150 Developer Note
+(pp. 1-2, 1-4, 3-3; linked from `DEV.md` and `docs/DUO_BRINGUP.md`)
+confirms the panel, internal SuperDrive and IDE, and that `.ATDrvr` is
+installed from ROM. The ATA task file at `$50F1A000`, four-byte register
+stride and natural sector-byte order are also exercised by the ROM.
+
+**IDE is a real boot, not a SCSI desktop with another disk attached.**
+The reference System 7.5.5 bare HFS volume boots through ATA with no SCSI
+boot disk: roughly 9,600 sectors read and 179 written. ATA and SCSI paths
+have the same Finder pin `b5097b7427b80f83`. The GUI attaches the chosen
+startup image to IDE on this profile, offers its internal floppy and uses
+`AtaDiskIo` to install Disques through journalled ATA writes.
+
+**A second Finder-only false positive.** KeyMap and the guest clock worked,
+but Mouse stayed `$000F000F`. The PMU made zero TBX reads: unlike the Duos,
+JeDI's physical trackball uses the PG&E ADB cell. An external mouse now
+answers actual cell transactions, with no invented external keyboard.
+The first bridge still left it inert: TC fired before response bytes and
+the firmware's handler at `$8ACA` disabled receive. Replies must arrive
+before TC. The autopoller also needs the SRQ event AND its latched condition
+(status bits 5/4, firmware `$8AC6/$8AD2`) to leave its keyboard poll and
+request pending mouse motion. After both corrections the guest Mouse
+advances, KeyMap releases and a restored session's clock continues.
+`PgeAdbCellProbe.h` executes a small real HC05 program to check receive
+ordering, RDRF acknowledgement, completion and the unconnected-cell case.
+Existing Duos keep their TDRE/TC-only cell and unchanged snapshot layout.
+
+**The SWIM drive has its own head-select wire.** JeDI's ROM drives SWIM
+mode bit 5; MSC VIA1 PA5 is not connected to HDSEL. Copying the VASP
+wiring left the guest probing density without reaching a synchronized
+MFM read. An A/B with CPU cache boost 1 still gave zero synchronizations,
+so changing throughput alone did not fix that wiring fault. With HDSEL
+connected, boost 4 synchronized but the driver still failed its mount;
+boost 1 mounted the volume in 22.74 s. The MSC wrapper now uses the same
+motor-scoped throughput gate as `Cpu030`, only on JeDI. Machine time stays
+continuous across both transitions; the new profile saves the clock bases
+and live ratio. Unit checks cover both wire and clock edges. The guest
+floppy gate judges its VCB and `.Sony` driver, not an icon statistic.
+
+**IDE-only agent transport.** Disques launches from the ATA Startup Items,
+but its shipped protocol selects SCSI target 0. Without a boot SCSI disk
+that selection timed out, so launch alone was insufficient. An IDE-only
+JeDI supplies a POM68K processor endpoint at ID 0 for the existing control
+mailbox. INQUIRY reports a non-storage processor, never a fake boot disk;
+a real SCSI target 0 takes precedence. Endpoint, pending ADB replies,
+trackball queue, ATA PIO latch and floppy state belong only to the new
+profile's snapshot payload. Bus tests rewind ATA sector content after a
+later write and resume a transfer at the exact saved word. The default-policy floppy
+gate mounts the volume, checks session input and restores its state; the
+IDE agent gate launches Disques and mounts a hot-attached SCSI volume.
+The new profile leaves TODO; the next portable family is PB140–180.
+
+**Validation.** The canonical LTO build passes seven asset-backed gates
+(four JeDI variants, Duo 230 sleep/wake, 270c and 280c boot), plus eight
+component/repository gates: MSC parity, 030 save states, ATA, HFS insertion,
+storage matrix, asset identities, docs and file budgets. An actual
+`--machine-profile=pb150` GUI smoke on a private writable System 7.5.5
+copy confirms IDE attachment, Disques installation, engine switching,
+state save, close and relaunch request. Both host registry sections are
+regenerated (472 union / 468 x86-64 / 467 AArch64); the ARM section is
+configuration metadata, not an ARM execution claim.
 
 <a id="2026-10-19-duo280-msc-byte-cycle"></a>
 ## 2026-10-19 (second) — Duo 280/280c expose the byte-wide MSC power-cycle command

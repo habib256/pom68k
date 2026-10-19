@@ -146,9 +146,6 @@ sur le premier profil consommateur avant d'être généralisés ; une ligne
 catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
-- [ ] **Ajouter PowerBook 150.** Framebuffer LCD/GSC, IDE (le target ATA
-  existe et amorce déjà un Q630 : `AtaDisk`, `q630_ide_boot_etalon`), box ID
-  et PMU 68HC05 à partir de sa ROM.
 - [ ] **Ajouter PowerBook 140–180 puis Portable/PB100.** Power Manager
   M50753 et framebuffer LCD comme nouvelle brique partagée.
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du

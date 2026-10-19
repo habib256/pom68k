@@ -23,8 +23,7 @@ milestone 6): closing the lid runs the System's own sleep path and a key
 brings the same Finder back. Input: the KEYBOARD matrix (2026-08-13) and the
 trackball quadrature counters (2026-08-14), gated by `duo230_input_etalon`.
 **The Duo 210 and Duo 250 joined as the 42nd and 43rd profiles** (2026-10-14,
-`duo210_boot_etalon` / `duo250_boot_etalon`, § *The 210/250 variants*). Next:
-the PB150, whose ROM is the only oracle.
+`duo210_boot_etalon` / `duo250_boot_etalon`, § *The 210/250 variants*). The JeDI/PowerBook 150 follows below; it has no executable MAME oracle.
 The Duo 270c joined as profile 44 on 2026-10-19: its own `0024D346` ROM,
 68882 and CSC 640×480 color display reach the pinned System 7.5.5 Finder;
 the agent gate launches Disques and mounts a hot-attached SCSI volume.
@@ -201,7 +200,7 @@ defaults: `DEV.md` § 5.
 | Duo 250 | 030 @ 33 | same, active matrix | full | **shipped 2026-10-14** (CPU ID) |
 | Duo 270c | 030+FPU | CSC 640×480×16bpp color | full | **shipped 2026-10-19** |
 | Duo 280/280c | **LC040** @ 33 | CSC 640×400 gray / 640×480 color | full | **shipped 2026-10-19** |
-| **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520 method (ROM as the only oracle) |
+| **PowerBook 150** | 030 @ 33 | GSC 640×480, four grays | **"Future" — none** | ROM + Apple Developer Note; profile 47 |
 
 ### The 210/250 variants (2026-10-14)
 
@@ -249,7 +248,46 @@ ROMs in `roms/1MB ROMs/` (user-provided, gitignored): Duo 210/230/250
   machine on the MCU cycle clock), including MAME's two transport spins
   (80 µs host after a REQ edge, 20 µs PMU after an ACK edge).
 
-## Address map (Duo 2xx; PB150 expected close — verify against its ROM)
+## The JeDI / PowerBook 150
+
+Profile `pb150` (snapshot id 47) uses ROM `FDA22562`, a 33 MHz 68030
+without FPU and board ID `$A55A1001`. Its ProductInfo record at ROM offset
+`$A8478` carries BoxFlag 109 and ID `$1001` at +$44. Apple's
+[PowerBook 150 Developer Note](https://www.macdat.net/files/pdf/apple/developer_notes/powerbook_150.pdf)
+confirms GSC panel 4 (640×480, four grays), an internal SuperDrive and
+IDE. It also names `.ATDrvr`, installed from ROM at startup (pp. 1-2,
+1-4 and 3-3): unlike F108, JeDI can boot the bare reference HFS volume.
+
+The ROM's task-file access routine at `$408CEEC6` uses `$50F1A000` plus
+a four-byte register stride; its data port is 16 bits. A System 7.5.5
+boot reads roughly 9,600 sectors through ATA and writes its mounted
+volume, with no SCSI boot disk. The Finder pixel pin is
+`b5097b7427b80f83`, identical for ATA and SCSI boots. The product attaches
+the chosen startup disk to IDE; `POM68K_IDE` can override that path.
+`AtaDiskIo` installs Disques through ATA's journalled sector writes.
+Without a SCSI boot disk, a POM68K processor endpoint at ID 0 carries the
+existing agent mailbox; it advertises no storage or bootable media.
+
+**The trackball is on ADB, not the Duo quadrature counters.** The running
+guest answered matrix keys but its Mouse global stayed `$000F000F`, and
+its PMU made zero reads of TBX. The cell now exchanges real device bytes
+with one external mouse; it does not invent an external keyboard. The
+PG&E firmware's ISR at `$8A90` receives at `$8ABC`, while its TC handler at
+`$8ACA` disables reception: raising TC before the reply silently lost the
+mouse. Reply bytes therefore precede completion. SRQ needs both event bit
+5 and condition bit 4 (`$8AC6/$8AD2`) to make the autopoller leave its
+keyboard poll for a trackball with motion. The synthetic HC05 program
+in `PgeAdbCellProbe.h` checks receive ordering and SRQ; the real session
+checks Mouse, KeyMap, profile isolation, clock and snapshot restoration.
+Unconnected Duo cells and snapshot payloads retain their original shape.
+
+SWIM is at `$50F16000`, with its own HDSEL output connected to the drive;
+MSC VIA1 PA5 does not select the head. `Pb150BusProbe.h` checks that wire,
+ATA byte order, an in-flight PIO restore and sector-content rewind. The
+MSC CPU gates its throughput boost while JeDI's spindle runs, as on V8;
+its continuous machine-clock bases travel in this profile's CPU payload.
+
+## Address map (Duo 2xx; JeDI adds ATA and SWIM)
 
 From `macpwrbkmsc.cpp:588-627` + `msc.cpp:30-38` + the `gsc.cpp` map (MSC
 device mapped at `$40000000`, GSC at `$50000000`). The as-built copy with the
@@ -338,7 +376,7 @@ different address width, stack window, vectors, map and peripherals) plus
    wire* — was, so a restore desynced the two ends. It never failed a test
    (REQ is idle-high at most sample points), which is the whole reason it is
    written down.
-   **Still absent, machine-side API gaps rather than shell gaps:** no floppy
+   **Still absent on Duos (JeDI has its own internal SWIM):** no floppy
    (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds, no
    live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)` takes
    no index so button 1 is dropped (`MscMemory.h:198`).
@@ -360,8 +398,9 @@ different address width, stack window, vectors, map and peripherals) plus
    the KeyMap and the guest's own Mouse global — independently of the persist
    leg.
 5. ◐ Variants: **Duo 210/250 ✅ 2026-10-14** (§ *The 210/250 variants*),
-   **270c delivered** (CSC), **280/280c delivered** (68LC040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
-   oracle).
+   **270c delivered** (CSC), **280/280c delivered** (68LC040), and
+   **PB150 delivered** (GSC-480, IDE, SWIM and ADB trackball; ROM and
+   Developer Note, no executable MAME oracle).
 6. ✅ **The actual point — power management observable.** The **CPU
    power-down half** landed 2026-08-13: `power_cycle_w` was a milestone-1
    `fprintf`, so when the idle System asked to be cycled — 58 s into an idle
@@ -430,8 +469,8 @@ different address width, stack window, vectors, map and peripherals) plus
   carries every command number, the count tables and the MSC exception
   table. What the PG&E firmware does with a command still has only its
   disassembly as an oracle.
-- PB150: exact GSC flavour, IDE decode window, box ID, and whether its PMU
-  wants a different firmware image from the Duo one (`FDA22562` will say).
+- JeDI has no executable MAME oracle; observations beyond the ROM and
+  Apple Developer Note still require hardware capture.
 - MSC II vs MSC differences for the 040 Duos (280/280c).
 - DFAC presence on the Duo audio path (`dfac.h` is included by the driver —
   check whether boot needs its I2C ACK the way Cuda 2.35 does,

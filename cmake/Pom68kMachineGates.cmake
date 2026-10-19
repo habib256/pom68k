@@ -1064,12 +1064,16 @@ add_executable(duo230_boot_etalon tests/duo230_boot_etalon.cpp)
 target_link_libraries(duo230_boot_etalon PRIVATE pom68k_core)
 add_test(NAME duo230_boot_etalon COMMAND duo230_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-foreach(model duo210 duo250 duo270c duo280 duo280c)
+foreach(model duo210 duo250 duo270c duo280 duo280c pb150)
     add_test(NAME ${model}_boot_etalon COMMAND duo230_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(${model}_boot_etalon PROPERTIES
                          ENVIRONMENT "POM68K_DUO_MODEL=${model}" TIMEOUT 1800)
 endforeach()
+add_test(NAME pb150_ide_boot_etalon COMMAND duo230_boot_etalon WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(pb150_ide_boot_etalon PROPERTIES ENVIRONMENT "POM68K_DUO_MODEL=pb150;POM68K_PB150_IDE=1" TIMEOUT 1800)
+add_test(NAME pb150_floppy_etalon COMMAND duo230_boot_etalon WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(pb150_floppy_etalon PROPERTIES ENVIRONMENT "POM68K_DUO_MODEL=pb150;POM68K_PB150_FLOPPY=1" TIMEOUT 1800)
 add_test(NAME lcii_nofpu_boot_etalon COMMAND lcii_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(lcii_nofpu_boot_etalon PROPERTIES

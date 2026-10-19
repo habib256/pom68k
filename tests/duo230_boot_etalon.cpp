@@ -48,6 +48,7 @@ int main() {
         {"duo270c", pom68k::SnapMachine::Duo270c, 71, "Duo 270c"},
         {"duo280", pom68k::SnapMachine::Duo280, 96, "Duo 280"},
         {"duo280c", pom68k::SnapMachine::Duo280c, 97, "Duo 280c"},
+        {"pb150", pom68k::SnapMachine::Pb150, 109, "PowerBook 150"},
     };
     const char* wanted = getenv("POM68K_DUO_MODEL");
     const Model* model = &kModels[1];
@@ -65,7 +66,9 @@ int main() {
         pom68k::mscBoardIdentity(model->profile);
 
     std::string rom =
-        find(model->profile == pom68k::SnapMachine::Duo280 ||
+        find(model->profile == pom68k::SnapMachine::Pb150
+            ? "roms/1MB ROMs/1994-07 - FDA22562 - Powerbook 150.ROM"
+            : model->profile == pom68k::SnapMachine::Duo280 ||
              model->profile == pom68k::SnapMachine::Duo280c
             ? "roms/1MB ROMs/1994-04 - 015621D7 - Powerbook Duo 280 & 280c.ROM"
             : model->profile == pom68k::SnapMachine::Duo270c
@@ -87,15 +90,29 @@ int main() {
         return 1;
     }
 
-    MscMemory mem(daynaboot::config(), 8u << 20,
+    auto core = daynaboot::config();
+    if (const char* boost = getenv("POM68K_CACHE_BOOST")) core.cpu.cacheBoost = std::clamp(atoi(boost), 1, 64);
+    if (getenv("POM68K_MSC_INPUT_TRACE")) {
+        core.peripherals.pgeTrackballTrace = true;
+        core.peripherals.pgeAdbTrace = true;
+    }
+    MscMemory mem(core, 8u << 20,
                   identity.cpuHz, identity.boxId, identity.cscPanel);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     if (!mem.pgeActive()) { std::fprintf(stderr, "FAIL: PG&E inactive\n"); return 1; }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    MscCpu cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, mem.hasCsc());
+    MscCpu cpu(mem, jitConfig, core.cpu, mem.hasCsc());
     mem.setCpu(&cpu);
-    if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
-    if (mem.hasCsc() && !infinitehd::attach(mem, img)) return 1;
+    if (getenv("POM68K_MSC_INPUT_TRACE")) mem.onIoAccess = [&](uint32_t address, bool write, uint32_t value) {
+        static int count = 0;
+        if (write && address >= 0x50F16000 && address < 0x50F18000 && count++ < 600)
+            std::fprintf(stderr, "SWIM W $%08X=$%02X pc=$%08X\n", address, value, cpu.getPC0());
+    };
+    const bool ide = mem.isPb150() && getenv("POM68K_PB150_IDE");
+    if (!(ide ? mem.attachIde(img) : mem.attachScsi(img))) {
+        std::fprintf(stderr, "FAIL: bad disk\n"); return 1;
+    }
+    if ((mem.hasCsc() || mem.isPb150()) && !infinitehd::attach(mem, img)) return 1;
     if (!agentboot::install(mem)) return 1;
     cpu.hardReset();
 
@@ -170,7 +187,10 @@ int main() {
     const bool identityOk = boxFlag == model->boxFlag;
 
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.80
-           && mem.scsi().commands > 500 && pinOk && identityOk;
+           && (ide ? mem.ide().sectorsRead > 500 && mem.ide().sectorsWritten > 0 && !mem.scsiDisk().present()
+                   : mem.scsi().commands > 500) && pinOk && identityOk;
+    if (ide) std::printf("IDE: %ld sectors read, %ld written, no SCSI boot disk\n",
+                        mem.ide().sectorsRead, mem.ide().sectorsWritten);
     if (ok) ok = duosession::check(mem, cpu, model->profile, kFrame);
     ok = daynaboot::check(mem, ok);
     ok = agentboot::check(mem, cpu, kFrame, ok);

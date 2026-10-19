@@ -1,16 +1,18 @@
 // POM68K — prove the MSC II's running guest, input and state restoration.
 #pragma once
 #include "Mmu040Peek.h"
+#include "Mmu030Peek.h"
 #include "MscCpu.h"
 #include "PixelPin.h"
 #include "SaveStateMachines.h"
+#include "Pb150FloppyProbe.h"
 #include <array>
 
 namespace duosession {
 
 inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
                   int64_t frameCycles) {
-    if (!mem.is040()) return true;
+    if (!mem.is040() && !mem.isPb150()) return true;
     auto frame = [&] {
         if (mem.cpuHeld()) mem.tick(int(frameCycles));
         else cpu.runCycles(frameCycles);
@@ -21,8 +23,12 @@ inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
         value = 0;
         for (unsigned i = 0; i < bytes; i++) {
             uint32_t physical = 0;
-            if (!mmu040peek::translate(r, address + i, true,
-                    [&](uint32_t a) { return mem.peek8(a); }, &physical)) return false;
+            const auto peek = [&](uint32_t a) { return mem.peek8(a); };
+            const bool mapped = mem.is040()
+                ? mmu040peek::translate(r, address + i, true, peek, &physical)
+                : mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
+                                        address + i, 5, peek, &physical);
+            if (!mapped) return false;
             value = value << 8 | mem.peek8(physical);
         }
         return true;
@@ -63,9 +69,10 @@ inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
         moved = mouse() != pointer;
     }
     const bool input = pressed && released && moved && pointer != 0xFFFFFFFFu;
-    std::printf("MSC II input: key %s/%s, trackball %s ($%08X->$%08X), TC=$%08X\n",
+    const bool floppy = pb150floppy::check(mem, frame, logical);
+    std::printf("MSC input: key %s/%s, trackball %s ($%08X->$%08X), TC=$%08X\n",
                 pressed ? "down" : "MISSING", released ? "up" : "STUCK",
-                moved ? "moved" : "STUCK", pointer, mouse(), cpu.getTC040());
+                moved ? "moved" : "STUCK", pointer, mouse(), mem.is040() ? cpu.getTC040() : cpu.getTC());
 
     std::vector<uint32_t> pixels;
     mem.decodeScreen(pixels);
@@ -73,10 +80,12 @@ inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
     uint32_t savedTicks = 0;
     const bool clockReadable = logical(0x16A, 4, savedTicks);
     const auto savedClock = cpu.getClock();
+    const auto savedMachineClock = cpu.machineClock();
     std::vector<uint8_t> state;
     pom68k::save(mem, cpu, profile, state);
-    const auto other = profile == pom68k::SnapMachine::Duo280
-        ? pom68k::SnapMachine::Duo280c : pom68k::SnapMachine::Duo280;
+    const auto other = mem.isPb150() ? pom68k::SnapMachine::Duo230
+        : profile == pom68k::SnapMachine::Duo280
+            ? pom68k::SnapMachine::Duo280c : pom68k::SnapMachine::Duo280;
     std::string error;
     const bool refused = !pom68k::load(mem, cpu, other, state.data(), state.size(), error)
         && error == "save state is for another machine profile";
@@ -85,17 +94,17 @@ inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
     const bool loaded = pom68k::load(mem, cpu, profile, state.data(), state.size(), error);
     mem.decodeScreen(pixels);
     uint32_t restoredTicks = 0;
-    const bool restored = loaded && cpu.getClock() == savedClock &&
+    const bool restored = loaded && cpu.getClock() == savedClock && cpu.machineClock() == savedMachineClock &&
         logical(0x16A, 4, restoredTicks) && restoredTicks == savedTicks &&
         pixelpin::hashRegion(pixels, 640, mem.screenHeight(), 20) == before;
     for (int f = 0; f < 120 && !cpu.isHalted(); f++) frame();
     uint32_t resumedTicks = 0;
     const bool resumed = logical(0x16A, 4, resumedTicks) && resumedTicks > savedTicks;
-    std::printf("MSC II state: %zu bytes, profile %s, restore %s, guest clock %s\n",
+    std::printf("MSC state: %zu bytes, profile %s, restore %s, guest clock %s\n",
                 state.size(), refused ? "isolated" : "WRONG",
                 restored ? "exact" : "FAILED", resumed ? "running" : "STUCK");
-    return input && clockReadable && restored && resumed && refused && !cpu.isHalted()
-        && cpu.getModel() == moira::Model::M68LC040
+    return input && floppy && clockReadable && restored && resumed && refused && !cpu.isHalted()
+        && cpu.getModel() == (mem.is040() ? moira::Model::M68LC040 : moira::Model::M68030)
         && cpu.getFPUModel() == moira::FPUModel::NONE;
 }
 
