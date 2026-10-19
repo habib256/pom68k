@@ -478,7 +478,7 @@ target_compile_definitions(pom68k_core PUBLIC ${POM68K_JIT_DEFS})
 add_library(pom68k_app STATIC
     src/ProcessEnvironment.cpp
     src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp src/RuntimeConfigSerial.cpp
-    src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp
+    src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp src/RuntimeConfigProfile.cpp
     src/RuntimeConfigRelaunch.cpp src/RuntimeConfigNetwork.cpp
     src/MachineFactory.cpp src/MachineSession.cpp src/SessionFile.cpp)
 target_include_directories(pom68k_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

@@ -57,7 +57,7 @@ src/Q700Memory.cpp                       1098
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    198
 src/RuntimeConfigCore.cpp                186
-src/RuntimeConfigMachine.cpp             117
+src/RuntimeConfigMachine.cpp              52
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
 src/Scc8530.cpp                          1071
@@ -72,3 +72,4 @@ src/V8Memory.cpp                         1013
 src/GuiRunnerPb030.h                    205
 src/PlatformPb030.cpp                     54
 cmake/Pom68kPb030Gates.cmake               12
+src/RuntimeConfigProfile.cpp              72

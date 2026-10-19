@@ -47,7 +47,9 @@ inline bool check(Pb030Memory& mem,Pb030Cpu& cpu,pom68k::SnapMachine profile) {
     std::vector<uint8_t> bytes;
     pom68k::save(mem,cpu,profile,bytes);
     std::string error;
-    const auto other=profile==pom68k::SnapMachine::Pb145?pom68k::SnapMachine::Pb145B:
+    const auto other=profile==pom68k::SnapMachine::Pb165?pom68k::SnapMachine::Pb180:
+        profile==pom68k::SnapMachine::Pb180?pom68k::SnapMachine::Pb165:
+        profile==pom68k::SnapMachine::Pb145?pom68k::SnapMachine::Pb145B:
         profile==pom68k::SnapMachine::Pb145B?pom68k::SnapMachine::Pb145:
         profile==pom68k::SnapMachine::Pb140?pom68k::SnapMachine::Pb170:pom68k::SnapMachine::Pb140;
     const bool refused=!pom68k::load(mem,cpu,other,bytes.data(),bytes.size(),error) &&

@@ -55,7 +55,7 @@ is_always_budgeted() {
         src/GuiTobyStatus.h|\
         src/RuntimeConfig.cpp|src/StartupDomainView.h|\
         src/RuntimeConfigProduct.cpp|src/RuntimeConfigCore.cpp|\
-        src/RuntimeConfigMachine.cpp|src/StartupOptions.h|src/StartupSnapshot.h|\
+        src/RuntimeConfigMachine.cpp|src/RuntimeConfigProfile.cpp|src/StartupOptions.h|src/StartupSnapshot.h|\
         src/StartupValuePolicy.h|src/StartupValueDecoding.h|\
         src/RuntimeConfigParsers.h|\
         src/jit/JitConfig.h|\

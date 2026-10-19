@@ -32,7 +32,7 @@ the PowerBook 140/145/170 and 160/165/180 families. It cold-starts from
 `readPmgrVers` transaction. The harness drives pins; it does not implement
 PMgr commands or patch firmware/RAM.
 
-## Niagra: PowerBook 160
+## Niagra: PowerBook 160/165/180
 
 PowerBook 160 (session id 52) adds the Niagra map as a distinct platform kind, reusing the
 bounded CPU/PMU bridge and common peripheral graph. The application uses a
@@ -40,6 +40,19 @@ bounded CPU/PMU bridge and common peripheral graph. The application uses a
 PMU v3 image is selected independently from Jaws: `roms/pmu/pb160.bin`,
 with the existing typed PMU path override available. The System selects
 BoxFlag 28 without ROM or guest identity patches.
+
+PB165 and PB180 append session ids 53/54. Both use 33 MHz, the same GSC
+panel, ROM and PMU v3 as the 160, with a 68882 on the 180 only. System
+7.5.5 selects BoxFlag 78 for the 165 and 27 for the 180. Niagra's speed
+register reads 3 at 33 MHz, independently of MCU and ADB wire clocks.
+Use `--machine-profile=pb165` or `--machine-profile=pb180` to select the
+shared E33B2724 ROM's model; automatic detection remains PB160.
+
+The typed Niagra selector is isolated from the other ROM-sharing families.
+`RuntimeConfigProfile.cpp` applies profile choices; startup compatibility
+spelling stays in `RuntimeConfigMachine.cpp`. The board gate checks actual
+CPU FPU selection, speed register lanes, cross-profile session refusal and
+PMU timing partition invariance at 33 MHz.
 
 - Peripheral I/O uses the exact `$50F00000` select, without Jaws mirrors.
 - GSC panel 5 exposes registers at `$50F20000`, with 128 KB VRAM mirrored
@@ -58,7 +71,7 @@ BoxFlag 28 without ROM or guest identity patches.
 blanking, Ponti edge semantics and public state restoration without assets.
 The real boot and interpreter gates exercise the ROM and PMU v3 on System
 7.5.5; the agent variant requires Startup Items launch and live disk mount.
-PB165/180, Pangola/WD90C26 color video and external monitor support remain
+Pangola/WD90C26 color video and external monitor support remain
 separate work. There is no AArch64 execution or power-consumption claim.
 
 ## Sources and ownership

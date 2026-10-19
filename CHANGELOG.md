@@ -498,6 +498,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (tenth)** — [Niagra gains PowerBook 165 and 180 with separate 33 MHz session identities](#2026-10-19-pb165-pb180)
 - **2026-10-19 (ninth)** — [PowerBook 160 brings Niagra and the GSC grayscale panel to the product](#2026-10-19-pb160-niagra)
 - **2026-10-19 (eighth)** — [PowerBook 145 and 145B share Jaws hardware and keep distinct sessions](#2026-10-19-pb145-family)
 - **2026-10-19 (seventh)** — [PowerBook 140 and 170 become selectable machines with firmware-bound sessions](#2026-10-19-jaws-product)
@@ -1175,6 +1176,37 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-pb165-pb180"></a>
+## 2026-10-19 (tenth) — Niagra gains PowerBook 165 and 180 with separate 33 MHz session identities
+
+The grayscale Niagra family now includes PB165 and PB180 as profile ids
+53/54, taking the catalogue to 54 profiles on the existing 14 platforms.
+Both reuse E33B2724, PMU v3 and GSC panel 5 at 33 MHz with 8 MB expanded
+RAM; PB180 has a 68882, PB165 has no FPU. The real System 7.5.5 selects
+BoxFlag 78 on the 165 and 27 on the 180, without ROM or guest flag patches.
+The initial 165 assertion inherited the 160's BoxFlag 28; the real boot
+showed that System distinguishes the 33 MHz model, so the expected identity
+was corrected to 78. The machine configuration was unchanged.
+
+A dedicated typed Niagra selector now carries explicit profile choices
+across the shared-ROM dispatcher and relaunch; automatic E33B2724 detection
+remains PB160 and other shared-ROM families retain their own defaults.
+`RuntimeConfigProfile.cpp` owns applying those choices, extracted from the
+startup compatibility decoder to keep both responsibilities bounded.
+The file-size gate covers the new owner and lowers the old owner's ceiling.
+
+Qualification repeats real Finder boot, keyboard down/up, trackball input,
+exact public state restoration and resumed Ticks on both engines, plus
+Disques-agent startup and live mount. GUI smoke on writable clones covers
+engine switch, completed save, close and relaunch for each profile.
+Synthetic Niagra checks additionally require speed register 3 at 33 MHz,
+the actual CPU FPU model, atomic cross-profile session refusal and the
+independent PMU clock's invariance under different host tick partitions.
+
+The grayscale 160/165/180 roster is complete. Pangola/WD90C26 color video
+for 165c/180c, external monitor rendering and Portable/PB100 remain open.
+This adds no AArch64 execution or full power-management qualification.
 
 <a id="2026-10-19-pb160-niagra"></a>
 ## 2026-10-19 (ninth) — PowerBook 160 brings Niagra and the GSC grayscale panel to the product

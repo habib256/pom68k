@@ -454,7 +454,8 @@ int main() {
     const std::string startupViewHeader = slurp(startupDomainView);
     const std::string productDecoder = slurp(runtimeConfigProduct);
     const std::string coreDecoder = slurp(runtimeConfigCore);
-    const std::string machineDecoder = slurp(runtimeConfigMachine);
+    const std::string machineDecoder = slurp(runtimeConfigMachine) +
+        slurp(testasset::find("src/RuntimeConfigProfile.cpp"));
     const std::string startupOptionSchema = slurp(startupOptions);
     const std::string startupPolicySchema = slurp(startupValuePolicy);
     const std::string startupValueDecoder = slurp(startupValueDecoding);
@@ -1176,6 +1177,16 @@ int main() {
             auto cfg=pom68k::app::RuntimeConfig::parse(2,av,{});
             const auto actual=pom68k::app::MachineFactory::selectProfile(cfg,syntheticRom(1u<<20,0x420DBFF3)).snapshot;
             check(actual==pb,"typed Jaws selection routes the shared Quadra ROM");
+            routedProfiles.insert(actual);
+        }
+        for(auto pb:{pom68k::SnapMachine::Pb160,pom68k::SnapMachine::Pb165,pom68k::SnapMachine::Pb180}) {
+            std::string arg=pom68k::app::machineProfileArgument(pb);
+            char* av[]={a0,arg.data()};
+            const auto cfg=pom68k::app::RuntimeConfig::parse(2,av,{});
+            const auto actual=pom68k::app::MachineFactory::selectProfile(cfg,syntheticRom(1u<<20,0xE33B2724)).snapshot;
+            check(actual==pb && cfg.machineSelection().niagra==pb &&
+                  pom68k::app::MachineFactory::selectProfile(cfg,syntheticRom(1u<<20,0x420DBFF3)).snapshot==pom68k::SnapMachine::Q700,
+                  "Niagra typed relaunch selects the shared ROM's profile without changing Quadra routing");
             routedProfiles.insert(actual);
         }
         bool typedRelaunchRoutes = true;
