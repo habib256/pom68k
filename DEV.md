@@ -2362,8 +2362,12 @@ in `StartupOptions.h:220-222`, and `NEOST_EXC_DIAG` (Moira exception diag,
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
 next person greps once instead of twice: `POM68K_AIO_EGRET`,
 `POM68K_IICX`, `POM68K_MACII_020`, `POM68K_COMPACT_MODEL`,
-`POM68K_Q630_ROM`, `POM68K_DUO_MODEL` (`duo210` / `duo250` on
+`POM68K_Q630_ROM`, `POM68K_DUO_MODEL` (select the MSC PowerBook model on
 `duo230_boot_etalon`), `POM68K_BOXID`, `POM68K_SENSE`, `POM68K_DIAG`.
+The MSC boot gate also reads `POM68K_PB150_IDE` (`1`) to boot the PowerBook 150
+from IDE without a SCSI boot disk, `POM68K_PB150_FLOPPY` (`1`) to mount a
+generated 1.44 MB HFS floppy through `.Sony` after Finder starts, and
+`POM68K_MSC_INPUT_TRACE` (`1`) to trace PG&E ADB/trackball activity and SWIM I/O.
 The 128K/512K reproducer (`tests/mac128k_boot_etalon.cpp`, built on demand,
 [§2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic)) adds
 `POM68K_MAC128K_MODEL` (pick `mac128k` / `mac512k`),

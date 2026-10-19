@@ -498,6 +498,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-19 (fourth)** — [Register the PowerBook 150 test selectors](#2026-10-19-pb150-config-registry)
+
 - **2026-10-19 (third)** — [PowerBook 150: IDE boot, PG&E ADB ordering and SWIM head selection](#2026-10-19-pb150-jedi-adb)
 
 - **2026-10-19 (second)** — [Duo 280/280c and the byte-wide MSC power cycle](#2026-10-19-duo280-msc-byte-cycle)
@@ -1166,6 +1168,16 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-19-pb150-config-registry"></a>
+## 2026-10-19 (fourth) — Register the PowerBook 150 test selectors
+
+CI caught three test-only environment variables missing from
+`config_knobs.tsv` and DEV §5: `POM68K_PB150_IDE`,
+`POM68K_PB150_FLOPPY` and `POM68K_MSC_INPUT_TRACE`. The targeted boot,
+device and GUI checks had passed without running `config_test`.
+Classify each variable with its literal-bearing test owner and document
+its effect. The emulator's configuration and hardware behavior are unchanged.
 
 <a id="2026-10-19-pb150-jedi-adb"></a>
 ## 2026-10-19 (third) — PowerBook 150 boots its ROM-resident IDE driver; PG&E replies must precede completion
