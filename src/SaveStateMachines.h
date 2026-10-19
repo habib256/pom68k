@@ -44,8 +44,14 @@ class MscMemory;
 class MscCpu;
 class Pb030Memory;
 class Pb030Cpu;
+class PortableMemory;
+class PortableCpu;
 
 namespace pom68k {
+void save(PortableMemory& mem, PortableCpu& cpu, SnapMachine kind,
+          std::vector<std::uint8_t>& out);
+bool load(PortableMemory& mem, PortableCpu& cpu, SnapMachine kind,
+          const std::uint8_t* data, std::size_t len, std::string& err);
 void save(Pb030Memory& mem, Pb030Cpu& cpu, SnapMachine kind,
           std::vector<std::uint8_t>& out);
 bool load(Pb030Memory& mem, Pb030Cpu& cpu, SnapMachine kind,

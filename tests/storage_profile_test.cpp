@@ -16,6 +16,7 @@
 #include "MachineCatalog.h"
 #include "MscMemory.h"
 #include "Pb030Memory.h"
+#include "PortableMemory.h"
 #include "Ncr5380.h"
 #include "Q605Memory.h"
 #include "Q630Memory.h"
@@ -79,6 +80,8 @@ static_assert(ScsiCdHost<MscMemory> && !EmptyCdHost<MscMemory> &&
 
 static_assert(ScsiCdHost<Pb030Memory> && EmptyCdHost<Pb030Memory> &&
               FloppyHost<Pb030Memory> && !ExternalFloppyHost<Pb030Memory>);
+static_assert(ScsiCdHost<PortableMemory> && EmptyCdHost<PortableMemory> &&
+              FloppyHost<PortableMemory> && !ExternalFloppyHost<PortableMemory>);
 
 void check(bool ok, const char* what) {
     std::printf("  %-66s %s\n", what, ok ? "ok" : "FAIL");
@@ -291,7 +294,7 @@ void checkGlueModel(const pom68k::CoreConfig& core, MacIIMemory::Model model,
 } // namespace
 
 int main() {
-    std::printf("storage_profile_test — 56-profile floppy/SCSI/CD matrix\n");
+    std::printf("storage_profile_test — 58-profile floppy/SCSI/CD matrix\n");
 
     std::size_t none = 0, gcr400 = 0, gcr800 = 0, super = 0, external = 0;
     std::size_t scsi = 0, cdrom = 0;
@@ -311,9 +314,9 @@ int main() {
                     caps.externalFloppy ? "yes" : "no",
                     caps.scsi ? "yes" : "no", caps.cdrom ? "yes" : "no");
     }
-    check(pom68k::kMachineProfileCount == 56, "catalogue contains all 56 profiles");
-    check(none == 6 && gcr400 == 2 && gcr800 == 4 && super == 44,
-          "floppy matrix = 6 none (the Duos) + 2 400K + 4 800K-only + 44 SuperDrive");
+    check(pom68k::kMachineProfileCount == 58, "catalogue contains all 58 profiles");
+    check(none == 6 && gcr400 == 2 && gcr800 == 4 && super == 46,
+          "floppy matrix = 6 none (the Duos) + 2 400K + 4 800K-only + 46 SuperDrive");
     check(external == 11,
           "drive B on the 11 profiles MAME connects it on: the seven compacts "
           "(128K to Classic) and II FDHD, IIx, IIcx, SE/30");
@@ -323,6 +326,7 @@ int main() {
         const bool want = pom68k::storageCapabilities(profile).externalFloppy;
         bool board = false;
         switch (profile.platform) {
+            case pom68k::PlatformKind::Portable: board = PortableMemory::externalFloppyPort(); break;
             case pom68k::PlatformKind::Compact: board = MacMemory::externalFloppyPort(); break;
             case pom68k::PlatformKind::Glue: {
                 const auto model = MacIIMemory::modelFor(profile.snapshot);
@@ -349,8 +353,8 @@ int main() {
     // NOT "all profiles" any more: the SCSI bus arrived with the Plus, so the
     // Macintosh 128K and 512K are the two that answer no. This is the
     // assertion that would have caught a `scsi = true` copied onto them.
-    check(scsi == 53 && cdrom == 53,
-          "53 of 56 expose SCSI HDD + CD-ROM; 128K/512K/512Ke have no bus");
+    check(scsi == 55 && cdrom == 55,
+          "55 of 58 expose SCSI HDD + CD-ROM; 128K/512K/512Ke have no bus");
 
     const auto& core = pom68k::defaultCoreConfig();
     checkCompactModel(core, MacMemory::Model::Mac128, "Mac 128K", false);

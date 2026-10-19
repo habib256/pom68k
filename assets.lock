@@ -10,6 +10,7 @@ firmware | Egret 341s0851 | 4352 | 77f5fb2baaca55a5921423b041e60257a864d79d73487
 firmware | PG&E boot | 512 | ab6348f7f71d97162d7e17813c46ff8e1d2213635099166809df3214725eb29b | roms/pge/pge_boot.bin | duo230,duo210,duo250,duo270c,duo280,duo280c,pb150
 firmware | M50753 PB140/170 | 6144 | 7b91c8a2591b2644bc14c35cd00656ba722c356c79717ed0ef176e5e89ccbcc6 | roms/archive/macroms/pmu/Powerbook-140-145-170__PMU.bin | pb140,pb170,pb145,pb145b
 firmware | M50753 PB160 | 6144 | 125a8680ab3faa8cc2fed666463ea7741045d8a4b893d8d7b08f4f369790e465 | roms/archive/macroms/pmu/Powerbook-160-165-180__Powerbook 160 PMU.bin | pb160,pb165,pb180,pb180c,pb165c
+firmware | M50753 Portable and PB100 | 6144 | 0f9911ab33a62a2831d683d9648059bd7ad59c455b59dcd214c610ce16eebd57 | roms/archive/macroms/pmu/Macintosh-Portable__PMU.bin | portable,pb100
 
 machine-rom | Macintosh 128K 28BA61CE | 65536 | 13fe8312cf6167a2bb4351297b48cc1ee29c523b788e58270434742bfeda864c | roms/64KB ROMs/1984-01 - 28BA61CE - Macintosh 128.ROM | mac128k
 machine-rom | Macintosh 512K 28BA4E50 | 65536 | fe6a1ceff5b3eefe32f20efea967cdf8cd4cada291ede040600e7f6c9e2dfc0e | roms/64KB ROMs/1984-10 - 28BA4E50 - Macintosh 512K.ROM | mac512k
@@ -41,6 +42,8 @@ machine-rom | PowerBook Duo 270c 0024D346 | 1048576 | 5a931e02f1de0570c6c5995c66
 machine-rom | PowerBook Duo 280/280c 015621D7 | 1048576 | 2f29a570bb766f2d5872fe7b39303a75a8df4df121accb6010e455cecbe18504 | roms/1MB ROMs/1994-04 - 015621D7 - Powerbook Duo 280 & 280c.ROM | duo280,duo280c
 machine-rom | PowerBook 150 FDA22562 | 1048576 | 2a284933aa37f69e641f68c88fba484241cbaa2b847cd55e5ecf546bece86f4f | roms/1MB ROMs/1994-07 - FDA22562 - Powerbook 150.ROM | pb150
 machine-rom | PowerBook 160 E33B2724 | 1048576 | d43eb16ce4719d96c45be61737b497918c4ebe27640a7aafa058b7706971bd1c | roms/1MB ROMs/1992-10 - E33B2724 - Powerbook 160 & 165 & 165c & 180 & 180c.ROM | pb160,pb165,pb180,pb180c,pb165c
+machine-rom | Macintosh Portable 96CA3846 | 262144 | 3de29198fc61859ed6146dae0b84cec6c980045f4e3efd64a683aab4db8e04a4 | roms/256KB ROMs/1989-02 - 96CA3846 - Mac Portable.ROM | portable
+machine-rom | PowerBook 100 96645F9C | 262144 | 62558d5faae58e1d6642a8b046f5ec432fe99073e018ac46597ec024b773b6a8 | roms/256KB ROMs/1991-10 - 96645F9C - PowerBook 100.ROM | pb100
 
 declaration-rom | PowerBook 180c video | 32768 | 11b9f7c549400ab7af727e8071d5fe6bd6f34c79087f29d073cc0fb6850c88c8 | roms/archive/macroms/68k/1M/Powerbook 180c video card.bin | pb180c,pb165c
 declaration-rom | Toby video 342-0008-a | 4096 | 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc | roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin | macii,iifx
@@ -50,7 +53,7 @@ reference-disk | GIST PERSO System 7.5 | 262193152 | 73bf9d2e5db2c2f538d43933fb3
 reference-disk | HD20SC System 6 | 21037056 | b15efc29bd65736ab205caba7ea30eabd691ac554999ce0058dc7ff48dd94105 | hdv/ref/HD20SC.vhd | plus,macii,iix,iicx,se30
 reference-disk | Mac OS 8.1 | 314621952 | 0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc | hdv/ref/MacOS-8.1-boot.vhd | lc475,lc575,q605,c610,c650,q610,q650,q800,q700,q900,q950,q630,lc580
 reference-disk | System 7.0 | 41943040 | 0d6729bf5bb72f4aac3ec7fb87194ebba6b68733c9a2a9f02c56fae0505e386c | hdv/ref/System 7.0 HD.dsk | macii
-reference-disk | System 7.1 | 41943040 | 81f1b16c7ff6bb9c28b3ab928d2b91a9be3d1e923795e0eef39a3f8252394ae2 | hdv/ref/System 7.1 HD.dsk | plus,lcii
+reference-disk | System 7.1 | 41943040 | 81f1b16c7ff6bb9c28b3ab928d2b91a9be3d1e923795e0eef39a3f8252394ae2 | hdv/ref/System 7.1 HD.dsk | plus,lcii,portable,pb100
 reference-disk | System 7.5 | 41943040 | 32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382 | hdv/ref/System 7.5 HD.dsk | lc,lc3,lc3plus,classic2,cclassic
 reference-disk | System 7.5.5 | 83886080 | 9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f | hdv/ref/System 7.5.5 HD.dsk | duo230,duo210,duo250,duo270c,duo280,duo280c,pb150,q605,pb140,pb170,pb145,pb145b,pb160,pb165,pb180,pb180c,pb165c
 reference-disk | DaynaPORT installer disk | 1474560 | c1b256d6f89389abf60caaab24b59f072b00b0c69e2da181695d4831e78ca932 | hdv/ref/DAYNA.vhd | q605

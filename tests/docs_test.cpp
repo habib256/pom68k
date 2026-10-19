@@ -162,14 +162,14 @@ int main() {
         testasset::find("src/GuiHostServices.cpp");
     const std::string platformComposers =
         testasset::find("src/PlatformComposers.cpp");
-    const std::array<std::string, 7> platformFamilies = {
+    const std::array<std::string, 8> platformFamilies = {
         testasset::find("src/PlatformCompact.cpp"),
         testasset::find("src/PlatformToby.cpp"),
         testasset::find("src/PlatformV8.cpp"),
         testasset::find("src/PlatformSonora.cpp"),
         testasset::find("src/PlatformDafb.cpp"),
         testasset::find("src/PlatformDuo.cpp"),
-        testasset::find("src/PlatformPb030.cpp")};
+        testasset::find("src/PlatformPb030.cpp"),testasset::find("src/PlatformPortable.cpp")};
     const std::string platformSupport =
         testasset::find("src/PlatformCompositionSupport.h");
     const std::string guiSessionState =
@@ -208,7 +208,7 @@ int main() {
     const std::string jitConfigHeader =
         testasset::find("src/jit/JitConfig.h");
     const std::string jitTestConfig = testasset::find("tests/JitTestConfig.h");
-    const std::array<std::string, 13> jitConfigConsumers = {
+    const std::array<std::string, 14> jitConfigConsumers = {
         testasset::find("src/Cpu68k.h"),
         testasset::find("src/IIfxCpu.h"),
         testasset::find("src/Cpu020.h"),
@@ -221,7 +221,7 @@ int main() {
         testasset::find("src/SonoraCpu.h"),
         testasset::find("src/VaspCpu.h"),
         testasset::find("src/RbvCpu.h"),
-        testasset::find("src/Pb030Cpu.h")};
+        testasset::find("src/Pb030Cpu.h"),testasset::find("src/PortableCpu.h")};
     const std::array<std::string, 14> coreConfigLeaves = {
         testasset::find("src/AdbVia.h"),
         testasset::find("src/CudaLle.h"),
@@ -237,7 +237,7 @@ int main() {
         testasset::find("src/VaspCpu.h"),
         testasset::find("src/RbvCpu.h"),
         testasset::find("src/Pb030Cpu.h")};
-    const std::array<std::string, 13> coreConfigRoots = {
+    const std::array<std::string, 14> coreConfigRoots = {
         testasset::find("src/MacMemory.h"),
         testasset::find("src/MacIIMemory.h"),
         testasset::find("src/IIfxMemory.h"),
@@ -250,7 +250,7 @@ int main() {
         testasset::find("src/Q605Memory.h"),
         testasset::find("src/Q630Memory.h"),
         testasset::find("src/Q700Memory.h"),
-        testasset::find("src/Pb030Memory.h")};
+        testasset::find("src/Pb030Memory.h"),testasset::find("src/PortableMemory.h")};
     const std::array<std::string, 11> coreCpuConsumers = {
         testasset::find("src/Cpu020.h"),
         testasset::find("src/Cpu030.h"),
@@ -1026,6 +1026,8 @@ int main() {
             pom68k::SnapMachine expected;
         };
         const RouteCase routes[] = {
+            {256u << 10, 0x96CA3846, pom68k::SnapMachine::Portable},
+            {256u << 10, 0x96645F9C, pom68k::SnapMachine::Pb100},
             {1u << 20, 0xE33B2724, pom68k::SnapMachine::Pb160},
             {64u << 10,  0x28BA61CE, pom68k::SnapMachine::Mac128K},
             {64u << 10,  0x28BA4E50, pom68k::SnapMachine::Mac512K},
@@ -1324,7 +1326,7 @@ int main() {
               countOccurrences(composersSource, "runTobyGui<") == 2 &&
               countOccurrences(composersSource, "runV8Gui<") == 1 &&
               countOccurrences(composersSource, "runDuoGui<") == 1 &&
-              countOccurrences(composersSource, "runPb030Gui<") == 1 &&
+              countOccurrences(composersSource, "runPb030Gui<") == 2 &&
               composersSource.find("glfwCreateWindow") == std::string::npos &&
               composersSource.find("glfwPollEvents") == std::string::npos &&
               composersSource.find("ImGui::") == std::string::npos &&

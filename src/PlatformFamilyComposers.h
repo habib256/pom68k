@@ -28,5 +28,6 @@ int composeSonora(PlatformLaunch launch, GuiHostServices& services);
 int composeDafb(PlatformLaunch launch, GuiHostServices& services);
 int composeDuo(PlatformLaunch launch, GuiHostServices& services);
 int composePb030(PlatformLaunch launch, GuiHostServices& services);
+int composePortable(PlatformLaunch launch, GuiHostServices& services);
 
 } // namespace pom68k::gui

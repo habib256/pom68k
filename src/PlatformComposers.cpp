@@ -11,13 +11,13 @@
 #include <utility>
 
 namespace pom68k::gui {
-int PlatformComposers::run(app::MachineSession& session,
-                           GuiHostServices& services) {
+int PlatformComposers::run(app::MachineSession& session, GuiHostServices& services) {
     const MachineProfile& profile = session.profile();
     PlatformLaunch launch{
         session.takeRom(), session.romName(),
         session.config().mediaArguments(), profile.platform, profile.snapshot};
     switch (profile.platform) {
+    case PlatformKind::Portable: return composePortable(std::move(launch), services);
     case PlatformKind::Pangola: case PlatformKind::Niagra: case PlatformKind::Jaws:
         return composePb030(std::move(launch), services);
     case PlatformKind::Compact:

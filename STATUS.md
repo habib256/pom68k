@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 506 gates
+## Union across hosts — 516 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 298 |
-| `etalon-core` | 15 |
+| `etalon` | 305 |
+| `etalon-core` | 16 |
 | `gui` | 3 |
-| `jit` | 45 |
+| `jit` | 47 |
 | `jit-fast` | 8 |
 | `m030` | 130 |
 | `m040` | 102 |
 | `smoke` | 9 |
-| `unit` | 159 |
+| `unit` | 162 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -62,27 +62,27 @@ Scheduling cost if every gate ran at once: 736 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-502 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+512 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 129 |
+| assets | none | 132 |
 | assets | optional | 16 |
-| assets | required | 357 |
-| host | any | 491 |
+| assets | required | 364 |
+| host | any | 501 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 133 |
+| scope | component | 136 |
 | scope | engine | 22 |
-| scope | profile | 344 |
+| scope | profile | 351 |
 | scope | repository | 3 |
-| tier | daily | 129 |
-| tier | full | 358 |
-| tier | platform | 15 |
-| slots_src | assumed | 389 |
+| tier | daily | 132 |
+| tier | full | 364 |
+| tier | platform | 16 |
+| slots_src | assumed | 399 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 861 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 871 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -222,3 +222,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Oct 19 22:04 +04 | x86_64 | default | 5 | 5 | 0 | 0 | PB165c native/interpreter pinned Finder, PMU input and state replay; Startup Items agent and live mount; PB180c regression and synthetic color profiles; all 5 executed |
 | Oct 19 22:10 +04 | x86_64 | default | 8 | 8 | 0 | 0 | Native-required jit-fast after PB165c integration; all 8 executed |
 | Oct 19 22:10 +04 | x86_64 | default | 3 | 3 | 0 | 0 | PB165c session configuration, 56-profile storage matrix and file-size contracts; all 3 executed |
+| Oct 19 22:39 +04 | x86_64 | default | 13 | 13 | 0 | 0 | Portable/PB100 headless board, both engines and PMU regression |
+| Oct 19 23:59 +04 | x86_64 | default | 22 | 22 | 0 | 0 | Portable/PB100 product: public states, battery and firmware, both engines, agent live mount, GUI contracts, sessions and storage; all 22 executed |
