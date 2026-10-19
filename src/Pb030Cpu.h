@@ -5,8 +5,8 @@
 
 class Pb030Cpu:public pom68k::MoiraCpu<Pb030Cpu,Pb030Memory> {
 public:
-    Pb030Cpu(Pb030Memory& mem,const jit::ResolvedConfig& jit,
-             const pom68k::CoreCpuConfig& config,bool fpu=false);
+    Pb030Cpu(Pb030Memory& mem,const jit::ResolvedConfig& jitConfig,
+             const pom68k::CoreCpuConfig& cpuConfig,bool fpu=false);
     void hardReset();
     void runCycles(moira::i64 cycles);
     void stall(int cycles);

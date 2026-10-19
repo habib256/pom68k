@@ -55,11 +55,11 @@ void testBus() {
     check((mem.pseudoVia().read(0)&4)!=0,"pseudo-VIA port B reads back the host's PMREQ bit");
     mem.pseudoVia().write(0,0);
     check(!(mem.pseudoVia().read(0)&4),"PMREQ deassert/assert writes reach the independent MCU");
-    mem.consumeReset();const auto pmuClock=mem.pmu().mcu().cpu().cycleCount();
+    mem.consumeReset();mem.read8(0x40000000);const auto pmuClock=mem.pmu().mcu().cpu().cycleCount();
     mem.write8(0x500a0000,0);
-    check(mem.overlay() && mem.consumeReset() && !mem.consumeReset() &&
+    check(!mem.overlay() && mem.consumeReset() && !mem.overlay() && !mem.consumeReset() &&
           mem.pmu().mcu().cpu().cycleCount()==pmuClock,
-          "Jaws power-cycle request rearms overlay and defers CPU reset without resetting its PMU");
+          "Jaws wake reset preserves RAM vectors and defers CPU reset without resetting its PMU");
 }
 void testPseudoVia() {
     PseudoVia pv(PseudoVia::Flavour::Pb030);pv.reset();

@@ -37,6 +37,8 @@
 #include "MacMemory.h"
 #include "MscCpu.h"
 #include "MscMemory.h"
+#include "Pb030Cpu.h"
+#include "Pb030Memory.h"
 #include "Ncr5380.h"
 #include "Ncr53c96.h"
 #include "PgePmu.h"
@@ -134,6 +136,8 @@ POM68K_SAV_CHECK(M68hc05Pge);     // PG&E core: 960 B RAM + 32 KB SRAM
 POM68K_SAV_CHECK(PgePmu);         // the PMU board wiring (nests the above)
 POM68K_SAV_CHECK(MscCpu);
 POM68K_SAV_CHECK(MscMemory);      // PowerBook Duo 230 (nests the PG&E)
+POM68K_SAV_CHECK(Pb030Cpu);
+POM68K_SAV_CHECK(Pb030Memory);
 
 // ── Container assembly ──────────────────────────────────────────────────
 namespace pom68k {
@@ -293,5 +297,6 @@ POM68K_SAV_MACHINE(MacIIMemory, Cpu020)
 POM68K_SAV_MACHINE(MacMemory, Cpu68k)
 POM68K_SAV_MACHINE(IIfxMemory, IIfxCpu)
 POM68K_SAV_MACHINE(MscMemory, MscCpu)
+POM68K_SAV_MACHINE(Pb030Memory, Pb030Cpu)
 
 }  // namespace pom68k

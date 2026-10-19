@@ -1,13 +1,14 @@
-// Headless Jaws qualification: running System, real PMU input and raw
-// controller/CPU state replay. No public session-file/profile admission.
+// Jaws qualification: running System, real PMU input and public session replay.
 #pragma once
 #include "Pb030Cpu.h"
 #include "Mmu030Peek.h"
 #include "PixelPin.h"
+#include "SaveStateMachines.h"
+#include "AgentBootProbe.h"
 #include <array>
 
 namespace pb030probe {
-inline bool check(Pb030Memory& mem,Pb030Cpu& cpu) {
+inline bool check(Pb030Memory& mem,Pb030Cpu& cpu,pom68k::SnapMachine profile) {
     auto frame=[&](){cpu.runCycles(mem.cpuHz()/60);};
     auto logical=[&](uint32_t a,unsigned n,uint32_t& value){
         value=0;
@@ -44,11 +45,15 @@ inline bool check(Pb030Memory& mem,Pb030Cpu& cpu) {
     std::vector<uint32_t> pixels;mem.decode(pixels);
     const auto pixelHash=pixelpin::hashRegion(pixels,640,400,20);
     std::vector<uint8_t> bytes;
-    sav::Writer writer(bytes);writer(mem,cpu);
+    pom68k::save(mem,cpu,profile,bytes);
+    std::string error;
+    const auto other=profile==pom68k::SnapMachine::Pb140?pom68k::SnapMachine::Pb170:pom68k::SnapMachine::Pb140;
+    const bool refused=!pom68k::load(mem,cpu,other,bytes.data(),bytes.size(),error) &&
+        error=="save state is for another machine profile";
     for(int f=0;f<20;++f) frame();
-    sav::Reader reader(bytes.data(),bytes.size());reader(mem,cpu);
+    const bool loaded=pom68k::load(mem,cpu,profile,bytes.data(),bytes.size(),error);
     mem.decode(pixels);uint32_t restoredTick=0;
-    const bool restored=reader.ok() && !reader.remaining() && cpu.getClock()==clock &&
+    const bool restored=loaded && cpu.getClock()==clock &&
         cpu.machineClock()==machineClock && logical(0x16a,4,restoredTick) && restoredTick==tick &&
         pixelpin::hashRegion(pixels,640,400,20)==pixelHash;
     for(int f=0;f<60;++f) frame();
@@ -56,6 +61,6 @@ inline bool check(Pb030Memory& mem,Pb030Cpu& cpu) {
     std::printf("Jaws app=%s keyboard=%s/%s pointer=%08x->%08x restore=%s ticks=%u->%u TC=%08x\n",
         app.c_str(),down?"down":"MISSING",up?"up":"STUCK",beforePointer,pointer(),
         restored?"exact":"FAILED",tick,laterTick,cpu.getTC());
-    return app=="Finder" && down && up && moved && beforePointer!=0xffffffff && readable && restored && running;
+    return agentboot::finderOrAgent(app) && down && up && moved && beforePointer!=0xffffffff && readable && restored && running && refused;
 }
 }

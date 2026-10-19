@@ -15,15 +15,14 @@
 
 namespace pom68k::app {
 namespace {
-
 std::optional<FirmwareTarget> firmwareTarget(std::string_view slug) {
     if (slug == "adb") return FirmwareTarget::Adb;
     if (slug == "egret") return FirmwareTarget::Egret;
     if (slug == "cuda") return FirmwareTarget::Cuda;
     if (slug == "toby") return FirmwareTarget::TobyDecl;
+    if (slug == "pmu") return FirmwareTarget::Pmu;
     return std::nullopt;
 }
-
 std::optional<FirmwareOverride> parseFirmwareOverride(
     std::string_view argument) {
     if (!argument.starts_with(kFirmwareOverrideOption)) return std::nullopt;
@@ -43,7 +42,6 @@ std::optional<FirmwareOverride> parseFirmwareOverride(
                                 ? std::optional<std::string>()
                                 : std::optional<std::string>(path)};
 }
-
 void applyFirmwareOverride(pom68k::CoreFirmwareConfig& firmware,
                            const FirmwareOverride& policy) {
     switch (policy.target) {
@@ -63,9 +61,11 @@ void applyFirmwareOverride(pom68k::CoreFirmwareConfig& firmware,
         firmware.tobyDeclLle = policy.lle;
         firmware.tobyDeclPath = policy.path;
         break;
+    case FirmwareTarget::Pmu:
+        firmware.pmuLle = policy.lle; firmware.pmuPath = policy.path;
+        break;
     }
 }
-
 } // namespace
 
 RuntimeConfig RuntimeConfig::parse(

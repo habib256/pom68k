@@ -13,7 +13,8 @@ Pb030Cpu::Pb030Cpu(Pb030Memory& mem,const jit::ResolvedConfig& jit,
 }
 
 void Pb030Cpu::hardReset() {
-    mem_.reset();lastPeriphClock_=clock;remainder_=0;
+    flushTicks();mem_.reset();machineBase_=machineClock();clockBase_=clock;
+    boost_=nominalBoost_;lastPeriphClock_=clock;remainder_=0;
     pomIcache.reset();jit_.flushAll();reset();
 }
 void Pb030Cpu::didChangeCACR(moira::u32 v) {

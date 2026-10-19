@@ -25,9 +25,14 @@ public:
     void mouseButton(bool down,int button=0) { line_.mouseButton(down,button); }
     M50753& mcu() { return mcu_; }
     AdbLine& adbLine() { return line_; }
+    const AdbLine& adbLine() const { return line_; }
     std::function<void()> onResetRelease;
     std::function<void(bool)> onInterruptPin;
     template<class Ar> void visit(Ar& ar) {
+        uint64_t firmware=mcu_.romIdentity();ar(firmware);
+        if constexpr(Ar::loading) {
+            if(firmware!=mcu_.romIdentity()) {ar.fail("Power Manager firmware differs");return;}
+        }
         // Restore the latches before MCU.visit republishes its output pins.
         // Republishing is a level restore, never a fresh reset edge.
         ar(acc_,debt_,wireAcc_,request_,fromHost_,toHost_,port3_,port4_,keys_,line_);

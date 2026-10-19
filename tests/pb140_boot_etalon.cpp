@@ -8,22 +8,25 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <cstring>
 
 static std::vector<uint8_t> bytes(const std::string& path) {
     std::ifstream f(path,std::ios::binary);
     return {(std::istreambuf_iterator<char>(f)),{}};
 }
-int main() {
+int main(int argc,char** argv) {
+    const bool pb170=argc>1 && std::strcmp(argv[1],"--pb170")==0;
     const auto rom=testasset::find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
     const auto fw=testasset::find("roms/archive/macroms/pmu/Powerbook-140-145-170__PMU.bin");
     const auto disk=testasset::find("hdv/System 7.5.5 HD.dsk");
     if(rom.empty() || fw.empty() || disk.empty()) {std::puts("SKIP: PowerBook ROM/PMU/System 7.5.5 required");return 0;}
     testasset::report({rom,fw,disk});
     auto config=pom68k::defaultCoreConfig();
-    Pb030Memory mem(config);
+    Pb030Memory mem(config,8u<<20,pb170?25000000:Pb030Memory::kCpuHz);
     if(!mem.loadRom(bytes(rom)) || !mem.pmu().loadFirmware(bytes(fw)) || !mem.attachScsi(disk)) return 1;
     if(!infinitehd::attach(mem,disk)) return 1;
-    Pb030Cpu cpu(mem,testjit::resolveFromEnvironment(),config.cpu);
+    if(!agentboot::install(mem)) return 1;
+    Pb030Cpu cpu(mem,testjit::resolveFromEnvironment(),config.cpu,pb170);
     mem.setCpu(&cpu);cpu.hardReset();
     std::printf("Jaws engine=%s\n",cpu.engine()?"jit":"interp");
     const int frames=std::getenv("POM68K_FRAMES")?std::atoi(std::getenv("POM68K_FRAMES")):2400;
@@ -42,15 +45,16 @@ int main() {
     for(int y=2;y<18;++y) for(int x=0;x<640;++x) menu+=fb[y*640+x]==0;
     for(int y=60;y<360;++y) for(int x=320;x<600;++x) desk+=fb[y*640+x]==0;
     const double menuRatio=menu/double(640*16),deskRatio=desk/double(280*300);
-    std::printf("PB140 pc=%08x halted=%d box=%u menu=%.3f desktop=%.3f SCSI=%ld\n",
-        cpu.getPC0(),cpu.isHalted(),mem.peek8(0xcb3),menuRatio,deskRatio,mem.scsi().commands);
-    bool ok=!cpu.isHalted() && mem.peek8(0xcb3)==19 && mem.scsi().commands>500 &&
+    std::printf("PB%u pc=%08x halted=%d box=%u menu=%.3f desktop=%.3f SCSI=%ld\n",
+        pb170?170:140,cpu.getPC0(),cpu.isHalted(),mem.peek8(0xcb3),menuRatio,deskRatio,mem.scsi().commands);
+    bool ok=!cpu.isHalted() && mem.peek8(0xcb3)==(pb170?15:19) && mem.scsi().commands>500 &&
         menuRatio<0.35 && deskRatio>0.15 && deskRatio<0.90;
     const auto pin=pixelpin::settleAndHash([&](std::vector<uint32_t>& out){mem.decode(out);},
         [&](long n){for(long i=0;i<n;++i) cpu.runCycles(mem.cpuHz()/60);},
         [&](){return mem.scsi().commands;},640,400,20);
-    ok=pixelpin::check("pb140_boot_etalon",pin) && ok;
-    if(ok) ok=pb030probe::check(mem,cpu);
+    ok=pixelpin::check(pb170?"pb170_boot_etalon":"pb140_boot_etalon",pin) && ok;
+    if(ok) ok=pb030probe::check(mem,cpu,pb170?pom68k::SnapMachine::Pb170:pom68k::SnapMachine::Pb140);
+    ok=agentboot::check(mem,cpu,mem.cpuHz()/60,ok);
     std::puts(ok?"PASS: Jaws Finder, PMU input and state replay":"FAIL: Jaws qualification");
     return ok?0:1;
 }

@@ -69,3 +69,6 @@ src/StartupSnapshot.h                    109
 src/StartupValueDecoding.h               107
 src/StartupValuePolicy.h                 88
 src/V8Memory.cpp                         1013
+src/GuiRunnerPb030.h                    205
+src/PlatformPb030.cpp                     54
+cmake/Pom68kPb030Gates.cmake               12

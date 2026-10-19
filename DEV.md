@@ -86,8 +86,8 @@ hand-maintained backlog or overview.
 
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
-inside that section. Twelve platforms in eleven sections (VASP shares
-Sonora's), 47 profiles
+inside that section. Thirteen platforms in twelve sections and the Jaws board note (VASP shares
+Sonora's), 49 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -103,6 +103,7 @@ ROM identity and stable save-state id live).
 | Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700--900--950) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
+| Jaws + Misc GLU | **PowerBook 140** | PowerBook 170 | [board note](docs/PB030_BRINGUP.md) |
 | MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), 250; 270c (68882/CSC), 280/280c (68LC040/CSC); PB150 (GSC/IDE/SWIM) | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
 
 ---
@@ -299,8 +300,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **47** profiles are enumerated
-  (`MachineCatalog.h:56-73`, tags 1-47 contiguous) and each of the **12**
+  append, never renumber. All **49** profiles are enumerated
+  (`MachineCatalog.h:56-73`, tags 1-49 contiguous) and each of the **13**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
@@ -452,7 +453,7 @@ emulators just mirror via a mask and let the ROM discover it.
   (deterministic tests). The silicon part here is the 343-0040 with 20
   bytes of NVRAM, but `Rtc` runs the -0042 superset — one flat 256-byte
   XPRAM on every platform, and the compact ROMs only touch the low end.
-  **PRAM persists on all twelve platforms**, `loadPram`/`savePram` on the
+  **PRAM persists on all thirteen platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
   family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:143` for
   the compacts) (`MacMemory.h:186-187`).
@@ -1017,7 +1018,7 @@ and every line was checked against the tree by grepping for `Duo230`.
 **The board** — new code, one concern per file:
 
 1. `src/<Family>Memory.{h,cpp}`: the address map, the I/O decode, `cpuHz`, the
-   PRAM store (`loadPram`/`savePram` — all twelve have one, but the *store*
+   PRAM store (`loadPram`/`savePram` — all thirteen have one, but the *store*
    differs: discrete RTC, Egret/Cuda XPRAM, or the PMU's own RAM).
 2. `src/<Family>Cpu.{h,cpp}`: the CPU wrapper — bus seam, interrupts, the JIT
    engine, `sync()`/`catchUp()` discipline.
@@ -1986,7 +1987,7 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   `RuntimeConfig` resolves
   every JIT knob from it; after backend selection the engine resolves
   the native defaults for blocks/hot and publishes a const `ResolvedConfig`
-  through `Context`. All twelve CPU wrappers and `Engine` require that
+  through `Context`. All thirteen CPU wrappers and `Engine` require that
   snapshot by const reference: omission is a compile error, and unit fixtures
   which want deterministic policy must name `defaultResolvedConfig()`.
   Product code contains a single process read site, in
@@ -2350,7 +2351,7 @@ the snapshot (`tests/InputReplay.h`; format + determinism gated by
 `input_journal_test`, the applyCmds tap and the start/stop slot by
 `machinehost_test`). The same recorder is on the **Machine menu** —
 Start / Stop recording (`recordingMenuItems` in
-`GuiShellCommon.h`, all twelve families): start/stop are queued like a
+`GuiShellCommon.h`, all thirteen families): start/stop are queued like a
 save-state request and performed by the machine thread between two quanta,
 and the menu form derives `<state base>-YYYYMMDD-HHMMSS.journal` beside the
 boot volume so successive recordings never overwrite one another. Sessions
@@ -2703,7 +2704,7 @@ only maintained rosters.
 Labels are **derived from the test name** in one final policy module
 (`cmake/Pom68kGatePolicy.cmake:59-115`): `^wasm_` → `wasm` and nothing
 else (the WebAssembly pin replays); name ends in `etalon` → `etalon` (+
-`etalon-core` if it is in the twelve-name `POM68K_ETALON_CORE` list, whose
+`etalon-core` if it is in the thirteen-name `POM68K_ETALON_CORE` list, whose
 membership is a configure-time `FATAL_ERROR` if a name stops resolving);
 the three `gui_*smoke_test` gates → `gui`; anything else → `unit`; `^jit_` → `jit`; a
 substring match on the 68040 machine names → `m040`, and on the 68030
@@ -2726,14 +2727,14 @@ side of this loop.
 
 ### The GUI ↔ machine-thread contract (`src/MachineHost.h`)
 
-All twelve platform families run on one CRTP host:
+All thirteen platform families run on one CRTP host:
 `MachineHost<Derived, Mem, Cpu, Audio>`. It owns the thread, the command
 queue, the framebuffer double buffer, the status atomics, the `SaveStateSlot`
-and the JIT gauge snapshot. Seven host types instantiate it: `CompactMachine`,
+and the JIT gauge snapshot. Eight host types instantiate it: `CompactMachine`,
 `MacIiMachine`, `IIfxMachine`, `LcMachine`, `SonoraStyleMachine<>`,
-`DafbMachine<>` and `MscMachine`, each in its corresponding
+`DafbMachine<>`, `MscMachine` and `Pb030Machine`, each in its corresponding
 `PlatformCompact.cpp`, `PlatformToby.cpp`, `PlatformV8.cpp`,
-`PlatformSonora.cpp`, `PlatformDafb.cpp` or `PlatformDuo.cpp` unit. A platform
+`PlatformSonora.cpp`, `PlatformDafb.cpp`, `PlatformDuo.cpp` or `PlatformPb030.cpp` unit. A platform
 on the host supplies only its own half:
 
 | hook | what it does |

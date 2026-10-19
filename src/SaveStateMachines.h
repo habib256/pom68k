@@ -42,8 +42,14 @@ class IIfxMemory;
 class IIfxCpu;
 class MscMemory;
 class MscCpu;
+class Pb030Memory;
+class Pb030Cpu;
 
 namespace pom68k {
+void save(Pb030Memory& mem, Pb030Cpu& cpu, SnapMachine kind,
+          std::vector<std::uint8_t>& out);
+bool load(Pb030Memory& mem, Pb030Cpu& cpu, SnapMachine kind,
+          const std::uint8_t* data, std::size_t len, std::string& err);
 
 // One save/load pair per machine family; `kind` pins the profile inside
 // the family. save() writes the container (header + CPU + machine chunks);

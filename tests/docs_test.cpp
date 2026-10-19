@@ -142,13 +142,14 @@ int main() {
     const std::string guiShell = testasset::find("src/GuiShell.h");
     const std::string guiShellCommon =
         testasset::find("src/GuiShellCommon.h");
-    const std::array<std::string, 6> guiRunners = {
+    const std::array<std::string, 7> guiRunners = {
         testasset::find("src/GuiRunnerCompact.h"),
         testasset::find("src/GuiRunnerDafb.h"),
         testasset::find("src/GuiRunnerSonora.h"),
         testasset::find("src/GuiRunnerToby.h"),
         testasset::find("src/GuiRunnerV8.h"),
-        testasset::find("src/GuiRunnerDuo.h")};
+        testasset::find("src/GuiRunnerDuo.h"),
+        testasset::find("src/GuiRunnerPb030.h")};
     // The shell is three units since 2026-09-16: the GLFW wrapper, the
     // GLFW-free menu bar (GuiShellMenu.cpp) and the screen/input header
     // (GuiScreen.h) the headless machine-window gate compiles.
@@ -161,13 +162,14 @@ int main() {
         testasset::find("src/GuiHostServices.cpp");
     const std::string platformComposers =
         testasset::find("src/PlatformComposers.cpp");
-    const std::array<std::string, 6> platformFamilies = {
+    const std::array<std::string, 7> platformFamilies = {
         testasset::find("src/PlatformCompact.cpp"),
         testasset::find("src/PlatformToby.cpp"),
         testasset::find("src/PlatformV8.cpp"),
         testasset::find("src/PlatformSonora.cpp"),
         testasset::find("src/PlatformDafb.cpp"),
-        testasset::find("src/PlatformDuo.cpp")};
+        testasset::find("src/PlatformDuo.cpp"),
+        testasset::find("src/PlatformPb030.cpp")};
     const std::string platformSupport =
         testasset::find("src/PlatformCompositionSupport.h");
     const std::string guiSessionState =
@@ -206,7 +208,7 @@ int main() {
     const std::string jitConfigHeader =
         testasset::find("src/jit/JitConfig.h");
     const std::string jitTestConfig = testasset::find("tests/JitTestConfig.h");
-    const std::array<std::string, 12> jitConfigConsumers = {
+    const std::array<std::string, 13> jitConfigConsumers = {
         testasset::find("src/Cpu68k.h"),
         testasset::find("src/IIfxCpu.h"),
         testasset::find("src/Cpu020.h"),
@@ -218,8 +220,9 @@ int main() {
         testasset::find("src/Q700Cpu.h"),
         testasset::find("src/SonoraCpu.h"),
         testasset::find("src/VaspCpu.h"),
-        testasset::find("src/RbvCpu.h")};
-    const std::array<std::string, 13> coreConfigLeaves = {
+        testasset::find("src/RbvCpu.h"),
+        testasset::find("src/Pb030Cpu.h")};
+    const std::array<std::string, 14> coreConfigLeaves = {
         testasset::find("src/AdbVia.h"),
         testasset::find("src/CudaLle.h"),
         testasset::find("src/PgePmu.h"),
@@ -232,8 +235,9 @@ int main() {
         testasset::find("src/Q700Cpu.h"),
         testasset::find("src/SonoraCpu.h"),
         testasset::find("src/VaspCpu.h"),
-        testasset::find("src/RbvCpu.h")};
-    const std::array<std::string, 12> coreConfigRoots = {
+        testasset::find("src/RbvCpu.h"),
+        testasset::find("src/Pb030Cpu.h")};
+    const std::array<std::string, 13> coreConfigRoots = {
         testasset::find("src/MacMemory.h"),
         testasset::find("src/MacIIMemory.h"),
         testasset::find("src/IIfxMemory.h"),
@@ -245,8 +249,9 @@ int main() {
         testasset::find("src/CentrisMemory.h"),
         testasset::find("src/Q605Memory.h"),
         testasset::find("src/Q630Memory.h"),
-        testasset::find("src/Q700Memory.h")};
-    const std::array<std::string, 10> coreCpuConsumers = {
+        testasset::find("src/Q700Memory.h"),
+        testasset::find("src/Pb030Memory.h")};
+    const std::array<std::string, 11> coreCpuConsumers = {
         testasset::find("src/Cpu020.h"),
         testasset::find("src/Cpu030.h"),
         testasset::find("src/Cpu040.h"),
@@ -256,7 +261,8 @@ int main() {
         testasset::find("src/Q700Cpu.h"),
         testasset::find("src/SonoraCpu.h"),
         testasset::find("src/VaspCpu.h"),
-        testasset::find("src/RbvCpu.h")};
+        testasset::find("src/RbvCpu.h"),
+        testasset::find("src/Pb030Cpu.h")};
     const std::string coreConfigHeader =
         testasset::find("src/CoreConfig.h");
     const std::string machineFactory = testasset::find("src/MachineFactory.cpp");
@@ -966,6 +972,14 @@ int main() {
                       "legacy-342-0008-a.bin",
               "POM68K_TOBY_DECL seeds the Toby declaration ROM path");
 
+        char pmuPolicyArg[]="--firmware-override=pmu:lle:C:\\pmu.bin";
+        char* pmuArgv[]={a0,pmuPolicyArg};
+        const auto pmuPolicy=pom68k::app::RuntimeConfig::parse(2,pmuArgv,{});
+        const auto pmuRelaunch=pom68k::app::firmwareOverrideArguments({},
+            {{pom68k::FirmwareTarget::Pmu,true,std::string("C:\\pmu.bin")}});
+        check(pmuPolicy.core().firmware.pmuLle && pmuPolicy.core().firmware.pmuPath=="C:\\pmu.bin" &&
+              pmuRelaunch.size()==1 && pmuRelaunch[0]==pmuPolicyArg,
+              "required PMU firmware path survives typed parsing and relaunch");
         auto normalizedFirmware = pom68k::app::firmwareOverrideArguments(
             {"--firmware-override=adb:hle:old.bin",
              "--machine-profile=lc3plus",
@@ -1154,6 +1168,14 @@ int main() {
                       syntheticRom(1u << 20, 0xFDA22562)).snapshot == pom68k::SnapMachine::Pb150,
                   "JeDI typed relaunch selects the PowerBook 150 ROM and profile");
         }
+        for(auto pb : {pom68k::SnapMachine::Pb140,pom68k::SnapMachine::Pb170}) {
+            std::string arg=pom68k::app::machineProfileArgument(pb);
+            char* av[]={a0,arg.data()};
+            auto cfg=pom68k::app::RuntimeConfig::parse(2,av,{});
+            const auto actual=pom68k::app::MachineFactory::selectProfile(cfg,syntheticRom(1u<<20,0x420DBFF3)).snapshot;
+            check(actual==pb,"typed Jaws selection routes the shared Quadra ROM");
+            routedProfiles.insert(actual);
+        }
         bool typedRelaunchRoutes = true;
         for (const ProfileRoute& route : profileRoutes) {
             std::string option = pom68k::app::machineProfileArgument(
@@ -1281,6 +1303,7 @@ int main() {
               countOccurrences(composersSource, "runTobyGui<") == 2 &&
               countOccurrences(composersSource, "runV8Gui<") == 1 &&
               countOccurrences(composersSource, "runDuoGui<") == 1 &&
+              countOccurrences(composersSource, "runPb030Gui<") == 1 &&
               composersSource.find("glfwCreateWindow") == std::string::npos &&
               composersSource.find("glfwPollEvents") == std::string::npos &&
               composersSource.find("ImGui::") == std::string::npos &&

@@ -13,15 +13,24 @@
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include "jit/JitGuard.h"
+#include "DaynaPortBus.h"
+#include "CdAudioPump.h"
 
 class Pb030Cpu;
 class Pb030Memory {
 public:
     static constexpr uint32_t kRomSize=0x100000,kVramSize=0x8000;
     static constexpr int64_t kCpuHz=15667200,kViaHz=1566720;
-    explicit Pb030Memory(const pom68k::CoreConfig& config,uint32_t ram=0x800000,
+    explicit Pb030Memory(const pom68k::CoreConfig& coreConfig,uint32_t ram=0x800000,
                          int64_t cpuHz=kCpuHz);
     bool loadRom(const std::vector<uint8_t>& rom);
+    bool selectPmuFirmware(const pom68k::CoreFirmwareConfig& config);
+    bool loadPram(const std::string& path);
+    void savePram(const std::string& path);
+    pom68k::lle::Registry& lleRegistry() const { return *lle_; }
+    uint32_t romChecksum() const {
+        return (uint32_t(rom_[0])<<24)|(uint32_t(rom_[1])<<16)|(uint32_t(rom_[2])<<8)|rom_[3];
+    }
     void reset();
     uint8_t read8(uint32_t a);
     uint16_t read16(uint32_t a);
@@ -33,7 +42,11 @@ public:
     void setCpu(Pb030Cpu* cpu) { cpu_=cpu; }
     bool cpuHeld() const { return pmu_.cpuHeld(); }
     bool overlay() const { return overlay_; }
-    bool consumeReset() { bool v=resetPending_;resetPending_=false;return v; }
+    bool consumeReset() {
+        const bool v=resetPending_;resetPending_=false;
+        if(v && resetOverlayPending_) {overlay_=true;mapChanged();}
+        resetOverlayPending_=false;return v;
+    }
     int iplLevel() const;
     void updateIrq();
     void mapChanged();
@@ -52,12 +65,41 @@ public:
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
     Scc8530& scc() { return scc_; }
+    AscEasc& asc() { return asc_; }
+    DaynaPort& daynaPort() { return dayna_; }
+    void keyEvent(uint8_t key,bool down) { pmu_.keyEvent(key,down); }
+    void mouseMove(int dx,int dy) { pmu_.mouseMove(dx,dy); }
+    void mouseButton(bool down,int button=0) { pmu_.mouseButton(down,button); }
+    bool externalFloppyPort() const { return false; }
+    bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    void ejectDisk() { drive_.eject(); }
+    void attachDriveSounds(FloppySoundSink* floppy,FloppySoundSink* hdd) {
+        drive_.setSoundSink(floppy);for(auto& d:disks_) d.setSoundSink(hdd);
+    }
+    void attachCdAudioSink(CdAudioSink* cd) { for(auto& d:disks_) d.setCdAudioSink(cd); }
+    bool attachCdrom(const std::string& path,int id=3) {
+        if(id<0 || id>6 || !disks_[id].openCdrom(path)) return false;
+        scsi_.attach(&disks_[id],id);return true;
+    }
+    bool attachCdromEmpty(int id) {
+        if(id<1 || id>6) return false;
+        disks_[id].attachCdromEmpty();
+        scsi_.attach(&disks_[id],id);return true;
+    }
+    bool bayIsCdrom(int id) const { return id>=1 && id<7 && disks_[id].cdrom() && disks_[id].present(); }
+    bool insertBayMedia(int id,const std::string& path) { return bayIsCdrom(id) && disks_[id].openCdrom(path); }
+    void ejectBayMedia(int id) { if(bayIsCdrom(id)) disks_[id].eject(); }
+    bool detachScsi(int id) {
+        if(id<1 || id>6 || disks_[id].cdrom() || !disks_[id].present() || !scsi_.detach(id)) return false;
+        disks_[id].close();return true;
+    }
+    void debugDevices(std::vector<pom68k::dev::Snapshot>& out) const;
     const std::vector<uint8_t>& vram() const { return vram_; }
     void decode(std::vector<uint32_t>& frame) const;
     template<class Ar> void visit(Ar& ar) {
         ar.blob(ram_);ar.blob(vram_);
-        ar(overlay_,resetPending_,viaAcc_,tickAcc_,c15Acc_,secAcc_,
-           via_,pvia_,rtc_,asc_,scsi_,swim_,drive_,scc_,pmu_);
+        ar(overlay_,resetPending_,resetOverlayPending_,viaAcc_,tickAcc_,c15Acc_,secAcc_,
+           via_,pvia_,rtc_,asc_,scsi_,swim_,drive_,scc_,pmu_,dayna_);
         for(auto& d:disks_) ar(d);
         if constexpr(Ar::loading) { mapChanged();updateIrq(); }
     }
@@ -74,9 +116,12 @@ private:
     Swim1 swim_;
     SonyDrive drive_;
     Scc8530 scc_;
+    DaynaPort dayna_;
+    CdAudioPump cdPump_;
+    pom68k::lle::Registry* lle_;
     Pb030Cpu* cpu_=nullptr;
     jit::CodeGuard* guard_=nullptr;
-    bool overlay_=true,resetPending_=false;
+    bool overlay_=true,resetPending_=false,resetOverlayPending_=false;
     int64_t viaAcc_=0,tickAcc_=0,c15Acc_=0,secAcc_=0;
     void busError() const;
     void viaSync();

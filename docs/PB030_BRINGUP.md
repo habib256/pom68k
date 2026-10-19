@@ -2,12 +2,19 @@
 
 ## Boundary of the first milestone
 
-`M740` and `M50753` now feed a headless PowerBook 140 board:
-`Pb030Pmu`, `Pb030Memory` and `Pb030Cpu`. It reaches the System 7.5.5 Finder
-with keyboard, trackball and raw state replay. There is no GUI composer or
-public session-file identity yet; the catalogue remains at 47 profiles.
-Catalogue admission still requires GUI and session-file integration, as
-required by `DEV.md` § Adding a platform.
+`M740` and `M50753` feed the PowerBook 140/170 Jaws board through
+`Pb030Pmu`, `Pb030Memory` and `Pb030Cpu`. The application exposes both
+profiles with the fixed 640×400 display, required firmware selection,
+battery persistence and public session files (stable ids 48 and 49).
+PB140 runs at 15.6672 MHz without an FPU; PB170 runs at 25 MHz with a 68882.
+The ROM remains shared with Quadra 700/900: choose `--machine-profile=pb140`
+or `--machine-profile=pb170` explicitly. The default ROM detection stays Q700.
+
+The M50753 firmware is required, with no HLE substitute. Place it at
+`roms/pmu/pb140.bin` or use `--firmware-override=pmu:lle:<path>`. An explicit missing
+or incorrectly sized image refuses startup. Battery files and session
+states carry the MCU firmware identity and reject a different image.
+Session files also distinguish the two profiles and use transactional load.
 
 The first consumer is the private 6,144-byte Power Manager firmware used by
 the PowerBook 140/145/170 and 160/165/180 families. It cold-starts from
@@ -140,8 +147,9 @@ does not describe this board's actual configured clock.
 PMU execution and the bit-serial `AdbLine` use separate fractional clock
 bridges. MCU instruction overshoot is carried as debt between host ticks;
 the ADB wire retains its established C15M timing domain. CPU hold burns
-machine time so the PMU can release the CPU. Warm host reset rearms the
-ROM overlay without resetting the independently powered PMU.
+machine time so the PMU can release the CPU. A PMU reset release rearms the ROM overlay at a CPU boundary. The Jaws
+CPU power-down/wake reset preserves RAM reset vectors and the independently
+powered PMU. Rearming ROM here causes repeated cold boots on the PB170.
 
 The real ROM first booted an error-type-10 dialog: its CPU-space FPU
 response-register read at `$22000`, FC 7, saw RAM on the bare 68030.
@@ -160,16 +168,21 @@ Additional gates:
   `Infinite HD` is the existing private temporary companion for its startup
   alias. Keyboard press/release reaches KeyMap, trackball movement reaches
   the guest pointer, and Ticks resumes after restoring RAM/CPU/devices.
-  The raw visitor restores CPU/machine clocks, Ticks and pixels exactly.
+  The public container restores CPU/machine clocks, Ticks and pixels exactly.
   The settled desktop pin is `e1f182417db75b70` under both engines.
 
-The raw state proof uses the same configured in-process board; it is not a
-public save-state container and does not claim profile/ROM mismatch refusal.
+The PB170 variants repeat this proof at 25 MHz with a 68882 and BoxFlag 15.
+`pb030_product_test` checks profile and firmware refusals, transactional RAM
+rollback, battery-file roundtrip and malformed-file refusal, and required
+firmware selection without private fixtures. GUI smoke on both profiles
+checks engine switching, completed save, close and relaunch. The
+`pb140_agent_boot_etalon` and `pb170_agent_boot_etalon` variants also require
+the Startup Items agent to poll its mailbox and mount a disk attached live.
+
 The Jaws wrapper conservatively flushes JIT blocks on CACR invalidation;
-there is no store-inventory admission yet. GUI/thread composition, firmware
-selection/provenance, battery persistence, public session identity, disk-agent
-integration and PowerBook 170 qualification remain before catalogue admission.
-Portable/PB100 remain a later board integration.
+there is no store-inventory admission yet. PB145/145B, Niagra video and the
+Portable/PB100 board remain separate work. These checks do not qualify
+sleep/power consumption, modem hardware or an AArch64 execution host.
 
 ## MAME-derived source notice
 

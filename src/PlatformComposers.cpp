@@ -11,15 +11,15 @@
 #include <utility>
 
 namespace pom68k::gui {
-
 int PlatformComposers::run(app::MachineSession& session,
                            GuiHostServices& services) {
     const MachineProfile& profile = session.profile();
     PlatformLaunch launch{
         session.takeRom(), session.romName(),
         session.config().mediaArguments(), profile.platform, profile.snapshot};
-
     switch (profile.platform) {
+    case PlatformKind::Jaws:
+        return composePb030(std::move(launch), services);
     case PlatformKind::Compact:
         return composeCompact(std::move(launch), services);
     case PlatformKind::Glue:

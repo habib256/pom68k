@@ -11,6 +11,8 @@ M50753::M50753(uint32_t oscillatorHz):oscillatorHz_(oscillatorHz) {
 bool M50753::loadRom(const std::vector<uint8_t>& rom) {
     if(rom.size()!=kRomSize) return false;
     std::copy(rom.begin(),rom.end(),rom_.begin());
+    romIdentity_=14695981039346656037ull;
+    for(auto b:rom) {romIdentity_^=b;romIdentity_*=1099511628211ull;}
     return true;
 }
 

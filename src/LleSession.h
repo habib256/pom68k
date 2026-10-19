@@ -32,6 +32,7 @@ enum Module : std::uint32_t {
     HleEgretCuda   = 1u << 0,
     HleAdbModem    = 1u << 1,
     HleTobyDeclRom = 1u << 2,   // synthetic declaration ROM in place of 342-0008-a
+    PmuFirmware   = 1u << 3,   // required M50753, no HLE implementation
 };
 
 // ── Peripheral registry — what the "Périphériques" window renders ───────
