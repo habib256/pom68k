@@ -38,27 +38,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-501 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+511 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 130 |
+| assets | none | 133 |
 | assets | optional | 16 |
-| assets | required | 355 |
+| assets | required | 362 |
 | host | a64 | 4 |
-| host | any | 491 |
+| host | any | 501 |
 | host | native | 6 |
-| scope | component | 133 |
+| scope | component | 136 |
 | scope | engine | 21 |
-| scope | profile | 344 |
+| scope | profile | 351 |
 | scope | repository | 3 |
-| tier | daily | 130 |
-| tier | full | 356 |
-| tier | platform | 15 |
-| slots_src | assumed | 381 |
+| tier | daily | 133 |
+| tier | full | 362 |
+| tier | platform | 16 |
+| slots_src | assumed | 391 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 736 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 746 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
