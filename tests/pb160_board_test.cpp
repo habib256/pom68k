@@ -1,5 +1,6 @@
 // Niagra/GSC contracts without private ROM or media.
 #include "Pb030Cpu.h"
+#include "Pb030Profile.h"
 #include "SaveStateMachines.h"
 #include <cstdio>
 
@@ -40,5 +41,28 @@ int main() {
     check(pom68k::load(mem,cpu,pom68k::SnapMachine::Pb160,saved.data(),saved.size(),error) &&
           mem.read8(0x60000000)==0x81 && mem.read8(0x50f20004)==0x21 && mem.read8(0xfe100000)==0x42 && mem.read8(0x50f96000)==0x77,
           "public state restores GSC mode, both VRAM banks and Ponti latches");
+    for(auto profile:{pom68k::SnapMachine::Pb165,pom68k::SnapMachine::Pb180}) {
+        const auto board=pom68k::pb030Profile(profile);
+        Pb030Memory sibling(core,8u<<20,board.cpuHz,true);
+        Pb030Cpu siblingCpu(sibling,jit::defaultResolvedConfig(),core.cpu,board.fpu);
+        sibling.setCpu(&siblingCpu);sibling.loadRom(rom);siblingCpu.hardReset();sibling.read8(0x40000000);
+        check(sibling.read8(0x50fb6000)==3 && sibling.read8(0x50f20001)==5 &&
+              siblingCpu.getFPUModel()==(profile==pom68k::SnapMachine::Pb180?moira::FPUModel::M68882:moira::FPUModel::NONE),
+              "33 MHz Niagra speed register and real CPU FPU model distinguish 165/180");
+        std::vector<uint8_t> session;pom68k::save(sibling,siblingCpu,profile,session);
+        sibling.write8(0x1234,0xa5);
+        const auto other=profile==pom68k::SnapMachine::Pb165?pom68k::SnapMachine::Pb180:pom68k::SnapMachine::Pb165;
+        check(!pom68k::load(sibling,siblingCpu,other,session.data(),session.size(),error) &&
+              error=="save state is for another machine profile" && sibling.peek8(0x1234)==0xa5,
+              "165/180 cross-profile state refusal leaves RAM intact");
+        check(pom68k::load(sibling,siblingCpu,profile,session.data(),session.size(),error),"33 MHz profile accepts its own session");
+    }
+    std::vector<uint8_t> fw(M50753::kRomSize,0xea);fw[0x17fe]=0;fw[0x17ff]=0xe8;
+    Pb030Pmu whole(33000000),split(33000000);whole.loadFirmware(fw);split.loadFirmware(fw);
+    whole.reset();split.reset();whole.tick(330000);
+    for(int i=0;i<3300;++i) split.tick(100);
+    std::vector<uint8_t> a,b;sav::Writer wa(a),wb(b);wa(whole);wb(split);
+    check(a==b && whole.mcu().cpu().cycleCount()>9800 && whole.mcu().cpu().cycleCount()<9840,
+          "33 MHz host timing keeps the independent PMU clock invariant under partitioning");
     return failed?1:0;
 }

@@ -71,7 +71,7 @@ enum class SnapMachine : std::uint32_t {
     Mac512Ke = 40, MacIIFDHD = 41,
     Duo210 = 42, Duo250 = 43,
     Duo270c = 44, Duo280 = 45, Duo280c = 46, Pb150 = 47,
-    Pb140 = 48, Pb170 = 49, Pb145 = 50, Pb145B = 51, Pb160 = 52,
+    Pb140 = 48, Pb170 = 49, Pb145 = 50, Pb145B = 51, Pb160 = 52, Pb165 = 53, Pb180 = 54,
 };
 
 struct MachineProfile {
@@ -149,6 +149,8 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"Jaws + Misc GLU (PowerBook)", "PowerBook 145 (25 MHz)", "pb145", MachineKind::PowerBook, PlatformKind::Jaws, CpuFamily::M68030, SnapMachine::Pb145, "roms/macpb140.rom", "420DBFF3"},
     {"Jaws + Misc GLU (PowerBook)", "PowerBook 145B (25 MHz)", "pb145b", MachineKind::PowerBook, PlatformKind::Jaws, CpuFamily::M68030, SnapMachine::Pb145B, "roms/macpb140.rom", "420DBFF3"},
     {"Niagra + Misc GLU (PowerBook)", "PowerBook 160 (grayscale)", "pb160", MachineKind::PowerBook, PlatformKind::Niagra, CpuFamily::M68030, SnapMachine::Pb160, "roms/macpb160.rom", "E33B2724"},
+    {"Niagra + Misc GLU (PowerBook)", "PowerBook 165 (33 MHz, grayscale)", "pb165", MachineKind::PowerBook, PlatformKind::Niagra, CpuFamily::M68030, SnapMachine::Pb165, "roms/macpb160.rom", "E33B2724"},
+    {"Niagra + Misc GLU (PowerBook)", "PowerBook 180 (33 MHz, 68882)", "pb180", MachineKind::PowerBook, PlatformKind::Niagra, CpuFamily::M68030, SnapMachine::Pb180, "roms/macpb160.rom", "E33B2724"},
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);
