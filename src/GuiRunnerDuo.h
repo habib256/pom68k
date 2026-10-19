@@ -6,6 +6,7 @@
 #include "GuiFloppyBays.h"
 #include "GuiAgentAutostart.h"
 #include "GuiShellCommon.h"
+#include "GuiMscStorage.h"
 
 namespace pom68k::gui {
 
@@ -31,11 +32,10 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     std::string hddPath = !media.empty() ? media.front()
         : services.locate(spec.defaultHdd);
     if (hddPath.empty()) hddPath = services.locate("hdv/boot.vhd");
-    bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) pom68k::gui::installAgentStartupItem(mem.scsiDisk(), services);
-    if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
+    bool hddOk = attachMscBootDisk(mem, hddPath, services);
+    if (hddOk) std::printf("%s HD: %s (write-back)\n", mem.isPb150() ? "IDE" : "SCSI", hddPath.c_str());
     else std::fprintf(stderr,
-                      "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
+                      "No startup image — drop a .dsk/.vhd in hdv/.\n");
 
     std::vector<std::string> extraDisks;
     for (std::size_t i = 1; i < media.size() && extraDisks.size() < 6; ++i) {
@@ -66,6 +66,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
         }
     }
     ensureCdDrive(mem, extraDisks, services.config().core().storage.cdBay);
+    const auto startupFloppy = attachMscStorage(mem, services);
 
     // Preserve the historical empty-boot name: duo230.duo230.pram rather
     // than the single-tag shape used by the desktop families.
@@ -82,10 +83,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     GLFWwindow* window = ui->window();
     const GLuint screenTex = ui->texture();
 
-    // MscMemory intentionally has no attachDriveSounds(): there is no
-    // internal floppy. The shared audio host still owns ASC output; the
-    // session owns the drive-sound menu state even though no sources attach.
-    services.prepareAudioHost(audioHost);
+    services.prepareDriveSounds(mem, audioHost);
     // No mechanisms to cable, but the CD-audio lead still applies: a Duo
     // plays a disc through its Dock's SCSI port like any other machine.
     services.attachCdAudio(mem, 0);
@@ -94,6 +92,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
 
     MachineT& machine = services.template own<MachineT>(
         mem, cpu, audioHost, services);
+    machine.setFloppyInserted(startupFloppy.inserted, startupFloppy.path);
     machine.state.kind = spec.snap;
     machine.state.setPath(pramPath.substr(0, pramPath.size() - 5) + ".pomss");
     services.armInputRecording(machine, spec.pramTag, romName, media);
@@ -115,9 +114,9 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     Ctx& ctx = services.template own<Ctx>(
         window, machine, screenTex, ScreenInput{}, romName, hddPath,
         std::move(extraDisks), spec, services, DiskBaysHost{}, AdbKeyboard{});
-    // The Duo has no internal floppy, and its bays hold fixed disks only.
     ctx.diskHost = diskBaysHostFor<MachineT>(ctx.machine, &ctx.extraDisks,
                                              {false, false});
+    if (mem.isPb150()) bindFloppyBays(ctx.diskHost, ctx.machine);
     ctx.diskHost.relaunch = [&ctx](const std::string& boot,
                                    const std::vector<std::string>& extras) {
         ctx.services.requestRelaunch(ctx.window, ctx.romName, boot, extras);
@@ -146,8 +145,7 @@ int runDuoGui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
 
         c.services.shell().drawMachineMenu(c.spec.snap, c.window);
 
-        // No floppy hooks and no live bay hooks: the Disques window stages
-        // CD changes for a relaunch, exactly as the old Duo body did.
+        if (c.machine.mem.isPb150()) refreshFloppyBays(c.diskHost, c.machine);
         {
             DiskBaysHost& host = c.diskHost;
             host.romName = c.romName;

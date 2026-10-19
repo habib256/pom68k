@@ -70,7 +70,7 @@ enum class SnapMachine : std::uint32_t {
     Mac128K = 38, Mac512K = 39,
     Mac512Ke = 40, MacIIFDHD = 41,
     Duo210 = 42, Duo250 = 43,
-    Duo270c = 44, Duo280 = 45, Duo280c = 46,
+    Duo270c = 44, Duo280 = 45, Duo280c = 46, Pb150 = 47,
 };
 
 struct MachineProfile {
@@ -136,12 +136,13 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"F108 + PrimeTime II + Valkyrie", "Macintosh Quadra 630 (33 MHz)", "q630", MachineKind::Q630, PlatformKind::F108, CpuFamily::M68040, SnapMachine::Q630, "roms/quadra630.rom", "06684214"},
     {"F108 + PrimeTime II + Valkyrie", "Macintosh LC / Performa 580", "lc580", MachineKind::Q630, PlatformKind::F108, CpuFamily::M68040, SnapMachine::Lc580, "roms/quadra630.rom", "06684214"},
 
-    {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 210 (25 MHz)", "duo210", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo210, "roms/macduo230.rom", "ECFA989B"},
-    {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 230 (33 MHz)", "duo230", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo230, "roms/macduo230.rom", "ECFA989B"},
-    {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 250 (active matrix)", "duo250", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo250, "roms/macduo230.rom", "ECFA989B"},
-    {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 270c (color)", "duo270c", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo270c, "roms/macduo270c.rom", "0024D346"},
-    {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 280 (grayscale)", "duo280", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68040, SnapMachine::Duo280, "roms/macduo280.rom", "015621D7"},
-    {"MSC + PG&E (PowerBook Duo)", "PowerBook Duo 280c (color)", "duo280c", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68040, SnapMachine::Duo280c, "roms/macduo280.rom", "015621D7"},
+    {"MSC + PG&E (PowerBook)", "PowerBook Duo 210 (25 MHz)", "duo210", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo210, "roms/macduo230.rom", "ECFA989B"},
+    {"MSC + PG&E (PowerBook)", "PowerBook Duo 230 (33 MHz)", "duo230", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo230, "roms/macduo230.rom", "ECFA989B"},
+    {"MSC + PG&E (PowerBook)", "PowerBook Duo 250 (active matrix)", "duo250", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo250, "roms/macduo230.rom", "ECFA989B"},
+    {"MSC + PG&E (PowerBook)", "PowerBook Duo 270c (color)", "duo270c", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo270c, "roms/macduo270c.rom", "0024D346"},
+    {"MSC + PG&E (PowerBook)", "PowerBook Duo 280 (grayscale)", "duo280", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68040, SnapMachine::Duo280, "roms/macduo280.rom", "015621D7"},
+    {"MSC + PG&E (PowerBook)", "PowerBook Duo 280c (color)", "duo280c", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68040, SnapMachine::Duo280c, "roms/macduo280.rom", "015621D7"},
+    {"MSC + PG&E (PowerBook)", "PowerBook 150 (grayscale, IDE)", "pb150", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Pb150, "roms/macpb150.rom", "FDA22562"},
 };
 
 inline constexpr std::size_t kMachineProfileCount = std::size(kMachineProfiles);

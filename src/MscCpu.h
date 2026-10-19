@@ -29,7 +29,7 @@ public:
     void stall(int cycles);          // REAL machine cycles (bus time)
     void flushTicks();
 
-    moira::i64 machineClock() const { return clock / cacheBoost_; }
+    moira::i64 machineClock() const { return machineBase_ + (clock - clockBase_) / boost_; }
 
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
@@ -37,6 +37,10 @@ public:
         // TODO § Fidélité contract names this line, and
         // savestate_030_test catches it.
         ar(lastPeriphClock_, periphAccum_, periphDeadline_);
+        if (mem_.isPb150()) {
+            ar(machineBase_, clockBase_, boost_);
+            if constexpr (Ar::loading) if (boost_ < 1 || boost_ > 64) ar.fail();
+        }
     }
 
 private:
@@ -49,8 +53,12 @@ private:
     int cacrFlushPolicy_ = -1;
     void catchUp();
     void schedulePeriphDeadline();
+    void pollFloppyGate();
 
     int cacheBoost_ = 4;
+    int boost_ = 4;
+    bool floppyGate_ = true;
+    moira::i64 machineBase_ = 0, clockBase_ = 0;
     int icacheMiss_ = 4;
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;

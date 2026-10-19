@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
 POM68K emulates classic Macintosh computers from the 68000 Macintosh 128K to
-the 68040 Quadra 950. The project currently provides **46 machine profiles on
+the 68040 Quadra 950. The project currently provides **47 machine profiles on
 12 hardware platforms**, and every listed profile boots to the Finder with the
 matching ROM and system media.
 
@@ -41,7 +41,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
 ## Highlights
 
 - Macintosh 68000, 68020, 68030 and 68040 families, including compact Macs,
-  desktop systems, towers, all-in-ones and the PowerBook Duo 210, 230, 250, 270c, 280 and 280c.
+  desktop systems, towers, all-in-ones and the PowerBook Duo 210, 230, 250, 270c, 280 and 280c, plus the PowerBook 150.
 - Moira interpreter as the accuracy oracle, plus a conformant accelerated
   engine with portable threaded execution and native AArch64/x86-64 code
   generators where their measured policy allows them.
@@ -96,6 +96,7 @@ accelerated engine, the DAFB frame buffer and the 53C96 SCSI chain.*
   PowerBook Duo 270c, 280 and 280c, each with its own save-state identity. The 270c
   boots System 7.5.5 on its 640×480 color CSC panel with a 68882.
   The 280/280c use a 68LC040 with 640×400 grayscale / 640×480 color panels.
+  PowerBook 150 adds a 640×480 four-gray LCD, internal IDE and SuperDrive.
 - **Floppy media**: MOOF bitstream and flux images, DART import and
   write-back, and GCR sector tags kept through DiskCopy 4.2 images and
   save states.
@@ -267,6 +268,7 @@ Bold text is the default profile for a shared ROM.
 | 1 MB | `3DC27823` | Macintosh Quadra 950 | — |
 | 1 MB | `06684214`, `064DC91D` | **Macintosh Quadra 630**, LC/Performa 580 | `q630`, `lc580` |
 | 1 MB | `ECFA989B` | **PowerBook Duo 230**, Duo 210, Duo 250 | `duo230`, `duo210`, `duo250` |
+| 1 MB | `FDA22562` | PowerBook 150 (640×480 four-gray GSC, 68030) | `pb150` |
 | 1 MB | `015621D7` | PowerBook Duo **280** / 280c (68LC040, grayscale / color) | `duo280`, `duo280c` |
 | 1 MB | `0024D346` | PowerBook Duo 270c (640×480 color, 68882) | `duo270c` |
 

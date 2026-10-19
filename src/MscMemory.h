@@ -1,9 +1,9 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// ── PowerBook Duo memory map + MSC gate array (platform #12) ──
+// ── MSC PowerBook memory map + gate array (platform #12) ──
 // MSC ("Main System Controller") is the Duo 210/230/250/270c/280/280c
-// system ASIC — and the PowerBook 150's lineage. Map from MAME
+// system ASIC, also used by the PowerBook 150. Map from MAME
 // macpwrbkmsc.cpp:588-627 + msc.cpp:30-38 (R. Belmont, BSD-3-Clause),
 // blueprint in docs/DUO_BRINGUP.md:
 //   $00000000  RAM (ROM mirror while the boot overlay is up)
@@ -17,7 +17,7 @@
 //   $60000000  GSC VRAM 128 KB (mirrored across $6xxxxxxx)
 // Box IDs (macpwrbkmsc.cpp:604-634): Duo 210 $A55A1004, 230 $A55A1005,
 // 250 $A55A1006, 270c $A55A1002, 280 $A55A1000.
-// No internal floppy (the Duo Dock carries it), no Egret/Cuda: power,
+// Duos have no internal floppy; JeDI adds SWIM and ATA. No Egret/Cuda: power,
 // clock, PRAM, keyboard (matrix), trackball and 1-Wire battery ID all
 // live behind the PG&E power manager (68HC05 + hardware SPI), reached
 // through the VIA1 shifter with /PMU_ACK//PMU_REQ on pseudo-VIA2 port B
@@ -46,6 +46,7 @@
 #include "ScsiDisk.h"
 #include "Scc8530.h"
 #include "CscVideo.h"
+#include "MscPb150Devices.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -72,6 +73,7 @@ public:
     static constexpr uint32_t kIdDuo250 = 0xA55A1006;
     static constexpr uint32_t kIdDuo270c = 0xA55A1002;
     static constexpr uint32_t kIdDuo280 = 0xA55A1000;
+    static constexpr uint32_t kIdPb150 = 0xA55A1001; // FDA22562 ProductInfo +$44
 
     explicit MscMemory(const pom68k::CoreConfig& coreConfig,
                        uint32_t totalRam = 0x800000,
@@ -192,13 +194,15 @@ public:
     // joins. Details, incl. the $91 power-flag scrub, in MscMemory.cpp.
     bool loadPram(const std::string& path);
     void savePram(const std::string& path);
-    // Input goes through the PG&E. The matrix keyboard and the trackball
-    // quadrature counters are milestone 4; until then host events ride the
-    // ADB devices behind the PMU's modem cell, which is how an external
-    // Duo keyboard/mouse would reach the guest anyway.
+    // The PG&E scans the keyboard matrix. Duo trackballs use its
+    // quadrature counters; JeDI's trackball is on its ADB modem cell.
     void keyEvent(uint8_t code, bool down) { pmu_.keyEvent(code, down); }
-    void mouseMove(int dx, int dy) { pmu_.mouseMove(dx, dy); }
-    void mouseButton(bool down) { pmu_.mouseButton(down); }
+    void mouseMove(int dx, int dy) {
+        if (isPb150()) pb150_.mouse.mouseMove(dx, dy); else pmu_.mouseMove(dx, dy);
+    }
+    void mouseButton(bool down) {
+        if (isPb150()) pb150_.mouse.mouseButton(down); else pmu_.mouseButton(down);
+    }
     void setClamshell(bool open) { pmu_.setClamshell(open); }
     bool clamshellOpen() const { return pmu_.clamshellOpen(); }
     // In the full system sleep power_cycle_w asked for: the 68030 halted
@@ -212,12 +216,27 @@ public:
     void scsiIrq(bool s) { pvia_.scsiIrq(s); updateIrq(); }
     void scsiDrq(bool s) { pvia_.scsiDrq(s); updateIrq(); }
 
-    // ── GSC video state (fixed-mode 640×400 DBLite panel on the Duo 2x0) ──
+    // ── GSC video state (640×400 Duo / 640×480 JeDI) ──
     const uint8_t* vram() const { return vram_.data(); }
     uint8_t gscReg(int i) const { return gscRegs_[i & 0x1F]; }
     bool is040() const { return machineId_ == kIdDuo280; }
+    bool isPb150() const { return machineId_ == kIdPb150; }
+    bool attachIde(const std::string& path, bool writeBack = false) {
+        if (!isPb150() || !pb150_.ide.open(path, writeBack)) return false;
+        if (!scsi_.target(0)) scsi_.attach(&pb150_.agentTarget, 0);
+        return true;
+    }
+    AtaDisk& ide() { return pb150_.ide; }
+    const AtaDisk& ide() const { return pb150_.ide; }
+    SonyDrive& internalDrive() { return pb150_.drive; }
+    Swim1& swim() { return pb150_.swim; }
+    static constexpr bool externalFloppyPort() { return false; }
+    void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
+        if (isPb150()) pb150_.drive.setSoundSink(floppy);
+        for (auto& disk : scsiDisks_) disk.setSoundSink(hdd);
+    }
     bool hasCsc() const { return machineId_ == kIdDuo270c || is040(); }
-    int screenHeight() const { return hasCsc() ? csc_.screenHeight() : kScreenH; }
+    int screenHeight() const { return hasCsc() ? csc_.screenHeight() : isPb150() ? 480 : kScreenH; }
     uint8_t videoMode() const { return hasCsc() ? csc_.peek(0x12) : gscReg(4); }
     static constexpr int kScreenW = 640;
     static constexpr int kScreenH = 400;
@@ -226,9 +245,9 @@ public:
     // pen p of 16 renders as the P2/P5 gray ((15-p)<<4 | $F).
     void decodeScreen(std::vector<uint32_t>& out) const {
         if (hasCsc()) { csc_.decode(out); return; }
-        out.resize(size_t(kScreenW) * size_t(kScreenH));
+        out.resize(size_t(kScreenW) * size_t(screenHeight()));
         const int mode = gscRegs_[4] & 3;
-        for (int y = 0; y < kScreenH; y++)
+        for (int y = 0; y < screenHeight(); y++)
             for (int x = 0; x < kScreenW; x++) {
                 uint8_t pen;
                 if (mode == 0) {
@@ -238,7 +257,7 @@ public:
                     uint8_t b = vram_[size_t(y) * 160 + size_t(x) / 4];
                     pen = uint8_t(((b >> (6 - 2 * (x & 3))) & 3) << 2);
                 } else {
-                    uint8_t b = vram_[size_t(y) * 320 + size_t(x) / 2];
+                    uint8_t b = vram_[(size_t(y) * 320 + size_t(x) / 2) & (kVramSize - 1)];
                     pen = (x & 1) ? uint8_t(b & 0xF) : uint8_t(b >> 4);
                 }
                 const uint8_t g = uint8_t(((15 - pen) << 4) | 0xF);
@@ -302,6 +321,7 @@ public:
         ar.bytes(gscRegs_, sizeof gscRegs_);
         // New profile only: preserve the byte layout of existing GSC states.
         if (hasCsc()) ar(csc_);
+        if (isPb150()) ar(pb150_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -319,6 +339,7 @@ private:
 
     std::vector<uint8_t> ram_, rom_, vram_;
     CscVideo csc_;
+    MscPb150Devices pb150_;
     Via6522 via_;
     // APPLE_MSC_PSEUDOVIA: full 256-byte decode, port-B input = the PMU
     // handshake lines, MSC block at $20-$2F (clock-ctrl 1, sound-ctrl 2

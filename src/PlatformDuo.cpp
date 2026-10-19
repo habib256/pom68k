@@ -21,9 +21,8 @@ using pom68k::gui::runDuoGui;
 //     port E bit 2). runOne() therefore has to tick the peripherals with
 //     the CPU stopped, exactly like the Egret hold on the V8/Sonora
 //     boards — tests/duo230_boot_etalon.cpp:52 does the same warm-up;
-//   - there is no floppy drive at all (the Duo's is in the dock), so no
-//     insert/eject plumbing and no drive-sound wiring — MscMemory has
-//     neither API.
+//   - Duos have no internal floppy; JeDI adds SWIM, an ATA startup
+//     disk and a media-free agent endpoint through the shared runner.
 struct MscMachine
     : MachineHost<MscMachine, MscMemory, MscCpu, MacAudioHost> {
     using Base = MachineHost<MscMachine, MscMemory, MscCpu, MacAudioHost>;
@@ -120,7 +119,7 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);
     if (!mem.loadRom(rom)) {
-        std::fprintf(stderr, "FAIL: bad PowerBook Duo ROM\n");
+        std::fprintf(stderr, "FAIL: bad MSC PowerBook ROM\n");
         return 1;
     }
     if (!mem.pgeActive())

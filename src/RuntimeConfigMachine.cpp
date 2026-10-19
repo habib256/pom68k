@@ -106,7 +106,7 @@ void applyMachineProfile(MachineSelectionConfig& selection, CpuConfig& cpu,
     case SnapMachine::Duo230:
     case SnapMachine::Duo250:
     case SnapMachine::Duo270c:
-    case SnapMachine::Duo280: case SnapMachine::Duo280c:
+    case SnapMachine::Duo280: case SnapMachine::Duo280c: case SnapMachine::Pb150:
         selection.msc = profile;
         break;
     default:

@@ -14,8 +14,7 @@ function(pom68k_agent_boot name binary timeout)
     set_tests_properties(${name}_agent_boot_etalon PROPERTIES
                          ENVIRONMENT "${env}" TIMEOUT ${timeout})
 endfunction()
-# No variant on macii_boot_etalon's own image (HD20SC, System 6, no Startup
-# Items); the Mac II's proof rides macii_sys7 below. GISTPERSO is no help on
+# No macii_boot_etalon variant on System 6; use macii_sys7. GISTPERSO fails on
 # the Glue boards: its System 7.5.5 was installed for other machines and
 # refuses them on screen — « Le fichier System du disque de démarrage ne
 # dispose pas des ressources nécessaires pour ce Macintosh » (2026-09-15).
@@ -58,9 +57,10 @@ pom68k_agent_boot(quadra650  centris650_boot_etalon 1800 POM68K_CENTRIS_MODEL=q6
 pom68k_agent_boot(quadra610  centris650_boot_etalon 1800 POM68K_CENTRIS_MODEL=q610)
 pom68k_agent_boot(quadra800  centris650_boot_etalon 1800 POM68K_CENTRIS_MODEL=q800)
 pom68k_agent_boot(lc580      q630_boot_etalon       3600 POM68K_Q630_ID=A55A225A POM68K_Q630_ROM=lc580)
-foreach(model duo210 duo250 duo270c duo280 duo280c)
+foreach(model duo210 duo250 duo270c duo280 duo280c pb150)
     pom68k_agent_boot(${model} duo230_boot_etalon 1800 POM68K_DUO_MODEL=${model})
 endforeach()
+set_property(TEST pb150_agent_boot_etalon APPEND PROPERTY ENVIRONMENT POM68K_PB150_IDE=1)
 # The compacts boot System 6 from HD20SC; System 7.0 — the Mac II's volume —
 # runs on a Plus with 4 MB and gives them Startup Items. Longer boot.
 pom68k_agent_boot(plus       scsi_boot_etalon       2400 POM68K_BEYOND_IMG=hdv/System\ 7.0\ HD.dsk POM68K_FRAMES=9000)

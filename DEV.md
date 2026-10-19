@@ -87,7 +87,7 @@ hand-maintained backlog or overview.
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
 inside that section. Twelve platforms in eleven sections (VASP shares
-Sonora's), 46 profiles
+Sonora's), 47 profiles
 (`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
 ROM identity and stable save-state id live).
 
@@ -103,7 +103,7 @@ ROM identity and stable save-state id live).
 | Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700--900--950) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
-| MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), 250; 270c (68882/CSC), 280/280c (68LC040/CSC); PB150 open | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
+| MSC + PG&E Power Manager | **PowerBook Duo 230** | Duo 210 (25 MHz), 250; 270c (68882/CSC), 280/280c (68LC040/CSC); PB150 (GSC/IDE/SWIM) | [2.11](#211-msc--pge-power-manager--powerbook-duo-230-210-250) |
 
 ---
 
@@ -145,7 +145,7 @@ bit-bang (`bclr`/`bset` of VIA1 PB4 / `via_full` back to back), and until
 2026-07-25 `viaSync` aligned in the boosted domain, so every pulse came out
 `cacheBoost_`× too short and the firmware missed it. Same root cause as the
 LC III / IIvx black screens. Fixed on every 030 wrapper (five today —
-`MscCpu` was built boost-invariant from the start, `MscCpu.h:32`); the whole
+`MscCpu` was built boost-invariant from the start, `MscCpu.h:58`); the whole
 040 family is likewise boost-invariant, which is what let the default rise
 from 1 to 4 (CHANGELOG 2026-07-25).
 
@@ -299,8 +299,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **46** profiles are enumerated
-  (`MachineCatalog.h:56-73`, tags 1-46 contiguous) and each of the **12**
+  append, never renumber. All **47** profiles are enumerated
+  (`MachineCatalog.h:56-73`, tags 1-47 contiguous) and each of the **12**
   machine families has a `save`/`load` overload pair
   (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
@@ -922,6 +922,21 @@ at `$50FA0000`; it must immediately request a wake reset, otherwise the
 Finder remains drawn while guest time and input stop. The boot gates also
 check guest KeyMap/Mouse, clock progress and an exact save-state restore;
 agent gates exercise Disques and hot-attached storage on both panels.
+
+The PowerBook 150 (`Pb150`, id 47) reuses MSC/PG&E with a bare 33 MHz
+68030, ROM `FDA22562`, board ID `$A55A1001` (ROM ProductInfo +$44),
+BoxFlag 109 / Gestalt 115. GSC panel 4 selects 640×480 at 1/2 bpp.
+`MscPb150Devices.h` wires ATA at `$50F1A000` (four-byte task-file stride,
+16-bit data in natural sector-byte order), and SWIM/SuperDrive at
+`$50F16000`; the devices and pending PIO latch are serialized only for
+this profile. Existing Duo payloads retain their layout. The GUI attaches its startup image to IDE, adds the floppy row and accepts
+`POM68K_FLOPPY` / `POM68K_IDE`. `AtaDiskIo` installs Disques onto ATA;
+an IDE-only session has a non-storage POM68K processor endpoint at SCSI
+ID 0 for the existing agent mailbox, displaced by any real SCSI target 0.
+The IDE boot gate has no SCSI boot disk: the ROM's `.ATDrvr` reads the
+reference HFS volume directly. Source: Apple's
+[PowerBook 150 Developer Note](https://www.macdat.net/files/pdf/apple/developer_notes/powerbook_150.pdf),
+pp. 1-2, 1-4 and 3-3; the machine is not executable in MAME.
 
 What makes it a platform rather than a variant: **there is no Egret or
 Cuda**. Power, clock, PRAM, the matrix keyboard, the trackball and the
@@ -2241,10 +2256,10 @@ image — the work clone for a reference volume — so the agent polls from
 the first Finder without a gesture, `GuiAgentAutostart.h`, § 3.4bis),
 `POM68K_SCSI_DDM_TEMPLATE`,
 `POM68K_IDE` (`<path>` = the raw image, 512-byte sectors and partition map
-and all, to put on the F108 boards' ATA port — Quadra 630 and LC/Performa
-580, the only 68k Macs with one; ignored everywhere else, write-back on, and
-what a BOOTABLE image must carry is in `TODO.md`, since the ROM is specific
-about it — [§3.3](#33-scsi-ncr-5380)),
+and all, to put on the ATA port — Quadra 630, LC/Performa 580 and
+PowerBook 150; ignored elsewhere, write-back on. The 150 also boots a bare
+HFS System 7.5.5 volume using its ROM-resident `.ATDrvr`; F108 uses the
+disk's Apple ATA driver — [§3.3](#33-scsi-ncr-5380)),
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort

@@ -526,7 +526,11 @@ static void testMscII() {
     }
 }
 
+#include "Pb150BusProbe.h"
+#include "PgeAdbCellProbe.h"
 int main() {
+    testPgeAdbCell();
+    testPb150Bus();
     testMscII();
     testCsc();
     testSoundBusy();

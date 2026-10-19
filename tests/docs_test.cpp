@@ -1031,6 +1031,7 @@ int main() {
             {1u << 20,   0xECFA989B, pom68k::SnapMachine::Duo230},
             {1u << 20,   0x0024D346, pom68k::SnapMachine::Duo270c},
             {1u << 20,   0x015621D7, pom68k::SnapMachine::Duo280},
+            {1u << 20,   0xFDA22562, pom68k::SnapMachine::Pb150},
         };
         bool allRoutes = true;
         std::set<pom68k::SnapMachine> routedProfiles;
@@ -1144,6 +1145,14 @@ int main() {
                       syntheticRom(1u << 20, 0xECFA989B)).snapshot == pom68k::SnapMachine::Duo230,
                   "040 Duo relaunch selects the shared ROM's panel without changing GSC ROM identity");
             routedProfiles.insert(duo);
+        }
+        {
+            std::string arg = pom68k::app::machineProfileArgument(pom68k::SnapMachine::Pb150);
+            char* av[] = {a0, arg.data()};
+            auto cfg = pom68k::app::RuntimeConfig::parse(2, av, {});
+            check(pom68k::app::MachineFactory::selectProfile(cfg,
+                      syntheticRom(1u << 20, 0xFDA22562)).snapshot == pom68k::SnapMachine::Pb150,
+                  "JeDI typed relaunch selects the PowerBook 150 ROM and profile");
         }
         bool typedRelaunchRoutes = true;
         for (const ProfileRoute& route : profileRoutes) {

@@ -71,10 +71,12 @@ public:
     // Trackball counters (signed deltas) + button, read by the firmware.
     std::function<uint8_t()> tbX, tbY;
     std::function<bool()> tbButton;
-    // The ADB modem cell follows MAME's implemented surface: transmit
-    // completion (TDRE/TC), with no attached external ADB devices and thus
-    // no receive-data callback/RDRF synthesis. The built-in keyboard and
-    // trackball use their dedicated matrix/counter hardware in PgePmu.
+    // JeDI's external ADB trackball. Unconnected on Duos.
+    std::function<std::vector<uint8_t>(uint8_t, const std::vector<uint8_t>&)> adbCommand;
+    std::function<bool(uint8_t)> adbServiceRequest;
+    // An unconnected Duo cell retains TDRE/TC-only behavior. JeDI adds
+    // actual device replies, received before transaction completion, and
+    // the SRQ event/condition its firmware uses to switch autopoll devices.
     // Same instruction-slaved hook as M68hc05::onCycles.
     std::function<void(int)> onCycles;
     // Every byte the PMU RECEIVES over SPI, at completion (the host's
@@ -149,6 +151,13 @@ public:
         ar(pllCtrl_, option_, cscr_, cpicsr_, kcsr_, adcsr_, tbcs_);
         ar(spcr_, spsr_, spiIn_, spiOut_, spiBit_, spiClk_, spiMiso_, spiEdgeAcc_);
         ar(adbcr_, adbsr_, adbdr_, adbTimerAcc_, adbTimerMode_);
+        if (adbCommand) {
+            ar(adbRx_, adbRxPos_, adbListen_, adbData_);
+            if constexpr (Ar::loading)
+                if (adbRx_.size() > 8 || adbRxPos_ > adbRx_.size() ||
+                    adbData_.size() > 2 || adbListen_ < -1 || adbListen_ > 255 ||
+                    (adbTimerMode_ == 2 && adbRxPos_ == adbRx_.size())) ar.fail();
+        }
         ar(pwmacr_, pwma0_, pwma1_, pwmbcr_, pwmb0_, pwmb1_);
         ar(plmcr_, plmt1_, plmt2_);
         ar(rtc_, cycles_, secAcc_, cpiAcc_, keyscanAcc_, keyscanPeriod_);
@@ -157,6 +166,9 @@ public:
     }
 
 private:
+    std::vector<uint8_t> adbRx_, adbData_;
+    uint32_t adbRxPos_ = 0;
+    int adbListen_ = -1;
     enum { CC_H = 0x10, CC_I = 0x08, CC_N = 0x04, CC_Z = 0x02, CC_C = 0x01 };
     // Interrupt sources, priority order (m68hc05pge.cpp:218-231).
     enum { INT_IRQ = 0x01, INT_ADB = 0x02, INT_RTI = 0x04,

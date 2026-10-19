@@ -2,8 +2,8 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // ── AtaDisk: the IDE drive a Quadra 630 has instead of a SCSI one ────────
-// The F108 machines (Quadra 630, LC/Performa 580) are the only 68k Macs
-// whose internal disk is ATA, and their ROM carries the driver for it: the
+// The F108 machines (Quadra 630, LC/Performa 580) and PowerBook 150 have
+// internal ATA disks. This target was brought up on F108: the
 // strings `ATA_MGR`, `ATABusReset`, `ATARegAccess`, `ATATaskFile`, `ATALOAD`
 // and the partition type `APPLE_DRIVER_ATA` are all in the Q630 dump and
 // none of them is in the LC II's. Until now POM68K's port read back zero,
@@ -90,6 +90,18 @@ public:
         reset();
     }
     bool present() const { return sectors_ > 0; }
+    // Host file insertion uses the same history/write-back path as PIO,
+    // without claiming guest traffic or changing the task-file registers.
+    bool hostRead(uint32_t lba, uint8_t* out) const {
+        if (lba >= sectors_) return false;
+        std::memcpy(out, image_.data() + size_t(lba) * 512, 512);
+        return true;
+    }
+    bool hostWrite(uint32_t lba, const uint8_t* data) {
+        if (lba >= sectors_) return false;
+        storeSector(lba, data);
+        return true;
+    }
     uint32_t sectorCount() const { return sectors_; }
 
     // ── The reset the guest performs before anything else ────────────────
