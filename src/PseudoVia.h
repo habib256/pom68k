@@ -42,7 +42,9 @@ public:
     // Sonora = sonora_pseudovia_device: Level ASC semantics but the full
     // $00-$1F decode on READS too (pseudovia.cpp:413 vs :222 — regs 4/5
     // are real backing store, not port-B mirrors).
-    enum class Flavour { Level, Base, Msc, Sonora };
+    // Pb030 = Misc GLU: VIA-style $200 spacing, live parallel PMU ports,
+    // edge-latched ASC like Base, plain IER without the IIci FF quirk.
+    enum class Flavour { Level, Base, Msc, Sonora, Pb030 };
 
     explicit PseudoVia(Flavour flavour = Flavour::Level) : flavour_(flavour) {}
     // IFR (reg 3) bits — enabled mask is $1B (pseudovia.cpp:205)
@@ -91,6 +93,7 @@ public:
     template <class Ar> void visit(Ar& ar) { ar(regs_, irq_, ascLine_); }
 
 private:
+    bool edgeAsc() const { return flavour_==Flavour::Base || flavour_==Flavour::Pb030; }
     void recalcIrqs();                       // pseudovia.cpp:190-218
 
     Flavour flavour_ = Flavour::Level;

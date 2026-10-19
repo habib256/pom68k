@@ -2,10 +2,12 @@
 
 ## Boundary of the first milestone
 
-`M740` and `M50753` are standalone controller components. They are not yet
-wired into a Macintosh platform or the GUI. The catalogue remains at 47
-profiles. Adding a PowerBook profile requires its own Finder, input, storage,
-GUI and session-state proofs, as required by `DEV.md` § Adding a platform.
+`M740` and `M50753` now feed a headless PowerBook 140 board:
+`Pb030Pmu`, `Pb030Memory` and `Pb030Cpu`. It reaches the System 7.5.5 Finder
+with keyboard, trackball and raw state replay. There is no GUI composer or
+public session-file identity yet; the catalogue remains at 47 profiles.
+Catalogue admission still requires GUI and session-file integration, as
+required by `DEV.md` § Adding a platform.
 
 The first consumer is the private 6,144-byte Power Manager firmware used by
 the PowerBook 140/145/170 and 160/165/180 families. It cold-starts from
@@ -29,8 +31,9 @@ PMgr commands or patch firmware/RAM.
 
 `src/M740.*` owns instruction execution; `M740Table.h` is its opcode map.
 `src/M50753.*` owns RAM, immutable ROM input, GPIO direction/latches,
-interrupt arbitration, three timers and ADC scheduling. Board clock conversion,
-pin wiring and host VIA integration belong to the future PowerBook platform.
+interrupt arbitration, three timers and ADC scheduling. `Pb030Pmu` owns clock
+conversion, pin wiring and the parallel host bus; `Pb030Memory` wires the VIA,
+Misc GLU, discrete RTC, EASC, 5380, SWIM/Sony drive and SCC to the Jaws map.
 The existing R65C02 and PG&E interpreters retain their own instruction sets.
 
 ## Controller contract
@@ -114,9 +117,58 @@ common-opcode differential does not qualify decimal, transfer or interrupt
 timing by comparison with a 65C02. Dedicated tests cover named cases; this is
 not an exhaustive Mitsubishi hardware-oracle qualification.
 
-Next integration: the PowerBook 140/170 memory map, host clock bridge and
-VIA/pseudo-VIA parallel handshake; ADB through the PMU pins, RTC/PRAM,
-DDC framebuffer and storage; then a real Finder and session/GUI proof.
+## Headless Jaws board
+
+The first board consumer is the PowerBook 140, at **15.6672 MHz**
+(`31.3344 MHz / 2`). Its VIA clock is **1.56672 MHz**, as configured by MAME
+(`31.3344 MHz / 20`); the generic 783.36 kHz comment in MAME's `via_sync`
+does not describe this board's actual configured clock.
+
+| Window | Board behavior |
+|---|---|
+| `$00000000` | 8 MB expanded RAM; first 1 MB hidden by boot ROM until a ROM-window read |
+| `$40000000–$4FFFFFFF` | 1 MB ROM mirrors; a real read drops the overlay |
+| `$50000000–$51FFFFFF` | I/O mirrors with bits 20–24 ignored, including the bit-24 Jaws detection mirror |
+| `+$00000` | VIA1, `$200` register stride, byte replicated on word reads |
+| `+$02000` | Misc GLU pseudo-VIA, VIA-style ports and IFR/IER only |
+| `+$04000`, `+$06000`, `+$10000`, `+$12060` | SCC, SCSI DMA, 5380 registers, DMA mirror |
+| `+$14000`, `+$16000` | discrete EASC `$B0`, SWIM1 with VIA1 PA5 head selection |
+| `+$24000–+$27FFF` | bus-error decoder probe; must not expose an MSC/RBV block |
+| `+$80000–+$BFFFF` | Jaws speed/power registers; power-cycle request defers host CPU reset |
+| `$FEE00000–$FEE0FFFF` | 32 KB DDC VRAM, mirrored at +32 KB; 640×400, 1 bpp |
+
+PMU execution and the bit-serial `AdbLine` use separate fractional clock
+bridges. MCU instruction overshoot is carried as debt between host ticks;
+the ADB wire retains its established C15M timing domain. CPU hold burns
+machine time so the PMU can release the CPU. Warm host reset rearms the
+ROM overlay without resetting the independently powered PMU.
+
+The real ROM first booted an error-type-10 dialog: its CPU-space FPU
+response-register read at `$22000`, FC 7, saw RAM on the bare 68030.
+`Pb030Cpu` now raises bus error for that empty socket, like `Cpu030` on the
+LC II. The ROM and System then select BoxFlag 19 (PowerBook 140) themselves;
+no guest flag or ROM patch is used. Finder is checked both visually and
+through the guest's `CurApName`, alongside SCSI traffic and desktop pixels.
+
+Additional gates:
+
+- `pb030_board_test` is asset-free: Jaws mirrors/overlay, DDC alias and
+  pixels, VIA head select, decoder bus errors, Misc GLU interrupt semantics,
+  request readback, PMU clock partition invariance, reset edges and CPU hold.
+- `pb140_boot_etalon` and `interp_pb140_boot_etalon` execute the real
+  `420DBFF3` ROM and `02B3` firmware on the System 7.5.5 reference disk.
+  `Infinite HD` is the existing private temporary companion for its startup
+  alias. Keyboard press/release reaches KeyMap, trackball movement reaches
+  the guest pointer, and Ticks resumes after restoring RAM/CPU/devices.
+  The raw visitor restores CPU/machine clocks, Ticks and pixels exactly.
+  The settled desktop pin is `e1f182417db75b70` under both engines.
+
+The raw state proof uses the same configured in-process board; it is not a
+public save-state container and does not claim profile/ROM mismatch refusal.
+The Jaws wrapper conservatively flushes JIT blocks on CACR invalidation;
+there is no store-inventory admission yet. GUI/thread composition, firmware
+selection/provenance, battery persistence, public session identity, disk-agent
+integration and PowerBook 170 qualification remain before catalogue admission.
 Portable/PB100 remain a later board integration.
 
 ## MAME-derived source notice

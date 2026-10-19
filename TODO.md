@@ -147,9 +147,10 @@ catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
 - [ ] **Ajouter PowerBook 140–180 puis Portable/PB100.** Power Manager
-  M50753 autonome prouvé sur les firmwares ; restent le câblage carte/VIA,
-  ADB, RTC, framebuffer LCD, stockage, Finder et intégration GUI/session
-  (`docs/PB030_BRINGUP.md`).
+  PB140 au Finder en mode headless avec entrées PMU et restauration brute ;
+  restent composition GUI, sélection/provenance du firmware, persistance
+  batterie, identité/fichier de session, agent Disques et qualification PB170
+  avant admission au catalogue (`docs/PB030_BRINGUP.md`).
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
 

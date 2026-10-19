@@ -406,6 +406,7 @@ add_library(pom68k_core STATIC
     src/SerialHostTransport.cpp # SCC async — host PTY/TCP byte transport
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
     src/R65c02.cpp src/M740.cpp src/M50753.cpp # Apple PIC and Power Manager MCUs
+    src/Pb030Pmu.cpp src/Pb030Memory.cpp src/Pb030Cpu.cpp # Jaws PowerBook board
     src/ApplePic.cpp      # IOP M2 — Apple 343S1021 PIC (host window/DMA/timer)
     src/IIfxMemory.cpp    # IOP M3 — Mac IIfx map (OSS + 2 IOPs + SCSIDMA)
     src/IIfxCpu.cpp       # IOP M3 — Moira 68030 wrapper (IIfx, 40 MHz)
@@ -575,7 +576,6 @@ if(POM68K_TESTS AND EMSCRIPTEN)   # pinned etalons only, run by native `wasm_*`
     include(cmake/Pom68kWasmPins.cmake)
 elseif(POM68K_TESTS)
     enable_testing()
-
     # Test-module order is contractual: machine targets precede JIT variants;
     # policy runs after every gate.
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests
