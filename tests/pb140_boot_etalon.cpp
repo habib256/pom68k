@@ -5,6 +5,7 @@
 #include "JitTestConfig.h"
 #include "InfiniteHdCompanion.h"
 #include "Pb030SessionProbe.h"
+#include "Pb030ExternalProbe.h"
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -35,12 +36,16 @@ int main(int argc,char** argv) {
     testasset::report({rom,fw,disk});
     auto config=pom68k::defaultCoreConfig();
     Pb030Memory mem(config,8u<<20,board.cpuHz,niagra,board.colorHeight);
+    const bool external=argc>2 && std::string_view(argv[2])=="--external";
+    if(external && !niagra) {std::fprintf(stderr,"External video requires Niagra/Pangola\n");return 1;}
+    mem.setMonitorSense(external?6:7);
     if(color && !mem.colorVideo().loadRom(bytes(video))) return 1;
     if(!mem.loadRom(bytes(rom)) || !mem.pmu().loadFirmware(bytes(fw)) || !mem.attachScsi(disk)) return 1;
     if(!infinitehd::attach(mem,disk)) return 1;
     if(!agentboot::install(mem)) return 1;
     Pb030Cpu cpu(mem,testjit::resolveFromEnvironment(),config.cpu,board.fpu);
     mem.setCpu(&cpu);cpu.hardReset();
+    if(external) {mem.prepareExternalPower();cpu.hardReset();}
     std::printf("Jaws engine=%s\n",cpu.engine()?"jit":"interp");
     const int frames=std::getenv("POM68K_FRAMES")?std::atoi(std::getenv("POM68K_FRAMES")):2400;
     for(int frame=0;frame<frames && !cpu.isHalted();++frame) {
@@ -50,6 +55,11 @@ int main(int argc,char** argv) {
             mem.peek8(0x16a),mem.peek8(0x16b),mem.peek8(0x16c),mem.peek8(0x16d));
     }
     std::vector<uint32_t> fb;mem.decode(fb);
+    if(external) {
+        const bool ok=pb030external::check(mem,cpu,*profile);
+        std::puts(ok?"PASS: external Finder desktop, pointer and public replay":"FAIL: external video qualification");
+        return ok?0:1;
+    }
     if(std::getenv("POM68K_DUMP")) {
         FILE* f=std::fopen("pb140_screen.ppm","wb");
         if(f) {std::fprintf(f,"P6\n640 %d\n255\n",mem.screenHeight());for(auto p:fb){uint8_t c[]={uint8_t(p>>16),uint8_t(p>>8),uint8_t(p)};std::fwrite(c,1,3,f);}std::fclose(f);}

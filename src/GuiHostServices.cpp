@@ -78,7 +78,7 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     };
 }
 GuiHostServices::~GuiHostServices() {
-    state_.sessionFile.capture = {};
+    state_.sessionFile.capture = {};state_.sessionFile.monitorWidth = {};
     state_.network.atalk.stopEthernetCapture();
     state_.peripherals.relaunch = {};
     state_.network.relaunchWithDaynaPort = {};

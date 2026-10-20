@@ -37,6 +37,7 @@ class GuiShell;
 
 class GuiHostServices {
 public:
+    void bindMonitorCapture(std::function<int()> get) {state_.sessionFile.monitorWidth=std::move(get);}
     GuiHostServices(GuiSessionState& state, GuiSessionObjects& objects,
                     GuiShell& shell, const app::RuntimeConfig& config);
     ~GuiHostServices();

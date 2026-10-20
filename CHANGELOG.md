@@ -40,6 +40,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **Why did the PowerBook external-video probe advertise 16 bits on a 512 KB board?** → [The MMU-mode control alias, capacity bank and real two-screen driver](#2026-10-20-pb030-external-video)
+
+- **Can the Portable and PB100 sleep from Finder and resume through their real PMU?** → [Finder sleep, key wake and exact public-state replay](#2026-10-20-portable-sleep)
+
 - **How do Portable and PB100 become separate GUI sessions despite sharing a PMU dump?** → [Portable/PB100 product composition, battery integrity and session identities](#2026-10-19-portable-product)
 
 - **Why did the Portable draw a boot floppy but never select its SCSI disk?** → [Portable/PB100 68000 board, byte lanes and real Finder replay](#2026-10-19-portable-board)
@@ -504,6 +508,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-20 (second)** — [PowerBook slot E gets its 512 KB RGB display and two-screen public replay](#2026-10-20-pb030-external-video)
+- **2026-10-20** — [Portable and PowerBook 100 sleep from Finder and resume on a key](#2026-10-20-portable-sleep)
 - **2026-10-19 (fifteenth)** — [Portable and PowerBook 100 become selectable machines with required firmware and separate sessions](#2026-10-19-portable-product)
 - **2026-10-19 (fourteenth)** — [Portable and PowerBook 100 reach Finder through their 68000 board and real PMU](#2026-10-19-portable-board)
 - **2026-10-19 (thirteenth)** — [Portable/PB100 Power Manager calibrates against the board clock and replays its real firmware](#2026-10-19-portable-pmu)
@@ -1187,6 +1193,90 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-20-pb030-external-video"></a>
+## 2026-10-20 (second) — PowerBook slot E gets its 512 KB RGB display and two-screen public replay
+
+The PowerBook 160/165/180 and 165c/180c can attach a **13-inch RGB monitor,
+640×480 at 8 bits**. The Dashboard queues the choice through the real host
+command path and restarts the Mac. Startup/session `monitor=640` attaches
+it; `0` disconnects it. The screen window presents both hardware scanouts
+in the System's initial arrangement: RGB below a 400-line LCD, or beside
+the 180c's 480-line LCD. Session capture reads the published live selection.
+Jaws gains no connector, and the default remains LCD only.
+
+MAME's external controller is still a stub. The E33B2724 ROM supplies the
+missing executable contract. Its primary init uses the controller's
+`$FEEFE000` alias while temporarily switching MMU modes. Without that alias,
+the `$43` VRAM-capacity probe ignores the bank select and incorrectly finds
+an additional bank, advertising a 16-bit mode on a 512 KB board. With the
+alias and absent bank accounted for, the guest itself falls back to `$41`
+and creates an 8-bit, 640-byte-row PixMap. The DAC has a separate
+`$FE00E000` aperture; slot status/enables are at `$FE000000`. The new owner
+carries sense lines, indexed scanout, the 13-inch raster and slot IRQ/ack.
+
+A separate real-ROM refusal exposed the PMU's cold charger race: the
+System posted “the power adapter is not attached” despite the input pins.
+MAME documents it and seeds MCU RAM `$25`. For an attached monitor POM68K
+instead runs ten seconds of PMU firmware/board-clock time before the CPU
+reset; the firmware refreshes its own sensor record. Cold-start firmware
+gates and the no-monitor path retain zero-RAM startup.
+
+Ten real-ROM external-video gates cover the five profiles under native
+and interpreter execution. They require two guest GDevices with the
+correct depth, row size and placement, Finder/input/public-state probes,
+a combined pixel pin, and pointer movement onto RGB that changes its VRAM
+pixels. Full replay compares two restorations of the same container:
+`MoiraSnapshot.h` deliberately discards CPU caches/ATCs, so uninterrupted
+warm execution is a different starting condition. The optional controller
+suffix preserves old Niagra/Pangola snapshot loading with no monitor;
+Jaws payloads are unchanged. Component and headless GUI gates cover the
+bank probe, aliases, DAC/raster continuation, queued restart and live
+session capture. The final x86-64 passes recorded **14 executed / 0 skipped /
+0 failed** (ten external-video cases and four LCD regressions), then
+**10 executed / 0 skipped / 0 failed** component/GUI/session/repository
+contracts. Each profile's combined pixel hash agrees under both engines;
+all five are pinned in `tools/pixel_pins.tsv`. Executed validation is
+recorded in `STATUS.md`.
+
+Other monitor timings, software mirroring, hot-plug without a restart,
+Niagra/Pangola sleep and AArch64 execution remain unqualified. Register
+traces, sources and product boundaries: `docs/PB030_BRINGUP.md` § External
+RGB display on slot E.
+
+<a id="2026-10-20-portable-sleep"></a>
+## 2026-10-20 — Portable and PowerBook 100 sleep from Finder and resume on a key
+
+The existing board wiring already supports guest sleep: the System asks the
+real `02B5` PMU to sleep, its firmware asserts SYS_RST and blanks the LCD,
+and a key releases reset. The ROM then follows the System's warm-resume
+path back to the interrupted Finder. No new PMgr handler, firmware patch,
+ROM patch or guest-state seed is needed.
+
+Four permanent gates now qualify that path on the locked System 7.1 volume:
+`portable_sleep_etalon`, `pb100_sleep_etalon` and their `jit_` threaded
+variants. They reuse the boot/input/public-state harness, then select
+**Special > Sleep** through physical ADB input and confirm the Finder's
+AppleTalk warning. The reference fixture's QuickTime extension first posts
+an unsupported-CPU alert; Return dismisses it without changing the existing
+boot pixel pin. The menu needs time to finish opening before dragging to
+Sleep; pointer movement alone does not prove a selected command.
+
+The new leg requires reset hold and LCD blanking, an unchanged PC/register
+set and Ticks during 600 frames, and an idle SCSI bus. A public snapshot
+taken asleep must continue byte-identically for those 600 frames and also
+replay the key-triggered wake exactly. The resumed guest must be Finder
+with advancing Ticks, followed by keyboard press/release, trackball motion
+and another exact public-state replay. The first executed x86-64 run showed
+Ticks **4349 -> 4973** on Portable and **4359 -> 4983** on PB100 under both
+engines. All four executed with their ROM/PMU/disk assets; none soft-skipped.
+
+`POM68K_BEYOND=sleep` selects the leg. The existing `POM68K_DUMP` option
+exports menu, confirmation, asleep and awake screens with separate profile
+names. Source and user documentation now describe Finder sleep/key wake;
+TODO retains external video as the next portable task. This proof does not
+qualify lid switches, other wake sources, power consumption or AArch64
+execution. `STATUS.md` records the gate run and regenerated registry.
 
 <a id="2026-10-19-portable-product"></a>
 ## 2026-10-19 (fifteenth) — Portable and PowerBook 100 become selectable machines with required firmware and separate sessions

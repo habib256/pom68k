@@ -174,10 +174,30 @@ a fresh controller must finish with identical serialized state. Commands
 `$30`/`$38` then write/read a known RTC value through the same physical bus.
 Both archive inputs executed successfully on x86-64 on 2026-10-19.
 
+## Sleep and warm resume
+
+With the System 7.1 reference volume, choose **Special > Sleep** in the
+guest Finder, confirm its AppleTalk warning, then press a key to wake.
+The real System saves its state and sends the PMU request. Firmware asserts
+SYS_RST and blanks the LCD; the independently powered PMU continues running.
+A key releases reset, and the ROM resumes the interrupted Finder through
+the System's wake vector. The board's existing reset-edge wiring supports
+this path without a new command handler or guest patch.
+
+`portable_sleep_etalon` and `pb100_sleep_etalon`, plus their `jit_`
+threaded variants, operate the Finder through ADB. They dismiss the reference
+volume's unsupported-QuickTime alert, select Sleep and confirm the network
+warning. The checks require an idle host and disk for ten seconds, exact
+public-state continuation while asleep, exact wake replay from that state,
+and live keyboard/trackball input after returning to Finder. These are
+guest sleep/resume checks, not measurements of power consumption or a
+qualification of lid switches and other wake sources.
+
 ## Remaining limits and sources
 
-The gates qualify the board, GUI composition and public snapshots. Sleep/wake,
-power policy and power consumption remain unqualified. The controller reads
+The gates qualify the board, GUI composition, public snapshots and
+Finder-initiated sleep/key wake. Other power policy and power consumption
+remain unqualified. The controller reads
 no host time; product composition supplies a one-time clock seed rather than
 MAME's port-0 host-time injection. Its RAM survives controller reset, and
 firmware commands own the RTC. Unimplemented MCU peripheral modes retain the limitations in

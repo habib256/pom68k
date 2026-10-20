@@ -4,6 +4,7 @@
 #pragma once
 
 #include "GuiFloppyBays.h"
+#include "GuiPb030ExternalDisplay.h"
 #include "GuiAgentAutostart.h"
 #include "GuiShellCommon.h"
 
@@ -76,6 +77,7 @@ int runPb030Gui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     if (mem.loadPram(pramPath))
         std::printf("PRAM: %s\n", pramPath.c_str());
     seedRtc();
+    if(!preparePb030ExternalDisplay(mem,cpu,services)) return 1;
 
     const std::string title = std::string("POM68K — ") + spec.name;
     auto* ui = services.shell().openWindow(1320, 1000, title);
@@ -95,7 +97,7 @@ int runPb030Gui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
     machine.state.setPath(pramPath.substr(0, pramPath.size() - 5) + ".pomss");
     services.armInputRecording(machine, spec.pramTag, romName, media);
     services.shell().bindCpuMenu(machine, cpu);
-    machine.publish(true);
+    machine.publish(true);bindPb030ExternalDisplay(machine,services);
 
     struct Ctx {
         GLFWwindow* window;
@@ -127,6 +129,7 @@ int runPb030Gui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
                     status.overlay ? 1 : 0,
                     status.mmu ? "on" : "off",
                     status.held ? 1 : 0, ctx.machine.mem.screenHeight());
+        drawPb030ExternalDisplay(ctx.machine);
     });
 
     auto frame = [](void* opaque) {
@@ -199,7 +202,4 @@ int runPb030Gui(Mem& mem, Cpu& cpu, AudioHost& audioHost,
 #endif
     return 0;
 }
-
-
-
 } // namespace pom68k::gui

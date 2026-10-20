@@ -2154,7 +2154,8 @@ machine's card and hub names are not appended to it. Gates:
 alias), `POM68K_Q700_MODEL` (`q700` / `q900` / `q950` on the discrete-040
 board — the GUI menu sets it before relaunching, and a `$3DC27823` ROM
 overrides it: that dump IS a Quadra 950 whatever the environment
-inherited), `POM68K_Q630_ID`, `POM68K_MONITOR`.
+inherited), `POM68K_Q630_ID`, `POM68K_MONITOR` (on Niagra/Pangola,
+`640` attaches the external 13-inch RGB display; `0` disconnects it).
 At startup these spellings are normalized into the eight `SnapMachine` fields
 of `MachineSelectionConfig`; neither `MachineFactory` nor `GuiShell` receives
 the raw map. The menu's current marker uses the session snapshot itself and a
@@ -2428,7 +2429,9 @@ leaves the raw screen and the menu says so).
 exception fires: it reports, it never judges, so it must not be registered
 as a gate in that mode.
 Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
-`POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
+`POM68K_CD_BOOT`, `POM68K_BEYOND` (`sleep` also selects the Portable/PB100
+Finder sleep, key wake and exact public-state replay leg),
+`POM68K_BEYOND_IMG` (run a beyond-boot
 gate against a volume its own list does not name — every "same machine,
 other System" control needs it), `POM68K_HALT`, `POM68K_DUMP`,
 `POM68K_OIDS_DUMP` (prefix for Oids native-media gate phase screenshots),

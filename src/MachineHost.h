@@ -756,6 +756,8 @@ protected:
             case Cmd::Sense:
                 if constexpr (requires { mem.setMonitorSense(uint8_t(0)); }) {
                     mem.setMonitorSense(uint8_t(c.a));
+                    if constexpr (requires { mem.prepareExternalPower(); })
+                        mem.prepareExternalPower();
                     cpu.hardReset();
                 }
                 break;

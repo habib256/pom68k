@@ -31,6 +31,7 @@
 #include "MscCpu.h"
 #include "MscMemory.h"
 #include "SaveStateMachines.h"
+#include "Pb030ExternalGuiProbe.h"
 
 #include <atomic>
 #include <cmath>
@@ -828,6 +829,7 @@ int main() {
               "a truncated ROM is refused before profile decoding");
     }
 
+    check(pb030externalgui::check(ui), "PowerBook external monitor: queued restart, published state, frame and live session capture");
     std::printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

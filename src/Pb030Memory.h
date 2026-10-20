@@ -17,6 +17,7 @@
 #include "CdAudioPump.h"
 #include "Pb030Niagra.h"
 #include "PangolaVideo.h"
+#include "Pb030ExternalVideo.h"
 
 class Pb030Cpu;
 class Pb030Memory {
@@ -27,6 +28,31 @@ public:
                          int64_t cpuHz=kCpuHz,bool niagra=false,int colorHeight=0);
     int screenHeight() const {return colorHeight_?colorHeight_:400;}
     PangolaVideo& colorVideo() {return color_;}
+    Pb030ExternalVideo& externalVideo() {return externalVideo_;}
+    uint8_t monitorSense() const {return externalVideo_.connected()?6:7;}
+    void setMonitorSense(uint8_t sense) {externalVideo_.setMonitor(niagra_ && sense==6);}
+    bool externalMonitor() const {return niagra_ && externalVideo_.connected();}
+    void prepareExternalPower() {
+        if(!externalMonitor()) return;
+        // An attached screen requires the continuously powered PMU's
+        // charger measurement before PrimaryInit. Run firmware, not a RAM seed.
+        pmu_.reset();
+        for(int f=0;f<600;++f) {pmu_.vblank();pmu_.tick(int(cpuHz_/60));}
+    }
+    void decodeExternal(std::vector<uint32_t>& out) const {externalVideo_.decode(extVram_,out);}
+    int displayWidth() const {return externalMonitor() && screenHeight()==480?1280:640;}
+    int displayHeight() const {return externalMonitor() && screenHeight()!=480?screenHeight()+480:screenHeight();}
+    void decodeDisplay(std::vector<uint32_t>& out) const {
+        decode(out);
+        if(!externalMonitor()) return;
+        std::vector<uint32_t> external;decodeExternal(external);
+        if(screenHeight()!=480) {out.insert(out.end(),external.begin(),external.end());return;}
+        const auto lcd=std::move(out);out.resize(1280*480);
+        for(int y=0;y<480;++y) {
+            std::copy_n(lcd.begin()+y*640,640,out.begin()+y*1280);
+            std::copy_n(external.begin()+y*640,640,out.begin()+y*1280+640);
+        }
+    }
     bool isNiagra() const { return niagra_; }
     bool loadRom(const std::vector<uint8_t>& rom);
     bool selectColorFirmware(const pom68k::CoreFirmwareConfig& config);
@@ -109,6 +135,13 @@ public:
         if(niagra_) {ar(niagraVideo_);ar.blob(extVram_);}
         if(colorHeight_) ar(color_);
         for(auto& d:disks_) ar(d);
+        // Optional suffix: older Niagra/Pangola containers end after disks.
+        if(niagra_) {
+            if constexpr(Ar::loading) {
+                if(ar.remaining()) ar(externalVideo_);
+                else {externalVideo_.setMonitor(false);externalVideo_.reset();}
+            } else ar(externalVideo_);
+        }
         if constexpr(Ar::loading) { mapChanged();updateIrq(); }
     }
 private:
@@ -117,6 +150,7 @@ private:
     int colorHeight_;
     PangolaVideo color_;
     Pb030Niagra niagraVideo_;
+    Pb030ExternalVideo externalVideo_;
     int64_t cpuHz_;
     Pb030Pmu pmu_;
     Via6522 via_;

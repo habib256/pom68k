@@ -438,6 +438,15 @@ large inputs are split at 1,900 MB by default. Run
   of a saved state. **Change machine**
   lists every profile by board family (a profile whose ROM is absent stays
   greyed) and relaunches the emulator.
+- **PowerBook 160/165/180 and 165c/180c external display:** the Dashboard
+  offers a 13-inch RGB monitor (640×480, 256 colors). Changing the monitor
+  restarts the Mac. RGB appears below a 400-line LCD or beside the 180c LCD;
+  the selection survives saved
+  states and session files. Use `POM68K_MONITOR=640` to attach it at startup
+  (`0` keeps the LCD alone).
+- **Portable / PowerBook 100 sleep:** choose **Special > Sleep** in the
+  guest Finder and confirm its network warning. Press a key to wake; saved
+  states can also preserve a sleeping machine.
 - **Peripherals:** disks, networking, host serial ports and controller
   firmware. **Disks** chooses the boot
   volume, secondary SCSI disks, floppies and CDs (changes to the boot bus

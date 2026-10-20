@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 688 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 690 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -12,11 +12,11 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 67 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 36 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 30 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
-| [Machine bring-ups](#machine-bring-ups) | 93 |
+| [Machine bring-ups](#machine-bring-ups) | 94 |
 | [Build, packaging and release](#build-packaging-and-release) | 19 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -367,6 +367,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-12 (fifth)** — [The Mac screen centers and mouse capture explains how to exit](CHANGELOG.md#2026-10-12-workspace-and-capture)
 - **2026-10-19 (eleventh)** — [PowerBook 180c runs its color LCD through Pangola and the real video ROM](CHANGELOG.md#2026-10-19-pb180c-pangola)
 - **2026-10-19 (ninth)** — [PowerBook 160 brings Niagra and the GSC grayscale panel to the product](CHANGELOG.md#2026-10-19-pb160-niagra)
+- **2026-10-20 (second)** — [PowerBook slot E gets its 512 KB RGB display and two-screen public replay](CHANGELOG.md#2026-10-20-pb030-external-video)
 
 ## Sound
 
@@ -522,6 +523,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-19 (seventh)** — [PowerBook 140 and 170 become selectable machines with firmware-bound sessions](CHANGELOG.md#2026-10-19-jaws-product)
 - **2026-10-19 (tenth)** — [Niagra gains PowerBook 165 and 180 with separate 33 MHz session identities](CHANGELOG.md#2026-10-19-pb165-pb180)
 - **2026-10-19 (twelfth)** — [PowerBook 165c gains its 400-line color panel and separate session identity](CHANGELOG.md#2026-10-19-pb165c-pangola)
+- **2026-10-20** — [Portable and PowerBook 100 sleep from Finder and resume on a key](CHANGELOG.md#2026-10-20-portable-sleep)
 
 ## Build, packaging and release
 

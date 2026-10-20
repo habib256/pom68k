@@ -34,7 +34,7 @@ bool Pb030Memory::attachScsi(const std::string& path,bool writeBack,int id) {
 }
 void Pb030Memory::reset() {
     overlay_=true;resetPending_=resetOverlayPending_=false;
-    viaAcc_=tickAcc_=c15Acc_=secAcc_=0;niagraVideo_.reset();color_.reset();
+    viaAcc_=tickAcc_=c15Acc_=secAcc_=0;niagraVideo_.reset();color_.reset();externalVideo_.reset();
     via_.reset();via_.setInA(0x93);via_.setInB(8|rtc_.dataBit());
     pvia_.reset();rtc_.reset();asc_.reset();scsi_.reset();scc_.reset();
     scc_.setClocks(cpuHz_,7833600);scc_.setAbortIdle(true);
@@ -48,7 +48,7 @@ void Pb030Memory::busError() const {
 }
 int Pb030Memory::iplLevel() const {
     if(scc_.irqAsserted()) return 4;
-    if(pvia_.irqAsserted()) return 2;
+    if(pvia_.irqAsserted() || externalVideo_.irq()) return 2;
     return via_.irqAsserted()?1:0;
 }
 void Pb030Memory::updateIrq() { if(cpu_) cpu_->updateIpl(); }
@@ -99,6 +99,7 @@ uint8_t* Pb030Memory::dataSpan(uint32_t a,uint32_t& len,bool write) {
     len=uint32_t(ram_.size()-a);return ram_.data()+a;
 }
 uint8_t Pb030Memory::peek8(uint32_t a) const {
+    if(niagra_ && a>=0xfee00000 && a<0xff000000) a-=0xe00000;
     if(a<0x40000000) {
         if(overlay_ && a<kRomSize) return rom_[a];
         return a<ram_.size()?ram_[a]:0xff;
@@ -110,12 +111,15 @@ uint8_t Pb030Memory::peek8(uint32_t a) const {
     }
     if(niagra_) {
         if(a>=0x60000000 && a<0x70000000) return vram_[a&0x1ffff];
-        if(a>=0xfe100000 && a<0xfe180000) return extVram_[a&0x7ffff];
-        if(a>=0xfe0fe000 && a<0xfe0fe100) return (a&255)==4?0x70:0;
+        if(a>=0xfe000000 && a<0xfe000100) return externalVideo_.slotRead(a);
+        if(a>=0xfe00e000 && a<0xfe00e004) return 0;
+        if(a>=0xfe100000 && a<0xfe180000) return externalVideo_.memoryRead(extVram_,a);
+        if(a>=0xfe0fe000 && a<0xfe0fe100) return externalVideo_.peek(a);
     } else if(a>=0xfee00000 && a<0xfee10000) return vram_[a&(kVramSize-1)];
     return 0;
 }
 uint8_t Pb030Memory::read8(uint32_t a) {
+    if(niagra_ && a>=0xfee00000 && a<0xff000000) a-=0xe00000;
     if(a<0x40000000) return peek8(a);
     if(a<0x50000000) {
         if(overlay_) { overlay_=false;mapChanged(); }
@@ -127,8 +131,10 @@ uint8_t Pb030Memory::read8(uint32_t a) {
     }
     if(niagra_) {
         if(a>=0x60000000 && a<0x70000000) return vram_[a&0x1ffff];
-        if(a>=0xfe100000 && a<0xfe180000) return extVram_[a&0x7ffff];
-        if(a>=0xfe0fe000 && a<0xfe0fe100) return (a&255)==4?0x70:0;
+        if(a>=0xfe000000 && a<0xfe000100) {if(cpu_) cpu_->flushTicks();return externalVideo_.slotRead(a);}
+        if(a>=0xfe00e000 && a<0xfe00e004) return externalVideo_.dacRead(a);
+        if(a>=0xfe100000 && a<0xfe180000) return externalVideo_.memoryRead(extVram_,a);
+        if(a>=0xfe0fe000 && a<0xfe0fe100) {if(cpu_) cpu_->flushTicks();return externalVideo_.read(a);}
     } else if(a>=0xfee00000 && a<0xfee10000) return vram_[a&(kVramSize-1)];
     if(colorHeight_) {
         if(a>=0xfc4003b0 && a<=0xfc4003df) {if(cpu_) cpu_->flushTicks();return color_.ioRead(uint16_t(a));}
@@ -138,6 +144,7 @@ uint8_t Pb030Memory::read8(uint32_t a) {
     return 0;
 }
 void Pb030Memory::write8(uint32_t a,uint8_t v) {
+    if(niagra_ && a>=0xfee00000 && a<0xff000000) a-=0xe00000;
     if(a<0x40000000) {
         if(a<ram_.size() && !(overlay_ && a<kRomSize)) {
             if(guard_) guard_->note(a,1);
@@ -154,7 +161,10 @@ void Pb030Memory::write8(uint32_t a,uint8_t v) {
     }
     if(niagra_) {
         if(a>=0x60000000 && a<0x70000000) {vram_[a&0x1ffff]=v;return;}
-        if(a>=0xfe100000 && a<0xfe180000) {extVram_[a&0x7ffff]=v;return;}
+        if(a>=0xfe000000 && a<0xfe000100) {externalVideo_.slotWrite(a,v);updateIrq();return;}
+        if(a>=0xfe00e000 && a<0xfe00e004) {externalVideo_.dacWrite(a,v);return;}
+        if(a>=0xfe100000 && a<0xfe180000) {externalVideo_.memoryWrite(extVram_,a,v);return;}
+        if(a>=0xfe0fe000 && a<0xfe0fe100) {externalVideo_.write(a,v);updateIrq();return;}
     } else if(a>=0xfee00000 && a<0xfee10000) {vram_[a&(kVramSize-1)]=v;return;}
     if(a<0x52000000 && (!niagra_ || (a&0xfff00000)==0x50f00000)) ioWrite(a&0xfffff,v);
 }
@@ -180,7 +190,9 @@ void Pb030Memory::write16(uint32_t a,uint16_t v) {
 uint8_t Pb030Memory::ioRead(uint32_t a) {
     if(a<0x2000) return viaAccess(a,false);
     if(cpu_) cpu_->flushTicks();
-    if(a<0x4000) {viaSync();const auto v=pvia_.read(a-0x2000);updateIrq();return v;}
+    if(a<0x4000) {viaSync();auto v=pvia_.read(a-0x2000);
+        if(((a>>9)&15)==13 && externalVideo_.irq()) v|=0x82;
+        updateIrq();return v;}
     if(a<0x6000) {
         const int ch=(a>>1)&1;
         const auto v=(a&4)?scc_.readData(ch):scc_.readCtl(ch);updateIrq();return v;
@@ -235,6 +247,7 @@ void Pb030Memory::ioWrite(uint32_t a,uint8_t v) {
     }
 }
 void Pb030Memory::tick(int cycles) {
+    externalVideo_.tick(cycles,cpuHz_);
     if(colorHeight_) color_.tick(cycles,cpuHz_);
     cdPump_.advance(disks_,cycles,cpuHz_);
     viaAcc_+=int64_t(cycles)*kViaHz;

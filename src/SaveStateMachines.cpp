@@ -139,6 +139,7 @@ POM68K_SAV_CHECK(MscCpu);
 POM68K_SAV_CHECK(MscMemory);      // PowerBook Duo 230 (nests the PG&E)
 POM68K_SAV_CHECK(Pb030Cpu);
 POM68K_SAV_CHECK(Pb030Memory);
+POM68K_SAV_CHECK(Pb030ExternalVideo);
 POM68K_SAV_CHECK(PortableCpu);
 POM68K_SAV_CHECK(PortableMemory);
 

@@ -60,6 +60,7 @@ void bindSessionFile(GuiSessionState& state, const app::RuntimeConfig& config,
         if (capture.network.shareDirectory.empty())
             capture.network.shareDirectory = state.network.shareDirectory;
         capture.kiosk = state.display.kiosk;
+        if(session.monitorWidth) capture.monitorWidth=session.monitorWidth();
         const std::string& preset = state.display.crtPreset;
         capture.crtPreset = preset == "custom" ? std::string() : preset;
         if (state.audio.floppySfx.isLoaded())

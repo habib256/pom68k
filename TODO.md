@@ -146,9 +146,9 @@ sur le premier profil consommateur avant d'être généralisés ; une ligne
 catalogue se mérite par une cellule Finder **plus** le câblage GUI et
 save-state.
 
-- [ ] **Qualifier la vidéo externe et la veille des portables.** Sortie
-  externe des PowerBook 030 (`docs/PB030_BRINGUP.md`), puis veille/réveil
-  des Portable/PB100 (`docs/PORTABLE_BRINGUP.md`).
+- [ ] **Étendre les modes vidéo externes des PowerBook 030.** Qualifier
+  les autres moniteurs et le miroir logiciel au-delà du RGB 13 pouces
+  640×480 (`docs/PB030_BRINGUP.md`, `CHANGELOG` 2026-10-20 (second)).
 - [ ] **Étendre NuBus et la vidéo sur slot.** Porter les cartes au-delà du
   Toby Mac II vers IIx/IIcx/IIci et les Quadra concernés.
 
