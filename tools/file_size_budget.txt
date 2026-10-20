@@ -73,5 +73,6 @@ src/GuiRunnerPb030.h                    205
 src/PlatformPb030.cpp                     54
 cmake/Pom68kPb030Gates.cmake               12
 src/RuntimeConfigProfile.cpp              72
-cmake/Pom68kPbColorGates.cmake             10
+cmake/Pom68kPbColorGates.cmake             8
+cmake/Pom68kPbVideoGates.cmake            14
 src/RuntimeConfigFirmware.cpp             61

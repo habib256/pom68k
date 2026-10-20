@@ -113,6 +113,7 @@ struct GuiSerialState {
 // « Machine → Session » (GuiSessionMenu.h): the session file this process
 // opened, where sessions are listed, and the save window's fields.
 struct GuiSessionFileState {
+    std::function<int()> monitorWidth; // live selection, published by the machine
     // The running session as a file's entries; bound by GuiHostServices.
     std::function<std::vector<pom68k::app::SessionEntry>()> capture;
     std::string current;   // the session this process opened, UTF-8; empty: none

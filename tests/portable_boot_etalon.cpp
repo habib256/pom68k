@@ -5,6 +5,7 @@
 #include "InfiniteHdCompanion.h"
 #include "PixelPin.h"
 #include "PortableBootProbe.h"
+#include "PortableSleepProbe.h"
 #include "AgentBootProbe.h"
 #include <cstdio>
 #include <cstdlib>
@@ -57,6 +58,9 @@ int main(int argc,char** argv) {
         [&](){return mem.scsi().commands;},640,400,20);
     ok=pixelpin::check(pb100?"pb100_boot_etalon":"portable_boot_etalon",pin) && ok;
     if(ok) ok=portableprobe::check(mem,cpu,pb100?pom68k::SnapMachine::Pb100:pom68k::SnapMachine::Portable);
+    const auto* beyond=std::getenv("POM68K_BEYOND");
+    if(ok && beyond && std::string_view(beyond)=="sleep")
+        ok=portablesleep::check(mem,cpu,pb100?pom68k::SnapMachine::Pb100:pom68k::SnapMachine::Portable);
     ok=agentboot::check(mem,cpu,PortableMemory::kCpuHz/60,ok);
     std::puts(ok?"PASS: Portable Finder, PMU input and public state replay":"FAIL: Portable board qualification");
     return ok?0:1;

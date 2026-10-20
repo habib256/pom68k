@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 516 gates
+## Union across hosts — 531 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `etalon` | 305 |
+| `etalon` | 319 |
 | `etalon-core` | 16 |
 | `gui` | 3 |
-| `jit` | 47 |
+| `jit` | 49 |
 | `jit-fast` | 8 |
-| `m030` | 130 |
+| `m030` | 141 |
 | `m040` | 102 |
 | `smoke` | 9 |
-| `unit` | 162 |
+| `unit` | 163 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -62,27 +62,27 @@ Scheduling cost if every gate ran at once: 746 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-512 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+527 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 132 |
+| assets | none | 133 |
 | assets | optional | 16 |
-| assets | required | 364 |
-| host | any | 501 |
+| assets | required | 378 |
+| host | any | 516 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 136 |
+| scope | component | 137 |
 | scope | engine | 22 |
-| scope | profile | 351 |
+| scope | profile | 365 |
 | scope | repository | 3 |
-| tier | daily | 132 |
-| tier | full | 364 |
+| tier | daily | 133 |
+| tier | full | 378 |
 | tier | platform | 16 |
-| slots_src | assumed | 399 |
+| slots_src | assumed | 414 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 871 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 886 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -224,3 +224,7 @@ overwrites it, including a one-gate `ctest -R`.
 | Oct 19 22:10 +04 | x86_64 | default | 3 | 3 | 0 | 0 | PB165c session configuration, 56-profile storage matrix and file-size contracts; all 3 executed |
 | Oct 19 22:39 +04 | x86_64 | default | 13 | 13 | 0 | 0 | Portable/PB100 headless board, both engines and PMU regression |
 | Oct 19 23:59 +04 | x86_64 | default | 22 | 22 | 0 | 0 | Portable/PB100 product: public states, battery and firmware, both engines, agent live mount, GUI contracts, sessions and storage; all 22 executed |
+| Oct 20 10:54 +04 | x86_64 | default | 4 | 4 | 0 | 0 | Portable/PB100 Finder sleep and key wake on x86-64; interpreter and threaded, real ROM/PMU/System 7.1; exact asleep and wake replay |
+| Oct 20 10:56 +04 | x86_64 | default | 11 | 11 | 0 | 0 | Portable/PB100 sleep: interpreter/threaded, idle CPU registers and SCSI bus, exact asleep/wake snapshots; PMU/board/product and repository contracts; 11 executed, zero soft-skips |
+| Oct 20 11:46 +04 | x86_64 | default | 14 | 14 | 0 | 0 | PowerBook slot-E RGB: all five Niagra/Pangola profiles under default native and interpreter; exact cold-restore replay and pointer on RGB; four LCD-only regressions; 14 executed, zero soft-skips |
+| Oct 20 11:54 +04 | x86_64 | default | 10 | 10 | 0 | 0 | PowerBook external RGB: headless monitor queue/session capture, controller and legacy snapshots, Jaws/Niagra/Pangola regressions and repository contracts; 10 executed, zero soft-skips |

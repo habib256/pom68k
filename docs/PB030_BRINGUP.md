@@ -61,8 +61,9 @@ PMU timing partition invariance at 33 MHz.
 - Niagra speed and FPU-access registers occupy the upper byte lane.
   Ponti modem, SPI, backlight and sound control read back their latches;
   sound activity clears only on the clear bit's rising edge.
-- External video reports no monitor (`$FE0FE004 = $70`); its independent
-  512 KB RAM is retained. No external display is exposed.
+- External video defaults to no monitor (`$FE0FE004 = $70`). An optional
+  13-inch RGB display uses its independent 512 KB VRAM and the slot-E
+  controller described below.
 - The public session visitor includes GSC/Ponti and both VRAM banks only
   for Niagra, preserving the existing Jaws payload layout. Battery files
   retain the loaded PMU firmware fingerprint.
@@ -71,8 +72,8 @@ PMU timing partition invariance at 33 MHz.
 blanking, Ponti edge semantics and public state restoration without assets.
 The real boot and interpreter gates exercise the ROM and PMU v3 on System
 7.5.5; the agent variant requires Startup Items launch and live disk mount.
-The Pangola color extension is described below; external monitor support remains
-separate work. There is no AArch64 execution or power-consumption claim.
+The Pangola color extension and optional external RGB display are described
+below. There is no AArch64 execution or power-consumption claim.
 
 ## Pangola: PowerBook 165c/180c
 
@@ -105,7 +106,7 @@ real PB180c boot gates share the existing Finder/input/public-state harness;
 the agent variant also checks Startup Items launch and live disk mounting.
 The settled System 7.5.5 desktop pin is `6d7a190822fb3dc2`.
 This qualifies the indexed LCD graphics path. PC VGA text/planar modes,
-external displays, sleep/power consumption and
+other external monitors, sleep/power consumption and
 execution on AArch64 remain outside this milestone.
 
 ### PowerBook 165c panel and identity
@@ -124,8 +125,73 @@ The Pangola component gate checks the 165c's 68882, panel size and both
 directions of public-session refusal between 165c and 180c, despite their
 identical firmware. Native/interpreter boot and agent variants use the
 common Finder, keyboard/trackball and exact session-replay probes. The settled
-System 7.5.5 desktop pin is `a94e32a1a7c5b25d`. External
-video, PC VGA text/planar modes and sleep/power qualification remain open.
+System 7.5.5 desktop pin is `a94e32a1a7c5b25d`. Other external
+monitor modes, PC VGA text/planar modes and sleep/power qualification remain open.
+
+## External RGB display on slot E
+
+PB160/165/180 and PB165c/180c can attach a 13-inch RGB monitor (640×480,
+256 colors) from the Dashboard. Changing the selection restarts the Mac,
+because the guest probes the connector during startup. The default remains
+LCD only. `POM68K_MONITOR=640` or a session's `monitor=640` attaches it at
+startup; `0` disconnects it. Other widths are refused on these boards.
+The screen window places RGB below a 400-line LCD, or to the right of the
+180c's equally tall LCD, matching the guest's initial desktop. The current selection is published by the machine thread
+and captured into saved session files, including changes made in the GUI.
+
+`Pb030ExternalVideo` owns the controller, RGB DAC, monitor sense pins and
+13-inch raster/slot IRQ. `Pb030Memory` owns its 512 KB VRAM. The real
+E33B2724 ROM's primary init (`$9B82E–$9BBC6`) and driver (`$9BD1C–$9CB82`)
+provide the consumer traces:
+
+| Physical block | 32-bit alias used by the ROM | Purpose |
+|---|---|---|
+| `$FE000000` | `$FEE00000` | packed slot-E IRQ status/enables |
+| `$FE00E000` | `$FEE0E000` | DAC index and RGB components |
+| `$FE0FE000` | `$FEEFE000` | sense, depth, timing, control and VBL ack |
+| `$FE100000–$FE17FFFF` | `$FEF00000–$FEF7FFFF` | 512 KB frame buffer |
+
+The aliases matter when the ROM temporarily switches MMU modes. Its
+capacity probe writes control `$43`, tests the second VRAM bank and falls
+back to `$41` on a 512 KB board. Ignoring the control alias makes that
+probe succeed incorrectly and advertises a 1 MB/16-bit mode. With the
+absent bank accounted for, the System itself selects an 8-bit PixMap,
+640-byte rows and a second 640×480 rectangle. No GDevice or guest
+mode record is patched. Sub-byte DAC packing has component tests; real
+product qualification here is the 8-bit mode.
+
+There is a separate PMU startup issue. With newly zeroed MCU RAM, the ROM
+can ask for charger state before the firmware refreshes its sensor record,
+then disable external video with its own “power adapter is not attached”
+alert. MAME documents this race at `macpwrbk030.cpp::machine_start` and seeds
+MCU RAM `$25`. For an attached external monitor, POM68K instead runs ten
+seconds of the continuously powered PMU and its board clock before the CPU
+reset. The firmware computes the charger state itself; its RAM survives the
+following reset. The no-monitor cold-start path and firmware gates retain
+their zero-RAM start.
+
+The public machine visitor appends a controller suffix after the existing
+Niagra/Pangola payload. Older containers lacking it restore with no external
+monitor; Jaws payloads are unchanged. The suffix includes DAC component
+phase, monitor choice, raster phase and pending IRQ. Public replay is tested
+with a cursor on RGB as well as on the LCD. Both replay arms start by
+restoring the same container: CPU snapshots deliberately discard caches and
+ATCs, so a warm uninterrupted run is not the restore contract.
+
+`pb030_external_video_test` checks capacity, register aliases, indexed
+pixels, raster IRQ/ack, partition-invariant timing, mid-DAC restoration and
+old-container loading without assets. The GUI probe in
+`gui_machine_window_test` drives the real host queue and checks published
+selection, composite frame dimensions and live session capture. Each of the
+five profiles has native/default and interpreter
+`<profile>_external_video_etalon` gates: two actual guest GDevices, Finder,
+PMU keyboard/trackball, pointer crossing to RGB with changed VRAM pixels,
+a combined pixel pin, and exact public replay.
+
+Other monitor timings, mirroring, external hot-plug without restarting,
+Niagra/Pangola sleep and AArch64 execution remain unqualified. Sources:
+Apple's [PB160/180 Developer Note](https://macdat.net/files/pdf/apple/developer_notes/powerbook_160_180.pdf),
+MAME's `macpwrbk030.cpp`, and the private main ROM identified in `assets.lock`.
 
 ## Sources and ownership
 
@@ -291,8 +357,8 @@ checks engine switching, completed save, close and relaunch. The
 the Startup Items agent to poll its mailbox and mount a disk attached live.
 
 The Jaws wrapper conservatively flushes JIT blocks on CACR invalidation;
-there is no store-inventory admission yet. The
-Portable/PB100 board remain separate work. These checks do not qualify
+there is no store-inventory admission yet. Portable/PB100 use their own
+board, documented in `docs/PORTABLE_BRINGUP.md`. These checks do not qualify
 sleep/power consumption, modem hardware or an AArch64 execution host.
 
 ## MAME-derived source notice

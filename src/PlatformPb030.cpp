@@ -10,11 +10,11 @@ struct Pb030Machine:MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost> 
     Pb030Machine(Pb030Memory& m,Pb030Cpu& c,MacAudioHost& a,GuiHostServices& s)
         :Base(m,c,a,s.config().diagnostics().keyTrace,s.config().devices().turbo),services(s) {}
     static constexpr bool kStereo=true;
-    struct Status {uint32_t pc;long long clock;bool overlay,mmu,held;};
+    struct Status {uint32_t pc;long long clock;bool overlay,mmu,held,external;};
     Status status() const {
         const auto f=stFlags_.load(std::memory_order_relaxed);
         return {stPc_.load(std::memory_order_relaxed),stClock_.load(std::memory_order_relaxed),
-            bool(f&1),bool(f&2),bool(f&4)};
+            bool(f&1),bool(f&2),bool(f&4),bool(f&8)};
     }
     int64_t frameCycles() const {return mem.cpuHz()/60;}
     void emulateQuantum() {runQuantumWithWire(services,mem,cpu,frameCycles());++framesRun_;}
@@ -27,11 +27,11 @@ struct Pb030Machine:MachineHost<Pb030Machine,Pb030Memory,Pb030Cpu,MacAudioHost> 
         return audible;
     }
     void renderFrame(std::vector<uint32_t>& out,int& w,int& h) {
-        mem.decode(out);for(auto& p:out) p|=0xff000000;w=640;h=mem.screenHeight();
+        mem.decodeDisplay(out);for(auto& p:out) p|=0xff000000;w=mem.displayWidth();h=mem.displayHeight();
     }
     void publishStatus() {
         stFlags_.store(uint8_t((mem.overlay()?1:0)|((cpu.getTC()&0x80000000)?2:0)|
-            (mem.cpuHeld()?4:0)),std::memory_order_relaxed);
+            (mem.cpuHeld()?4:0)|(mem.externalMonitor()?8:0)),std::memory_order_relaxed);
     }
 };
 }
