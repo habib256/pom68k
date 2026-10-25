@@ -129,6 +129,11 @@ pom68k::CoreConfig parseCoreStartup(
     options.firmware.tobyDeclPath = values.text(startup_option::TobyDeclRom);
     options.firmware.root = values.text(startup_option::FirmwareRoot);
 
+    if (const auto card = values.text(startup_option::VideoCard)) {
+        using VideoCard = CorePeripheralConfig::VideoCard;
+        options.peripherals.videoCard = *card == "toby" ? VideoCard::Toby
+            : *card == "8-24" ? VideoCard::DisplayCard824 : VideoCard::Unknown;
+    }
     options.peripherals.appleTalkPram =
         values.present(startup_option::AppleTalk) &&
         values.boolean(startup_option::AppleTalk, false);

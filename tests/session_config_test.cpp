@@ -347,6 +347,7 @@ void capture(const fs::path& root) {
         {"POM68K_DRIVE_SFX", "0"},
         {"POM68K_SHARE_DIR", utf8FromPath(dir / "share")},
         {"POM68K_SE_SECOND_FLOPPY", "1"},
+        {"POM68K_VIDEO_CARD", "8-24"},
     };
     Argv argv({"--machine-profile=lcii", "--daynaport=4",
                "--firmware-override=adb:hle:" + utf8FromPath(adb),
@@ -409,6 +410,18 @@ void capture(const fs::path& root) {
     check(original.core().storage.secondInternalFloppy &&
               again.core().storage.secondInternalFloppy,
           "reopened: the SE's second internal floppy");
+    {
+        using VideoCard = CorePeripheralConfig::VideoCard;
+        const StartupSnapshot unknown{{"POM68K_VIDEO_CARD", "8.24"}};
+        Argv none({"rom"});
+        check(original.core().peripherals.videoCard == VideoCard::DisplayCard824 &&
+                  again.core().peripherals.videoCard == VideoCard::DisplayCard824 &&
+                  RuntimeConfig::parse(none.argc(), none.argv(), StartupSnapshot{})
+                          .core().peripherals.videoCard == VideoCard::Toby &&
+                  RuntimeConfig::parse(none.argc(), none.argv(), unknown)
+                          .core().peripherals.videoCard == VideoCard::Unknown,
+              "reopened: the slot-9 Display Card 8•24; a misspelling stays visible");
+    }
     {
         Argv off({"--se-second-floppy=0"});
         Argv on({"--se-second-floppy=1"});

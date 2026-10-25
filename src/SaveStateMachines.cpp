@@ -63,6 +63,7 @@
 #include "Swim1.h"
 #include "Swim2.h"
 #include "TobyVideo.h"
+#include "DisplayCard824.h"
 #include "V8Memory.h"
 #include "Valkyrie.h"
 #include "VaspCpu.h"
@@ -94,6 +95,7 @@ POM68K_SAV_CHECK(MacKeyboard);
 POM68K_SAV_CHECK(MacMouse);
 POM68K_SAV_CHECK(NuBus);
 POM68K_SAV_CHECK(TobyVideo);
+POM68K_SAV_CHECK(DisplayCard824);
 POM68K_SAV_CHECK(Rtc);
 POM68K_SAV_CHECK(Pic1654s);
 POM68K_SAV_CHECK(AdbVia);
@@ -127,7 +129,7 @@ POM68K_SAV_CHECK(Q605Memory);     // Q605 / LC 475 / LC 575
 POM68K_SAV_CHECK(CentrisMemory);  // Centris 610/650, Quadra 610/650/800
 POM68K_SAV_CHECK(Q700Memory);     // Quadra 700
 POM68K_SAV_CHECK(Q630Memory);     // Quadra 630 / LC 580
-POM68K_SAV_CHECK(MacIIMemory);    // Mac II / IIx / IIcx (nests NuBus + Toby)
+POM68K_SAV_CHECK(MacIIMemory);    // Mac II / IIx / IIcx (nests NuBus + Toby or 8•24)
 POM68K_SAV_CHECK(MacMemory);      // Plus / SE / SE FDHD / Classic
 POM68K_SAV_CHECK(R65c02);         // Apple PIC 65C02 core
 POM68K_SAV_CHECK(ApplePic);       // IOP (nests R65c02 + its 32 KB RAM)

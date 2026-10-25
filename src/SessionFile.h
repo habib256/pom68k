@@ -129,6 +129,7 @@ struct SessionCapture {
     bool seSecondFloppy = false;
     std::optional<std::string> ide;
     std::optional<int> monitorWidth;
+    bool displayCard824 = false;   // `video-card`: slot 9 of the Mac II family
     bool kiosk = false;
     std::string crtPreset;
     bool turbo = false;

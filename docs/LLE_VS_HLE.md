@@ -1101,7 +1101,7 @@ real process. See `STATUS.md` for recorded runs and `TODO.md` for the
 remaining host-specific validation work.
 
 **One HLE-only hack survives inside the byte-model fallback.**
-`MacIIMemory.cpp:340-346`: on VIA1 ORB writes, if ACR shift-in is armed and
+`MacIIMemory.cpp:387-393`: on VIA1 ORB writes, if ACR shift-in is armed and
 soft-flag bit 5 at `ADBBase($CF8)+$15D` is set, call
 `Via6522::armShiftComplete()`. Required for the HLE ADB POST wait (Slot Manager
 clocks SR after slot select). **Poisonous under LLE** — `$CF8` is ADBBase and

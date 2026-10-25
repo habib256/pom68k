@@ -13,6 +13,7 @@
 #include "Rtc.h"
 #include "NuBus.h"
 #include "TobyVideo.h"
+#include "DisplayCard824.h"
 #include "Se30Video.h"
 #include "DeclRom.h"
 #include "AdbVia.h"
@@ -75,6 +76,11 @@ public:
     bool loadRom(const std::vector<uint8_t>& data);
     void reset();
     bool installTobyVideo(const std::string& declRomPath = {});
+    // The Display Card 8•24 in slot 9 instead of Toby (DisplayCard824.h).
+    // Its 32 KB 341-0868 declaration ROM is required — the card has no
+    // synthetic fallback, so a missing dump leaves the slot empty and
+    // returns false. `monitor` is a DisplayCard824::Monitor.
+    bool installDisplayCard824(const std::string& declRomPath, uint8_t monitor);
     // SE/30 internal video on pseudo-slot $E; the 8 KB se30vrom.uk6 dump is
     // its declaration ROM (linear, byteLanes $0F — no Toby descrambling).
     bool installSe30Video(const std::string& vromPath = {});
@@ -126,6 +132,12 @@ public:
     Via6522& via2() { return via2_; }
     NuBus& nubus() { return nubus_; }
     TobyVideo* toby() { return toby_; }
+    DisplayCard824* card824() { return card824_; }
+    // Whichever card slot 9 holds — what the machine thread rasters and the
+    // GUI sizes its window from. Null on the SE/30 and on a bare board.
+    NuBusDisplay* slotDisplay() {
+        return toby_ ? static_cast<NuBusDisplay*>(toby_) : card824_;
+    }
     Se30Video* se30() { return se30_; }
 
     // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
@@ -258,9 +270,12 @@ public:
         return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
              | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
     }
-    // The machine chunk. The Toby card is optional wiring (installTobyVideo),
-    // so its presence is recorded and must match on restore — a snapshot
-    // taken with a card cannot load into a machine without one. Out:
+    // The machine chunk. The slot-9 card is optional wiring
+    // (installTobyVideo / installDisplayCard824), so which card is fitted
+    // is recorded and must match on restore — a snapshot taken with a card
+    // cannot load into a machine without it or with the other one. The
+    // byte was a Toby flag (0/1) before the 8•24, so 2 extends it without
+    // touching existing snapshots. Out:
     // rom_/model_ (profile identity), cpu_ (pointer), the vbl debug longs.
     // ── Debugger (DeviceSnapshot.h): this board's devices, read from their
     // members — VIA, SCC, floppy, SCSI, ADB and video, never a bus access.
@@ -274,18 +289,20 @@ public:
         add(out, "ADB", "ADB transceiver", adbVia_);
         add(out, "ADB", "ADB bus", adb_);
         if (toby_) add(out, "Video", "Toby (NuBus)", *toby_);
+        if (card824_) add(out, "Video", "Display Card 8•24 (NuBus)", *card824_);
     }
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via1_, via2_, rtc_, nubus_, adbVia_, adb_, asc_,
            scsi_, swim_, drive_, externalDrive_, scc_, mouse_, dayna_);
         for (auto& d : scsiDisks_) ar(d);
-        std::uint8_t hasToby = toby_ != nullptr;
-        ar(hasToby);
+        std::uint8_t card = slotCard();
+        ar(card);
         if constexpr (Ar::loading) {
-            if ((toby_ != nullptr) != (hasToby != 0)) { ar.fail(); return; }
+            if (card != slotCard()) { ar.fail(); return; }
         }
         if (toby_) ar(*toby_);
+        if (card824_) ar(*card824_);
         ar(ramSize_, overlay_, glueRamSize_, nubusIrqState_, sccIrq_,
            via2Irq_, via2Pb7_, hmmu24_, viaPhase_, tickAcc_, secAcc_,
            frameCount_);
@@ -314,6 +331,8 @@ private:
     pom68k::CoreFirmwareConfig firmware_{};
 
     bool adbViaTrace_ = false;
+    // Save-state tag of the slot-9 card: 0 none, 1 Toby, 2 Display Card 8•24.
+    std::uint8_t slotCard() const { return toby_ ? 1 : card824_ ? 2 : 0; }
     bool isIo(uint32_t addr, uint32_t& off) const;
     void viaSync();
     uint16_t viaAccess(Via6522& via, uint32_t addr, bool write, uint16_t v,
@@ -347,6 +366,7 @@ private:
     Rtc rtc_;
     NuBus nubus_;
     TobyVideo* toby_ = nullptr;
+    DisplayCard824* card824_ = nullptr;
     Se30Video* se30_ = nullptr;
     AdbVia adbVia_;
     AdbBus adb_;

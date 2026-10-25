@@ -455,6 +455,7 @@ add_library(pom68k_core STATIC
     src/DeclRom.cpp       # Mac II — NuBus declaration ROM builder
     src/NuBus.cpp         # Mac II — NuBus slot decode + IRQ
     src/TobyVideo.cpp     # Mac II — Toby Frame Buffer HLE
+    src/DisplayCard824.cpp # Mac II — Display Card 8•24 (JMFB NuBus)
     src/MacIIMemory.cpp   # Mac II — 32-bit GLUE memory map
     src/Cpu020.cpp        # Mac II — Moira 68020 wrapper
     src/AdbVia.cpp        # Mac II — ADB HLE on VIA1

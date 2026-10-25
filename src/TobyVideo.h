@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <vector>
 
-class TobyVideo : public NuBusDevice {
+class TobyVideo : public NuBusDevice, public NuBusDisplay {
 public:
     static constexpr int W = 640;
     static constexpr int H = 480;
@@ -53,8 +53,12 @@ public:
     void decodeRows(std::vector<uint32_t>& out, int y0, int y1) const;
     // Advance the beam off the card's OWN CRTC-derived frame clock and
     // decode the rows it has crossed (LLE_VS_HLE §1.1, VideoBeam.h).
-    void raster(std::vector<uint32_t>& out);
+    void raster(std::vector<uint32_t>& out) override;
     const VideoBeam& beam() const { return beam_; }
+    // NuBusDisplay — raster() above is the same surface.
+    int width() const override { return hres_; }
+    int height() const override { return vres_; }
+    const char* displayName() const override { return "Macintosh II Video Card"; }
 
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // The whole card travels — VRAM (u32 words, no zero-run codec; half a

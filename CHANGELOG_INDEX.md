@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 691 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 692 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 20 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 146 |
+| [Cross-cutting](#cross-cutting) | 147 |
 
 ---
 
@@ -753,4 +753,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-13 (second)** — [The -Werror tree is green again under GCC 15 at -O3](CHANGELOG.md#2026-10-13-gcc15-werror)
 - **2026-10-13 (third)** — [Two of the three MSVC asset-free reds, read on Linux](CHANGELOG.md#2026-10-13-msvc-gui-reds)
 - **2026-10-19 (thirteenth)** — [Portable/PB100 Power Manager calibrates against the board clock and replays its real firmware](CHANGELOG.md#2026-10-19-portable-pmu)
+- **2026-10-25 (later)** — [The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last](CHANGELOG.md#2026-10-25-display-card-824)
 

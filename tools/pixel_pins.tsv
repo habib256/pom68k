@@ -45,6 +45,11 @@ lc_boot_etalon@System_7.5_HD.dsk	e2b0dace8314512b
 lcii_boot_etalon@boot.vhd	674c4049ab7980f7
 mac128k_boot_etalon/Macintosh_128K@System_1.1.dsk	7cb22008b098190c
 mac128k_boot_etalon/Macintosh_512K@System_1.1.dsk	7cb22008b098190c
+macii_824_etalon/hires@System_7.0_HD.dsk	a4696708c8c90427
+macii_824_etalon/hires-8bit@System_7.0_HD.dsk	cad7cb8e9f2db750
+macii_824_etalon/iicx-hires-8bit@System_7.0_HD.dsk	cad7cb8e9f2db750
+macii_824_etalon/rgb12@System_7.0_HD.dsk	b7b2c5b376811077
+macii_824_etalon/rgb21@System_7.0_HD.dsk	52fb806ed5da817b
 macii_boot_etalon@HD20SC.vhd	570d72109651bfeb
 mactv_boot_etalon@GISTPERSO-boot.vhd	e0b819fc443c450d
 q605_boot_etalon@MacOS-8.1-boot.vhd	eefb49d126a73732

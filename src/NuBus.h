@@ -11,6 +11,18 @@
 #include <memory>
 #include <vector>
 
+// What a GUI needs from any NuBus video card: a raster surface and its
+// size. Cards implement it beside NuBusDevice; the machine lists them in
+// slot order (one host window per display).
+class NuBusDisplay {
+public:
+    virtual ~NuBusDisplay() = default;
+    virtual void raster(std::vector<uint32_t>& out) = 0;
+    virtual int width() const = 0;
+    virtual int height() const = 0;
+    virtual const char* displayName() const = 0;
+};
+
 class NuBusDevice {
 public:
     virtual ~NuBusDevice() = default;
@@ -36,8 +48,15 @@ public:
 
     // Install a card in `slot` (9..14). declRom is the scrambled 32-bit image
     // mirrored at the top of the 16 MB slot (MAME install_declaration_rom).
+    // Where the card answers with it: the top of every 1 MB of the slot
+    // (`EveryMegabyte`, the Toby/SE-30 cards' historical decode, MAME's
+    // mirror_all_mb) or only the top of the 16 MB slot (`TopOfSlot`, MAME's
+    // default — a card such as the Display Card 8•24 has VRAM where the
+    // mirrors would land).
+    enum class DeclWindow : uint8_t { EveryMegabyte, TopOfSlot };
     void installCard(int slot, NuBusDevice* dev,
-                     const std::vector<uint8_t>& declRom);
+                     const std::vector<uint8_t>& declRom,
+                     DeclWindow window = DeclWindow::EveryMegabyte);
 
     bool hasCard(int slot) const;
     uint32_t slotBase(int slot) const;
@@ -66,10 +85,12 @@ private:
     struct Slot {
         NuBusDevice* dev = nullptr;
         std::vector<uint8_t> declRom;
+        DeclWindow window = DeclWindow::EveryMegabyte;
         bool irq = false;
     };
     Slot slots_[kLastSlot + 1];
     IrqCallback irqCb_;
     bool decode(uint32_t addr, int& slot, uint32_t& off, bool super) const;
     uint8_t readDecl8(int slot, uint32_t off) const;
+    bool inDeclWindow(int slot, uint32_t off) const;
 };
