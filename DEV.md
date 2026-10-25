@@ -32,7 +32,10 @@ git diff --check
 the last completed run of the CI, macOS and Nightly workflows on `main` and
 refuses the push while any of them concluded red — ten days of unread red
 buried two real regressions once (CHANGELOG 2026-09-02 (tenth)). Unknown is
-not red: without `gh` or offline the push proceeds with a warning. The
+not red: without `gh` or offline the push proceeds with a warning. The push
+that repairs red passes when a pushed commit carries one
+`CI-Fix: <run-id>` trailer per red workflow, naming that workflow's last
+completed run on `main`; the hook checks the id against the live run. The
 conscious bypass is `git push --no-verify`, and the red becomes the day's
 first task, not a queue entry.
 
