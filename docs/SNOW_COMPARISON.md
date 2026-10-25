@@ -407,6 +407,8 @@ SE/30 video and the integrated video devices of its much broader desktop
 catalogue, including DAFB, Sonora and Valkyrie paths. Consequently, “add
 colour or high resolutions” is not the gap. The missing capability is that
 particular slot-card/monitor configuration on the Mac II family.
+(Since 2026-10-25 POM68K fits the 8•24 in slot 9 too — `DisplayCard824`,
+implementation plan § Admit new hardware.)
 
 Toby is already installable through [MacIIMemory](../src/MacIIMemory.cpp),
 which contains distinct model wiring; adding an 8-24 card should reuse

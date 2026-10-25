@@ -17,11 +17,23 @@ bool NuBus::hasCard(int slot) const {
 }
 
 void NuBus::installCard(int slot, NuBusDevice* dev,
-                        const std::vector<uint8_t>& declRom) {
+                        const std::vector<uint8_t>& declRom,
+                        DeclWindow window) {
     if (slot < kFirstSlot || slot > kLastSlot) return;
     slots_[slot].dev = dev;
     slots_[slot].declRom = declRom;
+    slots_[slot].window = window;
     slots_[slot].irq = false;
+}
+
+// Slot-space offsets the declaration ROM answers (MAME
+// install_declaration_rom, nubus.cpp:519-532).
+bool NuBus::inDeclWindow(int slot, uint32_t off) const {
+    const auto& rom = slots_[slot].declRom;
+    if (rom.empty()) return false;
+    if (slots_[slot].window == DeclWindow::TopOfSlot)
+        return (off & 0xFFFFFFu) >= 0x1000000u - uint32_t(rom.size());
+    return (off & 0x0FFFFFu) >= 0xE0000u;
 }
 
 const std::vector<uint8_t>& NuBus::declRom(int slot) const {
@@ -73,8 +85,7 @@ uint8_t NuBus::read8(uint32_t addr) {
         // A20-A23). Declaration ROM tiles the rest of the 16 MB slot,
         // including the canonical format block at the top (MAME
         // install_declaration_rom mirror_all_mb).
-        const uint32_t low = off & 0x0FFFFFu;
-        if (slotSpace && low >= 0xE0000u && !slots_[slot].declRom.empty())
+        if (slotSpace && inDeclWindow(slot, off))
             return readDecl8(slot, off);
         return slots_[slot].dev->read8(off);
     }
@@ -97,7 +108,7 @@ void NuBus::write8(uint32_t addr, uint8_t v) {
     if (slotSpace || decode(addr, slot, off, true)) {
         // Only slot space reserves the top 128 KB for the (read-only) decl ROM;
         // super-slot space is the card's own aperture all the way up.
-        if (slots_[slot].dev && (!slotSpace || (off & 0x0FFFFFu) < 0xE0000u))
+        if (slots_[slot].dev && (!slotSpace || !inDeclWindow(slot, off)))
             slots_[slot].dev->write8(off, v);
     }
 }

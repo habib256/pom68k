@@ -126,6 +126,15 @@ réel ; une approximation plus large sans preuve n'est pas un gain.
   sous les deux moteurs, là où le `macqd650` de MAME et le Quadra 800 de
   POM68K (même carte, même horloge) en ont une — non jugé dans
   `q650_prober_oracle_etalon` en attendant.
+- [ ] **Display Card 8•24 : écrans monochromes, millions de couleurs,
+  second écran.** Sur les écrans Portrait et Two-Page, le dernier
+  chargement de CLUT du pilote laisse à zéro le canal bleu que lit le
+  balayage mono (le même chez MAME) : écran noir, donc non proposés
+  (`DisplayCard824::monitorSupported`). Le mode 24 bits (`$84`) est refusé
+  par le pilote sans adressage 32 bits ; aucun disque de référence n'a
+  MODE32. La carte remplace Toby au slot 9 ; un second écran (Toby + 8•24)
+  demande une GUI multi-écrans. *Bloqué : une capture matérielle ou MAME
+  d'un écran mono, un volume avec MODE32.*
 - [ ] **Affiner les latences VIA sur les compacts : T1 et l'IACK.** Reste
   la latence écriture T1CH → IFR.T1 (N+1 ici, N+3 chez MAME) et l'IACK
   autovecteur calé sur l'horloge E (`vpa_sync` chez MAME). Chacune attend

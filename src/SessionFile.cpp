@@ -91,6 +91,8 @@ constexpr KeySpec kKeys[] = {
     {"se-second-floppy", Target::Argument, Rule::Boolean, kSeSecondFloppyOption},
     {"ide", Target::Startup, Rule::InputPath, option::IdeDisk.name},
     {"monitor", Target::Startup, Rule::Integer, option::Monitor.name},
+    {"video-card", Target::Startup, Rule::Choice, option::VideoCard.name, false,
+     "toby|8-24"},
     {"kiosk", Target::Startup, Rule::Boolean, option::Kiosk.name},
     {"crt", Target::Startup, Rule::Choice, option::CrtPreset.name, false,
      "off|light|arcade|phosphor"},
@@ -477,6 +479,8 @@ SessionCapture SessionCapture::from(const RuntimeConfig& config) {
     capture.seSecondFloppy = config.core().storage.secondInternalFloppy;
     capture.ide = config.core().storage.ideDisk;
     capture.monitorWidth = config.devices().monitorWidth;
+    capture.displayCard824 = config.core().peripherals.videoCard ==
+                             CorePeripheralConfig::VideoCard::DisplayCard824;
     capture.kiosk = config.devices().kiosk;
     capture.crtPreset = config.devices().crtPreset;
     capture.turbo = config.devices().turbo;
@@ -543,6 +547,7 @@ std::vector<SessionEntry> SessionCapture::entries() const {
     add("se-second-floppy", flag(seSecondFloppy));
     if (ide && !ide->empty()) add("ide", absolute(*ide));
     if (monitorWidth) add("monitor", std::to_string(*monitorWidth));
+    add("video-card", displayCard824 ? "8-24" : "toby");
     add("kiosk", flag(kiosk));
     if (!crtPreset.empty()) add("crt", crtPreset);
     add("turbo", flag(turbo));

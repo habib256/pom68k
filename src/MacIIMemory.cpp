@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstring>
 
-MacIIMemory::~MacIIMemory() { delete toby_; delete se30_; }
+MacIIMemory::~MacIIMemory() { delete toby_; delete card824_; delete se30_; }
 
 MacIIMemory::MacIIMemory(const pom68k::CoreConfig& coreConfig,
                          uint32_t ramSize, Model model)
@@ -48,6 +48,7 @@ bool MacIIMemory::loadRom(const std::vector<uint8_t>& data) {
 
 bool MacIIMemory::installTobyVideo(const std::string& declRomPath) {
     if (toby_) return true;
+    if (card824_) return false;              // slot 9 already holds the 8•24
     toby_ = new TobyVideo(nubus_, 9);
     // The real 342-0008-a when it loads, the truthful synthetic fallback
     // otherwise — chosen, reported and overridable like the MCU dumps
@@ -55,6 +56,32 @@ bool MacIIMemory::installTobyVideo(const std::string& declRomPath) {
     const std::vector<uint8_t> decl = pom68k::toby::selectDeclRom(
         firmware_, declRomPath, nubus_.slotBase(9), "MacII");
     nubus_.installCard(9, toby_, decl);
+    return true;
+}
+
+bool MacIIMemory::installDisplayCard824(const std::string& declRomPath,
+                                        uint8_t monitor) {
+    if (card824_) return true;
+    if (toby_ || model_ == Model::SE30) return false;
+    std::vector<std::string> paths;
+    if (!declRomPath.empty()) paths.push_back(declRomPath);
+    for (const char* rel : DisplayCard824::kDeclRomCandidates) {
+        paths.push_back(rel);
+        paths.push_back(std::string("../") + rel);
+    }
+    std::vector<uint8_t> decl;
+    for (const std::string& p : paths) {
+        decl = DisplayCard824::loadDeclRom(p);
+        if (!decl.empty()) break;
+        if (!declRomPath.empty()) break;     // a named dump is the only one
+    }
+    if (decl.empty()) {
+        std::fprintf(stderr, "MacIIMemory: no 341-0868 declaration ROM — "
+                             "the Display Card 8•24 is not fitted\n");
+        return false;
+    }
+    card824_ = new DisplayCard824(nubus_, 9, kCpuHz, monitor);
+    nubus_.installCard(9, card824_, decl, NuBus::DeclWindow::TopOfSlot);
     return true;
 }
 
@@ -131,6 +158,7 @@ void MacIIMemory::reset() {
     // No standing Rx: D7=$…0005 in the diagnostic console means the RAM
     // sizing probe failed first; fixing glue/mirrors exits that path.
     if (toby_) toby_->reset();
+    if (card824_) card824_->reset();
     // Machine-ID pins (MAME macii.cpp): VIA1 PA = $81 (Mac II/IIx) or $C1
     // (IIcx and SE/30, PA6 set — iicx_via_in_a); VIA2 PB = $CF (Mac II/IIcx)
     // or $87 (IIx and SE/30 — the macse30 config wires iix_via2_in_b). The
@@ -175,7 +203,21 @@ bool MacIIMemory::via2Ca1SlotTaskArmed(int bit) const {
     // MTemp→RawMouse cursor coupling) never ran.
     const uint32_t d08 = peek32(0xD08);
     const uint32_t d04 = peek32(0xD04);
-    if (!d08 || !d04 || d08 >= ramSize_ || d04 >= ramSize_) return false;
+    if (!d04 || d04 >= ramSize_) return false;
+    // System 7 replaces those tables on the Mac II with the rewritten slot
+    // interrupt manager (mac-rom OS/SlotMgr/SlotInterrupts.a — "This will
+    // be removed from the Mac II in system 7.0"; Internal/Asm/
+    // SlotMgrEqu.a slotIntGlobals): ($D04) = SlotQDT is a system-heap
+    // record of 15 slotVBLPtrs, a filler, 15 slotIntQHeads indexed by SLOT
+    // NUMBER, a filler, then the slotVBLInfos whose queue headers the
+    // slotVBLPtrs name — so slotVBLPtrs[0] = SlotQDT + $82, a signature the
+    // ROM layout cannot show. SlotIntCommon dies with _SysError when the
+    // interrupting slot's handler list is empty: that list is the guard.
+    if (peek32(d04) == d04 + 0x82) {
+        const uint32_t handler = peek32(d04 + 0x40 + uint32_t(9 + bit) * 4);
+        return handler != 0 && handler < ramSize_;
+    }
+    if (!d08 || d08 >= ramSize_) return false;
     bool listed = false;
     for (int i = 0; i < 6 && !listed; i++)
         listed = peek32(d08 + uint32_t(i) * 4) == uint32_t(bit);
@@ -817,6 +859,20 @@ void MacIIMemory::tick(int cpuCycles) {
         if (model_ == Model::SE30 && se30VblEnable_) {
             se30VblPhase_ = !se30VblPhase_;
             if (!se30VblPhase_) nubus_.setSlotIrq(14, true);
+        }
+        // The 8•24 holds its slot line until its driver acknowledges, as
+        // the hardware and MAME do; Toby pulses it every frame. When the
+        // first VBL lands before the slot handler is installed,
+        // nubusSlotIrq() withholds the CA1 edge — and a held line never
+        // makes another, so the slot VBL queue (jCrsrTask: the cursor)
+        // would never run. Deliver the withheld edge once a handler
+        // exists. Everything read here is saved state; Toby never enters.
+        if (card824_ && card824_->irqLevel() &&
+            !(via2_.ifrRaw() & Via6522::CA1) &&
+            (via2_.ierRaw() & Via6522::CA1) && via2Ca1SlotTaskArmed(0)) {
+            via2_.raiseCa1();
+            via2Irq_ = via2_.irqAsserted();
+            updateIrq();
         }
         // Prefer VIA2 PB7→VIA1 CA1 when the ROM has armed that path; otherwise
         // pulse CA1 directly so VBL still arrives (MAME scanline / via2_out_b).

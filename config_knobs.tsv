@@ -272,3 +272,4 @@ POM68K_TRAIL	test	owner:tests/centris650_boot_etalon.cpp
 POM68K_TURBO	product	gate:gui_smoke_test
 POM68K_V8_HOLEVAL	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole
 POM68K_V8_IOHOLE	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole
+POM68K_VIDEO_CARD	product	gate:session_config_test,display_card824_test,macii_824_etalon

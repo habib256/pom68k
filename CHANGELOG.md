@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-10-25 (later)** — [The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last](#2026-10-25-display-card-824)
 - **2026-10-25** — [The push that repairs red CI names the run it repairs](#2026-10-25-ci-fix-trailer)
 - **2026-10-20 (second)** — [PowerBook slot E gets its 512 KB RGB display and two-screen public replay](#2026-10-20-pb030-external-video)
 - **2026-10-20** — [Portable and PowerBook 100 sleep from Finder and resume on a key](#2026-10-20-portable-sleep)
@@ -1194,6 +1195,60 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-10-25-display-card-824"></a>
+## 2026-10-25 (later) — The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last
+
+`POM68K_VIDEO_CARD=8-24` fits Apple's Display Card 8•24 in slot 9 of the
+Mac II, II FDHD, IIx and IIcx instead of the Toby card. The model is
+`DisplayCard824`, written on 2026-10-09 by an agent from MAME 0.285
+`nubus_48gc.cpp` (JMFB, CRTC, clock synthesizer, RAMDAC) and left in a
+worktree with no wiring and no gates; this integrates it. The card's own
+341-0868 declaration ROM and driver take System 7.0 to the Finder on the
+12-, 14- (Hi-Res), 16- and 21-inch colour monitors; `POM68K_MONITOR`
+names the monitor by width, as on the V8 and Sonora boards. Proof:
+`macii_824_etalon` (Hi-Res, one bit), `macii_824_8bit_etalon`,
+`macii_824_rgb12_etalon`, `macii_824_rgb21_etalon` on the Mac II and
+`iicx_824_8bit_etalon` on the 68030 board, each with a Finder signature,
+a pixel pin and a moving cursor; `display_card824_test` holds the
+register, scan-out, VBL and save-state contracts without assets. The
+eight-bit screens of the Mac II and the IIcx hash identically.
+
+**The slot PRAM record.** Read back from a boot on the card: XPRAM `$46`
+holds boardID `$0027`, `$48` the mode sResource (`$80` one bit … `$83`
+eight bits), `$49-$4C` driver bytes (`$A6 $A6 $00 $FF`). Seeding the whole
+record starts the Finder in 256 colours; a record the driver rejects is
+rewritten to `$80`. `$84`, 24 bits, is rejected on the Mac II: the 8•24
+offers millions of colours only under 32-bit addressing, which no
+reference volume has. That path is covered by the unit test only.
+
+**A lost bus cycle.** `MacIIMemory` splits a long into two words, so the
+card rebuilds the 68020 cycle from bytes (`writeReg`). A word to lanes 0-1
+followed by a long to the same port was merged into one write, dropping a
+CLUT component; the driver issues exactly that sequence. A lane already
+written in the pending cycle now starts a new one. The monochrome Portrait
+and Two-Page displays still end black: the driver's last CLUT load leaves
+the blue channel MAME's mono scan-out reads at zero, and MAME, scanning
+the same way, cannot arbitrate. They are not offered (TODO).
+
+**The cursor.** In the GUI the mouse did not move, and the reference
+System 7.0 image — an Infinite Mac one — sat on its « Infinite HD » alias
+alert (2026-09-16 (eleventh)) with no way to click Continue. The cause was
+not the card: under System 7 the Mac II cursor never ran, on Toby as well.
+`via2Ca1SlotTaskArmed()` raises VIA2 CA1 only when the interrupting slot
+has a handler (an empty queue is SysError 51), reading the ROM's tables at
+`($D04)`/`($D08)`. System 7 replaces them on the Mac II with the rewritten
+slot interrupt manager (mac-rom `OS/SlotMgr/SlotInterrupts.a`: "This will
+be removed from the Mac II in system 7.0"): `SlotQDT` at `($D04)` is a
+record of 15 `slotVBLPtrs`, a filler, 15 `slotIntQHeads` by slot number
+at `+$40` (`Internal/Asm/SlotMgrEqu.a`). Read as the old layout it was all
+zeros, the guard never armed and the slot VBL queue (`jCrsrTask`) never
+ran. The guard now recognises the new record by `slotVBLPtrs[0] = SlotQDT
++ $82`. `macii_sys7_boot_etalon` gains the cursor check that would have
+caught it. The 8•24 needed one more step: unlike Toby, which pulses its
+line every frame, it holds it until acknowledged, so a first VBL withheld
+before its handler existed never made another edge; `MacIIMemory::tick`
+delivers that edge once the handler exists, from saved state only.
 
 <a id="2026-10-25-ci-fix-trailer"></a>
 ## 2026-10-25 — The push that repairs red CI names the run it repairs

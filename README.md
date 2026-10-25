@@ -301,6 +301,7 @@ LLE requires user-provided dumps in these locations:
 | M50753 (required for PowerBook 140/145/145B/170) | PowerBook 140/145/145B/170 | `roms/pmu/pb140.bin` |
 | PG&E power manager | PowerBook Duo 210, 230, 250 | `roms/pge/pge_boot.bin` |
 | Toby video card declaration ROM 342-0008-a | Macintosh II, IIx, IIcx, IIfx | `roms/342-0008-a.bin` |
+| Display Card 8•24 declaration ROM 341-0868 (required to fit that card) | Macintosh II, II FDHD, IIx, IIcx | `roms/341-0868.bin` |
 
 PowerBook 140/145/145B/160/165/165c/170/180/180c require the 6,144-byte M50753 firmware; use the path above
 or `--firmware-override=pmu:lle:<path>`. These machines refuse to start without it.
@@ -444,6 +445,15 @@ large inputs are split at 1,900 MB by default. Run
   the selection survives saved
   states and session files. Use `POM68K_MONITOR=640` to attach it at startup
   (`0` keeps the LCD alone).
+- **Display Card 8•24 (Mac II, II FDHD, IIx, IIcx):** `POM68K_VIDEO_CARD=8-24`
+  fits Apple's Display Card 8•24 in slot 9 instead of the Macintosh II Video
+  Card (`toby`, the default). `POM68K_MONITOR` chooses its colour monitor by
+  width: `512` (12-inch RGB), `640` (Hi-Res, the default), `832` (16-inch)
+  or `1152` (21-inch). Choose 256 colours in the Monitors control panel; it
+  survives restarts. The card needs its 32 KB declaration ROM at the path
+  above and refuses to start without it. Millions of colours need 32-bit
+  addressing and are not qualified; the monochrome Portrait and Two-Page
+  displays are not offered. Session files carry the choice as `video-card`.
 - **Portable / PowerBook 100 sleep:** choose **Special > Sleep** in the
   guest Finder and confirm its network warning. Press a key to wake; saved
   states can also preserve a sleeping machine.

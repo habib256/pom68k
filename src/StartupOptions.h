@@ -184,6 +184,8 @@ concept IntegerStartupOption =
       startup_policy::TraceLimit)                                            \
     X(SeSecondFloppy, "POM68K_SE_SECOND_FLOPPY", StartupDomain::Core,      \
       startup_policy::EnabledBoolean)                                        \
+    X(VideoCard, "POM68K_VIDEO_CARD", StartupDomain::Core,                 \
+      startup_policy::Text)                                                  \
     X(NoCdBay, "POM68K_NO_CDBAY", StartupDomain::Core,                     \
       startup_policy::Presence)                                              \
     X(NoAgentAutostart, "POM68K_NO_AGENT_AUTOSTART", StartupDomain::Core,   \

@@ -1024,6 +1024,8 @@ target_link_libraries(macii_sys7_boot_etalon PRIVATE pom68k_core)
 add_test(NAME macii_sys7_boot_etalon COMMAND macii_sys7_boot_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+include(${CMAKE_CURRENT_LIST_DIR}/Pom68kNuBusVideoGates.cmake)
+
 # Gate: LLE ADB (PIC1654S) delivers mouse motion to the Finder — boots,
 # injects deltas, requires RawMouse/Mouse to move (soft-skips without
 # ROM+disk). Also pins the VIA2 CA1 slot-VBL → jCrsrTask coupling.

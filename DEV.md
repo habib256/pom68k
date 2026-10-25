@@ -489,8 +489,19 @@ Functional accuracy.
   `$6000-$7FFF` window).
 - **NuBus:** `NuBus` + `DeclRom` model the 32-bit slot windows and
   declaration ROMs; `TobyVideo` is the slot-9 640×480 card with a Bt453
-  CLUT (whole-frame decode). VIA2 CA1 slot IRQ fires **only** when the
-  `$D04` slot task queue is armed — an empty-queue CA1 gives SysError 51.
+  CLUT (whole-frame decode). `DisplayCard824` (`POM68K_VIDEO_CARD=8-24`)
+  replaces it with Apple's Display Card 8•24 — MAME's JMFB: CRTC, clock
+  synthesizer and RAMDAC programmed by the card's own 341-0868 driver,
+  1/2/4/8 bpp indexed and 24-bit packed direct colour, its declaration ROM
+  answering only at the top of the slot (`NuBus::DeclWindow::TopOfSlot`).
+  VIA2 CA1 slot IRQ fires **only** when the interrupting slot has a
+  handler — an empty-queue CA1 gives SysError 51. The ROM's tables sit at
+  `($D08)` (PA bit numbers) and `($D04)` (headers by bit); System 7 swaps
+  in the rewritten manager, whose `SlotQDT` record at `($D04)` holds
+  `slotIntQHeads` by slot number at `+$40` (mac-rom `SlotMgrEqu.a`) —
+  read wrongly, the Mac II cursor never moved under System 7. The 8•24
+  holds its line until acknowledged, so an edge withheld before its
+  handler existed is delivered once it does (`MacIIMemory::tick`).
 - **ADB:** LLE `Pic1654s` by default when `roms/adbmodem/342s0440-b.bin`
   is present; the mouse only moves on that path
   ([§3.6](#36-input-adb--pic1654s-transceiver-lle)).
@@ -2248,6 +2259,12 @@ Windows host under MSVC. `q605_serial_etalon` has a real Serial Driver client
 (`dev/serprobe`) exchange a hello, a 6000-byte burst and an order-sensitive
 receipt with the terminal on Mac OS 8.1),
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`,
+`POM68K_VIDEO_CARD` (`toby`, the default, or `8-24` = fit the Display
+Card 8•24 in slot 9 of the Mac II, II FDHD, IIx and IIcx,
+`CorePeripheralConfig::videoCard`; its 341-0868 dump is required, other
+spellings refuse to start, the SE/30 ignores it with a note, and a
+session's `video-card` key carries it; `POM68K_MONITOR` = `512`, `640`,
+`832` or `1152` picks the card's colour monitor),
 `POM68K_SE_SECOND_FLOPPY` (`1` = fit the SE / SE FDHD's second internal
 mechanism on VIA1 PA4 high, `CoreStorageConfig::secondInternalFloppy`;
 ignored by every other board; the relaunch argument
@@ -2373,7 +2390,7 @@ protocol is in `docs/RASPBERRY_PI.md` § 3.
 metrics, `src/jit/JitMetrics.h:27` — semantics in `POM68K_JIT.md` § 6).
 Four legacy non-prefixed diagnostics predate the namespace and are kept
 as-is: `EGRET_CMD_LOG`, `RTCDBG` and `SCCDBG`, now declared with the rest
-in `StartupOptions.h:220-222`, and `NEOST_EXC_DIAG` (Moira exception diag,
+in `StartupOptions.h:229-231`, and `NEOST_EXC_DIAG` (Moira exception diag,
 `Moira.cpp:1271`), still a direct `getenv`.
 
 **Test-only knobs** — read by a gate, never by the emulator; listed so the

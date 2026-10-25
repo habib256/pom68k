@@ -113,8 +113,18 @@ int main() {
 
     // Stall at EtherTalk CautionAlert: SCSI≈274, menu often dark. Finder
     // after dismiss: SCSI>500, menu light, desk mid-grey.
+    // The cursor rides the slot VBL (VIA2 CA1 → jCrsrTask). System 7
+    // rewrites the slot-interrupt tables the CA1 guard reads; until the
+    // guard knew that layout, this cursor never moved (MacIIMemory.cpp
+    // via2Ca1SlotTaskArmed).
+    auto rd16 = [&](uint32_t at) { return uint16_t(mem.peek8(at) << 8 | mem.peek8(at + 1)); };
+    const uint16_t mouseX = rd16(0x82E), mouseY = rd16(0x82C);
+    for (int f = 0; f < 120; ++f) { mem.mouseMove(3, 2); cpu.runCycles(kFrame); }
+    const bool mouseOk = rd16(0x82E) != mouseX && rd16(0x82C) != mouseY;
+    std::printf("RawMouse (%u,%u) -> (%u,%u)\n", mouseX, mouseY, rd16(0x82E), rd16(0x82C));
+
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
-           && mem.scsi().commands > 500;
+           && mem.scsi().commands > 500 && mouseOk;
     std::printf("%s\n", ok ? "PASSED — Sys7 Finder" : "FAILED");
     ok = agentboot::check(mem, cpu, kFrame, ok);
     return ok ? 0 : 1;

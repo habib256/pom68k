@@ -3,6 +3,8 @@
 
 #include "PlatformCompositionSupport.h"
 
+#include <fstream>
+
 // This composer's own family — see the header's note on the fan-in.
 #include "Cpu020.h"
 #include "MacIIMemory.h"
@@ -18,8 +20,9 @@ using pom68k::gui::runTobyGui;
 
 // ── Mac II machine thread ───────────────────────────────────────────────
 // Same GUI ↔ machine contract as LcMachine: queued commands, published
-// framebuffer + status. Video is NuBus Toby (640×480); sound is discrete
-// ASC @ $50F14000. Frame slice ≈ 60.15 Hz at 15.6672 MHz.
+// framebuffer + status. Video is the slot-9 NuBus card — Toby (640×480) or
+// the Display Card 8•24 — or the SE/30's internal 512×342; sound is
+// discrete ASC @ $50F14000. Frame slice ≈ 60.15 Hz at 15.6672 MHz.
 struct MacIiMachine
     : MachineHost<MacIiMachine, MacIIMemory, Cpu020, MacAudioHost> {
     using Base = MachineHost<MacIiMachine, MacIIMemory, Cpu020, MacAudioHost>;
@@ -43,7 +46,7 @@ struct MacIiMachine
     int64_t frameCycles() const { return kFrame; }
 
     void emulateQuantum() {
-        // Raster catch-up rides the wire slicing (LLE_VS_HLE §1.1): the Toby
+        // Raster catch-up rides the wire slicing (LLE_VS_HLE §1.1): a slot-9
         // card runs its own CRTC frame clock, while the SE/30's pseudo-slot
         // video has none and rides the machine's 60 Hz one.
         runQuantumWithWire(services, mem, cpu, kFrame,
@@ -61,14 +64,14 @@ struct MacIiMachine
     }
 
     void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        TobyVideo* tv = mem.toby();
+        NuBusDisplay* card = mem.slotDisplay();
         Se30Video* sv = mem.se30();
-        w = tv ? tv->hres() : sv ? Se30Video::W : TobyVideo::W;
-        h = tv ? tv->vres() : sv ? Se30Video::H : TobyVideo::H;
+        w = card ? card->width() : sv ? Se30Video::W : TobyVideo::W;
+        h = card ? card->height() : sv ? Se30Video::H : TobyVideo::H;
         // `fb_` is the RASTER SURFACE — emulateQuantum() decoded each row as
         // the beam scanned it. Catch up once more so a paused machine still
         // publishes a complete frame.
-        if (tv || sv) rasterBeam();
+        if (card || sv) rasterBeam();
         else fb_.assign(size_t(w) * size_t(h), 0xFFFFFFFFu);
         out.assign(fb_.begin(), fb_.end());
         // The decoders pack 00RRGGBB — alpha 0. ImGui blends, so a 0 alpha
@@ -86,7 +89,7 @@ private:
     static constexpr int64_t kFrame = MacIIMemory::kCpuHz / 60;
 
     void rasterBeam() {
-        if (TobyVideo* tv = mem.toby()) tv->raster(fb_);
+        if (NuBusDisplay* card = mem.slotDisplay()) card->raster(fb_);
         else if (Se30Video* sv = mem.se30())
             sv->raster(fb_, mem.framePos(), mem.frameCycles(), mem.frameCount());
     }
@@ -182,9 +185,26 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     const auto model = MacIIMemory::modelFor(selected);
     const bool is030 = profile.cpu == pom68k::CpuFamily::M68030;
     const bool se30 = model == MacIIMemory::Model::SE30;
+    using VideoCard = pom68k::CorePeripheralConfig::VideoCard;
+    const VideoCard card = services.config().core().peripherals.videoCard;
+    if (card == VideoCard::Unknown) {
+        std::fprintf(stderr, "POM68K_VIDEO_CARD: choose toby or 8-24.\n");
+        return 1;
+    }
+    const bool card824 = card == VideoCard::DisplayCard824 && !se30;
+    if (card == VideoCard::DisplayCard824 && se30)
+        std::printf("SE/30: no NuBus slot 9 — POM68K_VIDEO_CARD ignored\n");
+    uint8_t monitor = DisplayCard824::kHiRes;
+    if (card824 && !DisplayCard824::monitorFromWidth(
+                       services.config().devices().monitorWidth.value_or(640), monitor)) {
+        std::fprintf(stderr, "Display Card 8•24 monitor: choose 512, 640, "
+                             "832 or 1152 (POM68K_MONITOR).\n");
+        return 1;
+    }
     std::printf("Machine: %s (%s @ 15.6672 MHz, %s%s)\n",
                 profile.label, is030 ? "68030 + PMMU" : "68020",
-                se30 ? "512×342 interne" : "Toby NuBus",
+                se30 ? "512×342 interne"
+                     : card824 ? "Display Card 8•24 NuBus" : "Toby NuBus",
                 !services.config().cpu().fpu ? ""
                     : (is030 ? ", soft 68882" : ", soft 68881"));
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
@@ -205,6 +225,21 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
             std::fprintf(stderr,
                          "SE/30: se30vrom.uk6 missing (roms/se30/) — "
                          "no video\n");
+    } else if (card824) {
+        // No fallback ROM exists for this card: without the dump the
+        // machine would boot with no screen, so it does not start.
+        // POM68K_FIRMWARE_ROOT replaces the ./ and ../ search bases, as it
+        // does for every other dump.
+        std::string decl;
+        if (const auto& root = services.config().core().firmware.root)
+            for (const char* rel : DisplayCard824::kDeclRomCandidates)
+                if (decl.empty() && std::ifstream(*root + "/" + rel))
+                    decl = *root + "/" + rel;
+        if (!mem.installDisplayCard824(decl, monitor)) {
+            std::fprintf(stderr, "Display Card 8•24: place its 341-0868 "
+                                 "declaration ROM in roms/341-0868.bin.\n");
+            return 1;
+        }
     } else {
         mem.installTobyVideo();
     }
@@ -228,10 +263,10 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
         [&] { mem.rtc().setSeconds(services.hostMacSeconds()); },
         [](MacIiMachine& machine) {
             const MacIiMachine::Status st = machine.status();
+            NuBusDisplay* card = machine.mem.slotDisplay();
             return TobyStatusView{
                 st.pc, st.clock, st.overlay, st.hmmu24,
-                machine.mem.toby() ? machine.mem.toby()->hres() : 0,
-                machine.mem.toby() ? machine.mem.toby()->vres() : 0};
+                card ? card->width() : 0, card ? card->height() : 0};
         },
         romName, media, services);
 }

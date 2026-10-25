@@ -113,6 +113,11 @@ struct CorePeripheralConfig {
     // cold machine's historical $22 (printer-port async) setting.
     bool appleTalkPram = false;
     std::uint8_t adbKeyboardHandlerId = 1;
+    // The card in NuBus slot 9 of the Mac II, II FDHD, IIx and IIcx
+    // (POM68K_VIDEO_CARD = toby | 8-24). `Unknown` keeps a spelling the
+    // composition refuses instead of silently fitting the default card.
+    enum class VideoCard : std::uint8_t { Toby, DisplayCard824, Unknown };
+    VideoCard videoCard = VideoCard::Toby;
 
     bool adbLleTrace = false;
     bool adbPicTrace = false;
