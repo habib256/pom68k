@@ -208,13 +208,40 @@ Before considering a change complete:
   conformance, whole-tier stability and same-process performance evidence are
   independent admissions.
 
-External hardware sources, in order:
+### Evidence grades — written into the code
 
-0. Apple's own ROM source (`elliotnunn/mac-rom`) where it covers the question; it outranks all below (`docs/BASILISK_ROM_NOTES.md` § 8.9).
-1. MAME Apple machine/device models and the Motorola 68k family.
-2. *Guide to the Macintosh Family Hardware* and *Inside Macintosh III*.
-3. Hatari/WinUAE for CPU timing and differential behaviour.
-4. pce-macplus, Mini vMac and Basilisk II as behavioural cross-checks.
+**The silicon is the reference.** Every claim about hardware carries **its
+grade and its source**, in one bracket at the head of the comment, so a reader
+and a `grep` agree on what backs the code:
+
+| Grade | Evidence | For POM68K |
+|---|---|---|
+| **A** | Measured on **real hardware** | A scope or capture on a real Plus / LC II / Quadra. |
+| **B** | **Primary document** | *Guide to the Macintosh Family Hardware*, *Inside Macintosh*, the Motorola 68000/68030/68040 and 68882 manuals, chip datasheets, Apple technical notes. |
+| **C** | **ROM disassembly** | Apple's own ROM source (`elliotnunn/mac-rom`), and the ROM images themselves. Proof of the contract the software expects. |
+| **D** | **Another emulator** | MAME, Hatari, WinUAE, pce-macplus, Mini vMac, Basilisk II — **all equal**. A reading of the hardware by someone else: useful, fallible. |
+| **E** | **Asserted with no source.** | |
+| **F** | **Admitted unknown** | guessed, tuned, approximate, unverified. |
+
+Three rules follow. **A grade-D citation names its revision** (tag or commit):
+upstream line numbers move on every commit, so a bare `file.cpp:248-253`
+designates nothing. **A lower grade never overrules a higher one** — where
+POM68K diverges from MAME or WinUAE because a manual, a ROM or a measurement
+says otherwise, that is correct, and the comment says so; it protects the code
+from a future "alignment" that would be a regression. **An F is kept, not
+hidden**: state what would settle it.
+
+```
+// [B] MC68030 User's Manual § 7.1.3 — the ATC is flushed on PMOVE to TC.
+// [D] MAME m68kcpu.cpp:1204-1219 @ mame0287 — same, as MAME reads it.
+// [C] mac-rom Plus 4D1F8172 $400A1C — the trap expects D0 preserved.
+// [A] Measured on a real Plus: 783 ns per bus cycle.
+// [F] Unknown: tuned until MacPaint stopped tearing. Settled by: a capture.
+```
+
+This hierarchy is shared by every emulator from the same author (POM2, POM1,
+POMIIGS, POM68K, POMPPC, NeoST, RasterSystemGG). The previous ranking here put
+MAME above *Guide to the Macintosh Family Hardware*; that was backwards.
 
 On a specification/oracle conflict, preserve the reproducer and record the
 ruling in `CHANGELOG.md` or the relevant research note.
