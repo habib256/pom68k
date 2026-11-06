@@ -615,7 +615,7 @@ them: `fline` 4 500 / 4 500, `fpu` 2 986 / 3 000, `fpuraw` 4 448 / 4 500,
 and fresh seeds (971-973, 911-913, 981-983; 6 000 vectors each) replay at
 6 000, 5 979 and 5 944 with every residual in the four classes below.
 
-### D24. Delivery of an enabled arithmetic exception on the 68040  [open — fork kept]
+### D24. Delivery of an enabled arithmetic exception on the 68040  [applied 2026-11-07: manual + oracle]
 The oracle's `fpsr_check_arithmetic_exception` returns "nonmaskable" only
 for SNAN/OPERR on an integer move-out; every other enabled exception of an
 opclass 000/010 instruction stays pending and is taken by the NEXT FPU
@@ -645,11 +645,21 @@ Manual, 1993 revision, § 9.7; grade B):
   nonmaskable and "taken immediately" — the oracle's one immediate case.
 - State frame fields, T bit: "only an opclass 3 instruction can indicate a
   post-instruction exception".
-So the ruling should flip to the oracle: pending, format $0, at the next
-FPU instruction. It is not a one-line change — the FSAVE BUSY frame the
-handler then reads (E3, CMDREG3B) must describe the posted instruction —
-and single-instruction vectors cannot show the second half. It needs
-two-instruction oracle vectors first (`oracle_step` twice from one state).
+So the ruling flips to the oracle: pending, format $0, at the next FPU
+instruction.
+
+**Applied the same night** (`POM68K_VENDOR.md` row 50), once two-instruction
+vectors existed to hold the second half (`fuzz040.py --steps 2`, family
+`fpu2`: an FPU instruction, then FNOP / FMOVE / FTST / FADD / FSAVE /
+FMOVE FPSR,D0 / NOP / MOVEQ, FPCR enables armed seven times in ten).
+6 000 vectors: 5 763 before, 5 997 after. The 22 single-instruction
+vectors left `tests/sst68040_fpu.known`; fresh `fpu` seeds 911-913 replay
+at 6 000 / 6 000. It turned out to be the delivery decision plus one rule
+the immediate delivery had hidden — on a 68040 any overflow or underflow
+leaves the destination register untouched — the pending machinery being
+the 68882's. The three vectors that remain are not the ruling: an FSAVE
+after a posted exception writes zeros where the oracle has the
+intermediate result (WBT) and its guard bits (`tests/sst68040_fpu2.known`).
 
 ### D25. FMOVE.P to a data register on the 68040  [open — fork kept]
 Oracle: unsupported-datatype trap ("68040+ generates unimplemented

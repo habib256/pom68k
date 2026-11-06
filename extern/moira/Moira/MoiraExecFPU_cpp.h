@@ -697,6 +697,14 @@ Moira::fpuMakeStatus()
 
     u32 exception = fpu.fpsr & fpu.fpcr & (FPSR_SNAN | FPSR_OPERR | FPSR_DZ);
 
+    // POM68K (ruling D24): on the 68040 an overflow or an underflow always
+    // goes to the FPSP, enabled or not, and the destination register keeps
+    // its value ([B] M68040UM § 9.7.4.2: "the register is not affected";
+    // [D] WinUAE fpp.c fpsr_make_status @ Hatari e77819f7). Invisible while
+    // every such exception was delivered before the store.
+    if (fpuModel == FPUModel::M68040)
+        exception |= fpu.fpsr & (FPSR_OVFL | FPSR_UNFL);
+
     if (fpu.fpsr & (FPSR_BSUN | FPSR_SNAN | FPSR_OPERR)) fpu.fpsr |= FPSR_AE_IOP;
     if ((fpu.fpsr & FPSR_UNFL) && (fpu.fpsr & FPSR_INEX2)) fpu.fpsr |= FPSR_AE_UNFL;
     if (fpu.fpsr & FPSR_DZ) fpu.fpsr |= FPSR_AE_DZ;
@@ -799,9 +807,9 @@ Moira::fpuCheckArithException(
     u32 opclass = ext >> 13 & 7;
 
     if (fpuModel == FPUModel::M68040) {
-        // Integrated-FPU exception state. Enabled exceptions are delivered
-        // immediately (post-instruction); OVFL/UNFL are nonmaskable. The
-        // frame fields mirror WinUAE's revision-$41 UNIMP/BUSY capture.
+        // Integrated-FPU exception state. The frame fields mirror WinUAE's
+        // revision-$41 UNIMP/BUSY capture; who delivers the exception is
+        // decided by the return value at the end of this branch.
         fpu.expState = 1;
         fpu.fpiarCu = fpu.fpiar;
         fpu.cmdreg1b = ext;
@@ -834,7 +842,25 @@ Moira::fpuCheckArithException(
                                ((ext & 0x0004) << 3));
             fpu.wbte15 = fpu.expPend == 51 ? 1 : 0;
         }
-        return true;
+
+        // POM68K (ruling D24): an exception the user ENABLED is posted — the
+        // instruction completes and the next floating-point instruction
+        // takes it as a pre-instruction exception (fpuCheckPending, format
+        // $0). Only an exception that is pending without being enabled —
+        // the 68040's nonmaskable OVFL/UNFL, or SNAN/OPERR on a move to an
+        // integer — is taken at once, post-instruction, by the caller.
+        // [B] M68040UM § 9.7.2.1 b: "the processor posts an exception and
+        //     another floating-point instruction is eventually encountered;
+        //     a pre-instruction exception is reported at that time";
+        //     § 9.7.3.1 b, § 9.7.6 likewise; § 9.7.3.2 for the immediate
+        //     integer case.
+        // [D] WinUAE fpp.c fpsr_check_arithmetic_exception @ Hatari e77819f7:
+        //     nonmaskable = the latched vector is not the one the enabled
+        //     set alone would give.
+        // Until 2026-11-07 every exception was delivered at once here.
+        // Gate: sst68040 (fpu, fpuraw and the two-instruction fpu2 cells),
+        //       fpu040_test.
+        return fpu.expPend != fpuVectorFor(fpu.fpsr & fpu.fpcr & 0xff00);
     }
 
     fpu.fsaveEo[0] = fpu.fsaveEo[1] = fpu.fsaveEo[2] = 0;
@@ -2431,12 +2457,9 @@ Moira::execFRestore(u16 opcode)
                 fpuClearStatus();
                 const bool store = fpuArithmetic(src, dst, cmd);
                 if (store) fpu.fp[(cmd >> 7) & 7] = dst;
-                if (fpuCheckArithException(src, opcode, cmd, fpu.ea)) {
-                    execFpuException<C>(u16(fpu.expPend), false);
-                    CYCLES_68020(ck)
-                    FINALIZE
-                    return;
-                }
+                // Whatever the resumed operation raises stays posted: the
+                // oracle ignores the verdict here (fpp.c fpuop_restore).
+                (void)fpuCheckArithException(src, opcode, cmd, fpu.ea);
             }
             fpu.state = 1;
             fpu.expState = 0;

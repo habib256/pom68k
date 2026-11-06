@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](#2026-11-07-d24-applied)
 - **2026-11-07 (fifth)** — [The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware](#2026-11-07-oracle-strict-6888x)
 - **2026-11-07 (fourth)** — [Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction](#2026-11-07-d24-manual)
 - **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](#2026-11-07-core-env-free)
@@ -1214,6 +1215,67 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-d24-applied"></a>
+## 2026-11-07 (sixth) — Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors
+
+The fourth entry of the day recorded D24 as settled by the manual and
+"not applied": the second half of the behaviour — what the *next*
+instruction does — cannot be seen in a single-instruction vector. So the
+vectors came first.
+
+**Two-instruction vectors.** `fuzz040.py --steps N` steps the oracle N times
+from one state; the vector carries `"steps"` when it is not 1 and
+`sst68040` executes as many. The `fpu2` family is an FPU instruction
+followed by one of FNOP, FMOVE FP0,FP1, FTST, FADD, FSAVE, FMOVE FPSR,D0,
+NOP, MOVEQ — the eight ways a posted exception is, or is not, delivered —
+with the FPCR enables armed seven times in ten. Every pinned cell
+regenerates byte-identically.
+
+**A leak in the harnesses, found on the way.** `sst68030` and `sst68040`
+never cleared their 16 MB bus: a vector reading a byte outside its initial
+list saw what an earlier vector had left. Nine `fpu2` vectors failed for
+that reason alone — an FMOVEM from the stack reading a previous vector's
+exception frame — and passed when run alone. Both now zero what the
+previous vector set or wrote, as the oracle does. No pinned corpus changes
+its score: the leak had hidden nothing there. It is the same defect as the
+oracle's `mmufixup` this morning, on the other side of the comparison.
+
+**The change** (`POM68K_VENDOR.md` row 50) is two decisions:
+
+- `fpuCheckArithException` reports an exception as immediate only when it
+  is pending *without being enabled* — the 68040's nonmaskable overflow and
+  underflow, SNAN/OPERR on a move to an integer. An enabled one stays in
+  `expPend`; the next FPU instruction takes it pre-instruction, format $0,
+  through the path the 68882 already used.
+- `fpuMakeStatus`: on a 68040 any overflow or underflow leaves the
+  destination register untouched (M68040UM § 9.7.4.2, "the register is not
+  affected"). The immediate delivery had hidden that rule — it returned
+  before the store.
+
+| | before | after |
+|---|---|---|
+| `fpu2`, two instructions, seeds 931-933 | 5 763 / 6 000 | **5 997** |
+| `sst68040_fpu`, pinned | 7 434 (+66 listed) | 7 456 (+44 listed) |
+| `fpu`, fresh seeds 911-913 | 5 979 / 6 000 | **6 000** |
+
+The 22 vectors of D24 leave `tests/sst68040_fpu.known`; the gate would have
+refused the change otherwise ("listed in --known but passes: remove it"),
+which is the mechanism doing its job on its first day.
+
+`fpu040_test` asserted the old behaviour — "Enabled arithmetic exceptions
+are immediate on the integrated 040" — and is rewritten from the manual: a
+divide by zero with DZ enabled completes, leaves FP0 alone, and the FNOP
+behind it takes vector 50 with a format $0 frame whose PC is the FNOP's.
+
+**What remains** is not the ruling. An FSAVE after a posted exception
+writes a BUSY or UNIMP frame whose intermediate-result fields are zero here
+and filled from softfloat's internal state in the oracle: three vectors,
+listed in `tests/sst68040_fpu2.known`, and a `TODO.md` item — the FPSP
+reads those fields to finish the operation.
+
+**Pinned** as `sst68040_fpu2` (6 000 vectors, recipe in
+`tests/sst_corpora.lock`).
 
 <a id="2026-11-07-oracle-strict-6888x"></a>
 ## 2026-11-07 (fifth) — The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware

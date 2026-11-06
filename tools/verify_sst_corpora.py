@@ -2,10 +2,10 @@
 """Verify — or with --write, record — the identity of the CPU vector corpora.
 
 The corpora behind `sst68000`, `sst68030`, `sst68030_solo`,
-`sst68030_fpuraw`, `sst68040`, `sst68040_8k`, `sst68040_fline` and
-`sst68040_fpu` are too large for the repository (1.1 GB, 116 MB, 211 MB,
-238 MB, 315 MB, 176 MB, 190 MB, 316 MB) and live in git-ignored
-`tests/data/`. Until 2026-11-06 nothing pinned them: a gate
+`sst68030_fpuraw`, `sst68040`, `sst68040_8k`, `sst68040_fline`,
+`sst68040_fpu` and `sst68040_fpu2` are too large for the repository
+(1.1 GB, 116 MB, 211 MB, 238 MB, 315 MB, 176 MB, 190 MB, 316 MB, 276 MB)
+and live in git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate
 could be green on one host and on another against different files, and nobody
 could tell.
 `tests/sst_corpora.lock` records, per file, the size and SHA-256 of what the
@@ -27,7 +27,8 @@ import sys
 from pathlib import Path
 
 CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68030_fpuraw",
-           "sst68040", "sst68040_8k", "sst68040_fline", "sst68040_fpu")
+           "sst68040", "sst68040_8k", "sst68040_fline", "sst68040_fpu",
+           "sst68040_fpu2")
 
 HEADER = """\
 # Identity of the CPU vector corpora (tools/verify_sst_corpora.py).
@@ -81,8 +82,17 @@ HEADER = """\
 #         --n 1000 --seed S --out fpu_M.json
 #         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpuraw --mmu M
 #         --n 1500 --seed S --out fpuraw_M.json
-#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu.known`: 66 of
-#   them are open rulings (D24-D27) the fork does not follow the oracle on.
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu.known`: 44 of
+#   them are open rulings (D25-D27) the fork does not follow the oracle on.
+# sst68040_fpu2 — TWO instructions per vector ("steps": 2) on the full
+#   68040: an FPU instruction, then one that decides when a posted exception
+#   is delivered; FPCR enables armed seven times in ten. Generated
+#   2026-11-07, 6 000 vectors: for each mmu in off, identity, tt, seeds 931
+#   to 933:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpu2 --mmu M
+#         --steps 2 --n 2000 --seed S --out fpu2_M.json
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu2.known` (three
+#   vectors: state-frame internals after a posted exception).
 #
 # corpus | file | size | sha256
 """

@@ -60,12 +60,16 @@ passing or disappears (`tests/SstKnown.h`).
 
 | Ruling | Fork (kept) | Oracle | Why it is kept | Settled by |
 |---|---|---|---|---|
-| **D24** | An enabled arithmetic exception of an opclass 000/010 instruction is delivered at once, format $3 | Left pending; taken as a pre-instruction exception by the next FPU instruction (only SNAN/OPERR on an integer move-out are immediate) | `fpu040_test` asserts the immediate form, with no source. **The manual says otherwise** (M68040UM § 9.7.2.1, 9.7.3.1, 9.7.6: the exception is "posted" and "the next floating-point instruction that is encountered takes a pre-instruction exception"; quotes in the notes): the oracle is right and this ruling is due to flip | already settled by the manual; what is missing is the work — a BUSY state frame that describes the posted instruction, and two-instruction oracle vectors to hold it |
 | **D25** | FMOVE.P FPn,Dn takes a plain Line-F | Unsupported-datatype trap, "even if destination EA is Dn or An" | `fpu040_test` asserts the Line-F | the same instruction on a real 68040 |
 | **D26** | FMOVE.P FPn,(An)+{Dn} and -(An){Dn} step An by 12 | An unchanged: the size table holds 0 for the dynamic k-factor format | a packed operand is twelve bytes whatever its k-factor (MC68881/MC68882 UM); the oracle's value is a table slot, not a decision | An after that instruction's datatype trap on a real 68040 |
 | **D27** | FMOVE(M) control registers to a PC-relative destination: Line-F at once | Line-F after evaluating the EA, so a memory-indirect one marks a page Used (or faults in the walk) | three vectors; the instruction does not exist either way | — |
 | **D28** | FBcc / FDBcc taken to an odd address: address error inside the branch, as for Bcc | Sets the PC and raises nothing, then or later | the manual: a fetch from an odd address is an address error. The oracle's FPU branches simply lack the test its integer branches have | — (the oracle has no frame to compare) |
 | **D29** | EA fields $3D-$3F on a 68030: the coprocessor decides — register-to-register runs, a memory form clears the status byte then takes a Line-F | Plain Line-F from the opcode table | on a 68030 the main processor validates an EA only when the coprocessor asks for it; nothing at hand states it for these fields. 63 vectors | `$F23D $0000` (FMOVE FP0,FP0 with EA field $3D) on a real 68030 + 68882 |
+
+D24 — an enabled 68040 FPU exception delivered at once instead of by the
+next FPU instruction — stood in this table for a few hours on 2026-11-07:
+the manual (M68040UM § 9.7) sided with the oracle and the fork now follows
+both (`extern/moira/POM68K_VENDOR.md` row 50, gate `sst68040_fpu2`).
 
 Two 68000 rules of the same kind predate the 68030 oracle and are flagged
 in `extern/moira/POM68K_VENDOR.md` § *SingleStepTests/680x0 convergence

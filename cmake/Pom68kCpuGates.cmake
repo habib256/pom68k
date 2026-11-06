@@ -70,6 +70,14 @@ add_test(NAME sst68040_fpu
          COMMAND sst68040 "${POM68K_SST040_FPU_DIR}" --fpu
                  --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpu.known")
 
+# Two instructions per vector on the full 68040: the first posts an FPU
+# exception, the second decides when it is delivered (ruling D24).
+set(POM68K_SST040_FPU2_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_fpu2"
+    CACHE PATH "Directory of two-instruction SST040 vectors, integrated FPU")
+add_test(NAME sst68040_fpu2
+         COMMAND sst68040 "${POM68K_SST040_FPU2_DIR}" --fpu
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpu2.known")
+
 # The identity of the vector corpora (tests/sst_corpora.lock): a corpus
 # that is present must match the pinned files byte for byte; an absent one
 # soft-skips, like the harnesses that read it.
@@ -83,4 +91,5 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68040_8k=${POM68K_SST040_8K_DIR}
                  --dir sst68040_fline=${POM68K_SST040_FLINE_DIR}
                  --dir sst68040_fpu=${POM68K_SST040_FPU_DIR}
+                 --dir sst68040_fpu2=${POM68K_SST040_FPU2_DIR}
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

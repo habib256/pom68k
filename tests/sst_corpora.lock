@@ -49,8 +49,17 @@
 #         --n 1000 --seed S --out fpu_M.json
 #         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpuraw --mmu M
 #         --n 1500 --seed S --out fpuraw_M.json
-#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu.known`: 66 of
-#   them are open rulings (D24-D27) the fork does not follow the oracle on.
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu.known`: 44 of
+#   them are open rulings (D25-D27) the fork does not follow the oracle on.
+# sst68040_fpu2 — TWO instructions per vector ("steps": 2) on the full
+#   68040: an FPU instruction, then one that decides when a posted exception
+#   is delivered; FPCR enables armed seven times in ten. Generated
+#   2026-11-07, 6 000 vectors: for each mmu in off, identity, tt, seeds 931
+#   to 933:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpu2 --mmu M
+#         --steps 2 --n 2000 --seed S --out fpu2_M.json
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu2.known` (three
+#   vectors: state-frame internals after a posted exception).
 #
 # corpus | file | size | sha256
 sst68000 | ABCD.json | 7962994 | 25cc175c1c4e539519e88a4122dc7cc6f6aa0b9336bbb428fdaed84fb601ceac
@@ -241,3 +250,7 @@ sst68040_fpu | fpu_tt.json | 58660629 | d8615671c2157e09710a689981d1ecc681836981
 sst68040_fpu | fpuraw_identity.json | 88120066 | 0fa66dc56e028ba2c9e61b9c785a179d63e5fafb74f67449ce2f1d6c430c8163
 sst68040_fpu | fpuraw_off.json | 40675589 | 4cc557a393568e2ea9ce49df690745352865ae19dc9c8afa77bcd07befaf5691
 sst68040_fpu | fpuraw_tt.json | 88048816 | 92c5a55e3e59009f4d05d9a30065d207f4ece75cd0af44c7d4bdf36e3408c203
+
+sst68040_fpu2 | fpu2_identity.json | 117539099 | aadd9a68ea331dfc485024bf69441e3a78edae489525974304ed8690c88f39dd
+sst68040_fpu2 | fpu2_off.json | 54274998 | 4b88ae74618c875c44eeec861c8d2924d61155def9c4714fdc34532946294609
+sst68040_fpu2 | fpu2_tt.json | 117446131 | c1e97672b9d947b7ee2d43f0e6aff9ed790dc30ec4da701125995c94d51df157

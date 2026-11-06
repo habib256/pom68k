@@ -4,32 +4,6 @@
 # that fails apart, and FAILS on one that passes or is missing: when a ruling
 # is settled, its block leaves this file in the same change.
 
-# D24 - an enabled arithmetic exception of an opclass 000/010 instruction.
-# The fork delivers it at once (format $3, tests/fpu040_test.cpp); the oracle
-# leaves it pending for the next FPU instruction.
-040 fpu/identity seed=902 #276
-040 fpu/identity seed=902 #932
-040 fpu/off seed=901 #37
-040 fpu/off seed=901 #110
-040 fpu/off seed=901 #151
-040 fpu/off seed=901 #408
-040 fpu/off seed=901 #913
-040 fpu/tt seed=903 #26
-040 fpu/tt seed=903 #87
-040 fpu/tt seed=903 #211
-040 fpu/tt seed=903 #638
-040 fpu/tt seed=903 #791
-040 fpu/tt seed=903 #831
-040 fpu/tt seed=903 #965
-040 fpuraw/identity seed=962 #955
-040 fpuraw/off seed=961 #119
-040 fpuraw/off seed=961 #429
-040 fpuraw/tt seed=963 #41
-040 fpuraw/tt seed=963 #483
-040 fpuraw/tt seed=963 #779
-040 fpuraw/tt seed=963 #1286
-040 fpuraw/tt seed=963 #1384
-
 # D25 - FMOVE.P FPn,Dn (static or dynamic k-factor). The fork takes a plain
 # Line-F (tests/fpu040_test.cpp); the oracle the unsupported-datatype trap.
 040 fpuraw/identity seed=962 #225

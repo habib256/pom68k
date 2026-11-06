@@ -316,22 +316,20 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68040
 
-- [ ] **Livrer une exception arithmétique armée du 68040 en
-  pré-instruction de l'instruction FPU suivante (D24).** Le fork la livre
-  immédiatement (frame $3) pour toute instruction d'opclasse 000/010, et
-  `fpu040_test` l'affirme sans source. Le manuel dit le contraire, comme
-  l'oracle (M68040UM § 9.7.2.1, 9.7.3.1, 9.7.6 : l'exception est
-  « postée » et « the next floating-point instruction that is encountered
-  takes a pre-instruction exception » ; seules SNAN/OPERR d'une sortie
-  entière et les sorties mémoire sont immédiates — citations dans
-  `oracle/fuzz/disputes/NOTES.md`). La décision est donc prise, par un
-  grade B ; reste le travail : laisser `expPend` armé, faire décrire au
-  frame FSAVE BUSY l'instruction postée (E3, CMDREG3B), corriger
-  `fpu040_test`, vider les 22 vecteurs de `tests/sst68040_fpu.known`.
-  *Préalable : des vecteurs d'oracle à deux instructions* (`oracle_step`
-  deux fois depuis un même état), la seconde moitié étant invisible d'un
-  vecteur à une instruction. Même besoin que la cellule multi-instruction
-  de l'ATC ci-dessous.
+- [ ] **Remplir les champs internes des frames d'état BUSY et UNIMP du
+  68040.** Depuis l'application de D24 (rang 50) une exception armée est
+  postée et le handler la lit par FSAVE ; `fpuCheckArithException` y
+  laisse à zéro le résultat intermédiaire (WBT), ses bits de garde (GRS)
+  et, pour FMOVE/FABS/FNEG, FPTEMP/ETEMP arrondis, que l'oracle tire de
+  l'état interne de softfloat (`fpp_get_internal*`). Le FPSP s'en sert
+  pour finir l'opération. Trois vecteurs nommés dans
+  `tests/sst68040_fpu2.known` ; la famille `fpu2` avec FSAVE en seconde
+  instruction en produira d'autres.
+- [ ] **Donner des vecteurs à plusieurs instructions aux autres états en
+  vol.** `fuzz040.py --steps` et le champ `steps` des vecteurs existent
+  (2026-11-07) et tiennent D24 ; le même outil sert l'ATC ci-dessous
+  (remplacement, bit S) et, porté à `fuzz030.py`, les exceptions postées
+  du 6888x, le pipe de préfetch et le verrou du RTE $B.
 - [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
   dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
   donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la
