@@ -538,6 +538,49 @@ def _op_fpuraw(rng: random.Random) -> list[int]:
     return [op, ext] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 5))]
 
 
+def _op_rmw(rng: random.Random) -> list[int]:
+    """Integer instructions whose LAST access is a write to memory through
+    A0 — the register gen_state aims at a bad page for this family, as it
+    does for `fault`. The fault family has its own short opcode list; a
+    write fault on an ALU destination, a memory shift, a bit operation or a
+    BCD/extended -(Ay),-(Ax) reached the harness only through `random`
+    (four vectors in 4 500 on 2026-11-07, all wrong: frame $B where the
+    oracle stacks the short $A of a last write).
+    """
+    mode = rng.choice([0x10, 0x18, 0x20, 0x28])       # (A0) (A0)+ -(A0) d16(A0)
+    size = rng.choice([0x00, 0x40, 0x80])             # B W L
+    dn = rng.randrange(8) << 9
+
+    def ea_ext() -> list[int]:
+        return [rng.getrandbits(16) & 0x00FE] if mode == 0x28 else []
+
+    def imm() -> list[int]:
+        return ([rng.getrandbits(16), rng.getrandbits(16)] if size == 0x80
+                else [rng.getrandbits(16)])
+
+    forms = [
+        lambda: [rng.choice([0xD100, 0x9100, 0xC100, 0x8100, 0xB100])
+                 | dn | size | mode] + ea_ext(),       # ADD/SUB/AND/OR/EOR Dn,<ea>
+        lambda: [rng.choice([0x5000, 0x5100]) | dn | size | mode] + ea_ext(),  # ADDQ/SUBQ
+        lambda: [rng.choice([0x0600, 0x0400, 0x0200, 0x0000, 0x0A00])
+                 | size | mode] + imm() + ea_ext(),    # ADDI/SUBI/ANDI/ORI/EORI
+        lambda: [rng.choice([0x4400, 0x4000, 0x4600, 0x4200])
+                 | size | mode] + ea_ext(),            # NEG/NEGX/NOT/CLR
+        lambda: [rng.choice([0x0140, 0x0180, 0x01C0]) | dn | mode] + ea_ext(),   # BCHG/BCLR/BSET Dn
+        lambda: [rng.choice([0x0840, 0x0880, 0x08C0]) | mode,
+                 rng.randrange(8)] + ea_ext(),         # BCHG/BCLR/BSET #
+        lambda: [0xE0C0 | rng.randrange(8) << 8 | mode] + ea_ext(),   # memory shift/rotate
+        lambda: [0x50C0 | rng.randrange(16) << 8 | mode] + ea_ext(),  # Scc
+        lambda: [0x4AC0 | mode] + ea_ext(),            # TAS
+        lambda: [0x4800 | mode] + ea_ext(),            # NBCD
+        lambda: [rng.choice([0xC108, 0x8108]) | 1],    # ABCD/SBCD -(A1),-(A0)
+        lambda: [rng.choice([0xD108, 0x9108]) | size | 1],   # ADDX/SUBX -(A1),-(A0)
+        lambda: [rng.choice([0x1000, 0x3000, 0x2000])
+                 | (mode & 0x38) << 3 | rng.randrange(8)] + ea_ext(),  # MOVE Dn,<ea>
+    ]
+    return rng.choice(forms)()
+
+
 def _op_fpu2(rng: random.Random) -> list[int]:
     """An FPU instruction, then a second one that decides when a posted
     exception is delivered. For fuzz030.py / fuzz040.py --steps 2; gen_state
@@ -559,7 +602,7 @@ def _op_fpu2(rng: random.Random) -> list[int]:
 FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
             "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw,
-            "fpu2": _op_fpu2}
+            "fpu2": _op_fpu2, "rmw": _op_rmw}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -597,7 +640,7 @@ def gen_state(rng: random.Random, family: str = "core",
         st.tt0 = (0x00 << 24) | (0xFF << 16) | (1 << 15) | (1 << 10) | (7 << 4)
     # else: MMU off (tc.E = 0)
 
-    if family == "fault":
+    if family in ("fault", "rmw"):
         # Aim A0 at one of the table's bad pages (O4 slice 3); with no
         # bad page available (mmu off) fall back to a random data page.
         # Offsets deliberately include odd addresses and page boundaries

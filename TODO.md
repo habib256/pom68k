@@ -291,15 +291,23 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   une cible impaire, quatrième reste du balayage, est devenu la décision
   D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
   manuel ; l'oracle n'en lève jamais.)
-- [ ] **Empiler la frame courte $A quand l'écriture d'un RMW faute.**
-  *Quatre vecteurs reproductibles* (`scratchpad/2026-11-07/FUZZ_SWEEP2.md`,
-  graines 1008 et 1009) : SBCD -(An),-(An), SUB.L Dn,(An), BSET Dn,(d16,An)
-  et SUB.B Dn,-(An) en mode utilisateur, écriture fautive — l'oracle
-  empile $A avec le PC de l'instruction suivante (dernière écriture), le
-  fork $B. La famille `fault` a sa propre liste d'opcodes et n'émet pas
-  ces formes : lui donner celle de `core` couvrirait la classe. Même
-  balayage, un vecteur : PTEST laisse MMUSR.I à zéro
-  (`mmu/tt seed=1006 #1188`).
+- [ ] **Fusionner le marquage « dernière écriture » des RMW du 68030 et
+  le CLR sans lecture — après les paliers machine.** La famille `rmw`
+  (`gen030.py`, 2026-11-07 : treize formes dont le dernier accès est une
+  écriture mémoire, A0 visant une mauvaise page) rejoue à **5 052 / 6 000**
+  sur cet arbre : sept handlers (ADD/SUB vers la mémoire, ABCD/SBCD/NBCD,
+  ADDX/SUBX, décalages mémoire, BCHG/BCLR/BSET) appellent `writeM` sans
+  marquer la dernière écriture — frame $B et redémarrage là où le 68030
+  empile $A et termine — et CLR lit sa destination sur 68020/68030 alors
+  que seuls « the MC68000 and MC68008 » le font (M68000PRM). Le correctif
+  est écrit et tenu par ses vecteurs sur la branche
+  `fix/m68030-rmw-last-write` (5 989 / 6 000, corpus `sst68030_rmw`,
+  rang 51, cellule `moira_rules_test`) ; il n'est **pas fusionné** parce
+  que le CLR sans lecture retire un cycle de bus à tous les profils
+  68020/68030 et qu'aucun etalon n'a tourné avec. Le 68040 n'a pas la
+  classe (`fuzz040.py --family rmw` : 6 000 / 6 000). Même balayage, un
+  vecteur : PTEST laisse MMUSR.I à zéro (`mmu/tt seed=1006 #1188`,
+  `scratchpad/2026-11-07/FUZZ_SWEEP2.md`).
 - [ ] **Repasser les corpus 68030 à l'oracle strict en appliquant D23b.**
   Tous les corpus 68030 antérieurs au 2026-11-07 ont été produits avec
   `fpu_no_unimplemented = false`, où WinUAE laisse un 6888x exécuter les

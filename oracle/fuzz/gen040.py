@@ -38,7 +38,7 @@ from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
                     STACK_ISP, STACK_MSP, STACK_USP,
                     build_vector_table, _w16, _w32,
                     _op_random, _op_core, _op_fault,
-                    _op_fpu, _op_fpuraw, _op_fpu2, _fp_special_words)
+                    _op_fpu, _op_fpuraw, _op_fpu2, _op_rmw, _fp_special_words)
 
 # ── 040 MMU table builder (M68040UM § 3.1/3.2) ─────────────────────────────
 TC040_FUZZ = 0x8000        # E=1, P=0 → 4K pages
@@ -234,7 +234,7 @@ def _op_sysraw040(rng: random.Random) -> list[int]:
 
 FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
-            "sysraw": _op_sysraw040,
+            "sysraw": _op_sysraw040, "rmw": _op_rmw,
             "fpu2": _op_fpu2,
             "fault": _op_fault040, "fpu": _op_fpu,
             "fline": _op_fpuraw, "fpuraw": _op_fpuraw}
@@ -282,7 +282,7 @@ def gen_state(rng: random.Random, family: str = "core",
         st.dtt0 = TT040_SUPER
     # else: MMU off (tc040.E = 0, roots/windows zero)
 
-    if family == "fault":
+    if family in ("fault", "rmw"):
         # Aim A0 at a bad page; offsets include odd addresses and page
         # boundaries so sub-accesses straddle good/bad 4K pages.
         bad = sorted(kinds)
