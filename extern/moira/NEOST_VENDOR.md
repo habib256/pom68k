@@ -126,6 +126,29 @@ différentes pour `0x80000000 / 0x8000` (banc `cpu_div_ram` de NeoST : vert sous
 du 2026-07-11 à être rétro-porté ; il est marqué `POM68K` dans le source et porte le rang 38
 de `POM68K_VENDOR.md`. Les autres sont listés dans `TODO.md § Moteur › Convergence`.)*
 
+## Préfetch après écriture de SR/CCR, et cycles internes de DIV (NeoST 2026-10-19/20, portés ici le 2026-11-06)
+
+Trois groupes de NeoST, rang 40 de `POM68K_VENDOR.md`, marqués `POM68K` dans le source :
+
+- **MOVE to SR** (`execMoveToSr`, NeoST `ce1cc52`) : `fullPrefetch<POLL>` remplace la
+  lecture fictive de `pc+2` suivie de `prefetch`.
+- **ANDI/ORI/EORI #,SR et #,CCR, MOVE to CCR** (`execAndisr`, `execAndiccr`,
+  `execMoveToCcr`, NeoST `d8d33bb`) : même correctif. La [transcription du
+  microcode](https://og.kervella.org/m68k/all.txt) donne la queue `1cc stiw1` →
+  `321 stiw4` → `1e1 malw3` → `363 b` → `34c mmrw3` : accès pc0+4, **pc0+4**, pc0+6 au
+  lieu de pc0+4, pc0+6, pc0+6 ; IRD reçoit le mot relu APRÈS l'écriture de SR/CCR, en
+  espace PROGRAMME. Hatari CE fait de même. Nombre de cycles inchangé.
+- **DIVU/DIVS** (`execDivuMoira`, `execDivsMoira`, NeoST `262f63a`, amont `f90fc50`) :
+  sur 68000 les cycles internes précèdent `writeD` et le préfetch. Chez POM68K la
+  sortie anticipée du débordement de DIVS (16/18 cycles, SingleStepTests) est gardée :
+  le quotient est calculé d'abord.
+
+*(Ce que POM68K ajoute à la preuve de NeoST : les listes de transactions du corpus
+SingleStepTests/680x0 montrent exactement ces séquences sur tous les vecteurs sans
+exception, et `sst68000` compare désormais les cycles bus. Restent à porter : les
+quatre hooks — `illegalOpcodeHook`, `willProcessFault`, bornes de cycle bus,
+`setBusLock` — et STOP+8 ; voir `TODO.md § Moteur › Convergence`.)*
+
 *(NeoST's original closing line — "toute modif future d'un fichier `Moira/` se
 commit normalement dans NeoST" — is superseded in this repo: see the POM68K
 note at the top.)*

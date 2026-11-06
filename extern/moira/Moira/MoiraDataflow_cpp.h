@@ -585,12 +585,26 @@ Moira::read(u32 addr)
             mmuAccAddr = addr; mmuAccSsw = 0x00;
             mmuAccFc = readFC(); mmuAccWrite = false;
         }
-        result = read16(addr & addrMask<C>()) << 16;
-        SYNC(4);
-        if (F & POLL) POLL_IPL;
-        if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
-        result |= read16((addr + 2) & addrMask<C>());
-        SYNC(2);
+        if (F & REVERSE) {
+
+            // POM68K: low word first — the read twin of write<>'s REVERSE.
+            if constexpr (kPlain020) mmuAccAddr = addr + 2;
+            result = read16((addr + 2) & addrMask<C>());
+            SYNC(4);
+            if (F & POLL) POLL_IPL;
+            if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
+            result |= read16(addr & addrMask<C>()) << 16;
+            SYNC(2);
+
+        } else {
+
+            result = read16(addr & addrMask<C>()) << 16;
+            SYNC(4);
+            if (F & POLL) POLL_IPL;
+            if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
+            result |= read16((addr + 2) & addrMask<C>());
+            SYNC(2);
+        }
     }
 
     return result;

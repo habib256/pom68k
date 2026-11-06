@@ -160,36 +160,42 @@ boot.
 
 ### Convergence avec la copie NeoST
 
-Notre copie part de NeoST `47d6c39` (2026-07-11). Depuis, NeoST a corrigé
-son 68000 de huit groupes que nous n'avons pas encore (le neuvième, les
-valeurs absolues de DIVS, est le rang 38), et les deux forks ont
-réécrit les mêmes lignes amont dans des sens opposés : nous avons suivi
-SingleStepTests, NeoST suit Hatari et la transcription du microcode. Un
-cœur fusionné doit satisfaire les deux jeux de gates.
+Notre copie part de NeoST `47d6c39` (2026-07-11). Des neuf groupes que
+NeoST a ajoutés depuis à son 68000, quatre sont portés (rangs 38 et 40).
+Les deux forks avaient aussi réécrit les mêmes lignes amont dans des sens
+opposés — nous sur SingleStepTests, NeoST sur Hatari et la transcription
+du microcode. Depuis le 2026-11-06 `sst68000` juge aussi l'ordre et la
+date de chaque cycle bus (rang 41), ce qui donne un juge commun : un cœur
+fusionné doit le garder à 1 000 058 / 1 000 058.
 
-- [ ] **Rétro-porter les correctifs 68000 de NeoST postérieurs à la
-  copie.** Un changement par groupe, `sst68000` puis
-  `compact_timing_etalon` à chaque fois : `illegalOpcodeHook` ;
-  `willProcessFault` ; bornes de cycle bus `willAccessBus`/`didAccessBus`
-  (l'accès long devient `SYNC(2)` + hook + `SYNC(2)`) ; `setBusLock` autour
-  du TAS ; `fullPrefetch` du MOVE to SR ; double rechargement de
-  ANDI/ORI/EORI #,SR, #,CCR et MOVE to CCR ; cycles internes de DIVU/DIVS
-  avant le préfetch ; STOP+8 (`stopGraceUntil`, réveil quantifié, STOP en
-  4 cycles sans cycle bus), qui touche le bloc `CHECK_IRQ` d'`execute()`
-  où vit notre `irqDelay`. Les séquences bus de MOVE to SR et ANDI #,SR
-  peuvent contredire le corpus SST : c'est la ligne suivante.
-- [ ] **Arbitrer les règles 68000 où les deux forks se contredisent.** Une
-  décision enregistrée par règle dans `POM68K_VENDOR.md`. SingleStepTests
-  et Hatari sont tous deux de grade D, donc aucun ne départage l'autre :
-  il faut le manuel, la transcription du microcode que NeoST utilise (à
-  grader : lecture du silicium, pas d'un émulateur) ou une mesure.
-  Règles en cause : attente de l'erreur d'adresse
-  (0/2 cycles ici, 8 en amont) et les `SYNC(2)` retirés dans celle de
-  DIVS/DIVU/CMPM/CHK ; sortie anticipée de DIVS en débordement ; drapeau Z
-  de la division par zéro ; ADDQ/SUBQ.l sur An à 6 cycles contre 8 (notre
-  table `CYCLES_AN` dit encore 8) ; FC « data » forcé sur les lectures
-  relatives au PC. La note vendor demande déjà de revérifier DIVS et ASR
-  contre un second oracle.
+- [ ] **Rétro-porter les quatre hooks de NeoST.** `illegalOpcodeHook`,
+  `willProcessFault`, `setBusLock` autour du TAS : inertes par défaut,
+  plans et correctifs prêts dans `scratchpad/2026-11-06/neost_backports/`
+  (groupes 1, 2 et 4 ; NeoST `fdbce2e` et `ce1cc52`). Les bornes de cycle bus `willAccessBus`/`didAccessBus`
+  ajoutent deux appels virtuels par accès : derrière un commutateur de
+  compilation éteint ici, et à dupliquer dans `pomJitFetch000`, qui
+  contourne `read<>`.
+- [ ] **Trancher STOP+8 avant de le porter.** NeoST `993ce5e` puis
+  `2fc53a8` (plan : `scratchpad/2026-11-06/neost_backports/`, groupe 8) : `stopGraceUntil`, réveil quantifié sur 4 cycles, STOP sans
+  cycle bus. Trois obstacles lus : son code final facture 0 cycle au STOP
+  (une IRQ en attente serait prise à +4, pas +8, contrairement à sa
+  note) ; le réveil arrondi toucherait aussi nos STOP 020/030/040 s'il
+  n'est pas gardé ; il partage le bloc `CHECK_IRQ` d'`execute()` avec
+  `irqDelay` et demande un champ de save-state. Le corpus n'a aucun
+  vecteur STOP. *Bloqué : un témoin — le microcode, ou une mesure.*
+- [ ] **Proposer à NeoST les règles 68000 que le corpus a tranchées.**
+  Sa copie garde l'ordre amont que le rang 41 corrige (frame de groupe 0,
+  RTE/RTR, JSR, CHK, MOVEM.l, écritures et lectures longues) et diffère
+  encore sur ce que `sst68000` tient ici au cycle près : attente de
+  l'erreur d'adresse (2 ou 4 cycles avant la frame, 8 chez lui),
+  `SYNC(2)` de l'erreur d'adresse de DIVS/DIVU/CMPM/CHK, sortie anticipée
+  de DIVS en débordement, drapeau Z de la division par zéro, ADDQ/SUBQ.l
+  sur An à 6 cycles (notre table `CYCLES_AN` dit encore 8), FC « data »
+  des lectures relatives au PC. SingleStepTests et Hatari sont tous deux
+  de grade D : la transcription du microcode, qui a donné raison au
+  corpus sur les trois groupes du rang 40, est le témoin à consulter pour
+  chacune. Le harnais `tests/sst68000.cpp` ne lie que Moira et se porte
+  tel quel.
 - [ ] **Unifier les chemins de fetch du 68000.** `read<>`, `prefetch`,
   `fullPrefetch` et `pomJitFetch000` : ce dernier réimplémente la séquence
   de `SYNC` sans hook par accès, donc la fenêtre et un arbitrage de bus par

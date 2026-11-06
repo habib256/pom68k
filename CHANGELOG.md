@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (seventh)** — [sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them](#2026-11-06-68000-bus-cycles)
 - **2026-11-06 (sixth)** — [The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it](#2026-11-06-x64-late-ipl)
 - **2026-11-06 (fifth)** — [The 68040 cache switch leaves the environment: Moira's constructor no longer calls getenv, and the cache-on lockstep now fails if the wire is lost](#2026-11-06-core-no-getenv)
 - **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](#2026-11-06-oracle-vs-manual)
@@ -1199,6 +1200,65 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-68000-bus-cycles"></a>
+## 2026-11-06 (seventh) — sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them
+
+`sst68000` compares registers, SR, PC, the prefetch queue, the touched RAM and
+the cycle total, and has held 1 000 058 / 1 000 058 since 2026-07-14. The
+SingleStepTests corpus records more than that: for every vector, the list of
+bus cycles — read or write, function code, address, size, value — and the
+idle cycles between them. The harness parsed past that list. An audit of the
+NeoST back-ports noticed that the lists sided with NeoST's 68000 on three
+points where the two forks differ, which the gate could not see.
+
+**The census.** `tests/sst68000.cpp` now records every bus callback with its
+clock stamp and compares it with the corpus. First run, core unchanged:
+
+```
+[sst68000] OK: 1000058/1000058 across 124 file(s)
+[sst68000] bus census: order 736983/1000058; timed … +2 726214
+```
+
+A quarter of the corpus had the right result through the wrong bus sequence.
+Sorted by cause, on a 500-vector sample per file: the stacking order of the
+address-error frame (10 914); the immediates to SR and CCR (3 000); JSR, RTE,
+RTR and long ADD/SUB/ADDX/SUBX/MOVEM order (1 234); MOVE to SR/CCR and MOVEM.l
+content (755); CHK, one bus cycle short (288).
+
+**The fixes**, each `C == Core::C68000` only, each leaving the gate at
+1 000 058 / 1 000 058 (`extern/moira/POM68K_VENDOR.md` rows 40 and 41):
+
+| change | vectors in order after it |
+|---|---|
+| start | 736 983 |
+| group-0 frame stacked PC low, SR, PC high, IR, address low, status word, address high; its two idle cycles before the frame, not after | 905 220 |
+| long ADD/SUB/ADDQ/SUBQ/ADDI/SUBI to memory write the low word first | 909 894 |
+| NeoST's three fixes (MOVE to SR, #,SR / #,CCR / MOVE to CCR reload both prefetch words; DIV idles before its prefetch); RTE and RTR unstack PC high, SR, PC low; JSR fetches before it pushes; a trapping CHK discards a prefetch; `MOVEM.l <ea>,list` reads its extra word last | 994 939 |
+| `MOVEM.l list,-(An)` low word first; ADDX.l/SUBX.l read low word first; CHK prefetches before idling; `BTST Dn,#imm` idles after its prefetch | 1 000 058 |
+
+Timing follows order: every bus cycle now also starts on the corpus's cycle,
+1 000 058 / 1 000 058.
+
+**NeoST's three back-ports are confirmed by a third reading.** NeoST took
+them from the microcode transcription and from Hatari CE; the corpus lists
+show the same sequences on every non-exception vector. The DIV one needed
+care here: `execDivsMoira` keeps this fork's early overflow exit, so the
+quotient is computed before the idle cycles are spent.
+
+**From census to gate.** The comparison is now part of the verdict: a vector
+passes only if its bus sequence and each cycle's start match
+(`--no-transactions` restores the state-only comparison). The full corpus
+runs in 4.4 s. Neither fork's copy of Moira had this: upstream's stacking
+order for the group-0 frame is the same in NeoST, so the harness and row 41
+are a contribution in that direction too (`TODO.md § Moteur › Convergence`).
+
+**Evidence grade.** D throughout — a corpus produced by another
+implementation — and for the three NeoST groups also the microcode
+transcription. The other cores keep upstream's order: there is no corpus for
+them.
 
 ---
 
