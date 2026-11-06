@@ -1266,7 +1266,7 @@ six across the two — exist because each covers something the others cannot:
 | `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
 | `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
-| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:331-336`), which is also why it is the one smoke gate an x86-64 developer never sees |
+| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:312-317`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
 Two things this gate learned the hard way, both worth keeping in mind when
 extending it:

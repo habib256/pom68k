@@ -64,12 +64,12 @@ identiques. Conformité, stabilité du tier entier et performance mesurée
 dans le même processus — aucune ne se déduit d'une autre.
 
 Ordre : Socle → Convergence → Justesse → Temps → Interprète → JIT →
-Surface. La première ligne du Socle (grades de preuve) précède tout
-arbitrage : elle dit qui gagne. Sans dépendance et à prendre d'abord :
-l'UB de DIVS
-(› Convergence), les lectures d'environnement du cœur (› Surface), la
-re-vérification x64 des polls positionnés (› JIT justesse) et le RTE de la
-frame $3 (› Justesse 68030).
+Surface. Qui gagne un arbitrage est écrit (`CLAUDE.md § Evidence grades`,
+`oracle/README.md`) : le manuel sur l'oracle, sauf exception connue. Sans dépendance et à prendre d'abord :
+les lectures d'environnement du cœur (› Surface) et la re-vérification
+x64 des polls positionnés (› JIT justesse). Les cellules à la main des
+règles qu'aucun corpus n'atteint s'ajoutent à `moira_rules_test`
+(`cmake/Pom68kCpuGates.cmake`).
 
 Hors de ce fichier : ce que NeoST doit faire chez lui (périmètre
 TT/Falcon/accélérateurs, aujourd'hui hors périmètre dans ses propres
@@ -81,25 +81,26 @@ macOS) vit dans le `TODO.md` de NeoST.
 
 Un cœur ne déménage qu'avec sa preuve. Aujourd'hui les gates sans
 Macintosh existent (`sst68000`/`030`/`040`, `fpu_sanity`, `fpu040_test`,
-`cache040_test`, `berr030_test`, `callm_rtm_test`,
+`cache040_test`, `berr030_test`, `callm_rtm_test`, `moira_rules_test`,
 `jit_asset_free_lockstep_test`) mais leurs corpus ne sont ni épinglés ni
 exécutés en CI, et plusieurs rangs de l'inventaire ne tiennent que par un
 boot.
 
-- [ ] **Mettre la règle « l'oracle gagne » en accord avec les grades de
-  preuve.** `CLAUDE.md § Evidence grades` (2026-11-01) range tout émulateur
-  en grade D et pose qu'un grade inférieur ne l'emporte jamais sur un
-  supérieur ; `DEV.md` § 1.1, `oracle/README.md` et `POM68K_VENDOR.md`
-  (§ SingleStepTests, rangs 2 et 26) disent encore « the oracle wins ».
-  Inventorier chaque règle où WinUAE ou SingleStepTests (D) a été suivi
-  **contre** un manuel Motorola (B) — format $3 sur 030, FRESTORE $41
-  accepté par un 68882, FPIAR, vecteur d'exception gardé armé, longs
-  internes de FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC
-  invalide — et la rejuger : retour au manuel, preuve A ou C qui confirme
-  l'oracle, ou F assumé avec ce qui le trancherait. Là où le manuel est
-  muet (drapeaux non documentés), l'oracle reste la meilleure lecture et
-  il n'y a pas de conflit. Les éparpillements actuels sont dans la note
-  vendor et `oracle/fuzz/disputes/NOTES.md`.
+- [ ] **Rejuger les décisions prises contre un manuel, là où aucun gate
+  ne tombe.** La politique est alignée depuis le 2026-11-06 : un manuel
+  (grade B) l'emporte sur l'oracle (grade D) pour toute décision nouvelle,
+  et une décision existante n'est renversée que si rien ne passe au rouge.
+  Trois sont donc gardées comme exceptions connues
+  (`oracle/README.md § Rulings taken against a manual`) : D12 (adresse
+  d'instruction des frames $2), D23a (frame FPU $3 sur 68030) et D23b
+  (FRESTORE $41 sur un 68882) — plus deux règles 68000 (sortie anticipée
+  de DIVS, ASR au-delà de la largeur). Chacune est tenue par des vecteurs
+  épinglés : la renverser demande soit une preuve de grade A, soit un
+  mécanisme de divergences assumées dans les harnais `sst` (comme les deux
+  vecteurs exclus de `sst68000`). Reste aussi à passer au crible les
+  règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
+  dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
+  FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
 - [ ] **Épingler les trois corpus de vecteurs et les rendre récupérables.**
   `tests/data/sst68000`, `sst68030` et `sst68040` (1,1 Go, 116 Mo, 315 Mo)
   n'existent que dans un répertoire ignoré de deux hôtes et sur le disque
@@ -161,15 +162,12 @@ boot.
 ### Convergence avec la copie NeoST
 
 Notre copie part de NeoST `47d6c39` (2026-07-11). Depuis, NeoST a corrigé
-son 68000 de neuf groupes que nous n'avons pas, et les deux forks ont
+son 68000 de huit groupes que nous n'avons pas encore (le neuvième, les
+valeurs absolues de DIVS, est le rang 38), et les deux forks ont
 réécrit les mêmes lignes amont dans des sens opposés : nous avons suivi
 SingleStepTests, NeoST suit Hatari et la transcription du microcode. Un
 cœur fusionné doit satisfaire les deux jeux de gates.
 
-- [ ] **Retirer l'UB de DIVS.** `abs(dividend)` et `std::abs` subsistent
-  dans `MoiraALU_cpp.h` : indéfini sur `INT32_MIN`, et NeoST a mesuré GCC
-  et clang en désaccord de 136 cycles (son commit `74b2f2d`). Gate :
-  `sst68000`.
 - [ ] **Rétro-porter les correctifs 68000 de NeoST postérieurs à la
   copie.** Un changement par groupe, `sst68000` puis
   `compact_timing_etalon` à chaque fois : `illegalOpcodeHook` ;

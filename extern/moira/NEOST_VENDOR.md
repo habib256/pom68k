@@ -114,6 +114,18 @@ et écriture). Court-circuité hors watchpoints (`flags & CHECK_WP &&`) → zér
 marche normale. Vérifié : `--watch FF8001` (via `$8001.w`) et `--watch 10` (RAM directe)
 se déclenchent ; self-tests + glue-selftest 31/31 intacts.
 
+## DIVS : valeurs absolues sans comportement indéfini (NeoST 2026-10-20, porté ici le 2026-11-06)
+
+`cyclesDiv<C68000|C68010, DIVS>` et `setUndefinedDIVS` calculaient `abs(dividend)` sur un
+`i32` : pour `0x80000000`, `abs(INT32_MIN)` est indéfini. clang et GCC prenaient des branches
+différentes pour `0x80000000 / 0x8000` (banc `cpu_div_ram` de NeoST : vert sous macOS,
+Δ = +136 cycles sous Linux). Les valeurs absolues sont désormais calculées en non signé ;
+|−2³¹| >> 16 = `0x8000` ≥ `0x8000` → débordement, comme `getDivs68kCycles` d'Hatari.
+
+*(Texte de NeoST, commit `74b2f2d`. C'est le premier correctif NeoST postérieur à la copie
+du 2026-07-11 à être rétro-porté ; il est marqué `POM68K` dans le source et porte le rang 38
+de `POM68K_VENDOR.md`. Les autres sont listés dans `TODO.md § Moteur › Convergence`.)*
+
 *(NeoST's original closing line — "toute modif future d'un fichier `Moira/` se
 commit normalement dans NeoST" — is superseded in this repo: see the POM68K
 note at the top.)*

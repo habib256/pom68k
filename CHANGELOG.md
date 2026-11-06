@@ -508,6 +508,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](#2026-11-06-oracle-vs-manual)
+- **2026-11-06 (third)** — [DIVS of $80000000: the undefined abs() NeoST removed is back-ported, and a bare-Moira gate reaches it under UBSan](#2026-11-06-divs-int-min)
 - **2026-11-06 (later)** — [CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause](#2026-11-06-claude-md-budget)
 - **2026-11-06** — [TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation](#2026-11-06-todo-engine-programme)
 - **2026-10-25 (later)** — [The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last](#2026-10-25-display-card-824)
@@ -1195,6 +1197,106 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-oracle-vs-manual"></a>
+## 2026-11-06 (fourth) — "The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions
+
+`CLAUDE.md` § *Evidence grades* (2026-11-01) ranks every emulator as grade D
+and a Motorola manual as grade B, and says a lower grade never overrules a
+higher one. The CPU fork was built on the opposite sentence: `DEV.md` § 1.1,
+`oracle/README.md`, `extern/moira/POM68K_VENDOR.md` and
+`oracle/fuzz/disputes/NOTES.md` all read "on spec/oracle conflict, the oracle
+wins", and ruling D23 says in so many words that "overruling the oracle on
+manual reading alone is exactly what this section exists to forbid".
+
+**The maintainer's decision: apply the new rule only where it breaks
+nothing.** Asked whether D23 should return to the manual, the answer was to
+apply the grades only if no gate turns red. D23's own record answers that:
+the 2026-08-17 attempt to stack the manual's format $2 on the 68030 and to
+refuse a version-$41 FRESTORE on a 68882 turned 14 pinned `sst68030` vectors
+red (10 + 4). So no CPU behaviour changes in this entry.
+
+**What does change, because it breaks nothing:**
+
+- `DEV.md` § 1.1 "Sources, ranked" is rewritten on the grades. It still
+  ranked MAME above *Guide to the Macintosh Family Hardware* — the ordering
+  `CLAUDE.md` calls "backwards".
+- `oracle/README.md` states the rule with the distinction the old sentence
+  lacked: where the manual is **silent** (undefined flags, MMUSR quirks,
+  internal frame words) the oracle remains the best reading; where the
+  manual **speaks**, it wins for any new ruling.
+- The same file gains § *Rulings taken against a manual*: D12 (the format
+  $2 "instruction address" is the next instruction's), D23a (68030 FPU
+  post-instruction frame in format $3), D23b (WinUAE's own "horrible hack"
+  accepting a 68040 FRESTORE frame on a 68882), each with the vectors that
+  hold it and what would settle it, plus the two 68000 rules already flagged
+  in the vendor note (early DIVS overflow exit, ASR past the operand width).
+  D13-D15 and D20 are named as *not* exceptions: the manual is silent there.
+- `POM68K_VENDOR.md` § *SingleStepTests* and the header of `NOTES.md` are
+  annotated, not rewritten — both are records of rulings taken under the old
+  rule.
+
+**One thing the inventory surfaced and left open.** Under D23a the 68030
+stacks a format $3 frame that the fork's own 68020/030 RTE refuses (it
+accepts $3 from the 68EC040 up). Making RTE accept it would push further in
+the oracle's direction; returning to $2 is the reversal declined above. It
+stays in `TODO.md § Moteur › Justesse 68030` with its gate still to write.
+
+No gate changed; `docs_test` PASS.
+
+---
+
+<a id="2026-11-06-divs-int-min"></a>
+## 2026-11-06 (third) — DIVS of $80000000: the undefined abs() NeoST removed is back-ported, and a bare-Moira gate reaches it under UBSan
+
+First line taken from `TODO.md § Moteur › Convergence`. `cyclesDiv<C68000,
+DIVS>`, `cyclesDiv<C68010, DIVS>` and `setUndefinedDIVS` called `abs()` on the
+32-bit dividend; `abs(INT32_MIN)` is undefined behaviour. NeoST fixed its copy
+on 2026-10-20 (`74b2f2d`) after GCC and clang took different branches of the
+68000 cycle count on `$80000000 / $8000` — 136 cycles apart. The same three
+sites now compute the absolute values in unsigned arithmetic, with NeoST's
+expressions, as row 38 of `extern/moira/POM68K_VENDOR.md`.
+
+**What was reachable here.** Not the two `cyclesDiv` sites: every quotient of
+`$80000000` by a 16-bit divisor overflows, and `execDivsMoira` leaves on V
+before asking for the cycle count (the SingleStepTests early exit of row 2).
+`setUndefinedDIVS` is reached: a 68020/68030 `DIVS.W` of `$80000000` computes
+its N and Z through it.
+
+**The gate, and proof that it bites.** No corpus vector has that dividend —
+checked on the 8 065 DIVS vectors of `sst68000`; a random 32-bit operand does
+not land on one value. `moira_rules_test` holds the cell by hand on a flat
+RAM: six models (68000, 68010, 68020, 68030, 68LC040, 68040), four divisors,
+two entry CCRs; D0 unchanged, no exception, the fork's existing overflow
+flags (`$1E`/`$12`/`$1E` from an all-set CCR) and 18 cycles on the 68000.
+Built with `-fsanitize=undefined -fno-sanitize-recover` against the core as
+it was before this change, the same test aborts on its first 68020 case:
+
+```
+MoiraALU_cpp.h:1326:34: runtime error: negation of -2147483648 cannot be
+represented in type 'int'
+```
+
+and runs clean against the fixed core. So the nightly ASan+UBSan leg, which
+runs the asset-free tier, now covers a site that no gate reached before. On
+the optimised GCC build the old and new code agree, which is why nothing was
+ever red: `sst68000` 1 000 058 / 1 000 058, `sst68030` 3 082 / 3 082 and
+`sst68040` 7 200 / 7 200 on freshly relinked binaries, before and after.
+
+**Where the gate lives.** `cmake/Pom68kJitGates.cmake` sat at its size
+ceiling, and the gates that link `moira` alone were never JIT gates. They move,
+at the position they always had, into `cmake/Pom68kCpuGates.cmake` —
+`cache040_test`, `fpu_sanity`, `fpu040_test`, `callm_rtm_test` and the new
+one — which is also where the next hand-written cells of
+`TODO.md § Moteur › Socle` go. The four `file:line` citations into the old
+module follow the 19-line shift; `tools/refresh_citations.py` proposed a
+wrong target for one of them (it anchored `jit_classic_boot_etalon`'s
+citation on `lcii_boot_etalon`), so they were shifted by hand and read back.
+
+`STATUS.md` is regenerated for x86-64 and its aarch64 section carries the
+same one-gate delta by hand.
 
 ---
 
