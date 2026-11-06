@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68030_fpuraw",
-           "sst68030_fpu2",
+           "sst68030_fpu2", "sst68030_rmw",
            "sst68040", "sst68040_8k", "sst68040_fline", "sst68040_fpu",
            "sst68040_fpu2", "sst68040_fpuh")
 
@@ -74,6 +74,15 @@ HEADER = """\
 #         --strict-fpu --steps 2 --n 2000 --seed S --out fpu2_M.json
 #   Replayed with `sst68030 --known tests/sst68030_fpu2.known` (21 vectors,
 #   all ruling D23b).
+# sst68030_rmw — integer instructions whose LAST access is a write to memory
+#   through an address register aimed at a bad page (ALU to memory, ADDQ,
+#   immediates, NEG/NOT/CLR, bit operations, memory shifts, Scc, TAS, NBCD,
+#   ABCD/SBCD/ADDX/SUBX -(Ay),-(Ax), MOVE Dn). Generated 2026-11-07, 6 000
+#   vectors: identity seed 1201, tt seed 1202:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family rmw --mmu M
+#         --strict-fpu --n 3000 --seed S --out rmw_M.json
+#   Replayed with `sst68030 --known tests/sst68030_rmw.known` (11 vectors:
+#   the data output buffer of a faulting SUB/SUBI).
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
 # sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.

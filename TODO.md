@@ -149,8 +149,9 @@ boot.
   famille aléatoire ne remplace pas une famille par fenêtre de décodage.
   Faire du balayage de graines neuves une étape de la boucle
   (`oracle/fuzz/loop.sh` n'a pas d'équivalent 040), et écrire les familles
-  brutes qui manquent : extensions complètes d'EA réservées, et une
-  famille `fault` bâtie sur les opcodes de `core`. La fenêtre
+  brutes qui manquent : extensions complètes d'EA réservées, et le
+  pendant 68040 de la famille `rmw` (écritures fautives des instructions
+  RMW, `sst68030_rmw`). La fenêtre
   `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/MOVE16) a la sienne (`sysraw`,
   6 000 / 6 000 au premier rejeu, non épinglée). La fenêtre cpID 1 du
   68030 a la sienne depuis le 2026-11-07 (`sst68030_fpuraw`, 6 000
@@ -302,11 +303,18 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   que seuls « the MC68000 and MC68008 » le font (M68000PRM). Le correctif
   est écrit et tenu par ses vecteurs sur la branche
   `fix/m68030-rmw-last-write` (5 989 / 6 000, corpus `sst68030_rmw`,
-  rang 51, cellule `moira_rules_test`) ; il n'est **pas fusionné** parce
+  rang 52, cellule `moira_rules_test`) ; il n'est **pas fusionné** parce
   que le CLR sans lecture retire un cycle de bus à tous les profils
   68020/68030 et qu'aucun etalon n'a tourné avec. Le 68040 n'a pas la
   classe (`fuzz040.py --family rmw` : 6 000 / 6 000). Même balayage, un
   vecteur : PTEST laisse MMUSR.I à zéro (`mmu/tt seed=1006 #1188`,
+- [ ] **Stocker le résultat non masqué dans le tampon de sortie d'une
+  frame $A de SUB/SUBI.** Onze vecteurs de `sst68030_rmw`
+  (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont
+  l'écriture faute, le fork range dans le « data output buffer » le
+  résultat masqué à la taille de l'opérande, l'oracle la différence sur
+  32 bits. Même balayage du 2026-11-07, un vecteur : PTEST laisse MMUSR.I
+  à zéro (`mmu/tt seed=1006 #1188`,
   `scratchpad/2026-11-07/FUZZ_SWEEP2.md`).
 - [ ] **Repasser les corpus 68030 à l'oracle strict en appliquant D23b.**
   Tous les corpus 68030 antérieurs au 2026-11-07 ont été produits avec

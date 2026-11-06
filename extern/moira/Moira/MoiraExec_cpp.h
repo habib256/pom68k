@@ -239,6 +239,7 @@ Moira::execShiftEa(u16 opcode)
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
     looping<I>() ? noPrefetch<C>(4) : prefetch<C, POLL>();
+    pomLastWrite030<C>();   // POM68K: the store below ends the instruction
     writeM<C, M, S>(ea, shift<C, I, S>(1, data));
 
     if constexpr (I == Instr::ROR || I == Instr::ROL) {
@@ -318,6 +319,7 @@ Moira::execAbcdEa(u16 opcode)
     u32 result = bcd<C, I, Byte>(data1, data2);
     looping<I>() ? noPrefetch<C>(4) : prefetch<C>();
 
+    pomLastWrite030<C>();   // POM68K: the store below ends the instruction
     writeM<C, M, Byte>(ea2, result);
 
     //           00  10  20        00  10  20        00  10  20
@@ -391,6 +393,7 @@ Moira::execAddRgEa(u16 opcode)
     // POM68K: a long result goes back LOW word first on the 68000 — the
     // carry chain ran that way. [D] SingleStepTests/680x0 v1 transactions
     // (ADD.l, SUB.l to memory); `sst68000 --transactions`.
+    pomLastWrite030<C>();   // POM68K: the store below ends the instruction
     writeM<C, M, S, C == Core::C68000 ? REVERSE : 0>(ea, result);
 
     //           00  10  20        00  10  20        00  10  20
@@ -690,6 +693,7 @@ Moira::execAddxEa(u16 opcode)
     } else {
 
         looping<I>() ? noPrefetch<C>(S == Long ? 0 : 2) : prefetch<C>();
+        pomLastWrite030<C>();   // POM68K: the store below ends the instruction
         writeM<C, M, S>(ea2, result);
     }
 
@@ -1093,7 +1097,10 @@ Moira::execBitDxEa(u16 opcode)
 
     prefetch<C, POLL>();
     if constexpr (I == Instr::BTST && M == Mode::IM && C == Core::C68000) { SYNC(2); }
-    if constexpr (I != Instr::BTST) writeM<C, M, Byte>(ea, data);
+    if constexpr (I != Instr::BTST) {
+        pomLastWrite030<C>();   // POM68K: the store below ends the instruction
+        writeM<C, M, Byte>(ea, data);
+    }
 
     [[maybe_unused]] auto c = I == Instr::BTST ? 0 : I == Instr::BCLR && C == Core::C68010 ? 6 : 4;
 
@@ -1152,7 +1159,10 @@ Moira::execBitImEa(u16 opcode)
     data = bit<C, I>(data, src);
 
     prefetch<C, POLL>();
-    if constexpr (I != Instr::BTST) writeM<C, M, S>(ea, data);
+    if constexpr (I != Instr::BTST) {
+        pomLastWrite030<C>();   // POM68K: the store below ends the instruction
+        writeM<C, M, S>(ea, data);
+    }
 
     [[maybe_unused]] auto c = I == Instr::BTST ? 0 : 4;
 
@@ -2043,8 +2053,18 @@ Moira::execClr(u16 opcode)
 
         // POM68K Q3: the 68040 CLR is a pure store (gencpu genastore) —
         // no destination read (which would fault/update U where the
-        // oracle only writes); flags final before the last write
-        if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
+        // oracle only writes); flags final before the last write.
+        //
+        // POM68K (2026-11-07): so is the 68020's and the 68030's. Only the
+        // 68000 and 68008 read the destination before clearing it.
+        // [B] M68000PRM, CLR, note: "In the MC68000 and MC68008 a memory
+        //     location is read before it is cleared."
+        // [D] WinUAE gencpu i_CLR @ Hatari e77819f7: the read is generated
+        //     for cpu_level 0 only.
+        // The dummy read was a bus cycle no 68020 Macintosh performs — on a
+        // device register it is a read side effect that never happened.
+        // Gate: sst68030_rmw (write faults: frame $A, flags already final).
+        if (C == Core::C68020) {
 
             ea = computeEA<C, M, S>(dst);
             updateAn<M, S>(dst);
@@ -5615,6 +5635,7 @@ Moira::execNbcdEa(u16 opcode)
     } else {
         prefetch<C, POLL>();
     }
+    pomLastWrite030<C>();   // POM68K: the store below ends the instruction
     writeM<C, M, Byte>(ea, bcd<C, Instr::SBCD, Byte>(data, 0));
 
     //           00  10  20        00  10  20        00  10  20

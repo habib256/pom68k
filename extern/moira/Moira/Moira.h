@@ -2108,6 +2108,20 @@ private:
 #else
 #define MOIRA_HOT_INLINE inline
 #endif
+    // POM68K: marks the store that follows as the instruction's last memory
+    // access on the 68030 — a fault there stacks the short frame $A with the
+    // next instruction's PC and keeps the updated CCR. writeOp does it for
+    // the handlers that go through it; the ones that call writeM themselves
+    // (ADD/SUB to memory, ABCD/SBCD/NBCD, ADDX/SUBX, the memory shifts, the
+    // bit operations) call this first. Gate: sst68030_rmw.
+    template <Core C> MOIRA_HOT_INLINE void pomLastWrite030() {
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030) [[unlikely]] {
+                mmuState[1] |= 0x0100;              // LASTWRITE
+                mmuLastWritePc = reg.pc;
+            }
+        }
+    }
     MOIRA_HOT_INLINE int  mmuAtcLookup(u32 addr, u8 fc, bool write);
     void mmuAtcFill(u32 addr, u8 fc, bool write);
     MOIRA_HOT_INLINE void mmuAtcTouch(int i);

@@ -545,6 +545,32 @@ void ttrTableFollowsRegisters()
     }
 }
 
+void clrReadsOnlyOn68000()
+{
+    // CLR.B (A0): the 68000 reads the byte before clearing it, the 68020
+    // and later do not ([B] M68000PRM, CLR: "In the MC68000 and MC68008 a
+    // memory location is read before it is cleared"). The rig logs an 'r'
+    // or a 'w' per byte cycle; the instruction fetch is a word and logs
+    // nothing.
+    static const struct { moira::Model model; const char* name; const char* want; } rows[] = {
+        { moira::Model::M68000,   "68000",   "rw" },
+        { moira::Model::M68020,   "68020",   "w"  },
+        { moira::Model::M68030,   "68030",   "w"  },
+        { moira::Model::M68LC040, "68LC040", "w"  },
+    };
+    for (const auto& row : rows) {
+        TestCpu c(row.model);
+        stage(c, 0x4210, 0);                        // CLR.B (A0)
+        c.mem[0x3000] = 0x5a;
+        c.setA(0, 0x3000);
+        c.events.clear();
+        c.execute();
+        CHECK(c.events == row.want && c.mem[0x3000] == 0 && (c.getCCR() & 0x0f) == 0x04,
+              "%s CLR.B (A0): bus cycles \"%s\" (want \"%s\"), memory %02X, CCR %02X",
+              row.name, c.events.c_str(), row.want, c.mem[0x3000], c.getCCR());
+    }
+}
+
 } // namespace
 
 int main()
@@ -559,6 +585,7 @@ int main()
     fbccPredicateIsFiveBits();
     fpuStoreFaultRestarts040();
     ttrTableFollowsRegisters();
+    clrReadsOnlyOn68000();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -568,6 +595,6 @@ int main()
                 "68000 external /BERR, host hooks, DIVx.L operand fault, "
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
-                "table\n");
+                "table, CLR without its read from the 68020 up\n");
     return 0;
 }

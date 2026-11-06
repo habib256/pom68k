@@ -39,6 +39,15 @@
 #         --strict-fpu --steps 2 --n 2000 --seed S --out fpu2_M.json
 #   Replayed with `sst68030 --known tests/sst68030_fpu2.known` (21 vectors,
 #   all ruling D23b).
+# sst68030_rmw — integer instructions whose LAST access is a write to memory
+#   through an address register aimed at a bad page (ALU to memory, ADDQ,
+#   immediates, NEG/NOT/CLR, bit operations, memory shifts, Scc, TAS, NBCD,
+#   ABCD/SBCD/ADDX/SUBX -(Ay),-(Ax), MOVE Dn). Generated 2026-11-07, 6 000
+#   vectors: identity seed 1201, tt seed 1202:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family rmw --mmu M
+#         --strict-fpu --n 3000 --seed S --out rmw_M.json
+#   Replayed with `sst68030 --known tests/sst68030_rmw.known` (11 vectors:
+#   the data output buffer of a faulting SUB/SUBI).
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
 # sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.
@@ -240,6 +249,9 @@ sst68030_fpuraw | fpuraw_tt.json | 97728672 | bca9adca1a21d8d0d1ab3e839620ec4658
 sst68030_fpu2 | fpu2_identity.json | 97780326 | 3d85b5330228abbeb99c9d9888c025750c1fd93f0b0a15297937c21e332d8ae9
 sst68030_fpu2 | fpu2_off.json | 53967123 | 0191528184199ca4745354545441cbc5c230c17ad41dd050c11c3fe4547e38f3
 sst68030_fpu2 | fpu2_tt.json | 97799751 | 8feaad6dfadd9d2b22ac94762b56ffc2f54ba6313a814314db311a06da3e969c
+
+sst68030_rmw | rmw_identity.json | 134834669 | 6611d0f2a0cdd0d837cf600f419d344a7529191f6abf77464834431d5cf30e2f
+sst68030_rmw | rmw_tt.json | 134868014 | 1a4b9cdbe26bc7c87d54e11d886c17936e2c9b0d4030f8b09fce95bfeef80a5b
 
 sst68040 | core_identity.json | 33863644 | 45950bb03a6c85ee807526896b603f453716826ba2eec5125497e317c55d8e95
 sst68040 | core_off.json | 19851417 | 2c6f8104ef2e077ad6b72eda25b5c56f79477b6827155fe82c382fd7919b357b

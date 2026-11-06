@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (tenth)** — [On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000](#2026-11-07-rmw-last-write)
 - **2026-11-07 (ninth)** — [The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000](#2026-11-07-state-frame-internals)
 - **2026-11-07 (eighth)** — [66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new](#2026-11-07-fresh-sweep-final)
 - **2026-11-07 (seventh)** — [The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b](#2026-11-07-fpu2-68030)
@@ -1219,6 +1220,56 @@ Newest first.
 
 ---
 
+<a id="2026-11-07-rmw-last-write"></a>
+## 2026-11-07 (tenth) — On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000
+
+The sweep of the eighth entry left four vectors nobody had a name for: a
+read-modify-write instruction in user mode whose write faults, the oracle
+stacking the short bus-fault frame $A and the fork the long $B. Four
+vectors in 4 500 `random` ones, and none in 9 000 `fault` ones — because
+the `fault` family has its own opcode list, and no ALU instruction with a
+memory destination is on it.
+
+**The family first.** `rmw` (`gen030.py`): thirteen forms whose last access
+is a write through A0 — ADD/SUB/AND/OR/EOR Dn,<ea>, ADDQ/SUBQ, the
+immediates, NEG/NEGX/NOT/CLR, the bit operations, the memory shifts, Scc,
+TAS, NBCD, ABCD/SBCD and ADDX/SUBX -(A1),-(A0), MOVE Dn,<ea> — with A0
+aimed at a bad page as for `fault`. First replay: **5 052 / 6 000**. The
+class was not four vectors.
+
+**Two causes** (`POM68K_VENDOR.md` row 52):
+
+- *The last write was not marked.* `writeOp` marks it for the handlers
+  that go through it (AND, OR, EOR, NEG, NOT, ADDQ, Scc, TAS, MOVE — all
+  at 100 %). Seven handlers call `writeM` themselves: ADD/SUB to memory,
+  ABCD/SBCD, NBCD, ADDX/SUBX, the memory shifts, BCHG/BCLR/BSET. Their
+  fault stacked $B, restored the flags and restarted an instruction the
+  68030 only has to complete. `pomLastWrite030` now precedes those seven
+  stores.
+- *CLR read its destination.* On the 68020 and 68030 the handler took the
+  68000's path — read, then write, flags after — and only the 68040 had
+  the pure store. The M68000 Programmer's Reference Manual limits the read
+  to "the MC68000 and MC68008"; WinUAE generates it for `cpu_level 0`
+  only. A faulting CLR therefore faulted on a read the processor never
+  makes, with the old flags. Outside faults this was a **bus cycle no
+  68020 or 68030 Macintosh performs** on every CLR to memory — on a device
+  register, a read side effect that never happened.
+
+After both: **5 989 / 6 000**, every pinned corpus unchanged, `sst68000`
+still 1 000 058 / 1 000 058 on bus-cycle order and timing (the seven
+handlers are shared with the 68000; the marker is a no-op there). The
+eleven left are one detail of the frame — the data output buffer of a
+faulting SUB or SUBI holds the unmasked 32-bit difference in the oracle —
+listed by name and in `TODO.md`.
+
+**Pinned** as `sst68030_rmw`; `moira_rules_test` gains a cell that counts
+the byte cycles of CLR.B (A0) on four models: read and write on the 68000,
+a write alone from the 68020 up.
+
+**Why this one waits for the machine tiers.** The CLR change removes a
+read from the bus of every 68020 and 68030 profile. It is what the
+hardware does, and every boot in the tree was recorded with the read
+there. The full etalon tier decides, not the vectors.
 <a id="2026-11-07-state-frame-internals"></a>
 ## 2026-11-07 (ninth) — The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000
 
