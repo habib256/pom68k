@@ -74,6 +74,10 @@ path, not the plan.
 
 ## How to read this file
 
+> **The other half lives in `POM68K_SURFACE.md`.** This file says what was
+> changed and why; that one says what the core exposes and what a host owes
+> it — the contract to re-implement the host side in another emulator.
+
 Unlike NeoST (which patches `MoiraConfig.h` at build time), POM68K **edits the
 vendored files directly**. This file is therefore the patch set: without it an
 upstream re-sync silently deletes work that took a differential fuzz loop to

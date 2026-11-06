@@ -217,9 +217,12 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   68030*.
 - [ ] **Sérialiser l'état en vol, ou refuser de sauver quand il est
   vivant.** *À reproduire.* `MoiraSnapshot::visitCpuCommon` omet
-  l'opération 6888x suspendue (`fpu.busy` et ses registres), les mots de
-  pipe capturés après un PMOVE (`mmuPipe*`) et le verrou armé par un RTE à
-  DF effacé (`mmuRteSubst*`). Les gates de déterminisme ne le voient que si
+  l'opération 6888x suspendue (`fpu.busy` et ses registres), le
+  micro-état FSAVE UNIMP/BUSY du FPU 68040 (`fpu.cmdreg1b` … `wbt`), les
+  mots de pipe capturés après un PMOVE (`mmuPipe*`), le verrou armé par un
+  RTE à DF effacé (`mmuRteSubst*`) et le verrou de reprise MOVEM du 68040
+  (`mmu040MovemArmed`, `mmu040MovemEa`) — table complète dans
+  `POM68K_SURFACE.md` § 8. Les gates de déterminisme ne le voient que si
   une sauvegarde tombe dans une de ces fenêtres : en construire une par
   fenêtre.
 - [ ] **Porter le verrou « accès déjà rejoué » du RTE $B au 68020 nu.**
@@ -455,13 +458,16 @@ compilation et dans la documentation.
   (un drapeau membre et son setter, déclaré avec `RTCDBG` et `SCCDBG`
   dans `StartupOptions.h`) sans élargir quatorze constructeurs pour un
   traceur.
-- [ ] **Écrire le contrat de la surface d'extension, sans Macintosh.**
-  Chaque couture `pom*`, chaque hook virtuel ou pointeur de fonction,
-  `jit::MemoryHooks`, `CodeGuard` (tout écrivain non CPU doit le
-  notifier), le contrat `missPenalty` de `PomIcache`, les champs ajoutés à
-  `Registers` et `PomJitLayout`, dont le code généré lit les décalages
-  bruts. Dire pour chacun s'il est générique 68k ou réglé sur un invité
-  Mac.
+- [ ] **Lever les points « unverified » du contrat de surface.**
+  `extern/moira/POM68K_SURFACE.md` décrit ce que le cœur expose et ce que
+  l'hôte lui doit ; neuf affirmations y sont lues dans le code sans gate :
+  ce que rapporte un `extBusError` levé pendant la lecture d'un
+  descripteur de table 030, `setFPUModel` sur 68000/68010, la valeur à
+  rendre sur une lecture CIR FC = 7 d'un FPU présent, l'audit complet de
+  l'état global de softfloat, les chemins 68EC030/68EC040, l'identité
+  d'horloge d'un restore sous i-cache 030 armé, et l'appel de
+  `Engine::flushAll()` à la restauration. Chacune devient un gate ou une
+  phrase corrigée.
 - [ ] **Déplacer la sérialisation du CPU dans un visiteur côté Moira,
   avec un aller-retour sur Moira nu.** Le visiteur vit dans
   `src/MoiraSnapshot.h` et n'est prouvé que par des bancs Macintosh ;

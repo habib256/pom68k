@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](#2026-11-06-moira-surface)
 - **2026-11-06 (eighth)** — [A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix](#2026-11-06-68000-host-hooks)
 - **2026-11-06 (seventh)** — [sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them](#2026-11-06-68000-bus-cycles)
 - **2026-11-06 (sixth)** — [The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it](#2026-11-06-x64-late-ipl)
@@ -1201,6 +1202,43 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-moira-surface"></a>
+## 2026-11-06 (ninth) — The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it
+
+`extern/moira/POM68K_VENDOR.md` records what was changed in Moira and why. It
+does not tell someone writing the HOST side — a wrapper, a board, a save-state
+visitor — what the core expects of them, and that is the document a
+re-implementation in NeoST starts from. `extern/moira/POM68K_SURFACE.md` is
+that contract, in twelve sections: models and cores; the virtual interface a
+host implements and when each member is called; the configuration it injects;
+interrupts and time; MMU and bus faults; the FPU and its softfloat
+dependency; the 68040 caches; the save-state contract; the JIT seam, member
+by member, and what an interpreter-only host gets; which seams are generic
+68k and which were tuned on a Macintosh guest; what a port must bring along;
+and where the two copies of Moira stand against each other.
+
+It cites `file` + identifier, never a line number, and marks as "unverified"
+what was read in the code without a gate; those nine statements are an open
+item of `TODO.md § Moteur › Surface`.
+
+**What writing it found**, beyond the document itself:
+
+- the 68000 external bus error that would have left `execute()` (fixed in the
+  eighth entry of this day);
+- the save-state visitor omits five pieces of state that outlive an
+  instruction boundary, not three: also the integrated 68040 FPU's FSAVE
+  micro-state and the 68040 MOVEM restart latch. `TODO.md § Moteur ›
+  Justesse 68030` carries the full list;
+- the fused 68030 `ird`/`irc` fetch and the fetch window arm only through
+  `jit::Engine`, and the 68030 data window only when an `Engine` object
+  exists to bind its fill callback: a host that runs bare `Moira::execute()`
+  gets none of the three (`TODO.md § Moteur › Interprète`).
+
+`CLAUDE.md` names the new file beside the vendor record, on the same line —
+its size ceiling does not move.
 
 ---
 

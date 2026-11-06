@@ -21,7 +21,7 @@ is the authority, not this summary.
 | Machine roster, ROM identity and stable save-state ids | `src/MachineCatalog.h` |
 | Startup-option schema and lifecycle | `src/StartupOptions.h`, `src/RuntimeConfig*` |
 | JIT design, conformance and performance evidence | `src/jit/POM68K_JIT.md` |
-| Moira provenance and local patch inventory | `extern/moira/POM68K_VENDOR.md` |
+| Moira provenance, patch inventory and host-side contract | `extern/moira/POM68K_VENDOR.md`, `POM68K_SURFACE.md` |
 | Guest-side Retro68 utilities | `dev/README.md` |
 
 Do not duplicate generated gate totals in this file, README or TODO. Read
