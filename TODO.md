@@ -351,6 +351,24 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   reste étant D23b). Le même outil sert l'ATC ci-dessous (remplacement,
   bit S), le pipe de préfetch et le verrou du RTE $B du 68030 : il y
   faut des familles dont la première instruction arme l'état.
+- [ ] **Livrer la trappe de type de donnée des opclasses 000/010 en
+  pré-instruction (D30).** Le manuel (M68040UM § 9.7, types non
+  supportés) la place comme les exceptions arithmétiques de D24 : postée,
+  prise en pré-instruction (format $0) par l'instruction FPU suivante ;
+  le fork et l'oracle la prennent immédiatement en format $3, et l'oracle
+  le dit lui-même (« simplification: always mid/post-instruction
+  exception »). Des centaines de vecteurs épinglés tiennent la
+  simplification : à faire avec le mécanisme de D24 étendu au vecteur 55,
+  des vecteurs à deux instructions, et une liste de divergences connues
+  le temps de régénérer. Noté le 2026-11-07 en lisant § 9.7 pour D24.
+- [ ] **Six octets de frame IDLE 68882 après une sortie mémoire qui
+  trappe.** Famille `fpuh` (FSAVE en tête des handlers, trois pas, sur la
+  branche `engine/next`), 68030 + 68882, oracle strict : 5 977 / 6 000 ;
+  17 sont D23b, six sont une sortie FMOVE vers la mémoire ou un entier
+  dont l'exception est prise, et dont la frame IDLE sauvée par le handler
+  diffère d'un octet (offset $29 : `fpuh/tt seed=1313 #1298`, `#869`,
+  `#1388`, `#1501`, `fpuh/off seed=1311 #1078`, `#1393`). Même famille sur
+  le 68040 : voir rang 51 de la branche.
 - [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
   dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
   donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la
