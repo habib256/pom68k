@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (later)** — [CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause](#2026-11-06-claude-md-budget)
 - **2026-11-06** — [TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation](#2026-11-06-todo-engine-programme)
 - **2026-10-25 (later)** — [The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last](#2026-10-25-display-card-824)
 - **2026-10-25** — [The push that repairs red CI names the run it repairs](#2026-10-25-ci-fix-trailer)
@@ -1194,6 +1195,27 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-claude-md-budget"></a>
+## 2026-11-06 (later) — CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause
+
+`e888802` (2026-11-01) added the evidence-grades section to `CLAUDE.md`,
+taking it from 231 to 258 lines, without the matching edit of
+`tools/file_size_budget.txt` that the budget asks for "in the same commit".
+`file_size_budget_test` failed on the push job (run 41318097351) and on the
+LTO x86-64, LTO aarch64 and ASan+UBSan legs of every nightly from 2026-11-02
+to 2026-11-06 — `FAIL  CLAUDE.md: 258 lines, ceiling 231 (+27)` — and it was
+the only failing gate in each of them. The macOS push job stayed green.
+
+The ceiling is raised to 258: the growth is the deliberate, family-wide
+hierarchy the maintainer put there, not drift. The alternative — moving the
+section into `DEV.md` § 1.1 — is left as the maintainer's call; that
+paragraph still carries the previous ranking and "the oracle wins", which is
+the first line of `TODO.md § Moteur › Socle`. Found while preparing the push
+of the backlog reorganisation below, which the pre-push hook would have
+refused, as designed.
 
 ---
 
