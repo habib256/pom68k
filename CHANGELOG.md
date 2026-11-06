@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06** — [TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation](#2026-11-06-todo-engine-programme)
 - **2026-10-25 (later)** — [The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last](#2026-10-25-display-card-824)
 - **2026-10-25** — [The push that repairs red CI names the run it repairs](#2026-10-25-ci-fix-trailer)
 - **2026-10-20 (second)** — [PowerBook slot E gets its 512 KB RGB display and two-screen public replay](#2026-10-20-pb030-external-video)
@@ -1193,6 +1194,114 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-todo-engine-programme"></a>
+## 2026-11-06 — TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation
+
+`TODO.md § Moteur` was seven profile-conditioned JIT studies parked under
+"Hors jalon", and the backlog carried **no** CPU proof item at all. The
+maintainer's decision of this day is that the engine comes first: stabilise,
+prove and speed up the Moira fork and its 68030/68040 additions, interpreter
+and JIT, until the core can be re-implemented in NeoST without carrying a
+Macintosh with it. `§ Moteur` is now the first work section, with an exit
+criterion and nine sub-sections — Socle de preuve CPU, Convergence avec la
+copie NeoST, Justesse 68030, Justesse 68040, Temps, Interprète, JIT justesse,
+JIT performance, Surface portable. Jalons 2-5, `§ En sommeil` and the other
+section names code and docs cite are unchanged.
+
+**How the items were found.** Five read-only audits ran in parallel (68030
+interpreter, 68040 interpreter, `src/jit`, the CPU gate/oracle floor, and the
+NeoST tree with a file-level diff of the two Moira copies). Nothing was built
+and no gate was added. An item whose defect was *read* in the code but never
+executed is tagged *À reproduire* in the backlog: its first step is the gate
+that shows it, and a defect that does not show leaves with its refutation
+here.
+
+**Checked in the tree before being written down:**
+
+- the 020/030 RTE accepts the FPU post-instruction format $3 only when
+  `cpuModel >= M68EC040` (`MoiraExec_cpp.h`), while `execFpuException`
+  stacks $3 on the 030 since ruling D23;
+- `MoiraSnapshot::visitCpuCommon` carries `irqDelay` and the FPU register
+  file but none of `fpu.busy*`, `mmuPipe*`, `mmuRteSubst*`;
+- `pomFlushAtcs()` invalidates both 68040 caches on load and nothing pushes
+  dirty copyback lines on save;
+- `abs(dividend)` / `std::abs` are still in `MoiraALU_cpp.h` — the
+  `INT32_MIN` undefined behaviour NeoST removed on 2026-10-20;
+- five `getenv` calls live inside `extern/moira/Moira/`
+  (`POM68K_040_DCACHE`, `POM68K_040_CM_STATS`, `NEOST_EXC_DIAG` ×3);
+- `pomIcacheFetch` is only reached on the 68030 paths and
+  `icLive` requires `cpuModel == M68030`, so the 68040 overlay knobs do
+  nothing;
+- x64 refuses multi-poll memory instructions only under `cache040Live`, and
+  both native backends declare `accessClockBias = true`.
+
+**Refuted on the way.** One audit suspected `sst68030` of exiting early on
+this host (CTest's cost file records 2.6 ms for it). Run directly against
+`tests/data/sst68030` it executes 3082/3082 vectors across 12 files in 0.41 s.
+The same audit corrects `POM68K_VENDOR.md § How to read this file`: the three
+vector corpora are present on this x86-64 host (and on the M4 since
+2026-09-16); what is true is that they are pinned nowhere, which is now the
+first line of `§ Moteur › Socle`.
+
+**What the NeoST side looks like today**, because it shapes the list: NeoST
+emulates the ST/STE/MegaSTE on a 68000 only, states the TT and the Falcon out
+of scope in its own documents, and does its 68881 as a memory-mapped
+peripheral outside Moira. POM68K's copy was taken at NeoST `47d6c39`
+(2026-07-11); nine NeoST 68000 patch groups landed after that and are missing
+here (`illegalOpcodeHook`, `willProcessFault`, bus-cycle bounds, the TAS bus
+lock, the MOVE to SR prefetch, the SR/CCR double reload, DIV internal cycles
+before the prefetch, unsigned DIVS absolute values, STOP+8). In the other
+direction POM68K's SingleStepTests convergence rewrote 68000 rules NeoST
+keeps on Hatari and the microcode transcription — address-error idle cycles,
+the early DIVS overflow exit, the divide-by-zero Z flag, ADDQ.l to An, the
+function code of PC-relative reads. Those have never been compared; each now
+has to end as a recorded ruling.
+
+**Existing `§ Moteur` items, re-read:**
+
+- *late-poll admission* — reworded: the knob is read by the a64 emitter
+  only and was proved inert on x64 on 2026-09-04, so a promotion is a port or
+  an IR hoist, not a default flip;
+- *attribute the +6 % of the native a64 arm on the Q605* — **replaced**: the
+  2026-08-23 reference fingerprint is no longer reproducible after the
+  September/October Q605 workload changes (SCC sync, drive B, board identity),
+  so the open work is re-baselining both hosts' tables;
+- *zero-mask stores* — reworded: the a64 guard has been exact since
+  2026-08-20 and what the 2026-08-21 entries leave is real code-mask
+  collisions; the line now asks to name that residue or drop;
+- *68030 admission gap*, *Speedometer families*, *`PFLUSHA` and the arm
+  retry*, *re-measure before compacting `mmu040InstrStart`* — kept, the third
+  now ordered after the unexplained 2026-08-23 arm-timing divergence under
+  the 68040 D-cache.
+
+The `cacheBoost` calibration moved from `§ Fidélité` to `§ Moteur › Temps`,
+where the audits attached what it had been missing: the model is not uniform
+(IIx, IIcx, SE/30 and IIfx have neither boost nor overlay) and on the 68040
+the throughput model is the boost alone. The Centris/Quadra 700 SCC item
+stays in `§ Fidélité` and points at it.
+
+**The evidence grades change who wins.** `CLAUDE.md § Evidence grades`
+(2026-11-01) ranks every emulator as grade D and states that a lower grade
+never overrules a higher one. The CPU fork was built on the opposite rule —
+`DEV.md` § 1.1, `oracle/README.md` and `POM68K_VENDOR.md` still read "the
+oracle wins" on a spec conflict, and ruling D23 reverted a manual-based
+format $2 frame to WinUAE's $3 on exactly that ground. The first line of
+`§ Moteur › Socle` is therefore the re-ruling: inventory each place where
+WinUAE or SingleStepTests was followed *against* a Motorola manual and settle
+it under the grades. It also reframes the POM68K/NeoST 68000 conflicts:
+SingleStepTests and Hatari are both grade D, so neither can decide for the
+other.
+
+**A process note.** The reorganisation was first written against a tree eight
+commits behind `origin/main` (no fetch at session start) and had to be redone
+on top of it; those commits touch neither `extern/moira` nor `src/jit`, so the
+audits stand, and the Display Card 8•24 item they added to `§ Fidélité` is
+kept.
+
+No gate changed; `docs_test` still holds the backlog to unchecked items.
 
 ---
 

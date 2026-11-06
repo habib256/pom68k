@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 692 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 693 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 90 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 91 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 67 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 36 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
@@ -116,6 +116,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-18 (sixth)** — [The AFP live trace has no difference between hosts: two engines on two machines agree to the cycle, and the a64 backend is the one that steps away from the oracle](CHANGELOG.md#2026-09-18-afp-a64-gap)
 - **2026-10-02 (later)** — [The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it](CHANGELOG.md#2026-10-02-a64-late-ipl)
 - **2026-10-02 (sixth)** — [`Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary](CHANGELOG.md#2026-10-02-x86-disk605-afp)
+- **2026-11-06** — [TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation](CHANGELOG.md#2026-11-06-todo-engine-programme)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
