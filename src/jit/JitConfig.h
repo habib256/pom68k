@@ -70,6 +70,10 @@ struct ResolvedConfig {
     bool cache040LinePairs = true;
     bool cache040LineReadStats = false;
     bool cache040LatePoll = false;
+    // Moira's 68040 cache model and its CM histogram: CPU state, carried
+    // here because every wrapper and test rig receives this (MoiraCpu.h).
+    bool cache040Model = false;
+    bool cache040CmStats = false;
     // Dispatch-cache slots (power of two >= 4096); runtime so two sizes
     // compare ABBA in one binary (CHANGELOG 2026-09-17). 0 = compiled default.
     int dispatchCacheSlots = 0;
@@ -222,6 +226,8 @@ inline ResolvedConfig resolveConfig(const pom68k::StartupSnapshot& values) {
     c.cache040LineWrites = envBool(option::Jit040LineWrite, !conservative);
     c.cache040LinePairs = envBool(option::Jit040LinePair, !conservative);
     c.cache040LineReadStats = envBool(option::Jit040LineStats, instrumented);
+    c.cache040Model = envBool(option::Cache040Model, false);
+    c.cache040CmStats = present(option::Cache040CmStats);
     // Opt-in: the cache-active 040 late-IPL-poll admission. Conformant
     // (locksteps identical with it on) but measured −6.3 % wall on the
     // cache-on fixed-budget Q605 bench (2026-09-03): the admitted class is

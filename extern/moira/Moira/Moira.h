@@ -1536,6 +1536,9 @@ public:
         pomJitDtlbFlush();
     }
     bool pomCache040Armed() const { return pomCache040On; }
+    // POM68K M0 probe (docs/CACHE_040.md): histogram the descriptor CM bits
+    // per ATC fill, printed at process exit. Host-injected diagnostic.
+    void setPomCmStats040(bool on) { pomCmStats040 = on; }
     bool pomCache040Active() const {
         return pomCache040On && cpuModel >= Model::M68EC040;
     }
@@ -2229,6 +2232,7 @@ private:
     // decodes the CINV/CPUSH
     // cache/scope/register fields (bit 5 = push).
     bool pomCache040On {false};
+    bool pomCmStats040 {false};     // POM68K: setPomCmStats040()
     Cache040 pomCache040I, pomCache040D;
     PomCache040Timing pomCache040Timing {};
     int pomCache040Cm {Cache040::CM_NC};
