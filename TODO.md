@@ -65,10 +65,10 @@ dans le même processus — aucune ne se déduit d'une autre.
 
 Ordre : Socle → Convergence → Justesse → Temps → Interprète → JIT →
 Surface. Qui gagne un arbitrage est écrit (`CLAUDE.md § Evidence grades`,
-`oracle/README.md`) : le manuel sur l'oracle, sauf exception connue. Sans dépendance et à prendre d'abord :
-la re-vérification x64 des polls positionnés (› JIT justesse). Les cellules à la main des
-règles qu'aucun corpus n'atteint s'ajoutent à `moira_rules_test`
-(`cmake/Pom68kCpuGates.cmake`).
+`oracle/README.md`) : le manuel sur l'oracle, sauf exception connue. Les
+cellules à la main des règles qu'aucun corpus n'atteint s'ajoutent à
+`moira_rules_test` (`cmake/Pom68kCpuGates.cmake`) ; l'ordre et la date de
+chaque cycle bus du 68000 sont tenus par `sst68000`.
 
 Hors de ce fichier : ce que NeoST doit faire chez lui (périmètre
 TT/Falcon/accélérateurs, aujourd'hui hors périmètre dans ses propres
@@ -351,12 +351,6 @@ Chaque ligne n'ouvre qu'avec un profil temporel reproductible.
 
 ### JIT justesse et parité des hôtes
 
-- [ ] **Re-vérifier sur x64 le chemin sans cache des instructions mémoire
-  à deux polls IPL.** L'émetteur a64 a reçu le 2026-10-02 la règle « poll
-  après le dernier accès → ré-échantillonner, sinon repli exact » ; x64 ne
-  refuse cette classe que cache actif. Sa trace AFP est verte sans qu'on
-  sache pourquoi. Un oracle sans asset suffit : une lecture MMIO qui lève
-  une seconde IRQ. L'hôte est là.
 - [ ] **Expliquer pourquoi le moment d'armement d'une fenêtre change
   l'état invité sous le D-cache 040.** Un backoff croissant a fait
   diverger les deux locksteps cache actif au premier pas grossier

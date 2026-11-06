@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (sixth)** — [The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it](#2026-11-06-x64-late-ipl)
 - **2026-11-06 (fifth)** — [The 68040 cache switch leaves the environment: Moira's constructor no longer calls getenv, and the cache-on lockstep now fails if the wire is lost](#2026-11-06-core-no-getenv)
 - **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](#2026-11-06-oracle-vs-manual)
 - **2026-11-06 (third)** — [DIVS of $80000000: the undefined abs() NeoST removed is back-ported, and a bare-Moira gate reaches it under UBSan](#2026-11-06-divs-int-min)
@@ -1198,6 +1199,62 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-x64-late-ipl"></a>
+## 2026-11-06 (sixth) — The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it
+
+`src/jit/POM68K_JIT.md` had carried since 2026-10-02 the sentence "the x64
+emitter's cacheless path has not been re-checked on an x86-64 host", and
+`TODO.md § Moteur › JIT justesse` the item. The check is done, and the answer
+is that x64 had the hole A64 had.
+
+**The mechanism.** The interpreter samples the interrupt pins after the
+operand read of a memory-source ALU instruction (`execAndEaRg`: `readOp`,
+then `POLL_IPL`). x64 emitted `pollIpl()` at the head of each instruction
+only, and refused the multi-poll class only under `L_.cache040Live`. The
+exact read thunk reaches Moira's own `mmu040Read`, which can raise the pin
+but contains no poll. So when a read raised the pin, the body ended with a
+stale `reg.ipl`, the next instruction's guard exited on `CHECK_IRQ`,
+`checkForIrq()` saw the stale latch, and the interrupt was taken one
+instruction late.
+
+**Why no gate had seen it.** The access that exposed A64 — the VIA1 IFR read
+on the Quadra 605 — never runs natively on x64: `viaSync()` always stalls, the
+traced cycles exceed the table cost, and `emitAluEaRg` refuses on the cost
+cross-check. x64 was protected by an unrelated refusal, for that one device.
+A read that raises the pin with no bus wait has no such protection.
+
+**The oracle.** `jit_asset_free_lockstep_test` gains `runLateIplPoll`: a
+device register whose read raises level 2 with zero added clock and whose
+write acknowledges; a loop `AND.B $800(A1),D0 / ADDQ.L #1,D1 / ADDQ.L #1,D2 /
+BRA.S`; a handler that logs the stacked PC. It first runs unarmed and
+requires the loop to be native with no fallback, then arms both machines.
+Before the fix, on this host:
+
+```
+late-IPL divergence at armed checkpoint 0: first stacked PC 00001104/00001106,
+D1 00000080/00000081
+```
+
+— the interpreter interrupts after the AND, x64 after the ADDQ. The test
+also pins the interpreter's answer (`kCode + 4`), so a generator and an
+interpreter drifting together would still be caught.
+
+**The fix** is A64's rule, verbatim, in `JitBackendX64.cpp`'s emit loop: when
+every non-head poll follows the final data access, the body stays native and
+re-samples the pin at its end; any other placement takes the interpreter;
+with the cache model armed the admission stays behind
+`POM68K_JIT_040_LATE_POLL`, which x64 now reads too. After it the case passes
+with `slow=0`: `late-IPL compiled=1 runs=106 native=552 slow=0 acks=43 first
+stacked PC=00001104`.
+
+This is not free: cacheless x64 forms whose second poll is NOT after the
+final access now replay through the interpreter where they ran native. A64
+measured +1.35 % on `jit_bench` for the same rule; the x64 price is not
+measured in this entry and is carried by the re-baselining item of
+`TODO.md § Moteur › JIT performance`.
 
 ---
 

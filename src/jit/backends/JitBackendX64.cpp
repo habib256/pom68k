@@ -4998,24 +4998,36 @@ bool Emitter::emit() {
             emitted = i + 1;
             continue;
         }
-        // On a cache-active 040 an exact data access can stall and advance
-        // peripherals in the middle of the instruction. Some Moira handlers
-        // then cross a second POLL_IPL site, while others deliberately do
-        // not; moving that sample to a generic generated boundary would be
-        // wrong for both the before-write and after-read variants. The IR
-        // now records each poll's access-relative position
-        // (Instr::iplPollMask) and the A64 backend admits the
-        // poll-after-final-access class with an end-of-body re-sample;
-        // this backend keeps the exact interpreter path until the same
-        // admission is proved on an x86-64 host — its locksteps cannot
-        // execute on the machine that carried the A64 proof. Register-only
-        // two-poll forms cannot advance the clock before their final
-        // cycle charge.
-        if (!L_.is030 && L_.cache040Live &&
-            ir_.instrs[i].memory.count != 0 && ir_.instrs[i].iplPolls > 1) {
-            a_.jmp(staticStub(i));
-            emitted = i + 1;
-            continue;
+        // Device time can move between the 040 loop-head IPL sample and a
+        // handler's later one — a cache fill, or an exact MMIO thunk whose
+        // access itself raises the pin (a VIA IFR read letting VIA2 through:
+        // CHANGELOG 2026-10-02 for the A64 half, 2026-11-06 for this one).
+        // The IR records each poll's access-relative position
+        // (Instr::iplPollMask). When every non-head poll follows the FINAL
+        // data access, the body stays native and re-samples the pin at its
+        // end — the same architectural point; with the cache model off
+        // always, with it on behind the knob it was measured with. Any other
+        // placement takes the interpreter. Same rule as JitBackendA64.cpp;
+        // until 2026-11-06 this backend refused the class only with the
+        // cache model armed and emitted the cacheless body with its head
+        // sample alone, which took such an interrupt one instruction late
+        // (jit_asset_free_lockstep_test, runLateIplPoll). Register-only
+        // two-poll forms cannot advance the clock before their final cycle
+        // charge.
+        bool lateIplPoll = false;
+        if (!L_.is030 && ir_.instrs[i].memory.count != 0 &&
+            ir_.instrs[i].iplPolls > 1) {
+            const Instr& in = ir_.instrs[i];
+            const uint8_t n = in.memory.count;
+            lateIplPoll = (!L_.cache040Live || cache040LatePollEnabled()) &&
+                in.iplPollPosValid &&
+                n >= 1 && n <= MemoryContract::MaxAccesses &&
+                in.iplPollMask == uint8_t(1u << (n - 1));
+            if (!lateIplPoll) {
+                a_.jmp(staticStub(i));
+                emitted = i + 1;
+                continue;
+            }
         }
         // No traced fetch count, no charge: an emitted charge that guesses
         // words + 1 over-fetches every SKIP_LAST_RD form. IRs recorded by
@@ -5048,6 +5060,11 @@ bool Emitter::emit() {
         }
         native_++;
         if (ir_.instrs[i].kind == Kind::Branch) break;   // it committed its own
+
+        // The traced handler's post-access POLL_IPL, at its architectural
+        // position: every access of this body is done, and the trailing
+        // cycle charge moves no device time before the next loop head.
+        if (lateIplPoll) pollIpl();
 
         // The 68030 i-cache charge — on the SUCCESS path only, after every
         // runtime bail the body can take, so no exit can ever carry a

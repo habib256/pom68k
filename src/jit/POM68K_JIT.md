@@ -1958,8 +1958,8 @@ instructions on the cache-on fixed-budget bench, fingerprint unchanged) —
 but the same bench measures **+6.3 % wall time** (AB/BA/AB, spreads 0.4 %,
 floor 1.1 %): the admitted instructions are the boot's hot poll loops, and
 their native line-validation path loses to the fetch window that ran them
-before. The knob stays off until a workload shows the win, and x64 keeps
-the full refusal until its locksteps re-run on an x86-64 host.
+before. The knob stays off until a workload shows the win; x64 reads the same
+knob since 2026-11-06 (same admission, same default).
 Register-only two-poll forms cannot advance peripheral
 time before their final charge and stay native; single-poll memory
 instructions are unchanged.
@@ -1981,8 +1981,22 @@ boundaries. Price on `jit_bench` (Q605, same build configuration, ABBA ×6):
 +1.35 %, fingerprint unchanged, 0.86 M more instructions replayed out of
 647 M. A variant that kept those RAM reads native was cost-free but diverged
 at the same boundary — Moira's own mid-instruction `SYNC`s can cross a device
-deadline between the samples. The x64 emitter's cacheless path has not been
-re-checked on an x86-64 host. The copyback gate pins
+deadline between the samples.
+
+**The x64 emitter had the same hole until 2026-11-06.** It refused the
+multi-poll class only with the cache model armed and emitted the cacheless
+body with its head sample alone. Nothing showed it because the one access
+that exposed A64 — the VIA read — never reaches x64's native path: `viaSync()`
+always stalls, the traced cycles exceed the table cost, and the ALU emitter
+refuses on the cost cross-check. A read that raises the pin with NO bus wait
+has no such protection, and that is what the asset-free oracle builds:
+`jit_asset_free_lockstep_test` gains a device register whose read raises
+level 2 (`runLateIplPoll`); the handler logs the stacked PC. Interpreter
+`$1104`, the instruction after the `AND.B $800(A1),D0`; x64 before the fix
+`$1106`, one instruction late, with D1 already incremented. x64 now applies
+A64's rule verbatim — late re-sample for the poll-after-final-access class,
+exact fallback for any other placement, cache model on or off — and the case
+passes native (`slow=0`). The copyback gate pins
 `ADD.W (A0),D0` to one exact fallback with interpreter-identical result,
 flags, queue and cycles on both hosts. The original canonical replay is green
 past the failing checkpoint with native cache-line traffic still enabled;

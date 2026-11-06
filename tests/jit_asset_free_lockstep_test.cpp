@@ -160,6 +160,10 @@ constexpr uint32_t kStack = 0x00E000;
 constexpr uint32_t kHole = 0x0F0000;
 constexpr uint32_t kDevice = 0x00500000;
 constexpr uint32_t kTailDevice = kDevice + 0x2000;
+// A device register whose READ raises interrupt level 2 and whose WRITE
+// acknowledges it, with no bus wait: the late-IPL-poll oracle (runLateIplPoll).
+constexpr uint32_t kIrqDev = kDevice + 0x800;
+constexpr uint32_t kIrqHandler = 0x001A00;
 constexpr uint32_t kGuardA = kCode;
 constexpr uint32_t kGuardB = kCode + 0x40;
 constexpr uint32_t kGuardCross = kCode + 0xFC;
@@ -191,6 +195,9 @@ public:
     uint32_t deviceReads = 0;
     uint32_t deviceWrites = 0;
     uint8_t deviceValue = 0xA5;
+    bool irqArmed = false;
+    uint32_t irqReads = 0;
+    uint32_t irqAcks = 0;
 
     static uint32_t bus(uint32_t a) { return a & kRamMask; }
     static bool inHole(uint32_t a) {
@@ -237,6 +244,16 @@ private:
     }
 
     moira::u8 read8(moira::u32 a) const override {
+        if (a == kIrqDev) {
+            // The access itself raises the pin, like a VIA IFR read that
+            // lets another device through. No added bus time: a wait would
+            // make a generator refuse the instruction on cost and prove
+            // nothing about its interrupt sampling.
+            auto& c = *const_cast<SyntheticCpu*>(this);
+            c.irqReads++;
+            if (c.irqArmed) c.setIPL(2);
+            return 0xFF;
+        }
         if (inDevice(a)) {
             auto& c = *const_cast<SyntheticCpu*>(this);
             const uint32_t n = c.deviceReads++;
@@ -262,6 +279,11 @@ private:
     }
     void write8(moira::u32 a, moira::u8 v) const override {
         auto& c = *const_cast<SyntheticCpu*>(this);
+        if (a == kIrqDev) {
+            c.irqAcks++;
+            c.setIPL(0);
+            return;
+        }
         if (inDevice(a)) {
             const uint32_t n = c.deviceWrites++;
             c.setClock(c.getClock() + 2 + int64_t(n & 1));
@@ -307,6 +329,13 @@ void put16(SyntheticCpu& c, uint32_t a, uint16_t v) {
 void put32(SyntheticCpu& c, uint32_t a, uint32_t v) {
     put16(c, a, uint16_t(v >> 16));
     put16(c, a + 2, uint16_t(v));
+}
+
+uint32_t get32(const SyntheticCpu& c, uint32_t a) {
+    uint32_t v = 0;
+    for (int i = 0; i < 4; i++)
+        v = v << 8 | c.mem[SyntheticCpu::bus(a + uint32_t(i))];
+    return v;
 }
 
 void installVectors(SyntheticCpu& c) {
@@ -383,6 +412,28 @@ void installExactSourceLoop(SyntheticCpu& c) {
     put16(c, kCode + 4, 0x4E71);       // ordinary six-cycle path
     put16(c, kCode + 6, 0x4E71);
     put16(c, kCode + 8, 0x60F6);       // BRA.S kCode
+}
+
+// The interpreter samples the interrupt pins AFTER the operand read of a
+// memory-source ALU instruction (execAndEaRg: readOp, then POLL_IPL). A
+// native body that only samples at the instruction head leaves a stale
+// latch when the read itself raises the pin, and the interrupt is then
+// taken one instruction late. The handler logs the stacked PC, so "late"
+// is a number: kCode+4 follows the AND, kCode+6 follows the ADDQ after it.
+void installLateIplLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put32(c, 26 * 4, kIrqHandler);     // level-2 autovector
+    put16(c, kCode + 0, 0xC029);       // AND.B $800(A1),D0
+    put16(c, kCode + 2, 0x0800);
+    put16(c, kCode + 4, 0x5281);       // ADDQ.L #1,D1
+    put16(c, kCode + 6, 0x5282);       // ADDQ.L #1,D2
+    put16(c, kCode + 8, 0x60F6);       // BRA.S kCode
+    put16(c, kIrqHandler + 0, 0x26EF); // MOVE.L 2(A7),(A3)+  stacked PC
+    put16(c, kIrqHandler + 2, 0x0002);
+    put16(c, kIrqHandler + 4, 0x13FC); // MOVE.B #0,kIrqDev   acknowledge
+    put16(c, kIrqHandler + 6, 0x0000);
+    put32(c, kIrqHandler + 8, kIrqDev);
+    put16(c, kIrqHandler + 12, 0x4E73);// RTE
 }
 
 void installAddressSourceAluLoop(SyntheticCpu& c) {
@@ -1360,6 +1411,80 @@ bool runExactSourceMove() {
                 (unsigned long long)s.slowInstrs, native.deviceReads);
     return s.blocksCompiled != 0 && s.blocksRun != 0 && s.slowInstrs == 0 &&
            native.deviceReads != 0;
+}
+
+bool runLateIplPoll() {
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
+    installLateIplLoop(ref);
+    installLateIplLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setD(0, 0x5A);
+        c->setA(1, kDevice);
+        c->setA(3, kData);
+        c->setSR(0x2000);
+    }
+    native.jit.setEnabled(true);
+
+    // Unarmed: the loop must compile and run natively with no fallback, or
+    // the armed phase below would compare the interpreter with itself.
+    for (int step = 0; step < 64; step++) {
+        const int64_t target = ref.getClock() + 37;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true)) {
+            std::printf("    late-IPL warm-up divergence at checkpoint %d\n", step);
+            return false;
+        }
+    }
+    const auto warm = native.jit.stats().snapshot();
+    if (warm.blocksCompiled == 0 || warm.blocksRun == 0 ||
+        warm.slowInstrs != 0 || native.irqReads == 0) {
+        std::printf("    late-IPL loop did not run native: compiled=%llu "
+                    "runs=%llu slow=%llu reads=%u\n",
+                    (unsigned long long)warm.blocksCompiled,
+                    (unsigned long long)warm.blocksRun,
+                    (unsigned long long)warm.slowInstrs, native.irqReads);
+        return false;
+    }
+
+    ref.irqArmed = native.irqArmed = true;
+    for (int step = 0; step < 64; step++) {
+        const int64_t target = ref.getClock() + 37;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, kData, 0x400, true) ||
+            !sameMemory(ref, native, kStack - 128, 128, true) ||
+            ref.irqReads != native.irqReads ||
+            ref.irqAcks != native.irqAcks) {
+            std::printf("    late-IPL divergence at armed checkpoint %d: "
+                        "first stacked PC %08X/%08X, D1 %08X/%08X, "
+                        "reads %u/%u acks %u/%u\n", step,
+                        get32(ref, kData), get32(native, kData),
+                        ref.getD(1), native.getD(1),
+                        ref.irqReads, native.irqReads,
+                        ref.irqAcks, native.irqAcks);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    late-IPL compiled=%llu runs=%llu native=%llu slow=%llu "
+                "acks=%u first stacked PC=%08X\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs, native.irqAcks,
+                get32(native, kData));
+    // The interpreter's answer is architectural: the interrupt follows the
+    // AND. Pin it, so a generator and an interpreter that drifted TOGETHER
+    // would still be caught.
+    return ref.irqAcks != 0 && get32(ref, kData) == kCode + 4 &&
+           s.instrs > warm.instrs;
 }
 
 bool runAddressSourceAluLockstep() {
@@ -3296,6 +3421,8 @@ int main() {
           "restart-read /BERR boundary and format-$7 frame match the interpreter");
     check(runExactSourceMove(),
           "exact MMIO source + preflighted RAM destination stays native and exact");
+    check(runLateIplPoll(),
+          "an MMIO read that raises the pin interrupts after its own instruction");
     check(runAddressSourceAluLockstep(),
           "ADD.L address-register source preserves value and flags natively");
     check(runBriefIndexedLockstep(),
