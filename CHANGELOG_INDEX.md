@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 702 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 703 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 93 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 72 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 73 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 36 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -190,6 +190,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-19** — [The Duo 270c reaches a color Finder, and the bare LC II stops detecting RAM as its FPU](CHANGELOG.md#2026-10-19-duo270c-lcii-cir)
 - **2026-10-19 (fourteenth)** — [Portable and PowerBook 100 reach Finder through their 68000 board and real PMU](CHANGELOG.md#2026-10-19-portable-board)
 - **2026-11-06 (eighth)** — [A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix](CHANGELOG.md#2026-11-06-68000-host-hooks)
+- **2026-11-06 (eleventh)** — [Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it](CHANGELOG.md#2026-11-06-d23-oracle-inconsistent)
 - **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](CHANGELOG.md#2026-11-06-oracle-vs-manual)
 - **2026-11-06 (seventh)** — [sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them](CHANGELOG.md#2026-11-06-68000-bus-cycles)
 - **2026-11-06 (tenth)** — [The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`](CHANGELOG.md#2026-11-06-sst-corpora-lock)

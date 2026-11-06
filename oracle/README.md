@@ -47,7 +47,7 @@ existing ruling only when doing so turns no gate red (maintainer's decision,
 | Ruling | Oracle (kept) | Manual | Held by | Settled by |
 |---|---|---|---|---|
 | **D12** | Zero divide, CHK/CHK2, TRAPcc/TRAPV: the format $2 "instruction address" is the **next** instruction's | MC68030UM reads "the instruction that caused the exception" | `sst68030` | a frame stacked by a real 68020/68030 |
-| **D23a** | 68030 FPU post-instruction exception stacks **format $3** with the operand EA | MC68030UM: format $2, instruction address | `sst68030` fpu cells (10 vectors went red on the 2026-08-17 attempt), `fpu_sanity` check 14 | a frame stacked by a real 68030 + 6888x. Note the fork's 68020/030 RTE does not accept a $3 frame (`TODO.md § Moteur › Justesse 68030`) |
+| **D23a** | 68030 FPU post-instruction exception stacks **format $3** with the operand EA | MC68030UM: format $2, instruction address | `sst68030` fpu cells (10 vectors went red on the 2026-08-17 attempt), `fpu_sanity` check 14 | a frame stacked by a real 68030 + 6888x. The oracle is not self-consistent here: its own RTE accepts format $3 only from the 68040 up (`uae/upstream/gencpu.c`, `i_RTE`: `if (cpu_level >= 4)` @ Hatari e77819f7), so on WinUAE too a 68030 handler that returns from this frame takes a format error. The fork mirrors both halves (`TODO.md § Moteur › Justesse 68030`) |
 | **D23b** | FRESTORE accepts a version-$41 (68040) frame on a 68882 — WinUAE's own "horrible hack" | MC68882UM § 6 knows no such frame version: format error | `sst68030` fpu cells (4 vectors) | a real 68882 given a $41 frame |
 
 Two 68000 rules of the same kind predate the 68030 oracle and are flagged

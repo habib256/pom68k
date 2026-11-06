@@ -208,14 +208,16 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68030, 68020 et 6888x
 
-- [ ] **Faire accepter au RTE du 030 la frame $3 qu'il empile lui-même.**
-  *À reproduire.* `execFpuException` pousse un format $3 sur le 020/030
-  (décision D23), mais le RTE ne l'accepte qu'à partir du 68EC040 : un
-  handler qui fait simplement RTE prendrait une erreur de format.
-  `fpu_sanity` vérifie la frame empilée, jamais son retour. La question de
-  fond ($2 du manuel, grade B, contre $3 de l'oracle, grade D) se rejuge
-  en › Socle ; une preuve A demanderait *une frame empilée par un vrai
-  68030*.
+- [ ] **Sortir la frame FPU $3 du 68030 de l'incohérence de l'oracle.**
+  `execFpuException` pousse un format $3 sur le 020/030 (décision D23a) et
+  le RTE ne l'accepte qu'à partir du 68EC040 : un handler qui fait RTE
+  prend une erreur de format. Ce n'est pas un écart du fork — WinUAE fait
+  exactement les deux (`oracle/uae/upstream/gencpu.c`, `i_RTE`, branche
+  `cpu_level >= 4`) : l'oracle empile sur 68030 une frame que son propre
+  RTE refuse. Le $2 du manuel, lui, est accepté par le RTE dès le 68020.
+  Revenir à $2 fait tomber dix vecteurs épinglés de `sst68030` : à faire
+  avec le mécanisme de divergences assumées de › Socle, ou sur *une frame
+  empilée par un vrai 68030*.
 - [ ] **Sérialiser l'état en vol, ou refuser de sauver quand il est
   vivant.** *À reproduire.* `MoiraSnapshot::visitCpuCommon` omet
   l'opération 6888x suspendue (`fpu.busy` et ses registres), le

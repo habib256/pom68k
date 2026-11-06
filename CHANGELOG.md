@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (eleventh)** — [Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it](#2026-11-06-d23-oracle-inconsistent)
 - **2026-11-06 (tenth)** — [The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`](#2026-11-06-sst-corpora-lock)
 - **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](#2026-11-06-moira-surface)
 - **2026-11-06 (eighth)** — [A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix](#2026-11-06-68000-host-hooks)
@@ -1203,6 +1204,40 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-d23-oracle-inconsistent"></a>
+## 2026-11-06 (eleventh) — Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it
+
+The audit of this day read in the fork that a 68030 FPU post-instruction
+exception stacks a format $3 frame (ruling D23a, 2026-08-18: "the oracle
+pushes $3 on the 030 too, and oracle wins over spec") while the 68020/030 RTE
+accepts $3 only from the 68EC040 up — so a handler that simply returns takes a
+format error. It was filed as a defect of the fork to reproduce.
+
+It is not the fork's. `oracle/uae/upstream/gencpu.c` generates RTE with
+
+```
+if (cpu_level >= 4) {
+    // 68040+
+    out("else if (frame == 0x3) {\nm68k_areg(regs, 7) += offset + 4; break; }\n");
+}
+```
+
+so WinUAE (Hatari e77819f7) does exactly both: it stacks format $3 on a
+68030 and its 68030 RTE falls through to the format error. Moira mirrors the
+oracle on each half, which is why 3 082 vectors agree.
+
+**What it changes.** Nothing in the code: the maintainer's rule of this day is
+to apply the evidence grades only where no gate turns red, and returning to
+the manual's format $2 turns ten pinned `sst68030` vectors red. But it changes
+the weight of the ruling. D23 was taken on the argument that the pin is "the
+oracle's living word". An oracle that cannot return from the frame it stacks
+is not describing a 68030 at that point, and the manual's format $2 — which
+every 68020+ RTE accepts, the oracle's included — is the coherent reading.
+`oracle/README.md` § *Rulings taken against a manual* and
+`TODO.md § Moteur › Justesse 68030` now say so.
 
 ---
 
