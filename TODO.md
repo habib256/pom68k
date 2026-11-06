@@ -66,10 +66,10 @@ dans le même processus — aucune ne se déduit d'une autre.
 Ordre : Socle → Convergence → Justesse → Temps → Interprète → JIT →
 Surface. La première ligne du Socle (grades de preuve) précède tout
 arbitrage : elle dit qui gagne. Sans dépendance et à prendre d'abord :
-l'UB de DIVS
-(› Convergence), les lectures d'environnement du cœur (› Surface), la
-re-vérification x64 des polls positionnés (› JIT justesse) et le RTE de la
-frame $3 (› Justesse 68030).
+les lectures d'environnement du cœur (› Surface) et la re-vérification
+x64 des polls positionnés (› JIT justesse). Les cellules à la main des
+règles qu'aucun corpus n'atteint s'ajoutent à `moira_rules_test`
+(`cmake/Pom68kCpuGates.cmake`).
 
 Hors de ce fichier : ce que NeoST doit faire chez lui (périmètre
 TT/Falcon/accélérateurs, aujourd'hui hors périmètre dans ses propres
@@ -81,7 +81,7 @@ macOS) vit dans le `TODO.md` de NeoST.
 
 Un cœur ne déménage qu'avec sa preuve. Aujourd'hui les gates sans
 Macintosh existent (`sst68000`/`030`/`040`, `fpu_sanity`, `fpu040_test`,
-`cache040_test`, `berr030_test`, `callm_rtm_test`,
+`cache040_test`, `berr030_test`, `callm_rtm_test`, `moira_rules_test`,
 `jit_asset_free_lockstep_test`) mais leurs corpus ne sont ni épinglés ni
 exécutés en CI, et plusieurs rangs de l'inventaire ne tiennent que par un
 boot.
@@ -161,15 +161,12 @@ boot.
 ### Convergence avec la copie NeoST
 
 Notre copie part de NeoST `47d6c39` (2026-07-11). Depuis, NeoST a corrigé
-son 68000 de neuf groupes que nous n'avons pas, et les deux forks ont
+son 68000 de huit groupes que nous n'avons pas encore (le neuvième, les
+valeurs absolues de DIVS, est le rang 38), et les deux forks ont
 réécrit les mêmes lignes amont dans des sens opposés : nous avons suivi
 SingleStepTests, NeoST suit Hatari et la transcription du microcode. Un
 cœur fusionné doit satisfaire les deux jeux de gates.
 
-- [ ] **Retirer l'UB de DIVS.** `abs(dividend)` et `std::abs` subsistent
-  dans `MoiraALU_cpp.h` : indéfini sur `INT32_MIN`, et NeoST a mesuré GCC
-  et clang en désaccord de 136 cycles (son commit `74b2f2d`). Gate :
-  `sst68000`.
 - [ ] **Rétro-porter les correctifs 68000 de NeoST postérieurs à la
   copie.** Un changement par groupe, `sst68000` puis
   `compact_timing_etalon` à chaque fois : `illegalOpcodeHook` ;

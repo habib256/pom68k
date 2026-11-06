@@ -17,7 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-10-19 with row 37, the MOVES fault cleanup; before that
+2026-11-06 with row 38, the DIVS absolute values back-ported from NeoST;
+before that 2026-10-19 with row 37, the MOVES fault cleanup; before that
 2026-10-09 with row 35, the debugger's access-stop delegate; earlier
 2026-09-05 with rows 33 and 34, the fused 68030 `ird`/`irc` fetch and the
 68030 interpreter data window; earlier counts predated the 040 FPU/cache
@@ -27,12 +28,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **94** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **414** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **417** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **37** | this file |
+| patch groups in the inventory below | **38** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Thirty-seven patch groups, two of which (the JIT seam, row 22, and the ATC
+Thirty-eight patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -62,7 +63,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 37 groups onto it. Not by the
+against a *measured* estimate of porting the 38 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -146,8 +147,9 @@ gate in the last column of each row.
 | 35 | **Debugger access-stop delegate** `pomDidReachWatchpoint(addr, S, write, program)` at all six watchpoint sites (default forwards to `didReachWatchpoint`), and `Debugger::reset` re-arming `CHECK_CP` | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraDebugger.cpp` | the bare address could not say read from write nor data from program space, so no consumer could keep a write watchpoint from stopping on reads or on an opcode fetch; and a reset left catchpoints listed with `CHECK_CP` clear, so the accelerated engine no longer stepped aside for them | `debug_session_test` |
 | 36 | **Defined last-level test in the 68030 table walk** — `bitpos <= 0` replaces `!bitpos` in the `indirect` predicate of `mmuWalkTables` | `MoiraExecMMU_cpp.h` | once TID has been consumed `bitpos` is −4, and `!bitpos` let `bits >> -4` evaluate: undefined behaviour, flagged by the nightly UBSan job in the test-side mirror `src/Mmu030Peek.h` (red from 2026-10-09). x86-64 and AArch64 mask a 32-bit shift count to 28, `bits` holds 16 bits, so the old expression read 0 and answered "last level" — exactly what the new one answers. No behaviour change | `sst68030`, `debug_inspection_test` |
 | 37 | **MOVES releases alternate FC on a bus fault** — clear `fcSource` before exception stacking | `Moira.cpp` | A faulting MOVES left SFC/DFC selected for handler fetches and data accesses. The LC II optional-FPU probe exposes this with SFC=7 and an empty 68882 socket; the fault's FC remains in the recorded access/SSW | `v8_ramsize`, `lcii_nofpu_boot_etalon` |
+| 38 | **DIVS absolute values in unsigned arithmetic** — `cyclesDiv<C68000\|C68010, DIVS>` and `setUndefinedDIVS` no longer call `abs()` on the 32-bit dividend (back-port of NeoST `74b2f2d`, 2026-10-20) | `MoiraALU_cpp.h` | `abs(INT32_MIN)` is undefined behaviour: on `$80000000 / $8000` NeoST saw GCC and clang take different branches of the 68000 cycle count (+136 cycles on one compiler). In this fork the two `cyclesDiv` sites are unreachable for that dividend — `execDivsMoira` leaves on V before asking for the count (row 2's early overflow exit) — but `setUndefinedDIVS` is reached by every 68020/68030 `DIVS.W` of `$80000000`. No behaviour change on the compilers the project builds with; the 8 065 DIVS vectors of `sst68000` contain no such dividend, hence a hand-written gate | `moira_rules_test`, `sst68000`, `sst68030` |
 
-Rows 2-21, 25-34 and 36 are the accuracy work; rows 22-24 and 35 are seams (inert
+Rows 2-21, 25-34, 36 and 38 are the accuracy work; rows 22-24 and 35 are seams (inert
 when nothing arms them). The eleven files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can

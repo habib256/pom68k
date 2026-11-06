@@ -1092,8 +1092,18 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
         i16 divisor  = (i16)op2;
         int mcycles  = (dividend < 0) ? 7 : 6;
 
+        // POM68K (ported from NeoST 74b2f2d): absolute values in UNSIGNED
+        // arithmetic. abs(INT32_MIN) is undefined behaviour, and GCC and
+        // clang took different branches for $80000000 / $8000 (NeoST's
+        // cpu_div_ram bench: +136 cycles on one compiler only).
+        // |-2^31| >> 16 = $8000 >= |divisor| for every divisor, which is
+        // the overflow branch. Unreachable here today (execDivsMoira leaves
+        // on V before asking for the cycle count), kept identical to NeoST.
+        const u32 adividend = dividend < 0 ? 0u - (u32)dividend : (u32)dividend;
+        const u32 adivisor  = divisor  < 0 ? 0u - (u32)(i32)divisor : (u32)divisor;
+
         // Check if quotient is larger than 16 bit
-        if ((abs(dividend) >> 16) >= abs(divisor)) {
+        if ((adividend >> 16) >= adivisor) {
 
             result = (mcycles + 2) * 2;
 
@@ -1105,7 +1115,7 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
                 mcycles += (dividend < 0) ? 1 : -1;
             }
 
-            u32 aquot = abs(dividend) / abs(divisor);
+            u32 aquot = adividend / adivisor;
             for (int i = 0; i < 15; i++) {
                 if ( (i16)aquot >= 0) mcycles++;
                 aquot <<= 1;
@@ -1152,9 +1162,13 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
         i32 dividend = (i32)op1;
         i16 divisor  = (i16)op2;
         int mcycles  = (dividend < 0) ? 120 : 118;
+        // POM68K (ported from NeoST 74b2f2d): unsigned absolute values, as
+        // in the 68000 case above — abs(INT32_MIN) is undefined.
+        const u32 adividend = dividend < 0 ? 0u - (u32)dividend : (u32)dividend;
+        const u32 adivisor  = divisor  < 0 ? 0u - (u32)(i32)divisor : (u32)divisor;
 
         // Check if quotient is larger than 16 bit
-        if ((abs(dividend) >> 16) >= abs(divisor)) {
+        if ((adividend >> 16) >= adivisor) {
 
             result = 16;
 
@@ -1323,8 +1337,11 @@ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
 template <Core C, Size S> void
 Moira::setUndefinedDIVS(i32 dividend, i16 divisor)
 {
-    auto uDividend = u32(std::abs(dividend));
-    auto uDivisor = u16(std::abs(divisor));
+    // POM68K (ported from NeoST 74b2f2d): std::abs(INT32_MIN) is undefined
+    // behaviour; negate in unsigned arithmetic. This one IS reached: a
+    // 68020/030 DIVS.W of $80000000 always overflows and lands here.
+    auto uDividend = dividend < 0 ? 0u - u32(dividend) : u32(dividend);
+    auto uDivisor = u16(divisor < 0 ? 0u - u32(i32(divisor)) : u32(divisor));
 
     switch (C) {
 
