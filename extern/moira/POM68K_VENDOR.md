@@ -31,13 +31,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **95** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **460** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **96** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **466** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **47** | this file |
+| patch groups in the inventory below | **49** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Forty-seven patch groups, two of which (the JIT seam, row 22, and the ATC
+Forty-nine patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -67,7 +67,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 47 groups onto it. Not by the
+against a *measured* estimate of porting the 49 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -166,9 +166,11 @@ gate in the last column of each row.
 | 45 | **68040: no FPU instruction ends on a "last write"; the (An)± fixup and FPIAR are in place before the operand access** — `execMmu040BusError` restarts every `$F200-$F3FF` instruction; `fpuArmFixup` arms on the 68040 too; `execFGeneric` latches FPIAR before the source fetch | `MoiraExecMMU_cpp.h`, `MoiraExecFPU_cpp.h` | a faulting FMOVE/FMOVEM/FSAVE store stacked the NEXT instruction's PC and kept (An)± stepped, as an integer store does; a faulting source read left An stepped and FPIAR stale. A handler that maps the page and returns then skipped the store, or re-ran it one operand further. Decided from the opcode at fault time, so the store path carries no extra test | `moira_rules_test`, `sst68040_fpu` |
 | 46 | **FPU-less 68040: what is no instruction is refused before the "no FPU" frame** — opclass 001, the opmodes with nothing behind them, a packed source in Dn, X/P/D to Dn, An/PC-relative/immediate destinations and an immediate destination of a control-register move take a plain format $0 Line-F; opmodes $78-$7F take the illegal vector with the PC past the extension word (`execFpuIllegalOpmode040`, with or without an FPU); EA fields $3D-$3F are not FPU opcodes on the 040 family; `FMOVE #imm` with no control register selected consumes one long | `MoiraExecFPU_cpp.h`, `Moira.h` | the hook answered format $4 to nearly everything in the window. The 68LC040 is the product default of the LC 475/575/580 and Centris 610/650: format $4 tells its system "an FPU instruction met no FPU", format $0 "this is not an instruction". The `random` family reaches this window once in a few hundred vectors — four pinned vectors in 7 200; the `fline` family written for it started at 3 074 / 4 500 | `moira_rules_test`, `sst68040_fline` |
 | 47 | **FBcc evaluates five predicate bits on every FPU; an An operand is refused after the status byte is cleared** — FBcc registered over the six-bit field on every FPU-bearing model, the `$20-$3F` Line-F gone; the early Line-F on an An EA kept for FMOVEM only | `MoiraInit_cpp.h`, `MoiraExecFPU_cpp.h` | the Line-F came from reading the dead `#if 0` block of the oracle's `fpp_cond`, whose live code opens on `condition &= 0x1f`; `fpuCondEval` already masked for FScc/FDBcc/FTRAPcc, so FBcc alone disagreed with its siblings. An source or destination: the oracle clears the FPSR exception byte before it finds the EA invalid. No manual at hand rules on bit 5 (grade F, stated at the site) | `moira_rules_test`, `sst68040_fpu`; fuzz seeds 808 and 809 on the 68030 |
+| 48 | **68040 bus accessors: the common translation inlined, the TTR test from a table** — `mmu040TranslateHot` (TTR, MMU off, or the last-hit ATC line, with `mmu040Translate` behind it for everything else), `mmu040FetchWord` for instruction words, `mmu040BusRead`/`mmu040BusWrite` for the cache-model-off bus call, and `mmu040MatchTTR` answered from a 512-entry table rebuilt from the reference test when a register pair has changed | `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h`, `Moira.h` | the 2026-11-06 profile put 63 % of the 68040 interpreter in address translation, behind three out-of-line calls per access. No new cache: the last-hit probe already existed, this stops paying the calls to reach it. Same decisions in the same order; the ATC's pseudo-LRU is touched only once the access is known to succeed in the hot path. Interpreter −31.7 % wall on the fixed-cycle bench (32.17 s → 21.97 s), fingerprint `a2036281a5c2ac55` unchanged; JIT mode flat. The table is derived state: no hook on the registers, never serialized | `moira_rules_test` (TTR table), the four `sst68040*` corpora, `jit_bench` fingerprint |
+| 49 | **The core reads no environment variable** — the three `getenv("NEOST_EXC_DIAG")` of NeoST's exception trace (`setIPL` `[PIN]`, `execInterrupt<C68000>` `[EXC]`, `jumpToVector` `[JTV]`) test a member set through `setPomExceptionDiag(bool)` | `Moira.h`, `Moira.cpp`, `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h` | the last process-global input of `extern/moira/Moira/` after row 39. A core that reads its host's environment cannot be embedded twice with two answers, and three function-local `static const bool` froze the first one for the life of the process. The name stays `NEOST_EXC_DIAG`: POM68K declares it in `StartupOptions.h` and carries it in `jit::ResolvedConfig`, the one configuration all fourteen CPU wrappers receive; NeoST's wrapper calls the same setter from wherever it reads its own settings | `docs_test` (no `getenv` under `extern/moira/Moira/`) |
 
-Rows 2-21, 25-34, 36, 38, 40, 41 and 43-47 are the accuracy work; rows 22-24, 35, 39 and 42 are seams (inert
-when nothing arms them). The eleven files carrying no `POM68K` marker at all —
+Rows 2-21, 25-34, 36, 38, 40, 41 and 43-47 are the accuracy work; rows 22-24, 35, 39, 42 and 49 are seams (inert
+when nothing arms them); row 48 is performance alone, with no architectural effect. The eleven files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
 still be taken as-is; everything else is ported by hand, per the fork decision

@@ -841,9 +841,9 @@ Moira::execInterrupt(u8 level)
 
         case Core::C68000:
         {
-            // NEOST : diag cycle-exact de la séquence d'exception (NEOST_EXC_DIAG=1) —
+            // NEOST : diag cycle-exact de la séquence d'exception (setPomExceptionDiag) —
             // horloge à chaque étape, pour le diff pas-à-pas avec WinUAE Exception_ce000.
-            static const bool excDiag = std::getenv("NEOST_EXC_DIAG") != nullptr;
+            const bool excDiag = pomExceptionDiag;
             i64 t0 = excDiag ? getClock() : 0;
 
             SYNC(6);

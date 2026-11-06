@@ -88,6 +88,7 @@ protected:
         // the 68EC040 (pomCache040Active() tests the model).
         setPomCache040(jitConfig.cache040Model);
         setPomCmStats040(jitConfig.cache040CmStats);
+        setPomExceptionDiag(jitConfig.exceptionDiag);
     }
 
     moira::u8  read8(moira::u32 addr)  const override { return mem_.read8(addr); }

@@ -2080,8 +2080,8 @@ Moira::mmu040InstrStart()
 
     try {
 
-        queue.ird = u16(mmu040Read<C, Word>(reg.pc, false));
-        queue.irc = u16(mmu040Read<C, Word>(reg.pc + 2, false));
+        queue.ird = mmu040FetchWord<C>(reg.pc);
+        queue.irc = mmu040FetchWord<C>(reg.pc + 2);
 
     } catch (MmuBusError &) {
 
@@ -2583,9 +2583,43 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
 int
 Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
 {
+    // POM68K: answered from a table of the 512 possible inputs. The test
+    // below ran on every access — instruction fetches included — and was
+    // 9.9 % of the 68040 interpreter (scratchpad/2026-11-06/
+    // INTERP_PROFILE.md); the registers it decodes change on MOVEC only.
+    // The table is rebuilt from mmu040MatchTTRPair itself, so the two
+    // cannot disagree.
+    const u32 ttr0 = data ? reg.dtt0 : reg.itt0;
+    const u32 ttr1 = data ? reg.dtt1 : reg.itt1;
+    Mmu040TtrTable &tab = mmu040TtrTab[data];
+    if (tab.ttr[0] != ttr0 || tab.ttr[1] != ttr1) [[unlikely]]
+        mmu040TtrRebuild(tab, ttr0, ttr1);
+
+    const u8 e = tab.entry[super][addr >> 24];
+    if (cm && e) *cm = e >> 2;
+    return e & 3;
+}
+
+void
+Moira::mmu040TtrRebuild(Mmu040TtrTable &tab, u32 ttr0, u32 ttr1) const
+{
+    for (int super = 0; super < 2; super++) {
+        for (u32 msb = 0; msb < 256; msb++) {
+            u32 cm = 0;
+            const int match =
+                mmu040MatchTTRPair(ttr0, ttr1, msb << 24, super != 0, &cm);
+            tab.entry[super][msb] = u8(match ? (match | cm << 2) : 0);
+        }
+    }
+    tab.ttr[0] = ttr0;
+    tab.ttr[1] = ttr1;
+}
+
+int
+Moira::mmu040MatchTTRPair(u32 ttr0, u32 ttr1, u32 addr, bool super, u32 *cm)
+{
     // WinUAE mmu_do_match_ttr over the dtt/itt pair (mmu_match_ttr)
-    const u32 ttrs[2] = { data ? reg.dtt0 : reg.itt0,
-                          data ? reg.dtt1 : reg.itt1 };
+    const u32 ttrs[2] = { ttr0, ttr1 };
 
     for (u32 ttr : ttrs) {
 
@@ -2718,7 +2752,8 @@ Moira::pomCache040ReadValue(u32 pa, bool data, int bytes)
         }
         if (bytes == 1) return read8(pa);
         if (bytes == 2) return read16(pa);
-        return u32(read16(pa)) << 16 | read16(pa + 2);
+        const u32 hi = read16(pa);              // sequenced: high word first
+        return hi << 16 | read16(pa + 2);
     }
 
     u32 result = 0;
@@ -3002,6 +3037,93 @@ Moira::mmu040Walk(u32 addr, bool super, bool write)
 }
 
 template <Core C> u32
+Moira::mmu040TranslateHot(u32 addr, u32 val, bool super, bool data,
+                          bool write, int szCode)
+{
+    // POM68K: mmu040Translate for the access that neither faults nor
+    // walks, with the cache model off — an instruction fetch or a data
+    // access answered by a TTR, by a disabled MMU, or by the ATC line the
+    // previous access of its kind hit. Line for line the same decisions:
+    //   - TTR first; a write to a write-protected match is left to the
+    //     slow path, which faults;
+    //   - MMU off: identity;
+    //   - the last-hit probe of mmu040AtcLookup, with its rule that a
+    //     write to a page neither modified nor protected re-walks, then
+    //     the permission test of mmu040Translate. mmu040AtcTouch runs only
+    //     once the access is known to succeed here — on every other
+    //     outcome the slow path below starts from an untouched state.
+    // 16.6 % + 9.9 % + 9.1 % of the 68040 interpreter were the three
+    // out-of-line calls this replaces (INTERP_PROFILE.md, 2026-11-06).
+    // Gate: the fixed-cycle bench fingerprint and the 68040 vector corpora.
+    if (!pomCache040On && !(mmu040Lrmw && data)) [[likely]] {
+
+        const int ttr = mmu040MatchTTR(addr, super, data);
+        if (ttr) {
+            if (!(write && ttr == 2)) return addr;
+        } else if (!mmu040Enabled()) {
+            return addr;
+        } else if (mmu040AtcArmed) {
+            const u32 imask = mmu040PageMaskI();
+            Mmu040AtcEntry *arr = data ? mmu040AtcD : mmu040AtcI;
+            const int idx = (data ? mmu040AtcLastD : mmu040AtcLastI)[write];
+            const Mmu040AtcEntry &e = arr[idx];
+            const u32 status = e.status;
+            if (e.valid && (e.logical & imask) == (addr & imask) &&
+                (!write || (status & 0x10) || (status & 4)) &&
+                !((write && (status & 4)) || (!super && (status & 0x80)) ||
+                  !(status & 1))) {
+                mmu040AtcTouch(arr, data ? mmu040AtcMruD : mmu040AtcMruI, idx);
+                return e.physical | (addr & ~imask);
+            }
+        }
+    }
+    return mmu040Translate<C>(addr, val, super, data, write, szCode);
+}
+
+u32
+Moira::mmu040BusRead(u32 pa, bool data, int bytes)
+{
+    if (!pomCache040On) [[likely]] {
+        if (bytes == 1) return read8(pa);
+        if (bytes == 2) return read16(pa);
+        // High word first, as the bus does it: the two calls of
+        // `read16(pa) << 16 | read16(pa + 2)` are unsequenced in C++.
+        const u32 hi = read16(pa);
+        return hi << 16 | read16(pa + 2);
+    }
+    return pomCache040ReadValue(pa, data, bytes);
+}
+
+template <Core C> u16
+Moira::mmu040FetchWord(u32 addr)
+{
+    // The stamp is the one mmu040Read leaves (pomJitStampAccess says so
+    // for the fetch window): an external /BERR on the bus read below, or a
+    // fault in the translation, must find it in place.
+    const u32 pageMask = ~mmu040PageMaskI();
+    if (!(flags & State::CHECK_WP) && !pomCache040On && mmu040Moves < 0 &&
+        (addr & pageMask) != pageMask) [[likely]] {
+        pomJitStampAccess(addr);
+        const u32 pa = mmu040TranslateHot<C>(addr, 0, bool(reg.sr.s), false,
+                                             false, 1);
+        return u16(read16(pa & addrMask<C>()));
+    }
+    return u16(mmu040Read<C, Word>(addr, false));
+}
+
+void
+Moira::mmu040BusWrite(u32 pa, u32 val, bool data, int bytes)
+{
+    if (!pomCache040On) [[likely]] {
+        if (bytes == 1) write8(pa, u8(val));
+        else if (bytes == 2) write16(pa, u16(val));
+        else { write16(pa, u16(val >> 16)); write16(pa + 2, u16(val)); }
+        return;
+    }
+    pomCache040WriteValue(pa, val, data, bytes);
+}
+
+template <Core C> u32
 Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
                        bool write, int szCode)
 {
@@ -3180,23 +3302,23 @@ Moira::mmu040Read(u32 addr, bool data)
 
     if constexpr (S == Byte) {
 
-        u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 0);
-        return pomCache040ReadValue(pa & addrMask<C>(), data, 1);
+        u32 pa = mmu040TranslateHot<C>(addr, 0, super, data, false, 0);
+        return mmu040BusRead(pa & addrMask<C>(), data, 1);
     }
 
     if constexpr (S == Word) {
 
         if ((addr & pageMask) + 2 > pageMask + 1) {     // page-crossing
             mmu040AccSplit = true;
-            u32 hi = mmu040Translate<C>(addr, 0, super, data, false, 1);
-            u32 r = pomCache040ReadValue(hi & addrMask<C>(), data, 1) << 8;
+            u32 hi = mmu040TranslateHot<C>(addr, 0, super, data, false, 1);
+            u32 r = mmu040BusRead(hi & addrMask<C>(), data, 1) << 8;
             mmu040AccFirst = false;
-            u32 lo = mmu040Translate<C>(addr + 1, 0, super, data, false, 1);
-            r |= pomCache040ReadValue(lo & addrMask<C>(), data, 1);
+            u32 lo = mmu040TranslateHot<C>(addr + 1, 0, super, data, false, 1);
+            r |= mmu040BusRead(lo & addrMask<C>(), data, 1);
             return r;
         }
-        u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 1);
-        return pomCache040ReadValue(pa & addrMask<C>(), data, 2);
+        u32 pa = mmu040TranslateHot<C>(addr, 0, super, data, false, 1);
+        return mmu040BusRead(pa & addrMask<C>(), data, 2);
     }
 
     if constexpr (S == Long) {
@@ -3204,23 +3326,23 @@ Moira::mmu040Read(u32 addr, bool data)
         if ((addr & pageMask) + 4 > pageMask + 1) {     // page-crossing
             mmu040AccSplit = true;
             if (!(addr & 1)) {                          // word halves
-                u32 hi = mmu040Translate<C>(addr, 0, super, data, false, 2);
-                u32 r = pomCache040ReadValue(hi & addrMask<C>(), data, 2) << 16;
+                u32 hi = mmu040TranslateHot<C>(addr, 0, super, data, false, 2);
+                u32 r = mmu040BusRead(hi & addrMask<C>(), data, 2) << 16;
                 mmu040AccFirst = false;
-                u32 lo = mmu040Translate<C>(addr + 2, 0, super, data, false, 2);
-                r |= pomCache040ReadValue(lo & addrMask<C>(), data, 2);
+                u32 lo = mmu040TranslateHot<C>(addr + 2, 0, super, data, false, 2);
+                r |= mmu040BusRead(lo & addrMask<C>(), data, 2);
                 return r;
             }
             u32 r = 0;                                  // four bytes
             for (int i = 0; i < 4; i++) {
-                u32 pa = mmu040Translate<C>(addr + i, 0, super, data, false, 2);
-                r = r << 8 | pomCache040ReadValue(pa & addrMask<C>(), data, 1);
+                u32 pa = mmu040TranslateHot<C>(addr + i, 0, super, data, false, 2);
+                r = r << 8 | mmu040BusRead(pa & addrMask<C>(), data, 1);
                 mmu040AccFirst = false;
             }
             return r;
         }
-        u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 2);
-        return pomCache040ReadValue(pa & addrMask<C>(), data, 4);
+        u32 pa = mmu040TranslateHot<C>(addr, 0, super, data, false, 2);
+        return mmu040BusRead(pa & addrMask<C>(), data, 4);
     }
 }
 
@@ -3295,8 +3417,8 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
 
     if constexpr (S == Byte) {
 
-        u32 pa = mmu040Translate<C>(addr, val, super, data, true, 0);
-        pomCache040WriteValue(pa & addrMask<C>(), val, data, 1);
+        u32 pa = mmu040TranslateHot<C>(addr, val, super, data, true, 0);
+        mmu040BusWrite(pa & addrMask<C>(), val, data, 1);
         publishJitLine();
         return;
     }
@@ -3305,16 +3427,16 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
 
         if ((addr & pageMask) + 2 > pageMask + 1) {
             mmu040AccSplit = true;
-            u32 hi = mmu040Translate<C>(addr, val >> 8, super, data, true, 1);
-            pomCache040WriteValue(hi & addrMask<C>(), val >> 8, data, 1);
+            u32 hi = mmu040TranslateHot<C>(addr, val >> 8, super, data, true, 1);
+            mmu040BusWrite(hi & addrMask<C>(), val >> 8, data, 1);
             mmu040AccFirst = false;
-            u32 lo = mmu040Translate<C>(addr + 1, val, super, data, true, 1);
-            pomCache040WriteValue(lo & addrMask<C>(), val, data, 1);
+            u32 lo = mmu040TranslateHot<C>(addr + 1, val, super, data, true, 1);
+            mmu040BusWrite(lo & addrMask<C>(), val, data, 1);
             publishJitLine();
             return;
         }
-        u32 pa = mmu040Translate<C>(addr, val, super, data, true, 1);
-        pomCache040WriteValue(pa & addrMask<C>(), val, data, 2);
+        u32 pa = mmu040TranslateHot<C>(addr, val, super, data, true, 1);
+        mmu040BusWrite(pa & addrMask<C>(), val, data, 2);
         publishJitLine();
         return;
     }
@@ -3324,25 +3446,25 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
         if ((addr & pageMask) + 4 > pageMask + 1) {
             mmu040AccSplit = true;
             if (!(addr & 1)) {
-                u32 hi = mmu040Translate<C>(addr, val >> 16, super, data, true, 2);
-                pomCache040WriteValue(hi & addrMask<C>(), val >> 16, data, 2);
+                u32 hi = mmu040TranslateHot<C>(addr, val >> 16, super, data, true, 2);
+                mmu040BusWrite(hi & addrMask<C>(), val >> 16, data, 2);
                 mmu040AccFirst = false;
-                u32 lo = mmu040Translate<C>(addr + 2, val, super, data, true, 2);
-                pomCache040WriteValue(lo & addrMask<C>(), val, data, 2);
+                u32 lo = mmu040TranslateHot<C>(addr + 2, val, super, data, true, 2);
+                mmu040BusWrite(lo & addrMask<C>(), val, data, 2);
                 publishJitLine();
                 return;
             }
             for (int i = 0; i < 4; i++) {
                 u8 b = u8(val >> (24 - 8 * i));
-                u32 pa = mmu040Translate<C>(addr + i, b, super, data, true, 2);
-                pomCache040WriteValue(pa & addrMask<C>(), b, data, 1);
+                u32 pa = mmu040TranslateHot<C>(addr + i, b, super, data, true, 2);
+                mmu040BusWrite(pa & addrMask<C>(), b, data, 1);
                 mmu040AccFirst = false;
             }
             publishJitLine();
             return;
         }
-        u32 pa = mmu040Translate<C>(addr, val, super, data, true, 2);
-        pomCache040WriteValue(pa & addrMask<C>(), val, data, 4);
+        u32 pa = mmu040TranslateHot<C>(addr, val, super, data, true, 2);
+        mmu040BusWrite(pa & addrMask<C>(), val, data, 4);
         publishJitLine();
         return;
     }

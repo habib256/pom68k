@@ -560,8 +560,8 @@ int main() {
                                           pom68k::StartupDomain::Jit))
             ++jitOptionCount;
     check(sizeof(pom68k::startup_option::kAll) /
-                  sizeof(pom68k::startup_option::kAll[0]) == 146 &&
-              jitOptionCount == 43 &&
+                  sizeof(pom68k::startup_option::kAll[0]) == 147 &&
+              jitOptionCount == 44 &&
               jitDecoder.find("option::JitProfile") != std::string::npos &&
               jitDecoder.find("kConfigurationKeys") == std::string::npos &&
               jitDecoder.find("\"POM68K_") == std::string::npos,
@@ -1400,6 +1400,23 @@ int main() {
         }
         check(policyLeaks.empty(),
               "only ProcessEnvironment may read process-global configuration in src");
+        // The CPU core is held to the same rule since 2026-11-07: its last
+        // three reads (NEOST_EXC_DIAG) became Moira::setPomExceptionDiag.
+        std::vector<std::string> coreLeaks;
+        const std::filesystem::path coreRoot =
+            sourceRoot.parent_path() / "extern" / "moira" / "Moira";
+        for (const auto& entry :
+             std::filesystem::directory_iterator(coreRoot)) {
+            if (!entry.is_regular_file()) continue;
+            if (slurp(entry.path().string()).find("getenv(") !=
+                std::string::npos)
+                coreLeaks.push_back(entry.path().filename().string());
+        }
+        check(coreLeaks.empty() &&
+                  std::filesystem::exists(coreRoot / "Moira.cpp"),
+              "the Moira core reads no process environment");
+        for (const std::string& name : coreLeaks)
+            check(false, "extern/moira/Moira/" + name + " calls getenv");
         for (const std::string& relative : policyLeaks)
             check(false, relative + " contains process-global configuration");
         const std::string processCapture =

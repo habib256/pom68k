@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 707 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 709 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 93 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 77 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 79 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 36 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -199,6 +199,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-06 (thirteenth)** — [13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040](CHANGELOG.md#2026-11-06-fuzz-fresh-seeds)
 - **2026-11-06 (twelfth)** — [The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions](CHANGELOG.md#2026-11-06-interp-profile)
 - **2026-11-07** — [The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself](CHANGELOG.md#2026-11-07-fpu040-differential)
+- **2026-11-07 (later)** — [The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table](CHANGELOG.md#2026-11-07-interp040-hot-path)
+- **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](CHANGELOG.md#2026-11-07-core-env-free)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

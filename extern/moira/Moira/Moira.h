@@ -1564,6 +1564,10 @@ public:
     // POM68K M0 probe (docs/CACHE_040.md): histogram the descriptor CM bits
     // per ATC fill, printed at process exit. Host-injected diagnostic.
     void setPomCmStats040(bool on) { pomCmStats040 = on; }
+    // POM68K: NeoST's cycle-exact exception trace ([PIN], [EXC], [JTV] on
+    // stderr). The core read NEOST_EXC_DIAG itself, at three sites; the
+    // host now decides and says so here — the core reads no environment.
+    void setPomExceptionDiag(bool on) { pomExceptionDiag = on; }
     bool pomCache040Active() const {
         return pomCache040On && cpuModel >= Model::M68EC040;
     }
@@ -2256,8 +2260,24 @@ private:
 
     // Transparent translation: 0 = no match, 1 = match, 2 = match + WP;
     // cm (optional out) = the matched TTR's CM field (M1 cache model)
-    int mmu040MatchTTR(u32 addr, bool super, bool data,
-                       u32 *cm = nullptr) const;
+    MOIRA_HOT_INLINE int mmu040MatchTTR(u32 addr, bool super, bool data,
+                                        u32 *cm = nullptr) const;
+
+    // POM68K: mmu040MatchTTR's answer for every (privilege, address MSB) —
+    // the only two inputs the test has besides the registers. Derived
+    // state: rebuilt by the first call that finds the register pair
+    // changed, so reset, MOVEC, the setters and a snapshot load need no
+    // hook, and it is never serialized. [0] = ITT0/ITT1, [1] = DTT0/DTT1.
+    // Entry: bits 1-0 = 0 / 1 / 2 (no match, match, match + WP),
+    // bits 3-2 = the matched register's CM field.
+    struct Mmu040TtrTable {
+        u32 ttr[2] { };
+        u8 entry[2][256] { };
+    };
+    mutable Mmu040TtrTable mmu040TtrTab[2];
+    void mmu040TtrRebuild(Mmu040TtrTable &tab, u32 ttr0, u32 ttr1) const;
+    static int mmu040MatchTTRPair(u32 ttr0, u32 ttr1, u32 addr, bool super,
+                                  u32 *cm);
 
     // POM68K M2 (docs/CACHE_040.md) — data-bearing cache plumbing.
     // pomCache040Touch records the translated access attributes; the actual
@@ -2270,6 +2290,7 @@ private:
     // cache/scope/register fields (bit 5 = push).
     bool pomCache040On {false};
     bool pomCmStats040 {false};     // POM68K: setPomCmStats040()
+    bool pomExceptionDiag {false};  // POM68K: setPomExceptionDiag()
     Cache040 pomCache040I, pomCache040D;
     PomCache040Timing pomCache040Timing {};
     int pomCache040Cm {Cache040::CM_NC};
@@ -2292,6 +2313,21 @@ private:
     // Logical -> physical for one (sub-)access; throws MmuBusError
     template <Core C> u32 mmu040Translate(u32 addr, u32 val, bool super,
                                           bool data, bool write, int szCode);
+
+    // POM68K: the common case of mmu040Translate, inlined at the bus
+    // accessors — same tests in the same order, same ATC bookkeeping; any
+    // case it does not finish itself is handed to mmu040Translate untouched
+    // (MoiraExecMMU_cpp.h). The two doors below are the cache-model-off
+    // branch of pomCache040ReadValue / pomCache040WriteValue.
+    template <Core C> MOIRA_HOT_INLINE u32 mmu040TranslateHot(
+        u32 addr, u32 val, bool super, bool data, bool write, int szCode);
+    MOIRA_HOT_INLINE u32 mmu040BusRead(u32 pa, bool data, int bytes);
+    // One instruction-stream word: mmu040Read<C, Word>(addr, false) with
+    // the data-space branches folded away. Watchpoints, the cache model, a
+    // word straddling two pages and MOVES go to mmu040Read itself.
+    template <Core C> MOIRA_HOT_INLINE u16 mmu040FetchWord(u32 addr);
+    MOIRA_HOT_INLINE void mmu040BusWrite(u32 pa, u32 val, bool data,
+                                         int bytes);
 
     // Fault capture + throw (WinUAE mmu_bus_error, 68040 branch);
     // szCode: 0 = byte, 1 = word, 2 = long, 3 = MOVE16 line;

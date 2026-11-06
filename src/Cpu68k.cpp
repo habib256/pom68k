@@ -13,6 +13,7 @@ Cpu68k::Cpu68k(MacMemory& mem, const jit::ResolvedConfig& jitConfig)
     : mem_(mem), jit_(*this, pom68k::makeJitMemoryHooks(mem),
            jit::kGuest68000, jitConfig) {
     setModel(moira::Model::M68000);
+    setPomExceptionDiag(jitConfig.exceptionDiag);   // the core reads no environment
     // Hand the window this machine's bus model. Without it a windowed fetch
     // would skip the video/RAM contention read16() carries, and the Mac
     // Plus would run the JIT on a different clock than the interpreter —

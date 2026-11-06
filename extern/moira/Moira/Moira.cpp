@@ -1271,10 +1271,9 @@ Moira::setIPL(u8 val)
         ipl = val;
         flags |= State::CHECK_IRQ;
 
-        // NEOST : diag cycle-exact (NEOST_EXC_DIAG=1) — instant où la BROCHE change,
+        // NEOST : diag cycle-exact (setPomExceptionDiag) — instant où la BROCHE change,
         // en horloge cœur (`clock`), à corréler avec [EXC]/[HBLD] (horloge bus).
-        static const bool excDiag = std::getenv("NEOST_EXC_DIAG") != nullptr;
-        if (excDiag)
+        if (pomExceptionDiag) [[unlikely]]
             fprintf(stderr, "[PIN] ipl=%d clk=%lld\n", val, (long long)clock);
     }
 }

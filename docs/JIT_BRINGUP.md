@@ -1160,7 +1160,7 @@ the class closed.
 > default. If the JIT wins on a family and is proved bit-identical on that
 > family, the JIT is what a user gets without setting anything.
 
-`defaultEngine(bool jitByDefault)` (`JitConfig.h:318`) is no longer a
+`defaultEngine(bool jitByDefault)` (`JitConfig.h:323`) is no longer a
 constant; `Engine::Engine` passes
 `(guestFamily & (kGuest68040 | kGuest68030)) != 0` (`JitEngine.cpp:214-216`).
 So `jit/auto` is the shipped default on the 68040 machines **and the

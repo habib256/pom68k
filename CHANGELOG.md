@@ -508,6 +508,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](#2026-11-07-core-env-free)
+- **2026-11-07 (later)** — [The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table](#2026-11-07-interp040-hot-path)
 - **2026-11-07** — [The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself](#2026-11-07-fpu040-differential)
 - **2026-11-06 (fourteenth)** — [The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe](#2026-11-06-sst68030-solo)
 - **2026-11-06 (thirteenth)** — [13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040](#2026-11-06-fuzz-fresh-seeds)
@@ -1210,6 +1212,106 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-core-env-free"></a>
+## 2026-11-07 (third) — The Moira core reads no environment variable: NeoST's exception trace is switched by its host
+
+`extern/moira/Moira/` had three `getenv` left after the 68040 cache switch
+was injected ([2026-11-06](#2026-11-06-core-no-getenv)): the same
+`NEOST_EXC_DIAG`, read by a function-local `static const bool` in
+`Moira::setIPL`, `execInterrupt<C68000>` and `jumpToVector`. They came with
+the core from NeoST, where they drive a cycle-exact trace of the exception
+sequence.
+
+They are now one member, `pomExceptionDiag`, set by
+`setPomExceptionDiag(bool)` (`POM68K_VENDOR.md` row 49). The name of the
+variable does not change and neither does what it prints; who reads it
+does:
+
+```text
+NEOST_EXC_DIAG → ProcessEnvironment → StartupSnapshot
+              → jit::ResolvedConfig::exceptionDiag
+              → MoiraCpu<> constructor (thirteen wrappers) and Cpu68k
+              → Moira::setPomExceptionDiag
+```
+
+`jit::ResolvedConfig` is not the natural home of an exception trace. It is
+the home of the 68040 cache switch for the same reason: it is the one
+configuration every CPU wrapper and every test rig already receives, and
+widening fourteen constructors for a tracer would cost more than the name
+is worth. The comment at the field says so.
+
+**Why it matters for a second host.** A core that reads its host's
+environment cannot be embedded twice with two answers, and a `static const`
+froze the first one for the life of the process. NeoST's wrapper can call
+the same setter from its own settings; nothing in the core knows where the
+value came from.
+
+**Held by** `docs_test`: no `getenv(` in any file of `extern/moira/Moira/`,
+beside the existing rule that only `ProcessEnvironment.cpp` reads the
+environment under `src/`. The startup schema counts 147 options, 44 of them
+in the JIT domain.
+
+<a id="2026-11-07-interp040-hot-path"></a>
+## 2026-11-07 (later) — The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table
+
+The 2026-11-06 profile said where the 68040 interpreter's time went: 63 % in
+address translation, behind `mmu040Translate` (16.6 %), `mmu040Read<Word>`
+(12.6 %), `mmu040MatchTTR` (9.9 %) and `mmu040AtcLookup` (9.1 %) — three
+out-of-line calls on every access, instruction fetches included. It proposed
+a one-entry instruction micro-TLB. Reading the code showed the micro-TLB
+already there: `mmu040AtcLookup` opens on a last-hit probe. What cost was
+getting to it.
+
+**What changed** (`POM68K_VENDOR.md` row 48):
+
+- `mmu040TranslateHot`, inlined at the bus accessors: the TTR test, the
+  MMU-off identity, then the last-hit ATC line with the permission test —
+  the same decisions as `mmu040Translate`, in the same order. Whatever it
+  does not finish (a walk, a fault, a write to a page not yet modified, the
+  cache model, a locked read-modify-write) goes to `mmu040Translate`
+  untouched. `mmu040AtcTouch` runs only once the access is known to succeed
+  in the hot path, so the slow path always starts from the state it would
+  have found.
+- `mmu040FetchWord`: `mmu040Read<Word>` for an instruction word, without the
+  data-space branches. It leaves the same in-flight access stamp
+  (`pomJitStampAccess`), which an external /BERR on the bus read needs.
+- `mmu040MatchTTR` answers from a table of its 512 possible inputs
+  (privilege × address MSB) per register pair. The table is rebuilt from the
+  reference test itself when the pair has changed — it compares the
+  registers on every call, so reset, MOVEC, the setters and a snapshot load
+  need no hook, and it is not serialized.
+
+**Measured** (`scratchpad/2026-11-07/INTERP_HOT040.md`; `jit_bench`,
+`POM68K_CPU_ENGINE=interp`, 625 000 500 machine cycles, one pinned core,
+interleaved runs):
+
+| | wall | |
+|---|---|---|
+| before | 32.17 s | ×0.78 real time |
+| TTR table + hot translate | 25.45 s | −20.9 % |
+| + instruction fetch | 21.97 s | **−31.7 %**, ×1.14 real time |
+
+Fingerprint `a2036281a5c2ac55` on all fourteen runs, the value the profile
+recorded the day before. JIT mode is flat, as it should be: the fetch window
+and native code bypass these paths (3 000 frames: 9.19 s before, 9.17 s
+after, fingerprint `b9e4eacc7fc3933c` on all eight).
+
+The translation share of the profile falls from 63 % to 31 %; what remains
+of a fetch is the virtual bus call into the board. That makes the next step
+the fetch window, which only the JIT engine arms today — the surviving line
+of `TODO.md § Moteur › Interprète`; the two lines this closes leave it.
+
+**Held by.** The four 68040 corpora (23 200 vectors) and the bare gates
+replay unchanged; `moira_rules_test` gains a cell that changes each TTR of
+the data pair in turn on one CPU object and checks the fault a
+write-protected match must give. The strongest evidence is the fingerprint:
+a boot's worth of ATC replacement, table walks and Used/Modified bits
+written back, identical to the last bit.
+
+*What it does not change.* The 68030, whose fetch was already inlined
+(row 16). The cache-model path (`POM68K_040_DCACHE=1`), which always takes
+the slow door.
 
 <a id="2026-11-07-fpu040-differential"></a>
 ## 2026-11-07 — The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself

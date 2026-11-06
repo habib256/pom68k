@@ -503,6 +503,48 @@ void fpuStoreFaultRestarts040()
           c.getPC0(), kHandler, c.getA(0), kHole, g32(c, c.getSP() + 2), kCode);
 }
 
+void ttrTableFollowsRegisters()
+{
+    // mmu040MatchTTR answers from a table derived from the TTRs, and the
+    // table has no hook on the registers: it must notice a change by
+    // itself, in either register of a pair. Seen from outside through the
+    // one thing a data TTR decides with the MMU off — a write-protected
+    // match faults the write. One CPU object, so each step meets the table
+    // the previous one left.
+    struct Step { uint32_t dtt0, dtt1; bool faults; const char* what; };
+    static const Step steps[] = {
+        { 0x4000c004, 0,          true,  "DTT0 = $40, both privileges, W" },
+        { 0x4000c000, 0,          false, "DTT0 = the same without W" },
+        { 0,          0x4000a004, true,  "DTT1 = $40, supervisor only, W" },
+        { 0,          0x40008004, false, "DTT1 = $40, user only, W" },
+        { 0x5000c004, 0x4000a004, true,  "DTT0 misses, DTT1 matches with W" },
+        { 0x4000c000, 0x4000a004, false, "DTT0 matches first, without W" },
+    };
+    // The operand sits at $40003000 (the test board mirrors its megabyte);
+    // the stack stays in $00, outside every register above, so the frame
+    // of the fault can be written.
+    TestCpu c(moira::Model::M68040);
+    for (const Step& k : steps) {
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, 0x3080, 0);                        // MOVE.W D0,(A0)
+        p16(c, 0x3000, 0x1111);
+        c.setA(0, 0x40003000);
+        c.setD(0, 0x2222);
+        c.setDTT0(k.dtt0);
+        c.setDTT1(k.dtt1);
+        const bool contained = executeContained(c);
+        CHECK(contained, "68040 TTR %s: the fault left execute()", k.what);
+        if (!contained) continue;
+        const bool faulted = c.getPC0() == kHandler;
+        const uint16_t want = k.faults ? 0x1111 : 0x2222;
+        CHECK(faulted == k.faults && g16(c, 0x3000) == want,
+              "68040 TTR %s: %s, memory %04X (want %s, %04X)",
+              k.what, faulted ? "faulted" : "wrote", g16(c, 0x3000),
+              k.faults ? "a fault" : "a write", want);
+    }
+}
+
 } // namespace
 
 int main()
@@ -516,6 +558,7 @@ int main()
     flineShapesOn68LC040();
     fbccPredicateIsFiveBits();
     fpuStoreFaultRestarts040();
+    ttrTableFollowsRegisters();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -524,6 +567,7 @@ int main()
     std::printf("[moira_rules_test] OK: DIVS.W of $80000000 on six models, "
                 "68000 external /BERR, host hooks, DIVx.L operand fault, "
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
-                "shapes, five-bit FBcc predicate, 68040 FPU store fault\n");
+                "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
+                "table\n");
     return 0;
 }

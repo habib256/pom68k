@@ -2403,9 +2403,10 @@ protocol is in `docs/RASPBERRY_PI.md` § 3.
 `POM68K_PERF_HOST_PROFILE` (performance-policy identity written to JIT
 metrics, `src/jit/JitMetrics.h:27` — semantics in `POM68K_JIT.md` § 6).
 Four legacy non-prefixed diagnostics predate the namespace and are kept
-as-is: `EGRET_CMD_LOG`, `RTCDBG` and `SCCDBG`, now declared with the rest
-in `StartupOptions.h:229-231`, and `NEOST_EXC_DIAG` (Moira exception diag,
-`Moira.cpp:1274`), still a direct `getenv`.
+as-is: `EGRET_CMD_LOG`, `RTCDBG` and `SCCDBG`, declared with the rest in
+`StartupOptions.h:229-231`, and `NEOST_EXC_DIAG` (Moira exception trace),
+declared there too since 2026-11-07 and handed to the core through
+`Moira::setPomExceptionDiag` — the core itself reads no environment.
 
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
 next person greps once instead of twice: `POM68K_AIO_EGRET`,

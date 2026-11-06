@@ -288,6 +288,13 @@ sites, each a function-local `static const bool` evaluated once: `Moira.cpp`
 cache switch and CM histogram were moved to `setPomCache040` /
 `setPomCmStats040` (`POM68K_VENDOR.md` row 39).
 
+**Since 2026-11-07 the paragraph above is history**: the three sites test a
+member set by `setPomExceptionDiag(bool)` (row 49) and the core reads no
+environment variable at all. `docs_test` holds it: no `getenv` under
+`extern/moira/Moira/`. A host that wants the trace calls the setter; POM68K
+does so from `jit::ResolvedConfig::exceptionDiag`, fed by `NEOST_EXC_DIAG`
+through the startup snapshot.
+
 ---
 
 ## 4. Interrupts and time
@@ -573,6 +580,7 @@ Not serialized:
 | `fpuMidInterruptFrame` | transient inside `processException` |
 | models, `fpuDisabledSaneFline`, `mmu040AtcArmed`, `pomCache040On`, `PomCache040Timing`, `pomIcache.armed/missPenalty`, dasm styles | construction/host configuration |
 | all `pomJit*` state | derived; rebuilt by the engine |
+| `mmu040TtrTab` | derived from ITT0/ITT1 and DTT0/DTT1; self-validating — the first `mmu040MatchTTR` after a load compares the register pair and rebuilds |
 
 Whether each "omitted" row is reachable at a snapshot boundary in practice is
 unverified; the fields survive instruction boundaries by construction.

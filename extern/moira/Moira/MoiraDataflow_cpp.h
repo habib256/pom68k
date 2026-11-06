@@ -948,7 +948,7 @@ Moira::readExt()
                 pomJitStampAccess(reg.pc);
                 return;
             }
-            queue.irc = u16(mmu040Read<C, Word>(reg.pc, false));
+            queue.irc = mmu040FetchWord<C>(reg.pc);
             return;
         }
     }
@@ -1052,10 +1052,9 @@ Moira::jumpToVector(int nr)
     SYNC(2);
     prefetch<C, POLL>();
 
-    // NEOST : diag cycle-exact (NEOST_EXC_DIAG=1) — horloge en FIN de jumpToVector,
+    // NEOST : diag cycle-exact (setPomExceptionDiag) — horloge en FIN de jumpToVector,
     // à corréler avec [EXC] (execInterrupt) et le timestamp Tracer du handler.
-    static const bool neostExcDiag = std::getenv("NEOST_EXC_DIAG") != nullptr;
-    if (neostExcDiag)
+    if (pomExceptionDiag) [[unlikely]]
         fprintf(stderr, "[JTV] nr=%d clk=%lld\n", nr, (long long)getClock());
 
     // Stop emulation if the exception should be catched

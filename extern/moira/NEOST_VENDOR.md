@@ -24,10 +24,10 @@
 >   not read by anything here; `Moira.h:602-604` (`pomJitSimpleIpl`) depends
 >   on the feature staying off, since generated code models `POLL_IPL` as the
 >   assignment.
-> - **`NEOST_EXC_DIAG`** (presence-only, stderr) survives and is the only
->   environment variable the vendored core reads besides the `POM68K_040_*`
->   pair — `Moira.cpp:1257`, `MoiraExceptions_cpp.h:830`,
->   `MoiraDataflow_cpp.h:1040`.
+> - **`NEOST_EXC_DIAG`** (presence-only, stderr) survives as a NAME only:
+>   since 2026-11-07 the core no longer reads it. Its three sites test
+>   `Moira::setPomExceptionDiag(bool)`, and the host reads the variable
+>   (`POM68K_VENDOR.md` row 49).
 > - Everything else it names — `docs/MOIRA_WINUAE_CONVERGENCE.md`,
 >   `tools/make_trace_odd_test.py`, `roms/tos106us.img`, the `Cpu68k::run` STOP
 >   guard, the 19/19 Atari etalons, the `trace_odd` gate — is **NeoST-side and

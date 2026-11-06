@@ -396,29 +396,24 @@ par `cacheBoost` ; le reste est correction locale.
 
 ### Interprète — performance du mode normal
 
-Chaque ligne n'ouvre qu'avec un profil temporel reproductible. Le profil de
-référence est `scratchpad/2026-11-06/INTERP_PROFILE.md` (bancs à budget
-fixe, 1 500 trames, empreintes `a2036281a5c2ac55` et `663d67e4bc2d9714`) :
-le 68040 interprété passe 63 % de son temps en traduction d'adresse et
-12 % dans ses handlers ; le 68030, un tiers dans le fetch d'instruction.
+Chaque ligne n'ouvre qu'avec un profil temporel reproductible. Les profils
+de référence sont `scratchpad/2026-11-06/INTERP_PROFILE.md` et, pour le
+68040 après le chemin chaud du 2026-11-07,
+`scratchpad/2026-11-07/INTERP_HOT040.md` (bancs à budget fixe, 1 500
+trames, empreintes `a2036281a5c2ac55` et `663d67e4bc2d9714`) : le 68040
+interprété passe désormais 31 % de son temps en traduction d'adresse
+(63 % avant) et 30 % dans ses handlers ; le 68030, un tiers dans le fetch
+d'instruction.
 
-- [ ] **Donner à l'interpréteur 68040 un micro-TLB d'instruction à une
-  entrée.** `mmu040Translate` 16,6 %, `mmu040Read<Word>` 12,6 %,
-  `mmu040MatchTTR` 9,9 %, `mmu040AtcLookup` 9,1 % : les fetches
-  consécutifs restent sur une page. `(page, privilège, pomJitMmuGen)` →
-  base physique évite les trois appels ; l'état de remplacement de l'ATC
-  doit rester celui d'un lookup (modèle : la sonde dernière-ligne du 68030,
-  rang 16). L'indice O(1) d'ATC seul avait été mesuré plat le 2026-07-31.
-- [ ] **Précalculer le test TTR du 68040.** `mmu040MatchTTR` (9,9 %)
-  redécode quatre registres à chaque accès alors qu'ils ne changent qu'au
-  MOVEC.
 - [ ] **Donner à l'interpréteur son fetch fusionné et sa fenêtre sans
-  `jit::Engine`.** Sur 68030 `mmuFetchWord` pèse 22,1 % et la lecture bus
-  qu'il atteint 11,5 %. Le fetch fusionné `ird`/`irc` (rang 33), la
-  fenêtre de fetch et la fenêtre de données (rang 34) ne s'arment que par
-  le moteur : `POM68K_CPU_ENGINE=interp` et tout hôte qui exécute
-  `Moira::execute()` nu les perdent (`POM68K_SURFACE.md` § 9.2). Sur 68040
-  chaque instruction paie deux `mmu040Read<Word>` complets.
+  `jit::Engine`.** C'est la marche suivante sur les deux familles. Sur
+  68040, la traduction inlinée (rang 48), ce qui reste d'un fetch est
+  l'appel bus virtuel : `mmu040InstrStart` 18,1 %, `readExt` 9,3 %,
+  `Q605Memory::read16` 8,1 %. Sur 68030 `mmuFetchWord` pèse 22,1 % et la
+  lecture bus qu'il atteint 11,5 %. Le fetch fusionné `ird`/`irc`
+  (rang 33), la fenêtre de fetch et la fenêtre de données (rang 34) ne
+  s'arment que par le moteur : `POM68K_CPU_ENGINE=interp` et tout hôte qui
+  exécute `Moira::execute()` nu les perdent (`POM68K_SURFACE.md` § 9.2).
 - [ ] **Alléger la remise à zéro par instruction du mode 5.**
   `mmuExecuteStart` (5,8 %) efface le journal d'accès et les fixups et
   sauve le CCR à chaque instruction 030, sous un `try`, avec `sync()` et
@@ -519,15 +514,6 @@ Le regroupement des hooks derrière une interface virtuelle reste refusé
 (≈ 11 % mesurés, `POM68K_VENDOR.md § Status`) : la séparation se fait à la
 compilation et dans la documentation.
 
-- [ ] **Retirer les trois lectures de `NEOST_EXC_DIAG` du cœur.** Dernier
-  `getenv` de `extern/moira/Moira/` (`Moira.cpp`, `MoiraExceptions_cpp.h`,
-  `MoiraDataflow_cpp.h`) depuis que le commutateur de cache 68040 et son
-  histogramme sont injectés (rang 39). Ce diagnostic de NeoST concerne
-  tous les cœurs, 68000 compris, or `Cpu68k`, `PortableCpu` et `IIfxCpu`
-  ne reçoivent qu'une configuration JIT : il faut lui choisir un porteur
-  (un drapeau membre et son setter, déclaré avec `RTCDBG` et `SCCDBG`
-  dans `StartupOptions.h`) sans élargir quatorze constructeurs pour un
-  traceur.
 - [ ] **Lever les points « unverified » du contrat de surface.**
   `extern/moira/POM68K_SURFACE.md` décrit ce que le cœur expose et ce que
   l'hôte lui doit ; neuf affirmations y sont lues dans le code sans gate :
