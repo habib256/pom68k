@@ -651,6 +651,15 @@ compilation et dans la documentation.
 **Sortie :** chaque fenêtre a un gate ou une passe manuelle datée ; un run
 complet publié par la CI sur un runner à assets ; version 0.3.
 
+- [ ] **`-Werror` + `POM68K_NATIVE=ON` ne compile pas sous GCC 15.**
+  `src/AtalkStack.cpp:565` (`std::vector::resize` dans `handleAtp`) :
+  « writing 16 bytes into a region of size between 1 and 15
+  [-Werror=stringop-overflow=] », faux positif de la vectorisation sous
+  `-march=native`. Les builds `-Werror` de l'arbre et de la CI ont
+  `NATIVE=OFF`, le défaut produit a `NATIVE=ON` sans `-Werror` : personne
+  ne voit la combinaison sauf à la demander (vu le 2026-11-07 sur un
+  worktree). Soit un `reserve`/`assign` qui calme l'analyse, soit un
+  `-Wno-error=stringop-overflow` ciblé sur le fichier.
 - [ ] **Installer un runner auto-hébergé avec les assets.** Rendre le palier
   `full` déclenchable par push et publier `LastTest.log` + le census
   exécutés/soft-skips. *Bloqué : infrastructure/hôte à provisionner.*
