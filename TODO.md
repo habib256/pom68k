@@ -100,13 +100,14 @@ boot.
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
-- [ ] **Épingler les trois corpus de vecteurs et les rendre récupérables.**
-  `tests/data/sst68000`, `sst68030` et `sst68040` (1,1 Go, 116 Mo, 315 Mo)
-  n'existent que dans un répertoire ignoré de deux hôtes et sur le disque
-  privé : aucune empreinte dans `assets.lock`, graines et lignes de
-  commande des corpus 030/040 non enregistrées, et `tests/fetch_sst_68000.sh`
-  suit `main` au lieu d'un commit. Corriger au passage
-  `POM68K_VENDOR.md § How to read this file`, qui les dit absents.
+- [ ] **Rendre les corpus 030 et 040 récupérables, avec leur recette.**
+  Leur identité est épinglée (`tests/sst_corpora.lock`,
+  `sst_corpora_lock_test`) et le corpus 68000 se retélécharge à son commit
+  amont ; mais les corpus 68030 (116 Mo) et 68040 (315 Mo), générés ici,
+  n'existent que sur deux hôtes et le disque privé. Les publier (asset de
+  release, sortie WinUAE sans donnée Apple) et enregistrer les lignes de
+  commande `fuzz030.py`/`fuzz040.py` qui les régénèrent — les graines sont
+  dans les noms des vecteurs, pas les tailles ni les familles.
 - [ ] **Exécuter un corpus de vecteurs en CI, et sous sanitizers.** Les
   corpus 030/040 sont de la sortie WinUAE, pas des données Apple : un
   sous-ensemble public épinglé peut devenir `asset-none`. Aujourd'hui aucun

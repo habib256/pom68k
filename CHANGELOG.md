@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (tenth)** — [The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`](#2026-11-06-sst-corpora-lock)
 - **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](#2026-11-06-moira-surface)
 - **2026-11-06 (eighth)** — [A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix](#2026-11-06-68000-host-hooks)
 - **2026-11-06 (seventh)** — [sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them](#2026-11-06-68000-bus-cycles)
@@ -1202,6 +1203,38 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-sst-corpora-lock"></a>
+## 2026-11-06 (tenth) — The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`
+
+The corpora behind `sst68000`, `sst68030` and `sst68040` live in git-ignored
+`tests/data/` — 1.1 GB, 116 MB and 315 MB. `assets.lock` pins every ROM and
+reference disk; nothing pinned these. Two hosts could be green against
+different files, and `tests/fetch_sst_68000.sh` downloaded from the upstream
+branch `main`, so a later upstream change would have turned a fresh clone's
+corpus into another one without a word.
+
+- `tests/sst_corpora.lock` records size and SHA-256 for each of the 147
+  files, and each corpus's provenance in its header.
+- `tools/verify_sst_corpora.py` checks a present corpus file for file (and
+  refuses an unlisted `.json` beside the listed ones); an absent corpus
+  prints `SKIP:` unless `--strict`; `--write` re-records. The three corpora
+  hash in 3.2 s.
+- `sst_corpora_lock_test` registers it, asset-optional like the harnesses.
+- **The 68000 corpus is identified**: upstream commit
+  `e0d5ece9670205cc84a0101081837deb446f86a3` (2024-05-14), the only commit
+  that touches `68000/v1`. Five files re-fetched at that commit unpack to
+  the bytes this host holds. The fetch script now names it.
+
+`extern/moira/POM68K_VENDOR.md` § *How to read this file* said the corpora
+were "absent here"; they are present on this host and were on the M4 since
+2026-09-16. Its paragraph now says what is true.
+
+Open, in `TODO.md § Moteur › Socle`: the 68030 and 68040 corpora were
+generated here and are published nowhere, and their generation command
+lines are not recorded — the seeds are in the vector names, the rest is not.
 
 ---
 

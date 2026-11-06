@@ -31,3 +31,13 @@ add_test(NAME callm_rtm_test COMMAND callm_rtm_test)
 add_executable(moira_rules_test tests/moira_rules_test.cpp)
 target_link_libraries(moira_rules_test PRIVATE moira)
 add_test(NAME moira_rules_test COMMAND moira_rules_test)
+
+# The identity of the three vector corpora (tests/sst_corpora.lock): a corpus
+# that is present must match the pinned files byte for byte; an absent one
+# soft-skips, like the harnesses that read it.
+add_test(NAME sst_corpora_lock_test
+         COMMAND python3 tools/verify_sst_corpora.py
+                 --dir sst68000=${POM68K_SST_DIR}
+                 --dir sst68030=${POM68K_SST030_DIR}
+                 --dir sst68040=${POM68K_SST040_DIR}
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

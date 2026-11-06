@@ -99,14 +99,15 @@ find.
 - Sections are never rewritten when superseded, only annotated. § *Model support
   in this copy* (last section) is the current state; the journal is history.
 - The vector counts quoted throughout (`sst68000` 1 000 058, `sst68030` 3 082,
-  `sst68040` 7 200, and every historical figure below) are **not reproducible
-  from a clean clone**: the corpora live outside the repo, under
-  `POM68K_SST_DIR` / `POM68K_SST030_DIR` / `POM68K_SST040_DIR`
-  (`cmake/Pom68kComponentGates.cmake:536-556`, included by the repository
-  root — not either CMake file beside this document — defaulting to
-  `tests/data/sst680*`, absent here).
-  Without them those gates soft-skip. Treat the counts as a record of what was
-  pinned, not as something a reader can re-check today.
+  `sst68040` 7 200, and every historical figure below) come from corpora
+  that live outside the repo, in git-ignored `tests/data/` (or wherever
+  `POM68K_SST_DIR` / `POM68K_SST030_DIR` / `POM68K_SST040_DIR` point); without
+  them those gates soft-skip. Their identity is pinned since 2026-11-06:
+  `tests/sst_corpora.lock` records every file's size and SHA-256 and each
+  corpus's provenance, and `sst_corpora_lock_test` holds a present corpus to
+  it. The 68000 one can be re-fetched at its pinned upstream commit
+  (`tests/fetch_sst_68000.sh`); the 68030 and 68040 ones were generated here
+  and are not yet published anywhere (`TODO.md § Moteur › Socle`).
 
 **Before re-syncing from upstream:** diff against this file and
 `NEOST_VENDOR.md` first, then re-apply patch group by patch group, running the

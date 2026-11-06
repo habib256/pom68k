@@ -6,12 +6,18 @@
 #
 #   tests/fetch_sst_68000.sh <out-dir> [INSTR ...]     e.g. ABCD ADD.b MOVE.w
 #
-# Source: https://github.com/SingleStepTests/680x0  (main, 68000/v1)
-# This is also the exchange format planned for the 68030 oracle phase.
+# Source: https://github.com/SingleStepTests/680x0, 68000/v1, at the commit
+# the gate is pinned against — NOT `main`: tests/sst_corpora.lock records the
+# SHA-256 of every unpacked file, and `tools/verify_sst_corpora.py` holds
+# what this script fetched to it. (e0d5ece is the only commit that touches
+# that directory, 2024-05-14; a later upstream change would otherwise turn a
+# fresh clone's corpus into a different one silently.)
+# This is also the exchange format of the 68030/68040 oracle corpora.
 set -euo pipefail
 OUT="${1:?usage: fetch_sst_68000.sh <out-dir> [INSTR ...]}"
-BASE="https://raw.githubusercontent.com/SingleStepTests/680x0/main/68000/v1"
-API="https://api.github.com/repos/SingleStepTests/680x0/contents/68000/v1"
+REF="e0d5ece9670205cc84a0101081837deb446f86a3"
+BASE="https://raw.githubusercontent.com/SingleStepTests/680x0/$REF/68000/v1"
+API="https://api.github.com/repos/SingleStepTests/680x0/contents/68000/v1?ref=$REF"
 mkdir -p "$OUT"
 
 if [[ $# -gt 1 ]]; then
@@ -28,9 +34,9 @@ else
         echo "error: cannot list $API (403/rate-limit/proxy?)." >&2
         echo "       The payload host may still be reachable — get the names" >&2
         echo "       from git and pass them explicitly:" >&2
-        echo "         git clone --filter=blob:none --no-checkout --depth 1 \\" >&2
+        echo "         git clone --filter=blob:none --no-checkout \\" >&2
         echo "             https://github.com/SingleStepTests/680x0.git sst" >&2
-        echo "         git -C sst ls-tree --name-only HEAD 68000/v1/ \\" >&2
+        echo "         git -C sst ls-tree --name-only $REF 68000/v1/ \\" >&2
         echo "             | sed 's|68000/v1/||; s|\\.json\\.gz\$||' > names.txt" >&2
         echo "         $0 $OUT \$(tr '\\n' ' ' < names.txt)" >&2
         exit 1
