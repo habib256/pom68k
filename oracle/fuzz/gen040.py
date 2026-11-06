@@ -38,7 +38,7 @@ from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
                     STACK_ISP, STACK_MSP, STACK_USP,
                     build_vector_table, _w16, _w32,
                     _op_random, _op_core, _op_fault,
-                    _op_fpu, _op_fpuraw, _fp_special_words)
+                    _op_fpu, _op_fpuraw, _op_fpu2, _fp_special_words)
 
 # ── 040 MMU table builder (M68040UM § 3.1/3.2) ─────────────────────────────
 TC040_FUZZ = 0x8000        # E=1, P=0 → 4K pages
@@ -221,26 +221,6 @@ def _op_fault040(rng: random.Random) -> list[int]:
 # "fline" and "fpuraw" share gen030's _op_fpuraw (the raw cpID-1 window,
 # any extension word): the first on the FPU-less 68LC040,
 # the second on the full 68040.
-def _op_fpu2(rng: random.Random) -> list[int]:
-    """An FPU instruction, then a second instruction that decides when a
-    posted exception is delivered (M68040UM § 9.7: an enabled arithmetic
-    exception of a register-destination instruction is taken as a
-    pre-instruction exception by the NEXT floating-point instruction). For
-    fuzz040.py --steps 2; gen_state arms the FPCR enables seven times in ten.
-    """
-    second = rng.choice([
-        [0xF280, 0x0000],                       # FNOP
-        [0xF200, 0x0080],                       # FMOVE FP0,FP1
-        [0xF200, 0x003A],                       # FTST FP0
-        [0xF200, 0x0422],                       # FADD FP1,FP0
-        [0xF327],                               # FSAVE -(A7)
-        [0xF200, 0xA800],                       # FMOVE FPSR,D0
-        [0x4E71],                               # NOP: nothing is delivered
-        [0x7001],                               # MOVEQ #1,D0: nor here
-    ])
-    return _op_fpu(rng) + second
-
-
 FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
             "fpu2": _op_fpu2,

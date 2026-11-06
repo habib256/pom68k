@@ -71,6 +71,7 @@ struct Vector {
     std::string name;
     CpuState initial, fin;
     long length = -1;
+    long steps = 1;             // instructions to run (fuzz030.py --steps)
 };
 
 // ── Flat 16 MB test bus (no Mac hardware, no contention) ─────────────────
@@ -191,7 +192,7 @@ void parseState(const char*& p, CpuState& st) {
 
 bool parseVector(const char*& p, Vector& v) {
     skipWs(p); if (*p!='{') return false; ++p;
-    v.name.clear(); v.length=-1;
+    v.name.clear(); v.length=-1; v.steps=1;
     while (true) {
         skipWs(p);
         if (*p=='}'){++p;break;}
@@ -203,6 +204,7 @@ bool parseVector(const char*& p, Vector& v) {
             else if (kl==7 && !std::strncmp(key,"initial",7)) parseState(p, v.initial);
             else if (kl==5 && !std::strncmp(key,"final",5))   parseState(p, v.fin);
             else if (kl==6 && !std::strncmp(key,"length",6))  v.length = long(parseUint(p));
+            else if (kl==5 && !std::strncmp(key,"steps",5))   v.steps = long(parseUint(p));
             else skipValue(p);
         }
         skipWs(p);
@@ -259,7 +261,8 @@ bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why
     cpu.setMMUSR(v.initial.mmusr);
 
     const moira::i64 c0 = cpu.getClock();
-    cpu.execute();                         // one instruction (+ its exception, if any)
+    // One instruction (+ its exception, if any) per step: the oracle's unit.
+    for (long step = 0; step < (v.steps > 0 ? v.steps : 1); ++step) cpu.execute();
     const long cyc = long(cpu.getClock() - c0);
 
     bool ok = true; char buf[256];

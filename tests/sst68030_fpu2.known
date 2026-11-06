@@ -1,0 +1,27 @@
+# Vectors of tests/data/sst68030_fpu2 (two instructions each, strict oracle) on
+# which the fork does not follow the oracle. See tests/SstKnown.h for the
+# rules: a listed vector that passes, or is missing, fails the gate.
+
+# D23b - FRESTORE of a 68040 frame on a 68882: the fork accepts it, the strict
+# oracle and the manual take a format error (oracle/fuzz/disputes/NOTES.md).
+fpu2/identity seed=942 #271
+fpu2/identity seed=942 #1089
+fpu2/identity seed=942 #1107
+fpu2/identity seed=942 #1742
+fpu2/identity seed=942 #1760
+fpu2/identity seed=942 #1813
+fpu2/identity seed=942 #1819
+fpu2/identity seed=942 #1885
+fpu2/off seed=941 #164
+fpu2/off seed=941 #328
+fpu2/off seed=941 #655
+fpu2/off seed=941 #1297
+fpu2/off seed=941 #1589
+fpu2/off seed=941 #1626
+fpu2/off seed=941 #1687
+fpu2/off seed=941 #1732
+fpu2/off seed=941 #1829
+fpu2/tt seed=943 #84
+fpu2/tt seed=943 #692
+fpu2/tt seed=943 #817
+fpu2/tt seed=943 #1331

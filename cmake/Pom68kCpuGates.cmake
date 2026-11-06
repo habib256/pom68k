@@ -48,6 +48,14 @@ add_test(NAME sst68030_fpuraw
          COMMAND sst68030 "${POM68K_SST030_FPURAW_DIR}"
                  --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030_fpuraw.known")
 
+# Two instructions per vector on the 68030 + 68882, strict oracle: the
+# posted-exception model of the 6888x across an instruction boundary.
+set(POM68K_SST030_FPU2_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_fpu2"
+    CACHE PATH "Directory of two-instruction SST030 vectors, strict oracle")
+add_test(NAME sst68030_fpu2
+         COMMAND sst68030 "${POM68K_SST030_FPU2_DIR}"
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030_fpu2.known")
+
 # The 68040 with 8 KB pages (TC.P = 1): the cell the pinned corpus never had.
 # Same harness as sst68040, its own directory so that a host without these
 # files soft-skips instead of failing the corpus manifest.
@@ -87,6 +95,7 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68030=${POM68K_SST030_DIR}
                  --dir sst68030_solo=${POM68K_SST030_SOLO_DIR}
                  --dir sst68030_fpuraw=${POM68K_SST030_FPURAW_DIR}
+                 --dir sst68030_fpu2=${POM68K_SST030_FPU2_DIR}
                  --dir sst68040=${POM68K_SST040_DIR}
                  --dir sst68040_8k=${POM68K_SST040_8K_DIR}
                  --dir sst68040_fline=${POM68K_SST040_FLINE_DIR}

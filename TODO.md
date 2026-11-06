@@ -326,10 +326,12 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   `tests/sst68040_fpu2.known` ; la famille `fpu2` avec FSAVE en seconde
   instruction en produira d'autres.
 - [ ] **Donner des vecteurs à plusieurs instructions aux autres états en
-  vol.** `fuzz040.py --steps` et le champ `steps` des vecteurs existent
-  (2026-11-07) et tiennent D24 ; le même outil sert l'ATC ci-dessous
-  (remplacement, bit S) et, porté à `fuzz030.py`, les exceptions postées
-  du 6888x, le pipe de préfetch et le verrou du RTE $B.
+  vol.** `fuzz030.py`/`fuzz040.py --steps` et le champ `steps` des
+  vecteurs existent (2026-11-07) ; ils tiennent D24 (`sst68040_fpu2`) et
+  les exceptions postées du 6888x (`sst68030_fpu2`, 5 979 / 6 000, le
+  reste étant D23b). Le même outil sert l'ATC ci-dessous (remplacement,
+  bit S), le pipe de préfetch et le verrou du RTE $B du 68030 : il y
+  faut des familles dont la première instruction arme l'état.
 - [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
   dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
   donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la

@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (seventh)** — [The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b](#2026-11-07-fpu2-68030)
 - **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](#2026-11-07-d24-applied)
 - **2026-11-07 (fifth)** — [The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware](#2026-11-07-oracle-strict-6888x)
 - **2026-11-07 (fourth)** — [Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction](#2026-11-07-d24-manual)
@@ -1215,6 +1216,26 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-fpu2-68030"></a>
+## 2026-11-07 (seventh) — The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b
+
+The pending-exception path the 68040 now uses was the 68882's, written in
+July and held since then by single-instruction vectors only — which see the
+exception posted but never taken. `fuzz030.py --steps` and the `fpu2` family
+(moved to `gen030.py`, shared with the 68040 generator; the pinned
+`sst68040_fpu2` cell regenerates byte-identically) give it the same
+two-instruction evidence, against the strict oracle.
+
+6 000 vectors, seeds 941-943: **5 979 pass on the first replay.** The 21
+others have a FRESTORE as their first instruction and take the format error
+of ruling D23b in the oracle — the same class as this morning, nothing
+about posted exceptions. So an FPU exception posted by a 68882 and taken by
+FNOP, FMOVE, FTST, FADD or a control-register move, or left alone by FSAVE,
+NOP and MOVEQ, is delivered as the oracle delivers it, frame for frame.
+
+Pinned as `sst68030_fpu2`, with `tests/sst68030_fpu2.known` listing the 21.
+Ten corpora are now locked; five of them did not exist yesterday.
 
 <a id="2026-11-07-d24-applied"></a>
 ## 2026-11-07 (sixth) — Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors

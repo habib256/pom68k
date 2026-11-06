@@ -538,9 +538,28 @@ def _op_fpuraw(rng: random.Random) -> list[int]:
     return [op, ext] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 5))]
 
 
-FPU_FAMILIES = ("fpu", "fpuraw")
+def _op_fpu2(rng: random.Random) -> list[int]:
+    """An FPU instruction, then a second one that decides when a posted
+    exception is delivered. For fuzz030.py / fuzz040.py --steps 2; gen_state
+    arms the FPCR enables seven times in ten for this family.
+    """
+    second = rng.choice([
+        [0xF280, 0x0000],                       # FNOP
+        [0xF200, 0x0080],                       # FMOVE FP0,FP1
+        [0xF200, 0x003A],                       # FTST FP0
+        [0xF200, 0x0422],                       # FADD FP1,FP0
+        [0xF327],                               # FSAVE -(A7)
+        [0xF200, 0xA800],                       # FMOVE FPSR,D0
+        [0x4E71],                               # NOP: nothing is delivered
+        [0x7001],                               # MOVEQ #1,D0: nor here
+    ])
+    return _op_fpu(rng) + second
+
+
+FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
-            "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw}
+            "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw,
+            "fpu2": _op_fpu2}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -603,7 +622,7 @@ def gen_state(rng: random.Random, family: str = "core",
         # masked (they trap through vectors 48-54 when set — ~10 %).
         st.fp = [_fp_special_words(rng) for _ in range(8)]
         fpcr = rng.getrandbits(8) & 0xF0             # PREC+RND, bits 7-4
-        if rng.random() < 0.10:
+        if rng.random() < (0.70 if family == "fpu2" else 0.10):
             fpcr |= (rng.getrandbits(8) << 8) & 0xFF00   # enable byte
         st.fpcr = fpcr                               # fpcr_mask 0xfff0
         st.fpsr = rng.getrandbits(32) & 0x0FFFFFF8   # CC/quot/EXC/AEXC
