@@ -4998,22 +4998,11 @@ bool Emitter::emit() {
             emitted = i + 1;
             continue;
         }
-        // Device time can move between the 040 loop-head IPL sample and a
-        // handler's later one — a cache fill, or an exact MMIO thunk whose
-        // access itself raises the pin (a VIA IFR read letting VIA2 through:
-        // CHANGELOG 2026-10-02 for the A64 half, 2026-11-06 for this one).
-        // The IR records each poll's access-relative position
-        // (Instr::iplPollMask). When every non-head poll follows the FINAL
-        // data access, the body stays native and re-samples the pin at its
-        // end — the same architectural point; with the cache model off
-        // always, with it on behind the knob it was measured with. Any other
-        // placement takes the interpreter. Same rule as JitBackendA64.cpp;
-        // until 2026-11-06 this backend refused the class only with the
-        // cache model armed and emitted the cacheless body with its head
-        // sample alone, which took such an interrupt one instruction late
-        // (jit_asset_free_lockstep_test, runLateIplPoll). Register-only
-        // two-poll forms cannot advance the clock before their final cycle
-        // charge.
+        // A handler's later IPL sample can see a pin the head sample missed —
+        // a cache fill, or an exact MMIO read that raises it. Same rule as
+        // JitBackendA64.cpp (its comment has the reasoning): poll after the
+        // FINAL access -> native body, re-sampled at its end; any other
+        // placement -> interpreter. Oracle: runLateIplPoll, asset-free test.
         bool lateIplPoll = false;
         if (!L_.is030 && ir_.instrs[i].memory.count != 0 &&
             ir_.instrs[i].iplPolls > 1) {
@@ -5061,10 +5050,7 @@ bool Emitter::emit() {
         native_++;
         if (ir_.instrs[i].kind == Kind::Branch) break;   // it committed its own
 
-        // The traced handler's post-access POLL_IPL, at its architectural
-        // position: every access of this body is done, and the trailing
-        // cycle charge moves no device time before the next loop head.
-        if (lateIplPoll) pollIpl();
+        if (lateIplPoll) pollIpl();     // the handler's post-access sample
 
         // The 68030 i-cache charge — on the SUCCESS path only, after every
         // runtime bail the body can take, so no exit can ever carry a

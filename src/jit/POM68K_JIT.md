@@ -153,7 +153,7 @@ the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
 `POM68K_JIT_MIN_NATIVE` percent native — 50 by default
-(`JitBackendX64.cpp:5531-5533`). Anything an otherwise-compilable block contains
+(`JitBackendX64.cpp:5534-5536`). Anything an otherwise-compilable block contains
 that the backend cannot emit becomes a per-instruction cold stub inside the
 generated code, not a shorter block. Block termination is the classifier's
 job alone (§ 4).
@@ -489,7 +489,7 @@ us. Wired 2026-08-10; it named both cells within one run:
   **every** `MOVE <ea>,(xxx).W`: 47.4 % of all block fallbacks.
 * `CMPA` charges `kEaRead + 2`, not `kEaRead` — `execCmpa` holds a `SYNC(2)`
   that the `ADDA`/`SUBA` path takes only for a word or register source
-  (`MoiraExec_cpp.h:2176` vs `:421-423`). This refused **every** `CMPA`: a
+  (`MoiraExec_cpp.h:2222` vs `:421-423`). This refused **every** `CMPA`: a
   further 12 %.
 
 Fixing the two took the native share 96.2 → 97.6 % and block fallbacks from
@@ -1529,7 +1529,7 @@ plans and every other full-format instruction replay untouched.
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
-> `MoiraExecMMU_cpp.h:2202-2277`) and `pomJitReadData`/`pomJitWriteData`
+> `MoiraExecMMU_cpp.h:2221-2296`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
 > (`:2452-2459`, `:2477-2484`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
@@ -1818,7 +1818,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2202-2277`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2221-2296`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;

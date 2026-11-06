@@ -1761,7 +1761,7 @@ the Finder budget, so opt-in policy is unchanged.
 
 `readBuffer`/`writeBuffer` have exactly one architectural consumer:
 `writeStackFrame1000`, the 68010 format-$8 bus/address-error frame
-(`MoiraExceptions_cpp.h:134/140`, asserted `C == Core::C68010`). Upstream
+(`MoiraExceptions_cpp.h:135/140`, asserted `C == Core::C68010`). Upstream
 nevertheless maintains them on **every** core — one store per memory write in
 `writeOp`, one per extension-word fetch — because a single dataflow serves
 all three cores.
