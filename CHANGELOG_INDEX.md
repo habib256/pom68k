@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 692 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 694 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 90 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 91 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 67 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 36 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
 | [Machine bring-ups](#machine-bring-ups) | 94 |
-| [Build, packaging and release](#build-packaging-and-release) | 20 |
+| [Build, packaging and release](#build-packaging-and-release) | 21 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 147 |
@@ -116,6 +116,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-18 (sixth)** — [The AFP live trace has no difference between hosts: two engines on two machines agree to the cycle, and the a64 backend is the one that steps away from the oracle](CHANGELOG.md#2026-09-18-afp-a64-gap)
 - **2026-10-02 (later)** — [The a64 arm of the AFP trace was one instruction late to an interrupt: a cacheless MMIO read raised the pin and the native body never re-sampled it](CHANGELOG.md#2026-10-02-a64-late-ipl)
 - **2026-10-02 (sixth)** — [`Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary](CHANGELOG.md#2026-10-02-x86-disk605-afp)
+- **2026-11-06** — [TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation](CHANGELOG.md#2026-11-06-todo-engine-programme)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -547,6 +548,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-14 (second)** — [The LTO build is quiet again under GCC 15: ten `lto1` string-op warnings, all false positives, closed by shape](CHANGELOG.md#2026-10-14-gcc15-lto)
 - **2026-10-14 (seventh)** — [The Retro68 host tools rebuilt against boost 1.90: NetProbe's gate runs again, and the agent build is not the shipped one](CHANGELOG.md#2026-10-14-retro68-boost)
 - **2026-10-25** — [The push that repairs red CI names the run it repairs](CHANGELOG.md#2026-10-25-ci-fix-trailer)
+- **2026-11-06 (later)** — [CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause](CHANGELOG.md#2026-11-06-claude-md-budget)
 
 ## Tests, gates and measurement
 
