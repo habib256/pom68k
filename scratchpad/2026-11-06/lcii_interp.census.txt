@@ -1,0 +1,63 @@
+42351 samples x 1000 us = 42.4 s CPU attribués
+
+== buckets ==
+ 39.09%  MMU/cache
+ 17.57%  interpréteur (fallback)
+ 15.83%  carte mémoire/thunks
+ 14.00%  moteur — runtime/fenêtres
+  6.47%  LLE/périphériques
+  5.16%  autre
+  1.87%  hôte/harnais
+
+== top 6 par bucket ==
+
+-- MMU/cache
+   22.09%  moira::Moira::mmuFetchWord(unsigned int)
+    5.81%  bool moira::Moira::mmuExecuteStart<(moira::Core)2>()
+    4.64%  unsigned int moira::Moira::mmuRead<(moira::Core)2, 4, 0ull>(unsigned int)
+    1.74%  void moira::Moira::mmuWrite<(moira::Core)2, 4, 0ull>(unsigned int, unsigned int)
+    1.49%  unsigned int moira::Moira::mmuRead<(moira::Core)2, 1, 0ull>(unsigned int)
+    0.98%  unsigned int moira::Moira::mmuRead<(moira::Core)2, 2, 0ull>(unsigned int)
+
+-- interpréteur (fallback)
+    1.75%  moira::Moira::execute()
+    1.72%  void moira::Moira::readExt<(moira::Core)2>()
+    0.76%  moira::Moira::pollIpl()
+    0.67%  void moira::Moira::execBitImEa<(moira::Core)2, (moira::Instr)31, (moira::Mode)5, 1>(unsigned short)
+    0.66%  void moira::Moira::execBcc<(moira::Core)2, (moira::Instr)22, (moira::Mode)12, 1>(unsigned short)
+    0.54%  moira::Moira::executeUntil(long long)
+
+-- carte mémoire/thunks
+   11.53%  V8Memory::read16(unsigned int)
+    2.37%  V8Memory::tick(int)
+    0.81%  V8Memory::write16(unsigned int, unsigned short)
+    0.55%  V8Memory::read8(unsigned int)
+    0.31%  V8Memory::iplLevel() const
+    0.09%  V8Memory::scsiDma_()
+
+-- moteur — runtime/fenêtres
+    7.02%  moira::Moira::pomJitExecOne()
+    1.93%  Cpu030::flushTicks()
+    1.63%  pom68k::MoiraCpu<Cpu030, V8Memory>::sync(int)
+    1.05%  Cpu030::read16(unsigned int) const
+    0.50%  Cpu030::catchUp()
+    0.45%  moira::Moira::pomJitDataSlow(unsigned int, unsigned int, bool)
+
+-- LLE/périphériques
+    1.10%  CudaLle::tick(int)
+    0.87%  M68hc05::execOne()
+    0.80%  Scc8530::tick(int)
+    0.66%  M68hc05::read8(unsigned short)
+    0.47%  M68hc05::run(int)
+    0.44%  SonyDrive::tick(int)
+
+-- autre
+    4.93%  DiskTimeline::blockHash(unsigned int, unsigned char const*, unsigned int)
+    0.22%  PseudoVia::scsiDrq(bool)
+    0.00%  PseudoVia::write(unsigned int, unsigned char)
+    0.00%  PseudoVia::read(unsigned int)
+
+-- hôte/harnais
+    1.86%  [libc.so.6]
+    0.01%  DiskTimeline::attach(unsigned char const*, unsigned long, unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, s
+    0.00%  main

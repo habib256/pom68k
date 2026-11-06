@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (twelfth)** — [The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions](#2026-11-06-interp-profile)
 - **2026-11-06 (eleventh)** — [Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it](#2026-11-06-d23-oracle-inconsistent)
 - **2026-11-06 (tenth)** — [The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`](#2026-11-06-sst-corpora-lock)
 - **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](#2026-11-06-moira-surface)
@@ -1204,6 +1205,35 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-interp-profile"></a>
+## 2026-11-06 (twelfth) — The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions
+
+`TODO.md § Moteur` carried "re-measure before compacting `mmu040InstrStart`",
+on a 3.26 % figure from a profile the dispatch cache had made stale. It is
+re-measured, on the pure interpreter and both families
+(`scratchpad/2026-11-06/INTERP_PROFILE.md`; gperftools at 1 kHz, the
+no-LTO profiling build, 1 500 frames of each fixed-budget bench, fingerprints
+`a2036281a5c2ac55` and `663d67e4bc2d9714`).
+
+**68040 (Quadra 605).** MMU and cache helpers 63.2 %: `mmu040Translate`
+16.6 %, `mmu040Read<Word>` 12.6 %, `mmu040MatchTTR` 9.9 %, `mmu040AtcLookup`
+9.1 %, the physical read door 6.4 %, `mmu040InstrStart` itself 3.5 %. The
+instruction handlers and the run loop are 11.9 %; the board's memory map
+9.5 %. `mmu040InstrStart` is not where the time is: it is in what each of its
+two fetches re-derives.
+
+**68030 (LC II).** `mmuFetchWord` 22.1 % and the bus read it lands on,
+`V8Memory::read16`, 11.5 %: the instruction fetch is about a third of the
+interpreter. The data side is already cheap — the interpreter data window
+answered 72.6 M accesses and refused 13.7 M.
+
+The shares are quotable; the wall clock is not (a gate tier was running on
+the host). `TODO.md § Moteur › Interprète` is rewritten on these numbers: a
+one-entry instruction micro-TLB and a precomputed TTR test for the 68040, a
+fetch window the interpreter owns for both. None is done here.
 
 ---
 

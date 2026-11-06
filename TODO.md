@@ -335,27 +335,33 @@ par `cacheBoost` ; le reste est correction locale.
 
 ### Interprète — performance du mode normal
 
-Chaque ligne n'ouvre qu'avec un profil temporel reproductible.
+Chaque ligne n'ouvre qu'avec un profil temporel reproductible. Le profil de
+référence est `scratchpad/2026-11-06/INTERP_PROFILE.md` (bancs à budget
+fixe, 1 500 trames, empreintes `a2036281a5c2ac55` et `663d67e4bc2d9714`) :
+le 68040 interprété passe 63 % de son temps en traduction d'adresse et
+12 % dans ses handlers ; le 68030, un tiers dans le fetch d'instruction.
 
-- [ ] **Donner à l'interpréteur son chemin de fetch rapide sans
-  `jit::Engine`.** `mmuFetchWord` + `Cpu030::read16` pèsent 44,4 % des
-  instructions du LC II interprété, et le Quadra 605 interprété tient
-  ×0,96 du temps réel contre ×1,94 pour le LC II. Or le fetch fusionné
-  `ird`/`irc` (rang 33), la fenêtre de fetch et la fenêtre de données 030
-  (rang 34) ne s'arment que par le moteur : `Engine::setEnabled(false)`
-  vide la fenêtre, donc `POM68K_CPU_ENGINE=interp` — et tout portage de
-  l'interpréteur seul — les perd. Sur 040 chaque instruction paie deux
-  `mmu040Read<Word>` complets.
-- [ ] **Re-mesurer avant de compacter `mmu040InstrStart`.** Les 3,26 %
-  venaient d'un profil périmé par le cache de dispatch ; le seau MMU/cache
-  est à 7,1 % de la phase de jeu. `mmu040Translate` pèse 38,6 % du temps
-  interprète et un indice O(1) d'ATC a été mesuré plat : le coût est dans
-  la marche et la tenue par accès.
+- [ ] **Donner à l'interpréteur 68040 un micro-TLB d'instruction à une
+  entrée.** `mmu040Translate` 16,6 %, `mmu040Read<Word>` 12,6 %,
+  `mmu040MatchTTR` 9,9 %, `mmu040AtcLookup` 9,1 % : les fetches
+  consécutifs restent sur une page. `(page, privilège, pomJitMmuGen)` →
+  base physique évite les trois appels ; l'état de remplacement de l'ATC
+  doit rester celui d'un lookup (modèle : la sonde dernière-ligne du 68030,
+  rang 16). L'indice O(1) d'ATC seul avait été mesuré plat le 2026-07-31.
+- [ ] **Précalculer le test TTR du 68040.** `mmu040MatchTTR` (9,9 %)
+  redécode quatre registres à chaque accès alors qu'ils ne changent qu'au
+  MOVEC.
+- [ ] **Donner à l'interpréteur son fetch fusionné et sa fenêtre sans
+  `jit::Engine`.** Sur 68030 `mmuFetchWord` pèse 22,1 % et la lecture bus
+  qu'il atteint 11,5 %. Le fetch fusionné `ird`/`irc` (rang 33), la
+  fenêtre de fetch et la fenêtre de données (rang 34) ne s'arment que par
+  le moteur : `POM68K_CPU_ENGINE=interp` et tout hôte qui exécute
+  `Moira::execute()` nu les perdent (`POM68K_SURFACE.md` § 9.2). Sur 68040
+  chaque instruction paie deux `mmu040Read<Word>` complets.
 - [ ] **Alléger la remise à zéro par instruction du mode 5.**
-  `mmuExecuteStart` efface le journal d'accès et les fixups et sauve le
-  CCR à chaque instruction 030, sous un `try`, avec `sync()` et les
-  lectures en virtuel et un `dynamic_cast` dans `processException`. Aucun
-  profil n'en attribue le coût : mesurer d'abord.
+  `mmuExecuteStart` (5,8 %) efface le journal d'accès et les fixups et
+  sauve le CCR à chaque instruction 030, sous un `try`, avec `sync()` et
+  les lectures en virtuel et un `dynamic_cast` dans `processException`.
 - [ ] **Re-mesurer la fenêtre de données 040 après la géométrie de
   l'ATC.** Éteinte parce que le TLB plafonne aux 32 pages de l'ATC
   (≈ 10 % plus lent, pire sous mémoire virtuelle) ; le passage à 64
