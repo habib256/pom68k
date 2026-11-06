@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Verify — or with --write, record — the identity of the CPU vector corpora.
 
-The corpora behind `sst68000`, `sst68030`, `sst68030_solo`, `sst68040` and
-`sst68040_8k` are too large for the repository (1.1 GB, 116 MB, 211 MB,
-315 MB, 176 MB) and live in git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate could be green
-on one host and on another against different files, and nobody could tell.
+The corpora behind `sst68000`, `sst68030`, `sst68030_solo`, `sst68040`,
+`sst68040_8k`, `sst68040_fline` and `sst68040_fpu` are too large for the
+repository (1.1 GB, 116 MB, 211 MB, 315 MB, 176 MB, 190 MB, 316 MB) and live
+in git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate
+could be green on one host and on another against different files, and nobody
+could tell.
 `tests/sst_corpora.lock` records, per file, the size and SHA-256 of what the
 gates were pinned against, with each corpus's provenance in its header.
 
@@ -23,7 +25,8 @@ import hashlib
 import sys
 from pathlib import Path
 
-CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68040", "sst68040_8k")
+CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68040", "sst68040_8k",
+           "sst68040_fline", "sst68040_fpu")
 
 HEADER = """\
 # Identity of the CPU vector corpora (tools/verify_sst_corpora.py).
@@ -56,6 +59,20 @@ HEADER = """\
 #   random, fault and each mmu in identity, tt, in that order, seeds 601 to
 #   608:  oracle/fuzz/fuzz040.py --a liboracle_uae.so --family F --mmu M
 #         --page 8k --n 500 --seed S --out F_M_8k.json
+# sst68040_fline — the raw cpID-1 window ($F200-$F37F, unconstrained
+#   extension words) on the FPU-less 68LC040, generated 2026-11-07. 4 500
+#   vectors: for each mmu in off, identity, tt, seeds 951 to 953:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fline --mmu M
+#         --n 1500 --seed S --out fline_M.json
+# sst68040_fpu — the full 68040 with its integrated FPU, generated
+#   2026-11-07. 7 500 vectors: the assembler-shaped family, seeds 901 to 903,
+#   then the raw one, seeds 961 to 963, each over off, identity, tt:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpu --mmu M
+#         --n 1000 --seed S --out fpu_M.json
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpuraw --mmu M
+#         --n 1500 --seed S --out fpuraw_M.json
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu.known`: 66 of
+#   them are open rulings (D24-D27) the fork does not follow the oracle on.
 #
 # corpus | file | size | sha256
 """

@@ -94,9 +94,11 @@ boot.
   d'instruction des frames $2), D23a (frame FPU $3 sur 68030) et D23b
   (FRESTORE $41 sur un 68882) — plus deux règles 68000 (sortie anticipée
   de DIVS, ASR au-delà de la largeur). Chacune est tenue par des vecteurs
-  épinglés : la renverser demande soit une preuve de grade A, soit un
-  mécanisme de divergences assumées dans les harnais `sst` (comme les deux
-  vecteurs exclus de `sst68000`). Reste aussi à passer au crible les
+  épinglés : la renverser demande soit une preuve de grade A, soit le
+  mécanisme de divergences assumées — il existe depuis le 2026-11-07 dans
+  `sst68040` (`--known`, liste nommée par décision, gate rouge si un
+  vecteur listé se met à passer) ; le porter à `sst68030` permet de
+  renverser D23a et D12 sans perdre un vecteur. Reste aussi à passer au crible les
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
@@ -127,17 +129,23 @@ boot.
 - [ ] **Varier les TTR du fuzzer 040 et balayer des graines neuves à
   chaque passe.** Les pages de 8 Ko ont leur corpus (`sst68040_8k`,
   4 000 vecteurs, recette dans `tests/sst_corpora.lock`) ; reste la
-  disposition des TTR, figée (ITT0 = tout, DTT0 = superviseur seul). Et
-  une leçon du 2026-11-06 : 13 100 vecteurs de graines neuves ont trouvé
-  trois défauts que les 7 200 épinglés ne contenaient pas — un corpus
-  épinglé est un plancher, pas une couverture. Faire du balayage de
-  graines neuves une étape de la boucle (`oracle/fuzz/loop.sh` n'a pas
-  d'équivalent 040).
-- [ ] **Donner un corpus différentiel au FPU intégré du 68040.**
-  `sst68040` force `FPUModel::NONE` et `fpu040_test` est écrit à la main ;
-  `oracle/uae/glue.c` accepte déjà `fpu_model 68040`. Corriger la colonne
-  Gate des rangs 27 et 28, qui nomment `sst68040` alors que ce corpus ne
-  voit ni le FPU ni les caches (`cacr` vaut 0 dans tous les vecteurs).
+  disposition des TTR, figée (ITT0 = tout, DTT0 = superviseur seul). Deux
+  leçons : le 2026-11-06, 13 100 vecteurs de graines neuves ont trouvé
+  trois défauts que les 7 200 épinglés ne contenaient pas ; le 2026-11-07,
+  une famille ciblée (`fline`, la fenêtre F-line brute) est partie de
+  3 074 / 4 500 là où la famille `random` ne plaçait que quatre vecteurs
+  épinglés. Un corpus épinglé est un plancher, pas une couverture, et une
+  famille aléatoire ne remplace pas une famille par fenêtre de décodage.
+  Faire du balayage de graines neuves une étape de la boucle
+  (`oracle/fuzz/loop.sh` n'a pas d'équivalent 040), et écrire les familles
+  brutes qui manquent : fenêtre `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/
+  MOVE16), extensions complètes d'EA réservées, et la fenêtre cpID 1 sur
+  le 68030 (`gen030.py` n'a que la famille assembleur).
+- [ ] **Donner au corpus FPU du 68040 les exceptions armées et les
+  caches.** `sst68040_fpu` (7 500 vecteurs) pose FPCR avec des exceptions
+  armées sur un vecteur sur dix seulement, et aucun corpus 68040 n'a
+  `cacr` ≠ 0 : le rang 28 (caches porteurs de données) n'a que
+  `cache040_test`, écrit à la main.
 - [ ] **Couvrir le 68020 nu par l'oracle.** Aucun corpus 020 ;
   `callm_rtm_test`, calculé à la main, est le seul test qui pose
   `Model::M68020`. Le chemin à file de préfetch du 020 ne repose que sur
@@ -222,9 +230,11 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   couvrent.** `execBitFieldEa` lit et réécrit toujours un long (plus un
   octet au-delà de 32 bits) ; l'oracle (`get_bitfield`/`put_bitfield`)
   accède à 1, 2, 3, 4 ou 5 octets selon l'étendue du champ. Visible dans
-  la taille du SSW d'une faute — deux vecteurs reproductibles :
+  la taille du SSW d'une faute — dix vecteurs reproductibles :
   `fuzz040.py --family random --mmu identity --page 8k --seed 405
-  --n 400`, #174 et #281 — et, plus grave, en fautes ou en accès de
+  --n 400`, #174 et #281, et huit autres dans le balayage du 2026-11-07
+  (`oracle/fuzz/disputes/NOTES.md`, graines 828, 845, 846) — et, plus
+  grave, en fautes ou en accès de
   périphérique en trop quand le long déborde d'une page ou d'un registre.
   Vaut pour 68020, 68030 et 68040. Le contrat mémoire de l'IR du JIT
   (`JitIr.h` : « Memory bitfields always begin with a longword access »)
@@ -257,6 +267,20 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.
+- [ ] **Résorber les quatre restes 68030 du balayage de 60 000
+  vecteurs.** Tous dans des frames de faute, reproducteurs nommés dans
+  `oracle/fuzz/disputes/NOTES.md` (graines 802, 803, 807, 809, 811) :
+  le compteur d'accès de la frame $B d'un MOVEM.L vers une adresse
+  impaire qui faute ($11 ici, $22 dans l'oracle) ; le PC empilé d'un JMP
+  indexé vers une cible impaire (PC+2 contre PC+6) ; deux octets de queue
+  de frame pour un opmode FPU indéfini à EA fautif ; et un FBcc pris vers
+  une cible impaire, où le fork lève l'erreur d'adresse dans le
+  branchement (comme pour Bcc) alors que l'oracle ne fait que poser le PC.
+- [ ] **Décider le sixième bit du prédicat FBcc sur preuve.** Depuis le
+  2026-11-07 FBcc évalue cinq bits sur tout FPU, comme FScc/FDBcc/FTRAPcc
+  et comme l'oracle ; l'ancien Line-F venait d'une lecture du bloc mort
+  de `fpp_cond`. Aucun manuel sous la main ne tranche (grade F au site).
+  *Tranche : FBcc `$F2A1` sur un vrai 68882 et un vrai 68040.*
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction.** Laissé « still open »
   dans `POM68K_VENDOR.md § MC68882 FPU execution` ; le correctif du
@@ -264,6 +288,31 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68040
 
+- [ ] **Trancher la livraison d'une exception arithmétique armée (D24).**
+  Le fork la livre immédiatement (frame $3) pour toute instruction
+  d'opclasse 000/010, et `fpu040_test` l'affirme sans source ; l'oracle la
+  laisse en attente et la fait prendre en pré-instruction par
+  l'instruction FPU suivante — seuls SNAN/OPERR d'une sortie entière sont
+  immédiats. C'est la lecture que suppose le découpage E1/E3 du FPSP.
+  22 vecteurs nommés dans `tests/sst68040_fpu.known`. *Tranche : M68040UM
+  § 9 relu contre le FPSP, ou la frame d'un FDIV par zéro armé sur un vrai
+  68040.* Le renverser change `fpu040_test` et le chemin
+  `fpuCheckPending` du 68040.
+- [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
+  dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
+  donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la
+  table de tailles de l'oracle contient 0 pour le format 7 — 16 vecteurs ;
+  là le manuel donne raison au fork. *Tranche : la même instruction sur
+  un vrai 68040.*
+- [ ] **Évaluer l'EA avant le Line-F d'un déplacement de registres de
+  contrôle vers une destination relative au PC (D27).** Un vecteur : un
+  EA indirect mémoire marque une page « utilisée » dans l'oracle. Même
+  famille que l'ordre de lecture de FMOVEM (› Justesse 68030).
+- [ ] **Corriger le PC empilé d'un MOVEP qui faute en cours de route.**
+  *À reproduire :* `fuzz040.py --family random --mmu identity --page 8k
+  --seed 845 --n 2000`, #1967 (`0789 54F5`, MOVEP.W D3,(d16,A1)) : la
+  frame $7 empile PC+4 de trop. Le marqueur « dernière écriture » s'arme
+  sur la première des écritures d'octet.
 - [ ] **Donner à l'ATC du 68040 sa géométrie et son tag.** Trente-deux
   entrées associatives sans bit S, là où l'oracle (et le manuel) ont 4
   voies × 16 jeux taggés par S. Avec URP ≠ SRP un accès superviseur peut

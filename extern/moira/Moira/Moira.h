@@ -1727,6 +1727,7 @@ private:
     // FRESTORE invalid-frame format error (vector 14) — stacks WinUAE's
     // PC (past all consumed words), ruling D21
     template <Core C> void execFRestoreFormatError();
+    template <Core C> void execFpuIllegalOpmode040();   // POM68K
 
     // POM68K Q4: 68LC040/68EC040 F2xx with no FPU — vector 11, format $4
     // "FP disabled" frame {SR, PC-after-consumed-words, $402C, EA,

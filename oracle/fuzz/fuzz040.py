@@ -25,6 +25,9 @@
 #              --family core|mmu|random|fault --mmu off|identity|tt \
 #              --n 1000 --seed 1 --out corpus/core_off.json
 #   add --page 8k for trees with 8 KB pages (TC.P = 1).
+#   --family fpu (assembler-shaped) and fpuraw (any extension word) step a
+#   full 68040 with its integrated FPU; replay them with `sst68040 <dir>
+#   --fpu`. --family fline is fpuraw's opcode stream on the FPU-less 68LC040.
 
 from __future__ import annotations
 
@@ -54,7 +57,8 @@ def main() -> int:
                     help="oracle .so (WinUAE; solo = its word is law)")
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
-                    choices=["core", "mmu", "random", "fault"])
+                    choices=["core", "mmu", "random", "fault", "fpu",
+                             "fline", "fpuraw"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
     ap.add_argument("--page", default="4k", choices=["4k", "8k"],
                     help="page size of the generated trees (TC.P)")
@@ -65,8 +69,12 @@ def main() -> int:
                     help="dir for disagreement dumps (default: <out-dir>/disputes)")
     args = ap.parse_args()
 
-    oa = Oracle(args.a, model=68040)
-    ob = Oracle(args.b, model=68040) if args.b else None
+    # The fpu and fpuraw families run the oracle as a full 68040 (integrated
+    # FPU); every other family keeps the 68LC040 the pinned corpus was
+    # generated with.
+    fpu = 68040 if args.family in gen040.FPU_FAMILIES else 0
+    oa = Oracle(args.a, model=68040, fpu=fpu)
+    ob = Oracle(args.b, model=68040, fpu=fpu) if args.b else None
     print(f"oracle A: {oa.name}" + (f" | oracle B: {ob.name}" if ob else " (solo)"))
 
     gen040.set_page_shift(13 if args.page == "8k" else 12)

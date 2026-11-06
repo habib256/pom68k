@@ -46,6 +46,21 @@ set(POM68K_SST040_8K_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_8k"
     CACHE PATH "Directory of oracle-generated SST040 vectors with 8 KB pages")
 add_test(NAME sst68040_8k COMMAND sst68040 "${POM68K_SST040_8K_DIR}")
 
+# The raw F-line window on the FPU-less 68LC040: which garbage takes a plain
+# Line-F, which the illegal vector and which the "no FPU" format $4 frame.
+set(POM68K_SST040_FLINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_fline"
+    CACHE PATH "Directory of oracle-generated SST040 vectors, raw F-line window, no FPU")
+add_test(NAME sst68040_fline COMMAND sst68040 "${POM68K_SST040_FLINE_DIR}")
+
+# The full 68040 with its integrated FPU, differentially. The vectors of the
+# open rulings D24-D27 are listed by name: one of them passing, or missing,
+# fails the gate as surely as an unlisted divergence.
+set(POM68K_SST040_FPU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_fpu"
+    CACHE PATH "Directory of oracle-generated SST040 vectors, integrated FPU")
+add_test(NAME sst68040_fpu
+         COMMAND sst68040 "${POM68K_SST040_FPU_DIR}" --fpu
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpu.known")
+
 # The identity of the vector corpora (tests/sst_corpora.lock): a corpus
 # that is present must match the pinned files byte for byte; an absent one
 # soft-skips, like the harnesses that read it.
@@ -56,4 +71,6 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68030_solo=${POM68K_SST030_SOLO_DIR}
                  --dir sst68040=${POM68K_SST040_DIR}
                  --dir sst68040_8k=${POM68K_SST040_8K_DIR}
+                 --dir sst68040_fline=${POM68K_SST040_FLINE_DIR}
+                 --dir sst68040_fpu=${POM68K_SST040_FPU_DIR}
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

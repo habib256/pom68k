@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07** — [The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself](#2026-11-07-fpu040-differential)
 - **2026-11-06 (fourteenth)** — [The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe](#2026-11-06-sst68030-solo)
 - **2026-11-06 (thirteenth)** — [13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040](#2026-11-06-fuzz-fresh-seeds)
 - **2026-11-06 (twelfth)** — [The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions](#2026-11-06-interp-profile)
@@ -1209,6 +1210,107 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-fpu040-differential"></a>
+## 2026-11-07 — The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself
+
+Until tonight the integrated FPU of the 68040 was the one part of the fork
+with no differential evidence: `sst68040` runs a 68LC040, and `fpu040_test`
+is written by hand. Three fuzz families now cover it (`oracle/fuzz/gen040.py`):
+
+| Family | Machine | What it emits |
+|---|---|---|
+| `fpu` | full 68040 | gen030's assembler-shaped FPU instructions |
+| `fpuraw` | full 68040 | the raw cpID-1 window `$F200-$F37F`, any extension word |
+| `fline` | 68LC040 | the same raw window, with no FPU |
+
+**The oracle had to be corrected first, twice.** `oracle/uae/glue.c` left
+`fpu_no_unimplemented` false, so WinUAE executed FSIN or a packed operand on
+a 68040 as a 6888x would; the first `fpu` replay read 1 783 / 3 000 and
+measured nothing. Then `mmufixup[]` leaked from one vector to the next: the
+68040 loop restores whatever (An)± fixup is armed on any access fault, and
+several `fpp.c` paths arm one without disarming it — seventeen `fpuraw`
+vectors had an address register overwritten with a value from an earlier
+vector ("FRESTORE through A5 leaves A4 changed"). Both are glue-side
+(`oracle/uae/VENDOR.md` patches 9 and 10), in the line of the 2026-07
+determinism patches. The proof that they change nothing else:
+`sst68030_solo` (5 592) and `sst68040_8k` (4 000) regenerate from their
+recipes **hash-identically**. The oracle also no longer built under GCC 15
+(patch 11).
+
+**What the replays found, and the fork now does** (`POM68K_VENDOR.md` rows
+44-47):
+
+| | before | after |
+|---|---|---|
+| `fpu`, seeds 901-903 | 2 963 / 3 000 | 2 986 (+14 listed) |
+| `fline`, seeds 951-953 | 3 074 / 4 500 | **4 500** |
+| `fpuraw`, seeds 961-963 | 3 962 / 4 500 | 4 448 (+52 listed) |
+
+- *Row 44.* An unimplemented instruction takes vector 11 whatever its
+  operand; the unsupported-datatype trap (vector 55) belongs to the
+  instructions the chip executes. FMOD with a packed source went to the
+  wrong FPSP handler.
+- *Row 45.* No FPU instruction ends on a "last write": a faulting
+  FMOVE/FMOVEM/FSAVE store restarts, (An)± is restored, FPIAR is latched
+  before the operand is fetched. The fork stacked the next instruction's PC
+  and kept An stepped — a handler that maps the page and returns then
+  skipped the store.
+- *Row 46.* On a FPU-less 68040, what is no instruction (opclass 001, an
+  opmode with nothing behind it, X/P/D to a data register, an immediate
+  destination…) takes a plain format $0 Line-F, and opmodes $78-$7F the
+  illegal vector with the PC past the extension word. The hook answered
+  format $4 — "an FPU instruction met no FPU" — to nearly everything. This
+  is the largest class, and the one that concerns a product default: the
+  LC 475/575/580 and Centris 610/650 run a 68LC040.
+- *Row 47.* FBcc evaluates five predicate bits, like FScc, FDBcc and
+  FTRAPcc. Its Line-F on predicates $20-$3F came from reading the dead
+  `#if 0` block of the oracle's `fpp_cond`; the live code opens on
+  `condition &= 0x1f`. No manual at hand rules on bit 5: the site says so
+  and names what would settle it.
+
+**Fresh seeds confirm the classes are closed.** 18 000 vectors on seeds the
+fixes never saw (971-973, 911-913, 981-983): `fline` 6 000 / 6 000 on the
+first replay; `fpu` 5 979 and `fpuraw` 5 944, every residual in one of the
+four classes below.
+
+**Four rulings opened, and kept the fork's way** (`oracle/README.md`,
+`oracle/fuzz/disputes/NOTES.md` D24-D27). The rule of the night was that
+nothing lands which turns a gate red, and two of these are asserted by
+`fpu040_test`:
+
+- **D24** — an enabled arithmetic exception: immediate here, pending until
+  the next FPU instruction in the oracle. 22 vectors. The oracle's reading
+  is the one the FPSP's E1/E3 split implies; this is the ruling to look at
+  first.
+- **D25** — FMOVE.P to Dn: Line-F here, datatype trap there. 27 vectors.
+- **D26** — (An)± with a dynamic k-factor: 12 here, 0 in the oracle's size
+  table. 16 vectors; the manual is on the fork's side.
+- **D27** — an EA evaluated before a Line-F. One vector.
+
+**A mechanism for assumed divergences.** `sst68040 --known FILE` takes a
+list of vector names. A listed vector that fails is counted apart; one that
+passes, or that the corpus no longer holds, fails the run. The 66 names are
+in `tests/sst68040_fpu.known`, grouped by ruling. This is what
+`TODO.md § Moteur › Socle` asked for before D12 or D23a could be reversed
+without losing pinned vectors; it now exists for the 68040 harness.
+
+**Pinned.** `sst68040_fline` (4 500 vectors) and `sst68040_fpu` (7 500),
+each with a gate, a recipe in `tests/sst_corpora.lock` and its own
+directory. `moira_rules_test` gains three cells — the 68LC040 frame shapes,
+the FBcc predicate on a 68030 + 68882 and on a 68040, the restarted FPU
+store — so that the rules hold on a host without the corpora, CI included.
+
+**The 60 000-vector sweep of the evening** (seeds 801-846, launched before
+this work) replays at 27 937 / 27 944 on the 68030 and 37 991 / 38 000 on
+the 68040 with tonight's core. The 68040 leftovers are eight bit-field
+faults — the known "always a long" item — and one MOVEP fault PC. The seven
+68030 leftovers are all inside fault frames and are named in the notes.
+
+*What it does not change.* The 68030 path keeps its Line-F for EA fields
+$3D-$3F: there the coprocessor decides whether an EA is ever evaluated, and
+the oracle's table is not evidence for it. FPCR enables exceptions on one
+`fpu` vector in ten only, and no 68040 corpus runs with a cache on.
 
 <a id="2026-11-06-sst68030-solo"></a>
 ## 2026-11-06 (fourteenth) — The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe

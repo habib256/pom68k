@@ -3415,11 +3415,23 @@ Moira::execMmu040BusError()
     // from WB3 and RTEs past the instruction). Every other fault
     // restarts: CCR restored to the pre-instruction value, (An)±
     // fixups undone, stacked PC = the instruction.
+    //
+    // POM68K: a floating-point instruction never ends on a "last write".
+    // [D] WinUAE fpp.c @ Hatari e77819f7 — the FPU stores (FMOVE to memory,
+    //     FMOVEM, FSAVE) go through put_fp_value/x_cp_put_*, which gencpu's
+    //     gen_set_fault_pc never brackets: a faulting store restarts the
+    //     instruction. Decided at fault time from the opcode (cpID 1,
+    //     $F200-$F3FF) so the store path carries no extra test.
+    // [F] Not checked against a manual or a 68040: M68040UM § 8.4 does not
+    //     single the FPU stores out. Settled by: a capture of the format $7
+    //     frame of a faulting FMOVE.X FPn,(An)+ on a real 68040.
+    // Gate: moira_rules_test (FMOVE to a faulting page), fpu corpus replay.
     u32 framePc;
-    if (mmu040LastWrite) {
+    if (mmu040LastWrite && (queue.ird & 0xFE00) != 0xF200) {
         framePc = mmu040LastWritePc;
         mmu040LastWrite = false;
     } else {
+        mmu040LastWrite = false;
         setCCR(u8(mmu040CcrSave));
         for (int i = 0; i < 2; i++) {
             if (mmuFixupReg[i]) reg.a[mmuFixupReg[i] & 7] = mmuFixupVal[i];

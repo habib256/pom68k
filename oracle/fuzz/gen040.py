@@ -37,7 +37,8 @@ from oracle_driver import State
 from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
                     STACK_ISP, STACK_MSP, STACK_USP,
                     build_vector_table, _w16, _w32,
-                    _op_random, _op_core, _op_fault)
+                    _op_random, _op_core, _op_fault,
+                    _op_fpu, _fp_special_words)
 
 # ── 040 MMU table builder (M68040UM § 3.1/3.2) ─────────────────────────────
 TC040_FUZZ = 0x8000        # E=1, P=0 → 4K pages
@@ -212,8 +213,45 @@ def _op_fault040(rng: random.Random) -> list[int]:
     ])
 
 
+def _op_fline040(rng: random.Random) -> list[int]:
+    """Raw cpID-1 window ($F200-$F37F) with unconstrained extension words.
+
+    The fpu family only emits what an assembler would; this one emits what a
+    decoder must survive: reserved opclasses, opmodes with no instruction
+    behind them, formats an EA cannot carry, predicates above $1F. Which of
+    them take a plain Line-F (format $0) and which the "no FPU" or
+    unimplemented frame (format $4/$2) is decided word by word, and the
+    `random` family reaches this window once in a few hundred vectors.
+    """
+    r = rng.random()
+    if r < 0.70:                                   # general: opclass 0-7
+        op = 0xF200 | rng.getrandbits(6)
+        ext = rng.getrandbits(16)
+        if rng.random() < 0.5:                     # bias towards opclass 0-3
+            ext &= 0x7FFF
+    elif r < 0.80:                                 # FScc / FDBcc / FTRAPcc
+        op = 0xF240 | rng.getrandbits(6)
+        ext = rng.getrandbits(6) if rng.random() < 0.7 else rng.getrandbits(16)
+    elif r < 0.90:                                 # FBcc.W / FBcc.L
+        op = 0xF280 | rng.getrandbits(7)
+        ext = rng.choice([2, 4, 8, 0x10, 0x20])
+    else:                                          # FSAVE / FRESTORE
+        op = 0xF300 | rng.getrandbits(7)
+        ext = rng.getrandbits(16)
+    return [op, ext] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 5))]
+
+
+# "fpu" (2026-11-06) reuses the 68881/68882 opcode generator: the encodings
+# are the same, and what the integrated 68040 FPU does NOT implement (the
+# transcendentals, FSCALE/FREM/FMOD, packed decimal, FMOVECR…) must trap as
+# unimplemented — which is exactly the half a hand-written test covers least.
+# It needs the oracle in its full-68040 configuration (fuzz040.py does that).
+# "fline" and "fpuraw" share _op_fline040: the first on the FPU-less 68LC040,
+# the second on the full 68040.
+FPU_FAMILIES = ("fpu", "fpuraw")
 FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
-            "fault": _op_fault040}
+            "fault": _op_fault040, "fpu": _op_fpu,
+            "fline": _op_fline040, "fpuraw": _op_fline040}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -282,6 +320,31 @@ def gen_state(rng: random.Random, family: str = "core",
             st.a[0] = rng.getrandbits(32)
 
     words = FAMILIES[family](rng)
+
+    if family in FPU_FAMILIES:
+        # Same seeding as gen030's fpu family: a special value in every FP
+        # register, random rounding and precision, exception enables on
+        # one vector in ten, and a raw extended value on both sides of each
+        # A-register target so every memory format reads something meaningful.
+        st.fp = [_fp_special_words(rng) for _ in range(8)]
+        fpcr = rng.getrandbits(8) & 0xF0
+        if rng.random() < 0.10:
+            fpcr |= (rng.getrandbits(8) << 8) & 0xFF00
+        st.fpcr = fpcr
+        st.fpsr = rng.getrandbits(32) & 0x0FFFFFF8
+        for i in range(8):
+            base = st.a[i] & MASK
+            for org, w in ((base, _fp_special_words(rng)),
+                           (base - 12, _fp_special_words(rng))):
+                if rng.random() < 0.8:
+                    _w32(ram, org, w[0])
+                    _w32(ram, org + 4, w[1])
+                    _w32(ram, org + 8, w[2])
+                else:
+                    for off in range(12):
+                        ram[(org + off) & MASK] = rng.getrandbits(8)
+            for off in range(12, 24):
+                ram[(base + off) & MASK] = rng.getrandbits(8)
 
     if family in ("core", "fault"):
         # MOVE16 sources must show in the RAM diff: seed one 16-byte line

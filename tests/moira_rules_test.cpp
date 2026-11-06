@@ -36,6 +36,12 @@
 //    undefined; the 68020/68030 follow WinUAE's table, the 68040 follows
 //    WinUAE's early return. Four fresh-seed vectors, none pinned.
 //
+// 6. On the 68040 an unimplemented FPU instruction takes vector 11 even
+//    when its source is of an unsupported datatype (row 44). The datatype
+//    trap, vector 55, belongs to the instructions the chip executes itself.
+//    Found by the first differential run of the integrated FPU against the
+//    oracle (51 of the first 74 divergences).
+//
 // 3. The three host hooks back-ported from NeoST (row 42): a handled
 //    illegal opcode is consumed like a NOP, an unhandled one still takes
 //    vector 4; TAS brackets its read and its write with setBusLock;
@@ -372,6 +378,131 @@ void chk2FlagsOn040()
     }
 }
 
+void fpuUnimplementedBeforeDatatype040()
+{
+    // Packed-decimal immediate source (format 3: unsupported on the 68040).
+    // FMOD ($25) is unimplemented there -> vector 11. FADD ($22) is
+    // implemented -> the datatype trap, vector 55.
+    struct Case { uint16_t opmode; int vector; const char* what; };
+    static const Case cases[] = {
+        { 0x25, 11, "FMOD.P #imm,FP0 (unimplemented)" },
+        { 0x22, 55, "FADD.P #imm,FP0 (implemented)" },
+    };
+    for (const Case& k : cases) {
+        TestCpu c(moira::Model::M68040);
+        c.setFPUModel(moira::FPUModel::M68040);
+        p32(c, 11 * 4, kHandler);
+        p32(c, 55 * 4, kHandler + 0x40);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        p16(c, kHandler + 0x40, kNop); p16(c, kHandler + 0x42, kNop);
+        const uint16_t ext = uint16_t(0x4000 | (3 << 10) | k.opmode);
+        stage(c, 0xf23c, 0);                        // F<op>.P #imm,FP0
+        p16(c, kCode + 2, ext);
+        c.setIRC(ext);
+        p32(c, kCode + 4, 0x00010000);              // +1.0E+0001, packed
+        p32(c, kCode + 8, 0x10000000);
+        p32(c, kCode + 12, 0x00000000);
+        p16(c, kCode + 16, kNop);
+        c.execute();
+        const uint32_t want = kHandler + (k.vector == 55 ? 0x40 : 0);
+        CHECK(c.getPC0() == want,
+              "68040 %s: PC0=%08X, want vector %d at %08X",
+              k.what, c.getPC0(), k.vector, want);
+    }
+}
+
+void flineShapesOn68LC040()
+{
+    // What is no instruction at all is refused before the "no FPU" frame:
+    // format $0 through vector 11, or vector 4 with the PC past the
+    // extension word for opmodes $78-$7F. A real instruction gets format $4.
+    struct Case { uint16_t ext; int vector; uint16_t frameWord; int frameBytes;
+                  uint32_t pcOffset; const char* what; };
+    static const Case cases[] = {
+        { 0x0000, 11, 0x402c, 16, 4, "FMOVE FP0,FP0 (an instruction)" },
+        { 0x0005, 11, 0x002c,  8, 0, "opmode $05 (no instruction)" },
+        { 0x2000, 11, 0x002c,  8, 0, "opclass 001 (no instruction)" },
+        { 0x0078,  4, 0x0010,  8, 4, "opmode $78 (illegal vector)" },
+    };
+    for (const Case& k : cases) {
+        TestCpu c(moira::Model::M68LC040);
+        p32(c, 4 * 4, kHandler + 0x40);
+        p32(c, 11 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        p16(c, kHandler + 0x40, kNop); p16(c, kHandler + 0x42, kNop);
+        stage(c, 0xf200, 0);
+        p16(c, kCode + 2, k.ext);
+        c.setIRC(k.ext);
+        p16(c, kCode + 4, kNop);
+        const uint32_t sp = c.getSP();
+        c.execute();
+        const uint32_t want = kHandler + (k.vector == 4 ? 0x40 : 0);
+        CHECK(c.getPC0() == want && sp - c.getSP() == uint32_t(k.frameBytes) &&
+              g16(c, c.getSP() + 6) == k.frameWord &&
+              g32(c, c.getSP() + 2) == kCode + k.pcOffset,
+              "68LC040 $F200 %s: PC0=%08X (want %08X), %u frame bytes (want %d), "
+              "format word %04X (want %04X), stacked PC %08X (want %08X)",
+              k.what, c.getPC0(), want, unsigned(sp - c.getSP()), k.frameBytes,
+              g16(c, c.getSP() + 6), k.frameWord,
+              g32(c, c.getSP() + 2), kCode + k.pcOffset);
+    }
+}
+
+void fbccPredicateIsFiveBits()
+{
+    // FBcc.W with predicate $21: bit 5 is ignored, so it is FBEQ.
+    static const struct { moira::Model cpu; moira::FPUModel fpu; const char* name; } rigs[] = {
+        { moira::Model::M68030, moira::FPUModel::M68882, "68030+68882" },
+        { moira::Model::M68040, moira::FPUModel::M68040, "68040" },
+    };
+    for (const auto& rig : rigs) {
+        for (int z = 0; z < 2; z++) {
+            TestCpu c(rig.cpu);
+            c.setFPUModel(rig.fpu);
+            p32(c, 11 * 4, kHandler);
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, 0xf2a1, 0);                    // FBcc.W, predicate $21
+            p16(c, kCode + 2, 0x0020);              // to kCode + $22
+            c.setIRC(0x0020);
+            p16(c, kCode + 4, kNop); p16(c, kCode + 6, kNop);
+            p16(c, kCode + 0x22, kNop); p16(c, kCode + 0x24, kNop);
+            c.setFPSR(z ? 0x04000000 : 0);          // FPSR.Z
+            const uint32_t sp = c.getSP();
+            c.execute();
+            const uint32_t want = z ? kCode + 0x22 : kCode + 4;
+            CHECK(c.getSP() == sp && c.getPC0() == want,
+                  "%s FBcc predicate $21 with Z=%d: next instruction at %08X "
+                  "(want %08X), SP moved by %d",
+                  rig.name, z, c.getPC0(), want, int(sp - c.getSP()));
+        }
+    }
+}
+
+void fpuStoreFaultRestarts040()
+{
+    // FMOVE.L FP0,(A0)+ onto a /BERR byte: the instruction restarts — the
+    // frame holds its own address and A0 is back where it was. No FPU
+    // instruction ends on a "last write".
+    TestCpu c(moira::Model::M68040);
+    c.setFPUModel(moira::FPUModel::M68040);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+    stage(c, 0xf218, 0);                            // FMOVE.L FP0,(A0)+
+    p16(c, kCode + 2, 0x6000);
+    c.setIRC(0x6000);
+    p16(c, kCode + 4, kNop);
+    c.setA(0, kHole);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    CHECK(contained, "68040 FMOVE.L FP0,(A0)+: the fault left execute()");
+    if (!contained) return;
+    CHECK(c.getPC0() == kHandler && c.getA(0) == kHole &&
+          g32(c, c.getSP() + 2) == kCode,
+          "68040 FMOVE.L FP0,(A0)+ on a /BERR byte: PC0=%08X (want %08X), "
+          "A0=%08X (want %08X), stacked PC %08X (want %08X)",
+          c.getPC0(), kHandler, c.getA(0), kHole, g32(c, c.getSP() + 2), kCode);
+}
+
 } // namespace
 
 int main()
@@ -381,6 +512,10 @@ int main()
     hostHooks();
     divlOperandFault();
     chk2FlagsOn040();
+    fpuUnimplementedBeforeDatatype040();
+    flineShapesOn68LC040();
+    fbccPredicateIsFiveBits();
+    fpuStoreFaultRestarts040();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -388,6 +523,7 @@ int main()
     }
     std::printf("[moira_rules_test] OK: DIVS.W of $80000000 on six models, "
                 "68000 external /BERR, host hooks, DIVx.L operand fault, "
-                "68040 CHK2/CMP2 flags\n");
+                "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
+                "shapes, five-bit FBcc predicate, 68040 FPU store fault\n");
     return 0;
 }

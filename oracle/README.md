@@ -50,6 +50,20 @@ existing ruling only when doing so turns no gate red (maintainer's decision,
 | **D23a** | 68030 FPU post-instruction exception stacks **format $3** with the operand EA | MC68030UM: format $2, instruction address | `sst68030` fpu cells (10 vectors went red on the 2026-08-17 attempt), `fpu_sanity` check 14 | a frame stacked by a real 68030 + 6888x. The oracle is not self-consistent here: its own RTE accepts format $3 only from the 68040 up (`uae/upstream/gencpu.c`, `i_RTE`: `if (cpu_level >= 4)` @ Hatari e77819f7), so on WinUAE too a 68030 handler that returns from this frame takes a format error. The fork mirrors both halves (`TODO.md § Moteur › Justesse 68030`) |
 | **D23b** | FRESTORE accepts a version-$41 (68040) frame on a 68882 — WinUAE's own "horrible hack" | MC68882UM § 6 knows no such frame version: format error | `sst68030` fpu cells (4 vectors) | a real 68882 given a $41 frame |
 
+### Rulings where the fork does not follow the oracle
+
+The reverse case, opened 2026-11-07 by the first differential run of the
+integrated 68040 FPU. Each line is a class of vectors on which the fork keeps
+its own answer; they are listed by name in `tests/sst68040_fpu.known`, and
+the `sst68040_fpu` gate fails if one of them starts passing or disappears.
+
+| Ruling | Fork (kept) | Oracle | Why it is kept | Settled by |
+|---|---|---|---|---|
+| **D24** | An enabled arithmetic exception of an opclass 000/010 instruction is delivered at once, format $3 | Left pending; taken as a pre-instruction exception by the next FPU instruction (only SNAN/OPERR on an integer move-out are immediate) | `fpu040_test` asserts the immediate form. No source is cited there; the oracle's reading matches the E1/E3 split the 68040 FPSP is built around, so this is the ruling most likely to flip | M68040UM § 9 read against the FPSP, or the frame of an enabled FDIV by zero on a real 68040 |
+| **D25** | FMOVE.P FPn,Dn takes a plain Line-F | Unsupported-datatype trap, "even if destination EA is Dn or An" | `fpu040_test` asserts the Line-F | the same instruction on a real 68040 |
+| **D26** | FMOVE.P FPn,(An)+{Dn} and -(An){Dn} step An by 12 | An unchanged: the size table holds 0 for the dynamic k-factor format | a packed operand is twelve bytes whatever its k-factor (MC68881/MC68882 UM); the oracle's value is a table slot, not a decision | An after that instruction's datatype trap on a real 68040 |
+| **D27** | FMOVE(M) control registers to a PC-relative destination: Line-F at once | Line-F after evaluating the EA, so a memory-indirect one marks a page Used | one vector; the instruction does not exist either way | — |
+
 Two 68000 rules of the same kind predate the 68030 oracle and are flagged
 in `extern/moira/POM68K_VENDOR.md` § *SingleStepTests/680x0 convergence
 patches*: the early exit of every DIVS overflow at 16/18 cycles, and ASR
