@@ -221,8 +221,20 @@ def _op_fault040(rng: random.Random) -> list[int]:
 # "fline" and "fpuraw" share gen030's _op_fpuraw (the raw cpID-1 window,
 # any extension word): the first on the FPU-less 68LC040,
 # the second on the full 68040.
+def _op_sysraw040(rng: random.Random) -> list[int]:
+    """Raw $F400-$F7FF window: CINV/CPUSH ($F4xx), PFLUSH/PTEST ($F5xx),
+    MOVE16 ($F6xx) and the unassigned $F7xx, every field value, followed by
+    unconstrained words. The core and mmu families only emit the valid
+    encodings; this is the same question the fline family asked of the
+    cpID-1 window — what a decoder does with the rest.
+    """
+    op = 0xF400 | rng.getrandbits(10)
+    return [op] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 4))]
+
+
 FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
+            "sysraw": _op_sysraw040,
             "fpu2": _op_fpu2,
             "fault": _op_fault040, "fpu": _op_fpu,
             "fline": _op_fpuraw, "fpuraw": _op_fpuraw}

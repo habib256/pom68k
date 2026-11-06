@@ -64,7 +64,7 @@ def main() -> int:
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
                     choices=["core", "mmu", "random", "fault", "fpu",
-                             "fline", "fpuraw", "fpu2"])
+                             "fline", "fpuraw", "fpu2", "sysraw"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
     ap.add_argument("--page", default="4k", choices=["4k", "8k"],
                     help="page size of the generated trees (TC.P)")

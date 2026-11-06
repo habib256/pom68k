@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (eighth)** — [66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new](#2026-11-07-fresh-sweep-final)
 - **2026-11-07 (seventh)** — [The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b](#2026-11-07-fpu2-68030)
 - **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](#2026-11-07-d24-applied)
 - **2026-11-07 (fifth)** — [The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware](#2026-11-07-oracle-strict-6888x)
@@ -1216,6 +1217,29 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-fresh-sweep-final"></a>
+## 2026-11-07 (eighth) — 66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new
+
+After the last core change (D24), a sweep on seeds nothing had seen:
+forty cells of 1 500 vectors over every family of both generators, the
+68030 against the strict oracle, plus a new raw family for the 68040's
+`$F400-$F7FF` window (`sysraw`: CINV/CPUSH, PFLUSH/PTEST, MOVE16 and the
+unassigned `$F7xx`, every field value). Full table:
+`scratchpad/2026-11-07/FUZZ_SWEEP2.md`.
+
+65 969 vectors, 230 divergences. 225 are inside a ruling or a defect that
+already has a name — D23b, D25 to D29, the bit-field access width, the
+state-frame internals. **None belongs to a class corrected today**: no
+F-line frame shape, no posted-exception delivery, no FBcc predicate, no
+FPU store treated as a last write. `fline` replays at 4 500 / 4 500 and
+`sysraw` at 6 000 / 6 000 on its first run — that window needed nothing.
+
+The five new ones are in `TODO.md § Moteur › Justesse 68030`: four
+read-modify-write instructions whose write faults in user mode, where the
+oracle stacks the short frame $A and the fork the long $B — forms the
+`fault` family, with its own opcode list, never emits — and one PTEST that
+leaves MMUSR.I clear.
 
 <a id="2026-11-07-fpu2-68030"></a>
 ## 2026-11-07 (seventh) — The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b

@@ -149,8 +149,10 @@ boot.
   famille aléatoire ne remplace pas une famille par fenêtre de décodage.
   Faire du balayage de graines neuves une étape de la boucle
   (`oracle/fuzz/loop.sh` n'a pas d'équivalent 040), et écrire les familles
-  brutes qui manquent : fenêtre `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/
-  MOVE16), extensions complètes d'EA réservées. La fenêtre cpID 1 du
+  brutes qui manquent : extensions complètes d'EA réservées, et une
+  famille `fault` bâtie sur les opcodes de `core`. La fenêtre
+  `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/MOVE16) a la sienne (`sysraw`,
+  6 000 / 6 000 au premier rejeu, non épinglée). La fenêtre cpID 1 du
   68030 a la sienne depuis le 2026-11-07 (`sst68030_fpuraw`, 6 000
   vecteurs contre l'oracle strict).
 - [ ] **Donner au corpus FPU du 68040 les exceptions armées et les
@@ -289,6 +291,15 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   une cible impaire, quatrième reste du balayage, est devenu la décision
   D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
   manuel ; l'oracle n'en lève jamais.)
+- [ ] **Empiler la frame courte $A quand l'écriture d'un RMW faute.**
+  *Quatre vecteurs reproductibles* (`scratchpad/2026-11-07/FUZZ_SWEEP2.md`,
+  graines 1008 et 1009) : SBCD -(An),-(An), SUB.L Dn,(An), BSET Dn,(d16,An)
+  et SUB.B Dn,-(An) en mode utilisateur, écriture fautive — l'oracle
+  empile $A avec le PC de l'instruction suivante (dernière écriture), le
+  fork $B. La famille `fault` a sa propre liste d'opcodes et n'émet pas
+  ces formes : lui donner celle de `core` couvrirait la classe. Même
+  balayage, un vecteur : PTEST laisse MMUSR.I à zéro
+  (`mmu/tt seed=1006 #1188`).
 - [ ] **Repasser les corpus 68030 à l'oracle strict en appliquant D23b.**
   Tous les corpus 68030 antérieurs au 2026-11-07 ont été produits avec
   `fpu_no_unimplemented = false`, où WinUAE laisse un 6888x exécuter les
