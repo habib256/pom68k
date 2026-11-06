@@ -86,6 +86,14 @@ add_test(NAME sst68040_fpu2
          COMMAND sst68040 "${POM68K_SST040_FPU2_DIR}" --fpu
                  --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpu2.known")
 
+# Three steps per vector on the full 68040, FSAVE as the first word of the
+# FPU exception handlers: the BUSY and UNIMP state frames the FPSP reads.
+set(POM68K_SST040_FPUH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_fpuh"
+    CACHE PATH "Directory of three-step SST040 vectors, FSAVE in the FPU handlers")
+add_test(NAME sst68040_fpuh
+         COMMAND sst68040 "${POM68K_SST040_FPUH_DIR}" --fpu
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpuh.known")
+
 # The identity of the vector corpora (tests/sst_corpora.lock): a corpus
 # that is present must match the pinned files byte for byte; an absent one
 # soft-skips, like the harnesses that read it.
@@ -101,4 +109,5 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68040_fline=${POM68K_SST040_FLINE_DIR}
                  --dir sst68040_fpu=${POM68K_SST040_FPU_DIR}
                  --dir sst68040_fpu2=${POM68K_SST040_FPU2_DIR}
+                 --dir sst68040_fpuh=${POM68K_SST040_FPUH_DIR}
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

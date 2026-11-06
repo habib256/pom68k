@@ -52,7 +52,7 @@ def main() -> int:
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
                     choices=["core", "mmu", "random", "fault", "fpu",
-                             "fpuraw", "fpu2", "rmw"])
+                             "fpuraw", "fpu2", "rmw", "fpuh"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
     ap.add_argument("--strict-fpu", action="store_true",
                     help="6888x as the manual has it: opmodes $40-$7F take a "

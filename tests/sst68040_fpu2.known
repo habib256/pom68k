@@ -2,9 +2,5 @@
 # fork does not match the oracle. See tests/SstKnown.h for the rules: a listed
 # vector that passes, or is missing, fails the gate.
 
-# Open defect, not a ruling (TODO.md § Moteur › Justesse 68040): the BUSY and
-# UNIMP state frames an FSAVE writes after a posted exception carry zeros
-# where the oracle has the intermediate result (WBT) and its guard bits.
-040 fpu2/identity seed=932 #1849
-040 fpu2/off seed=931 #816
-040 fpu2/tt seed=933 #1702
+# None at present. The three vectors listed here on 2026-11-07 (state-frame
+# internals after a posted exception) pass since POM68K_VENDOR.md row 51.

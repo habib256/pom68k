@@ -335,15 +335,13 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68040
 
-- [ ] **Remplir les champs internes des frames d'état BUSY et UNIMP du
-  68040.** Depuis l'application de D24 (rang 50) une exception armée est
-  postée et le handler la lit par FSAVE ; `fpuCheckArithException` y
-  laisse à zéro le résultat intermédiaire (WBT), ses bits de garde (GRS)
-  et, pour FMOVE/FABS/FNEG, FPTEMP/ETEMP arrondis, que l'oracle tire de
-  l'état interne de softfloat (`fpp_get_internal*`). Le FPSP s'en sert
-  pour finir l'opération. Trois vecteurs nommés dans
-  `tests/sst68040_fpu2.known` ; la famille `fpu2` avec FSAVE en seconde
-  instruction en produira d'autres.
+- [ ] **Tagger la source d'une instruction dyadique à opérande packed
+  comme l'oracle.** Douze vecteurs de `sst68040_fpuh`
+  (`tests/sst68040_fpuh.known`) : FDIV/FMUL/FSUB/FCMP/FSGLx .P avec une
+  destination qui demande elle-même la trappe de type ; la capture de
+  l'oracle repasse pour la destination et laisse STAG = 4 là où le fork
+  garde le marqueur packed 7. Artefact probable de l'ordre des deux
+  appels dans WinUAE ; à lire avant de suivre.
 - [ ] **Donner des vecteurs à plusieurs instructions aux autres états en
   vol.** `fuzz030.py`/`fuzz040.py --steps` et le champ `steps` des
   vecteurs existent (2026-11-07) ; ils tiennent D24 (`sst68040_fpu2`) et

@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (ninth)** — [The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000](#2026-11-07-state-frame-internals)
 - **2026-11-07 (eighth)** — [66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new](#2026-11-07-fresh-sweep-final)
 - **2026-11-07 (seventh)** — [The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b](#2026-11-07-fpu2-68030)
 - **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](#2026-11-07-d24-applied)
@@ -1217,6 +1218,39 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-state-frame-internals"></a>
+## 2026-11-07 (ninth) — The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000
+
+The three vectors the sixth entry left in `tests/sst68040_fpu2.known` were
+an FSAVE reading zeros where the oracle writes the intermediate result of a
+trapped operation. That is not a frame detail: on a real 68040 the FPSP
+takes WBTEMP from the BUSY frame and denormalizes it after an underflow, or
+rounds it after an overflow — the result the program receives is computed
+from that field. An emulated Quadra with zeros there flushed to zero what
+the chip returns as a denormal.
+
+**The family first.** `fpuh`: an FPU instruction, an FNOP, and `FSAVE
+-(A7)` planted as the first word of the handlers of vectors 48 to 55, three
+oracle steps, so that the frame a handler reads is in the vector whether
+the exception was taken at once or posted. 6 000 vectors: 5 750 pass before
+the change, 250 differ in the frame.
+
+**The change** (`POM68K_VENDOR.md` row 51): `fpuCheckArithException`
+fills, as WinUAE does from the same softfloat, WBTEMP and the guard bits of
+an E3 frame (FADD/FSUB/FMUL/FDIV/FSQRT), the rounded FPTEMP and ETEMP of a
+trapped FMOVE/FABS/FNEG, and for a move out quiets the signaling bit and
+tags the source as an extended register. `execFpuDatatype040` shows FSQRT
+as opmode $05 in CMDREG1B, as the chip does, and tags a move-out's source
+as extended whatever the destination format.
+
+After: **5 988 / 6 000**, the three `fpu2` vectors pass (their block leaves
+the list), every other 68040 corpus unchanged. The twelve left are one
+class — a dyadic instruction with a packed source whose destination also
+needs the datatype trap, where the oracle's capture runs twice — and wait
+for a reading of that order (`TODO.md`).
+
+**Pinned** as `sst68040_fpuh`. Not yet validated on the machine tiers.
 
 <a id="2026-11-07-fresh-sweep-final"></a>
 ## 2026-11-07 (eighth) — 66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new

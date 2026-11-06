@@ -599,10 +599,20 @@ def _op_fpu2(rng: random.Random) -> list[int]:
     return _op_fpu(rng) + second
 
 
-FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
+def _op_fpuh(rng: random.Random) -> list[int]:
+    """An FPU instruction whose exception handlers begin with FSAVE -(A7):
+    gen_state plants $F327 on the landing pads of vectors 48 to 55 for this
+    family, so that with --steps 2 the state frame the handler would read —
+    BUSY or UNIMP, with its intermediate result — is in the vector. A posted
+    exception needs a third step: the instruction is followed by an FNOP.
+    """
+    return _op_fpu(rng) + [0xF280, 0x0000]
+
+
+FPU_FAMILIES = ("fpu", "fpuraw", "fpu2", "fpuh")
 FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
             "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw,
-            "fpu2": _op_fpu2, "rmw": _op_rmw}
+            "fpu2": _op_fpu2, "rmw": _op_rmw, "fpuh": _op_fpuh}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -665,8 +675,11 @@ def gen_state(rng: random.Random, family: str = "core",
         # masked (they trap through vectors 48-54 when set — ~10 %).
         st.fp = [_fp_special_words(rng) for _ in range(8)]
         fpcr = rng.getrandbits(8) & 0xF0             # PREC+RND, bits 7-4
-        if rng.random() < (0.70 if family == "fpu2" else 0.10):
+        if rng.random() < (0.70 if family in ("fpu2", "fpuh") else 0.10):
             fpcr |= (rng.getrandbits(8) << 8) & 0xFF00   # enable byte
+        if family == "fpuh":
+            for vec in range(48, 56):               # FSAVE -(A7) in the handlers
+                _w16(ram, HANDLER_BASE + vec * HANDLER_STRIDE, 0xF327)
         st.fpcr = fpcr                               # fpcr_mask 0xfff0
         st.fpsr = rng.getrandbits(32) & 0x0FFFFFF8   # CC/quot/EXC/AEXC
         # Seed each A-register target with a raw 96-bit extended special

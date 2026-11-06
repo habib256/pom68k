@@ -38,7 +38,8 @@ from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
                     STACK_ISP, STACK_MSP, STACK_USP,
                     build_vector_table, _w16, _w32,
                     _op_random, _op_core, _op_fault,
-                    _op_fpu, _op_fpuraw, _op_fpu2, _op_rmw, _fp_special_words)
+                    _op_fpu, _op_fpuraw, _op_fpu2, _op_fpuh, _op_rmw,
+                    _fp_special_words, HANDLER_BASE, HANDLER_STRIDE)
 
 # ── 040 MMU table builder (M68040UM § 3.1/3.2) ─────────────────────────────
 TC040_FUZZ = 0x8000        # E=1, P=0 → 4K pages
@@ -232,9 +233,9 @@ def _op_sysraw040(rng: random.Random) -> list[int]:
     return [op] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 4))]
 
 
-FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
+FPU_FAMILIES = ("fpu", "fpuraw", "fpu2", "fpuh")
 FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
-            "sysraw": _op_sysraw040, "rmw": _op_rmw,
+            "sysraw": _op_sysraw040, "rmw": _op_rmw, "fpuh": _op_fpuh,
             "fpu2": _op_fpu2,
             "fault": _op_fault040, "fpu": _op_fpu,
             "fline": _op_fpuraw, "fpuraw": _op_fpuraw}
@@ -314,10 +315,13 @@ def gen_state(rng: random.Random, family: str = "core",
         # A-register target so every memory format reads something meaningful.
         st.fp = [_fp_special_words(rng) for _ in range(8)]
         fpcr = rng.getrandbits(8) & 0xF0
-        if rng.random() < (0.70 if family == "fpu2" else 0.10):
+        if rng.random() < (0.70 if family in ("fpu2", "fpuh") else 0.10):
             fpcr |= (rng.getrandbits(8) << 8) & 0xFF00
         st.fpcr = fpcr
         st.fpsr = rng.getrandbits(32) & 0x0FFFFFF8
+        if family == "fpuh":
+            for vec in range(48, 56):               # FSAVE -(A7) in the handlers
+                _w16(ram, HANDLER_BASE + vec * HANDLER_STRIDE, 0xF327)
         for i in range(8):
             base = st.a[i] & MASK
             for org, w in ((base, _fp_special_words(rng)),
