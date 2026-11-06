@@ -4,9 +4,17 @@ This directory is the differential-testing backbone behind Moira's
 68030 + MMU + 68882 core (Phase 2, Mac LC II) and its 68040 + MMU core
 (Phase Q, the Quadras). The cores themselves are written from the
 **Motorola MC68030 / MC68040 / MC68881-882 User's Manuals**; every
-behaviour is then verified against the **WinUAE oracle**. On spec/oracle
-conflict, **the oracle wins** (undocumented flags, MMUSR quirks,
-exception-frame contents…) — unless a real-hardware trace proves it wrong.
+behaviour is then verified against the **WinUAE oracle**.
+
+**Who wins a conflict (2026-11-06).** The oracle is another emulator: grade D
+in the evidence grades of `CLAUDE.md`, below a manual (B) and far below a
+real-hardware trace (A). Where the manual is **silent** — undefined flags,
+MMUSR quirks, the internal words of a frame — the oracle is the best reading
+there is and its word stands. Where the manual **speaks** and the oracle
+disagrees, the manual wins. The earlier rule read "the oracle wins" without
+that distinction; the rulings taken under it are listed in § *Rulings taken
+against a manual* below and are kept, because each is pinned by vectors a
+reversal would turn red.
 
 > **One oracle, by ruling.** The second one (MAME/Musashi) was **retired
 > 2026-07-15** and its tree deleted: 0 arbitrations won across D1-D22,
@@ -27,6 +35,31 @@ oracle/
                       (gen030/gen040), oracle driver (ctypes), SST030/SST040
                       JSON emitters, loop.sh
 ```
+
+## Rulings taken against a manual
+
+Kept as known exceptions: the project applies the evidence grades to an
+existing ruling only when doing so turns no gate red (maintainer's decision,
+2026-11-06). Each line is the oracle (D) followed against a Motorola manual
+(B), with the pinned vectors that hold it and what would settle it. Detail:
+`fuzz/disputes/NOTES.md`.
+
+| Ruling | Oracle (kept) | Manual | Held by | Settled by |
+|---|---|---|---|---|
+| **D12** | Zero divide, CHK/CHK2, TRAPcc/TRAPV: the format $2 "instruction address" is the **next** instruction's | MC68030UM reads "the instruction that caused the exception" | `sst68030` | a frame stacked by a real 68020/68030 |
+| **D23a** | 68030 FPU post-instruction exception stacks **format $3** with the operand EA | MC68030UM: format $2, instruction address | `sst68030` fpu cells (10 vectors went red on the 2026-08-17 attempt), `fpu_sanity` check 14 | a frame stacked by a real 68030 + 6888x. Note the fork's 68020/030 RTE does not accept a $3 frame (`TODO.md § Moteur › Justesse 68030`) |
+| **D23b** | FRESTORE accepts a version-$41 (68040) frame on a 68882 — WinUAE's own "horrible hack" | MC68882UM § 6 knows no such frame version: format error | `sst68030` fpu cells (4 vectors) | a real 68882 given a $41 frame |
+
+Two 68000 rules of the same kind predate the 68030 oracle and are flagged
+in `extern/moira/POM68K_VENDOR.md` § *SingleStepTests/680x0 convergence
+patches*: the early exit of every DIVS overflow at 16/18 cycles, and ASR
+past the operand width clearing C and X. Both follow SingleStepTests (D)
+and are held by `sst68000`; NeoST's copy disagrees on the first
+(`TODO.md § Moteur › Convergence`).
+
+Rulings where the manual is silent — D13-D15 (undefined CCR), D20 (sign of a
+created NaN) and their like — are not exceptions: nothing of a higher grade
+contradicts them.
 
 ## The improve loop
 

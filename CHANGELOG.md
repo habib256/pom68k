@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](#2026-11-06-oracle-vs-manual)
 - **2026-11-06 (third)** — [DIVS of $80000000: the undefined abs() NeoST removed is back-ported, and a bare-Moira gate reaches it under UBSan](#2026-11-06-divs-int-min)
 - **2026-11-06 (later)** — [CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause](#2026-11-06-claude-md-budget)
 - **2026-11-06** — [TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation](#2026-11-06-todo-engine-programme)
@@ -1196,6 +1197,54 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-oracle-vs-manual"></a>
+## 2026-11-06 (fourth) — "The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions
+
+`CLAUDE.md` § *Evidence grades* (2026-11-01) ranks every emulator as grade D
+and a Motorola manual as grade B, and says a lower grade never overrules a
+higher one. The CPU fork was built on the opposite sentence: `DEV.md` § 1.1,
+`oracle/README.md`, `extern/moira/POM68K_VENDOR.md` and
+`oracle/fuzz/disputes/NOTES.md` all read "on spec/oracle conflict, the oracle
+wins", and ruling D23 says in so many words that "overruling the oracle on
+manual reading alone is exactly what this section exists to forbid".
+
+**The maintainer's decision: apply the new rule only where it breaks
+nothing.** Asked whether D23 should return to the manual, the answer was to
+apply the grades only if no gate turns red. D23's own record answers that:
+the 2026-08-17 attempt to stack the manual's format $2 on the 68030 and to
+refuse a version-$41 FRESTORE on a 68882 turned 14 pinned `sst68030` vectors
+red (10 + 4). So no CPU behaviour changes in this entry.
+
+**What does change, because it breaks nothing:**
+
+- `DEV.md` § 1.1 "Sources, ranked" is rewritten on the grades. It still
+  ranked MAME above *Guide to the Macintosh Family Hardware* — the ordering
+  `CLAUDE.md` calls "backwards".
+- `oracle/README.md` states the rule with the distinction the old sentence
+  lacked: where the manual is **silent** (undefined flags, MMUSR quirks,
+  internal frame words) the oracle remains the best reading; where the
+  manual **speaks**, it wins for any new ruling.
+- The same file gains § *Rulings taken against a manual*: D12 (the format
+  $2 "instruction address" is the next instruction's), D23a (68030 FPU
+  post-instruction frame in format $3), D23b (WinUAE's own "horrible hack"
+  accepting a 68040 FRESTORE frame on a 68882), each with the vectors that
+  hold it and what would settle it, plus the two 68000 rules already flagged
+  in the vendor note (early DIVS overflow exit, ASR past the operand width).
+  D13-D15 and D20 are named as *not* exceptions: the manual is silent there.
+- `POM68K_VENDOR.md` § *SingleStepTests* and the header of `NOTES.md` are
+  annotated, not rewritten — both are records of rulings taken under the old
+  rule.
+
+**One thing the inventory surfaced and left open.** Under D23a the 68030
+stacks a format $3 frame that the fork's own 68020/030 RTE refuses (it
+accepts $3 from the 68EC040 up). Making RTE accept it would push further in
+the oracle's direction; returning to $2 is the reversal declined above. It
+stays in `TODO.md § Moteur › Justesse 68030` with its gate still to write.
+
+No gate changed; `docs_test` PASS.
 
 ---
 

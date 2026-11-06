@@ -19,6 +19,16 @@ So:
   implements them; the "Musashi does X instead" halves are kept because
   they are *why* each ruling went the way it did.
 
+> **Annotation, 2026-11-06 — evidence grades.** "The oracle's word is law"
+> and "oracle wins over spec" below are the rule these rulings were taken
+> under. It is superseded for NEW rulings by `CLAUDE.md` § *Evidence
+> grades*: the oracle is grade D, a Motorola manual is grade B, and a lower
+> grade never overrules a higher one. Rulings D12 and D23, which follow the
+> oracle against a manual, are kept as known exceptions because a reversal
+> turns pinned vectors red; `oracle/README.md` § *Rulings taken against a
+> manual* says what would settle each. Where the manual is silent the
+> oracle remains the best reading and nothing changes.
+
 Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).

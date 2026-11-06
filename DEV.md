@@ -117,18 +117,32 @@ ROM identity and stable save-state id live).
 
 ### 1.1 Sources, ranked
 
-Every subsystem port must cite one of these **plus a gate test**:
+Every subsystem port must cite its source **plus a gate test**. The ranking
+is the evidence grades of `CLAUDE.md` § *Evidence grades* — one hierarchy for
+the whole emulator family, written into the code as a bracket at the head of
+the comment:
 
-0. **Apple's own ROM source** (`elliotnunn/mac-rom`) where it covers the
-   question; it outranks everything below (`docs/BASILISK_ROM_NOTES.md`
-   § 8.9).
-1. **MAME** `src/mame/apple/*` + the `m68000` family — primary hardware
-   reference.
-2. **Guide to the Macintosh Family Hardware** 2e (GttMFH) + *Inside
-   Macintosh III*.
-3. **Hatari/WinUAE** 68k timing and MMU/FPU cores — the differential oracle
-   (`oracle/`). On spec/oracle conflict, the oracle wins.
-4. **pce-macplus / Mini vMac / Basilisk II** — behavioural cross-checks.
+- **A — measured on real hardware.** Outranks everything.
+- **B — primary documents.** *Guide to the Macintosh Family Hardware* 2e
+  (GttMFH), *Inside Macintosh*, the Motorola 68000/68030/68040 and
+  6888x manuals, chip datasheets, Apple technical notes.
+- **C — ROM disassembly.** Apple's own ROM source (`elliotnunn/mac-rom`,
+  `docs/BASILISK_ROM_NOTES.md` § 8.9) and the ROM images themselves.
+- **D — another emulator, all equal.** MAME `src/mame/apple/*` and its
+  `m68000` family, the Hatari/WinUAE 68k cores that serve as the
+  differential oracle under `oracle/`, pce-macplus, Mini vMac, Basilisk II.
+  A grade-D citation names its revision.
+
+**A lower grade never overrules a higher one.** The CPU oracle keeps two
+standing roles that this does not touch: where the manual is silent
+(undefined flags, internal frame words) it is the best reading available,
+and its pinned corpora are gates. What changed on 2026-11-06 is the rule for
+a true conflict: until then "the oracle wins" (rulings D12 and D23, and the
+68000 rules flagged in `extern/moira/POM68K_VENDOR.md` § *SingleStepTests*);
+from now on the manual does. The rulings already taken that way are kept as
+**known exceptions**, because reverting any of them turns pinned vectors red
+— `oracle/README.md` § *Rulings taken against a manual* lists each with what
+would settle it.
 
 The Plus material is cross-checked across MAME `mac128.cpp`, pce-macplus,
 Mini vMac, GttMFH and *Inside Macintosh* III (web research, 2026-07-14).

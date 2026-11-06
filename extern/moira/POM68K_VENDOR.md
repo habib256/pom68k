@@ -175,6 +175,14 @@ are upstream-documented bad data, SST issue #4, skipped in the harness).
 Per the project rule, **the oracle wins** on every spec conflict. Patches,
 all marked `POM68K:` in the code:
 
+> **Annotation, 2026-11-06.** "The oracle wins" was the rule of this date
+> and is superseded by the evidence grades (`CLAUDE.md`): SingleStepTests
+> is grade D. The patches below stand — reverting one turns `sst68000`
+> vectors red — and the two that contradict a higher-grade reading (the
+> early DIVS overflow exit, ASR past the operand width) are listed as
+> known exceptions in `oracle/README.md` § *Rulings taken against a
+> manual*.
+
 Address-error (AE) machinery:
 - `MoiraExceptions_cpp.h execAddressError`: 68000 idle = 0 for data faults,
   2 for instruction-flow faults (discriminated by the frame's I/N bit);
