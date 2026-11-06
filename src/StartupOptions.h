@@ -290,6 +290,10 @@ concept IntegerStartupOption =
       startup_policy::JitBoolean)                                            \
     X(Jit040LatePoll, "POM68K_JIT_040_LATE_POLL", StartupDomain::Jit,      \
       startup_policy::JitBoolean)                                            \
+    X(Cache040Model, "POM68K_040_DCACHE", StartupDomain::Jit,              \
+      startup_policy::JitBoolean)                                            \
+    X(Cache040CmStats, "POM68K_040_CM_STATS", StartupDomain::Jit,          \
+      startup_policy::Presence)                                              \
     X(JitFpuMember, "POM68K_JIT_FPU_MEMBER", StartupDomain::Jit,           \
       startup_policy::JitBoolean)                                            \
     X(JitLinks, "POM68K_JIT_LINKS", StartupDomain::Jit,                    \

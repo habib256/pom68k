@@ -185,6 +185,16 @@ int main(int argc, char** argv) {
                          q605Core().diagnostics);
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
+    // The cache-model registrations ask for it with POM68K_040_DCACHE=1. The
+    // knob reaches Moira by injection now, not by a getenv in its
+    // constructor, so a lost wire would leave both machines cacheless and
+    // every comparison below green for the wrong reason. Hold the wire.
+    if (jitConfig.cache040Model &&
+        !(cpuRef.pomCache040Active() && cpuJit.pomCache040Active())) {
+        std::printf("[jit_lockstep] FAIL: POM68K_040_DCACHE requested but "
+                    "the 68040 cache model is not armed on both machines\n");
+        return 1;
+    }
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
         std::printf("SKIP: [jit_lockstep] loadRom failed\n");
         return 0;

@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (fifth)** — [The 68040 cache switch leaves the environment: Moira's constructor no longer calls getenv, and the cache-on lockstep now fails if the wire is lost](#2026-11-06-core-no-getenv)
 - **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](#2026-11-06-oracle-vs-manual)
 - **2026-11-06 (third)** — [DIVS of $80000000: the undefined abs() NeoST removed is back-ported, and a bare-Moira gate reaches it under UBSan](#2026-11-06-divs-int-min)
 - **2026-11-06 (later)** — [CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause](#2026-11-06-claude-md-budget)
@@ -1197,6 +1198,60 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-core-no-getenv"></a>
+## 2026-11-06 (fifth) — The 68040 cache switch leaves the environment: Moira's constructor no longer calls getenv, and the cache-on lockstep now fails if the wire is lost
+
+`Moira::Moira()` read `POM68K_040_DCACHE` with `getenv`, and
+`mmu040AtcFill` read `POM68K_040_CM_STATS` — a behavioural switch and a
+diagnostic that the host's configuration could not see, against the rule that
+only `ProcessEnvironment` reads the process environment, and a habit that
+would have followed the core into NeoST. Both are now host-injected:
+`setPomCache040()` already existed, `setPomCmStats040()` is new, and the core
+reads neither name (`extern/moira/POM68K_VENDOR.md` row 39).
+
+**Why the JIT configuration carries them.** The obvious carrier was
+`CoreCpuConfig`, next to `mmu040Walk`. It would have silently disarmed every
+experiment: 58 test files name a 68040 CPU wrapper and build its machine from
+`profileCoreConfig()` or `defaultCoreConfig()`, which are deterministic by
+design and never see the environment — the two cache-on lockstep registrations among them. What every
+CPU wrapper receives in the product *and* in every rig is the
+`jit::ResolvedConfig`, which test executables resolve from the environment
+through `tests/JitTestConfig.h`. `POM68K_DATA_WINDOW`, an interpreter-side
+Moira knob, already travels that way. So both names are declared in
+`StartupOptions.h` in the JIT domain, `jit::ResolvedConfig` gains
+`cache040Model` and `cache040CmStats`, and `MoiraCpu`'s constructor applies
+them. The same two environment variables keep working everywhere they did,
+except on a bare `moira::Moira` built by hand, which now needs the setter
+(`cache040_test` and `jit_copyback_write_040_test` already used it).
+
+**Proof that nothing moved**, old binary against new, same host:
+
+| run | before | after |
+|---|---|---|
+| `jit_lockstep_test 1000000`, x64, budget 256, `POM68K_040_DCACHE=1` | 1 000 000 steps identical; 130 864 390 JIT instrs, 1 140 645 fallbacks, 1 631 blocks, 2 048 626 native line reads, 182 097 copyback writes | the same seven numbers |
+| the same without the cache, `POM68K_040_CM_STATS=1` | `inst copyback 102`, `data copyback 456`, `data serial-nc 40`, `data nonserial-nc 248` | the same four lines |
+
+**The gate is no longer vacuous.** `jit_lockstep_test` printed its cache
+statistics only `if (cpuJit.pomCache040Active() …)`. With the switch read in
+Moira's constructor that could not go wrong; with an injected switch a lost
+wire would leave both machines cacheless and every comparison green for the
+wrong reason. The test now fails outright when the cache was requested and is
+not armed on both machines.
+
+**Left open.** Three `NEOST_EXC_DIAG` reads remain in the core. That NeoST
+diagnostic applies to every core, and `Cpu68k`, `PortableCpu` and `IIfxCpu`
+receive only a JIT configuration; it needs a carrier before it can move
+(`TODO.md § Moteur › Surface`).
+
+Startup options go from 144 to 146 (JIT domain 41 to 43), pinned in
+`docs_test`; `config_knobs.tsv` moves the diagnostic's owner to
+`StartupOptions.h`. The two declarations raise the size ceilings of
+`StartupOptions.h` (400 to 404) and `JitConfig.h` (562 to 568), and fourteen
+`file:line` citations into the five edited files follow their exact line
+deltas.
 
 ---
 

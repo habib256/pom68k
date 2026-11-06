@@ -45,10 +45,9 @@ Moira::Moira()
 
     createJumpTable(cpuModel, dasmModel);
 
-    // POM68K M1-M3 (docs/CACHE_040.md): data-bearing 040 I/D caches,
-    // opt-in until the cache-aware JIT regains the calibrated product speed.
-    if (const char *e = std::getenv("POM68K_040_DCACHE"))
-        pomCache040On = e[0] != '\0' && e[0] != '0';
+    // POM68K M1-M3 (docs/CACHE_040.md): the data-bearing 040 I/D caches
+    // stay off until setPomCache040() arms them. The core reads no process
+    // environment; the host decides and injects.
 
     instrStyle = DasmStyle {
 

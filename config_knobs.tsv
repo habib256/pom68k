@@ -2,7 +2,7 @@
 # Format: knob<TAB>class<TAB>contract
 # Classes/contracts: product gate:<configured gate>[,...]; diagnostic/test
 # owner:<literal-bearing path>; chantier expiry:<document>#<topic>.
-POM68K_040_CM_STATS	diagnostic	owner:extern/moira/Moira/MoiraExecMMU_cpp.h
+POM68K_040_CM_STATS	diagnostic	owner:src/StartupOptions.h
 POM68K_040_DCACHE	chantier	expiry:docs/CACHE_040.md#product-default-and-speed-budget
 POM68K_ADB_FW	product	gate:peripheral_lle_test
 POM68K_ADB_KBD_ID	product	gate:adbline_test

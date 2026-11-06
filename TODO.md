@@ -66,8 +66,7 @@ dans le même processus — aucune ne se déduit d'une autre.
 Ordre : Socle → Convergence → Justesse → Temps → Interprète → JIT →
 Surface. Qui gagne un arbitrage est écrit (`CLAUDE.md § Evidence grades`,
 `oracle/README.md`) : le manuel sur l'oracle, sauf exception connue. Sans dépendance et à prendre d'abord :
-les lectures d'environnement du cœur (› Surface) et la re-vérification
-x64 des polls positionnés (› JIT justesse). Les cellules à la main des
+la re-vérification x64 des polls positionnés (› JIT justesse). Les cellules à la main des
 règles qu'aucun corpus n'atteint s'ajoutent à `moira_rules_test`
 (`cmake/Pom68kCpuGates.cmake`).
 
@@ -447,11 +446,15 @@ Le regroupement des hooks derrière une interface virtuelle reste refusé
 (≈ 11 % mesurés, `POM68K_VENDOR.md § Status`) : la séparation se fait à la
 compilation et dans la documentation.
 
-- [ ] **Retirer les lectures d'environnement du cœur.** `Moira::Moira()`
-  lit `POM68K_040_DCACHE`, le chemin de remplissage de l'ATC lit
-  `POM68K_040_CM_STATS`, et `NEOST_EXC_DIAG` est lu à trois endroits :
-  autant d'entorses à la règle « pas de `getenv` sous la frontière de
-  démarrage ». Les injecter comme `mmu040Walk`, par `CoreCpuConfig`.
+- [ ] **Retirer les trois lectures de `NEOST_EXC_DIAG` du cœur.** Dernier
+  `getenv` de `extern/moira/Moira/` (`Moira.cpp`, `MoiraExceptions_cpp.h`,
+  `MoiraDataflow_cpp.h`) depuis que le commutateur de cache 68040 et son
+  histogramme sont injectés (rang 39). Ce diagnostic de NeoST concerne
+  tous les cœurs, 68000 compris, or `Cpu68k`, `PortableCpu` et `IIfxCpu`
+  ne reçoivent qu'une configuration JIT : il faut lui choisir un porteur
+  (un drapeau membre et son setter, déclaré avec `RTCDBG` et `SCCDBG`
+  dans `StartupOptions.h`) sans élargir quatorze constructeurs pour un
+  traceur.
 - [ ] **Écrire le contrat de la surface d'extension, sans Macintosh.**
   Chaque couture `pom*`, chaque hook virtuel ou pointeur de fonction,
   `jit::MemoryHooks`, `CodeGuard` (tout écrivain non CPU doit le

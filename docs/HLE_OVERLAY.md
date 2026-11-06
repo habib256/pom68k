@@ -192,7 +192,7 @@ Checked against the vendored core on 2026-07-31. The study's original claim
 |---|---|---|
 | `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:1143` (virtual) / `:1342`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == Instr::STOP \|\| I == Instr::TAS \|\| I == Instr::BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
 | `didReachSoftwareTrap(addr)` | `Moira.h:1301` (virtual) / `:1394`, fired from `execLineA` (`MoiraExec_cpp.h:32-47`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
-| `MoiraDebugger` breakpoints / softstops | `MoiraDebugger.*`, checked at `Moira.cpp:667` | **The zero-cost-when-unused route**: `State::CHECK_BP` is set only while a breakpoint exists (`MoiraDebugger.cpp:190-192`), so an unarmed build pays one already-hot flag test. **Caveat:** the check sits at the `done:` label — *after* the instruction retires, reporting `reg.pc0`. An entry-address hook therefore fires with the routine's first instruction **already executed**; the handler must either account for that or hook the instruction before the entry |
+| `MoiraDebugger` breakpoints / softstops | `MoiraDebugger.*`, checked at `Moira.cpp:666` | **The zero-cost-when-unused route**: `State::CHECK_BP` is set only while a breakpoint exists (`MoiraDebugger.cpp:190-192`), so an unarmed build pays one already-hot flag test. **Caveat:** the check sits at the `done:` label — *after* the instruction retires, reporting `reg.pc0`. An entry-address hook therefore fires with the routine's first instruction **already executed**; the handler must either account for that or hook the instruction before the entry |
 
 Also corrected: `Cpu68k` derives from `MoiraSnapshot` (`src/MoiraSnapshot.h:33`),
 not from `moira::Moira` directly; `MacMemory::loadRom` is at
@@ -324,7 +324,7 @@ predictions. Source: `src/jit/POM68K_JIT.md` §§ 4, 8, 9.
   is handed back to `Moira::execute()`. A hook placed there needs no new JIT
   work. A hook on an *ordinary* instruction does not get that for free.
 - **Address-hook modules and the code window.** Breakpoints are checked in
-  `Moira::execute()` (`Moira.cpp:667`), which a replayed or generated block
+  `Moira::execute()` (`Moira.cpp:666`), which a replayed or generated block
   bypasses by design. An address hook must therefore either force the block
   boundary itself or arm through the engine — this is the one genuinely new
   integration item, and it is why § 5.2 keeps both strategies alive.

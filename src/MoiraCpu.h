@@ -82,7 +82,13 @@ public:
 protected:
     MoiraCpu(Memory& mem, jit::GuestFamily family,
              const jit::ResolvedConfig& jitConfig)
-        : mem_(mem), jit_(*this, makeJitMemoryHooks(mem), family, jitConfig) {}
+        : mem_(mem), jit_(*this, makeJitMemoryHooks(mem), family, jitConfig) {
+        // Moira reads no process environment: the cache-model chantier
+        // switch and its diagnostic arrive here, typed. Both are inert below
+        // the 68EC040 (pomCache040Active() tests the model).
+        setPomCache040(jitConfig.cache040Model);
+        setPomCmStats040(jitConfig.cache040CmStats);
+    }
 
     moira::u8  read8(moira::u32 addr)  const override { return mem_.read8(addr); }
     moira::u16 read16(moira::u32 addr) const override { return mem_.read16(addr); }
