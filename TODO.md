@@ -104,7 +104,12 @@ boot.
   même oracle prend l'erreur de format du manuel (trois vecteurs de
   `sst68030_fpuraw`). Reste à l'appliquer : retirer la branche $41 du
   FRESTORE 6888x, lister les quatre vecteurs de `sst68030` comme connus,
-  vider le bloc D23b de `tests/sst68030_fpuraw.known`. Reste aussi à passer au crible les
+  vider le bloc D23b de `tests/sst68030_fpuraw.known`. *Précaution avant
+  de le faire :* l'hybride 68LC040 + 68882 logiciel, défaut produit des
+  LC 475/575/580 (› Justesse 68040), présente un 6888x à un système qui
+  se croit sur 68040 ; s'il restaure une frame IDLE $41 construite à la
+  main, c'est cette branche qui la laisse passer. Passer d'abord les
+  etalons `q605_*` et `lc475_*` avec la branche retirée. Reste aussi à passer au crible les
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
