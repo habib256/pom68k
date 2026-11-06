@@ -43,9 +43,15 @@ from oracle_driver import Oracle, State
 import sst040
 
 
-def run_one(o: Oracle, st: State):
+def run_one(o: Oracle, st: State, steps: int = 1):
     o.load(st)
-    cycles = o.step()
+    cycles = 0
+    for _ in range(steps):
+        c = o.step()
+        if c < 0:                   # halt: the vector is skipped
+            cycles = c
+            break
+        cycles += c
     fin = o.read_back()
     ram = o.ram_diff(dict(st.ram))
     return fin, ram, cycles
@@ -58,10 +64,14 @@ def main() -> int:
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
                     choices=["core", "mmu", "random", "fault", "fpu",
-                             "fline", "fpuraw"])
+                             "fline", "fpuraw", "fpu2"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
     ap.add_argument("--page", default="4k", choices=["4k", "8k"],
                     help="page size of the generated trees (TC.P)")
+    ap.add_argument("--steps", type=int, default=1,
+                    help="oracle steps per vector (an instruction, or the "
+                         "exception it takes, is one step); the fpu2 family "
+                         "is meant for 2")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", required=True)
@@ -88,12 +98,12 @@ def main() -> int:
         st = gen_state(rng, family=args.family, mmu=args.mmu)
         name = f"040 {args.family}/{args.mmu}{tag} seed={args.seed} #{i}"
 
-        fa, rama, ca = run_one(oa, st)
+        fa, rama, ca = run_one(oa, st, args.steps)
         if ca < 0:
             n_halt += 1
             continue
         if ob:
-            fb, ramb, _cb = run_one(ob, st)
+            fb, ramb, _cb = run_one(ob, st, args.steps)
             diffs = fa.core_diff(fb)
             if rama != ramb:
                 diffs.append(f"ram: {len(rama)} vs {len(ramb)} touched cells differ")
@@ -110,7 +120,7 @@ def main() -> int:
                                      "final": sst040.state_to_dict(fb, ramb)},
                                "diffs": diffs}, f, indent=1)
                 continue
-        vectors.append(sst040.vector(name, st, fa, rama, ca))
+        vectors.append(sst040.vector(name, st, fa, rama, ca, args.steps))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     sst040.save(args.out, vectors)

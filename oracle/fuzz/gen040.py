@@ -221,8 +221,29 @@ def _op_fault040(rng: random.Random) -> list[int]:
 # "fline" and "fpuraw" share gen030's _op_fpuraw (the raw cpID-1 window,
 # any extension word): the first on the FPU-less 68LC040,
 # the second on the full 68040.
-FPU_FAMILIES = ("fpu", "fpuraw")
+def _op_fpu2(rng: random.Random) -> list[int]:
+    """An FPU instruction, then a second instruction that decides when a
+    posted exception is delivered (M68040UM § 9.7: an enabled arithmetic
+    exception of a register-destination instruction is taken as a
+    pre-instruction exception by the NEXT floating-point instruction). For
+    fuzz040.py --steps 2; gen_state arms the FPCR enables seven times in ten.
+    """
+    second = rng.choice([
+        [0xF280, 0x0000],                       # FNOP
+        [0xF200, 0x0080],                       # FMOVE FP0,FP1
+        [0xF200, 0x003A],                       # FTST FP0
+        [0xF200, 0x0422],                       # FADD FP1,FP0
+        [0xF327],                               # FSAVE -(A7)
+        [0xF200, 0xA800],                       # FMOVE FPSR,D0
+        [0x4E71],                               # NOP: nothing is delivered
+        [0x7001],                               # MOVEQ #1,D0: nor here
+    ])
+    return _op_fpu(rng) + second
+
+
+FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
+            "fpu2": _op_fpu2,
             "fault": _op_fault040, "fpu": _op_fpu,
             "fline": _op_fpuraw, "fpuraw": _op_fpuraw}
 
@@ -301,7 +322,7 @@ def gen_state(rng: random.Random, family: str = "core",
         # A-register target so every memory format reads something meaningful.
         st.fp = [_fp_special_words(rng) for _ in range(8)]
         fpcr = rng.getrandbits(8) & 0xF0
-        if rng.random() < 0.10:
+        if rng.random() < (0.70 if family == "fpu2" else 0.10):
             fpcr |= (rng.getrandbits(8) << 8) & 0xFF00
         st.fpcr = fpcr
         st.fpsr = rng.getrandbits(32) & 0x0FFFFFF8

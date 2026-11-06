@@ -79,13 +79,26 @@ public:
     TestCpu() : mem(1 << 24, 0) { setModel(moira::Model::M68030); }
     std::vector<uint8_t> mem;
 
+    // Every byte a vector set or wrote, so that the next one starts from the
+    // zeroed memory the oracle gives each of its own. Until 2026-11-07 the
+    // bus was never cleared: a vector reading a byte outside its initial
+    // list saw whatever an earlier vector had left there (first seen on an
+    // FMOVEM from the stack, which read a previous vector's exception frame).
+    std::vector<uint32_t> dirty;
+    void clearDirty() {
+        for (uint32_t a : dirty) mem[a] = 0;
+        dirty.clear();
+    }
+
 private:
     moira::u8  read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
     moira::u16 read16(moira::u32 a) const override {
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
-        const_cast<TestCpu*>(this)->mem[a & 0xFFFFFF] = v;
+        auto& self = *const_cast<TestCpu*>(this);
+        self.mem[a & 0xFFFFFF] = v;
+        self.dirty.push_back(a & 0xFFFFFF);
     }
     void write16(moira::u32 a, moira::u16 v) const override {
         write8(a, moira::u8(v >> 8)); write8(a + 1, moira::u8(v));
@@ -221,7 +234,11 @@ bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why
     cpu.setFPUModel(v.initial.hasFp ? moira::FPUModel::M68882
                                     : moira::FPUModel::NONE);
     cpu.reset();                           // clears STOP/halt state from prior vectors
-    for (const RamCell& c : v.initial.ram) cpu.mem[c.addr & 0xFFFFFF] = c.val;
+    cpu.clearDirty();
+    for (const RamCell& c : v.initial.ram) {
+        cpu.mem[c.addr & 0xFFFFFF] = c.val;
+        cpu.dirty.push_back(c.addr & 0xFFFFFF);
+    }
     loadState(cpu, v.initial);             // after RAM: prefetch refill reads it
     if (v.initial.hasFp) {
         for (int i = 0; i < 8; i++) cpu.setFP(i, v.initial.fp[i]);
