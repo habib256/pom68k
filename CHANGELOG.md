@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (eighth)** — [A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix](#2026-11-06-68000-host-hooks)
 - **2026-11-06 (seventh)** — [sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them](#2026-11-06-68000-bus-cycles)
 - **2026-11-06 (sixth)** — [The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it](#2026-11-06-x64-late-ipl)
 - **2026-11-06 (fifth)** — [The 68040 cache switch leaves the environment: Moira's constructor no longer calls getenv, and the cache-on lockstep now fails if the wire is lost](#2026-11-06-core-no-getenv)
@@ -1200,6 +1201,49 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-68000-host-hooks"></a>
+## 2026-11-06 (eighth) — A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix
+
+Writing the host-side contract of the Moira fork (the audit that prepares the
+NeoST re-implementation) turned up a defect by reading: `extBusError()` — the
+door a board uses to assert /BERR from a bus callback — stacks a 68020/68030
+frame from an in-flight stamp and throws an `MmuBusError`.
+`processException<C>` handles that type only under
+`if constexpr (C == Core::C68020)`. On a 68000 core the exception falls
+through to the trailing `throw exc;` and leaves `execute()`.
+
+`src/PortableMemory.cpp` `PortableMemory::busError` called it on a 68000
+wrapper, for a SCSI pseudo-DMA access with DRQ inactive (Macintosh Portable
+and PowerBook 100). No gate reaches that path, so nothing had crashed.
+
+**The fix.** `Moira::extBusError000(addr, write)` is the 68000/68010 entry
+point: it throws the `moira::BusError` that `execBusError<C>` turns into a
+group-0 frame. The frame recipe is NeoST's `Cpu68k::raiseBusError` — status
+word = IR bits 15-5, R/W, function code; then the access address, IR, SR and
+PC as they stand at the fault — so a 68000 host no longer has to build the
+frame itself. `PortableMemory::busError` now passes the address and the
+direction.
+
+**Three host hooks**, back-ported from NeoST in the same change because they
+are what its wrapper overrides and none sits on a hot path:
+`illegalOpcodeHook` (NeoST `fdbce2e`), `willProcessFault` and `setBusLock`
+(`ce1cc52`). All default to no-ops. NeoST's per-bus-cycle hooks are not
+ported: two virtual calls on every access, and nothing here consumes them.
+Seven of NeoST's nine post-copy groups are now in; the bus-cycle hooks and
+STOP+8 remain (`TODO.md § Moteur › Convergence`).
+
+**Gate.** `moira_rules_test` gains two cells on a bare 68000: a read fault
+(`TST.B (A0)`) and a write fault (`MOVE.B D0,(A0)`) on a byte the test board
+answers with /BERR — the exception is contained, vector 2 is taken, and the
+fourteen bytes of the frame are pinned (`$4A15`/`$1085`, the address, the IR,
+SR `$2700`/`$2704`, PC); then the hooks — an unhandled ILLEGAL takes vector
+4, a handled one costs 4 cycles and moves PC by 2, `TAS (A0)` brackets its
+bus cycles `LrwU`, a TAS on the faulting byte still releases the lock (`LU`),
+and an address error reaches `willProcessFault` with its frame.
+`extern/moira/POM68K_VENDOR.md` row 42.
 
 ---
 

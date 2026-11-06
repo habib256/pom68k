@@ -111,6 +111,15 @@ Moira::execIllegal(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    // POM68K (ported from NeoST fdbce2e): opcode handled by the subclass ->
+    // consumed like a NOP (see Moira.h illegalOpcodeHook).
+    if (illegalOpcodeHook(opcode)) {
+
+        prefetch<C, POLL>();
+        FINALIZE
+        return;
+    }
+
     execException<C>(M68kException::ILLEGAL);
 
     CYCLES_68000(34)
@@ -6680,16 +6689,25 @@ Moira::execTasEa(u16 opcode)
 
     if (C == Core::C68000) {
 
-        readOp<C, M, Byte>(dst, &ea, &data);
+        // POM68K (ported from NeoST ce1cc52): /RMC forbids a bus grant
+        // between the read and the write. Release the lock as well if
+        // readOp/writeOp throws (address or bus error).
+        setBusLock(true);
+        try {
 
-        reg.sr.n = NBIT<Byte>(data);
-        reg.sr.z = ZERO<Byte>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-        data |= 0x80;
+            readOp<C, M, Byte>(dst, &ea, &data);
 
-        if (!isRegMode(M)) SYNC(2);
-        writeOp<C, M, S>(dst, ea, data);
+            reg.sr.n = NBIT<Byte>(data);
+            reg.sr.z = ZERO<Byte>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+            data |= 0x80;
+
+            if (!isRegMode(M)) SYNC(2);
+            writeOp<C, M, S>(dst, ea, data);
+
+        } catch (...) { setBusLock(false); throw; }
+        setBusLock(false);
 
         prefetch<C, POLL>();
 

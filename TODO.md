@@ -161,20 +161,20 @@ boot.
 ### Convergence avec la copie NeoST
 
 Notre copie part de NeoST `47d6c39` (2026-07-11). Des neuf groupes que
-NeoST a ajoutés depuis à son 68000, quatre sont portés (rangs 38 et 40).
+NeoST a ajoutés depuis à son 68000, sept sont portés (rangs 38, 40 et 42).
 Les deux forks avaient aussi réécrit les mêmes lignes amont dans des sens
 opposés — nous sur SingleStepTests, NeoST sur Hatari et la transcription
 du microcode. Depuis le 2026-11-06 `sst68000` juge aussi l'ordre et la
 date de chaque cycle bus (rang 41), ce qui donne un juge commun : un cœur
 fusionné doit le garder à 1 000 058 / 1 000 058.
 
-- [ ] **Rétro-porter les quatre hooks de NeoST.** `illegalOpcodeHook`,
-  `willProcessFault`, `setBusLock` autour du TAS : inertes par défaut,
-  plans et correctifs prêts dans `scratchpad/2026-11-06/neost_backports/`
-  (groupes 1, 2 et 4 ; NeoST `fdbce2e` et `ce1cc52`). Les bornes de cycle bus `willAccessBus`/`didAccessBus`
-  ajoutent deux appels virtuels par accès : derrière un commutateur de
+- [ ] **Décider des bornes de cycle bus de NeoST.** `willAccessBus` /
+  `didAccessBus` (NeoST `ce1cc52`) est le dernier hook non porté : deux
+  appels virtuels par accès bus, donc derrière un commutateur de
   compilation éteint ici, et à dupliquer dans `pomJitFetch000`, qui
-  contourne `read<>`.
+  contourne `read<>`. Plan prêt : `scratchpad/2026-11-06/neost_backports/`,
+  groupe 3. À porter quand NeoST prend ce cœur, pas avant : rien ici ne le
+  consomme.
 - [ ] **Trancher STOP+8 avant de le porter.** NeoST `993ce5e` puis
   `2fc53a8` (plan : `scratchpad/2026-11-06/neost_backports/`, groupe 8) : `stopGraceUntil`, réveil quantifié sur 4 cycles, STOP sans
   cycle bus. Trois obstacles lus : son code final facture 0 cycle au STOP

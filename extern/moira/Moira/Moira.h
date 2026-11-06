@@ -1100,12 +1100,25 @@ protected:
     virtual bool writeModuleCpuSpace32(u32 addr, u32 val) const {
         (void)addr; (void)val; return false;
     }
+
+    // POM68K (ported from NeoST ce1cc52): the fault being processed,
+    // including one that interrupts an exception (double fault -> HALT).
+    // Called for AddressError/BusError, whose StackFrame it receives; the
+    // 68030/68040 MMU faults (MmuBusError, format $A/$B/$7) are NOT reported.
+    // Fault path only, so virtual regardless of MOIRA_VIRTUAL_API, as in NeoST.
+    virtual void willProcessFault(const StackFrame & /*frame*/) { }
     
 #if MOIRA_VIRTUAL_API == true
     
     // Advances the internal clock by the specified number of cycles
     virtual void sync(int cycles) { clock += cycles; }
     
+    // POM68K (ported from NeoST ce1cc52): /RMC of the 68000 TAS read-modify-
+    // write — a bus master must not be granted the bus between the read and
+    // the write. Called with true before the read and false after the write
+    // (also on an exception out of either). TAS only: not a hot path.
+    virtual void setBusLock(bool /*locked*/) { }
+
     // Reads a value from memory
     virtual u8 read8(u32 addr) const = 0;
     virtual u16 read16(u32 addr) const = 0;
@@ -1167,6 +1180,16 @@ protected:
     // d'horloge y est déjà quantifiée par l'alignement bus du push PClo.
     virtual int iackSyncBefore(u8 level) { return 4; }
     virtual int iackSyncAfter(u8 level) { return 4; }
+
+    // POM68K (ported from NeoST fdbce2e): delegable illegal instruction.
+    // Called by execIllegal<C>() BEFORE the ILLEGAL exception is taken, so
+    // only when the instruction really executes (interrupts and trace have
+    // already been arbitrated by execute()). Returning true means the
+    // subclass handled the opcode: it is then consumed like a NOP
+    // (prefetch<C, POLL>: 4 cycles on the 68000/68010; nothing is charged on
+    // Core::C68020, where SYNC is empty). Default false = upstream behaviour.
+    // NeoST serves its GEMDOS host-call opcodes ($0008-$000A) through it.
+    virtual bool illegalOpcodeHook(u16 /*opcode*/) { return false; }
 
     // Called when the CPU jumps to an exception vector
     virtual void didJumpToVector(int nr, u32 addr) { }
@@ -1305,6 +1328,8 @@ protected:
     // Advances the internal clock by the specified number of cycles
     void sync(int cycles);
     
+    void setBusLock(bool) { }  // POM68K (ported from NeoST ce1cc52)
+
     // Reads a value from memory
     u8 read8(u32 addr) const;
     u16 read16(u32 addr) const;
@@ -1910,6 +1935,17 @@ public:
     // produce. Throws MmuBusError (never returns); the per-instruction
     // handler turns it into a vector-2 exception, a nested fault → HALT.
     [[noreturn]] void extBusError();
+
+    // POM68K: external /BERR on the 68000 and 68010 cores. extBusError()
+    // above stacks a 68020/68030 frame from a stamp those cores do not keep,
+    // and processException<C68000> has no branch for the MmuBusError it
+    // throws — the exception would leave execute(). A 68000 board calls this
+    // instead, from inside the faulting bus callback, with the address and
+    // direction of the access: it throws the BusError that execBusError<C>
+    // turns into a group-0 frame. The frame recipe is NeoST's
+    // (Cpu68k::raiseBusError): status word = IR bits 15-5, R/W, function
+    // code; PC and SR as they stand at the fault.
+    [[noreturn]] void extBusError000(u32 addr, bool write);
 
 protected:
 

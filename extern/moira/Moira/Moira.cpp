@@ -749,12 +749,14 @@ Moira::processException(const std::exception &exc)
 
         if (auto ae = dynamic_cast<const AddressError *>(&exc); ae) {
 
+            willProcessFault(ae->stackFrame);  // POM68K (ported from NeoST ce1cc52)
             execAddressError<C>(ae->stackFrame);
             return;
         }
 
         if (auto be = dynamic_cast<const BusError *>(&exc); be) {
 
+            willProcessFault(be->stackFrame);  // POM68K (ported from NeoST ce1cc52)
             execBusError<C>(be->stackFrame);
             return;
         }
@@ -773,15 +775,17 @@ Moira::processException(const std::exception &exc)
         halt();
         return;
 
-    } catch (AddressError &) {
+    } catch (AddressError &ae) {
 
+        willProcessFault(ae.stackFrame);  // POM68K (ported from NeoST ce1cc52)
         // NEOST : erreur d'adresse PENDANT le traitement d'une exception groupe 0
         // (ex. vecteur BUS ERROR impair) = double faute → HALT, comme le vrai 68000.
         halt();
         return;
 
-    } catch (BusError &) {
+    } catch (BusError &be) {
 
+        willProcessFault(be.stackFrame);  // POM68K (ported from NeoST ce1cc52)
         // NEOST : bus error pendant l'empilement d'une exception groupe 0
         // (pile dans une zone bus-error) = double faute → HALT.
         halt();

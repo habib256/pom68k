@@ -72,8 +72,11 @@ void PortableMemory::refreshVia() {
 void PortableMemory::scsiLines() {
     via_.setCb2(scsi_.irqAsserted());ca1(scsi_.drqActive());updateIrq();
 }
-void PortableMemory::busError() {
-    if(cpu_) cpu_->extBusError();
+void PortableMemory::busError(uint32_t addr, bool write) {
+    // A 68000 board: the group-0 frame comes from extBusError000(), not from
+    // the 68020/68030 extBusError(), whose MmuBusError a 68000 core cannot
+    // process (moira_rules_test).
+    if(cpu_) cpu_->extBusError000(addr, write);
     throw moira::MmuBusError{};
 }
 void PortableMemory::ioSync(uint32_t a) {
@@ -134,7 +137,7 @@ uint8_t PortableMemory::ioRead(uint32_t a) {
         if(a&1) return 0;
         const unsigned raw=(a>>4)&15,reg=raw&7;
         const bool dma=raw==6 && (a&0xffff)>=0x260;
-        if(dma && !scsi_.drqActive()) busError();
+        if(dma && !scsi_.drqActive()) busError(a,false);
         const auto v=dma?scsi_.dmaRead():scsi_.read(reg);scsiLines();return v;
     }
     case 0xfa:return a>=0xfa8000?vram_[a-0xfa8000]:0;
@@ -157,7 +160,7 @@ void PortableMemory::ioWrite(uint32_t a,uint8_t v,bool sync) {
         if(!(a&1)) break; // NCR input latch is on the lower write byte lane.
         const unsigned raw=(a>>4)&15,reg=raw&7;
         if(raw==0 && (a&0xffff)>=0x200) {
-            if(!scsi_.drqActive()) busError();
+            if(!scsi_.drqActive()) busError(a,true);
             scsi_.dmaWrite(v);
         } else scsi_.write(reg,v);
         scsiLines();break;

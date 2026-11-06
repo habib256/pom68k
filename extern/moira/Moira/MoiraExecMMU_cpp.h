@@ -1011,6 +1011,25 @@ Moira::extBusError()
     mmuPageFault(mmuAccAddr, !mmuAccWrite, mmuAccSsw, mmuAccFc);
 }
 
+// POM68K: the 68000/68010 twin — see the declaration in Moira.h.
+void
+Moira::extBusError000(u32 addr, bool write)
+{
+    StackFrame frame { };
+    const u16 ird = getIRD();
+    const u8 fc = readFC();
+
+    frame.code = u16((ird & 0xFFE0) | fc | (write ? 0 : 0x10));
+    frame.addr = addr;
+    frame.ird  = ird;
+    frame.sr   = getSR();
+    frame.pc   = getPC();
+    frame.fc   = fc;
+    frame.ssw  = fc;
+
+    throw BusError(frame);
+}
+
 // Translated read with 68030 bus splitting (WinUAE mmu030_get_* +
 // *_unaligned): every sub-access is translated separately; the SUBACCESS
 // flags in mmuState[1] and the data buffer track partial completion.

@@ -149,6 +149,24 @@ exception, et `sst68000` compare désormais les cycles bus. Restent à porter : 
 quatre hooks — `illegalOpcodeHook`, `willProcessFault`, bornes de cycle bus,
 `setBusLock` — et STOP+8 ; voir `TODO.md § Moteur › Convergence`.)*
 
+## Hooks d'hôte : opcode illégal, faute, verrou de bus (NeoST 2026-10-01 et 2026-10-19, portés ici le 2026-11-06)
+
+Rang 42 de `POM68K_VENDOR.md`, marqués `POM68K` dans le source, inertes par défaut :
+
+- `illegalOpcodeHook(u16)` (NeoST `fdbce2e`) : appelé par `execIllegal` avant
+  l'exception ; `true` = opcode consommé comme un NOP. NeoST y sert ses appels hôte
+  GEMDOS (`$0008`-`$000A`).
+- `willProcessFault(const StackFrame&)` (NeoST `ce1cc52`) : la faute en cours de
+  traitement, y compris celle qui interrompt une exception (double faute → HALT).
+- `setBusLock(bool)` (NeoST `ce1cc52`) : /RMC du TAS — `true` avant la lecture,
+  `false` après l'écriture, et aussi si l'une des deux lève une exception.
+
+*(Non portées : les bornes de cycle bus `willAccessBus`/`didAccessBus`, deux appels
+virtuels par accès — `TODO.md § Moteur › Convergence`. POM68K ajoute
+`extBusError000(addr, write)`, qui lève la `moira::BusError` de groupe 0 avec la
+recette de `Cpu68k::raiseBusError` de NeoST : un hôte 68000 n'a plus à construire
+la trame lui-même.)*
+
 *(NeoST's original closing line — "toute modif future d'un fichier `Moira/` se
 commit normalement dans NeoST" — is superseded in this repo: see the POM68K
 note at the top.)*
