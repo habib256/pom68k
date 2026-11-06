@@ -681,3 +681,52 @@ Recorded here so that they are not rediscovered; each is in `TODO.md`.
 - `random/tt seed=809 #7, #1854, #1999`: FBcc taken to an odd target — the
   fork raises the address error inside the branch (as for Bcc), the oracle
   only sets the PC.
+
+## The raw F-line window on the 68030 + 68882, and the oracle's strict setting (2026-11-07)
+
+`gen030.py` gained the `fpuraw` family (the generator gen040 used for
+`fline`/`fpuraw`, moved there). First replay against the oracle as every
+earlier corpus used it: 5 529 / 6 000.
+
+**Two of the largest classes were the oracle's configuration, not the fork.**
+WinUAE's `fpu_no_unimplemented` was false for the 68030 + 68882. In that
+permissive setting a 6888x executes the 68040's FSxxx/FDxxx opmodes
+($40-$77), sends $78-$7F to the illegal vector, and lets FRESTORE accept a
+68040 frame — fpp.c's own "horrible hack to support on the fly 6888x <>
+68040 FPU switching". With the option true, opmodes $40-$7F take a Line-F
+("Only opmodes 0x40-0x7f generate F-line exception", fpp.c
+`fault_if_unimplemented_6888x`) and a foreign frame a format error: what
+the MC68881/MC68882 manual says, and what the fork already did for the
+opmodes. `oracle_set_fpu_strict(1)` selects it (`uae/VENDOR.md` patch 12,
+`fuzz030.py --strict-fpu`); the default stays permissive so that the pinned
+corpora keep their recipe. Strict replay: 5 802 / 6 000.
+
+**D23b, revisited.** The ruling "FRESTORE accepts a version-$41 frame on a
+68882" was recorded as the oracle against the manual. It is the PERMISSIVE
+oracle against the manual: the strict oracle takes the format error (three
+vectors of this corpus, e.g. "fpuraw/identity seed=722 #311"). The four
+pinned `sst68030` vectors that hold the fork's acceptance were generated in
+the permissive setting. Manual (B) and strict oracle (D) agree; the ruling is
+due to flip, with those four vectors listed as known.
+
+### D28. FBcc / FDBcc taken to an odd address  [fork kept, manual]
+The oracle sets the PC and raises nothing — `fpuop_bcc`/`fpuop_dbcc` lack
+the odd-target test gencpu gives Bcc/DBcc, and its fetch path never checks
+— so a 68030 would run from an odd address. The fork takes the address
+error inside the branch, as for Bcc (MC68030UM: an instruction fetch from
+an odd address is an address error). 114 vectors; the frame itself cannot
+be compared, the oracle has none.
+
+### D29. EA fields $3D-$3F on the 68030  [open — fork kept]
+WinUAE's opcode table holds no FPU opcode with those EA fields: plain
+Line-F, nothing touched. The fork lets the coprocessor protocol decide: a
+register-to-register operation never asks for the EA and runs; a memory
+form clears the status byte and then takes the Line-F. On a 68030 the main
+processor validates an EA only when the coprocessor asks for it, which is
+the fork's reading; nothing at hand states it for these three fields. 63
+vectors. (On the 68040, where the CPU decodes the instruction itself, the
+fork follows the oracle — row 46.)
+
+The corpus is pinned as `sst68030_fpuraw` (6 000 vectors, strict oracle)
+with `tests/sst68030_fpuraw.known`: D23b 3, D26 15, D27 2, D28 114, D29 63,
+and one open defect (two tail bytes of a $B frame).

@@ -66,6 +66,12 @@ const char* oracle_name(void);
 // (68030 pairing), 68040 (on-chip). Calling after init has no effect.
 void oracle_set_model(int cpu_model, int fpu_model);
 
+// Select 6888x strictness BEFORE oracle_init (2026-11-07). 0 (default) =
+// WinUAE's permissive setting, the one the pinned 68030 corpora were
+// generated with; 1 = opmodes $40-$7F take a Line-F and FRESTORE refuses a
+// 68040 frame, as the MC68881/MC68882 manual has it. No effect on a 68040.
+void oracle_set_fpu_strict(int strict);
+
 // Bind the flat memory buffer. size must be a power of two (mask = size-1).
 // Must be called before any other call. Returns 0 on success.
 int oracle_init(uint8_t* mem, uint32_t size);

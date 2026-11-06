@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (fifth)** — [The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware](#2026-11-07-oracle-strict-6888x)
 - **2026-11-07 (fourth)** — [Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction](#2026-11-07-d24-manual)
 - **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](#2026-11-07-core-env-free)
 - **2026-11-07 (later)** — [The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table](#2026-11-07-interp040-hot-path)
@@ -1213,6 +1214,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-oracle-strict-6888x"></a>
+## 2026-11-07 (fifth) — The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware
+
+The raw F-line family that found so much on the 68LC040 this morning was
+given to the 68030 + 68882 (`gen030.py`, `--family fpuraw`). First replay:
+5 529 / 6 000, with two large classes that did not look like the fork's —
+on a 6888x the oracle *executed* opmodes $40-$77 (the 68040's FSADD, FDDIV
+and friends) and sent $78-$7F to the illegal vector.
+
+`fpp.c` gates both on `fpu_no_unimplemented`, which the glue left false for
+the 68030. That is WinUAE's permissive mode. In it a 6888x runs 68040
+opmodes and FRESTORE accepts a 68040 frame, by what the source itself calls
+a "horrible hack to support on the fly 6888x <> 68040 FPU switching". With
+the option true, `fault_if_unimplemented_6888x` says "Only opmodes 0x40-0x7f
+generate F-line exception" and a foreign frame takes a format error — the
+MC68881/MC68882 manual, and what the fork already did for the opmodes.
+
+**So ruling D23b was never the oracle against the manual.** It was the
+permissive oracle against the manual, and the strict oracle sides with the
+manual: three vectors of the new corpus take the format error the fork does
+not. The four `sst68030` vectors that pin the fork's acceptance were
+generated in the permissive mode. This is the second of yesterday's three
+"known exceptions" (after D23a, [eleventh entry](#2026-11-06-d23-oracle-inconsistent))
+to turn out to rest on the oracle rather than on the hardware; like D24
+this morning it is recorded as settled and due, not applied tonight.
+
+**What was added.**
+
+- `oracle_set_fpu_strict(int)`, a seventh entry point of the oracle
+  (`oracle/uae/VENDOR.md` patch 12), and `fuzz030.py --strict-fpu`. The
+  default stays permissive so that every pinned corpus keeps its recipe;
+  `sst68030_solo` and `sst68040_8k` regenerate hash-identically.
+- `sst68030_fpuraw`: 6 000 vectors against the strict oracle, pinned with
+  its recipe and a gate. Strict replay 5 802 / 6 000.
+- `tests/SstKnown.h`: the known-divergence list of this morning, shared by
+  both harnesses. `sst68030 --known` now exists, which is what
+  `TODO.md § Moteur › Socle` wanted before D12 or D23a could be reversed.
+- The 198 remaining vectors, by name, in `tests/sst68030_fpuraw.known`:
+
+| | vectors | |
+|---|---|---|
+| **D28** | 114 | FBcc / FDBcc taken to an odd address: the fork takes the address error, as for Bcc and as the manual has it; the oracle sets the PC and never raises one |
+| **D29** | 63 | EA fields $3D-$3F on a 68030: the fork lets the coprocessor decide, the oracle's opcode table refuses them |
+| D26 | 15 | (An)± with a dynamic k-factor — the same table slot as on the 68040 |
+| D23b | 3 | the format error above |
+| D27 | 2 | an EA evaluated before a Line-F |
+| defect | 1 | two tail bytes of a $B frame (`TODO.md`) |
+
+**How much of the pinned 68030 evidence the permissive mode touches: six
+vectors.** `sst68030_solo` regenerated with `--strict-fpu` differs from the
+pinned corpus on 6 vectors of 5 592, every one a FRESTORE of a 68040 frame —
+D23b and nothing else. The other 5 586 are the same under either setting,
+so yesterday's 5 592 / 5 592 stands as evidence about a 6888x, not about a
+mode of the oracle. When D23b is applied the corpus is regenerated strict
+(`TODO.md § Moteur › Justesse 68030`).
 
 <a id="2026-11-07-d24-manual"></a>
 ## 2026-11-07 (fourth) — Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction

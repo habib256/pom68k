@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Verify — or with --write, record — the identity of the CPU vector corpora.
 
-The corpora behind `sst68000`, `sst68030`, `sst68030_solo`, `sst68040`,
-`sst68040_8k`, `sst68040_fline` and `sst68040_fpu` are too large for the
-repository (1.1 GB, 116 MB, 211 MB, 315 MB, 176 MB, 190 MB, 316 MB) and live
-in git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate
+The corpora behind `sst68000`, `sst68030`, `sst68030_solo`,
+`sst68030_fpuraw`, `sst68040`, `sst68040_8k`, `sst68040_fline` and
+`sst68040_fpu` are too large for the repository (1.1 GB, 116 MB, 211 MB,
+238 MB, 315 MB, 176 MB, 190 MB, 316 MB) and live in git-ignored
+`tests/data/`. Until 2026-11-06 nothing pinned them: a gate
 could be green on one host and on another against different files, and nobody
 could tell.
 `tests/sst_corpora.lock` records, per file, the size and SHA-256 of what the
@@ -25,8 +26,8 @@ import hashlib
 import sys
 from pathlib import Path
 
-CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68040", "sst68040_8k",
-           "sst68040_fline", "sst68040_fpu")
+CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68030_fpuraw",
+           "sst68040", "sst68040_8k", "sst68040_fline", "sst68040_fpu")
 
 HEADER = """\
 # Identity of the CPU vector corpora (tools/verify_sst_corpora.py).
@@ -52,6 +53,15 @@ HEADER = """\
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family F --mmu M
 #         --n 400 --seed S --out F_M.json
 #   (eight vectors on which the oracle halts are skipped by the driver).
+# sst68030_fpuraw — the raw cpID-1 window ($F200-$F37F, unconstrained
+#   extension words) on the 68030 + 68882, against the STRICT oracle
+#   (oracle_set_fpu_strict: opmodes $40-$7F take a Line-F, FRESTORE refuses
+#   a 68040 frame), generated 2026-11-07. 6 000 vectors: for each mmu in
+#   off, identity, tt, seeds 721 to 723:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpuraw --mmu M
+#         --strict-fpu --n 2000 --seed S --out fpuraw_M.json
+#   Replayed with `sst68030 --known tests/sst68030_fpuraw.known`: 198 of
+#   them are rulings the fork does not follow the oracle on (D23b, D26-D29).
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
 # sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.

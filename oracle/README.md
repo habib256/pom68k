@@ -48,21 +48,24 @@ existing ruling only when doing so turns no gate red (maintainer's decision,
 |---|---|---|---|---|
 | **D12** | Zero divide, CHK/CHK2, TRAPcc/TRAPV: the format $2 "instruction address" is the **next** instruction's | MC68030UM reads "the instruction that caused the exception" | `sst68030` | a frame stacked by a real 68020/68030 |
 | **D23a** | 68030 FPU post-instruction exception stacks **format $3** with the operand EA | MC68030UM: format $2, instruction address | `sst68030` fpu cells (10 vectors went red on the 2026-08-17 attempt), `fpu_sanity` check 14 | a frame stacked by a real 68030 + 6888x. The oracle is not self-consistent here: its own RTE accepts format $3 only from the 68040 up (`uae/upstream/gencpu.c`, `i_RTE`: `if (cpu_level >= 4)` @ Hatari e77819f7), so on WinUAE too a 68030 handler that returns from this frame takes a format error. The fork mirrors both halves (`TODO.md § Moteur › Justesse 68030`) |
-| **D23b** | FRESTORE accepts a version-$41 (68040) frame on a 68882 — WinUAE's own "horrible hack" | MC68882UM § 6 knows no such frame version: format error | `sst68030` fpu cells (4 vectors) | a real 68882 given a $41 frame |
+| **D23b** | FRESTORE accepts a version-$41 (68040) frame on a 68882 — WinUAE's own "horrible hack" | MC68882UM § 6 knows no such frame version: format error | `sst68030` fpu cells (4 vectors) | **settled 2026-11-07, not yet applied**: the hack belongs to WinUAE's permissive `fpu_no_unimplemented = false`, the setting those vectors were generated with. In its strict setting the same oracle takes the format error (three vectors of `sst68030_fpuraw`). Manual and strict oracle agree; the flip lists the four vectors as known |
 
 ### Rulings where the fork does not follow the oracle
 
 The reverse case, opened 2026-11-07 by the first differential run of the
 integrated 68040 FPU. Each line is a class of vectors on which the fork keeps
-its own answer; they are listed by name in `tests/sst68040_fpu.known`, and
-the `sst68040_fpu` gate fails if one of them starts passing or disappears.
+its own answer; they are listed by name in `tests/sst68040_fpu.known` and
+`tests/sst68030_fpuraw.known`, and the two gates fail if one of them starts
+passing or disappears (`tests/SstKnown.h`).
 
 | Ruling | Fork (kept) | Oracle | Why it is kept | Settled by |
 |---|---|---|---|---|
 | **D24** | An enabled arithmetic exception of an opclass 000/010 instruction is delivered at once, format $3 | Left pending; taken as a pre-instruction exception by the next FPU instruction (only SNAN/OPERR on an integer move-out are immediate) | `fpu040_test` asserts the immediate form, with no source. **The manual says otherwise** (M68040UM § 9.7.2.1, 9.7.3.1, 9.7.6: the exception is "posted" and "the next floating-point instruction that is encountered takes a pre-instruction exception"; quotes in the notes): the oracle is right and this ruling is due to flip | already settled by the manual; what is missing is the work — a BUSY state frame that describes the posted instruction, and two-instruction oracle vectors to hold it |
 | **D25** | FMOVE.P FPn,Dn takes a plain Line-F | Unsupported-datatype trap, "even if destination EA is Dn or An" | `fpu040_test` asserts the Line-F | the same instruction on a real 68040 |
 | **D26** | FMOVE.P FPn,(An)+{Dn} and -(An){Dn} step An by 12 | An unchanged: the size table holds 0 for the dynamic k-factor format | a packed operand is twelve bytes whatever its k-factor (MC68881/MC68882 UM); the oracle's value is a table slot, not a decision | An after that instruction's datatype trap on a real 68040 |
-| **D27** | FMOVE(M) control registers to a PC-relative destination: Line-F at once | Line-F after evaluating the EA, so a memory-indirect one marks a page Used | one vector; the instruction does not exist either way | — |
+| **D27** | FMOVE(M) control registers to a PC-relative destination: Line-F at once | Line-F after evaluating the EA, so a memory-indirect one marks a page Used (or faults in the walk) | three vectors; the instruction does not exist either way | — |
+| **D28** | FBcc / FDBcc taken to an odd address: address error inside the branch, as for Bcc | Sets the PC and raises nothing, then or later | the manual: a fetch from an odd address is an address error. The oracle's FPU branches simply lack the test its integer branches have | — (the oracle has no frame to compare) |
+| **D29** | EA fields $3D-$3F on a 68030: the coprocessor decides — register-to-register runs, a memory form clears the status byte then takes a Line-F | Plain Line-F from the opcode table | on a 68030 the main processor validates an EA only when the coprocessor asks for it; nothing at hand states it for these fields. 63 vectors | `$F23D $0000` (FMOVE FP0,FP0 with EA field $3D) on a real 68030 + 68882 |
 
 Two 68000 rules of the same kind predate the 68030 oracle and are flagged
 in `extern/moira/POM68K_VENDOR.md` § *SingleStepTests/680x0 convergence

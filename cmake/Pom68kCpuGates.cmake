@@ -39,6 +39,15 @@ set(POM68K_SST030_SOLO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_solo
     CACHE PATH "Directory of WinUAE-solo SST030 vectors (all cells)")
 add_test(NAME sst68030_solo COMMAND sst68030 "${POM68K_SST030_SOLO_DIR}")
 
+# The raw F-line window on the 68030 + 68882, against the oracle in its
+# strict 6888x setting. The vectors of rulings D23b and D26-D29 are listed by
+# name (tests/SstKnown.h).
+set(POM68K_SST030_FPURAW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_fpuraw"
+    CACHE PATH "Directory of strict-oracle SST030 vectors, raw F-line window")
+add_test(NAME sst68030_fpuraw
+         COMMAND sst68030 "${POM68K_SST030_FPURAW_DIR}"
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030_fpuraw.known")
+
 # The 68040 with 8 KB pages (TC.P = 1): the cell the pinned corpus never had.
 # Same harness as sst68040, its own directory so that a host without these
 # files soft-skips instead of failing the corpus manifest.
@@ -69,6 +78,7 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68000=${POM68K_SST_DIR}
                  --dir sst68030=${POM68K_SST030_DIR}
                  --dir sst68030_solo=${POM68K_SST030_SOLO_DIR}
+                 --dir sst68030_fpuraw=${POM68K_SST030_FPURAW_DIR}
                  --dir sst68040=${POM68K_SST040_DIR}
                  --dir sst68040_8k=${POM68K_SST040_8K_DIR}
                  --dir sst68040_fline=${POM68K_SST040_FLINE_DIR}

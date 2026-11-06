@@ -29,6 +29,7 @@
 // Exit 0 = all matched / no data (soft skip); 1 = mismatch; 2 = usage.
 
 #include "Moira.h"
+#include "SstKnown.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -318,10 +319,11 @@ std::set<std::string> parseNameList(const char* s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--verbose] [--dump] [--examples K]\n",argv[0]); return 2; }
+    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--known FILE] [--verbose] [--dump] [--examples K]\n",argv[0]); return 2; }
     const std::string dir = argv[1];
     long maxPerFile=-1; int examples=3; bool verbose=false, checkCycles=false, skipTranslation=false;
     std::set<std::string> only, skip;
+    sstknown::List known;                   // --known FILE (tests/SstKnown.h)
     for (int i=2;i<argc;++i){ std::string a=argv[i];
         if      (a=="--max"&&i+1<argc) maxPerFile=std::strtol(argv[++i],nullptr,10);
         else if (a=="--examples"&&i+1<argc) examples=int(std::strtol(argv[++i],nullptr,10));
@@ -332,6 +334,9 @@ int main(int argc, char** argv) {
         else if (a=="--skip-translation") skipTranslation=true;
         else if (a=="--verbose") verbose=true;
         else if (a=="--dump") gDump=true;
+        else if (a=="--known"&&i+1<argc) {
+            if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot open --known '%s'\n",argv[i]); return 2; }
+        }
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
 
@@ -346,7 +351,7 @@ int main(int argc, char** argv) {
     std::printf("[sst68030] dir=%s files=%zu cycles=%s mmu=%s\n", dir.c_str(), files.size(),
                 checkCycles?"on":"off(advisory)", skipTranslation?"SKIP-TRANSLATION(debug)":"full");
 
-    long grandTotal=0, grandPass=0, grandMmuSkip=0, filesRun=0; bool anyFail=false;
+    long grandTotal=0, grandPass=0, grandMmuSkip=0, grandKnown=0, filesRun=0; bool anyFail=false;
     for (const fs::path& f : files) {
         const std::string stem=f.stem().string();
         if (!only.empty()&&!only.count(stem)) continue;
@@ -355,7 +360,7 @@ int main(int argc, char** argv) {
         if (!in){ std::fprintf(stderr,"  %-16s: cannot open\n",stem.c_str()); anyFail=true; continue; }
         std::string buf((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
         const char* p=buf.c_str(); eat(p,'[');
-        long total=0,passed=0,mmuSkip=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
+        long total=0,passed=0,mmuSkip=0,knownHere=0,stale=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
         while (true) {
             skipWs(p); if (*p==']'||*p=='\0') break;
             if (!parseVector(p,v)) break;
@@ -367,18 +372,30 @@ int main(int argc, char** argv) {
             std::string why; bool ok;
             try { ok = runVector(cpu,v,checkCycles,why); }
             catch (const std::exception& e) { ok=false; why=std::string("threw: ")+e.what(); }
-            ++total; if (ok)++passed; else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
+            ++total;
+            const bool isKnown = known.listed(v.name);
+            if (ok && isKnown) {
+                ++stale;
+                if (int(firstFew.size())<examples) firstFew.push_back({v.name,sstknown::List::kStale});
+            } else if (ok) ++passed;
+            else if (isKnown) ++knownHere;
+            else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
             if (maxPerFile>0&&total>=maxPerFile) break;
             skipWs(p); if (*p==','){++p;continue;} if (*p==']'){++p;break;}
         }
-        ++filesRun; grandTotal+=total; grandPass+=passed; grandMmuSkip+=mmuSkip;
-        const bool fileOk=(passed==total); if (!fileOk) anyFail=true;
-        std::printf("  %-16s : %6ld/%-6ld %s%s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL",
+        ++filesRun; grandTotal+=total; grandPass+=passed; grandMmuSkip+=mmuSkip; grandKnown+=knownHere;
+        const bool fileOk=(passed+knownHere==total)&&stale==0; if (!fileOk) anyFail=true;
+        std::printf("  %-16s : %6ld/%-6ld %s%s%s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL",
+                    knownHere?(" (+"+std::to_string(knownHere)+" known)").c_str():"",
                     mmuSkip?(" (+"+std::to_string(mmuSkip)+" mmu-skipped)").c_str():"");
         if (!fileOk||verbose) for (auto& mm:firstFew) std::printf("        x \"%s\"  %s\n",mm.first.c_str(),mm.second.c_str());
     }
-    std::printf("[sst68030] %s: %ld/%ld across %ld file(s), %ld mmu-skipped%s\n",
-                anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, grandMmuSkip,
+    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0 &&
+        known.reportMissing(examples)) anyFail=true;
+    const std::string knownNote = !known.active() ? std::string()
+        : " " + std::to_string(grandKnown) + " known divergence(s),";
+    std::printf("[sst68030] %s: %ld/%ld across %ld file(s),%s %ld mmu-skipped%s\n",
+                anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, knownNote.c_str(), grandMmuSkip,
                 anyFail?"  <<< MISMATCH":"");
     if (filesRun==0) { std::fprintf(stderr,"SKIP: [sst68030] no files matched\n"); return 0; }
     return anyFail?1:0;

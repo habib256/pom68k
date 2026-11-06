@@ -45,8 +45,13 @@ def main() -> int:
                     help="oracle .so (WinUAE; solo = its word is law)")
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
-                    choices=["core", "mmu", "random", "fault", "fpu"])
+                    choices=["core", "mmu", "random", "fault", "fpu",
+                             "fpuraw"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
+    ap.add_argument("--strict-fpu", action="store_true",
+                    help="6888x as the manual has it: opmodes $40-$7F take a "
+                         "Line-F, FRESTORE refuses a 68040 frame (default: "
+                         "WinUAE's permissive setting, as the pinned corpora)")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", required=True)
@@ -54,8 +59,8 @@ def main() -> int:
                     help="dir for disagreement dumps (default: <out-dir>/disputes)")
     args = ap.parse_args()
 
-    oa = Oracle(args.a)
-    ob = Oracle(args.b) if args.b else None
+    oa = Oracle(args.a, strict_fpu=args.strict_fpu)
+    ob = Oracle(args.b, strict_fpu=args.strict_fpu) if args.b else None
     print(f"oracle A: {oa.name}" + (f" | oracle B: {ob.name}" if ob else " (solo)"))
 
     rng = random.Random(args.seed)

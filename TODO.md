@@ -96,9 +96,15 @@ boot.
   de DIVS, ASR au-delà de la largeur). Chacune est tenue par des vecteurs
   épinglés : la renverser demande soit une preuve de grade A, soit le
   mécanisme de divergences assumées — il existe depuis le 2026-11-07 dans
-  `sst68040` (`--known`, liste nommée par décision, gate rouge si un
-  vecteur listé se met à passer) ; le porter à `sst68030` permet de
-  renverser D23a et D12 sans perdre un vecteur. Reste aussi à passer au crible les
+  `sst68030` et `sst68040` (`--known`, `tests/SstKnown.h` : liste nommée
+  par décision, gate rouge si un vecteur listé se met à passer), ce qui
+  permet de renverser D23a et D12 sans perdre un vecteur. **D23b est
+  tranchée** : le « hack » FRESTORE n'existe que dans le réglage permissif
+  de l'oracle, celui des quatre vecteurs épinglés ; en réglage strict le
+  même oracle prend l'erreur de format du manuel (trois vecteurs de
+  `sst68030_fpuraw`). Reste à l'appliquer : retirer la branche $41 du
+  FRESTORE 6888x, lister les quatre vecteurs de `sst68030` comme connus,
+  vider le bloc D23b de `tests/sst68030_fpuraw.known`. Reste aussi à passer au crible les
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
@@ -139,8 +145,9 @@ boot.
   Faire du balayage de graines neuves une étape de la boucle
   (`oracle/fuzz/loop.sh` n'a pas d'équivalent 040), et écrire les familles
   brutes qui manquent : fenêtre `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/
-  MOVE16), extensions complètes d'EA réservées, et la fenêtre cpID 1 sur
-  le 68030 (`gen030.py` n'a que la famille assembleur).
+  MOVE16), extensions complètes d'EA réservées. La fenêtre cpID 1 du
+  68030 a la sienne depuis le 2026-11-07 (`sst68030_fpuraw`, 6 000
+  vecteurs contre l'oracle strict).
 - [ ] **Donner au corpus FPU du 68040 les exceptions armées et les
   caches.** `sst68040_fpu` (7 500 vecteurs) pose FPCR avec des exceptions
   armées sur un vecteur sur dix seulement, et aucun corpus 68040 n'a
@@ -273,9 +280,25 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   le compteur d'accès de la frame $B d'un MOVEM.L vers une adresse
   impaire qui faute ($11 ici, $22 dans l'oracle) ; le PC empilé d'un JMP
   indexé vers une cible impaire (PC+2 contre PC+6) ; deux octets de queue
-  de frame pour un opmode FPU indéfini à EA fautif ; et un FBcc pris vers
-  une cible impaire, où le fork lève l'erreur d'adresse dans le
-  branchement (comme pour Bcc) alors que l'oracle ne fait que poser le PC.
+  de frame pour un opmode FPU indéfini à EA fautif. (Le FBcc pris vers
+  une cible impaire, quatrième reste du balayage, est devenu la décision
+  D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
+  manuel ; l'oracle n'en lève jamais.)
+- [ ] **Repasser les corpus 68030 à l'oracle strict en appliquant D23b.**
+  Tous les corpus 68030 antérieurs au 2026-11-07 ont été produits avec
+  `fpu_no_unimplemented = false`, où WinUAE laisse un 6888x exécuter les
+  opmodes FSxxx/FDxxx du 68040 et accepter ses frames. Le compte est
+  pris : `sst68030_solo` régénéré avec `--strict-fpu` ne diffère que sur
+  6 vecteurs sur 5 592, tous des FRESTORE d'une frame 68040 (`fpu/off
+  seed=710` #184 et #206, `fpu/identity seed=711` #71, `fpu/tt seed=712`
+  #49, #65, #221) — exactement D23b, rien d'autre. Le jour où D23b est
+  appliquée (› Socle), régénérer `sst68030_solo` en strict plutôt que de
+  lister ces six vecteurs.
+- [ ] **Trancher les champs EA $3D-$3F sur 68030 (D29).** Le fork laisse le
+  coprocesseur décider (un registre-à-registre s'exécute, une forme
+  mémoire efface l'octet d'état puis prend un Line-F) ; la table d'opcodes
+  de l'oracle les refuse d'emblée. 63 vecteurs listés. *Tranche :
+  `$F23D $0000` sur un vrai 68030 + 68882.*
 - [ ] **Décider le sixième bit du prédicat FBcc sur preuve.** Depuis le
   2026-11-07 FBcc évalue cinq bits sur tout FPU, comme FScc/FDBcc/FTRAPcc
   et comme l'oracle ; l'ancien Line-F venait d'une lecture du bloc mort

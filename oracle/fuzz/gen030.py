@@ -510,8 +510,37 @@ def _op_fpu(rng: random.Random) -> list[int]:
     return w
 
 
+def _op_fpuraw(rng: random.Random) -> list[int]:
+    """Raw cpID-1 window ($F200-$F37F) with unconstrained extension words.
+
+    The fpu family only emits what an assembler would; this one emits what a
+    decoder must survive: reserved opclasses, opmodes with no instruction
+    behind them, formats an EA cannot carry, predicates above $1F. gen040
+    uses it for its `fline` and `fpuraw` families (2026-11-07: the 68LC040
+    cell started at 3 074 / 4 500); here it is the 68030 + 68882 cell. A
+    family of its own, so the streams of the five older ones do not move.
+    """
+    r = rng.random()
+    if r < 0.70:                                   # general: opclass 0-7
+        op = 0xF200 | rng.getrandbits(6)
+        ext = rng.getrandbits(16)
+        if rng.random() < 0.5:                     # bias towards opclass 0-3
+            ext &= 0x7FFF
+    elif r < 0.80:                                 # FScc / FDBcc / FTRAPcc
+        op = 0xF240 | rng.getrandbits(6)
+        ext = rng.getrandbits(6) if rng.random() < 0.7 else rng.getrandbits(16)
+    elif r < 0.90:                                 # FBcc.W / FBcc.L
+        op = 0xF280 | rng.getrandbits(7)
+        ext = rng.choice([2, 4, 8, 0x10, 0x20])
+    else:                                          # FSAVE / FRESTORE
+        op = 0xF300 | rng.getrandbits(7)
+        ext = rng.getrandbits(16)
+    return [op, ext] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 5))]
+
+
+FPU_FAMILIES = ("fpu", "fpuraw")
 FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
-            "fault": _op_fault, "fpu": _op_fpu}
+            "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -568,7 +597,7 @@ def gen_state(rng: random.Random, family: str = "core",
     # seeding can aim at its operands (FRESTORE frame planting below).
     words = FAMILIES[family](rng)
 
-    if family == "fpu":
+    if family in FPU_FAMILIES:
         # 68881/68882 initial state (O5 slice 1): special values in every
         # FP register, random rounding/precision, exception enables mostly
         # masked (they trap through vectors 48-54 when set — ~10 %).

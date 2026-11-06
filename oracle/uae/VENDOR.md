@@ -129,6 +129,12 @@ is vendored and linked — `-Wl,--gc-sections` trims the .so on ELF,
 11. `CMakeLists.txt` (2026-11-06) — `-Wno-error=implicit-function-declaration`
    for GCC and Clang: GCC 14 made that diagnostic an error and the
    extraction relies on it in a handful of Hatari stubs.
+12. `glue.c oracle_set_fpu_strict()` + `oracle_uae.map` (2026-11-07) — a
+   seventh entry point: WinUAE's `fpu_no_unimplemented` for a 6888x,
+   selectable before `oracle_init`. Off by default (the setting every
+   68030 corpus pinned before that date was generated with); on, opmodes
+   $40-$7F take a Line-F and FRESTORE refuses a 68040 frame, as the
+   MC68881/MC68882 manual has it. `fuzz030.py --strict-fpu`.
 
 No other vendored file is modified.
 

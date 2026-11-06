@@ -31,6 +31,7 @@
 // Exit 0 = all matched / no data (soft skip); 1 = mismatch; 2 = usage.
 
 #include "Moira.h"
+#include "SstKnown.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -358,12 +359,7 @@ int main(int argc, char** argv) {
     const std::string dir = argv[1];
     long maxPerFile=-1; int examples=3; bool verbose=false, checkCycles=false, skipTranslation=false;
     std::set<std::string> only, skip;
-    // --known FILE: vector names (one per line, '#' comments) that are
-    // EXPECTED to diverge — open rulings where the core deliberately does not
-    // follow the oracle. A listed vector that fails is counted apart; one
-    // that passes, or that the corpus does not hold, fails the run: the list
-    // must describe the tree, not excuse it.
-    std::set<std::string> known, knownSeen; std::string knownPath;
+    sstknown::List known;                   // --known FILE (tests/SstKnown.h)
     for (int i=2;i<argc;++i){ std::string a=argv[i];
         if      (a=="--max"&&i+1<argc) maxPerFile=std::strtol(argv[++i],nullptr,10);
         else if (a=="--examples"&&i+1<argc) examples=int(std::strtol(argv[++i],nullptr,10));
@@ -376,13 +372,7 @@ int main(int argc, char** argv) {
         else if (a=="--dump") gDump=true;
         else if (a=="--fpu") gFpu=true;
         else if (a=="--known"&&i+1<argc) {
-            knownPath=argv[++i];
-            std::ifstream kin(knownPath);
-            if (!kin) { std::fprintf(stderr,"cannot open --known '%s'\n",knownPath.c_str()); return 2; }
-            for (std::string line; std::getline(kin,line);) {
-                while (!line.empty()&&(line.back()=='\r'||line.back()==' '||line.back()=='\t')) line.pop_back();
-                if (!line.empty()&&line[0]!='#') known.insert(line);
-            }
+            if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot open --known '%s'\n",argv[i]); return 2; }
         }
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
@@ -421,11 +411,10 @@ int main(int argc, char** argv) {
             try { ok = runVector(cpu,v,checkCycles,why); }
             catch (const std::exception& e) { ok=false; why=std::string("threw: ")+e.what(); }
             ++total;
-            const bool isKnown = !known.empty() && known.count(v.name);
-            if (isKnown) knownSeen.insert(v.name);
+            const bool isKnown = known.listed(v.name);
             if (ok && isKnown) {
                 ++stale;
-                if (int(firstFew.size())<examples) firstFew.push_back({v.name,"listed in --known but passes: remove it"});
+                if (int(firstFew.size())<examples) firstFew.push_back({v.name,sstknown::List::kStale});
             } else if (ok) ++passed;
             else if (isKnown) ++knownHere;
             else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
@@ -441,14 +430,9 @@ int main(int argc, char** argv) {
     }
     // A listed name the corpus does not hold means the list has drifted
     // (only checked on a whole-corpus run).
-    if (!known.empty() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0) {
-        long missing=0;
-        for (const auto& name : known) if (!knownSeen.count(name)) {
-            if (missing++<examples) std::printf("        x \"%s\"  listed in --known but absent from the corpus\n",name.c_str());
-        }
-        if (missing) anyFail=true;
-    }
-    const std::string knownNote = known.empty() ? std::string()
+    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0 &&
+        known.reportMissing(examples)) anyFail=true;
+    const std::string knownNote = !known.active() ? std::string()
         : " " + std::to_string(grandKnown) + " known divergence(s),";
     std::printf("[sst68040] %s: %ld/%ld across %ld file(s),%s %ld mmu-skipped%s\n",
                 anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, knownNote.c_str(), grandMmuSkip,
