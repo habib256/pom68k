@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (fourth)** — [Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction](#2026-11-07-d24-manual)
 - **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](#2026-11-07-core-env-free)
 - **2026-11-07 (later)** — [The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table](#2026-11-07-interp040-hot-path)
 - **2026-11-07** — [The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself](#2026-11-07-fpu040-differential)
@@ -1212,6 +1213,43 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-d24-manual"></a>
+## 2026-11-07 (fourth) — Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction
+
+The first entry of the day left four rulings open and kept the fork's
+answer on each. For D24 it said that the oracle's reading "is the one the
+FPSP's E1/E3 split implies". The M68040 User's Manual says it in so many
+words (§ 9.7, 1993 revision):
+
+- SNAN, § 9.7.2.1: "the processor posts an exception and another
+  floating-point instruction is eventually encountered; a pre-instruction
+  exception is reported at that time."
+- OPERR, § 9.7.3.1: "The next floating-point instruction that is
+  encountered takes a pre-instruction exception."
+- Divide by zero, § 9.7.6: "reported as a pre-instruction exception when
+  the next floating-point instruction is attempted."
+- Immediate — post-instruction, format $3 — only for a move out (to memory
+  or an integer register) and for the overflow case where a dependent
+  FMOVE OUT is already executing; the state frame's T bit note: "only an
+  opclass 3 instruction can indicate a post-instruction exception".
+
+That is the oracle's model exactly, including its single immediate case.
+The fork's "immediate, format $3, for every arithmetic instruction" comes
+from `fpu040_test`, which cites nothing. By the evidence grades a manual
+(B) and the oracle (D) outrank an unsourced assertion (E): the ruling
+flips.
+
+**It is recorded, not applied.** The change is more than the delivery
+point: the handler's FSAVE must then produce a BUSY frame describing the
+instruction that posted the exception, and a single-instruction vector
+cannot show what the *next* instruction does. `TODO.md § Moteur ›
+Justesse 68040` now carries it as work with a stated prerequisite —
+two-instruction oracle vectors — instead of as a question. The 22 vectors
+stay listed in `tests/sst68040_fpu.known` until then.
+
+For D26 the same manual gives the packed format as "96 bits, 12 bytes",
+which is the fork's side. D25 and D27 it does not address.
 
 <a id="2026-11-07-core-env-free"></a>
 ## 2026-11-07 (third) — The Moira core reads no environment variable: NeoST's exception trace is switched by its host

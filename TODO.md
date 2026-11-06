@@ -288,16 +288,22 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68040
 
-- [ ] **Trancher la livraison d'une exception arithmétique armée (D24).**
-  Le fork la livre immédiatement (frame $3) pour toute instruction
-  d'opclasse 000/010, et `fpu040_test` l'affirme sans source ; l'oracle la
-  laisse en attente et la fait prendre en pré-instruction par
-  l'instruction FPU suivante — seuls SNAN/OPERR d'une sortie entière sont
-  immédiats. C'est la lecture que suppose le découpage E1/E3 du FPSP.
-  22 vecteurs nommés dans `tests/sst68040_fpu.known`. *Tranche : M68040UM
-  § 9 relu contre le FPSP, ou la frame d'un FDIV par zéro armé sur un vrai
-  68040.* Le renverser change `fpu040_test` et le chemin
-  `fpuCheckPending` du 68040.
+- [ ] **Livrer une exception arithmétique armée du 68040 en
+  pré-instruction de l'instruction FPU suivante (D24).** Le fork la livre
+  immédiatement (frame $3) pour toute instruction d'opclasse 000/010, et
+  `fpu040_test` l'affirme sans source. Le manuel dit le contraire, comme
+  l'oracle (M68040UM § 9.7.2.1, 9.7.3.1, 9.7.6 : l'exception est
+  « postée » et « the next floating-point instruction that is encountered
+  takes a pre-instruction exception » ; seules SNAN/OPERR d'une sortie
+  entière et les sorties mémoire sont immédiates — citations dans
+  `oracle/fuzz/disputes/NOTES.md`). La décision est donc prise, par un
+  grade B ; reste le travail : laisser `expPend` armé, faire décrire au
+  frame FSAVE BUSY l'instruction postée (E3, CMDREG3B), corriger
+  `fpu040_test`, vider les 22 vecteurs de `tests/sst68040_fpu.known`.
+  *Préalable : des vecteurs d'oracle à deux instructions* (`oracle_step`
+  deux fois depuis un même état), la seconde moitié étant invisible d'un
+  vecteur à une instruction. Même besoin que la cellule multi-instruction
+  de l'ATC ci-dessous.
 - [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
   dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
   donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la

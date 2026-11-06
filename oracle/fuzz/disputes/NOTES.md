@@ -623,8 +623,33 @@ instruction as a pre-instruction exception. The fork stacks a format $3
 frame at once, and `fpu040_test` says so ("Enabled arithmetic exceptions
 are immediate on the integrated 040") without a source. 22 pinned vectors,
 all of the shape "A7 got $17F4 want $1800". Not changed: the hand-written
-gate would go red. The oracle's reading is the one the FPSP's E1/E3
-handling implies; settle it on M68040UM § 9 or a real frame.
+gate would go red.
+
+**The manual sides with the oracle** (read the same night, M68040 User's
+Manual, 1993 revision, § 9.7; grade B):
+- § 9.7.2.1 b, SNAN, p. 9-27: "the processor posts an exception and
+  another floating-point instruction is eventually encountered; a
+  pre-instruction exception is reported at that time."
+- § 9.7.3.1 b, OPERR, p. 9-30: "an OPERR exception is posted. The next
+  floating-point instruction that is encountered takes a pre-instruction
+  exception."
+- § 9.7.6, divide by zero: "the exception is reported as a pre-instruction
+  exception when the next floating-point instruction is attempted" (the
+  manual's a/b labels for enabled/disabled are swapped there).
+- § 9.7.4.2, overflow, register destination: "either a pre-instruction or
+  a post-instruction exception is reported"; the post-instruction case is
+  the one where an FMOVE OUT depending on the result is already executing
+  (the FADD FP2,FP0 / FMOVE FP0,<ea> example). Memory or integer
+  destination: "a post-instruction exception is taken immediately".
+- § 9.7.3.2 and 9.7.2.2: SNAN/OPERR on a move to byte, word or long are
+  nonmaskable and "taken immediately" — the oracle's one immediate case.
+- State frame fields, T bit: "only an opclass 3 instruction can indicate a
+  post-instruction exception".
+So the ruling should flip to the oracle: pending, format $0, at the next
+FPU instruction. It is not a one-line change — the FSAVE BUSY frame the
+handler then reads (E3, CMDREG3B) must describe the posted instruction —
+and single-instruction vectors cannot show the second half. It needs
+two-instruction oracle vectors first (`oracle_step` twice from one state).
 
 ### D25. FMOVE.P to a data register on the 68040  [open — fork kept]
 Oracle: unsupported-datatype trap ("68040+ generates unimplemented
@@ -635,8 +660,9 @@ packed-to-Dn should take ordinary Line-F"). 27 pinned vectors.
 ### D26. (An)± step of a packed move-out with a dynamic k-factor  [open — fork kept, manual]
 fpp.c steps An by `sz1[size]`, and `sz1[7]` is 0: FMOVE.P FPn,(An)+{Dn}
 leaves An where it was, FMOVE.P FPn,(An)+{#k} adds 12. A packed operand
-is twelve bytes in both forms (MC68881/MC68882 UM); the fork adds 12 in
-both. 16 pinned vectors. The manual outranks a table slot.
+is twelve bytes in both forms (MC68881/MC68882 UM; M68040UM § 1, data
+formats: "Packed BCD real data format (96 bits, 12 bytes)"); the fork
+adds 12 in both. 16 pinned vectors. The manual outranks a table slot.
 
 ### D27. EA evaluated before a control-register Line-F  [open — fork kept]
 `F23B A7B0`: FMOVEM control registers to a (d8,PC,Xn) destination. Both
