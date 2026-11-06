@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Verify — or with --write, record — the identity of the CPU vector corpora.
 
-The three corpora behind `sst68000`, `sst68030` and `sst68040` are too large
-for the repository (1.1 GB, 116 MB, 315 MB) and live in git-ignored
-`tests/data/`. Until 2026-11-06 nothing pinned them: a gate could be green
+The corpora behind `sst68000`, `sst68030`, `sst68040` and `sst68040_8k` are
+too large for the repository (1.1 GB, 116 MB, 315 MB, 176 MB) and live in
+git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate could be green
 on one host and on another against different files, and nobody could tell.
 `tests/sst_corpora.lock` records, per file, the size and SHA-256 of what the
 gates were pinned against, with each corpus's provenance in its header.
@@ -23,7 +23,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-CORPORA = ("sst68000", "sst68030", "sst68040")
+CORPORA = ("sst68000", "sst68030", "sst68040", "sst68040_8k")
 
 HEADER = """\
 # Identity of the CPU vector corpora (tools/verify_sst_corpora.py).
@@ -43,6 +43,11 @@ HEADER = """\
 #   ("core/identity seed=31 #1").
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
+# sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.
+#   4 000 vectors, reproducible from the tree: for each family in core, mmu,
+#   random, fault and each mmu in identity, tt, in that order, seeds 601 to
+#   608:  oracle/fuzz/fuzz040.py --a liboracle_uae.so --family F --mmu M
+#         --page 8k --n 500 --seed S --out F_M_8k.json
 #
 # corpus | file | size | sha256
 """

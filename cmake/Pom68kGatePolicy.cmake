@@ -245,7 +245,7 @@ endforeach()
 # the label, never the runner: a gate that needs a private asset is not
 # asset-free, and the census was right to refuse.
 set(POM68K_OPTIONAL_ASSET_GATES
-    sst68000 sst68030 sst68040 sst_corpora_lock_test
+    sst68000 sst68030 sst68040 sst68040_8k sst_corpora_lock_test
     cuda_lle_test egret_lle_test m68hc05_test cuda_restart_test
     scsi_disk_test ncr5380_test ncr53c96_test scsi_pdma_test
     scsi_hfs_facade_test sound_test toby_declrom_test

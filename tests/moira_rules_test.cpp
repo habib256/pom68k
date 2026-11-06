@@ -26,6 +26,16 @@
 //    bus-error vector. The frame is NeoST's recipe: status word = IR bits
 //    15-5 | R/W | function code, then the access address, IR, SR and PC.
 //
+// 4. An access fault on the memory operand of DIVU.L/DIVS.L (row 43).
+//    Upstream wrapped that read in `catch(...) { return false; }`: on a
+//    68020/68030/68040 a page fault or an external /BERR there took no
+//    exception at all and left the instruction half executed. Found by a
+//    fresh fuzz seed against the WinUAE oracle; no pinned vector has it.
+//
+// 5. CHK2/CMP2 on the 68040 leave N and V untouched (row 43). They are
+//    undefined; the 68020/68030 follow WinUAE's table, the 68040 follows
+//    WinUAE's early return. Four fresh-seed vectors, none pinned.
+//
 // 3. The three host hooks back-ported from NeoST (row 42): a handled
 //    illegal opcode is consumed like a NOP, an unhandled one still takes
 //    vector 4; TAS brackets its read and its write with setBusLock;
@@ -45,7 +55,9 @@ constexpr uint32_t kHole = 0x080000;   // a byte the test board answers with /BE
 
 class TestCpu : public moira::Moira {
 public:
-    explicit TestCpu(moira::Model model) : mem(1 << 20, 0) { setModel(model); }
+    explicit TestCpu(moira::Model model) : mem(1 << 20, 0), model_(model) {
+        setModel(model);
+    }
     std::vector<uint8_t> mem;
 
     // Cell 2: the board asserts /BERR on kHole.
@@ -57,22 +69,33 @@ public:
     mutable moira::u32 faultAddr = 0;
 
 private:
+    moira::Model model_;
+
+    // The board's /BERR, through the entry point of the model's core.
+    void berr(moira::u32 a, bool write) const {
+        auto& self = *const_cast<TestCpu*>(this);
+        if (model_ >= moira::Model::M68EC040) self.extBusError040();
+        else if (model_ >= moira::Model::M68EC020) self.extBusError();
+        else self.extBusError000(a, write);
+    }
+    bool hole(moira::u32 a) const { return holeArmed && (a & 0xffffff) == kHole; }
+
     moira::u8 read8(moira::u32 a) const override {
-        if (holeArmed && (a & 0xffffff) == kHole)
-            const_cast<TestCpu*>(this)->extBusError000(a, false);
+        if (hole(a)) berr(a, false);
         events += 'r';
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
+        if (hole(a)) berr(a, false);
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
-        if (holeArmed && (a & 0xffffff) == kHole)
-            const_cast<TestCpu*>(this)->extBusError000(a, true);
+        if (hole(a)) berr(a, true);
         events += 'w';
         const_cast<TestCpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
+        if (hole(a)) berr(a, true);
         auto& m = const_cast<TestCpu*>(this)->mem;
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
     }
@@ -282,6 +305,73 @@ void hostHooks()
     }
 }
 
+void divlOperandFault()
+{
+    static const struct { moira::Model model; const char* name; } models[] = {
+        { moira::Model::M68020,   "68020" },
+        { moira::Model::M68030,   "68030" },
+        { moira::Model::M68LC040, "68LC040" },
+    };
+    for (const auto& m : models) {
+        for (uint16_t ext : { uint16_t(0x0000), uint16_t(0x0800) }) {   // DIVU.L, DIVS.L
+            TestCpu c(m.model);
+            p32(c, 2 * 4, kHandler);                // vector 2: bus error
+            p16(c, kHandler, kNop);
+            p16(c, kHandler + 2, kNop);
+            stage(c, 0x4c50, 0);                    // DIVx.L (A0),D0
+            p16(c, kCode + 2, ext);
+            c.setIRC(ext);
+            c.setA(0, kHole);
+            c.setD(0, 0x12345678);
+            c.holeArmed = true;
+
+            const bool contained = executeContained(c);
+            CHECK(contained, "%s DIV%c.L (A0): the fault left execute()",
+                  m.name, ext ? 'S' : 'U');
+            if (!contained) continue;
+            CHECK(c.getPC0() == kHandler,
+                  "%s DIV%c.L (A0) on a /BERR operand: PC0=%08X, want the "
+                  "vector-2 handler (the fault was swallowed)",
+                  m.name, ext ? 'S' : 'U', c.getPC0());
+            CHECK(c.getSP() < 0x8000 && c.getD(0) == 0x12345678,
+                  "%s DIV%c.L (A0): SP=%08X D0=%08X, want a stacked frame and "
+                  "an untouched quotient register",
+                  m.name, ext ? 'S' : 'U', c.getSP(), c.getD(0));
+        }
+    }
+}
+
+void chk2FlagsOn040()
+{
+    // CMP2.B (A0),D0 with bounds [1, 5], entered with every flag set ($1F).
+    // In range: Z = 0, C = 0. On a bound: Z = 1. N and V: cleared by the
+    // 68020/68030 table for these operands, left as they were by the 68040.
+    struct Row { moira::Model model; const char* name; uint8_t inRange, onBound; };
+    static const Row rows[] = {
+        { moira::Model::M68020,   "68020",   0x10, 0x14 },
+        { moira::Model::M68030,   "68030",   0x10, 0x14 },
+        { moira::Model::M68LC040, "68LC040", 0x1a, 0x1e },
+        { moira::Model::M68040,   "68040",   0x1a, 0x1e },
+    };
+    for (const Row& row : rows) {
+        for (int onBound = 0; onBound < 2; onBound++) {
+            TestCpu c(row.model);
+            stage(c, 0x00d0, 0x1f);                 // CMP2.B (A0),Rn
+            p16(c, kCode + 2, 0x0000);              // Rn = D0, CMP2
+            c.setIRC(0x0000);
+            c.mem[0x3000] = 1; c.mem[0x3001] = 5;   // lower, upper
+            c.setA(0, 0x3000);
+            c.setD(0, onBound ? 1 : 3);
+            c.execute();
+            const uint8_t want = onBound ? row.onBound : row.inRange;
+            CHECK(c.getCCR() == want && c.getPC0() == kCode + 4,
+                  "%s CMP2.B value %s: CCR=%02X want %02X, PC0=%08X",
+                  row.name, onBound ? "on the lower bound" : "in range",
+                  c.getCCR(), want, c.getPC0());
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -289,12 +379,15 @@ int main()
     divsOfIntMin();
     externalBusError000();
     hostHooks();
+    divlOperandFault();
+    chk2FlagsOn040();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
         return 1;
     }
     std::printf("[moira_rules_test] OK: DIVS.W of $80000000 on six models, "
-                "68000 external /BERR, host hooks\n");
+                "68000 external /BERR, host hooks, DIVx.L operand fault, "
+                "68040 CHK2/CMP2 flags\n");
     return 0;
 }

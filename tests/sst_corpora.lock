@@ -15,6 +15,11 @@
 #   ("core/identity seed=31 #1").
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
+# sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.
+#   4 000 vectors, reproducible from the tree: for each family in core, mmu,
+#   random, fault and each mmu in identity, tt, in that order, seeds 601 to
+#   608:  oracle/fuzz/fuzz040.py --a liboracle_uae.so --family F --mmu M
+#         --page 8k --n 500 --seed S --out F_M_8k.json
 #
 # corpus | file | size | sha256
 sst68000 | ABCD.json | 7962994 | 25cc175c1c4e539519e88a4122dc7cc6f6aa0b9336bbb428fdaed84fb601ceac
@@ -166,3 +171,12 @@ sst68040 | mmu_tt.json | 32817663 | a2841f7424bb6237bc14d18173987fe3b609747125c2
 sst68040 | random_identity.json | 32882661 | 11454c7b48163fabdae4755c4229a9a9b850027b0c68fb79942aef8000bab65f
 sst68040 | random_off.json | 18533813 | 0c704d05f5678f2f43229ab3bbcbcf7a1d5de5ee2348ac20b0e8181bcafabb9d
 sst68040 | random_tt.json | 43811010 | 5934858e39f8863318232105e83e6d552eb0e33ec3369310515f9df3ced12421
+
+sst68040_8k | core_identity_8k.json | 23409490 | e2c22af588627097a32ca853c9b267e6ea8c809034eb7aeeb7947b89779f3908
+sst68040_8k | core_tt_8k.json | 23389519 | 9da8dac8ba6a32e4f4172d1afae6149eb75d7d75ecbfd8157ebac125ae08b5f2
+sst68040_8k | fault_identity_8k.json | 23421288 | c90402dd5480904dcb71014f1a22372a74265c33e29bc2325bd61476d8c6d2ff
+sst68040_8k | fault_tt_8k.json | 23398682 | ce9a30aabb3db8fa769d83c4f47ededac7362749ff578e5c5f34870651791469
+sst68040_8k | mmu_identity_8k.json | 22540597 | 61e0af78de8852b78a2c9da092a4939290cc299b8da494fdaf023c0ab0d4514d
+sst68040_8k | mmu_tt_8k.json | 22529126 | 999d7935f95ca008615fb83f719900100fc3c4ce98381709c4b0a6118278dc36
+sst68040_8k | random_identity_8k.json | 22579466 | 9c6ac145da41f5afa487d70975874f1ea4db6f7b9df9d03ba7b0d19c80b9f139
+sst68040_8k | random_tt_8k.json | 22562752 | 17a2f0553f1f5de7077d31e88ef6f913ee4af5961dcc8b84f9f91fee75dab093

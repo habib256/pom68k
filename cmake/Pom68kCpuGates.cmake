@@ -32,7 +32,14 @@ add_executable(moira_rules_test tests/moira_rules_test.cpp)
 target_link_libraries(moira_rules_test PRIVATE moira)
 add_test(NAME moira_rules_test COMMAND moira_rules_test)
 
-# The identity of the three vector corpora (tests/sst_corpora.lock): a corpus
+# The 68040 with 8 KB pages (TC.P = 1): the cell the pinned corpus never had.
+# Same harness as sst68040, its own directory so that a host without these
+# files soft-skips instead of failing the corpus manifest.
+set(POM68K_SST040_8K_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_8k"
+    CACHE PATH "Directory of oracle-generated SST040 vectors with 8 KB pages")
+add_test(NAME sst68040_8k COMMAND sst68040 "${POM68K_SST040_8K_DIR}")
+
+# The identity of the vector corpora (tests/sst_corpora.lock): a corpus
 # that is present must match the pinned files byte for byte; an absent one
 # soft-skips, like the harnesses that read it.
 add_test(NAME sst_corpora_lock_test
@@ -40,4 +47,5 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68000=${POM68K_SST_DIR}
                  --dir sst68030=${POM68K_SST030_DIR}
                  --dir sst68040=${POM68K_SST040_DIR}
+                 --dir sst68040_8k=${POM68K_SST040_8K_DIR}
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (thirteenth)** — [13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040](#2026-11-06-fuzz-fresh-seeds)
 - **2026-11-06 (twelfth)** — [The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions](#2026-11-06-interp-profile)
 - **2026-11-06 (eleventh)** — [Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it](#2026-11-06-d23-oracle-inconsistent)
 - **2026-11-06 (tenth)** — [The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`](#2026-11-06-sst-corpora-lock)
@@ -1205,6 +1206,75 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-fuzz-fresh-seeds"></a>
+## 2026-11-06 (thirteenth) — 13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040
+
+`extern/moira/POM68K_VENDOR.md` ended on an admission: the 68040's 8 KB page
+cell (TC.P = 1) was "implemented but not exercised by the fuzzer". The
+generator now has it (`gen040.set_page_shift`, `fuzz040.py --page 8k`: a
+5-bit page index, 32-descriptor page tables, TC = `$C000`), and the first
+runs did what a fuzzer is for.
+
+**The sweep.** Against the WinUAE oracle (Hatari e77819f7), then replayed on
+Moira:
+
+| vectors | cells | before the fixes | after |
+|---|---|---|---|
+| 3 200 | 8 KB, seed 401-408 | 3 197 | 3 198 |
+| 4 000 | 8 KB, seed 601-608 | 3 999 | 4 000 |
+| 5 500 | 4 KB, fresh seed 501-511 | 5 498 | 5 500 |
+| 400 | 4 KB, seed 405 | 399 | 400 |
+
+**The 8 KB path itself is right**: every `core`, `mmu` and `fault` cell is at
+100 %. All seven divergences sit in the `random` cells and none depends on
+the page size. Three causes:
+
+1. **`execDivlMoira` swallowed every access fault on its operand.** Upstream
+   wraps that `readOp` in `catch(...) { return false; }` — dead code in stock
+   Moira, where a 68020+ data read never throws. Here it caught the
+   `MmuBusError` of a 68030 or 68040 page fault, and of an external /BERR:
+   the instruction took **no exception** and returned half-way, PC left
+   inside its extension words. Vector `040 random/identity/8k seed=405 #120`
+   (a DIVx.L through a memory-indirect PC-relative operand on an unmapped
+   page): the oracle stacks a format $7 frame, Moira stacked nothing. The
+   catch is removed. Under virtual memory this was a guest-visible bug on
+   every 68030 and 68040 profile.
+2. **CHK2/CMP2 clobbered N and V on the 68040.** They are undefined. For the
+   68020/68030 the fork follows WinUAE's table (ruling D14); for the 68040
+   the same oracle returns early and leaves both flags as they were, which
+   upstream's port of the table lacked. Four vectors (seeds 405, 507, 509,
+   605). `execChkCmp2` now applies the table below the 68EC040 only. The JIT
+   treats CHK2/CMP2 as `Kind::Unsafe`, so nothing changes there.
+3. **Memory bitfields access a long whatever the field spans** — two
+   vectors, the size field of the fault's SSW. NOT fixed here: the JIT's IR
+   memory contract and both emitters assume the same long, so it has to move
+   with an AArch64 session. `TODO.md § Moteur › Justesse 68030` carries it
+   with the two reproducers.
+
+**Gates.** `moira_rules_test` gains two cells: DIVU.L and DIVS.L on a /BERR
+operand must take vector 2 on a 68020, a 68030 and a 68LC040 (before the fix:
+PC0 still on the instruction, nothing stacked), and CMP2.B from an all-set
+CCR must give `$10`/`$14` on the 68020/68030 and `$1A`/`$1E` on the 68040.
+Against the unfixed core the gate failed 16 checks.
+
+**The 8 KB cells are pinned as their own corpus**, `sst68040_8k` (4 000
+vectors, seeds 601-608), with a gate of the same name and eight lines in
+`tests/sst_corpora.lock`. Its recipe is in the manifest header and was
+checked: two cells regenerated from it hash identically. It lives in its own
+directory so a host that does not have the files soft-skips instead of
+failing the manifest.
+
+**The lesson is in the numbers.** 7 200 pinned vectors were green for months;
+13 100 fresh ones found three defects, one of them serious. A pinned corpus
+is a regression floor, not coverage. `TODO.md § Moteur › Socle` now asks for
+a fresh-seed sweep as a step of the loop.
+
+`extern/moira/POM68K_VENDOR.md` row 43. Pinned corpora unchanged: `sst68000`
+1 000 058 / 1 000 058 with bus cycles, `sst68030` 3 082 / 3 082, `sst68040`
+7 200 / 7 200.
 
 ---
 

@@ -24,6 +24,7 @@
 #   fuzz040.py --a liboracle_uae.so \
 #              --family core|mmu|random|fault --mmu off|identity|tt \
 #              --n 1000 --seed 1 --out corpus/core_off.json
+#   add --page 8k for trees with 8 KB pages (TC.P = 1).
 
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ import os
 import random
 import sys
 
+import gen040
 from gen040 import gen_state
 from oracle_driver import Oracle, State
 import sst040
@@ -54,6 +56,8 @@ def main() -> int:
     ap.add_argument("--family", default="core",
                     choices=["core", "mmu", "random", "fault"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
+    ap.add_argument("--page", default="4k", choices=["4k", "8k"],
+                    help="page size of the generated trees (TC.P)")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", required=True)
@@ -65,6 +69,8 @@ def main() -> int:
     ob = Oracle(args.b, model=68040) if args.b else None
     print(f"oracle A: {oa.name}" + (f" | oracle B: {ob.name}" if ob else " (solo)"))
 
+    gen040.set_page_shift(13 if args.page == "8k" else 12)
+    tag = "/8k" if args.page == "8k" else ""
     rng = random.Random(args.seed)
     disputes_dir = args.disputes or os.path.join(
         os.path.dirname(os.path.abspath(args.out)), "disputes")
@@ -72,7 +78,7 @@ def main() -> int:
     vectors, n_dispute, n_halt = [], 0, 0
     for i in range(args.n):
         st = gen_state(rng, family=args.family, mmu=args.mmu)
-        name = f"040 {args.family}/{args.mmu} seed={args.seed} #{i}"
+        name = f"040 {args.family}/{args.mmu}{tag} seed={args.seed} #{i}"
 
         fa, rama, ca = run_one(oa, st)
         if ca < 0:

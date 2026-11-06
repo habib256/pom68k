@@ -17,10 +17,11 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-06 with rows 38 to 42: the DIVS absolute values back-ported from
+2026-11-06 with rows 38 to 43: the DIVS absolute values back-ported from
 NeoST, the 68040 cache switch taken out of the environment, three NeoST
-68000 prefetch fixes, the 68000 bus-cycle order, and three NeoST host hooks
-with a 68000 external bus error; before that
+68000 prefetch fixes, the 68000 bus-cycle order, three NeoST host hooks
+with a 68000 external bus error, and two defects a fresh fuzz seed found;
+before that
 2026-10-19 with row 37, the MOVES fault cleanup; before that
 2026-10-09 with row 35, the debugger's access-stop delegate; earlier
 2026-09-05 with rows 33 and 34, the fused 68030 `ird`/`irc` fetch and the
@@ -31,12 +32,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **95** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **450** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **452** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **42** | this file |
+| patch groups in the inventory below | **43** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Forty-two patch groups, two of which (the JIT seam, row 22, and the ATC
+Forty-three patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -66,7 +67,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 42 groups onto it. Not by the
+against a *measured* estimate of porting the 43 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -160,8 +161,9 @@ gate in the last column of each row.
 | 40 | **Three NeoST 68000 prefetch fixes, back-ported** — MOVE to SR reloads both prefetch words (`fullPrefetch`, NeoST `ce1cc52`); ANDI/ORI/EORI #,SR and #,CCR and MOVE to CCR do the same (`d8d33bb`); DIVU/DIVS spend their internal cycles BEFORE the final prefetch (`262f63a`, upstream `f90fc50`) | `MoiraExec_cpp.h` | after a write to SR or CCR the 68000 re-reads the word at PC and then PC+2, in the NEW function code; the old code read PC+2 twice and, for the immediates, read the first in data space, keeping a stale opcode in IRD. NeoST took all three from the microcode transcription and Hatari CE; the SingleStepTests transaction lists say the same on every non-exception vector, which makes three independent readings. Cycle totals unchanged. In `execDivsMoira` the port keeps row 2's early overflow exit by computing the quotient first | `sst68000` (bus cycles) |
 | 41 | **68000 bus-cycle order and idle placement** — group-0 frame stacked PC low, SR, PC high, IR, address low, status word, address high, with its two idle cycles before the frame instead of after; RTE and RTR unstack PC high, SR/CCR, PC low; JSR fetches the first target word before pushing the return address; a trapping CHK spends four of its idle cycles on a discarded prefetch, a non-trapping one prefetches before idling; `MOVEM.l <ea>,list` reads its extra word after the last transfer; `MOVEM.l list,-(An)`, ADD/SUB/ADDQ/SUBQ/ADDI/SUBI long to memory write the low word first; ADDX.l/SUBX.l read both operands low word first (new `REVERSE` in `read<>`); `BTST Dn,#imm` idles after its prefetch | `MoiraExceptions_cpp.h`, `MoiraExec_cpp.h`, `MoiraDataflow_cpp.h` | every one of these left registers, memory and the cycle TOTAL right, so `sst68000` was green at 1 000 058 / 1 000 058 while only 736 983 vectors had the corpus's bus sequence. A bus-order error matters where the bus is watched cycle by cycle — video contention on the compacts, a blitter or a Shifter in another emulator — and where a write lands on what the next read fetches (JSR onto its own target). All are `C == Core::C68000` only; 68010 and 020+ keep upstream's order, for which there is no corpus. Evidence is grade D throughout: SingleStepTests/680x0 v1 `transactions` | `sst68000`, which compares bus cycles since this row: order and timing 1 000 058 / 1 000 058 |
 | 42 | **Three NeoST host hooks and a 68000 external bus error** — `illegalOpcodeHook(opcode)` (a handled illegal opcode is consumed like a NOP; NeoST `fdbce2e`), `willProcessFault(frame)` on every address or bus error including a double fault, `setBusLock(bool)` bracketing the TAS read-modify-write (both NeoST `ce1cc52`); and `extBusError000(addr, write)`, new here | `Moira.h`, `Moira.cpp`, `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h` | the hooks are no-ops by default and off every hot path (illegal opcode, fault, TAS); they are what NeoST's wrapper overrides, so the two copies no longer differ there. `extBusError000` exists because `extBusError()` stacks a 68020/68030 frame and throws an `MmuBusError` that `processException<C68000>` has no branch for: called from a 68000 board it left `execute()` as a C++ exception. `PortableMemory::busError` did exactly that on a SCSI pseudo-DMA access with DRQ inactive (Macintosh Portable, PowerBook 100); it now passes the address and direction and gets a group-0 frame built with NeoST's recipe. Not ported: NeoST's per-bus-cycle hooks, which add two virtual calls to every access | `moira_rules_test` (frame fields for a read and a write fault, the lock bracket `LrwU`, the released lock on a faulting TAS, handled and unhandled illegal opcodes) |
+| 43 | **DIVU.L/DIVS.L no longer swallow an operand fault; CHK2/CMP2 leave N and V alone on the 68040** — the `catch(...) { return false; }` around `readOp` in `execDivlMoira` is gone; `execChkCmp2` applies `setUndefinedCHK2` below the 68EC040 only | `MoiraExec_cpp.h` | the catch-all was dead in stock Moira, where a 68020+ data read never throws; here it swallowed every access fault on the operand — a 68030 or 68040 page fault, or an external /BERR — so the instruction took no exception and stopped half-way. CHK2/CMP2's N and V are undefined; the 68020/68030 follow WinUAE's table and the 68040 follows the same oracle's early return, which upstream's port of that table lacked. Both were found by replaying fresh fuzz seeds (405, 507, 509, 605) against the oracle; the 7 200 pinned vectors contain neither | `moira_rules_test`, `sst68040`, `sst68040_8k` |
 
-Rows 2-21, 25-34, 36, 38, 40 and 41 are the accuracy work; rows 22-24, 35, 39 and 42 are seams (inert
+Rows 2-21, 25-34, 36, 38, 40, 41 and 43 are the accuracy work; rows 22-24, 35, 39 and 42 are seams (inert
 when nothing arms them). The eleven files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
@@ -1867,11 +1869,10 @@ writeBuffer" instead of "byte 312".
   What remains outside scope is pin-level BCLK/TA waveform simulation, not
   an architectural cache behaviour (`docs/CACHE_040.md`).
 
-  Implemented but **not exercised by the fuzzer**: the 8K-page (TC.P)
-  cell — `mmu040PageMaskI()` and the walk's `if (reg.tc040 & 0x4000)`
-  branch handle it, and the ATC follows suit; no corpus generates
-  TC.P = 1 because Mac OS uses 4K throughout. A coverage gap, not a
-  missing cell — extending the generator is the work, not writing code.
+  The 8K-page (TC.P) cell — `mmu040PageMaskI()` and the walk's
+  `if (reg.tc040 & 0x4000)` branch, with the ATC following suit — is
+  exercised since 2026-11-06 by `sst68040_8k` (4 000 vectors, every
+  `core`, `mmu` and `fault` cell at 100 %). Mac OS uses 4K throughout.
 
 ## 2026-10-18 — MOVES bus faults release SFC/DFC
 

@@ -1998,7 +1998,13 @@ Moira::execChkCmp2(u16 opcode)
             reg.sr.c = compare < bound1 && compare > bound2;
         }
         reg.sr.z = compare == bound1 || compare == bound2;
-        setUndefinedCHK2<C, S>(bound1, bound2, compare);
+        // POM68K: N and V are undefined for CHK2/CMP2. The 68020/68030
+        // table below is WinUAE's; on the 68040 the same oracle leaves both
+        // flags untouched (setchk2undefinedflags returns early for
+        // cpu_model 68040). [D] WinUAE @ Hatari e77819f7; the manual is
+        // silent. Fresh fuzz seeds 405/507/509/605 hit it, the pinned
+        // corpus did not.
+        if (cpuModel < Model::M68EC040) setUndefinedCHK2<C, S>(bound1, bound2, compare);
     }
 
     if ((ext & 0x800) && reg.sr.c) {
@@ -5377,7 +5383,14 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
     int dh  = _____________xxx(ext);
     int dl  = _xxx____________(ext);
 
-    try { readOp<C, M, S>(src, &ea, &divisor); } catch(...) { return false; }
+    // POM68K: upstream wrapped this read in `catch(...) { return false; }`.
+    // Dead code there (a 68020+ data read never throws in stock Moira), it
+    // swallowed every 68030/68040 access fault here — a page fault or an
+    // external /BERR on the operand of DIVU.L/DIVS.L took NO exception and
+    // abandoned the instruction half-way. [B] a faulting operand read takes
+    // the bus error; [D] WinUAE @ Hatari e77819f7, fuzz vector
+    // "040 random/identity/8k seed=405 #120". Gate: moira_rules_test.
+    readOp<C, M, S>(src, &ea, &divisor);
 
     if (ext & 0x400) {
         dividend = (u64)readD(dh) << 32 | readD(dl);

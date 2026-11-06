@@ -128,11 +128,15 @@ boot.
   descripteurs indirects ou longs, ni violation de limite, et la cellule
   `tt` ne parcourt jamais l'arbre. Les géométries réelles ne sont prouvées
   que par les boots. `oracle/README.md` annonce plus que le code ne fait.
-- [ ] **Ajouter au fuzzer 040 les pages de 8 Ko (TC.P = 1) et des TTR
-  variés.** Cellule écrite mais jamais exercée (`POM68K_VENDOR.md § Model
-  support in this copy`) ; `gen040.py` fige `TC040_FUZZ` et une seule
-  disposition de TTR. Les coutures JIT supposent 4 Ko par endroits
-  (`kSliceShift`).
+- [ ] **Varier les TTR du fuzzer 040 et balayer des graines neuves à
+  chaque passe.** Les pages de 8 Ko ont leur corpus (`sst68040_8k`,
+  4 000 vecteurs, recette dans `tests/sst_corpora.lock`) ; reste la
+  disposition des TTR, figée (ITT0 = tout, DTT0 = superviseur seul). Et
+  une leçon du 2026-11-06 : 13 100 vecteurs de graines neuves ont trouvé
+  trois défauts que les 7 200 épinglés ne contenaient pas — un corpus
+  épinglé est un plancher, pas une couverture. Faire du balayage de
+  graines neuves une étape de la boucle (`oracle/fuzz/loop.sh` n'a pas
+  d'équivalent 040).
 - [ ] **Donner un corpus différentiel au FPU intégré du 68040.**
   `sst68040` force `FPUModel::NONE` et `fpu040_test` est écrit à la main ;
   `oracle/uae/glue.c` accepte déjà `fpu_model 68040`. Corriger la colonne
@@ -218,6 +222,18 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   Revenir à $2 fait tomber dix vecteurs épinglés de `sst68030` : à faire
   avec le mécanisme de divergences assumées de › Socle, ou sur *une frame
   empilée par un vrai 68030*.
+- [ ] **Faire toucher aux champs de bits mémoire les seuls octets qu'ils
+  couvrent.** `execBitFieldEa` lit et réécrit toujours un long (plus un
+  octet au-delà de 32 bits) ; l'oracle (`get_bitfield`/`put_bitfield`)
+  accède à 1, 2, 3, 4 ou 5 octets selon l'étendue du champ. Visible dans
+  la taille du SSW d'une faute — deux vecteurs reproductibles :
+  `fuzz040.py --family random --mmu identity --page 8k --seed 405
+  --n 400`, #174 et #281 — et, plus grave, en fautes ou en accès de
+  périphérique en trop quand le long déborde d'une page ou d'un registre.
+  Vaut pour 68020, 68030 et 68040. Le contrat mémoire de l'IR du JIT
+  (`JitIr.h` : « Memory bitfields always begin with a longword access »)
+  et les deux émetteurs suivent le même long : à changer ensemble, donc
+  avec une session AArch64.
 - [ ] **Sérialiser l'état en vol, ou refuser de sauver quand il est
   vivant.** *À reproduire.* `MoiraSnapshot::visitCpuCommon` omet
   l'opération 6888x suspendue (`fpu.busy` et ses registres), le

@@ -43,6 +43,22 @@ from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
 TC040_FUZZ = 0x8000        # E=1, P=0 → 4K pages
 PAGE_SHIFT = 12
 PAGE_SIZE = 1 << PAGE_SHIFT
+PGI_BITS = 18 - PAGE_SHIFT     # page-index bits: 6 for 4K pages, 5 for 8K
+
+
+def set_page_shift(shift: int) -> None:
+    """Select the page size of every tree built afterwards: 12 = 4K (TC.P
+    clear, the default and what Mac OS uses), 13 = 8K (TC.P set: the page
+    index loses a bit, a page table holds 32 descriptors and the physical
+    field starts at bit 13 — M68040UM § 3.1.1/3.2). The pinned corpus was
+    generated at 12 only; the 8K cell exists since 2026-11-06."""
+    global TC040_FUZZ, PAGE_SHIFT, PAGE_SIZE, PGI_BITS
+    if shift not in (12, 13):
+        raise ValueError("the 68040 has 4K and 8K pages only")
+    PAGE_SHIFT = shift
+    PAGE_SIZE = 1 << shift
+    PGI_BITS = 18 - shift
+    TC040_FUZZ = 0x8000 | (0x4000 if shift == 13 else 0)
 
 TABLE_BASE = 0x200000
 ROOT_T = TABLE_BASE            # 128 entries × 4 B (512-byte aligned)
@@ -75,12 +91,13 @@ def build_identity_tables(ram: dict[int, int], rng: random.Random,
     for k, pi in enumerate(MAPPED_PI):
         table = PAGE_T + k * 0x100
         _w32(ram, PTR_T + 4 * pi, table | UDT_RESIDENT)
-        for i in range(64):
-            page = (pi << 6) | i
+        for i in range(1 << PGI_BITS):
+            page = (pi << PGI_BITS) | i
             _w32(ram, table + 4 * i, (page << PAGE_SHIFT) | PDT_RESIDENT)
 
     def entry(idx: int) -> int:
-        return PAGE_T + MAPPED_PI.index(idx >> 6) * 0x100 + (idx & 63) * 4
+        return (PAGE_T + MAPPED_PI.index(idx >> PGI_BITS) * 0x100
+                + (idx & ((1 << PGI_BITS) - 1)) * 4)
 
     # Bad pages only inside the data window — never the infrastructure
     # (vectors/stacks/pads/code < $15000, tables at $200000).
