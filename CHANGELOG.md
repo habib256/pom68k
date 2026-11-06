@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-06 (fourteenth)** — [The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe](#2026-11-06-sst68030-solo)
 - **2026-11-06 (thirteenth)** — [13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040](#2026-11-06-fuzz-fresh-seeds)
 - **2026-11-06 (twelfth)** — [The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions](#2026-11-06-interp-profile)
 - **2026-11-06 (eleventh)** — [Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it](#2026-11-06-d23-oracle-inconsistent)
@@ -1206,6 +1207,40 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-06-sst68030-solo"></a>
+## 2026-11-06 (fourteenth) — The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe
+
+The pinned `sst68030` has two known weaknesses: several of its cells date
+from the two-oracle period and keep only the vectors the retired Musashi
+oracle agreed on — the disputed cases are excluded by construction — and it
+has no `mmu_tt` and no `random_tt` cell. A fresh sweep answers both.
+
+Fourteen cells (`core`, `mmu`, `random`, `fpu` × `off`, `identity`, `tt`,
+then `fault` × `identity`, `tt`), 400 vectors each, seeds 701 to 714, WinUAE
+alone. Replayed on Moira with the fixes of the thirteenth entry:
+**5 592 / 5 592**.
+
+**The eight missing vectors are the oracle's, not Moira's.** The first replay
+read 5 592 / 5 600: eight `PMOVE (An),CRP` loading an invalid root pointer,
+on which WinUAE cannot stack its own MMU configuration exception and halts.
+`oracle_step()` returns −1 there and the post-halt state is not
+architectural. `fuzz040.py` has always skipped such vectors;
+`fuzz030.py` kept them with `"length": -1`. It now skips them too, and says
+how many.
+
+**Pinned as `sst68030_solo`**, with a gate of the same name and fourteen
+lines in `tests/sst_corpora.lock`. The recipe is in the manifest header; one
+cell regenerated from it hashes identically. Like `sst68040_8k` it lives in
+its own directory, so a host without the files soft-skips.
+
+This is the "regenerate the 030 corpus WinUAE-solo" item of
+`TODO.md § Moteur › Socle`, done as an addition rather than a replacement:
+the original corpus keeps its role as the record of what was pinned in
+July. What it does not change: the generator still builds a single MMU
+geometry (the next item of that section).
 
 ---
 

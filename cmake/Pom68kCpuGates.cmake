@@ -32,6 +32,13 @@ add_executable(moira_rules_test tests/moira_rules_test.cpp)
 target_link_libraries(moira_rules_test PRIVATE moira)
 add_test(NAME moira_rules_test COMMAND moira_rules_test)
 
+# The 68030 against WinUAE alone, all fourteen cells: the pinned sst68030
+# keeps, in several cells, only the vectors a retired second oracle agreed
+# on, and has no mmu_tt or random_tt cell.
+set(POM68K_SST030_SOLO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_solo"
+    CACHE PATH "Directory of WinUAE-solo SST030 vectors (all cells)")
+add_test(NAME sst68030_solo COMMAND sst68030 "${POM68K_SST030_SOLO_DIR}")
+
 # The 68040 with 8 KB pages (TC.P = 1): the cell the pinned corpus never had.
 # Same harness as sst68040, its own directory so that a host without these
 # files soft-skips instead of failing the corpus manifest.
@@ -46,6 +53,7 @@ add_test(NAME sst_corpora_lock_test
          COMMAND python3 tools/verify_sst_corpora.py
                  --dir sst68000=${POM68K_SST_DIR}
                  --dir sst68030=${POM68K_SST030_DIR}
+                 --dir sst68030_solo=${POM68K_SST030_SOLO_DIR}
                  --dir sst68040=${POM68K_SST040_DIR}
                  --dir sst68040_8k=${POM68K_SST040_8K_DIR}
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

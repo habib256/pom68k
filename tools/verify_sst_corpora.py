@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Verify — or with --write, record — the identity of the CPU vector corpora.
 
-The corpora behind `sst68000`, `sst68030`, `sst68040` and `sst68040_8k` are
-too large for the repository (1.1 GB, 116 MB, 315 MB, 176 MB) and live in
-git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate could be green
+The corpora behind `sst68000`, `sst68030`, `sst68030_solo`, `sst68040` and
+`sst68040_8k` are too large for the repository (1.1 GB, 116 MB, 211 MB,
+315 MB, 176 MB) and live in git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate could be green
 on one host and on another against different files, and nobody could tell.
 `tests/sst_corpora.lock` records, per file, the size and SHA-256 of what the
 gates were pinned against, with each corpus's provenance in its header.
@@ -23,7 +23,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-CORPORA = ("sst68000", "sst68030", "sst68040", "sst68040_8k")
+CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68040", "sst68040_8k")
 
 HEADER = """\
 # Identity of the CPU vector corpora (tools/verify_sst_corpora.py).
@@ -41,6 +41,14 @@ HEADER = """\
 #   retired Musashi oracle agreed (oracle/fuzz/disputes/NOTES.md); the fpu
 #   cells are WinUAE-solo (ruling D22). Seeds are in each vector's name
 #   ("core/identity seed=31 #1").
+# sst68030_solo — the same generator, WinUAE alone, all fourteen cells
+#   (mmu_tt and random_tt included), generated 2026-11-06. 5 592 vectors,
+#   reproducible from the tree: for each family in core, mmu, random, fpu
+#   and each mmu in off, identity, tt, in that order, seeds 701 to 712, then
+#   fault with identity (713) and tt (714):
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family F --mmu M
+#         --n 400 --seed S --out F_M.json
+#   (eight vectors on which the oracle halts are skipped by the driver).
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
 # sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.

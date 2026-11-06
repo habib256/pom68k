@@ -100,14 +100,14 @@ boot.
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
-- [ ] **Rendre les corpus 030 et 040 récupérables, avec leur recette.**
-  Leur identité est épinglée (`tests/sst_corpora.lock`,
-  `sst_corpora_lock_test`) et le corpus 68000 se retélécharge à son commit
-  amont ; mais les corpus 68030 (116 Mo) et 68040 (315 Mo), générés ici,
-  n'existent que sur deux hôtes et le disque privé. Les publier (asset de
-  release, sortie WinUAE sans donnée Apple) et enregistrer les lignes de
-  commande `fuzz030.py`/`fuzz040.py` qui les régénèrent — les graines sont
-  dans les noms des vecteurs, pas les tailles ni les familles.
+- [ ] **Rendre les corpus épinglés d'origine récupérables.** Les deux
+  corpus du 2026-11-06 (`sst68030_solo`, `sst68040_8k`) se régénèrent à
+  l'identique depuis l'arbre : leur recette est dans
+  `tests/sst_corpora.lock`. Les deux corpus d'origine (`sst68030`,
+  116 Mo ; `sst68040`, 315 Mo) n'ont pas de recette enregistrée et
+  n'existent que sur deux hôtes et le disque privé : les publier (asset de
+  release, sortie WinUAE sans donnée Apple), ou les remplacer par des
+  corpus à recette une fois celle-ci retrouvée.
 - [ ] **Exécuter un corpus de vecteurs en CI, et sous sanitizers.** Les
   corpus 030/040 sont de la sortie WinUAE, pas des données Apple : un
   sous-ensemble public épinglé peut devenir `asset-none`. Aujourd'hui aucun
@@ -118,10 +118,6 @@ boot.
   `oracle_uae_smoke` et `oracle_uae_smoke040` vivent dans le projet CMake
   séparé `oracle/uae`, hors registre et hors CI ; le 040 n'a pas
   d'équivalent de `loop.sh`.
-- [ ] **Régénérer le corpus 030 en WinUAE seul.** Les cellules core, mmu et
-  random datent du 2026-07-15 et ne gardent que les vecteurs où Musashi
-  était d'accord (`oracle/fuzz/disputes/NOTES.md`) : les cas disputés en
-  sont exclus par construction. Manquent aussi `mmu_tt` et `random_tt`.
 - [ ] **Élargir la géométrie MMU du fuzzer 030.** `gen030.py` n'a qu'un TC
   (pages de 32 Ko, un niveau, descripteurs courts, CRP sans limite) : ni
   FCL/SRE, ni tables à plusieurs niveaux, ni terminaison anticipée, ni

@@ -62,12 +62,20 @@ def main() -> int:
     disputes_dir = args.disputes or os.path.join(
         os.path.dirname(os.path.abspath(args.out)), "disputes")
 
-    vectors, n_dispute = [], 0
+    vectors, n_dispute, n_halt = [], 0, 0
     for i in range(args.n):
         st = gen_state(rng, family=args.family, mmu=args.mmu)
         name = f"{args.family}/{args.mmu} seed={args.seed} #{i}"
 
         fa, rama, ca = run_one(oa, st)
+        # A negative step is the oracle halting on a double fault (a PMOVE
+        # that loads an invalid root pointer, then cannot stack its own MMU
+        # configuration exception). The post-halt state is not architectural:
+        # skip the vector, as fuzz040.py does. Until 2026-11-06 such vectors
+        # were kept with "length": -1 and read as Moira failures.
+        if ca < 0:
+            n_halt += 1
+            continue
         if ob:
             fb, ramb, _cb = run_one(ob, st)
             diffs = fa.core_diff(fb)
@@ -92,6 +100,7 @@ def main() -> int:
     sst030.save(args.out, vectors)
     total = args.n
     print(f"{len(vectors)}/{total} kept → {args.out}"
+          + (f", {n_halt} halts skipped" if n_halt else "")
           + (f", {n_dispute} disputes → {disputes_dir}" if n_dispute else ""))
     return 0 if len(vectors) else 1
 
