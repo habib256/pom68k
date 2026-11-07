@@ -12,14 +12,16 @@
 #   cells date from the two-oracle period and keep only vectors on which the
 #   retired Musashi oracle agreed (oracle/fuzz/disputes/NOTES.md); the fpu
 #   cells are WinUAE-solo (ruling D22). Seeds are in each vector's name
-#   ("core/identity seed=31 #1").
+#   ("core/identity seed=31 #1"). Permissive oracle setting; replayed with
+#   `sst68030 --known tests/sst68030.known` (four vectors, ruling D23b).
 # sst68030_solo — the same generator, WinUAE alone, all fourteen cells
-#   (mmu_tt and random_tt included), generated 2026-11-06. 5 592 vectors,
-#   reproducible from the tree: for each family in core, mmu, random, fpu
-#   and each mmu in off, identity, tt, in that order, seeds 701 to 712, then
-#   fault with identity (713) and tt (714):
+#   (mmu_tt and random_tt included), generated 2026-11-06 and regenerated
+#   2026-11-07 against the STRICT oracle (six vectors changed, all D23b).
+#   5 592 vectors, reproducible from the tree: for each family in core, mmu,
+#   random, fpu and each mmu in off, identity, tt, in that order, seeds 701
+#   to 712, then fault with identity (713) and tt (714):
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family F --mmu M
-#         --n 400 --seed S --out F_M.json
+#         --strict-fpu --n 400 --seed S --out F_M.json
 #   (eight vectors on which the oracle halts are skipped by the driver).
 # sst68030_fpuraw — the raw cpID-1 window ($F200-$F37F, unconstrained
 #   extension words) on the 68030 + 68882, against the STRICT oracle
@@ -232,9 +234,9 @@ sst68030_solo | core_off.json | 9193083 | 55a310a3ac0240d62f96dcc882871677796071
 sst68030_solo | core_tt.json | 17952241 | 7ed83ba97d06d8312d8ad499c21ae0f094b2dc606e5e051ad6e2e0ca32856c3b
 sst68030_solo | fault_identity.json | 17983959 | 592fcce048968d6b5bd040664c4bfd3d78c3a9ef513efa168f460f31aefb4351
 sst68030_solo | fault_tt.json | 17979769 | 86ffeef3f2e5ccbff6d2edaf28a3104a26d591dbc726bd6376900b80c6fcce33
-sst68030_solo | fpu_identity.json | 19521557 | 895de1cce8db2a3d08c16fa891d4afaa133a8748c995ef7c37722361236339d6
-sst68030_solo | fpu_off.json | 10765079 | cfb8f79bdc3842e55c3d109f4337300de419f908c2bf0a06bdea946c10a9354b
-sst68030_solo | fpu_tt.json | 19530956 | fab31fadd11a3472643702020d387d1e5a45d306f97684576565e30218bf12d3
+sst68030_solo | fpu_identity.json | 19521627 | 5db2784d087f341b11e25292ea426da19408525fd493de50b04dd41939793b03
+sst68030_solo | fpu_off.json | 10765232 | 68bfa053218bb66191a3324a83d3966a5c0670f4230fb19d04fae5ec89642dd1
+sst68030_solo | fpu_tt.json | 19531209 | ea067d825f5a7661b127a894fbf3e7f83840fa26927fa5a7b1a70fb86dd379aa
 sst68030_solo | mmu_identity.json | 17860075 | 5d943988c082ee95970e2a5b48d86e3f0de10c299a54df9c8da0f7b4ebf25120
 sst68030_solo | mmu_off.json | 9190722 | 878e7c03b16cf9d518be4b22c6e7f74dbe7d141c860797b0b03aa4b31c7039c8
 sst68030_solo | mmu_tt.json | 17682785 | 7d85ae1084a5281d14134c969934c85b3a104944c6bdf7437f1330c5236bd5fb

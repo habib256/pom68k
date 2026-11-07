@@ -89,27 +89,20 @@ boot.
   ne tombe.** La politique est alignée depuis le 2026-11-06 : un manuel
   (grade B) l'emporte sur l'oracle (grade D) pour toute décision nouvelle,
   et une décision existante n'est renversée que si rien ne passe au rouge.
-  Trois sont donc gardées comme exceptions connues
+  Deux sont donc gardées comme exceptions connues
   (`oracle/README.md § Rulings taken against a manual`) : D12 (adresse
-  d'instruction des frames $2), D23a (frame FPU $3 sur 68030) et D23b
-  (FRESTORE $41 sur un 68882) — plus deux règles 68000 (sortie anticipée
-  de DIVS, ASR au-delà de la largeur). Chacune est tenue par des vecteurs
+  d'instruction des frames $2) et D23a (frame FPU $3 sur 68030) — plus
+  D30 (trappe de type de donnée immédiate) et deux règles 68000 (sortie
+  anticipée de DIVS, ASR au-delà de la largeur). Chacune est tenue par des vecteurs
   épinglés : la renverser demande soit une preuve de grade A, soit le
   mécanisme de divergences assumées — il existe depuis le 2026-11-07 dans
   `sst68030` et `sst68040` (`--known`, `tests/SstKnown.h` : liste nommée
   par décision, gate rouge si un vecteur listé se met à passer), ce qui
   permet de renverser D23a et D12 sans perdre un vecteur. **D23b est
-  tranchée** : le « hack » FRESTORE n'existe que dans le réglage permissif
-  de l'oracle, celui des quatre vecteurs épinglés ; en réglage strict le
-  même oracle prend l'erreur de format du manuel (trois vecteurs de
-  `sst68030_fpuraw`). Reste à l'appliquer : retirer la branche $41 du
-  FRESTORE 6888x, lister les quatre vecteurs de `sst68030` comme connus,
-  vider le bloc D23b de `tests/sst68030_fpuraw.known`. *Précaution avant
-  de le faire :* l'hybride 68LC040 + 68882 logiciel, défaut produit des
-  LC 475/575/580 (› Justesse 68040), présente un 6888x à un système qui
-  se croit sur 68040 ; s'il restaure une frame IDLE $41 construite à la
-  main, c'est cette branche qui la laisse passer. Passer d'abord les
-  etalons `q605_*` et `lc475_*` avec la branche retirée. Reste aussi à passer au crible les
+  appliquée** depuis le 2026-11-07 (rang 53) : le « hack » FRESTORE
+  n'existait que dans le réglage permissif de l'oracle ; les quatre
+  vecteurs épinglés de juillet sont listés dans `tests/sst68030.known`,
+  `sst68030_solo` est régénéré en strict. Reste aussi à passer au crible les
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
@@ -297,19 +290,8 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont
   l'écriture faute, le fork range dans le « data output buffer » le
   résultat masqué à la taille de l'opérande, l'oracle la différence sur
-  32 bits. Même balayage du 2026-11-07, un vecteur : PTEST laisse MMUSR.I
-  à zéro (`mmu/tt seed=1006 #1188`,
-  `scratchpad/2026-11-07/FUZZ_SWEEP2.md`).
-- [ ] **Repasser les corpus 68030 à l'oracle strict en appliquant D23b.**
-  Tous les corpus 68030 antérieurs au 2026-11-07 ont été produits avec
-  `fpu_no_unimplemented = false`, où WinUAE laisse un 6888x exécuter les
-  opmodes FSxxx/FDxxx du 68040 et accepter ses frames. Le compte est
-  pris : `sst68030_solo` régénéré avec `--strict-fpu` ne diffère que sur
-  6 vecteurs sur 5 592, tous des FRESTORE d'une frame 68040 (`fpu/off
-  seed=710` #184 et #206, `fpu/identity seed=711` #71, `fpu/tt seed=712`
-  #49, #65, #221) — exactement D23b, rien d'autre. Le jour où D23b est
-  appliquée (› Socle), régénérer `sst68030_solo` en strict plutôt que de
-  lister ces six vecteurs.
+  32 bits — c'est la variable `newv` de gencpu (soustraction non signée),
+  sans effet sur ce que le RTE réécrit : valeur faible.
 - [ ] **Trancher les champs EA $3D-$3F sur 68030 (D29).** Le fork laisse le
   coprocesseur décider (un registre-à-registre s'exécute, une forme
   mémoire efface l'octet d'état puis prend un Line-F) ; la table d'opcodes

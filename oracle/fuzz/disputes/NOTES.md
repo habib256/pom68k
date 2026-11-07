@@ -716,8 +716,11 @@ corpora keep their recipe. Strict replay: 5 802 / 6 000.
 oracle against the manual: the strict oracle takes the format error (three
 vectors of this corpus, e.g. "fpuraw/identity seed=722 #311"). The four
 pinned `sst68030` vectors that hold the fork's acceptance were generated in
-the permissive setting. Manual (B) and strict oracle (D) agree; the ruling is
-due to flip, with those four vectors listed as known.
+the permissive setting. Manual (B) and strict oracle (D) agree. **Applied the same day**
+(`POM68K_VENDOR.md` row 53): the `$41` branch is the 68040's only; the four
+permissive vectors are listed in `tests/sst68030.known`, `sst68030_solo`
+was regenerated strict, and the D23b blocks left `tests/sst68030_fpuraw.known`
+and `tests/sst68030_fpu2.known`.
 
 ### D28. FBcc / FDBcc taken to an odd address  [fork kept, manual]
 The oracle sets the PC and raises nothing — `fpuop_bcc`/`fpuop_dbcc` lack

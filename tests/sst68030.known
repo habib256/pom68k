@@ -1,0 +1,13 @@
+# Vectors of tests/data/sst68030 (the July corpus, permissive oracle) on which
+# the fork deliberately does not follow the oracle. See tests/SstKnown.h for
+# the rules: a listed vector that passes, or is missing, fails the gate.
+
+# D23b (applied 2026-11-07) - FRESTORE of a version-$41 (68040) frame on a
+# 68882: the fork takes the format error of the MC68881/MC68882 manual and
+# of WinUAE's strict setting; these four were generated in its permissive
+# setting, where a "horrible hack" accepts the frame. The corpus has no
+# recipe to regenerate strict (TODO.md § Moteur › Socle).
+fpu/identity seed=29 #75
+fpu/off seed=29 #28
+fpu/off seed=31 #83
+fpu/tt seed=41 #166

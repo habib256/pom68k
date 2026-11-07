@@ -47,14 +47,16 @@ HEADER = """\
 #   cells date from the two-oracle period and keep only vectors on which the
 #   retired Musashi oracle agreed (oracle/fuzz/disputes/NOTES.md); the fpu
 #   cells are WinUAE-solo (ruling D22). Seeds are in each vector's name
-#   ("core/identity seed=31 #1").
+#   ("core/identity seed=31 #1"). Permissive oracle setting; replayed with
+#   `sst68030 --known tests/sst68030.known` (four vectors, ruling D23b).
 # sst68030_solo — the same generator, WinUAE alone, all fourteen cells
-#   (mmu_tt and random_tt included), generated 2026-11-06. 5 592 vectors,
-#   reproducible from the tree: for each family in core, mmu, random, fpu
-#   and each mmu in off, identity, tt, in that order, seeds 701 to 712, then
-#   fault with identity (713) and tt (714):
+#   (mmu_tt and random_tt included), generated 2026-11-06 and regenerated
+#   2026-11-07 against the STRICT oracle (six vectors changed, all D23b).
+#   5 592 vectors, reproducible from the tree: for each family in core, mmu,
+#   random, fpu and each mmu in off, identity, tt, in that order, seeds 701
+#   to 712, then fault with identity (713) and tt (714):
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family F --mmu M
-#         --n 400 --seed S --out F_M.json
+#         --strict-fpu --n 400 --seed S --out F_M.json
 #   (eight vectors on which the oracle halts are skipped by the driver).
 # sst68030_fpuraw — the raw cpID-1 window ($F200-$F37F, unconstrained
 #   extension words) on the 68030 + 68882, against the STRICT oracle

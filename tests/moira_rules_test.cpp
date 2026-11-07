@@ -571,6 +571,32 @@ void clrReadsOnlyOn68000()
     }
 }
 
+void ptestFlagsInvalidAtTheLimit()
+{
+    // PTESTR #5,(A0),#1 with the level-1 descriptor invalid (DT = 0): the
+    // search ends at the limit AND on an invalid descriptor, and MMUSR must
+    // say both — N = 1, I. The fuzz generator's tree: TC = E, PS = 15,
+    // IS = 8, TIA = 9, one level of short descriptors at $4000; CRP points
+    // there with DT = 2 (valid 4-byte). Found by "mmu/tt seed=1006 #1188".
+    TestCpu c(moira::Model::M68030);
+    p32(c, 11 * 4, kHandler);
+    stage(c, 0xf010, 0);                            // PTEST (A0)
+    p16(c, kCode + 2, 0x8615);                      // PTESTR, level 1, FC #5
+    c.setIRC(0x8615);
+    p16(c, kCode + 4, kNop);
+    c.setTC(0x80f89000u);
+    c.setCRP(0x7fff000200004000ULL);
+    p32(c, 0x4000, 0x00000001);                     // page 0 (code, table): identity
+    p32(c, 0x4004, 0x00008001);                     // page 1 (stack): identity
+    c.setA(0, 0x000a9a5d);                          // page index $15 -> $4054
+    p32(c, 0x4054, 0);                              // invalid descriptor
+    c.setMMUSR(0);
+    c.execute();
+    CHECK(c.getPC0() == kCode + 4 && c.getMMUSR() == 0x0401,
+          "68030 PTESTR level 1 into DT=0: PC0=%08X, MMUSR=%04X (want $0401)",
+          c.getPC0(), c.getMMUSR());
+}
+
 } // namespace
 
 int main()
@@ -586,6 +612,7 @@ int main()
     fpuStoreFaultRestarts040();
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();
+    ptestFlagsInvalidAtTheLimit();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -595,6 +622,7 @@ int main()
                 "68000 external /BERR, host hooks, DIVx.L operand fault, "
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
-                "table, CLR without its read from the 68020 up\n");
+                "table, CLR without its read from the 68020 up, PTEST at its level "
+                "limit\n");
     return 0;
 }
