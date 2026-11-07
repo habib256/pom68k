@@ -53,6 +53,7 @@ public:
     int cyclesToNextEvent() const;
 
     uint8_t mode() const { return mode_; }
+    bool actionOn() const { return (mode_ & 0x08) != 0; }   // tick() does nothing otherwise
     uint8_t setup() const { return setup_; }
     uint8_t phases() const { return phases_; }
     int fifoCount() const { return fifoPos_; }

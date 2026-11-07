@@ -57,6 +57,26 @@ public:
     void updateIpl();                       // from the PrimeTime resolver
     void stall(int cycles);                 // `cycles` are machine cycles
     void flushTicks();                      // run peripherals up to `clock`
+    // Re-arm the peripheral deadline. The board calls one of these after a
+    // device access: a register access that arms a countdown (a SCSI
+    // command or the last PIO byte, a VIA T2 load, a DAFB interrupt enable)
+    // changes the bound the current deadline was computed from, and without
+    // this the event would be served at the previously scheduled flush —
+    // late by up to one slice. Invisible while the slice was one E tick; not
+    // with the timer-aware VIA bound (Q605Memory::cyclesToNextEvent).
+    //   schedulePeriphDeadline  — from mem_.cyclesToNextEvent(), every device;
+    //   tightenPeriphDeadline   — one device's countdown armed by the access
+    //                             itself, in machine cycles from now; only
+    //                             ever brings the deadline forward. The other
+    //                             countdowns are already in the deadline, so
+    //                             this costs one bound instead of eight —
+    //                             the 53C96 status poll runs 320 000
+    //                             accesses a second.
+    // The full re-arm measures from lastPeriphClock_, the devices' common
+    // time: a running countdown is in device cycles, and the devices stand
+    // where the last flush left them, not at `clock`.
+    void schedulePeriphDeadline();
+    void tightenPeriphDeadline(int machineCycles);
     int cacheBoost() const { return cacheBoost_; }
     // Bus/wire time (E-clock, wait states) must be measured here, not on the
     // boosted core clock — see SonoraCpu.h.
@@ -83,7 +103,7 @@ private:
     void didChangeCACR(moira::u32 value) override;
     void onSyncCharge(int cycles);          // lockstep tap (MoiraCpu::sync)
     void catchUp();
-    void schedulePeriphDeadline();
+    moira::i64 periphDeadlineFor(int machineCycles) const;
 
     // Throughput ceiling (Cpu030 pattern). Was pinned at 1 for a long time
     // because "boost 2+ → SCSI=0" on q605_boot_etalon; re-measured
@@ -93,6 +113,7 @@ private:
     // Stall / viaSync / syncSwimFromCpu are boost-invariant; tune with
     // POM68K_Q605_CACHE_BOOST. flushTicks() scales Moira cycles back down.
     int cacheBoost_ = 4;
+    int boostShift_ = 2;                    // log2(cacheBoost_), −1 if not a power of two
     int icacheMiss_ = 0;                    // POM68K_Q605_ICACHE_MISS
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;

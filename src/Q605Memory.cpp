@@ -128,6 +128,7 @@ void Q605Memory::reset() {
     cuda_.reset();
     cudaLle_.reset();
     scc_.reset();
+    sccNextCache_ = -1;
     sccDebt_ = 0;
     scsi_.reset();
     scsiDebt_ = 0;
@@ -234,8 +235,20 @@ void Q605Memory::viaSync() {
 }
 
 uint8_t Q605Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
-    if (cpu_) cpu_->flushTicks();
+    // Re-arm at every exit: a T1/T2 load, an ACR or SR write moves the
+    // VIA bound; the Cuda handshake on port B moves nothing timed (the MCU
+    // runs on its own clock). ~0.5 M accesses per 50 s — the full re-arm
+    // is affordable here, not on the 53C96/ASC/DAFB poll windows below.
+    struct Rearm { Q605Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
+    // Wait states first, then the flush: the access is served at the E edge
+    // the stall lands on, so the VIA must have been ticked up to that edge,
+    // not up to the cycle the instruction started on. Under the former
+    // "next E tick" deadline the stall itself always crossed a deadline and
+    // re-flushed; with the timer-aware bound (cyclesToNextEvent) nothing
+    // else guarantees it. The 2026-11-07 trace of a flush placed before the
+    // stall: T2 fired one E tick early. Same order in every branch below.
     viaSync();
+    if (cpu_) cpu_->flushTicks();
     int reg = (addr >> 9) & 0x0F;            // $200 stride
     if (write) {
         via1_.write(reg, v);
@@ -257,9 +270,10 @@ uint8_t Q605Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 }
 
 uint8_t Q605Memory::via2Access8(uint32_t addr, bool write, uint8_t v) {
-    if (cpu_) cpu_->flushTicks();
-    flushScsi();
+    struct Rearm { Q605Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};   // as viaAccess8
     viaSync();
+    if (cpu_) cpu_->flushTicks();                // after the stall (viaAccess8)
+    flushScsi();
     int reg = (addr >> 9) & 0x0F;            // pseudovia.cpp quadra flavor
     if (write) {
         switch (reg) {
@@ -339,6 +353,9 @@ uint8_t Q605Memory::dafbRead8(uint32_t addr) {
 }
 
 void Q605Memory::dafbWrite8(uint32_t addr, uint8_t v) {
+    // The write may have moved the Swatch enable, the cursor line or the
+    // geometry — the bound cyclesToNextEvent publishes (Cpu040 re-arm).
+    struct Rearm { Q605Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
     // Registers are ≤12 bits: commit semantics once, on the low lane.
     if (onIoAccess) onIoAccess(0xF9800000 + (addr & 0x3FF), true, v);
     if ((addr & 0x300) == 0x300) {               // Gazelle: true byte port
@@ -379,10 +396,13 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         // AppleTalk times its loops by (SetUpTimeK) — MAME $030E, and
         // $1BDC here while SCC reads cost nothing (calibration_probe).
         viaSync();
+        if (cpu_) cpu_->flushTicks();            // after the stall (viaAccess8)
         flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
+        sccNextCache_ = -1;
         sccIrqLine(scc_.irqAsserted());          // reading RR0 / data can clear
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return d;                                // or (re-)assert the level-4 line
     }
     if (base >= 0x0E000 && base < 0x10000) {     // MEMCjr regs
@@ -407,6 +427,7 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         flushScsi();
         uint8_t d = scsi_.read((base >> 4) & 0xF);
         scsiPoll_();
+        tightenScsiDeadline();
         return d;
     }
     if (base >= 0x10100 && base < 0x10104) {     // TurboSCSI pseudo-DMA — Q6
@@ -428,8 +449,11 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
 
     if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000) {
         if (cpu_) cpu_->stall(5);                 // iosb.cpp swim_r wait states
+        if (cpu_) cpu_->flushTicks();             // the drives stand at the access
         syncSwimFromCpu();                        // MAME swim2::read → sync()
-        return (addr & 1) ? 0 : swim_.read((sub >> 9) & 0x0F);
+        const uint8_t d = (addr & 1) ? 0 : swim_.read((sub >> 9) & 0x0F);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a read can advance the engine
+        return d;
     }
 
     // Unmapped PrimeTime/IOSB I/O reads back 0, not /BERR: MAME's iosb_base::map
@@ -458,10 +482,13 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if (base >= 0x0C000 && base < 0x0E000) {
         viaSync();                               // as the read side, above
+        if (cpu_) cpu_->flushTicks();
         flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
+        sccNextCache_ = -1;
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         sccIrqLine(scc_.irqAsserted());          // WR1/WR9/WR15 + Reset Ext/Status
         return;                                  // change the pending interrupt
     }
@@ -481,9 +508,16 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
         if (cpu_) cpu_->stall(scsiWriteCycles_); // iosb.cpp:494 turboscsi_w
+        // A command's bus-service latency counts from the write: bring the
+        // chip's time up to it first (34 k writes per 50 s — affordable; the
+        // 16 M status reads are not flushed, their lag is bounded by one
+        // slice and they arm nothing but through the FIFO, see
+        // tightenScsiDeadline).
+        if (cpu_) cpu_->flushTicks();
         flushScsi();
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
+        tightenScsiDeadline();
         return;
     }
     if (base >= 0x10100 && base < 0x10104) {     // TurboSCSI pseudo-DMA — Q6
@@ -494,6 +528,7 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000) {
         asc_.write(addr & 0xFFF, v);                 // PrimeTime/IOSB ASC
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a reset restarts the drain
         return;
     }
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
@@ -512,8 +547,10 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000) {
         if (cpu_) cpu_->stall(5);                 // iosb.cpp swim_w wait states
+        if (cpu_) cpu_->flushTicks();             // the drives stand at the access
         syncSwimFromCpu();                        // MAME swim2::write → sync()
         swim_.write((sub >> 9) & 0x0F, v);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // ACTION / a write pulse
         return;
     }
 
@@ -538,6 +575,7 @@ uint8_t Q605Memory::scsiDmaRead_() {
     if (!scsi_.drq()) busError(0x50010100, false);
     uint8_t d = scsi_.dmaRead();
     scsiPoll_();
+    tightenScsiDeadline();
     return d;
 }
 
@@ -546,6 +584,17 @@ void Q605Memory::scsiDmaWrite_(uint8_t v) {
     if (!scsi_.drq()) busError(0x50010100, true);
     scsi_.dmaWrite(v);
     scsiPoll_();
+    tightenScsiDeadline();
+}
+
+// After a 53C96 access: the command, or the last PIO/DMA byte, may have
+// armed the bus-service latency (Ncr53c96::raiseIrqDeferred) — bring the
+// CPU's peripheral deadline forward to it, counted from the access
+// (Cpu040::tightenPeriphDeadline). A countdown that was already running is
+// in the deadline already and the min leaves it alone. One bound, not
+// eight: this path is the status poll, 16 M reads per 50 s of guest time.
+void Q605Memory::tightenScsiDeadline() {
+    if (cpu_) cpu_->tightenPeriphDeadline(scsi_.cyclesToNextEvent());
 }
 
 // Level-sensitive IRQ/DRQ from the 53C96 into the Quadra pseudo-VIA2:
@@ -791,9 +840,10 @@ void Q605Memory::tick(int cpuCycles) {
     // call flushScc(), so no observer can see state older than its access.
     if (sccEventDriven_) {
         sccDebt_ += cpuCycles;
-        if (scc_.cyclesToNextEvent() <= sccDebt_) flushScc();
+        if (sccNext() <= sccDebt_) flushScc();
     } else {
         scc_.tick(cpuCycles);
+        sccNextCache_ = -1;
         if (sccIrq_ != scc_.irqAsserted()) {
             sccIrq_ = scc_.irqAsserted();
             updateIrq();
@@ -807,7 +857,13 @@ void Q605Memory::tick(int cpuCycles) {
     int ascCyc = int(ascCycAcc_ / kCpuHz);
     ascCycAcc_ -= int64_t(ascCyc) * kCpuHz;
     asc_.tick(ascCyc);
-    syncSwimFromCpu();
+    // Swim2::tick is a no-op with ACTION off, and the sync's accumulator
+    // arithmetic is chunk-independent (the two divisors divide the product
+    // exactly at every power-of-two boost), so the controller is brought up
+    // to date only when it is running or about to be touched: every SWIM
+    // register access syncs first, and the mode write that turns ACTION on
+    // is one of them.
+    if (swim_.actionOn()) syncSwimFromCpu();
     drive0_.tick(cpuCycles);
     drive1_.tick(cpuCycles);
 
@@ -839,15 +895,33 @@ void Q605Memory::tick(int cpuCycles) {
 int Q605Memory::cyclesToNextEvent() const {
     // Conservative lower bounds: waking early only costs time; waking late
     // changes emulated time. The factory Cuda normally binds at ~12 cycles.
+    auto bridge = [](int deviceCycles, int64_t acc, int64_t deviceHz,
+                     int64_t machineHz) {
+        if (deviceCycles == 0x7fffffff) return deviceCycles;
+        const int64_t need = int64_t(deviceCycles) * machineHz - acc;
+        if (need <= 0) return 1;
+        return int((need + deviceHz - 1) / deviceHz);
+    };
     int best = cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 1;
-    best = std::min(best, viaEClock_.cyclesToNext(kCpuHz));
+    // The VIA's own bound (T1/T2 underflow, shift completion), in E ticks,
+    // bridged through the accumulator tick() advances it with. The former
+    // bound here was the NEXT E tick — always safe and saying nothing
+    // (CHANGELOG 2026-08-13, the Mac II lesson): it woke the whole device
+    // fan-out 783 360 times a second whatever the VIA was doing, and on
+    // this board it was the binding source of 60 % of the slices (mean
+    // slice 19.7 machine cycles, 12.7 M mem.tick calls per 10 s of guest
+    // time; 45.9 and 5.4 M with this bound — POM68K_BENCH_PERIPH_STATS).
+    // Every other VIA observable needs a bus access, and the access path
+    // flushes after its E-edge stall (viaAccess8).
+    best = std::min(best, via_eclock::bridge(via1_.cyclesToNextEvent(),
+                                             viaEClock_.acc, kCpuHz));
     if (sccEventDriven_) {
-        const int sccNext = scc_.cyclesToNextEvent();
-        if (sccNext != 0x7fffffff) {
-            const int64_t left = int64_t(sccNext) - sccDebt_;
+        const int next = sccNext();
+        if (next != 0x7fffffff) {
+            const int64_t left = int64_t(next) - sccDebt_;
             best = std::min(best, int(std::max<int64_t>(left, 1)));
         }
-    } else best = std::min(best, scc_.cyclesToNextEvent());
+    } else best = std::min(best, sccNext());
     if (scsiEventDriven_) {
         const int scsiNext = scsi_.cyclesToNextEvent();
         if (scsiNext != 0x7fffffff) {
@@ -856,13 +930,6 @@ int Q605Memory::cyclesToNextEvent() const {
         }
     } else best = std::min(best, scsi_.cyclesToNextEvent());
 
-    auto bridge = [](int deviceCycles, int64_t acc, int64_t deviceHz,
-                     int64_t machineHz) {
-        if (deviceCycles == 0x7fffffff) return deviceCycles;
-        const int64_t need = int64_t(deviceCycles) * machineHz - acc;
-        if (need <= 0) return 1;
-        return int((need + deviceHz - 1) / deviceHz);
-    };
     best = std::min(best, bridge(asc_.cyclesToNextEvent(), ascCycAcc_,
                                  AscIosb::kCpuHz, kCpuHz));
     best = std::min(best, bridge(swim_.cyclesToNextEvent(), swimCycAcc_,
@@ -883,6 +950,7 @@ void Q605Memory::flushScc() {
         sccDebt_ -= step;
         scc_.tick(step);
     }
+    sccNextCache_ = -1;
     if (sccIrq_ != scc_.irqAsserted()) {
         sccIrq_ = scc_.irqAsserted();
         updateIrq();
