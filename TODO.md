@@ -448,18 +448,13 @@ interprété passe désormais 31 % de son temps en traduction d'adresse
 (63 % avant) et 30 % dans ses handlers ; le 68030, un tiers dans le fetch
 d'instruction.
 
-- [ ] **Étendre la fenêtre de l'interpréteur au 68000/68020 et lui
-  donner la fenêtre de données.** Depuis le 2026-11-07 (rang 55) les
-  têtes de boucle 68030 et 68040 arment la fenêtre de fetch elles-mêmes
-  quand le moteur est éteint (Quadra 605 interprété −36 %, LC II −17 %,
-  empreintes inchangées). Restent : les cœurs 68000/68010/68020 (leur
-  fenêtre existe, `pomJitFetch020` et la branche 68000, mais personne ne
-  l'arme sans moteur — le Plus est cycle-exact, la fenêtre y passe par
-  `pomJitSetBusStall`) et la fenêtre de données du 68030 (rang 34), dont
-  la fonction de remplissage est encore celle du moteur
-  (`POM68K_SURFACE.md` § 9.2). Mesurer ensuite ce qui reste : sur 68040
-  l'interpréteur passait, avant la fenêtre, 18 % dans `mmu040InstrStart`
-  et 8 % dans `Q605Memory::read16`.
+- [ ] **Donner à l'interpréteur la fenêtre de données et reprofiler.**
+  Depuis le 2026-11-07 (rang 55) l'interpréteur arme la fenêtre de fetch
+  lui-même sur les cinq cœurs quand le moteur est éteint (Quadra 605
+  −36 %, LC II −17 %, Mac II −13 %, Plus dans le bruit, empreintes
+  inchangées). Reste la fenêtre de données du 68030 (rang 34), dont la
+  fonction de remplissage est encore celle du moteur (`POM68K_SURFACE.md`
+  § 9.2), et un nouveau profil des deux bancs pour ordonner la suite.
 - [ ] **Alléger la remise à zéro par instruction du mode 5.**
   `mmuExecuteStart` (5,8 %) efface le journal d'accès et les fixups et
   sauve le CCR à chaque instruction 030, sous un `try`, avec `sync()` et

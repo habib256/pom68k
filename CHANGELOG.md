@@ -1236,8 +1236,11 @@ running `Moira::execute()` bare, never had it.
 
 **The change** (`POM68K_VENDOR.md` row 55). `pomSetInterpWindow(on,
 codeSpanFn, ctx)` gives the core a host-pointer provider for physical pages
-— the engine's own `codeSpan` hook — and the 68030 and 68040 loop heads call
-`pomInterpArm` when the window does not cover the pc. `pomInterpArm` is
+— the engine's own `codeSpan` hook — and the loop heads call `pomInterpArm`
+when the window does not cover the pc: `mmuExecuteStart` and
+`mmu040InstrStart` for the MMU cores, `execute()` itself for the
+68000/68010/68020, whose opcode words come from the prefetch queue that
+`prefetch<>()` fills through the window on a hit. `pomInterpArm` is
 `Engine::armWindow` decision for decision: no arm while the post-PMOVE
 fetch pipe lives, the probe must confirm the translation without touching
 anything, the span must be plain memory, page and span bound the window,
@@ -1255,6 +1258,8 @@ change):
 |---|---|---|---|
 | Quadra 605, 625 000 500 cycles | 19.75 s | **12.71 s** | −35.6 %, `a2036281a5c2ac55` on all four |
 | LC II, 390 720 000 cycles | 13.26 s | **11.06 s** | −16.6 %, `663d67e4bc2d9714` on all four |
+| Mac II, 3 000 frames | 5.83 s | **5.06 s** | −13 %, `8090d72b09262ce8` on all four |
+| Macintosh Plus, 3 000 frames | 3.72 s | 3.82 s | within noise: the 68000 window pays the bus-contention hook the read paid; `6c7e9cb4205803bf` on all four |
 | Quadra 605, JIT mode, 3 000 frames | 8.57 s | 8.67 s | the engine never ran this path; `b9e4eacc7fc3933c` |
 
 With the second entry, the 68040 interpreter runs 2.5 times faster than
