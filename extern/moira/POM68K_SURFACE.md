@@ -631,18 +631,25 @@ each fetch/data site.
 
 ### 9.2 What an interpreter-only host gets
 
-The fetch window is armed only by `jit::Engine` (`JitEngine.cpp`, the single
-`pomJitArm` call, reached from `Engine::executeUntil`'s arming path). The
-fused 030 `ird`/`irc` fetch (`POM68K_VENDOR.md` row 33) is a window hit
-(`pomJitFetch(reg.pc, 4)`), so it also needs an armed window. The 030
+Since 2026-11-07 (`POM68K_VENDOR.md` row 55) the INTERPRETER arms the fetch
+window itself when no engine does: `pomSetInterpWindow(on, codeSpanFn, ctx)`
+gives the core a host-pointer provider for physical pages, and the 68030 and
+68040 loop heads call `pomInterpArm` on a miss — the decisions of
+`Engine::armWindow`, without its block bookkeeping. `jit::Engine` switches
+it on while it is disabled and off while it runs; a bare host calls the
+setter once with its own span function. The fused 030 `ird`/`irc` fetch
+(row 33) is a window hit (`pomJitFetch(reg.pc, 4)`), so it benefits too.
+Before that date the window was armed only by `jit::Engine`: The 030
 interpreter data window (row 34, `pomJitData030Ok`) needs
 `pomJitDtlbFillFn`, which only `jit::Engine`'s constructor binds (when
 `config_.dataWindow`; default on for the 68030 family), and unbinds in its
 destructor. In POM68K the interpreter arm still benefits from the data window
 because an `Engine` object exists even when disabled. **A host that runs bare
-`Moira::execute()` without constructing a `jit::Engine` gets none of the
-three today.** `TODO.md` § *Surface portable* lists separating the seam from
-the interpreter hot path at compile time as open work.
+`Moira::execute()` without constructing a `jit::Engine` gets the fetch
+window and the fused fetch by calling `pomSetInterpWindow`, and still no
+data window** (its fill function is the engine's). `TODO.md` § *Surface
+portable* lists separating the seam from the interpreter hot path at compile
+time as open work.
 
 ### 9.3 Machine boundary: `jit::MemoryHooks` and `jit::CodeGuard`
 

@@ -82,6 +82,8 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
                                  backend_->caps().accessClockBias);
     useWindow_ = config_.fetchWindow;
     useBlocks_ = config_.blockCache;
+    // Constructed disabled: the interpreter owns the window until setEnabled.
+    cpu_.pomSetInterpWindow(useWindow_, mem_.codeSpan, mem_.self);
     paranoid_ = config_.paranoid;
     maxInstrs_ = config_.maxBlockInstrs;
     if (maxInstrs_ > backend_->caps().maxBlockInstrs)
@@ -598,6 +600,10 @@ void Engine::setEnabled(bool on) {
     cpu_.pomJitCache040Consumer = on;
     if (on == enabled_) return;
     enabled_ = on;
+    // Exactly one of the two arms the fetch window: the engine while it
+    // runs, the interpreter itself while the engine is off (Moira.h
+    // pomSetInterpWindow). POM68K_JIT_FETCH=0 leaves both bare.
+    cpu_.pomSetInterpWindow(!enabled_ && useWindow_, mem_.codeSpan, mem_.self);
     if (mem_.setGuard) mem_.setGuard(mem_.self, on ? &guard_ : nullptr);
     if (config_.verbose) std::fprintf(stderr, "[jit] engine %s\n", on ? "ON" : "OFF");
 }

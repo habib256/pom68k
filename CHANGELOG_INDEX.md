@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 718 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 719 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 93 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 88 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 89 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 36 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -209,6 +209,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](CHANGELOG.md#2026-11-07-d24-applied)
 - **2026-11-07 (tenth)** — [On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000](CHANGELOG.md#2026-11-07-rmw-last-write)
 - **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](CHANGELOG.md#2026-11-07-core-env-free)
+- **2026-11-07 (thirteenth)** — [The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile](CHANGELOG.md#2026-11-07-interp-window)
 - **2026-11-07 (twelfth)** — [PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep](CHANGELOG.md#2026-11-07-ptest-limit)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E

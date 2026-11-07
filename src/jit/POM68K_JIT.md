@@ -1328,7 +1328,7 @@ do not affect an injected session.
 | `POM68K_PERF_HOST_PROFILE` | host architecture | stable performance-policy identity written to metrics; use a named measured host such as `reference_x86_64` or `apple_m4` for wall-clock baselines, never one architecture-wide threshold |
 | `POM68K_JIT_METRICS_FILE` | unset | write the flat `pom68k.jit.metrics.v1` JSON artifact used by CI and fixed-cycle benches |
 | `POM68K_JIT_UNSAFE_BACKEND` | `0` | force an explicitly named backend onto a guest family it does not declare (`JitBackend.cpp`) — for developing that family's support, never for use |
-| `POM68K_JIT_FETCH` | `1` | the instruction-fetch code window (J1a) |
+| `POM68K_JIT_FETCH` | `1` | the instruction-fetch code window (J1a) — armed by the engine while it runs, and since 2026-11-07 by the interpreter itself while the engine is off (`Moira::pomSetInterpWindow`); `0` leaves both bare |
 | `POM68K_JIT_BLOCKS` | *backend* | block discovery and replay (J1b). The default is the ACTIVE BACKEND's answer, not a constant (`blockCacheEnabled(dflt)`): OFF for `threaded`, which measured slower with blocks than with the window alone, ON for a code generator, which has nothing to run without them |
 | `POM68K_JIT_BLOCK_MAX` | `64` | straight-line instruction ceiling per block, itself capped by `caps().maxBlockInstrs` |
 | `POM68K_JIT_HOT` | native `1`, threaded `512` | visits before a recorded block is translated |
@@ -1343,7 +1343,7 @@ do not affect an injected session.
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
 | `POM68K_JIT_ICACHE_EMIT` | `1` | ATTRIBUTION knob for the emitted 68030 i-cache charge (`docs/JIT_BRINGUP.md` § B). Off, an 030 block charges the instruction cost alone, so a residual divergence provably belongs to something else. Only a bring-up measurement should turn it off |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
-| `POM68K_DATA_WINDOW` | 68030 `1`, others `0` | the INTERPRETER's data window (§ 8) — opt-in on the 68040 since the ATC-exactness capping made it a net loss there, and the 68030 default since 2026-09-05 on that family's own measurement (`JitConfig.h:116`, the per-family default at `JitEngine.cpp:119-120`, the door at `JitEngine.cpp:146`) |
+| `POM68K_DATA_WINDOW` | 68030 `1`, others `0` | the INTERPRETER's data window (§ 8) — opt-in on the 68040 since the ATC-exactness capping made it a net loss there, and the 68030 default since 2026-09-05 on that family's own measurement (`JitConfig.h:116`, the per-family default at `JitEngine.cpp:121-122`, the door at `JitEngine.cpp:148`) |
 | `POM68K_040_DCACHE` | `0` | arms Moira's architectural 68040 I/D-cache model (`docs/CACHE_040.md`). CPU state rather than engine state, declared in the JIT domain so that every wrapper and every test rig receives it in the `ResolvedConfig`; `MoiraCpu` applies it with `setPomCache040()`. Moira itself reads no environment since 2026-11-06 |
 | `POM68K_040_CM_STATS` | unset | diagnostic: per-ATC-fill histogram of descriptor cache modes, printed at exit; same path, `setPomCmStats040()` |
 | `NEOST_EXC_DIAG` | unset | diagnostic: NeoST's cycle-exact exception trace inside the core (`[PIN]`, `[EXC]`, `[JTV]` on stderr); same path, `setPomExceptionDiag()`. Not a JIT option either, and the one legacy name without the prefix in this domain |
@@ -1530,7 +1530,7 @@ plans and every other full-format instruction replay untouched.
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
-> `MoiraExecMMU_cpp.h:2221-2296`) and `pomJitReadData`/`pomJitWriteData`
+> `MoiraExecMMU_cpp.h:2262-2337`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
 > (`:2452-2459`, `:2477-2484`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
@@ -1819,7 +1819,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2221-2296`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2262-2337`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;
@@ -2217,7 +2217,7 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
   coverage.
 * **2026-08-09/10 — the default flipped on the 68040.** `defaultEngine()`
   stopped being a constant and became a per-family answer
-  (`JitConfig.h:323`, `JitEngine.cpp:191`): `jit/auto` on 68040, interpreter
+  (`JitConfig.h:323`, `JitEngine.cpp:193`): `jit/auto` on 68040, interpreter
   everywhere else, `POM68K_CPU_ENGINE` overriding either way. The plain
   `q605/centris650/q630/q700_boot_etalon` gates therefore now run the
   engine, and four `interp_*` registrations preserve one explicit

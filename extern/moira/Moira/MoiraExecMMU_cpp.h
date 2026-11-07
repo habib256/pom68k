@@ -549,6 +549,8 @@ Moira::mmuExecuteStart()
     // and the in-flight access context the SECOND mmuFetchWord would have
     // left, which is the only one extBusError() can ever read back.
     if (!pomMmuPipeLive() && !(flags & State::CHECK_WP)) {
+        if (pomInterpWindowOn && !pomJitCovers(reg.pc)) [[unlikely]]
+            pomInterpArm(reg.pc);                       // POM68K: interpreter-owned window
         if (const u8 *p; pomJitFetch(reg.pc, 4, p)) {
             pomIcacheFetch<2>(reg.pc);
             mmuAccAddr  = reg.pc + 2;
@@ -2076,6 +2078,8 @@ Moira::mmu040InstrStart()
     // only `ird` from it would change which page the `irc` lookahead
     // touches for an instruction sitting on a page's last word, and with it
     // the fault frame.
+    if (pomInterpWindowOn && !pomJitCovers(reg.pc)) [[unlikely]]
+        pomInterpArm(reg.pc);                           // POM68K: interpreter-owned window
     if (const u8 *p; pomJitFetch(reg.pc, 4, p)) {
         queue.ird = u16(u16(p[0]) << 8 | p[1]);
         queue.irc = u16(u16(p[2]) << 8 | p[3]);
@@ -2101,6 +2105,43 @@ Moira::mmu040InstrStart()
     }
 
     return true;
+}
+
+void
+Moira::pomInterpArm(u32 pc)
+{
+    // jit::Engine::armWindow without its block bookkeeping, decision for
+    // decision (src/jit/JitEngine.cpp): no arm while the post-PMOVE fetch
+    // pipe lives (its fetches do not count on the i-cache); the probe must
+    // confirm the translation without touching anything; the host span must
+    // be plain memory; the page and the span bound the window; and an
+    // architectural 040 I-cache may need one interpreted fetch to fill the
+    // line before the window can expose it. A failed arm backs off 32
+    // instructions, as the engine does — probing every instruction is what
+    // made the 030 machines slower under the JIT than interpreted.
+    if (pomInterpBackoff > 0) { pomInterpBackoff--; return; }
+    if (pomMmuPipeLive()) [[unlikely]] { pomJitDisarm(); return; }
+
+    const bool super = pomJitSuper();
+    u32 phys = 0, pageBase = 0, pageLen = 0;
+    if (!pomJitProbeCode(pc, super, phys, pageBase, pageLen)) {
+        pomJitDisarm(); pomInterpBackoff = 32; return;
+    }
+    const u32 offset = pc - pageBase;
+    const u32 physPage = phys - offset;
+
+    u32 span = 0;
+    const u8 *host = pomCodeSpanFn(pomCodeSpanCtx, physPage, span);
+    constexpr u32 kMinWindow = 4;
+    if (!host || span < kMinWindow) { pomJitDisarm(); pomInterpBackoff = 32; return; }
+
+    const u32 len = pageLen < span ? pageLen : span;
+    if (len < kMinWindow || pc - pageBase > len - kMinWindow) {
+        pomJitDisarm(); pomInterpBackoff = 32; return;
+    }
+
+    pomJitArm(host, pageBase, physPage, len, super);
+    if (!pomJitCovers(pc)) pomJitDisarm();
 }
 
 bool

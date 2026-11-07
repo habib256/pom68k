@@ -336,6 +336,12 @@ public:
         bool super = false;         // sr.s the translation was validated for
     };
     PomJitWindow pomJitWindow;
+    using PomCodeSpanFn = const u8 *(*)(void *ctx, u32 physPage, u32 &len);
+    bool pomInterpWindowOn {false};         // pomSetInterpWindow
+    PomCodeSpanFn pomCodeSpanFn {nullptr};
+    void *pomCodeSpanCtx {nullptr};
+    int pomInterpBackoff {0};
+    void pomInterpArm(u32 pc);
 
     // Bumped by every event that can change a logical→physical mapping:
     // ATC flushes (PFLUSH family, TC/URP/SRP writes) and TTR writes. A
@@ -410,6 +416,26 @@ public:
         pomJitWindow.armed = host != nullptr && len >= 4;
     }
     void pomJitDisarm() { pomJitWindow.armed = false; pomJitWindow.host = nullptr; }
+
+    // POM68K: the INTERPRETER arms the fetch window itself when no engine
+    // does. The window, its fetch path and its eviction hooks are Moira's
+    // already (above); only the decision to arm lived in jit::Engine, so a
+    // host that runs execute() with the engine off — POM68K_CPU_ENGINE=interp,
+    // a bare host such as NeoST — paid a translated bus read for every
+    // opcode word (INTERP_PROFILE.md 2026-11-07: a third of the 68040
+    // interpreter after the hot translation). `fn` answers a PHYSICAL page
+    // with a host pointer and the contiguous plain-memory span from it, or
+    // nullptr (I/O, VRAM, a hole, the boot overlay): the engine's codeSpan
+    // hook. jit::Engine switches this on when it is disabled and off when
+    // it runs, so exactly one of the two arms at any time.
+    void pomSetInterpWindow(bool on, PomCodeSpanFn fn, void *ctx) {
+        pomInterpWindowOn = on && fn != nullptr;
+        pomCodeSpanFn = fn;
+        pomCodeSpanCtx = ctx;
+        pomInterpBackoff = 0;
+        if (!pomInterpWindowOn) pomJitDisarm();
+    }
+    bool pomInterpWindowArmed() const { return pomInterpWindowOn; }
 
     // True when `addr` and the three bytes after it can be fetched from the
     // window under the CURRENT privilege level and MMU generation.
