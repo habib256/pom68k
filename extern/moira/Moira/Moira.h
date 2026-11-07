@@ -40,11 +40,6 @@ protected:
     // the Mac LC II PDS card). NONE keeps the jump table byte-identical to
     // stock Moira (F2xx = Line-F). Configured via setFPUModel().
     FPUModel fpuModel = FPUModel::NONE;
-    // When set, FPU-less 040 F2xx stacks classic format $0 Line-F (Mac OS
-    // PACK 4) instead of architectural format $4. sst68040 leaves this clear
-    // — and so does everything else: no POM68K code calls the setter, so this
-    // is an unbound escape hatch, not a live path (MoiraExecFPU_cpp.h:772).
-    bool fpuDisabledSaneFline = false;
     
     // Visual style for disassembled instructions
     DasmStyle instrStyle;
@@ -213,9 +208,6 @@ public:
     void setFPUModel(FPUModel model);
     FPUModel getFPUModel() const { return fpuModel; }
     Model getModel() const { return cpuModel; }
-    // Mac OS PACK 4 wants format $0 F-line on FPU-less 040; oracle wants $4.
-    void setFpuDisabledSaneFline(bool v) { fpuDisabledSaneFline = v; }
-    bool getFpuDisabledSaneFline() const { return fpuDisabledSaneFline; }
     
     // Configures the syntax style for disassembly output
     void setDasmSyntax(Syntax value);

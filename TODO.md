@@ -697,11 +697,12 @@ compilation et dans la documentation.
   boost/`flushTicks`/`machineClock` est recopiée sur une demi-douzaine de
   wrappers 030 ; la sonde coprocesseur FC = 7 est émulée dans quatre
   cartes faute de cycles d'espace CPU émis par le cœur.
-- [ ] **Supprimer le code mort et les étiquettes périmées.**
-  `fpuDisabledSaneFline` (levier Mac PACK 4 que rien n'arme, le code le
-  dit lui-même), `MoiraTypes.h` qui dit le 030 et le 040 « Disassembler
-  only », et le 68EC040, sans profil ni corpus, dont `hasMMU()` contredit
-  le chemin de traduction.
+- [ ] **Trancher le 68EC040 : le refuser ou le rendre vrai.** Sans profil
+  ni corpus, il exécute le chemin 68040 complet, pagination comprise, que
+  le silicium n'a pas, et `hasMMU()` répond faux. Étiqueté comme tel dans
+  `MoiraTypes.h` le 2026-11-08 (avec le reste des étiquettes de modèles et
+  la suppression de `fpuDisabledSaneFline`) ; reste à choisir : `setModel`
+  le refuse, ou la traduction s'arrête aux TTR et un corpus le tient.
 - [ ] **Remettre à jour les documents du cœur.** `POM68K_JIT.md` : journal
   arrêté au 2026-09-07, « douze wrappers » (quatorze), § 6.2 sur les EA
   indirects mémoire, inventaire de stores « sur toutes les cartes 030 »,

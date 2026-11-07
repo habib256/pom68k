@@ -221,7 +221,6 @@ error. `CALLM`/`RTM` are available on `AV::M68020` only.
 |---|---|---|
 | `setModel(Model)` / `setModel(cpu, dasm)` | `M68000` | rebuilds the 65 536-entry jump tables (`createJumpTable`), masks `reg.cacr`, clears `LOOPING`. Call before `reset()`. |
 | `setFPUModel(FPUModel)` | `NONE` | rebuilds jump tables, `fpuResetState()`. FPU handlers are `AVAILABILITY(Core::C68020)`; attaching one to a 68000/68010 model is unverified. |
-| `setFpuDisabledSaneFline(bool)` | false | FPU-less 040 F2xx stacks format $0 Line-F instead of format $4. No POM68K code calls it (`Moira.h` comment, `TODO.md`). |
 | `setIplDelay(i64 d4, i64 d2)` | 0, 0 (off) | NeoST deferred IPL recognition (WinUAE `ipl_fetch_next` port, § 4). Never set by POM68K. A JIT backend must refuse when on (`pomJitSimpleIpl`). |
 | `irqMode` (protected member, no setter) | `IrqMode::AUTO` | `USER` routes through `readIrqUserVector`; `SPURIOUS` → 24; `UNINITIALIZED` → 15. |
 | `setMmu040AtcArmed(bool)` | true | false = walk per access (differential mode); also makes `pomJitProbeCode` refuse. |
@@ -485,7 +484,7 @@ softfloat's global state is unverified.
   `execFpuDatatype040`) with revision-$41 FSAVE frames (NULL/IDLE 4 bytes,
   UNIMP header `$41/$30`, BUSY header `$41/$60`). FPCR keeps all 16 bits (`setFPCR`).
 - No FPU on a 040 model (`NONE`): F2xx → vector 11 format $4
-  (`execFpuDisabled040`), or format $0 with `fpuDisabledSaneFline`.
+  (`execFpuDisabled040`).
 
 ### 6.3 Mid-instruction interrupts (6888x only)
 
@@ -578,7 +577,7 @@ Not serialized:
 | `mmu040MovemArmed`, `mmu040MovemEa` | omitted: a snapshot between a faulted MOVEM and its RTE restart loses the saved EA |
 | per-instruction 030/040 MMU bookkeeping (`mmuState`, `mmuAd`, `mmuFixup*`, `mmu040Acc*`, fault capture) | not needed at an instruction boundary (reset by the loop heads) |
 | `fpuMidInterruptFrame` | transient inside `processException` |
-| models, `fpuDisabledSaneFline`, `mmu040AtcArmed`, `pomCache040On`, `PomCache040Timing`, `pomIcache.armed/missPenalty`, dasm styles | construction/host configuration |
+| models, `mmu040AtcArmed`, `pomCache040On`, `PomCache040Timing`, `pomIcache.armed/missPenalty`, dasm styles | construction/host configuration |
 | all `pomJit*` state | derived; rebuilt by the engine |
 | `mmu040TtrTab` | derived from ITT0/ITT1 and DTT0/DTT1; self-validating — the first `mmu040MatchTTR` after a load compares the register pair and rebuilds |
 
@@ -699,7 +698,6 @@ requires replacing that include (open in `TODO.md`).
 | `POLL_IPL` at mode-5 instruction start | generic necessity of the mode-5 model; found with the LC II ROM TimeDBRA loop | row 11 |
 | RTE $B DF-cleared one-shot latch | generic 030 protocol, implemented as restart+substitution; pinned only by Mac OS slot-probe recovery (`berr030_test`) | row 10 |
 | `irqDelay = 2` after a mask-lowering SR write (020+) | Mac-tuned: depth 2 is empirical (SimCity 2000 VBL re-entry); PRM reading is 1 | row 13, § *IRQ-recognition delay* |
-| `fpuDisabledSaneFline` | Mac-only escape hatch (PACK 4), unbound | row 17 area, `Moira.h` comment |
 | i-cache overlay geometry | generic MC68030UM § 6 | row 14 |
 | `missPenalty` value (4) and wrapper `cacheBoost_` (4) | Mac-tuned throughput calibration on the LC II | row 14, `src/Cpu030.h` comment |
 | 020 cycle tables reused for 030/040 | approximation, not calibrated per model | `src/Cpu030.h` comment |

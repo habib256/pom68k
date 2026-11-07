@@ -47,15 +47,17 @@ static constexpr int Extended    = 12; // Extended precision (FPU)
 // CPU variants
 enum class Model
 {
-    M68000,                 // Cycle-exact emulation
-    M68010,                 // Cycle-exact emulation
-    M68EC020,               // Non-cycle exaxt emulation
-    M68020,                 // Non-cycle exaxt emulation
-    M68EC030,               // Disassembler only
-    M68030,                 // Disassembler only
-    M68EC040,               // Disassembler only
-    M68LC040,               // Disassembler only
-    M68040                  // Disassembler only
+    // POM68K: what each model executes in this fork (POM68K_SURFACE.md § 1).
+    M68000,                 // Cycle-exact (sst68000: bus cycle order and time)
+    M68010,                 // Cycle-exact
+    M68EC020,               // Table-timed; no MMU
+    M68020,                 // Table-timed; no MMU (68851 not modelled)
+    M68EC030,               // Executes as a 68020 (no MMU, no i-cache overlay); no corpus
+    M68030,                 // Executes, PMMU + 68881/68882 (sst68030 corpora)
+    M68EC040,               // Executes the full 68040 path INCLUDING paging, which the
+                            // silicon lacks; no profile, no corpus — do not rely on it
+    M68LC040,               // Executes, PMMU, F-line → vector 11 format $4 (sst68040)
+    M68040                  // Executes, PMMU + on-chip FPU (sst68040, fpu040 corpora)
 };
 
 // Execution cores
