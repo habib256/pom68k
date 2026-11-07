@@ -367,6 +367,17 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
 
     } while (level < limit && !resolved);
 
+    // POM68K: a descriptor fetched AT the level limit is still examined —
+    // an invalid one reports I. The loop above examines a descriptor at
+    // the top of the next pass, which the limit prevents.
+    // [B] MC68030UM § 9.7.6 PTEST: "the I bit is set if the search ended
+    //     with an invalid descriptor" — whatever ended it.
+    // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7 checks
+    //     each descriptor as fetched, before its level test.
+    // Found by fuzz vector "mmu/tt seed=1006 #1188" (PTESTR level 1 into a
+    // DT=0 descriptor: MMUSR $001 here, $401 there). Gate: moira_rules_test.
+    if (!resolved && type == 0) sr |= 0x0400;
+
     sr = u16((sr & 0xfff0) | level);
     return resolved;
 }

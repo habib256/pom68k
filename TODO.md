@@ -290,9 +290,8 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont
   l'écriture faute, le fork range dans le « data output buffer » le
   résultat masqué à la taille de l'opérande, l'oracle la différence sur
-  32 bits. Même balayage du 2026-11-07, un vecteur : PTEST laisse MMUSR.I
-  à zéro (`mmu/tt seed=1006 #1188`,
-  `scratchpad/2026-11-07/FUZZ_SWEEP2.md`).
+  32 bits — c'est la variable `newv` de gencpu (soustraction non signée),
+  sans effet sur ce que le RTE réécrit : valeur faible.
 - [ ] **Trancher les champs EA $3D-$3F sur 68030 (D29).** Le fork laisse le
   coprocesseur décider (un registre-à-registre s'exécute, une forme
   mémoire efface l'octet d'état puis prend un Line-F) ; la table d'opcodes

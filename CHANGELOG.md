@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (twelfth)** — [PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep](#2026-11-07-ptest-limit)
 - **2026-11-07 (eleventh)** — [Ruling D23b applied: a 68882 refuses a 68040 FSAVE frame — four permissive vectors listed, the solo corpus regenerated strict](#2026-11-07-d23b-applied)
 - **2026-11-07 (tenth)** — [On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000](#2026-11-07-rmw-last-write)
 - **2026-11-07 (ninth)** — [The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000](#2026-11-07-state-frame-internals)
@@ -1220,6 +1221,18 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-ptest-limit"></a>
+## 2026-11-07 (twelfth) — PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep
+
+The eighth entry's sweep left one 68030 MMU vector: PTESTR level 1 into a
+DT = 0 descriptor, MMUSR $0001 here, $0401 in the oracle. `mmuWalkTables`
+examined each descriptor at the top of the next pass, so a descriptor
+fetched exactly at the level limit was never examined — the search ended on
+an invalid descriptor and said only how deep it had gone. One line after
+the loop (`POM68K_VENDOR.md` row 54); MC68030UM § 9.7.6 and WinUAE agree
+on the I bit. A `moira_rules_test` cell rebuilds the fuzz generator's tree
+and the vector.
 
 <a id="2026-11-07-d23b-applied"></a>
 ## 2026-11-07 (eleventh) — Ruling D23b applied: a 68882 refuses a 68040 FSAVE frame — four permissive vectors listed, the solo corpus regenerated strict
